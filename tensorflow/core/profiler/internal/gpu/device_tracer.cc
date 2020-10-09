@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
@@ -35,13 +34,13 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/profiler/internal/annotation_stack.h"
+#include "tensorflow/core/profiler/internal/cpu/annotation_stack.h"
 #include "tensorflow/core/profiler/internal/gpu/cupti_tracer.h"
 #include "tensorflow/core/profiler/internal/gpu/cupti_wrapper.h"
-#include "tensorflow/core/profiler/internal/parse_annotation.h"
-#include "tensorflow/core/profiler/internal/profiler_factory.h"
-#include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/profiler/lib/profiler_factory.h"
+#include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/utils/parse_annotation.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
@@ -96,13 +95,12 @@ void CreateXEvent(const CuptiTracerEvent& event, XPlaneBuilder* plane,
         absl::StrCat("$$", static_cast<uint64>(event.context_id)));
   }
   if (event.type == CuptiTracerEventType::Kernel) {
-    const std::string kernel_details =
-        absl::StrFormat("regs:%u shm:%u grid:%u,%u,%u block:%u,%u,%u",
-                        event.kernel_info.registers_per_thread,
-                        event.kernel_info.static_shared_memory_usage,
-                        event.kernel_info.grid_x, event.kernel_info.grid_y,
-                        event.kernel_info.grid_z, event.kernel_info.block_x,
-                        event.kernel_info.block_y, event.kernel_info.block_z);
+    std::string kernel_details = absl::StrCat(
+        "regs:", event.kernel_info.registers_per_thread,
+        " shm:", event.kernel_info.static_shared_memory_usage,
+        " grid:", event.kernel_info.grid_x, ",", event.kernel_info.grid_y, ",",
+        event.kernel_info.grid_z, " block:", event.kernel_info.block_x, ",",
+        event.kernel_info.block_y, ",", event.kernel_info.block_z);
     xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
                             GetStatTypeStr(StatType::kKernelDetails)),
                         *plane->GetOrCreateStatMetadata(kernel_details));
@@ -112,15 +110,15 @@ void CreateXEvent(const CuptiTracerEvent& event, XPlaneBuilder* plane,
              event.type == CuptiTracerEventType::MemcpyP2P ||
              event.type == CuptiTracerEventType::MemcpyOther) {
     const auto& memcpy_info = event.memcpy_info;
-    std::string memcpy_details =
-        absl::StrFormat("size:%u dest:%u async:%u", memcpy_info.num_bytes,
-                        memcpy_info.destination, memcpy_info.async);
+    std::string memcpy_details = absl::StrCat("size:", memcpy_info.num_bytes,
+                                              " dest:", memcpy_info.destination,
+                                              " async:", memcpy_info.async);
     xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
                             GetStatTypeStr(StatType::kMemcpyDetails)),
                         memcpy_details);
   } else if (event.type == CuptiTracerEventType::MemoryAlloc) {
     std::string memalloc_details =
-        absl::StrFormat("num_bytes:%u", event.memalloc_info.num_bytes);
+        absl::StrCat("num_bytes:", event.memalloc_info.num_bytes);
     xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
                             GetStatTypeStr(StatType::kMemallocDetails)),
                         memalloc_details);
@@ -353,14 +351,14 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
           ns->set_node_name(activity_name);
           switch (event.type) {
             case CuptiTracerEventType::Kernel: {
-              ns->set_timeline_label(absl::StrFormat(
-                  "%s regs:%u shm:%u grid:%u,%u,%u block:%u,%u,%u@@%s",
-                  kernel_name, event.kernel_info.registers_per_thread,
-                  event.kernel_info.static_shared_memory_usage,
-                  event.kernel_info.grid_x, event.kernel_info.grid_y,
-                  event.kernel_info.grid_z, event.kernel_info.block_x,
-                  event.kernel_info.block_y, event.kernel_info.block_z,
-                  event.annotation));
+              ns->set_timeline_label(absl::StrCat(
+                  kernel_name, " regs:", event.kernel_info.registers_per_thread,
+                  " shm:", event.kernel_info.static_shared_memory_usage,
+                  " grid: ", event.kernel_info.grid_x, ",",
+                  event.kernel_info.grid_y, ",", event.kernel_info.grid_z,
+                  " block:", event.kernel_info.block_x, ",",
+                  event.kernel_info.block_y, ",", event.kernel_info.block_z,
+                  "@@", event.annotation));
               DeviceStepStats*& stream_dev_stats =
                   stream_dev_stats_map[std::make_pair(event.stream_id,
                                                       event.type)];

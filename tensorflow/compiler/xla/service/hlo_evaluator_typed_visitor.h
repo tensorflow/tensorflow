@@ -2790,7 +2790,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   // bound, call `f` with the base index.
   static void IterateThroughWindow(
       const Shape& window_shape, const Window& window, const Shape& base_shape,
-      const absl::Span<const int64>& window_count_index,
+      const absl::Span<const int64> window_count_index,
       const std::function<void(const std::vector<int64>&)>& f) {
     const int64 rank = base_shape.rank();
     DimensionVector window_index(rank);

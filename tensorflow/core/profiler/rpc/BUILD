@@ -2,12 +2,10 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_external_workspace_visible")  # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")  # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_pybind_cc_library_wrapper")  # buildifier: disable=same-origin-load
-load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_alias")
+load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_alias", "tf_profiler_copts")
 
 package(
-    default_visibility = [
-        "//tensorflow/core/profiler:internal",
-    ],
+    default_visibility = ["//tensorflow/core/profiler:internal"],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -31,6 +29,7 @@ cc_library(
     name = "profiler_service_impl",
     srcs = ["profiler_service_impl.cc"],
     hdrs = ["profiler_service_impl.h"],
+    copts = tf_profiler_copts(),
     features = ["-layering_check"],
     visibility = tf_external_workspace_visible(
         [
@@ -53,6 +52,7 @@ cc_library(
     name = "profiler_server_impl",
     srcs = ["profiler_server.cc"],
     hdrs = ["profiler_server.h"],
+    copts = tf_profiler_copts(),
     visibility = [
         "//tensorflow/compiler/xla/python:__pkg__",
         "//tensorflow/core/profiler:internal",

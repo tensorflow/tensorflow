@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/tools/optimize/model_utils.h"
 #include "tensorflow/lite/tools/optimize/operator_property.h"
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
@@ -59,7 +60,7 @@ operator_property::OperatorProperty GetOperatorProperty(
   const SubGraphT* subgraph = model->subgraphs[subgraph_index].get();
   const OperatorT* op = subgraph->operators[op_idx].get();
   const BuiltinOperator op_code =
-      model->operator_codes[op->opcode_index]->builtin_code;
+      GetBuiltinCode(model->operator_codes[op->opcode_index].get());
   if (activations_type == TensorType_INT16 && !property.quantizable_int16) {
     property.quantizable = false;
   }
@@ -521,7 +522,7 @@ TfLiteStatus QuantizeOpInput(
   SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
   OperatorT* op = subgraph->operators[*op_idx].get();
   const BuiltinOperator op_code =
-      model->operator_codes[op->opcode_index]->builtin_code;
+      GetBuiltinCode(model->operator_codes[op->opcode_index].get());
   if (input_idx >= op->inputs.size()) {
     TF_LITE_REPORT_ERROR(
         error_reporter,
@@ -716,7 +717,7 @@ TfLiteStatus QuantizeOpOutput(
   SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
   OperatorT* op = subgraph->operators[op_idx].get();
   const BuiltinOperator op_code =
-      model->operator_codes[op->opcode_index]->builtin_code;
+      GetBuiltinCode(model->operator_codes[op->opcode_index].get());
   if (output_idx >= op->outputs.size()) {
     TF_LITE_REPORT_ERROR(
         error_reporter,
@@ -812,7 +813,7 @@ TfLiteStatus QuantizeIntemediateTensors(ModelT* model,
       if (!property.intermediates.empty()) {
         OperatorT* op = subgraph->operators[op_idx].get();
         const BuiltinOperator op_code =
-            model->operator_codes[op->opcode_index]->builtin_code;
+            GetBuiltinCode(model->operator_codes[op->opcode_index].get());
         for (const std::pair<int, operator_property::TensorProperty>& input :
              property.intermediates) {
           const int index_local = input.first;
@@ -941,7 +942,7 @@ TfLiteStatus QuantizeWeightsInputOutput(
     for (size_t op_idx = 0; op_idx < subgraph->operators.size(); op_idx++) {
       OperatorT* op = subgraph->operators[op_idx].get();
       const BuiltinOperator op_code =
-          model->operator_codes[op->opcode_index]->builtin_code;
+          GetBuiltinCode(model->operator_codes[op->opcode_index].get());
       const string operator_name = subgraph->tensors[op->outputs[0]]->name;
       operator_property::OperatorProperty property =
           GetOperatorProperty(operator_names, model, subgraph_idx, op_idx,
@@ -1001,7 +1002,7 @@ TfLiteStatus QuantizeBiases(ModelT* model,
     for (size_t op_idx = 0; op_idx < subgraph->operators.size(); op_idx++) {
       OperatorT* op = subgraph->operators[op_idx].get();
       const BuiltinOperator op_code =
-          model->operator_codes[op->opcode_index]->builtin_code;
+          GetBuiltinCode(model->operator_codes[op->opcode_index].get());
       const string operator_name = subgraph->tensors[op->outputs[0]]->name;
       operator_property::OperatorProperty property =
           GetOperatorProperty(operator_names, model, subgraph_idx, op_idx,

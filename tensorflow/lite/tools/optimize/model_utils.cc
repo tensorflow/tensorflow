@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/tools/optimize/operator_property.h"
 
 namespace tflite {
@@ -34,7 +35,7 @@ namespace {
 int32_t GetOrInsertOpCodeIndex(ModelT* model, const BuiltinOperator& op_code,
                                int32_t version) {
   for (size_t i = 0; i < model->operator_codes.size(); ++i) {
-    if (model->operator_codes[i]->builtin_code == op_code) {
+    if (GetBuiltinCode(model->operator_codes[i].get()) == op_code) {
       return i;
     }
   }

@@ -5,8 +5,9 @@ func @main(tensor<40x37xf32>, tensor<40x37xf32>) -> tensor<40x40xf32> {
   // CHECK:      {
   // CHECK-NEXT:  version: 3,
   // CHECK-NEXT:  operator_codes: [ {
-  // CHECK-NEXT:    builtin_code: FULLY_CONNECTED,
-  // CHECK-NEXT:    version: 1
+  // CHECK-NEXT:    deprecated_builtin_code: 9,
+  // CHECK-NEXT:    version: 1,
+  // CHECK-NEXT:    builtin_code: FULLY_CONNECTED
   // CHECK-NEXT:  } ],
   // CHECK-NEXT:  subgraphs: [ {
   // CHECK-NEXT:    tensors: [ {

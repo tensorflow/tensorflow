@@ -97,12 +97,12 @@ class TestAllocator : public se::DeviceMemoryAllocator {
 TEST(ScopedShapedBufferTest, TestMoveAssignmentOperator) {
   Shape s = ShapeUtil::MakeShape(F32, {1});
   TestAllocator allocator;
-  ScopedShapedBuffer sb1(s, s, &allocator, /*device_ordinal=*/0);
+  ScopedShapedBuffer sb1(s, &allocator, /*device_ordinal=*/0);
   sb1.set_buffer(
       allocator.Allocate(/*device_ordinal=*/0, /*size=*/42).ValueOrDie(),
       /*index=*/{});
 
-  ScopedShapedBuffer sb2(s, s, &allocator, /*device_ordinal=*/1);
+  ScopedShapedBuffer sb2(s, &allocator, /*device_ordinal=*/1);
   sb2.set_buffer(
       allocator.Allocate(/*device_ordinal=*/1, /*size=*/10).ValueOrDie(),
       /*index=*/{});
@@ -119,7 +119,7 @@ TEST(ScopedShapedBufferTest, TestTakeSubTree) {
   s = xla::ShapeUtil::MakeTupleShape(std::vector<xla::Shape>(2, s));
   s = xla::ShapeUtil::MakeTupleShape(std::vector<xla::Shape>(3, s));
 
-  ScopedShapedBuffer sb(s, s, &allocator, /*device_ordinal=*/0);
+  ScopedShapedBuffer sb(s, &allocator, /*device_ordinal=*/0);
   sb.buffers().ForEachMutableElement(
       [&](const xla::ShapeIndex& index, se::DeviceMemoryBase* buffer) {
         TF_ASSERT_OK_AND_ASSIGN(
@@ -156,8 +156,7 @@ TEST(ScopedShapedBufferTest, TestSubShapeTree) {
   Shape tuple_shape =
       xla::ShapeUtil::MakeTupleShape({array_shape, array_shape});
   TestAllocator allocator;
-  ScopedShapedBuffer sb(tuple_shape, tuple_shape, &allocator,
-                        /*device_ordinal=*/0);
+  ScopedShapedBuffer sb(tuple_shape, &allocator, /*device_ordinal=*/0);
   sb.buffers().ForEachMutableElement(
       [&](const xla::ShapeIndex& index, se::DeviceMemoryBase* buffer) {
         TF_ASSERT_OK_AND_ASSIGN(
@@ -182,7 +181,7 @@ void BM_TakeSubTree(int iters, int depth, int fan_out) {
     std::vector<xla::Shape> shapes(fan_out, shape);
     shape = xla::ShapeUtil::MakeTupleShape(shapes);
   }
-  xla::ScopedShapedBuffer shaped_buffer(shape, shape, /*allocator=*/&allocator,
+  xla::ScopedShapedBuffer shaped_buffer(shape, /*allocator=*/&allocator,
                                         /*device_ordinal=*/0);
   tensorflow::testing::StartTiming();
   for (int i = 0; i < iters; ++i) {

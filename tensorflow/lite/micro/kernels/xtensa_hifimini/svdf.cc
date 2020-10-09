@@ -28,9 +28,6 @@ limitations under the License.
 #include "tensorflow/lite/micro/kernels/xtensa_hifimini/fixedpoint_utils.h"
 
 namespace tflite {
-namespace ops {
-namespace micro {
-namespace svdf {
 namespace {
 
 struct OpData {
@@ -262,8 +259,6 @@ void EvalIntegerSVDF(TfLiteContext* context, TfLiteNode* node,
   }
 }
 
-}  // namespace
-
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context != nullptr);
   return context->AllocatePersistentBuffer(context, sizeof(OpData));
@@ -365,12 +360,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TFLITE_DCHECK(node->user_data != nullptr);
   OpData* data = static_cast<OpData*>(node->user_data);
 
-  xtensa::hifimini::QuantizeMultiplier(effective_scale_1,
-                                       &data->effective_scale_1_a,
-                                       &data->effective_scale_1_b);
-  xtensa::hifimini::QuantizeMultiplier(effective_scale_2,
-                                       &data->effective_scale_2_a,
-                                       &data->effective_scale_2_b);
+  ops::micro::xtensa::hifimini::QuantizeMultiplier(effective_scale_1,
+                                                   &data->effective_scale_1_a,
+                                                   &data->effective_scale_1_b);
+  ops::micro::xtensa::hifimini::QuantizeMultiplier(effective_scale_2,
+                                                   &data->effective_scale_2_a,
+                                                   &data->effective_scale_2_b);
 
   data->input_zero_point = input->params.zero_point;
   data->output_zero_point = output->params.zero_point;
@@ -414,19 +409,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-}  // namespace svdf
+}  // namespace
 
 TfLiteRegistration Register_SVDF() {
-  return {/*init=*/svdf::Init,
+  return {/*init=*/Init,
           /*free=*/nullptr,
-          /*prepare=*/svdf::Prepare,
-          /*invoke=*/svdf::Eval,
+          /*prepare=*/Prepare,
+          /*invoke=*/Eval,
           /*profiling_string=*/nullptr,
           /*builtin_code=*/0,
           /*custom_name=*/nullptr,
           /*version=*/0};
 }
 
-}  // namespace micro
-}  // namespace ops
 }  // namespace tflite

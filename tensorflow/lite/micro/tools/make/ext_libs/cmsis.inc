@@ -26,6 +26,7 @@ ifneq ($(filter cmsis-nn,$(ALL_TAGS)),)
       $(CMSIS_PATH)/CMSIS/NN/Source/FullyConnectedFunctions/arm_fully_connected_mat_q7_vec_q15.c \
       $(CMSIS_PATH)/CMSIS/NN/Source/FullyConnectedFunctions/arm_fully_connected_q7.c \
       $(CMSIS_PATH)/CMSIS/NN/Source/FullyConnectedFunctions/arm_fully_connected_mat_q7_vec_q15_opt.c \
+      $(CMSIS_PATH)/CMSIS/NN/Source/SVDFunctions/arm_svdf_s8.c \
       $(CMSIS_PATH)/CMSIS/NN/Source/ConcatenationFunctions/arm_concatenation_s8_z.c \
       $(CMSIS_PATH)/CMSIS/NN/Source/ConcatenationFunctions/arm_concatenation_s8_x.c \
       $(CMSIS_PATH)/CMSIS/NN/Source/ConcatenationFunctions/arm_concatenation_s8_w.c \
@@ -123,6 +124,8 @@ ifneq ($(filter cmsis-nn,$(ALL_TAGS)),)
     # in the CMSIS-NN micro kernel source files in
     # tensorflow/lite/micro/kernels/cmsis-nn
     INCLUDES += \
-      -I$(CMSIS_PATH)/CMSIS/Core/Include
+      -I$(CMSIS_PATH)/CMSIS/Core/Include \
+      -I$(CMSIS_PATH)/CMSIS/DSP/Include \
+      -I$(CMSIS_PATH)/CMSIS/NN/Include
 
 endif

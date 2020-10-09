@@ -20,8 +20,10 @@ limitations under the License.
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/experimental/saved_model/core/ops/variable_ops.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -62,15 +64,53 @@ Status Variable::ReadValue(ImmediateTensorHandlePtr* out) {
   return internal::ReadVariable(ctx_, handle_.get(), dtype_, out);
 }
 
-Status Variable::CreateUninitialized(ImmediateExecutionContext* ctx,
-                                     DataType dtype, TensorShape shape,
-                                     absl::optional<std::string> name,
-                                     const char* raw_device_name,
-                                     std::unique_ptr<Variable>* output) {
+Status Variable::CreateUninitialized(
+    ImmediateExecutionContext* ctx, DataType dtype, TensorShape shape,
+    absl::optional<std::string> name, const char* raw_device_name,
+    const std::vector<std::string>& component_devices,
+    std::unique_ptr<Variable>* output) {
   ImmediateTensorHandlePtr handle;
-  TF_RETURN_IF_ERROR(internal::CreateUninitializedResourceVariable(
-      ctx, dtype, shape, raw_device_name, &handle));
 
+  if (component_devices.empty()) {
+    TF_RETURN_IF_ERROR(internal::CreateUninitializedResourceVariable(
+        ctx, dtype, shape, raw_device_name, &handle));
+    output->reset(
+        new Variable(ctx, dtype, shape, std::move(name), std::move(handle)));
+    return Status();
+  }
+
+  if (!tensorflow::isa<EagerContext>(ctx)) {
+    return errors::InvalidArgument(
+        "Can only load distributed variables with EagerContext.");
+  }
+
+  EagerContext* eager_ctx = reinterpret_cast<EagerContext*>(ctx);
+
+  std::vector<TensorHandle*> handles;
+  for (const auto& device : component_devices) {
+    ImmediateTensorHandlePtr handlePtr;
+    TF_RETURN_IF_ERROR(internal::CreateUninitializedResourceVariable(
+        ctx, dtype, shape, device.empty() ? nullptr : device.c_str(),
+        &handlePtr));
+    if (!tensorflow::isa<TensorHandle>(handlePtr.get())) {
+      return errors::Internal("Returned replica handle has unsupported type.");
+    }
+    handles.push_back(reinterpret_cast<TensorHandle*>(handlePtr.release()));
+  }
+  TensorHandle* packed_handle;
+  TF_RETURN_IF_ERROR(TensorHandle::CreatePackedHandle(
+      std::move(handles), eager_ctx, &packed_handle));
+  // The call to `CreatePackedHandle` incremented the handles' reference count,
+  // which we must now decrement to make the packed handle the owner of those
+  // handles. We can't loop through the `handles` vector because it was
+  // `std::move`d in the call above.
+  for (int i = 0; i != packed_handle->NumPackedHandles(); ++i) {
+    TensorHandle* component;
+    TF_RETURN_IF_ERROR(packed_handle->ExtractPackedHandle(i, &component));
+    component->Unref();
+  }
+
+  handle.reset(packed_handle);
   output->reset(
       new Variable(ctx, dtype, shape, std::move(name), std::move(handle)));
   return Status();

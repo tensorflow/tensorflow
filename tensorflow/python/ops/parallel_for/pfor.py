@@ -78,6 +78,29 @@ flags.DEFINE_bool(
     "DEPRECATED: Flag is ignored.")
 
 
+def _variant_handle_data(t):
+  """Fetches handle data for a variant tensor `t`, or None if unavailable."""
+  handle_data = resource_variable_ops.get_eager_safe_handle_data(t)
+  if not handle_data.is_set:
+    return None
+  if len(handle_data.shape_and_type) != 1:
+    raise ValueError("Expected handle data of length 1, got {!r} of length {}"
+                     .format(handle_data, len(handle_data.shape_and_type)))
+  return handle_data.shape_and_type[0]
+
+
+def _is_tensor_list(t):
+  """True if `t` is a TensorList, False if it isn't, None if unknown."""
+  if t.dtype != dtypes.variant:
+    return False
+  shape_and_type = _variant_handle_data(t)
+  if shape_and_type is None:
+    # TODO(b/169968286): Identify all variant tensors (e.g. optionals) and we
+    # can make this an error instead of assuming TensorLists have handle data.
+    return None  # Presumed not a TensorList
+  return shape_and_type.specialized_type == types_pb2.ST_TENSOR_LIST
+
+
 def _stack(t, length):
   """stacks `t` `length` times."""
   # Note that this stacking may currently be triggered, for example, when a
@@ -86,13 +109,9 @@ def _stack(t, length):
   # suitable since operations on stacked handles may expect a vectorized version
   # of the variant.
   if t.dtype == dtypes.variant:
-    handle_data = resource_variable_ops.get_eager_safe_handle_data(t)
-    if not handle_data.is_set:
+    shape_and_type = _variant_handle_data(t)
+    if shape_and_type is None:
       raise ValueError("Required handle data not set for {!r}".format(t))
-    if len(handle_data.shape_and_type) != 1:
-      raise ValueError("Expected handle data of length 1, got {!r} of length {}"
-                       .format(handle_data, len(handle_data.shape_and_type)))
-    shape_and_type = handle_data.shape_and_type[0]
     if shape_and_type.specialized_type == types_pb2.ST_TENSOR_LIST:
       return wrap(
           _stack_tensor_list(t, shape_and_type.dtype, length),
@@ -1606,7 +1625,10 @@ class PFor(object):
                 else:
                   batch_dim = tensor_shape.TensorShape(loop_len)
                 output_shape = batch_dim.concatenate(output_shape)
-              new_output.t.set_shape(output_shape)
+              if _is_tensor_list(new_output.t):
+                new_output.t.set_shape([])
+              else:
+                new_output.t.set_shape(output_shape)
             self._add_conversion(old_output, new_output)
         stack.pop(0)
 
@@ -3576,6 +3598,9 @@ def _stack_tensor_list_shape(shape, first_dim):
 
 def _tile_variant_with_length(t, length):
   """stacks `t` `length` times."""
+  if _is_tensor_list(t):
+    # The content of TensorLists is vectorized, not the variant itself.
+    return t
   original_tensor = t
   t.set_shape([])
   t = array_ops.reshape(t, [-1])
@@ -3593,6 +3618,13 @@ def _tile_variant(t, pfor_input):
 
 
 def _untile_variant(t):
+  if _is_tensor_list(t):
+    # The content of TensorLists is vectorized, not the variant itself.
+    if not t.shape.is_compatible_with([]):
+      raise AssertionError(
+          "Unexpectedly saw a TensorList with non-scalar shape: {!r}"
+          .format(t))
+    return t
   return array_ops.gather(t, 0)
 
 
@@ -4201,8 +4233,12 @@ class WhileV2(object):
       shapes = [tensor_shape.TensorShape(shape) for shape in shapes]
     for i, shape in enumerate(shapes):
       shape = shape.merge_with(output_shapes[i])
-      if self._pfor_input.input(i).is_stacked:
-        shape = tensor_shape.TensorShape([None]).concatenate(shape)
+      pfor_input = self._pfor_input.input(i)
+      if pfor_input.is_stacked:
+        if _is_tensor_list(pfor_input.t):
+          shape = tensor_shape.TensorShape([]).concatenate(shape)
+        else:
+          shape = tensor_shape.TensorShape([None]).concatenate(shape)
       output_shapes[i] = shape
     assert len(output_shapes) == self._pfor_input.num_inputs
     return output_shapes

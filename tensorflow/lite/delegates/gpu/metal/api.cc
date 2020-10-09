@@ -267,6 +267,11 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
           device_info, options);
       break;
     case OperationType::DEPTHWISE_CONVOLUTION:
+      if (graph.FindInputs(node->id).size() != 1) {
+        return absl::UnimplementedError(
+            "DepthWise Convolution does not support more than 1 runtime "
+            "tensor");
+      }
       *tasks =
           SelectDepthWiseConv(node_id, inputs[0], outputs[0],
                               absl::any_cast<DepthwiseConvolution2DAttributes>(

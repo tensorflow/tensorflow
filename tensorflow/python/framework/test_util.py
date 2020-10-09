@@ -66,6 +66,7 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import tfrt_utils
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
@@ -117,17 +118,6 @@ except ImportError:
     from tensorflow.python.framework.is_mlir_bridge_test_true import is_mlir_bridge_enabled  # pylint: disable=g-import-not-at-top, unused-import
   except ImportError:
     pass
-
-
-# Uses the same mechanism as above to selectively enable TFRT.
-def is_tfrt_enabled():
-  return False
-
-
-try:
-  from tensorflow.python.framework.is_tfrt_test_true import is_tfrt_enabled  # pylint: disable=g-import-not-at-top, unused-import
-except Exception:  # pylint: disable=broad-except
-  pass
 
 
 def _get_object_count_by_type():
@@ -623,12 +613,12 @@ def enable_output_all_intermediates(fn):
     The wrapped function
   """
 
-  def wrapper(*args, **kwargs):
+  def wrapper(self, *args, **kwargs):
     output_all_intermediates_old = \
         control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE
     control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE = True
     try:
-      return fn(*args, **kwargs)
+      return fn(self, *args, **kwargs)
     finally:
       control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE = \
           output_all_intermediates_old
@@ -1831,7 +1821,7 @@ def disable_tfrt(unused_description):
     """Execute the test only if tfrt is not enabled."""
 
     if tf_inspect.isclass(cls_or_func):
-      if is_tfrt_enabled():
+      if tfrt_utils.enabled():
         return None
       else:
         return cls_or_func
@@ -1839,7 +1829,7 @@ def disable_tfrt(unused_description):
       def decorator(func):
 
         def decorated(self, *args, **kwargs):
-          if is_tfrt_enabled():
+          if tfrt_utils.enabled():
             return
           else:
             return func(self, *args, **kwargs)

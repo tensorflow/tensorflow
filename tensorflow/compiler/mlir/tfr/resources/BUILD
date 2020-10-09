@@ -1,4 +1,5 @@
-load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_library", "tf_gen_op_wrapper_py")
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
 package(
     default_visibility = [
@@ -24,10 +25,6 @@ filegroup(
 cc_library(
     name = "composite_ops_cc",
     srcs = ["composite_ops.cc"],
-    copts = [
-        "-Wno-unused-result",
-        "-Wno-unused-variable",
-    ],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -46,16 +43,38 @@ tf_gen_op_wrapper_py(
 
 cc_library(
     name = "test_ops_cc",
-    testonly = 1,
     srcs = ["test_ops.cc"],
-    copts = [
-        "-Wno-unused-result",
-        "-Wno-unused-variable",
-    ],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
     ],
     alwayslink = 1,
+)
+
+tf_custom_op_library(
+    name = "test_ops.so",
+    srcs = [
+        "test_ops.cc",
+    ],
+)
+
+tf_gen_op_wrapper_py(
+    name = "gen_test_ops",
+    out = "gen_test_ops.py",
+    deps = [
+        ":test_ops_cc",
+    ],
+)
+
+tf_custom_op_py_library(
+    name = "test_ops",
+    dso = ["test_ops.so"],
+    kernels = [
+        ":test_ops_cc",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":gen_test_ops",
+    ],
 )

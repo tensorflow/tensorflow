@@ -81,9 +81,12 @@ class SimpleMemoryAllocator {
   size_t GetHeadUsedBytes() const;
   size_t GetTailUsedBytes() const;
 
-  // Returns the number of bytes available with a given alignment.
+  // Returns the number of bytes available with a given alignment. This number
+  // takes in account any temporary allocations.
   size_t GetAvailableMemory(size_t alignment) const;
 
+  // Returns the number of used bytes in the allocator. This number takes in
+  // account any temporary allocations.
   size_t GetUsedBytes() const;
 
  private:

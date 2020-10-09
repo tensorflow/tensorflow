@@ -1,4 +1,4 @@
-# Release 2.4.0
+h# Release 2.4.0
 
 <INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
 
@@ -209,8 +209,13 @@
     *   Improvements to Keras preprocessing layers:
         *   TextVectorization can now accept a vocabulary list or file as an
             init arg.
+    *   In `Attention` and `AdditiveAttention` layers, the `call()` method now
+        accepts a `return_attention_scores` argument. When set to
+        True, the layer returns the attention scores as an additional output
+        argument.
+    *   Added `tf.metrics.log_cosh` and `tf.metrics.logcosh` API entrypoints
+        with the same implementation as their `tf.losses` equivalent.
 *   `tf.function` / AutoGraph:
-
     *   Added `experimental_follow_type_hints` argument for `tf.function`. When
         True, the function may use type annotations to optimize the tracing
         performance.
@@ -296,16 +301,21 @@
 
     *   `tf.debugging.assert_shapes()` now works on `SparseTensor`s (#36268).
 
-*    `TensorRT`
-    *    Add parameter allow_mixed_precision_on_unconverted_ops to
-         TrtConversionParams.
+*   `tf.print`:
+
+    *   Bug fix in `tf.print()` with `OrderedDict` where if an `OrderedDict`
+        didn't have the keys sorted, the keys and values were not being printed
+        in accordance with their correct mapping.
 
 *   Other:
 
     *   We have replaced uses of "whitelist" and "blacklist" with "allowlist"
         and "denylist" where possible. Please see
         https://developers.google.com/style/word-list#blacklist for more
-        context. <ADD RELEASE NOTES HERE>
+        context.
+    *   Add `tf.config.experimental.mlir_bridge_rollout` which will help us
+        rollout the new MLIR TPU bridge.
+    *   <ADD RELEASE NOTES HERE>
 
 ## Thanks to our Contributors
 

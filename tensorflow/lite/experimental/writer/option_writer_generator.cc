@@ -163,8 +163,11 @@ class OpOptionData {
     op_to_option_["UNIDIRECTIONAL_SEQUENCE_RNN"] = "SequenceRNNOptions";
     op_to_option_["MAXIMUM"] = "MaximumMinimumOptions";
     op_to_option_["MINIMUM"] = "MaximumMinimumOptions";
+
+    // These operators are not real ones.
     op_to_option_["CUSTOM"] = "";    // TODO(aselle): maybe something else.
     op_to_option_["DELEGATE"] = "";  // TODO(aselle): maybe something else.
+    op_to_option_["PLACEHOLDER_FOR_GREATER_OP_CODES"] = "";
 
     // Manually specified mappings between ops to "none" options -- these are
     // ops without a corresponding Options message in schema as yet. If these

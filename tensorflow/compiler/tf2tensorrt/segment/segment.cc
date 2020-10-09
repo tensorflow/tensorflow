@@ -649,7 +649,7 @@ ClusterBatchSize GetClusterBatchSizeForNode(
   if (!graph_properties ||
       !graph_properties->HasInputProperties(node->name())) {
     VLOG(3) << "doesn't have input property";
-    return cluster_batch_size.SetBatchSizeValue(-1);
+    return cluster_batch_size.SetBatchSize(-1);
   }
 
   const std::vector<OpInfo::TensorProperties>& input_properties =
@@ -660,7 +660,7 @@ ClusterBatchSize GetClusterBatchSizeForNode(
   const TensorShapeProto* leading_shape = optional_leading_shape.value();
 
   DCHECK(!leading_shape->unknown_rank() && leading_shape->dim_size() >= 2);
-  return cluster_batch_size.SetBatchSizeValue(leading_shape->dim(0).size());
+  return cluster_batch_size.SetBatchSize(leading_shape->dim(0).size());
 }
 
 void AddSegmentForNode(const grappler::GraphProperties* graph_properties,
@@ -668,12 +668,12 @@ void AddSegmentForNode(const grappler::GraphProperties* graph_properties,
                        SimpleNode* node,
                        const DeviceNameUtils::ParsedName& device_name,
                        bool use_implicit_batch) {
-  segments->emplace_back(
-      node,
+  ClusterProperty property(
       GetClusterBatchSizeForNode(graph_properties,
                                  node == nullptr ? nullptr : node->tf_node(),
                                  use_implicit_batch),
       device_name);
+  segments->emplace_back(node, std::move(property));
 }
 
 bool OpBatchSizeExceedMaximumBatchSize(
@@ -681,10 +681,10 @@ bool OpBatchSizeExceedMaximumBatchSize(
     bool use_implicit_batch, absl::optional<int> maximum_batch_size) {
   ClusterBatchSize cluster_batch_size =
       GetClusterBatchSizeForNode(graph_properties, node, use_implicit_batch);
-  if (cluster_batch_size.HasStaticBatchValue() &&
+  if (cluster_batch_size.HasStaticBatchSize() &&
       maximum_batch_size.has_value() &&
-      cluster_batch_size.GetStaticBatchValue() > maximum_batch_size.value()) {
-    VLOG(2) << "OP batch size " << cluster_batch_size.GetStaticBatchValue()
+      cluster_batch_size.GetStaticBatchSize() > maximum_batch_size.value()) {
+    VLOG(2) << "OP batch size " << cluster_batch_size.GetStaticBatchSize()
             << "  max_batch_size " << maximum_batch_size.value();
     return true;
   }
@@ -846,9 +846,9 @@ Status SegmentGraph(const Graph* tf_graph,
     // step until no output edges can be further contracted. This is because
     // contracting an output edge may unblock new edges for contracting.
     ClusterBatchSize expected_batch_size =
-        node_segments[node->id()].BatchSize();
+        node_segments[node->id()].Property().BatchSize();
     DeviceNameUtils::ParsedName expected_device_name =
-        node_segments[node->id()].DeviceName();
+        node_segments[node->id()].Property().DeviceName();
     VLOG(3) << "batch size " << expected_batch_size;
     while (true) {
       std::set<const SimpleEdge*, SimpleEdgePtrCompare> contract_edges;
@@ -869,7 +869,7 @@ Status SegmentGraph(const Graph* tf_graph,
           continue;
         }
         // Out node must have compatible batch size.
-        ClusterBatchSize out_batch_size = out_cluster->BatchSize();
+        ClusterBatchSize out_batch_size = out_cluster->Property().BatchSize();
         ClusterBatchSize merged_batch_size = expected_batch_size;
         if (!merged_batch_size.MergeIfCompatible(out_batch_size)) {
           VLOG(3) << "... ... incompatible batch sizes "
@@ -879,7 +879,7 @@ Status SegmentGraph(const Graph* tf_graph,
         }
 
         const DeviceNameUtils::ParsedName& out_device_name =
-            out_cluster->DeviceName();
+            out_cluster->Property().DeviceName();
         absl::optional<DeviceNameUtils::ParsedName> merged_device_name =
             MergeIfCompatible(expected_device_name, out_device_name);
         if (!merged_device_name.has_value()) {
@@ -925,11 +925,13 @@ Status SegmentGraph(const Graph* tf_graph,
           graph->RemoveEdge(r);
         }
       }
-      if (expected_batch_size != node_segments[node->id()].BatchSize()) {
+      if (expected_batch_size !=
+          node_segments[node->id()].Property().BatchSize()) {
         return errors::Internal(
             "expected batch size is not the same as the actual batch size");
       }
-      if (expected_device_name != node_segments[node->id()].DeviceName()) {
+      if (expected_device_name !=
+          node_segments[node->id()].Property().DeviceName()) {
         return errors::Internal(
             "expected device name is not the same as the actual device name");
       }

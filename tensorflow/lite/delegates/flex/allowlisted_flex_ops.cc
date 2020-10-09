@@ -354,6 +354,7 @@ const std::set<std::string>& GetFlexAllowlist() {
           "RFFT2D",
           "RFFT3D",
           "RaggedBincount",
+          "RaggedGather",
           "RaggedRange",
           "RaggedTensorToSparse",
           "RaggedTensorToTensor",

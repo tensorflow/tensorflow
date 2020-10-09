@@ -41,12 +41,13 @@ Status OptimizeWithEnableGradientDescent(const GrapplerItem &item,
   return optimizer.Optimize(nullptr, item, output);
 }
 
-class SimpleRewrite : public ::testing::TestWithParam<std::tuple<bool, int64>> {
-};
+class SimpleRewrite
+    : public ::testing::TestWithParam<std::tuple<bool, int64, string>> {};
 
 TEST_P(SimpleRewrite, EnableGradientDescentTest) {
   const bool autotune = std::get<0>(GetParam());
   const int64 algorithm_index = std::get<1>(GetParam());
+  const string op = std::get<2>(GetParam());
 
   using test::function::NDef;
   GrapplerItem item;
@@ -58,7 +59,9 @@ TEST_P(SimpleRewrite, EnableGradientDescentTest) {
        NDef("batch_size", "Const", {}, {{"value", 5}, {"dtype", DT_INT32}}),
        NDef("batch", "BatchDataset", {"range", "batch_size"}, {}),
        NDef("model", "ModelDataset", {"batch"},
-            {{"algorithm", algorithm_index}})});
+            {{"algorithm", algorithm_index}}),
+       NDef("Sink", op, {"model"}, {})});
+  item.fetch.push_back("Sink");
 
   GraphDef output;
   TF_ASSERT_OK(OptimizeWithEnableGradientDescent(item, &output, autotune));
@@ -67,12 +70,13 @@ TEST_P(SimpleRewrite, EnableGradientDescentTest) {
   NodeDef model_node =
       output.node(graph_utils::FindGraphNodeWithName("model", output));
   EXPECT_EQ(model_node.attr().at("algorithm").i(),
-            autotune ? 1 : algorithm_index);
+            (autotune && op != "_Retval") ? 1 : algorithm_index);
 }
 
-INSTANTIATE_TEST_SUITE_P(Test, SimpleRewrite,
-                         ::testing::Combine(::testing::Values(false, true),
-                                            ::testing::Values(0, 1)));
+INSTANTIATE_TEST_SUITE_P(
+    Test, SimpleRewrite,
+    ::testing::Combine(::testing::Values(false, true), ::testing::Values(0, 1),
+                       ::testing::Values("Identity", "_Retval")));
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

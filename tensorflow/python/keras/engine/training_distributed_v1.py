@@ -386,8 +386,9 @@ def experimental_tpu_test_loop(model,
     try:
       _, batch_outs = K.batch_get_value([test_op, output_tensors])
     except errors.OutOfRangeError:
-      warning_msg = 'Make sure that your dataset can generate at least '
-      '`steps` batches (in this case, {} batches).'.format(steps)
+      warning_msg = (
+          'Make sure that your dataset can generate at least '
+          '`steps` batches (in this case, {} batches).'.format(steps))
 
       logging.warning('Your dataset iterator ran out of data; '
                       'interrupting evaluation. ' + warning_msg)
@@ -533,8 +534,9 @@ def experimental_tpu_predict_loop(model,
       _, batch_outs = K.batch_get_value([predict_ops, output_tensors])
 
     except errors.OutOfRangeError:
-      warning_msg = 'Make sure that your dataset can generate at least '
-      '`steps` batches (in this case, {} batches).'.format(steps)
+      warning_msg = (
+          'Make sure that your dataset can generate at least '
+          '`steps` batches (in this case, {} batches).'.format(steps))
 
       logging.warning('Your dataset iterator ran out of data; '
                       'interrupting evaluation. ' + warning_msg)

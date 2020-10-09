@@ -21,13 +21,6 @@ namespace tensorflow {
 namespace functor {
 DEFINE_UNARY1(conj, complex64);
 DEFINE_UNARY1(conj, complex128);
-
-#if defined(_MSC_VER)
-// Non-release build with MSVC needs these symbols.
-DEFINE_UNARY1(conj, float);
-DEFINE_UNARY1(conj, double);
-#endif
-
 }  // namespace functor
 }  // namespace tensorflow
 
