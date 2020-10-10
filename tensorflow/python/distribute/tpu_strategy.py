@@ -819,7 +819,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     if options and options.replication_mode == distribute_lib.InputReplicationMode.PER_REPLICA:
       raise NotImplementedError("InputReplicationMode.PER_REPLICA "
                                 "is only supported in `experimental_distribute_datasets_from_function` "
-                                "of mirrored_strategy")
+                                "of tf.distribute.MirroredStrategy")
     input_workers = self._get_input_workers(options)
     input_contexts = []
     num_workers = input_workers.num_workers

@@ -487,7 +487,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     if options and options.replication_mode == distribute_lib.InputReplicationMode.PER_REPLICA:
       raise NotImplementedError("InputReplicationMode.PER_REPLICA "
                                 "is only supported in `experimental_distribute_datasets_from_function` "
-                                "of mirrored_strategy")
+                                "of tf.distribute.MirroredStrategy")
     input_context = self._make_input_context()
     return input_lib.get_distributed_datasets_from_function(
         dataset_fn=dataset_fn,

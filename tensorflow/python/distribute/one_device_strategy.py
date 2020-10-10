@@ -325,7 +325,7 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
     if options and options.replication_mode == distribute_lib.InputReplicationMode.PER_REPLICA:
       raise NotImplementedError("InputReplicationMode.PER_REPLICA "
                                 "is only supported in `experimental_distribute_datasets_from_function` "
-                                "of mirrored_strategy")
+                                "of tf.distribute.MirroredStrategy")
     return input_lib.get_distributed_datasets_from_function(
         dataset_fn,
         self._input_workers_with_options(options),

@@ -234,7 +234,9 @@ class MirroredStrategy(distribute_lib.Strategy):
   the replicas when writing your own training loop. If you are using `.fit` and
   `.compile` methods available in `tf.keras`, then `tf.keras` will handle the
   distribution for you.
+
   For example:
+
   ```python
   my_strategy = tf.distribute.MirroredStrategy()
   with my_strategy.scope():
@@ -243,12 +245,14 @@ class MirroredStrategy(distribute_lib.Strategy):
       def replica_fn(input):
         # process input and return result
         return result
+
       total_result = 0
       for x in dataset:
         per_replica_result = my_strategy.run(replica_fn, args=(x,))
         total_result += my_strategy.reduce(tf.distribute.ReduceOp.SUM,
                                            per_replica_result, axis=None)
       return total_result
+
     dist_dataset = my_strategy.experimental_distribute_dataset(dataset)
     for _ in range(EPOCHS):
       train_result = distribute_train_epoch(dist_dataset)
