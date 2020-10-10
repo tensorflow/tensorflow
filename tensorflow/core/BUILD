@@ -523,20 +523,6 @@ tf_cuda_library(
     ],
 )
 
-# TODO(gonnet): Remove this alias once all users have been moved to the actual target.
-alias(
-    name = "allocator",
-    actual = "//tensorflow/core/framework:allocator",
-    visibility = ["//visibility:public"],
-)
-
-# TODO(gonnet): Remove this alias once all users have been moved to the actual target.
-alias(
-    name = "allocator_registry_impl",
-    actual = "//tensorflow/core/framework:allocator_registry_impl",
-    visibility = ["//visibility:public"],
-)
-
 alias(
     name = "overflow",
     actual = "//tensorflow/core/util:overflow",
