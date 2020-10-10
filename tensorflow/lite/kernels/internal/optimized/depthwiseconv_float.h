@@ -852,7 +852,7 @@ void FloatDepthwiseConvAccumRow(int stride, int dilation_factor,
     // for(int a =(out_x_loop_start - out_x_buffer_start) * output_depth; a<2*(out_x_loop_start - out_x_buffer_start) * output_depth; a++){
     //   TFLITE_LOG(INFO) << "post acc " << a << ": "  << acc_buffer[a];
     // }
-    filter_base_ptr += filter_depth; //change to filter depth
+    filter_base_ptr += output_depth; //TODO: change to filter depth
   }
 }
 
@@ -1018,7 +1018,7 @@ inline void DepthwiseConvImpl(
 
   const int input_height_stride = input_shape.Dims(3) * input_shape.Dims(2);
   const int input_batch_stride = input_height_stride * input_shape.Dims(1);
-  const int filter_height_stride = filter_shape.Dims(3) * filter_shape.Dims(2);
+  const int filter_height_stride = output_shape.Dims(3) * filter_shape.Dims(2); //TODO: change to filter_shape.Dims(3)
 
   // Now that we have determined row_accum_func, we can start work.
   int batch_start = 0;
@@ -1170,8 +1170,8 @@ inline void DepthwiseConvImpl(
             a += 4;
             remainder += 4;
           }
-          else{
-            int k = filter_depth - remainder; //between 1 to 3
+          else{  
+            int k = filter_depth - remainder; //between 0 to 3
             for(int j=0; j<k; j++){
               // TFLITE_LOG(INFO) << output_activation_min << " min/max " << output_activation_max;
               output_ptr[j] = std::max(output_activation_min, std::min(acc_buffer[a+j], output_activation_max));
@@ -1213,7 +1213,7 @@ inline void DepthwiseConvImpl(
           else {
             
             int num_input_copy = output_depth - filter_depth;
-            TFLITE_LOG(INFO) << input_start+i << " index " << i << " "<< num_input_copy;
+            // TFLITE_LOG(INFO) << input_start+i << " index " << i << " "<< num_input_copy;
             memcpy(output_ptr, input_start+i, num_input_copy*sizeof(float));
             output_ptr += num_input_copy;
             i += num_input_copy-1;

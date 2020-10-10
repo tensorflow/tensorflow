@@ -738,11 +738,11 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
   ConvParams op_params;
   op_params.padding_type = RuntimePaddingType(params->padding);
   op_params.padding_values.width = data->padding.width;
-  op_params.padding_values.height = data->padding.height;
+  op_params.padding_values.height = data->padding.width; //hijak padding
   op_params.stride_width = params->stride_width;
   op_params.stride_height = params->stride_height;
   op_params.dilation_width_factor = params->dilation_width_factor;
-  op_params.dilation_height_factor = params->dilation_height_factor;
+  op_params.dilation_height_factor = params->dilation_width_factor; //hijak dilation
   op_params.float_activation_min = output_activation_min;
   op_params.float_activation_max = output_activation_max;
   switch (effective_kernel_type) {
@@ -765,10 +765,71 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
       //                     GetTensorData<float>(im2col),
       //                     CpuBackendContext::GetFromContext(context));
       // break;
-      // TFLITE_LOG(INFO) << "hii";
+      RuntimeShape filter_shape = GetTensorShape(filter);
+      // if (op_params.stride_width ==1 && filter_shape.Dims(0) %8 ==0){
+      //   filter_shape.SetDim(0, 7*filter_shape.Dims(0)/8);
+      // }
+      RuntimeShape input_shape = GetTensorShape(input);
+      // TFLITE_LOG(INFO) << "pad" << data->padding.width << data->padding.height;
+      if(params->dilation_height_factor != 1) {
+        // TFLITE_LOG(INFO) << GetTensorShape(input).Dims(3) << "point dilate filt shape/bypass" << filter_shape.Dims(1) << " conv height " << params->dilation_height_factor;
+        // TFLITE_LOG(INFO) << "pad " << data->padding.height << " " << data->padding.width;
+        filter_shape.SetDim(0, filter_shape.Dims(0) - params->dilation_height_factor);
+      }
+      // if(params->dilation_width_factor != 1) {
+      //   // TFLITE_LOG(INFO) << "filt shape/bypass" << filter_shape.Dims(0) << " conv width " << params->dilation_width_factor;        TFLITE_LOG(INFO) << "pad " << data->padding.height << " " << data->padding.width;
+      //   // TFLITE_LOG(INFO) << "pad " << data->padding.height << " " << data->padding.width;
+      //   filter_shape.SetDim(0, filter_shape.Dims(0) - params->dilation_height_factor);
+        
+      // }
+      // filter_shape.SetDim(0, filter_shape.Dims(0)/4);
 
-      optimized_ops::SpecialConv(op_params, GetTensorShape(input),
-                          GetTensorData<float>(input), GetTensorShape(filter),
+      // flexiblnet_v2
+      // if (filter_shape.Dims(1) == 1){
+      //   if (filter_shape.Dims(0) == 128 || filter_shape.Dims(0) == 40 || filter_shape.Dims(0) == 8){
+      //     filter_shape.SetDim(0, filter_shape.Dims(0)/2);
+      //   }
+      //   else if (filter_shape.Dims(0) == 224){
+      //     if (input_shape.Dims(3) == 640) filter_shape.SetDim(0, 112);
+      //   }
+      //   else if (filter_shape.Dims(0) == 64){
+      //     if (input_shape.Dims(3) == 128) filter_shape.SetDim(0, 16);
+      //     }  
+      //   }
+      //   else if (filter_shape.Dims(0) == 48){
+      //     if (input_shape.Dims(3) == 48) filter_shape.SetDim(0, 24);
+      //   }
+      //   else if (filter_shape.Dims(0) == 32){
+      //     if (input_shape.Dims(3) == 80) filter_shape.SetDim(0, 16);
+      //   }
+      // }
+
+      // flexiblenet_v3
+      // if (filter_shape.Dims(0) == 128 || filter_shape.Dims(0) == 40 || filter_shape.Dims(0) == 32 || filter_shape.Dims(0) == 8){
+      //   filter_shape.SetDim(0, filter_shape.Dims(0)/4);
+      // }
+      // else if (filter_shape.Dims(0)==224){
+      //   if (input_shape.Dims(1) == 7) filter_shape.SetDim(0, filter_shape.Dims(0)/4);
+      // }
+      // else if (filter_shape.Dims(0)==48){
+      //   if (input_shape.Dims(1) == 56) filter_shape.SetDim(0, filter_shape.Dims(0)/4);
+      // }
+      // else if (filter_shape.Dims(0)==64){
+      //   if (input_shape.Dims(1) == 14) filter_shape.SetDim(0, filter_shape.Dims(0)/4);
+      // }
+      
+      // flexiblenet_v4
+      // if (filter_shape.Dims(0)==128 || filter_shape.Dims(0)==224 || filter_shape.Dims(0)==48 || filter_shape.Dims(0)==112) {
+      //   if (input_shape.Dims(3) == filter_shape.Dims(0)) filter_shape.SetDim(0, filter_shape.Dims(0)/4);
+      // }
+      // else if (filter_shape.Dims(0) == 8 || filter_shape.Dims(0) == 64){
+      //   filter_shape.SetDim(0, filter_shape.Dims(0)/4);
+      // }
+      
+
+      // output->dims->data[3] = std::max(filter_shape.Dims(0), std::min(input->dims->data[3], output->dims->data[3]));
+      optimized_ops::SpecialConv(op_params, input_shape,
+                          GetTensorData<float>(input), filter_shape,
                           GetTensorData<float>(filter), GetTensorShape(bias),
                           GetTensorData<float>(bias), GetTensorShape(output),
                           GetTensorData<float>(output), GetTensorShape(im2col),

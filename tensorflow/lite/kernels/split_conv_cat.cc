@@ -28,81 +28,7 @@
 #include "tensorflow/lite/kernels/op_macros.h"
 #include "tensorflow/lite/kernels/padding.h"
 
-
-#ifndef TENSORFLOW_LITE_TOOLS_LOGGING_H_
-#define TENSORFLOW_LITE_TOOLS_LOGGING_H_
-
-// LOG and CHECK macros for tflite tooling.
-
-#include <cstdlib>
-#include <iostream>
-#include <sstream>
-
-#ifdef _WIN32
-#undef ERROR
-#endif
-
-namespace tflite {
-namespace logging {
-// A wrapper that logs to stderr.
-//
-// Used for TFLITE_LOG and TFLITE_BENCHMARK_CHECK macros.
-class LoggingWrapper {
- public:
-  enum class LogSeverity : int {
-    INFO = 0,
-    WARN = 1,
-    ERROR = 2,
-    FATAL = 3,
-  };
-  LoggingWrapper(LogSeverity severity)
-      : severity_(severity), should_log_(true) {}
-  LoggingWrapper(LogSeverity severity, bool log)
-      : severity_(severity), should_log_(log) {}
-  std::stringstream& Stream() { return stream_; }
-  ~LoggingWrapper() {
-    if (should_log_) {
-      switch (severity_) {
-        case LogSeverity::INFO:
-        case LogSeverity::WARN:
-          std::cout << stream_.str() << std::endl;
-          break;
-        case LogSeverity::ERROR:
-          std::cerr << stream_.str() << std::endl;
-          break;
-        case LogSeverity::FATAL:
-          std::cerr << stream_.str() << std::endl;
-          std::flush(std::cerr);
-          std::abort();
-          break;
-      }
-    }
-  }
-
- private:
-  std::stringstream stream_;
-  LogSeverity severity_;
-  bool should_log_;
-};
-}  // namespace logging
-}  // namespace tflite
-
-#define TFLITE_LOG(severity)                                  \
-  tflite::logging::LoggingWrapper(                            \
-      tflite::logging::LoggingWrapper::LogSeverity::severity) \
-      .Stream()
-
-#define TFLITE_TOOLS_CHECK(condition)                      \
-  tflite::logging::LoggingWrapper(                         \
-      tflite::logging::LoggingWrapper::LogSeverity::FATAL, \
-      (condition) ? false : true)                          \
-      .Stream()
-
-#define TFLITE_TOOLS_CHECK_EQ(a, b) TFLITE_TOOLS_CHECK((a) == (b))
-
-#endif  // TENSORFLOW_LITE_TOOLS_LOGGING_H_
-
-
+#include "tensorflow/lite/tools/logging.h"
 
 namespace tflite {
 namespace ops {
@@ -820,6 +746,7 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
     }
     case kCblasOptimized:
     case kGenericOptimized: {
+      TFLITE_LOG(INFO) << "SPLIT CONV CAT";
       optimized_ops::SpecialConv(op_params, GetTensorShape(input),
                           GetTensorData<float>(input), GetTensorShape(filter),
                           GetTensorData<float>(filter), GetTensorShape(bias),

@@ -293,11 +293,11 @@ TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
   DepthwiseParams op_params;
   op_params.padding_type = PaddingType::kSame;
   op_params.padding_values.width = data->padding.width;
-  op_params.padding_values.height = data->padding.height;
+  op_params.padding_values.height = data->padding.width; //hijak dilation
   op_params.stride_width = params->stride_width;
   op_params.stride_height = params->stride_height;
   op_params.dilation_width_factor = params->dilation_width_factor;
-  op_params.dilation_height_factor = params->dilation_height_factor;
+  op_params.dilation_height_factor = params->dilation_width_factor; //hijak dilation
   op_params.float_activation_min = output_activation_min;
   op_params.float_activation_max = output_activation_max;
   TF_LITE_ENSURE_STATUS(ComputeDepthMultiplier(context, input, filter,
@@ -310,13 +310,70 @@ TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
         GetTensorShape(output), GetTensorData<float>(output));
   } else {
     RuntimeShape filter_shape = GetTensorShape(filter);
-    filter_shape.SetDim(3, 3*filter_shape.Dims(3)/4);
-    // if (filter_shape.Dims(3) == 128) {
-    //   filter_shape.SetDim(3, 56);
+
+
+    if(params->dilation_height_factor != 1) {
+      // TFLITE_LOG(INFO) << "dep filt shape/bypass" << filter_shape.Dims(3) << " " << params->dilation_height_factor;
+      filter_shape.SetDim(3, filter_shape.Dims(3)-params->dilation_height_factor); 
+    }
+
+    // flexiblnet_cpp yilun
+    // if(filter_shape.Dims(3) == 224){
+    //   filter_shape.SetDim(3, 160);
     // }
-    // else if (filter_shape.Dims(3) == 4) {
-    //   filter_shape.SetDim(3, 2);
+    // else if(filter_shape.Dims(3) == 192){
+    //   filter_shape.SetDim(3, 64);
     // }
+    // else if(filter_shape.Dims(3) == 128 && GetTensorShape(input).Dims(1) == 14 ){
+    //   filter_shape.SetDim(3, 96);
+    // }
+    // else if(filter_shape.Dims(3) == 384){
+    //   if (std::rand()%2 == 0){
+    //     filter_shape.SetDim(3, 224);
+    //   }
+    // }
+    // else if(filter_shape.Dims(3) == 64 && GetTensorShape(input).Dims(1) == 56 && op_params.stride_width == 1 ){
+    //     filter_shape.SetDim(3, 32);
+    // }
+
+    // flexiblnet_cpp_v1
+    // if(filter_shape.Dims(3) == 112){
+    //    filter_shape.SetDim(3, 80);
+    // }
+    // else if(filter_shape.Dims(3) == 128){
+    //    filter_shape.SetDim(3, 32);
+    // }
+    // else if(filter_shape.Dims(3) == 896){
+    //    filter_shape.SetDim(3, 512);
+    // }
+    // else if(filter_shape.Dims(3) == 224){
+    //    filter_shape.SetDim(3, 196);
+    // }
+    // else if(filter_shape.Dims(3) == 64){
+    //    filter_shape.SetDim(3, 32);
+    // }
+    // else if(filter_shape.Dims(3) == 512){
+    //    if (std::rand()%2 == 0){
+    //     filter_shape.SetDim(3, 256);
+    //   }
+    // }
+    // else if(filter_shape.Dims(3) == 640 && op_params.stride_height==1){
+    //    filter_shape.SetDim(3, 384);
+    // }
+
+    //flexible_net_v2
+    // if (op_params.stride_height ==1) {
+    //   filter_shape.SetDim(3, filter_shape.Dims(3)/2);
+    // }
+
+    // flexible_net_v3 and v4
+    // if (op_params.stride_height ==1) {
+    //   filter_shape.SetDim(3, filter_shape.Dims(3)/4);
+    // }
+    
+
+
+
     optimized_ops::DepthwiseConv<float, float>(
         op_params, GetTensorShape(input), GetTensorData<float>(input),
         filter_shape, GetTensorData<float>(filter),

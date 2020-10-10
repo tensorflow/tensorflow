@@ -455,8 +455,8 @@ tf_cc_test(
     size = "medium",
     srcs = ["tflite_diff_example_test.cc"],
     args = [
-        "--tensorflow_model=third_party/tensorflow/lite/testdata/multi_add.pb",
-        "--tflite_model=third_party/tensorflow/lite/testdata/multi_add.bin",
+        "--tensorflow_model=tensorflow/lite/testdata/multi_add.pb",
+        "--tflite_model=tensorflow/lite/testdata/multi_add.bin",
         "--input_layer=a,b,c,d",
         "--input_layer_type=float,float,float,float",
         "--input_layer_shape=1,3,4,3:1,3,4,3:1,3,4,3:1,3,4,3",
@@ -500,6 +500,7 @@ tflite_model_test(
         "tflite_not_portable",  # TODO(b/134772701): Enable after making this a proper GTest.
     ],
     tensorflow_model_file = "//tensorflow/lite:testdata/multi_add.pb",
+    #tensorflow_model_file = "/Users/howardzhong/UROP/mnist_pad/saved_model.pb",
 )
 
 cc_library(

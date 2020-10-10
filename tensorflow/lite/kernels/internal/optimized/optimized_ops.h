@@ -1428,27 +1428,6 @@ inline void SpecialConv(const ConvParams& params, const RuntimeShape& input_shap
   const int gemm_input_dims = gemm_input_shape->DimensionsCount();
   int m = FlatSizeSkipDim(*gemm_input_shape, gemm_input_dims - 1);
   int n = filter_shape.Dims(0);
-  // if (n == 15) n=5;
-  // else if (n==128) {
-  //   n= 64;
-  // }
-  // else if (n==64) {
-  //   n=32;
-  // }
-
-  // else if (n==32) {
-  //   n=16;
-  // }
-  // else if (n==16){
-  //   n=8;
-  // } 
-  // else if (n==2){
-  //   n=1;
-  // } 
-  // if (n== input_shape.Dims(3)){
-  //   n = n/4;
-  // }
-  // n = 3*n/4;
   int k = gemm_input_shape->Dims(gemm_input_dims - 1);
 
 #if defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)
@@ -1495,8 +1474,8 @@ inline void SpecialConv(const ConvParams& params, const RuntimeShape& input_shap
                          cpu_backend_context);
   int filter_depth = n;
   int input_depth = input_shape.Dims(3);
-  // int output_depth = output_shape.Dims(3);
-  int output_depth = std::max(filter_depth, std::min(output_shape.Dims(3), input_depth));
+  int output_depth = output_shape.Dims(3);
+  // int output_depth = std::max(filter_depth, std::min(output_shape.Dims(3), input_depth)); #fixed in conv.cc
   // output_shape.setDim(3, output_depth); NEED to do for actual operation
 
   // TFLITE_LOG(INFO) << "n " << n << " k " << k << " m " << m;
@@ -1525,31 +1504,6 @@ inline void SpecialConv(const ConvParams& params, const RuntimeShape& input_shap
     // CPP Perfect Pad
     // [0, 1, 2, 0, 1, 2, 0, 1, 2, ,0, 1, 2 , , 0, 1, 2, , ]
     // [0, 1, 2, 3, 0, 1, 2, 3]
-    // float* target_ptr = &output_data[(m-1)*output_depth];
-    // float* copy_ptr = &output_data[(m-1)*n];
-    // int copy_size = filter_depth*sizeof(float);
-    // for(int i =m-1; i>0; i--){
-    //   memcpy(target_ptr, copy_ptr, copy_size);
-    //   target_ptr -= output_depth;
-    //   copy_ptr -= n;
-    // }
-    // const float* input_ptr = &input_data[filter_depth];
-    // target_ptr = &output_data[filter_depth];
-    // copy_size = (output_depth - filter_depth)*sizeof(float);
-    // for(int i =0; i<m; i++){
-    //   memcpy(target_ptr, input_ptr, copy_size);
-    //   target_ptr += output_depth;
-    //   input_ptr += input_depth;
-    // }
-    
-    //CPP General
-    const int batch = input_shape.Dims(0);
-    const int output_height = output_shape.Dims(1);
-    const int output_width = output_shape.Dims(2);
-
-    const int height_diff = (input_shape.Dims(1)-output_height)*input_shape.Dims(2)*input_depth;
-    const int width_diff = (input_shape.Dims(2)-output_width)*input_depth;
-
     float* target_ptr = &output_data[(m-1)*output_depth];
     float* copy_ptr = &output_data[(m-1)*n];
     int copy_size = filter_depth*sizeof(float);
@@ -1558,21 +1512,46 @@ inline void SpecialConv(const ConvParams& params, const RuntimeShape& input_shap
       target_ptr -= output_depth;
       copy_ptr -= n;
     }
-
     const float* input_ptr = &input_data[filter_depth];
     target_ptr = &output_data[filter_depth];
     copy_size = (output_depth - filter_depth)*sizeof(float);
-    for(int b =0; b<batch; b++){
-      for(int h=0; h<output_height; h++){
-        for(int w=0; w<output_width; w++){
-          memcpy(target_ptr, input_ptr, copy_size);
-          target_ptr += output_depth;
-          input_ptr += input_depth;
-        }
-        input_ptr += width_diff;
-      }
-      input_ptr += height_diff;
+    for(int i =0; i<m; i++){
+      memcpy(target_ptr, input_ptr, copy_size);
+      target_ptr += output_depth;
+      input_ptr += input_depth;
     }
+    
+    // //CPP General
+    // const int batch = input_shape.Dims(0);
+    // const int output_height = output_shape.Dims(1);
+    // const int output_width = output_shape.Dims(2);
+
+    // const int height_diff = (input_shape.Dims(1)-output_height)*input_shape.Dims(2)*input_depth;
+    // const int width_diff = (input_shape.Dims(2)-output_width)*input_depth;
+
+    // float* target_ptr = &output_data[(m-1)*output_depth];
+    // float* copy_ptr = &output_data[(m-1)*n];
+    // int copy_size = filter_depth*sizeof(float);
+    // for(int i =m-1; i>0; i--){
+    //   memcpy(target_ptr, copy_ptr, copy_size);
+    //   target_ptr -= output_depth;
+    //   copy_ptr -= n;
+    // }
+
+    // const float* input_ptr = &input_data[filter_depth];
+    // target_ptr = &output_data[filter_depth];
+    // copy_size = (output_depth - filter_depth)*sizeof(float);
+    // for(int b =0; b<batch; b++){
+    //   for(int h=0; h<output_height; h++){
+    //     for(int w=0; w<output_width; w++){
+    //       memcpy(target_ptr, input_ptr, copy_size);
+    //       target_ptr += output_depth;
+    //       input_ptr += input_depth;
+    //     }
+    //     input_ptr += width_diff;
+    //   }
+    //   input_ptr += height_diff;
+    // }
     
 
 
