@@ -581,10 +581,18 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
 
     self.assertIs(func_a, func_b)
 
-    with save_context.save_context(save_options.SaveOptions()):
+    with save_context.save_context(
+        save_options.SaveOptions(experimental_variable_policy=save_options
+                                 .VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES)):
       func_c = func.get_concrete_function(constant_op.constant(2.))
 
+    with save_context.save_context(
+        save_options.SaveOptions(
+            experimental_variable_policy=save_options.VariablePolicy.NONE)):
+      func_d = func.get_concrete_function(constant_op.constant(2.))
+
     self.assertIs(func_a, func_c)
+    self.assertIsNot(func_a, func_d)
 
   def testInitializationInNestedCall(self):
     v_holder = []
