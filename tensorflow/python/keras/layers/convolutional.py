@@ -575,7 +575,7 @@ class Conv2D(Conv):
       specify the same value for all spatial dimensions. Specifying any stride
       value != 1 is incompatible with specifying any `dilation_rate` value != 1.
     padding: one of `"valid"` or `"same"` (case-insensitive).
-      `"valid"` means no padding. `"same"` results in padding evenly to
+      `"valid"` means no padding. `"same"` results in zero padding evenly to
       the left/right or up/down of the input such that output has the same
       height/width dimension as the input.
     data_format: A string, one of `channels_last` (default) or `channels_first`.
