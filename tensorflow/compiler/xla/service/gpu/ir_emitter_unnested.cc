@@ -41,6 +41,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/utils/name_utils.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
@@ -201,12 +202,29 @@ StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(
       "StaticMemRefCastOp(ViewOp(arg))");
 }
 
-absl::string_view GetHloName(mlir::Operation* op) {
-  if (auto attr = op->getAttrOfType<mlir::StringAttr>("name")) {
-    auto ref = attr.getValue();
-    return absl::string_view(ref.data(), ref.size());
+StatusOr<std::vector<MlirBufferSlice>> GetMlirBufferSlices(
+    mlir::Operation* op, mlir::OperandRange operands,
+    absl::Span<const BufferAllocation> allocations) {
+  const auto buffer_is_written = [op](mlir::Value operand) {
+    llvm::SmallVector<mlir::MemoryEffects::EffectInstance, 2> effects;
+    mlir::cast<mlir::MemoryEffectOpInterface>(op).getEffectsOnValue(operand,
+                                                                    effects);
+    return absl::c_any_of(
+        effects, [](const mlir::MemoryEffects::EffectInstance& instance) {
+          return mlir::isa<mlir::MemoryEffects::Write>(instance.getEffect());
+        });
+  };
+
+  std::vector<MlirBufferSlice> slices;
+  for (mlir::Value operand : operands) {
+    slices.emplace_back();
+    auto& slice = slices.back();
+    TF_ASSIGN_OR_RETURN(slice.buffer_slice,
+                        GetAllocationSliceForMlir(operand, allocations));
+    slice.written = buffer_is_written(operand);
+    slice.shape = TypeToShape(operand.getType());
   }
-  return "";
+  return slices;
 }
 
 }  // namespace
@@ -1366,13 +1384,6 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
 
   TF_ASSIGN_OR_RETURN(auto sort_op, lhlo_scratch_emitter_.EmitSortOp(sort));
   result.op = sort_op;
-  result.name = GetHloName(sort_op);
-  // The name in sort op has no semantics, and it's for debug only. If the name
-  // doesn't exist, we should use a namer (e.g. count-based).
-  // TODO(timshen): use a namer instead of relying on the HloInstruction names.
-  if (result.name.empty()) {
-    result.name = sort->name();
-  }
   const auto& buffer_assignment = ir_emitter_context_->buffer_assignment();
   auto& slice = result.extra_slice;
   TF_ASSIGN_OR_RETURN(slice.buffer_slice,
@@ -1385,46 +1396,30 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
   return EmitSortFromMlir(result);
 }
 
-Status IrEmitterUnnested::EmitSortFromMlir(MlirEmitterInput input) {
+Status IrEmitterUnnested::EmitSortFromMlir(MlirEmitterInput mlir_input) {
   absl::Span<const BufferAllocation> allocations(
       ir_emitter_context_->buffer_assignment().Allocations());
-  auto sort_op = mlir::cast<mlir::lmhlo::SortOp>(input.op);
-
-  int operand_count = sort_op.operands().size();
-  std::vector<xla::Shape> operand_shapes(operand_count);
-  std::vector<MlirBufferSlice> slices;
-  std::vector<xla::Shape> output_shapes(sort_op.output().size());
-
-  for (int i = 0; i < operand_count; i++) {
-    operand_shapes[i] = TypeToShape(sort_op.operands()[i].getType());
-  }
-
-  // Craft n + 1 slices, where the first n are output parameters, and the last
-  // is the on-device tuple storage. We don't need n operands because sorting
-  // kernels are always in-place.
-  for (int i = 0; i < operand_count; i++) {
-    output_shapes[i] = TypeToShape(sort_op.output()[i].getType());
-    MlirBufferSlice slice;
-    TF_ASSIGN_OR_RETURN(
-        slice.buffer_slice,
-        GetAllocationSliceForMlir(sort_op.output()[i], allocations));
-    slice.written = true;
-    slice.shape = operand_shapes[i];
-    slices.push_back(slice);
-  }
-  slices.push_back(input.extra_slice);
+  auto sort_op = mlir::cast<mlir::lmhlo::SortOp>(mlir_input.op);
+  std::string name = mlir::GetNameFromLoc(sort_op.getLoc());
+  TF_ASSIGN_OR_RETURN(
+      std::vector<MlirBufferSlice> operands,
+      GetMlirBufferSlices(sort_op, sort_op.operands(), allocations));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<MlirBufferSlice> outputs,
+      GetMlirBufferSlices(sort_op, sort_op.output(), allocations));
+  outputs.push_back(mlir_input.extra_slice);
 
   std::vector<std::unique_ptr<Thunk>> thunks;
 
-  Shape keys_shape = operand_shapes[0];
+  Shape keys_shape = operands[0].shape;
   int64 dimension_to_sort = sort_op.dimension();
-  for (int64 i = 0; i < operand_count; ++i) {
+  for (int64 i = 0; i < operands.size(); ++i) {
     // We assume that the layout of all involved operands and outputs is the
     // same.
     TF_RET_CHECK(
-        LayoutUtil::LayoutsInShapesEqual(keys_shape, operand_shapes[i]));
+        LayoutUtil::LayoutsInShapesEqual(keys_shape, operands[i].shape));
     TF_RET_CHECK(
-        LayoutUtil::LayoutsInShapesEqual(keys_shape, output_shapes[i]));
+        LayoutUtil::LayoutsInShapesEqual(keys_shape, outputs[i].shape));
 
     // If possible, we share buffers. If that is not possible, we need to copy
     // the values, because the emitter does the sorting in-place.
@@ -1437,18 +1432,18 @@ Status IrEmitterUnnested::EmitSortFromMlir(MlirEmitterInput input) {
     if (destination_buffer != source_address) {
       // TODO(b/26783907): Figure out why we never seem to share buffers for
       // key/value sort.
-      VLOG(2) << input.name << " requires initial D2D copy for operand " << i;
+      VLOG(2) << name << " requires initial D2D copy for operand " << i;
       thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
           Thunk::ThunkInfo(),
           /*source_address=*/source_address,
           /*destination_buffer=*/destination_buffer,
-          /*mem_size=*/ShapeUtil::ByteSizeOf(operand_shapes[i])));
+          /*mem_size=*/ShapeUtil::ByteSizeOf(operands[i].shape)));
     }
   }
 
   uint64 dimension_to_sort_bound = keys_shape.dimensions(dimension_to_sort);
   int64 num_stages = tensorflow::Log2Ceiling(dimension_to_sort_bound);
-  VLOG(2) << input.name << " requires " << num_stages << " stages.";
+  VLOG(2) << name << " requires " << num_stages << " stages.";
   CHECK_GE(1ULL << num_stages, dimension_to_sort_bound);
   CHECK_LT(1ULL << (num_stages - 1), dimension_to_sort_bound);
 
@@ -1512,10 +1507,10 @@ Status IrEmitterUnnested::EmitSortFromMlir(MlirEmitterInput input) {
   // we have not enough threads, or not enough shared memory. Also it does not
   // give a speedup if the tile size is < 128.
   int64 total_shared_memory_needed = 0;
-  for (int64 i = 0; i < operand_count; ++i) {
+  for (int64 i = 0; i < operands.size(); ++i) {
     total_shared_memory_needed +=
         kTileSize *
-        ShapeUtil::ByteSizeOfPrimitiveType(operand_shapes[i].element_type());
+        ShapeUtil::ByteSizeOfPrimitiveType(operands[i].shape.element_type());
   }
   bool no_tiling =
       kTileSize < 128 ||
@@ -1528,7 +1523,7 @@ Status IrEmitterUnnested::EmitSortFromMlir(MlirEmitterInput input) {
       "kTileSize=%d < 128, "
       "kThreadsPerBlock=%d > threads_per_block_limit=%d, "
       "total_shared_memory_needed=%d > shared_memory_per_block=%d",
-      input.name, (no_tiling ? "won't" : "will"), kTileSize, kThreadsPerBlock,
+      name, (no_tiling ? "won't" : "will"), kTileSize, kThreadsPerBlock,
       ir_emitter_context_->gpu_device_info().threads_per_block_limit,
       total_shared_memory_needed,
       ir_emitter_context_->gpu_device_info().shared_memory_per_block);
@@ -1536,32 +1531,32 @@ Status IrEmitterUnnested::EmitSortFromMlir(MlirEmitterInput input) {
   uint64 num_blocks = CeilOfRatio(num_iterations, kThreadsPerBlock);
   LaunchDimensions tiled_launch_dimensions(num_blocks, kThreadsPerBlock);
   VLOG(2) << absl::StreamFormat("%s launch dims: %d blocks, %d threads/block",
-                                input.name, num_blocks, kThreadsPerBlock);
+                                name, num_blocks, kThreadsPerBlock);
 
   std::vector<llvm_ir::IrArray> ir_arrays;
   auto emit_kernel = [&](absl::Span<const int64> xor_masks) {
     VLOG(2) << absl::StreamFormat(
-        "%s uses kernel for xor masks [%s]", input.name,
+        "%s uses kernel for xor masks [%s]", name,
         absl::StrJoin(xor_masks, ", ", [](std::string* out, int64 xor_mask) {
           absl::StrAppendFormat(out, "0x%x", xor_mask);
         }));
-    thunks.push_back(BuildKernelThunkForMlir(input.name, Thunk::ThunkInfo(),
-                                             slices, &ir_arrays));
+    thunks.push_back(
+        BuildKernelThunkForMlir(name, Thunk::ThunkInfo(), outputs, &ir_arrays));
     LaunchDimensions launch_dimensions = xor_masks.size() > 1
                                              ? tiled_launch_dimensions
                                              : standard_launch_dimensions;
     UpdateLaunchDimensions(launch_dimensions, thunks.back().get(),
                            ir_emitter_context_->llvm_module());
     std::vector<IrArray> values_arrays;
-    values_arrays.reserve(operand_count);
-    for (int64 i = 0; i < operand_count; ++i) {
+    values_arrays.reserve(operands.size());
+    for (int64 i = 0; i < operands.size(); ++i) {
       values_arrays.push_back(ir_arrays[i]);
     }
     TF_ASSIGN_OR_RETURN(
         const HloComputation* comparator,
         GetOrCreateSubComputationFromRegion(&sort_op.comparator()));
     return llvm_ir::EmitSortInPlace(
-        dimension_to_sort, values_arrays, IrName(input.name), xor_masks, &b_,
+        dimension_to_sort, values_arrays, IrName(name), xor_masks, &b_,
         launch_dimensions,
         xor_masks.size() > 1 ? num_iterations_in_sort_dim
                              : standard_num_iterations_in_sort_dim,
@@ -1594,17 +1589,16 @@ Status IrEmitterUnnested::EmitSortFromMlir(MlirEmitterInput input) {
     TF_RETURN_IF_ERROR(emit_kernel(xor_masks));
   }
   VLOG(2) << absl::StreamFormat(
-      "%s requires %d thunks (including any D2D copies)", input.name,
-      thunks.size());
+      "%s requires %d thunks (including any D2D copies)", name, thunks.size());
 
-  AddThunkToThunkSequence(
-      absl::make_unique<SequentialThunk>(input.thunk_info, std::move(thunks)));
-  if (operand_count > 1) {
+  AddThunkToThunkSequence(absl::make_unique<SequentialThunk>(
+      mlir_input.thunk_info, std::move(thunks)));
+  if (operands.size() > 1) {
     // Emit the tuple as part of the last stage of sorting.
     // We are currently in the block sorted.in_bounds.after.
     b_.SetInsertPoint(b_.GetInsertBlock()->getTerminator());
     llvm_ir::EmitTuple(
-        ir_arrays[operand_count],
+        ir_arrays.back(),
         absl::MakeSpan(ir_arrays).subspan(0, ir_arrays.size() - 1), &b_);
   }
   return Status::OK();
@@ -1658,7 +1652,8 @@ Status IrEmitterUnnested::HandleAllReduce(HloInstruction* crs) {
           *crs, crs->shape().IsTuple() ? ShapeIndex({i}) : ShapeIndex({}));
       tuple_element_buffers.push_back(buffers[i].destination_buffer);
     }
-    NcclAllReduceConfig config = GetNcclAllReduceConfig(crs);
+    NcclAllReduceConfig config =
+        GetNcclAllReduceConfig(crs, hlo_module_config_.replica_count());
     auto all_reduce_thunk = absl::make_unique<NcclAllReduceThunk>(
         GetThunkInfo(crs), std::move(config),
         /*buffers=*/std::move(buffers));

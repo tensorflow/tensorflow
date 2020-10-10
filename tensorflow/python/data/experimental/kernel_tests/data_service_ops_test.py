@@ -383,10 +383,41 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     cluster = self.create_cluster(num_workers=2)
     vals = [5, 1, 2, 4]
     ds = dataset_ops.Dataset.from_tensor_slices(vals)
-    ds = ds.apply(
-        data_service_ops.distribute(
-            processing_mode="distributed_epoch", service=cluster.target))
+    ds = self.make_distributed_dataset(
+        ds, cluster, processing_mode="distributed_epoch")
     self.assertDatasetProduces(ds, vals, assert_items_equal=True)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDistributeDistributedEpochInterleave(self):
+    cluster = self.create_cluster(num_workers=2)
+    elements = [1, 5, 0]
+    ds = dataset_ops.Dataset.from_tensor_slices(elements)
+    ds = ds.interleave(lambda x: dataset_ops.Dataset.from_tensor_slices([x]))
+    ds = self.make_distributed_dataset(
+        ds, cluster, processing_mode="distributed_epoch")
+    self.assertDatasetProduces(ds, elements, assert_items_equal=True)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDistributeDistributedEpochParallelInterleave(self):
+    cluster = self.create_cluster(num_workers=2)
+    elements = [1, 5, 0]
+    ds = dataset_ops.Dataset.from_tensor_slices(elements)
+    ds = ds.interleave(
+        lambda x: dataset_ops.Dataset.from_tensor_slices([x]),
+        num_parallel_calls=dataset_ops.AUTOTUNE)
+    ds = self.make_distributed_dataset(
+        ds, cluster, processing_mode="distributed_epoch")
+    self.assertDatasetProduces(ds, elements, assert_items_equal=True)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDistributeDistributedEpochFlatMap(self):
+    cluster = self.create_cluster(num_workers=2)
+    elements = [1, 5, 0]
+    ds = dataset_ops.Dataset.from_tensor_slices(elements)
+    ds = ds.flat_map(lambda x: dataset_ops.Dataset.from_tensor_slices([x]))
+    ds = self.make_distributed_dataset(
+        ds, cluster, processing_mode="distributed_epoch")
+    self.assertDatasetProduces(ds, elements, assert_items_equal=True)
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDistributeDistributedEpochRepeat(self):
@@ -394,22 +425,20 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     num_repeats = 5
     num_elements = 20
     ds = dataset_ops.Dataset.range(num_elements).repeat(num_repeats)
-    ds = ds.apply(
-        data_service_ops.distribute(
-            processing_mode="distributed_epoch", service=cluster.target))
+    ds = self.make_distributed_dataset(
+        ds, cluster, processing_mode="distributed_epoch")
     self.assertDatasetProduces(
         ds, num_repeats * list(range(num_elements)), assert_items_equal=True)
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDistributeDistributedEpochShuffleAndRepeat(self):
-    cluster = self.create_cluster(2)
+    cluster = self.create_cluster(num_workers=2)
     num_repeats = 5
     num_elements = 20
     ds = dataset_ops.Dataset.range(num_elements).shuffle(num_elements).repeat(
         num_repeats)
-    ds = ds.apply(
-        data_service_ops.distribute(
-            processing_mode="distributed_epoch", service=cluster.target))
+    ds = self.make_distributed_dataset(
+        ds, cluster, processing_mode="distributed_epoch")
     self.assertDatasetProduces(
         ds, num_repeats * list(range(num_elements)), assert_items_equal=True)
 
@@ -430,9 +459,8 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     cluster = self.create_cluster(num_workers=2)
     num_elements = 100
     ds = dataset_ops.Dataset.range(num_elements)
-    ds = ds.apply(
-        data_service_ops.distribute(
-            processing_mode="distributed_epoch", service=cluster.target))
+    ds = self.make_distributed_dataset(
+        ds, cluster, processing_mode="distributed_epoch")
     self.assertDatasetProduces(
         ds, list(range(num_elements)), assert_items_equal=True)
 

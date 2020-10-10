@@ -61,6 +61,7 @@ Status RegisterGradients(GradientRegistry* registry) {
   TF_RETURN_IF_ERROR(registry->Register("AddV2", AddRegisterer));
   TF_RETURN_IF_ERROR(registry->Register("Exp", ExpRegisterer));
   TF_RETURN_IF_ERROR(registry->Register("IdentityN", IdentityNRegisterer));
+  TF_RETURN_IF_ERROR(registry->Register("Sqrt", SqrtRegisterer));
   return Status::OK();
 }
 
@@ -125,6 +126,37 @@ Status ExpGradModel(AbstractContext* ctx,
       /*build_default_zeros_grads=*/false));
   for (auto exp_output : exp_outputs) {
     exp_output->Unref();
+  }
+  outputs[0] = out_grads[0];
+  delete tape;
+  return Status::OK();
+}
+
+// Computes
+// y = sqrt(inputs[0])
+// return grad(y, {inputs[0]})
+Status SqrtGradModel(AbstractContext* ctx,
+                     absl::Span<AbstractTensorHandle* const> inputs,
+                     absl::Span<AbstractTensorHandle*> outputs,
+                     const GradientRegistry& registry) {
+  TapeVSpace vspace(ctx);
+  auto tape = new Tape(/*persistent=*/false);
+  tape->Watch(ToId(inputs[0]));  // Watch x.
+  std::vector<AbstractTensorHandle*> sqrt_outputs(1);
+  AbstractContextPtr tape_ctx(new TapeContext(ctx, tape, registry));
+  TF_RETURN_IF_ERROR(
+      ops::Sqrt(tape_ctx.get(), inputs, absl::MakeSpan(sqrt_outputs), "Sqrt"));
+  std::unordered_map<tensorflow::int64, TapeTensor>
+      source_tensors_that_are_targets;
+
+  std::vector<AbstractTensorHandle*> out_grads;
+  TF_RETURN_IF_ERROR(tape->ComputeGradient(
+      vspace, /*target_tensor_ids=*/{ToId(sqrt_outputs[0])},
+      /*source_tensor_ids=*/{ToId(inputs[0])}, source_tensors_that_are_targets,
+      /*output_gradients=*/{}, &out_grads,
+      /*build_default_zeros_grads=*/false));
+  for (auto sqrt_output : sqrt_outputs) {
+    sqrt_output->Unref();
   }
   outputs[0] = out_grads[0];
   delete tape;
@@ -396,6 +428,50 @@ TEST_P(CppGradients, TestExpGrad) {
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
   auto result_value = static_cast<float*>(TF_TensorData(result_tensor));
   EXPECT_NEAR(*result_value, 2.718, 0.001);
+  outputs[0]->Unref();
+  TF_DeleteTensor(result_tensor);
+  result_tensor = nullptr;
+}
+
+TEST_P(CppGradients, TestSqrtGrad) {
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
+  AbstractContextPtr ctx;
+  {
+    AbstractContext* ctx_raw = nullptr;
+    Status s =
+        BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    ctx.reset(ctx_raw);
+  }
+
+  AbstractTensorHandlePtr x;
+  {
+    AbstractTensorHandle* x_raw = nullptr;
+    Status s = TestScalarTensorHandle(ctx.get(), 1.0f, &x_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    x.reset(x_raw);
+  }
+
+  GradientRegistry registry;
+  Status s = RegisterGradients(&registry);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+
+  // Pseudo-code:
+  //
+  // tape.watch(x)
+  // y = sqrt(x)
+  // outputs = tape.gradient(y, x)
+  std::vector<AbstractTensorHandle*> outputs(1);
+  s = RunModel(SqrtGradModel, ctx.get(), {x.get()}, absl::MakeSpan(outputs),
+               /*use_function=*/!std::get<2>(GetParam()), registry);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+
+  TF_Tensor* result_tensor;
+  s = getValue(outputs[0], &result_tensor);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  auto result_value = static_cast<float*>(TF_TensorData(result_tensor));
+  EXPECT_NEAR(*result_value, 0.5, 0.001);
   outputs[0]->Unref();
   TF_DeleteTensor(result_tensor);
   result_tensor = nullptr;

@@ -24,7 +24,8 @@ struct NcclAllReduceConfig::AuxData {};
 NcclAllReduceConfig::NcclAllReduceConfig(NcclAllReduceConfig &&) = default;
 NcclAllReduceConfig::~NcclAllReduceConfig() = default;
 
-NcclAllReduceConfig GetNcclAllReduceConfig(const HloInstruction *instr) {
+NcclAllReduceConfig GetNcclAllReduceConfig(const HloInstruction *instr,
+                                           int64 replica_count) {
   NcclAllReduceConfig config = {};
   return config;
 }

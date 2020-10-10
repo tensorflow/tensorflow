@@ -589,7 +589,8 @@ Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCache(
 
   const std::string session_name = SessionNameFromMetadata(session_metadata);
   LOG(INFO) << "Compilation of " << key.prefix << " with session name "
-            << session_name << " took " << duration;
+            << session_name << " took " << duration << " and "
+            << (compile_status.ok() ? "succeeded" : "failed");
   tpu_program_group->LogProgramMemorySummary();
   metrics::UpdateXlaCompilationTime(absl::ToInt64Microseconds(duration));
   TpuCompilationMetrics::IncrementCompilationCount(session_name);

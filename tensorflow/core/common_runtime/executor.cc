@@ -433,14 +433,23 @@ ExecutorState<PropagatorStateType>::~ExecutorState() {
 template <class PropagatorStateType>
 template <typename Closure>
 void ExecutorState<PropagatorStateType>::RunTask(Closure&& c) {
-  static std::atomic<int64_t> queue_length;
-  auto qlen = queue_length.fetch_add(1, std::memory_order_relaxed);
-  metrics::UpdateGraphPendingQueueLength(qlen + 1);
+  // Align the atomic variables at 64 bytes to avoid false-sharing, assuming the
+  // cacheline size is 64 bytes or smaller.
+  alignas(64) static std::atomic<int64_t> num_enqueue_ops{0};
+  alignas(64) static std::atomic<int64_t> num_dequeue_ops{0};
+
+  auto n_enqueues = num_enqueue_ops.fetch_add(1, std::memory_order_relaxed);
+  // Sample the queue length on every 16 enqueue operations. This amortizes the
+  // cost of metric updates across 16 operations.
+  if (n_enqueues % 16 == 0) {
+    auto n_dequeues = num_dequeue_ops.load(std::memory_order_relaxed);
+    metrics::UpdateGraphPendingQueueLength(n_enqueues - n_dequeues);
+  }
 
   // mutable is needed because std::forward<Closure> in the lambda body may move
   // the Closure `c`.
   runner_([c = std::forward<Closure>(c)]() mutable {
-    queue_length.fetch_sub(1, std::memory_order_relaxed);
+    num_dequeue_ops.fetch_add(1, std::memory_order_relaxed);
     std::forward<Closure>(c)();
   });
 }

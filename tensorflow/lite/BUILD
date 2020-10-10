@@ -233,9 +233,7 @@ cc_library(
         "interpreter.cc",
         "interpreter_builder.cc",
         "model_builder.cc",
-        "mutable_op_resolver.cc",
         "optional_debug_tools.cc",
-        "stderr_reporter.cc",
     ],
     hdrs = FRAMEWORK_LIB_HDRS,
     compatible_with = get_compatible_with_portable(),
@@ -251,14 +249,17 @@ cc_library(
         ":kernel_api",
         ":memory_planner",
         ":minimal_logging",
+        ":mutable_op_resolver",
         ":shared_library",
         ":simple_memory_arena",
+        ":stderr_reporter",
         ":string",
         ":type_to_tflitetype",
         ":util",
         ":version",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/delegates:status",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/experimental/resource",
@@ -294,9 +295,74 @@ cc_library(
         ":version",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/nnapi:nnapi_implementation",
+        "//tensorflow/lite/schema:schema_fbs",
+    ],
+)
+
+cc_library(
+    name = "error_reporter",
+    hdrs = ["error_reporter.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "//tensorflow_lite_support:__subpackages__",
+    ],
+    deps = [
+        "//tensorflow/lite:stderr_reporter",
+        "//tensorflow/lite/core/api:error_reporter",
+    ],
+)
+
+cc_library(
+    name = "stderr_reporter",
+    srcs = ["stderr_reporter.cc"],
+    hdrs = ["stderr_reporter.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "//tensorflow_lite_support:__subpackages__",
+    ],
+    deps = [
+        ":minimal_logging",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/api:error_reporter",
+    ],
+)
+
+cc_library(
+    name = "op_resolver",
+    hdrs = ["op_resolver.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "//tensorflow_lite_support:__subpackages__",
+    ],
+    deps = [
+        "//tensorflow/lite:mutable_op_resolver",
+        "//tensorflow/lite/core/api:op_resolver",
+    ],
+)
+
+cc_library(
+    name = "mutable_op_resolver",
+    srcs = ["mutable_op_resolver.cc"],
+    hdrs = ["mutable_op_resolver.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "//tensorflow_lite_support:__subpackages__",
+    ],
+    deps = [
+        ":util",
+        "//tensorflow/lite/core/api:op_resolver",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )

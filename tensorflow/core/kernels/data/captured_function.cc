@@ -465,9 +465,16 @@ Status MakeIteratorFromInputElement(
       GetDatasetFromVariantTensor(return_values[0], &returned_dataset));
 
   // Create an iterator for the dataset that was returned by `f`.
-  return returned_dataset->MakeIterator(
-      ctx, parent, strings::StrCat(prefix, "[", thread_index, "]"),
-      out_iterator);
+  std::string iterator_prefix = strings::StrCat(prefix, "[", thread_index, "]");
+  if (ctx->split_provider() == nullptr) {
+    return returned_dataset->MakeIterator(ctx, parent, iterator_prefix,
+                                          out_iterator);
+  }
+  // Strip out the split provider so that it doesn't apply to sub-iterators.
+  IteratorContext::Params params(ctx);
+  params.split_provider = nullptr;
+  return returned_dataset->MakeIterator(IteratorContext(std::move(params)),
+                                        parent, iterator_prefix, out_iterator);
 }
 
 /* static */

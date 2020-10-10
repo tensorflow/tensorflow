@@ -495,15 +495,32 @@ tf_cuda_cc_test(
 
 # Library for the segmenting portion of TensorRT operation creation
 cc_library(
-    name = "segment",
-    srcs = ["segment/segment.cc"],
+    name = "union_find",
+    srcs = ["segment/union_find.cc"],
     hdrs = [
-        "segment/segment.h",
         "segment/union_find.h",
     ],
     copts = tf_copts(),
     deps = [
+        ":utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "segment",
+    srcs = ["segment/segment.cc"],
+    hdrs = [
+        "segment/segment.h",
+    ],
+    copts = tf_copts(),
+    deps = [
         ":common_utils",
+        ":union_find",
         ":utils",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",

@@ -19,6 +19,7 @@ load(
     "//tensorflow/stream_executor:build_defs.bzl",
     "tf_additional_cupti_deps",
 )
+load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -28,7 +29,7 @@ package(
 tf_cuda_library(
     name = "device_tracer",
     srcs = tf_additional_device_tracer_srcs(),
-    copts = tf_copts(),
+    copts = tf_profiler_copts() + tf_copts(),
     cuda_deps = [
         "//tensorflow/core/profiler/internal/gpu:cupti_tracer",
         "//tensorflow/core/profiler/internal/gpu:cupti_wrapper",
@@ -50,7 +51,6 @@ tf_cuda_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
     ],
     alwayslink = 1,
@@ -95,7 +95,7 @@ tf_cc_test_gpu(
 tf_cuda_library(
     name = "cupti_interface",
     hdrs = if_cuda_is_configured_compat(["cupti_interface.h"]),
-    copts = tf_copts(),
+    copts = tf_profiler_copts() + tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
@@ -113,7 +113,7 @@ tf_cuda_library(
     name = "cupti_wrapper",
     srcs = if_cuda_is_configured_compat(["cupti_wrapper.cc"]),
     hdrs = if_cuda_is_configured_compat(["cupti_wrapper.h"]),
-    copts = tf_copts(),
+    copts = tf_profiler_copts() + tf_copts(),
     linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [
@@ -125,7 +125,7 @@ tf_cuda_library(
     name = "cupti_tracer",
     srcs = if_cuda_is_configured_compat(["cupti_tracer.cc"]),
     hdrs = if_cuda_is_configured_compat(["cupti_tracer.h"]),
-    copts = tf_copts(),
+    copts = tf_profiler_copts() + tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":cupti_interface",
@@ -143,7 +143,7 @@ tf_cuda_library(
 tf_cuda_library(
     name = "cupti_utils",
     srcs = if_cuda_is_configured_compat(["cupti_utils.cc"]),
-    copts = tf_copts(),
+    copts = tf_profiler_copts() + tf_copts(),
     cuda_deps = [
         ":cupti_interface",
         ":cupti_wrapper",

@@ -61,7 +61,9 @@ load("//tensorflow:tensorflow.bzl", "filegroup")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
-    default_visibility = ["//tensorflow:__subpackages__"],
+    default_visibility = [
+        "//visibility:public",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -248,6 +250,11 @@ cc_library(
         "threadpool.h",
     ],
     deps = tf_windows_aware_platform_deps("env"),
+)
+
+cc_library(
+    name = "env_impl",
+    deps = tf_windows_aware_platform_deps("env_impl"),
 )
 
 cc_library(

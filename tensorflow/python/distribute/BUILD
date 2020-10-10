@@ -4,7 +4,10 @@ load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 
 package(
-    default_visibility = ["//tensorflow:internal"],
+    default_visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/keras:__subpackages__",  # TODO(scottzhu): remove this once keras is relying on tf.__internal__.
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -142,6 +145,8 @@ py_library(
         ":cross_device_ops",
         ":distribute_lib",
         ":mirrored_strategy",
+        ":multi_process_runner",
+        ":multi_worker_test_base",
         ":one_device_strategy",
         ":sharded_variable",
         "//tensorflow/python/distribute/client",
@@ -857,13 +862,21 @@ distribute_py_test(
     disable_mlir_bridge = False,
     python_version = "PY3",
     deps = [
+        ":central_storage_strategy",
+        ":collective_all_reduce_strategy",
         ":combinations",
+        ":mirrored_strategy",
+        ":one_device_strategy",
         ":reduce_util",
         ":strategy_combinations",
         ":test_util",
+        ":tpu_strategy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:config",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python/eager:context",
+        "//tensorflow/python:tf2",
+        "//tensorflow/python/eager:def_function",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -873,6 +886,7 @@ py_library(
     srcs = ["multi_worker_test_base.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":distribute_coordinator",
         ":multi_process_runner",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
@@ -1518,7 +1532,9 @@ cuda_py_test(
         ":multi_worker_test_base",
         ":multi_worker_util",
         ":reduce_util",
+        ":strategy_combinations",
         ":strategy_test_lib",
+        ":test_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",

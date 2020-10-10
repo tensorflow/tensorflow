@@ -31,6 +31,7 @@ namespace internal {
 
 namespace {
 string GetCudaVersion() { return TF_CUDA_VERSION; }
+string GetCudaRtVersion() { return TF_CUDART_VERSION; }
 string GetCudnnVersion() { return TF_CUDNN_VERSION; }
 string GetCublasVersion() { return TF_CUBLAS_VERSION; }
 string GetCusolverVersion() { return TF_CUSOLVER_VERSION; }
@@ -77,7 +78,7 @@ port::StatusOr<void*> GetCudaDriverDsoHandle() {
 }
 
 port::StatusOr<void*> GetCudaRuntimeDsoHandle() {
-  return GetDsoHandle("cudart", GetCudaVersion());
+  return GetDsoHandle("cudart", GetCudaRtVersion());
 }
 
 port::StatusOr<void*> GetCublasDsoHandle() {

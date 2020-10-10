@@ -23,9 +23,13 @@ import itertools
 import json
 import os
 import warnings
+
 import six
 
 from tensorflow.python.autograph.lang import directives
+from tensorflow.python.data.experimental.ops.distribute_options import AutoShardPolicy
+from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import values as ds_values
 from tensorflow.python.eager import backprop
@@ -1471,7 +1475,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     self.predict_function = predict_function
     return self.predict_function
 
-  @disable_multi_worker
   def predict(self,
               x,
               batch_size=None,
@@ -1554,6 +1557,20 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     outputs = None
     with self.distribute_strategy.scope():
       # Creates a `tf.data.Dataset` and handles batch and epoch iteration.
+      dataset_types = (dataset_ops.DatasetV1, dataset_ops.DatasetV2)
+      if (self._in_multi_worker_mode() or _is_tpu_multi_host(
+          self.distribute_strategy)) and isinstance(x, dataset_types):
+        try:
+          options = dataset_ops.Options()
+          data_option = AutoShardPolicy.DATA
+          options.experimental_distribute.auto_shard_policy = data_option
+          x = x.with_options(options)
+        except ValueError:
+          warnings.warn('Using Model.predict with '
+                        'MultiWorkerDistributionStrategy or TPUStrategy and '
+                        'AutoShardPolicy.FILE might lead to out-of-order result'
+                        '. Consider setting it to AutoShardPolicy.DATA.')
+
       data_handler = data_adapter.DataHandler(
           x=x,
           batch_size=batch_size,
@@ -2658,6 +2675,8 @@ def reduce_per_replica(values, strategy, reduction='first'):
 
   def _reduce(v):
     """Reduce a single `PerReplica` object."""
+    if reduction == 'concat' and _collective_all_reduce_multi_worker(strategy):
+      return _multi_worker_concat(v, strategy)
     if not isinstance(v, ds_values.PerReplica):
       return v
     elif reduction == 'first':
@@ -2699,6 +2718,42 @@ def _tpu_multi_host_concat(v, strategy):
   ordered_replicas = []
   for replica_id in range(num_replicas_per_host):
     ordered_replicas += replicas[replica_id::num_replicas_per_host]
+  return concat(ordered_replicas)
+
+
+def _collective_all_reduce_multi_worker(strategy):
+  return (isinstance(strategy,
+                     collective_all_reduce_strategy.CollectiveAllReduceStrategy)
+         ) and strategy.extended._in_multi_worker_mode()  # pylint: disable=protected-access
+
+
+# TODO(wxinyi): merge this with _tpu_multi_host_concat once we have all_gather
+# for all strategies
+def _multi_worker_concat(v, strategy):
+  """Order PerReplica objects for CollectiveAllReduceStrategy and concat."""
+  replicas = strategy._gather(v, axis=0)  # pylint: disable=protected-access
+  # v might not have the same shape on different replicas
+  if isinstance(v, ds_values.PerReplica):
+    shapes = array_ops.concat([
+        array_ops.expand_dims_v2(array_ops.shape(single_value)[0], axis=0)
+        for single_value in v.values
+    ],
+                              axis=0)
+    all_shapes = strategy._gather(shapes, axis=0)  # pylint: disable=protected-access
+  else:
+    # v is a tensor. This may happen when, say, we have 2x1 multi-worker.
+    all_shapes = strategy._gather(  # pylint: disable=protected-access
+        array_ops.expand_dims_v2(array_ops.shape(v)[0], axis=0),
+        axis=0)
+
+  replicas = array_ops.split(
+      replicas,
+      num_or_size_splits=all_shapes,
+      num=strategy.num_replicas_in_sync)
+  ordered_replicas = []
+  num_replicas_per_worker = len(strategy.extended.worker_devices)
+  for replica_id in range(num_replicas_per_worker):
+    ordered_replicas += replicas[replica_id::num_replicas_per_worker]
   return concat(ordered_replicas)
 
 

@@ -40,9 +40,9 @@ class CollectivePermuteThunk : public Thunk {
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
-  CollectivePermuteConfig config_;
-  BufferAllocation::Slice src_;
-  BufferAllocation::Slice dest_;
+  const CollectivePermuteConfig config_;
+  const BufferAllocation::Slice src_;
+  const BufferAllocation::Slice dest_;
 };
 
 }  // namespace gpu

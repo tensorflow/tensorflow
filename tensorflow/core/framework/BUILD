@@ -454,7 +454,7 @@ cc_library(
         "allocator.h",
     ],
     features = ["parse_headers"],
-    visibility = ["//tensorflow/core:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         ":numeric_types",
         ":type_traits",
@@ -467,6 +467,7 @@ cc_library(
             "//tensorflow/core/lib/strings:strcat",
             "//tensorflow/core/lib/strings:stringprintf",
             "//tensorflow/core/platform:env",
+            "//tensorflow/core/platform:env_impl",
             "//tensorflow/core/platform:logging",
             "//tensorflow/core/platform:macros",
             "//tensorflow/core/platform:mutex",

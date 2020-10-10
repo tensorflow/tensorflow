@@ -108,10 +108,15 @@ class CombinedEvent : public PodEvent {
   }
 
   void AddCallback(std::function<void(Status)> callback) override {
-    absl::MutexLock l(&mu_);
-    if (events_completed_ == events_.size()) {
+    bool all_events_completed = false;
+    {
+      absl::MutexLock l(&mu_);
+      all_events_completed = events_completed_ == events_.size();
+    }
+    if (all_events_completed) {
       callback(event_status_);
     } else {
+      absl::MutexLock l(&mu_);
       callbacks_.push_back(std::move(callback));
     }
   }

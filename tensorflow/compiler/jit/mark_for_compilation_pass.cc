@@ -1197,10 +1197,14 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
       continue;
     }
 
-    if (!RecursiveCompilabilityChecker{
-            CreateOperationFilter(*registration),
-            DeviceType{registration->compilation_device_name}}
-             .IsCompilableNode(*node, lib_runtime)) {
+    RecursiveCompilabilityChecker::OperationFilter filter =
+        CreateOperationFilter(*registration);
+    filter.require_always_compilable = true;
+
+    RecursiveCompilabilityChecker checker(
+        filter, DeviceType{registration->compilation_device_name});
+
+    if (!checker.IsCompilableNode(*node, lib_runtime)) {
       continue;
     }
 

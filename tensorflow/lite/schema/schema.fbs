@@ -17,6 +17,8 @@
 // Version 1: Add subgraphs to schema.
 // Version 2: Rename operators to conform to NN API.
 // Version 3: Move buffer data from Model.Subgraph.Tensors to Model.Buffers.
+// Version 3a: Add new builtin op code field. Has backward compatibility with
+//             version 3.
 
 namespace tflite;
 
@@ -215,7 +217,7 @@ table Tensor {
 // object containing configuration parameters, builtins have a predetermined
 // set of acceptable options.
 
-enum BuiltinOperator : byte {
+enum BuiltinOperator : int32 {
   ADD = 0,
   AVERAGE_POOL_2D = 1,
   CONCATENATION = 2,
@@ -248,7 +250,6 @@ enum BuiltinOperator : byte {
   SPACE_TO_DEPTH = 26,
   SVDF = 27,
   TANH = 28,
-  // TODO(aselle): Consider rename to CONCATENATE_EMBEDDINGS
   CONCAT_EMBEDDINGS = 29,
   SKIP_GRAM = 30,
   CALL = 31,
@@ -349,7 +350,8 @@ enum BuiltinOperator : byte {
   SELECT_V2 = 123,
   DENSIFY = 124,
   SEGMENT_SUM = 125,
-  BATCH_MATMUL = 126
+  BATCH_MATMUL = 126,
+  PLACEHOLDER_FOR_GREATER_OP_CODES = 127
 }
 
 
@@ -982,12 +984,21 @@ table BatchMatMulOptions {
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
 // builtin, or a string if the operator is custom.
 table OperatorCode {
-  builtin_code:BuiltinOperator;
+  // This field is for backward compatibility. This field will be used when
+  // the value of the extended builtin_code field has less than
+  // BulitinOperator_PLACEHOLDER_FOR_GREATER_OP_CODES.
+  deprecated_builtin_code:byte;
   custom_code:string;
 
   // The version of the operator. The version need to be bumped whenever new
   // parameters are introduced into an op.
   version:int = 1;
+
+  // This field is introduced for resolving op builtin code shortage problem
+  // (the original BuiltinOperator enum field was represented as a byte).
+  // This field will be used when the value of the extended builtin_code field
+  // has greater than BulitinOperator_PLACEHOLDER_FOR_GREATER_OP_CODES.
+  builtin_code:BuiltinOperator;
 }
 
 enum CustomOptionsFormat : byte {

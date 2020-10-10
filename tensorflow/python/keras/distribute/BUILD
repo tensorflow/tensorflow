@@ -335,8 +335,10 @@ distribute_py_test(
 distribute_py_test(
     name = "distribute_strategy_test",
     srcs = ["distribute_strategy_test.py"],
+    disable_mlir_bridge = True,  # TODO(b/170352626)
     full_precision = True,
     main = "distribute_strategy_test.py",
+    python_version = "PY3",
     shard_count = 10,
     tags = [
         "multi_and_single_gpu",
@@ -401,7 +403,7 @@ distribute_py_test(
     name = "keras_dnn_correctness_test",
     size = "medium",
     srcs = ["keras_dnn_correctness_test.py"],
-    disable_mlir_bridge = False,
+    disable_mlir_bridge = True,  # TODO(b/170352626)
     full_precision = True,
     main = "keras_dnn_correctness_test.py",
     # Shard count is set to an odd number to distribute tasks across
@@ -422,6 +424,7 @@ distribute_py_test(
     name = "keras_embedding_model_correctness_test",
     size = "medium",
     srcs = ["keras_embedding_model_correctness_test.py"],
+    disable_mlir_bridge = True,  # TODO(b/170352626)
     full_precision = True,
     main = "keras_embedding_model_correctness_test.py",
     shard_count = 8,
@@ -439,7 +442,7 @@ distribute_py_test(
     name = "keras_image_model_correctness_test",
     size = "medium",
     srcs = ["keras_image_model_correctness_test.py"],
-    disable_mlir_bridge = False,
+    disable_mlir_bridge = True,  # TODO(b/170352626)
     full_precision = True,
     main = "keras_image_model_correctness_test.py",
     shard_count = 16,
@@ -486,6 +489,7 @@ distribute_py_test(
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -551,6 +555,7 @@ distribute_py_test(
 distribute_py_test(
     name = "keras_utils_test",
     srcs = ["keras_utils_test.py"],
+    disable_mlir_bridge = True,  # TODO(b/170352626)
     full_precision = True,
     main = "keras_utils_test.py",
     shard_count = 4,
@@ -675,6 +680,7 @@ cuda_py_test(
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras:metrics",
         "//tensorflow/python/keras/layers:core",
     ],
 )

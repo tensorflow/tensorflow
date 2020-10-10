@@ -912,39 +912,12 @@ def HLO_CollectivePermuteOp: HLO_Op<"collective_permute",
   let results = (outs HLO_Tensor);
 }
 
-// TODO(hinsu): Make this struct dialect independent so that it can be shared
-// between HLO and LHLO dialect.
-def ConvDimensionNumbers : StructAttr<"ConvDimensionNumbers", HLO_Dialect, [
-  StructFieldAttr<"input_batch_dimension",I64Attr>,
-  StructFieldAttr<"input_feature_dimension", I64Attr>,
-  StructFieldAttr<"input_spatial_dimensions", I64ElementsAttr>,
-  StructFieldAttr<"kernel_input_feature_dimension", I64Attr>,
-  StructFieldAttr<"kernel_output_feature_dimension", I64Attr>,
-  StructFieldAttr<"kernel_spatial_dimensions", I64ElementsAttr>,
-  StructFieldAttr<"output_batch_dimension", I64Attr>,
-  StructFieldAttr<"output_feature_dimension", I64Attr>,
-  StructFieldAttr<"output_spatial_dimensions", I64ElementsAttr>] > {
-
-  let description = "Structure of dimension information for conv op";
-}
-
 def HLO_ConvOp : HLO_Op<"convolution", [NoSideEffect]>, BASE_HLO_ConvOp {
-  let arguments = (ins
-    HLO_Tensor:$lhs,
-    HLO_Tensor:$rhs,
-    // Default value: one for each of the spatial dimension.
-    OptionalAttr<I64ElementsAttr>:$window_strides,
-    // Default value: zero for each of the spatial dimension.
-    OptionalAttr<I64ElementsAttr>:$padding,
-    // Default value: one for each of the spatial dimension.
-    OptionalAttr<I64ElementsAttr>:$lhs_dilation,
-    // Default value: one for each of the spatial dimension.
-    OptionalAttr<I64ElementsAttr>:$rhs_dilation,
-    ConvDimensionNumbers:$dimension_numbers,
-    I64Attr:$feature_group_count,
-    I64Attr:$batch_group_count,
-    HLO_PrecisionConfigAttr:$precision_config
-  );
+  let arguments = !con(
+    (ins
+       HLO_Tensor:$lhs,
+       HLO_Tensor:$rhs),
+    ConvolutionAttributes<HLO_Dialect>.attributes);
 
   let results = (outs HLO_Tensor);
 }
