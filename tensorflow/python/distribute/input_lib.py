@@ -589,8 +589,7 @@ class DistributedIteratorBase(DistributedIteratorInterface):
 
   # pylint: disable=super-init-not-called
   def __init__(self, input_workers, iterators, strategy,
-               enable_get_next_as_optional,
-               replication_mode=InputReplicationMode.PER_WORKER):
+               enable_get_next_as_optional):
     assert isinstance(input_workers, InputWorkers)
     if not input_workers.worker_devices:
       raise ValueError("Should have at least one worker for input iterator.")
@@ -599,7 +598,6 @@ class DistributedIteratorBase(DistributedIteratorInterface):
     self._input_workers = input_workers
     self._strategy = strategy
     self._enable_get_next_as_optional = enable_get_next_as_optional
-    self._replication_mode = replication_mode
 
   def next(self):
     return self.__next__()
@@ -629,16 +627,12 @@ class DistributedIteratorBase(DistributedIteratorInterface):
     if not self._enable_get_next_as_optional:
       replicas = []
       for i, worker in enumerate(self._input_workers.worker_devices):
-        if self._replication_mode == InputReplicationMode.PER_WORKER:
-          worker_device = worker
-        else:
-          worker_device = self._input_workers._worker_device_pairs[i][1][0]
         if name is not None:
-          d = tf_device.DeviceSpec.from_string(worker_device)
+          d = tf_device.DeviceSpec.from_string(worker)
           new_name = "%s_%s_%d" % (name, d.job, d.task)
         else:
           new_name = None
-        with ops.device(worker_device):
+        with ops.device(worker):
           # Make `replicas` a flat list of values across all replicas.
           replicas.extend(
               self._iterators[i].get_next_as_list_static_shapes(new_name))
@@ -849,8 +843,7 @@ class DistributedIterator(DistributedIteratorBase,
                strategy=None,
                components=None,
                element_spec=None,
-               enable_get_next_as_optional=False,
-               replication_mode=InputReplicationMode.PER_WORKER):
+               enable_get_next_as_optional=False):
     if input_workers is None:
       raise ValueError("`input_workers` should be "
                        "provided.")
@@ -867,14 +860,13 @@ class DistributedIterator(DistributedIteratorBase,
       self._iterators = components
       self._strategy = strategy
       self._enable_get_next_as_optional = enable_get_next_as_optional
-      self._replication_mode = replication_mode
     else:
       if (components is not None and element_spec is not None):
         raise ValueError(error_message)
 
       super(DistributedIterator,
             self).__init__(input_workers, iterators, strategy,
-                           enable_get_next_as_optional, replication_mode)
+                           enable_get_next_as_optional)
 
   @property
   def element_spec(self):
@@ -1188,7 +1180,7 @@ class DistributedDatasetsFromFunction(_IterableInput):
                                          self._strategy)
       else:
         iterator = DistributedIterator(self._input_workers, iterators,
-                                       self._strategy, self._replication_mode)
+                                       self._strategy)
       iterator._element_spec = self._element_spec  # pylint: disable=protected-access
 
       # When async eager is enabled, sometimes the iterator may not finish
@@ -1583,7 +1575,6 @@ class _SingleWorkerOwnedDatasetIterator(_SingleWorkerDatasetIteratorBase,
         _SingleWorkerOwnedDatasetIterator from.
       element_spec: A nested structure of `TypeSpec` objects that represents the
       type specification of elements of the iterator.
-      replication_mode: an enum value of `tf.distribute.InputReplicationMode`.
     """
     if worker is None or devices is None:
       raise ValueError("Both `worker` and `devices` should be provided")
