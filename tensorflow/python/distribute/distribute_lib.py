@@ -1561,6 +1561,9 @@ class StrategyBase(object):
     _require_cross_replica_or_default_context_extended(self._extended)
     dst = device_util.current(
     ) or self._extended._default_device or "/device:CPU:0"
+    if isinstance(value, ops.IndexedSlices):
+      raise NotImplementedError("gather/all_gather does not support "
+                                "IndexedSlices")
     return self._extended._local_results(
         self._extended._gather_to(value, dst, axis))[0]
 

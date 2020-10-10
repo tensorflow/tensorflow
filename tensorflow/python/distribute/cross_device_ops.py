@@ -215,6 +215,18 @@ def _simple_reduce(per_replica_value, reduce_to_device, accumulation_fn,
   return reduced
 
 
+def _simple_gather(per_replica_value, reduce_to_device, axis):
+  """Concatenate all values in the DistributedValues input and return."""
+  all_values = per_replica_value.values
+  if not all_values:
+    raise ValueError("`per_replica_value` must be non-empty")
+
+  with ops.device(reduce_to_device):
+    with context.device_policy(context.DEVICE_PLACEMENT_SILENT):
+      gathered = array_ops.concat(all_values, axis)
+  return gathered
+
+
 @tf_export("distribute.CrossDeviceOps")
 class CrossDeviceOps(object):
   """Base class for cross-device reduction and broadcasting algorithms.
@@ -317,9 +329,6 @@ class CrossDeviceOps(object):
         `tf.distribute.DistributedValues` or if destinations is not a string,
         `tf.Variable` or `tf.distribute.DistributedValues`.
     """
-    if isinstance(per_replica_value, ops.IndexedSlices):
-      raise NotImplementedError("gather/all_gather does not support "
-                                "IndexedSlices")
     if experimental_hints is None:
       experimental_hints = collective_util.Hints()
 
@@ -561,6 +570,20 @@ class ReductionToOneDevice(CrossDeviceOps):
     reduced = _simple_reduce(per_replica_value, reduce_to_device,
                              self.accumulation_fn, reduce_op)
     return self.broadcast(reduced, destinations)
+
+  def _gather_implementation(self, per_replica_value, destinations, axis,
+                             experimental_hints):
+    del experimental_hints  # Unused.
+    if check_destinations(destinations):
+      devices = get_devices_from(destinations)
+    else:
+      devices = get_devices_from(per_replica_value)
+    reduce_to_device = self.reduce_to_device or devices[0]
+    logging.log_first_n(
+        logging.INFO,
+        "Gather to %s then broadcast to %r." % (reduce_to_device, devices), 10)
+    gathered = _simple_gather(per_replica_value, reduce_to_device, axis)
+    return self.broadcast(gathered, destinations)
 
   def batch_reduce_implementation(self, reduce_op, value_destination_pairs,
                                   experimental_hints):
@@ -856,6 +879,15 @@ class AllReduceCrossDeviceOps(CrossDeviceOps):
     # an allgather under the hood but not an efficient one.
     return self._simple_cross_replica_ops.batch_reduce(
         reduce_op, zip(sparse_values, sparse_values))
+
+  def _gather_implementation(self, per_replica_value, destinations, axis,
+                             experimental_hints):
+    logging.warning("gather/all_gather with NCCL or HierarchicalCopy is not "
+                    "supported. Falling back to gather on one device and "
+                    "then broadcast. We're working on a more efficient "
+                    "implementation.")
+    return ReductionToOneDevice()._gather(per_replica_value, destinations, axis,  # pylint: disable=protected-access
+                                          experimental_hints)
 
 
 # For compatibility with code using the old name of `AllReduceCrossDeviceOps`.
