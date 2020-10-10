@@ -1,4 +1,4 @@
-h# Release 2.4.0
+# Release 2.4.0
 
 <INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
 
@@ -238,21 +238,24 @@ h# Release 2.4.0
 
 *   `tf.lite`:
 
-    *   `DynamicBuffer::AddJoinedString()` will now add a separator if the first
-        string to be joined is empty.
     *   `TFLiteConverter`:
         *   Support optional flags `inference_input_type` and
             `inference_output_type` for full integer quantized models. This
             allows users to modify the model input and output type to integer
             types (`tf.int8`, `tf.uint8`) instead of defaulting to float type
             (`tf.float32`).
-    *   Deprecate `Interpreter::UseNNAPI(bool)` C++ API
-        *   Prefer using `NnApiDelegate()` and related delegate configuration
-            methods directly.
-    *   Add NNAPI Delegation support for requantization use cases by converting
-        the operation into a dequantize-quantize pair.
     *   TFLite Profiler for Android is available. See the detailed
         [guide](https://www.tensorflow.org/lite/performance/measurement#trace_tensorflow_lite_internals_in_android).
+    * NNAPI
+        *   Added NNAPI Delegation support for requantization use cases by
+            converting the operation into a dequantize-quantize pair.
+        *   Removed deprecated `Interpreter.setUseNNAPI(boolean)` Java API.
+            *   Use `Interpreter.Options.setUseNNAPI` instead.
+        *   Deprecate `Interpreter::UseNNAPI(bool)` C++ API.
+            *   Use `NnApiDelegate()` and related delegate configuration methods
+                directly.
+    *   `DynamicBuffer::AddJoinedString()` will now add a separator if the first
+        string to be joined is empty.
     *   <ADD RELEASE NOTES HERE>
 
 *   `tf.random`:
