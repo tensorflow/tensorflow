@@ -21,6 +21,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import central_storage_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import mirrored_strategy
@@ -119,6 +120,8 @@ class ReduceTest(test.TestCase, parameterized.TestCase):
             strategy_combinations.default_strategy,
             strategy_combinations.one_device_strategy,
             strategy_combinations.one_device_strategy_gpu,
+            strategy_combinations.central_storage_strategy_with_two_gpus,
+            strategy_combinations.central_storage_strategy_with_gpu_and_cpu,
             strategy_combinations.mirrored_strategy_with_one_cpu,
             strategy_combinations.mirrored_strategy_with_one_gpu,
             strategy_combinations.mirrored_strategy_with_two_gpus,
@@ -272,8 +275,10 @@ class GatherTest(test.TestCase, parameterized.TestCase):
       with self.assertRaisesRegex(errors.InvalidArgumentError,
                                   r'Shape mismatch'):
         run()
-    elif isinstance(strategy,
-                    mirrored_strategy.MirroredStrategy) and pure_eager:
+    elif isinstance(
+        strategy,
+        (mirrored_strategy.MirroredStrategy,
+         central_storage_strategy.CentralStorageStrategy)) and pure_eager:
       with self.assertRaisesRegex(errors.InvalidArgumentError,
                                   r'Dimensions of inputs should match'):
         run()
@@ -322,7 +327,9 @@ class GatherTest(test.TestCase, parameterized.TestCase):
       with self.assertRaisesRegex(errors.InvalidArgumentError,
                                   r'Shape mismatch'):
         run()
-    elif isinstance(strategy, mirrored_strategy.MirroredStrategy):
+    elif isinstance(strategy,
+                    (mirrored_strategy.MirroredStrategy,
+                     central_storage_strategy.CentralStorageStrategy)):
       if pure_eager:
         with self.assertRaisesRegex(errors.InvalidArgumentError,
                                     r'Ranks of all input tensors should match'):
@@ -343,6 +350,8 @@ class GatherTest(test.TestCase, parameterized.TestCase):
             strategy_combinations.default_strategy,
             strategy_combinations.one_device_strategy,
             strategy_combinations.one_device_strategy_gpu,
+            strategy_combinations.central_storage_strategy_with_two_gpus,
+            strategy_combinations.central_storage_strategy_with_gpu_and_cpu,
             strategy_combinations.mirrored_strategy_with_one_cpu,
             strategy_combinations.mirrored_strategy_with_one_gpu,
             strategy_combinations.mirrored_strategy_with_two_gpus,
@@ -593,8 +602,10 @@ class AllGatherTest(test.TestCase, parameterized.TestCase):
       with self.assertRaisesRegex(errors.InvalidArgumentError,
                                   r'Shape mismatch'):
         strategy.run(run, args=(per_replica_value,))
-    elif isinstance(strategy,
-                    mirrored_strategy.MirroredStrategy) and pure_eager:
+    elif isinstance(
+        strategy,
+        (mirrored_strategy.MirroredStrategy,
+         central_storage_strategy.CentralStorageStrategy)) and pure_eager:
       with self.assertRaisesRegex(errors.InvalidArgumentError,
                                   r'Dimensions of inputs should match'):
         strategy.run(run, args=(per_replica_value,))
@@ -645,7 +656,9 @@ class AllGatherTest(test.TestCase, parameterized.TestCase):
       with self.assertRaisesRegex(errors.InvalidArgumentError,
                                   r'Shape mismatch'):
         strategy.run(run, args=(per_replica_value,))
-    elif isinstance(strategy, mirrored_strategy.MirroredStrategy):
+    elif isinstance(strategy,
+                    (mirrored_strategy.MirroredStrategy,
+                     central_storage_strategy.CentralStorageStrategy)):
       if pure_eager:
         with self.assertRaisesRegex(errors.InvalidArgumentError,
                                     r'Ranks of all input tensors should match'):
