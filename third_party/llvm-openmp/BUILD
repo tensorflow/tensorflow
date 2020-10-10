@@ -13,7 +13,7 @@ load(
 )
 
 genrule(
-    name = "kmp_il8n_id",
+    name = "kmp_i18n_id",
     srcs = [
         "runtime/tools/message-converter.pl",
         "runtime/src/i18n/en_US.txt",
@@ -23,7 +23,7 @@ genrule(
 )
 
 genrule(
-    name = "kmp_il8n_default",
+    name = "kmp_i18n_default",
     srcs = [
         "runtime/tools/message-converter.pl",
         "runtime/src/i18n/en_US.txt",
@@ -69,6 +69,17 @@ expand_cmake_vars(
     dst = "include/omp.h",
 )
 
+# TODO(Intel-tf) Replace the following cc_binary call with cc_library.
+# cc_library should be used for files that are not independently executed. Using
+# cc_library here results in the following linking errors.
+# ERROR: //tensorflow/BUILD:689:1: Linking of rule '//tensorflow:libtensorflow_framework.so.2.4.0' failed (Exit 1)
+# /usr/bin/ld.gold: error: symbol GOMP_parallel_loop_nonmonotonic_guided has undefined version VERSION
+# /usr/bin/ld.gold: error: symbol GOMP_parallel_start has undefined version GOMP_1.0
+# /usr/bin/ld.gold: error: symbol GOMP_cancellation_point has undefined version GOMP_4.0
+# /usr/bin/ld.gold: error: symbol omp_set_num_threads has undefined version OMP_1.0
+# ......
+# ......
+
 cc_binary(
     name = "libiomp5.so",
     srcs = glob([
@@ -107,8 +118,8 @@ cc_binary(
     ]) + [
         ":config_kmp",
         ":config_omp",
-        ":kmp_il8n_id",
-        ":kmp_il8n_default",
+        ":kmp_i18n_id",
+        ":kmp_i18n_default",
         ":ldscript",
     ],
     copts = ["-Domp_EXPORTS -D_GNU_SOURCE -D_REENTRANT"],

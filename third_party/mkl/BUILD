@@ -47,6 +47,9 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
+# TODO(Intel-tf) Remove the following call to cc_library and replace all uses
+# of mkl_libs_linux with @llvm-openmp//:libiomp5.so directly.
+
 cc_library(
     name = "mkl_libs_linux",
     srcs = [
