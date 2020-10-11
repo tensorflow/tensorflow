@@ -34,6 +34,7 @@ from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bincount_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
@@ -295,11 +296,20 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
       return tf_idf_data
 
     binary_output = (self._output_mode == BINARY)
+    if isinstance(inputs, sparse_tensor.SparseTensor):
+      max_value = math_ops.reduce_max(inputs.values)
+    else:
+      max_value = math_ops.reduce_max(inputs)
+    condition = math_ops.greater_equal(
+        math_ops.cast(out_depth, max_value.dtype), max_value)
+    control_flow_ops.Assert(
+        condition, ["Input must be less than max_token {}".format(out_depth)])
     if self._sparse:
       result = bincount_ops.sparse_bincount(
           inputs,
           weights=count_weights,
           minlength=out_depth,
+          maxlength=out_depth,
           axis=-1,
           binary_output=binary_output)
       result = math_ops.cast(result, K.floatx())
@@ -314,6 +324,7 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
           inputs,
           weights=count_weights,
           minlength=out_depth,
+          maxlength=out_depth,
           dtype=K.floatx(),
           axis=-1,
           binary_output=binary_output)
