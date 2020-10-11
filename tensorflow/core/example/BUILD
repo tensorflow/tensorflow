@@ -17,7 +17,7 @@ load(
 
 package(
     default_visibility = [
-        "//tensorflow/core:__subpackages__",
+        "//visibility:public",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
@@ -31,7 +31,6 @@ cc_library(
     hdrs = ["example_parser_configuration.h"],
     copts = tf_copts(),
     linkstatic = 1,
-    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
@@ -99,7 +98,6 @@ tf_proto_library(
     ],
     cc_api_version = 2,
     make_default_target_header_only = True,
-    visibility = ["//visibility:public"],
 )
 
 tf_proto_library(
@@ -141,7 +139,6 @@ tf_pyclif_proto_library(
 
 closure_proto_library(
     name = "example_protos_closure",
-    visibility = ["//visibility:public"],
     deps = [":example_protos"],
 )
 
