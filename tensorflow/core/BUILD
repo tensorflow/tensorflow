@@ -519,16 +519,6 @@ tf_cuda_library(
 )
 
 alias(
-    name = "overflow",
-    actual = "//tensorflow/core/util:overflow",
-)
-
-alias(
-    name = "exec_on_stall",
-    actual = "//tensorflow/core/util:exec_on_stall",
-)
-
-alias(
     name = "ptr_util",
     actual = "//tensorflow/core/util:ptr_util",
 )
