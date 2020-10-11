@@ -150,10 +150,8 @@ void EvalIntegerSVDF(TfLiteContext* context, TfLiteNode* node,
         dot_prod_56 = AE_Q56S_SLAI(dot_prod_56, 24);
         ae_p24x2s dot_prod_24x2 = AE_TRUNCP24Q48(dot_prod_56);
 
-        dot_prod_56 =
-            tflite::ops::micro::xtensa::hifimini::MultiplyByQuantizedMultiplier(
-                dot_prod_24x2, data.effective_scale_1_a,
-                data.effective_scale_1_b);
+        dot_prod_56 = MultiplyByQuantizedMultiplier(
+            dot_prod_24x2, data.effective_scale_1_a, data.effective_scale_1_b);
 
         // Cap min/max and convert to int32_t:
         dot_prod_56 = AE_MAXQ56S(dot_prod_56, output_int16_min_56);
@@ -244,10 +242,9 @@ void EvalIntegerSVDF(TfLiteContext* context, TfLiteNode* node,
     ae_q56s output_int8_min_56 = AE_CVTQ48A32S(INT8_MIN);
     ae_q56s output_zp_56 = AE_CVTQ48A32S(data.output_zero_point);
     for (int i = 0; i < n_batch * n_unit; ++i) {
-      ae_q56s x_56 =
-          tflite::ops::micro::xtensa::hifimini::MultiplyByQuantizedMultiplier(
-              scratch_output_tensor[i], data.effective_scale_2_a,
-              data.effective_scale_2_b);
+      ae_q56s x_56 = MultiplyByQuantizedMultiplierResult48Bit(
+          scratch_output_tensor[i], data.effective_scale_2_a,
+          data.effective_scale_2_b);
       // Add output adjustment:
       x_56 = AE_ADDQ56(x_56, output_zp_56);
       // Cap min/max and convert to int32_t (already aligned to 32bit):
@@ -360,12 +357,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TFLITE_DCHECK(node->user_data != nullptr);
   OpData* data = static_cast<OpData*>(node->user_data);
 
-  ops::micro::xtensa::hifimini::QuantizeMultiplier(effective_scale_1,
-                                                   &data->effective_scale_1_a,
-                                                   &data->effective_scale_1_b);
-  ops::micro::xtensa::hifimini::QuantizeMultiplier(effective_scale_2,
-                                                   &data->effective_scale_2_a,
-                                                   &data->effective_scale_2_b);
+  QuantizeMultiplier(effective_scale_1, &data->effective_scale_1_a,
+                     &data->effective_scale_1_b);
+  QuantizeMultiplier(effective_scale_2, &data->effective_scale_2_a,
+                     &data->effective_scale_2_b);
 
   data->input_zero_point = input->params.zero_point;
   data->output_zero_point = output->params.zero_point;

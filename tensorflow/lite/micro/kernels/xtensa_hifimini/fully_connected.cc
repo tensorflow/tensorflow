@@ -124,8 +124,8 @@ void FullyConnected(const FullyConnectedParams& params,
       ae_p24x2s sum_24x2 = AE_TRUNCP24Q48(sum_56);
 
       // MultiplyByQuantizedMultiplier returns a 48bit aligned value
-      sum_56 = ops::micro::xtensa::hifimini::MultiplyByQuantizedMultiplier(
-          sum_24x2, output_multiplier, output_shift);
+      sum_56 = MultiplyByQuantizedMultiplier(sum_24x2, output_multiplier,
+                                             output_shift);
 
       // Add output_offset and cap min/max values:
       sum_56 = AE_ADDQ56(sum_56, output_offset_56);
@@ -147,8 +147,8 @@ TfLiteStatus CalculateOpData(TfLiteContext* context,
   double real_multiplier = 0.0;
   TF_LITE_ENSURE_STATUS(GetQuantizedConvolutionMultipler(
       context, input, filter, bias, output, &real_multiplier));
-  ops::micro::xtensa::hifimini::QuantizeMultiplier(
-      real_multiplier, &data->output_multiplier, &data->output_shift);
+  QuantizeMultiplier(real_multiplier, &data->output_multiplier,
+                     &data->output_shift);
   return CalculateActivationRangeQuantized(context, activation, output,
                                            &data->output_activation_min,
                                            &data->output_activation_max);
