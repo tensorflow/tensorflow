@@ -3,11 +3,11 @@
 load(
     "//tensorflow/core/profiler/builds/oss:build_config.bzl",
     _tf_profiler_alias = "tf_profiler_alias",
-    _tf_profiler_client_deps = "tf_profiler_client_deps",
+    _tf_profiler_pybind_cc_library_wrapper = "tf_profiler_pybind_cc_library_wrapper",
 )
 
 tf_profiler_alias = _tf_profiler_alias
-tf_profiler_client_deps = _tf_profiler_client_deps
+tf_profiler_pybind_cc_library_wrapper = _tf_profiler_pybind_cc_library_wrapper
 
 def if_profiler_oss(if_true, if_false = []):
     return select({

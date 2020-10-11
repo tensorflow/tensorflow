@@ -340,12 +340,11 @@ def HLO_StaticMemRefCastOp: Op<LHLO_Dialect, "static_memref_cast",
   let arguments = (ins Arg<LHLO_Buffer, "", []>:$operand);
   let results = (outs Res<LHLO_Buffer, "", []>:$result);
 
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, MemRefType resultType, " #
-    "Value operand", [{
-       result.addOperands(operand);
-       result.types.push_back(resultType);
-     }]>];
+  let builders = [OpBuilder<"MemRefType resultType, Value operand",
+    [{
+      $_state.addOperands(operand);
+      $_state.types.push_back(resultType);
+    }]>];
 
   let extraClassDeclaration = [{
     MemRefType getType() { return getResult().getType().cast<MemRefType>(); }
@@ -386,13 +385,13 @@ def HLO_DynamicMemRefCastOp: Op<LHLO_Dialect, "dynamic_memref_cast",
   );
   let results = (outs Res<LHLO_Buffer, "", []>:$result);
 
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, MemRefType resultType, " #
-    "Value operand, ValueRange sizes, ValueRange strides", [{
-       result.addOperands(operand);
-       result.addOperands(sizes);
-       result.addOperands(strides);
-       result.types.push_back(resultType);
+  let builders = [
+    OpBuilder<"MemRefType resultType, Value operand, ValueRange sizes, "
+              "ValueRange strides", [{
+      $_state.addOperands(operand);
+      $_state.addOperands(sizes);
+      $_state.addOperands(strides);
+      $_state.types.push_back(resultType);
      }]>];
 
   let extraClassDeclaration = [{
@@ -815,9 +814,8 @@ def FusionOp : LHLO_Op<"fusion", [SingleBlockImplicitTerminator<"TerminatorOp">]
 
   let skipDefaultBuilders = 1;
   let builders = [
-     OpBuilder<"OpBuilder &builder, OperationState &result, "
-               "ArrayRef<NamedAttribute> attributes">
-   ];
+     OpBuilder<"ArrayRef<NamedAttribute> attributes">
+  ];
 }
 
 def TerminatorOp :
@@ -826,9 +824,8 @@ def TerminatorOp :
   let description = [{
     Terminator operation for the LHLO dialect.
   }];
-  let builders = [OpBuilder<
-    "OpBuilder &b, OperationState &result, ValueRange operands",
-    [{ build(b, result, llvm::None, operands, llvm::None); }]
+  let builders = [OpBuilder<"ValueRange operands",
+    [{ build($_builder, $_state, llvm::None, operands, llvm::None); }]
   >];
 }
 

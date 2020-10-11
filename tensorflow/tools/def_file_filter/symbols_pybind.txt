@@ -332,13 +332,9 @@ tensorflow::grappler::GetNumAvailableLogicalCPUCores
 [traceme_recorder_impl] # profiler
 tensorflow::profiler::TraceMeRecorder::Record
 
-[annotation_stack_impl] # profiler
-tensorflow::profiler::AnnotationStack::ThreadAnnotationStack
-
 [profiler_session_impl] # profiler
 tensorflow::ProfilerSession::Create
 tensorflow::ProfilerSession::CollectData
-tensorflow::ProfilerSession::SerializeToString
 tensorflow::ProfilerSession::Status
 tensorflow::ProfilerSession::~ProfilerSession
 

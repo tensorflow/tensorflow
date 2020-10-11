@@ -18,8 +18,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-REGISTER_AND_GENERATE_KERNEL(Tanh, DT_HALF, tanh_f16, Eigen::half);
-REGISTER_AND_GENERATE_KERNEL(Tanh, DT_FLOAT, tanh_f32, float);
-REGISTER_AND_GENERATE_KERNEL(Tanh, DT_DOUBLE, tanh_f64, double);
+REGISTER_AND_GENERATE_KERNEL(Tanh, f16, DT_HALF, Eigen::half);
+REGISTER_AND_GENERATE_KERNEL(Tanh, f32, DT_FLOAT, float);
+REGISTER_AND_GENERATE_KERNEL(Tanh, f64, DT_DOUBLE, double);
 
 }  // namespace tensorflow

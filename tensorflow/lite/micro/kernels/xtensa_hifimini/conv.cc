@@ -172,7 +172,7 @@ void ConvPerChannel(const ConvParams& params, const int32_t* output_multiplier,
           // Apply quantized multiplier and accumulate result at 48bit
           // alignment. Convert the (unsigned) 32-bit multiplier down to a
           // 24-bit multiplier.
-          acc_56 = micro::xtensa::hifimini::MultiplyByQuantizedMultiplier(
+          acc_56 = MultiplyByQuantizedMultiplier(
               acc_24x2, output_multiplier[out_channel] >> 8,
               output_shift[out_channel]);
 
@@ -249,8 +249,8 @@ inline void Conv1x32Input32x32Filter(
 
     // Apply quantized multiplier and accumulate result at 48bit alignment.
     // Convert the (unsigned) 32-bit multiplier down to a 24-bit multiplier.
-    acc_56 = ops::micro::xtensa::hifimini::MultiplyByQuantizedMultiplier(
-        acc_24x2, output_multiplier[ch] >> 8, output_shift[ch]);
+    acc_56 = MultiplyByQuantizedMultiplier(acc_24x2, output_multiplier[ch] >> 8,
+                                           output_shift[ch]);
 
     // Add output offset, cap activation, and assign to the output:
     acc_56 = AE_ADDQ56(acc_56, output_offset_56);

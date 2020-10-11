@@ -1,9 +1,12 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("//tensorflow:tensorflow.bzl", "if_not_android", "tf_cc_test", "tf_cuda_library")
-load("//tensorflow:tensorflow.bzl", "filegroup")  # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_pybind_cc_library_wrapper")  # buildifier: disable=same-origin-load
-load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
+load("//tensorflow:tensorflow.bzl", "filegroup")
+load(
+    "//tensorflow/core/profiler/builds:build_config.bzl",
+    "tf_profiler_copts",
+    "tf_profiler_pybind_cc_library_wrapper",
+)
 
 package(
     default_visibility = [
@@ -13,13 +16,10 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-tf_pybind_cc_library_wrapper(
-    name = "profiler_session_headers",
-    visibility = [
-        "//tensorflow/core/profiler/rpc:__pkg__",
-        "//tensorflow/python/profiler/internal:__pkg__",
-    ],
-    deps = [":profiler_session"],
+tf_profiler_pybind_cc_library_wrapper(
+    name = "profiler_session_for_pybind",
+    actual = ":profiler_session",
+    visibility = ["//tensorflow/python/profiler/internal:__pkg__"],
 )
 
 cc_library(
@@ -68,13 +68,13 @@ cc_library(
     alwayslink = True,
 )
 
-tf_pybind_cc_library_wrapper(
-    name = "local_profiler_headers",
+tf_profiler_pybind_cc_library_wrapper(
+    name = "local_profiler_for_pybind",
+    actual = ":local_profiler",
     visibility = [
         "//tensorflow/core/profiler/rpc:__pkg__",
         "//tensorflow/python/profiler/internal:__pkg__",
     ],
-    deps = [":local_profiler"],
 )
 
 cc_library(
@@ -179,10 +179,10 @@ tf_cuda_library(
     alwayslink = True,
 )
 
-tf_pybind_cc_library_wrapper(
-    name = "traceme_headers",
+tf_profiler_pybind_cc_library_wrapper(
+    name = "traceme_for_pybind",
+    actual = ":traceme",
     visibility = ["//tensorflow/python/profiler/internal:__pkg__"],
-    deps = [":traceme"],
 )
 
 cc_library(

@@ -745,7 +745,6 @@ class SavingOptionsTest(test.TestCase):
     root.f = def_function.function(
         lambda x: 2. * x,
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
-    root.f(constant_op.constant(1.))
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
     options = save_options.SaveOptions(function_aliases={
         "my_func": root.f,

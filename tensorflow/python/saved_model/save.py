@@ -797,15 +797,15 @@ def _write_object_proto(obj, proto, asset_file_def_index, function_name_map):
     obj._write_object_proto(proto, options)  # pylint: disable=protected-access
 
 
-def _export_debug_info(exported_graph):
-  """Exports debug information from a graph.
+def _export_debug_info(exported_graph, export_dir):
+  """Exports debug information from graph to file.
+
+  Creates and writes GraphDebugInfo with traces for ops in all functions of the
+  exported_graph.
 
   Args:
     exported_graph: A Graph that has been created by tracing a saveable view.
-
-  Returns:
-    Corresponding GraphDebugInfo with traces for ops in all functions of the
-    exported_graph.
+    export_dir: SavedModel directory in which to write the debug info.
   """
   exported_operations = []
   for fn_name in exported_graph._functions:  # pylint: disable=protected-access
@@ -816,7 +816,14 @@ def _export_debug_info(exported_graph):
     fn_graph = fn.graph
     for fn_op in fn_graph.get_operations():
       exported_operations.append((fn_name, fn_op))
-  return error_interpolation.create_graph_debug_info_def(exported_operations)
+
+  graph_debug_info = error_interpolation.create_graph_debug_info_def(
+      exported_operations)
+  file_io.atomic_write_string_to_file(
+      os.path.join(
+          utils_impl.get_or_create_debug_dir(export_dir),
+          constants.DEBUG_INFO_FILENAME_PB),
+      graph_debug_info.SerializeToString(deterministic=True))
 
 
 @tf_export(
@@ -1008,7 +1015,7 @@ def save(obj, export_dir, signatures=None, options=None):
   meta_graph_def = saved_model.meta_graphs.add()
 
   _, exported_graph, object_saver, asset_info = _build_meta_graph(
-      obj, export_dir, signatures, options, meta_graph_def)
+      obj, signatures, options, meta_graph_def)
   saved_model.saved_model_schema_version = constants.SAVED_MODEL_SCHEMA_VERSION
 
   # Write the checkpoint, copy assets into the assets directory, and write out
@@ -1039,6 +1046,9 @@ def save(obj, export_dir, signatures=None, options=None):
       compat.as_str(constants.SAVED_MODEL_FILENAME_PB))
   file_io.atomic_write_string_to_file(
       path, saved_model.SerializeToString(deterministic=True))
+  # Save debug info, if requested.
+  if options.save_debug_info:
+    _export_debug_info(exported_graph, export_dir)
 
   # Clean reference cycles so repeated export()s don't make work for the garbage
   # collector. Before this point, we need to keep references to captured
@@ -1047,7 +1057,7 @@ def save(obj, export_dir, signatures=None, options=None):
 
 
 def export_meta_graph(obj, filename, signatures=None, options=None):
-  """Exports the MetaGraph proto to a file.
+  """Exports the MetaGraph proto of the `obj` to a file.
 
   This function goes through the same procedures saved_model.save goes to
   produce the given object's MetaGraph, then saves it to the given file. It
@@ -1072,10 +1082,14 @@ def export_meta_graph(obj, filename, signatures=None, options=None):
   options = options or save_options.SaveOptions()
   export_dir = os.path.dirname(filename)
   meta_graph_def, exported_graph, _, _ = _build_meta_graph(
-      obj, export_dir, signatures, options)
+      obj, signatures, options)
 
   file_io.atomic_write_string_to_file(
       filename, meta_graph_def.SerializeToString(deterministic=True))
+
+  # Save debug info, if requested.
+  if options.save_debug_info:
+    _export_debug_info(exported_graph, export_dir)
 
   # Clean reference cycles so repeated export()s don't make work for the garbage
   # collector. Before this point, we need to keep references to captured
@@ -1084,16 +1098,14 @@ def export_meta_graph(obj, filename, signatures=None, options=None):
 
 
 def _build_meta_graph_impl(obj,
-                           export_dir,
                            signatures,
                            options,
                            meta_graph_def=None):
   """Creates a MetaGraph containing the resources and functions of an object."""
   if ops.inside_function():
     raise AssertionError(
-        "tf.saved_model.save is not supported inside a traced "
-        "@tf.function. Move the call to the outer eagerly-executed "
-        "context.")
+        "tf.saved_model.save is not supported inside a traced @tf.function. "
+        "Move the call to the outer eagerly-executed context.")
   # pylint: enable=line-too-long
   if not isinstance(obj, base.Trackable):
     raise ValueError(
@@ -1136,24 +1148,36 @@ def _build_meta_graph_impl(obj,
                                                asset_info.asset_index)
   meta_graph_def.object_graph_def.CopyFrom(object_graph_proto)
 
-  # Save debug info, if requested.
-  if options.save_debug_info:
-    graph_debug_info = _export_debug_info(exported_graph)
-    file_io.atomic_write_string_to_file(
-        os.path.join(
-            utils_impl.get_or_create_debug_dir(export_dir),
-            constants.DEBUG_INFO_FILENAME_PB),
-        graph_debug_info.SerializeToString(deterministic=True))
-
   return meta_graph_def, exported_graph, object_saver, asset_info
 
 
 def _build_meta_graph(obj,
-                      export_dir,
                       signatures,
                       options,
                       meta_graph_def=None):
-  """Creates a MetaGraph under a SaveContext."""
+  """Creates a MetaGraph under a save context.
+
+  Args:
+    obj: A trackable object to build the MetaGraph from.
+    signatures: Can be a `tf.function` with an input signature specified or the
+      result of `f.get_concrete_function` on a `@tf.function`-decorated function
+      `f`. `signatures` may also be a dictionary, in which case it maps from
+      signature keys to `tf.function` instances. If None, finds signature to
+      export from the `@tf.function`-decorated methods in `obj`.
+    options: `tf.saved_model.SaveOptions` object that specifies options for
+      saving.
+    meta_graph_def: Optional, the MetaGraphDef proto fill.
+
+  Raises:
+    AssertionError: If `export_meta_graph` is executing inside a `tf.function`.
+    ValueError: If `obj` is not trackable.
+
+  Returns:
+    meta_graph_def: Filled MetaGraphDef proto
+    exported_graph: `tf.Graph` object generated from `obj`.
+    object_saver: `util.TrackableSaver` of the `obj` and its dependencies.
+    asset_info: `_AssetInfo` tuple containing external assets in the `obj`.
+  """
+
   with save_context.save_context(options):
-    return _build_meta_graph_impl(obj, export_dir, signatures, options,
-                                  meta_graph_def)
+    return _build_meta_graph_impl(obj, signatures, options, meta_graph_def)

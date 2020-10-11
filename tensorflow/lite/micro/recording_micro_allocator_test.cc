@@ -239,6 +239,43 @@ TF_LITE_MICRO_TEST(TestRecordsPersistentTfLiteTensorQuantizationData) {
                           expected_requested_bytes);
 }
 
+TF_LITE_MICRO_TEST(TestRecordsPersistentBufferData) {
+  uint8_t arena[kTestConvArenaSize];
+
+  tflite::RecordingMicroAllocator* micro_allocator =
+      tflite::RecordingMicroAllocator::Create(arena, kTestConvArenaSize,
+                                              micro_test::reporter);
+  TF_LITE_MICRO_EXPECT_NE(micro_allocator, nullptr);
+  if (micro_allocator == nullptr) return 1;
+
+  void* buffer = micro_allocator->AllocatePersistentBuffer(/*bytes=*/100);
+  TF_LITE_MICRO_EXPECT_NE(buffer, nullptr);
+  if (buffer == nullptr) return 1;
+
+  tflite::RecordedAllocation recorded_allocation =
+      micro_allocator->GetRecordedAllocation(
+          tflite::RecordedAllocationType::kPersistentBufferData);
+
+  TF_LITE_MICRO_EXPECT_EQ(recorded_allocation.count, static_cast<size_t>(1));
+  TF_LITE_MICRO_EXPECT_EQ(recorded_allocation.requested_bytes,
+                          static_cast<size_t>(100));
+  TF_LITE_MICRO_EXPECT_GE(recorded_allocation.used_bytes,
+                          static_cast<size_t>(100));
+
+  buffer = micro_allocator->AllocatePersistentBuffer(/*bytes=*/50);
+  TF_LITE_MICRO_EXPECT_NE(buffer, nullptr);
+  if (buffer == nullptr) return 1;
+
+  recorded_allocation = micro_allocator->GetRecordedAllocation(
+      tflite::RecordedAllocationType::kPersistentBufferData);
+
+  TF_LITE_MICRO_EXPECT_EQ(recorded_allocation.count, static_cast<size_t>(2));
+  TF_LITE_MICRO_EXPECT_EQ(recorded_allocation.requested_bytes,
+                          static_cast<size_t>(150));
+  TF_LITE_MICRO_EXPECT_GE(recorded_allocation.used_bytes,
+                          static_cast<size_t>(150));
+}
+
 // TODO(b/158124094): Find a way to audit OpData allocations on
 // cross-architectures.
 
