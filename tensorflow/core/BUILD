@@ -308,11 +308,6 @@ alias(
     visibility = ["//tensorflow/core/kernels:friends"],
 )
 
-alias(
-    name = "human_readable_json",
-    actual = "//tensorflow/core/platform:human_readable_json",
-)
-
 # Minimal lib so that tools used for mobile compilation
 # don't have to depend on lib/platformlib.
 cc_library(
