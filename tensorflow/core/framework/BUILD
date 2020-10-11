@@ -534,6 +534,7 @@ cc_library(
     srcs = ["shape_inference_testutil.cc"],
     hdrs = ["shape_inference_testutil.h"],
     copts = tf_copts(),
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":node_def_proto_cc",
         "//tensorflow/core:framework",
@@ -546,7 +547,7 @@ cc_library(
     name = "reader_base",
     srcs = ["reader_base.cc"],
     hdrs = ["reader_base.h"],
-    visibility = ["//tensorflow/core:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         ":reader_base_proto_cc",
         "//tensorflow/core:framework",
@@ -558,7 +559,7 @@ cc_library(
     name = "op_gen_lib",
     srcs = ["op_gen_lib.cc"],
     hdrs = ["op_gen_lib.h"],
-    visibility = ["//tensorflow/core:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         ":api_def_proto_cc",
         ":attr_value_proto_cc",
