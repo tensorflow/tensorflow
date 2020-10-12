@@ -125,8 +125,6 @@ Status LowerLHLOToGPU(mlir::ModuleOp module, LowerLHLOToGPUOptions options) {
     pm.addNestedPass<::mlir::FuncOp>(
         ::mlir::mhlo::createLegalizeTrigonometricToApproximationPass());
   }
-  // Move scalar operations into the launch to ensure smaller signatures.
-  pm.addPass(createMoveScalarComputationsIntoGpuLaunchPass());
   // Take launches to launches with kernels.
   pm.addPass(::mlir::createGpuKernelOutliningPass());
   // Make sure the kernel signature resembled the original function's
