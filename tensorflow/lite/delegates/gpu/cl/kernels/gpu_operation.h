@@ -164,7 +164,9 @@ class GPUOperation {
   bool check_src_channels_size_ = false;
 
  protected:
-  virtual absl::Status BindArguments() { return absl::OkStatus(); }
+  virtual absl::Status BindArguments(ArgumentsBinder* args) {
+    return absl::OkStatus();
+  }
   virtual int3 GetGridSize() const;
 
   // Defines operation calculation precision and format of src/dst tensors.

@@ -262,16 +262,16 @@ int3 Winograd4x4To36::SelectBestWorkGroup(const KernelInfo& kernel_info) const {
   return GetFirstSuitableWorkGroup(wgs, kernel_info.max_work_group_size);
 }
 
-absl::Status Winograd4x4To36::BindArguments() {
+absl::Status Winograd4x4To36::BindArguments(ArgumentsBinder* args) {
   const int tiles_x = DivideRoundUp(
       src_[0]->Width() + padding_.prepended.w + padding_.appended.w - 2, 4);
   const int tiles_y = DivideRoundUp(
       src_[0]->Height() + padding_.prepended.h + padding_.appended.h - 2, 4);
   const int tiles_total = tiles_x * tiles_y;
-  RETURN_IF_ERROR(args_.SetInt("padding_x", -padding_.prepended.w));
-  RETURN_IF_ERROR(args_.SetInt("padding_y", -padding_.prepended.h));
-  RETURN_IF_ERROR(args_.SetInt("tiles_total", tiles_total));
-  RETURN_IF_ERROR(args_.SetInt("tiles_x", tiles_x));
+  RETURN_IF_ERROR(args->SetInt("padding_x", -padding_.prepended.w));
+  RETURN_IF_ERROR(args->SetInt("padding_y", -padding_.prepended.h));
+  RETURN_IF_ERROR(args->SetInt("tiles_total", tiles_total));
+  RETURN_IF_ERROR(args->SetInt("tiles_x", tiles_x));
   return absl::OkStatus();
 }
 
@@ -463,9 +463,9 @@ int3 Winograd36To4x4::SelectBestWorkGroup(const KernelInfo& kernel_info) const {
   return GetFirstSuitableWorkGroup(wgs, kernel_info.max_work_group_size);
 }
 
-absl::Status Winograd36To4x4::BindArguments() {
+absl::Status Winograd36To4x4::BindArguments(ArgumentsBinder* args) {
   const int tiles_x = DivideRoundUp(dst_[0]->Width(), 4);
-  RETURN_IF_ERROR(args_.SetInt("tiles_x", tiles_x));
+  RETURN_IF_ERROR(args->SetInt("tiles_x", tiles_x));
   return absl::OkStatus();
 }
 

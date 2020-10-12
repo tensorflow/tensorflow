@@ -305,14 +305,14 @@ std::string ConvolutionTransposed3x3::GenerateConvolutionTransposedCode(
   return c;
 }
 
-absl::Status ConvolutionTransposed3x3::BindArguments() {
-  RETURN_IF_ERROR(args_.SetInt("filter_offset", 4 * 9 * src_[0]->Slices()));
+absl::Status ConvolutionTransposed3x3::BindArguments(ArgumentsBinder* args) {
+  RETURN_IF_ERROR(args->SetInt("filter_offset", 4 * 9 * src_[0]->Slices()));
   const int padding_x =
       padding_.x >= 1 ? (padding_.x - 1) / 2 : (padding_.x - 2) / 2;
   const int padding_y =
       padding_.y >= 1 ? (padding_.y - 1) / 2 : (padding_.y - 2) / 2;
-  RETURN_IF_ERROR(args_.SetInt("padding_x", padding_x * src_[0]->Batch()));
-  return args_.SetInt("padding_y", padding_y);
+  RETURN_IF_ERROR(args->SetInt("padding_x", padding_x * src_[0]->Batch()));
+  return args->SetInt("padding_y", padding_y);
 }
 
 int3 ConvolutionTransposed3x3::GetGridSize() const {

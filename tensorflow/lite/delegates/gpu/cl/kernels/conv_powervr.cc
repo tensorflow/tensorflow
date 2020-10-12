@@ -245,35 +245,35 @@ void ConvPowerVR::GenerateCode(const DeviceInfo& device_info) {
   }
 }
 
-absl::Status ConvPowerVR::BindArguments() {
+absl::Status ConvPowerVR::BindArguments(ArgumentsBinder* args) {
   if (!conv_params_.x_kernel_is_1) {
-    RETURN_IF_ERROR(args_.SetInt("stride_x", stride_.x));
-    RETURN_IF_ERROR(args_.SetInt("padding_x", padding_.x * src_[0]->Batch()));
-    RETURN_IF_ERROR(args_.SetInt("kernel_size_x", kernel_size_.x));
-    RETURN_IF_ERROR(args_.SetInt("dilation_x", dilation_.x * src_[0]->Batch()));
+    RETURN_IF_ERROR(args->SetInt("stride_x", stride_.x));
+    RETURN_IF_ERROR(args->SetInt("padding_x", padding_.x * src_[0]->Batch()));
+    RETURN_IF_ERROR(args->SetInt("kernel_size_x", kernel_size_.x));
+    RETURN_IF_ERROR(args->SetInt("dilation_x", dilation_.x * src_[0]->Batch()));
   }
   if (!conv_params_.y_kernel_is_1) {
-    RETURN_IF_ERROR(args_.SetInt("stride_y", stride_.y));
-    RETURN_IF_ERROR(args_.SetInt("padding_y", padding_.y));
-    RETURN_IF_ERROR(args_.SetInt("kernel_size_y", kernel_size_.y));
-    RETURN_IF_ERROR(args_.SetInt("dilation_y", dilation_.y));
+    RETURN_IF_ERROR(args->SetInt("stride_y", stride_.y));
+    RETURN_IF_ERROR(args->SetInt("padding_y", padding_.y));
+    RETURN_IF_ERROR(args->SetInt("kernel_size_y", kernel_size_.y));
+    RETURN_IF_ERROR(args->SetInt("dilation_y", dilation_.y));
   }
   if (definition_.src_tensors[0].HasAxis(Axis::DEPTH) &&
       !conv_params_.z_kernel_is_1) {
-    RETURN_IF_ERROR(args_.SetInt("stride_z", stride_.z));
-    RETURN_IF_ERROR(args_.SetInt("padding_z", padding_.z));
-    RETURN_IF_ERROR(args_.SetInt("kernel_size_z", kernel_size_.z));
-    RETURN_IF_ERROR(args_.SetInt("dilation_z", dilation_.z));
+    RETURN_IF_ERROR(args->SetInt("stride_z", stride_.z));
+    RETURN_IF_ERROR(args->SetInt("padding_z", padding_.z));
+    RETURN_IF_ERROR(args->SetInt("kernel_size_z", kernel_size_.z));
+    RETURN_IF_ERROR(args->SetInt("dilation_z", dilation_.z));
   }
   if (conv_params_.linear_spatial) {
     const int grid_x = DivideRoundUp(dst_[0]->Width() * dst_[0]->Batch(),
                                      conv_params_.block_size.x);
-    RETURN_IF_ERROR(args_.SetInt("task_size_x", grid_x));
+    RETURN_IF_ERROR(args->SetInt("task_size_x", grid_x));
   }
   if (definition_.src_tensors[0].HasAxis(Axis::DEPTH)) {
     const int task_size_y =
         DivideRoundUp(dst_[0]->Height(), conv_params_.block_size.y);
-    RETURN_IF_ERROR(args_.SetInt("task_size_y", task_size_y));
+    RETURN_IF_ERROR(args->SetInt("task_size_y", task_size_y));
   }
   return absl::OkStatus();
 }

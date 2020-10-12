@@ -183,7 +183,7 @@ absl::Status GPUOperation::UpdateParams() {
   for (int i = 0; i < dst_tensors_names_.size(); ++i) {
     RETURN_IF_ERROR(args_.SetObjectRef(dst_tensors_names_[i], dst_[i]));
   }
-  RETURN_IF_ERROR(BindArguments());
+  RETURN_IF_ERROR(BindArguments(&args_));
   grid_size_ = GetGridSize();
   return absl::OkStatus();
 }
