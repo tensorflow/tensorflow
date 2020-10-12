@@ -164,11 +164,6 @@ exports_files([
     "ops/ops.pbtxt",
 ])
 
-package_group(
-    name = "experimental_access",
-    packages = ["//tensorflow/core/common_runtime/..."],
-)
-
 # Authorized users go here.
 package_group(name = "friends")
 
@@ -366,22 +361,6 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
-    ],
-)
-
-# APIs defined in lib_experimental are for experimental usage and may be
-# subject to change. Its visibility is limited to selected packages.
-cc_library(
-    name = "lib_experimental",
-    hdrs = [
-        "//tensorflow/core/lib/core:legacy_lib_core_threadpool_options_header",
-    ],
-    visibility = [
-        ":experimental_access",
-        "//tensorflow/cc:__pkg__",
-    ],
-    deps = [
-        ":lib",
     ],
 )
 
