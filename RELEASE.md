@@ -215,6 +215,7 @@
     *   Improvements to Keras preprocessing layers:
         *   TextVectorization can now accept a vocabulary list or file as an
             init arg.
+        *   Normalization can now accept mean and variance values as init args.
     *   In `Attention` and `AdditiveAttention` layers, the `call()` method now
         accepts a `return_attention_scores` argument. When set to
         True, the layer returns the attention scores as an additional output
