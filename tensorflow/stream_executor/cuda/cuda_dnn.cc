@@ -329,6 +329,8 @@ port::Status CudnnSupport::Init() {
 #endif
 
     cudnn_.reset(new CudnnAccess(cudnn_handle));
+
+    LOG(INFO) << "Loaded cuDNN version " << cudnnGetVersion();
     return port::Status::OK();
   }
 
