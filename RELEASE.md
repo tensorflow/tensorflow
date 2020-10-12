@@ -52,6 +52,8 @@
   to be 0. To simulate the V1 the behavior of
   tf.quantization.quantize_and_dequantize(...) use
   tf.grad_pass_through(tf.quantization.quantize_and_dequantize_v2)(...).
+* `tf.distribute.Strategy.experimental_make_numpy_dataset` is removed. Please
+  use `tf.data.Dataset.from_tensor_slices` instead.
 
 ## Known Caveats
 

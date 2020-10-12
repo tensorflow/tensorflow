@@ -206,7 +206,6 @@ py_test(
         "//tensorflow/python/autograph/core:test_lib",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
-        "//third_party/py/numpy",
     ],
 )
 

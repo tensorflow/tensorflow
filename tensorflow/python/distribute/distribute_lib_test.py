@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 from absl.testing import parameterized
-import numpy as np
 
 from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.data.ops import dataset_ops
@@ -98,10 +97,6 @@ class _TestExtended(distribute_lib.StrategyExtendedV1):
   def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
     del reduce_op, destinations, experimental_hints
     return value
-
-  def _experimental_make_numpy_dataset(self, numpy_input, session):
-    del session
-    return dataset_ops.DatasetV2.from_tensor_slices(numpy_input)
 
   def _experimental_run_steps_on_iterator(self, fn, iterator, iterations,
                                           initial_loop_values=None):
@@ -345,13 +340,6 @@ class TestStrategyTest(test.TestCase):
                                                ((x, "/CPU:0"), (y, "/CPU:0")))
       self.assertEqual(self.evaluate(x), self.evaluate(x_r))
       self.assertEqual(self.evaluate(y), self.evaluate(y_r))
-
-  @_run_in_and_out_of_scope
-  def testExperimentalMakeNumpyDataset(self, dist):
-    numpy_input = np.ones([10], dtype=np.float32)
-    dataset = dist.experimental_make_numpy_dataset(numpy_input)
-    self.assertEqual(
-        self.evaluate(dataset.reduce(0., lambda a, b: a + b)), 10.)
 
   @_run_in_and_out_of_scope
   def testExperimentalRunStepsOnIterator(self, dist):

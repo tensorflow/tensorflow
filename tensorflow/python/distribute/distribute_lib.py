@@ -681,9 +681,7 @@ class StrategyBase(object):
     [see the
     guide](https://www.tensorflow.org/guide/distributed_training#using_tfdistributestrategy_with_custom_training_loops):
 
-      * Start by either creating a `tf.data.Dataset` normally or using
-        `tf.distribute.experimental_make_numpy_dataset` to make a dataset out of
-        a `numpy` array.
+      * Start by creating a `tf.data.Dataset` normally.
       * Use `tf.distribute.Strategy.experimental_distribute_dataset` to convert
         a `tf.data.Dataset` to something that produces "per-replica" values.
         If you want to manually specify how the dataset should be partitioned
@@ -907,39 +905,6 @@ class StrategyBase(object):
     with self.scope():
       return self.extended._make_input_fn_iterator(  # pylint: disable=protected-access
           input_fn, replication_mode=replication_mode)
-
-  @deprecation.deprecated(
-      "2020-09-30", "Please use tf.data.Dataset.from_tensor_slices instead")
-  def experimental_make_numpy_dataset(self, numpy_input):
-    """Makes a `tf.data.Dataset` from a numpy array.
-
-    This avoids adding `numpy_input` as a large constant in the graph,
-    and copies the data to the machine or machines that will be processing
-    the input.
-
-    Note that you will likely need to use `experimental_distribute_dataset`
-    with the returned dataset to further distribute it with the strategy.
-
-    Example:
-
-    >>> strategy = tf.distribute.MirroredStrategy()
-    >>> numpy_input = np.ones([10], dtype=np.float32)
-    >>> dataset = strategy.experimental_make_numpy_dataset(numpy_input)
-    >>> dataset
-    <TensorSliceDataset shapes: (), types: tf.float32>
-    >>> dataset = dataset.batch(2)
-    >>> dist_dataset = strategy.experimental_distribute_dataset(dataset)
-
-    Args:
-      numpy_input: a nest of NumPy input arrays that will be converted into a
-        dataset. Note that the NumPy arrays are stacked, as that is normal
-        `tf.data.Dataset` behavior.
-
-    Returns:
-      A `tf.data.Dataset` representing `numpy_input`.
-    """
-    return self.extended.experimental_make_numpy_dataset(
-        numpy_input, session=None)
 
   @doc_controls.do_not_generate_docs  # DEPRECATED: TF 1.x only
   def experimental_run(self, fn, input_iterator=None):
