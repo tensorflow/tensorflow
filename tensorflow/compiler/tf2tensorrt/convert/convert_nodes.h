@@ -515,11 +515,15 @@ class Converter {
 
   // Transpose 'input_tensor' with given permutation 'order_with_batch_dim' to
   // 'output_tensor'. The permutation 'order_with_batch_dim' contains the batch
-  // dimension which should always be 0.
+  // dimension which should always be 0. If this is for adding a transpose layer
+  // to support the conversion of 'node_def', callers need to provide a
+  // non-empty 'sub_op_name' appended to the name of 'node_def' to avoid layer
+  // name conflicts.
   Status TransposeTensor(nvinfer1::ITensor* input_tensor,
                          const std::vector<int>& order_with_batch_dim,
-                         absl::string_view name,
-                         nvinfer1::ITensor** output_tensor);
+                         nvinfer1::ITensor** output_tensor,
+                         const NodeDef& node_def,
+                         absl::string_view sub_op_name = "");
 
   // Converts 'input' into 'tensor' with shape specified by 'dims' (which
   // doesn't contain the batch dimension).
