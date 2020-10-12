@@ -371,7 +371,7 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
       TypeError: If the op is not an `Operation`.
     """
     if not isinstance(op, Operation):
-      raise TypeError("op needs to be an Operation: %s" % op)
+      raise TypeError("op needs to be an Operation: %s" % (op,))
     self._op = op
     self._value_index = value_index
     self._dtype = dtypes.as_dtype(dtype)
@@ -1946,19 +1946,19 @@ class Operation(object):
       assert op_def is None
       c_op = node_def
     else:
-      raise TypeError("node_def needs to be a NodeDef: %s" % node_def)
+      raise TypeError("node_def needs to be a NodeDef: %s" % (node_def,))
 
     if not isinstance(g, Graph):
-      raise TypeError("g needs to be a Graph: %s" % g)
+      raise TypeError("g needs to be a Graph: %s" % (g,))
     self._graph = g
 
     if inputs is None:
       inputs = []
     elif not isinstance(inputs, list):
-      raise TypeError("inputs needs to be a list of Tensors: %s" % inputs)
+      raise TypeError("inputs needs to be a list of Tensors: %s" % (inputs,))
     for a in inputs:
       if not isinstance(a, Tensor):
-        raise TypeError("input needs to be a Tensor: %s" % a)
+        raise TypeError("input needs to be a Tensor: %s" % (a,))
     if input_types is None:
       input_types = [i.dtype.base_dtype for i in inputs]
     else:
@@ -6099,7 +6099,7 @@ def _get_graph_from_inputs(op_input_list, graph=None):
 
   op_input_list = tuple(op_input_list)  # Handle generators correctly
   if graph and not isinstance(graph, Graph):
-    raise TypeError("Input graph needs to be a Graph: %s" % graph)
+    raise TypeError("Input graph needs to be a Graph: %s" % (graph,))
 
   # 1. We validate that all of the inputs are from the same graph. This is
   #    either the supplied graph parameter, or the first one selected from one
