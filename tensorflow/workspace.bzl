@@ -1185,6 +1185,17 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         ],
     )
 
+    tf_http_archive(
+        name = "tf_toolchains",
+        sha256 = "eb175afa73e5a33d2b5d2aabcfde6c8c3395fd7001eb5ba765a5cd98cce714ba",
+        strip_prefix = "toolchains-0.0.2",
+        build_file = clean_dep("//third_party:tf_toolchains.BUILD"),
+        urls = [
+            "http://mirror.tensorflow.org/github.com/tensorflow/toolchains/archive/v0.0.2.tar.gz",
+            "https://github.com/tensorflow/toolchains/archive/v0.0.2.tar.gz",
+        ],
+    )
+
 def tf_bind():
     """Bind targets for some external repositories"""
     ##############################################################################

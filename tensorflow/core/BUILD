@@ -91,7 +91,7 @@ load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
 load("//tensorflow:tensorflow.bzl", "if_nccl")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tensorflow_opensource_extra_deps")
+load("@tf_toolchains//macros:cpp.bzl", "tensorflow_opensource_extra_deps")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
