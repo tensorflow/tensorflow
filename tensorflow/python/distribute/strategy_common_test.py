@@ -20,14 +20,16 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
-from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import central_storage_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import strategy_test_lib
+from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute.collective_all_reduce_strategy import CollectiveAllReduceStrategy
 from tensorflow.python.distribute.tpu_strategy import TPUStrategy
 from tensorflow.python.eager import def_function
@@ -115,6 +117,16 @@ class ReduceTest(test.TestCase, parameterized.TestCase):
 @combinations.generate(
     combinations.combine(
         strategy=[
+            strategy_combinations.default_strategy,
+            strategy_combinations.one_device_strategy,
+            strategy_combinations.one_device_strategy_gpu,
+            strategy_combinations.central_storage_strategy_with_two_gpus,
+            strategy_combinations.central_storage_strategy_with_gpu_and_cpu,
+            strategy_combinations.mirrored_strategy_with_one_cpu,
+            strategy_combinations.mirrored_strategy_with_one_gpu,
+            strategy_combinations.mirrored_strategy_with_two_gpus,
+            strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
+            strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
             strategy_combinations.multi_worker_mirrored_2x2_gpu,
             strategy_combinations.multi_worker_mirrored_2x1_cpu,
             strategy_combinations.multi_worker_mirrored_2x1_gpu,
@@ -238,8 +250,13 @@ class GatherTest(test.TestCase, parameterized.TestCase):
 
   def testGatherRaiseDiffShapeAtNonAxis(self, strategy, pure_eager):
     """Different at non-`axis`-th dimension : [1, 1], [1, 2], 0th -> raise error."""
-    if _get_num_devices_per_worker(strategy) > 1:
+    if isinstance(strategy, CollectiveAllReduceStrategy
+                 ) and _get_num_replicas_per_client(strategy) > 1:
       self.skipTest('b/167331966')
+
+    if strategy.num_replicas_in_sync <= 1:
+      self.skipTest('Test for more than 1 replica only.')
+
     def value_fn(ctx):
       return constant_op.constant(
           1, shape=(1, ctx.replica_id_in_sync_group + 1))
@@ -251,23 +268,29 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     def run():
       return strategy._gather(distributed_values, axis=axis)
 
-    error_message = 'Shape mismatch'
     if not pure_eager:
       run = def_function.function(run)
 
-    with self.assertRaisesRegex(errors.InvalidArgumentError, error_message):
-      run()
+    if isinstance(strategy, CollectiveAllReduceStrategy):
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  r'Shape mismatch'):
+        run()
+    elif isinstance(
+        strategy,
+        (mirrored_strategy.MirroredStrategy,
+         central_storage_strategy.CentralStorageStrategy)) and pure_eager:
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  r'Dimensions of inputs should match'):
+        run()
+    else:
+      with self.assertRaisesRegex(ValueError,
+                                  r'Dimension \d in both shapes must be equal'):
+        run()
 
-  def testGatherRaiseSparsePerReplicaMultiWorker(self, strategy, pure_eager):
-    if strategy.num_replicas_in_sync != 2:
-      self.skipTest('Test for two replicas.')
+  def testGatherRaiseSparse(self, strategy, pure_eager):
     dense_shape = [5, 2]
-    if multi_worker_test_base.get_task_type() == 'chief':
-      t0 = _make_indexed_slices(
-          values=[[1., 2.]], indices=[2], dense_shape=dense_shape)
-    if multi_worker_test_base.get_task_type() == 'worker':
-      t0 = _make_indexed_slices(
-          values=[[3., 4.], [5., 6.]], indices=[1, 3], dense_shape=dense_shape)
+    t0 = _make_indexed_slices(
+        values=[[1., 2.]], indices=[2], dense_shape=dense_shape)
 
     def run(value):
       return strategy._gather(value, axis=0)
@@ -284,7 +307,8 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     """Different rank: [1,], [1, 2] -> raise error."""
     if strategy.num_replicas_in_sync <= 1:
       self.skipTest('Test for more than 1 replicas.')
-    if _get_num_devices_per_worker(strategy) > 1:
+    if isinstance(strategy, CollectiveAllReduceStrategy
+                 ) and _get_num_replicas_per_client(strategy) > 1:
       self.skipTest('b/167331966')
     def value_fn(ctx):
       return array_ops.ones(shape=(range(1, ctx.replica_id_in_sync_group + 2)))
@@ -296,18 +320,43 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     def run():
       return strategy._gather(distributed_values, axis=axis)
 
-    error_message = 'Shape mismatch'
-
     if not pure_eager:
       run = def_function.function(run)
 
-    with self.assertRaisesRegex(errors.InvalidArgumentError, error_message):
-      run()
+    if isinstance(strategy, CollectiveAllReduceStrategy):
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  r'Shape mismatch'):
+        run()
+    elif isinstance(strategy,
+                    (mirrored_strategy.MirroredStrategy,
+                     central_storage_strategy.CentralStorageStrategy)):
+      if pure_eager:
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    r'Ranks of all input tensors should match'):
+          run()
+      else:
+        with self.assertRaisesRegex(ValueError,
+                                    r'Shape must be rank \d but is rank \d'):
+          run()
+    else:
+      with self.assertRaisesRegex(ValueError,
+                                  r'Dimension \d in both shapes must be equal'):
+        run()
 
 
 @combinations.generate(
     combinations.combine(
         strategy=[
+            strategy_combinations.default_strategy,
+            strategy_combinations.one_device_strategy,
+            strategy_combinations.one_device_strategy_gpu,
+            strategy_combinations.central_storage_strategy_with_two_gpus,
+            strategy_combinations.central_storage_strategy_with_gpu_and_cpu,
+            strategy_combinations.mirrored_strategy_with_one_cpu,
+            strategy_combinations.mirrored_strategy_with_one_gpu,
+            strategy_combinations.mirrored_strategy_with_two_gpus,
+            strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
+            strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
             strategy_combinations.multi_worker_mirrored_2x2_gpu,
             strategy_combinations.multi_worker_mirrored_2x1_cpu,
             strategy_combinations.multi_worker_mirrored_2x1_gpu,
@@ -334,7 +383,7 @@ class AllGatherTest(test.TestCase, parameterized.TestCase):
 
     all_value = [value_on_replica for _ in range(strategy.num_replicas_in_sync)]
     expect = array_ops.concat(all_value, axis=axis)
-    expected_result = [expect] * _get_num_devices_per_worker(strategy)
+    expected_result = [expect] * _get_num_replicas_per_client(strategy)
 
     self.assertAllClose(result, expected_result)
 
@@ -409,7 +458,7 @@ class AllGatherTest(test.TestCase, parameterized.TestCase):
     if not pure_eager:
       run = def_function.function(run)
 
-    expected_result = [expect] * _get_num_devices_per_worker(strategy)
+    expected_result = [expect] * _get_num_replicas_per_client(strategy)
     result = strategy.experimental_local_results(
         strategy.run(run, args=(per_replica_value,)))
     self.assertAllEqual(result, expected_result)
@@ -443,7 +492,7 @@ class AllGatherTest(test.TestCase, parameterized.TestCase):
     if not pure_eager:
       run = def_function.function(run)
 
-    expected_result = [expect] * _get_num_devices_per_worker(strategy)
+    expected_result = [expect] * _get_num_replicas_per_client(strategy)
     result = strategy.experimental_local_results(
         strategy.run(run, args=(per_replica_value,)))
     self.assertAllEqual(result, expected_result)
@@ -469,7 +518,7 @@ class AllGatherTest(test.TestCase, parameterized.TestCase):
       #    1, shape=(1, sum(range(strategy.num_replicas_in_sync + 1))))
       raise ValueError('Add your own expect according to num_replicas_in sync')
 
-    expected_per_replica_1 = [expect_1] * _get_num_devices_per_worker(strategy)
+    expected_per_replica_1 = [expect_1] * _get_num_replicas_per_client(strategy)
 
     value_2 = constant_op.constant([[[1, 2], [1, 2]]])
 
@@ -485,7 +534,7 @@ class AllGatherTest(test.TestCase, parameterized.TestCase):
       #    [value_2 for _ in range(strategy.num_replicas_in_sync)], axis=axis)
       raise ValueError('Add your own expect according to num_replicas_in sync')
 
-    expected_per_replica_2 = [expect_2] * _get_num_devices_per_worker(strategy)
+    expected_per_replica_2 = [expect_2] * _get_num_replicas_per_client(strategy)
 
     def run(value):
       value_1 = array_ops.identity(value)
@@ -517,7 +566,7 @@ class AllGatherTest(test.TestCase, parameterized.TestCase):
 
     all_value = [single_value for _ in range(strategy.num_replicas_in_sync)]
     expect = array_ops.concat(all_value, axis=axis)
-    expected_per_replica = [expect] * _get_num_devices_per_worker(strategy)
+    expected_per_replica = [expect] * _get_num_replicas_per_client(strategy)
 
     result = strategy.run(run)
     for gathered_result in result:
@@ -527,8 +576,12 @@ class AllGatherTest(test.TestCase, parameterized.TestCase):
 
   def testAllGatherRaiseDiffShapeAtNonAxis(self, strategy, pure_eager):
     """Different at non-`axis`-th dimension : [2, 1], [1, 1], all_gather(...axis=1...) -> raise error."""
-    if _get_num_devices_per_worker(strategy) > 1:
+    if isinstance(strategy, CollectiveAllReduceStrategy
+                 ) and _get_num_replicas_per_client(strategy) > 1:
       self.skipTest('b/167331966')
+
+    if strategy.num_replicas_in_sync <= 1:
+      self.skipTest('Test for more than 1 replica only.')
 
     def value_fn(ctx):
       return constant_op.constant(
@@ -545,15 +598,23 @@ class AllGatherTest(test.TestCase, parameterized.TestCase):
     if not pure_eager:
       run = def_function.function(run)
 
-    with self.assertRaisesRegex(errors.InvalidArgumentError, r'Shape mismatch'):
-      strategy.run(run, args=(per_replica_value,))
+    if isinstance(strategy, CollectiveAllReduceStrategy):
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  r'Shape mismatch'):
+        strategy.run(run, args=(per_replica_value,))
+    elif isinstance(
+        strategy,
+        (mirrored_strategy.MirroredStrategy,
+         central_storage_strategy.CentralStorageStrategy)) and pure_eager:
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  r'Dimensions of inputs should match'):
+        strategy.run(run, args=(per_replica_value,))
+    else:
+      with self.assertRaisesRegex(ValueError,
+                                  r'Dimension \d in both shapes must be equal'):
+        strategy.run(run, args=(per_replica_value,))
 
-  def testAllGatherRaiseSparsePerReplica(self, strategy, pure_eager):
-    # all_gather supports sparse when using tf.function, because sparse tensors
-    # are converted to dense in
-    # third_party/tensorflow/python/ops/custom_gradient.py _graph_mode_decorator
-    if strategy.num_replicas_in_sync != 2:
-      self.skipTest('Test for two replicas.')
+  def testAllGatherRaiseSparse(self, strategy, pure_eager):
     dense_shape = [5, 2]
     t0 = _make_indexed_slices(
         values=[[1., 2.]], indices=[2], dense_shape=dense_shape)
@@ -565,13 +626,17 @@ class AllGatherTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(
         NotImplementedError,
         r'gather/all_gather does not support IndexedSlices'):
-      strategy.run(replica_fn, args=(t0,))
+      if not pure_eager:
+        strategy.run(def_function.function(replica_fn), args=(t0,))
+      else:
+        strategy.run(replica_fn, args=(t0,))
 
   def testAllGatherRaiseDifferentRank(self, strategy, pure_eager):
     """Different rank: [1,], [1, 2] -> raise error."""
     if strategy.num_replicas_in_sync <= 1:
       self.skipTest('Test for more than 1 replicas.')
-    if _get_num_devices_per_worker(strategy) > 1:
+    if isinstance(strategy, CollectiveAllReduceStrategy
+                 ) and _get_num_replicas_per_client(strategy) > 1:
       self.skipTest('b/167331966')
     def value_fn(ctx):
       return array_ops.ones(shape=(range(1, ctx.replica_id_in_sync_group + 2)))
@@ -584,13 +649,28 @@ class AllGatherTest(test.TestCase, parameterized.TestCase):
       ctx = ds_context.get_replica_context()
       return ctx._all_gather(value_identity, axis=0)
 
-    error_message = 'Shape mismatch'
-
     if not pure_eager:
       run = def_function.function(run)
 
-    with self.assertRaisesRegex(errors.InvalidArgumentError, error_message):
-      strategy.run(run, args=(per_replica_value,))
+    if isinstance(strategy, CollectiveAllReduceStrategy):
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  r'Shape mismatch'):
+        strategy.run(run, args=(per_replica_value,))
+    elif isinstance(strategy,
+                    (mirrored_strategy.MirroredStrategy,
+                     central_storage_strategy.CentralStorageStrategy)):
+      if pure_eager:
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    r'Ranks of all input tensors should match'):
+          strategy.run(run, args=(per_replica_value,))
+      else:
+        with self.assertRaisesRegex(ValueError,
+                                    r'Shape must be rank \d but is rank \d'):
+          strategy.run(run, args=(per_replica_value,))
+    else:
+      with self.assertRaisesRegex(ValueError,
+                                  r'Dimension \d in both shapes must be equal'):
+        strategy.run(run, args=(per_replica_value,))
 
 
 def _make_indexed_slices(values, indices, dense_shape):
@@ -601,10 +681,12 @@ def _make_indexed_slices(values, indices, dense_shape):
   return tensor
 
 
-def _get_num_devices_per_worker(strategy):
-  """Returns the number of workers in the current cluster for multi-worker."""
-  resolver = strategy.cluster_resolver
-  return max(nest.flatten(resolver.num_accelerators())[0], 1)
+def _get_num_replicas_per_client(strategy):
+  if isinstance(strategy, CollectiveAllReduceStrategy):
+    resolver = strategy.cluster_resolver
+    return max(nest.flatten(resolver.num_accelerators())[0], 1)
+  else:
+    return strategy.num_replicas_in_sync
 
 
 @combinations.generate(
@@ -757,5 +839,4 @@ class StrategyClusterResolverTest(test.TestCase, parameterized.TestCase):
 
 
 if __name__ == '__main__':
-  v2_compat.enable_v2_behavior()
-  combinations.main()
+  test_util.main()

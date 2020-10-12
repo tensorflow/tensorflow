@@ -158,7 +158,7 @@ class MultiWorkerTutorialTest(parameterized.TestCase, test.TestCase):
         file_io.delete_recursively_v2(os.path.dirname(write_model_path))
 
       # Make sure chief finishes saving before non-chief's assertions.
-      multi_process_runner.barrier().wait()
+      multi_process_runner.get_barrier().wait()
 
       if not file_io.file_exists_v2(model_path):
         raise RuntimeError()
@@ -179,7 +179,7 @@ class MultiWorkerTutorialTest(parameterized.TestCase, test.TestCase):
         file_io.delete_recursively_v2(write_checkpoint_dir)
 
       # Make sure chief finishes saving before non-chief's assertions.
-      multi_process_runner.barrier().wait()
+      multi_process_runner.get_barrier().wait()
 
       if not file_io.file_exists_v2(checkpoint_dir):
         raise RuntimeError()

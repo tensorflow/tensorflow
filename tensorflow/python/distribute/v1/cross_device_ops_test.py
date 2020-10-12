@@ -857,4 +857,4 @@ if __name__ == "__main__":
   # Set default inter op thread pool size to one to ensure we don't exhaust the
   # thread pool with the additional executors to run collectives in eager.
   os.environ["TF_NUM_INTEROP_THREADS"] = "1"
-  combinations.main()
+  test.main()

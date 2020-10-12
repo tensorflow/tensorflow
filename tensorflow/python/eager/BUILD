@@ -212,6 +212,7 @@ py_library(
         "//tensorflow/python:pywrap_tf_session",
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:tf2",
+        "//tensorflow/python:tfrt_utils",
         "//tensorflow/python:util",
         "//third_party/py/numpy",
     ],

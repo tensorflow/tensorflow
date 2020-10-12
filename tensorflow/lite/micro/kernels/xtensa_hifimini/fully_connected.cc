@@ -28,11 +28,31 @@ limitations under the License.
 #include "tensorflow/lite/micro/kernels/xtensa_hifimini/fixedpoint_utils.h"
 
 namespace tflite {
-namespace ops {
-namespace micro {
+namespace {
 
-namespace xtensa {
-namespace hifimini {
+struct OpData {
+  // The scaling factor from input to output (aka the 'real multiplier') can
+  // be represented as a fixed point multiplier plus a left shift.
+  int32_t output_multiplier;
+  int output_shift;
+
+  // Cached tensor zero point values for quantized operations.
+  int32_t input_zero_point;
+  int32_t filter_zero_point;
+  int32_t output_zero_point;
+
+  // The range of the fused activation layer. For example for kNone and
+  // uint8_t these would be 0 and 255.
+  int32_t output_activation_min;
+  int32_t output_activation_max;
+  // The index of the temporary tensor where the quantized inputs are cached.
+  int input_quantized_index;
+};
+
+constexpr int kInputTensor = 0;
+constexpr int kWeightsTensor = 1;
+constexpr int kBiasTensor = 2;
+constexpr int kOutputTensor = 0;
 
 void FullyConnected(const FullyConnectedParams& params,
                     const RuntimeShape& input_shape, const int8_t* input_data,
@@ -118,36 +138,6 @@ void FullyConnected(const FullyConnectedParams& params,
   }
 }
 
-}  // namespace hifimini
-}  // namespace xtensa
-
-namespace fully_connected {
-namespace {
-
-struct OpData {
-  // The scaling factor from input to output (aka the 'real multiplier') can
-  // be represented as a fixed point multiplier plus a left shift.
-  int32_t output_multiplier;
-  int output_shift;
-
-  // Cached tensor zero point values for quantized operations.
-  int32_t input_zero_point;
-  int32_t filter_zero_point;
-  int32_t output_zero_point;
-
-  // The range of the fused activation layer. For example for kNone and
-  // uint8_t these would be 0 and 255.
-  int32_t output_activation_min;
-  int32_t output_activation_max;
-  // The index of the temporary tensor where the quantized inputs are cached.
-  int input_quantized_index;
-};
-
-constexpr int kInputTensor = 0;
-constexpr int kWeightsTensor = 1;
-constexpr int kBiasTensor = 2;
-constexpr int kOutputTensor = 0;
-
 TfLiteStatus CalculateOpData(TfLiteContext* context,
                              TfLiteFusedActivation activation,
                              TfLiteType data_type, const TfLiteTensor* input,
@@ -157,14 +147,12 @@ TfLiteStatus CalculateOpData(TfLiteContext* context,
   double real_multiplier = 0.0;
   TF_LITE_ENSURE_STATUS(GetQuantizedConvolutionMultipler(
       context, input, filter, bias, output, &real_multiplier));
-  xtensa::hifimini::QuantizeMultiplier(
-      real_multiplier, &data->output_multiplier, &data->output_shift);
+  QuantizeMultiplier(real_multiplier, &data->output_multiplier,
+                     &data->output_shift);
   return CalculateActivationRangeQuantized(context, activation, output,
                                            &data->output_activation_min,
                                            &data->output_activation_max);
 }
-
-}  // namespace
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
@@ -218,15 +206,14 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
   op_params.quantized_activation_min = data.output_activation_min;
   op_params.quantized_activation_max = data.output_activation_max;
 
-  xtensa::hifimini::FullyConnected(
-      op_params, tflite::micro::GetTensorShape(input),
-      tflite::micro::GetTensorData<int8_t>(input),
-      tflite::micro::GetTensorShape(filter),
-      tflite::micro::GetTensorData<int8_t>(filter),
-      tflite::micro::GetTensorShape(bias),
-      tflite::micro::GetTensorData<int32_t>(bias),
-      tflite::micro::GetTensorShape(output),
-      tflite::micro::GetTensorData<int8_t>(output));
+  FullyConnected(op_params, tflite::micro::GetTensorShape(input),
+                 tflite::micro::GetTensorData<int8_t>(input),
+                 tflite::micro::GetTensorShape(filter),
+                 tflite::micro::GetTensorData<int8_t>(filter),
+                 tflite::micro::GetTensorShape(bias),
+                 tflite::micro::GetTensorData<int32_t>(bias),
+                 tflite::micro::GetTensorShape(output),
+                 tflite::micro::GetTensorData<int8_t>(output));
   return kTfLiteOk;
 }
 
@@ -249,19 +236,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   return EvalQuantizedInt8(context, node, data, input, filter, bias, output);
 }
 
-}  // namespace fully_connected
+}  // namespace
 
 TfLiteRegistration Register_FULLY_CONNECTED() {
-  return {/*init=*/fully_connected::Init,
+  return {/*init=*/Init,
           /*free=*/nullptr,
-          /*prepare=*/fully_connected::Prepare,
-          /*invoke=*/fully_connected::Eval,
+          /*prepare=*/Prepare,
+          /*invoke=*/Eval,
           /*profiling_string=*/nullptr,
           /*builtin_code=*/0,
           /*custom_name=*/nullptr,
           /*version=*/0};
 }
 
-}  // namespace micro
-}  // namespace ops
 }  // namespace tflite

@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/op_macros.h"
 #include "tensorflow/lite/micro/compatibility.h"
+#include "tensorflow/lite/micro/kernels/fully_connected.h"
 #include "tensorflow/lite/micro/kernels/micro_ops.h"
 #include "tensorflow/lite/micro/micro_op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -35,8 +36,6 @@ class MicroMutableOpResolver : public MicroOpResolver {
  public:
   explicit MicroMutableOpResolver(ErrorReporter* error_reporter = nullptr)
       : error_reporter_(error_reporter) {}
-
-  TF_LITE_REMOVE_VIRTUAL_DELETE
 
   const TfLiteRegistration* FindOp(tflite::BuiltinOperator op) const override {
     if (op == BuiltinOperator_CUSTOM) return nullptr;
@@ -152,8 +151,7 @@ class MicroMutableOpResolver : public MicroOpResolver {
   }
 
   TfLiteStatus AddConv2D() {
-    return AddBuiltin(BuiltinOperator_CONV_2D,
-                      tflite::ops::micro::Register_CONV_2D(), ParseConv2D);
+    return AddBuiltin(BuiltinOperator_CONV_2D, Register_CONV_2D(), ParseConv2D);
   }
 
   TfLiteStatus AddCos() {
@@ -163,8 +161,7 @@ class MicroMutableOpResolver : public MicroOpResolver {
 
   TfLiteStatus AddDepthwiseConv2D() {
     return AddBuiltin(BuiltinOperator_DEPTHWISE_CONV_2D,
-                      tflite::ops::micro::Register_DEPTHWISE_CONV_2D(),
-                      ParseDepthwiseConv2D);
+                      Register_DEPTHWISE_CONV_2D(), ParseDepthwiseConv2D);
   }
 
   TfLiteStatus AddDequantize() {
@@ -183,9 +180,9 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       tflite::ops::micro::Register_FLOOR(), ParseFloor);
   }
 
-  TfLiteStatus AddFullyConnected() {
-    return AddBuiltin(BuiltinOperator_FULLY_CONNECTED,
-                      tflite::ops::micro::Register_FULLY_CONNECTED(),
+  TfLiteStatus AddFullyConnected(
+      const TfLiteRegistration& registration = Register_FULLY_CONNECTED()) {
+    return AddBuiltin(BuiltinOperator_FULLY_CONNECTED, registration,
                       ParseFullyConnected);
   }
 
@@ -307,8 +304,8 @@ class MicroMutableOpResolver : public MicroOpResolver {
   }
 
   TfLiteStatus AddQuantize() {
-    return AddBuiltin(BuiltinOperator_QUANTIZE,
-                      tflite::ops::micro::Register_QUANTIZE(), ParseQuantize);
+    return AddBuiltin(BuiltinOperator_QUANTIZE, Register_QUANTIZE(),
+                      ParseQuantize);
   }
 
   TfLiteStatus AddReduceMax() {
@@ -347,14 +344,18 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       tflite::ops::micro::Register_RSQRT(), ParseRsqrt);
   }
 
+  TfLiteStatus AddShape() {
+    return AddBuiltin(BuiltinOperator_SHAPE, Register_SHAPE(), ParseShape);
+  }
+
   TfLiteStatus AddSin() {
     return AddBuiltin(BuiltinOperator_SIN, tflite::ops::micro::Register_SIN(),
                       ParseSin);
   }
 
   TfLiteStatus AddSoftmax() {
-    return AddBuiltin(BuiltinOperator_SOFTMAX,
-                      tflite::ops::micro::Register_SOFTMAX(), ParseSoftmax);
+    return AddBuiltin(BuiltinOperator_SOFTMAX, Register_SOFTMAX(),
+                      ParseSoftmax);
   }
 
   TfLiteStatus AddSplit() {
@@ -389,8 +390,7 @@ class MicroMutableOpResolver : public MicroOpResolver {
   }
 
   TfLiteStatus AddSvdf() {
-    return AddBuiltin(BuiltinOperator_SVDF, tflite::ops::micro::Register_SVDF(),
-                      ParseSvdf);
+    return AddBuiltin(BuiltinOperator_SVDF, Register_SVDF(), ParseSvdf);
   }
 
   TfLiteStatus AddTanh() {
@@ -406,6 +406,8 @@ class MicroMutableOpResolver : public MicroOpResolver {
   unsigned int GetRegistrationLength() { return registrations_len_; }
 
  private:
+  TF_LITE_REMOVE_VIRTUAL_DELETE
+
   TfLiteStatus AddBuiltin(tflite::BuiltinOperator op,
                           const TfLiteRegistration& registration,
                           MicroOpResolver::BuiltinParseFunction parser) {
@@ -461,7 +463,6 @@ class MicroMutableOpResolver : public MicroOpResolver {
   unsigned int num_buitin_ops_ = 0;
 
   ErrorReporter* error_reporter_;
-
 };
 
 };  // namespace tflite

@@ -113,23 +113,6 @@ def mirrored_and_tpu_strategy_combinations():
 
 class DistributedValuesTest(test.TestCase, parameterized.TestCase):
 
-  def testGetEager(self):
-    one = constant_op.constant(1)
-    two = constant_op.constant(2)
-    v = values_lib.DistributedValues((one, two))
-    self.assertEqual(one, v._get())
-    with distribute_lib.ReplicaContext(None, 1):
-      self.assertEqual(two, v._get())
-
-  def testGetGraph(self):
-    with context.graph_mode(), ops.Graph().as_default():
-      one = constant_op.constant(1)
-      two = constant_op.constant(2)
-      v = values_lib.DistributedValues((one, two))
-      self.assertEqual(one, v._get())
-      with distribute_lib.ReplicaContext(None, 1):
-        self.assertEqual(two, v._get())
-
   @combinations.generate(
       combinations.combine(
           distribution=(strategy_combinations.all_strategies_minus_default +
@@ -1455,4 +1438,4 @@ def _make_index_slices(values, indices, dense_shape=None):
 
 
 if __name__ == "__main__":
-  combinations.main()
+  ds_test_util.main()

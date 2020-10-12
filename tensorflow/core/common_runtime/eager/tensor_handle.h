@@ -91,6 +91,10 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   // Create a handle which packs the given handles of the same dtype and shape.
   // If handles are on different devices, assign the packed handle to a
   // CompositeDevice.
+  //
+  // The new tensor handle shares ownership of the given handle: their reference
+  // count will be increased by one after a call to `CreatePackedHandle`.
+  // TODO(b/170414377): Use `TensorHandlePtr` instead.
   static Status CreatePackedHandle(std::vector<TensorHandle*>&& handles,
                                    const tensorflow::DataType dtype,
                                    const tensorflow::TensorShape& shape,
@@ -337,6 +341,11 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   // shape.
   class PackedTensorHandleData {
    public:
+    // Initialize handle data from list of tensor handles.
+    // Ownership of the tensor handles is shared between the
+    // `PackedTensorHandleData` and the caller (the reference count for the
+    // given handles is incremented).
+    // TODO(b/170414377): Use `TensorHandlePtr` instead.
     PackedTensorHandleData(std::vector<TensorHandle*>&& handles,
                            const TensorShape& shape);
 
@@ -358,6 +367,7 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
     Status ExtractPackedHandle(const int index, TensorHandle** handle) const;
 
    private:
+    // TODO(b/170414377): Use `TensorHandlePtr` instead.
     const std::vector<TensorHandle*> handles_;
     const TensorShape shape_;
 

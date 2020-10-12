@@ -251,6 +251,7 @@ cc_library(
     ]) + if_cuda_is_configured([
         "//tensorflow/stream_executor/cuda:cuda_driver",
         "//tensorflow/stream_executor/cuda:ptxas_wrapper",
+        "//tensorflow/stream_executor/cuda:fatbinary_wrapper",
     ]),
 )
 
@@ -271,7 +272,7 @@ cc_library(
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
-        "//tensorflow/core:allocator",
+        "//tensorflow/core/framework:allocator",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/stream_executor:device_memory",

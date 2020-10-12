@@ -3,8 +3,9 @@
 // CHECK: {
 // CHECK:  version: 3,
 // CHECK:  operator_codes: [ {
-// CHECK:    builtin_code: CUSTOM,
-// CHECK:   custom_code: "HashTableV2"
+// CHECK:    deprecated_builtin_code: 32,
+// CHECK:    custom_code: "HashTableV2",
+// CHECK:    builtin_code: CUSTOM
 // CHECK: } ],
 // CHECK: subgraphs: [ {
 // CHECK:   tensors: [ {

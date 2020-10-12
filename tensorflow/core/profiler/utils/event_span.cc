@@ -210,6 +210,8 @@ std::string PrintEventType(EventType event_type) {
       return "host_to_device";
     case HOST_PREPARE:
       return "host_prepare";
+    case DEVICE_COLLECTIVES:
+      return "device_collectives";
     case HOST_WAIT_INPUT:
       return "host_wait_input";
     case DEVICE_TO_DEVICE:
@@ -226,6 +228,42 @@ std::string PrintEventType(EventType event_type) {
       return "device_wait_host";
     default:
       return "unexpected";
+  }
+}
+
+std::string PrintEventTypeLabel(EventType event_type) {
+  switch (event_type) {
+    case UNKNOWN_TIME:
+      return "Machine idle or unknown events";
+    case HOST_COMPUTE:
+      return "Host compute";
+    case HOST_COMPILE:
+      return "Host compile";
+    case HOST_TO_HOST:
+      return "Host to host";
+    case HOST_TO_DEVICE:
+      return "Host to device";
+    case HOST_PREPARE:
+      return "Host prepare";
+    case DEVICE_COLLECTIVES:
+      return "Device collectives";
+    case HOST_WAIT_INPUT:
+      return "Host wait input";
+    case DEVICE_TO_DEVICE:
+      return "Device to device";
+    case DEVICE_TO_HOST:
+      return "Device to host";
+    case DEVICE_COMPUTE_32:
+      return "Device compute 32-bit";
+    case DEVICE_COMPUTE_16:
+      return "Device compute 16-bit";
+    case DEVICE_WAIT_DEVICE:
+      return "Device wait device";
+    case DEVICE_WAIT_HOST:
+      return "Device wait host";
+    default:
+      DCHECK(false);
+      return "Unknown event type";
   }
 }
 

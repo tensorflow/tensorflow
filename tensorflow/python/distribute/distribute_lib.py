@@ -1087,7 +1087,7 @@ class StrategyBase(object):
     This method can be used for several purposes. First, it allows you to
     specify your own batching and sharding logic. (In contrast,
     `tf.distribute.experimental_distribute_dataset` does batching and sharding
-    for you.)For example, where
+    for you.) For example, where
     `experimental_distribute_dataset` is unable to shard the input files, this
     method might be used to manually shard the dataset (avoiding the slow
     fallback behavior in `experimental_distribute_dataset`). In cases where the
@@ -1561,6 +1561,9 @@ class StrategyBase(object):
     _require_cross_replica_or_default_context_extended(self._extended)
     dst = device_util.current(
     ) or self._extended._default_device or "/device:CPU:0"
+    if isinstance(value, ops.IndexedSlices):
+      raise NotImplementedError("gather/all_gather does not support "
+                                "IndexedSlices")
     return self._extended._local_results(
         self._extended._gather_to(value, dst, axis))[0]
 
@@ -2880,6 +2883,11 @@ class ReplicaContext(object):
       raise ValueError(
           "replica_id_in_sync_group can only be an integer, a Tensor or None.")
     self._replica_id_in_sync_group = replica_id_in_sync_group
+    # We need this check becaused TPUContext extends from ReplicaContext and
+    # does not pass a strategy object since it is used by TPUEstimator.
+    if strategy:
+      self._local_replica_id = strategy.extended._get_local_replica_id(
+          replica_id_in_sync_group)
     self._summary_recording_distribution_strategy = None
 
   @doc_controls.do_not_generate_docs
@@ -2978,6 +2986,11 @@ class ReplicaContext(object):
         self._replica_id_in_sync_group,
         dtypes.int32,
         name="replica_id_in_sync_group")
+
+  @property
+  def _replica_id(self):
+    """This is the local replica id in a given sync group."""
+    return self._local_replica_id
 
   @property
   def strategy(self):
@@ -3193,7 +3206,7 @@ class ReplicaContext(object):
     def grad_wrapper(*xs):
       ys = self.merge_call(batch_all_gather, args=xs)
       # The gradient of an all-gather is itself an all-gather.
-      return ys, lambda *dy_s: self.all_gather(dy_s, axis)
+      return ys, lambda *dy_s: self._all_gather(dy_s, axis)
 
     return nest.pack_sequence_as(value, grad_wrapper(*nest.flatten(value)))
 
@@ -3346,6 +3359,10 @@ class _DefaultDistributionExtended(StrategyExtendedV1):
     del reduce_op, destinations, experimental_hints
     return value
 
+  def _gather_to_implementation(self, value, destinations, axis, experimental_hints):
+    del destinations, axis, experimental_hints
+    return value
+
   def _update(self, var, fn, args, kwargs, group):
     # The implementations of _update() and _update_non_slot() are identical
     # except _update() passes `var` as the first argument to `fn()`.
@@ -3399,6 +3416,12 @@ class _DefaultDistributionExtended(StrategyExtendedV1):
   @property
   def should_save_summary(self):
     return True
+
+  def _get_local_replica_id(self, replica_id_in_sync_group):
+    return replica_id_in_sync_group
+
+  def _get_replica_id_in_sync_group(self, replica_id):
+    return replica_id
 
   # TODO(priyag): This should inherit from `InputIterator`, once dependency
   # issues have been resolved.

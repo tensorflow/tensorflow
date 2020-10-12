@@ -45,6 +45,7 @@ py_library(
         "//tensorflow/python:tf_export",
         "//tensorflow/python/keras:activations",
         "//tensorflow/python/keras:backend",
+        "//tensorflow/python/keras:models",
         "//tensorflow/python/keras/engine",
         "//tensorflow/python/keras/layers",
         "//tensorflow/python/keras/utils:data_utils",

@@ -767,3 +767,10 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       Boolean.
     """
     return True
+
+  def _get_replica_id_in_sync_group(self, replica_id):
+    return self._id_in_cluster * len(self.worker_devices) + replica_id
+
+  def _get_local_replica_id(self, replica_id_in_sync_group):
+    return (replica_id_in_sync_group -
+            self._id_in_cluster * len(self.worker_devices))

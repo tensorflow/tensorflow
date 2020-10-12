@@ -3,7 +3,6 @@
 load(
     "//tensorflow/core/kernels/mlir_generated:build_defs.bzl",
     "gen_kernel_library",
-    "gen_unranked_kernel_library",
     "if_mlir_generated_gpu_kernels_enabled",
     "if_mlir_unranked_kernels_enabled",
 )
@@ -41,7 +40,10 @@ filegroup(
     name = "kernel_srcs",
     srcs = if_mlir_unranked_kernels_enabled(
         [
-            "unranked_gpu_abs.cc",
+            "unranked_op_gpu_abs.cc",
+            "unranked_op_gpu_tanh.cc",
+            "unranked_op_gpu_base.h",
+            "unranked_op_gpu_base.cc",
         ],
         [
             "cwise_op_gpu_abs.cc",
@@ -57,6 +59,7 @@ cc_library(
     deps = if_mlir_unranked_kernels_enabled(
         [
             ":abs_unranked_kernels",
+            ":tanh_unranked_kernels",
             "//tensorflow/compiler/mlir/tools/kernel_gen:tf_cuda_runtime_wrappers",
             "//tensorflow/compiler/mlir/tools/kernel_gen:tf_framework_c_interface",
         ],
@@ -149,6 +152,7 @@ tf_cuda_cc_test(
 
 gen_kernel_library(
     name = "abs",
+    generate_unranked = True,
     same_shape = "0,1",
     tile_size = "256",
     types = [
@@ -163,6 +167,7 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "ceil",
+    generate_unranked = True,
     same_shape = "0,1",
     tile_size = "256",
     types = [
@@ -186,6 +191,7 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "cos",
+    generate_unranked = True,
     same_shape = "0,1",
     tile_size = "256",
     types = [
@@ -198,6 +204,7 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "exp",
+    generate_unranked = True,
     same_shape = "0,1",
     tile_size = "256",
     types = [
@@ -210,6 +217,7 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "floor",
+    generate_unranked = True,
     same_shape = "0,1",
     tile_size = "256",
     types = [
@@ -232,6 +240,7 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "invert",
+    generate_unranked = True,
     same_shape = "0,1",
     tile_size = "256",
     types = [
@@ -245,6 +254,7 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "isfinite",
+    generate_unranked = True,
     same_shape = "0,1",
     tile_size = "256",
     types = [
@@ -257,6 +267,7 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "log",
+    generate_unranked = True,
     same_shape = "0,1",
     tile_size = "256",
     types = [
@@ -269,6 +280,7 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "logicalnot",
+    generate_unranked = True,
     same_shape = "0,1",
     tile_size = "256",
     types = ["i1"],
@@ -277,6 +289,7 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "neg",
+    generate_unranked = True,
     same_shape = "0,1",
     tile_size = "256",
     types = [
@@ -299,6 +312,7 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "rsqrt",
+    generate_unranked = True,
     same_shape = "0,1",
     tile_size = "256",
     types = [
@@ -311,6 +325,7 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "sign",
+    generate_unranked = True,
     same_shape = "0,1",
     tile_size = "256",
     types = [
@@ -326,6 +341,7 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "sqrt",
+    generate_unranked = True,
     same_shape = "0,1",
     tile_size = "256",
     types = [
@@ -338,25 +354,13 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "tanh",
+    generate_unranked = True,
     same_shape = "0,1",
     tile_size = "256",
     types = [
         "f16",
         "f32",
         "f64",
-    ],
-    unroll_factors = "4",
-)
-
-gen_unranked_kernel_library(
-    name = "abs_unranked",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-        "i32",
-        "i64",
     ],
     unroll_factors = "4",
 )

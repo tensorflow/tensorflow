@@ -402,7 +402,12 @@ def tf_defines_nortti_if_lite_protos():
 
 # Given a list of "op_lib_names" (a list of files in the ops directory
 # without their .cc extensions), generate a library for that file.
-def tf_gen_op_libs(op_lib_names, deps = None, is_external = True, compatible_with = None):
+def tf_gen_op_libs(
+        op_lib_names,
+        sub_directory = "ops/",
+        deps = None,
+        is_external = True,
+        compatible_with = None):
     # Make library out of each op so it can also be used to generate wrappers
     # for various languages.
     if not deps:
@@ -411,7 +416,7 @@ def tf_gen_op_libs(op_lib_names, deps = None, is_external = True, compatible_wit
         cc_library(
             name = n + "_op_lib",
             copts = tf_copts(is_external = is_external),
-            srcs = ["ops/" + n + ".cc"],
+            srcs = [sub_directory + n + ".cc"],
             deps = deps + [clean_dep("//tensorflow/core:framework")],
             compatible_with = compatible_with,
             visibility = ["//visibility:public"],
@@ -2772,7 +2777,8 @@ def tf_python_pybind_extension(
         deps = [],
         defines = [],
         visibility = None,
-        testonly = None):
+        testonly = None,
+        compatible_with = None):
     """A wrapper macro for pybind_extension that is used in tensorflow/python/BUILD.
 
     Please do not use it anywhere else as it may behave unexpectedly. b/146445820
@@ -2792,6 +2798,7 @@ def tf_python_pybind_extension(
         visibility = visibility,
         link_in_framework = True,
         testonly = testonly,
+        compatible_with = compatible_with,
     )
 
 def tf_pybind_cc_library_wrapper(name, deps, visibility = None, **kwargs):

@@ -3,8 +3,9 @@
 // CHECK:      {
 // CHECK-NEXT:    version: 3,
 // CHECK-NEXT:    operator_codes: [ {
-// CHECK-NEXT:    builtin_code: CUSTOM,
-// CHECK-NEXT:    custom_code: "NumericVerify"
+// CHECK-NEXT:    deprecated_builtin_code: 32,
+// CHECK-NEXT:    custom_code: "NumericVerify",
+// CHECK-NEXT:    builtin_code: CUSTOM
 // CHECK-NEXT:  } ],
 // CHECK-NEXT:  subgraphs: [ {
 // CHECK-NEXT:    tensors: [ {

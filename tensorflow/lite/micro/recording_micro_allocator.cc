@@ -54,6 +54,8 @@ RecordedAllocation RecordingMicroAllocator::GetRecordedAllocation(
       return recorded_persistent_tflite_tensor_data_;
     case RecordedAllocationType::kPersistentTfLiteTensorQuantizationData:
       return recorded_persistent_tflite_tensor_quantization_data_;
+    case RecordedAllocationType::kPersistentBufferData:
+      return recorded_persistent_buffer_data_;
     case RecordedAllocationType::kTfLiteTensorVariableBufferData:
       return recorded_tflite_tensor_variable_buffer_data_;
     case RecordedAllocationType::kNodeAndRegistrationArray:
@@ -91,6 +93,8 @@ void RecordingMicroAllocator::PrintAllocations() const {
   PrintRecordedAllocation(
       RecordedAllocationType::kPersistentTfLiteTensorQuantizationData,
       "Persistent TfLiteTensor quantization data", "allocations");
+  PrintRecordedAllocation(RecordedAllocationType::kPersistentBufferData,
+                          "Persistent buffer data", "allocations");
   PrintRecordedAllocation(
       RecordedAllocationType::kTfLiteTensorVariableBufferData,
       "TfLiteTensor variable buffer data", "allocations");
@@ -101,17 +105,27 @@ void RecordingMicroAllocator::PrintAllocations() const {
                           "Operator runtime data", "OpData structs");
 }
 
+void* RecordingMicroAllocator::AllocatePersistentBuffer(size_t bytes) {
+  RecordedAllocation allocations = SnapshotAllocationUsage();
+  void* buffer = MicroAllocator::AllocatePersistentBuffer(bytes);
+  RecordAllocationUsage(allocations, recorded_persistent_buffer_data_);
+
+  return buffer;
+}
+
 void RecordingMicroAllocator::PrintRecordedAllocation(
     RecordedAllocationType allocation_type, const char* allocation_name,
     const char* allocation_description) const {
 #ifndef TF_LITE_STRIP_ERROR_STRINGS
   RecordedAllocation allocation = GetRecordedAllocation(allocation_type);
-  TF_LITE_REPORT_ERROR(
-      error_reporter(),
-      "[RecordingMicroAllocator] '%s' used %d bytes with alignment overhead "
-      "(requested %d bytes for %d %s)",
-      allocation_name, allocation.used_bytes, allocation.requested_bytes,
-      allocation.count, allocation_description);
+  if (allocation.used_bytes > 0 || allocation.requested_bytes > 0) {
+    TF_LITE_REPORT_ERROR(
+        error_reporter(),
+        "[RecordingMicroAllocator] '%s' used %d bytes with alignment overhead "
+        "(requested %d bytes for %d %s)",
+        allocation_name, allocation.used_bytes, allocation.requested_bytes,
+        allocation.count, allocation_description);
+  }
 #endif
 }
 

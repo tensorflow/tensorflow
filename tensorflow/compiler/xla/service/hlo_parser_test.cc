@@ -2120,6 +2120,19 @@ ENTRY %ShortConstant.v4 () -> f32[67,89] {
   EXPECT_EQ(result.ValueOrDie()->ToString(HloPrintOptions()), original);
 }
 
+TEST_F(HloParserTest, NegativeNan) {
+  const string original = R"(HloModule NegativeNan_module
+
+ENTRY %NegativeNan () -> bf16[2] {
+  ROOT %constant = bf16[2]{0} constant({-nan, -nan})
+}
+
+)";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_EQ(Status::OK(), result.status());
+  EXPECT_EQ(result.ValueOrDie()->ToString(HloPrintOptions()), original);
+}
+
 TEST_F(HloParserTest, AttributesAnyOrder) {
   const string original = R"(HloModule any_order_module
 

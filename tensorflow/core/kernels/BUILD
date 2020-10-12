@@ -20,6 +20,9 @@ load("//tensorflow/core/kernels/mlir_generated:build_defs.bzl", "if_mlir_generat
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
 
 # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 
 # buildifier: disable=same-origin-load
@@ -712,7 +715,7 @@ cc_library(
 
 alias(
     name = "bounds_check",
-    actual = "//tensorflow/core:framework_bounds_check",
+    actual = "//tensorflow/core/framework:bounds_check",
     visibility = [":friends"],
 )
 
@@ -890,6 +893,7 @@ cc_library(
     hdrs = [
         "eigen_spatial_convolutions-inl.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":eigen_convolution_helpers",
     ],
@@ -900,6 +904,7 @@ cc_library(
     hdrs = [
         "eigen_convolution_helpers.h",
     ],
+    compatible_with = get_compatible_with_portable(),
 )
 
 # OpKernel libraries ----------------------------------------------------------
@@ -1100,7 +1105,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "one_hot_op",
     prefix = "one_hot_op",
-    deps = ARRAY_DEPS + ["//tensorflow/core:overflow"],
+    deps = ARRAY_DEPS + ["//tensorflow/core/util:overflow"],
 )
 
 tf_kernel_library(
@@ -6212,6 +6217,7 @@ filegroup(
         "queue_op.cc",
         "queue_ops.cc",
         "ragged_range_op.cc",
+        "ragged_gather_op.cc",
         "ragged_tensor_to_sparse_kernel.cc",
         "ragged_tensor_to_tensor_op.cc",
         "random_op.cc",

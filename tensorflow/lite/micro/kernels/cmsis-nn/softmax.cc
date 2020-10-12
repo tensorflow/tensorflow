@@ -21,9 +21,6 @@ limitations under the License.
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 namespace tflite {
-namespace ops {
-namespace micro {
-namespace activations {
 namespace {
 
 TfLiteStatus CalculateSoftmaxParams(TfLiteContext* context,
@@ -67,8 +64,6 @@ TfLiteStatus CalculateSoftmaxParams(TfLiteContext* context,
   }
   return kTfLiteOk;
 }
-
-}  // namespace
 
 void* SoftmaxInit(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
@@ -157,19 +152,17 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
   }
 }
 
-}  // namespace activations
+}  // namespace
 
 TfLiteRegistration Register_SOFTMAX() {
-  return {/*init=*/activations::SoftmaxInit,
+  return {/*init=*/SoftmaxInit,
           /*free=*/nullptr,
-          /*prepare=*/activations::SoftmaxPrepare,
-          /*invoke=*/activations::SoftmaxEval,
+          /*prepare=*/SoftmaxPrepare,
+          /*invoke=*/SoftmaxEval,
           /*profiling_string=*/nullptr,
           /*builtin_code=*/0,
           /*custom_name=*/nullptr,
           /*version=*/0};
 }
 
-}  // namespace micro
-}  // namespace ops
 }  // namespace tflite

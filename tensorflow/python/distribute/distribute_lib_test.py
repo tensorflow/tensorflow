@@ -124,6 +124,9 @@ class _TestExtended(distribute_lib.StrategyExtendedV1):
     else:
       return nest.map_structure(self._unwrap, result)
 
+  def _get_local_replica_id(self, replica_id_in_sync_group):
+    return replica_id_in_sync_group
+
 
 def _assert_in_default_state(t):
   t.assertIs(ds_context._get_default_replica_context(),
@@ -161,7 +164,7 @@ class TestStrategyTest(test.TestCase):
 
     def run_fn():
       replica_context = ds_context.get_replica_context()
-      self.assertTrue(replica_context is not None)
+      self.assertIsNotNone(replica_context)
       self.assertIs(None, ds_context.get_cross_replica_context())
       self.assertFalse(ds_context.in_cross_replica_context())
       self.assertTrue(ds_context.has_strategy())

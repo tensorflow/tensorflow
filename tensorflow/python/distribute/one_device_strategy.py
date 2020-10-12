@@ -383,6 +383,11 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
     del reduce_op, destinations, experimental_hints
     return value
 
+  def _gather_to_implementation(self, value, destinations, axis,
+                                experimental_hints):
+    del destinations, axis, experimental_hints
+    return value
+
   def _update(self, var, fn, args, kwargs, group):
     # The implementations of _update() and _update_non_slot() are identical
     # except _update() passes `var` as the first argument to `fn()`.
@@ -452,6 +457,9 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
   @property
   def _support_per_replica_values(self):
     return False
+
+  def _get_local_replica_id(self, replica_id_in_sync_group):
+    return replica_id_in_sync_group
 
 
 class _OneDeviceReplicaContext(distribute_lib.ReplicaContext):

@@ -214,6 +214,20 @@ mlir::TF::ShapeAttr ConvertTypeToTensorShapeAttr(const mlir::Type& type) {
   return mlir::TF::ShapeAttr::get(type.getContext(), ArrayRef<int64_t>());
 }
 
+// Converts the tensor shape proto into an MLIR shape attribute.
+StatusOr<mlir::Attribute> ConvertTensorShapeProto(const TensorShapeProto& shape,
+                                                  mlir::MLIRContext* context) {
+  if (shape.unknown_rank())
+    return mlir::TF::ShapeAttr::get(context, llvm::None);
+
+  llvm::SmallVector<int64_t, 4> dims;
+  dims.reserve(shape.dim().size());
+  for (const auto& dim : shape.dim()) {
+    dims.push_back(dim.size());
+  }
+  return mlir::TF::ShapeAttr::get(context, llvm::makeArrayRef(dims));
+}
+
 // Converts an MLIR dense string elements attribute to a TensorFlow tensor
 // proto.
 void ConvertStringElementsAttr(

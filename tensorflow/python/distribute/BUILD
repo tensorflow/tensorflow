@@ -4,7 +4,10 @@ load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 
 package(
-    default_visibility = ["//tensorflow:internal"],
+    default_visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/keras:__subpackages__",  # TODO(scottzhu): remove this once keras is relying on tf.__internal__.
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -142,6 +145,8 @@ py_library(
         ":cross_device_ops",
         ":distribute_lib",
         ":mirrored_strategy",
+        ":multi_process_runner",
+        ":multi_worker_test_base",
         ":one_device_strategy",
         ":sharded_variable",
         "//tensorflow/python/distribute/client",
@@ -787,6 +792,7 @@ py_library(
     visibility = [
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
+        "//third_party/py/keras:__subpackages__",
     ],
     deps = [
         ":collective_all_reduce_strategy",
@@ -810,6 +816,7 @@ py_test(
     python_version = "PY3",
     deps = [
         ":combinations",
+        ":test_util",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_combinations",
         "//tensorflow/python/distribute/cluster_resolver:tfconfig_cluster_resolver_py",
@@ -824,6 +831,7 @@ py_library(
     visibility = [
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
+        "//third_party/py/keras:__subpackages__",
     ],
     deps = [
         ":central_storage_strategy",
@@ -834,6 +842,7 @@ py_library(
         ":multi_process_runner",
         ":multi_worker_test_base",
         ":one_device_strategy",
+        ":test_util",
         ":tpu_strategy",
         "//tensorflow/python:config",
         "//tensorflow/python:platform",
@@ -852,12 +861,21 @@ distribute_py_test(
     disable_mlir_bridge = False,
     python_version = "PY3",
     deps = [
+        ":central_storage_strategy",
+        ":collective_all_reduce_strategy",
         ":combinations",
+        ":mirrored_strategy",
+        ":one_device_strategy",
         ":reduce_util",
         ":strategy_combinations",
+        ":test_util",
+        ":tpu_strategy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:config",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python/eager:context",
+        "//tensorflow/python:tf2",
+        "//tensorflow/python/eager:def_function",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -867,6 +885,7 @@ py_library(
     srcs = ["multi_worker_test_base.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":distribute_coordinator",
         ":multi_process_runner",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
@@ -945,6 +964,7 @@ distribute_py_test(
         ":multi_worker_test_base",
         ":reduce_util",
         ":strategy_combinations",
+        ":test_util",
         ":values",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:errors",
@@ -1232,6 +1252,7 @@ distribute_py_test(
         ":combinations",
         ":distribute_lib",
         ":strategy_combinations",
+        ":test_util",
         ":tpu_strategy",
         ":tpu_values",
         ":values",
@@ -1284,6 +1305,7 @@ distribute_py_test(
     deps = [
         ":combinations",
         ":strategy_combinations",
+        ":test_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
@@ -1509,7 +1531,9 @@ cuda_py_test(
         ":multi_worker_test_base",
         ":multi_worker_util",
         ":reduce_util",
+        ":strategy_combinations",
         ":strategy_test_lib",
+        ":test_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -1695,6 +1719,7 @@ distribute_py_test(
         ":reduce_util",
         ":strategy_combinations",
         ":strategy_test_lib",
+        ":test_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -1740,10 +1765,14 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":collective_all_reduce_strategy",
+        ":multi_process_runner",
         ":values",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:config",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:util",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/eager:context",
     ],
 )
 

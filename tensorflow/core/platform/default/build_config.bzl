@@ -506,6 +506,7 @@ def tf_proto_library(
         js_codegen = "jspb",
         create_service = False,
         create_java_proto = False,
+        create_go_proto = False,
         create_grpc_library = False,
         make_default_target_header_only = False,
         exports = [],
@@ -522,6 +523,7 @@ def tf_proto_library(
         create_java_proto,
         create_grpc_library,
         cc_stubby_versions,
+        create_go_proto,
     )
 
     native.proto_library(
@@ -616,9 +618,6 @@ def tf_protos_profiler_service():
         clean_dep("//tensorflow/core/profiler:profiler_service_proto_cc_impl"),
         clean_dep("//tensorflow/core/profiler:profiler_service_monitor_result_proto_cc_impl"),
     ]
-
-def tf_profiler_client_deps():
-    return [clean_dep("//tensorflow/core/profiler/rpc/client:profiler_client_headers")]
 
 def tf_protos_grappler_impl():
     return [clean_dep("//tensorflow/core/grappler/costs:op_performance_data_cc_impl")]

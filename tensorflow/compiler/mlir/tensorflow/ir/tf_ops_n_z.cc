@@ -1446,7 +1446,8 @@ static LogicalResult Verify(SplitVOp op) {
   if (!split_sizes_type) return success();
 
   if (split_sizes_type.getRank() != 1 ||
-      split_sizes_type.getDimSize(0) != op.getNumResults())
+      (split_sizes_type.getDimSize(0) != ShapedType::kDynamicSize &&
+       split_sizes_type.getDimSize(0) != op.getNumResults()))
     return op.emitOpError("split sizes should be a 1D tensor of ")
            << op.getNumResults() << " elements";
 

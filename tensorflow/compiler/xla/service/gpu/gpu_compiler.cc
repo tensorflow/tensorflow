@@ -92,6 +92,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/logistic_expander.h"
 #include "tensorflow/compiler/xla/service/qr_expander.h"
+#include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/rng_bit_generator_expander.h"
 #include "tensorflow/compiler/xla/service/rng_expander.h"
 #include "tensorflow/compiler/xla/service/slice_sinker.h"
@@ -229,6 +230,7 @@ Status GpuCompiler::OptimizeHloModule(
       // pass.AddPass<SliceSinker>();
 
       pass.AddPass<HloDCE>();
+      pass.AddPass<ReshapeMover>();
       pass.AddPass<HloConstantFolding>();
       pass.AddPass<ConditionalSimplifier>();
     }
@@ -617,6 +619,9 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
       stream_exec->GetDeviceDescription().threads_per_warp();
   gpu_device_info.shared_memory_per_block =
       stream_exec->GetDeviceDescription().shared_memory_per_block();
+  gpu_device_info.threads_per_core_limit =
+      stream_exec->GetDeviceDescription().threads_per_core_limit();
+  gpu_device_info.core_count = stream_exec->GetDeviceDescription().core_count();
 
   absl::optional<CudaComputeCapability> cuda_compute_capability =
       [&]() -> absl::optional<CudaComputeCapability> {

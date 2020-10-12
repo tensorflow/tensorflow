@@ -2285,12 +2285,13 @@ Status ParseContextDenseFeatures(const FeatureProtosMap& context_features,
         context_features.find(c.feature_name)->second;
     TensorShape dense_shape, example_shape;
     DataType dtype = c.dtype;
-    const size_t expected_max_elements = feature.length;
+    const size_t data_max_elements = feature.length;
     if (!c.shape.AsTensorShape(&example_shape) ||
-        expected_max_elements != example_shape.num_elements()) {
+        data_max_elements != example_shape.num_elements()) {
       return errors::InvalidArgument(
-          "Inconsistent number of elements for feature ", c.feature_name, ": ",
-          expected_max_elements, " vs ", dense_shape.num_elements());
+          "Inconsistent max number of elements for feature ", c.feature_name,
+          ": expected ", example_shape.num_elements(), ", but found ",
+          data_max_elements);
     }
     if (is_batch) {
       dense_shape.AddDim(num_examples);
@@ -2324,7 +2325,7 @@ Status ParseContextDenseFeatures(const FeatureProtosMap& context_features,
         EnableAliasing(&stream);
         num_elements += ParseFeature(dtype, &stream, &out, &out_offset);
       }
-      if (num_elements != expected_max_elements) {
+      if (num_elements != data_max_elements) {
         return errors::InvalidArgument(
             "Unexpected number of elements in example ",
             ExampleName(example_names, e));

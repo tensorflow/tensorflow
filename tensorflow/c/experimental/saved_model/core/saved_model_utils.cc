@@ -235,10 +235,17 @@ Status LoadSavedVariable(ImmediateExecutionContext* ctx,
   const std::string& name = variable.name();
   tensorflow::TensorShape shape(variable.shape());
   tensorflow::DataType dtype = variable.dtype();
+  std::vector<std::string> component_devices;
+
+  for (const auto& component :
+       variable.experimental_distributed_variable_components()) {
+    component_devices.push_back(component.device());
+  }
 
   TF_RETURN_IF_ERROR(Variable::CreateUninitialized(
       ctx, dtype, shape, name,
-      variable.device().empty() ? nullptr : variable.device().c_str(), output));
+      variable.device().empty() ? nullptr : variable.device().c_str(),
+      component_devices, output));
   return Status();
 }
 
