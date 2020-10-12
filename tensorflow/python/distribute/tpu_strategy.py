@@ -23,8 +23,8 @@ import collections
 import contextlib
 import copy
 import weakref
-from absl import logging
 
+from absl import logging
 import numpy as np
 
 from tensorflow.compiler.xla.experimental.xla_sharding import xla_sharding
@@ -52,6 +52,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -1021,6 +1022,54 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         distribute_utils.TPU_VARIABLE_CLASS_MAPPING,
         distribute_utils.TPU_VARIABLE_POLICY_MAPPING, **kwargs)
 
+  def _gather_to_implementation(self, value, destinations, axis,
+                                experimental_hints):
+    if not isinstance(value, values.DistributedValues):
+      return value
+
+    value_list = value.values
+    # pylint: disable=protected-access
+    if isinstance(
+        value,
+        values.DistributedVariable) and value._packed_variable is not None:
+      value_list = tuple(
+          value._packed_variable.on_device(d)
+          for d in value._packed_variable.devices)
+    # pylint: enable=protected-access
+
+    # Currently XLA op by op mode has a limit for the number of inputs for a
+    # single op, thus we break one `add_n` op into a group of `add_n` ops to
+    # work around the constraint.
+    if len(value.values) <= _XLA_OP_BY_OP_INPUTS_LIMIT:
+      output = array_ops.concat(value_list, axis=axis)
+    else:
+      output = array_ops.concat(
+          value_list[:_XLA_OP_BY_OP_INPUTS_LIMIT], axis=axis)
+      for i in range(_XLA_OP_BY_OP_INPUTS_LIMIT, len(value_list),
+                     _XLA_OP_BY_OP_INPUTS_LIMIT - 1):
+        output = array_ops.concat(
+            [output] + value_list[i:i + _XLA_OP_BY_OP_INPUTS_LIMIT - 1],
+            axis=axis)
+
+    output = self._broadcast_output(destinations, output)
+    return output
+
+  def _broadcast_output(self, destinations, output):
+    devices = cross_device_ops_lib.get_devices_from(destinations)
+
+    if len(devices) == 1:
+      # If necessary, copy to requested destination.
+      dest_canonical = device_util.canonicalize(devices[0])
+      host_canonical = device_util.canonicalize(self._host_device)
+
+      if dest_canonical != host_canonical:
+        with ops.device(dest_canonical):
+          output = array_ops.identity(output)
+    else:
+      output = cross_device_ops_lib.simple_broadcast(output, destinations)
+
+    return output
+
   def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
     if (isinstance(value, values.DistributedValues) or
         tensor_util.is_tensor(value)
@@ -1065,19 +1114,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     if reduce_op == reduce_util.ReduceOp.MEAN:
       output *= (1. / len(value_list))
 
-    devices = cross_device_ops_lib.get_devices_from(destinations)
-
-    if len(devices) == 1:
-      # If necessary, copy to requested destination.
-      dest_canonical = device_util.canonicalize(devices[0])
-      host_canonical = device_util.canonicalize(self._host_device)
-
-      if dest_canonical != host_canonical:
-        with ops.device(dest_canonical):
-          output = array_ops.identity(output)
-    else:
-      output = cross_device_ops_lib.simple_broadcast(output, destinations)
-
+    output = self._broadcast_output(destinations, output)
     return output
 
   def _update(self, var, fn, args, kwargs, group):
@@ -1373,6 +1410,70 @@ class _TPUReplicaContext(distribute_lib.ReplicaContext):
   def experimental_logical_device(self, logical_device_id):
     """Places variables and ops on the specified logical device."""
     return self.strategy.extended.experimental_logical_device(logical_device_id)
+
+  # TODO(wxinyi): Investigate whether to use cross_replica_sum to optimize it.
+  def _all_gather(self, value, axis, experimental_hints=None):
+    del experimental_hints
+    for v in nest.flatten(value):
+      if isinstance(v, ops.IndexedSlices):
+        raise NotImplementedError("gather/all_gather does not support "
+                                  "IndexedSlices")
+
+    def _all_to_all(value, axis):
+      # The underlying AllToAllOp first do a split of the input value and then
+      # cross-replica communication and concatenation of the result. So we
+      # concatenate the local tensor here first.
+      inputs = array_ops.concat(
+          [value for _ in range(self.num_replicas_in_sync)], axis=0)
+      unordered_output = tpu_ops.all_to_all(
+          inputs,
+          concat_dimension=axis,
+          split_dimension=0,
+          split_count=self.num_replicas_in_sync)
+
+      # Re-order since xla.replica_id and ReplicaContext.replica_id mismatch.
+      # xla_id = xla.replica_id()
+      concat_replica_id = array_ops.concat([
+          array_ops.expand_dims_v2(self.replica_id_in_sync_group, 0)
+          for _ in range(self.num_replicas_in_sync)
+      ],
+                                           axis=0)
+      replica_ids = tpu_ops.all_to_all(
+          concat_replica_id,
+          concat_dimension=0,
+          split_dimension=0,
+          split_count=self.num_replicas_in_sync)
+
+      splited_unordered = array_ops.split(
+          unordered_output,
+          num_or_size_splits=self.num_replicas_in_sync,
+          axis=axis)
+      sorted_with_extra_dim = math_ops.unsorted_segment_sum(
+          array_ops.concat([
+              array_ops.expand_dims(replica, axis=0)
+              for replica in splited_unordered
+          ],
+                           axis=0),
+          replica_ids,
+          num_segments=self.num_replicas_in_sync)
+
+      splited_with_extra_dim = array_ops.split(
+          sorted_with_extra_dim,
+          num_or_size_splits=self.num_replicas_in_sync,
+          axis=0)
+      squeezed = [
+          array_ops.squeeze(replica, axis=0)
+          for replica in splited_with_extra_dim
+      ]
+      result = array_ops.concat(squeezed, axis=axis)
+      return result
+
+    @custom_gradient.custom_gradient
+    def grad_wrapper(*xs):
+      ys = [_all_to_all(t, axis=axis) for t in xs]
+      return ys, lambda *dy_s: self._all_gather(dy_s, axis)
+
+    return nest.pack_sequence_as(value, grad_wrapper(*nest.flatten(value)))
 
 
 def _set_last_step_outputs(ctx, last_step_tensor_outputs):
