@@ -104,9 +104,14 @@ class GradientsTest(tf.test.TestCase):
     self.assertAllClose(eager_result, function_result)
     backprop_result, numeric_result = tf.test.compute_gradient(
         m, [inp], delta=1e-3)
-    self.assertAllClose(numeric_result, backprop_result, rtol=1e-2)
+    # We need a slightly lower absolute tolerance (5e-5 vs 1e-6)
+    # on the ROCm GPU platform
+    atol = 5e-5 if tf.test.is_built_with_rocm() else 1e-6
+    self.assertAllClose(numeric_result, backprop_result, rtol=1e-2,
+                        atol=atol)
     self.assertAllClose(tf.reshape(numeric_result, [-1]),
-                        tf.reshape(eager_result, [-1]), rtol=1e-2)
+                        tf.reshape(eager_result, [-1]), rtol=1e-2,
+                        atol=atol)
 
 if __name__ == "__main__":
   tf.test.main()
