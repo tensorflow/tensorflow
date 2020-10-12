@@ -61,7 +61,7 @@ struct ContractionFusion {
 //===----------------------------------------------------------------------===//
 
 inline bool IsResourceHandleAnonymous(StringRef name) {
-  return name == tensorflow::ResourceHandle::ANONYMOUS_NAME;
+  return name == ::tensorflow::ResourceHandle::ANONYMOUS_NAME;
 }
 
 // Helper struct representing an identifier for a resource handle. For resource
@@ -116,7 +116,8 @@ struct DenseMapInfo<mlir::TF::ResourceHandle> {
 
   static mlir::TF::ResourceHandle getTombstoneKey() {
     return {/*container=*/"",
-            /*name=*/tensorflow::ResourceHandle::ANONYMOUS_NAME, /*device=*/"",
+            /*name=*/::tensorflow::ResourceHandle::ANONYMOUS_NAME,
+            /*device=*/"",
             /*op=*/nullptr};
   }
 
