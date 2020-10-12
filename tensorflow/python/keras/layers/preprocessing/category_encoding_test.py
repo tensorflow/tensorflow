@@ -277,8 +277,23 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
     int_data = encoder_layer(input_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
     model = keras.Model(inputs=input_data, outputs=int_data)
-    with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                ".*must be less than max_token 3"):
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        ".*must be in the range 0 <= values < max_tokens.*"):
+      _ = model.predict(input_array, steps=1)
+
+  def test_dense_negative(self):
+    input_array = constant_op.constant([[1, 2, 0], [2, 2, -1]])
+    max_tokens = 3
+    expected_output_shape = [None, max_tokens]
+    encoder_layer = get_layer_class()(max_tokens)
+    input_data = keras.Input(shape=(3,), dtype=dtypes.int32)
+    int_data = encoder_layer(input_data)
+    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        ".*must be in the range 0 <= values < max_tokens.*"):
       _ = model.predict(input_array, steps=1)
 
 
