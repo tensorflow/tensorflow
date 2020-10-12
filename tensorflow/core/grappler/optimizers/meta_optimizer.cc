@@ -94,8 +94,7 @@ bool IsRunOnceOptimizer(const string& name) {
 }
 
 bool IsTFDataFunction(const FunctionDef& func) {
-  return (func.attr().contains(data::kTFDataFunction) &&
-          func.attr().at(data::kTFDataFunction).b());
+  return func.attr().contains(data::kTFDataFunction);
 }
 
 // Creates a function library stub from a real function library: copy only
@@ -616,54 +615,6 @@ Status MetaOptimizer::RunOptimizer(
   return Status::OK();
 }
 
-// Collects tf.data functions and returns their names in a hash set. Here a
-// tf.data function is any function that has a `_tf_data_function` attribute or
-// that is called (directly or indirectly) from a function with such an
-// attribute.
-absl::flat_hash_set<string> CollectTfDataFunctions(
-    const FunctionLibraryDefinition& flib, const FunctionDefLibrary& fdef_lib) {
-  absl::flat_hash_set<string> tf_data_functions;
-  std::function<void(const string&)> collect_tf_data_functions_dfs =
-      [&](const string& func_name) -> void {
-    // Return if we already found and added this function.
-    if (tf_data_functions.contains(func_name)) return;
-
-    // We only get here if the function is (directly or indirectly) called from
-    // a tf.data function, so add it to the set.
-    tf_data_functions.insert(func_name);
-
-    const FunctionDef* func_def = flib.Find(func_name);
-    // Skip functions that are not reachable from the optimized graph.
-    if (func_def == nullptr) return;
-
-    // Proceed with DFS for functions called from current function.
-    for (const NodeDef& node : func_def->node_def()) {
-      if (flib.Contains(node.op())) {
-        // This is a function call node.
-        collect_tf_data_functions_dfs(node.op());
-      }
-      // Check if there are functions in attributes.
-      for (const auto& attr : node.attr()) {
-        const AttrValue& attr_value = attr.second;
-        if (attr_value.has_func()) {
-          collect_tf_data_functions_dfs(attr_value.func().name());
-        }
-        if (attr_value.has_list()) {
-          for (const auto& func : attr_value.list().func()) {
-            collect_tf_data_functions_dfs(func.name());
-          }
-        }
-      }
-    }
-  };
-  // Perform DFS for all tf.data functions in `fdef_lib`.
-  for (const auto& func_def : fdef_lib.function()) {
-    const string& func_name = func_def.signature().name();
-    if (IsTFDataFunction(func_def)) collect_tf_data_functions_dfs(func_name);
-  }
-  return tf_data_functions;
-}
-
 Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
                                           GraphDef* optimized_graph) {
   const uint64 start_us = Env::Default()->NowMicros();
@@ -772,9 +723,6 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
     find_xla_compiled_functions(function.node_def());
   }
 
-  absl::flat_hash_set<string> tf_data_functions =
-      CollectTfDataFunctions(flib, optimized_graph->library());
-
   // Optimize each function only once.
   absl::flat_hash_set<string> optimized_funcs;
   while (optimize_function_library) {
@@ -799,9 +747,8 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
       // the function optimizer, before we can optimize function body.
       if (IsParametrized(func)) continue;
 
-      // Skip tf.data functions as they are optimized by tf.data meta optimizer
-      // and in function instantiation.
-      if (tf_data_functions.contains(func_name)) continue;
+      // Skip tf.data functions as they are optimized by tf.data meta optimizer.
+      if (IsTFDataFunction(func)) continue;
 
       VLOG(3) << "Optimize function: function=" << func_name << " ["
               << function_idx++ << " of "
