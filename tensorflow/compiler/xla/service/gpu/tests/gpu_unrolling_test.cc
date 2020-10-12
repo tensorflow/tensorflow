@@ -231,6 +231,10 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedPower) {
                      /*match_optimized_ir=*/true);
 }
 
+
+#if !defined(TENSORFLOW_USE_ROCM)
+// TODO(rocm) : fixme
+// https://github.com/ROCmSoftwarePlatform/tensorflow-internal/issues/82
 TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedAtan2) {
   HloModuleConfig config;
   auto debug_options = HloTestBase::GetDebugOptionsForTest();
@@ -255,6 +259,7 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedAtan2) {
       )",
                      /*match_optimized_ir=*/true);
 }
+#endif
 
 TEST_F(GpuUnrollingTest, UnrollMultiOutputFusion) {
   HloModuleConfig config;
