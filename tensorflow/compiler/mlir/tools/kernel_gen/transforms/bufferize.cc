@@ -15,6 +15,8 @@ limitations under the License.
 
 // This file implements logic for translating mixed IR to buffer form.
 
+#include "mlir/Transforms/Bufferize.h"  // from @llvm-project
+
 #include <cstddef>
 #include <memory>
 
@@ -29,7 +31,6 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Transforms/BufferPlacement.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 
 namespace mlir {

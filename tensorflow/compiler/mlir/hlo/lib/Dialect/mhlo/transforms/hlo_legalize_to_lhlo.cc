@@ -34,7 +34,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Transforms/BufferPlacement.h"
+#include "mlir/Transforms/Bufferize.h"
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
