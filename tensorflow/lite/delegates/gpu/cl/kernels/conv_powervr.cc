@@ -233,6 +233,16 @@ void ConvPowerVR::GenerateCode(const DeviceInfo& device_info) {
   if (conv_params_.IsPrivateMemBroadcast() && device_info.IsCL20OrHigher()) {
     compiler_options_.push_back(CompilerOptions::CL_2_0);
   }
+  bool kernel_is_trivial =
+      conv_params_.x_kernel_is_1 && conv_params_.y_kernel_is_1;
+  if (definition_.src_tensors[0].HasAxis(Axis::DEPTH)) {
+    kernel_is_trivial = kernel_is_trivial & conv_params_.z_kernel_is_1;
+  }
+  if (device_info.IsAdreno3xx() &&
+      definition_.precision == CalculationsPrecision::F16 &&
+      kernel_is_trivial) {
+    compiler_options_.push_back(CompilerOptions::ADRENO_FULL_SIMD_LINE);
+  }
 }
 
 absl::Status ConvPowerVR::BindArguments() {
@@ -284,23 +294,34 @@ int3 ConvPowerVR::GetGridSize() const {
     if (definition_.src_tensors[0].HasAxis(Axis::DEPTH)) {
       grid_x *= task_size_z;
     }
-    wg.x = DivideRoundUp(grid_x, work_group_size_.x);
-    wg.y = DivideRoundUp(task_size_s, work_group_size_.y);
-    return int3(
-        wg[conv_params_.work_group_launch_order[0]] * work_group_size_.x,
-        wg[conv_params_.work_group_launch_order[1]] * work_group_size_.y, 1);
+    if (conv_params_.work_group_launch_order[0] == 0 &&
+        conv_params_.work_group_launch_order[1] == 1) {
+      return int3(grid_x, task_size_s, 1);
+    } else {
+      wg.x = DivideRoundUp(grid_x, work_group_size_.x);
+      wg.y = DivideRoundUp(task_size_s, work_group_size_.y);
+      return int3(
+          wg[conv_params_.work_group_launch_order[0]] * work_group_size_.x,
+          wg[conv_params_.work_group_launch_order[1]] * work_group_size_.y, 1);
+    }
   } else {
     int grid_y = task_size_y;
     if (definition_.src_tensors[0].HasAxis(Axis::DEPTH)) {
       grid_y *= task_size_z;
     }
-    wg.x = DivideRoundUp(task_size_x, work_group_size_.x);
-    wg.y = DivideRoundUp(grid_y, work_group_size_.y);
-    wg.z = DivideRoundUp(task_size_s, work_group_size_.z);
-    return int3(
-        wg[conv_params_.work_group_launch_order[0]] * work_group_size_.x,
-        wg[conv_params_.work_group_launch_order[1]] * work_group_size_.y,
-        wg[conv_params_.work_group_launch_order[2]] * work_group_size_.z);
+    if (conv_params_.work_group_launch_order[0] == 0 &&
+        conv_params_.work_group_launch_order[1] == 1 &&
+        conv_params_.work_group_launch_order[2] == 2) {
+      return int3(task_size_x, grid_y, task_size_s);
+    } else {
+      wg.x = DivideRoundUp(task_size_x, work_group_size_.x);
+      wg.y = DivideRoundUp(grid_y, work_group_size_.y);
+      wg.z = DivideRoundUp(task_size_s, work_group_size_.z);
+      return int3(
+          wg[conv_params_.work_group_launch_order[0]] * work_group_size_.x,
+          wg[conv_params_.work_group_launch_order[1]] * work_group_size_.y,
+          wg[conv_params_.work_group_launch_order[2]] * work_group_size_.z);
+    }
   }
 }
 
@@ -1190,7 +1211,16 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     conv_params.fixed_work_group_size = false;
     conv_params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
   } else if (device_info.IsAdreno()) {
-    conv_params.block_size = int4(2, 2, 1, 1);
+    conv_params.block_size = int4(2, 2, 1, 2);
+    if (device_info.IsAdreno3xx()) {
+      if (definition.precision == CalculationsPrecision::F16) {
+        conv_params.block_size = int4(2, 2, 1, 2);
+      } else if (definition.precision == CalculationsPrecision::F32_F16) {
+        conv_params.block_size = int4(2, 1, 1, 2);
+      } else {  // F32
+        conv_params.block_size = int4(2, 2, 1, 1);
+      }
+    }
     work_group_size_ = int3(8, 2, 1);
     conv_params.work_group_launch_order = int3(0, 1, 2);
     conv_params.fixed_work_group_size = false;
