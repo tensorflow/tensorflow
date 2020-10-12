@@ -5,11 +5,13 @@ func @main(tensor<4xi1>) -> tensor<4xi1> {
   // CHECK:      {
   // CHECK-NEXT:   version: 3,
   // CHECK-NEXT:   operator_codes: [ {
-  // CHECK-NEXT:     builtin_code: LOGICAL_OR,
-  // CHECK-NEXT:     version: 1
+  // CHECK-NEXT:     deprecated_builtin_code: 84,
+  // CHECK-NEXT:     version: 1,
+  // CHECK-NEXT:     builtin_code: LOGICAL_OR
   // CHECK-NEXT:   }, {
-  // CHECK-NEXT:     builtin_code: LOGICAL_AND,
-  // CHECK-NEXT:     version: 1
+  // CHECK-NEXT:     deprecated_builtin_code: 86,
+  // CHECK-NEXT:     version: 1,
+  // CHECK-NEXT:     builtin_code: LOGICAL_AND
   // CHECK-NEXT:   } ],
   // CHECK-NEXT:   subgraphs: [ {
   // CHECK-NEXT:     tensors: [ {

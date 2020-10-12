@@ -49,15 +49,16 @@ constexpr int kKeywordModelNodeAndRegistrationCount = 15;
 // Run this test with '--copt=-DTF_LITE_STATIC_MEMORY' to get optimized memory
 // runtime values:
 #ifdef TF_LITE_STATIC_MEMORY
-constexpr int kKeywordModelTotalSize = 14336;
-constexpr int kKeywordModelTailSize = 13664;
+constexpr int kKeywordModelTotalSize = 14160;
+constexpr int kKeywordModelTailSize = 13488;
 #else
-constexpr int kKeywordModelTotalSize = 14704;
-constexpr int kKeywordModelTailSize = 14032;
+constexpr int kKeywordModelTotalSize = 14512;
+constexpr int kKeywordModelTailSize = 13840;
 #endif
 constexpr int kKeywordModelHeadSize = 672;
 constexpr int kKeywordModelTfLiteTensorVariableBufferDataSize = 10240;
 constexpr int kKeywordModelOpRuntimeDataSize = 148;
+constexpr int kKeywordModelPersistentBufferDataSize = 532;
 
 constexpr int kTestConvModelArenaSize = 12 * 1024;
 uint8_t test_conv_tensor_arena[kTestConvModelArenaSize];
@@ -68,14 +69,15 @@ constexpr int kTestConvModelNodeAndRegistrationCount = 7;
 // NOTE: These values are measured on x86-64:
 // TODO(b/158651472): Consider auditing these values on non-64 bit systems.
 #ifdef TF_LITE_STATIC_MEMORY
-constexpr int kTestConvModelTotalSize = 9552;
-constexpr int kTestConvModelTailSize = 1808;
+constexpr int kTestConvModelTotalSize = 9584;
+constexpr int kTestConvModelTailSize = 1840;
 #else
-constexpr int kTestConvModelTotalSize = 9712;
-constexpr int kTestConvModelTailSize = 1968;
+constexpr int kTestConvModelTotalSize = 9760;
+constexpr int kTestConvModelTailSize = 2016;
 #endif
 constexpr int kTestConvModelHeadSize = 7744;
 constexpr int kTestConvModelOpRuntimeDataSize = 136;
+constexpr int kTestConvModelPersistentBufferDataSize = 648;
 
 struct ModelAllocationThresholds {
   size_t tensor_count = 0;
@@ -85,6 +87,7 @@ struct ModelAllocationThresholds {
   size_t tail_alloc_size = 0;
   size_t tensor_variable_buffer_data_size = 0;
   size_t op_runtime_data_size = 0;
+  size_t persistent_buffer_data = 0;
 };
 
 void EnsureAllocatedSizeThreshold(const char* allocation_type, size_t actual,
@@ -149,6 +152,13 @@ void ValidateModelAllocationThresholds(
           .used_bytes,
       0);
   EnsureAllocatedSizeThreshold(
+      "PersistentBufferData",
+      allocator
+          .GetRecordedAllocation(
+              tflite::RecordedAllocationType::kPersistentBufferData)
+          .used_bytes,
+      thresholds.persistent_buffer_data);
+  EnsureAllocatedSizeThreshold(
       "NodeAndRegistration",
       allocator
           .GetRecordedAllocation(
@@ -195,6 +205,7 @@ TF_LITE_MICRO_TEST(TestKeywordModelMemoryThreshold) {
   thresholds.tensor_variable_buffer_data_size =
       kKeywordModelTfLiteTensorVariableBufferDataSize;
   thresholds.op_runtime_data_size = kKeywordModelOpRuntimeDataSize;
+  thresholds.persistent_buffer_data = kKeywordModelPersistentBufferDataSize;
 
   ValidateModelAllocationThresholds(interpreter.GetMicroAllocator(),
                                     thresholds);
@@ -216,6 +227,7 @@ TF_LITE_MICRO_TEST(TestConvModelMemoryThreshold) {
   thresholds.head_alloc_size = kTestConvModelHeadSize;
   thresholds.tail_alloc_size = kTestConvModelTailSize;
   thresholds.op_runtime_data_size = kTestConvModelOpRuntimeDataSize;
+  thresholds.persistent_buffer_data = kTestConvModelPersistentBufferDataSize;
 
   ValidateModelAllocationThresholds(interpreter.GetMicroAllocator(),
                                     thresholds);

@@ -26,7 +26,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import combinations
-from tensorflow.python.keras import optimizers
+from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 from tensorflow.python.ops import array_ops
@@ -254,9 +254,9 @@ class AdamOptimizerTest(test.TestCase, parameterized.TestCase):
   def testResourceBasic(self):
     self.doTestBasic()
 
+  @combinations.generate(combinations.combine(mode=["eager"]))
   def testBasicCallableParams(self):
-    with context.eager_mode():
-      self.doTestBasic(use_callable_params=True)
+    self.doTestBasic(use_callable_params=True)
 
   @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testBasicWithAmsgrad(self):
@@ -525,19 +525,19 @@ class AdamOptimizerTest(test.TestCase, parameterized.TestCase):
           self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
           self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
 
+  @combinations.generate(combinations.combine(mode=["eager"]))
   def testSlotsUniqueEager(self):
-    with context.eager_mode():
-      v1 = variables.Variable(1.)
-      v2 = variables.Variable(1.)
-      opt = adam.Adam(1.)
-      opt.minimize(lambda: v1 + v2, var_list=[v1, v2])
-      # There should be iteration, and two unique slot variables for v1 and v2.
-      self.assertEqual(5, len(set(v.ref() for v in opt.variables())))
-      self.assertEqual(
-          self.evaluate(opt.variables()[0]), self.evaluate(opt.iterations))
+    v1 = variables.Variable(1.)
+    v2 = variables.Variable(1.)
+    opt = adam.Adam(1.)
+    opt.minimize(lambda: v1 + v2, var_list=[v1, v2])
+    # There should be iteration, and two unique slot variables for v1 and v2.
+    self.assertLen(set(v.ref() for v in opt.variables()), 5)
+    self.assertEqual(
+        self.evaluate(opt.variables()[0]), self.evaluate(opt.iterations))
 
   def testSetWeightsFromV1AdamWithoutMinimize(self):
-    keras_v1_adam = optimizers.Adam()
+    keras_v1_adam = optimizer_v1.Adam()
     keras_v2_adam = adam.Adam()
     keras_v2_adam.set_weights(keras_v1_adam.get_weights())
     keras_v1_iteration = keras_v1_adam.iterations
@@ -708,9 +708,9 @@ class NonFusedAdamOptimizerTest(test.TestCase, parameterized.TestCase):
   def testResourceBasic(self):
     self.doTestBasic()
 
+  @combinations.generate(combinations.combine(mode=["eager"]))
   def testBasicCallableParams(self):
-    with context.eager_mode():
-      self.doTestBasic(use_callable_params=True)
+    self.doTestBasic(use_callable_params=True)
 
   @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testBasicWithAmsgrad(self):

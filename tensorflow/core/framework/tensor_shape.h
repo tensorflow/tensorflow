@@ -332,6 +332,11 @@ class TensorShape : public TensorShapeBase<TensorShape> {
   friend class Tensor;
 };
 
+/// Outputs `TensorShapeBase` to `std::ostream`.
+inline std::ostream& operator<<(std::ostream& os, const TensorShape& ts) {
+  return os << ts.DebugString();
+}
+
 /// Represents the value of one dimension in a TensorShape.
 struct TensorShapeDim {
   explicit TensorShapeDim(int64 s) : size(s) {}

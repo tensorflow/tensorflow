@@ -318,7 +318,7 @@ R"(HloModule CopyStartAndCopyDone_module
 
 ENTRY %CopyStartAndCopyDone (v1: f32[], v2: f32[2,3]) -> (f32[], f32[2,3]) {
   %v1 = f32[] parameter(0)
-  %copy-start.1 = (f32[], f32[], u32[]) copy-start(f32[] %v1)
+  %copy-start.1 = (f32[], f32[], u32[]) copy-start(f32[] %v1), is_cross_program_prefetch=true
   %copy-done.1 = f32[] copy-done((f32[], f32[], u32[]) %copy-start.1)
   %v2 = f32[2,3]{1,0:S(1)} parameter(1)
   %copy-start.2 = (f32[2,3]{1,0:S(2)}, f32[2,3]{1,0:S(1)}, u32[]) copy-start(f32[2,3]{1,0:S(1)} %v2)
@@ -989,6 +989,19 @@ ENTRY %CustomCallWithHasSideEffect (p0: (f32[2,2], f32[42,2,3]), p1: f32[123,4])
   %p0 = (f32[2,2]{0,1}, f32[42,2,3]{0,1,2}) parameter(0)
   %p1 = f32[123,4]{0,1} parameter(1)
   ROOT %custom-call = (f32[1,2,3]{0,2,1}, f32[1,2,3]{1,2,0}) custom-call((f32[2,2]{0,1}, f32[42,2,3]{0,1,2}) %p0, f32[123,4]{0,1} %p1), custom_call_target="baz", custom_call_has_side_effect=true
+}
+
+)"
+},
+// CustomCallWithAliasing
+{
+"CustomCallWithAliasing",
+R"(HloModule CustomCallWithAliasing
+
+ENTRY %CustomCallWithAliasing (p0: (f32[2,2], f32[42,2,3]), p1: f32[123,4]) -> (f32[123,4], f32[2,2], f32[1,2,3]) {
+  %p0 = (f32[2,2]{0,1}, f32[42,2,3]{0,1,2}) parameter(0)
+  %p1 = f32[123,4]{0,1} parameter(1)
+  ROOT %custom-call = (f32[123,4]{0,1}, f32[2,2]{0,1}, f32[1,2,3]{0,1,2}) custom-call((f32[2,2]{0,1}, f32[42,2,3]{0,1,2}) %p0, f32[123,4]{0,1} %p1), custom_call_target="baz", output_to_operand_aliasing={{0}: (1, {}), {1}: (0, {0})}
 }
 
 )"
@@ -2104,6 +2117,19 @@ ENTRY %ShortConstant.v4 () -> f32[67,89] {
 )";
   auto result = ParseAndReturnVerifiedModule(original);
   TF_EXPECT_OK(result.status());
+  EXPECT_EQ(result.ValueOrDie()->ToString(HloPrintOptions()), original);
+}
+
+TEST_F(HloParserTest, NegativeNan) {
+  const string original = R"(HloModule NegativeNan_module
+
+ENTRY %NegativeNan () -> bf16[2] {
+  ROOT %constant = bf16[2]{0} constant({-nan, -nan})
+}
+
+)";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_EQ(Status::OK(), result.status());
   EXPECT_EQ(result.ValueOrDie()->ToString(HloPrintOptions()), original);
 }
 

@@ -40,9 +40,7 @@ limitations under the License.
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/setround.h"
 #include "tensorflow/core/profiler/lib/annotated_traceme.h"
-#include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 #if !defined(IS_MOBILE_PLATFORM)
@@ -162,6 +160,17 @@ Status KernelAndDeviceFunc::InstantiateFunc(const Context& ctx,
   }
   options.composite_devices = composite_devices_;
   options.input_resource_dtypes_and_shapes = input_resource_dtypes_and_shapes_;
+  if (outputs_on_op_device_) {
+    const FunctionLibraryDefinition* lib_def =
+        pflr_->GetFunctionLibraryDefinition();
+    const FunctionDef* fdef = lib_def->Find(ndef.op());
+    if (fdef == nullptr) {
+      return errors::InvalidArgument("Failed to find function ", ndef.op());
+    }
+    for (int i = 0; i < fdef->signature().output_arg_size(); ++i) {
+      options.output_devices.push_back(options.target);
+    }
+  }
 
   const auto& it = ndef.attr().find("executor_type");
   if (it != ndef.attr().end()) {
@@ -223,7 +232,8 @@ Status KernelAndDeviceFunc::InstantiateFunc(const Context& ctx,
 Status KernelAndDeviceFunc::Init(const Context& ctx, const NodeDef& ndef,
                                  GraphCollector* graph_collector) {
   TF_RETURN_IF_ERROR(InstantiateFunc(ctx, ndef, graph_collector));
-  return pflr_->GetOutputDevices(handle_, &output_devices_);
+  return pflr_->GetOutputDevices(handle_, &output_devices_,
+                                 ctx.eager_lazy_copy);
 }
 
 namespace {
@@ -309,7 +319,12 @@ Status KernelAndDeviceOp::Run(
   if (outputs != nullptr) {
     outputs->clear();
     for (int i = 0; i < context.num_outputs(); ++i) {
-      outputs->push_back(Tensor(*context.mutable_output(i)));
+      const auto* output_tensor = context.mutable_output(i);
+      if (output_tensor != nullptr) {
+        outputs->push_back(Tensor(*output_tensor));
+      } else {
+        outputs->push_back(Tensor());
+      }
     }
   }
   return Status::OK();
@@ -387,14 +402,6 @@ void KernelAndDeviceFunc::RunAsync(
 
   outputs->clear();
 
-  profiler::TraceMeProducer activity(
-      // To TraceMeConsumers in ExecutorState::Process/Finish.
-      [&] {
-        return profiler::TraceMeEncode(
-            "FunctionRun", {{"id", opts->step_id}, {"_r", 1} /*root_event*/});
-      },
-      profiler::ContextType::kTfExecutor, opts->step_id,
-      profiler::TraceMeLevel::kInfo);
   pflr_->Run(*opts, handle_, inputs, outputs,
              [opts, rendezvous, local_cm, step_container, this,
               done = std::move(done)](const Status& s) {

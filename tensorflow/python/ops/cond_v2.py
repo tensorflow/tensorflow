@@ -25,7 +25,6 @@ from __future__ import print_function
 
 import collections
 
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import auto_control_deps_utils as acd
@@ -34,6 +33,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
@@ -43,6 +43,7 @@ from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gradients_util
+from tensorflow.python.ops import handle_data_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import nest
 
@@ -287,6 +288,7 @@ def _build_cond(pred,
     # Prevent fetching since the variant outputs can't be fetched directly.
     if_op.graph.prevent_fetching(if_op)
 
+  _copy_handle_data(tensors, true_graph.outputs, false_graph.outputs)
   # Return identities for each output of the If op, rather than the output of
   # the If op directly. This makes pruning work if the output of cond() is
   # fetched: the lowering pass converts the If outputs into IdentityN outputs,
@@ -814,6 +816,32 @@ def _get_output_shapes(*branch_graph_outputs):
   return output_shapes
 
 
+def _copy_handle_data(external_tensors, *branch_graph_outputs):
+  """Combines shapes in handle data and sets metadata on `external_tensors`."""
+  for tensors in zip(external_tensors, *branch_graph_outputs):
+    external = tensors[0]
+    internal = tensors[1:]
+    internal_handle_data = []
+    for tensor in internal:
+      handle_data = handle_data_util.get_resource_handle_data(tensor)
+      # NOTE: Assumes handle data has only one ShapeAndType entry. It's
+      # unclear how to combine different lengths across branches.
+      if not handle_data.is_set or len(handle_data.shape_and_type) != 1:
+        break
+      internal_handle_data.append(handle_data)
+    else:  # There is handle data, so we need to combine it.
+      combined_shape = tensor_shape.TensorShape(None)
+      for handle_data in internal_handle_data:
+        handle_shape = tensor_shape.TensorShape(
+            handle_data.shape_and_type[0].shape)
+        combined_shape = combined_shape.most_specific_compatible_shape(
+            handle_shape)
+      combined_handle_data = internal_handle_data[0]
+      combined_handle_data.shape_and_type[0].shape.CopyFrom(
+          combined_shape.as_proto())
+      handle_data_util.set_handle_data(external, combined_handle_data)
+
+
 def verify_captures(op_type, branch_graphs):
   """Verify that a branch's tensor is not accessed in another branch fn."""
   # Note: It is technically not possible for lower-branch_index branches to
@@ -1120,10 +1148,7 @@ def _build_case(branch_index,
         op for op in bg.get_operations() if auto_control_deps.op_is_stateful(op)
     ])
 
-  # TODO(b/161915509): Remove this after 08/20/2020. This is required to abide
-  # by 3-week forward compat window of new TF python op generating code with
-  # stale runtime binaries.
-  if (stateful_ops or not compat.forward_compatible(2020, 8, 20)):
+  if stateful_ops:
     op_fn = gen_functional_ops.case
   else:
     op_fn = gen_functional_ops.stateless_case
@@ -1147,6 +1172,7 @@ def _build_case(branch_index,
     # Prevent fetching since the variant outputs can't be fetched directly.
     case_op.graph.prevent_fetching(case_op)
 
+  _copy_handle_data(tensors, *[g.outputs for g in branch_graphs])
   # Return identities for each output of the Case op, rather than the output of
   # the Case op directly. This makes pruning work if the output of switch_case()
   # is fetched: the lowering pass converts the Case outputs into IdentityN

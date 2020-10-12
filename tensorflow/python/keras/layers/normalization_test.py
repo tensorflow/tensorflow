@@ -22,12 +22,10 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
-from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
@@ -68,6 +66,15 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
         kwargs={'scale': False,
                 'center': False},
         input_shape=(3, 3))
+    testing_utils.layer_test(
+        keras.layers.BatchNormalization,
+        kwargs={
+            'gamma_initializer': 'ones',
+            'beta_initializer': 'ones',
+            'moving_mean_initializer': 'zeros',
+            'moving_variance_initializer': 'ones'
+        },
+        input_shape=(3, 2, 4, 2))
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_batchnorm_weights(self):
@@ -211,6 +218,7 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
     train_loss = model.train_on_batch(test_data, test_targets)
     self.assertAlmostEqual(test_loss, train_loss)
 
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_eager_batchnorm_in_custom_model_call_with_tf_function(self):
 
     class MyModel(keras.Model):
@@ -223,16 +231,15 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
       def call(self, x, training):
         return self.bn(x, training=training)
 
-    with context.eager_mode():
-      model = MyModel()
+    model = MyModel()
 
-      for _ in range(10):
-        x = constant_op.constant(0.5, shape=[1, 1])
-        model(x, training=True)
+    for _ in range(10):
+      x = constant_op.constant(0.5, shape=[1, 1])
+      model(x, training=True)
 
-      # Make sure the moving mean and variance have been updated
-      self.assertAllClose(model.bn.moving_mean.numpy(), [0.047], atol=3e-3)
-      self.assertAllClose(model.bn.moving_variance.numpy(), [0.9], atol=3e-2)
+    # Make sure the moving mean and variance have been updated
+    self.assertAllClose(model.bn.moving_mean.numpy(), [0.047], atol=3e-3)
+    self.assertAllClose(model.bn.moving_variance.numpy(), [0.9], atol=3e-2)
 
 
 class BatchNormalizationV1Test(keras_parameterized.TestCase):
@@ -321,7 +328,7 @@ class BatchNormalizationV2Test(keras_parameterized.TestCase):
     norm = normalization_v2.BatchNormalization(fused=True)
     self.assertEqual(norm.fused, True)
     inp = keras.layers.Input(shape=(4, 4))
-    with self.assertRaisesRegex(ValueError, '4D input tensors'):
+    with self.assertRaisesRegex(ValueError, '4D or 5D input tensors'):
       norm(inp)
 
   def test_updates_in_wrap_function(self):
@@ -757,7 +764,7 @@ class LayerNormalizationNumericsTest(keras_parameterized.TestCase):
         self.assertAllClose(gamma_grad_t, gamma_grad_ref, rtol=tol, atol=tol)
 
   # The gradient_checker_v2 does not work properly with LayerNorm in graph mode.
-  @tf_test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_backward(self):
     # For numeric stability, we ensure the axis's dimension(s) have at least 4
     # elements.

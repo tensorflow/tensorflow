@@ -69,7 +69,6 @@ class ProcessFunctionLibraryRuntime {
       const OptimizerOptions& optimizer_options,
       thread::ThreadPool* thread_pool = nullptr,
       DistributedFunctionLibraryRuntime* parent = nullptr,
-      const CustomKernelCreator* custom_kernel_creator = nullptr,
       const SessionMetadata* session_metadata = nullptr,
       Rendezvous::Factory rendezvous_factory = Rendezvous::Factory());
 
@@ -151,7 +150,8 @@ class ProcessFunctionLibraryRuntime {
   // is set to the device backing the resource.
   // REQUIRES: `handle` identifies a multi-device function.
   Status GetOutputDevices(FunctionLibraryRuntime::Handle handle,
-                          std::vector<Device*>* output_devices) const;
+                          std::vector<Device*>* output_devices,
+                          const bool eager_lazy_copy) const;
 
   // Returns true if function with handle `handle` was instantiated on device
   // `device_name`. Returns false for multi-device functions.
@@ -271,7 +271,8 @@ class ProcessFunctionLibraryRuntime {
           lib_def_(std::move(lib_def)),
           num_outputs_(num_outputs),
           ret_types_(std::move(ret_types)),
-          is_cross_process_(false) {}
+          is_cross_process_(false),
+          has_remote_outputs(false) {}
 
     const string function_name_;
     const string function_key_;
@@ -285,6 +286,8 @@ class ProcessFunctionLibraryRuntime {
 
     // Indicates whether this function needs to execute cross process.
     bool is_cross_process_;
+    // Indicates whether this function has remote outputs.
+    bool has_remote_outputs;
 
     // Maps the device name to the information about the component function
     // be run on this device.
@@ -353,7 +356,6 @@ class ProcessFunctionLibraryRuntime {
   // runtime w.r.t. to number of functions in the current function library.
   Status Clone(Env* env, int graph_def_version,
                const OptimizerOptions& optimizer_options,
-               const CustomKernelCreator* custom_kernel_creator,
                std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
                std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr,
                bool skip_flib_def = false) const;

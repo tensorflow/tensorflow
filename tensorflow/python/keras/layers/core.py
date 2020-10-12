@@ -30,6 +30,7 @@ import numpy as np
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -46,6 +47,7 @@ from tensorflow.python.keras.layers.ops import core as core_ops
 from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
@@ -57,10 +59,16 @@ from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
-from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import get_canonical_name_for_symbol
 from tensorflow.python.util.tf_export import get_symbol_from_name
 from tensorflow.python.util.tf_export import keras_export
+
+# TODO(b/168039935): track dropout rate to decide whether/how to make a
+# dropout rate fastpath.
+keras_temporary_dropout_rate = monitoring.BoolGauge(
+    '/tensorflow/api/keras/dropout/temp_rate_is_zero',
+    'Temporarily record if Keras dropout layer was created w/'
+    'constant rate = 0')
 
 
 # pylint: disable=g-classes-have-attributes
@@ -186,6 +194,10 @@ class Dropout(Layer):
   def __init__(self, rate, noise_shape=None, seed=None, **kwargs):
     super(Dropout, self).__init__(**kwargs)
     self.rate = rate
+    if isinstance(rate, (int, float)) and not rate:
+      keras_temporary_dropout_rate.get_cell().set(True)
+    else:
+      keras_temporary_dropout_rate.get_cell().set(False)
     self.noise_shape = noise_shape
     self.seed = seed
     self.supports_masking = True
@@ -201,7 +213,7 @@ class Dropout(Layer):
     noise_shape = []
     for i, value in enumerate(self.noise_shape):
       noise_shape.append(concrete_inputs_shape[i] if value is None else value)
-    return ops.convert_to_tensor_v2(noise_shape)
+    return ops.convert_to_tensor_v2_with_dispatch(noise_shape)
 
   def call(self, inputs, training=None):
     if training is None:
@@ -1292,8 +1304,16 @@ class TFOpLambda(Layer):
                                       api_name='keras',
                                       add_prefix_to_v1_names=True))
     if 'name' not in kwargs:
+      # Generate a name.
+      # TFOpLambda layers avoid already-observed names,
+      # because users cannot easily control the generated names.
+      # Without this avoidance, users would be more likely to run
+      # into unavoidable duplicate layer name collisions.
+      # (For standard layers users could just set `name` when creating the
+      # layer to work around a collision, but they can't do that for
+      # auto-generated layers)
       kwargs['name'] = K.unique_object_name(
-          'tf.' + self.symbol, zero_based=True)
+          'tf.' + self.symbol, zero_based=True, avoid_observed_names=True)
     kwargs['autocast'] = False
 
     # Decorate the function to produce this layer's call method

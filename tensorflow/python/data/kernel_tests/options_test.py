@@ -18,6 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import platform
+import sys
+
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.ops import optimization_options
@@ -65,6 +68,9 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def testOptionsTwiceSameOption(self):
+    if sys.version_info >= (3, 8) and platform.system() == "Windows":
+      # TODO(b/165013260): Fix this
+      self.skipTest("Test is currently broken on Windows with Python 3.8")
     options1 = dataset_ops.Options()
     options1.experimental_optimization.autotune = False
     options2 = dataset_ops.Options()

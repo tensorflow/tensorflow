@@ -40,7 +40,8 @@ MaliGPU GetMaliGPUVersion(const std::string& device_name) {
       {"T830", MaliGPU::T830}, {"T860", MaliGPU::T860}, {"T880", MaliGPU::T880},
       {"G31", MaliGPU::G31},   {"G51", MaliGPU::G51},   {"G71", MaliGPU::G71},
       {"G52", MaliGPU::G52},   {"G72", MaliGPU::G72},   {"G76", MaliGPU::G76},
-      {"G57", MaliGPU::G57},   {"G77", MaliGPU::G77},
+      {"G57", MaliGPU::G57},   {"G77", MaliGPU::G77},   {"G68", MaliGPU::G68},
+      {"G78", MaliGPU::G78},
   };
   for (const auto& v : kMapping) {
     if (device_name.find(v.first) != std::string::npos) {
@@ -212,7 +213,8 @@ bool MaliInfo::IsBifrost() const {
 }
 
 bool MaliInfo::IsValhall() const {
-  return gpu_version == MaliGPU::G57 || gpu_version == MaliGPU::G77;
+  return gpu_version == MaliGPU::G57 || gpu_version == MaliGPU::G77 ||
+         gpu_version == MaliGPU::G68 || gpu_version == MaliGPU::G78;
 }
 
 bool DeviceInfo::SupportsTextureArray() const {
@@ -251,6 +253,30 @@ bool DeviceInfo::SupportsFloatImage2D(DataType data_type, int channels) const {
 
 bool DeviceInfo::SupportsOneLayerTextureArray() const {
   return !IsAdreno() || adreno_info.support_one_layer_texture_array;
+}
+
+bool DeviceInfo::SupportsExtension(const std::string& extension) const {
+  for (const auto& ext : extensions) {
+    if (ext == extension) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool DeviceInfo::IsCL20OrHigher() const {
+  return cl_version != OpenCLVersion::CL_1_0 &&
+         cl_version != OpenCLVersion::CL_1_1 &&
+         cl_version != OpenCLVersion::CL_1_2;
+}
+
+bool DeviceInfo::SupportsSubGroupWithSize(int sub_group_size) const {
+  for (auto subgroup_size : supported_subgroup_sizes) {
+    if (sub_group_size == subgroup_size) {
+      return true;
+    }
+  }
+  return false;
 }
 
 bool DeviceInfo::IsAdreno() const { return vendor == Vendor::kQualcomm; }

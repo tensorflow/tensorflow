@@ -89,8 +89,7 @@ class _TestExtended(distribute_lib.StrategyExtendedV1):
                                            [distribute_lib.InputContext()],
                                            self._container_strategy())
 
-  def _experimental_distribute_datasets_from_function(self, dataset_fn,
-                                                      options):
+  def _distribute_datasets_from_function(self, dataset_fn, options):
     return dataset_fn(distribute_lib.InputContext())
 
   def _local_results(self, value):
@@ -124,6 +123,9 @@ class _TestExtended(distribute_lib.StrategyExtendedV1):
       return result
     else:
       return nest.map_structure(self._unwrap, result)
+
+  def _get_local_replica_id(self, replica_id_in_sync_group):
+    return replica_id_in_sync_group
 
 
 def _assert_in_default_state(t):
@@ -162,7 +164,7 @@ class TestStrategyTest(test.TestCase):
 
     def run_fn():
       replica_context = ds_context.get_replica_context()
-      self.assertTrue(replica_context is not None)
+      self.assertIsNotNone(replica_context)
       self.assertIs(None, ds_context.get_cross_replica_context())
       self.assertFalse(ds_context.in_cross_replica_context())
       self.assertTrue(ds_context.has_strategy())
@@ -546,14 +548,14 @@ class DefaultDistributionStrategyTest(test.TestCase, parameterized.TestCase):
     if context.executing_eagerly():
       dataset_fn = lambda _: dataset_ops.DatasetV2.range(10).batch(2)
       dist_dataset_from_func = \
-          default_strategy.experimental_distribute_datasets_from_function(
+          default_strategy.distribute_datasets_from_function(
               dataset_fn)
       next_val = next(iter(dist_dataset_from_func))
       self.assertAllEqual([0, 1], self.evaluate(next_val))
     else:
       dataset_fn = lambda _: dataset_ops.DatasetV2.range(10).batch(2)
       dist_dataset_from_func = \
-        default_strategy.experimental_distribute_datasets_from_function(
+        default_strategy.distribute_datasets_from_function(
             dataset_fn)
       dataset_ops.make_initializable_iterator(dist_dataset_from_func)
 

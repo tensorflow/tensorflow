@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/version.h"
 
 namespace tflite {
@@ -44,12 +45,16 @@ void LeakyReluTester::Test(TfLiteDelegate* delegate) const {
 
   std::unique_ptr<Interpreter> delegate_interpreter;
   ASSERT_EQ(
-      InterpreterBuilder(model, ::tflite::ops::builtin::BuiltinOpResolver())(
+      InterpreterBuilder(
+          model,
+          ::tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates())(
           &delegate_interpreter),
       kTfLiteOk);
   std::unique_ptr<Interpreter> default_interpreter;
   ASSERT_EQ(
-      InterpreterBuilder(model, ::tflite::ops::builtin::BuiltinOpResolver())(
+      InterpreterBuilder(
+          model,
+          ::tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates())(
           &default_interpreter),
       kTfLiteOk);
 

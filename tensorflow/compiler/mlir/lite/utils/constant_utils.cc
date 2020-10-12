@@ -46,7 +46,7 @@ stream_executor::port::StatusOr<ConstantOp> CreateConstOpWithSingleValue(
   } else if (auto complex_type = element_type.dyn_cast<mlir::ComplexType>()) {
     auto etype = complex_type.getElementType();
     if (etype.isF32()) {
-      auto dialect = etype.getContext()->getRegisteredDialect("tf");
+      auto dialect = etype.getContext()->getLoadedDialect("tf");
       tensorflow::TensorProto repr;
       repr.set_dtype(tensorflow::DT_COMPLEX64);
 

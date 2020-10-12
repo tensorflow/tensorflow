@@ -386,7 +386,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
   def testDistributeDatasetIteratorWithoutFunction(self, distribution):
     data = [5., 6., 7., 8.]
     input_iterator = iter(
-        distribution.experimental_distribute_datasets_from_function(
+        distribution.distribute_datasets_from_function(
             lambda _: get_dataset_from_tensor_slices(data)))
 
     self.assertAllEqual(
@@ -401,7 +401,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
   def testDistributeDatasetIteratorWithFunction(self, distribution):
     data = [5., 6., 7., 8.]
     input_iterator = iter(
-        distribution.experimental_distribute_datasets_from_function(
+        distribution.distribute_datasets_from_function(
             lambda _: get_dataset_from_tensor_slices(data)))
 
     @def_function.function
@@ -439,7 +439,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
   def testDistributeDatasetFunctionPrefetch(self, distribution):
     data = [5., 6., 7., 8.]
     input_iterator = iter(
-        distribution.experimental_distribute_datasets_from_function(
+        distribution.distribute_datasets_from_function(
             lambda _: get_dataset_from_tensor_slices(data)))
 
     local_results = distribution.experimental_local_results(
@@ -476,10 +476,9 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
   def testDistributeDatasetFunctionHostPrefetch(self, distribution):
     data = [5., 6., 7., 8.]
     input_iterator = iter(
-        distribution.experimental_distribute_datasets_from_function(
+        distribution.distribute_datasets_from_function(
             lambda _: get_dataset_from_tensor_slices(data),
-            distribute_lib.InputOptions(
-                experimental_prefetch_to_device=False)))
+            distribute_lib.InputOptions(experimental_prefetch_to_device=False)))
 
     local_results = distribution.experimental_local_results(
         input_iterator.get_next())
@@ -636,6 +635,34 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
       combinations.combine(
           distribution=strategy_combinations.multidevice_strategies,
           mode=["eager"]))
+  def testSegmentSumWithDynamicNumberOfSegments(self, distribution):
+
+    def dataset_fn(_):
+      data = array_ops.zeros(5, dtype=dtypes.int32)
+      dataset = get_dataset_from_tensor_slices(data)
+      dataset = dataset.batch(3)
+      return dataset
+
+    input_iterator = iter(
+        distribution.distribute_datasets_from_function(dataset_fn))
+
+    @def_function.function
+    def step_fn(example):
+      segment_ids = array_ops.zeros_like_v2(example)
+      num_segment = array_ops.shape(example)[0]
+      # If number of segments is dynamic, output should be a dynamic shape.
+      return math_ops.unsorted_segment_sum(example, segment_ids, num_segment)
+
+    # This assumes that there are exactly 2 replicas
+    outputs = distribution.experimental_local_results(
+        distribution.run(step_fn, args=(next(input_iterator),)))
+    self.assertAllEqual((3,), outputs[0].shape)
+    self.assertAllEqual((2,), outputs[1].shape)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.multidevice_strategies,
+          mode=["eager"]))
   def testReshapeWithDynamicInputs(self, distribution):
 
     def dataset_fn(_):
@@ -645,7 +672,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
       return dataset
 
     input_iterator = iter(
-        distribution.experimental_distribute_datasets_from_function(dataset_fn))
+        distribution.distribute_datasets_from_function(dataset_fn))
 
     @def_function.function
     def step_fn(example):
@@ -696,7 +723,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
       return dataset
 
     input_iterator = iter(
-        distribution.experimental_distribute_datasets_from_function(dataset_fn))
+        distribution.distribute_datasets_from_function(dataset_fn))
 
     @def_function.function
     def run(inputs):
@@ -722,7 +749,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
       return dataset
 
     input_iterator = iter(
-        distribution.experimental_distribute_datasets_from_function(dataset_fn))
+        distribution.distribute_datasets_from_function(dataset_fn))
 
     def embedding_lookup(inputs):
       embedding_weights = array_ops.zeros((1, 128))
@@ -907,7 +934,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
     inputs = constant_op.constant([2., 3.])
     dataset = lambda _: dataset_ops.Dataset.from_tensor_slices(inputs).repeat(5)
     input_iterator = iter(
-        distribution.experimental_distribute_datasets_from_function(dataset))
+        distribution.distribute_datasets_from_function(dataset))
     with distribution.scope():
       var = variables.Variable(1.0)
 

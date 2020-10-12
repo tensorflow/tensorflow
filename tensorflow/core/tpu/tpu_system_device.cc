@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
 
 namespace tensorflow {
+namespace tpu {
 namespace {
 
 class TpuSystemDeviceFactory : public DeviceFactory {
@@ -75,4 +76,5 @@ void RegisterTpuSystemDevice() {
   REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_TPU_SYSTEM, TpuSystemDeviceFactory);
 }
 
+}  // namespace tpu
 }  // namespace tensorflow

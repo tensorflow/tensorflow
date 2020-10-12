@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/c/eager/parallel_device/parallel_device_lib.h"
 
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -261,18 +262,27 @@ std::unique_ptr<ParallelTensor> ParallelDevice::CopyToParallelDevice(
                                            status);
 }
 
-std::unique_ptr<ParallelTensor> ParallelDevice::DeviceIDs(
-    TFE_Context* context, TF_Status* status) const {
+std::unique_ptr<ParallelTensor> ParallelDevice::Vector(
+    TFE_Context* context, TF_Status* status,
+    absl::Span<const int32_t> values) const {
   // TODO(allenl): We could cache DeviceIDs (keyed by context).
   std::vector<TensorHandlePtr> components;
   components.reserve(underlying_devices_.size());
-  for (int device_index = 0; device_index < underlying_devices_.size();
+
+  if (values.size() != num_underlying_devices()) {
+    TF_SetStatus(
+        status, TF_INVALID_ARGUMENT,
+        "Number of values did not match number of underlying devices.");
+    return nullptr;
+  }
+
+  for (int device_index = 0; device_index < num_underlying_devices();
        ++device_index) {
-    int32_t* device_id = new int32_t;
-    *device_id = device_index;
+    int32_t* device_value = new int32_t;
+    *device_value = values[device_index];
     std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)> tensor(
         TF_NewTensor(
-            TF_INT32, /*dims=*/nullptr, /*num_dims=*/0, device_id,
+            TF_INT32, /*dims=*/nullptr, /*num_dims=*/0, device_value,
             sizeof(int32_t),
             [](void* data, size_t, void* arg) {
               delete reinterpret_cast<int32_t*>(data);
@@ -299,6 +309,16 @@ std::unique_ptr<ParallelTensor> ParallelDevice::DeviceIDs(
   }
   return ParallelTensor::FromTensorHandles(*this, std::move(components),
                                            status);
+}
+
+std::unique_ptr<ParallelTensor> ParallelDevice::DeviceIDs(
+    TFE_Context* context, TF_Status* status) const {
+  std::vector<int32_t> ids;
+  ids.reserve(num_underlying_devices());
+  for (int i = 0; i < num_underlying_devices(); ++i) {
+    ids.push_back(i);
+  }
+  return Vector(context, status, ids);
 }
 
 absl::optional<std::vector<std::unique_ptr<ParallelTensor>>>

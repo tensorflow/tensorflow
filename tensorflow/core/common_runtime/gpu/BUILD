@@ -14,6 +14,9 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_tests_gpu")
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
 # For platform specific build config
 load(
     "//tensorflow/core/platform:build_config.bzl",
@@ -159,7 +162,7 @@ tf_cuda_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:stream_executor",
-        "//tensorflow/core/platform:tf32_utils",
+        "//tensorflow/core/platform:tensor_float_32_utils",
         "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/core/profiler/lib:scoped_annotation",
         "//third_party/eigen3",

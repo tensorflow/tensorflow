@@ -112,5 +112,15 @@ TEST(RangeOpModel, FloatNegativeDelta) {
   EXPECT_THAT(model.GetOutput(), ElementsAre(10, 7, 4));
 }
 
+TEST(RangeOpModel, EmptyOutput) {
+  RangeOpModel<int32_t> model(TensorType_INT32);
+  model.PopulateTensor<int32_t>(model.start(), {0});
+  model.PopulateTensor<int32_t>(model.limit(), {0});
+  model.PopulateTensor<int32_t>(model.delta(), {1});
+  model.Invoke();
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(0));
+  EXPECT_THAT(model.GetOutput(), ElementsAre());
+}
+
 }  // namespace
 }  // namespace tflite

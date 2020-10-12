@@ -32,6 +32,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker_v2
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
@@ -164,7 +165,7 @@ class StatefulScatterNdTest(test.TestCase):
 
   def testSimple(self):
     indices = constant_op.constant([[4], [3], [1], [7]], dtype=dtypes.int32)
-    for dtype in (dtypes.int64, dtypes.float32, dtypes.float64,
+    for dtype in (dtypes.int32, dtypes.int64, dtypes.float32, dtypes.float64,
                   dtypes.complex64, dtypes.complex128):
       updates = constant_op.constant([9, 10, 11, 12], dtype=dtype)
       ref = variables.Variable([0, 0, 0, 0, 0, 0, 0, 0], dtype=dtype)
@@ -189,16 +190,17 @@ class StatefulScatterNdTest(test.TestCase):
 
   def testSimpleResource(self):
     indices = constant_op.constant([[4], [3], [1], [7]], dtype=dtypes.int32)
-    updates = constant_op.constant([9, 10, 11, 12], dtype=dtypes.float32)
-    ref = resource_variable_ops.ResourceVariable(
-        [0, 0, 0, 0, 0, 0, 0, 0], dtype=dtypes.float32)
-    expected = np.array([0, 11, 0, 10, 9, 0, 0, 12])
-    scatter = state_ops.scatter_nd_update(ref, indices, updates)
+    for dtype in (dtypes.int32, dtypes.float32):
+      updates = constant_op.constant([9, 10, 11, 12], dtype=dtype)
+      ref = resource_variable_ops.ResourceVariable([0, 0, 0, 0, 0, 0, 0, 0],
+                                                   dtype=dtype)
+      expected = np.array([0, 11, 0, 10, 9, 0, 0, 12])
+      scatter = state_ops.scatter_nd_update(ref, indices, updates)
 
-    with test_util.device(use_gpu=True):
-      self.evaluate(ref.initializer)
-      self.evaluate(scatter)
-      self.assertAllClose(ref, expected)
+      with test_util.device(use_gpu=True):
+        self.evaluate(ref.initializer)
+        self.evaluate(scatter)
+        self.assertAllClose(ref, expected)
 
   def testSimple2(self):
     indices = constant_op.constant([[1, 0], [1, 1]], dtype=dtypes.int32)
@@ -367,6 +369,70 @@ class StatefulScatterNdTest(test.TestCase):
     self.evaluate(init)
     result = self.evaluate(scatter)
     assert np.allclose(result, expected_result)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testMin(self):
+    variable = variables.Variable(array_ops.ones([8], dtype=dtypes.int32))
+    resource_variable = resource_variable_ops.ResourceVariable(
+        array_ops.ones([8], dtype=dtypes.int32))
+    indices = constant_op.constant([4, 3, 1, 7])
+    updates = constant_op.constant([0, 2, -1, 2], dtype=dtypes.int32)
+
+    for ref in (variable, resource_variable):
+      min_result = state_ops.scatter_min(ref, indices, updates)
+      self.evaluate(ref.initializer)
+
+      expected_result = constant_op.constant([1, -1, 1, 1, 0, 1, 1, 1])
+      self.assertAllEqual(self.evaluate(min_result), expected_result)
+      self.assertAllEqual(self.evaluate(ref), expected_result)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testMax(self):
+    variable = variables.Variable(array_ops.ones([8], dtype=dtypes.int32))
+    resource_variable = resource_variable_ops.ResourceVariable(
+        array_ops.ones([8], dtype=dtypes.int32))
+    indices = constant_op.constant([4, 3, 1, 7])
+    updates = constant_op.constant([0, 2, -1, 2], dtype=dtypes.int32)
+
+    for ref in (variable, resource_variable):
+      max_result = state_ops.scatter_max(ref, indices, updates)
+      self.evaluate(ref.initializer)
+
+      expected_result = constant_op.constant([1, 1, 1, 2, 1, 1, 1, 2])
+      self.assertAllEqual(self.evaluate(max_result), expected_result)
+      self.assertAllEqual(self.evaluate(ref), expected_result)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testAdd(self):
+    variable = variables.Variable(array_ops.ones([8], dtype=dtypes.int32))
+    resource_variable = resource_variable_ops.ResourceVariable(
+        array_ops.ones([8], dtype=dtypes.int32))
+    indices = constant_op.constant([4, 3, 1, 7])
+    updates = constant_op.constant([0, 2, -1, 3], dtype=dtypes.int32)
+
+    for ref in (variable, resource_variable):
+      add_result = state_ops.scatter_add(ref, indices, updates)
+      self.evaluate(ref.initializer)
+
+      expected_result = constant_op.constant([1, 0, 1, 3, 1, 1, 1, 4])
+      self.assertAllEqual(self.evaluate(add_result), expected_result)
+      self.assertAllEqual(self.evaluate(ref), expected_result)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSub(self):
+    variable = variables.Variable(array_ops.ones([8], dtype=dtypes.int32))
+    resource_variable = resource_variable_ops.ResourceVariable(
+        array_ops.ones([8], dtype=dtypes.int32))
+    indices = constant_op.constant([4, 3, 1, 7])
+    updates = constant_op.constant([0, 2, -1, 2], dtype=dtypes.int32)
+
+    for ref in (variable, resource_variable):
+      sub_result = state_ops.scatter_sub(ref, indices, updates)
+      self.evaluate(ref.initializer)
+
+      expected_result = constant_op.constant([1, 2, 1, -1, 1, 1, 1, -1])
+      self.assertAllEqual(self.evaluate(sub_result), expected_result)
+      self.assertAllEqual(self.evaluate(ref), expected_result)
 
   # TODO(fpmc): Re-enable this test when gpu_pip test actually runs on a GPU.
   def _disabledTestScatterOutOfRangeGpu(self):
@@ -714,19 +780,20 @@ class ScatterNdTensorTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testUpdateAddSub(self):
-    indices = constant_op.constant([[4], [3], [1], [7]])
-    updates = constant_op.constant([9, 10, 11, 12], dtype=dtypes.float32)
-    t = array_ops.ones([8], dtype=dtypes.float32)
-    assigned = array_ops.tensor_scatter_update(t, indices, updates)
-    added = array_ops.tensor_scatter_add(t, indices, updates)
-    subbed = array_ops.tensor_scatter_sub(t, indices, updates)
+    for dtype in (dtypes.int32, dtypes.float32):
+      indices = constant_op.constant([[4], [3], [1], [7]])
+      updates = constant_op.constant([9, 10, 11, 12], dtype=dtype)
+      t = array_ops.ones([8], dtype=dtype)
+      assigned = array_ops.tensor_scatter_update(t, indices, updates)
+      added = array_ops.tensor_scatter_add(t, indices, updates)
+      subbed = array_ops.tensor_scatter_sub(t, indices, updates)
 
-    self.assertAllEqual(assigned,
-                        constant_op.constant([1, 11, 1, 10, 9, 1, 1, 12]))
-    self.assertAllEqual(added,
-                        constant_op.constant([1, 12, 1, 11, 10, 1, 1, 13]))
-    self.assertAllEqual(subbed,
-                        constant_op.constant([1, -10, 1, -9, -8, 1, 1, -11]))
+      self.assertAllEqual(assigned,
+                          constant_op.constant([1, 11, 1, 10, 9, 1, 1, 12]))
+      self.assertAllEqual(added,
+                          constant_op.constant([1, 12, 1, 11, 10, 1, 1, 13]))
+      self.assertAllEqual(subbed,
+                          constant_op.constant([1, -10, 1, -9, -8, 1, 1, -11]))
 
   def testUpdateAddSubGradients(self):
     with self.cached_session():
@@ -759,30 +826,72 @@ class ScatterNdTensorTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testUpdateMinMax(self):
-    indices = constant_op.constant([[4], [3], [1], [7]])
-    updates = constant_op.constant([0, 2, -1, 1.2], dtype=dtypes.float32)
-    t = array_ops.ones([8], dtype=dtypes.float32)
-    assigned = array_ops.tensor_scatter_update(t, indices, updates)
-    min_result = array_ops.tensor_scatter_min(t, indices, updates)
-    max_result = array_ops.tensor_scatter_max(t, indices, updates)
+    for dtype in (dtypes.int32, dtypes.float32):
+      indices = constant_op.constant([[4], [3], [1], [7]])
+      updates = constant_op.constant([0, 2, -1, 2], dtype=dtype)
+      t = array_ops.ones([8], dtype=dtype)
+      assigned = array_ops.tensor_scatter_update(t, indices, updates)
+      min_result = array_ops.tensor_scatter_min(t, indices, updates)
+      max_result = array_ops.tensor_scatter_max(t, indices, updates)
 
-    self.assertAllEqual(assigned,
-                        constant_op.constant([1, -1, 1, 2, 0, 1, 1, 1.2]))
-    self.assertAllEqual(min_result,
-                        constant_op.constant([1, -1, 1, 1, 0, 1, 1, 1]))
-    self.assertAllEqual(max_result,
-                        constant_op.constant([1, 1, 1, 2, 1, 1, 1, 1.2]))
+      self.assertAllEqual(assigned,
+                          constant_op.constant([1, -1, 1, 2, 0, 1, 1, 2]))
+      self.assertAllEqual(min_result,
+                          constant_op.constant([1, -1, 1, 1, 0, 1, 1, 1]))
+      self.assertAllEqual(max_result,
+                          constant_op.constant([1, 1, 1, 2, 1, 1, 1, 2]))
+
+  def testUpdateMinMaxGradients(self):
+    with self.cached_session():
+      x = array_ops.ones([4], dtype=dtypes.float32)
+      indices = constant_op.constant([[1], [2], [3], [3]])
+      updates = constant_op.constant([2.0, 0.5, 1.0, 1.0], dtype=dtypes.float32)
+
+      theoretical, _ = gradient_checker_v2.compute_gradient(
+          lambda x: array_ops.tensor_scatter_max(x, indices, updates), [x])
+      # Numerical gradient doesn't work for degenerate values because the
+      # derivative is not continuous. The manually entered gradient divides
+      # the gradient among all contributing elements at the discontinuity.
+      manual = array_ops.reshape(
+          array_ops.matrix_diag([1.0, 0.0, 1.0, 0.3333]), (1, 4, 4))
+      self.assertAllClose(theoretical, manual, 5e-4, 5e-4)
+
+      theoretical, _ = gradient_checker_v2.compute_gradient(
+          lambda x: array_ops.tensor_scatter_min(x, indices, updates), [x])
+      manual = array_ops.reshape(
+          array_ops.matrix_diag([1.0, 1.0, 0.0, 0.3333]), (1, 4, 4))
+      self.assertAllClose(theoretical, manual, 5e-4, 5e-4)
+
+      theoretical, _ = gradient_checker_v2.compute_gradient(
+          lambda updates: array_ops.tensor_scatter_max(x, indices, updates),
+          [updates])
+      manual = constant_op.constant(
+          [[[0.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.3333, 0.3333]]],
+          dtype=dtypes.float32)
+      self.assertAllClose(theoretical, manual, 5e-4, 5e-4)
+
+      theoretical, _ = gradient_checker_v2.compute_gradient(
+          lambda updates: array_ops.tensor_scatter_min(x, indices, updates),
+          [updates])
+      manual = constant_op.constant(
+          [[[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.3333, 0.3333]]],
+          dtype=dtypes.float32)
+      self.assertAllClose(theoretical, manual, 5e-4, 5e-4)
 
   def testTensorScatterUpdateWithForwarding(self):
-    @def_function.function
-    def _TestFn():
-      indices = constant_op.constant([[4], [3], [1], [7]])
-      updates = constant_op.constant([9, 10, 11, 12], dtype=dtypes.float32)
-      t = array_ops.ones([8], dtype=dtypes.float32)
+    for dtype in (dtypes.int32, dtypes.float32):
 
-      return array_ops.tensor_scatter_update(t, indices, updates)
+      @def_function.function
+      def _TestFn():
+        indices = constant_op.constant([[4], [3], [1], [7]])
+        updates = constant_op.constant([9, 10, 11, 12], dtype=dtype)  # pylint: disable=cell-var-from-loop
+        t = array_ops.ones([8], dtype=dtype)  # pylint: disable=cell-var-from-loop
 
-    self.assertAllEqual(_TestFn(), [1, 11, 1, 10, 9, 1, 1, 12])
+        return array_ops.tensor_scatter_update(t, indices, updates)
+
+      self.assertAllEqual(_TestFn(), [1, 11, 1, 10, 9, 1, 1, 12])
 
   @test_util.run_in_graph_and_eager_modes
   def testTensorScatterUpdateWithStrings(self):
@@ -800,6 +909,32 @@ class ScatterNdTensorTest(test.TestCase):
         constant_op.constant([
             "hello", "there", "hello", "there", "there", "hello", "hello", "12"
         ]))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testUpdateRepeatedIndices1D(self):
+    if test_util.is_gpu_available():
+      self.skipTest("Duplicate indices scatter is non-deterministic on GPU")
+    a = array_ops.zeros([10, 1])
+    b = array_ops.tensor_scatter_update(a, [[5], [5]], [[4], [8]])
+    self.assertAllEqual(
+        b,
+        constant_op.constant([[0.], [0.], [0.], [0.], [0.], [8.], [0.], [0.],
+                              [0.], [0.]]))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testUpdateRepeatedIndices2D(self):
+    if test_util.is_gpu_available():
+      self.skipTest("Duplicate indices scatter is non-deterministic on GPU")
+    a = array_ops.zeros([10, 10])
+    b = array_ops.tensor_scatter_update(
+        a, [[5], [6], [6]],
+        [math_ops.range(10),
+         math_ops.range(11, 21),
+         math_ops.range(10, 20)])
+    self.assertAllEqual(
+        b[6],
+        constant_op.constant(
+            [10., 11., 12., 13., 14., 15., 16., 17., 18., 19.]))
 
 
 if __name__ == "__main__":

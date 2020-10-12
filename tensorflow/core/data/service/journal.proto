@@ -12,6 +12,8 @@ message Update {
     RegisterDatasetUpdate register_dataset = 1;
     RegisterWorkerUpdate register_worker = 5;
     CreateJobUpdate create_job = 2;
+    AcquireJobClientUpdate acquire_job_client = 6;
+    ReleaseJobClientUpdate release_job_client = 7;
     CreateTaskUpdate create_task = 3;
     FinishTaskUpdate finish_task = 4;
   }
@@ -39,10 +41,23 @@ message CreateJobUpdate {
   NamedJobKeyDef named_job_key = 4;
 }
 
+message AcquireJobClientUpdate {
+  int64 job_id = 1;
+  int64 job_client_id = 2;
+}
+
+message ReleaseJobClientUpdate {
+  int64 job_client_id = 1;
+  // The time when the client was released, measured in microseconds since the
+  // epoch.
+  int64 time_micros = 2;
+}
+
 message CreateTaskUpdate {
   int64 task_id = 1;
   int64 job_id = 2;
   int64 dataset_id = 3;
+  ProcessingModeDef processing_mode = 5;
   string worker_address = 4;
 }
 

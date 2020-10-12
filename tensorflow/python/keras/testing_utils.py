@@ -18,14 +18,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import contextlib
 import functools
+import itertools
 import threading
 
 import numpy as np
 
 from tensorflow.python import tf2
 from tensorflow.python.eager import context
+from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -43,9 +46,9 @@ from tensorflow.python.keras.optimizer_v2 import adamax as adamax_v2
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_v2
 from tensorflow.python.keras.optimizer_v2 import nadam as nadam_v2
 from tensorflow.python.keras.optimizer_v2 import rmsprop as rmsprop_v2
-from tensorflow.python.util import tf_contextlib
+from tensorflow.python.keras.utils import tf_contextlib
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.util import tf_decorator
-from tensorflow.python.util import tf_inspect
 
 
 def string_test(actual, expected):
@@ -937,3 +940,146 @@ def use_gpu():
   """Uses gpu when requested and available."""
   with device(should_use_gpu=True):
     yield
+
+
+def for_all_test_methods(decorator, *args, **kwargs):
+  """Generate class-level decorator from given method-level decorator.
+
+  It is expected for the given decorator to take some arguments and return
+  a method that is then called on the test method to produce a decorated
+  method.
+
+  Args:
+    decorator: The decorator to apply.
+    *args: Positional arguments
+    **kwargs: Keyword arguments
+  Returns: Function that will decorate a given classes test methods with the
+    decorator.
+  """
+
+  def all_test_methods_impl(cls):
+    """Apply decorator to all test methods in class."""
+    for name in dir(cls):
+      value = getattr(cls, name)
+      if callable(value) and name.startswith('test') and (name !=
+                                                          'test_session'):
+        setattr(cls, name, decorator(*args, **kwargs)(value))
+    return cls
+
+  return all_test_methods_impl
+
+
+# The description is just for documentation purposes.
+def run_without_tensor_float_32(description):  # pylint: disable=unused-argument
+  """Execute test with TensorFloat-32 disabled.
+
+  While almost every real-world deep learning model runs fine with
+  TensorFloat-32, many tests use assertAllClose or similar methods.
+  TensorFloat-32 matmuls typically will cause such methods to fail with the
+  default tolerances.
+
+  Args:
+    description: A description used for documentation purposes, describing why
+      the test requires TensorFloat-32 to be disabled.
+
+  Returns:
+    Decorator which runs a test with TensorFloat-32 disabled.
+  """
+
+  def decorator(f):
+
+    @functools.wraps(f)
+    def decorated(self, *args, **kwargs):
+      allowed = config.tensor_float_32_execution_enabled()
+      try:
+        config.enable_tensor_float_32_execution(False)
+        f(self, *args, **kwargs)
+      finally:
+        config.enable_tensor_float_32_execution(allowed)
+
+    return decorated
+
+  return decorator
+
+
+# The description is just for documentation purposes.
+def run_all_without_tensor_float_32(description):  # pylint: disable=unused-argument
+  """Execute all tests in a class with TensorFloat-32 disabled."""
+  return for_all_test_methods(run_without_tensor_float_32, description)
+
+
+def run_v2_only(func=None):
+  """Execute the decorated test only if running in v2 mode.
+
+  This function is intended to be applied to tests that exercise v2 only
+  functionality. If the test is run in v1 mode it will simply be skipped.
+
+  See go/tf-test-decorator-cheatsheet for the decorators to use in different
+  v1/v2/eager/graph combinations.
+
+  Args:
+    func: function to be annotated. If `func` is None, this method returns a
+      decorator the can be applied to a function. If `func` is not None this
+      returns the decorator applied to `func`.
+
+  Returns:
+    Returns a decorator that will conditionally skip the decorated test method.
+  """
+
+  def decorator(f):
+    if tf_inspect.isclass(f):
+      raise ValueError('`run_v2_only` only supports test methods.')
+
+    def decorated(self, *args, **kwargs):
+      if not tf2.enabled():
+        self.skipTest('Test is only compatible with v2')
+
+      return f(self, *args, **kwargs)
+
+    return decorated
+
+  if func is not None:
+    return decorator(func)
+
+  return decorator
+
+
+def generate_combinations_with_testcase_name(**kwargs):
+  """Generate combinations based on its keyword arguments using combine().
+
+  This function calls combine() and appends a testcase name to the list of
+  dictionaries returned. The 'testcase_name' key is a required for named
+  parameterized tests.
+
+  Args:
+    **kwargs: keyword arguments of form `option=[possibilities, ...]` or
+      `option=the_only_possibility`.
+
+  Returns:
+    a list of dictionaries for each combination. Keys in the dictionaries are
+    the keyword argument names.  Each key has one value - one of the
+    corresponding keyword argument values.
+  """
+  sort_by_key = lambda k: k[0]
+  combinations = []
+  for key, values in sorted(kwargs.items(), key=sort_by_key):
+    if not isinstance(values, list):
+      values = [values]
+    combinations.append([(key, value) for value in values])
+
+  combinations = [collections.OrderedDict(result)
+                  for result in itertools.product(*combinations)]
+  named_combinations = []
+  for combination in combinations:
+    assert isinstance(combination, collections.OrderedDict)
+    name = ''.join([
+        '_{}_{}'.format(''.join(filter(str.isalnum, key)),
+                        ''.join(filter(str.isalnum, str(value))))
+        for key, value in combination.items()
+    ])
+    named_combinations.append(
+        collections.OrderedDict(
+            list(combination.items()) +
+            [('testcase_name', '_test{}'.format(name))]))
+
+  return named_combinations

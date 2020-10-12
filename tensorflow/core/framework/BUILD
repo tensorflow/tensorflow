@@ -9,8 +9,16 @@ load(
     "tf_cc_tests",
     "tf_copts",
     "tf_cuda_library",
-    "tf_generate_proto_text_sources",
 )
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_generate_proto_text_sources")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_selective_registration_deps")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
@@ -19,9 +27,6 @@ load(
     "//tensorflow/core/platform:rules_cc.bzl",
     "cc_library",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_selective_registration_deps")
 
 package(
     default_visibility = [
@@ -68,6 +73,7 @@ exports_files(
         "resource_mgr.h",
         "resource_op_kernel.h",
         "resource_var.h",
+        "rng_alg.h",
         "run_handler.h",
         "run_handler_util.h",
         "session_state.h",
@@ -385,6 +391,7 @@ filegroup(
         "resource_mgr.h",
         "resource_op_kernel.h",
         "resource_var.h",
+        "rng_alg.h",
         "run_handler.cc",
         "run_handler.h",
         "run_handler_util.cc",
@@ -447,7 +454,7 @@ cc_library(
         "allocator.h",
     ],
     features = ["parse_headers"],
-    visibility = ["//tensorflow/core:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         ":numeric_types",
         ":type_traits",
@@ -460,6 +467,7 @@ cc_library(
             "//tensorflow/core/lib/strings:strcat",
             "//tensorflow/core/lib/strings:stringprintf",
             "//tensorflow/core/platform:env",
+            "//tensorflow/core/platform:env_impl",
             "//tensorflow/core/platform:logging",
             "//tensorflow/core/platform:macros",
             "//tensorflow/core/platform:mutex",
@@ -526,6 +534,7 @@ cc_library(
     srcs = ["shape_inference_testutil.cc"],
     hdrs = ["shape_inference_testutil.h"],
     copts = tf_copts(),
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":node_def_proto_cc",
         "//tensorflow/core:framework",
@@ -538,7 +547,7 @@ cc_library(
     name = "reader_base",
     srcs = ["reader_base.cc"],
     hdrs = ["reader_base.h"],
-    visibility = ["//tensorflow/core:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         ":reader_base_proto_cc",
         "//tensorflow/core:framework",
@@ -550,7 +559,7 @@ cc_library(
     name = "op_gen_lib",
     srcs = ["op_gen_lib.cc"],
     hdrs = ["op_gen_lib.h"],
-    visibility = ["//tensorflow/core:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         ":api_def_proto_cc",
         ":attr_value_proto_cc",
@@ -1044,6 +1053,7 @@ tf_cc_tests(
         "rendezvous_test.cc",
         "resource_mgr_test.cc",
         "resource_op_kernel_test.cc",
+        "selective_registration_test.cc",
         "shape_inference_test.cc",
         "shape_inference_testutil_test.cc",
         "tensor_shape_test.cc",
@@ -1097,9 +1107,9 @@ tf_cc_tests(
     ],
 )
 
-filegroup(
+cc_library(
     name = "pywrap_required_hdrs",
-    srcs = [
+    textual_hdrs = [
         "op_gen_lib.h",
         "rendezvous.h",
     ],
@@ -1503,5 +1513,8 @@ tf_proto_library(
         ":types_proto",
         ":variable_proto",
         ":versions_proto",
+    ],
+    tags = [
+        "alt_dep=//third_party/tensorflow/core:protos_all",
     ],
 )

@@ -34,14 +34,14 @@ namespace gpu {
 namespace cl {
 
 bool IsDepthwiseConvPlus1x1ConvSupported(
-    const CLDevice& device, const OperationDef& definition,
+    const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& dw_attr,
     const Convolution2DAttributes& conv_attr);
 
-absl::Status CreateDepthwiseConvPlus1x1Conv(
-    const CreationContext& creation_context, const OperationDef& definition,
+GPUOperation CreateDepthwiseConvPlus1x1Conv(
+    const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& dw_attr,
-    const Convolution2DAttributes& conv_attr, GPUOperation* result);
+    const Convolution2DAttributes& conv_attr);
 
 }  // namespace cl
 }  // namespace gpu

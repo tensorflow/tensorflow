@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import warnings
 
 from tensorflow.python import tf2
 from tensorflow.python.framework import ops
@@ -32,12 +33,12 @@ from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.saving.saved_model import model_serialization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
-from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -421,9 +422,9 @@ class Sequential(functional.Functional):
     Returns:
         A Numpy array of probability predictions.
     """
-    logging.warning('`model.predict_proba()` is deprecated and '
-                    'will be removed after 2021-01-01. '
-                    'Please use `model.predict()` instead.')
+    warnings.warn('`model.predict_proba()` is deprecated and '
+                  'will be removed after 2021-01-01. '
+                  'Please use `model.predict()` instead.')
     preds = self.predict(x, batch_size, verbose)
     if preds.min() < 0. or preds.max() > 1.:
       logging.warning('Network returning invalid probability values. '
@@ -446,15 +447,15 @@ class Sequential(functional.Functional):
     Returns:
         A numpy array of class predictions.
     """
-    logging.warning('`model.predict_classes()` is deprecated and '
-                    'will be removed after 2021-01-01. '
-                    'Please use instead:'
-                    '* `np.argmax(model.predict(x), axis=-1)`, '
-                    '  if your model does multi-class classification '
-                    '  (e.g. if it uses a `softmax` last-layer activation).'
-                    '* `(model.predict(x) > 0.5).astype("int32")`, '
-                    '  if your model does binary classification '
-                    '  (e.g. if it uses a `sigmoid` last-layer activation).')
+    warnings.warn('`model.predict_classes()` is deprecated and '
+                  'will be removed after 2021-01-01. '
+                  'Please use instead:'
+                  '* `np.argmax(model.predict(x), axis=-1)`, '
+                  '  if your model does multi-class classification '
+                  '  (e.g. if it uses a `softmax` last-layer activation).'
+                  '* `(model.predict(x) > 0.5).astype("int32")`, '
+                  '  if your model does binary classification '
+                  '  (e.g. if it uses a `sigmoid` last-layer activation).')
     proba = self.predict(x, batch_size=batch_size, verbose=verbose)
     if proba.shape[-1] > 1:
       return proba.argmax(axis=-1)

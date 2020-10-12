@@ -26,7 +26,7 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 GPUOperation CreateQuantizeAndDequantize(
-    const CreationContext& creation_context, const OperationDef& definition,
+    const OperationDef& definition,
     const QuantizeAndDequantizeAttributes& attr) {
   QuantizeAndDequantizeAttributes adjusted_attr = attr;
   const bool is_fp16 = definition.precision == CalculationsPrecision::F16 ||

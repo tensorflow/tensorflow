@@ -19,6 +19,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include "absl/types/optional.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
@@ -62,7 +63,10 @@ class HloFunctionImporter {
       : context_(module.getContext()),
         module_(module),
         builder_(builder),
-        function_map_(function_map) {}
+        function_map_(function_map) {
+    context_->loadDialect<mlir::StandardOpsDialect>();
+    context_->loadDialect<mlir::mhlo::MhloDialect>();
+  }
 
   // Imports the given computation as a new function, if it hasn't been already
   // imported.
@@ -80,6 +84,8 @@ class HloFunctionImporter {
   // Imports an instruction.
   StatusOr<mlir::Operation*> ImportInstruction(xla::HloInstruction* instruction,
                                                mlir::OpBuilder* func_builder);
+  StatusOr<mlir::Operation*> ImportInstructionImpl(
+      HloInstruction* instruction, mlir::OpBuilder* func_builder);
 
   // Gets the MLIR operand values from an HLO Instruction.
   StatusOr<llvm::SmallVector<mlir::Value, 4>> GetOperands(

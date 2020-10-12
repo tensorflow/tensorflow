@@ -67,16 +67,6 @@ using ResultShapeRange = iterator_range<ResultShapeIterator>;
 // TensorFlow types
 //===----------------------------------------------------------------------===//
 
-namespace TensorFlowTypes {
-// List of supported TensorFlowType kinds, necessary for isa/dyn_cast.
-enum Kind {
-  FIRST_USED_TENSORFLOW_TYPE = Type::FIRST_TENSORFLOW_TYPE,
-#define HANDLE_TF_TYPE(tftype, enumerant, name) enumerant,
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
-  LAST_USED_TENSORFLOW_TYPE,
-};
-}  // namespace TensorFlowTypes
-
 // The base class in the TensorFlow type hierarchy.
 class TensorFlowType : public Type {
  public:
@@ -102,10 +92,7 @@ static inline bool IsValidTFTensorType(Type type) {
 
 namespace detail {
 // Common implementation of TensorFlow types. The template argument indicates
-// the concrete derived class per CRTP. Concrete classes must implement the
-// following:
-//   - `static unsigned getTypeKind()` that returns the (fixed) kind of the
-//     type.
+// the concrete derived class per CRTP.
 template <typename Derived>
 class TensorFlowTypeImpl
     : public Type::TypeBase<Derived, TensorFlowType, TypeStorage> {
@@ -113,11 +100,6 @@ class TensorFlowTypeImpl
   using Base = typename Type::TypeBase<Derived, TensorFlowType, TypeStorage>;
   using TFBase = TensorFlowTypeImpl<Derived>;
   using Base::Base;
-
-  // Get the unique'ed type in the given context.
-  static Derived get(MLIRContext* context) {
-    return Base::get(context, Derived::getTypeKind());
-  }
 };
 }  // namespace detail
 
@@ -173,7 +155,6 @@ static inline Type GetElementTypeOrSelfResolveRef(Type type) {
   class tftype##Type : public detail::TensorFlowTypeImpl<tftype##Type> { \
    public:                                                               \
     using TFBase::TFBase;                                                \
-    static unsigned getTypeKind() { return TensorFlowTypes::enumerant; } \
   };
 
 // Custom TensorFlow types are defined separately.
@@ -211,8 +192,6 @@ class TypeWithSubtypeStorage : public TypeStorage {
 // opaque and their interpretation depends on the actual underlying type.
 // The template argument indicates the concrete derived class per CRTP. Concrete
 // classes must implement the following:
-//   - `static unsigned getTypeKind()` that returns the (fixed) kind of the
-//     type.
 //   - `static std::string getTypeName()` that returns the name of the type for
 //     verification logging.
 template <typename Derived>
@@ -224,12 +203,12 @@ class TypeWithSubtypeImpl
   using Base::Base;
 
   static Derived get(ArrayRef<TensorType> subtypes, MLIRContext* context) {
-    return Base::get(context, Derived::getTypeKind(), subtypes);
+    return Base::get(context, subtypes);
   }
 
   static Derived getChecked(ArrayRef<TensorType> subtypes, MLIRContext* context,
                             Location loc) {
-    return Base::getChecked(loc, Derived::getTypeKind(), subtypes);
+    return Base::getChecked(loc, subtypes);
   }
 
   static Derived get(MLIRContext* context) { return get({}, context); }
@@ -279,7 +258,6 @@ static inline Type GetDefaultTypeOf(TensorFlowTypeWithSubtype type) {
 class ResourceType : public detail::TypeWithSubtypeImpl<ResourceType> {
  public:
   using TFBase::TFBase;
-  static unsigned getTypeKind() { return TensorFlowTypes::RESOURCE; }
   static std::string getTypeName() { return "ResourceType"; }
 };
 
@@ -291,9 +269,17 @@ class ResourceType : public detail::TypeWithSubtypeImpl<ResourceType> {
 class VariantType : public detail::TypeWithSubtypeImpl<VariantType> {
  public:
   using TFBase::TFBase;
-  static unsigned getTypeKind() { return TensorFlowTypes::VARIANT; }
   static std::string getTypeName() { return "VariantType"; }
 };
+
+// Given two types `a` and `b`, returns a refined type which is cast compatible
+// with both `a` and `b` and is equal to or more precise than both of them. It
+// returns empty Type if the input types are not cast compatible.
+// Provides option to ignore ref types on 'a'. This is useful for TF ops that
+// might allow operands to either be same as result type or be a ref type
+// corresponding to it.
+mlir::Type GetCastCompatibleType(mlir::Type a, mlir::Type b,
+                                 bool may_ignore_ref_type_a);
 
 // Returns whether two arrays of Type are broadcast compatible.
 bool BroadcastCompatible(ArrayRef<Type> lhs, ArrayRef<Type> rhs);
@@ -315,6 +301,10 @@ bool HasCompatibleElementTypes(Type lhs, Type rhs,
 // For example, tensor<*xf32>, tensor<?xf32> and tensor<3xf32> are cast
 // compatible.
 bool AreCastCompatible(ArrayRef<Type> types);
+
+// Returns true if corresponding elements of lhs and rhs AreCastCompatible and
+// lhs and rhs are the same length.
+bool ArraysAreCastCompatible(ArrayRef<Type> lhs, ArrayRef<Type> rhs);
 
 // If `ty` is a tensor type and its element type has subtypes, then returns a
 // new type of same shape but dropped subtypes for the element type.

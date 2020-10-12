@@ -28,11 +28,11 @@ namespace {
 // computation wait for the inputs to be produced before executing.
 TEST(GpuMultiStream, Basics) {
   TF_ASSERT_OK_AND_ASSIGN(
-      std::shared_ptr<PjRtClient> client,
+      std::unique_ptr<PjRtClient> client,
       GetNvidiaGpuClient(/*asynchronous=*/true, GpuAllocatorConfig(),
                          /*distributed_client=*/nullptr, /*node_id=*/0));
 
-  Device* device = client->local_devices().at(0);
+  PjRtDevice* device = client->local_devices().at(0);
 
   int n = 1024;
   Shape shape = ShapeUtil::MakeShape(S32, {n});

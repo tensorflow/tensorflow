@@ -34,6 +34,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import training
@@ -341,7 +342,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
                                        name='d1'))
       ref_model.add(keras.layers.Dense(num_classes, name='d2'))
       ref_model.compile(loss=keras.losses.MSE,
-                        optimizer=keras.optimizers.RMSprop(lr=0.0001),
+                        optimizer=optimizer_v1.RMSprop(lr=0.0001),
                         metrics=[keras.metrics.categorical_accuracy])
 
       f_ref_model = h5py.File(h5_path, 'w')
@@ -354,7 +355,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
                                    name='d1'))
       model.add(keras.layers.Dense(num_classes, name='d2'))
       model.compile(loss=keras.losses.MSE,
-                    optimizer=keras.optimizers.RMSprop(lr=0.0001),
+                    optimizer=optimizer_v1.RMSprop(lr=0.0001),
                     metrics=[keras.metrics.categorical_accuracy])
       with self.assertRaisesRegex(
           ValueError, r'Layer #0 \(named "d1"\), weight '
@@ -515,7 +516,7 @@ class TestWholeModelSaving(keras_parameterized.TestCase):
     with ops.Graph().as_default(), self.cached_session():
       # test with custom optimizer, loss
 
-      class CustomOp(keras.optimizers.RMSprop):
+      class CustomOp(optimizer_v1.RMSprop):
         pass
 
       def custom_loss(y_true, y_pred):
@@ -692,7 +693,7 @@ class TestWholeModelSaving(keras_parameterized.TestCase):
       model = keras.Model(inputs, outputs)
       model.compile(
           loss=keras.losses.MSE,
-          optimizer=keras.optimizers.Adam(),
+          optimizer=optimizer_v1.Adam(),
           metrics=[
               keras.metrics.categorical_accuracy,
               keras.metrics.CategoricalAccuracy()
@@ -729,6 +730,45 @@ class TestWholeModelSaving(keras_parameterized.TestCase):
       # Cleanup
       os.close(fd)
       os.remove(fname)
+
+  def test_model_saving_to_new_dir_path(self):
+    saved_model_dir = os.path.join(self._save_model_dir(), 'newdir',
+                                   'saved_model')
+    save_format = testing_utils.get_save_format()
+
+    with self.cached_session():
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(2, input_shape=(3,)))
+      model.add(keras.layers.RepeatVector(3))
+      model.add(keras.layers.TimeDistributed(keras.layers.Dense(3)))
+
+      x = np.random.random((1, 3))
+      out = model.predict(x)
+
+      keras.models.save_model(model, saved_model_dir, save_format=save_format)
+
+      new_model = keras.models.load_model(saved_model_dir)
+      self._assert_same_weights_and_metrics(model, new_model)
+
+      out2 = new_model.predict(x)
+      self.assertAllClose(out, out2, atol=1e-05)
+
+  def test_model_raise_exception_with_failed_saving(self):
+    if h5py is None:
+      self.skipTest('h5py required to run this test')
+
+    saved_model_dir = self._save_model_dir()
+    saved_model_path = os.path.join(saved_model_dir, 'saved_model.h5')
+
+    with self.cached_session():
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(2, input_shape=(3,)))
+      model.add(keras.layers.RepeatVector(3))
+      model.add(keras.layers.TimeDistributed(keras.layers.Dense(3)))
+
+      with self.assertRaisesRegex(OSError, 'Unable to create file'):
+        with h5py.File(saved_model_path, 'w'):
+          keras.models.save_model(model, saved_model_path)
 
   def test_saving_constant_initializer_with_numpy(self):
     saved_model_dir = self._save_model_dir()
@@ -989,7 +1029,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase, parameterized.TestCase):
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(2, input_shape=(3,)))
       model.add(keras.layers.Dense(3))
-      model.compile(loss='mse', optimizer=optimizers.Adam(), metrics=['acc'])
+      model.compile(loss='mse', optimizer=optimizer_v1.Adam(), metrics=['acc'])
       if not ops.executing_eagerly_outside_functions():
         model._make_train_function()
       temp_dir = self.get_temp_dir()
@@ -1237,7 +1277,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase, parameterized.TestCase):
       prefix = 'ackpt'
       self.evaluate(v.assign(42.))
       m.save_weights(prefix)
-      self.assertTrue(file_io.file_exists('ackpt.index'))
+      self.assertTrue(file_io.file_exists_v2('ackpt.index'))
       self.evaluate(v.assign(1.))
       m.load_weights(prefix)
       self.assertEqual(42., self.evaluate(v))
@@ -1245,7 +1285,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase, parameterized.TestCase):
       prefix = 'subdir/ackpt'
       self.evaluate(v.assign(43.))
       m.save_weights(prefix)
-      self.assertTrue(file_io.file_exists('subdir/ackpt.index'))
+      self.assertTrue(file_io.file_exists_v2('subdir/ackpt.index'))
       self.evaluate(v.assign(2.))
       m.load_weights(prefix)
       self.assertEqual(43., self.evaluate(v))
@@ -1253,7 +1293,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase, parameterized.TestCase):
       prefix = 'ackpt/'
       self.evaluate(v.assign(44.))
       m.save_weights(prefix)
-      self.assertTrue(file_io.file_exists('ackpt/.index'))
+      self.assertTrue(file_io.file_exists_v2('ackpt/.index'))
       self.evaluate(v.assign(3.))
       m.load_weights(prefix)
       self.assertEqual(44., self.evaluate(v))

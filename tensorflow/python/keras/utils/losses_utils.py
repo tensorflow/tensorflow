@@ -31,8 +31,8 @@ from tensorflow.python.util.tf_export import keras_export
 
 # TODO(joshl/psv): Update references to ReductionV2 to point to its
 # new location.
-ReductionV2 = keras_export(  # pylint: disable=invalid-name
-    'keras.losses.Reduction', v1=[])(loss_reduction.ReductionV2)
+ReductionV2 = loss_reduction.ReductionV2
+keras_export('keras.losses.Reduction', v1=[])(loss_reduction.ReductionV2)
 
 
 def remove_squeezable_dimensions(
@@ -253,11 +253,11 @@ def compute_weighted_loss(losses,
     ops.get_default_graph()._last_loss_reduction = reduction  # pylint: disable=protected-access
 
     if not isinstance(losses, keras_tensor.KerasTensor):
-      losses = ops.convert_to_tensor_v2(losses)
+      losses = ops.convert_to_tensor_v2_with_dispatch(losses)
     input_dtype = losses.dtype
 
     if not isinstance(sample_weight, keras_tensor.KerasTensor):
-      sample_weight = ops.convert_to_tensor_v2(sample_weight)
+      sample_weight = ops.convert_to_tensor_v2_with_dispatch(sample_weight)
 
     # TODO(psv): Handle casting here in a better way, eg. if losses is float64
     # we do not want to lose precision.

@@ -131,9 +131,9 @@ class Session {
   /// `target_node_names` must be non-empty.
   ///
   /// REQUIRES: outputs is not nullptr if `output_tensor_names` is non-empty.
-  virtual Status Run(const std::vector<std::pair<string, Tensor> >& inputs,
-                     const std::vector<string>& output_tensor_names,
-                     const std::vector<string>& target_node_names,
+  virtual Status Run(const std::vector<std::pair<std::string, Tensor> >& inputs,
+                     const std::vector<std::string>& output_tensor_names,
+                     const std::vector<std::string>& target_node_names,
                      std::vector<Tensor>* outputs) = 0;
 
   /// \brief Implementations which support `RunOptions`.
@@ -169,18 +169,18 @@ class Session {
   /// discarded.
   /// NOTE: This API is still experimental and may change.
   virtual Status Run(const RunOptions& run_options,
-                     const std::vector<std::pair<string, Tensor> >& inputs,
-                     const std::vector<string>& output_tensor_names,
-                     const std::vector<string>& target_node_names,
+                     const std::vector<std::pair<std::string, Tensor> >& inputs,
+                     const std::vector<std::string>& output_tensor_names,
+                     const std::vector<std::string>& target_node_names,
                      std::vector<Tensor>* outputs, RunMetadata* run_metadata);
 
   /// \brief Like `Run` with `RunOptions` proto, but allows user to provide
   /// custom threadpool implementation via ThreadPoolOptions.
   /// NOTE: This API is still experimental and may change.
   virtual Status Run(const RunOptions& run_options,
-                     const std::vector<std::pair<string, Tensor> >& inputs,
-                     const std::vector<string>& output_tensor_names,
-                     const std::vector<string>& target_node_names,
+                     const std::vector<std::pair<std::string, Tensor> >& inputs,
+                     const std::vector<std::string>& output_tensor_names,
+                     const std::vector<std::string>& target_node_names,
                      std::vector<Tensor>* outputs, RunMetadata* run_metadata,
                      const thread::ThreadPoolOptions& threadpool_options) {
     return errors::Unimplemented(
@@ -192,19 +192,20 @@ class Session {
   /// `handle` that can be used to perform a sequence of partial feeds and
   /// fetches.
   /// NOTE: This API is still experimental and may change.
-  virtual Status PRunSetup(const std::vector<string>& input_names,
-                           const std::vector<string>& output_names,
-                           const std::vector<string>& target_nodes,
-                           string* handle);
+  virtual Status PRunSetup(const std::vector<std::string>& input_names,
+                           const std::vector<std::string>& output_names,
+                           const std::vector<std::string>& target_nodes,
+                           std::string* handle);
 
   /// \brief Continues the pending execution specified by `handle` with the
   /// provided input tensors and fills `outputs` for the endpoints specified
   /// in `output_names`.
   /// NOTE: This API is still experimental and may change.
-  virtual Status PRun(const string& handle,
-                      const std::vector<std::pair<string, Tensor> >& inputs,
-                      const std::vector<string>& output_names,
-                      std::vector<Tensor>* outputs);
+  virtual Status PRun(
+      const std::string& handle,
+      const std::vector<std::pair<std::string, Tensor> >& inputs,
+      const std::vector<std::string>& output_names,
+      std::vector<Tensor>* outputs);
 
   /// \brief List devices in the session.
   ///
@@ -338,7 +339,7 @@ Status NewSession(const SessionOptions& options, Session** out_session);
 /// If Reset succeeds, this function will return `OK()`. Otherwise, this
 /// function will return an error status.
 Status Reset(const SessionOptions& options,
-             const std::vector<string>& containers);
+             const std::vector<std::string>& containers);
 
 /// \brief Create a new session with the given options.
 ///

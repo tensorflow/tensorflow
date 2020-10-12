@@ -113,16 +113,17 @@ def _get_local_backends():
 
   _local_backends = collections.OrderedDict()
   for name, factory in _local_backend_factories.items():
-    logging.vlog(2, "Initializing backend '%s'" % name)
+    logging.vlog(1, "Initializing backend '%s'" % name)
     try:
       backend = factory()
-    except RuntimeError:
+    except RuntimeError as err:
       if name == 'cpu':
         # We always expect CPU to initialize successfully.
         raise
       else:
         # If the backend isn't built into the binary, or if it has no devices,
         # we expect a RuntimeError.
+        logging.vlog(1, "Error initializing backend '%s': %s" % (name, err))
         continue
     _local_backends[name] = backend
   return _local_backends
@@ -144,7 +145,8 @@ def get_local_backend(name=None):
     try:
       return backends[name]
     except KeyError:
-      raise RuntimeError('Unknown backend {}'.format(name))
+      raise RuntimeError(
+          'Unknown backend %s. Available: %s' % (name, list(backends.keys())))
 
   return list(backends.values())[-1]
 
@@ -191,8 +193,8 @@ XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.F64: np.dtype('float64'),
     PrimitiveType.C64: np.dtype('complex64'),
     PrimitiveType.C128: np.dtype('complex128'),
-    PrimitiveType.TUPLE: np.dtype(np.object),
-    PrimitiveType.TOKEN: np.dtype(np.object),
+    PrimitiveType.TUPLE: np.dtype(np.object_),
+    PrimitiveType.TOKEN: np.dtype(np.object_),
 }
 
 # Note the conversion on the key. Numpy has a known issue wherein dtype hashing

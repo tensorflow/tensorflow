@@ -42,10 +42,10 @@ std::string GetOneInputCode(const OperationType& op_type,
       result = "\n";
       break;
     case OperationType::ELU:
-      result = "$0.x = $0.x < (FLT)(0.0f) ? exp($0.x) - (FLT)(1.0f) : $0.x;\n";
-      result += "$0.y = $0.y < (FLT)(0.0f) ? exp($0.y) - (FLT)(1.0f) : $0.y;\n";
-      result += "$0.z = $0.z < (FLT)(0.0f) ? exp($0.z) - (FLT)(1.0f) : $0.z;\n";
-      result += "$0.w = $0.w < (FLT)(0.0f) ? exp($0.w) - (FLT)(1.0f) : $0.w;\n";
+      result = "$0.x = $0.x < (FLT)(0.0f) ? expm1($0.x) : $0.x;\n";
+      result += "$0.y = $0.y < (FLT)(0.0f) ? expm1($0.y) : $0.y;\n";
+      result += "$0.z = $0.z < (FLT)(0.0f) ? expm1($0.z) : $0.z;\n";
+      result += "$0.w = $0.w < (FLT)(0.0f) ? expm1($0.w) : $0.w;\n";
       break;
     case OperationType::EXP:
       result = "$0 = exp($0);\n";
@@ -58,23 +58,17 @@ std::string GetOneInputCode(const OperationType& op_type,
     case OperationType::LOG:
       result = "$0 = log($0);\n";
       break;
+    case OperationType::NEG:
+      result = "$0 = -($0);\n";
+      break;
     case OperationType::RSQRT:
-      result = "$0 = (FLT4)(1.0f) / sqrt($0);\n";
+      result = "$0 = rsqrt($0);\n";
       break;
     case OperationType::SIGMOID:
       if (precision != CalculationsPrecision::F32) {
         result =
-            "$0.x = convert_half(native_recip(1.0f + "
-            "native_exp(convert_float(-$0.x))));\n";
-        result +=
-            "$0.y = convert_half(native_recip(1.0f + "
-            "native_exp(convert_float(-$0.y))));\n";
-        result +=
-            "$0.z = convert_half(native_recip(1.0f + "
-            "native_exp(convert_float(-$0.z))));\n";
-        result +=
-            "$0.w = convert_half(native_recip(1.0f + "
-            "native_exp(convert_float(-$0.w))));\n";
+            "$0 = convert_half4(native_recip(1.0f + "
+            "native_exp(convert_float4(-$0))));\n";
       } else {
         result = "$0 = (FLT4)(1.0f) / ((FLT4)(1.0f) + exp(-($0)));\n";
       }
@@ -89,7 +83,12 @@ std::string GetOneInputCode(const OperationType& op_type,
       result = "$0 *= $0;\n";
       break;
     case OperationType::TANH:
-      result = "$0 = tanh($0);\n";
+      if (precision != CalculationsPrecision::F32) {
+        result = "float4 t = native_exp(convert_float4($0 * 2.0h));\n";
+        result += "$0 = convert_half4(native_divide(t - 1.0f, t + 1.0f));\n";
+      } else {
+        result = "$0 = tanh($0);\n";
+      }
       break;
     default:
       return "Unknown operation type;\n";
@@ -128,6 +127,43 @@ std::string GetTwoInputCode(const OperationType& op_type,
     case OperationType::SUB:
       result += "$0 = $1 - $2;\n";
       break;
+    // Comparison operators
+    case OperationType::LESS:
+      result = "$0.x = $1.x < $2.x ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result += "$0.y = $1.y < $2.y ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result += "$0.z = $1.z < $2.z ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result += "$0.w = $1.w < $2.w ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      break;
+    case OperationType::LESS_EQUAL:
+      result = "$0.x = $1.x <= $2.x ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result += "$0.y = $1.y <= $2.y ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result += "$0.z = $1.z <= $2.z ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result += "$0.w = $1.w <= $2.w ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      break;
+    case OperationType::GREATER:
+      result = "$0.x = $1.x > $2.x ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result += "$0.y = $1.y > $2.y ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result += "$0.z = $1.z > $2.z ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result += "$0.w = $1.w > $2.w ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      break;
+    case OperationType::GREATER_EQUAL:
+      result = "$0.x = $1.x >= $2.x ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result += "$0.y = $1.y >= $2.y ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result += "$0.z = $1.z >= $2.z ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result += "$0.w = $1.w >= $2.w ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      break;
+    case OperationType::EQUAL:
+      result = "$0.x = $1.x == $2.x ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result += "$0.y = $1.y == $2.y ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result += "$0.z = $1.z == $2.z ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result += "$0.w = $1.w == $2.w ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      break;
+    case OperationType::NOT_EQUAL:
+      result = "$0.x = $1.x != $2.x ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result += "$0.y = $1.y != $2.y ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result += "$0.z = $1.z != $2.z ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result += "$0.w = $1.w != $2.w ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      break;
     default:
       return "Unknown operation type;\n";
   }
@@ -160,80 +196,68 @@ GPUOperation CreateElementwiseOneRuntimeOneScalar(
 
 // Creates simple two input(first input is runtime tensor and second input is
 // constant linear tensor) operation, for example sub, div and etc.
-absl::Status CreateElementwiseTwoInput(
-    const CreationContext& creation_context, const OperationDef& definition,
+GPUOperation CreateElementwiseTwoInput(
+    const DeviceInfo& device_info, const OperationDef& definition,
     const OperationType& op_type,
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& constant_tensor,
-    bool swap_inputs, GPUOperation* result) {
+    bool swap_inputs) {
   const BHWC shape = BHWC(1, 1, 1, constant_tensor.shape.v);
   TensorStorageType storage_type = SelectBestStorageType(
-      creation_context.device->info_, shape, definition.GetPrimaryStorageType(),
+      device_info, shape, definition.GetPrimaryStorageType(),
       definition.GetDataType(), Layout::HWC);
   TensorDescriptor desc{definition.GetDataType(), storage_type, Layout::HWC};
-  Tensor gpu_tensor;
-  RETURN_IF_ERROR(CreateTensor(*creation_context.context,
-                               *creation_context.device, shape, desc,
-                               &gpu_tensor));
-  RETURN_IF_ERROR(
-      gpu_tensor.WriteData(creation_context.queue, constant_tensor));
+  desc.UploadData(constant_tensor);
 
-  *result = GPUOperation(definition);
-  result->elementwise_ = true;
-  result->args_.AddObject("second_tensor", AccessType::READ,
-                          absl::make_unique<Tensor>(std::move(gpu_tensor)),
-                          absl::make_unique<TensorDescriptor>(desc));
+  GPUOperation result(definition);
+  result.elementwise_ = true;
+  result.args_.AddObject("second_tensor",
+                         absl::make_unique<TensorDescriptor>(std::move(desc)));
   const std::string s_coord = shape.c == 1 ? "0" : "S_COORD";
-  result->code_ = absl::StrCat(
+  result.code_ = absl::StrCat(
       "FLT4 second_val = args.second_tensor.Read(0, 0, ", s_coord, ");\n");
   if (shape.c == 1) {
-    result->code_ += "  second_val.y = second_val.x;\n";
-    result->code_ += "  second_val.z = second_val.x;\n";
-    result->code_ += "  second_val.w = second_val.x;\n";
+    result.code_ += "  second_val.y = second_val.x;\n";
+    result.code_ += "  second_val.z = second_val.x;\n";
+    result.code_ += "  second_val.w = second_val.x;\n";
   }
-  result->code_ += GetTwoInputCode(op_type, "in_out_value", "in_out_value",
-                                   "second_val", swap_inputs);
-  return absl::OkStatus();
+  result.code_ += GetTwoInputCode(op_type, "in_out_value", "in_out_value",
+                                  "second_val", swap_inputs);
+  return result;
 }
 
 // Creates simple two input(first input is runtime tensor and second input is
 // constant HWC tensor) operation, for example sub, div and etc.
-absl::Status CreateElementwiseTwoInput(
-    const CreationContext& creation_context, const OperationDef& definition,
+GPUOperation CreateElementwiseTwoInput(
+    const DeviceInfo& device_info, const OperationDef& definition,
     const OperationType& op_type,
     const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& constant_tensor,
-    bool swap_inputs, GPUOperation* result) {
+    bool swap_inputs) {
   const BHWC shape = BHWC(1, constant_tensor.shape.h, constant_tensor.shape.w,
                           constant_tensor.shape.c);
   TensorStorageType storage_type = SelectBestStorageType(
-      creation_context.device->info_, shape, definition.GetPrimaryStorageType(),
+      device_info, shape, definition.GetPrimaryStorageType(),
       definition.GetDataType(), Layout::HWC);
   TensorDescriptor desc{definition.GetDataType(), storage_type, Layout::HWC};
-  Tensor gpu_tensor;
-  RETURN_IF_ERROR(CreateTensor(*creation_context.context,
-                               *creation_context.device, shape, desc,
-                               &gpu_tensor));
-  RETURN_IF_ERROR(
-      gpu_tensor.WriteData(creation_context.queue, constant_tensor));
+  desc.UploadData(constant_tensor);
 
-  *result = GPUOperation(definition);
-  result->elementwise_ = true;
-  result->args_.AddObject("second_tensor", AccessType::READ,
-                          absl::make_unique<Tensor>(std::move(gpu_tensor)),
-                          absl::make_unique<TensorDescriptor>(desc));
+  GPUOperation result(definition);
+  result.elementwise_ = true;
+  result.args_.AddObject("second_tensor",
+                         absl::make_unique<TensorDescriptor>(std::move(desc)));
   const std::string x_coord = shape.w == 1 ? "0" : "X_COORD";
   const std::string y_coord = shape.h == 1 ? "0" : "Y_COORD";
   const std::string s_coord = shape.c == 1 ? "0" : "S_COORD";
-  result->code_ = absl::StrCat("FLT4 second_val = args.second_tensor.Read(",
-                               x_coord, ", ", y_coord, ", ", s_coord, ");\n");
+  result.code_ = absl::StrCat("FLT4 second_val = args.second_tensor.Read(",
+                              x_coord, ", ", y_coord, ", ", s_coord, ");\n");
   if (shape.c == 1) {
-    result->code_ += "  second_val.y = second_val.x;\n";
-    result->code_ += "  second_val.z = second_val.x;\n";
-    result->code_ += "  second_val.w = second_val.x;\n";
+    result.code_ += "  second_val.y = second_val.x;\n";
+    result.code_ += "  second_val.z = second_val.x;\n";
+    result.code_ += "  second_val.w = second_val.x;\n";
   }
-  result->code_ += GetTwoInputCode(op_type, "in_out_value", "in_out_value",
-                                   "second_val", swap_inputs);
+  result.code_ += GetTwoInputCode(op_type, "in_out_value", "in_out_value",
+                                  "second_val", swap_inputs);
 
-  return absl::OkStatus();
+  return result;
 }
 
 }  // namespace
@@ -246,11 +270,10 @@ GPUOperation CreateElementwiseOneInput(const OperationDef& definition,
   return op;
 }
 
-absl::Status CreateElementwise(const CreationContext& creation_context,
+GPUOperation CreateElementwise(const DeviceInfo& device_info,
                                const OperationDef& definition,
                                const OperationType& op_type,
-                               const ElementwiseAttributes& attr,
-                               GPUOperation* result) {
+                               const ElementwiseAttributes& attr) {
   const float* scalar = absl::get_if<float>(&attr.param);
   const auto* linear_tensor =
       absl::get_if<tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(&attr.param);
@@ -258,20 +281,19 @@ absl::Status CreateElementwise(const CreationContext& creation_context,
       absl::get_if<tflite::gpu::Tensor<HWC, DataType::FLOAT32>>(&attr.param);
 
   if (scalar) {
-    *result = CreateElementwiseOneRuntimeOneScalar(
-        definition, op_type, *scalar, attr.runtime_tensor_is_second);
-    return absl::OkStatus();
+    return CreateElementwiseOneRuntimeOneScalar(definition, op_type, *scalar,
+                                                attr.runtime_tensor_is_second);
   } else if (linear_tensor) {
-    return CreateElementwiseTwoInput(creation_context, definition, op_type,
+    return CreateElementwiseTwoInput(device_info, definition, op_type,
                                      *linear_tensor,
-                                     attr.runtime_tensor_is_second, result);
+                                     attr.runtime_tensor_is_second);
   } else if (hwc_tensor) {
-    return CreateElementwiseTwoInput(creation_context, definition, op_type,
-                                     *hwc_tensor, attr.runtime_tensor_is_second,
-                                     result);
+    return CreateElementwiseTwoInput(device_info, definition, op_type,
+                                     *hwc_tensor,
+                                     attr.runtime_tensor_is_second);
+  } else {
+    return GPUOperation(definition);
   }
-  return absl::UnimplementedError(
-      "No elementwise implementation for this case");
 }
 
 GPUOperation CreateElementwiseTwoInput(const OperationDef& definition,

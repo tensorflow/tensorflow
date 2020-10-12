@@ -95,7 +95,7 @@ class LinearModel(training.Model):
     self.kernel_regularizer = regularizers.get(kernel_regularizer)
     self.bias_regularizer = regularizers.get(bias_regularizer)
     super(LinearModel, self).__init__(**kwargs)
-    base_layer.keras_model_gauge.get_cell('Linear').set(True)
+    base_layer.keras_premade_model_gauge.get_cell('Linear').set(True)
 
   def build(self, input_shape):
     if isinstance(input_shape, dict):

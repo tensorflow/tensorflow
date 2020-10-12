@@ -46,6 +46,21 @@ int32 TpuHostLocationExternal::Id() const {
   return tpu::ExecutorApiFn()->TpuHostLocation_IdFn(host_location_);
 }
 
+std::vector<TpuCoreLocationExternal> TpuHostLocationExternal::Cores(
+    TpuCoreTypeEnum core_type) const {
+  int num_cores = tpu::ExecutorApiFn()->TpuHostLocation_NumCoresFn(
+      host_location_, core_type);
+  std::vector<SE_TpuTopology_Core*> core_ptrs(num_cores);
+  tpu::ExecutorApiFn()->TpuHostLocation_CoresFn(host_location_, core_type,
+                                                core_ptrs.data());
+  std::vector<TpuCoreLocationExternal> result;
+  result.reserve(num_cores);
+  for (SE_TpuTopology_Core* ptr : core_ptrs) {
+    result.emplace_back(ptr);
+  }
+  return result;
+}
+
 int32 TpuTopologyExternal::LogicalDevicesPerHost(
     TpuCoreTypeEnum core_type) const {
   return tpu::ExecutorApiFn()->TpuTopology_LogicalDevicesPerHostFn(topology_,
@@ -56,6 +71,14 @@ int32 TpuTopologyExternal::LogicalDevicesPerChip(
     TpuCoreTypeEnum core_type) const {
   return tpu::ExecutorApiFn()->TpuTopology_LogicalDevicesPerChipFn(topology_,
                                                                    core_type);
+}
+
+int32 TpuTopologyExternal::HostCount() const {
+  return tpu::ExecutorApiFn()->TpuTopology_HostCountFn(topology_);
+}
+
+int32 TpuTopologyExternal::ChipsPerHost() const {
+  return tpu::ExecutorApiFn()->TpuTopology_ChipsPerHostFn(topology_);
 }
 
 TpuTopologyChipBoundsExternal TpuTopologyExternal::chip_bounds() const {
@@ -107,6 +130,8 @@ std::string TpuVersionEnumToString(TpuVersionEnum version) {
       return "TPU v2";
     case kTpuV3:
       return "TPU v3";
+    case kTpuV4:
+      return "TPU v4";
   }
 }
 

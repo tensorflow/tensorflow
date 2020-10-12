@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 
 namespace tflite {
 namespace optimize {
@@ -599,10 +600,12 @@ TEST(ModelInterface, Float) {
   EXPECT_EQ(model->subgraphs[0]->outputs.size(), 1);
   EXPECT_EQ(model->subgraphs[0]->outputs[0], 1);
   EXPECT_EQ(model->operator_codes.size(), 3);
-  EXPECT_EQ(model->operator_codes[0]->builtin_code,
+  EXPECT_EQ(GetBuiltinCode(model->operator_codes[0].get()),
             BuiltinOperator_FULLY_CONNECTED);
-  EXPECT_EQ(model->operator_codes[1]->builtin_code, BuiltinOperator_DEQUANTIZE);
-  EXPECT_EQ(model->operator_codes[2]->builtin_code, BuiltinOperator_QUANTIZE);
+  EXPECT_EQ(GetBuiltinCode(model->operator_codes[1].get()),
+            BuiltinOperator_DEQUANTIZE);
+  EXPECT_EQ(GetBuiltinCode(model->operator_codes[2].get()),
+            BuiltinOperator_QUANTIZE);
   EXPECT_EQ(model->subgraphs[0]->operators.size(), 3);
 
   auto dequantize_op = model->subgraphs[0]->operators[0].get();

@@ -160,7 +160,7 @@ absl::Status InferenceContext::InitFromGraph(
   creation_context.queue = env->queue();
   creation_context.cache = env->program_cache();
 
-  ReserveGraphTensors(create_info, creation_context, graph);
+  ReserveGraphTensors(create_info, creation_context.GetDeviceInfo(), graph);
   precision_ = create_info.precision;
   storage_type_ = create_info.storage_type;
   if (env->device().IsMali()) {
@@ -174,19 +174,31 @@ absl::Status InferenceContext::InitFromGraph(
     need_flush_ = true;
   }
   CopyInAndOutIds(graph);
-  RETURN_IF_ERROR(
-      ConvertOperations(creation_context, graph, create_info.hints));
+  RETURN_IF_ERROR(ConvertOperations(creation_context.GetDeviceInfo(), graph,
+                                    create_info.hints));
   RETURN_IF_ERROR(Merge());
-  RETURN_IF_ERROR(AllocateMemory(env->device(), creation_context.context));
+  RETURN_IF_ERROR(AllocateMemory(creation_context.context));
   BindMemoryToOperations();
   RETURN_IF_ERROR(Compile(creation_context));
   RETURN_IF_ERROR(UpdateParams());
+
+  for (auto& node : nodes_) {
+    node.operation->args_.ReleaseCPURepresentation();
+  }
 
   TuningParameters tuning_parameters;
   tuning_parameters.queue = env->profiling_queue();
   tuning_parameters.info = &env->device().info_;
   if (create_info.hints.Check(ModelHints::kFastTuning)) {
     tuning_parameters.tuning_type = TuningType::FAST;
+  }
+  if (tuning_parameters.info->IsMali()) {
+    const MaliInfo& info = tuning_parameters.info->mali_info;
+    if (info.IsMaliT6xx()) {
+      // Mali T628 hangs forever in clFinish when used profiling queue
+      // TuningType::FAST does not use profiling queue.
+      tuning_parameters.tuning_type = TuningType::FAST;
+    }
   }
   RETURN_IF_ERROR(Tune(tuning_parameters));
   return absl::OkStatus();
@@ -206,6 +218,11 @@ void InferenceContext::CopyInAndOutIds(const GraphFloat32& graph) {
     input_ids_.push_back(input->id);
   }
 
+  const auto variable_inputs = graph.variable_inputs();
+  for (const auto& variable_input : variable_inputs) {
+    variable_ids_and_refs_[variable_input->id] = variable_input->tensor.ref;
+  }
+
   const auto outputs = graph.outputs();
   for (const auto& output : outputs) {
     output_ids_.push_back(output->id);
@@ -213,8 +230,8 @@ void InferenceContext::CopyInAndOutIds(const GraphFloat32& graph) {
 }
 
 void InferenceContext::ReserveGraphTensors(
-    const CreateInferenceInfo& create_info,
-    const CreationContext& creation_context, const GraphFloat32& graph) {
+    const CreateInferenceInfo& create_info, const DeviceInfo& device_info,
+    const GraphFloat32& graph) {
   ValueId max_id;
   auto tensors = graph.values();
   auto data_type = DeduceDataTypeFromPrecision(create_info.precision);
@@ -225,14 +242,14 @@ void InferenceContext::ReserveGraphTensors(
     if (graph.IsGraphInput(t->id) || graph.IsGraphOutput(t->id)) {
       if (shape.c < 4 &&
           CanCreateTensorWithShape(
-              creation_context.device->info_, shape,
+              device_info, shape,
               TensorDescriptor{data_type, TensorStorageType::SINGLE_TEXTURE_2D,
                                layout})) {
         storage_type = TensorStorageType::SINGLE_TEXTURE_2D;
       }
     }
-    storage_type = SelectBestStorageType(creation_context.device->info_, shape,
-                                         storage_type, data_type, layout);
+    storage_type = SelectBestStorageType(device_info, shape, storage_type,
+                                         data_type, layout);
     tensor_reserver_.Add(
         t->id, {shape, TensorDescriptor{data_type, storage_type, layout}});
     max_id = std::max(max_id, t->id);
@@ -240,9 +257,9 @@ void InferenceContext::ReserveGraphTensors(
   tensor_reserver_.SetNext(max_id + 1);
 }
 
-absl::Status InferenceContext::ConvertOperations(
-    const CreationContext& creation_context, const GraphFloat32& graph,
-    ModelHints hints) {
+absl::Status InferenceContext::ConvertOperations(const DeviceInfo& device_info,
+                                                 const GraphFloat32& graph,
+                                                 ModelHints hints) {
   std::map<ValueId, TensorDescriptor> tensor_descriptors;
   const auto values = graph.values();
   for (auto value : values) {
@@ -261,10 +278,12 @@ absl::Status InferenceContext::ConvertOperations(
     if (consumed_nodes.find(node.id) != consumed_nodes.end()) {
       continue;
     }
+    std::string op_name = node.operation.type + " " + std::to_string(node.id);
     GPUOperationsSubgraph gpu_subgraph;
     if (hints.Check(ModelHints::kAllowSpecialKernels) &&
-        GPUSubgraphFromGraph(creation_context, precision_, graph, node.id,
-                             tensor_descriptors, &consumed_nodes, &gpu_subgraph)
+        GPUSubgraphFromGraph(device_info, precision_, graph, node.id,
+                             tensor_descriptors, &consumed_nodes, &gpu_subgraph,
+                             &op_name)
             .ok()) {
       // Mapping of subgraph (set of nodes) to GPU operations. Should happen
       // before straigtforward mapping.
@@ -302,9 +321,8 @@ absl::Status InferenceContext::ConvertOperations(
         op_def.dst_tensors.push_back(
             tensor_reserver_.Get(outputs[j]->id).descriptor);
       }
-      RETURN_IF_ERROR(GPUOperationFromNode(creation_context, op_def, hints,
-                                           inputs, outputs, node,
-                                           &gpu_subgraph));
+      RETURN_IF_ERROR(GPUOperationFromNode(device_info, op_def, hints, inputs,
+                                           outputs, node, &gpu_subgraph));
     }
     absl::flat_hash_map<int, ValueId> mapping_to_global_ids;
     for (int j = 0; j < gpu_subgraph.new_tensors.size(); ++j) {
@@ -334,7 +352,7 @@ absl::Status InferenceContext::ConvertOperations(
           cl_node.outputs[j] = mapping_to_global_ids[-(id + 1)];
         }
       }
-      cl_node.name = node.operation.type + " " + std::to_string(node.id);
+      cl_node.name = op_name;
       nodes_.push_back(std::move(cl_node));
     }
   }
@@ -388,43 +406,71 @@ absl::Status InferenceContext::Merge() {
   return absl::OkStatus();
 }
 
-void InferenceContext::GetUsages(
-    const std::function<bool(const TensorDescriptor&)>& functor,
-    std::map<ValueId, int2>* usages) {
+void InferenceContext::GetUsages(const std::function<bool(ValueId)>& functor,
+                                 std::map<ValueId, int2>* usages) {
   for (ValueId in_id : input_ids_) {
-    const auto& desc = tensor_reserver_.Get(in_id).descriptor;
-    if (functor(desc)) {
+    if (functor(in_id)) {
       AddUsage(in_id, 0, usages);
     }
   }
   for (int op_index = 0; op_index < nodes_.size(); ++op_index) {
     auto tensors = GetCLNodeTensors(nodes_[op_index]);
     for (auto& tensor : tensors) {
-      if (functor(tensor.second)) {
+      if (functor(tensor.first)) {
         AddUsage(tensor.first, op_index, usages);
       }
     }
   }
   for (ValueId out_id : output_ids_) {
-    const auto& desc = tensor_reserver_.Get(out_id).descriptor;
-    if (functor(desc)) {
+    if (functor(out_id)) {
       AddUsage(out_id, nodes_.size(), usages);
     }
   }
 }
 
-absl::Status InferenceContext::AllocateMemory(const CLDevice& device,
-                                              CLContext* context) {
-  RETURN_IF_ERROR(AllocateMemoryForBuffers(device, context));
-  RETURN_IF_ERROR(AllocateMemoryForStrongShapes(device, context));
+InferenceContext::TensorMemoryType InferenceContext::GetTensorMemoryType(
+    ValueId id) {
+  if (variable_ids_and_refs_.find(id) != variable_ids_and_refs_.end()) {
+    return TensorMemoryType::VARIABLE;
+  } else if (IsBufferBased(tensor_reserver_.Get(id).descriptor.storage_type)) {
+    return TensorMemoryType::BUFFER;
+  } else {
+    return TensorMemoryType::STRONG_SHAPE;
+  }
+}
+
+absl::Status InferenceContext::AllocateMemory(CLContext* context) {
+  RETURN_IF_ERROR(AllocateMemoryForVariableTensors(context));
+  RETURN_IF_ERROR(AllocateMemoryForBuffers(context));
+  RETURN_IF_ERROR(AllocateMemoryForStrongShapes(context));
   return absl::OkStatus();
 }
 
-absl::Status InferenceContext::AllocateMemoryForBuffers(const CLDevice& device,
-                                                        CLContext* context) {
+absl::Status InferenceContext::AllocateMemoryForVariableTensors(
+    CLContext* context) {
+  std::map<ValueId, int> ref_value_to_tensor_index;
+
+  for (auto value_and_ref_value : variable_ids_and_refs_) {
+    if (ref_value_to_tensor_index.find(value_and_ref_value.second) ==
+        ref_value_to_tensor_index.end()) {
+      const auto& t = tensor_reserver_.Get(value_and_ref_value.first);
+      const auto& shape = t.shape;
+      const auto& descriptor = t.descriptor;
+
+      RETURN_IF_ERROR(
+          CreateTensor(*context, shape, descriptor,
+                       &variable_tensors_[value_and_ref_value.second]));
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status InferenceContext::AllocateMemoryForBuffers(CLContext* context) {
   std::map<ValueId, int2> buffer_usages;
   GetUsages(
-      [](const TensorDescriptor& t) { return IsBufferBased(t.storage_type); },
+      [this](ValueId id) {
+        return GetTensorMemoryType(id) == TensorMemoryType::BUFFER;
+      },
       &buffer_usages);
 
   std::vector<TensorUsageRecord<size_t>> buffer_usage_records;
@@ -458,7 +504,7 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(const CLDevice& device,
   for (auto& node : nodes_) {
     auto tensors = GetCLNodeTensors(node);
     for (auto& t : tensors) {
-      if (!IsBufferBased(t.second.storage_type)) continue;
+      if (GetTensorMemoryType(t.first) != TensorMemoryType::BUFFER) continue;
       const int tensor_index = graph_ids_to_shared_buffer_tensors_[t.first];
       if (created_tensors[tensor_index]) continue;
       const auto& shape = tensor_reserver_.Get(t.first).shape;
@@ -473,10 +519,12 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(const CLDevice& device,
 }
 
 absl::Status InferenceContext::AllocateMemoryForStrongShapes(
-    const CLDevice& device, CLContext* context) {
+    CLContext* context) {
   std::map<ValueId, int2> usages;
   GetUsages(
-      [](const TensorDescriptor& t) { return !IsBufferBased(t.storage_type); },
+      [this](ValueId id) {
+        return GetTensorMemoryType(id) == TensorMemoryType::STRONG_SHAPE;
+      },
       &usages);
 
   std::vector<TensorUsageRecord<DummyTensor>> usage_records;
@@ -495,13 +543,15 @@ absl::Status InferenceContext::AllocateMemoryForStrongShapes(
   for (auto& node : nodes_) {
     auto tensors = GetCLNodeTensors(node);
     for (auto& t : tensors) {
-      if (IsBufferBased(t.second.storage_type)) continue;
+      if (GetTensorMemoryType(t.first) != TensorMemoryType::STRONG_SHAPE) {
+        continue;
+      }
       const auto& shape = tensor_reserver_.Get(t.first).shape;
       const auto id = assignment.object_ids[remap_from_graph_ids[t.first]];
       graph_ids_to_strong_shape_tensors_[t.first] = id;
       const auto& it = strong_shape_tensors_.find(id);
       if (it == strong_shape_tensors_.end()) {
-        RETURN_IF_ERROR(CreateTensor(*context, device, shape, t.second,
+        RETURN_IF_ERROR(CreateTensor(*context, shape, t.second,
                                      &strong_shape_tensors_[id]));
       }
     }
@@ -584,13 +634,18 @@ uint64_t InferenceContext::GetSizeOfMemoryAllocatedForIntermediateTensors()
   for (const auto& b : shared_buffers_) {
     total_memory += b.GetMemorySizeInBytes();
   }
+  for (const auto& t : variable_tensors_) {
+    total_memory += t.second.GetMemorySizeInBytes();
+  }
 
   return total_memory;
 }
 
 Tensor* InferenceContext::GetTensor(ValueId id) {
-  if (graph_ids_to_shared_buffer_tensors_.find(id) !=
-      graph_ids_to_shared_buffer_tensors_.end()) {
+  if (variable_ids_and_refs_.find(id) != variable_ids_and_refs_.end()) {
+    return &variable_tensors_[variable_ids_and_refs_[id]];
+  } else if (graph_ids_to_shared_buffer_tensors_.find(id) !=
+             graph_ids_to_shared_buffer_tensors_.end()) {
     return &shared_buffer_tensors_[graph_ids_to_shared_buffer_tensors_[id]];
   } else {
     return &strong_shape_tensors_[graph_ids_to_strong_shape_tensors_[id]];

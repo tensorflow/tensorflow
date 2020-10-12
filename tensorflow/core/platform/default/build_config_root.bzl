@@ -18,9 +18,6 @@ def tf_gpu_tests_tags():
 def tf_cuda_tests_tags():
     return tf_gpu_tests_tags()
 
-def tf_sycl_tests_tags():
-    return ["requires-gpu", "gpu"] + gpu_test_tags()
-
 def tf_exec_properties(kwargs):
     if ("tags" in kwargs and kwargs["tags"] != None and
         "remote-gpu" in kwargs["tags"]):

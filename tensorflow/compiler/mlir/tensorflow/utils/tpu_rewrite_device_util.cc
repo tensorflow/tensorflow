@@ -374,9 +374,8 @@ GetGeneralTPUExecutionDeviceAssignment(
     return (x + bound_x * (y + bound_y * z)) * bound_core + core;
   };
 
-  std::vector<bool> used_device_ids(
-      location_to_id(bound_x - 1, bound_y - 1, bound_z - 1, bound_core - 1),
-      false);
+  std::vector<bool> used_device_ids(bound_x * bound_y * bound_z * bound_core,
+                                    false);
   TPUDevicesAndHosts devices_and_hosts(
       num_replicas, llvm::SmallVector<TPUDeviceAndHost, 8>(
                         num_cores_per_replica, TPUDeviceAndHost()));

@@ -598,6 +598,31 @@ bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
         type = F32;
         break;
       }
+      // In order to find aliases due to in-place operations, use
+      // GetInPlaceInputOutputPairs. Ideally, we'd use HloAliasAnalysis here,
+      // but this code works with HloModules that aren't ready yet to use
+      // HloAliasAnalysis (e.g., their computation graphs may not have been
+      // flattened yet).
+      for (const auto& operand_and_output_index :
+           HloDataflowAnalysis::GetInPlaceInputOutputPairs(hlo)) {
+        if (operand_and_output_index.second == index) {
+          const HloUse& operand = operand_and_output_index.first;
+          for (const auto* value :
+               dataflow_
+                   ->GetValueSet(hlo->operand(operand.operand_number),
+                                 operand.operand_index)
+                   .values()) {
+            auto value_type = ValueTypeAfterChange(value);
+            if (value_type == BF16) {
+              continue;
+            }
+            CHECK_EQ(value_type, F32);
+            type = F32;
+            break;
+          }
+        }
+      }
+
       // It's possible that a user has been changed from BF16 to F32
       // during this final adjustment pass, so we need to check
       // AllUsersConsumeBF16() again.

@@ -15,9 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_PROGRAM_GROUP_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_PROGRAM_GROUP_H_
 
+#include <memory>
 #include <vector>
 
 #include "absl/types/optional.h"
+#include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/compile_only_client.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
@@ -93,15 +95,6 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
       const XLA_TpuMeshState* mesh_state,
       TpuProgramGroupInterface* tpu_program_group_interface);
 
-  // Compiles HLO IR and returns TPU programs ready for execution.
-  static Status Build(
-      const TPUCompileMetadataProto& metadata,
-      const tensorflow::XlaCompiler::CompilationResult& compilation_result,
-      const std::vector<ShardingAndIndex>& arg_core_mapping,
-      const std::vector<std::vector<xla::Shape>>& per_core_arg_shapes,
-      const absl::optional<xla::DeviceAssignment>& xla_device_assignment,
-      TpuProgramGroupInterface* tpu_program_group_interface);
-
   // Initializes `TpuProgramGroup` object with `xla_tpu_programs`.
   void Initialize(absl::Span<XLA_TpuProgram* const> xla_tpu_programs);
 
@@ -122,8 +115,9 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
   Status LogCompilationStats(const TpuCompilationCacheKey& key,
                              absl::Duration duration) override;
 
-  const std::vector<bool>& may_modify_variables() const override;
+  const std::vector<bool>& may_modify_variables_list() const override;
   void set_may_modify_variables(const std::vector<bool>& may_modify_variables);
+  bool may_modify_variables(int index) const override;
 
   const std::vector<XLA_TpuProgram*>& tpu_programs() const;
   std::vector<XLA_TpuProgram*> tpu_programs(TpuProgramShardingType type) const;
@@ -137,7 +131,34 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
   const xla::HloProto* hlo_metadata(int index) const;
   absl::Span<const xla::HloProto* const> hlo_metadatas() const override;
 
+  // Deserializes `GetTpuProgramResponse` protos from remote cache.
+  Status DeserializeFromRpcResponseProtos(
+      const std::vector<TpuSerializedProto>& rpc_response_protos);
+
+  // Serializes executable proto from the TPU program for the given core
+  // `index`.
+  Status SerializeExecutable(int index,
+                             TpuExecutableSerializedProto* executable) const;
+
+  // Serializes compiler metadata of the TPU program for the given core `index`.
+  Status SerializeCompilerMetadata(
+      int index, CompilerMetadataSerializedProto* compiler_metadata) const;
+
+  // Serializes host compute metadata of the TPU program for the given core
+  // `index`.
+  Status SerializeHostComputeMetadata(
+      int index,
+      HostComputeMetadataSerializedProto* host_compute_metadata) const;
+
  private:
+  TPUExecutableInfoProto ConstructExecutableInfo(
+      const XLA_TpuProgram* tpu_program);
+  TPUHostTransferInfoProto ConstructHostTransferInfo(
+      const XLA_TpuProgram* tpu_program);
+  xla::HloProto ConstructHloMetadata(const XLA_TpuProgram* tpu_program);
+
+  // Update `hlo_metadatas__ptrs_` array from `hlo_metadatas_`. This needs to be
+  // called on `hlo_metadatas_` change(s).
   void RefreshHloMetadatasPtrs();
 
   std::vector<bool> may_modify_variables_;

@@ -55,14 +55,13 @@ class DepthwiseConv3x3 : public GPUOperation {
                             bool weights_are_buffer, bool local_mem_uploads,
                             const DeviceInfo& device_info);
   template <DataType T>
-  absl::Status UploadWeightsAndBiases(
-      const tflite::gpu::Tensor<OHWI, T>& weights,
-      const tflite::gpu::Tensor<Linear, T>& biases, bool weights_are_buffer,
-      CLContext* context);
+  void UploadWeightsAndBiases(const tflite::gpu::Tensor<OHWI, T>& weights,
+                              const tflite::gpu::Tensor<Linear, T>& biases,
+                              bool weights_are_buffer);
 
-  friend absl::Status CreateDepthwiseConv3x3(
-      const CreationContext& creation_context, const OperationDef& definition,
-      const DepthwiseConvolution2DAttributes& attr, DepthwiseConv3x3* result);
+  friend DepthwiseConv3x3 CreateDepthwiseConv3x3(
+      const DeviceInfo& device_info, const OperationDef& definition,
+      const DepthwiseConvolution2DAttributes& attr);
 
   template <DataType S, typename T>
   void RearrangeWeightsAndBiasesData(
@@ -77,10 +76,9 @@ class DepthwiseConv3x3 : public GPUOperation {
 };
 
 template <DataType T>
-absl::Status DepthwiseConv3x3::UploadWeightsAndBiases(
+void DepthwiseConv3x3::UploadWeightsAndBiases(
     const tflite::gpu::Tensor<OHWI, T>& weights,
-    const tflite::gpu::Tensor<Linear, T>& biases, bool weights_are_buffer,
-    CLContext* context) {
+    const tflite::gpu::Tensor<Linear, T>& biases, bool weights_are_buffer) {
   const int src_depth = DivideRoundUp(weights.shape.i, 4);
   int texture_width = 10;  // 3x3 kernel + 1 bias
   int texture_height = src_depth;
@@ -88,50 +86,33 @@ absl::Status DepthwiseConv3x3::UploadWeightsAndBiases(
   const bool fp32_weights = definition_.precision == CalculationsPrecision::F32;
   const int float4_size = fp32_weights ? 16 : 8;
 
-  Texture2D weights_tex2d;
-  Buffer weights_buf;
+  std::vector<uint8_t> data(float4_size * elements_count);
   if (fp32_weights) {
-    std::vector<float4> gpu_data(elements_count);
-    RearrangeWeightsAndBiasesData(weights, biases, absl::MakeSpan(gpu_data));
-    if (weights_are_buffer) {
-      RETURN_IF_ERROR(CreateReadOnlyBuffer(float4_size * elements_count,
-                                           gpu_data.data(), context,
-                                           &weights_buf));
-    } else {
-      RETURN_IF_ERROR(CreateTexture2DRGBA(
-          definition_.GetDataType(), texture_width, texture_height,
-          gpu_data.data(), context, &weights_tex2d));
-    }
+    float4* ptr = reinterpret_cast<float4*>(data.data());
+    RearrangeWeightsAndBiasesData(weights, biases,
+                                  absl::MakeSpan(ptr, elements_count));
   } else {
-    std::vector<half4> gpu_data(elements_count);
-    RearrangeWeightsAndBiasesData(weights, biases, absl::MakeSpan(gpu_data));
-    if (weights_are_buffer) {
-      RETURN_IF_ERROR(CreateReadOnlyBuffer(float4_size * elements_count,
-                                           gpu_data.data(), context,
-                                           &weights_buf));
-    } else {
-      RETURN_IF_ERROR(CreateTexture2DRGBA(
-          definition_.GetDataType(), texture_width, texture_height,
-          gpu_data.data(), context, &weights_tex2d));
-    }
+    half4* ptr = reinterpret_cast<half4*>(data.data());
+    RearrangeWeightsAndBiasesData(weights, biases,
+                                  absl::MakeSpan(ptr, elements_count));
   }
 
   if (weights_are_buffer) {
     BufferDescriptor desc;
     desc.element_type = fp32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
     desc.element_size = 4;
-    args_.AddObject("weights", AccessType::READ,
-                    absl::make_unique<Buffer>(std::move(weights_buf)),
-                    absl::make_unique<BufferDescriptor>(desc));
+    desc.size = float4_size * elements_count;
+    desc.data = std::move(data);
+    args_.AddObject("weights",
+                    absl::make_unique<BufferDescriptor>(std::move(desc)));
   } else {
     Texture2DDescriptor desc;
     desc.element_type = fp32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
-    args_.AddObject("weights", AccessType::READ,
-                    absl::make_unique<Texture2D>(std::move(weights_tex2d)),
-                    absl::make_unique<Texture2DDescriptor>(desc));
+    desc.size = int2(texture_width, texture_height);
+    desc.data = std::move(data);
+    args_.AddObject("weights",
+                    absl::make_unique<Texture2DDescriptor>(std::move(desc)));
   }
-
-  return absl::OkStatus();
 }
 
 template <DataType S, typename T>
@@ -169,9 +150,9 @@ void DepthwiseConv3x3::RearrangeWeightsAndBiasesData(
 
 bool IsDepthwiseConv3x3Supported(const DepthwiseConvolution2DAttributes& attr);
 
-absl::Status CreateDepthwiseConv3x3(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const DepthwiseConvolution2DAttributes& attr, DepthwiseConv3x3* result);
+DepthwiseConv3x3 CreateDepthwiseConv3x3(
+    const DeviceInfo& device_info, const OperationDef& definition,
+    const DepthwiseConvolution2DAttributes& attr);
 
 }  // namespace cl
 }  // namespace gpu

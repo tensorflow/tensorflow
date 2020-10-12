@@ -22,7 +22,4 @@ REGISTER2(UnaryOp, CPU, "Asin", functor::asin, float, double);
 REGISTER2(UnaryOp, GPU, "Asin", functor::asin, float, double);
 #endif
 
-#if TENSORFLOW_USE_SYCL
-REGISTER2(UnaryOp, SYCL, "Asin", functor::asin, float, double);
-#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

@@ -156,6 +156,21 @@ class PolicyTest(test.TestCase, parameterized.TestCase):
       mp_policy.set_policy(None)
 
   @testing_utils.enable_v2_dtype_behavior
+  def test_global_policy_dtype_error(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        'set_policy can only be used to set the global policy to '
+        'floating-point policies, such as "float32" and "mixed_float16", but '
+        'got policy: int32'):
+      mp_policy.set_policy('int32')
+    with self.assertRaisesRegex(
+        ValueError,
+        'set_policy can only be used to set the global policy to '
+        'floating-point policies, such as "float32" and "mixed_float16", but '
+        'got policy: complex64'):
+      mp_policy.set_policy(mp_policy.Policy('complex64'))
+
+  @testing_utils.enable_v2_dtype_behavior
   def test_loss_scale_warning(self):
     with test.mock.patch.object(tf_logging, 'warn') as mock_warn:
       mp_policy.Policy('float32', loss_scale=2.)
@@ -174,22 +189,24 @@ class PolicyTest(test.TestCase, parameterized.TestCase):
 
   @testing_utils.enable_v2_dtype_behavior
   def test_device_compatibility_warning(self):
-    with context.eager_mode():
-      device_compatibility_check._logged_compatibility_check = False
+    if not context.executing_eagerly():
+      self.skipTest('Run in eager mode only.')
+
+    device_compatibility_check._logged_compatibility_check = False
+    with test.mock.patch.object(tf_logging, 'warn') as mock_warn:
+      mp_policy.Policy('mixed_float16')
+    if config_module.list_physical_devices('GPU'):
+      mock_warn.assert_not_called()
+    else:
+      self.assertRegex(
+          mock_warn.call_args[0][0],
+          r'Mixed precision compatibility check \(mixed_float16\): WARNING.*')
+
+    if config_module.list_physical_devices('GPU'):
+      # Assert message is only logged once
       with test.mock.patch.object(tf_logging, 'warn') as mock_warn:
         mp_policy.Policy('mixed_float16')
-      if config_module.list_physical_devices('GPU'):
-        mock_warn.assert_not_called()
-      else:
-        self.assertRegex(
-            mock_warn.call_args[0][0],
-            r'Mixed precision compatibility check \(mixed_float16\): WARNING.*')
-
-      if config_module.list_physical_devices('GPU'):
-        # Assert message is only logged once
-        with test.mock.patch.object(tf_logging, 'warn') as mock_warn:
-          mp_policy.Policy('mixed_float16')
-        mock_warn.assert_not_called()
+      mock_warn.assert_not_called()
 
   @testing_utils.enable_v2_dtype_behavior
   def test_policy_scope(self):

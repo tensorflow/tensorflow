@@ -27,6 +27,11 @@ TEST(DatasetTest, RegisterDatasetOp) {
   EXPECT_FALSE(data::DatasetOpRegistry::IsRegistered("InvalidDatasetOp"));
 }
 
+TEST(DatasetTest, FullName) {
+  EXPECT_EQ(data::FullName("prefix", "name"),
+            "60d899aa0d8ce4351e7c3b419e92d25b|prefix:name");
+}
+
 enum DataTypeTest {
   _tf_int_32,
   _tf_int_64,

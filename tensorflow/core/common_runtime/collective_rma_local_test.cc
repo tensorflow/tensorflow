@@ -151,5 +151,16 @@ TEST_F(CollectiveRemoteAccessLocalTest, PostRecvCPU1_2) {
   EXPECT_NE(DMAHelper::base(&source_tensor), DMAHelper::base(&sink_tensor));
 }
 
+TEST_F(CollectiveRemoteAccessLocalTest, CheckHealth) {
+  Status status;
+  Notification done;
+  rma_->CheckPeerHealth(kTaskName, [&status, &done](const Status& s) {
+    status = s;
+    done.Notify();
+  });
+  done.WaitForNotification();
+  EXPECT_TRUE(errors::IsInternal(status));
+}
+
 }  // namespace
 }  // namespace tensorflow

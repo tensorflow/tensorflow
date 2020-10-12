@@ -2384,6 +2384,10 @@ template <typename D, typename T>
 void SelectTrueCoords(const RuntimeShape& input_condition_shape,
                       const D* input_condition_data, T* output_data) {
   const size_t size = input_condition_shape.FlatSize();
+  if (size == 0) {
+    // Dimension is zero, in which case we don't need to output.
+    return;
+  }
   const size_t cond_rank = input_condition_shape.DimensionsCount();
 
   std::vector<int> dims_to_count(cond_rank, 0);

@@ -1,4 +1,6 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//third_party/mlir:tblgen.bzl", "gentbl")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 package(
     default_visibility = ["//tensorflow/compiler/mlir/tools/kernel_gen:friends"],
@@ -7,6 +9,7 @@ package(
 
 gentbl(
     name = "tf_framework_ops_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         ("-gen-op-decls", "tf_framework_ops.h.inc"),
         ("-gen-op-defs", "tf_framework_ops.cc.inc"),
@@ -34,14 +37,4 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:SideEffects",
     ],
-)
-
-cc_library(
-    name = "tf_framework_dialect_registration",
-    srcs = ["dialect_registration.cc"],
-    deps = [
-        ":tf_framework_ops",
-        "@llvm-project//mlir:IR",
-    ],
-    alwayslink = 1,
 )

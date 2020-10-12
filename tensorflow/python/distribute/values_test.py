@@ -32,6 +32,7 @@ from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import packed_distributed_variable as packed
 from tensorflow.python.distribute import parameter_server_strategy
+from tensorflow.python.distribute import ps_values
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import test_util as ds_test_util
 from tensorflow.python.distribute import tpu_strategy
@@ -80,15 +81,23 @@ def _make_mirrored_val(init_val=5.0):
   return values_lib.Mirrored(v)
 
 
-def _make_mirrored():
+def _make_mirrored(distribution=None):
   v = []
-  devices = ["/device:GPU:0", "/device:CPU:0"]
+  if distribution:
+    devices = distribution.extended.worker_devices
+  else:
+    devices = ["/device:GPU:0", "/device:CPU:0"]
   for d, n, init in zip(devices, ["v", "v/replica"], [1., 2.]):
     with ops.device(d):
-      v.append(variable_scope.get_variable(
-          name=n, initializer=init, use_resource=True))
-  mirrored = values_lib.MirroredVariable(
-      None, v, variable_scope.VariableAggregation.SUM)
+      v.append(
+          variable_scope.get_variable(
+              name=n, initializer=init, use_resource=True))
+
+  if (distribution is not None) and isinstance(distribution, _TPU_STRATEGIES):
+    var_cls = tpu_values.TPUMirroredVariable
+  else:
+    var_cls = values_lib.MirroredVariable
+  mirrored = var_cls(distribution, v, variable_scope.VariableAggregation.SUM)
   return mirrored
 
 
@@ -103,23 +112,6 @@ def mirrored_and_tpu_strategy_combinations():
 
 
 class DistributedValuesTest(test.TestCase, parameterized.TestCase):
-
-  def testGetEager(self):
-    one = constant_op.constant(1)
-    two = constant_op.constant(2)
-    v = values_lib.DistributedValues((one, two))
-    self.assertEqual(one, v._get())
-    with distribute_lib.ReplicaContext(None, 1):
-      self.assertEqual(two, v._get())
-
-  def testGetGraph(self):
-    with context.graph_mode(), ops.Graph().as_default():
-      one = constant_op.constant(1)
-      two = constant_op.constant(2)
-      v = values_lib.DistributedValues((one, two))
-      self.assertEqual(one, v._get())
-      with distribute_lib.ReplicaContext(None, 1):
-        self.assertEqual(two, v._get())
 
   @combinations.generate(
       combinations.combine(
@@ -408,7 +400,7 @@ class DistributedDelegateTest(test.TestCase):
             strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
             strategy_combinations.tpu_strategy,
             strategy_combinations.tpu_strategy_packed_var,
-            strategy_combinations.central_storage_strategy_with_two_gpus,
+            strategy_combinations.central_storage_strategy_with_gpu_and_cpu,
             strategy_combinations.multi_worker_mirrored_2x1_cpu,
             strategy_combinations.multi_worker_mirrored_2x1_gpu,
             strategy_combinations.multi_worker_mirrored_2x2_gpu
@@ -422,7 +414,8 @@ class DistributedDelegateTest(test.TestCase):
             variables_lib.VariableAggregation.SUM,
             variables_lib.VariableAggregation.ONLY_FIRST_REPLICA,
         ],
-        mode=["graph", "eager"]))
+        mode=["graph", "eager"],
+        use_var_policy=[True, False]))
 class DistributedVariableTest(test.TestCase, parameterized.TestCase):
 
   def testExtendsVariable(self, distribution, synchronization, aggregation):
@@ -549,12 +542,20 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
       self.assertIsInstance(v2, type(v1))
       self.assertEqual(v1.aggregation, v2.aggregation)
       self.assertEqual(v1.distribute_strategy, v2.distribute_strategy)
-      self.assertEqual(v1._policy, v2._policy)  # pylint: disable=protected-access
-      self.assertEqual(len(v1.values), len(v2.values))
-      for (v1v, v2v) in zip(v1.values, v2.values):
-        self.assertEqual(v1v.device, v2v.device)
-        self.assertNotEqual(id(v1v), id(v2v))
-      self.assertAllEqual(self.evaluate(v1.values), self.evaluate(v2.values))
+      if isinstance(v1, ps_values.AggregatingVariable):
+        self.assertIsInstance(v2.get(), type(v1.get()))
+        self.assertNotEqual(id(v1.get()), id(v2.get()))
+      else:
+        if v1._policy:
+          self.assertNotEqual(id(v1._policy), id(v2._policy))  # pylint: disable=protected-access
+        else:
+          self.assertEqual(id(v1._policy), id(v2._policy))  # pylint: disable=protected-access
+        self.assertEqual(len(v1.values), len(v2.values))
+        for (v1v, v2v) in zip(v1.values, v2.values):
+          self.assertEqual(v1v.device, v2v.device)
+          self.assertNotEqual(id(v1v), id(v2v))
+          self.assertAllEqual(self.evaluate(v1.values),
+                              self.evaluate(v2.values))
 
     self.evaluate(variables_lib.global_variables_initializer())
     if not isinstance(distribution.extended, tpu_strategy.TPUExtended):
@@ -664,13 +665,13 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
     with distribution.scope():
       # We use four variables for convenience reasons. They have no special
       # meaning.
-      # - v is used whenever possible, and for the methods that require the
-      # dtype to be integer.
+      # - v is used whenever possible.
       # - w is used for scatter and gather, which require the variable to be
       # non-scalar.
-      # - y is used when the dtype needs to be float.
+      # - y is used when the dtype needs to be integer. Note that aggregation
+      # cannot be MEAN for integers.
       v = variables_lib.Variable(
-          0,
+          0.,
           synchronization=synchronization,
           aggregation=aggregation,
           trainable=True)
@@ -678,10 +679,11 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
                                  synchronization=synchronization,
                                  aggregation=aggregation,
                                  trainable=True)
-      y = variables_lib.Variable(
-          7.,
-          synchronization=synchronization,
-          aggregation=aggregation)
+      if aggregation != variables_lib.VariableAggregation.MEAN:
+        y = variables_lib.Variable(
+            0,
+            synchronization=synchronization,
+            aggregation=aggregation)
 
     # pylint: disable=g-long-lambda
 
@@ -690,7 +692,7 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
     _test(lambda: self.assertIs(v.constraint, None), v)
     # TODO(crccw): should we raise an error instead?
     _test(lambda: self.assertEqual(v.device, v._primary.device), v)
-    _test(lambda: self.assertEqual(v.dtype, dtypes.int32), v)
+    _test(lambda: self.assertEqual(v.dtype, dtypes.float32), v)
     if not context.executing_eagerly():
       _test(lambda: self.assertIs(v.graph, v._primary.graph), v)
     if not context.executing_eagerly():
@@ -704,9 +706,9 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
     _test(lambda: self.assertTrue(v.trainable, True), v)
 
     # tf.Variable methods.
-    _test(lambda: check_ops.assert_equal_v2(v.assign(1), 1), v)
-    _test(lambda: check_ops.assert_equal_v2(v.assign_add(1), 2), v)
-    _test(lambda: check_ops.assert_equal_v2(v.assign_sub(1), 1), v)
+    _test(lambda: check_ops.assert_equal_v2(v.assign(1.), 1.), v)
+    _test(lambda: check_ops.assert_equal_v2(v.assign_add(1.), 2.), v)
+    _test(lambda: check_ops.assert_equal_v2(v.assign_sub(1.), 1.), v)
     # TODO(b/148689177): Implement batch_scatter_update.
     # count_up_to() is skipped since it's deprecated.
     # eval() is skipped since it shouldn't called in a tf.function.
@@ -718,7 +720,7 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
                                           tensor_shape.TensorShape(())), v)
     # initialized_value() is skipped since it shouldn't called in a tf.function.
     # load() is skipped since it shouldn't called in a tf.function.
-    _test(lambda: check_ops.assert_equal_v2(v.read_value(), 1), v)
+    _test(lambda: check_ops.assert_equal_v2(v.read_value(), 1.), v)
     # ref() is skipped since it shouldn't called in a tf.function.
     _test(
         lambda: check_ops.assert_equal_v2(
@@ -752,62 +754,65 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
             [2., 0.5, 1.]), w)
     # set_shape() is skipped since ResourceVariable doesn't implement it.
     # to_proto() is skipped since it shouldn't called in a tf.function.
-    _test(lambda: check_ops.assert_equal_v2(v.value(), 1), v)
+    _test(lambda: check_ops.assert_equal_v2(v.value(), 1.), v)
 
     # DistributedVariable should be treated as ResourceVariable, so it needs to
     # conform to ResourceVariable interface as well.
     _test(lambda: self.assertIs(v.handle, v._primary.handle), v)
 
     # Convert to tensor.
-    _test(lambda: check_ops.assert_equal_v2(ops.convert_to_tensor(v), 1), v)
+    _test(lambda: check_ops.assert_equal_v2(ops.convert_to_tensor(v), 1.), v)
 
     # Control dependency.
     def _with_control_dep():
-      with ops.control_dependencies([v.assign(1)]):
+      with ops.control_dependencies([v.assign(1.)]):
         return array_ops.identity(1)
 
     _test(_with_control_dep, v)
 
     # Operator overloads.
-    _test(lambda: check_ops.assert_equal_v2(v.assign(7), 7), v)
-    _test(lambda: check_ops.assert_equal_v2(v + 1, 8), v)
-    _test(lambda: check_ops.assert_equal_v2(3 + v, 10), v)
-    _test(lambda: check_ops.assert_equal_v2(v + v, 14), v)
-    _test(lambda: check_ops.assert_equal_v2(v - 2, 5), v)
-    _test(lambda: check_ops.assert_equal_v2(v - v, 0), v)
-    _test(lambda: check_ops.assert_equal_v2(v * 2, 14), v)
-    _test(lambda: check_ops.assert_equal_v2(3 * v, 21), v)
-    _test(lambda: check_ops.assert_equal_v2(v * v, 49), v)
+    _test(lambda: check_ops.assert_equal_v2(v.assign(7.), 7.), v)
+    _test(lambda: check_ops.assert_equal_v2(v + 1., 8.), v)
+    _test(lambda: check_ops.assert_equal_v2(3 + v, 10.), v)
+    _test(lambda: check_ops.assert_equal_v2(v + v, 14.), v)
+    _test(lambda: check_ops.assert_equal_v2(v - 2., 5.), v)
+    _test(lambda: check_ops.assert_equal_v2(v - v, 0.), v)
+    _test(lambda: check_ops.assert_equal_v2(v * 2., 14.), v)
+    _test(lambda: check_ops.assert_equal_v2(3 * v, 21.), v)
+    _test(lambda: check_ops.assert_equal_v2(v * v, 49.), v)
     _test(
         lambda: check_ops.assert_equal_v2(
-            math_ops.cast(v / 2, dtypes.float32), 3.5), v)
+            math_ops.cast(v / 2., dtypes.float32), 3.5), v)
     _test(
         lambda: check_ops.assert_equal_v2(
-            math_ops.cast(14 / v, dtypes.float32), 2.), v)
-    _test(lambda: check_ops.assert_equal_v2(v // 2, 3), v)
-    _test(lambda: check_ops.assert_equal_v2(15 // v, 2), v)
-    _test(lambda: check_ops.assert_equal_v2(v % 2, 1), v)
-    _test(lambda: check_ops.assert_equal_v2(16 % v, 2), v)
-    _test(lambda: _assert(v < 12), v)
-    _test(lambda: _assert(v <= 12), v)
-    _test(lambda: _assert(not v > 12), v)
-    _test(lambda: _assert(not v >= 12), v)
-    _test(lambda: _assert(not 12 < v), v)
-    _test(lambda: _assert(not 12 <= v), v)
-    _test(lambda: _assert(12 > v), v)
-    _test(lambda: _assert(12 >= v), v)
-    # XLA doesn't implement pow() with integers.
-    _test(lambda: check_ops.assert_near_v2(pow(y, 3.), 343.), y)
-    _test(lambda: check_ops.assert_near_v2(pow(2., y), 128.), y)
-    _test(lambda: check_ops.assert_equal_v2(abs(v), 7), v)
-    _test(lambda: check_ops.assert_equal_v2(v & 3, 3), v)
-    _test(lambda: check_ops.assert_equal_v2(3 & v, 3), v)
-    _test(lambda: check_ops.assert_equal_v2(v | 8, 15), v)
-    _test(lambda: check_ops.assert_equal_v2(16 | v, 23), v)
-    _test(lambda: check_ops.assert_equal_v2(v ^ 3, 4), v)
-    _test(lambda: check_ops.assert_equal_v2(11 ^ v, 12), v)
-    _test(lambda: check_ops.assert_equal_v2(-v, -7), v)
-    _test(lambda: check_ops.assert_equal_v2(~v, ~7), v)
+            math_ops.cast(14. / v, dtypes.float32), 2.), v)
+    _test(lambda: _assert(v < 12.), v)
+    _test(lambda: _assert(v <= 12.), v)
+    _test(lambda: _assert(not v > 12.), v)
+    _test(lambda: _assert(not v >= 12.), v)
+    _test(lambda: _assert(not 12. < v), v)
+    _test(lambda: _assert(not 12. <= v), v)
+    _test(lambda: _assert(12. > v), v)
+    _test(lambda: _assert(12. >= v), v)
+    _test(lambda: check_ops.assert_near_v2(pow(v, 3.), 343.), v)
+    _test(lambda: check_ops.assert_near_v2(pow(2., v), 128.), v)
+    _test(lambda: check_ops.assert_equal_v2(abs(v), 7.), v)
+
+    # Operator overloads that only works for integers.
+    if aggregation != variables_lib.VariableAggregation.MEAN:
+      _test(lambda: check_ops.assert_equal_v2(y.assign(7), 7), y)
+      _test(lambda: check_ops.assert_equal_v2(y // 2, 3), y)
+      _test(lambda: check_ops.assert_equal_v2(15 // y, 2), y)
+      _test(lambda: check_ops.assert_equal_v2(y % 2, 1), y)
+      _test(lambda: check_ops.assert_equal_v2(16 % y, 2), y)
+      _test(lambda: check_ops.assert_equal_v2(y & 3, 3), y)
+      _test(lambda: check_ops.assert_equal_v2(3 & y, 3), y)
+      _test(lambda: check_ops.assert_equal_v2(y | 8, 15), y)
+      _test(lambda: check_ops.assert_equal_v2(16 | y, 23), y)
+      _test(lambda: check_ops.assert_equal_v2(y ^ 3, 4), y)
+      _test(lambda: check_ops.assert_equal_v2(11 ^ y, 12), y)
+      _test(lambda: check_ops.assert_equal_v2(-y, -7), y)
+      _test(lambda: check_ops.assert_equal_v2(~y, ~7), y)
 
     # Index.
     if isinstance(distribution.extended, tpu_strategy.TPUExtended):
@@ -894,6 +899,9 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(v.dtype, mirrored.dtype)
     self.assertEqual(v.shape, mirrored.shape)
 
+
+class MirroredVariableSaveRestoreTest(test.TestCase, parameterized.TestCase):
+
   def _assign_mirrored(self, v, new):
     for var, n in zip(v.values, new):
       self.evaluate(var.assign(n))
@@ -908,37 +916,10 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
     save_path, _ = self._save_return_saver(sess, var)
     return save_path
 
-  @test_util.run_in_graph_and_eager_modes(config=config)
-  def testSaveAndRestoreMirroredOneGraph(self):
-    if context.num_gpus() < 1 and context.executing_eagerly():
-      # Graph mode can work without GPU because the Placer "moves" the
-      # variable to a CPU. In other words, if there is no GPU available, but
-      # user requested to create a variable on GPU, Placer will ignore the
-      # user request and assign the VarHandleOp to CPU. This requires
-      # soft_placement, which is on by default.
-      self.skipTest("A GPU is not available for this test in eager mode.")
-
-    with self.cached_session(config=self.config) as sess:
-      mirrored = _make_mirrored()
-      v = mirrored.values
-
-      # Overwrite the initial values.
-      self._assign_mirrored(mirrored, [3., 4.])
-
-      # Saves the current value of v[0], 3.
-      save_path, saver = self._save_return_saver(sess, mirrored)
-
-      # Change the values between save and restore.
-      self._assign_mirrored(mirrored, [5., 6.])
-
-      # Restores the saved value of 3. to both variables.
-      saver.restore(sess, save_path)
-      self.assertEqual([3., 3.], self.evaluate([v[0], v[1]]))
-
-  def _save_mirrored(self):
+  def _save_mirrored(self, distribution):
     """Save variables with mirroring, returns save_path."""
     with self.session(graph=ops.Graph()) as sess:
-      mirrored = _make_mirrored()
+      mirrored = _make_mirrored(distribution)
 
       # Overwrite the initial values.
       self._assign_mirrored(mirrored, [3., 4.])
@@ -980,10 +961,10 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
       saver.restore(sess, save_path)
       self.assertEqual(3., self.evaluate(var))
 
-  def _restore_mirrored(self, save_path):
+  def _restore_mirrored(self, save_path, distribution):
     """Restore to variables with mirroring in a fresh graph."""
     with self.session(graph=ops.Graph()) as sess:
-      mirrored = _make_mirrored()
+      mirrored = _make_mirrored(distribution)
       v = mirrored.values
 
       # Overwrite the initial values.
@@ -994,8 +975,27 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
       saver.restore(sess, save_path)
       self.assertEqual([3., 3.], self.evaluate([v[0], v[1]]))
 
-  @test_util.run_in_graph_and_eager_modes(config=config)
-  def testSaveMirroredRestoreMirrored(self):
+  @combinations.generate(mirrored_and_tpu_strategy_combinations())
+  def testSaveAndRestoreMirroredOneGraph(self, distribution):
+    with self.cached_session() as sess:
+      mirrored = _make_mirrored(distribution)
+      v = mirrored  .values
+
+      # Overwrite the initial values.
+      self._assign_mirrored(mirrored, [3., 4.])
+
+      # Saves the current value of v[0], 3.
+      save_path, saver = self._save_return_saver(sess, mirrored)
+
+      # Change the values between save and restore.
+      self._assign_mirrored(mirrored, [5., 6.])
+
+      # Restores the saved value of 3. to both variables.
+      saver.restore(sess, save_path)
+      self.assertEqual([3., 3.], self.evaluate([v[0], v[1]]))
+
+  @combinations.generate(mirrored_and_tpu_strategy_combinations())
+  def testSaveMirroredRestoreMirrored(self, distribution):
     if context.num_gpus() < 1 and context.executing_eagerly():
       # Graph mode can work without GPU because the Placer "moves" the
       # variable to a CPU. In other words, if there is no GPU available, but
@@ -1004,11 +1004,11 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
       # soft_placement, which is on by default.
       self.skipTest("A GPU is not available for this test in eager mode.")
 
-    save_path = self._save_mirrored()
-    self._restore_mirrored(save_path)
+    save_path = self._save_mirrored(distribution)
+    self._restore_mirrored(save_path, distribution)
 
-  @test_util.run_in_graph_and_eager_modes(config=config)
-  def testSaveMirroredRestoreNormal(self):
+  @combinations.generate(mirrored_and_tpu_strategy_combinations())
+  def testSaveMirroredRestoreNormal(self, distribution):
     if context.num_gpus() < 1 and context.executing_eagerly():
       # Graph mode can work without GPU because the Placer "moves" the
       # variable to a CPU. In other words, if there is no GPU available, but
@@ -1017,11 +1017,11 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
       # soft_placement, which is on by default.
       self.skipTest("A GPU is not available for this test in eager mode.")
 
-    save_path = self._save_mirrored()
+    save_path = self._save_mirrored(distribution)
     self._restore_normal(save_path)
 
-  @test_util.run_in_graph_and_eager_modes(config=config)
-  def testSaveNormalRestoreMirrored(self):
+  @combinations.generate(mirrored_and_tpu_strategy_combinations())
+  def testSaveNormalRestoreMirrored(self, distribution):
     if context.num_gpus() < 1 and context.executing_eagerly():
       # Graph mode can work without GPU because the Placer "moves" the
       # variable to a CPU. In other words, if there is no GPU available, but
@@ -1031,7 +1031,7 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
       self.skipTest("A GPU is not available for this test in eager mode.")
 
     save_path = self._save_normal()
-    self._restore_mirrored(save_path)
+    self._restore_mirrored(save_path, distribution)
 
 
 _TPU_STRATEGIES = (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)
@@ -1438,4 +1438,4 @@ def _make_index_slices(values, indices, dense_shape=None):
 
 
 if __name__ == "__main__":
-  combinations.main()
+  ds_test_util.main()

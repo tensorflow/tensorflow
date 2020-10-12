@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import abc
 import collections
+import functools
 import os
 import weakref
 
@@ -57,6 +58,7 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
+from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -397,7 +399,7 @@ class _NameBasedRestoreCoordinator(object):
             restored_tensors=restored_tensors, restored_shapes=None)
 
 
-# TODO(allenl): If this ends up in a public API, consider adding LINT.IfChange
+# TODO(allenl): If this ends up in a public API, consider adding LINT.If Change
 # or consolidating the implementation with get_variable.
 def _default_getter(name,
                     shape,
@@ -427,10 +429,16 @@ def _default_getter(name,
       # Instantiate initializer if provided initializer is a type object.
       if isinstance(initializer, type(init_ops.Initializer)):
         initializer = initializer(dtype=dtype)
-
-      def initial_value():
-        return initializer(
-            shape_object.as_list(), dtype=dtype, partition_info=partition_info)
+      shape_list = None if shape is None else shape_object.as_list()
+      if "partition_info" in tf_inspect.getargspec(initializer).args:
+        initial_value = functools.partial(initializer,
+                                          shape_list,
+                                          dtype=dtype,
+                                          partition_info=partition_info)
+      else:
+        initial_value = functools.partial(initializer,
+                                          shape_list,
+                                          dtype=dtype)
 
     return variables.VariableV1(
         initial_value=initial_value,
@@ -1908,8 +1916,9 @@ class Checkpoint(tracking.AutoTrackable):
       kwargs["root"] = root
       root._maybe_initialize_trackable()
 
-      self._save_counter = root._lookup_dependency("save_counter")
-      self._root = root
+      self._save_counter = data_structures.NoDependency(
+          root._lookup_dependency("save_counter"))
+      self._root = data_structures.NoDependency(root)
 
     for k, v in sorted(kwargs.items(), key=lambda item: item[0]):
       setattr(self, k, v)
@@ -1930,7 +1939,8 @@ class Checkpoint(tracking.AutoTrackable):
               "root.{name} already exists.".format(name=k))
 
     self._saver = saver_with_op_caching(saver_root, attached_dependencies)
-    self._attached_dependencies = attached_dependencies
+    self._attached_dependencies = data_structures.NoDependency(
+        attached_dependencies)
 
   def _maybe_create_save_counter(self):
     """Create a save counter if it does not yet exist."""
@@ -1952,7 +1962,7 @@ class Checkpoint(tracking.AutoTrackable):
           # When loading a checkpoint, the save counter is created after
           # the checkpoint has been loaded, so it must be handled in a deferred
           # manner.
-          restore = self.root._deferred_dependencies.get("save_counter")  # pylint: disable=protected-access
+          restore = self.root._deferred_dependencies.pop("save_counter", ())  # pylint: disable=protected-access
           if restore:
             restore[0].restore(self._save_counter)
 

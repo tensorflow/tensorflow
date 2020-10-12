@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/abstract_stack_trace.h"
@@ -50,6 +51,7 @@ limitations under the License.
 #include "tensorflow/python/util/stack_trace.h"
 #include "tensorflow/python/util/util.h"
 
+using tensorflow::Status;
 using tensorflow::string;
 using tensorflow::strings::Printf;
 
@@ -1278,6 +1280,13 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
       return nullptr;
     }
     return PyObject_CallFunctionObjArgs(ones_like_fn_, tensor, NULL);
+  }
+
+  // Builds a tensor filled with ones with the same shape and dtype as `t`.
+  Status BuildOnesLike(const PyTapeTensor& t,
+                       PyObject** result) const override {
+    *result = t.OnesLike();
+    return Status::OK();
   }
 
   PyObject* Zeros(PyObject* shape, PyObject* dtype) const {
@@ -2953,7 +2962,14 @@ PyObject* TFE_Py_PackJVPs(PyObject* tensors) {
 }
 
 namespace {
-static const int kFastPathExecuteInputStartIndex = 5;
+
+// Indices for the "args" tuple that's passed to TFE_Py_FastPathExecute_C.
+enum FastPathExecuteArgIndex {
+  FAST_PATH_EXECUTE_ARG_CONTEXT = 0,
+  FAST_PATH_EXECUTE_ARG_OP_NAME = 1,
+  FAST_PATH_EXECUTE_ARG_NAME = 2,
+  FAST_PATH_EXECUTE_ARG_INPUT_START = 3
+};
 
 PyObject* GetPythonObjectFromString(tensorflow::StringPiece s) {
 #if PY_MAJOR_VERSION >= 3
@@ -3063,7 +3079,7 @@ tensorflow::DataType MaybeGetDTypeForAttr(const string& attr,
 
   for (const auto& input_info : it->second) {
     PyObject* item = PyTuple_GET_ITEM(
-        op_exec_info->args, kFastPathExecuteInputStartIndex + input_info.i);
+        op_exec_info->args, FAST_PATH_EXECUTE_ARG_INPUT_START + input_info.i);
     if (input_info.is_list) {
       tensorflow::Safe_PyObjectPtr fast_item(
           PySequence_Fast(item, "Unable to allocate"));
@@ -3526,19 +3542,26 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
   tensorflow::profiler::TraceMe activity(
       "TFE_Py_FastPathExecute_C", tensorflow::profiler::TraceMeLevel::kInfo);
   Py_ssize_t args_size = PyTuple_GET_SIZE(args);
-  if (args_size < kFastPathExecuteInputStartIndex) {
+  if (args_size < FAST_PATH_EXECUTE_ARG_INPUT_START) {
     PyErr_SetString(
         PyExc_ValueError,
         Printf("There must be at least %d items in the input tuple.",
-               kFastPathExecuteInputStartIndex)
+               FAST_PATH_EXECUTE_ARG_INPUT_START)
             .c_str());
     return nullptr;
   }
 
   FastPathOpExecInfo op_exec_info;
 
+  PyObject* py_eager_context =
+      PyTuple_GET_ITEM(args, FAST_PATH_EXECUTE_ARG_CONTEXT);
+
+  // TODO(edoper): Use interned string here
+  PyObject* eager_context_handle =
+      PyObject_GetAttrString(py_eager_context, "_context_handle");
+
   TFE_Context* ctx = reinterpret_cast<TFE_Context*>(
-      PyCapsule_GetPointer(PyTuple_GET_ITEM(args, 0), nullptr));
+      PyCapsule_GetPointer(eager_context_handle, nullptr));
   op_exec_info.ctx = ctx;
   op_exec_info.args = args;
 
@@ -3550,10 +3573,15 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
     return nullptr;
   }
 
-  op_exec_info.device_name = GetDeviceName(PyTuple_GET_ITEM(args, 1));
-  op_exec_info.op_name = PyTuple_GET_ITEM(args, 2);
-  op_exec_info.name = PyTuple_GET_ITEM(args, 3);
-  op_exec_info.callbacks = PyTuple_GET_ITEM(args, 4);
+  auto* tld = tensorflow::GetEagerContextThreadLocalData(py_eager_context);
+  if (tld == nullptr) {
+    return nullptr;
+  }
+  op_exec_info.device_name = GetDeviceName(tld->device_name.get());
+  op_exec_info.callbacks = tld->op_callbacks.get();
+
+  op_exec_info.op_name = PyTuple_GET_ITEM(args, FAST_PATH_EXECUTE_ARG_OP_NAME);
+  op_exec_info.name = PyTuple_GET_ITEM(args, FAST_PATH_EXECUTE_ARG_NAME);
 
   // TODO(nareshmodi): Add a benchmark for the fast-path with gradient callbacks
   // (similar to benchmark_tf_gradient_function_*). Also consider using an
@@ -3591,18 +3619,19 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
   const tensorflow::OpDef* op_def = tensorflow::unwrap(op)->OpDef();
   if (op_def == nullptr) return nullptr;
 
-  if (args_size < kFastPathExecuteInputStartIndex + op_def->input_arg_size()) {
+  if (args_size <
+      FAST_PATH_EXECUTE_ARG_INPUT_START + op_def->input_arg_size()) {
     PyErr_SetString(
         PyExc_ValueError,
         Printf("Tuple size smaller than intended. Expected to be at least %d, "
                "was %ld",
-               kFastPathExecuteInputStartIndex + op_def->input_arg_size(),
+               FAST_PATH_EXECUTE_ARG_INPUT_START + op_def->input_arg_size(),
                args_size)
             .c_str());
     return nullptr;
   }
 
-  if (!CheckInputsOk(args, kFastPathExecuteInputStartIndex, *op_def)) {
+  if (!CheckInputsOk(args, FAST_PATH_EXECUTE_ARG_INPUT_START, *op_def)) {
     RaiseFallbackException(
         "This function does not handle the case of the path where "
         "all inputs are not already EagerTensors.");
@@ -3618,7 +3647,7 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
 
   // Set non-inferred attrs, including setting defaults if the attr is passed in
   // as None.
-  for (int i = kFastPathExecuteInputStartIndex + op_def->input_arg_size();
+  for (int i = FAST_PATH_EXECUTE_ARG_INPUT_START + op_def->input_arg_size();
        i < args_size; i += 2) {
     PyObject* py_attr_name = PyTuple_GET_ITEM(args, i);
     const char* attr_name = TFE_GetPythonString(py_attr_name);
@@ -3675,7 +3704,7 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
     const auto& input_arg = op_def->input_arg(i);
 
     PyObject* input =
-        PyTuple_GET_ITEM(args, kFastPathExecuteInputStartIndex + i);
+        PyTuple_GET_ITEM(args, FAST_PATH_EXECUTE_ARG_INPUT_START + i);
     if (!input_arg.number_attr().empty()) {
       // The item is a homogeneous list.
       if (!RaiseIfNotPySequence(input, input_arg.number_attr())) return nullptr;
@@ -3820,7 +3849,7 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
   if (op_exec_info.run_callbacks) {
     if (!RunCallbacks(
             op_exec_info, args,
-            kFastPathExecuteInputStartIndex + op_def->input_arg_size(),
+            FAST_PATH_EXECUTE_ARG_INPUT_START + op_def->input_arg_size(),
             *flattened_inputs, *flattened_attrs, flat_result.get())) {
       return nullptr;
     }
@@ -4203,3 +4232,125 @@ PyObject* GetPyEagerContext() {
   Py_INCREF(py_context);
   return py_context;
 }
+
+namespace {
+
+// Default values for thread_local_data fields.
+struct EagerContextThreadLocalDataDefaults {
+  tensorflow::Safe_PyObjectPtr is_eager;
+  tensorflow::Safe_PyObjectPtr device_spec;
+};
+
+// Maps each py_eager_context object to its thread_local_data.
+//
+// Note: we need to use the python Context object as the key here (and not
+// its handle object), because the handle object isn't created until the
+// context is initialized; but thread_local_data is potentially accessed
+// before then.
+using EagerContextThreadLocalDataMap = absl::flat_hash_map<
+    PyObject*, std::unique_ptr<tensorflow::EagerContextThreadLocalData>>;
+thread_local EagerContextThreadLocalDataMap*
+    eager_context_thread_local_data_map = nullptr;
+
+// Maps each py_eager_context object to default values.
+using EagerContextThreadLocalDataDefaultsMap =
+    absl::flat_hash_map<PyObject*, EagerContextThreadLocalDataDefaults>;
+EagerContextThreadLocalDataDefaultsMap*
+    eager_context_thread_local_data_defaults = nullptr;
+
+}  // namespace
+
+namespace tensorflow {
+
+void MakeEagerContextThreadLocalData(PyObject* py_eager_context,
+                                     PyObject* is_eager,
+                                     PyObject* device_spec) {
+  DCheckPyGilState();
+  if (eager_context_thread_local_data_defaults == nullptr) {
+    eager_context_thread_local_data_defaults =
+        new EagerContextThreadLocalDataDefaultsMap();
+  }
+  if (eager_context_thread_local_data_defaults->count(py_eager_context) > 0) {
+    PyErr_SetString(PyExc_AssertionError,
+                    "MakeEagerContextThreadLocalData may not be called "
+                    "twice on the same eager Context object.");
+  }
+
+  auto& defaults =
+      (*eager_context_thread_local_data_defaults)[py_eager_context];
+  Py_INCREF(is_eager);
+  defaults.is_eager.reset(is_eager);
+  Py_INCREF(device_spec);
+  defaults.device_spec.reset(device_spec);
+}
+
+EagerContextThreadLocalData* GetEagerContextThreadLocalData(
+    PyObject* py_eager_context) {
+  if (eager_context_thread_local_data_defaults == nullptr) {
+    PyErr_SetString(PyExc_AssertionError,
+                    "MakeEagerContextThreadLocalData must be called "
+                    "before GetEagerContextThreadLocalData.");
+    return nullptr;
+  }
+  auto defaults =
+      eager_context_thread_local_data_defaults->find(py_eager_context);
+  if (defaults == eager_context_thread_local_data_defaults->end()) {
+    PyErr_SetString(PyExc_AssertionError,
+                    "MakeEagerContextThreadLocalData must be called "
+                    "before GetEagerContextThreadLocalData.");
+    return nullptr;
+  }
+
+  if (eager_context_thread_local_data_map == nullptr) {
+    eager_context_thread_local_data_map = new EagerContextThreadLocalDataMap();
+  }
+  auto& thread_local_data =
+      (*eager_context_thread_local_data_map)[py_eager_context];
+
+  if (!thread_local_data) {
+    thread_local_data.reset(new EagerContextThreadLocalData());
+
+    Safe_PyObjectPtr is_eager(PyObject_CallFunctionObjArgs(
+        defaults->second.is_eager.get(), nullptr));
+    if (!is_eager) return nullptr;
+    thread_local_data->is_eager = PyObject_IsTrue(is_eager.get());
+
+#if PY_MAJOR_VERSION >= 3
+    PyObject* scope_name = PyUnicode_FromString("");
+#else
+    PyObject* scope_name = PyString_FromString("");
+#endif
+    thread_local_data->scope_name.reset(scope_name);
+
+#if PY_MAJOR_VERSION >= 3
+    PyObject* device_name = PyUnicode_FromString("");
+#else
+    PyObject* device_name = PyString_FromString("");
+#endif
+    thread_local_data->device_name.reset(device_name);
+
+    Py_INCREF(defaults->second.device_spec.get());
+    thread_local_data->device_spec.reset(defaults->second.device_spec.get());
+
+    Py_INCREF(Py_None);
+    thread_local_data->function_call_options.reset(Py_None);
+
+    Py_INCREF(Py_None);
+    thread_local_data->executor.reset(Py_None);
+
+    thread_local_data->op_callbacks.reset(PyList_New(0));
+  }
+  return thread_local_data.get();
+}
+
+void DestroyEagerContextThreadLocalData(PyObject* py_eager_context) {
+  DCheckPyGilState();
+  if (eager_context_thread_local_data_defaults) {
+    eager_context_thread_local_data_defaults->erase(py_eager_context);
+  }
+  if (eager_context_thread_local_data_map) {
+    eager_context_thread_local_data_map->erase(py_eager_context);
+  }
+}
+
+}  // namespace tensorflow

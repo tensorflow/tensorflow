@@ -131,8 +131,8 @@ SpatialMaxPooling(const Input& input, DenseIndex patchRows,
       .extract_image_patches(
           patchRows, patchCols, strideRows, strideCols, in_strideRows,
           in_strideCols, padding_type,
-          -Eigen::NumTraits<typename internal::remove_const<
-              typename internal::traits<Input>::Scalar>::type>::highest())
+          Eigen::NumTraits<typename internal::remove_const<
+              typename internal::traits<Input>::Scalar>::type>::lowest())
       .maximum(reduction_dims)
       .reshape(post_reduce_dims);
 }

@@ -309,6 +309,28 @@ struct TransformDepth {
   }
 };
 
+// Note on the use of const reference for the "padding_value" argument
+//
+// In the ROCm TF build,
+// ++ the call(s) to the functor are in the files (conv_*.cc) that are compiled
+//    by the "CPU" compiler, while the
+// ++ the GPUDevice specific template instantiations are in the files that are
+//     compiled by the "GPU" compiler.
+//
+// For T == Eigen::half, the value of the "padding_value" argument (when it was
+// pass-by-value) was getting corrupted, leading to regressions in the
+// convolution unit tests.
+//
+// I do not understand the exact reason for the this, but based on similar past
+// issues, it is likely due to a combination of
+// ++ an ABI incompatibility between the "old" CPU compiler (gcc 5.4 for
+//    Ubuntu 16.04, gcc 7.5 for Ubuntu 18.04) and the "new" ROCm GPU compiler
+//    (hipclang which is based on latest clang), AND
+// ++ Eigen::half having the same size but different internals on the CPU and
+//    GPU sides (unsigned short on CPU, union {unsigned short, _Float16} on GPU
+//
+// Changing the "padding value" argument to be a const reference type seems to
+// suppress the bug
 template <typename Device, typename T, typename IndexType, int NDIMS>
 struct PadInput {
   void operator()(const Device& d,
@@ -316,7 +338,7 @@ struct PadInput {
                   const std::array<int, NDIMS - 2>& padding_left,
                   const std::array<int, NDIMS - 2>& padding_right,
                   typename TTypes<T, NDIMS, IndexType>::Tensor out,
-                  TensorFormat format) {
+                  TensorFormat format, const T& padding_value) {
     Eigen::array<Eigen::IndexPair<IndexType>, NDIMS> padding;
     padding[GetTensorDimIndex<NDIMS - 2>(format, 'N')] = {0, 0};
     for (int i = 0; i < NDIMS - 2; ++i) {
@@ -324,7 +346,7 @@ struct PadInput {
           padding_left[i], padding_right[i]};
     }
     padding[GetTensorDimIndex<NDIMS - 2>(format, 'C')] = {0, 0};
-    out.device(d) = in.pad(padding);
+    out.device(d) = in.pad(padding, padding_value);
   }
 };
 

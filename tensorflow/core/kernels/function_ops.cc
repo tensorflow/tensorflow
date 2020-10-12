@@ -94,28 +94,6 @@ REGISTER_SYSTEM_KERNEL_BUILDER(Name(kDeviceRetOp).Device(DEVICE_CPU), RetvalOp);
 // is turned on.
 REGISTER_KERNEL_BUILDER(Name(kRetOp).Device(DEVICE_TPU_SYSTEM), RetvalOp);
 
-#if TENSORFLOW_USE_SYCL
-#define REGISTER(type)     \
-  REGISTER_KERNEL_BUILDER( \
-      Name(kArgOp).Device(DEVICE_SYCL).TypeConstraint<type>("T"), ArgOp);
-TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER)
-TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name(kArgOp)
-                                                   .Device(DEVICE_SYCL)
-                                                   .HostMemory("output")
-                                                   .TypeConstraint<int32>("T"),
-                                               ArgOp);
-#undef REGISTER
-#define REGISTER(type)     \
-  REGISTER_KERNEL_BUILDER( \
-      Name(kRetOp).Device(DEVICE_SYCL).TypeConstraint<type>("T"), RetvalOp);
-TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER)
-TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name(kRetOp)
-                                                   .Device(DEVICE_SYCL)
-                                                   .HostMemory("input")
-                                                   .TypeConstraint<int32>("T"),
-                                               RetvalOp);
-#undef REGISTER
-#endif
 
 #define REGISTER(type)     \
   REGISTER_KERNEL_BUILDER( \
@@ -225,33 +203,6 @@ REGISTER_KERNEL_BUILDER(Name("_ArrayToList")
                             .TypeConstraint<int32>("T"),
                         PassOn);
 
-#ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNELS(type)                                       \
-  REGISTER_KERNEL_BUILDER(                                                \
-      Name("_ListToArray").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
-      PassOn);                                                            \
-  REGISTER_KERNEL_BUILDER(                                                \
-      Name("_ArrayToList").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
-      PassOn);
-
-REGISTER_SYCL_KERNELS(float);
-REGISTER_SYCL_KERNELS(double);
-
-#undef REGISTER_SYCL_KERNELS
-
-REGISTER_KERNEL_BUILDER(Name("_ListToArray")
-                            .Device(DEVICE_SYCL)
-                            .HostMemory("input")
-                            .HostMemory("output")
-                            .TypeConstraint<int32>("T"),
-                        PassOn);
-REGISTER_KERNEL_BUILDER(Name("_ArrayToList")
-                            .Device(DEVICE_SYCL)
-                            .HostMemory("input")
-                            .HostMemory("output")
-                            .TypeConstraint<int32>("T"),
-                        PassOn);
-#endif  // TENSORFLOW_USE_SYCL
 
 class SymbolicGradientOp : public AsyncOpKernel {
  public:
@@ -283,13 +234,7 @@ class SymbolicGradientOp : public AsyncOpKernel {
       args.push_back(ctx->input(i));
     }
     std::vector<Tensor>* rets = new std::vector<Tensor>;
-    profiler::TraceMe trace_me(
-        [&] {
-          return absl::StrCat(
-              "SymbolicGradientOp #parent_step_id=", ctx->step_id(),
-              ",function_step_id=", opts.step_id, "#");
-        },
-        profiler::TraceMeLevel::kInfo);
+    profiler::TraceMe trace_me("SymbolicGradientOp");
     lib->Run(opts, handle, args, rets, [ctx, done, rets](const Status& status) {
       if (!status.ok()) {
         ctx->SetStatus(status);
@@ -315,11 +260,6 @@ REGISTER_KERNEL_BUILDER(Name(kGradientOp).Device(DEVICE_CPU),
                         SymbolicGradientOp);
 REGISTER_KERNEL_BUILDER(Name(kGradientOp).Device(DEVICE_GPU),
                         SymbolicGradientOp);
-#if TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name(kGradientOp).Device(DEVICE_SYCL),
-                        SymbolicGradientOp);
-
-#endif  // TENSORFLOW_USE_SYCL
 
 RemoteCallOp::RemoteCallOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
   OP_REQUIRES_OK(ctx,
@@ -411,8 +351,6 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   profiler::TraceMe trace_me(
       [&] {
         return absl::StrCat("RemoteCallOp#func_name=", func_name,
-                            ",parent_step_id=", ctx->step_id(),
-                            ",function_step_id=", opts.step_id,
                             ",device=", target_device, "#");
       },
       profiler::TraceMeLevel::kInfo);
@@ -424,8 +362,6 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
         profiler::TraceMe activity(
             [&] {
               return absl::StrCat("RemoteCallOpDone#func_name=", func_name,
-                                  ",parent_step_id=", ctx->step_id(),
-                                  ",function_step_id=", function_step_id,
                                   ",device=", target_device, "#");
             },
             profiler::TraceMeLevel::kInfo);
@@ -459,9 +395,4 @@ REGISTER_KERNEL_BUILDER(
     Name("RemoteCall").Device(DEVICE_CPU).HostMemory("target"), RemoteCallOp);
 REGISTER_KERNEL_BUILDER(
     Name("RemoteCall").Device(DEVICE_GPU).HostMemory("target"), RemoteCallOp);
-#if TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(
-    Name("RemoteCall").Device(DEVICE_SYCL).HostMemory("target"), RemoteCallOp);
-
-#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

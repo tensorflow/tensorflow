@@ -224,10 +224,11 @@ void AddOperationToRunComponentFunctionRequest(
     const std::vector<absl::variant<TensorProto, std::pair<int64, int32>>>&
         inputs,
     const std::unordered_map<string, AttrValue>& attrs, const string& device,
-    RunComponentFunctionRequest* request) {
+    const int output_num, RunComponentFunctionRequest* request) {
   auto* operation = request->mutable_operation();
   operation->set_is_function(true);
   operation->set_is_component_function(true);
+  request->add_output_num(output_num);
   BuildOperation(operation, id, name, inputs, attrs, device);
 }
 
@@ -610,10 +611,12 @@ class EagerServiceImplFunctionTest : public EagerServiceImplTest {
     RunComponentFunctionRequest run_comp_func_request;
     run_comp_func_request.set_context_id(context_id);
     RunComponentFunctionResponse run_comp_func_response;
+    const int output_num = 5;
     AddOperationToRunComponentFunctionRequest(
         2, function_name, {std::make_pair(1, 0)},
         std::unordered_map<string, AttrValue>(),
-        "/job:localhost/replica:0/task:0/device:CPU:0", &run_comp_func_request);
+        "/job:localhost/replica:0/task:0/device:CPU:0", output_num,
+        &run_comp_func_request);
 
     CallOptions call_opts;
     Notification n;
@@ -636,7 +639,8 @@ class EagerServiceImplFunctionTest : public EagerServiceImplTest {
       const tensorflow::Tensor* t = nullptr;
       tensorflow::TensorHandle* tensor_handle;
       TF_ASSERT_OK(eager_service_impl.GetTensorHandle(
-          context_id, RemoteTensorHandleInternal(2, 0), &tensor_handle));
+          context_id, RemoteTensorHandleInternal(2, output_num),
+          &tensor_handle));
       TF_ASSERT_OK(tensor_handle->Tensor(&t));
 
       auto actual = t->flat<float>();
@@ -776,7 +780,7 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
         remote_device_mgr_.get(), Env::Default(), /*config=*/
         nullptr, TF_GRAPH_DEF_VERSION, &func_lib_def_, OptimizerOptions(),
         /*thread_pool=*/nullptr, eager_cluster_flr_.get(),
-        /*custom_kernel_creator=*/nullptr, /*session_metadata=*/nullptr,
+        /*session_metadata=*/nullptr,
         Rendezvous::Factory{[this](const int64 step_id,
                                    const DeviceMgr* device_mgr,
                                    Rendezvous** r) {
@@ -950,6 +954,7 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
       /*composite_devices=*/{}, /*input_resource_dtypes_and_shapes=*/{},
       /*runner=*/nullptr,
       /*collective_executor=*/nullptr, local_device, fdef_.signature().name(),
+      /*outputs_on_op_device=*/false,
       [ctx](const int64 step_id) { return ctx->CreateRendezvous(step_id); },
       [=]() { return op_id; }));
 
@@ -997,6 +1002,7 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncAsyncTest) {
       /*composite_devices=*/{}, /*input_resource_dtypes_and_shapes=*/{},
       /*runner=*/nullptr,
       /*collective_executor=*/nullptr, local_device, fdef_.signature().name(),
+      /*outputs_on_op_device=*/false,
       [ctx](const int64 step_id) { return ctx->CreateRendezvous(step_id); },
       [=]() { return op_id; }));
 
@@ -1214,9 +1220,9 @@ TEST_F(EagerServiceImplTest, RequestsToMasterTest) {
   tensorflow::EagerContext* ctx = new tensorflow::EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-      tensorflow::ContextMirroringPolicy::MIRRORING_NONE, /*async=*/false,
+      /*async=*/false,
       /*lazy_copy_function_remote_inputs=*/false, device_mgr_.get(), false,
-      rendezvous, GetDefaultCustomKernelCreator());
+      rendezvous);
   const uint64 context_id = random::New64();
 
   // Set RemoteMgr to ctx.

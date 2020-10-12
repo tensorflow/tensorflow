@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/function_ops.h"
+#include "tensorflow/cc/ops/functional_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -33,7 +34,16 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+AttrValue FuncListAttr(const absl::Span<const char* const> names) {
+  AttrValue attr;
+  for (const char* name : names) {
+    attr.mutable_list()->add_func()->set_name(name);
+  }
+  return attr;
+}
+
 constexpr char kFunctionalIfNodeName[] = "If";
+constexpr char kFunctionalCaseNodeName[] = "Case";
 constexpr char kFunctionalWhileNodeName[] = "While";
 constexpr char kCompilableFunctionName[] = "CompilableFn";
 constexpr char kCompilableFunctionNodeName[] = "n_c";
@@ -75,8 +85,12 @@ class CompilabilityCheckUtilTest : public ::testing::Test {
     op_filter_.allow_inaccurate_ops = false;
     op_filter_.allow_slow_ops = false;
 
-    checker_ = absl::make_unique<RecursiveCompilabilityChecker>(&op_filter_,
-                                                                &device_type_);
+    checker_ = CreateCompilabilityChecker();
+  }
+
+  std::unique_ptr<RecursiveCompilabilityChecker> CreateCompilabilityChecker() {
+    return absl::make_unique<RecursiveCompilabilityChecker>(op_filter_,
+                                                            device_type_);
   }
 
   FunctionLibraryRuntime* GetFunctionLibraryRuntime() {
@@ -352,6 +366,162 @@ TEST_F(CompilabilityCheckUtilTest, CheckFunctionalIfNode) {
   EXPECT_EQ(kUncompilableFunctionNodeTwoName, uncompilable_node_two.name);
   EXPECT_TRUE(absl::StrContains(uncompilable_node_one.uncompilable_reason,
                                 "unsupported op"));
+}
+
+TEST_F(CompilabilityCheckUtilTest, CheckFunctionalCaseNode) {
+  FunctionDefLibrary flib;
+  *flib.add_function() = FunctionDefHelper::Define(
+      /*Function*/ kUncompilableFunctionName,
+      /*Inputs*/ {"n_a:float"},
+      /*Outputs*/ {"n_c_uncompilable:float"},
+      /*Attributes*/ {},
+      // Node info
+      {{{kUncompilableFunctionNodeName}, "MissingKernel", {"n_a"}}});
+  *flib.add_function() = FunctionDefHelper::Define(
+      /*Function*/ kUncompilableFunctionTwoName,
+      /*Inputs*/ {"n_a:float"},
+      /*Outputs*/ {"n_d_uncompilable:float"},
+      /*Attribute*/ {},
+      // Node info
+      {{{kUncompilableFunctionNodeTwoName}, "MissingKernel", {"n_a"}}});
+
+  Scope root = Scope::NewRootScope().ExitOnError();
+  TF_ASSERT_OK(root.graph()->AddFunctionLibrary(flib));
+  auto branch_index = ops::Placeholder(root.WithOpName("pred"), DT_INT32);
+  auto placeholder = ops::Placeholder(root.WithOpName("A"), DT_INT32);
+  std::vector<NodeBuilder::NodeOut> inputes(
+      {NodeBuilder::NodeOut(placeholder.node())});
+  Node* case_node;
+  TF_ASSERT_OK(
+      NodeBuilder(kFunctionalCaseNodeName, "Case", &root.graph()->flib_def())
+          .Input(branch_index.node())
+          .Input(inputes)
+          .Attr("branches", FuncListAttr({kUncompilableFunctionName,
+                                          kUncompilableFunctionTwoName}))
+          .Attr("Tout", {DT_INT32})
+          .Finalize(root.graph(), &case_node));
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+
+  flib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(), flib));
+
+  auto case_node_it = std::find_if(
+      graph->nodes().begin(), graph->nodes().end(),
+      [&](const Node* n) { return n->name() == kFunctionalCaseNodeName; });
+  EXPECT_NE(case_node_it, graph->nodes().end());
+  auto* flib_runtime = GetFunctionLibraryRuntime();
+
+  op_filter_.require_always_compilable = false;
+  checker_ = CreateCompilabilityChecker();
+  EXPECT_TRUE(checker_->IsCompilableNode(**case_node_it, flib_runtime));
+  op_filter_.require_always_compilable = true;
+  checker_ = CreateCompilabilityChecker();
+  EXPECT_FALSE(checker_->IsCompilableNode(**case_node_it, flib_runtime));
+}
+
+TEST_F(CompilabilityCheckUtilTest, TestCanNotTriggerXlaCompilation) {
+  GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+  Scope root = Scope::NewRootScope().ExitOnError();
+  FunctionDefLibrary library;
+
+  FunctionDef identity_func = FunctionDefHelper::Create(
+      "IdentityFunc",
+      /*in_def=*/{"x:float"},
+      /*out_def=*/{"res:float"},
+      /*attr_def=*/{},
+      /*node_def=*/{{{"t0"}, "Identity", {"x"}, {{"T", DT_FLOAT}}}},
+      /*ret_def*/ {{"res", "t0:output"}});
+
+  *library.add_function() = identity_func;
+
+  Output in = ops::Placeholder(root, DT_FLOAT);
+  NameAttrList b_name_attr;
+  b_name_attr.set_name("IdentityFunc");
+  ops::PartitionedCall call(root.WithOpName("call"), {in}, {DT_FLOAT},
+                            b_name_attr);
+
+  GraphDef graph_def;
+  TF_ASSERT_OK(root.graph()->AddFunctionLibrary(library));
+  TF_ASSERT_OK(root.ToGraphDef(&graph_def));
+
+  EXPECT_FALSE(CanTriggerXlaCompilation(graph_def));
+}
+
+TEST_F(CompilabilityCheckUtilTest, TestXlaOpsCanTriggerXlaCompilation) {
+  GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+  Scope root = Scope::NewRootScope().ExitOnError();
+  FunctionDefLibrary library;
+
+  FunctionDef sort_func = FunctionDefHelper::Create(
+      "SortFunc",
+      /*in_def=*/{"x:float"},
+      /*out_def=*/{"res:float"},
+      /*attr_def=*/{},
+      /*node_def=*/{{{"t0"}, "XlaSort", {"x"}, {{"T", DT_FLOAT}}}},
+      /*ret_def*/ {{"res", "t0:output"}});
+
+  *library.add_function() = sort_func;
+
+  Output in = ops::Placeholder(root, DT_FLOAT);
+  NameAttrList b_name_attr;
+  b_name_attr.set_name("SortFunc");
+  ops::PartitionedCall call(root.WithOpName("call"), {in}, {DT_FLOAT},
+                            b_name_attr);
+
+  GraphDef graph_def;
+  TF_ASSERT_OK(root.graph()->AddFunctionLibrary(library));
+  TF_ASSERT_OK(root.ToGraphDef(&graph_def));
+
+  EXPECT_TRUE(CanTriggerXlaCompilation(graph_def));
+}
+
+TEST_F(CompilabilityCheckUtilTest, TestCanTriggerXlaCompilation) {
+  GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+  Scope root = Scope::NewRootScope().ExitOnError();
+  FunctionDefLibrary library;
+
+  AttrValue true_attribute;
+  true_attribute.set_b(true);
+
+  FunctionDef identity_func = FunctionDefHelper::Create(
+      "IdentityFunc",
+      /*in_def=*/{"x:float"},
+      /*out_def=*/{"res:float"},
+      /*attr_def=*/{},
+      /*node_def=*/{{{"t0"}, "Identity", {"x"}, {{"T", DT_FLOAT}}}},
+      /*ret_def*/ {{"res", "t0:output"}});
+
+  (*identity_func.mutable_attr())[kXlaMustCompileAttr] = true_attribute;
+
+  FunctionDef call_identity = FunctionDefHelper::Create(
+      "CallIdentity",
+      /*in_def=*/{"x:float"},
+      /*out_def=*/{"z:float"}, /*attr_def=*/{},
+      /*node_def=*/
+      {{{"func_call"},
+        "PartitionedCall",
+        {"x"},
+        {{"Tin", DataTypeSlice({DT_FLOAT})},
+         {"Tout", DataTypeSlice({DT_FLOAT})},
+         {"f",
+          FunctionDefHelper::FunctionRef("IdentityRef", {{"T", DT_FLOAT}})},
+         {kXlaMustCompileAttr, true}}}},
+      /*ret_def=*/{{"z", "func_call:output:0"}});
+
+  *library.add_function() = identity_func;
+  *library.add_function() = call_identity;
+
+  Output in = ops::Placeholder(root, DT_FLOAT);
+  NameAttrList b_name_attr;
+  b_name_attr.set_name("CallIdentity");
+  ops::PartitionedCall call(root.WithOpName("call"), {in}, {DT_FLOAT},
+                            b_name_attr);
+
+  GraphDef graph_def;
+  TF_ASSERT_OK(root.graph()->AddFunctionLibrary(library));
+  TF_ASSERT_OK(root.ToGraphDef(&graph_def));
+
+  EXPECT_TRUE(CanTriggerXlaCompilation(graph_def));
 }
 
 }  // namespace

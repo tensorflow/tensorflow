@@ -31,10 +31,11 @@ namespace gpu {
 namespace cl {
 
 absl::Status GPUSubgraphFromGraph(
-    const CreationContext& creation_context, CalculationsPrecision precision,
+    const DeviceInfo& device_info, CalculationsPrecision precision,
     const GraphFloat32& graph, NodeId first_node_id,
     const std::map<ValueId, TensorDescriptor>& tensor_descriptors,
-    std::set<NodeId>* consumed_nodes, GPUOperationsSubgraph* gpu_subgraph);
+    std::set<NodeId>* consumed_nodes, GPUOperationsSubgraph* gpu_subgraph,
+    std::string* name);
 
 }  // namespace cl
 }  // namespace gpu

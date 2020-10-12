@@ -231,6 +231,15 @@ class LinearOperatorBlockLowerTriangular(linear_operator.LinearOperator):
       ValueError:  If `operators` is empty, contains an erroneous number of
         elements, or contains operators with incompatible shapes.
     """
+    parameters = dict(
+        operators=operators,
+        is_non_singular=is_non_singular,
+        is_self_adjoint=is_self_adjoint,
+        is_positive_definite=is_positive_definite,
+        is_square=is_square,
+        name=name
+    )
+
     # Validate operators.
     check_ops.assert_proper_iterable(operators)
     for row in operators:
@@ -256,6 +265,7 @@ class LinearOperatorBlockLowerTriangular(linear_operator.LinearOperator):
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
+          parameters=parameters,
           name=name)
 
   def _validate_num_operators(self):
@@ -716,7 +726,7 @@ class LinearOperatorBlockLowerTriangular(linear_operator.LinearOperator):
           # `Ax_0 + Bx_1 + Dx_2 = y_0` as `Ax_0 = y_0*`, where
           # `y_0* = y_0 - Bx_1 - Dx_2`.
           for j in reversed(range(index + 1, len(self.operators))):
-            y -= self.operators[j][index].matmul(
+            y = y - self.operators[j][index].matmul(
                 solution_list[len(self.operators) - 1 - j],
                 adjoint=adjoint)
           # Continuing the example above, solve `Ax_0 = y_0*` for `x_0`.
@@ -738,7 +748,7 @@ class LinearOperatorBlockLowerTriangular(linear_operator.LinearOperator):
           # `Dx_0 + Ex_1 + Fx_2 = y_2` as `Fx_2 = y_2*`, where
           # `y_2* = y_2 - D_x0 - Ex_1`.
           for i, operator in enumerate(row[:-1]):
-            y -= operator.matmul(solution_list[i], adjoint=adjoint)
+            y = y - operator.matmul(solution_list[i], adjoint=adjoint)
           # Continuing the example above, solve `Fx_2 = y_2*` for `x_2`.
           solution_list.append(row[-1].solve(y, adjoint=adjoint))
 

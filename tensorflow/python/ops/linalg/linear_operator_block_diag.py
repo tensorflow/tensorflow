@@ -163,6 +163,15 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
       TypeError:  If all operators do not have the same `dtype`.
       ValueError:  If `operators` is empty or are non-square.
     """
+    parameters = dict(
+        operators=operators,
+        is_non_singular=is_non_singular,
+        is_self_adjoint=is_self_adjoint,
+        is_positive_definite=is_positive_definite,
+        is_square=is_square,
+        name=name
+    )
+
     # Validate operators.
     check_ops.assert_proper_iterable(operators)
     operators = list(operators)
@@ -224,6 +233,7 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=True,
+          parameters=parameters,
           name=name)
 
     # TODO(b/143910018) Remove graph_parents in V3.

@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
-#include "tensorflow/lite/profiling/platform_profiler.h"
 #include "tensorflow/lite/profiling/profile_summary_formatter.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
@@ -60,20 +59,6 @@ constexpr int kOpProfilingEnabledDefault = true;
 #else
 constexpr int kOpProfilingEnabledDefault = false;
 #endif
-
-// Dumps platform-wide tracing files via a platform-based profiler that's built
-// upon platform tracing tools, like ATrace on Android etc.
-class PlatformProfilingListener : public BenchmarkListener {
- public:
-  explicit PlatformProfilingListener(Interpreter* interpreter) {
-    TFLITE_TOOLS_CHECK(interpreter);
-    platform_profiler_ = profiling::CreatePlatformProfiler();
-    interpreter->SetProfiler(platform_profiler_.get());
-  }
-
- private:
-  std::unique_ptr<tflite::Profiler> platform_profiler_;
-};
 
 // Dumps ruy profiling events if the ruy profiler is enabled.
 class RuyProfileListener : public BenchmarkListener {
@@ -269,8 +254,6 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
                           BenchmarkParam::Create<int32_t>(1024));
   default_params.AddParam("profiling_output_csv_file",
                           BenchmarkParam::Create<std::string>(""));
-  default_params.AddParam("enable_platform_tracing",
-                          BenchmarkParam::Create<bool>(false));
 
   for (const auto& delegate_provider :
        tools::GetRegisteredDelegateProviders()) {
@@ -331,10 +314,7 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
       CreateFlag<std::string>(
           "profiling_output_csv_file", &params_,
           "File path to export profile data as CSV, if not set "
-          "prints to stdout."),
-      CreateFlag<bool>("enable_platform_tracing", &params_,
-                       "enable platform-wide tracing, only meaningful when "
-                       "--enable_op_profiling is set to true.")};
+          "prints to stdout.")};
 
   flags.insert(flags.end(), specific_flags.begin(), specific_flags.end());
 
@@ -369,8 +349,6 @@ void BenchmarkTfLiteModel::LogParams() {
                       "Max profiling buffer entries", verbose);
   LOG_BENCHMARK_PARAM(std::string, "profiling_output_csv_file",
                       "CSV File to export profiling data to", verbose);
-  LOG_BENCHMARK_PARAM(bool, "enable_platform_tracing",
-                      "Enable platform-wide tracing", verbose);
 
   for (const auto& delegate_provider :
        tools::GetRegisteredDelegateProviders()) {
@@ -745,11 +723,6 @@ std::unique_ptr<tflite::OpResolver> BenchmarkTfLiteModel::GetOpResolver()
 std::unique_ptr<BenchmarkListener>
 BenchmarkTfLiteModel::MayCreateProfilingListener() const {
   if (!params_.Get<bool>("enable_op_profiling")) return nullptr;
-
-  if (params_.Get<bool>("enable_platform_tracing")) {
-    return std::unique_ptr<BenchmarkListener>(
-        new PlatformProfilingListener(interpreter_.get()));
-  }
 
   return std::unique_ptr<BenchmarkListener>(new ProfilingListener(
       interpreter_.get(), params_.Get<int32_t>("max_profiling_buffer_entries"),

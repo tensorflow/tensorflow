@@ -104,7 +104,7 @@ class MlirCompilerImpl : public MlirCompiler {
                      const AotCompilationOptions& options) override;
 
   HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override {
-    int64 pointer_size = pointer_size_;
+    int64 pointer_size = data_layout_.getPointerSize();
     return [pointer_size](const Shape& shape) {
       return ShapeUtil::ByteSizeOf(shape, pointer_size);
     };
@@ -438,7 +438,6 @@ StatusOr<std::unique_ptr<gpu::KernelThunk>> TransformKernelToXlaThunk(
 
   // Finally, create the thunk and set the launch dimensions.
   gpu::Thunk::ThunkInfo info;
-  info.hlo_instruction = instr;
   auto thunk = absl::make_unique<gpu::KernelThunk>(info, buffers,
                                                    kernel.getName().str());
 
@@ -462,9 +461,9 @@ StatusOr<std::unique_ptr<Executable>> MlirCompilerImpl::RunBackend(
   // must also be used to determine the thunk launch schedule.
   std::unique_ptr<StreamAssignment> stream_assignment =
       xla::gpu::AssignStreams(*module);
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<GpuHloSchedule> hlo_schedule,
-      GpuHloSchedule::Build(*module, *stream_assignment, pointer_size_));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<GpuHloSchedule> hlo_schedule,
+                      GpuHloSchedule::Build(*module, *stream_assignment,
+                                            data_layout_.getPointerSize()));
 
   // Run buffer analysis on the HLO graph. This analysis figures out which
   // temporary buffers are required to run the computation.
@@ -580,7 +579,7 @@ StatusOr<std::unique_ptr<Executable>> MlirCompilerImpl::RunBackend(
   return {absl::make_unique<GpuExecutable>(
       ptx, cubin, GetGpuVersion(stream_exec), std::move(thunk_schedule),
       emission_context.releaseHloModule(), std::move(buffer_assignment),
-      nullptr, nullptr)};
+      nullptr, nullptr, std::vector<GpuExecutable::ConstantInfo>())};
 }
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> MlirCompilerImpl::Compile(

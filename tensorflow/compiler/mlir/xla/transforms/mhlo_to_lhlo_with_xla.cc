@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
@@ -34,6 +35,8 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassOptions.h"  // from @llvm-project
 #include "mlir/Translation.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/hlo_function_importer.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
@@ -133,6 +136,11 @@ Status ConvertModule(std::unique_ptr<HloModule> hlo_module, ModuleOp module,
 // MLIR LHLO.
 class XlaHloToLhloPass
     : public PassWrapper<XlaHloToLhloPass, OperationPass<ModuleOp>> {
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<mlir::StandardOpsDialect, mlir::mhlo::MhloDialect,
+                    mlir::lmhlo::LmhloDialect>();
+  }
+
  public:
   XlaHloToLhloPass() = default;
   XlaHloToLhloPass(const XlaHloToLhloPass&) {}
@@ -286,7 +294,7 @@ Status LhloDialectEmitter::CreateView(const HloInstruction* instr,
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                       assignment_.GetUniqueSlice(instr, *current_shape_index));
   Value alloc = allocations_[slice.allocation()];
-  if (alloc.getType() == out_type) {
+  if (alloc.getType() == out_type && slice.offset() == 0) {
     values->push_back(alloc);
     return Status::OK();
   }
@@ -329,16 +337,16 @@ Status LhloDialectEmitter::CreateView(const HloInstruction* instr,
 Status LhloDialectEmitter::GetOrCreateView(const HloInstruction* instr,
                                            SmallVectorImpl<Value>* values) {
   // Cache generated ViewOp and StaticMemRefCastOp by instruction. We could have
-  // gone fancier to do the following cacheing:
-  //   %range = ViewOp(%allocation, %offset) : memref<i8xSIZE>
-  //   %typed_range = ViewOp(%range) : memref<f32x...>
+  // gone fancier to do the following caching:
+  //   %slice = ViewOp(%allocation, %offset) : memref<i8xSIZE>
+  //   %typed_slice = ViewOp(%slice) : memref<f32x...>
   //
-  // where %range is cached. This in theory gives easier time for alias
-  // analysis, since the identity of %range defines alias. However,
-  // %typed_range can't be cached, as different buffers with different types and
+  // where %slice is cached. This in theory gives easier time for alias
+  // analysis, since the identity of %slice defines alias. However,
+  // %typed_slice can't be cached, as different buffers with different types and
   // shapes may still alias. Creating two ViewOps doesn't seem to worth the
   // effort for a slightly easier aliasing, so we don't over optimize here.
-  auto result = slices_.try_emplace(instr, llvm::SmallVector<Value, 4>{});
+  auto result = slices_.try_emplace(instr, llvm::SmallVector<Value, 1>{});
   llvm::SmallVectorImpl<Value>& new_values = result.first->second;
   if (result.second) {
     ::xla::ShapeIndex shape_index;
@@ -365,7 +373,7 @@ Status LhloDialectEmitter::Initialize() {
 
   if (computation_.IsEntryComputation()) {
     // Sort the rather arbitrarily ordered allocations to match the input/output
-    // parameters. Specifically We want to sort buffer allocations in the
+    // parameters. Specifically we want to sort buffer allocations in the
     // following order:
     // * Parameters always order before non-parameters.
     // * Different parameters order by parameter number.
@@ -428,8 +436,8 @@ Status LhloDialectEmitter::Initialize() {
     }
   }
 
-  FunctionType function_type = builder_.getFunctionType(
-      llvm::to_vector<8>(block->getArgumentTypes()), {});
+  FunctionType function_type =
+      builder_.getFunctionType(block->getArgumentTypes(), {});
   func_op.setType(function_type);
   func_op.setAllArgAttrs(args_attrs);
 
@@ -438,7 +446,7 @@ Status LhloDialectEmitter::Initialize() {
   builder_.setInsertionPointToEnd(block);
 
   auto return_op = builder_.create<ReturnOp>(builder_.getUnknownLoc());
-  builder_ = mlir::OpBuilder(return_op);
+  builder_ = OpBuilder(return_op);
 
   return Status::OK();
 }
@@ -449,6 +457,9 @@ std::unique_ptr<OperationPass<ModuleOp>> createXlaHloToLhloWithXlaPass() {
 
 Status HloToLhloModule(const BufferAssignment& assignment,
                        const HloModule& hlo_module, ModuleOp module) {
+  module.getContext()
+      ->loadDialect<StandardOpsDialect, mhlo::MhloDialect,
+                    lmhlo::LmhloDialect>();
   HloComputation* computation = hlo_module.entry_computation();
 
   LhloDialectEmitter emitter(assignment, *computation, module);
@@ -462,15 +473,14 @@ Status HloToLhloModule(const BufferAssignment& assignment,
   return computation->AcceptOrdered(&emitter, ordering);
 }
 
-mlir::OwningModuleRef HloTextToLhloTranslateFunction(
-    llvm::StringRef input, mlir::MLIRContext* context) {
+OwningModuleRef HloTextToLhloTranslateFunction(llvm::StringRef input,
+                                               MLIRContext* context) {
   StatusOr<std::unique_ptr<HloModule>> maybe_module =
       xla::ParseAndReturnUnverifiedModule(
           absl::string_view(input.data(), input.size()));
   TF_CHECK_OK(maybe_module.status());
 
-  mlir::OwningModuleRef module =
-      mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
+  OwningModuleRef module = ModuleOp::create(UnknownLoc::get(context));
 
   TF_CHECK_OK(
       ConvertModule(maybe_module.ConsumeValueOrDie(), module.get(), "Host"));

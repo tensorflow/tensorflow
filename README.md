@@ -145,7 +145,7 @@ Build Type                                                                      
 *   [TensorFlow Tutorials](https://www.tensorflow.org/tutorials/)
 *   [TensorFlow Official Models](https://github.com/tensorflow/models/tree/master/official)
 *   [TensorFlow Examples](https://github.com/tensorflow/examples)
-*   [TensorFlow in Practice from Coursera](https://www.coursera.org/specializations/tensorflow-in-practice)
+*   [DeepLearning.AI TensorFlow Developer Professional Certificate](https://www.coursera.org/specializations/tensorflow-in-practice)
 *   [TensorFlow: Data and Deployment from Coursera](https://www.coursera.org/specializations/tensorflow-data-and-deployment)
 *   [Getting Started with TensorFlow 2 from Coursera](https://www.coursera.org/learn/getting-started-with-tensor-flow2)
 *   [Intro to TensorFlow for Deep Learning from Udacity](https://www.udacity.com/course/intro-to-tensorflow-for-deep-learning--ud187)
@@ -157,7 +157,7 @@ Build Type                                                                      
 *   [Learn ML with TensorFlow](https://www.tensorflow.org/resources/learn-ml)
 *   [TensorFlow Twitter](https://twitter.com/tensorflow)
 *   [TensorFlow YouTube](https://www.youtube.com/channel/UC0rqucBdTuFTjJiefW5t-IQ)
-*   [TensorFlow Roadmap](https://www.tensorflow.org/community/roadmap)
+*   [TensorFlow Roadmap](https://www.tensorflow.org/model_optimization/guide/roadmap)
 *   [TensorFlow White Papers](https://www.tensorflow.org/about/bib)
 *   [TensorBoard Visualization Toolkit](https://github.com/tensorflow/tensorboard)
 

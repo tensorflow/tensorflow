@@ -45,9 +45,7 @@ def HLO_Token : Type<CPred<"$_self.isa<TokenType>()">, "token">;
 def HLO_IntTensor : TensorOf<[HLO_Int]>;
 
 // Any integer tensor type with rank 0 (i.e. representing a single integer).
-def HLO_ScalarIntTensor : ShapedContainerType<
-  [HLO_Int], And<[IsTensorTypePred, HasAnyRankOfPred<[0]>]>,
-  "a 0-dim integer tensor">;
+def HLO_ScalarIntTensor : 0DTensorOf<[HLO_Int]>;
 
 // Any floating-point tensor types
 def HLO_FpTensor : TensorOf<[AnyFloat]>;
@@ -67,10 +65,7 @@ def HLO_TensorOrTokenOrTuple : AnyTypeOf<[HLO_Tensor, HLO_Token, HLO_Tuple]>;
 def HLO_DimensionValue : AnyTypeOf<[Index, HLO_Pred, HLO_Int]>;
 
 // Dynamic representation of a shape vector as a tensor.
-def HLO_DimensionTensor : ShapedContainerType<
-    [HLO_DimensionValue],
-    And<[IsTensorTypePred, HasAnyRankOfPred<[1]>]>,
-    "a 1D tensor of dimensions">;
+def HLO_DimensionTensor : 1DTensorOf<[HLO_DimensionValue]>;
 
 // In general, static shaped tensor constraints should be avoided unless
 // it is for a legacy op which is only correct with static shapes.
@@ -126,6 +121,17 @@ class BASE_HLO_AbsOp {
 
   string description = [{
     Returns `abs(operand)` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
+class BASE_HLO_CbrtOp {
+  string summary = "Cubic root operator";
+
+  string description = [{
+    Returns element-wise cubic root of the operand.
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
@@ -1001,6 +1007,42 @@ class BASE_HLO_ConcatenateOp {
    }];
 }
 
+//===----------------------------------------------------------------------===//
+// Common convolution attributes
+//===----------------------------------------------------------------------===//
+
+class ConvDimensionNumbersBase<Dialect dialect>
+  : StructAttr<"ConvDimensionNumbers", dialect, [
+  StructFieldAttr<"input_batch_dimension",I64Attr>,
+  StructFieldAttr<"input_feature_dimension", I64Attr>,
+  StructFieldAttr<"input_spatial_dimensions", I64ElementsAttr>,
+  StructFieldAttr<"kernel_input_feature_dimension", I64Attr>,
+  StructFieldAttr<"kernel_output_feature_dimension", I64Attr>,
+  StructFieldAttr<"kernel_spatial_dimensions", I64ElementsAttr>,
+  StructFieldAttr<"output_batch_dimension", I64Attr>,
+  StructFieldAttr<"output_feature_dimension", I64Attr>,
+  StructFieldAttr<"output_spatial_dimensions", I64ElementsAttr>] > {
+
+  let description = "Structure of dimension information for conv op";
+}
+
+class ConvolutionAttributes<Dialect dialect> {
+  dag attributes = (ins
+    // Default value: one for each of the spatial dimension.
+    OptionalAttr<I64ElementsAttr>:$window_strides,
+    // Default value: zero for each of the spatial dimension.
+    OptionalAttr<I64ElementsAttr>:$padding,
+    // Default value: one for each of the spatial dimension.
+    OptionalAttr<I64ElementsAttr>:$lhs_dilation,
+    // Default value: one for each of the spatial dimension.
+    OptionalAttr<I64ElementsAttr>:$rhs_dilation,
+    ConvDimensionNumbersBase<dialect>:$dimension_numbers,
+    I64Attr:$feature_group_count,
+    I64Attr:$batch_group_count,
+    HLO_PrecisionConfigAttr:$precision_config
+  );
+}
+
 class BASE_HLO_ConvOp {
   string summary = "Convolution operator";
 
@@ -1338,6 +1380,19 @@ class BASE_HLO_WhileOp {
     true.
 
     See https://www.tensorflow.org/xla/operation_semantics#while.
+  }];
+}
+
+class BASE_HLO_BitcastOp {
+  string summary = "Bitcast operator";
+
+  string description = [{
+    This op changes the shape of the input in the way that the physical
+    arranggment of elements are unchanged.
+
+    However, the op needs layout information to make sense of "physical
+    arrangement of elements". Layout support in MHLO is currently under
+    exploration.
   }];
 }
 

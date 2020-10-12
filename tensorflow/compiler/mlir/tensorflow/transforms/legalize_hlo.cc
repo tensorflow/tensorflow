@@ -88,7 +88,7 @@ class ConvertConvOp : public OpConversionPattern<mhlo::ConvOp> {
     const int input_channels =
         conv_op.lhs().getType().cast<ShapedType>().getDimSize(
             input_feature_dimension);
-    int feature_group_count = conv_op.feature_group_count().getSExtValue();
+    int feature_group_count = conv_op.feature_group_count();
 
     const bool is_depthwise_conv = input_channels == feature_group_count;
     std::string padding;
@@ -250,7 +250,7 @@ class ConvertSliceOp : public OpConversionPattern<mhlo::SliceOp> {
         strides.getSplatValue().cast<IntegerAttr>().getInt() != 1)
       return failure();
 
-    rewriter.setInsertionPointAfter(slice_op);
+    rewriter.setInsertionPointAfter(slice_op.getOperation());
     auto start_indices = slice_op.start_indices();
     auto limit_indices = slice_op.limit_indices();
     std::vector<int64_t> size_values;
@@ -614,7 +614,65 @@ class ConvertReduceOpToTfMin : public OpConversionPattern<mhlo::ReduceOp> {
   };
 };
 
+class ConvertIotaOpToTfRange : public OpConversionPattern<mhlo::IotaOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::IotaOp iota_op, ArrayRef<Value> args,
+      ConversionPatternRewriter &rewriter) const final {
+    RankedTensorType type =
+        iota_op.getType().dyn_cast_or_null<RankedTensorType>();
+    if (!type) return failure();
+
+    const uint64_t dimension = iota_op.iota_dimension();
+    Type element_type = type.getElementType();
+    Attribute start, limit, delta;
+    if (element_type.isa<FloatType>()) {
+      start = rewriter.getFloatAttr(element_type, 0.0);
+      limit = rewriter.getFloatAttr(element_type, type.getShape()[dimension]);
+      delta = rewriter.getFloatAttr(element_type, 1.0);
+    } else if (element_type.isa<IntegerType>()) {
+      start = rewriter.getIntegerAttr(element_type, 0);
+      limit = rewriter.getIntegerAttr(element_type, type.getShape()[dimension]);
+      delta = rewriter.getIntegerAttr(element_type, 1);
+    } else {
+      return failure();
+    }
+
+    auto range_type =
+        RankedTensorType::get({type.getShape()[dimension]}, element_type);
+    Value start_op = rewriter.create<TF::ConstOp>(iota_op.getLoc(), start);
+    Value limit_op = rewriter.create<TF::ConstOp>(iota_op.getLoc(), limit);
+    Value delta_op = rewriter.create<TF::ConstOp>(iota_op.getLoc(), delta);
+    Value result = rewriter.create<TF::RangeOp>(iota_op.getLoc(), range_type,
+                                                start_op, limit_op, delta_op);
+
+    if (type.getRank() > 1) {
+      std::vector<int64_t> reshape_shape(type.getRank(), 1);
+      reshape_shape[iota_op.iota_dimension()] = type.getShape()[dimension];
+      auto reshape_type = RankedTensorType::get(reshape_shape, element_type);
+      Value reshape_shape_op = rewriter.create<TF::ConstOp>(
+          iota_op.getLoc(), rewriter.getI64TensorAttr(reshape_shape));
+      result = rewriter.create<TF::ReshapeOp>(iota_op.getLoc(), reshape_type,
+                                              result, reshape_shape_op);
+
+      Value broadcast_shape_op = rewriter.create<TF::ConstOp>(
+          iota_op.getLoc(), rewriter.getI64TensorAttr(type.getShape()));
+      result = rewriter.create<TF::BroadcastToOp>(iota_op.getLoc(), type,
+                                                  result, broadcast_shape_op);
+    }
+
+    rewriter.replaceOp(iota_op, result);
+    return success();
+  }
+};
+
 class LegalizeHloToTf : public PassWrapper<LegalizeHloToTf, FunctionPass> {
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<TF::TensorFlowDialect>();
+  }
+
  public:
   LegalizeHloToTf() = default;
   LegalizeHloToTf(const LegalizeHloToTf &) {}
@@ -765,7 +823,8 @@ void PopulateLegalizeHloToTfPatterns(OwningRewritePatternList *patterns,
                                      MLIRContext *context) {
   populateWithGenerated(context, patterns);
   patterns->insert<ConvertConvOp, ConvertSliceOp, ConvertReduceOpToTfMax,
-                   ConvertReduceOpToTfMin, ConvertReduceOpToTfSum>(context);
+                   ConvertReduceOpToTfMin, ConvertReduceOpToTfSum,
+                   ConvertIotaOpToTfRange>(context);
 }
 
 std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeHloToTfPass() {

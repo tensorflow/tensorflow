@@ -124,11 +124,20 @@ class MlirHloBuilder : public XlaBuilder {
                               FftType fft_type,
                               absl::Span<const int64> fft_length) override;
 
+  StatusOr<XlaOp> TriangularSolveInternal(
+      const Shape& shape, XlaOp a, XlaOp b,
+      TriangularSolveOptions options) override;
+
+  StatusOr<XlaOp> CholeskyInternal(const Shape& shape, XlaOp a,
+                                   bool lower) override;
+
   StatusOr<XlaOp> CustomCallInternal(
       const string& call_target_name, absl::Span<const XlaOp> operands,
       const Shape& shape, const string& opaque,
       absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
-      bool has_side_effect) override;
+      bool has_side_effect,
+      absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
+          output_operand_aliasing) override;
 
   StatusOr<XlaOp> ReduceInternal(
       const Shape& shape, absl::Span<const XlaOp> all_operands,
@@ -176,6 +185,9 @@ class MlirHloBuilder : public XlaBuilder {
   StatusOr<XlaOp> RngOpInternal(RandomDistribution distribution,
                                 absl::Span<const XlaOp> parameters,
                                 const Shape& shape) override;
+  StatusOr<XlaOp> RngBitGeneratorInternal(const Shape& full_result_shape,
+                                          RandomAlgorithm algorithm,
+                                          XlaOp initial_state) override;
 
   StatusOr<XlaOp> ReshapeInternal(const Shape& shape, XlaOp operand,
                                   int64 inferred_dimension) override;
@@ -188,6 +200,9 @@ class MlirHloBuilder : public XlaBuilder {
   StatusOr<XlaOp> InDimBroadcast(
       const Shape& shape, XlaOp operand,
       absl::Span<const int64> broadcast_dimensions) override;
+
+  StatusOr<XlaOp> AddInstruction(HloInstructionProto&& instr, HloOpcode opcode,
+                                 absl::Span<const XlaOp> operands) override;
 
   StatusOr<XlaOp> Compare(const Shape& shape, XlaOp lhs, XlaOp rhs,
                           ComparisonDirection direction) override;

@@ -290,6 +290,21 @@ xla::XlaOp IgammacImpl(xla::XlaOp x, xla::XlaOp y,
 
 XLA_MAKE_BINARY(Igammac, IgammacImpl(lhs, rhs, broadcast_helper));
 
+xla::XlaOp PolygammaImpl(xla::XlaOp n, xla::XlaOp x,
+                         const BCast& broadcast_helper) {
+  std::tie(n, x) = XlaBinaryOp::Broadcast(n, x, broadcast_helper);
+  return xla::Polygamma(n, x);
+}
+
+XLA_MAKE_BINARY(Polygamma, PolygammaImpl(lhs, rhs, broadcast_helper));
+
+xla::XlaOp ZetaImpl(xla::XlaOp x, xla::XlaOp q, const BCast& broadcast_helper) {
+  std::tie(x, q) = XlaBinaryOp::Broadcast(x, q, broadcast_helper);
+  return xla::Zeta(x, q);
+}
+
+XLA_MAKE_BINARY(Zeta, ZetaImpl(lhs, rhs, broadcast_helper));
+
 #undef XLA_MAKE_BINARY
 
 class ApproximateEqualOp : public XlaOpKernel {

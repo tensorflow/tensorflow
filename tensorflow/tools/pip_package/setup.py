@@ -52,7 +52,7 @@ from setuptools.dist import Distribution
 _VERSION = '2.4.0'
 
 REQUIRED_PACKAGES = [
-    'absl-py >= 0.7.0',
+    'absl-py >= 0.9.0',
     'astunparse == 1.6.3',
     'flatbuffers >= 1.12',
     'gast == 0.3.3',
@@ -63,10 +63,12 @@ REQUIRED_PACKAGES = [
     # https://github.com/numpy/numpy/pull/15355
     'numpy >= 1.16.0, < 1.19.0',
     'opt_einsum >= 2.3.2',
+    'portpicker >= 1.3.0',  # Needed by tf.__internal__.distribute.combinations.
     'protobuf >= 3.9.2',
     'tensorboard >= 2.3.0, < 3',
     'tensorflow_estimator >= 2.3.0, < 2.4.0',
     'termcolor >= 1.1.0',
+    'typing_extensions >= 3.7.4.2',
     'wrapt >= 1.11.1',
     'wheel >= 0.26',
     'six >= 1.12.0',
@@ -259,6 +261,7 @@ setup(
     version=_VERSION.replace('-', ''),
     description=DOCLINES[0],
     long_description='\n'.join(DOCLINES[2:]),
+    long_description_content_type="text/markdown",
     url='https://www.tensorflow.org/',
     download_url='https://github.com/tensorflow/tensorflow/tags',
     author='Google Inc.',
@@ -287,6 +290,8 @@ setup(
     # PyPI package information.
     classifiers=sorted([
         'Development Status :: 5 - Production/Stable',
+        # TODO(angerson) Add IFTTT when possible
+        'Environment :: GPU :: NVIDIA CUDA :: 11.0',
         'Intended Audience :: Developers',
         'Intended Audience :: Education',
         'Intended Audience :: Science/Research',

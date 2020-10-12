@@ -31,9 +31,7 @@ endif
 
   TCF_FILE = $(PWD)/$(MAKEFILE_DIR)/downloads/$(MLI_LIB_DIR)/hw/emsdp_em11d_em9d_dfss.tcf
   LCF_FILE = $(PWD)/$(MAKEFILE_DIR)/targets/arc/emsdp/emsdp.lcf
-  UBOOT_FILE := $(PWD)/$(MAKEFILE_DIR)/targets/arc/emsdp/uboot.env
-  UBOOT_FILE_NAME := $(notdir $(UBOOT_FILE))
-    
+
 
 include $(MAKEFILE_DIR)/targets/arc/arc_common.inc
   
@@ -44,7 +42,6 @@ include $(MAKEFILE_DIR)/targets/arc/arc_common.inc
    ARC_EXTRA_APP_RULES = \
      $(DLR)\(BIN_FILE\): $(DLR)\(BIN_DIR\) $(DLR)\(OUT_NAME\)\
      \n\t\@$(DLR)\(CP\) $(DLR)\(OUT_NAME\) $(DLR)\(BIN_FILE\)\
-     \n\t\@$(DLR)\(CP\) $(UBOOT_FILE_NAME) $(DLR)\(BIN_DIR\)$(DLR)\(PS\)$(UBOOT_FILE_NAME)\
      \n \
      \n$(DLR)\(BIN_DIR\):\
      \n\t\@$(DLR)\(MKDIR\) $(DLR)\(BIN_DIR\)\
@@ -57,11 +54,6 @@ include $(MAKEFILE_DIR)/targets/arc/arc_common.inc
    ARC_APP_RUN_CMD = mdb -run -digilent -nooptions $(DLR)\(DBG_ARGS\)
    ARC_APP_DEBUG_CMD = mdb -OK -digilent -nooptions $(DLR)\(DBG_ARGS\)
    ARC_EXTRA_EXECUTE_RULES = 
-
-  MAKE_PROJECT_FILES += $(UBOOT_FILE_NAME)
-ifeq ($(filter $(ARC_TARGET_FILES_DIRS), $(dir $(UBOOT_FILE))),)
-  ARC_TARGET_FILES_DIRS += $(dir $(UBOOT_FILE))
-endif
 
   MAKE_PROJECT_FILES := $(filter-out README_MAKE.md, $(MAKE_PROJECT_FILES)) README_ARC_EMSDP.md
 

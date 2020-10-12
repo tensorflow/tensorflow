@@ -781,11 +781,12 @@ enum BuiltinOperator {
   BuiltinOperator_DENSIFY = 124,
   BuiltinOperator_SEGMENT_SUM = 125,
   BuiltinOperator_BATCH_MATMUL = 126,
+  BuiltinOperator_PLACEHOLDER_FOR_GREATER_OP_CODES = 127,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_BATCH_MATMUL
+  BuiltinOperator_MAX = BuiltinOperator_PLACEHOLDER_FOR_GREATER_OP_CODES
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[127] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[128] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -913,13 +914,14 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[127] {
     BuiltinOperator_SELECT_V2,
     BuiltinOperator_DENSIFY,
     BuiltinOperator_SEGMENT_SUM,
-    BuiltinOperator_BATCH_MATMUL
+    BuiltinOperator_BATCH_MATMUL,
+    BuiltinOperator_PLACEHOLDER_FOR_GREATER_OP_CODES
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOperator() {
-  static const char * const names[128] = {
+  static const char * const names[129] = {
     "ADD",
     "AVERAGE_POOL_2D",
     "CONCATENATION",
@@ -1047,13 +1049,14 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "DENSIFY",
     "SEGMENT_SUM",
     "BATCH_MATMUL",
+    "PLACEHOLDER_FOR_GREATER_OP_CODES",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_BATCH_MATMUL)) return "";
+  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_PLACEHOLDER_FOR_GREATER_OP_CODES)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }
@@ -4754,11 +4757,11 @@ flatbuffers::Offset<ConcatenationOptions> CreateConcatenationOptions(flatbuffers
 
 struct AddOptionsT : public flatbuffers::NativeTable {
   typedef AddOptions TableType;
-  bool pot_scale_int16;
   tflite::ActivationFunctionType fused_activation_function;
+  bool pot_scale_int16;
   AddOptionsT()
-      : pot_scale_int16(true),
-        fused_activation_function(tflite::ActivationFunctionType_NONE) {
+      : fused_activation_function(tflite::ActivationFunctionType_NONE),
+        pot_scale_int16(true) {
   }
 };
 
@@ -4768,16 +4771,16 @@ struct AddOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_FUSED_ACTIVATION_FUNCTION = 4,
     VT_POT_SCALE_INT16 = 6
   };
-  bool pot_scale_int16() const {
-    return GetField<uint8_t>(VT_POT_SCALE_INT16, 0) != 0;
-  }
   tflite::ActivationFunctionType fused_activation_function() const {
     return static_cast<tflite::ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
   }
+  bool pot_scale_int16() const {
+    return GetField<uint8_t>(VT_POT_SCALE_INT16, 1) != 0;
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<uint8_t>(verifier, VT_POT_SCALE_INT16) &&
            VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
+           VerifyField<uint8_t>(verifier, VT_POT_SCALE_INT16) &&
            verifier.EndTable();
   }
   AddOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -4790,6 +4793,9 @@ struct AddOptionsBuilder {
   flatbuffers::uoffset_t start_;
   void add_fused_activation_function(tflite::ActivationFunctionType fused_activation_function) {
     fbb_.AddElement<int8_t>(AddOptions::VT_FUSED_ACTIVATION_FUNCTION, static_cast<int8_t>(fused_activation_function), 0);
+  }
+  void add_pot_scale_int16(bool pot_scale_int16) {
+    fbb_.AddElement<uint8_t>(AddOptions::VT_POT_SCALE_INT16, static_cast<uint8_t>(pot_scale_int16), 1);
   }
   explicit AddOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
@@ -4805,8 +4811,10 @@ struct AddOptionsBuilder {
 
 inline flatbuffers::Offset<AddOptions> CreateAddOptions(
     flatbuffers::FlatBufferBuilder &_fbb,
-    tflite::ActivationFunctionType fused_activation_function = tflite::ActivationFunctionType_NONE) {
+    tflite::ActivationFunctionType fused_activation_function = tflite::ActivationFunctionType_NONE,
+    bool pot_scale_int16 = true) {
   AddOptionsBuilder builder_(_fbb);
+  builder_.add_pot_scale_int16(pot_scale_int16);
   builder_.add_fused_activation_function(fused_activation_function);
   return builder_.Finish();
 }
@@ -5926,11 +5934,11 @@ flatbuffers::Offset<DepthToSpaceOptions> CreateDepthToSpaceOptions(flatbuffers::
 
 struct SubOptionsT : public flatbuffers::NativeTable {
   typedef SubOptions TableType;
-  bool pot_scale_int16;
   tflite::ActivationFunctionType fused_activation_function;
+  bool pot_scale_int16;
   SubOptionsT()
-      : pot_scale_int16(true),
-        fused_activation_function(tflite::ActivationFunctionType_NONE) {
+      : fused_activation_function(tflite::ActivationFunctionType_NONE),
+        pot_scale_int16(true) {
   }
 };
 
@@ -5940,16 +5948,16 @@ struct SubOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_FUSED_ACTIVATION_FUNCTION = 4,
     VT_POT_SCALE_INT16 = 6
   };
-  bool pot_scale_int16() const {
-    return GetField<uint8_t>(VT_POT_SCALE_INT16, 0) != 0;
-  }
   tflite::ActivationFunctionType fused_activation_function() const {
     return static_cast<tflite::ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
   }
+  bool pot_scale_int16() const {
+    return GetField<uint8_t>(VT_POT_SCALE_INT16, 1) != 0;
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<uint8_t>(verifier, VT_POT_SCALE_INT16) &&
            VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
+           VerifyField<uint8_t>(verifier, VT_POT_SCALE_INT16) &&
            verifier.EndTable();
   }
   SubOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -5962,6 +5970,9 @@ struct SubOptionsBuilder {
   flatbuffers::uoffset_t start_;
   void add_fused_activation_function(tflite::ActivationFunctionType fused_activation_function) {
     fbb_.AddElement<int8_t>(SubOptions::VT_FUSED_ACTIVATION_FUNCTION, static_cast<int8_t>(fused_activation_function), 0);
+  }
+  void add_pot_scale_int16(bool pot_scale_int16) {
+    fbb_.AddElement<uint8_t>(SubOptions::VT_POT_SCALE_INT16, static_cast<uint8_t>(pot_scale_int16), 1);
   }
   explicit SubOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
@@ -5977,8 +5988,10 @@ struct SubOptionsBuilder {
 
 inline flatbuffers::Offset<SubOptions> CreateSubOptions(
     flatbuffers::FlatBufferBuilder &_fbb,
-    tflite::ActivationFunctionType fused_activation_function = tflite::ActivationFunctionType_NONE) {
+    tflite::ActivationFunctionType fused_activation_function = tflite::ActivationFunctionType_NONE,
+    bool pot_scale_int16 = true) {
   SubOptionsBuilder builder_(_fbb);
+  builder_.add_pot_scale_int16(pot_scale_int16);
   builder_.add_fused_activation_function(fused_activation_function);
   return builder_.Finish();
 }
@@ -9338,24 +9351,27 @@ flatbuffers::Offset<BatchMatMulOptions> CreateBatchMatMulOptions(flatbuffers::Fl
 
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
-  tflite::BuiltinOperator builtin_code;
+  int8_t deprecated_builtin_code;
   std::string custom_code;
   int32_t version;
+  tflite::BuiltinOperator builtin_code;
   OperatorCodeT()
-      : builtin_code(tflite::BuiltinOperator_ADD),
-        version(1) {
+      : deprecated_builtin_code(0),
+        version(1),
+        builtin_code(tflite::BuiltinOperator_ADD) {
   }
 };
 
 struct OperatorCode FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef OperatorCodeT NativeTableType;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
-    VT_BUILTIN_CODE = 4,
+    VT_DEPRECATED_BUILTIN_CODE = 4,
     VT_CUSTOM_CODE = 6,
-    VT_VERSION = 8
+    VT_VERSION = 8,
+    VT_BUILTIN_CODE = 10
   };
-  tflite::BuiltinOperator builtin_code() const {
-    return static_cast<tflite::BuiltinOperator>(GetField<int8_t>(VT_BUILTIN_CODE, 0));
+  int8_t deprecated_builtin_code() const {
+    return GetField<int8_t>(VT_DEPRECATED_BUILTIN_CODE, 0);
   }
   const flatbuffers::String *custom_code() const {
     return GetPointer<const flatbuffers::String *>(VT_CUSTOM_CODE);
@@ -9363,12 +9379,16 @@ struct OperatorCode FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   int32_t version() const {
     return GetField<int32_t>(VT_VERSION, 1);
   }
+  tflite::BuiltinOperator builtin_code() const {
+    return static_cast<tflite::BuiltinOperator>(GetField<int32_t>(VT_BUILTIN_CODE, 0));
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int8_t>(verifier, VT_BUILTIN_CODE) &&
+           VerifyField<int8_t>(verifier, VT_DEPRECATED_BUILTIN_CODE) &&
            VerifyOffset(verifier, VT_CUSTOM_CODE) &&
            verifier.VerifyString(custom_code()) &&
            VerifyField<int32_t>(verifier, VT_VERSION) &&
+           VerifyField<int32_t>(verifier, VT_BUILTIN_CODE) &&
            verifier.EndTable();
   }
   OperatorCodeT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -9379,14 +9399,17 @@ struct OperatorCode FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
 struct OperatorCodeBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
-  void add_builtin_code(tflite::BuiltinOperator builtin_code) {
-    fbb_.AddElement<int8_t>(OperatorCode::VT_BUILTIN_CODE, static_cast<int8_t>(builtin_code), 0);
+  void add_deprecated_builtin_code(int8_t deprecated_builtin_code) {
+    fbb_.AddElement<int8_t>(OperatorCode::VT_DEPRECATED_BUILTIN_CODE, deprecated_builtin_code, 0);
   }
   void add_custom_code(flatbuffers::Offset<flatbuffers::String> custom_code) {
     fbb_.AddOffset(OperatorCode::VT_CUSTOM_CODE, custom_code);
   }
   void add_version(int32_t version) {
     fbb_.AddElement<int32_t>(OperatorCode::VT_VERSION, version, 1);
+  }
+  void add_builtin_code(tflite::BuiltinOperator builtin_code) {
+    fbb_.AddElement<int32_t>(OperatorCode::VT_BUILTIN_CODE, static_cast<int32_t>(builtin_code), 0);
   }
   explicit OperatorCodeBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
@@ -9402,27 +9425,31 @@ struct OperatorCodeBuilder {
 
 inline flatbuffers::Offset<OperatorCode> CreateOperatorCode(
     flatbuffers::FlatBufferBuilder &_fbb,
-    tflite::BuiltinOperator builtin_code = tflite::BuiltinOperator_ADD,
+    int8_t deprecated_builtin_code = 0,
     flatbuffers::Offset<flatbuffers::String> custom_code = 0,
-    int32_t version = 1) {
+    int32_t version = 1,
+    tflite::BuiltinOperator builtin_code = tflite::BuiltinOperator_ADD) {
   OperatorCodeBuilder builder_(_fbb);
+  builder_.add_builtin_code(builtin_code);
   builder_.add_version(version);
   builder_.add_custom_code(custom_code);
-  builder_.add_builtin_code(builtin_code);
+  builder_.add_deprecated_builtin_code(deprecated_builtin_code);
   return builder_.Finish();
 }
 
 inline flatbuffers::Offset<OperatorCode> CreateOperatorCodeDirect(
     flatbuffers::FlatBufferBuilder &_fbb,
-    tflite::BuiltinOperator builtin_code = tflite::BuiltinOperator_ADD,
+    int8_t deprecated_builtin_code = 0,
     const char *custom_code = nullptr,
-    int32_t version = 1) {
+    int32_t version = 1,
+    tflite::BuiltinOperator builtin_code = tflite::BuiltinOperator_ADD) {
   auto custom_code__ = custom_code ? _fbb.CreateString(custom_code) : 0;
   return tflite::CreateOperatorCode(
       _fbb,
-      builtin_code,
+      deprecated_builtin_code,
       custom_code__,
-      version);
+      version,
+      builtin_code);
 }
 
 flatbuffers::Offset<OperatorCode> CreateOperatorCode(flatbuffers::FlatBufferBuilder &_fbb, const OperatorCodeT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -11420,6 +11447,7 @@ inline void AddOptions::UnPackTo(AddOptionsT *_o, const flatbuffers::resolver_fu
   (void)_o;
   (void)_resolver;
   { auto _e = fused_activation_function(); _o->fused_activation_function = _e; }
+  { auto _e = pot_scale_int16(); _o->pot_scale_int16 = _e; }
 }
 
 inline flatbuffers::Offset<AddOptions> AddOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const AddOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -11431,9 +11459,11 @@ inline flatbuffers::Offset<AddOptions> CreateAddOptions(flatbuffers::FlatBufferB
   (void)_o;
   struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const AddOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _fused_activation_function = _o->fused_activation_function;
+  auto _pot_scale_int16 = _o->pot_scale_int16;
   return tflite::CreateAddOptions(
       _fbb,
-      _fused_activation_function);
+      _fused_activation_function,
+      _pot_scale_int16);
 }
 
 inline MulOptionsT *MulOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
@@ -11936,6 +11966,7 @@ inline void SubOptions::UnPackTo(SubOptionsT *_o, const flatbuffers::resolver_fu
   (void)_o;
   (void)_resolver;
   { auto _e = fused_activation_function(); _o->fused_activation_function = _e; }
+  { auto _e = pot_scale_int16(); _o->pot_scale_int16 = _e; }
 }
 
 inline flatbuffers::Offset<SubOptions> SubOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const SubOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -11947,9 +11978,11 @@ inline flatbuffers::Offset<SubOptions> CreateSubOptions(flatbuffers::FlatBufferB
   (void)_o;
   struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const SubOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _fused_activation_function = _o->fused_activation_function;
+  auto _pot_scale_int16 = _o->pot_scale_int16;
   return tflite::CreateSubOptions(
       _fbb,
-      _fused_activation_function);
+      _fused_activation_function,
+      _pot_scale_int16);
 }
 
 inline DivOptionsT *DivOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
@@ -13694,9 +13727,10 @@ inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_
 inline void OperatorCode::UnPackTo(OperatorCodeT *_o, const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
-  { auto _e = builtin_code(); _o->builtin_code = _e; }
+  { auto _e = deprecated_builtin_code(); _o->deprecated_builtin_code = _e; }
   { auto _e = custom_code(); if (_e) _o->custom_code = _e->str(); }
   { auto _e = version(); _o->version = _e; }
+  { auto _e = builtin_code(); _o->builtin_code = _e; }
 }
 
 inline flatbuffers::Offset<OperatorCode> OperatorCode::Pack(flatbuffers::FlatBufferBuilder &_fbb, const OperatorCodeT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -13707,14 +13741,16 @@ inline flatbuffers::Offset<OperatorCode> CreateOperatorCode(flatbuffers::FlatBuf
   (void)_rehasher;
   (void)_o;
   struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const OperatorCodeT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
-  auto _builtin_code = _o->builtin_code;
+  auto _deprecated_builtin_code = _o->deprecated_builtin_code;
   auto _custom_code = _o->custom_code.empty() ? 0 : _fbb.CreateString(_o->custom_code);
   auto _version = _o->version;
+  auto _builtin_code = _o->builtin_code;
   return tflite::CreateOperatorCode(
       _fbb,
-      _builtin_code,
+      _deprecated_builtin_code,
       _custom_code,
-      _version);
+      _version,
+      _builtin_code);
 }
 
 inline OperatorT *Operator::UnPack(const flatbuffers::resolver_function_t *_resolver) const {

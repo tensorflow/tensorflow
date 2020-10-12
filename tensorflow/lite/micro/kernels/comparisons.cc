@@ -619,7 +619,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   OpData* data = static_cast<OpData*>(node->user_data);
 
   const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
+  TF_LITE_ENSURE(context, input1 != nullptr);
   const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
+  TF_LITE_ENSURE(context, input2 != nullptr);
 
   if (input1->type == kTfLiteUInt8 || input1->type == kTfLiteInt8) {
     auto input1_offset = -input1->params.zero_point;

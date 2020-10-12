@@ -84,8 +84,7 @@ block_z:1)MULTI"},
   KernelReportMap reports;
   ConvertDeviceTraceXPlaneToKernelReports(*device_trace, {}, &reports);
   KernelStatsDb kernel_stats;
-  CopyKernelReportsToDb(reports, &kernel_stats);
-  SortKernelsByTotalDurationDesc(&kernel_stats);
+  CopyTopKDurationKernelReportsToDb(reports, &kernel_stats);
 
   EXPECT_EQ(kernel_stats.reports_size(), 3);
 

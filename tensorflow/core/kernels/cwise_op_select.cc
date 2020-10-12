@@ -29,9 +29,6 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
-#ifdef TENSORFLOW_USE_SYCL
-typedef Eigen::SyclDevice SYCLDevice;
-#endif  // TENSORFLOW_USE_SYCL
 
 namespace functor {
 template <typename Device, typename T>
@@ -294,22 +291,6 @@ REGISTER_SELECT_GPU(complex128);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#ifdef TENSORFLOW_USE_SYCL
-// Registration of the SYCL implementations.
-#define REGISTER_SELECT_SYCL(type)                                    \
-  REGISTER_KERNEL_BUILDER(                                            \
-      Name("Select").Device(DEVICE_SYCL).TypeConstraint<type>("T"),   \
-      SelectOp<SYCLDevice, type>);                                    \
-  REGISTER_KERNEL_BUILDER(                                            \
-      Name("SelectV2").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
-      SelectOp<SYCLDevice, type>);
-
-REGISTER_SELECT_SYCL(float);
-REGISTER_SELECT_SYCL(double);
-REGISTER_SELECT_SYCL(int32);
-REGISTER_SELECT_SYCL(int64);
-#undef REGISTER_SELECT_SYCL
-#endif  // TENSORFLOW_USE_SYCL
 
 namespace functor {
 
@@ -326,10 +307,6 @@ struct SelectFunctorBase {
 
 template <typename T>
 struct SelectFunctor<CPUDevice, T> : SelectFunctorBase<CPUDevice, T> {};
-#ifdef TENSORFLOW_USE_SYCL
-template <typename T>
-struct SelectFunctor<SYCLDevice, T> : SelectFunctorBase<SYCLDevice, T> {};
-#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
 struct SelectScalarHandler {
@@ -364,21 +341,6 @@ struct SelectScalarHandler<CPUDevice, T> {
   }
 };
 
-#ifdef TENSORFLOW_USE_SYCL
-template <typename Device, typename T>
-struct SelectScalarFunctorBase {
-  void operator()(const Device& d, typename TTypes<T>::Flat out,
-                  TTypes<bool>::ConstScalar cond,
-                  typename TTypes<T>::ConstFlat then_flat,
-                  typename TTypes<T>::ConstFlat else_flat) {
-    out.device(d) = cond() ? then_flat : else_flat;
-  }
-};
-
-template <typename T>
-struct SelectScalarFunctor<SYCLDevice, T>
-    : SelectScalarFunctorBase<SYCLDevice, T> {};
-#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
 struct BatchSelectFunctorBase {
@@ -469,16 +431,6 @@ template <typename T, int NDIMS>
 struct BCastSelectFunctor<CPUDevice, T, NDIMS>
     : BCastSelectFunctorBase<CPUDevice, T, NDIMS> {};
 
-#ifdef TENSORFLOW_USE_SYCL
-template <typename T>
-struct BatchSelectFunctor<SYCLDevice, T>
-    : BatchSelectFunctorBase<SYCLDevice, T> {};
-
-template <typename T, int NDIMS>
-struct BCastSelectFunctor<SYCLDevice, T, NDIMS>
-    : BCastSelectFunctorBase<SYCLDevice, T, NDIMS> {};
-
-#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace functor
 

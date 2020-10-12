@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 class DeviceMgr;
@@ -28,40 +29,18 @@ class WorkerCacheInterface;
 
 class DeviceResolverDistributed : public DeviceResolverInterface {
  public:
-  DeviceResolverDistributed(const DeviceMgr* dev_mgr,
-                            WorkerCacheInterface* worker_cache,
-                            const string& task_name);
+  explicit DeviceResolverDistributed(const DeviceMgr* dev_mgr);
 
-  virtual ~DeviceResolverDistributed() {}
+  Status GetDeviceAttributes(const string& device,
+                             DeviceAttributes* attributes) override;
 
-  void GetAllDeviceAttributesAsync(const std::vector<string>& devices,
-                                   const std::vector<string>& tasks,
-                                   std::vector<DeviceAttributes>* attributes,
-                                   const StatusCallback& done) override;
+  Status GetAllDeviceAttributes(
+      const string& task, std::vector<DeviceAttributes>* attributes) override;
 
-  void GetDeviceAttributesAsync(const string& device, const string& task,
-                                DeviceAttributes* attributes,
-                                const StatusCallback& done) override;
-
-  void ClearTask(const string& task) override;
-
-  void ClearCache() override;
+  Status UpdateDeviceAttributes(
+      const std::vector<DeviceAttributes>& attributes) override;
 
  protected:
-  // Loads attr_table_ with device attributes retrieved from remote task.
-  void RefreshRemoteAttributes(const string& device, const string& task,
-                               const StatusCallback& done)
-      TF_LOCKS_EXCLUDED(mu_);
-
-  // Subroutine used by GetAllDeviceAttributesAsync.  Recursively extends
-  // *attributes with DeviceAttributes of the corresponding device named
-  // by inst_params.instance.device_names.
-  void GetAllDeviceAttributesRecursive(
-      const std::vector<string>& devices, const std::vector<string>& tasks,
-      std::vector<DeviceAttributes>* attributes, const StatusCallback& done);
-
-  const DeviceMgr* dev_mgr_;            // Not owned
-  WorkerCacheInterface* worker_cache_;  // Not owned
   const string task_name_;
   mutex mu_;
   absl::flat_hash_map<string, DeviceAttributes> attr_table_ TF_GUARDED_BY(mu_);

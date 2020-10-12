@@ -132,6 +132,7 @@ int main(int argc, char** argv) {
   options.inference_priority1 = TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY;
   options.inference_priority2 = TFLITE_GPU_INFERENCE_PRIORITY_MIN_MEMORY_USAGE;
   options.inference_priority3 = TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION;
+  options.experimental_flags = TFLITE_GPU_EXPERIMENTAL_FLAGS_NONE;
   options.max_delegated_partitions = 1;
   auto* gpu_delegate = TfLiteGpuDelegateV2Create(&options);
   status = gpu_inference->ModifyGraphWithDelegate(gpu_delegate);
