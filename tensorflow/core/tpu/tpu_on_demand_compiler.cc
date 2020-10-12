@@ -119,7 +119,6 @@ class TpuExecutable : public TpuExecutableInterface {
       }
 
       ApiConverter::ToC(arg.shape(), &se_args[i]->dynamic_shape);
-      ApiConverter::ToC(arg.host_shape(), &se_args[i]->host_shape);
       const auto& unowned_indices = arg.unowned_indices();
       se_args[i]->unowned_indices_size = unowned_indices.size();
       se_args[i]->unowned_indices = new XLA_ShapeIndex[unowned_indices.size()];
@@ -142,7 +141,6 @@ class TpuExecutable : public TpuExecutableInterface {
     for (int i = 0; i < arguments.size(); ++i) {
       ApiConverter::Free(&se_args[i]->shape_tree.shape);
       ApiConverter::Free(&se_args[i]->dynamic_shape);
-      ApiConverter::Free(&se_args[i]->host_shape);
       delete[] se_args[i]->unowned_indices;
       delete[] se_args[i]->shape_tree.buffers;
       delete se_args[i];

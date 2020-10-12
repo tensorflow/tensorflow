@@ -9,6 +9,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "distribute"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "test"
     mtype: "<type \'module\'>"
   }

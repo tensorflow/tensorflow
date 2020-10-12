@@ -24,6 +24,8 @@ import tempfile
 from absl.testing import parameterized
 import numpy as np
 
+from tensorboard.plugins.histogram import summary_v2 as histogram_summary_v2
+from tensorboard.plugins.scalar import summary_v2 as scalar_summary_v2
 from tensorflow.core.util import event_pb2
 from tensorflow.python.distribute import tpu_strategy as tpu_lib
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
@@ -291,7 +293,7 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
     strategy = get_tpu_strategy()
 
     def host_computation(x):
-      summary.scalar("x", x, step=0)
+      scalar_summary_v2.scalar("x", x, step=0)
       return x * 2.0
 
     @def_function.function
@@ -317,7 +319,7 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
     strategy = get_tpu_strategy()
 
     def host_computation(x):
-      summary.scalar("x", x, step=0)
+      scalar_summary_v2.scalar("x", x, step=0)
       return x * 2.0
 
     @def_function.function
@@ -352,7 +354,7 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
     strategy = get_tpu_strategy()
 
     def host_computation(x):
-      summary.scalar("x", x, step=0)
+      scalar_summary_v2.scalar("x", x, step=0)
       return x * 2.0
 
     @def_function.function
@@ -490,7 +492,7 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
     strategy = get_tpu_strategy()
 
     def host_computation(x):
-      summary.scalar("x", x, step=0)
+      scalar_summary_v2.scalar("x", x, step=0)
       return x * 2.0
 
     @def_function.function
@@ -514,7 +516,35 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
     # written by host.
     self.assertLen(events, 2)
     self.assertEqual(events[1].summary.value[0].tag, "x")
-    self.assertEqual(events[1].summary.value[0].simple_value, 3.0)
+
+  def testHistogramSummaryWithAutoOutsideCompilation(self):
+    strategy = get_tpu_strategy()
+
+    def host_computation(x):
+      histogram_summary_v2.histogram("x", x, step=0)
+      return x * 2.0
+
+    @def_function.function
+    def step():
+
+      def computation(x):
+        x = x + 1.0
+        y = host_computation(x)
+        return y + 1.0
+
+      return strategy.run(computation, args=(2.0,))
+
+    logdir = tempfile.mkdtemp()
+    summary_writer = summary.create_file_writer(logdir, flush_millis=10000)
+    with summary_writer.as_default(), summary.always_record_summaries():
+      self.assertAllEqual(
+          strategy.experimental_local_results(step()),
+          constant_op.constant(7., shape=(strategy.num_replicas_in_sync)))
+    events = _events_from_logdir(self, logdir)
+    # There will be 2 entries: 1 summary file header entry, and 1 entry
+    # written by host.
+    self.assertLen(events, 2)
+    self.assertEqual(events[1].summary.value[0].tag, "x")
 
   @parameterized.parameters((True), (False))
   def testSummaryControlFlowIfWithAutoOutsideCompilation(
@@ -527,7 +557,7 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
       def computation(x):
         x = x + 1.0
         if x < 5:
-          summary.scalar("x", x, step=0)
+          scalar_summary_v2.scalar("x", x, step=0)
           x = x * 2.0
         return x + 1.0
 
@@ -553,7 +583,6 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
       #
       self.assertLen(events, 2)
       self.assertEqual(events[1].summary.value[0].tag, "cond/x")
-      self.assertEqual(events[1].summary.value[0].simple_value, 3.0)
 
   @test_util.disable_mlir_bridge(
       "TODO(b/168493455): Reenable this test once deadlock resolved."

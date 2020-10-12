@@ -56,21 +56,34 @@ py_library(
     name = "data_utils",
     srcs = ["data_utils.py"],
     srcs_version = "PY2AND3",
-    deps = [":generic_utils"],
+    deps = [
+        ":generic_utils",
+        ":io_utils",
+        ":tf_inspect",
+    ],
 )
 
 py_library(
     name = "engine_utils",
     srcs = [
         "conv_utils.py",
-        "io_utils.py",
         "losses_utils.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
         ":data_utils",
+        ":io_utils",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/ops/losses:loss_reduction",
+    ],
+)
+
+py_library(
+    name = "io_utils",
+    srcs = ["io_utils.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "@six_archive//:six",
     ],
 )
 
@@ -99,6 +112,8 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":tf_contextlib",
+        ":tf_inspect",
         "//tensorflow/python:util",
         "//third_party/py/numpy",
     ],
@@ -290,7 +305,6 @@ tf_py_test(
     srcs = ["composite_tensor_support_test.py"],
     python_version = "PY3",
     shard_count = 8,
-    tags = ["no_windows"],  # b/135752236
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -300,6 +314,7 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python/keras",
         "//tensorflow/python/keras:engine",
         "//tensorflow/python/keras/layers",
         "//tensorflow/python/ops/ragged:ragged_tensor",
@@ -361,6 +376,7 @@ tf_py_test(
     python_version = "PY3",
     tfrt_enabled = True,
     deps = [
+        ":layer_utils",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:layers",

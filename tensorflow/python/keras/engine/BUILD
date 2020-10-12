@@ -63,6 +63,7 @@ py_library(
         "//tensorflow/python/keras:constraints",
         "//tensorflow/python/keras:initializers",
         "//tensorflow/python/keras:losses",
+        "//tensorflow/python/keras:metrics",
         "//tensorflow/python/keras:optimizers",
         "//tensorflow/python/keras:regularizers",
         "//tensorflow/python/keras/distribute",
@@ -335,6 +336,22 @@ tf_py_test(
     name = "keras_tensor_test",
     size = "small",
     srcs = ["keras_tensor_test.py"],
+    python_version = "PY3",
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+    ],
+    tfrt_enabled = True,
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "ragged_keras_tensor_test",
+    size = "small",
+    srcs = ["ragged_keras_tensor_test.py"],
     python_version = "PY3",
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564

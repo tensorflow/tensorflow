@@ -303,8 +303,12 @@ Status XlaCompilationCache::CompileSingleOp(
     }
 
     GraphDebugInfo debug_info;
+    std::vector<std::string> control_rets;
+    if (result_dtypes.empty()) {
+      control_rets.push_back(node_def.name());
+    }
     return CompileGraphToXlaHlo(
-        *graph, mlir::SpanToArrayRef<XlaCompiler::Argument>(args),
+        *graph, mlir::SpanToArrayRef<XlaCompiler::Argument>(args), control_rets,
         options.device_type.type_string(), compile_options.use_tuple_arg,
         *options.flib_def, debug_info, options.shape_representation_fn, result);
 #endif

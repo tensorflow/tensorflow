@@ -5709,6 +5709,179 @@ ENTRY entry {
 }
 
 TEST_F(SpmdPartitioningTest,
+       PartitionConvGroupOnFeatureGroupCount_RHSPartialReplicate) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = f32[16,801,1,1024] parameter(0)
+  %lhs.copy = f32[16,801,1,1024] copy(%lhs),
+    sharding={devices=[1,2,1,2]0,1,2,3}
+  %rhs = f32[5,1,1,1024] parameter(1)
+  %rhs.copy = f32[5,1,1,1024] copy(%rhs),
+    sharding={devices=[1,1,1,2,2]0,2,1,3 last_tile_dim_replicate}
+  ROOT %conv = f32[16,801,1,1024] convolution(%lhs.copy, %rhs.copy),
+    dim_labels=b01f_01io->b01f,feature_group_count=1024,
+    window={size=5x1 pad=2_2x0_0},
+    sharding={devices=[1,2,1,2]0,1,2,3}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  auto root = module->entry_computation()->root_instruction();
+  auto lhs = AllOf(op::Copy(op::DynamicSlice(
+                       op::Pad(op::Parameter(), op::Constant()), op::Constant(),
+                       op::Reshape(), op::Constant(), op::Reshape())),
+                   op::Shape("f32[16,401,1,512]"));
+  auto left_halo = AllOf(op::Shape("f32[16,2, 1, 512]"),
+                         op::CollectivePermute(op::Slice(lhs)));
+  auto right_halo = AllOf(op::Shape("f32[16,2, 1, 512]"),
+                          op::CollectivePermute(op::Slice(lhs)));
+  auto rhs = AllOf(
+      op::Copy(op::DynamicSlice(op::Parameter(), op::Constant(), op::Constant(),
+                                op::Constant(), op::Reshape())),
+      op::Shape("f32[5,1,1,512]"));
+  EXPECT_THAT(
+      root,
+      AllOf(op::Convolution(
+                op::Select(_, op::Concatenate(left_halo, lhs, right_halo), _),
+                rhs),
+            op::Shape("f32[16, 401, 1, 512]")));
+}
+
+TEST_F(SpmdPartitioningTest,
+       PartitionConvGroupOnFeatureGroupCount_RHSAlignWithOutput) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = f32[16,801,1,1024] parameter(0)
+  %lhs.copy = f32[16,801,1,1024] copy(%lhs),
+    sharding={devices=[1,2,1,2]0,1,2,3}
+  %rhs = f32[5,1,1,1024] parameter(1), sharding={replicated}
+  ROOT %conv = f32[16,801,1,1024] convolution(%lhs.copy, %rhs),
+    dim_labels=b01f_01io->b01f,feature_group_count=1024,
+    window={size=5x1 pad=2_2x0_0},
+    sharding={devices=[1,2,1,2]0,1,2,3}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  auto root = module->entry_computation()->root_instruction();
+  auto lhs = AllOf(op::Copy(op::DynamicSlice(
+                       op::Pad(op::Parameter(), op::Constant()), op::Constant(),
+                       op::Reshape(), op::Constant(), op::Reshape())),
+                   op::Shape("f32[16,401,1,512]"));
+  auto left_halo = AllOf(op::Shape("f32[16,2, 1, 512]"),
+                         op::CollectivePermute(op::Slice(lhs)));
+  auto right_halo = AllOf(op::Shape("f32[16,2, 1, 512]"),
+                          op::CollectivePermute(op::Slice(lhs)));
+  auto rhs =
+      AllOf(op::DynamicSlice(op::Parameter(), op::Constant(), op::Constant(),
+                             op::Constant(), op::Reshape()),
+            op::Shape("f32[5,1,1,512]"));
+  EXPECT_THAT(
+      root,
+      AllOf(op::Convolution(
+                op::Select(_, op::Concatenate(left_halo, lhs, right_halo), _),
+                rhs),
+            op::Shape("f32[16, 401, 1, 512]")));
+}
+
+TEST_F(SpmdPartitioningTest,
+       PartitionConvGroupOnFeatureGroupCount_LHSAlignWithOutput) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = f32[16,801,1,1024] parameter(0)
+  %lhs.copy = f32[16,801,1,1024] copy(%lhs),
+    sharding={devices=[2,1,1,1,2]0,1,2,3 last_tile_dim_replicate}
+  %rhs = f32[5,1,1,1024] parameter(1)
+  %rhs.copy = f32[5,1,1,1024] copy(%rhs),
+    sharding={devices=[1,1,1,2,2]0,2,1,3 last_tile_dim_replicate}
+  ROOT %conv = f32[16,801,1,1024] convolution(%lhs.copy, %rhs.copy),
+    dim_labels=b01f_01io->b01f,feature_group_count=1024,
+    window={size=5x1 pad=2_2x0_0},
+    sharding={devices=[1,2,1,2]0,1,2,3}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  auto root = module->entry_computation()->root_instruction();
+  auto lhs = AllOf(
+      op::Copy(op::DynamicSlice(op::Parameter(), op::Reshape(), op::Constant(),
+                                op::Constant(), op::Constant())),
+      op::Shape("f32[8,801,1,1024]"));
+  auto resharded_lhs =
+      AllOf(op::Reshape(op::Transpose(op::AllToAll(op::Reshape(
+                op::Pad(op::DynamicSlice(lhs, op::Constant(), op::Constant(),
+                                         op::Constant(), op::Reshape()),
+                        op::Constant()))))),
+            op::Shape("f32[16,401,1,512]"));
+  auto left_halo = AllOf(op::Shape("f32[16,2, 1, 512]"),
+                         op::CollectivePermute(op::Slice(resharded_lhs)));
+  auto right_halo = AllOf(op::Shape("f32[16,2, 1, 512]"),
+                          op::CollectivePermute(op::Slice(resharded_lhs)));
+  auto rhs = AllOf(
+      op::Copy(op::DynamicSlice(op::Parameter(), op::Constant(), op::Constant(),
+                                op::Constant(), op::Reshape())),
+      op::Shape("f32[5,1,1,512]"));
+  EXPECT_THAT(
+      root,
+      AllOf(
+          op::Convolution(
+              op::Select(
+                  _, op::Concatenate(left_halo, resharded_lhs, right_halo), _),
+              rhs),
+          op::Shape("f32[16, 401, 1, 512]")));
+}
+
+TEST_F(SpmdPartitioningTest, PartitionConvGroupOnBatchGroupCount) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = f32[16,801,1,1024] parameter(0)
+  %lhs.copy = f32[16,801,1,1024] copy(%lhs),
+    sharding={devices=[1,2,1,2]0,1,2,3}
+  %rhs = f32[16,801,1,1024] parameter(1)
+  %rhs.copy = f32[16,801,1,1024] copy(%rhs),
+    sharding={devices=[1,2,1,2]0,1,2,3}
+  ROOT %conv = f32[5,1,1,1024] convolution(%lhs.copy, %rhs.copy),
+    dim_labels=f01b_i01o->01bf,batch_group_count=1024,
+    window={size=801x1 pad=2_2x0_0},
+    sharding={devices=[1,1,1,2,2]0,1,2,3 last_tile_dim_replicate}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  auto root = module->entry_computation()->root_instruction();
+  auto lhs = AllOf(
+      op::Select(_,
+                 op::Copy(op::DynamicSlice(
+                     op::Pad(op::Parameter(), op::Constant()), op::Constant(),
+                     op::Reshape(), op::Constant(), op::Reshape())),
+                 _),
+      op::Shape("f32[16,401,1,512]"));
+  auto left_halo = AllOf(op::Shape("f32[16,2, 1, 512]"),
+                         op::CollectivePermute(op::Slice(lhs)));
+  auto right_halo = AllOf(op::Shape("f32[16,2, 1, 512]"),
+                          op::CollectivePermute(op::Slice(lhs)));
+  auto rhs = AllOf(op::Copy(op::DynamicSlice(
+                       op::Pad(op::Parameter(), op::Constant()), op::Constant(),
+                       op::Reshape(), op::Constant(), op::Reshape())),
+                   op::Shape("f32[16,401,1,512]"));
+  auto conv = AllOf(op::Convolution(op::Concatenate(left_halo, lhs, right_halo),
+                                    op::Select(_, rhs, _)),
+                    op::Shape("f32[5,1,1,512]"));
+  EXPECT_THAT(root, AllOf(op::CollectivePermute(op::AllReduce(conv)),
+                          op::Shape("f32[5,1,1,512]")));
+}
+
+TEST_F(SpmdPartitioningTest,
        PartitionConvWithFeatureGroupCountAlignOuputWithRHS) {
   const char* const hlo_string = R"(
 HloModule module

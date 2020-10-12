@@ -22,10 +22,6 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
-#if defined(_MSC_VER)
-#include "tensorflow/core/framework/register_types.h"
-#endif
-
 namespace tensorflow {
 namespace {
 
@@ -254,62 +250,6 @@ template struct functor::DepthToSpaceOpFunctor<GPUDevice, Eigen::half,
 
 // NCHW_VECT_C with 4 x qint8 can be treated as NCHW int32.
 template struct functor::DepthToSpaceOpFunctor<GPUDevice, int32, FORMAT_NCHW>;
-
-#if defined(_MSC_VER)
-#define FORCE_DEPTH(TYPE, NAME, NUM, DEVICE)                                   \
-  template <>                                                                  \
-  struct functor::DepthToSpaceOpFunctor<DEVICE, TYPE, NUM> {                   \
-    void operator()(const DEVICE& d,                                           \
-                    typename TTypes<TYPE, 4>::ConstTensor input,               \
-                    int block_size, typename TTypes<TYPE, 4>::Tensor output) { \
-      LOG(FATAL) << "Should not be called.";                                   \
-    }                                                                          \
-    void operator()(const DEVICE& d,                                           \
-                    typename TTypes<TYPE, 5>::ConstTensor input,               \
-                    int block_size, typename TTypes<TYPE, 5>::Tensor output) { \
-      LOG(FATAL) << "Should not be called.";                                   \
-    }                                                                          \
-  };                                                                           \
-  void _force_DepthToSpaceOpFunctor##NAME(                                     \
-      const DEVICE& d, typename TTypes<TYPE, 4>::ConstTensor input,            \
-      int block_size, typename TTypes<TYPE, 4>::Tensor output) {               \
-    functor::DepthToSpaceOpFunctor<DEVICE, TYPE, NUM> op;                      \
-    op(d, input, block_size, output);                                          \
-  }                                                                            \
-  void _force_DepthToSpaceOpFunctor##NAME##_2(                                 \
-      const DEVICE& d, typename TTypes<TYPE, 5>::ConstTensor input,            \
-      int block_size, typename TTypes<TYPE, 5>::Tensor output) {               \
-    functor::DepthToSpaceOpFunctor<DEVICE, TYPE, NUM> op;                      \
-    op(d, input, block_size, output);                                          \
-  }
-
-FORCE_DEPTH(__int64, int64, FORMAT_NCHW, Eigen::ThreadPoolDevice)
-FORCE_DEPTH(unsigned __int64, uint64, FORMAT_NCHW, Eigen::ThreadPoolDevice)
-FORCE_DEPTH(unsigned int, uint, FORMAT_NCHW, Eigen::ThreadPoolDevice)
-FORCE_DEPTH(int, int, FORMAT_NCHW, Eigen::ThreadPoolDevice)
-FORCE_DEPTH(unsigned short, ushort, FORMAT_NCHW, Eigen::ThreadPoolDevice)
-FORCE_DEPTH(short, short, FORMAT_NCHW, Eigen::ThreadPoolDevice)
-FORCE_DEPTH(unsigned char, uchar, FORMAT_NCHW, Eigen::ThreadPoolDevice)
-FORCE_DEPTH(signed char, char, FORMAT_NCHW, Eigen::ThreadPoolDevice)
-FORCE_DEPTH(bfloat16, bfloat16, FORMAT_NCHW, Eigen::ThreadPoolDevice)
-FORCE_DEPTH(double, double, FORMAT_NCHW, Eigen::ThreadPoolDevice)
-FORCE_DEPTH(complex64, complex64, FORMAT_NCHW, Eigen::ThreadPoolDevice)
-FORCE_DEPTH(complex128, complex128, FORMAT_NCHW, Eigen::ThreadPoolDevice)
-FORCE_DEPTH(bool, bool, FORMAT_NCHW, Eigen::ThreadPoolDevice)
-FORCE_DEPTH(tensorflow::tstring, tstring, FORMAT_NCHW, Eigen::ThreadPoolDevice)
-FORCE_DEPTH(tensorflow::ResourceHandle, ResourceHandle, FORMAT_NCHW,
-            Eigen::ThreadPoolDevice)
-FORCE_DEPTH(tensorflow::Variant, variant, FORMAT_NCHW, Eigen::ThreadPoolDevice)
-FORCE_DEPTH(Eigen::QInt8, qint8, FORMAT_NCHW, Eigen::ThreadPoolDevice)
-FORCE_DEPTH(Eigen::QInt8, qint8_2, FORMAT_NHWC, Eigen::ThreadPoolDevice)
-FORCE_DEPTH(Eigen::half, half, FORMAT_NCHW, Eigen::ThreadPoolDevice)
-FORCE_DEPTH(float, float, FORMAT_NCHW, Eigen::ThreadPoolDevice)
-FORCE_DEPTH(Eigen::QInt8, qint8, FORMAT_NCHW, GPUDevice)
-FORCE_DEPTH(Eigen::QInt8, qint8_2, FORMAT_NHWC, GPUDevice)
-
-#undef FORCE_DEPTH
-
-#endif
 
 }  // end namespace tensorflow
 

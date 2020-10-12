@@ -183,7 +183,7 @@ class Loss(object):
     Returns:
       Loss values with the shape `[batch_size, d0, .. dN-1]`.
     """
-    NotImplementedError('Must be implemented in subclasses.')
+    raise NotImplementedError('Must be implemented in subclasses.')
 
   def _get_reduction(self):
     """Handles `AUTO` reduction cases and returns the reduction value."""
@@ -1456,7 +1456,8 @@ def huber(y_true, y_pred, delta=1.0):
       axis=-1)
 
 
-@keras_export('keras.losses.log_cosh', 'keras.losses.logcosh')
+@keras_export('keras.losses.log_cosh', 'keras.losses.logcosh',
+              'keras.metrics.log_cosh', 'keras.metrics.logcosh')
 @dispatch.add_dispatch_support
 def log_cosh(y_true, y_pred):
   """Logarithm of the hyperbolic cosine of the prediction error.

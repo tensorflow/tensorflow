@@ -26,7 +26,6 @@ from __future__ import print_function
 import collections
 import os.path
 import time
-import uuid
 
 import numpy as np
 from tensorflow.core.protobuf import meta_graph_pb2
@@ -255,7 +254,7 @@ class BaseSaverBuilder(object):
       _SHARDED_SUFFIX = array_ops.where(
           string_ops.regex_full_match(checkpoint_prefix, "^s3://.*"),
           constant_op.constant(".part"),
-          constant_op.constant("_temp_%s/part" % uuid.uuid4().hex))
+          constant_op.constant("_temp/part"))
       tmp_checkpoint_prefix = string_ops.string_join(
           [checkpoint_prefix, _SHARDED_SUFFIX])
 

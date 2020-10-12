@@ -4,16 +4,19 @@
 // CHECK: {
 // CHECK-NEXT:   version: 3,
 // CHECK-NEXT:   operator_codes: [ {
-// CHECK-NEXT:     builtin_code: LESS,
+// CHECK-NEXT:     deprecated_builtin_code: 58,
+// CHECK-NEXT:     version: 1,
+// CHECK-NEXT:     builtin_code: LESS
+// CHECK-NEXT:   }, {
+// CHECK-NEXT:     deprecated_builtin_code: 118,
+// CHECK-NEXT:     version: 1,
+// CHECK-NEXT:     builtin_code: IF
+// CHECK-NEXT:   }, {
 // CHECK-NEXT:     version: 1
 // CHECK-NEXT:   }, {
-// CHECK-NEXT:     builtin_code: IF,
-// CHECK-NEXT:     version: 1
-// CHECK-NEXT:   }, {
-// CHECK-NEXT:     version: 1
-// CHECK-NEXT:   }, {
-// CHECK-NEXT:     builtin_code: MUL,
-// CHECK-NEXT:     version: 1
+// CHECK-NEXT:     deprecated_builtin_code: 18,
+// CHECK-NEXT:     version: 1,
+// CHECK-NEXT:     builtin_code: MUL
 // CHECK-NEXT:   } ],
 // CHECK-NEXT:   subgraphs: [ {
 // CHECK-NEXT:     tensors: [ {

@@ -50,7 +50,6 @@
 # cc_library ":portable_tensorflow_lib" - Native library
 # cc_library ":portable_tensorflow_lib_lite" - Native library, without ops,
 #   supporting SELECTIVE_REGISTRATION feature.
-# portable_proto_library ":portable_proto_lib" (Google-internal)
 #
 # Note that :framework and :lib have incomplete transitive dependencies (they
 # declare but do not define some symbols) if framework_shared_object=True
@@ -71,7 +70,6 @@ load(
     "if_libtpu",
     "if_mobile",
     "if_not_windows",
-    "tf_android_core_proto_headers",
     "tf_cc_test",
     "tf_cc_test_mkl",
     "tf_cc_tests",
@@ -79,9 +77,7 @@ load(
     "tf_cuda_library",
     "tf_defines_nortti_if_lite_protos",
     "tf_features_nomodules_if_mobile",
-    "tf_genrule_cmd_append_to_srcs",
     "tf_opts_nortti_if_lite_protos",
-    "tf_portable_full_lite_protos",
     "transitive_hdrs",
 )
 
@@ -108,9 +104,6 @@ load("//tensorflow:tensorflow.bzl", "tf_monitoring_framework_deps")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "genrule")
 
 # For platform specific build config
 load(
@@ -149,7 +142,6 @@ load(
     "if_mkl",
     "mkl_deps",
 )
-# Placeholder for Google-internal load statements.
 
 package(
     default_visibility = [
@@ -191,7 +183,6 @@ package_group(name = "friends")
 #
 # Note that some protos are in neither additional_core_proto_srcs nor this
 # filegroup; e.g.  ones with individual proto_library targets.
-# LINT.IfChange
 COMMON_PROTO_SRCS = [
     "//tensorflow/core/protobuf:bfc_memory_map.proto",
     "//tensorflow/core/protobuf:config.proto",
@@ -254,7 +245,6 @@ ERROR_CODES_PROTO_SRCS = [
     "//tensorflow/core/protobuf:error_codes.proto",
     "//tensorflow/core/lib/core:error_codes.proto",
 ]
-# LINT.ThenChange(//tensorflow/core/portable_proto_config.asciipb)
 
 CORE_PROTO_SRCS = COMMON_PROTO_SRCS + EXAMPLE_PROTO_SRCS + FRAMEWORK_PROTO_SRCS + UTIL_PROTO_SRCS + PROFILER_PROTO_SRCS + ERROR_CODES_PROTO_SRCS
 
@@ -262,6 +252,7 @@ tf_proto_library(
     name = "protos_all",
     srcs = [],
     cc_api_version = 2,
+    create_go_proto = False,
     make_default_target_header_only = True,
     protodeps = [
         "//tensorflow/core/example:protos_all",
@@ -300,7 +291,6 @@ cc_library(
     hdrs = ["//tensorflow/core/platform:base_hdrs"],
     copts = tf_copts(),
     tags = ["avoid_dep"],
-    visibility = [":__subpackages__"],
     deps = [
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:byte_order",
@@ -320,11 +310,6 @@ alias(
     name = "framework_bounds_check",
     actual = "//tensorflow/core/framework:bounds_check",
     visibility = ["//tensorflow/core/kernels:friends"],
-)
-
-alias(
-    name = "human_readable_json",
-    actual = "//tensorflow/core/platform:human_readable_json",
 )
 
 # Minimal lib so that tools used for mobile compilation
@@ -535,30 +520,6 @@ tf_cuda_library(
         ":framework_internal",
         "@com_google_absl//absl/base",
     ],
-)
-
-# TODO(gonnet): Remove this alias once all users have been moved to the actual target.
-alias(
-    name = "allocator",
-    actual = "//tensorflow/core/framework:allocator",
-    visibility = ["//visibility:public"],
-)
-
-# TODO(gonnet): Remove this alias once all users have been moved to the actual target.
-alias(
-    name = "allocator_registry_impl",
-    actual = "//tensorflow/core/framework:allocator_registry_impl",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "overflow",
-    actual = "//tensorflow/core/util:overflow",
-)
-
-alias(
-    name = "exec_on_stall",
-    actual = "//tensorflow/core/util:exec_on_stall",
 )
 
 alias(
@@ -1296,7 +1257,7 @@ filegroup(
             "**/*main.cc",
         ],
     ),
-    visibility = ["//visibility:private"],
+    visibility = ["//visibility:public"],
 )
 
 # Sources required to build the TensorFlow framework with runtime on
@@ -1369,7 +1330,7 @@ filegroup(
 # Compiles to a trivial library on non-mobile to prevent irrelevant
 # build errors. If not building this e.g. as part of an android_binary,
 # a command such as the following must be used:
-# bazel build -c opt tensorflow/core:android_tensorflow_lib \
+# bazel build -c opt tensorflow/core:portable_tensorflow_lib \
 # --define=TENSORFLOW_PROTOS=lite \
 # --crosstool_top=//external:android/crosstool \
 # --cpu=armeabi-v7a \
@@ -1441,28 +1402,6 @@ filegroup(
             "**/*testlib*",
             "**/*main.cc",
             "**/tpu_*",
-        ],
-    ),
-    visibility = ["//visibility:public"],
-)
-
-filegroup(
-    name = "android_test_srcs",
-    testonly = 1,
-    # TODO(andrewharp/nhua):
-    # make more test-related sources portable e.g. "//tensorflow/core/platform:test.cc",
-    srcs = tf_portable_full_lite_protos(
-        full = [
-            "//tensorflow/core/framework:android_test_hdrs",
-            "//tensorflow/core/framework:android_test_srcs",
-            "//tensorflow/core/platform:android_test_srcs",
-            "//tensorflow/core/util:android_test_srcs",
-        ],
-        lite = [
-            "//tensorflow/core/framework:android_test_hdrs",
-            "//tensorflow/core/framework:android_test_srcs_no_core",
-            "//tensorflow/core/platform:android_test_srcs",
-            "//tensorflow/core/util:android_test_srcs",
         ],
     ),
     visibility = ["//visibility:public"],
@@ -1774,6 +1713,7 @@ cc_library(
         "//tensorflow/core/platform:denormal",
         "//tensorflow/core/platform:dynamic_annotations",
         "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:env_impl",
         "//tensorflow/core/platform:error",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:file_statistics",
@@ -2114,6 +2054,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:tensor",
         "//tensorflow/core/framework:tensor_shape",
         "//tensorflow/core/kernels:bounds_check",
+        "//tensorflow/core/platform:env_impl",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/core/profiler/lib:traceme",
@@ -2796,6 +2737,7 @@ tf_cc_test(
         "ops/image_ops_test.cc",
         "ops/io_ops_test.cc",
         "ops/linalg_ops_test.cc",
+        "ops/lookup_ops_test.cc",
         "ops/math_ops_test.cc",
         "ops/nn_ops_test.cc",
         "ops/parsing_ops_test.cc",
@@ -2873,11 +2815,6 @@ alias(
     name = "cuda_libdevice_path",
     actual = "//tensorflow/core/platform:cuda_libdevice_path",
 )
-
-# Normalize CORE_PROTO_SRCS to generate valid output file names.
-PORTABLE_PROTO_HEADERS_OUT = tf_android_core_proto_headers(CORE_PROTO_SRCS) + [
-    "//google/protobuf/any.proto.h",
-]
 
 transitive_hdrs(
     name = "headers",

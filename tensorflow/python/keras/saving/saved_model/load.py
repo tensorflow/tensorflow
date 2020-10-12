@@ -23,6 +23,7 @@ import types
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as defun
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import regularizers
@@ -975,8 +976,11 @@ def infer_inputs_from_restored_call_function(fn):
     TensorSpec of call function inputs.
   """
   def common_spec(x, y):
-    return tensor_spec.TensorSpec(defun.common_shape(x.shape, y.shape),
-                                  x.dtype, x.name)
+    common_shape = defun.common_shape(x.shape, y.shape)
+    if isinstance(x, sparse_tensor.SparseTensorSpec):
+      return sparse_tensor.SparseTensorSpec(common_shape, x.dtype)
+    return tensor_spec.TensorSpec(common_shape, x.dtype, x.name)
+
   spec = fn.concrete_functions[0].structured_input_signature[0][0]
   for concrete in fn.concrete_functions[1:]:
     spec2 = concrete.structured_input_signature[0][0]

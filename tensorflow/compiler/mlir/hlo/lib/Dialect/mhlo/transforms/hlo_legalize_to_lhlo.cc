@@ -20,6 +20,8 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/map_hlo_to_lhlo_op.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir/Dialect/Shape/IR/Shape.h"
+#include "mlir/Dialect/Shape/Transforms/Passes.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
@@ -448,6 +450,10 @@ struct HloLegalizeToLhlo
       return std::all_of(op.operand_type_begin(), op.operand_type_end(),
                          isMemRefType);
     });
+    target.addDynamicallyLegalOp<shape::AssumingOp>([&](shape::AssumingOp op) {
+      return std::all_of(op.result_type_begin(), op.result_type_end(),
+                         isMemRefType);
+    });
 
     auto kind = results_escape_function
                     ? BufferAssignmentTypeConverter::KeepAsFunctionResult
@@ -460,6 +466,7 @@ struct HloLegalizeToLhlo
     populateWithBufferAssignmentOpConversionPatterns<
         mlir::ReturnOp, mlir::ReturnOp, lmhlo::CopyOp>(&context, &converter,
                                                        &patterns);
+    populateShapeTypeConversionPatterns(&context, &converter, &patterns);
     if (failed(applyPartialConversion(getOperation(), target, patterns)))
       signalPassFailure();
   }

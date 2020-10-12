@@ -24,29 +24,12 @@ namespace gpu {
 CustomCallThunk::CustomCallThunk(
     ThunkInfo thunk_info, void* call_target,
     std::vector<ShapeTree<BufferAllocation::Slice>> operand_slices,
-    ShapeTree<BufferAllocation::Slice> result_slices, std::string opaque)
+    ShapeTree<BufferAllocation::Slice> result_slices, const std::string& opaque)
     : Thunk(Thunk::kCustomCall, thunk_info),
-      hlo_instruction_(thunk_info.hlo_instruction),
       call_target_(call_target),
       operand_slices_(std::move(operand_slices)),
       result_slices_(std::move(result_slices)),
-      opaque_(std::move(opaque)) {
-  const HloInstruction* instr = hlo_instruction_;
-  CHECK_EQ(instr->operand_count(), operand_slices_.size());
-  for (int64 i = 0; i < instr->operand_count(); ++i) {
-    const auto& s1 = operand_slices_[i].shape();
-    const auto& s2 = instr->operand(i)->shape();
-    CHECK(ShapeUtil::Equal(s1, s2)) << absl::StreamFormat(
-        "Shape mismatch between instr->operand(%d) and "
-        "operand_slices[%d].shape(): %s vs %s",
-        i, i, s1.ToString(), s2.ToString());
-  }
-  CHECK(ShapeUtil::Equal(instr->shape(), result_slices.shape()))
-      << absl::StreamFormat(
-             "Shape mismatch between instr->shape() and result_slices.shape(): "
-             "%s vs %s.",
-             instr->shape().ToString(), result_slices.shape().ToString());
-}
+      opaque_(opaque) {}
 
 // For each leaf in a preorder traversal of `slices`, appends its device address
 // to `buffers`.

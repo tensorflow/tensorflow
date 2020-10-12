@@ -9,6 +9,9 @@ load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_not
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_monitoring_python_deps")
 
 # buildifier: disable=same-origin-load
@@ -216,8 +219,10 @@ py_library(
         "//tensorflow/python/data",
         "//tensorflow/python/debug:debug_py",
         "//tensorflow/python/distribute",
+        "//tensorflow/python/distribute:combinations",  # For tf.__internal__ API.
         "//tensorflow/python/distribute:distribute_config",
         "//tensorflow/python/distribute:estimator_training",
+        "//tensorflow/python/distribute:strategy_combinations",  # For tf.__internal__,
         "//tensorflow/python/dlpack",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:monitoring",
@@ -258,8 +263,9 @@ py_library(
         "//third_party/py/tensorflow_core:__subpackages__",
     ],
     deps = [
-        ":framework_combinations",
         ":no_contrib",
+        "//tensorflow/python/distribute:multi_process_runner",
+        "//tensorflow/python/distribute:multi_worker_test_base",
     ],
 )
 
@@ -601,6 +607,7 @@ cc_library(
 cc_library(
     name = "pybind11_lib",
     hdrs = ["lib/core/pybind11_lib.h"],
+    compatible_with = get_compatible_with_portable(),
     features = ["-parse_headers"],
     visibility = tf_external_workspace_visible(visibility),
     deps = [
@@ -805,6 +812,7 @@ tf_python_pybind_extension(
     name = "_pywrap_tensor_float_32_execution",
     srcs = ["util/tensor_float_32.cc"],
     hdrs = ["//tensorflow/core/platform:tensor_float_32_hdr"],
+    compatible_with = get_compatible_with_portable(),
     module_name = "_pywrap_tensor_float_32_execution",
     deps = [
         "@pybind11",
@@ -2194,10 +2202,17 @@ py_library(
 )
 
 # Including this as a dependency will result in tests to use TFRT.
-# TODO(b/153582383): Move tf_ops_alwayslink dependency to c_api_tfrt instead.
+# TODO(b/170139514): Add a curated list of TFRT native ops.
+# TODO(kkb): Deprecated by `tfrt_utils`, remove.
 py_library(
     name = "is_tfrt_test_true",
     srcs = ["framework/is_tfrt_test_true.py"],
+    srcs_version = "PY2AND3",
+)
+
+py_library(
+    name = "tfrt_utils",
+    srcs = ["framework/tfrt_utils.py"],
     srcs_version = "PY2AND3",
 )
 
@@ -3623,7 +3638,6 @@ py_library(
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
-        "//tensorflow/python/keras/engine:base_layer_utils",
     ],
 )
 
@@ -3716,6 +3730,7 @@ py_library(
         ":gradients",
         ":gradients_util",
         ":graph_to_function_def",
+        ":handle_data_util",
         ":pywrap_tensorflow",
         ":util",
         "//tensorflow/python/compat",
@@ -3851,6 +3866,21 @@ py_library(
 )
 
 py_library(
+    name = "handle_data_util",
+    srcs = [
+        "ops/handle_data_util.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dtypes",
+        ":framework_ops",
+        ":protos_all_py",
+        ":pywrap_tf_session",
+        ":util",
+    ],
+)
+
+py_library(
     name = "gradients",
     srcs = [
         "ops/custom_gradient.py",
@@ -3860,6 +3890,7 @@ py_library(
     deps = [
         ":gradients_impl",
         ":gradients_util",
+        ":handle_data_util",
         ":pywrap_tf_session",
         ":unconnected_gradients",
         "//tensorflow/python/eager:forwardprop",
@@ -4254,6 +4285,7 @@ py_library(
         ":auto_control_deps_utils",
         ":dtypes",
         ":framework_ops",
+        ":handle_data_util",
         ":pywrap_tf_session",
         ":resource_variable_ops_gen",
         ":tensor_shape",
@@ -4287,6 +4319,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
+        ":handle_data_util",
         ":list_ops_gen",
     ],
 )
@@ -4435,6 +4468,7 @@ py_library(
         ":math_ops",
         ":random_ops_gen",
         ":random_seed",
+        ":stateless_random_ops",
     ],
 )
 
@@ -4476,10 +4510,10 @@ py_library(
     srcs = ["ops/stateless_random_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":array_ops",
         ":dtypes",
         ":framework_ops",
         ":math_ops",
-        ":random_ops",
         ":stateless_random_ops_gen",
         ":stateless_random_ops_v2_gen",
     ],
@@ -5071,6 +5105,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["ops/gradient_checker_v2_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -5359,6 +5394,7 @@ py_test(
         ":client_testlib",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/distribute:test_util",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -5474,6 +5510,7 @@ py_library(
 py_strict_library(
     name = "tf_export",
     srcs = ["util/tf_export.py"],
+    compatible_with = get_compatible_with_portable(),
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
@@ -5502,6 +5539,7 @@ py_strict_library(
         "util/tf_decorator.py",
         "util/tf_inspect.py",
     ],
+    compatible_with = get_compatible_with_portable(),
     srcs_version = "PY2AND3",
     visibility = [
         "//tensorflow:__subpackages__",
@@ -5519,6 +5557,7 @@ py_strict_library(
 py_strict_library(
     name = "tf_stack",
     srcs = ["util/tf_stack.py"],
+    compatible_with = get_compatible_with_portable(),
     srcs_version = "PY2AND3",
     # TODO(mdan): Remove public visibility.
     visibility = ["//visibility:public"],
@@ -5531,6 +5570,7 @@ py_strict_library(
 pybind_extension(
     name = "_tf_stack",
     srcs = ["util/tf_stack.cc"],
+    compatible_with = get_compatible_with_portable(),
     # TODO(b/138203821): change to "util._tf_stack" once the bug is fixed.
     module_name = "_tf_stack",
     deps = [
@@ -5615,6 +5655,7 @@ tf_py_test(
 
 py_library(
     name = "global_test_configuration",
+    compatible_with = get_compatible_with_portable(),
     deps = if_mlir(["//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass_registration"]) +
            tf_enable_mlir_bridge(),
 )
@@ -5633,6 +5674,7 @@ py_library(
             "util/**/*_test.py",
         ],
     ),
+    compatible_with = get_compatible_with_portable(),
     srcs_version = "PY2AND3",
     visibility = visibility + [
         "//tensorflow:__pkg__",
@@ -6120,9 +6162,8 @@ filegroup(
         "//tensorflow/core/grappler/optimizers:meta_optimizer",  # tf_optimizer
         "//tensorflow/core/grappler/utils:topological_sort",  # tf_item
         "//tensorflow/core/platform:tensor_float_32_utils",  # tensor_float_32
-        "//tensorflow/core/profiler/internal:annotation_stack_impl",  # profiler
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
-        "//tensorflow/core/profiler/internal:traceme_recorder_impl",  # profiler
+        "//tensorflow/core/profiler/internal/cpu:traceme_recorder_impl",  # profiler
         "//tensorflow/core/profiler/lib:profiler_session_impl",  # profiler
         "//tensorflow/core/profiler/rpc:profiler_server_impl",  # profiler
         "//tensorflow/core/profiler/rpc/client:profiler_client_impl",  # profiler

@@ -266,7 +266,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/core:lib",
-        "//tensorflow/core:regexp_internal",
+        "//tensorflow/core/platform:regexp",
         "@com_google_absl//absl/strings",
         "@com_google_protobuf//:protobuf_headers",
     ],

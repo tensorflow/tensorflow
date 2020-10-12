@@ -173,6 +173,13 @@ def TestFactory(xla_backend, cloud_tpu=False):
       self.assertTrue(hlo_text.startswith("HloModule acomputation"))
       self.assertIn("fusion", hlo_text)
 
+    @unittest.skipIf(cloud_tpu, "not implemented")
+    def testFlopEstimate(self):
+      computation = self.ExampleComputation()
+      properties = xla_client._xla.hlo_module_cost_analysis(
+          self.backend, computation.as_hlo_module())
+      self.assertEqual(properties["flops"], 8.0)
+
   tests.append(ComputationPrinting)
 
   class ComputationHashTest(absltest.TestCase):

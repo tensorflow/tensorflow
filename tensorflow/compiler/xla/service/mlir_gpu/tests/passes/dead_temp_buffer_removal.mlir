@@ -6,6 +6,18 @@ func @dead() {
   %0 = alloc() : memref<42xi32>
   %c0 = constant 0 : i32
   %c12 = constant 12 : index
+  // CHECK-NOT: store
+  store %c0, %0[%c12] : memref<42xi32>
+  return
+}
+
+// CHECK-LABEL: @dead_alloca
+func @dead_alloca() {
+  // CHECK-NOT: alloca
+  %0 = alloc() : memref<42xi32>
+  %c0 = constant 0 : i32
+  %c12 = constant 12 : index
+  // CHECK-NOT: store
   store %c0, %0[%c12] : memref<42xi32>
   return
 }

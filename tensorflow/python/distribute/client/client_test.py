@@ -27,6 +27,7 @@ import time
 from tensorflow.python.distribute.client import client
 from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import coordinator
@@ -203,7 +204,7 @@ class CoordinatedClosureQueueTest(test.TestCase):
     self.assertTrue(closure_queue.done())
 
     with self.assertRaisesRegex(
-        client.FunctionRetryableError,
+        errors.CancelledError,
         'The corresponding function is cancelled. Please reschedule the '
         'function.'):
       closure2._fetch_output_remote_values()
@@ -225,7 +226,7 @@ class CoordinatedClosureQueueTest(test.TestCase):
     self.assertTrue(closure_queue.done())
 
     with self.assertRaisesRegex(
-        client.FunctionRetryableError,
+        errors.CancelledError,
         'The corresponding function is cancelled. Please reschedule the '
         'function.'):
       closure2._fetch_output_remote_values()
@@ -307,7 +308,7 @@ class CoordinatedClosureQueueTest(test.TestCase):
     # The following asserts that closure3 should have been cancelled.
     if not call_wait:
       with self.assertRaisesRegex(
-          client.FunctionRetryableError,
+          errors.CancelledError,
           'The corresponding function is cancelled. Please reschedule the '
           'function.'):
         closure3._fetch_output_remote_values()

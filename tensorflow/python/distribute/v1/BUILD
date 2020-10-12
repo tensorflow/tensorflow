@@ -31,6 +31,7 @@ cuda_py_test(
         "//tensorflow/python/distribute:multi_worker_util",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/distribute:test_util",
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",

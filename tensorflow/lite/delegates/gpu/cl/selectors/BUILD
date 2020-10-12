@@ -132,6 +132,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/cl/kernels:add",
         "//tensorflow/lite/delegates/gpu/cl/kernels:concat_xy",
         "//tensorflow/lite/delegates/gpu/cl/kernels:concat_z",
+        "//tensorflow/lite/delegates/gpu/cl/kernels:depthwise_conv",
         "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
         "//tensorflow/lite/delegates/gpu/cl/kernels:lstm",
         "//tensorflow/lite/delegates/gpu/cl/kernels:max_unpooling",
