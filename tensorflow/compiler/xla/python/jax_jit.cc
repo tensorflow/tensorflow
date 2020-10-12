@@ -122,10 +122,10 @@ struct CallSignature {
   std::vector<py::object> static_args;
   // A PyTreeDef for each positional dynamic (i.e. not static) argument.
   std::vector<PyTreeDef> dynamic_positional_args_treedef;
-  // Keyword arguments. Sorted by the interned keyword pointers.
+  // Keyword arguments. Sorted by the keyword name.
   std::vector<KwargEntry> keyword_args;
   // Shape and dtype for both the dynamic positional arguments and the keyword
-  // arguments (sorted by interned keyword pointers).
+  // arguments (sorted by keyword name).
   std::vector<ArgSignature> dynamic_args_signatures;
   PjRtDevice* device;
 
@@ -190,7 +190,7 @@ std::string CallSignature::DebugString() const {
   std::vector<std::string> static_args_str;
   static_args_str.reserve(static_args.size());
   for (auto& static_arg : static_args) {
-    static_args_str.emplace_back(py::cast<std::string>(static_arg.str()));
+    static_args_str.emplace_back(py::cast<std::string>(py::str(static_arg)));
   }
 
   std::vector<std::string> signature_str;
@@ -271,9 +271,7 @@ class CompiledFunction {
 
  private:
   // Returns nullptr if not present in the cache.
-  CacheEntry* GetCacheEntryIfPresent(const py::args& args,
-                                     const py::kwargs& kwargs,
-                                     const CallSignature& signature);
+  CacheEntry* GetCacheEntryIfPresent(const CallSignature& signature);
   // Should never return nullptr.
   CacheEntry* AddCacheEntry(const py::args& args, const py::kwargs& kwargs,
                             const CallSignature& signature,
@@ -424,8 +422,10 @@ void FlattenArguments(const py::args& args, const py::kwargs& py_kwargs,
   // Keyword arguments.
   std::vector<std::pair<py::handle, py::handle>> kwargs(py_kwargs.begin(),
                                                         py_kwargs.end());
-  // We first intern the keys, then sort them (by pointer) and then create
-  // the signatures.
+  // We first intern the keys, then sort them (by name, as in the Python path)
+  // (see also PyTreeDef::Flatten) and then create the signatures.
+  // TODO(jblespiau): We should be able to sort the keys by interned-key
+  // pointers, but this requires the Python compilation to do the same.
   arguments.signature.keyword_args.resize(kwargs.size());
   for (size_t i = 0; i < kwargs.size(); ++i) {
     // Intern the key if not already interned.
@@ -442,7 +442,7 @@ void FlattenArguments(const py::args& args, const py::kwargs& py_kwargs,
   std::sort(kwargs.begin(), kwargs.end(),
             [](const std::pair<py::handle, py::handle>& a,
                const std::pair<py::handle, py::handle>& b) {
-              return a.first.ptr() < b.first.ptr();
+              return a.first < b.first;
             });
   for (size_t i = 0; i < kwargs.size(); ++i) {
     arguments.signature.keyword_args[i].key = kwargs[i].first;
@@ -511,7 +511,7 @@ StatusOr<std::unique_ptr<xla::PjRtBuffer>> ScalarToBuffer(
       "%s", absl::StrCat(
                 "Not supported: The C++ jax jit execution path, only accepts "
                 "DeviceArray, Numpy arrays, or Python scalars. Got type ",
-                py::cast<std::string>(scalar.get_type().str())));
+                py::cast<std::string>(py::str(scalar.get_type()))));
 }
 
 const py::dtype* DtypeTo32BitDtype(const py::dtype& dtype) {
@@ -524,16 +524,16 @@ const py::dtype* DtypeTo32BitDtype(const py::dtype& dtype) {
   static const auto* complex64_dt = new py::dtype("complex64");
   static const auto* complex128_dt = new py::dtype("complex128");
 
-  if (dtype == *int64_dt) {
+  if (dtype.equal(*int64_dt)) {
     return int32_dt;
   }
-  if (dtype == *float64_dt) {
+  if (dtype.equal(*float64_dt)) {
     return float32_dt;
   }
-  if (dtype == *uint64_dt) {
+  if (dtype.equal(*uint64_dt)) {
     return uint32_dt;
   }
-  if (dtype == *complex128_dt) {
+  if (dtype.equal(*complex128_dt)) {
     return complex64_dt;
   }
 
@@ -568,7 +568,7 @@ Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
   const auto& device_array = xla_module->attr("DeviceArray");
 
   static const auto* numpy_module = new py::module(py::module::import("numpy"));
-  const auto& array = numpy_module->attr("array");
+  const auto& np_array = numpy_module->attr("array");
 
   // When the jitted function is not committed, we first check whether any
   // sticky `DeviceArray` is present and on which device they live. See also:
@@ -663,7 +663,7 @@ Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
       if (!jax_enable_x64) {
         const py::dtype* to_dtype = DtypeTo32BitDtype(numpy_array.dtype());
         if (to_dtype) {
-          numpy_array = array(numpy_array, to_dtype);
+          numpy_array = np_array(numpy_array, *to_dtype);
         }
       }
       std::unique_ptr<xla::PyBuffer> buffer =
@@ -702,7 +702,6 @@ Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
 }  // namespace
 
 CacheEntry* CompiledFunction::GetCacheEntryIfPresent(
-    const py::args& args, const py::kwargs& kwargs,
     const CallSignature& signature) {
   auto found_iterator = executables_.find(signature);
   if (found_iterator != executables_.end()) {  // Cache hit!
@@ -810,12 +809,11 @@ py::object CompiledFunction::Call(py::args args, py::kwargs kwargs) {
     return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
   }
 
-  CacheEntry* cache_entry =
-      GetCacheEntryIfPresent(args, kwargs, arguments.signature);
+  CacheEntry* cache_entry = GetCacheEntryIfPresent(arguments.signature);
 
   if (!cache_entry) {
     py::object out_and_fastpath_data = cache_miss_(*args, **kwargs);
-    cache_entry = GetCacheEntryIfPresent(args, kwargs, arguments.signature);
+    cache_entry = GetCacheEntryIfPresent(arguments.signature);
     if (!cache_entry) {
       cache_entry = AddCacheEntry(args, kwargs, arguments.signature,
                                   out_and_fastpath_data);
@@ -868,6 +866,15 @@ void BuildJaxjitSubmodule(pybind11::module& m) {
       });
 
   // Only for testing purposes
+  jitlib.def("_DtypeTo32BitDtype", [](const py::object obj) -> py::object {
+    py::dtype dtype = py::dtype::from_args(obj);
+    const py::dtype* res = DtypeTo32BitDtype(dtype);
+    if (res) {
+      return *res;
+    } else {
+      return py::none();
+    }
+  });
   jitlib.def("_is_float0", &IsFloat0);
   jitlib.def("_is_trivial", &HasTrivialLazyExpr);
   jitlib.def("_ScalarToBuffer", [](py::handle scalar, bool jax_enable_x64,
