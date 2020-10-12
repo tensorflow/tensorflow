@@ -47,6 +47,11 @@
 * `tf.data.experimental.service.WorkerServer` now takes a config tuple
   instead of individual arguments. Usages should be updated to
   `tf.data.experimental.service.WorkerServer(worker_config)`.
+* `tf.quantization.quantize_and_dequantize_v2` has been introduced, which
+  updates the gradient definition for quantization which is outside the range
+  to be 0. To simulate the V1 the behavior of
+  tf.quantization.quantize_and_dequantize(...) use
+  tf.grad_pass_through(tf.quantization.quantize_and_dequantize_v2)(...).
 
 ## Known Caveats
 
