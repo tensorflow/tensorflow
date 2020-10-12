@@ -50,6 +50,7 @@ from tensorflow.lite.python.convert import toco_convert_protos  # pylint: disabl
 from tensorflow.lite.python.convert_saved_model import freeze_saved_model as _freeze_saved_model
 from tensorflow.lite.python.interpreter import Interpreter  # pylint: disable=unused-import
 from tensorflow.lite.python.interpreter import load_delegate  # pylint: disable=unused-import
+from tensorflow.lite.python.keras.saving import saving_utils as _keras_saving_utils
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs  # pylint: disable=unused-import
 from tensorflow.lite.python.op_hint import is_ophint_converted as _is_ophint_converted
 from tensorflow.lite.python.op_hint import OpHint  # pylint: disable=unused-import
@@ -858,7 +859,8 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
     if not isinstance(self._keras_model.call, _def_function.Function):
       # Pass `keep_original_batch_size=True` will ensure that we get an input
       # signature including the batch dimension specified by the user.
-      input_signature = _saving_utils.model_input_signature(
+      # TODO(b/169898786): Use the Keras public API when TFLite moves out of TF
+      input_signature = _keras_saving_utils.model_input_signature(
           self._keras_model, keep_original_batch_size=True)
 
     func = _saving_utils.trace_model_call(self._keras_model, input_signature)

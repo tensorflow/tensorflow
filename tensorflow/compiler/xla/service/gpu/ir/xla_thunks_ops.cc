@@ -35,8 +35,9 @@ XLAThunksDialect::XLAThunksDialect(MLIRContext *context)
       >();
 }
 
+}  // namespace xla_thunks
+
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/xla/service/gpu/ir/xla_thunks_ops.cc.inc"
 
-}  // namespace xla_thunks
 }  // namespace mlir

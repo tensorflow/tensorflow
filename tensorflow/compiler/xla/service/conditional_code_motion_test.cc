@@ -78,6 +78,52 @@ ENTRY main {
   EXPECT_THAT(root, AllOf(op::Tuple(op::Convert(), op::GetTupleElement())));
 }
 
+TEST_F(ConditionalCodeMotionTest, VerifyConditionalAnalysisWithWhileTuple) {
+  absl::string_view hlo_string =
+      R"(
+HloModule RemoveDotOpOut
+
+    body {
+      %p_body = (f32[2], bf16[2], s32[]) parameter(0)
+      %val = f32[2] get-tuple-element(p_body), index=0
+      %val2 = bf16[2] get-tuple-element(p_body), index=1
+      %const = s32[] constant(-1)
+      ROOT root = (f32[2], bf16[], s32[]) tuple(%val, %val2, %const)
+    }
+
+    condition {
+      %p_cond = (f32[2], bf16[2], s32[]) parameter(0)
+      %gte = s32[] get-tuple-element(%p_cond), index=2
+      %const = s32[] constant(42)
+      ROOT result = pred[] compare(%gte, %const), direction=EQ
+    }
+
+    on_true {
+      %arg_tuple.1 = f32[2] parameter(0)
+      %const = s32[] constant(42)
+      %add.8493 = f32[2] add(f32[2] %arg_tuple.1, f32[2] %arg_tuple.1)
+      %convert.2894 = bf16[2] convert(f32[2] %add.8493)
+      ROOT %tuple.1 = (f32[2], bf16[2], s32[]) tuple(%add.8493, %convert.2894, %const)
+    }
+    on_false {
+      %arg_tuple.1 = f32[2] parameter(0)
+      %const = s32[] constant(42)
+      %add.8493 = f32[2] add(f32[2] %arg_tuple.1, f32[2] %arg_tuple.1)
+      %convert.2894 = bf16[2] convert(f32[2] %add.8493)
+      %while_init = (f32[2], bf16[2], s32[]) tuple(%add.8493, %convert.2894, %const)
+      ROOT while = (f32[2], bf16[2], s32[]) while(%while_init), condition=condition, body=body
+    }
+    ENTRY main {
+      pred.1 = pred[] parameter(0)
+      arg_tuple.11 = f32[2] parameter(1)
+      ROOT conditional = (f32[2], bf16[2], s32[]) conditional(pred.1, arg_tuple.11, arg_tuple.11), true_computation=on_true, false_computation=on_false
+    }
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  ConditionalCodeMotion pass(true, true);
+  ASSERT_FALSE(pass.Run(&*module).ValueOrDie());
+}
+
 TEST_F(ConditionalCodeMotionTest, MoveConvertOutConditionalRoot) {
   absl::string_view hlo_string =
       R"(
@@ -574,6 +620,89 @@ ENTRY main {
           op::Convert(op::AllReduce(op::GetTupleElement(op::Conditional()))),
           op::Convert(
               op::AllReduce(op::GetTupleElement(op::Conditional())))))));
+}
+
+TEST_F(ConditionalCodeMotionTest, DoNotMoveAllReduceIn) {
+  absl::string_view hlo_string =
+      R"(
+HloModule RemoveIdenticalInstruction
+
+%add.64 (x.139: bf16[], y.139: bf16[]) -> bf16[] {
+  %x.139 = bf16[]{:T(512)} parameter(0)
+  %y.139 = bf16[]{:T(512)} parameter(1)
+  ROOT %add.44073 = bf16[]{:T(512)} add(bf16[]{:T(512)} %x.139, bf16[]{:T(512)} %y.139)
+}
+
+%add.181 (x.256: bf16[], y.256: bf16[]) -> bf16[] {
+  %x.256 = bf16[]{:T(512)} parameter(0)
+  %y.256 = bf16[]{:T(512)} parameter(1)
+  ROOT %add.44842 = bf16[]{:T(512)} add(bf16[]{:T(512)} %x.256, bf16[]{:T(512)} %y.256)
+}
+
+on_true {
+  arg_tuple.1 = (bf16[2,54,168,128], bf16[2,52,168,128]) parameter(0)
+  get-tuple-element.11 = bf16[2,54,168,128] get-tuple-element(arg_tuple.1), index=0
+  get-tuple-element.12 = bf16[2,52,168,128] get-tuple-element(arg_tuple.1), index=1
+  convolution.1 = bf16[3,3,128,128] convolution(bf16[2,54,168,128]
+    get-tuple-element.11, bf16[2,52,168,128]
+    get-tuple-element.12), window={size=52x168 pad=0_0x1_1},
+    dim_labels=f01b_i01o->01bf
+  add.1 = bf16[3,3,128,128] add(bf16[3,3,128,128] convolution.1, bf16[3,3,128,128] convolution.1)
+  ROOT tuple.1 = (bf16[3,3,128,128]) tuple(add.1)
+}
+
+on_false {
+  arg_tuple.2 = (bf16[2,86,104,128], bf16[2,84,104,128]) parameter(0)
+  get-tuple-element.21 = bf16[2,86,104,128]
+    get-tuple-element(arg_tuple.2), index=0
+  get-tuple-element.22 = bf16[2,84,104,128]
+    get-tuple-element(arg_tuple.2), index=1
+  convolution.2 = bf16[3,3,128,128]
+    convolution(bf16[2,86,104,128] get-tuple-element.21, bf16[2,84,104,128]
+    get-tuple-element.22), window={size=84x104 pad=0_0x1_1},
+    dim_labels=f01b_i01o->01bf
+  add.2 = bf16[3,3,128,128] add(bf16[3,3,128,128] convolution.2, bf16[3,3,128,128] convolution.2)
+  ROOT tuple.2 = (bf16[3,3,128,128]) tuple(add.2)
+}
+
+ENTRY main {
+  pred.1 = pred[] parameter(0)
+  arg_tuple.3 = (bf16[2,54,168,128], bf16[2,52,168,128]) parameter(1)
+  arg_tuple.4 = (bf16[2,86,104,128], bf16[2,84,104,128]) parameter(2)
+  arg_tuple.5 = f32[3,3,128,128] parameter(3)
+  conditional = (bf16[3,3,128,128])
+    conditional(pred.1, arg_tuple.3, arg_tuple.4), true_computation=on_true,
+    false_computation=on_false
+  get-first-index = bf16[3,3,128,128] get-tuple-element(conditional), index=0
+  all-reduce.2 = bf16[3,3,128,128]
+    all-reduce(bf16[3,3,128,128] %get-first-index),
+    channel_id=485, replica_groups={{0,1}}, use_global_device_ids=true,
+    to_apply=%add.181, metadata={op_type="Conv2DBackpropFilter"
+    op_name="gradients/resnet50/conv2d_22/Conv2D_grad/Conv2DBackpropFilter"}
+  convert.2 = f32[3,3,128,128]
+    convert(bf16[3,3,128,128] %all-reduce.2),
+    metadata={op_type="Cast" op_name="Cast_15"}
+   ROOT result = (f32[3,3,128,128]) tuple(convert.2)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  ConditionalCodeMotion pass(true, true);
+  ASSERT_FALSE(pass.Run(&*module).ValueOrDie());
+  const HloInstruction* conditional =
+      FindInstruction(module.get(), "conditional");
+  CHECK(conditional != nullptr);
+  const HloComputation* on_true = conditional->branch_computation(0);
+  ASSERT_EQ(on_true->instruction_count(), 6);
+  const HloComputation* on_false = conditional->branch_computation(1);
+  ASSERT_EQ(on_false->instruction_count(), 6);
+
+  // Checks if conditional shape has changed.
+  ASSERT_TRUE(ShapeUtil::Compatible(
+      conditional->shape(), ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(
+                                BF16, {3, 3, 128, 128})})));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Tuple(op::Convert(op::AllReduce(
+                        op::GetTupleElement(op::Conditional()))))));
 }
 
 TEST_F(ConditionalCodeMotionTest, MovePowOpIn) {

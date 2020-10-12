@@ -1083,7 +1083,7 @@ namespace functor {
       const std::array<int, 3>& padding_left,                         \
       const std::array<int, 3>& padding_right,                        \
       typename TTypes<T, 5, int>::Tensor out, TensorFormat format,    \
-      T padding_value);
+      const T& padding_value);
 
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
@@ -1547,7 +1547,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
                       .tensor<T, 5>()),
           {{0, 0, 0}}, {{-planes_odd, -rows_odd, -cols_odd}},
           To32Bit(in_backprop_remove_padding.tensor<T, 5>()),
-          compute_data_format);
+          compute_data_format, T{});
 
       pre_transformed_in_backprop = in_backprop_remove_padding;
     }
@@ -1752,7 +1752,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
           context->template eigen_device<GPUDevice>(),
           To32Bit(input.tensor<T, 5>()), {{0, 0, 0}},
           {{planes_odd, rows_odd, cols_odd}},
-          To32Bit(compatible_input.tensor<T, 5>()), data_format_);
+          To32Bit(compatible_input.tensor<T, 5>()), data_format_, T{});
     } else {
       compatible_input = input;
     }

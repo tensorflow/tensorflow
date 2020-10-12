@@ -28,14 +28,14 @@ namespace data {
 
 namespace {
 constexpr const char kParallelEpochs[] = "parallel_epochs";
-constexpr const char kOneEpoch[] = "one_epoch";
+constexpr const char kDistributedEpoch[] = "distributed_epoch";
 }  // namespace
 
 Status ParseProcessingMode(const std::string& s, ProcessingMode& mode) {
   if (s == kParallelEpochs) {
     mode = ProcessingMode::PARALLEL_EPOCHS;
-  } else if (s == kOneEpoch) {
-    mode = ProcessingMode::ONE_EPOCH;
+  } else if (s == kDistributedEpoch) {
+    mode = ProcessingMode::DISTRIBUTED_EPOCH;
   } else {
     return errors::InvalidArgument("Unrecognized processing mode: ", s);
   }
@@ -46,8 +46,8 @@ std::string ProcessingModeToString(ProcessingMode mode) {
   switch (mode) {
     case ProcessingMode::PARALLEL_EPOCHS:
       return kParallelEpochs;
-    case ProcessingMode::ONE_EPOCH:
-      return kOneEpoch;
+    case ProcessingMode::DISTRIBUTED_EPOCH:
+      return kDistributedEpoch;
     default:
       DCHECK(false);
       return "Unknown";
@@ -108,6 +108,28 @@ Status DataServiceDispatcherClient::GetDatasetDef(int64 dataset_id,
     return grpc_util::WrapError("Failed to get dataset def", status);
   }
   dataset_def = resp.dataset_def();
+  return Status::OK();
+}
+
+Status DataServiceDispatcherClient::GetSplit(int64 job_id, int64 repetition,
+                                             Tensor& split,
+                                             bool& end_of_splits) {
+  TF_RETURN_IF_ERROR(EnsureInitialized());
+  GetSplitRequest req;
+  req.set_job_id(job_id);
+  req.set_repetition(repetition);
+  GetSplitResponse resp;
+  grpc::ClientContext client_ctx;
+  grpc::Status status = stub_->GetSplit(&client_ctx, req, &resp);
+  if (!status.ok()) {
+    return grpc_util::WrapError("Failed to get split", status);
+  }
+  end_of_splits = resp.end_of_splits();
+  if (!end_of_splits) {
+    if (!split.FromProto(resp.split())) {
+      return errors::Internal("Failed to parse split tensor proto");
+    }
+  }
   return Status::OK();
 }
 

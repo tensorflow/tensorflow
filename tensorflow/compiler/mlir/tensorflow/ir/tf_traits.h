@@ -124,6 +124,10 @@ class CannotDuplicate : public TraitBase<ConcreteType, CannotDuplicate> {
   }
 };
 
+// Trait to indicate an operation cannot be constant folded.
+template <typename ConcreteType>
+class NoConstantFold : public TraitBase<ConcreteType, NoConstantFold> {};
+
 // Coefficient-wise binary operation with implicit broadcasting support, for
 // example tf.Sub operation.
 template <typename ConcreteType>

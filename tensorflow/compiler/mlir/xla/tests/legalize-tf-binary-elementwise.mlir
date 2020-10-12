@@ -197,9 +197,9 @@ func @pow(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 //===----------------------------------------------------------------------===//
 
 // CHECK-LABEL: func @equal
-func @equal(%arg0: tensor<2xi32>) -> tensor<2xi1> {
-  // CHECK-NEXT:  "mhlo.compare"(%arg0, %arg0) {comparison_direction = "EQ"}
-  %0 = "tf.Equal"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+func @equal(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
+  // CHECK-NEXT:  "mhlo.compare"(%arg0, %arg1) {comparison_direction = "EQ"}
+  %0 = "tf.Equal"(%arg0, %arg1) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
   return %0: tensor<2xi1>
 }
 
@@ -265,9 +265,9 @@ func @equal_unranked(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) -> tensor<*xi1>
 }
 
 // CHECK-LABEL: func @notequal
-func @notequal(%arg0: tensor<2xi32>) -> tensor<2xi1> {
-  // CHECK-NEXT:  "mhlo.compare"(%arg0, %arg0) {comparison_direction = "NE"}
-  %0 = "tf.NotEqual"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+func @notequal(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
+  // CHECK-NEXT:  "mhlo.compare"(%arg0, %arg1) {comparison_direction = "NE"}
+  %0 = "tf.NotEqual"(%arg0, %arg1) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
   return %0: tensor<2xi1>
 }
 
@@ -278,9 +278,9 @@ func @notequal(%arg0: tensor<2xi32>) -> tensor<2xi1> {
 //===----------------------------------------------------------------------===//
 
 // CHECK-LABEL: func @greater
-func @greater(%arg0: tensor<2xi32>) -> tensor<2xi1> {
-  // CHECK: "mhlo.compare"(%arg0, %arg0) {comparison_direction = "GT"}
-  %0 = "tf.Greater"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+func @greater(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
+  // CHECK: "mhlo.compare"(%arg0, %arg1) {comparison_direction = "GT"}
+  %0 = "tf.Greater"(%arg0, %arg1) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
   return %0: tensor<2xi1>
 }
 
@@ -310,29 +310,29 @@ func @greater_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<?xi32>) -> tensor<?xi1
 }
 
 // CHECK-LABEL: func @greater_uranked
-func @greater_uranked(%arg0: tensor<*xi32>) -> tensor<*xi1> {
+func @greater_uranked(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) -> tensor<*xi1> {
   // CHECK:  "tf.Greater"
-  %0 = "tf.Greater"(%arg0, %arg0) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi1>
+  %0 = "tf.Greater"(%arg0, %arg1) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi1>
   return %0: tensor<*xi1>
 }
 
 // CHECK-LABEL: func @greater_equal
-func @greater_equal(%arg0: tensor<2xi32>) -> tensor<2xi1> {
-  // CHECK-NEXT:  "mhlo.compare"(%arg0, %arg0) {comparison_direction = "GE"}
-  %0 = "tf.GreaterEqual"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+func @greater_equal(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
+  // CHECK-NEXT:  "mhlo.compare"(%arg0, %arg1) {comparison_direction = "GE"}
+  %0 = "tf.GreaterEqual"(%arg0, %arg1) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
   return %0: tensor<2xi1>
 }
 
 // CHECK-LABEL: func @less
-func @less(%arg0: tensor<2xi32>) -> tensor<2xi1> {
-  // CHECK-NEXT:  "mhlo.compare"(%arg0, %arg0) {comparison_direction = "LT"}
-  %0 = "tf.Less"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+func @less(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
+  // CHECK-NEXT:  "mhlo.compare"(%arg0, %arg1) {comparison_direction = "LT"}
+  %0 = "tf.Less"(%arg0, %arg1) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
   return %0: tensor<2xi1>
 }
 
 // CHECK-LABEL: func @less_equal
-func @less_equal(%arg0: tensor<2xi32>) -> tensor<2xi1> {
-  // CHECK-NEXT:  "mhlo.compare"(%arg0, %arg0) {comparison_direction = "LE"}
-  %0 = "tf.LessEqual"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+func @less_equal(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
+  // CHECK-NEXT:  "mhlo.compare"(%arg0, %arg1) {comparison_direction = "LE"}
+  %0 = "tf.LessEqual"(%arg0, %arg1) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
   return %0: tensor<2xi1>
 }

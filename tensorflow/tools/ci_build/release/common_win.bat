@@ -37,9 +37,9 @@ SET PATH=%PATH%;C:\%PYTHON_DIRECTORY%
 %PIP_EXE% install protobuf --upgrade --no-deps
 %PIP_EXE% install keras_preprocessing==1.1.0 --upgrade --no-deps
 %PIP_EXE% install wrapt --upgrade --no-deps
+%PIP_EXE% install absl-py==0.9.0
 
 IF "%PYTHON_DIRECTORY%"=="Python37" (
-    %PIP_EXE% install absl-py==0.5.0
     %PIP_EXE% install colorama==0.3.9
     %PIP_EXE% install cycler==0.10.0
     %PIP_EXE% install jedi==0.11.1

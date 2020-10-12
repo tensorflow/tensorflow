@@ -316,6 +316,7 @@ tflite_micro_cc_test(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )

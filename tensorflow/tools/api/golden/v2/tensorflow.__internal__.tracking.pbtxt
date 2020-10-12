@@ -4,4 +4,8 @@ tf_module {
     name: "AutoTrackable"
     mtype: "<type \'type\'>"
   }
+  member {
+    name: "Trackable"
+    mtype: "<type \'type\'>"
+  }
 }

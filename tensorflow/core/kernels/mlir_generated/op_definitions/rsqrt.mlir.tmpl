@@ -1,5 +1,5 @@
-func @rsqrt(%arg0: tensor<?xelem_type>) -> tensor<?xelem_type> {
-  %0 = "tf.Rsqrt"(%arg0) { }
-    : (tensor<?xelem_type>) -> tensor<?xelem_type>
-  return %0 : tensor<?xelem_type>
+func @Rsqrt_elem_type(%arg0: tensor<*xelem_type>)
+    -> tensor<*xelem_type> attributes {tf_entry, llvm.emit_c_interface} {
+  %0 = "tf.Rsqrt"(%arg0) : (tensor<*xelem_type>) -> tensor<*xelem_type>
+  return %0 : tensor<*xelem_type>
 }

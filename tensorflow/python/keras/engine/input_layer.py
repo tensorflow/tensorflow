@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.distribute import distribution_strategy_context
-from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend
@@ -183,8 +182,8 @@ class InputLayer(base_layer.Layer):
     node_module.Node(layer=self, outputs=input_tensor)
 
     # Store type spec
-    if isinstance(input_tensor, (
-        composite_tensor.CompositeTensor, keras_tensor.KerasTensor)):
+    if isinstance(input_tensor, keras_tensor.KerasTensor) or (
+        tf_utils.is_extension_type(input_tensor)):
       self._type_spec = input_tensor._type_spec  # pylint: disable=protected-access
     else:
       self._type_spec = tensor_spec.TensorSpec(

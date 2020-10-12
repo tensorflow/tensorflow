@@ -38,6 +38,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -47,6 +48,8 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model import load as saved_model_load
+from tensorflow.python.saved_model import save as saved_model_save
 from tensorflow.python.training import saver
 from tensorflow.python.training import server_lib
 from tensorflow.python.training.tracking import graph_view
@@ -469,6 +472,24 @@ class StaticHashTableTest(BaseLookupTableTest):
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(lookup_ops.tables_initializer())
     self.assertAllEqual(grad, -10.)
+
+  def testExportShapeInference(self):
+    table = self.getHashTable()(lookup_ops.KeyValueTensorInitializer(
+        constant_op.constant([2, 5], dtype=dtypes.int64),
+        constant_op.constant([-10.0, 1], dtype=dtypes.float32)), -1)
+    actual_shapes = [t.shape for t in table.export()]
+    inferred_shapes = []
+
+    @def_function.function
+    def f():
+      for t in table.export():
+        inferred_shapes.append(t.shape)
+
+    f()
+    self.assertLen(actual_shapes, 2)
+    self.assertLen(inferred_shapes, 2)
+    self.assertTrue(inferred_shapes[0].is_compatible_with(actual_shapes[0]))
+    self.assertTrue(inferred_shapes[1].is_compatible_with(actual_shapes[1]))
 
 
 class KeyValueTensorInitializerTest(BaseLookupTableTest):
@@ -1705,6 +1726,47 @@ class DenseHashTableOpTest(test.TestCase):
     output = load_table.lookup(input_string)
     self.assertAllEqual([-1, 0, 1, 2, -1], self.evaluate(output))
 
+  @test_util.run_v2_only
+  def testSavedModelSaveRestore(self):
+    save_dir = os.path.join(self.get_temp_dir(), "save_restore")
+    save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
+
+    root = tracking.AutoTrackable()
+
+    default_value = -1
+    empty_key = 0
+    deleted_key = -1
+    keys = constant_op.constant([11, 12, 13], dtypes.int64)
+    values = constant_op.constant([0, 1, 2], dtypes.int64)
+    root.table = lookup_ops.DenseHashTable(
+        dtypes.int64,
+        dtypes.int64,
+        default_value=default_value,
+        empty_key=empty_key,
+        deleted_key=deleted_key,
+        name="t1",
+        checkpoint=True,
+        initial_num_buckets=32)
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec((), dtypes.int64)])
+    def lookup(key):
+      return root.table.lookup(key)
+
+    root.lookup = lookup
+
+    self.assertAllEqual(0, root.table.size())
+    root.table.insert(keys, values)
+    self.assertAllEqual(3, self.evaluate(root.table.size()))
+    self.assertAllEqual(32, len(self.evaluate(root.table.export()[0])))
+
+    saved_model_save.save(root, save_path)
+
+    del root
+    loaded = saved_model_load.load(save_path)
+    self.assertEqual(loaded.lookup(12), 1)
+    self.assertEqual(loaded.lookup(10), -1)
+
   @test_util.run_v1_only("Saver V1 only")
   def testVectorSaveRestore(self):
     save_dir = os.path.join(self.get_temp_dir(), "vector_save_restore")
@@ -1993,6 +2055,30 @@ class DenseHashTableOpTest(test.TestCase):
     self.assertEqual([], table.lookup("not_found").shape)
     table.insert("v1", v1.handle)
     self.assertEqual([], table.lookup("v1").shape)
+
+  def testExportShapeInference(self):
+    default_value = -1
+    empty_key = 0
+    deleted_key = -1
+    table = lookup_ops.DenseHashTable(
+        dtypes.int64,
+        dtypes.int64,
+        default_value=default_value,
+        empty_key=empty_key,
+        deleted_key=deleted_key)
+    actual_shapes = [t.shape for t in table.export()]
+    inferred_shapes = []
+
+    @def_function.function
+    def f():
+      for t in table.export():
+        inferred_shapes.append(t.shape)
+
+    f()
+    self.assertLen(actual_shapes, 2)
+    self.assertLen(inferred_shapes, 2)
+    self.assertTrue(inferred_shapes[0].is_compatible_with(actual_shapes[0]))
+    self.assertTrue(inferred_shapes[1].is_compatible_with(actual_shapes[1]))
 
 
 class IndexTableFromFile(test.TestCase):
@@ -3534,6 +3620,26 @@ class MutableHashTableOpTest(test.TestCase):
 
       result = self.evaluate(output)
       self.assertAllEqual((b"brain", b"salad", b"n/a"), result)
+
+  def testExportShapeInference(self):
+    default_value = -1
+    table = lookup_ops.MutableHashTable(
+        dtypes.int64,
+        dtypes.int64,
+        default_value=default_value)
+    actual_shapes = [t.shape for t in table.export()]
+    inferred_shapes = []
+
+    @def_function.function
+    def f():
+      for t in table.export():
+        inferred_shapes.append(t.shape)
+
+    f()
+    self.assertLen(actual_shapes, 2)
+    self.assertLen(inferred_shapes, 2)
+    self.assertTrue(inferred_shapes[0].is_compatible_with(actual_shapes[0]))
+    self.assertTrue(inferred_shapes[1].is_compatible_with(actual_shapes[1]))
 
 
 class MutableHashTableBenchmark(test.Benchmark):

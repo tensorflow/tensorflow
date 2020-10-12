@@ -82,6 +82,7 @@ class BitcastTest(test.TestCase):
       datatype = dtypes.int8
       array_ops.bitcast(x, datatype, None)
 
+  @test_util.disable_tfrt("b/169901260")
   def testQuantizedType(self):
     shape = [3, 4]
     x = np.zeros(shape, np.uint16)

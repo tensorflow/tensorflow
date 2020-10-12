@@ -838,13 +838,27 @@ def If(cond, inputs, then_branch, else_branch, name=None):
     or else_branch(inputs).
   """
   # pylint: disable=protected-access
+  # Handle the Defun case until users have transitioned to tf.function. Note
+  # that composites may need to be re-packed by the caller.
   if isinstance(then_branch, function._DefinedFunction):
     tlist = [_.type for _ in then_branch.definition.signature.output_arg]
-  else:
-    # We assume that `then_branch` is a ConcreteFunction here.
-    tlist = nest.flatten(then_branch.output_dtypes)
-  return gen_functional_ops._if(
+    return gen_functional_ops._if(
+        cond, inputs, tlist, then_branch, else_branch, name=name)
+
+  # We assume that `then_branch` is a ConcreteFunction here.
+  then_out = then_branch.structured_outputs
+  else_out = else_branch.structured_outputs
+
+  # Ensure then/else are the same type of composites to avoid an invalid call
+  # to pack_sequence_as later on.
+  nest.assert_same_structure(then_out, else_out, expand_composites=True)
+
+  tlist = nest.flatten(then_branch.output_dtypes)
+  ret = gen_functional_ops._if(
       cond, inputs, tlist, then_branch, else_branch, name=name)
+
+  # Re-pack the outputs to restore any CompositeTensors
+  return nest.pack_sequence_as(then_out, ret, expand_composites=True)
 
 
 def Gradient(inputs, f, name=None):

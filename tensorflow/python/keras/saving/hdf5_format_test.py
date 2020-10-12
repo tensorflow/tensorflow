@@ -34,6 +34,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import training
@@ -341,7 +342,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
                                        name='d1'))
       ref_model.add(keras.layers.Dense(num_classes, name='d2'))
       ref_model.compile(loss=keras.losses.MSE,
-                        optimizer=keras.optimizers.RMSprop(lr=0.0001),
+                        optimizer=optimizer_v1.RMSprop(lr=0.0001),
                         metrics=[keras.metrics.categorical_accuracy])
 
       f_ref_model = h5py.File(h5_path, 'w')
@@ -354,7 +355,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
                                    name='d1'))
       model.add(keras.layers.Dense(num_classes, name='d2'))
       model.compile(loss=keras.losses.MSE,
-                    optimizer=keras.optimizers.RMSprop(lr=0.0001),
+                    optimizer=optimizer_v1.RMSprop(lr=0.0001),
                     metrics=[keras.metrics.categorical_accuracy])
       with self.assertRaisesRegex(
           ValueError, r'Layer #0 \(named "d1"\), weight '
@@ -515,7 +516,7 @@ class TestWholeModelSaving(keras_parameterized.TestCase):
     with ops.Graph().as_default(), self.cached_session():
       # test with custom optimizer, loss
 
-      class CustomOp(keras.optimizers.RMSprop):
+      class CustomOp(optimizer_v1.RMSprop):
         pass
 
       def custom_loss(y_true, y_pred):
@@ -692,7 +693,7 @@ class TestWholeModelSaving(keras_parameterized.TestCase):
       model = keras.Model(inputs, outputs)
       model.compile(
           loss=keras.losses.MSE,
-          optimizer=keras.optimizers.Adam(),
+          optimizer=optimizer_v1.Adam(),
           metrics=[
               keras.metrics.categorical_accuracy,
               keras.metrics.CategoricalAccuracy()
@@ -1028,7 +1029,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase, parameterized.TestCase):
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(2, input_shape=(3,)))
       model.add(keras.layers.Dense(3))
-      model.compile(loss='mse', optimizer=optimizers.Adam(), metrics=['acc'])
+      model.compile(loss='mse', optimizer=optimizer_v1.Adam(), metrics=['acc'])
       if not ops.executing_eagerly_outside_functions():
         model._make_train_function()
       temp_dir = self.get_temp_dir()

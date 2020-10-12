@@ -3882,6 +3882,15 @@ TEST(GcsFileSystemTest, NewAppendableFile_MultipleFlushesWithCompose) {
                           "Put body: ",
                           contents[2], "\n"),
           ""),
+      // Fetch generation
+      new FakeHttpRequest(
+          "Uri: "
+          "https://www.googleapis.com/storage/v1/b/bucket/o/"
+          "some%2Fpath%2Fappendable?fields=size%2Cgeneration%2Cupdated\n"
+          "Auth Token: fake_token\n"
+          "Timeouts: 5 1 10\n",
+          strings::StrCat("{\"size\": \"8\",\"generation\": \"1234\","
+                          "\"updated\": \"2016-04-29T23:15:24.896Z\"}")),
       // Compose the new part at the end of the original object.
       new FakeHttpRequest("Uri: "
                           "https://www.googleapis.com/storage/v1/b/bucket/o/"
@@ -3890,7 +3899,9 @@ TEST(GcsFileSystemTest, NewAppendableFile_MultipleFlushesWithCompose) {
                           "Timeouts: 5 1 10\n"
                           "Header content-type: application/json\n"
                           "Post body: {'sourceObjects': [{'name': "
-                          "'some/path/appendable'},{'name': "
+                          "'some/path/"
+                          "appendable','objectPrecondition':{'"
+                          "ifGenerationMatch':1234}},{'name': "
                           "'some/path/.tmpcompose/appendable.18'}]}\n",
                           ""),
       // Delete the temporary object.
@@ -3918,6 +3929,15 @@ TEST(GcsFileSystemTest, NewAppendableFile_MultipleFlushesWithCompose) {
                           "Put body: ",
                           contents[3], "\n"),
           ""),
+      // Fetch generation
+      new FakeHttpRequest(
+          "Uri: "
+          "https://www.googleapis.com/storage/v1/b/bucket/o/"
+          "some%2Fpath%2Fappendable?fields=size%2Cgeneration%2Cupdated\n"
+          "Auth Token: fake_token\n"
+          "Timeouts: 5 1 10\n",
+          strings::StrCat("{\"size\": \"8\",\"generation\": \"4567\","
+                          "\"updated\": \"2016-04-29T23:15:24.896Z\"}")),
       new FakeHttpRequest("Uri: "
                           "https://www.googleapis.com/storage/v1/b/bucket/o/"
                           "some%2Fpath%2Fappendable/compose\n"
@@ -3925,7 +3945,9 @@ TEST(GcsFileSystemTest, NewAppendableFile_MultipleFlushesWithCompose) {
                           "Timeouts: 5 1 10\n"
                           "Header content-type: application/json\n"
                           "Post body: {'sourceObjects': [{'name': "
-                          "'some/path/appendable'},{'name': "
+                          "'some/path/"
+                          "appendable','objectPrecondition':{'"
+                          "ifGenerationMatch':4567}},{'name': "
                           "'some/path/.tmpcompose/appendable.27'}]}\n",
                           ""),
       new FakeHttpRequest("Uri: "

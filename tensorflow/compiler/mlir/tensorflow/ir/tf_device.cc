@@ -269,8 +269,6 @@ ParseResult SetReplicateOpOperands(
         replicated_inputs,
     llvm::ArrayRef<OpAsmParser::OperandType> packed_inputs,
     llvm::ArrayRef<Type> region_arg_types, int32_t* n) {
-  if (replicated_inputs.empty() && packed_inputs.empty()) return success();
-
   for (const auto& attr : state->attributes)
     if (attr.first.strref() == "n")
       if (auto n_attr = attr.second.dyn_cast<IntegerAttr>())
@@ -278,6 +276,8 @@ ParseResult SetReplicateOpOperands(
 
   if (*n < 2)
     return parser->emitError(loc) << "expects 'n' to be at least 2, got " << *n;
+
+  if (replicated_inputs.empty() && packed_inputs.empty()) return success();
 
   for (auto replicated_input_and_idx : llvm::enumerate(replicated_inputs)) {
     const int32_t idx = replicated_input_and_idx.index();
@@ -504,13 +504,12 @@ LogicalResult Verify(ReplicateOp op) {
   return success();
 }
 
-template <typename OperandsTy, typename ResultsTy>
 void BuildReplicateOp(
     Builder* builder, OperationState* state, int n,
     const llvm::SmallDenseMap<StringRef, llvm::SmallVector<StringRef, 4>>&
         devices,
-    llvm::ArrayRef<std::pair<OperandsTy, Type>> replicated_inputs,
-    llvm::ArrayRef<Value> packed_inputs, ResultsTy replica_output_types) {
+    llvm::ArrayRef<std::pair<ValueRange, Type>> replicated_inputs,
+    ValueRange packed_inputs, TypeRange replica_output_types) {
   DCHECK_GE(n, 2);
   state->addAttribute("n", builder->getI32IntegerAttr(n));
 
@@ -538,7 +537,7 @@ void BuildReplicateOp(
     block.addArgument(replicated_input.second);
   }
 
-  for (auto& packed_input : packed_inputs) {
+  for (auto packed_input : packed_inputs) {
     state->addOperands(packed_input);
     block.addArgument(packed_input.getType());
   }
@@ -560,20 +559,8 @@ void ReplicateOp::build(
     OpBuilder& builder, OperationState& state, int n,
     const llvm::SmallDenseMap<StringRef, llvm::SmallVector<StringRef, 4>>&
         devices,
-    llvm::ArrayRef<std::pair<llvm::ArrayRef<Value>, Type>> replicated_inputs,
-    llvm::ArrayRef<Value> packed_inputs,
-    llvm::ArrayRef<Type> replica_output_types) {
-  BuildReplicateOp(&builder, &state, n, devices, replicated_inputs,
-                   packed_inputs, replica_output_types);
-}
-
-void ReplicateOp::build(
-    OpBuilder& builder, OperationState& state, int n,
-    const llvm::SmallDenseMap<StringRef, llvm::SmallVector<StringRef, 4>>&
-        devices,
-    llvm::ArrayRef<std::pair<Operation::operand_range, Type>> replicated_inputs,
-    llvm::ArrayRef<Value> packed_inputs,
-    Operation::result_type_range replica_output_types) {
+    llvm::ArrayRef<std::pair<ValueRange, Type>> replicated_inputs,
+    ValueRange packed_inputs, TypeRange replica_output_types) {
   BuildReplicateOp(&builder, &state, n, devices, replicated_inputs,
                    packed_inputs, replica_output_types);
 }

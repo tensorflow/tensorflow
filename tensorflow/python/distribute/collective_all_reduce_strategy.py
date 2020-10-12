@@ -476,11 +476,10 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         dataset,
         self._input_workers_with_options(options),
         self._container_strategy(),
-        split_batch_by=self._num_replicas_in_sync,
+        num_replicas_in_sync=self._num_replicas_in_sync,
         input_context=input_context)
 
-  def _experimental_distribute_datasets_from_function(self, dataset_fn,
-                                                      options):
+  def _distribute_datasets_from_function(self, dataset_fn, options):
     input_context = self._make_input_context()
     return input_lib.get_distributed_datasets_from_function(
         dataset_fn=dataset_fn,
@@ -506,7 +505,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         dataset,
         self._input_workers,
         self._container_strategy(),
-        split_batch_by=self._num_replicas_in_sync,
+        num_replicas_in_sync=self._num_replicas_in_sync,
         input_context=input_context)
 
   def _make_input_fn_iterator(
@@ -768,3 +767,10 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       Boolean.
     """
     return True
+
+  def _get_replica_id_in_sync_group(self, replica_id):
+    return self._id_in_cluster * len(self.worker_devices) + replica_id
+
+  def _get_local_replica_id(self, replica_id_in_sync_group):
+    return (replica_id_in_sync_group -
+            self._id_in_cluster * len(self.worker_devices))

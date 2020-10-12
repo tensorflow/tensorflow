@@ -43,7 +43,8 @@ namespace tensorflow {
 // We have to be able to detect and handle overflows in int32, so this function
 // uses doubles and int64's to make sure we have enough room.
 template <class T>
-int64 FloatToQuantizedUnclamped(float input, float range_min, float range_max) {
+inline int64 FloatToQuantizedUnclamped(float input, float range_min,
+                                       float range_max) {
   const int64 lowest_quantized =
       static_cast<double>(Eigen::NumTraits<T>::lowest());
   if (range_min == range_max) {
@@ -58,6 +59,12 @@ int64 FloatToQuantizedUnclamped(float input, float range_min, float range_max) {
       (round(input * range_scale) - round(range_min * range_scale));
   quantized += lowest_quantized;
   return quantized;
+}
+
+template <>
+inline int64 FloatToQuantizedUnclamped<float>(float input, float range_min,
+                                              float range_max) {
+  return -1;
 }
 
 // This converts the float into the final quantized type, clamping/saturating

@@ -90,6 +90,15 @@ class QuantizedConcatenationOpModel : public BaseConcatenationOpModel {
   }
 };
 
+class BoolConcatenationOpModel : public BaseConcatenationOpModel {
+ public:
+  using BaseConcatenationOpModel::BaseConcatenationOpModel;
+  void SetInput(int index, std::initializer_list<bool> data) {
+    PopulateTensor(index, data);
+  }
+  std::vector<bool> GetOutput() { return ExtractVector<bool>(output_); }
+};
+
 TEST(ConcatenationOpTest, ThreeDimensionalOneInput) {
   ConcatenationOpModel m0({TensorType_FLOAT32, {2, 1, 2}}, /*axis=*/1,
                           /*num_inputs=*/1);
@@ -445,6 +454,28 @@ TEST(ConcatenationOpTest, TwoInputsTwoAxesNegativeAxesNonQuantized) {
   m1_negative.Invoke();
   EXPECT_THAT(m1_negative.GetOutput<uint8_t>(),
               ElementsAreArray({1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12}));
+}
+
+TEST(ConcatenationOpTest, BoolTypeOneInput) {
+  BoolConcatenationOpModel m0({TensorType_BOOL, {2, 1, 2}}, /*axis=*/1,
+                              /*num_inputs=*/1);
+  m0.SetInput(0, {true, false, false, true});
+  m0.Invoke();
+  EXPECT_THAT(m0.GetOutput(), ElementsAreArray({true, false, false, true}));
+}
+
+TEST(ConcatenationOpTest, BoolTypeTwoInputs) {
+  BoolConcatenationOpModel m0(
+      {{TensorType_BOOL, {2, 1, 2}}, {TensorType_BOOL, {2, 3, 2}}},
+      /*axis=*/1, /*num_inputs=*/2, TensorType_BOOL);
+  m0.SetInput(0, {false, false, false, false});
+  m0.SetInput(1, {true, true, true, true, true, true, true, true, true, true,
+                  true, true});
+  m0.Invoke();
+  EXPECT_THAT(
+      m0.GetOutput(),
+      ElementsAreArray({false, false, true, true, true, true, true, true, false,
+                        false, true, true, true, true, true, true}));
 }
 
 }  // namespace

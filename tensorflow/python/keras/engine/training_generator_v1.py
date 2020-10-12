@@ -31,6 +31,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import callbacks as cbks
 from tensorflow.python.keras.engine import training_utils
+from tensorflow.python.keras.engine import training_utils_v1
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
@@ -132,7 +133,7 @@ def model_iteration(model,
     original_dataset = data
     if steps_per_epoch is None:
       reset_dataset_after_each_epoch = True
-      steps_per_epoch = training_utils.infer_steps_for_dataset(
+      steps_per_epoch = training_utils_v1.infer_steps_for_dataset(
           model, data, steps_per_epoch, epochs=epochs, steps_name=steps_name)
 
   # Convert to a format that supports `next(generator)`.
@@ -179,9 +180,11 @@ def model_iteration(model,
       mode=mode)
 
   if mode == ModeKeys.PREDICT:
-    aggregator = training_utils.OutputsAggregator(True, steps=steps_per_epoch)
+    aggregator = training_utils_v1.OutputsAggregator(
+        True, steps=steps_per_epoch)
   else:
-    aggregator = training_utils.MetricsAggregator(True, steps=steps_per_epoch)
+    aggregator = training_utils_v1.MetricsAggregator(
+        True, steps=steps_per_epoch)
 
   should_set_learning_phase = context.executing_eagerly() and model.run_eagerly
   if should_set_learning_phase:
@@ -293,7 +296,7 @@ def model_iteration(model,
 
     # Run the test loop every epoch during training.
     if (do_validation and
-        training_utils.should_run_validation(validation_freq, epoch) and
+        training_utils_v1.should_run_validation(validation_freq, epoch) and
         not callbacks.model.stop_training):
       val_results = model_iteration(
           model,
@@ -538,7 +541,7 @@ def _get_num_samples_or_steps(data, steps_per_epoch):
   return steps_per_epoch, True
 
 
-class GeneratorOrSequenceTrainingLoop(training_utils.TrainingLoop):
+class GeneratorOrSequenceTrainingLoop(training_utils_v1.TrainingLoop):
   """Generator-like.
 
   Input is Python generator, or Sequence object.
@@ -569,7 +572,7 @@ class GeneratorOrSequenceTrainingLoop(training_utils.TrainingLoop):
           workers=1,
           use_multiprocessing=False):
     model._validate_or_infer_batch_size(batch_size, steps_per_epoch, x)
-    training_utils.check_generator_arguments(
+    training_utils_v1.check_generator_arguments(
         y, sample_weight, validation_split=validation_split)
     return fit_generator(
         model,
@@ -602,7 +605,7 @@ class GeneratorOrSequenceTrainingLoop(training_utils.TrainingLoop):
                workers=1,
                use_multiprocessing=False):
     model._validate_or_infer_batch_size(batch_size, steps, x)
-    training_utils.check_generator_arguments(y, sample_weight)
+    training_utils_v1.check_generator_arguments(y, sample_weight)
     return evaluate_generator(
         model,
         x,
@@ -635,7 +638,7 @@ class GeneratorOrSequenceTrainingLoop(training_utils.TrainingLoop):
         use_multiprocessing=use_multiprocessing)
 
 
-class EagerDatasetOrIteratorTrainingLoop(training_utils.TrainingLoop):
+class EagerDatasetOrIteratorTrainingLoop(training_utils_v1.TrainingLoop):
   """A non-distributed Dataset or iterator in eager execution."""
 
   def fit(self,
@@ -658,10 +661,11 @@ class EagerDatasetOrIteratorTrainingLoop(training_utils.TrainingLoop):
           **kwargs):
     model._validate_or_infer_batch_size(batch_size, steps_per_epoch, x)
     # Make sure that y, sample_weights, validation_split are not passed.
-    training_utils.validate_dataset_input(x, y, sample_weight, validation_split)
+    training_utils_v1.validate_dataset_input(x, y, sample_weight,
+                                             validation_split)
     if (isinstance(x, (dataset_ops.DatasetV1, dataset_ops.DatasetV2)) and
         shuffle):
-      training_utils.verify_dataset_shuffled(x)
+      training_utils_v1.verify_dataset_shuffled(x)
 
     return fit_generator(
         model,
@@ -691,7 +695,7 @@ class EagerDatasetOrIteratorTrainingLoop(training_utils.TrainingLoop):
                **kwargs):
     model._validate_or_infer_batch_size(batch_size, steps, x)
     # Make sure that y, sample_weights, validation_split are not passed.
-    training_utils.validate_dataset_input(x, y, sample_weight)
+    training_utils_v1.validate_dataset_input(x, y, sample_weight)
     return evaluate_generator(
         model, x, steps=steps, verbose=verbose, workers=0, callbacks=callbacks)
 
@@ -708,7 +712,7 @@ class EagerDatasetOrIteratorTrainingLoop(training_utils.TrainingLoop):
         model, x, steps=steps, verbose=verbose, workers=0, callbacks=callbacks)
 
 
-class GeneratorLikeTrainingLoop(training_utils.TrainingLoop):
+class GeneratorLikeTrainingLoop(training_utils_v1.TrainingLoop):
   """TrainingLoop that handle inputs like python generator.
 
   This is the default handler for most of the input data types, includes
@@ -755,8 +759,9 @@ class GeneratorLikeTrainingLoop(training_utils.TrainingLoop):
                                                        validation_steps)
     elif validation_split and 0. < validation_split < 1.:
       (x, y, sample_weights, val_x, val_y,
-       val_sample_weights) = training_utils.split_training_and_validation_data(
-           x, y, sample_weights, validation_split)
+       val_sample_weights) = (
+           training_utils_v1.split_training_and_validation_data(
+               x, y, sample_weights, validation_split))
       validation_data = (val_x, val_y, val_sample_weights)
     else:
       if validation_steps:

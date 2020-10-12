@@ -27,7 +27,6 @@ import warnings
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import context
-from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
@@ -641,7 +640,7 @@ class Functional(training_lib.Model):
 
       # Dtype casting.
       tensor = math_ops.cast(tensor, dtype=ref_input.dtype)
-    elif isinstance(tensor, composite_tensor.CompositeTensor):
+    elif tf_utils.is_extension_type(tensor):
       # Dtype casting.
       tensor = math_ops.cast(tensor, dtype=ref_input.dtype)
 

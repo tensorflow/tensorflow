@@ -108,7 +108,7 @@ void block_host_for_event(const SP_Device* const device, SP_Event event,
                           TF_Status* const status) {}
 void synchronize_all_activity(const SP_Device* const device,
                               TF_Status* const status) {}
-TF_Bool host_callback(SP_Device* const device, SP_Stream stream,
+TF_Bool host_callback(const SP_Device* const device, SP_Stream stream,
                       SE_StatusCallbackFn const callback_fn,
                       void* const callback_arg) {
   return true;
@@ -144,6 +144,10 @@ void PopulateDefaultStreamExecutor(SP_StreamExecutor* se) {
   se->host_callback = host_callback;
 }
 
+void PopulateDefaultDeviceFns(SP_DeviceFns* device_fns) {
+  *device_fns = {SP_DEVICE_FNS_STRUCT_SIZE};
+}
+
 /*** Create SP_TimerFns ***/
 uint64_t nanoseconds(SP_Timer timer) { return timer->timer_id; }
 
@@ -171,9 +175,17 @@ void destroy_stream_executor(const SP_Platform* platform,
 void create_device(const SP_Platform* platform, SE_CreateDeviceParams* params,
                    TF_Status* status) {
   TF_SetStatus(status, TF_OK, "");
-  params->device->struct_size = SP_DEVICE_STRUCT_SIZE;
+  params->device->struct_size = {SP_DEVICE_STRUCT_SIZE};
 }
 void destroy_device(const SP_Platform* platform, SP_Device* device) {}
+
+void create_device_fns(const SP_Platform* platform,
+                       SE_CreateDeviceFnsParams* params, TF_Status* status) {
+  TF_SetStatus(status, TF_OK, "");
+  params->device_fns->struct_size = {SP_DEVICE_FNS_STRUCT_SIZE};
+}
+void destroy_device_fns(const SP_Platform* platform, SP_DeviceFns* device_fns) {
+}
 
 void PopulateDefaultPlatform(SP_Platform* platform,
                              SP_PlatformFns* platform_fns) {
@@ -183,6 +195,8 @@ void PopulateDefaultPlatform(SP_Platform* platform,
   platform->visible_device_count = DEVICE_COUNT;
   platform_fns->create_device = create_device;
   platform_fns->destroy_device = destroy_device;
+  platform_fns->create_device_fns = create_device_fns;
+  platform_fns->destroy_device_fns = destroy_device_fns;
   platform_fns->create_stream_executor = create_stream_executor;
   platform_fns->destroy_stream_executor = destroy_stream_executor;
   platform_fns->create_timer_fns = create_timer_fns;
@@ -213,8 +227,6 @@ TEST(StreamExecutor, SuccessfulRegistration) {
   port::StatusOr<StreamExecutor*> maybe_executor =
       platform->ExecutorForDevice(0);
   TF_ASSERT_OK(maybe_executor.status());
-  StreamExecutor* executor = maybe_executor.ConsumeValueOrDie();
-  ASSERT_EQ(executor->GetDeviceDescription().name(), "MyDevice");
 }
 
 TEST(StreamExecutor, NameNotSet) {
@@ -271,6 +283,7 @@ class StreamExecutorTest : public ::testing::Test {
   StreamExecutorTest() {}
   void SetUp() override {
     PopulateDefaultPlatform(&platform_, &platform_fns_);
+    PopulateDefaultDeviceFns(&device_fns_);
     PopulateDefaultStreamExecutor(&se_);
     PopulateDefaultTimerFns(&timer_fns_);
   }
@@ -279,8 +292,8 @@ class StreamExecutorTest : public ::testing::Test {
   StreamExecutor* GetExecutor(int ordinal) {
     if (!cplatform_) {
       cplatform_ = absl::make_unique<CPlatform>(
-          platform_, destroy_platform, platform_fns_, destroy_platform_fns, se_,
-          timer_fns_);
+          platform_, destroy_platform, platform_fns_, destroy_platform_fns,
+          device_fns_, se_, timer_fns_);
     }
     port::StatusOr<StreamExecutor*> maybe_executor =
         cplatform_->ExecutorForDevice(ordinal);
@@ -289,6 +302,7 @@ class StreamExecutorTest : public ::testing::Test {
   }
   SP_Platform platform_;
   SP_PlatformFns platform_fns_;
+  SP_DeviceFns device_fns_;
   SP_StreamExecutor se_;
   SP_TimerFns timer_fns_;
   std::unique_ptr<CPlatform> cplatform_;
@@ -841,7 +855,7 @@ TEST_F(StreamExecutorTest, SynchronizeAllActivity) {
 }
 
 TEST_F(StreamExecutorTest, HostCallbackOk) {
-  se_.host_callback = [](SP_Device* const device, SP_Stream stream,
+  se_.host_callback = [](const SP_Device* const device, SP_Stream stream,
                          SE_StatusCallbackFn const callback_fn,
                          void* const callback_arg) -> TF_Bool {
     TF_Status* status = TF_NewStatus();
@@ -861,7 +875,7 @@ TEST_F(StreamExecutorTest, HostCallbackOk) {
 }
 
 TEST_F(StreamExecutorTest, HostCallbackError) {
-  se_.host_callback = [](SP_Device* const device, SP_Stream stream,
+  se_.host_callback = [](const SP_Device* const device, SP_Stream stream,
                          SE_StatusCallbackFn const callback_fn,
                          void* const callback_arg) -> TF_Bool {
     TF_Status* status = TF_NewStatus();
@@ -879,5 +893,59 @@ TEST_F(StreamExecutorTest, HostCallbackError) {
   stream.ThenDoHostCallbackWithStatus(callback);
   ASSERT_FALSE(stream.ok());
 }
+
+TEST_F(StreamExecutorTest, DeviceDescription) {
+  static const char* hardware_name = "TestName";
+  static const char* vendor = "TestVendor";
+  static const char* pci_bus_id = "TestPCIBusId";
+  platform_fns_.create_device = [](const SP_Platform* platform,
+                                   SE_CreateDeviceParams* params,
+                                   TF_Status* status) {
+    params->device->hardware_name = hardware_name;
+    params->device->device_vendor = vendor;
+    params->device->pci_bus_id = pci_bus_id;
+  };
+
+  device_fns_.get_numa_node = [](const SP_Device* device) { return 123; };
+  device_fns_.get_memory_bandwidth = [](const SP_Device* device) -> int64_t {
+    return 54;
+  };
+  device_fns_.get_gflops = [](const SP_Device* device) -> double { return 32; };
+
+  StreamExecutor* executor = GetExecutor(0);
+  const DeviceDescription& description = executor->GetDeviceDescription();
+  ASSERT_EQ(description.name(), "TestName");
+  ASSERT_EQ(description.device_vendor(), "TestVendor");
+  ASSERT_EQ(description.pci_bus_id(), "TestPCIBusId");
+  ASSERT_EQ(description.numa_node(), 123);
+  ASSERT_EQ(description.memory_bandwidth(), 54);
+}
+
+TEST_F(StreamExecutorTest, DeviceDescriptionNumaNodeNotSet) {
+  static const char* hardware_name = "TestName";
+  static const char* vendor = "TestVendor";
+  static const char* pci_bus_id = "TestPCIBusId";
+  platform_fns_.create_device = [](const SP_Platform* platform,
+                                   SE_CreateDeviceParams* params,
+                                   TF_Status* status) {
+    params->device->hardware_name = hardware_name;
+    params->device->device_vendor = vendor;
+    params->device->pci_bus_id = pci_bus_id;
+  };
+
+  device_fns_.get_memory_bandwidth = [](const SP_Device* device) -> int64_t {
+    return 54;
+  };
+  device_fns_.get_gflops = [](const SP_Device* device) -> double { return 32; };
+
+  StreamExecutor* executor = GetExecutor(0);
+  const DeviceDescription& description = executor->GetDeviceDescription();
+  ASSERT_EQ(description.name(), "TestName");
+  ASSERT_EQ(description.device_vendor(), "TestVendor");
+  ASSERT_EQ(description.pci_bus_id(), "TestPCIBusId");
+  ASSERT_EQ(description.numa_node(), -1);
+  ASSERT_EQ(description.memory_bandwidth(), 54);
+}
+
 }  // namespace
 }  // namespace stream_executor

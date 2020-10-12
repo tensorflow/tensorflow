@@ -2300,8 +2300,6 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
     std::vector<int64> input_index(operand_shape.dimensions_size());
     std::vector<int64> update_index(updates_shape.dimensions_size());
-    std::vector<int64> input_scatter_index_clamped(
-        operand_shape.dimensions_size());
 
     UpdateScatterIndexToInputIndex update_scatter_index_to_input_index(
         &scatter->scatter_dimension_numbers(), /*input_shape=*/operand_shape,
@@ -2790,7 +2788,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   // bound, call `f` with the base index.
   static void IterateThroughWindow(
       const Shape& window_shape, const Window& window, const Shape& base_shape,
-      const absl::Span<const int64>& window_count_index,
+      const absl::Span<const int64> window_count_index,
       const std::function<void(const std::vector<int64>&)>& f) {
     const int64 rank = base_shape.rank();
     DimensionVector window_index(rank);

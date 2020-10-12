@@ -75,7 +75,6 @@ namespace {
 
 namespace py = pybind11;
 
-
 struct Uniquer {
   absl::Mutex mu;
   NameUniquer name_uniquer TF_GUARDED_BY(mu);
@@ -430,8 +429,13 @@ PYBIND11_MODULE(xla_extension, m) {
           })
       .def_property(
           "device_assignment",
-          [](const CompileOptions& options) {
-            return options.executable_build_options.device_assignment();
+          [](const CompileOptions& options)
+              -> absl::optional<DeviceAssignment> {
+            return options.executable_build_options.has_device_assignment()
+                       ? absl::optional<DeviceAssignment>(
+                             options.executable_build_options
+                                 .device_assignment())
+                       : absl::nullopt;
           },
           [](CompileOptions& options,
              const DeviceAssignment& device_assignment) {
@@ -466,32 +470,31 @@ PYBIND11_MODULE(xla_extension, m) {
              return local_device->client()->TransferToInfeedLocal(
                  literal, local_device->device_ordinal());
            })
-      .def(
-          "transfer_from_outfeed",
-          [](const PjRtDevice& device,
-             const Shape& shape) -> StatusOr<py::object> {
-            GlobalPyRefManager()->CollectGarbage();
-            std::shared_ptr<Literal> literal_shared;
-            {
-              py::gil_scoped_release gil_release;
-              TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                                  device.GetLocalDeviceState());
-              Shape shape_with_layout = shape;
-              ShapeUtil::ForEachMutableSubshape(
-                  &shape_with_layout, [](Shape* subshape, const ShapeIndex&) {
-                    if (!subshape->has_layout()) {
-                      LayoutUtil::SetToDefaultLayout(subshape);
-                    }
-                  });
-              TF_ASSIGN_OR_RETURN(
-                  Literal literal,
-                  local_device->client()->TransferFromOutfeedLocal(
-                      shape_with_layout, local_device->device_ordinal()));
+      .def("transfer_from_outfeed",
+           [](const PjRtDevice& device,
+              const Shape& shape) -> StatusOr<py::object> {
+             GlobalPyRefManager()->CollectGarbage();
+             std::shared_ptr<Literal> literal_shared;
+             {
+               py::gil_scoped_release gil_release;
+               TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
+                                   device.GetLocalDeviceState());
+               Shape shape_with_layout = shape;
+               ShapeUtil::ForEachMutableSubshape(
+                   &shape_with_layout, [](Shape* subshape, const ShapeIndex&) {
+                     if (!subshape->has_layout()) {
+                       LayoutUtil::SetToDefaultLayout(subshape);
+                     }
+                   });
+               TF_ASSIGN_OR_RETURN(
+                   Literal literal,
+                   local_device->client()->TransferFromOutfeedLocal(
+                       shape_with_layout, local_device->device_ordinal()));
 
-              literal_shared = std::make_shared<Literal>(std::move(literal));
-            }
-            return LiteralToPython(std::move(literal_shared));
-          });
+               literal_shared = std::make_shared<Literal>(std::move(literal));
+             }
+             return LiteralToPython(std::move(literal_shared));
+           });
 
   py::class_<CpuDevice, PjRtDevice, ClientAndPtr<CpuDevice>>(m, "CpuDevice")
       .def("__repr__", [](const CpuDevice& device) {
@@ -553,13 +556,13 @@ PYBIND11_MODULE(xla_extension, m) {
   m.def(
       "get_cpu_client",
       [](bool asynchronous) -> StatusOr<std::shared_ptr<PyClient>> {
-        TF_ASSIGN_OR_RETURN(std::shared_ptr<PjRtClient> client,
+        TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                             GetCpuClient(asynchronous));
         return std::make_shared<PyClient>(std::move(client));
       },
       py::arg("asynchronous") = true);
   m.def("get_interpreter_client", []() -> StatusOr<std::shared_ptr<PyClient>> {
-    TF_ASSIGN_OR_RETURN(std::shared_ptr<PjRtClient> client,
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                         GetInterpreterClient());
     return std::make_shared<PyClient>(std::move(client));
   });
@@ -569,7 +572,7 @@ PYBIND11_MODULE(xla_extension, m) {
          std::shared_ptr<DistributedRuntimeClient> distributed_client,
          int node_id) -> StatusOr<std::shared_ptr<PyClient>> {
         TF_ASSIGN_OR_RETURN(
-            std::shared_ptr<PjRtClient> client,
+            std::unique_ptr<PjRtClient> client,
             GetNvidiaGpuClient(asynchronous, allocator_config,
                                std::move(distributed_client), node_id));
         return std::make_shared<PyClient>(std::move(client));
@@ -820,6 +823,14 @@ PYBIND11_MODULE(xla_extension, m) {
                              hlo_module.config().debug_options(),
                              RenderedGraphFormat::kDot);
         });
+  m.def(
+      "hlo_module_cost_analysis",
+      [](PyClient* client,
+         const HloModule& module) -> StatusOr<std::map<string, float>> {
+        auto analysis = client->pjrt_client()->GetHloCostAnalysis();
+        TF_RETURN_IF_ERROR(module.entry_computation()->Accept(analysis.get()));
+        return analysis->properties();
+      });
 
   py::class_<XlaOp> xla_op_class(m, "XlaOp");
 
