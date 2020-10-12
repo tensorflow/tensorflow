@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/stream_executor/lib/statusor.h"

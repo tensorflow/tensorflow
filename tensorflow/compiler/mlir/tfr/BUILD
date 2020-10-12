@@ -18,7 +18,8 @@ package_group(
     includes = ["//third_party/mlir:subpackages"],
     packages = [
         "//learning/brain/experimental/mlir/tfr/...",
-        "//tensorflow/compiler/mlir/...",
+        "//tensorflow/c/...",
+        "//tensorflow/compiler/...",
     ],
 )
 
@@ -179,7 +180,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tfr:passes",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:optimization_registry",
         "//tensorflow/stream_executor/lib",
@@ -201,7 +201,6 @@ tf_cc_test(
         ":tfr_decompose_ctx",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -216,7 +215,6 @@ cc_library(
     name = "graph_decompose_pass",
     srcs = ["integration/graph_decompose_pass.cc"],
     hdrs = ["integration/graph_decompose_pass.h"],
-    data = ["//tensorflow/compiler/mlir/tfr/resources:decomposition_lib"],
     deps = [
         ":tfr_decompose_ctx",
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
@@ -226,6 +224,22 @@ cc_library(
         "@llvm-project//mlir:IR",
     ],
     alwayslink = 1,
+)
+
+tf_py_test(
+    name = "graph_decompose_test",
+    size = "small",
+    srcs = ["integration/graph_decompose_test.py"],
+    data = ["//tensorflow/compiler/mlir/tfr/resources:decomposition_lib"],
+    python_version = "PY3",
+    tags = [
+        "no_oss",
+        "notap",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/tfr/resources:composite_ops",
+        "//tensorflow/python/eager:def_function",
+    ],
 )
 
 tf_python_pybind_extension(

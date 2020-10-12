@@ -15,7 +15,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfr/integration/graph_decompose_pass.h"
 
 #include "tensorflow/compiler/mlir/tfr/integration/tfr_decompose_ctx.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/util/env_var.h"
@@ -23,8 +22,21 @@ limitations under the License.
 
 namespace tensorflow {
 
+constexpr const char* const kTFRLibEnv = "TF_MLIR_TFR_LIB_DIR";
+
+bool GraphDecomposePass::IsEnabled(const ConfigProto& config_proto) const {
+  const char* tfr_lib_env_val = getenv(string(kTFRLibEnv).c_str());
+  return tfr_lib_env_val != nullptr;
+}
+
 Status GraphDecomposePass::Run(const ConfigProto& config_proto,
                                mlir::ModuleOp module) {
+  if (!IsEnabled(config_proto)) {
+    VLOG(1) << "Skipping Graph Decomposition Pass, decompositin library was "
+               "not found";
+    return Status::OK();
+  }
+  VLOG(1) << "Run Graph Decomposition Passes";
   TF_ASSIGN_OR_RETURN(ctx_, LoadDecompositionLib(module.getContext()));
   TF_RETURN_IF_ERROR(ctx_->Decompose(module));
   return ctx_->Destroy();
@@ -35,8 +47,7 @@ GraphDecomposePass::LoadDecompositionLib(mlir::MLIRContext* mlir_ctx) {
   Env* env = Env::Default();
   std::string tfr_lib_dir;
   TF_RETURN_IF_ERROR(ReadStringFromEnvVar(
-      "TF_MLIR_TFR_LIB_DIR", "tensorflow/compiler/mlir/tfr/resources",
-      &tfr_lib_dir));
+      kTFRLibEnv, "tensorflow/compiler/mlir/tfr/resources", &tfr_lib_dir));
   string composite_mlir_dir = io::JoinPath(env->GetRunfilesDir(), tfr_lib_dir);
   std::vector<string> files;
   TF_RETURN_IF_ERROR(env->GetChildren(composite_mlir_dir, &files));
@@ -59,7 +70,7 @@ GraphDecomposePass::LoadDecompositionLib(mlir::MLIRContext* mlir_ctx) {
 }
 
 namespace {
-constexpr int kMlirGraphDecomposePassPriority = 1;
+constexpr int kMlirGraphDecomposePassPriority = -1;
 
 static mlir_pass_registration::MlirOptimizationPassRegistration
     register_mlir_graph_decompose_pass(kMlirGraphDecomposePassPriority,

@@ -20,13 +20,8 @@ limitations under the License.
 #include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
-#include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/framework/node_def.pb.h"
-#include "tensorflow/core/framework/node_def_builder.h"
-#include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
