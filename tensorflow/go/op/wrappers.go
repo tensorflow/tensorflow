@@ -38,6 +38,167 @@ func makeOutputList(op *tf.Operation, start int, output string) ([]tf.Output, in
 	return list, start + size, nil
 }
 
+// Operator that connects the output of an XLA computation to other consumer graph nodes.
+func XlaClusterOutput(scope *Scope, input tf.Output) (outputs tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "XlaClusterOutput",
+		Input: []tf.Input{
+			input,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// An op used by XLA SPMD partitioner to switch from manual partitioning to
+//
+// automatic partitioning. It converts the shard-shaped, manually partitioned input
+// into full-shaped tensor to be partitioned automatically with the same sharding
+// used by manual partitioning.
+func XlaSpmdShardToFullShape(scope *Scope, input tf.Output, manual_sharding string, full_shape tf.Shape) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"manual_sharding": manual_sharding, "full_shape": full_shape}
+	opspec := tf.OpSpec{
+		Type: "XlaSpmdShardToFullShape",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Wraps the XLA Sort operator, documented at
+//
+//  https://www.tensorflow.org/performance/xla/operation_semantics#sort
+// .
+//
+// Sorts a tensor. Currently only sorts in ascending order are supported.
+//
+// Arguments:
+//	input: A `Tensor` of type T.
+//
+// Returns A `Tensor` of type T.
+func XlaSort(scope *Scope, input tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "XlaSort",
+		Input: []tf.Input{
+			input,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Receives the named tensor from another XLA computation. Wraps the XLA Recv
+//
+// operator documented at
+//  https://www.tensorflow.org/performance/xla/operation_semantics#recv .
+//
+// Arguments:
+//	dtype: The type of the tensor.
+//	tensor_name: A string key that identifies the channel.
+//	shape: The shape of the tensor.
+//
+// Returns The tensor to receive.
+func XlaRecv(scope *Scope, dtype tf.DataType, tensor_name string, shape tf.Shape) (tensor tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"dtype": dtype, "tensor_name": tensor_name, "shape": shape}
+	opspec := tf.OpSpec{
+		Type: "XlaRecv",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Wraps the XLA DynamicSlice operator, documented at
+//
+//  https://www.tensorflow.org/performance/xla/operation_semantics#dynamicslice
+// .
+//
+// DynamicSlice extracts a sub-array from the input array at dynamic
+// start_indices. The size of the slice in each dimension is passed in
+// size_indices, which specify the end point of exclusive slice intervals in each
+// dimension -- [start, start + size). The shape of start_indices must have rank 1,
+// with dimension size equal to the rank of operand.
+//
+// Arguments:
+//	input: A `Tensor` of type T.
+//	start_indices: List of N integers containing the slice size for each
+// dimension. Each value must be strictly greater than zero, and start + size
+// must be less than or equal to the size of the dimension to avoid
+// implementation defined behavior.
+//
+func XlaDynamicSlice(scope *Scope, input tf.Output, start_indices tf.Output, size_indices tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "XlaDynamicSlice",
+		Input: []tf.Input{
+			input, start_indices, size_indices,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Set a bound for the given input value as a hint to Xla compiler,
+//
+//         returns the same value.
+func XlaSetBound(scope *Scope, input tf.Output, bound tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "XlaSetBound",
+		Input: []tf.Input{
+			input, bound,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Wraps the XLA DotGeneral operator, documented at
+//
+//  https://www.tensorflow.org/performance/xla/operation_semantics#dotgeneral
+// .
+//
+// Arguments:
+//	lhs: the LHS tensor
+//	rhs: the RHS tensor
+//	dimension_numbers: a serialized xla::DotDimensionNumbers proto.
+//	precision_config: a serialized xla::PrecisionConfig proto.
+func XlaDot(scope *Scope, lhs tf.Output, rhs tf.Output, dimension_numbers string, precision_config string) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"dimension_numbers": dimension_numbers, "precision_config": precision_config}
+	opspec := tf.OpSpec{
+		Type: "XlaDot",
+		Input: []tf.Input{
+			lhs, rhs,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // FakeQuantWithMinMaxVarsGradientAttr is an optional argument to FakeQuantWithMinMaxVarsGradient.
 type FakeQuantWithMinMaxVarsGradientAttr func(optionalAttr)
 
@@ -89,6 +250,43 @@ func FakeQuantWithMinMaxVarsGradient(scope *Scope, gradients tf.Output, inputs t
 		Type: "FakeQuantWithMinMaxVarsGradient",
 		Input: []tf.Input{
 			gradients, inputs, min, max,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
+}
+
+// Computes the eigen decomposition of a batch of self-adjoint matrices
+//
+// (Note: Only real inputs are supported).
+//
+// Computes the eigenvalues and eigenvectors of the innermost M-by-N matrices in
+// tensor such that tensor[...,:,:] = u[..., :, :] * Diag(s[..., :]) * Transpose(v[...,:,:]).
+//
+// Arguments:
+//	a: the input tensor.
+//	max_iter: maximum number of sweep update, i.e., the whole lower triangular
+// part or upper triangular part based on parameter lower. Heuristically, it has
+// been argued that approximately log(min (M, N)) sweeps are needed in practice
+// (Ref: Golub & van Loan "Matrix Computation").
+//	epsilon: the tolerance ratio.
+//	precision_config: a serialized xla::PrecisionConfig proto.
+//
+// Returns:
+//	s: Singular values. The values are sorted in reverse order of magnitude, so
+// s[..., 0] is the largest value, s[..., 1] is the second largest, etc.
+//	u: Left singular vectors.
+//	v: Right singular vectors.
+func XlaSvd(scope *Scope, a tf.Output, max_iter int64, epsilon float32, precision_config string) (s tf.Output, u tf.Output, v tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"max_iter": max_iter, "epsilon": epsilon, "precision_config": precision_config}
+	opspec := tf.OpSpec{
+		Type: "XlaSvd",
+		Input: []tf.Input{
+			a,
 		},
 		Attrs: attrs,
 	}
@@ -156,6 +354,34 @@ func FakeQuantWithMinMaxArgsGradient(scope *Scope, gradients tf.Output, inputs t
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// Helper operator for performing XLA-style broadcasts
+//
+// Broadcasts `lhs` and `rhs` to the same rank, by adding size 1 dimensions to
+// whichever of `lhs` and `rhs` has the lower rank, using XLA's broadcasting rules
+// for binary operators.
+//
+// Arguments:
+//	lhs: the LHS input tensor
+//	rhs: the RHS input tensor
+//	broadcast_dims: an XLA-style broadcast dimension specification
+//
+// Returns:
+//	lhs_output: the broadcasted LHS tensor
+//	rhs_output: the broadcasted RHS tensor
+func XlaBroadcastHelper(scope *Scope, lhs tf.Output, rhs tf.Output, broadcast_dims tf.Output) (lhs_output tf.Output, rhs_output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "XlaBroadcastHelper",
+		Input: []tf.Input{
+			lhs, rhs, broadcast_dims,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
 }
 
 // Subtracts sparse `updates` from an existing tensor according to `indices`.
@@ -1470,6 +1696,45 @@ func TensorStridedSliceUpdate(scope *Scope, input tf.Output, begin tf.Output, en
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// Computes the eigen decomposition of a batch of self-adjoint matrices
+//
+// (Note: Only real inputs are supported).
+//
+// Computes the eigenvalues and eigenvectors of the innermost N-by-N matrices in
+// tensor such that tensor[...,:,:] * v[..., :,i] = e[..., i] * v[...,:,i], for
+// i=0...N-1.
+//
+// Arguments:
+//	a: the input tensor.
+//	lower: a boolean specifies whether the calculation is done with the lower
+// triangular part or the upper triangular part.
+//	max_iter: maximum number of sweep update, i.e., the whole lower triangular
+// part or upper triangular part based on parameter lower. Heuristically, it has
+// been argued that approximately logN sweeps are needed in practice (Ref: Golub &
+// van Loan "Matrix Computation").
+//	epsilon: the tolerance ratio.
+//
+// Returns:
+//	w: The eigenvalues in ascending order, each repeated according to its
+// multiplicity.
+//	v: The column v[..., :, i] is the normalized eigenvector corresponding to the
+// eigenvalue w[..., i].
+func XlaSelfAdjointEig(scope *Scope, a tf.Output, lower bool, max_iter int64, epsilon float32) (w tf.Output, v tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"lower": lower, "max_iter": max_iter, "epsilon": epsilon}
+	opspec := tf.OpSpec{
+		Type: "XlaSelfAdjointEig",
+		Input: []tf.Input{
+			a,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
 }
 
 // Ensures that the tensor's shape matches the expected shape.
@@ -4375,6 +4640,31 @@ func NearestNeighbors(scope *Scope, points tf.Output, centers tf.Output, k tf.Ou
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
+}
+
+// Sends the named tensor to another XLA computation. Wraps the XLA Send operator
+//
+// documented at
+//  https://www.tensorflow.org/performance/xla/operation_semantics#send .
+//
+// Arguments:
+//	tensor: The tensor to send.
+//	tensor_name: A string key that identifies the channel.
+//
+// Returns the created operation.
+func XlaSend(scope *Scope, tensor tf.Output, tensor_name string) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"tensor_name": tensor_name}
+	opspec := tf.OpSpec{
+		Type: "XlaSend",
+		Input: []tf.Input{
+			tensor,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
 }
 
 // Returns the index of a data point that should be added to the seed set.
@@ -7562,6 +7852,33 @@ func ResourceAccumulatorApplyGradient(scope *Scope, handle tf.Output, local_step
 	return scope.AddOperation(opspec)
 }
 
+// Wraps the XLA Pad operator, documented at
+//
+//  https://www.tensorflow.org/performance/xla/operation_semantics#pad
+// .
+//
+// Arguments:
+//	input: A `Tensor` of type T.
+//	padding_value: A scalar `Tensor` of type T.
+//	padding_low: the padding to apply at the start of each input dimensions
+//	padding_high: the padding to apply at the end of each input dimension.
+//	padding_interior: the padding to apply between each input element.
+//
+// Returns A `Tensor` of type T.
+func XlaPad(scope *Scope, input tf.Output, padding_value tf.Output, padding_low tf.Output, padding_high tf.Output, padding_interior tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "XlaPad",
+		Input: []tf.Input{
+			input, padding_value, padding_low, padding_high, padding_interior,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Updates the accumulator with a new value for global_step.
 //
 // Logs warning if the accumulator's value is already higher than
@@ -8243,6 +8560,39 @@ func BoostedTreesCalculateBestFeatureSplit(scope *Scope, node_id_range tf.Output
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2), op.Output(3), op.Output(4), op.Output(5), op.Output(6)
+}
+
+// Wraps the XLA DynamicUpdateSlice operator, documented at
+//
+//  https://www.tensorflow.org/performance/xla/operation_semantics#dynamicupdateslice
+// .
+//
+// XlaDynamicUpdateSlice generates a result which is the value of the `input`
+// operand, with a slice update overwritten at `indices`. The shape of `update`
+// determines the shape of the sub-array of the result which is updated. The shape
+// of indices must be rank == 1, with dimension size equal to the rank of `input`.
+//
+// Handling of out-of-bounds slice indices is implementation-defined.
+//
+// Arguments:
+//	input: A `Tensor` of type T.
+//	update: A `Tensor` of type T. Same rank as `input`.
+//	indices: A vector of indices into `input`. Must have length equal to the rank of
+// `input`.
+//
+// Returns A `Tensor` of type T.
+func XlaDynamicUpdateSlice(scope *Scope, input tf.Output, update tf.Output, indices tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "XlaDynamicUpdateSlice",
+		Input: []tf.Input{
+			input, update, indices,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // ModelDatasetAttr is an optional argument to ModelDataset.
@@ -24787,6 +25137,37 @@ func FractionalMaxPoolGrad(scope *Scope, orig_input tf.Output, orig_output tf.Ou
 	return op.Output(0)
 }
 
+// Wraps the XLA ConvGeneralDilated operator, documented at
+//
+//  https://www.tensorflow.org/performance/xla/operation_semantics#conv_convolution
+// .
+//
+// Arguments:
+//	lhs: the input tensor
+//	rhs: the kernel tensor
+//	window_strides: the inter-window strides
+//	padding: the padding to apply at the start and end of each input dimensions
+//	lhs_dilation: dilation to apply between input elements
+//	rhs_dilation: dilation to apply between kernel elements
+//	feature_group_count: number of feature groups for grouped convolution.
+//	dimension_numbers: a serialized xla::ConvolutionDimensionNumbers proto.
+//	precision_config: a serialized xla::PrecisionConfig proto.
+func XlaConv(scope *Scope, lhs tf.Output, rhs tf.Output, window_strides tf.Output, padding tf.Output, lhs_dilation tf.Output, rhs_dilation tf.Output, feature_group_count tf.Output, dimension_numbers string, precision_config string) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"dimension_numbers": dimension_numbers, "precision_config": precision_config}
+	opspec := tf.OpSpec{
+		Type: "XlaConv",
+		Input: []tf.Input{
+			lhs, rhs, window_strides, padding, lhs_dilation, rhs_dilation, feature_group_count,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // NthElementAttr is an optional argument to NthElement.
 type NthElementAttr func(optionalAttr)
 
@@ -25628,6 +26009,37 @@ func MaxPoolGradGrad(scope *Scope, orig_input tf.Output, orig_output tf.Output, 
 		Type: "MaxPoolGradGrad",
 		Input: []tf.Input{
 			orig_input, orig_output, grad,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Takes the packed uint32 input and unpacks the input to uint8 to do
+//
+// Dequantization on device.
+//
+// Arguments:
+//	input: Input tensors whose types is uint32, shape is [d0, ..., dn].
+//	min_range: The minimum scalar value possibly produced for the input.
+//	max_range: The maximum scalar value possibly produced for the input.
+//	mode: String to determine the dequantize mode in {"MIN_COMBINED", "MIN_FIRST", "SCALED"}.
+//	transpose_output: Boolean to determine if output is transposed. transpose_output
+// is faster when input is large and rank of input is higher than 1.
+//
+// Returns Output tensors whose types is bloat16. If transpose_output is true,
+// output shape is [dn * 4, dn-1, ..., d1, d0]. If transpose_output
+// is false, output shape is [d0,..., dn * 4].
+func XlaDequantize(scope *Scope, input tf.Output, min_range float32, max_range float32, mode string, transpose_output bool) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"min_range": min_range, "max_range": max_range, "mode": mode, "transpose_output": transpose_output}
+	opspec := tf.OpSpec{
+		Type: "XlaDequantize",
+		Input: []tf.Input{
+			input,
 		},
 		Attrs: attrs,
 	}
@@ -27474,6 +27886,28 @@ func FusedBatchNormGrad(scope *Scope, y_backprop tf.Output, x tf.Output, scale t
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2), op.Output(3), op.Output(4)
+}
+
+// An op used by XLA SPMD partitioner to switch from automatic partitioning to
+//
+// manual partitioning. It annotates the input (full-shape, to be automatically
+// partitioned) with the same sharding used by manual partitioning, and outputs a
+// shard-shaped tensor to be consumed by later manually-partitioned ops. If the
+// shape is not evenly partitionable, the padding region will be masked with 0s.
+func XlaSpmdFullToShardShape(scope *Scope, input tf.Output, manual_sharding string) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"manual_sharding": manual_sharding}
+	opspec := tf.OpSpec{
+		Type: "XlaSpmdFullToShardShape",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // DecodeCSVAttr is an optional argument to DecodeCSV.
@@ -30344,6 +30778,32 @@ func StatefulUniform(scope *Scope, resource tf.Output, algorithm tf.Output, shap
 	return op.Output(0)
 }
 
+// Wraps the XLA Gather operator documented at
+//
+//   https://www.tensorflow.org/xla/operation_semantics#gather
+//
+// Arguments:
+//	operand: The array we're gathering from.
+//	start_indices: Array containing the starting indices of the slices we gather.
+//	slice_sizes: slice_sizes[i] is the bounds for the slice on dimension i.
+//	dimension_numbers: A serialized xla::GatherDimensionNumbers proto.
+//	indices_are_sorted: Boolean indicating if the indices are sorted.
+func XlaGather(scope *Scope, operand tf.Output, start_indices tf.Output, slice_sizes tf.Output, dimension_numbers string, indices_are_sorted bool) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"dimension_numbers": dimension_numbers, "indices_are_sorted": indices_are_sorted}
+	opspec := tf.OpSpec{
+		Type: "XlaGather",
+		Input: []tf.Input{
+			operand, start_indices, slice_sizes,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // QuantizedConv2DAttr is an optional argument to QuantizedConv2D.
 type QuantizedConv2DAttr func(optionalAttr)
 
@@ -31635,6 +32095,34 @@ func AssignVariableOp(scope *Scope, resource tf.Output, value tf.Output) (o *tf.
 	return scope.AddOperation(opspec)
 }
 
+// Wraps the XLA Sort operator, documented at
+//
+//  https://www.tensorflow.org/performance/xla/operation_semantics#sort
+// .
+//
+// Sorts a tensor. Currently only sorts in ascending order are supported.
+//
+// Arguments:
+//	keys: A `Tensor` of type K.
+//	values: A `Tensor` of type V.
+//
+// Returns:
+//	sorted_keys: A `Tensor` of type K.
+//	sorted_values: A `Tensor` of type V.
+func XlaKeyValueSort(scope *Scope, keys tf.Output, values tf.Output) (sorted_keys tf.Output, sorted_values tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "XlaKeyValueSort",
+		Input: []tf.Input{
+			keys, values,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
+}
+
 // Asserts that compilation succeeded. This op produces no output and closes the
 //
 // device during failure to ensure all pending device interactions fail.
@@ -31769,6 +32257,18 @@ func VarHandleOp(scope *Scope, dtype tf.DataType, shape tf.Shape, optional ...Va
 		Type: "VarHandleOp",
 
 		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Replica ID.
+func XlaReplicaId(scope *Scope) (id tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "XlaReplicaId",
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -31966,6 +32466,21 @@ func BoostedTreesQuantileStreamResourceHandleOp(scope *Scope, optional ...Booste
 		Type: "BoostedTreesQuantileStreamResourceHandleOp",
 
 		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// An op which shards the input based on the given sharding attribute.
+func XlaSharding(scope *Scope, input tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "XlaSharding",
+		Input: []tf.Input{
+			input,
+		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -46978,6 +47493,26 @@ func SerializeSparse(scope *Scope, sparse_indices tf.Output, sparse_values tf.Ou
 		Type: "SerializeSparse",
 		Input: []tf.Input{
 			sparse_indices, sparse_values, sparse_shape,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// An op which supports basic einsum op with 2 inputs and 1 output.
+//
+// This op has better TPU performance since it doesn't have explicitly reshape and
+// transpose operations as tf.einsum does.
+func XlaEinsum(scope *Scope, a tf.Output, b tf.Output, equation string) (product tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"equation": equation}
+	opspec := tf.OpSpec{
+		Type: "XlaEinsum",
+		Input: []tf.Input{
+			a, b,
 		},
 		Attrs: attrs,
 	}
