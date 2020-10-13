@@ -263,6 +263,10 @@
         *   Deprecate `Interpreter::UseNNAPI(bool)` C++ API.
             *   Use `NnApiDelegate()` and related delegate configuration methods
                 directly.
+        *   Deprecate `Interpreter::SetAllowFp16PrecisionForFp32(bool)` C++ API
+            *   Prefer controlling this via delegate options, e.g.
+                `tflite::StatefulNnApiDelegate::Options::allow_fp16' or
+                `TfLiteGpuDelegateOptionsV2::is_precision_loss_allowed`.
     *   `DynamicBuffer::AddJoinedString()` will now add a separator if the first
         string to be joined is empty.
     *   <ADD RELEASE NOTES HERE>
