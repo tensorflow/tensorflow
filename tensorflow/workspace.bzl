@@ -722,8 +722,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
 
     # Intel openMP that is part of LLVM sources.
     tf_http_archive(
-        name = "llvm-openmp",
-	build_file = clean_dep("//third_party/llvm-openmp:BUILD"),
+        name = "llvm_openmp",
+        build_file = clean_dep("//third_party/llvm_openmp:BUILD"),
         sha256 = "d19f728c8e04fb1e94566c8d76aef50ec926cd2f95ef3bf1e0a5de4909b28b44",
         strip_prefix = "openmp-10.0.1.src",
         urls = [
