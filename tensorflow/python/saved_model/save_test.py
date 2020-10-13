@@ -552,10 +552,15 @@ class SaveTest(test.TestCase, parameterized.TestCase):
       self.assertEmpty(v1.device)
 
   @parameterized.named_parameters(
-      ("_ExpandDistributedVariables",
-       save_options.VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES),
-      ("_DiscardDistributedVariables", save_options.VariablePolicy.NONE))
-  def test_expand_distributed_variables(self, expand_strategy):
+      ("_ExpandDistributedVariablesWithPolicy",
+       save_options.VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES, True),
+      ("_ExpandDistributedVariablesWithoutPolicy",
+       save_options.VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES, False),
+      ("_DiscardDistributedVariablesWithPolicy",
+       save_options.VariablePolicy.NONE, True),
+      ("_DiscardDistributedVariablesWithoutPolicy",
+       save_options.VariablePolicy.NONE, False))
+  def test_expand_distributed_variables(self, expand_strategy, policy):
     # 1. Create a context with both CPU:0 and CPU:1.
     context._reset_context()
     cpus = context.context().list_physical_devices("CPU")
@@ -569,7 +574,9 @@ class SaveTest(test.TestCase, parameterized.TestCase):
 
     # 2. Create and save a model under a mirrored strategy.
     file_name = os.path.join(self.get_temp_dir(), "saved_model.pb")
-    with mirrored_strategy.MirroredStrategy(["CPU:0", "CPU:1"]).scope():
+    strategy = mirrored_strategy.MirroredStrategy(["CPU:0", "CPU:1"])
+    strategy.extended._use_var_policy = policy
+    with strategy.scope():
       root = tracking.AutoTrackable()
       root.v = variables.Variable([1., 1.], name="v")
 
