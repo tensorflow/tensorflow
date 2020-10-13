@@ -231,10 +231,6 @@ tf_py_test(
     srcs = ["integration/graph_decompose_test.py"],
     data = ["//tensorflow/compiler/mlir/tfr/resources:decomposition_lib"],
     python_version = "PY3",
-    tags = [
-        "no_oss",
-        "notap",
-    ],
     deps = [
         "//tensorflow/compiler/mlir/tfr/resources:composite_ops",
         "//tensorflow/python/eager:def_function",
