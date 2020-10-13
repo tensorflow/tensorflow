@@ -151,6 +151,23 @@ class ExtractElementOpConversion
   }
 };
 
+template <typename OpTy>
+class SimpleOpResultConversion
+    : public BufferAssignmentOpConversionPattern<OpTy> {
+ public:
+  using BufferAssignmentOpConversionPattern<
+      OpTy>::BufferAssignmentOpConversionPattern;
+  using BufferAssignmentOpConversionPattern<OpTy>::converter;
+
+  LogicalResult matchAndRewrite(
+      OpTy op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const final {
+    rewriter.replaceOpWithNewOp<OpTy>(op, converter->convertType(op.getType()),
+                                      operands);
+    return success();
+  }
+};
+
 class TensorCastOpConverter
     : public BufferAssignmentOpConversionPattern<TensorCastOp> {
  public:
@@ -176,7 +193,8 @@ void populateStandardBufferizePattern(MLIRContext *context,
                                       BufferAssignmentTypeConverter *converter,
                                       OwningRewritePatternList *patterns) {
   patterns->insert<ExtractElementOpConversion, TensorFromElementsOpConverter,
-                   DynamicTensorFromElementsOpConverter, TensorLoadOpConversion,
+                   DynamicTensorFromElementsOpConverter,
+                   SimpleOpResultConversion<SelectOp>, TensorLoadOpConversion,
                    TensorCastOpConverter>(context, converter);
 }
 
