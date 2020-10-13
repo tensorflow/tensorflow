@@ -340,6 +340,7 @@ def random_uniform(minval, maxval, dims, name=None):
 
 recv = gen_xla_ops.xla_recv
 reduce = gen_xla_ops.xla_reduce
+variadic_reduce = gen_xla_ops.xla_variadic_reduce
 
 
 def reduce_window(operand,

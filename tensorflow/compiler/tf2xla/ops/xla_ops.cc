@@ -475,6 +475,60 @@ reducer: a reducer function to apply
 dimensions_to_reduce: dimension numbers over which to reduce
 )doc");
 
+REGISTER_OP("XlaVariadicReduce")
+    .Input("input: N * T")
+    .Input("init_value: N * T")
+    .Attr("N: int >= 1")
+    .Attr("T: numbertype")
+    .Attr("dimensions_to_reduce: list(int)")
+    .Attr("reducer: func")
+    .Output("output: N * T")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      int n;
+      TF_RETURN_IF_ERROR(c->GetAttr("N", &n));
+      for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+          c->MergeInput(i, c->input(j));
+        }
+      }
+      if (c->RankKnown(c->input(0))) {
+        int rank = c->Rank(c->input(0));
+        std::vector<int64> dimensions_to_reduce;
+        TF_RETURN_IF_ERROR(
+            c->GetAttr("dimensions_to_reduce", &dimensions_to_reduce));
+        std::set<int64> dims_set(dimensions_to_reduce.begin(),
+                                 dimensions_to_reduce.end());
+        auto dim_in_range = [rank](int64 dim) {
+          return dim >= 0 && dim < rank;
+        };
+        const int dimensions_to_reduce_size = dimensions_to_reduce.size();
+        if (rank < dimensions_to_reduce_size ||
+            dims_set.size() != dimensions_to_reduce.size() ||
+            !absl::c_all_of(dimensions_to_reduce, dim_in_range)) {
+          return errors::InvalidArgument(
+              "Invalid dimensions_to_reduce argument to XlaVariadicReduce");
+        }
+        for (int i = 0; i < n; i++) {
+          c->set_output(
+              i, c->UnknownShapeOfRank(rank - dimensions_to_reduce.size()));
+        }
+      } else {
+        for (int i = 0; i < n; i++) {
+          c->set_output(i, c->input(i));
+        }
+      }
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Wraps the variadic XLA Reduce operator, documented at
+ https://www.tensorflow.org/performance/xla/operation_semantics#variadic_reduce.
+
+input: the input tensor(s)
+init_value: scalar initial value(s) for the reduction
+reducer: a reducer function to apply
+dimensions_to_reduce: dimension numbers over which to reduce
+)doc");
+
 REGISTER_OP("XlaReduceWindow")
     .Input("input: T")
     .Input("init_value: T")
