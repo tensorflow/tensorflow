@@ -130,7 +130,8 @@ StatusOr<bool> HorizontalInputFusionImpl::Run() {
       HloInstruction* fused = candidates[j];
       if (ShapesCompatibleForMultiOutputFusion(*fusion_anchor, *fused) &&
           !FusionWouldBeTooLarge(*fusion_anchor, *fused)) {
-        VLOG(3) << "Fuse " << fused->ToString() << " into " << fusion_anchor->ToString();
+        VLOG(3) << "Fuse " << fused->ToString() << " into "
+                << fusion_anchor->ToString();
         fusion_anchor->MergeFusionInstructionIntoMultiOutput(fused);
         changed = true;
       } else {
