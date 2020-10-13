@@ -46,7 +46,8 @@ std::unique_ptr<GPUOperation> SelectConvolutionWinogradAdreno(
     const Convolution2DAttributes& attr, const BHWC& dst_shape,
     const DeviceInfo& device_info, const OperationDef& op_def,
     ModelHints hints) {
-  ConvPowerVR conv = CreateConvPowerVR(device_info, op_def, attr, &dst_shape);
+  ConvPowerVR conv =
+      CreateConvPowerVRWino4x4To6x6(device_info, op_def, attr, &dst_shape);
   return absl::make_unique<ConvPowerVR>(std::move(conv));
 }
 
