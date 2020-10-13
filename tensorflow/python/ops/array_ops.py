@@ -3217,8 +3217,7 @@ def sparse_placeholder(dtype, shape=None, name=None):
     values = np.array([1.0, 2.0], dtype=np.float32)
     shape = np.array([7, 9, 2], dtype=np.int64)
     print(sess.run(y, feed_dict={
-      x: tf.compat.v1.SparseTensorValue(indices, values, shape)}))  # Will
-      succeed.
+      x: tf.compat.v1.SparseTensorValue(indices, values, shape)}))  # Will succeed.
     print(sess.run(y, feed_dict={
       x: (indices, values, shape)}))  # Will succeed.
 
