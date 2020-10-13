@@ -231,6 +231,10 @@ tf_py_test(
     srcs = ["integration/graph_decompose_test.py"],
     data = ["//tensorflow/compiler/mlir/tfr/resources:decomposition_lib"],
     python_version = "PY3",
+    tags = [
+        "no_windows",  # TODO(b/170752141)
+        "nomac",  # TODO(b/170752141)
+    ],
     deps = [
         "//tensorflow/compiler/mlir/tfr/resources:composite_ops",
         "//tensorflow/python/eager:def_function",
@@ -257,6 +261,10 @@ tf_py_test(
     srcs = ["integration/node_expansion_test.py"],
     data = ["//tensorflow/compiler/mlir/tfr/resources:decomposition_lib"],
     python_version = "PY3",
+    tags = [
+        "no_windows",  # TODO(b/170752141)
+        "nomac",  # TODO(b/170752141)
+    ],
     deps = [
         "//tensorflow/compiler/mlir/tfr/resources:composite_ops",
     ],
