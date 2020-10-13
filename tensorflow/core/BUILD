@@ -91,9 +91,6 @@ load("//tensorflow:tensorflow.bzl", "if_nccl")
 load("@tf_toolchains//macros:cpp.bzl", "tensorflow_opensource_extra_deps")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
-
-# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests_gpu")
 
 # buildifier: disable=same-origin-load
@@ -2017,18 +2014,6 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
-    name = "framework_op_gen_lib_test",
-    size = "small",
-    srcs = ["//tensorflow/core/framework:op_gen_lib_test.cc"],
-    deps = [
-        ":protos_all_cc",
-        ":test",
-        ":test_main",
-        "//tensorflow/core/framework:op_gen_lib",
-    ],
-)
-
 test_suite(
     name = "higher_level_tests",
     tests = [
@@ -2166,98 +2151,6 @@ tf_cc_tests_gpu(
         ":testlib",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/kernels:ops_util",
-    ],
-)
-
-tf_cc_test_gpu(
-    name = "variant_op_copy_test",
-    size = "small",
-    srcs = ["//tensorflow/core/framework:variant_op_copy_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
-    deps = [
-        ":core",
-        ":core_cpu",
-        ":core_cpu_internal",
-        ":direct_session",
-        ":framework",
-        ":framework_internal",
-        ":gpu_runtime",
-        ":lib",
-        ":lib_internal",
-        ":protos_all_cc",
-        ":test",
-        ":test_main",
-        ":testlib",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:client_session",
-        "//tensorflow/cc:ops",
-        "//tensorflow/cc:scope",
-        "//tensorflow/core/kernels:array",
-        "//third_party/eigen3",
-    ],
-)
-
-tf_cc_test(
-    name = "framework_run_handler_util_test",
-    size = "small",
-    srcs = ["//tensorflow/core/framework:run_handler_util_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
-    deps = [
-        ":framework_internal",
-        ":lib",
-        ":test",
-        ":test_main",
-    ],
-)
-
-tf_cc_test(
-    name = "framework_run_handler_test",
-    size = "small",
-    srcs = ["//tensorflow/core/framework:run_handler_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
-    deps = [
-        ":core_cpu",
-        ":direct_session_internal",
-        ":framework_internal",
-        ":lib",
-        ":lib_internal",
-        ":protos_all_cc",
-        ":test",
-        ":test_main",
-        ":testlib",
-        "//tensorflow/core/framework:tensor_testutil",
-        "//tensorflow/core/kernels:cwise_op",
-        "//tensorflow/core/kernels:matmul_op",
-        "//third_party/eigen3",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/synchronization",
-    ],
-)
-
-tf_cc_test(
-    name = "framework_op_segment_test",
-    size = "small",
-    srcs = ["//tensorflow/core/framework:op_segment_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
-    deps = [
-        ":core",
-        ":core_cpu",
-        ":core_cpu_internal",
-        ":direct_session_internal",
-        ":framework",
-        ":framework_internal",
-        ":lib",
-        ":lib_internal",
-        ":ops",
-        ":protos_all_cc",
-        ":test",
-        ":test_main",
-        ":testlib",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/core/kernels:cwise_op",
-        "//tensorflow/core/kernels:ops_util",
-        "//third_party/eigen3",
     ],
 )
 
