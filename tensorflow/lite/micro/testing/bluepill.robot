@@ -2,7 +2,8 @@
 Suite Setup                   Setup
 Suite Teardown                Teardown
 Test Setup                    Reset Emulation
-Resource                      /opt/renode/tests/renode-keywords.robot
+Test Teardown                 Test Teardown
+Resource                      ${RENODEKEYWORDS}
 
 *** Variables ***
 ${UART}                       sysbus.cpu.uartSemihosting
