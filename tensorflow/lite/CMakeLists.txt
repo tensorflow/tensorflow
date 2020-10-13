@@ -191,6 +191,7 @@ if(TFLITE_ENABLE_FLEX)
 endif()
 if(TFLITE_ENABLE_GPU)
   find_package(opencl_headers REQUIRED)
+  find_package(vulkan_headers REQUIRED)
   populate_tflite_source_vars(
     "delegates/gpu/cl" TFLITE_DELEGATES_GPU_CL_SRCS
     FILTER "(_test|gl_interop|egl_sync)\\.(cc|h)$"
@@ -239,7 +240,7 @@ if(TFLITE_ENABLE_GPU)
     ${TFLITE_DELEGATES_GPU_COMMON_MEMORY_MANAGEMENT_SRCS}
     ${TFLITE_DELEGATES_GPU_COMMON_TRANSFORMATIONS_SRCS}
   )
-  list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DCL_DELEGATE_NO_GL")
+  list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DCL_DELEGATE_NO_GL" "-DEGL_NO_X11")
   list(APPEND TFLITE_TARGET_DEPENDENCIES
     absl::any
     absl::flat_hash_map
