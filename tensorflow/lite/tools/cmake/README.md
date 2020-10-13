@@ -40,11 +40,39 @@ cd tflite_build
 cmake ../tensorflow_src/tensorflow/lite
 ```
 
+If you want to configure Android build with GPU delegate support,
+
+```sh
+mkdir tflite_build
+cd tflite_build
+cmake -DCMAKE_TOOLCHAIN_FILE=<NDK path>/build/cmake/android.toolchain.cmake \
+  -DANDROID_ABI=arm64-v8a -DTFLITE_ENABLE_GPU=ON ../tensorflow_src/tensorflow/lite
+```
+
+
 #### Step 4. Build TensorFlow Lite
+
+In the tflite_build directory,
 
 ```sh
 cmake --build . -j
 ```
 
+Or
+
+```sh
+make -j
+```
+
+
 **Note:** This should compile a static library `libtensorflow-lite.a` in the
 current directory.
+
+
+#### Step 5. Build TensorFlow Lite Benchmark Tool
+
+In the tflite_build directory,
+
+```sh
+make benchmark_model -j
+```
