@@ -33,6 +33,7 @@ from tensorflow.python.keras import losses
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.feature_column import dense_features
+from tensorflow.python.keras.feature_column import sequence_feature_column as ksfc
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.saving import model_config
 from tensorflow.python.keras.saving import save
@@ -190,7 +191,7 @@ class TestSaveModel(test.TestCase, parameterized.TestCase):
                 shape=(None, 1), sparse=True, name='b', dtype='string')
     }
 
-    fc_layer, _ = feature_column_lib.SequenceFeatures(cols)(input_layers)
+    fc_layer, _ = ksfc.SequenceFeatures(cols)(input_layers)
     # TODO(tibell): Figure out the right dtype and apply masking.
     # sequence_length_mask = array_ops.sequence_mask(sequence_length)
     # x = keras.layers.GRU(32)(fc_layer, mask=sequence_length_mask)

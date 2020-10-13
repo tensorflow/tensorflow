@@ -831,29 +831,30 @@ class TestWholeModelSaving(keras_parameterized.TestCase):
     saved_model_dir = self._save_model_dir()
     save_format = testing_utils.get_save_format()
 
-    model = _make_model()
-    model.compile(
-        loss=keras.losses.SparseCategoricalCrossentropy(),
-        optimizer=optimizers.gradient_descent_v2.SGD(),
-        metrics=[keras.metrics.SparseCategoricalCrossentropy()])
-    x = np.random.normal(size=(32, 4))
-    y = np.random.randint(0, 3, size=32)
-    model.train_on_batch(x, y)
-    evaluation_results = model.evaluate(x, y)
-    # Save and reload model.
-    model.save(saved_model_dir, save_format=save_format)
-    del model  # Prevent misuse.
-    loaded_model = keras.models.load_model(saved_model_dir)
-    loaded_model_eval_results = loaded_model.evaluate(x, y)
-    # Assert all evaluation results are the same.
-    self.assertAllClose(evaluation_results, loaded_model_eval_results, 1e-9)
-    # Check correctness of the loss calculation.
-    self.assertAllGreater(evaluation_results, 0.)
-    evaluation_results = dict(
-        zip(loaded_model.metrics_names, evaluation_results))
-    self.assertNear(
-        evaluation_results['sparse_categorical_crossentropy'] +
-        evaluation_results['custom_loss'], evaluation_results['loss'], 1e-6)
+    with self.cached_session():
+      model = _make_model()
+      model.compile(
+          loss=keras.losses.SparseCategoricalCrossentropy(),
+          optimizer=optimizers.gradient_descent_v2.SGD(),
+          metrics=[keras.metrics.SparseCategoricalCrossentropy()])
+      x = np.random.normal(size=(32, 4))
+      y = np.random.randint(0, 3, size=32)
+      model.train_on_batch(x, y)
+      evaluation_results = model.evaluate(x, y)
+      # Save and reload model.
+      model.save(saved_model_dir, save_format=save_format)
+      del model  # Prevent misuse.
+      loaded_model = keras.models.load_model(saved_model_dir)
+      loaded_model_eval_results = loaded_model.evaluate(x, y)
+      # Assert all evaluation results are the same.
+      self.assertAllClose(evaluation_results, loaded_model_eval_results, 1e-9)
+      # Check correctness of the loss calculation.
+      self.assertAllGreater(evaluation_results, 0.)
+      evaluation_results = dict(
+          zip(loaded_model.metrics_names, evaluation_results))
+      self.assertNear(
+          evaluation_results['sparse_categorical_crossentropy'] +
+          evaluation_results['custom_loss'], evaluation_results['loss'], 1e-6)
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_save_uncompiled_model_with_optimizer(self):
