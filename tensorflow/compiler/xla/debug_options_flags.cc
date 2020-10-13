@@ -580,7 +580,8 @@ static void AllocateFlags() {
       "Generates multiple heaps (i.e., temp buffers) with a size "
       "constraint on each heap to avoid Out-of-Memory due to memory "
       "fragmentation. The constraint is soft, so it works with tensors "
-      "larger than the given constraint size."));
+      "larger than the given constraint size. -1 corresponds to no "
+      "constraints."));
 
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }

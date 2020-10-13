@@ -608,7 +608,7 @@ void BufferAssignment::AddAssignment(BufferAllocation* allocation,
 void BufferAssignment::CombineTempAllocations() {
   VLOG(1) << "CombineTempAllocations()";
   // Stores the combined allocations.
-  std::vector<BufferAllocation> combined_allocations;
+  std::deque<BufferAllocation> combined_allocations;
   // Holds the pointer to a combined allocation of each color, if any.
   flat_hash_map<BufferValue::Color, BufferAllocation*> combined_allocation_map;
 
