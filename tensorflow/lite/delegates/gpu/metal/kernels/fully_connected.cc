@@ -51,13 +51,6 @@ std::string GetFullyConnectedCode(const DeviceInfo& device_info,
     #include <metal_stdlib>
     using namespace metal;
 
-    struct uniforms {
-      uint src_depth;
-      uint dst_channels;
-      uint out_channels;
-      uint dummy;
-    };
-
     $$0
     kernel void ComputeFunction(
                                 $$1
@@ -71,11 +64,11 @@ std::string GetFullyConnectedCode(const DeviceInfo& device_info,
   float summa = 0.0f;
   threadgroup FLT4 local_vector[32];
   for (int j = 0; j < $0; ++j) {
-    local_vector[tid_index] = j * 32 + tid_index >= params.src_depth ?
+    local_vector[tid_index] = j * 32 + tid_index >= args.src_slices ?
       FLT4(0.0f) : vector[j * 32 + tid_index];
     $1(mem_flags::mem_threadgroup);
     for (uint i = 0, counter = j * 32 + tid.y * 8; i < 8; ++i, ++counter) {
-      summa += dot(local_vector[tid.y * 8 + i], matrix[counter * params.dst_channels + ugid.x]);
+      summa += dot(local_vector[tid.y * 8 + i], matrix[counter * args.dst_channels_alignedx8 + ugid.x]);
     }
     $1(mem_flags::mem_none);
   }
@@ -87,10 +80,10 @@ std::string GetFullyConnectedCode(const DeviceInfo& device_info,
   for (uint i = 0; i < $0; ++i, ++counter) {
     )";
     if (src_depth % 4 != 0) {
-      code << "    if (counter >= params.src_depth) continue;" << std::endl;
+      code << "    if (counter >= args.src_slices) continue;" << std::endl;
     }
     code << "    summa += dot(vector[counter], matrix[counter * "
-            "params.dst_channels + ugid.x]);"
+            "args.dst_channels_alignedx8 + ugid.x]);"
          << std::endl;
     code << "  }" << std::endl;
   }
@@ -106,7 +99,7 @@ std::string GetFullyConnectedCode(const DeviceInfo& device_info,
     temp[tid.x][0] = summa;
   }
   $1(mem_flags::mem_threadgroup);
-  if (tid.y == 0 && tid.x % 4 == 0 && ugid.x < params.out_channels) {
+  if (tid.y == 0 && tid.x % 4 == 0 && ugid.x < args.dst_channels) {
     const int linear_index = ugid.x / 4;
     FLT4 value = FLT4(temp[tid.x][0], temp[tid.x + 1][0], temp[tid.x + 2][0], temp[tid.x + 3][0]) +
       biases[linear_index];
@@ -131,6 +124,11 @@ std::vector<ComputeTaskDescriptorPtr> FullyConnected(
   desc->is_linkable = false;
   desc->shader_source = GetFullyConnectedCode(device_info, attr.weights.shape.i,
                                               attr.weights.shape.o);
+
+  desc->args.AddInt("dst_channels", attr.weights.shape.o);
+  desc->args.AddInt("src_slices", DivideRoundUp(attr.weights.shape.i, 4));
+  desc->args.AddInt("dst_channels_alignedx8",
+                    AlignByN(attr.weights.shape.o, 8));
 
   desc->input_buffers = {
       {input_id, "device FLT4* const vector"},
@@ -172,19 +170,6 @@ std::vector<ComputeTaskDescriptorPtr> FullyConnected(
       {"device FLT4* const biases",
        GetByteBufferConvertedResized(attr.bias.data, options.storage_precision,
                                      attr.weights.shape.o)},
-  };
-
-  desc->uniform_buffers = {
-      {"constant uniforms& params",
-       [attr](const std::map<ValueId, BHWC>& buffers) {
-         std::vector<uint32_t> uniform_params{
-             static_cast<uint32_t>(DivideRoundUp(attr.weights.shape.i, 4)),
-             static_cast<uint32_t>(AlignByN(attr.weights.shape.o, 8)),
-             static_cast<uint32_t>(attr.weights.shape.o),
-             static_cast<uint32_t>(0),
-         };
-         return GetByteBuffer(uniform_params);
-       }},
   };
 
   desc->resize_function = [attr](const std::map<ValueId, BHWC>& buffers) {
