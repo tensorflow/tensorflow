@@ -731,7 +731,7 @@ tf_py_test(
 
 tf_py_test(
     name = "deferred_sequential_test",
-    size = "small",
+    size = "medium",
     srcs = ["deferred_sequential_test.py"],
     python_version = "PY3",
     tags = [

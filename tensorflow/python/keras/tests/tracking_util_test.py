@@ -90,7 +90,7 @@ class InterfaceTests(test.TestCase):
 
   def testSaveWithOnlyKerasSession(self):
 
-    with ops.Graph().as_default():
+    with ops.Graph().as_default(), self.cached_session():
       inp = input_layer.Input([1])
       dense = core.Dense(1)(inp)
       model = training.Model(inp, dense)
