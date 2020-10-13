@@ -1540,8 +1540,6 @@ void BufferAssigner::AssignBuffersFromHeapSimulator(
       const HeapSimulator::Chunk& chunk = buffer_chunk.second;
       assignment->AddAssignment(allocation, value, chunk.offset, chunk.size);
     }
-    // Compute peak_buffers only when the multiheap mode is off. Simply return
-    // an empty vector in the multiheap mode.
     allocation->peak_buffers_ =
         ComputePeakMemoryLogicalBuffers(*allocation, result.debug_trace);
 
