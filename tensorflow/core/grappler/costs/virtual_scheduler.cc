@@ -361,6 +361,8 @@ std::unique_ptr<ReadyNodeManager> ReadyNodeManagerFactory(
   return nullptr;
 }
 
+SchedulerState::~SchedulerState() {}
+
 SchedulerState::SchedulerState(const bool use_static_shapes,
                                const bool use_aggressive_shape_inference,
                                Cluster* cluster,
@@ -1259,14 +1261,22 @@ void SchedulerState::SetNodeStateTimeScheduled(const NodeDef* node) {
   node_state.time_scheduled = device.GetCurrTime();
 }
 
+VirtualScheduler::~VirtualScheduler() {}
+
 VirtualScheduler::VirtualScheduler(const bool use_static_shapes,
                                    const bool use_aggressive_shape_inference,
                                    Cluster* cluster,
                                    ReadyNodeManager* ready_nodes,
                                    std::unique_ptr<VirtualPlacer> placer)
-    : scheduler_state_(use_static_shapes, use_aggressive_shape_inference,
-                       cluster, std::move(placer)),
+    : scheduler_state_(absl::make_unique<SchedulerState>(
+          use_static_shapes, use_aggressive_shape_inference, cluster,
+          std::move(placer))),
       ready_nodes_(ready_nodes) {}
+
+VirtualScheduler::VirtualScheduler(
+    ReadyNodeManager* ready_nodes,
+    std::unique_ptr<SchedulerState> scheduler_state)
+    : scheduler_state_(std::move(scheduler_state)), ready_nodes_(ready_nodes) {}
 
 Status VirtualScheduler::Init(const GrapplerItem* item) {
   // SchedulerState::Init() preprocesses the input grappler_item and
@@ -1275,7 +1285,7 @@ Status VirtualScheduler::Init(const GrapplerItem* item) {
   // DeviceState) for virtual scheduling.
   TF_RETURN_IF_ERROR(ready_nodes_->Init(GetNodeStates()));
   std::vector<const NodeDef*> initial_nodes;
-  auto status = scheduler_state_.Init(item, &initial_nodes);
+  auto status = scheduler_state_->Init(item, &initial_nodes);
   if (status.ok()) {
     // Add the set of initial nodes to ready_nodes_
     for (auto node : initial_nodes) {
@@ -1285,17 +1295,17 @@ Status VirtualScheduler::Init(const GrapplerItem* item) {
   return status;
 }
 
-OpContext VirtualScheduler::GetCurrNode() const {
+OpContext VirtualScheduler::GetCurrNode() {
   const NodeDef* node = ready_nodes_->GetCurrNode();
-  return scheduler_state_.CreateOpContext(node);
+  return scheduler_state_->CreateOpContext(node);
 }
 
 bool VirtualScheduler::MarkCurrNodeExecuted(const Costs& node_costs) {
   // Update graph_costs_ and per-op costs.
   const NodeDef* node = ready_nodes_->GetCurrNode();
-  auto new_nodes = scheduler_state_.MarkNodeExecuted(
+  auto new_nodes = scheduler_state_->MarkNodeExecuted(
       node, node_costs,
-      scheduler_state_.CreateOpContext(ready_nodes_->GetCurrNode()));
+      scheduler_state_->CreateOpContext(ready_nodes_->GetCurrNode()));
   ready_nodes_->RemoveCurrNode();
   // Add the set of new nodes obtained from MarkNodeExecuted() to ready_nodes_.
   for (auto node : new_nodes) {

@@ -1312,8 +1312,12 @@ class TFOpLambda(Layer):
       # (For standard layers users could just set `name` when creating the
       # layer to work around a collision, but they can't do that for
       # auto-generated layers)
+      if self.symbol:
+        name = 'tf.' + self.symbol
+      else:
+        name = self.function.__name__
       kwargs['name'] = K.unique_object_name(
-          'tf.' + self.symbol, zero_based=True, avoid_observed_names=True)
+          name, zero_based=True, avoid_observed_names=True)
     kwargs['autocast'] = False
 
     # Decorate the function to produce this layer's call method

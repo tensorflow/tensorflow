@@ -20,8 +20,6 @@
 # This has only been tested on Windows, Linux and macOS.
 #
 # The following are not currently supported:
-# - GPU acceleration
-# - Android
 # - iOS
 # - Micro backend
 # - Tests
@@ -60,7 +58,7 @@ option(TFLITE_ENABLE_RUY "Enable experimental RUY integration" OFF)
 option(TFLITE_ENABLE_RESOURCE "Enable experimental support for resources" ON)
 option(TFLITE_ENABLE_NNAPI "Enable NNAPI (Android only)." ON)
 option(TFLITE_ENABLE_MMAP "Enable MMAP (unsupported on Windows)" ON)
-option(TFLITE_ENABLE_GPU "Enable GPU (not supported)" OFF)
+option(TFLITE_ENABLE_GPU "Enable GPU" OFF)
 # This must be enabled when converting from TF models with SELECT_TF_OPS
 # enabled.
 # https://www.tensorflow.org/lite/guide/ops_select#converting_the_model
@@ -192,9 +190,60 @@ if(TFLITE_ENABLE_FLEX)
   )
 endif()
 if(TFLITE_ENABLE_GPU)
-  # Implementation is under delegates/gpu.
-  message(FATAL_ERROR
-    "GPU acceleration is not currently supported in CMake builds"
+  find_package(opencl_headers REQUIRED)
+  find_package(vulkan_headers REQUIRED)
+  populate_tflite_source_vars(
+    "delegates/gpu/cl" TFLITE_DELEGATES_GPU_CL_SRCS
+    FILTER "(_test|gl_interop|egl_sync)\\.(cc|h)$"
+  )
+  populate_tflite_source_vars(
+    "delegates/gpu/cl/kernels" TFLITE_DELEGATES_GPU_CL_KERNELS_SRCS
+    FILTER "(_test)\\.(cc|h)$"
+  )
+  populate_tflite_source_vars(
+    "delegates/gpu/cl/kernels/special"
+    TFLITE_DELEGATES_GPU_CL_KERNELS_SPECIAL_SRCS
+    FILTER "(_test)\\.(cc|h)$"
+  )
+  populate_tflite_source_vars(
+    "delegates/gpu/cl/selectors" TFLITE_DELEGATES_GPU_CL_SELECTORS_SRCS
+    FILTER "(_test)\\.(cc|h)$"
+  )
+  populate_tflite_source_vars(
+    "delegates/gpu/common" TFLITE_DELEGATES_GPU_COMMON_SRCS
+    FILTER "(_test)\\.(cc|h)$"
+  )
+  populate_tflite_source_vars(
+    "delegates/gpu/common/default" TFLITE_DELEGATES_GPU_COMMON_DEFAULT_SRCS
+    FILTER "(_test)\\.(cc|h)$"
+  )
+  populate_tflite_source_vars(
+    "delegates/gpu/common/memory_management"
+    TFLITE_DELEGATES_GPU_COMMON_MEMORY_MANAGEMENT_SRCS
+    FILTER "(_test)\\.(cc|h)$"
+  )
+  populate_tflite_source_vars(
+    "delegates/gpu/common/transformations"
+    TFLITE_DELEGATES_GPU_COMMON_TRANSFORMATIONS_SRCS
+    FILTER "(_test)\\.(cc|h)$"
+  )
+  list(APPEND TFLITE_DELEGATES_GPU_SRCS
+    ${TFLITE_SOURCE_DIR}/delegates/gpu/api.cc
+    ${TFLITE_SOURCE_DIR}/delegates/gpu/delegate.cc
+    ${TFLITE_DELEGATES_GPU_CL_SRCS}
+    ${TFLITE_DELEGATES_GPU_CL_KERNELS_SRCS}
+    ${TFLITE_DELEGATES_GPU_CL_KERNELS_SPECIAL_SRCS}
+    ${TFLITE_DELEGATES_GPU_CL_SELECTORS_SRCS}
+    ${TFLITE_SOURCE_DIR}/delegates/gpu/cl/selectors/default/default_selector.cc
+    ${TFLITE_DELEGATES_GPU_COMMON_SRCS}
+    ${TFLITE_DELEGATES_GPU_COMMON_DEFAULT_SRCS}
+    ${TFLITE_DELEGATES_GPU_COMMON_MEMORY_MANAGEMENT_SRCS}
+    ${TFLITE_DELEGATES_GPU_COMMON_TRANSFORMATIONS_SRCS}
+  )
+  list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DCL_DELEGATE_NO_GL" "-DEGL_NO_X11")
+  list(APPEND TFLITE_TARGET_DEPENDENCIES
+    absl::any
+    absl::flat_hash_map
   )
 endif()
 if(_TFLITE_ENABLE_NNAPI)
@@ -281,6 +330,7 @@ add_library(tensorflow-lite
   ${TFLITE_CORE_SRCS}
   ${TFLITE_C_SRCS}
   ${TFLITE_DELEGATES_FLEX_SRCS}
+  ${TFLITE_DELEGATES_GPU_SRCS}
   ${TFLITE_DELEGATES_NNAPI_SRCS}
   ${TFLITE_DELEGATES_SRCS}
   ${TFLITE_DELEGATES_XNNPACK_SRCS}
@@ -298,6 +348,7 @@ add_library(tensorflow-lite
   ${TFLITE_NNAPI_SRCS}
   ${TFLITE_SRCS}
   ${TFLITE_SOURCE_DIR}/profiling/platform_profiler.cc
+  ${TFLITE_SOURCE_DIR}/schema/schema_utils.cc
   ${TFLITE_SOURCE_DIR}/tools/optimize/sparsity/format_converter.cc
 )
 target_include_directories(tensorflow-lite
@@ -362,13 +413,23 @@ endif()  # TFLITE_ENABLE_XNNPACK
 if(CMAKE_SYSTEM_NAME MATCHES "Android")
   list(APPEND TFLITE_BENCHMARK_SRCS
     ${TFLITE_SOURCE_DIR}/profiling/atrace_profiler.cc
-    ${TFLITE_SOURCE_DIR}/tools/delegates/nnapi_delegate_provider.cc
   )
+  if(_TFLITE_ENABLE_NNAPI)
+    list(APPEND TFLITE_BENCHMARK_SRCS
+      ${TFLITE_SOURCE_DIR}/tools/delegates/nnapi_delegate_provider.cc
+    )
+  endif()  # _TFLITE_ENABLE_NNAPI
   list(APPEND TFLITE_BENCHMARK_LIBS
     ${ANDROID_LOG_LIB}
     absl::strings
   )
 endif()  # Android
+
+if(TFLITE_ENABLE_GPU)
+  list(APPEND TFLITE_BENCHMARK_SRCS
+    ${TFLITE_SOURCE_DIR}/tools/delegates/gpu_delegate_provider.cc
+  )
+endif()  # TFLITE_ENABLE_GPU
 
 add_executable(benchmark_model
   EXCLUDE_FROM_ALL

@@ -18,7 +18,8 @@ package_group(
     includes = ["//third_party/mlir:subpackages"],
     packages = [
         "//learning/brain/experimental/mlir/tfr/...",
-        "//tensorflow/compiler/mlir/...",
+        "//tensorflow/c/...",
+        "//tensorflow/compiler/...",
     ],
 )
 
@@ -170,26 +171,26 @@ cc_library(
     srcs = ["integration/tfr_decompose_ctx.cc"],
     hdrs = ["integration/tfr_decompose_ctx.h"],
     deps = [
+        ":passes",
+        ":tfr",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:convert_attr",
         "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
+        "//tensorflow/compiler/mlir/tensorflow:convert_type",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
-        "//tensorflow/compiler/mlir/tensorflow:translate_lib",
-        "//tensorflow/compiler/mlir/tfr",
-        "//tensorflow/compiler/mlir/tfr:passes",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/common_runtime:optimization_registry",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:TransformUtils",
     ],
 )
@@ -201,7 +202,6 @@ tf_cc_test(
         ":tfr_decompose_ctx",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -216,16 +216,54 @@ cc_library(
     name = "graph_decompose_pass",
     srcs = ["integration/graph_decompose_pass.cc"],
     hdrs = ["integration/graph_decompose_pass.h"],
-    data = ["//tensorflow/compiler/mlir/tfr/resources:decomposition_lib"],
     deps = [
         ":tfr_decompose_ctx",
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/stream_executor/lib",
         "@llvm-project//mlir:IR",
     ],
     alwayslink = 1,
+)
+
+tf_py_test(
+    name = "graph_decompose_test",
+    size = "small",
+    srcs = ["integration/graph_decompose_test.py"],
+    data = ["//tensorflow/compiler/mlir/tfr/resources:decomposition_lib"],
+    python_version = "PY3",
+    tags = [
+        "no_oss",
+        "notap",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/tfr/resources:composite_ops",
+        "//tensorflow/python/eager:def_function",
+    ],
+)
+
+cc_library(
+    name = "node_expansion_pass",
+    srcs = ["integration/node_expansion_pass.cc"],
+    hdrs = ["integration/node_expansion_pass.h"],
+    deps = [
+        ":tfr_decompose_ctx",
+        "//tensorflow/core/common_runtime/eager:core",
+        "//tensorflow/core/common_runtime/eager:eager_op_rewrite_registry",
+        "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/strings",
+    ],
+    alwayslink = 1,
+)
+
+tf_py_test(
+    name = "node_expansion_test",
+    size = "small",
+    srcs = ["integration/node_expansion_test.py"],
+    data = ["//tensorflow/compiler/mlir/tfr/resources:decomposition_lib"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow/compiler/mlir/tfr/resources:composite_ops",
+    ],
 )
 
 tf_python_pybind_extension(

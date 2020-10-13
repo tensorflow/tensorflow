@@ -14,11 +14,17 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <string>
+#include <vector>
 
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
-#include "pybind11/cast.h"
+#include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
 #include "tensorflow/core/platform/env.h"
@@ -38,7 +44,12 @@ namespace py = ::pybind11;
 
 namespace {
 
-tensorflow::Status ValidateHostPortPair(const std::string& host_port) {
+using ::tensorflow::RemoteProfilerSessionManagerOptions;
+
+// Profiler gives grace after profiling duration to terminate.
+constexpr absl::Duration kSessionGraceTime = absl::Seconds(5);
+
+tensorflow::Status ValidateHostPortPair(absl::string_view host_port) {
   tensorflow::uint32 port;
   std::vector<absl::string_view> parts = absl::StrSplit(host_port, ':');
   // Must be host:port, port must be a number, host must not contain a '/',
@@ -51,34 +62,156 @@ tensorflow::Status ValidateHostPortPair(const std::string& host_port) {
   return tensorflow::Status::OK();
 }
 
-// Takes profiler options in a py::dict and returns a ProfileOptions.
+tensorflow::Status ValidateOptions(
+    const RemoteProfilerSessionManagerOptions& options) {
+  if (options.service_addresses().empty()) {
+    return tensorflow::errors::InvalidArgument("No service address provided.");
+  }
+
+  if (options.profiler_options().duration_ms() == 0) {
+    return tensorflow::errors::InvalidArgument(
+        "duration_ms must be greater than zero.");
+  }
+
+  for (absl::string_view host_port : options.service_addresses()) {
+    TF_RETURN_IF_ERROR(ValidateHostPortPair(host_port));
+  }
+
+  if (options.max_session_duration_ms() <
+      options.profiler_options().duration_ms()) {
+    return tensorflow::errors::InvalidArgument(
+        "The maximum profiling session duration must be greater than or equal "
+        "to the local profiler duration.");
+  }
+
+  return tensorflow::Status::OK();
+}
+
+// Receives a comma delimited list of service_addresses and adds them to
+// RemoteProfilerSessionManagerOptions::service_addresses.
+void AddServiceAddresses(absl::string_view service_addresses,
+                         RemoteProfilerSessionManagerOptions* options) {
+  for (absl::string_view server : absl::StrSplit(service_addresses, ',')) {
+    options->add_service_addresses(server.data(), server.size());
+  }
+}
+
+// Sets gRPC deadline to a grace period based on the profiling duration.
+void UpdateMaxSessionDuration(RemoteProfilerSessionManagerOptions& options) {
+  auto local_profiler_duration = options.profiler_options().duration_ms();
+  auto session_creation_ts = options.session_creation_timestamp_ns();
+  auto requested_start_ts = options.profiler_options().start_timestamp_ns();
+  // User only needs to set maximal session duration if the profiling duration
+  // is bounded.
+  DCHECK_GT(local_profiler_duration, 0);
+  VLOG(3) << "duration_ms was given as " << local_profiler_duration;
+  // Max session duration includes the profiling session and grace time.
+  auto profile_duration =
+      absl::Milliseconds(local_profiler_duration) + kSessionGraceTime;
+  absl::Duration delay_duration;
+  // When requested start timestamp is 0, profiling starts immediately.
+  if (requested_start_ts > 0) {
+    delay_duration =
+        absl::Nanoseconds(requested_start_ts - session_creation_ts);
+  }
+
+  auto max_session_duration = profile_duration + delay_duration;
+  options.set_max_session_duration_ms(
+      absl::ToInt64Milliseconds(max_session_duration));
+  VLOG(1) << "max_session_duration set to " << max_session_duration;
+}
+
+// Takes profiler options in a py::dict and returns a
+// RemoteProfilerSessionManagerOptions.
 // This must be called under GIL because it reads Python objects. Reading Python
 // objects require GIL because the objects can be mutated by other Python
 // threads. In addition, Python objects are reference counted; reading py::dict
 // will increase its reference count.
-tensorflow::ProfileOptions GetOptionsLocked(const py::dict& opts) {
-  tensorflow::ProfileOptions options =
+RemoteProfilerSessionManagerOptions GetOptionsLocked(absl::string_view logdir,
+                                                     const py::dict& opts) {
+  RemoteProfilerSessionManagerOptions options;
+  *options.mutable_profiler_options() =
       tensorflow::ProfilerSession::DefaultOptions();
+  // Store a timestamp of when this session was created. This will be the basis
+  // of gRPC deadline afterwards.
+  auto now = absl::Now();
+  options.set_session_creation_timestamp_ns(absl::ToUnixNanos(now));
+  VLOG(2) << "set_session_creation_timestamp_ns set to "
+          << options.session_creation_timestamp_ns() << " [" << now << "]";
+
+  // Set the path of where to store XSpaces.
+  options.mutable_profiler_options()->set_repository_path(logdir.data(),
+                                                          logdir.size());
+  VLOG(2) << "repository_path set to "
+          << options.profiler_options().repository_path();
+
   for (const auto& kw : opts) {
     std::string key = py::cast<std::string>(kw.first);
     if (key == "host_tracer_level") {
-      options.set_host_tracer_level(py::cast<int>(kw.second));
-      VLOG(1) << "host_tracer_level set to " << options.host_tracer_level();
+      auto value = py::cast<int>(kw.second);
+      options.mutable_profiler_options()->set_host_tracer_level(value);
+      VLOG(1) << "host_tracer_level set to " << value;
     } else if (key == "device_tracer_level") {
-      options.set_device_tracer_level(py::cast<int>(kw.second));
-      VLOG(1) << "device_tracer_level set to " << options.device_tracer_level();
+      auto value = py::cast<int>(kw.second);
+      options.mutable_profiler_options()->set_device_tracer_level(value);
+      VLOG(1) << "device_tracer_level set to " << value;
     } else if (key == "python_tracer_level") {
-      options.set_python_tracer_level(py::cast<int>(kw.second));
-      VLOG(1) << "python_tracer_level set to " << options.python_tracer_level();
+      auto value = py::cast<int>(kw.second);
+      options.mutable_profiler_options()->set_python_tracer_level(value);
+      VLOG(1) << "python_tracer_level set to " << value;
+    } else {
+      LOG(WARNING) << "Unrecognised key: " << key;
     }
   }
+
+  return options;
+}
+
+RemoteProfilerSessionManagerOptions GetOptionsLocked(
+    absl::string_view service_addresses, absl::string_view logdir,
+    absl::string_view worker_list, bool include_dataset_ops,
+    tensorflow::int32 duration_ms, py::dict opts, bool* is_cloud_tpu_session) {
+  RemoteProfilerSessionManagerOptions options = GetOptionsLocked(logdir, opts);
+
+  // Remote profiling does not support any use cases where the following options
+  // are set by `py::dict opts`. e.g. `opts['service_addrs']` will not happen.
+  DCHECK(options.service_addresses().empty());
+  // In remote profiling, duration is always passed by value explicitly and not
+  // set in py::dict opts.
+  DCHECK_EQ(options.profiler_options().duration_ms(), 0);
+  // Because duration_ms is not set from py::dict opts, it follows that
+  // max_session_duration_ms must be unset as well.
+  DCHECK_EQ(options.max_session_duration_ms(), 0);
+
+  // Worker_list is only used for TensorBoard TPU capture cases. For a TPU
+  // cluster, service_address is the Master, which can already be found in the
+  // list of workers. These sessions will be used with the ProfileAnalysis
+  // service.
+  *is_cloud_tpu_session = !worker_list.empty();
+  AddServiceAddresses(*is_cloud_tpu_session ? worker_list : service_addresses,
+                      &options);
+
+  // Set local profiler duration and profiler session durations.
+  options.mutable_profiler_options()->set_include_dataset_ops(
+      include_dataset_ops);
+  options.mutable_profiler_options()->set_duration_ms(duration_ms);
+  UpdateMaxSessionDuration(options);
+
+  for (int idx = 0; idx < options.service_addresses_size(); ++idx) {
+    VLOG(1) << "service_addr " << idx << " set to "
+            << options.service_addresses(idx);
+  }
+  VLOG(1) << "include_dataset_ops set to " << include_dataset_ops;
+  VLOG(1) << "duration_ms set to " << duration_ms;
+
   return options;
 }
 
 class ProfilerSessionWrapper {
  public:
   void Start(const char* logdir, const py::dict& options) {
-    session_ = tensorflow::ProfilerSession::Create(GetOptionsLocked(options));
+    auto opts = GetOptionsLocked(logdir, options);
+    session_ = tensorflow::ProfilerSession::Create(opts.profiler_options());
     logdir_ = logdir;
     tensorflow::MaybeRaiseRegisteredFromStatus(session_->Status());
   }
@@ -130,26 +263,28 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
     profiler_server.release();
   });
 
-  m.def("trace",
-        [](const char* service_addr, const char* logdir,
-           const char* worker_list, bool include_dataset_ops, int duration_ms,
-           int num_tracing_attempts, py::dict options) {
-          // Normalize py::dict into a well defined proto.
-          tensorflow::ProfileOptions opts = GetOptionsLocked(options);
+  m.def("trace", [](const char* service_addr, const char* logdir,
+                    const char* worker_list, bool include_dataset_ops,
+                    int duration_ms, int num_tracing_attempts,
+                    py::dict options) {
+    // TPU capture is true if the user sets worker_list.
+    bool is_cloud_tpu_session = false;
+    // Normalize py::dict into a well defined and validated proto.
+    tensorflow::RemoteProfilerSessionManagerOptions opts =
+        GetOptionsLocked(service_addr, logdir, worker_list, include_dataset_ops,
+                         duration_ms, options, &is_cloud_tpu_session);
+    tensorflow::Status status = ValidateOptions(opts);
+    tensorflow::MaybeRaiseRegisteredFromStatus(status);
 
-          tensorflow::Status status = ValidateHostPortPair(service_addr);
-          tensorflow::MaybeRaiseRegisteredFromStatus(status);
-          opts.set_include_dataset_ops(include_dataset_ops);
-          {
-            // Release the lock to keep the lock scope to a minimum, and allow
-            // other threads to proceed.
-            py::gil_scoped_release release;
-            status = tensorflow::profiler::Trace(service_addr, logdir,
-                                                 worker_list, duration_ms,
-                                                 num_tracing_attempts, opts);
-          }
-          tensorflow::MaybeRaiseRegisteredFromStatus(status);
-        });
+    {
+      // Release the lock to keep the lock scope to a minimum, and allow
+      // other threads to proceed.
+      py::gil_scoped_release release;
+      status = tensorflow::profiler::Trace(logdir, num_tracing_attempts, opts,
+                                           is_cloud_tpu_session);
+    }
+    tensorflow::MaybeRaiseRegisteredFromStatus(status);
+  });
 
   m.def("monitor", [](const char* service_addr, int duration_ms,
                       int monitoring_level, bool display_timestamp) {

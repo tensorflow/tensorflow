@@ -240,5 +240,16 @@ uint64 GetStartTimestampNs(const XPlane& plane) {
   return plane_timestamp;
 }
 
+bool IsEmpty(const XSpace& space) {
+  for (const auto& plane : space.planes()) {
+    for (const auto& line : plane.lines()) {
+      if (!line.events().empty()) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 }  // namespace profiler
 }  // namespace tensorflow

@@ -3413,6 +3413,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["conv_ops_3d_test.py"],
     shard_count = 30,
+    tags = ["no_cuda11"],
     tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",

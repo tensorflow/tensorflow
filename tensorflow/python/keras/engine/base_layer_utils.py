@@ -847,7 +847,7 @@ def no_ragged_support(inputs, layer_name):
 
 
 def is_split_variable(v):
-  """Returns True if `v` is either a PartionedVariable or a SharedVariable."""
+  """Returns True if `v` is either a PartionedVariable or a ShardedVariable."""
   return hasattr(v, '_variable_list') or hasattr(v, '_variables')
 
 

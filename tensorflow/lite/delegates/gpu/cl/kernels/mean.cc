@@ -117,12 +117,12 @@ std::string Mean::GetMeanKernelCode(const OperationDef& op_def,
   return c;
 }
 
-absl::Status Mean::BindArguments() {
+absl::Status Mean::BindArguments(ArgumentsBinder* args) {
   const double total_size = src_[0]->Width() * src_[0]->Height();
   const double size_0 = work_group_size_.x * work_group_size_.y;
   const double size_1 = total_size / size_0;
-  RETURN_IF_ERROR(args_.SetFloat("inv_multiplier_1", 1.0 / size_1));
-  RETURN_IF_ERROR(args_.SetFloat("inv_multiplier_2", 1.0 / size_0));
+  RETURN_IF_ERROR(args->SetFloat("inv_multiplier_1", 1.0 / size_1));
+  RETURN_IF_ERROR(args->SetFloat("inv_multiplier_2", 1.0 / size_0));
   return absl::OkStatus();
 }
 

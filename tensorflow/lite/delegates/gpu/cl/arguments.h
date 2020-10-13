@@ -33,7 +33,15 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-class Arguments {
+class ArgumentsBinder {
+ public:
+  virtual absl::Status SetInt(const std::string& name, int value) = 0;
+  virtual absl::Status SetFloat(const std::string& name, float value) = 0;
+  virtual absl::Status SetHalf(const std::string& name, half value) = 0;
+  virtual ~ArgumentsBinder() = default;
+};
+
+class Arguments : public ArgumentsBinder {
  public:
   Arguments() = default;
   void AddFloat(const std::string& name, float value = 0.0f);
@@ -44,9 +52,9 @@ class Arguments {
   void AddObject(const std::string& name,
                  GPUObjectDescriptorPtr&& descriptor_ptr);
 
-  absl::Status SetInt(const std::string& name, int value);
-  absl::Status SetFloat(const std::string& name, float value);
-  absl::Status SetHalf(const std::string& name, half value);
+  absl::Status SetInt(const std::string& name, int value) override;
+  absl::Status SetFloat(const std::string& name, float value) override;
+  absl::Status SetHalf(const std::string& name, half value) override;
   absl::Status SetObjectRef(const std::string& name, const GPUObject* object);
 
   absl::Status Bind(cl_kernel kernel, int offset = 0);
@@ -65,6 +73,8 @@ class Arguments {
   Arguments& operator=(Arguments&& args);
   Arguments(const Arguments&) = delete;
   Arguments& operator=(const Arguments&) = delete;
+
+  ~Arguments() override = default;
 
  private:
   void AddBuffer(const std::string& name, const GPUBufferDescriptor& desc);

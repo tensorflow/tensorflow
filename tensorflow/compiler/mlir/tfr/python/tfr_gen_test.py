@@ -462,26 +462,25 @@ class TFRGenTensorTest(TFRGenTestBase):
       CHECK-NEXT:   tfr.return %[[call]] : !tfr.tensor
       CHECK-NEXT: }
 
-      CHECK-LABEL: tfr.func @tf__test_complex_tf_op_(!tfr.tensor<T>,!tfr.tensor<Tlen>,i64{tfr.name="N"}) -> (!tfr.tensor_list<N,T>) attributes {N,T,Tlen}
-
-      CHECK-LABEL: tfr.func @tf__split_v_(!tfr.tensor<T>,!tfr.tensor<Tlen>,!tfr.tensor<i32_>,i64{tfr.name="num_split"}) -> (!tfr.tensor_list<num_split,T>) attributes {T,Tlen,i32_,num_split}
-
-      CHECK-LABEL: tfr.func @tf__pack_(!tfr.tensor_list<N,T>,i64{tfr.name="axis"}) -> (!tfr.tensor<T>) attributes {N,T,axis}
-
-      CHECK-LABEL: tfr.func @tf__test_identity_op_(!tfr.tensor<T>) -> (!tfr.tensor<T>) attributes {T}
-
-      CHECK-LABEL: tfr.func @tf__identity_(!tfr.tensor<T>) -> (!tfr.tensor<T>) attributes {T}
-
-      CHECK-LABEL: tfr.func @tf__test_two_inputs_op_(!tfr.tensor<T>,!tfr.tensor<T>,i1{tfr.name="pred"}) -> (!tfr.tensor<T>) attributes {T,pred}
-
       CHECK-LABEL: tfr.func @tf__add_(!tfr.tensor<T>,!tfr.tensor<T>) -> (!tfr.tensor<T>) attributes {T}
 
       CHECK-LABEL: tfr.func @tf__concat_(!tfr.tensor<i32_>,!tfr.tensor_list<N,T>) -> (!tfr.tensor<T>) attributes {N,T,i32_}
 
-      CHECK-LABEL: tfr.func @tf__test_input_n_op_(!tfr.tensor_list<N,T>) -> (!tfr.tensor<T>) attributes {N,T}
+      CHECK-LABEL: tfr.func @tf__identity_(!tfr.tensor<T>) -> (!tfr.tensor<T>) attributes {T}
+
+      CHECK-LABEL: tfr.func @tf__pack_(!tfr.tensor_list<N,T>,i64{tfr.name="axis"}) -> (!tfr.tensor<T>) attributes {N,T,axis}
+
+      CHECK-LABEL: tfr.func @tf__split_v_(!tfr.tensor<T>,!tfr.tensor<Tlen>,!tfr.tensor<i32_>,i64{tfr.name="num_split"}) -> (!tfr.tensor_list<num_split,T>) attributes {T,Tlen,i32_,num_split}
 
       CHECK-LABEL: tfr.func @tf__test_two_inputs_op_(!tfr.tensor<T>,!tfr.tensor<T>,i1{tfr.name="pred"}) -> (!tfr.tensor<T>) attributes {T,pred}
 
+      CHECK-LABEL: tfr.func @tf__test_complex_tf_op_(!tfr.tensor<T>,!tfr.tensor<Tlen>,i64{tfr.name="N"}) -> (!tfr.tensor_list<N,T>) attributes {N,T,Tlen}
+
+      CHECK-LABEL: tfr.func @tf__test_identity_op_(!tfr.tensor<T>) -> (!tfr.tensor<T>) attributes {T}
+
+      CHECK-LABEL: tfr.func @tf__test_two_inputs_op_(!tfr.tensor<T>,!tfr.tensor<T>,i1{tfr.name="pred"}) -> (!tfr.tensor<T>) attributes {T,pred}
+
+      CHECK-LABEL: tfr.func @tf__test_input_n_op_(!tfr.tensor_list<N,T>) -> (!tfr.tensor<T>) attributes {N,T}
     """
     self._check_code(mlir_code, mlir_code_exp)
 

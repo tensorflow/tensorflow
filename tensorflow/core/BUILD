@@ -91,7 +91,7 @@ load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
 load("//tensorflow:tensorflow.bzl", "if_nccl")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tensorflow_opensource_extra_deps")
+load("@tf_toolchains//macros:cpp.bzl", "tensorflow_opensource_extra_deps")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
@@ -163,11 +163,6 @@ exports_files([
     "BUILD",
     "ops/ops.pbtxt",
 ])
-
-package_group(
-    name = "experimental_access",
-    packages = ["//tensorflow/core/common_runtime/..."],
-)
 
 # Authorized users go here.
 package_group(name = "friends")
@@ -369,22 +364,6 @@ cc_library(
     ],
 )
 
-# APIs defined in lib_experimental are for experimental usage and may be
-# subject to change. Its visibility is limited to selected packages.
-cc_library(
-    name = "lib_experimental",
-    hdrs = [
-        "//tensorflow/core/lib/core:legacy_lib_core_threadpool_options_header",
-    ],
-    visibility = [
-        ":experimental_access",
-        "//tensorflow/cc:__pkg__",
-    ],
-    deps = [
-        ":lib",
-    ],
-)
-
 alias(
     name = "feature_util",
     actual = "//tensorflow/core/example:feature_util",
@@ -516,16 +495,6 @@ tf_cuda_library(
         ":framework_internal",
         "@com_google_absl//absl/base",
     ],
-)
-
-alias(
-    name = "overflow",
-    actual = "//tensorflow/core/util:overflow",
-)
-
-alias(
-    name = "exec_on_stall",
-    actual = "//tensorflow/core/util:exec_on_stall",
 )
 
 alias(
