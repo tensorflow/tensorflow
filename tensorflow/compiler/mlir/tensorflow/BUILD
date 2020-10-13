@@ -110,6 +110,8 @@ cc_library(
     deps = [
         ":tensorflow_op_interfaces_inc_gen",
         ":tensorflow_structs",
+        "//tensorflow/core:framework",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
@@ -810,8 +812,8 @@ cc_library(
     ],
     deps = [
         ":tensorflow",
+        ":tensorflow_op_interfaces",
         ":tensorflow_types",
-        "//tensorflow/core:framework",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",

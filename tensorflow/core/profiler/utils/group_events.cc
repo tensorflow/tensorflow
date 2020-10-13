@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
-#include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
@@ -79,16 +78,7 @@ int64 GetEventType(bool is_host_plane, const EventNode& event) {
     } else if (absl::StartsWith(name, "ProcessBatch")) {
       return HostEventType::kProcessBatch;
     }
-    // TF op names.
-    Category category = ParseTfOpFullname(name).category;
-    switch (category) {
-      case Category::kTensorFlow:
-        return HostEventType::kTfOpRun;
-      case Category::kTfData:
-        return HostEventType::kIterator;
-      default:
-        return HostEventType::kUnknownHostEventType;
-    }
+    return HostEventType::kUnknownHostEventType;
   }
 }
 
@@ -302,6 +292,11 @@ void SortEventList(EventList* event_list) {
 // Returns true if it has JAX-related events.
 bool HasJaxEvent(const EventNodeMap& event_node_map) {
   return event_node_map.contains(HostEventType::kExecuteOnLocalDevices);
+}
+
+bool IsIteratorEventType(absl::optional<int64> event_type) {
+  return event_type == HostEventType::kIterator ||
+         event_type == HostEventType::kDeviceInputPipelineSecondIterator;
 }
 
 }  // namespace
@@ -798,8 +793,7 @@ void EventForest::ConnectTfDataEvents() {
           produce_event->GetEventVisitor().GetStat(StatType::kElementId);
       if (!element_id.has_value()) continue;
       for (EventNode* produce_iterator : produce_event->GetChildren()) {
-        if (IsDatasetOp(ParseTfOpFullname(
-                produce_iterator->GetEventVisitor().Name()))) {
+        if (IsIteratorEventType(produce_iterator->GetEventVisitor().Type())) {
           absl::optional<XStatVisitor> iterator_id =
               produce_iterator->GetEventVisitor().GetStat(StatType::kParentId);
           if (!iterator_id.has_value()) break;
@@ -832,8 +826,7 @@ void EventForest::ConnectTfDataEvents() {
       // parents.
       EventNode* consume_iterator = consume_event->GetParents().at(0);
       if (!consume_iterator ||
-          !IsDatasetOp(
-              ParseTfOpFullname(consume_iterator->GetEventVisitor().Name()))) {
+          !IsIteratorEventType(consume_iterator->GetEventVisitor().Type())) {
         continue;
       }
       absl::optional<XStatVisitor> iterator_id =

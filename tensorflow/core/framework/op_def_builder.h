@@ -142,6 +142,10 @@ class OpDefBuilder {
   // python/framework/common_shapes.py
   OpDefBuilder& SetShapeFn(OpShapeInferenceFn fn);
 
+  // Allows the `<type>` in calls to `Attr()` to be "any".
+  // This is used by PythonAPIWrapper for pass-through parameters.
+  OpDefBuilder& AllowAttrTypeAny();
+
   // Sets op_reg_data->op_def to the requested OpDef and
   // op_reg_data->shape_inference_fn to the requested shape inference function,
   // or returns an error.
@@ -168,6 +172,7 @@ class OpDefBuilder {
   std::vector<string> control_outputs_;
   std::string doc_;
   std::vector<string> errors_;
+  bool allow_attr_type_any_ = false;
 };
 
 }  // namespace tensorflow

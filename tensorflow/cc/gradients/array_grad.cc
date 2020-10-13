@@ -89,15 +89,25 @@ Status QuantizeAndDequantizeGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("QuantizeAndDequantize", QuantizeAndDequantizeGrad);
 
-Status QuantizeAndDequantizeV2Grad(const Scope& scope, const Operation& op,
-                                   const std::vector<Output>& grad_inputs,
-                                   std::vector<Output>* grad_outputs) {
-  grad_outputs->push_back(Identity(scope, grad_inputs[0]));
-  grad_outputs->push_back(NoGradient());
-  grad_outputs->push_back(NoGradient());
+Status QuantizeAndDequantizeV4GradHelper(const Scope& scope,
+                                         const Operation& op,
+                                         const std::vector<Output>& grad_inputs,
+                                         std::vector<Output>* grad_outputs) {
+  Input input = Shape(scope, op.input(0));
+  Input input_min = op.input(1);
+  Input input_max = op.input(2);
+  int64 axis;
+  TF_RETURN_IF_ERROR(GetNodeAttribute(op.node()->attrs(), "axis", &axis));
+  auto qdq_v4_grad = QuantizeAndDequantizeV4Grad(
+      scope, grad_inputs[0], input, input_min, input_max,
+      QuantizeAndDequantizeV4Grad::Axis(axis));
+  grad_outputs->push_back(qdq_v4_grad.input_backprop);
+  grad_outputs->push_back(qdq_v4_grad.input_min_backprop);
+  grad_outputs->push_back(qdq_v4_grad.input_max_backprop);
   return scope.status();
 }
-REGISTER_GRADIENT_OP("QuantizeAndDequantizeV2", QuantizeAndDequantizeV2Grad);
+REGISTER_GRADIENT_OP("QuantizeAndDequantizeV4",
+                     QuantizeAndDequantizeV4GradHelper);
 
 Status QuantizeAndDequantizeV3Grad(const Scope& scope, const Operation& op,
                                    const std::vector<Output>& grad_inputs,

@@ -33,11 +33,28 @@ cc_library(
     alwayslink = 1,
 )
 
+tf_custom_op_library(
+    name = "composite_ops.so",
+    srcs = [
+        "composite_ops.cc",
+    ],
+)
+
 tf_gen_op_wrapper_py(
-    name = "composite_ops",
-    out = "composite_ops.py",
+    name = "gen_composite_ops",
+    out = "gen_composite_ops.py",
     deps = [
         ":composite_ops_cc",
+    ],
+)
+
+tf_custom_op_py_library(
+    name = "composite_ops",
+    dso = [":composite_ops.so"],
+    kernels = [":composite_ops_cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":gen_composite_ops",
     ],
 )
 

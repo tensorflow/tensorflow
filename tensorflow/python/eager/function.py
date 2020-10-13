@@ -2941,10 +2941,6 @@ class Function(object):
     self._experimental_compile = experimental_compile
     self._experimental_follow_type_hints = experimental_follow_type_hints
 
-    # A boolean indicating whether the function has been traced with
-    # distribution strategy.
-    self._traced_with_distribution_strategy = False
-
   def __call__(self, *args, **kwargs):
     """Calls a graph function specialized to the inputs."""
     with self._lock:
@@ -3177,18 +3173,13 @@ class Function(object):
     except (AttributeError, IndexError):
       pass
 
-    # If the function has been traced with a distribution strategy, it might
-    # need to be retraced at saving time as DistributedVariable created under
-    # distribution strategy may want different tracing behavior at training and
-    # saving, e.g, it wants to resolve to the primary component at saving time,
-    # but wants resolve to the component residing in the current device at
-    # training time. We achieve this by adding variable_policy to the function
-    # cache key.
-    if save_context.in_save_context(
-    ) and self._traced_with_distribution_strategy:
+    if save_context.in_save_context():
       variable_policy = (
           save_context.get_save_options().experimental_variable_policy)
     else:
+      # With EXPAND_DISTRIBUTED_VARIABLES the variables have the same behavior
+      # in and out of saving. We use EXPAND_DISTRIBUTED_VARIABLES so that if the
+      # user saves with it, there's no need to retrace the functions.
       variable_policy = save_options.VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES
 
     return (parent_graph, device_functions, colocation_stack,
@@ -3379,9 +3370,6 @@ class Function(object):
           self._function_cache.missed.add(call_context_key)
           graph_function = self._create_graph_function(args, kwargs)
           self._function_cache.primary[cache_key] = graph_function
-
-          if ops.get_default_graph()._distribution_strategy_stack:
-            self._traced_with_distribution_strategy = True
 
           return graph_function, filtered_flat_args
 

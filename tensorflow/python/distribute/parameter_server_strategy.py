@@ -503,6 +503,17 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
             "Cannot reduce to another worker: %r, current worker is %r" %
             (d, self._worker_device))
 
+  def _gather_to_implementation(self, value, destinations, axis,
+                                experimental_hints):
+    self._verify_destinations_not_different_worker(destinations)
+    if not isinstance(value, values.DistributedValues):
+      return value
+    return self._cross_device_ops._gather(  # pylint: disable=protected-access
+        value,
+        destinations=destinations,
+        axis=axis,
+        experimental_hints=experimental_hints)
+
   def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
     self._verify_destinations_not_different_worker(destinations)
     if not isinstance(value, values.DistributedValues):

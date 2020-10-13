@@ -49,6 +49,10 @@ struct ShapeToDescriptorsPass
     target.addIllegalDialect<shape::ShapeDialect>();
     target.addLegalDialect<scf::SCFDialect>();
     target.addLegalDialect<StandardOpsDialect>();
+    // Don't mark the primary Cstr/Assuming ops as illegal, so they can be
+    // lowered at a later time to assertions.
+    target.addLegalOp<shape::AssumingOp, shape::AssumingYieldOp,
+                      shape::CstrRequireOp>();
 
     // Setup conversion patterns.
     OwningRewritePatternList patterns;

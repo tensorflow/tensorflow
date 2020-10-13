@@ -42,6 +42,8 @@ int32_t GetOrInsertOpCodeIndex(ModelT* model, const BuiltinOperator& op_code,
   model->operator_codes.push_back(absl::make_unique<OperatorCodeT>());
   int op_code_idx = model->operator_codes.size() - 1;
   model->operator_codes[op_code_idx]->builtin_code = op_code;
+  model->operator_codes[op_code_idx]->deprecated_builtin_code =
+      ConvertBuiltinCodeToDeprecatedBuiltinCode(op_code);
   // Version 2 and onwards supports INT8 inputs.
   model->operator_codes[op_code_idx]->version = version;
 

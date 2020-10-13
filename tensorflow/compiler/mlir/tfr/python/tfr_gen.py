@@ -271,7 +271,7 @@ class OpDefCache(object):
 
   def mlir_external_funcs(self):
     tfr_funcs = []
-    for op_def, derived_attrs in self._op_defs.values():
+    for _, (op_def, derived_attrs) in sorted(self._op_defs.items()):
       tfr_func = '\ntfr.func @tf__{}_('.format(_camel_to_snake(op_def.name))
 
       # tensor inputs

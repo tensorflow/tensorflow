@@ -478,7 +478,7 @@ absl::Span<const OpInfo::TensorProperties> GetInputsToDeterminateBatchSize(
       "Add",
       "AddV2",
       "Mul",
-      "Sub"
+      "Sub",
       "Div",
       "FloorDiv",
       "RealDiv",

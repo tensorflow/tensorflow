@@ -204,6 +204,7 @@ tensorflow/third_party/tensorrt/build_defs.bzl.tpl
 tensorflow/third_party/tensorrt/tensorrt/include/tensorrt_config.h.tpl
 tensorflow/third_party/tensorrt/tensorrt_configure.bzl
 tensorflow/third_party/termcolor.BUILD
+tensorflow/third_party/tf_toolchains.BUILD
 tensorflow/third_party/tflite_mobilenet.BUILD
 tensorflow/third_party/tflite_mobilenet_float.BUILD
 tensorflow/third_party/tflite_mobilenet_quant.BUILD

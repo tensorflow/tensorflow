@@ -55,6 +55,13 @@ class HloFunctionImporter {
   static Status ImportAsRegion(const xla::HloComputation& computation,
                                mlir::Region* region, mlir::Builder* builder);
 
+  // Imports the given computation to the given place specified by `builder`.
+  // `arguments` contains values for all parameters.
+  static StatusOr<mlir::Value> ImportInstructions(
+      const xla::HloComputation& computation,
+      const llvm::SmallVectorImpl<mlir::Value>& arguments,
+      mlir::OpBuilder* builder);
+
  private:
   HloFunctionImporter(mlir::ModuleOp module,
                       std::unordered_map<const xla::HloComputation*,
@@ -80,6 +87,10 @@ class HloFunctionImporter {
   // Assumes that the block already has correct arguments populated.
   tensorflow::Status ImportInstructions(const HloComputation& computation,
                                         mlir::Block* block);
+  StatusOr<mlir::Value> ImportInstructionsImpl(
+      const xla::HloComputation& computation,
+      const llvm::SmallVectorImpl<mlir::Value>& arguments,
+      mlir::OpBuilder* builder);
 
   // Imports an instruction.
   StatusOr<mlir::Operation*> ImportInstruction(xla::HloInstruction* instruction,

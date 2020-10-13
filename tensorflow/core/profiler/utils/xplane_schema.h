@@ -209,6 +209,8 @@ inline bool IsHostEventType(HostEventType event_type,
 
 absl::optional<int64> FindHostEventType(absl::string_view event_name);
 
+absl::optional<int64> FindTfOpEventType(absl::string_view event_name);
+
 absl::string_view GetStatTypeStr(StatType stat_type);
 
 bool IsStatType(StatType stat_type, absl::string_view stat_name);

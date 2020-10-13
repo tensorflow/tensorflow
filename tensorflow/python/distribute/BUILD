@@ -206,7 +206,6 @@ py_test(
         "//tensorflow/python/autograph/core:test_lib",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -1705,6 +1704,37 @@ py_test(
 distribute_py_test(
     name = "strategy_common_test",
     srcs = ["strategy_common_test.py"],
+    disable_mlir_bridge = False,
+    python_version = "PY3",
+    shard_count = 2,
+    tags = [
+        "multi_and_single_gpu",
+        "notsan",  # TODO(b/160006974)
+    ],
+    xla_enable_strict_auto_jit = True,
+    deps = [
+        ":collective_all_reduce_strategy",
+        ":combinations",
+        ":multi_worker_test_base",
+        ":reduce_util",
+        ":strategy_combinations",
+        ":strategy_test_lib",
+        ":test_util",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:def_function",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
+    name = "strategy_gather_test",
+    srcs = ["strategy_gather_test.py"],
     disable_mlir_bridge = False,
     python_version = "PY3",
     shard_count = 2,

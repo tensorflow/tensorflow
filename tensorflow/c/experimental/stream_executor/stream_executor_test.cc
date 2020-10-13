@@ -41,9 +41,9 @@ struct SP_Timer_st {
 
 namespace stream_executor {
 namespace {
-constexpr int DEVICE_COUNT = 2;
-constexpr char DEVICE_NAME[] = "MyDevice";
-constexpr char DEVICE_TYPE[] = "GPU";
+constexpr int kDeviceCount = 2;
+constexpr char kDeviceName[] = "MY_DEVICE";
+constexpr char kDeviceType[] = "GPU";
 
 /*** Create SP_StreamExecutor (with empty functions) ***/
 void allocate(const SP_Device* const device, uint64_t size,
@@ -190,9 +190,9 @@ void destroy_device_fns(const SP_Platform* platform, SP_DeviceFns* device_fns) {
 void PopulateDefaultPlatform(SP_Platform* platform,
                              SP_PlatformFns* platform_fns) {
   *platform = {SP_PLATFORM_STRUCT_SIZE};
-  platform->name = DEVICE_NAME;
-  platform->type = DEVICE_TYPE;
-  platform->visible_device_count = DEVICE_COUNT;
+  platform->name = kDeviceName;
+  platform->type = kDeviceType;
+  platform->visible_device_count = kDeviceCount;
   platform_fns->create_device = create_device;
   platform_fns->destroy_device = destroy_device;
   platform_fns->create_device_fns = create_device_fns;
@@ -218,11 +218,11 @@ TEST(StreamExecutor, SuccessfulRegistration) {
   port::Status status = InitStreamExecutorPlugin(plugin_init);
   TF_ASSERT_OK(status);
   port::StatusOr<Platform*> maybe_platform =
-      MultiPlatformManager::PlatformWithName("MyDevice");
+      MultiPlatformManager::PlatformWithName("MY_DEVICE");
   TF_ASSERT_OK(maybe_platform.status());
   Platform* platform = maybe_platform.ConsumeValueOrDie();
-  ASSERT_EQ(platform->Name(), DEVICE_NAME);
-  ASSERT_EQ(platform->VisibleDeviceCount(), DEVICE_COUNT);
+  ASSERT_EQ(platform->Name(), kDeviceName);
+  ASSERT_EQ(platform->VisibleDeviceCount(), kDeviceCount);
 
   port::StatusOr<StreamExecutor*> maybe_executor =
       platform->ExecutorForDevice(0);
@@ -242,6 +242,39 @@ TEST(StreamExecutor, NameNotSet) {
   port::Status status = InitStreamExecutorPlugin(plugin_init);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
   ASSERT_EQ(status.error_message(), "'name' field in SP_Platform must be set.");
+}
+
+TEST(StreamExecutor, InvalidNameWithSemicolon) {
+  auto plugin_init = [](SE_PlatformRegistrationParams* const params,
+                        TF_Status* const status) -> void {
+    TF_SetStatus(status, TF_OK, "");
+    PopulateDefaultPlatform(params->platform, params->platform_fns);
+    params->platform->name = "INVALID:NAME";
+    params->destroy_platform = destroy_platform;
+    params->destroy_platform_fns = destroy_platform_fns;
+  };
+
+  port::Status status = InitStreamExecutorPlugin(plugin_init);
+  ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
+  EXPECT_THAT(
+      status.error_message(),
+      testing::ContainsRegex("Device name/type 'INVALID:NAME' must match"));
+}
+
+TEST(StreamExecutor, InvalidNameWithSlash) {
+  auto plugin_init = [](SE_PlatformRegistrationParams* const params,
+                        TF_Status* const status) -> void {
+    TF_SetStatus(status, TF_OK, "");
+    PopulateDefaultPlatform(params->platform, params->platform_fns);
+    params->platform->name = "INVALID/";
+    params->destroy_platform = destroy_platform;
+    params->destroy_platform_fns = destroy_platform_fns;
+  };
+
+  port::Status status = InitStreamExecutorPlugin(plugin_init);
+  ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
+  EXPECT_THAT(status.error_message(),
+              testing::ContainsRegex("Device name/type 'INVALID/' must match"));
 }
 
 TEST(StreamExecutor, CreateDeviceNotSet) {

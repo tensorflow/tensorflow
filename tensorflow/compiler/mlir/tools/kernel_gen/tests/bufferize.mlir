@@ -60,3 +60,19 @@ func @dynamic_tensor_from_elements(%arg : tensor<*xf32>) -> tensor<?xindex> {
   return %result : tensor<?xindex>
 }
 
+// CHECK-LABEL: @assuming
+// CHECK-SAME: (%[[WITNESS:.*]]: !shape.witness, %[[ARG:.*]]: memref<?xf32>)
+// CHECK-SAME: -> memref<?xf32>
+func @assuming(%witness: !shape.witness, %arg : memref<?xf32>)
+              -> tensor<?xf32> {
+  // CHECK-NEXT: %[[ASSUMING_RESULT:.*]] = shape.assuming %[[WITNESS]]
+  // CHECK-SAME:     -> (memref<?xf32>) {
+  // CHECK-NEXT:   shape.assuming_yield %[[ARG]] : memref<?xf32>
+  // CHECK-NEXT: }
+  // CHECK-NEXT: return %[[ASSUMING_RESULT]] : memref<?xf32>
+  %assuming_result = shape.assuming %witness -> (tensor<?xf32>) {
+    %result = tensor_load %arg : memref<?xf32>
+    shape.assuming_yield %result : tensor<?xf32>
+  }
+  return %assuming_result : tensor<?xf32>
+}

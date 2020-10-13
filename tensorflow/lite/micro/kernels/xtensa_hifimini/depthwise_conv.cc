@@ -172,10 +172,9 @@ inline void DepthwiseConvPerChannel(
 
             // Apply quantized multiplier and accumulate result at 48bit
             // alignment:
-            acc_56 =
-                ops::micro::xtensa::hifimini::MultiplyByQuantizedMultiplier(
-                    acc_24x2, output_multiplier[output_channel],
-                    output_shift[output_channel]);
+            acc_56 = MultiplyByQuantizedMultiplier(
+                acc_24x2, output_multiplier[output_channel],
+                output_shift[output_channel]);
 
             // Add output offset, cap activation, and assign to the output:
             acc_56 = AE_ADDQ56(acc_56, output_offset_56);
@@ -288,12 +287,10 @@ inline void DepthwiseConv4x32MatchingInputAndFilter(
 
     // Apply quantized multiplier and accumulate result at 48bit
     // alignment:
-    block_0_acc = ops::micro::xtensa::hifimini::MultiplyByQuantizedMultiplier(
-        acc_24x2_0, mult, shift);
+    block_0_acc = MultiplyByQuantizedMultiplier(acc_24x2_0, mult, shift);
     // Apply quantized multiplier and accumulate result at 48bit
     // alignment:
-    block_1_acc = ops::micro::xtensa::hifimini::MultiplyByQuantizedMultiplier(
-        acc_24x2_1, mult, shift);
+    block_1_acc = MultiplyByQuantizedMultiplier(acc_24x2_1, mult, shift);
 
     // Add output offset, cap activation, and assign to the output:
     block_0_acc = AE_ADDQ56(block_0_acc, output_offset_56);

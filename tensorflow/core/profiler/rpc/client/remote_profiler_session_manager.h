@@ -26,9 +26,6 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/lib/profiler_session.h"
-#include "tensorflow/core/profiler/profiler_options.pb.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/rpc/client/profiler_client.h"
 
 namespace tensorflow {
@@ -40,21 +37,16 @@ using AddressResolver = std::function<std::string(absl::string_view)>;
 class RemoteProfilerSessionManager {
  public:
   struct Response {
-    std::string service_addr;
+    std::string service_address;
     std::unique_ptr<ProfileResponse> profile_response;
     Status status;
   };
   // Instantiates a collection of RemoteProfilerSessions starts profiling on
-  // each of them immediately.
+  // each of them immediately. Assumes that options have already been validated.
   static std::unique_ptr<RemoteProfilerSessionManager> Create(
       const RemoteProfilerSessionManagerOptions& options,
-      tensorflow::Status& out_status, AddressResolver resolver = nullptr);
-
-  static RemoteProfilerSessionManagerOptions DefaultOptions() {
-    RemoteProfilerSessionManagerOptions options;
-    *options.mutable_profiler_options() = ProfilerSession::DefaultOptions();
-    return options;
-  }
+      const ProfileRequest& request, tensorflow::Status& out_status,
+      AddressResolver resolver = nullptr);
 
   // Awaits for responses from remote profiler sessions and returns them as a
   // list. Subsequent calls beyond the first will yield a list of errors.
@@ -69,16 +61,16 @@ class RemoteProfilerSessionManager {
 
  private:
   explicit RemoteProfilerSessionManager(
-      RemoteProfilerSessionManagerOptions options, AddressResolver resolver);
+      RemoteProfilerSessionManagerOptions options, ProfileRequest request,
+      AddressResolver resolver);
 
   // Initialization of all client contexts.
   Status Init();
 
-  Status ValidateOptionsLocked() TF_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-
   mutex mutex_;
   // Remote profiler session options.
   RemoteProfilerSessionManagerOptions options_ TF_GUARDED_BY(mutex_);
+  ProfileRequest request_ TF_GUARDED_BY(mutex_);
   // List of clients, each connects to a profiling service.
   std::vector<std::unique_ptr<RemoteProfilerSession>> clients_
       TF_GUARDED_BY(mutex_);

@@ -79,10 +79,7 @@ cc_library(
     hdrs = ["verifier.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + micro_copts(),
-    visibility = [
-        "//tensorflow/lite:__subpackages__",
-        "//tensorflow_lite_support:__subpackages__",
-    ],
+    visibility = ["//visibility:public"],
     deps = [":error_reporter"],
 )
 
