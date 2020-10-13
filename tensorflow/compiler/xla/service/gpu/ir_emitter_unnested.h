@@ -547,8 +547,7 @@ class IrEmitterUnnested : public IrEmitter,
       absl::string_view name, Thunk::ThunkInfo thunk_info,
       absl::Span<const BufferSlice* const> slices,
       std::function<void(const BufferSlice*, llvm::Value*)>
-          bind_slice_to_ir_value,
-      bool insist_single_temp_buffer = true);
+          bind_slice_to_ir_value);
 
   // Returns a KernelThunk that invokes the kernel emitted for `inst`. The
   // caller needs to make sure `inst` outlives the lifetime of the returned

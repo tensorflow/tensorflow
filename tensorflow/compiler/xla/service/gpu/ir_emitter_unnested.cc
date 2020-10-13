@@ -1857,8 +1857,7 @@ IrEmitterUnnested::BuildKernelThunkFromBufferSlices(
     absl::string_view name, Thunk::ThunkInfo thunk_info,
     absl::Span<const BufferSlice* const> slices,
     std::function<void(const BufferSlice*, llvm::Value*)>
-        bind_slice_to_ir_value,
-    bool insist_single_temp_buffer) {
+        bind_slice_to_ir_value) {
   const auto& buffer_assn = ir_emitter_context_->buffer_assignment();
 
   // Figure out which buffer allocations need to be passed as arguments to our
@@ -1874,9 +1873,8 @@ IrEmitterUnnested::BuildKernelThunkFromBufferSlices(
   for (const BufferAllocation& alloc : buffer_assn.Allocations()) {
     if (alloc.IsPreallocatedTempBuffer()) {
       if (!temp_buffer.has_value()) {
+        // Retrieve the first seen temp buffer.
         temp_buffer = &alloc;
-      } else if (insist_single_temp_buffer) {
-        LOG(FATAL) << "Multiple temp buffers found, but only one is allowed!";
       }
     }
   }
@@ -1996,13 +1994,7 @@ std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunk(
                 << hlo_buffer_slice->gte_index.ToString();
 
         bindings_.BindHloToIrValue(*instr, value, index);
-      },
-      // Check temp buffer numbers only when the multiheap mode is off.
-      /*insist_single_temp_buffer=*/inst->parent()
-              ->parent()
-              ->config()
-              .debug_options()
-              .xla_multiheap_size_constraint_per_heap() == -1);
+      });
 }
 
 std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunkForMlir(

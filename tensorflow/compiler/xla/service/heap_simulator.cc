@@ -409,10 +409,11 @@ HeapSimulator::Result<HloValue> HeapSimulator::Finish() {
   // Post-process the result to add chunks for shared buffers.  An empty chunk
   // map means that either no buffers were allocated, or the heap was only
   // collecting statistics, e.g. NoFragmentationStatsHeap.
-  size_t total_chunk_count = 0;
-  absl::c_for_each(result.heap_results, [&](const HeapResult<HloValue>& hr) {
-    total_chunk_count += hr.chunk_map.size();
-  });
+  size_t total_chunk_count = absl::c_accumulate(
+      result.heap_results, (size_t)0,
+      [&](size_t lhs, const HeapResult<HloValue>& rhs) -> size_t {
+        return lhs + rhs.chunk_map.size();
+      });
   if (total_chunk_count != 0) {
     // If we were told to assign specific buffers, make sure we've assigned
     // exactly that many buffers.
