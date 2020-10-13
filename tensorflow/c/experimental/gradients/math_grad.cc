@@ -213,14 +213,9 @@ class NegGradientFunction : public GradientFunction {
      */
 
     grad_outputs->resize(1);
-
-    // Grad for X
-    std::vector<AbstractTensorHandle*> neg_outputs(1);
     std::string name = "Neg_Grad";
     TF_RETURN_IF_ERROR(ops::Neg(ctx->ctx, {grad_inputs[0]},
-                                absl::MakeSpan(neg_outputs), name.c_str()));
-
-    (*grad_outputs)[0] = neg_outputs[0];
+                                absl::MakeSpan(*grad_outputs), name.c_str()));
     return Status::OK();
   }
   ~NegGradientFunction() override {}
