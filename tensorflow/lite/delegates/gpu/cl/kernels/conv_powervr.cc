@@ -222,6 +222,9 @@ ConvPowerVR& ConvPowerVR::operator=(ConvPowerVR&& operation) {
 }
 
 void ConvPowerVR::GenerateCode(const DeviceInfo& device_info) {
+  if (conv_params_.linear_spatial) {
+    grid_dimension_ = 2;
+  }
   const bool stride_correction =
       definition_.IsBatchSupported() && stride_.x != 1;
   code_ =
@@ -294,34 +297,13 @@ int3 ConvPowerVR::GetGridSize() const {
     if (definition_.src_tensors[0].HasAxis(Axis::DEPTH)) {
       grid_x *= task_size_z;
     }
-    if (conv_params_.work_group_launch_order[0] == 0 &&
-        conv_params_.work_group_launch_order[1] == 1) {
-      return int3(grid_x, task_size_s, 1);
-    } else {
-      wg.x = DivideRoundUp(grid_x, work_group_size_.x);
-      wg.y = DivideRoundUp(task_size_s, work_group_size_.y);
-      return int3(
-          wg[conv_params_.work_group_launch_order[0]] * work_group_size_.x,
-          wg[conv_params_.work_group_launch_order[1]] * work_group_size_.y, 1);
-    }
+    return int3(grid_x, task_size_s, 1);
   } else {
     int grid_y = task_size_y;
     if (definition_.src_tensors[0].HasAxis(Axis::DEPTH)) {
       grid_y *= task_size_z;
     }
-    if (conv_params_.work_group_launch_order[0] == 0 &&
-        conv_params_.work_group_launch_order[1] == 1 &&
-        conv_params_.work_group_launch_order[2] == 2) {
-      return int3(task_size_x, grid_y, task_size_s);
-    } else {
-      wg.x = DivideRoundUp(task_size_x, work_group_size_.x);
-      wg.y = DivideRoundUp(grid_y, work_group_size_.y);
-      wg.z = DivideRoundUp(task_size_s, work_group_size_.z);
-      return int3(
-          wg[conv_params_.work_group_launch_order[0]] * work_group_size_.x,
-          wg[conv_params_.work_group_launch_order[1]] * work_group_size_.y,
-          wg[conv_params_.work_group_launch_order[2]] * work_group_size_.z);
-    }
+    return int3(task_size_x, grid_y, task_size_s);
   }
 }
 
@@ -336,14 +318,8 @@ void ConvPowerVR::GetPossibleKernelWorkGroups(
     work_groups->push_back(work_group_size_);
     return;
   }
-  if (conv_params_.work_group_launch_order[0] == 0 &&
-      conv_params_.work_group_launch_order[1] == 1 &&
-      conv_params_.work_group_launch_order[2] == 2) {
-    GetPossibleWorkGroupsConv(tuning_type, device_info, kernel_info, grid_size_,
-                              work_groups);
-  } else {
-    work_groups->push_back(work_group_size_);
-  }
+  GetPossibleWorkGroupsConv(tuning_type, device_info, kernel_info, grid_size_,
+                            work_groups);
 }
 
 std::string ConvPowerVR::GenerateConv(const DeviceInfo& device_info,
@@ -513,9 +489,9 @@ std::string ConvPowerVR::GenerateConv(const DeviceInfo& device_info,
   }
   c += "__kernel void main_function(\n";
   c += "$0) {\n";
-  c += GenerateBlockCoords(
-      conv_params.block_size, conv_params.work_group_launch_order,
-      conv_params.linear_spatial, src_def.HasAxis(Axis::DEPTH));
+  c += GenerateBlockCoords(conv_params.block_size, work_group_launch_order_,
+                           conv_params.linear_spatial,
+                           src_def.HasAxis(Axis::DEPTH));
   if (!late_oob_check) {
     c += "  if (" + dst_oob_check + ") {\n";
     c += "    return;\n";
@@ -1051,12 +1027,12 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
   if (device_info.IsNvidia()) {
     if (different_weights_for_height) {
       work_group_size_ = int3(32, 1, 1);
-      conv_params.work_group_launch_order = int3(2, 0, 1);
+      work_group_launch_order_ = int3(2, 0, 1);
       conv_params.fixed_work_group_size = true;
     } else {
       conv_params.linear_spatial = true;
       work_group_size_ = int3(32, 1, 1);
-      conv_params.work_group_launch_order = int3(1, 0, 2);
+      work_group_launch_order_ = int3(1, 0, 2);
       conv_params.fixed_work_group_size = true;
     }
     conv_params.block_size = int4(2, 1, 1, 4);
@@ -1096,12 +1072,12 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
   } else if (device_info.IsPowerVR()) {
     if (different_weights_for_height) {
       work_group_size_ = int3(32, 1, 1);
-      conv_params.work_group_launch_order = int3(2, 0, 1);
+      work_group_launch_order_ = int3(2, 0, 1);
       conv_params.fixed_work_group_size = true;
     } else {
       conv_params.linear_spatial = true;
       work_group_size_ = int3(32, 1, 1);
-      conv_params.work_group_launch_order = int3(1, 0, 2);
+      work_group_launch_order_ = int3(1, 0, 2);
       conv_params.fixed_work_group_size = true;
     }
     conv_params.weights_data_type =
@@ -1144,11 +1120,11 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
   } else if (device_info.IsAMD()) {
     if (different_weights_for_height) {
       work_group_size_ = int3(32, 1, 1);
-      conv_params.work_group_launch_order = int3(2, 0, 1);
+      work_group_launch_order_ = int3(2, 0, 1);
       conv_params.fixed_work_group_size = true;
     } else {
       work_group_size_ = int3(8, 4, 1);
-      conv_params.work_group_launch_order = int3(2, 0, 1);
+      work_group_launch_order_ = int3(2, 0, 1);
       conv_params.fixed_work_group_size = true;
     }
 
@@ -1207,7 +1183,7 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
       conv_params.src_depth_loop_size = 4;
     }
     work_group_size_ = int3(4, 4, 1);
-    conv_params.work_group_launch_order = int3(0, 1, 2);
+    work_group_launch_order_ = int3(0, 1, 2);
     conv_params.fixed_work_group_size = false;
     conv_params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
   } else if (device_info.IsAdreno()) {
@@ -1222,7 +1198,7 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
       }
     }
     work_group_size_ = int3(8, 2, 1);
-    conv_params.work_group_launch_order = int3(0, 1, 2);
+    work_group_launch_order_ = int3(0, 1, 2);
     conv_params.fixed_work_group_size = false;
     conv_params.src_depth_loop_size = 1;
     if (definition.src_tensors.size() == 2) {
@@ -1234,12 +1210,12 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
   } else if (device_info.IsIntel()) {
     if (different_weights_for_height) {
       work_group_size_ = int3(16, 1, 1);
-      conv_params.work_group_launch_order = int3(0, 1, 2);
+      work_group_launch_order_ = int3(0, 1, 2);
       conv_params.fixed_work_group_size = true;
     } else {
       conv_params.linear_spatial = true;
       work_group_size_ = int3(16, 1, 1);
-      conv_params.work_group_launch_order = int3(0, 1, 2);
+      work_group_launch_order_ = int3(0, 1, 2);
       conv_params.fixed_work_group_size = true;
     }
     conv_params.block_size = int4(1, 1, 1, 4);
@@ -1274,7 +1250,7 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
   } else {
     conv_params.block_size = int4(1, 1, 1, 4);
     work_group_size_ = int3(8, 2, 1);
-    conv_params.work_group_launch_order = int3(0, 1, 2);
+    work_group_launch_order_ = int3(0, 1, 2);
     conv_params.fixed_work_group_size = false;
     conv_params.src_depth_loop_size = 1;
     conv_params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;

@@ -120,7 +120,7 @@ class GPUOperation {
 
   absl::Status AddToQueue(CLCommandQueue* queue) {
     RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
-    return queue->DispatchImplicit(kernel_, grid_size_, work_group_size_);
+    return queue->Dispatch(kernel_, work_groups_count_, work_group_size_);
   }
 
   virtual void GetPossibleKernelWorkGroups(
@@ -174,11 +174,14 @@ class GPUOperation {
   std::vector<Tensor*> src_;
   std::vector<Tensor*> dst_;
   CLKernel kernel_;
+  int grid_dimension_ = 3;  // can be 1, 2 or 3
+  int3 work_group_launch_order_ = int3(0, 1, 2);
   int3 grid_size_ = int3(0, 0, 0);
   std::vector<std::string> src_tensors_names_;
   std::vector<std::string> dst_tensors_names_;
 
  private:
+  int3 work_groups_count_ = int3(0, 0, 0);
   int linkable_count_ = 0;
   std::string elementwise_code_;  // temporary, used during op construction
 };
