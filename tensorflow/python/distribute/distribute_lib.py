@@ -653,7 +653,7 @@ class InputOptions(
       tf.distribute.MirroredStrategy.experimental_distribute_datasets_from_function.
       The default value is InputReplicationMode.PER_WORKER.
     experimental_copy_dataset_on_device: Boolean. Default to False. When True, dataset
-      will get copied into the device, otherwise it will remain on the host.
+      will be placed on the device, otherwise it will remain on the host.
   """
 
   def __new__(cls, experimental_prefetch_to_device=True,

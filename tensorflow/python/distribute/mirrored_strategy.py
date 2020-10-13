@@ -394,16 +394,22 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
 
     logging.info("Using MirroredStrategy with remote devices %r", devices)
 
-  def _input_workers_with_options(self, options=None, input_workers_devices=None):
-    if not input_workers_devices:
-      input_workers_devices = self._input_workers_devices
-    if (not options or options.experimental_prefetch_to_device
-            or options.experimental_copy_dataset_on_device):
-      return input_lib.InputWorkers(input_workers_devices)
-    else:
+  def _input_workers_with_options(self, options=None):
+    if not options:
+      return input_lib.InputWorkers(self._input_workers_devices)
+    if options.experimental_replication_mode == distribute_lib.InputReplicationMode.PER_REPLICA:
+      self._input_workers_devices = (
+          tuple((device_util.canonicalize("/device:CPU:0", d), (d,)) for d in self._devices))
       return input_lib.InputWorkers(
+        [(host_device, (host_device,) * len(compute_devices)) for
+          host_device, compute_devices in self._input_workers_devices])
+    else:
+      if not options.experimental_prefetch_to_device:
+        return input_lib.InputWorkers(
           [(host_device, (host_device,) * len(compute_devices)) for
-           host_device, compute_devices in input_workers_devices])
+           host_device, compute_devices in self._input_workers_devices])
+      else:
+        return input_lib.InputWorkers(self._input_workers_devices)
 
   @property
   def _input_workers(self):
@@ -515,12 +521,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
         numpy_input, self._host_input_device, session)
 
   def _distribute_datasets_from_function(self, dataset_fn,
-                                                      options):
-    if options.experimental_replication_mode == distribute_lib.InputReplicationMode.PER_REPLICA:
-      self._input_workers_devices = (
-          tuple((device_util.canonicalize("/device:CPU:0", d), (d,)) for d in self._devices))
-    input_workers = self._input_workers_with_options(
-        options, self._input_workers_devices)
+                                         options):
+    input_workers = self._input_workers_with_options(options)
     input_contexts = []
     num_workers = input_workers.num_workers
     for i in range(num_workers):

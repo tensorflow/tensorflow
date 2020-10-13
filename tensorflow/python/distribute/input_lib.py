@@ -131,7 +131,17 @@ def get_distributed_datasets_from_function(dataset_fn,
 
   Returns:
     A distributed dataset instance.
+
+  Raises:
+    ValueError: if `options.experimental_replication_mode` and
+    `options.experimental_copy_dataset_on_device` are not consistent
   """
+  if (options is not None
+          and options.experimental_replication_mode != InputReplicationMode.PER_REPLICA
+          and options.experimental_copy_dataset_on_device):
+    raise ValueError("When `experimental_copy_dataset_on_device` is set for dataset placement, "
+                     "you must also specify `PER_REPLICA` for the replication mode")
+  
   if tf2.enabled():
     return DistributedDatasetsFromFunction(
         dataset_fn,
@@ -1605,13 +1615,24 @@ class _SingleWorkerOwnedDatasetIterator(_SingleWorkerDatasetIteratorBase,
     if not self._worker:
       raise ValueError("Worked device must be specified when creating an "
                        "owned iterator.")
-    if self._options is None or not self._options.experimental_copy_dataset_on_device :
+    if (self._options is None
+            or self._options.experimental_replication_mode == InputReplicationMode.PER_WORKER):
       host_device = device_util.get_host_for_device(self._worker)
       with ops.device(self._worker):
         self._iterator = multi_device_iterator_ops.OwnedMultiDeviceIterator(
             self._dataset, self._devices, source_device=host_device)
     else:
-        with ops.device(self._devices[0]):
+      if self._options.experimental_copy_dataset_on_device:
+        worker_device = self._devices[0]
+      else:
+        worker_device = self._worker
+      if self._options.experimental_prefetch_to_device:
+        host_device = device_util.get_host_for_device(self._worker)
+        with ops.device(worker_device):
+          self._iterator = multi_device_iterator_ops.OwnedMultiDeviceIterator(
+              self._dataset, self._devices, source_device=host_device)
+      else:
+        with ops.device(worker_device):
           self._iterator = iter(self._dataset)
 
   @property
