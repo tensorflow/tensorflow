@@ -12,12 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_COMPILER_MLIR_TFR_INTEGRATION_GRAPH_DECOMPOSE_PASS_H_
-#define TENSORFLOW_COMPILER_MLIR_TFR_INTEGRATION_GRAPH_DECOMPOSE_PASS_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TFR_INTEGRATION_NODE_EXPANSION_PASS_H_
+#define TENSORFLOW_COMPILER_MLIR_TFR_INTEGRATION_NODE_EXPANSION_PASS_H_
 
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/mlir_graph_optimization_pass.h"
 #include "tensorflow/compiler/mlir/tfr/integration/tfr_decompose_ctx.h"
+#include "tensorflow/core/common_runtime/eager/eager_op_rewrite_registry.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
@@ -26,22 +25,23 @@ namespace tensorflow {
 // to the decomposition library. Currently the decomposition library is loaded
 // each time the pass runs. A special environment variable is set to locate the
 // decomposition library.
-class GraphDecomposePass : public MlirOptimizationPass {
+class CompositeOpExpansion : public EagerOpRewrite {
  public:
-  llvm::StringRef name() const override { return "tfr"; }
+  CompositeOpExpansion(string name, string file, string line)
+      : EagerOpRewrite(name, file, line) {}
 
-  // Whether to run this pass. If this is enabled, the GraphDef will be imported
-  // to MLIR even no tf composition file is found.
-  bool IsEnabled(const ConfigProto& config_proto) const override;
-
-  // This should be used as a thin mapper around mlir::ModulePass::runOnModule
-  // API integrated with the Tensorflow runtime.
-  Status Run(const ConfigProto& config_proto, mlir::ModuleOp module) override;
+  Status Run(EagerOperation* orig_op,
+             std::unique_ptr<tensorflow::EagerOperation>* out_op) override;
 
  private:
-  std::unique_ptr<TFRDecomposeContext> ctx_;
+  // Whether to run this pass. If this is enabled, the NodeDef will be imported
+  // to MLIR even no tf composition file is found.
+  bool IsEnabled() {
+    const char* tfr_lib_env_val = getenv(string(kTFRLibEnv).c_str());
+    return tfr_lib_env_val != nullptr;
+  }
 };
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TFR_INTEGRATION_GRAPH_DECOMPOSE_PASS_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TFR_INTEGRATION_NODE_EXPANSION_PASS_H_
