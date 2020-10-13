@@ -157,6 +157,10 @@ void CombineOpStats(
 
   // Combine tf-function stats.
   CombineTfFunctionDb(src.tf_function_db(), dst->mutable_tf_function_db());
+
+  // Combine the mapping from core ID to details.
+  CombineCoreIdMap(src_host_id, src.core_id_to_details(),
+                   dst->mutable_core_id_to_details());
 }
 
 }  // namespace
