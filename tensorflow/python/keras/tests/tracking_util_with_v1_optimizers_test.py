@@ -283,7 +283,7 @@ class CheckpointingTests(keras_parameterized.TestCase):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
 
-    def _train_fn(optimizer, model):
+    def _train_fn(optimizer, model, root):
       input_value = constant_op.constant([[3.]])
       optimizer.minimize(
           functools.partial(model, input_value),
@@ -303,7 +303,7 @@ class CheckpointingTests(keras_parameterized.TestCase):
 
         for _ in range(num_training_steps):
           strategy.extended.call_for_each_replica(
-              functools.partial(_train_fn, optimizer, model))
+              functools.partial(_train_fn, optimizer, model, root))
         root.save(file_prefix=checkpoint_prefix)
         self.assertEqual((training_continuation + 1) * num_training_steps,
                          root.optimizer_step.numpy())
@@ -314,7 +314,7 @@ class CheckpointingTests(keras_parameterized.TestCase):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
 
-    def _train_fn(optimizer, model):
+    def _train_fn(optimizer, model, root):
       input_value = constant_op.constant([[3.]])
       return optimizer.minimize(
           functools.partial(model, input_value),
@@ -332,7 +332,7 @@ class CheckpointingTests(keras_parameterized.TestCase):
           status = root.restore(checkpoint_management.latest_checkpoint(
               checkpoint_directory))
           train_op = strategy.extended.call_for_each_replica(
-              functools.partial(_train_fn, optimizer, model))
+              functools.partial(_train_fn, optimizer, model, root))
           with self.session() as session:
             if training_continuation > 0:
               status.assert_consumed()
