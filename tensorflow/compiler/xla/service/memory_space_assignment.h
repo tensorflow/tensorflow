@@ -149,9 +149,11 @@ class MemorySpaceAssignmentCostAnalysis {
 
   int64 GetScheduleEndTime() const;
 
-  // Returns the number of nested while loop levels this instruction resides in.
-  // 0 means it is not in a while loop.
-  int CalculateWhileLoopNestLevel(const HloInstruction* instruction) const;
+  // Returns the number of nested computation levels this instruction resides
+  // in. If while_only is true, it returns the while loop nest level and 0
+  // means the instruction is not in a while loop.
+  int CalculateComputationNestLevel(const HloInstruction* instruction,
+                                    bool while_only) const;
 
   const HloLiveRange& hlo_live_range() const { return *hlo_live_range_; }
 
@@ -360,6 +362,7 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
   // (in cumulative sum) and while nesting level.
   std::vector<float> elapsed_time_cumsum_;
   std::vector<int> while_nest_level_;
+  std::vector<int> computation_nest_level_;
   // Maintain the index of the most recent (before this instruction) nest level
   // change in order to efficiently determine the minimum nest level in an
   // interval.

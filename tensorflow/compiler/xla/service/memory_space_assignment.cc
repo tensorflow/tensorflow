@@ -163,12 +163,16 @@ float MemorySpaceAssignmentCostAnalysis::GetAlternateMemoryBenefit(
         while_nest_multiplier = it->second;
       } else {
         while_nest_multiplier = tensorflow::MathUtil::IPow<float>(
-            kWhileExecutionCount, CalculateWhileLoopNestLevel(&instruction));
+            kWhileExecutionCount,
+            CalculateComputationNestLevel(&instruction,
+                                          /*while_only=*/true));
         cache->while_nest_multiplier[&instruction] = while_nest_multiplier;
       }
     } else {
       while_nest_multiplier = tensorflow::MathUtil::IPow<float>(
-          kWhileExecutionCount, CalculateWhileLoopNestLevel(&instruction));
+          kWhileExecutionCount,
+          CalculateComputationNestLevel(&instruction,
+                                        /*while_only=*/true));
     }
     return (elapsed_time_due_to_memory - elapsed_time_due_to_alternate_mem) *
            while_nest_multiplier;
@@ -224,8 +228,8 @@ float MemorySpaceAssignmentCostAnalysis::GetMemoryBoundedness(
   return alternate_mem_benefit / std::sqrt(interval.size);
 }
 
-int MemorySpaceAssignmentCostAnalysis::CalculateWhileLoopNestLevel(
-    const HloInstruction* instruction) const {
+int MemorySpaceAssignmentCostAnalysis::CalculateComputationNestLevel(
+    const HloInstruction* instruction, bool while_only) const {
   int nest_level = 0;
   const HloComputation* computation = instruction->parent();
   while (!computation->IsEntryComputation()) {
@@ -233,7 +237,7 @@ int MemorySpaceAssignmentCostAnalysis::CalculateWhileLoopNestLevel(
     auto callsites = node.caller_callsites();
     CHECK_EQ(callsites.size(), 1) << "The module is not flattened!";
     auto callsite = callsites[0];
-    if (callsite.instruction()->opcode() == HloOpcode::kWhile) {
+    if (!while_only || callsite.instruction()->opcode() == HloOpcode::kWhile) {
       ++nest_level;
     }
     computation = callsite.instruction()->parent();
@@ -379,6 +383,8 @@ CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
     float preferred_async_copy_to_overlap_ratio)
     : while_nest_level_(
           cost_analysis.hlo_live_range().instruction_schedule().size(), 0),
+      computation_nest_level_(
+          cost_analysis.hlo_live_range().instruction_schedule().size(), 0),
       cost_analysis_(cost_analysis),
       min_async_copy_to_overlap_ratio_(min_async_copy_to_overlap_ratio),
       max_async_copy_to_overlap_ratio_(max_async_copy_to_overlap_ratio),
@@ -402,9 +408,12 @@ CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
       instructions_elapsed_time.resize(logical_time + 1, 0.0);
       while_nest_level_.resize(logical_time + 1, 0);
     }
-    int nest_level = cost_analysis_.CalculateWhileLoopNestLevel(
-        instruction_and_logical_time.first);
-    while_nest_level_[logical_time] = nest_level;
+    int while_nest_level = cost_analysis_.CalculateComputationNestLevel(
+        instruction_and_logical_time.first, /*while_only=*/true);
+    while_nest_level_[logical_time] = while_nest_level;
+    int computation_nest_level = cost_analysis_.CalculateComputationNestLevel(
+        instruction_and_logical_time.first, /*while_only=*/false);
+    computation_nest_level_[logical_time] = computation_nest_level;
     if (instruction->opcode() == HloOpcode::kWhile ||
         instruction->opcode() == HloOpcode::kConditional) {
       continue;
@@ -412,8 +421,8 @@ CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
     float elapsed_time = cost_analysis_.GetInstructionElapsed(
         *instruction_and_logical_time.first);
     instructions_elapsed_time[logical_time] =
-        elapsed_time *
-        tensorflow::MathUtil::IPow<float>(kWhileExecutionCount, nest_level);
+        elapsed_time * tensorflow::MathUtil::IPow<float>(kWhileExecutionCount,
+                                                         while_nest_level);
   }
   // As an optimization, create a cumulative sum vector of elapsed time.
   float cumsum = 0.0;
@@ -483,14 +492,14 @@ int64 CostAnalysisPrefetchIntervalPicker::LatestPrefetchStartTime(
             /*output_in_alternate_mem=*/false);
     inst_elapsed_reduction = elapsed_time - elapsed_time_in_alternate_mem;
   }
-  int end_nest_level = while_nest_level_[end_time];
+  int end_nest_level = computation_nest_level_[end_time];
 
   // Find the latest time we're allowed to start prefetching.
   float min_interval = min_async_copy_to_overlap_ratio_ * async_copy_elapsed;
   int latest_prefetch_time;
   for (latest_prefetch_time = end_time - 1;
        latest_prefetch_time >= start_time &&
-       (while_nest_level_[latest_prefetch_time] != end_nest_level ||
+       (computation_nest_level_[latest_prefetch_time] != end_nest_level ||
         min_interval >
             GetLogicalIntervalElapsed(latest_prefetch_time, end_time) +
                 inst_elapsed_reduction);
@@ -511,13 +520,13 @@ int64 CostAnalysisPrefetchIntervalPicker::PreferredPrefetchStartTime(
       preferred_async_copy_to_overlap_ratio_ * async_copy_elapsed;
   float best_interval = GetLogicalIntervalElapsed(earliest_prefetch_start_time,
                                                   prefetch_end_time);
-  int end_nest_level = while_nest_level_[prefetch_end_time];
+  int end_nest_level = computation_nest_level_[prefetch_end_time];
   for (int64 prefetch_start_time = earliest_prefetch_start_time + 1;
        prefetch_start_time <= latest_prefetch_start_time;
        ++prefetch_start_time) {
     float interval =
         GetLogicalIntervalElapsed(prefetch_start_time, prefetch_end_time);
-    if (while_nest_level_[prefetch_start_time] == end_nest_level &&
+    if (computation_nest_level_[prefetch_start_time] == end_nest_level &&
         std::abs(preferred_interval - interval) <
             std::abs(preferred_interval - best_interval)) {
       best_interval = interval;
@@ -531,10 +540,11 @@ int64 CostAnalysisPrefetchIntervalPicker::LatestPrefetchEndTime(
     int64 original_prefetch_end_time, int64 proposed_prefetch_end_time) const {
   // Iterate towards the beginning until we find a suitable end time that is the
   // same while nest level as the original prefetch end time.
-  int64 original_nest_level = while_nest_level_[original_prefetch_end_time];
+  int64 original_nest_level =
+      computation_nest_level_[original_prefetch_end_time];
   int64 new_prefetch_end_time;
   for (new_prefetch_end_time = proposed_prefetch_end_time;
-       while_nest_level_[new_prefetch_end_time] != original_nest_level;
+       computation_nest_level_[new_prefetch_end_time] != original_nest_level;
        --new_prefetch_end_time) {
   }
   return new_prefetch_end_time;
@@ -555,7 +565,7 @@ void CostAnalysisPrefetchIntervalPicker::Begin(const HloUse& use,
           /*output_in_alternate_mem=*/false);
   inst_elapsed_reduction_ = elapsed_time - elapsed_time_in_alternate_mem;
   end_logical_time_ = end_time;
-  int end_nest_level = while_nest_level_[end_logical_time_];
+  int end_nest_level = computation_nest_level_[end_logical_time_];
 
   // Find the latest time we're allowed to start prefetching.
   float min_interval = min_async_copy_to_overlap_ratio_ * async_copy_elapsed_;
@@ -567,7 +577,7 @@ void CostAnalysisPrefetchIntervalPicker::Begin(const HloUse& use,
                        max_overlap_multiplier_ * async_copy_elapsed_;
   for (earliest_prefetch_time_ = start_time;
        earliest_prefetch_time_ <= end_logical_time_ &&
-       (while_nest_level_[earliest_prefetch_time_] != end_nest_level ||
+       (computation_nest_level_[earliest_prefetch_time_] != end_nest_level ||
         max_interval < GetLogicalIntervalElapsed(earliest_prefetch_time_,
                                                  end_logical_time_));
        ++earliest_prefetch_time_) {
@@ -605,8 +615,8 @@ int64 CostAnalysisPrefetchIntervalPicker::Next() {
   if (using_increasing_prefetch_time_iterator_) {
     int64 prefetch_time = increasing_prefetch_time_iterator_++;
     while (increasing_prefetch_time_iterator_ <= latest_prefetch_time_ &&
-           while_nest_level_[increasing_prefetch_time_iterator_] !=
-               while_nest_level_[end_logical_time_]) {
+           computation_nest_level_[increasing_prefetch_time_iterator_] !=
+               computation_nest_level_[end_logical_time_]) {
       ++increasing_prefetch_time_iterator_;
     }
     if (decreasing_prefetch_time_iterator_ >= earliest_prefetch_time_) {
@@ -616,8 +626,8 @@ int64 CostAnalysisPrefetchIntervalPicker::Next() {
   } else {
     int64 prefetch_time = decreasing_prefetch_time_iterator_--;
     while (decreasing_prefetch_time_iterator_ >= earliest_prefetch_time_ &&
-           while_nest_level_[decreasing_prefetch_time_iterator_] !=
-               while_nest_level_[end_logical_time_]) {
+           computation_nest_level_[decreasing_prefetch_time_iterator_] !=
+               computation_nest_level_[end_logical_time_]) {
       --decreasing_prefetch_time_iterator_;
     }
     if (increasing_prefetch_time_iterator_ <= latest_prefetch_time_) {
@@ -661,11 +671,11 @@ float CostAnalysisPrefetchIntervalPicker::GetLogicalIntervalElapsed(
   // Since elapsed_time_cumsum_ is already weighed by the while loop nesting
   // level, normalize the elapsed time by dividing with the nesting factor of
   // the interval (start and end times).
-  int interval_nest_level = GetMinWhileNestLevel(start_time, end_time);
+  int interval_while_nest_level = GetMinWhileNestLevel(start_time, end_time);
   return (elapsed_time_cumsum_[end_time - 1] -
           elapsed_time_cumsum_[start_time]) /
          tensorflow::MathUtil::IPow<float>(kWhileExecutionCount,
-                                           interval_nest_level);
+                                           interval_while_nest_level);
 }
 
 std::string CostAnalysisPrefetchIntervalPicker::ToDebugString() const {
