@@ -108,7 +108,7 @@ def get_distributed_datasets_from_function(dataset_fn,
                                            input_workers,
                                            input_contexts,
                                            strategy,
-                                           replication_mode=InputReplicationMode.PER_WORKER):
+                                           options):
   """Returns a distributed dataset from the given input function.
 
   This is a common function that is used by all strategies to return a
@@ -126,7 +126,8 @@ def get_distributed_datasets_from_function(dataset_fn,
         `worker_device_pairs`.
     strategy: a `tf.distribute.Strategy` object, used to run all-reduce to
         handle last partial batch.
-    replication_mode: Replication mode for the input function.
+    options: `tf.distribute.InputOptions` used to control options on how this
+        dataset is distributed.
 
   Returns:
     A distributed dataset instance.
@@ -137,7 +138,7 @@ def get_distributed_datasets_from_function(dataset_fn,
         input_workers,
         input_contexts,
         strategy,
-        replication_mode)
+        options)
   else:
     return DistributedDatasetsFromFunctionV1(
         dataset_fn,
@@ -1125,7 +1126,7 @@ class DistributedDatasetV1(DistributedDataset):
 class DistributedDatasetsFromFunction(_IterableInput):
   """Inputs created from dataset function."""
 
-  def __init__(self, dataset_fn, input_workers, input_contexts, strategy, replication_mode):
+  def __init__(self, dataset_fn, input_workers, input_contexts, strategy, options):
     """Makes an iterable from datasets created by the given function.
 
     Args:
@@ -1136,7 +1137,8 @@ class DistributedDatasetsFromFunction(_IterableInput):
         `worker_device_pairs`.
       strategy: a `tf.distribute.Strategy` object, used to run all-reduce to
         handle last partial batch.
-      replication_mode: Replication mode for the input function.
+      options: `tf.distribute.InputOptions` used to control options on how this
+        dataset is distributed.
     """
     super(DistributedDatasetsFromFunction, self).__init__(
         input_workers=input_workers)
@@ -1150,12 +1152,12 @@ class DistributedDatasetsFromFunction(_IterableInput):
     self._input_workers = input_workers
     self._input_contexts = input_contexts
     self._strategy = strategy
-    self._replication_mode = replication_mode
+    self._options = options
     self._datasets, element_spec = (
         _create_datasets_from_function_with_input_context(self._input_contexts,
                                                           self._input_workers,
                                                           dataset_fn,
-                                                          self._replication_mode))
+                                                          self._options))
     self._enable_get_next_as_optional = _enable_get_next_as_optional(
         self._strategy, element_spec)
     self._element_spec = _create_distributed_tensor_spec(
@@ -1173,7 +1175,7 @@ class DistributedDatasetsFromFunction(_IterableInput):
       iterators = _create_iterators_per_worker(self._datasets,
                                                self._input_workers,
                                                enable_legacy_iterators,
-                                               self._replication_mode)
+                                               self._options)
       if enable_legacy_iterators:
         iterator = DistributedIteratorV1(self._input_workers,
                                          iterators,
@@ -1558,7 +1560,7 @@ class _SingleWorkerOwnedDatasetIterator(_SingleWorkerDatasetIteratorBase,
   """Iterator for a DistributedDataset instance."""
 
   def __init__(self, dataset=None, worker=None, devices=None, components=None,
-               element_spec=None, replication_mode=InputReplicationMode.PER_WORKER):
+               element_spec=None, options=None):
     """Create iterator for the `dataset` to fetch data to worker's `devices` .
 
     `OwnedMultiDeviceIterator` is used to prefetch input to the devices on the
@@ -1574,7 +1576,8 @@ class _SingleWorkerOwnedDatasetIterator(_SingleWorkerDatasetIteratorBase,
         _SingleWorkerOwnedDatasetIterator from.
       element_spec: A nested structure of `TypeSpec` objects that represents the
       type specification of elements of the iterator.
-      replication_mode: Replication mode for the input function.
+      options: `tf.distribute.InputOptions` used to control options on how this
+      dataset is distributed.
     """
     if worker is None or devices is None:
       raise ValueError("Both `worker` and `devices` should be provided")
@@ -1582,7 +1585,7 @@ class _SingleWorkerOwnedDatasetIterator(_SingleWorkerDatasetIteratorBase,
     error_message = ("Either `dataset` or both `components` and `element_spec` "
                      "need to be provided.")
 
-    self._replication_mode = replication_mode
+    self._options = options
     if dataset is None:
       if (components is None or element_spec is None):
         raise ValueError(error_message)
@@ -1602,7 +1605,7 @@ class _SingleWorkerOwnedDatasetIterator(_SingleWorkerDatasetIteratorBase,
     if not self._worker:
       raise ValueError("Worked device must be specified when creating an "
                        "owned iterator.")
-    if self._replication_mode == InputReplicationMode.PER_WORKER:
+    if self._options is None or not self._options.experimental_copy_dataset_on_device :
       host_device = device_util.get_host_for_device(self._worker)
       with ops.device(self._worker):
         self._iterator = multi_device_iterator_ops.OwnedMultiDeviceIterator(
@@ -1732,7 +1735,7 @@ class _SingleWorkerCallableIterator(object):
 
 def _create_iterators_per_worker(worker_datasets, input_workers,
                                  enable_legacy_iterators,
-                                 replication_mode=InputReplicationMode.PER_WORKER):
+                                 options):
   """Create a multidevice iterator on each of the workers."""
   assert isinstance(input_workers, InputWorkers)
   assert len(worker_datasets) == len(input_workers.worker_devices)
@@ -1744,7 +1747,7 @@ def _create_iterators_per_worker(worker_datasets, input_workers,
         iterator = _SingleWorkerOwnedDatasetIterator(dataset=worker_datasets[i],
                                                      worker=worker,
                                                      devices=worker_devices,
-                                                     replication_mode=replication_mode)
+                                                     options=options)
       else:
         iterator = _SingleWorkerDatasetIterator(worker_datasets[i], worker,
                                                 worker_devices)
@@ -1755,14 +1758,11 @@ def _create_iterators_per_worker(worker_datasets, input_workers,
 def _create_datasets_from_function_with_input_context(input_contexts,
                                                       input_workers,
                                                       dataset_fn,
-                                                      replication_mode):
+                                                      options):
   """Create device datasets per worker given a dataset function."""
   datasets = []
   for i, ctx in enumerate(input_contexts):
-    if replication_mode == InputReplicationMode.PER_WORKER:
-      worker = input_workers.worker_devices[i]
-    else:
-      worker = input_workers._worker_device_pairs[i][1][0]
+    worker = input_workers.worker_devices[i]
     with ops.device(worker):
       dataset = dataset_fn(ctx)
       datasets.append(dataset)

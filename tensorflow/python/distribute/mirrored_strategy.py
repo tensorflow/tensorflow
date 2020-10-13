@@ -397,7 +397,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
   def _input_workers_with_options(self, options=None, input_workers_devices=None):
     if not input_workers_devices:
       input_workers_devices = self._input_workers_devices
-    if not options or options.experimental_prefetch_to_device:
+    if (not options or options.experimental_prefetch_to_device
+            or options.experimental_copy_dataset_on_device):
       return input_lib.InputWorkers(input_workers_devices)
     else:
       return input_lib.InputWorkers(
@@ -500,7 +501,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
                                            self._container_strategy())
 
   def _experimental_distribute_dataset(self, dataset, options):
-    if options and options.replication_mode == distribute_lib.InputReplicationMode.PER_REPLICA:
+    if options and options.experimental_replication_mode == distribute_lib.InputReplicationMode.PER_REPLICA:
       raise NotImplementedError("InputReplicationMode.PER_REPLICA "
                     "is only supported in `experimental_distribute_datasets_from_function`.")
     return input_lib.get_distributed_dataset(
@@ -515,14 +516,11 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
 
   def _distribute_datasets_from_function(self, dataset_fn,
                                                       options):
-    if options.replication_mode == distribute_lib.InputReplicationMode.PER_REPLICA:
+    if options.experimental_replication_mode == distribute_lib.InputReplicationMode.PER_REPLICA:
       self._input_workers_devices = (
           tuple((device_util.canonicalize("/device:CPU:0", d), (d,)) for d in self._devices))
-      input_workers = self._input_workers_with_options(
-          None, self._input_workers_devices)
-    else:
-      input_workers = self._input_workers_with_options(
-          options, self._input_workers_devices)
+    input_workers = self._input_workers_with_options(
+        options, self._input_workers_devices)
     input_contexts = []
     num_workers = input_workers.num_workers
     for i in range(num_workers):
@@ -536,7 +534,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
         input_workers,
         input_contexts,
         self._container_strategy(),
-        options.replication_mode)
+        options)
 
   def _experimental_distribute_values_from_function(self, value_fn):
     per_replica_values = []

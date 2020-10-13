@@ -620,7 +620,8 @@ class RunOptions(
 class InputOptions(
     collections.namedtuple("InputOptions", [
         "experimental_prefetch_to_device",
-        "replication_mode",
+        "experimental_replication_mode",
+        "experimental_copy_dataset_on_device",
     ])):
   """Run options for `experimental_distribute_dataset(s_from_function)`.
 
@@ -638,8 +639,8 @@ class InputOptions(
       strategy.experimental_distribute_dataset(
           dataset,
           tf.distribute.InputOptions(
-              experimental_prefetch_to_device=False,
-              replication_mode=InputReplicationMode.PER_WORKER)))
+              experimental_replication_mode=experimental_replication_mode.PER_WORKER,
+              experimental_copy_dataset_on_device=False)))
   ```
 
   Attributes:
@@ -647,17 +648,21 @@ class InputOptions(
       elements will be prefetched to accelerator device memory. When False,
       dataset elements are prefetched to host device memory. Must be False when
       using TPUEmbedding API.
-    replication_mode: Replication mode for the input function. Currently, the
+    experimental_replication_mode: Replication mode for the input function. Currently, the
       InputReplicationMode.PER_REPLICA is only supported with 
       tf.distribute.MirroredStrategy.experimental_distribute_datasets_from_function.
       The default value is InputReplicationMode.PER_WORKER.
+    experimental_copy_dataset_on_device: Boolean. Default to False. When True, dataset
+      will get copied into the device, otherwise it will remain on the host.
   """
 
   def __new__(cls, experimental_prefetch_to_device=True,
-              replication_mode=InputReplicationMode.PER_WORKER):
+              experimental_replication_mode=InputReplicationMode.PER_WORKER,
+              experimental_copy_dataset_on_device=False):
     return super(InputOptions, cls).__new__(cls,
                                             experimental_prefetch_to_device,
-                                            replication_mode)
+                                            experimental_replication_mode,
+                                            experimental_copy_dataset_on_device)
 
 # ------------------------------------------------------------------------------
 # Base classes for all distribution strategies.

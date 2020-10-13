@@ -802,7 +802,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
             "distribution function.".format(path, type(spec)))
 
   def _experimental_distribute_dataset(self, dataset, options):
-    if options and options.replication_mode == distribute_lib.InputReplicationMode.PER_REPLICA:
+    if options and options.experimental_replication_mode == distribute_lib.InputReplicationMode.PER_REPLICA:
       raise NotImplementedError("InputReplicationMode.PER_REPLICA "
                                 "is only supported in `experimental_distribute_datasets_from_function`.")
     if options is None or options.experimental_prefetch_to_device:
@@ -816,7 +816,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
   def _distribute_datasets_from_function(self, dataset_fn,
                                                       options):
-    if options and options.replication_mode == distribute_lib.InputReplicationMode.PER_REPLICA:
+    if options and options.experimental_replication_mode == distribute_lib.InputReplicationMode.PER_REPLICA:
       raise NotImplementedError("InputReplicationMode.PER_REPLICA "
                                 "is only supported in `experimental_distribute_datasets_from_function` "
                                 "of tf.distribute.MirroredStrategy")
