@@ -1542,10 +1542,8 @@ void BufferAssigner::AssignBuffersFromHeapSimulator(
     }
     // Compute peak_buffers only when the multiheap mode is off. Simply return
     // an empty vector in the multiheap mode.
-    if (assignment->multiheap_size_constraint_per_heap() == -1) {
-      allocation->peak_buffers_ =
-          ComputePeakMemoryLogicalBuffers(*allocation, result.debug_trace);
-    }
+    allocation->peak_buffers_ =
+        ComputePeakMemoryLogicalBuffers(*allocation, result.debug_trace);
 
     XLA_VLOG_LINES(2, allocation->ToString());
 
