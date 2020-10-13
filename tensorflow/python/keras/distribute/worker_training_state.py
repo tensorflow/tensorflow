@@ -73,17 +73,15 @@ class WorkerTrainingState(object):
     # workers need to perform `save()`.
     # But all workers should restore from the same checkpoint_dir as passed in
     # read_checkpoint_manager.
-    self.read_checkpoint_manager = checkpoint_management.CheckpointManager(
-        checkpoint,
-        directory=os.path.join(checkpoint_dir, 'chief'),
-        max_to_keep=1)
-    write_checkpoint_dir = distributed_file_utils.write_dirpath(
+    self.write_checkpoint_dir = distributed_file_utils.write_dirpath(
         checkpoint_dir, self._model.distribute_strategy)
-    if write_checkpoint_dir == checkpoint_dir:
-      self.write_checkpoint_manager = self.read_checkpoint_manager
+    self.write_checkpoint_manager = checkpoint_management.CheckpointManager(
+        checkpoint, directory=self.write_checkpoint_dir, max_to_keep=1)
+    if self.write_checkpoint_dir == checkpoint_dir:
+      self.read_checkpoint_manager = self.write_checkpoint_manager
     else:
-      self.write_checkpoint_manager = checkpoint_management.CheckpointManager(
-          checkpoint, directory=write_checkpoint_dir, max_to_keep=1)
+      self.read_checkpoint_manager = checkpoint_management.CheckpointManager(
+          checkpoint, directory=checkpoint_dir, max_to_keep=1)
 
   def back_up(self, epoch):
     """Back up the current state of training into a checkpoint file.
@@ -113,8 +111,13 @@ class WorkerTrainingState(object):
     Delete the backup directories which should not exist after `fit()`
     successfully finishes.
     """
-    if self.write_checkpoint_manager is self.read_checkpoint_manager:
-      file_io.delete_recursively_v2(self.write_checkpoint_manager.directory)
+    # pylint: disable=protected-access
+    for pathname in file_io.get_matching_files_v2(
+        self.write_checkpoint_manager._prefix + '*'):
+      file_io.delete_recursively_v2(pathname)
+    for pathname in file_io.get_matching_files_v2(
+        os.path.join(self.write_checkpoint_manager.directory, 'checkpoint')):
+      file_io.delete_recursively_v2(pathname)
 
   def maybe_load_initial_epoch_from_ckpt(self, initial_epoch, mode):
     """Maybe load initial epoch from ckpt considering possible worker recovery.
