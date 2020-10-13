@@ -67,9 +67,14 @@ class ProfilerApiTest(test_util.TensorFlowTestCase):
         'kernel_stats.pb',
     ]
     for file in expected_files:
-      path = os.path.join(logdir, 'plugins/profile/*/*{}'.format(file))
+      path = os.path.join(logdir, 'plugins', 'profile', '*', '*{}'.format(file))
       self.assertEqual(1, len(glob.glob(path)),
                        'Expected one path match: ' + path)
+
+  def _check_xspace_pb_exist(self, logdir):
+    path = os.path.join(logdir, 'plugins', 'profile', '*', '*.xplane.pb')
+    self.assertEqual(1, len(glob.glob(path)),
+                     'Expected one path match: ' + path)
 
   def test_single_worker_no_profiling(self):
     """Test single worker without profiling."""
@@ -86,7 +91,6 @@ class ProfilerApiTest(test_util.TensorFlowTestCase):
       profiler.start_server(port)
       _, steps, train_ds, model = _model_setup()
       model.fit(x=train_ds, epochs=2, steps_per_epoch=steps)
-      logging.info('worker finishing')
 
     def on_profile(port, logdir):
       # Request for 30 milliseconds of profile.
@@ -109,7 +113,7 @@ class ProfilerApiTest(test_util.TensorFlowTestCase):
     thread_profiler.start()
     thread_profiler.join()
     thread_worker.join(120)
-    self._check_tools_pb_exist(logdir)
+    self._check_xspace_pb_exist(logdir)
 
   def test_single_worker_programmatic_mode(self):
     """Test single worker programmatic mode."""
