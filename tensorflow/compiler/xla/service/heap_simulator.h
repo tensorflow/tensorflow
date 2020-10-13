@@ -456,10 +456,26 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
       const BufferInterval& interval) const;
 };
 
-// This class implements an algorithm that will output multiple heaps. Each heap
-// size is constrained by a given limit. Note that the constraint is soft,
-// meaning that valid heap results are generated even if there are some buffer
-// sizes larger than the given constraint size.
+// This class implements an algorithm that will produce multiple heaps, where
+// each heap size is constrained by a given limit. Note that the constraint is
+// soft, meaning that a valid heap result is generated even if there are some
+// buffer sizes larger than the given constraint size.
+//
+// Pseudocode:
+//   while( `buffers` is not empty ) {
+//     create a new heap `h`
+//     for (each buffer `buf` in `buffers` in the size-decreasing order) {
+//       if (buf.size() is larger than the heap size limit &&
+//           `h` is empty) {
+//         h.place(buf)
+//         buffers.remove(buf)
+//       } else if (placing `buf` into `h` does not violate size
+//           constraint) {
+//         h.place(buf)
+//         buffers.remove(buf)
+//       }
+//     }
+//   }
 class ConstrainedGlobalDecreasingSizeBestFitHeap
     : public GlobalDecreasingSizeBestFitHeap<HloValue> {
  public:
