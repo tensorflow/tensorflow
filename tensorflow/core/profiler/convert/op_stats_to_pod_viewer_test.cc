@@ -125,6 +125,13 @@ TEST(OpStatsToPodViewer, Diagnostics) {
   EXPECT_EQ(kErrorIncompleteStep, pod_viewer_db.diagnostics().warnings(0));
 }
 
+TEST(OpStatsToPodViewer, DeviceType) {
+  OpStats op_stats;
+  op_stats.mutable_run_environment()->set_device_type("GPU");
+  PodViewerDatabase pod_viewer_db = ConvertOpStatsToPodViewer(op_stats);
+  EXPECT_EQ("GPU", pod_viewer_db.device_type());
+}
+
 }  // namespace
 }  // namespace profiler
 }  // namespace tensorflow
