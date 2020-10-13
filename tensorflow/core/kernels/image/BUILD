@@ -418,8 +418,8 @@ cc_library(
     linkopts = ["-ldl"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:android_gif_internal",
-        "//tensorflow/core:android_jpeg_internal",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core:portable_jpeg_internal",
         "//tensorflow/core:portable_tensorflow_lib_lite",
         "//tensorflow/core/lib/png:png_io",
     ],

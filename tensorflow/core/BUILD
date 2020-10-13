@@ -732,8 +732,8 @@ cc_library(
         ":framework",
         ":lib",
         ":lib_internal",
-        ":stream_executor",
         "//tensorflow/core/kernels:bounds_check_lib",
+        "//tensorflow/core/platform:stream_executor",
     ],
     alwayslink = 1,
 )
@@ -1151,10 +1151,10 @@ tf_cuda_library(
         ":ops",
         ":protos_all_cc",
         ":test",
-        ":testlib_ops",
         # TODO(gunan): resolve dependency issues and load these kernels dynamically.
         ":testlib_kernels_impl",
         "//tensorflow/cc:scope",
+        "//tensorflow/core/common_runtime:testlib_ops",
         "//tensorflow/core/framework:fake_input",
         "//tensorflow/core/framework:function_testlib",
         "//tensorflow/core/framework:shape_inference_testutil",
@@ -1162,13 +1162,6 @@ tf_cuda_library(
         "//tensorflow/core/kernels:ops_testutil",
         "//tensorflow/core/kernels:ops_util",
     ],
-)
-
-alias(
-    name = "testlib_ops",
-    testonly = 1,
-    actual =
-        "//tensorflow/core/common_runtime:testlib_ops",
 )
 
 # This is a link-only library to provide a DirectSession
@@ -1182,13 +1175,6 @@ tf_cuda_library(
         "//tensorflow/core/common_runtime:direct_session_internal",
     ],
     alwayslink = 1,
-)
-
-# -----------------------------------------------------------------------------
-# MKL targets
-alias(
-    name = "mkl_graph_util",
-    actual = "//tensorflow/core/graph:mkl_graph_util",
 )
 
 # -----------------------------------------------------------------------------
@@ -1354,12 +1340,6 @@ cc_library(
         "@com_google_protobuf//:protobuf",
     ],
     alwayslink = 1,
-)
-
-alias(
-    name = "android_op_registrations_and_gradients",
-    actual = ":portable_op_registrations_and_gradients",
-    visibility = ["//visibility:public"],
 )
 
 filegroup(
@@ -1862,16 +1842,6 @@ cc_library(
 )
 
 alias(
-    name = "android_jpeg_internal",
-    actual = ":portable_jpeg_internal",
-)
-
-alias(
-    name = "android_gif_internal",
-    actual = ":portable_gif_internal",
-)
-
-alias(
     name = "error_codes_proto_impl",
     actual = "//tensorflow/core/protobuf:error_codes_proto_impl",
 )
@@ -1879,11 +1849,6 @@ alias(
 alias(
     name = "error_codes_proto_impl_cc",
     actual = "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
-)
-
-alias(
-    name = "error_codes_proto_cc",
-    actual = "//tensorflow/core/lib/core:error_codes_proto_cc",
 )
 
 alias(
@@ -2063,13 +2028,8 @@ cc_header_only_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":stream_executor",
+        "//tensorflow/core/platform:stream_executor",
     ],
-)
-
-alias(
-    name = "stream_executor",
-    actual = "//tensorflow/core/platform:stream_executor",
 )
 
 # Like stream_executor library, but compiles without --config=cuda
@@ -2130,12 +2090,6 @@ tf_cuda_library(
 )
 
 alias(
-    name = "core_cpu_impl",
-    actual =
-        "//tensorflow/core/common_runtime:core_cpu_impl",
-)
-
-alias(
     name = "core_cpu_lib",
     actual =
         "//tensorflow/core/common_runtime:core_cpu_lib",
@@ -2148,18 +2102,6 @@ alias(
 )
 
 alias(
-    name = "regexp_internal",
-    actual =
-        "//tensorflow/core/platform:regexp",
-    visibility = [
-        "//tensorflow/compiler:__subpackages__",
-        "//tensorflow/core/kernels:__subpackages__",
-        "//tensorflow/core/profiler:__subpackages__",
-        "//tensorflow/stream_executor:__subpackages__",
-    ],
-)
-
-alias(
     name = "direct_session_internal",
     actual =
         "//tensorflow/core/common_runtime:direct_session_internal",
@@ -2169,14 +2111,6 @@ alias(
     name = "example_parser_configuration",
     actual = "//tensorflow/core/example:example_parser_configuration",
     visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "replay_log_proto_cc",
-    actual = "//tensorflow/core/protobuf:replay_log_proto_cc",
-    visibility = [
-        "//tensorflow:internal",
-    ],
 )
 
 alias(
@@ -2206,12 +2140,6 @@ cc_library(
 alias(
     name = "tensor_testutil",
     actual = "//tensorflow/core/framework:tensor_testutil",
-)
-
-# TODO(gonnet): Remove this alias once all users have been moved to the actual target.
-alias(
-    name = "shape_inference_testutil",
-    actual = "//tensorflow/core/framework:shape_inference_testutil",
 )
 
 # Main program for tests
@@ -2773,17 +2701,6 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-alias(
-    name = "lmdb_testdata",
-    actual = "//tensorflow/core/lib/lmdb:lmdb_testdata",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "cuda_libdevice_path",
-    actual = "//tensorflow/core/platform:cuda_libdevice_path",
-)
-
 transitive_hdrs(
     name = "headers",
     visibility = ["//tensorflow:__subpackages__"],
@@ -2792,7 +2709,7 @@ transitive_hdrs(
         ":framework",
         ":lib",
         ":protos_all_cc",
-        ":stream_executor",
         "//tensorflow/core/platform:platform_strings",
+        "//tensorflow/core/platform:stream_executor",
     ],
 )
