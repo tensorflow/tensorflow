@@ -96,13 +96,14 @@ py_library(
         ":values",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:collective_ops",
-        "//tensorflow/python:device",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nccl_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:context",
     ],
 )
 

@@ -101,6 +101,9 @@ class CollectiveAllReduceStrategy(distribute_lib.Strategy):
   # TODO(anjalisridhar): Update our guides with examples showing how we can use
   # the cluster_resolver argument.
 
+  # The starting number for collective keys. This should only be set in tests.
+  _collective_key_base = 0
+
   def __init__(
       self,
       communication=cross_device_ops_lib.CollectiveCommunication.AUTO,
@@ -362,7 +365,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     else:
       local_devices = (self._worker_device,)
 
-    self._collective_keys = cross_device_utils.CollectiveKeys()
+    self._collective_keys = cross_device_utils.CollectiveKeys(
+        group_key_start=1 + CollectiveAllReduceStrategy._collective_key_base)  # pylint: disable=protected-access
     self._cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
         devices=local_devices,
         group_size=len(local_devices) * self._num_workers,
@@ -428,7 +432,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         group_key = self._collective_keys.get_group_key([device])
         group_size = self._num_workers
         collective_instance_key = (
-            self._collective_keys.get_variable_instance_key())
+            self._collective_keys.get_instance_key(group_key, device))
 
         with ops.device(device):
           initial_value = kwargs["initial_value"]
