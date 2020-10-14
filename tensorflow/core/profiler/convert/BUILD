@@ -705,6 +705,7 @@ cc_library(
     hdrs = ["xplane_to_tf_data_stats.h"],
     copts = tf_profiler_copts(),
     deps = [
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/profiler/protobuf:tf_data_stats_proto_cc",

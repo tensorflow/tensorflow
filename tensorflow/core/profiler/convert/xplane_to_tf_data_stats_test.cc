@@ -45,31 +45,31 @@ TEST(XPlaneToTfDataStatsTest, HostInputPipeline) {
 
   auto consumer_thread = host_plane_builder.GetOrCreateLine(0);
   CreateXEvent(&host_plane_builder, &consumer_thread, "Iterator::Prefetch", 0,
-               100, {{StatType::kStepId, kPrefetchIteratorId}});
+               100000000, {{StatType::kStepId, kPrefetchIteratorId}});
   CreateXEvent(&host_plane_builder, &consumer_thread,
-               HostEventType::kPrefetchConsume, 80, 20,
+               HostEventType::kPrefetchConsume, 80000000, 20000000,
                {{StatType::kElementId, kFirstElementId}});
-  CreateXEvent(&host_plane_builder, &consumer_thread, "Iterator::Prefetch", 200,
-               20, {{StatType::kStepId, kPrefetchIteratorId}});
+  CreateXEvent(&host_plane_builder, &consumer_thread, "Iterator::Prefetch",
+               200000000, 20000000, {{StatType::kStepId, kPrefetchIteratorId}});
   CreateXEvent(&host_plane_builder, &consumer_thread,
-               HostEventType::kPrefetchConsume, 210, 10,
+               HostEventType::kPrefetchConsume, 210000000, 10000000,
                {{StatType::kElementId, kSecondElementId}});
 
   auto producer_thread = host_plane_builder.GetOrCreateLine(1);
   // Blocking producer.
   CreateXEvent(&host_plane_builder, &producer_thread,
-               HostEventType::kPrefetchProduce, 0, 80,
+               HostEventType::kPrefetchProduce, 0, 80000000,
                {{StatType::kElementId, kFirstElementId}});
   CreateXEvent(&host_plane_builder, &producer_thread,
-               "Iterator::Prefetch::Range", 0, 80,
+               "Iterator::Prefetch::Range", 0, 80000000,
                {{StatType::kStepId, kRangeIteratorId},
                 {StatType::kParentId, kPrefetchIteratorId}});
   // Non-blocking producer.
   CreateXEvent(&host_plane_builder, &producer_thread,
-               HostEventType::kPrefetchProduce, 100, 80,
+               HostEventType::kPrefetchProduce, 100000000, 80000000,
                {{StatType::kElementId, kSecondElementId}});
   CreateXEvent(&host_plane_builder, &producer_thread,
-               "Iterator::Prefetch::Range", 100, 80,
+               "Iterator::Prefetch::Range", 100000000, 80000000,
                {{StatType::kStepId, kRangeIteratorId},
                 {StatType::kParentId, kPrefetchIteratorId}});
 
@@ -98,9 +98,10 @@ TEST(XPlaneToTfDataStatsTest, HostInputPipeline) {
                   key: 123,
                   value: {
                     metadata { id: 123 type: HOST name: "Host:0" }
-                    avg_latency_ps: 60
-                    min_latency_ps: 20
-                    max_latency_ps: 100
+                    avg_latency_ps: 60000000
+                    min_latency_ps: 20000000
+                    max_latency_ps: 100000000
+                    num_slow_calls: 1
                     stats {
                       bottleneck_iterator_id: 456
                       iterator_stats {
@@ -108,8 +109,8 @@ TEST(XPlaneToTfDataStatsTest, HostInputPipeline) {
                         value: {
                           id: 123
                           start_time_ps: 0
-                          duration_ps: 100
-                          self_time_ps: 20
+                          duration_ps: 100000000
+                          self_time_ps: 20000000
                           is_blocking: true
                           num_calls: 1
                         }
@@ -119,8 +120,8 @@ TEST(XPlaneToTfDataStatsTest, HostInputPipeline) {
                         value: {
                           id: 456
                           start_time_ps: 0
-                          duration_ps: 80
-                          self_time_ps: 80
+                          duration_ps: 80000000
+                          self_time_ps: 80000000
                           is_blocking: true
                           num_calls: 1
                         }
@@ -132,9 +133,9 @@ TEST(XPlaneToTfDataStatsTest, HostInputPipeline) {
                         key: 123,
                         value: {
                           id: 123
-                          start_time_ps: 200
-                          duration_ps: 20
-                          self_time_ps: 20
+                          start_time_ps: 200000000
+                          duration_ps: 20000000
+                          self_time_ps: 20000000
                           is_blocking: true
                           num_calls: 1
                         }
@@ -143,9 +144,9 @@ TEST(XPlaneToTfDataStatsTest, HostInputPipeline) {
                         key: 456,
                         value: {
                           id: 456
-                          start_time_ps: 100
-                          duration_ps: 80
-                          self_time_ps: 80
+                          start_time_ps: 100000000
+                          duration_ps: 80000000
+                          self_time_ps: 80000000
                           is_blocking: false
                           num_calls: 1
                         }
@@ -167,19 +168,20 @@ TEST(XPlaneToTfDataStatsTest, DeviceInputPipeline) {
 
   auto consumer_thread = host_plane_builder.GetOrCreateLine(0);
   CreateXEvent(&host_plane_builder, &consumer_thread, "Iterator::Prefetch", 0,
-               30, {{StatType::kStepId, kPrefetchIteratorId}});
-  CreateXEvent(&host_plane_builder, &consumer_thread, "Iterator::Prefetch", 100,
-               100, {{StatType::kStepId, kPrefetchIteratorId}});
+               30000000, {{StatType::kStepId, kPrefetchIteratorId}});
+  CreateXEvent(&host_plane_builder, &consumer_thread, "Iterator::Prefetch",
+               100000000, 100000000,
+               {{StatType::kStepId, kPrefetchIteratorId}});
   CreateXEvent(&host_plane_builder, &consumer_thread,
-               HostEventType::kPrefetchConsume, 180, 20,
+               HostEventType::kPrefetchConsume, 180000000, 20000000,
                {{StatType::kElementId, kElementId}});
 
   auto producer_thread = host_plane_builder.GetOrCreateLine(1);
   CreateXEvent(&host_plane_builder, &producer_thread,
-               HostEventType::kPrefetchProduce, 100, 80,
+               HostEventType::kPrefetchProduce, 100000000, 80000000,
                {{StatType::kElementId, kElementId}});
   CreateXEvent(&host_plane_builder, &producer_thread,
-               "Iterator::Prefetch::Generator", 100, 80,
+               "Iterator::Prefetch::Generator", 100000000, 80000000,
                {{StatType::kStepId, kRangeIteratorId},
                 {StatType::kParentId, kPrefetchIteratorId}});
 
@@ -208,18 +210,19 @@ TEST(XPlaneToTfDataStatsTest, DeviceInputPipeline) {
                   key: 123,
                   value: {
                     metadata { id: 123 type: DEVICE name: "Device:0" }
-                    avg_latency_ps: 65
-                    min_latency_ps: 30
-                    max_latency_ps: 100
+                    avg_latency_ps: 65000000
+                    min_latency_ps: 30000000
+                    max_latency_ps: 100000000
+                    num_slow_calls: 1
                     stats {
                       bottleneck_iterator_id: 456
                       iterator_stats {
                         key: 123,
                         value: {
                           id: 123
-                          start_time_ps: 100
-                          duration_ps: 100
-                          self_time_ps: 20
+                          start_time_ps: 100000000
+                          duration_ps: 100000000
+                          self_time_ps: 20000000
                           is_blocking: true
                           num_calls: 1
                         }
@@ -228,9 +231,9 @@ TEST(XPlaneToTfDataStatsTest, DeviceInputPipeline) {
                         key: 456,
                         value: {
                           id: 456
-                          start_time_ps: 100
-                          duration_ps: 80
-                          self_time_ps: 80
+                          start_time_ps: 100000000
+                          duration_ps: 80000000
+                          self_time_ps: 80000000
                           is_blocking: true
                           num_calls: 1
                         }
@@ -243,8 +246,8 @@ TEST(XPlaneToTfDataStatsTest, DeviceInputPipeline) {
                         value: {
                           id: 123
                           start_time_ps: 0
-                          duration_ps: 30
-                          self_time_ps: 30
+                          duration_ps: 30000000
+                          self_time_ps: 30000000
                           is_blocking: true
                           num_calls: 1
                         }
@@ -272,24 +275,24 @@ TEST(XPlaneToTfDataStatsTest, MapAndBatch) {
 
   XLineBuilder consumer_thread = host_plane_builder.GetOrCreateLine(0);
   CreateXEvent(&host_plane_builder, &consumer_thread, "Iterator::MapAndBatch",
-               0, 100, {{StatType::kStepId, kMapAndBatchIteratorId}});
+               0, 100000000, {{StatType::kStepId, kMapAndBatchIteratorId}});
   CreateXEvent(&host_plane_builder, &consumer_thread,
-               HostEventType::kMapAndBatchConsume, 80, 20,
+               HostEventType::kMapAndBatchConsume, 80000000, 20000000,
                {{StatType::kElementId, kElementId}});
 
   XLineBuilder producer_thread = host_plane_builder.GetOrCreateLine(1);
   CreateXEvent(&host_plane_builder, &producer_thread,
-               HostEventType::kMapAndBatchProduce, 0, 30,
+               HostEventType::kMapAndBatchProduce, 0, 30000000,
                {{StatType::kElementId, kElementId}});
   CreateXEvent(&host_plane_builder, &producer_thread,
-               "Iterator::MapAndBatch::Range", 0, 30,
+               "Iterator::MapAndBatch::Range", 0, 30000000,
                {{StatType::kStepId, kRangeIteratorId},
                 {StatType::kParentId, kMapAndBatchIteratorId}});
   CreateXEvent(&host_plane_builder, &producer_thread,
-               HostEventType::kMapAndBatchProduce, 40, 30,
+               HostEventType::kMapAndBatchProduce, 40000000, 30000000,
                {{StatType::kElementId, kElementId}});
   CreateXEvent(&host_plane_builder, &producer_thread,
-               "Iterator::MapAndBatch::Range", 40, 30,
+               "Iterator::MapAndBatch::Range", 40000000, 30000000,
                {{StatType::kStepId, kRangeIteratorId},
                 {StatType::kParentId, kMapAndBatchIteratorId}});
 
@@ -318,9 +321,10 @@ TEST(XPlaneToTfDataStatsTest, MapAndBatch) {
                   key: 123,
                   value: {
                     metadata { id: 123 type: HOST name: "Host:0" }
-                    avg_latency_ps: 100
-                    min_latency_ps: 100
-                    max_latency_ps: 100
+                    avg_latency_ps: 100000000
+                    min_latency_ps: 100000000
+                    max_latency_ps: 100000000
+                    num_slow_calls: 1
                     stats {
                       bottleneck_iterator_id: 456
                       iterator_stats {
@@ -328,8 +332,8 @@ TEST(XPlaneToTfDataStatsTest, MapAndBatch) {
                         value: {
                           id: 123
                           start_time_ps: 0
-                          duration_ps: 100
-                          self_time_ps: 40
+                          duration_ps: 100000000
+                          self_time_ps: 40000000
                           is_blocking: true
                           num_calls: 1
                         }
@@ -339,8 +343,8 @@ TEST(XPlaneToTfDataStatsTest, MapAndBatch) {
                         value: {
                           id: 456
                           start_time_ps: 0
-                          duration_ps: 60
-                          self_time_ps: 60
+                          duration_ps: 60000000
+                          self_time_ps: 60000000
                           is_blocking: true
                           num_calls: 2
                         }

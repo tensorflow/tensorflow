@@ -16,11 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_TF_DATA_STATS_H_
 #define TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_TF_DATA_STATS_H_
 
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/profiler/protobuf/tf_data_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
+
+TF_CONST_INIT extern const int64 kSlowCallThresholdPs;
 
 TfDataStats ConvertXPlaneToTfDataStats(XPlane* host_plane);
 

@@ -30,6 +30,10 @@ limitations under the License.
 
 namespace tensorflow {
 namespace profiler {
+
+// 50 us from https://www.tensorflow.org/guide/data_performance_analysis
+const int64 kSlowCallThresholdPs = 50 * 1000000;
+
 namespace {
 
 // Returns true if the given iterator event is for a root iterator.
@@ -129,7 +133,7 @@ void ProcessEventForest(const EventForest& event_forest,
   }
 }
 
-void SetInputPipelineMetadata(int64 id, uint64 name_id,
+void SetInputPipelineMetadata(int64 id, int64 name_id,
                               bool is_device_input_pipeline,
                               InputPipelineMetadata* metadata) {
   constexpr absl::string_view kHostInputPipelinePrefix = "Host:";
@@ -199,8 +203,8 @@ void ProcessInputPipelines(
         root_iterator_event_map,
     TfDataStats* tf_data_stats) {
   auto* input_pipelines = tf_data_stats->mutable_input_pipelines();
-  uint64 num_host_input_pipelines = 0;
-  uint64 num_device_input_pipelines = 0;
+  int64 num_host_input_pipelines = 0;
+  int64 num_device_input_pipelines = 0;
   for (auto& id_and_events : *root_iterator_event_map) {
     auto& root_iterator_id = id_and_events.first;
     auto& root_iterator_events = id_and_events.second;
@@ -216,28 +220,31 @@ void ProcessInputPipelines(
     if (result.second) {
       bool is_device_input_pipeline =
           device_input_pipeline_ids.contains(root_iterator_id);
-      uint64 name_id = is_device_input_pipeline ? num_device_input_pipelines++
-                                                : num_host_input_pipelines++;
+      int64 name_id = is_device_input_pipeline ? num_device_input_pipelines++
+                                               : num_host_input_pipelines++;
       SetInputPipelineMetadata(root_iterator_id, name_id,
                                is_device_input_pipeline, metadata);
     }
-    uint64 sum_latency_ps = 0;
-    uint64 min_latency_ps = UINT64_MAX;
-    uint64 max_latency_ps = 0;
+    int64 sum_latency_ps = 0;
+    int64 min_latency_ps = INT64_MAX;
+    int64 max_latency_ps = 0;
+    int64 num_slow_calls = 0;
     for (const EventNode* root_iterator_event : root_iterator_events) {
       InputPipelineStat* stat = input_pipeline_stats.add_stats();
       ProcessIteratorEvent(*root_iterator_event, stat,
                            /*is_blocking*/ true);
       SetBottleneckIteratorId(stat);
-      uint64 latency_ps = root_iterator_event->GetEventVisitor().DurationPs();
+      int64 latency_ps = root_iterator_event->GetEventVisitor().DurationPs();
       sum_latency_ps += latency_ps;
       min_latency_ps = std::min(min_latency_ps, latency_ps);
       max_latency_ps = std::max(max_latency_ps, latency_ps);
+      if (latency_ps > kSlowCallThresholdPs) num_slow_calls++;
     }
     input_pipeline_stats.set_avg_latency_ps(sum_latency_ps /
                                             root_iterator_events.size());
     input_pipeline_stats.set_min_latency_ps(min_latency_ps);
     input_pipeline_stats.set_max_latency_ps(max_latency_ps);
+    input_pipeline_stats.set_num_slow_calls(num_slow_calls);
   }
 }
 
