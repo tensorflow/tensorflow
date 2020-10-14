@@ -27,15 +27,9 @@ tensorflow/lite/micro/examples/person_detection_experimental/person_detect_model
 $(eval $(call microlite_test,keyword_benchmark,\
 $(KEYWORD_BENCHMARK_SRCS),$(KEYWORD_BENCHMARK_HDRS)))
 
-# We can not build the person detection benchmarks for STM32F4 due to
-# insufficient flash (see issue #43743 for more details). Currently disabling
-# this benchmark for STM32F4 but we can revisit this later.
-ifneq ($(TARGET), stm32f4)
-
 $(eval $(call microlite_test,person_detection_benchmark,\
 $(PERSON_DETECTION_BENCHMARK_SRCS),$(PERSON_DETECTION_BENCHMARK_HDRS)))
 
 $(eval $(call microlite_test,person_detection_experimental_benchmark,\
 $(PERSON_DETECTION_EXPERIMENTAL_BENCHMARK_SRCS),$(PERSON_DETECTION_EXPERIMENTAL_BENCHMARK_HDRS)))
 
-endif
