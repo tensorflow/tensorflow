@@ -253,6 +253,7 @@ distribute_py_test(
     ],
     tpu_tags = [
         "no_oss",  # b/153615544.
+        "no_tsan",  # TODO(b/170869466)
     ],
     deps = [
         "//tensorflow/python:math_ops",
