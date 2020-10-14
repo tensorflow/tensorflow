@@ -659,56 +659,64 @@ absl::Status Arguments::Bind(cl_kernel kernel, int offset) {
 
 std::string Arguments::AddActiveArgument(const std::string& arg_name,
                                          bool use_f32_for_halfs) {
-  if (auto it = int_values_.find(arg_name); it != int_values_.end()) {
-    int int_index;
-    if (it->second.active) {
-      int_index = it->second.offset;
-    } else {
-      it->second.active = true;
-      it->second.offset = shared_int4s_data_.size();
-      int_index = it->second.offset;
-      shared_int4s_data_.push_back(it->second.value);
-    }
-    std::string index = std::to_string(int_index / 4);
-    std::string postfixes[4] = {"x", "y", "z", "w"};
-    return "shared_int4_" + index + "." + postfixes[int_index % 4];
-  }
-  if (auto it = float_values_.find(arg_name); it != float_values_.end()) {
-    int float_index;
-    if (it->second.active) {
-      float_index = it->second.offset;
-    } else {
-      it->second.active = true;
-      it->second.offset = shared_float4s_data_.size();
-      float_index = it->second.offset;
-      shared_float4s_data_.push_back(it->second.value);
-    }
-    std::string index = std::to_string(float_index / 4);
-    std::string postfixes[4] = {"x", "y", "z", "w"};
-    return "shared_float4_" + index + "." + postfixes[float_index % 4];
-  }
-  if (auto it = half_values_.find(arg_name); it != half_values_.end()) {
-    int half_index;
-    if (it->second.active) {
-      half_index = it->second.offset;
-    } else {
-      it->second.active = true;
-      if (use_f32_for_halfs) {
-        it->second.store_as_f32 = true;
-        it->second.offset = shared_float4s_data_.size();
-        shared_float4s_data_.push_back(it->second.value);
+  {
+    auto it = int_values_.find(arg_name);
+    if (it != int_values_.end()) {
+      int int_index;
+      if (it->second.active) {
+        int_index = it->second.offset;
       } else {
-        it->second.offset = shared_half4s_data_.size();
-        shared_half4s_data_.push_back(it->second.value);
+        it->second.active = true;
+        it->second.offset = shared_int4s_data_.size();
+        int_index = it->second.offset;
+        shared_int4s_data_.push_back(it->second.value);
       }
-      half_index = it->second.offset;
+      std::string index = std::to_string(int_index / 4);
+      std::string postfixes[4] = {"x", "y", "z", "w"};
+      return "shared_int4_" + index + "." + postfixes[int_index % 4];
     }
-    std::string index = std::to_string(half_index / 4);
-    std::string postfixes[4] = {"x", "y", "z", "w"};
-    if (it->second.store_as_f32) {
-      return "(half)(shared_float4_" + index + "." + postfixes[half_index % 4] +
-             ")";
-    } else {
+  }
+  {
+    auto it = float_values_.find(arg_name);
+    if (it != float_values_.end()) {
+      int float_index;
+      if (it->second.active) {
+        float_index = it->second.offset;
+      } else {
+        it->second.active = true;
+        it->second.offset = shared_float4s_data_.size();
+        float_index = it->second.offset;
+        shared_float4s_data_.push_back(it->second.value);
+      }
+      std::string index = std::to_string(float_index / 4);
+      std::string postfixes[4] = {"x", "y", "z", "w"};
+      return "shared_float4_" + index + "." + postfixes[float_index % 4];
+    }
+  }
+  {
+    auto it = half_values_.find(arg_name);
+    if (it != half_values_.end()) {
+      int half_index;
+      if (it->second.active) {
+        half_index = it->second.offset;
+      } else {
+        it->second.active = true;
+        if (use_f32_for_halfs) {
+          it->second.store_as_f32 = true;
+          it->second.offset = shared_float4s_data_.size();
+          shared_float4s_data_.push_back(it->second.value);
+        } else {
+          it->second.offset = shared_half4s_data_.size();
+          shared_half4s_data_.push_back(it->second.value);
+        }
+        half_index = it->second.offset;
+      }
+      std::string index = std::to_string(half_index / 4);
+      std::string postfixes[4] = {"x", "y", "z", "w"};
+      if (it->second.store_as_f32) {
+        return "(half)(shared_float4_" + index + "." +
+               postfixes[half_index % 4] + ")";
+      }
       return "shared_half4_" + index + "." + postfixes[half_index % 4];
     }
   }
