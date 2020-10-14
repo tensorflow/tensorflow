@@ -93,7 +93,7 @@ class TimeDistributed(Wrapper):
   with `channels_last` data format, across 10 timesteps.
   The batch input shape is `(32, 10, 128, 128, 3)`.
 
-  You can then use `TimeDistributed` to apply a `Conv2D` layer to each of the
+  You can then use `TimeDistributed` to apply the same `Conv2D` layer to each of the
   10 timesteps, independently:
 
   >>> inputs = tf.keras.Input(shape=(10, 128, 128, 3))
@@ -103,7 +103,7 @@ class TimeDistributed(Wrapper):
   TensorShape([None, 10, 126, 126, 64])
 
   Because `TimeDistributed` applies an instance of `Conv2D` to each of the
-  timestamps, the weights used at each timestamp are shared.
+  timestamps, the same set of weights are used at each timestamp.
 
   Arguments:
     layer: a `tf.keras.layers.Layer` instance.
