@@ -120,7 +120,7 @@ TfLiteRegistration Register_TRANSPOSE() {
           /*profiling_string=*/nullptr,
           /*builtin_code=*/0,
           /*custom_name=*/nullptr,
-          /*version=*/0};
+          /*version=*/2};
 }
 
 } // namespace micro
