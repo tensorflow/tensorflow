@@ -169,36 +169,6 @@ size_t Dispatcher::FetchBuffer(int8_t **dest, int8_t const *src, size_t size) {
   }
 }
 
-size_t Dispatcher::FetchWeights(int8_t **dest, int8_t const *src, size_t size,
-                                ChannelGroup const &changrp) {
-  size_t changrp_bytes = size / changrp_len;
-
-  if (is_ram_address((uintptr_t)src)) {
-    *dest = (int8_t *)&src[changrp.start * changrp_bytes];
-    return 0;
-  } else {
-    size_t load_size;
-    if ((changrp.index == 0) && (changrp.size < changrp_len))
-      load_size = size;  // only one channel group so load everything
-    else
-      load_size = changrp.size * changrp_bytes;
-    memload((void *)*dest, (void *)&src[changrp.start * changrp_bytes],
-            load_size);
-    return load_size;
-  }
-}
-
-size_t Dispatcher::FetchBiases(int16_t **dest, int16_t const *src, size_t size,
-                               ChannelGroup const &changrp) {
-  if (is_ram_address((uintptr_t)src)) {
-    *dest = (int16_t *)&src[changrp.index * bso_changrp_len];
-    return 0;
-  } else {
-    memload((void *)*dest, (void *)&src[changrp.index * bso_changrp_len], size);
-    return size;
-  }
-}
-
 }  // namespace xcore
 }  // namespace micro
 }  // namespace ops

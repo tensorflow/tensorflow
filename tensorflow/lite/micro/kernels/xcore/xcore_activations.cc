@@ -25,7 +25,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, 0);
   int32_t length = input->bytes / sizeof(uint8_t);
 
-  lookup8(output->data.uint8, input->data.uint8, lut->data.uint8, length);
+  lookup8(output->data.uint8, input->data.uint8, lut->data.uint8, 0, length);
 
   return kTfLiteOk;
 }
