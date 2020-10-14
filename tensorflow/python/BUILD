@@ -6125,6 +6125,8 @@ filegroup(
         "//tensorflow/compiler/jit:get_compiler_ir",  #tfe
         "//tensorflow/compiler/jit:flags",  #tfe
         "//tensorflow/compiler/mlir/python:mlir",  # mlir
+        "//tensorflow/core/common_runtime:device",  # device_lib, tfe, tf_session
+        "//tensorflow/core/common_runtime:device_factory",  # device_lib, tfe, tf_session
         "//tensorflow/core/common_runtime:graph_constructor",  # tf_session
         "//tensorflow/core/common_runtime:quantize_training",  # quantize_training
         "//tensorflow/core/common_runtime:session_options",  # device_lib, tfe, tf_session

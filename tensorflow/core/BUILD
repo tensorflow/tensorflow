@@ -425,9 +425,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:control_flow.h",  # TODO(josh11b): Make internal?
         "//tensorflow/core/framework:dataset.h",
         "//tensorflow/core/framework:dataset_stateful_op_allowlist.h",
-        "//tensorflow/core/framework:device.h",
         "//tensorflow/core/framework:device_base.h",
-        "//tensorflow/core/framework:device_factory.h",
         "//tensorflow/core/framework:function.h",
         "//tensorflow/core/framework:function_handle_cache.h",
         "//tensorflow/core/framework:graph_def_util.h",
@@ -1597,7 +1595,6 @@ filegroup(
         "//tensorflow/core/example:feature_util.h",
         "//tensorflow/core/framework:framework_internal_private_hdrs",
         "//tensorflow/core/graph:framework_internal_private_headers",
-        "//tensorflow/core/public:session_options.h",
         "//tensorflow/core/util:framework_internal_private_hdrs",
         "//tensorflow/core/util:memmapped_file_system_hdrs",
         "//tensorflow/core/util/sparse:framework_internal_private_headers_group",
