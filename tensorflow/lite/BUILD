@@ -628,6 +628,15 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "stderr_reporter_test",
+    srcs = ["stderr_reporter_test.cc"],
+    deps = [
+        ":stderr_reporter",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "util",
     srcs = ["util.cc"],
