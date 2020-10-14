@@ -194,6 +194,24 @@ gentbl(
     td_srcs = [":hlo_ops_td_files"],
 )
 
+gentbl(
+    name = "lhlo_gpu_ops_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    strip_include_prefix = "include",
+    tbl_outs = [
+        ("-gen-op-decls", "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h.inc"),
+        ("-gen-op-defs", "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.cc.inc"),
+        ("-gen-struct-attr-decls", "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_structs.h.inc"),
+        ("-gen-struct-attr-defs", "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_structs.cc.inc"),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.td",
+    td_relative_includes = [
+        "include",
+    ],
+    td_srcs = [":hlo_ops_td_files"],
+)
+
 #TODO(aminim): revisit the naming and grouping of these rules post-move.
 gentbl(
     name = "canonicalize_inc_gen",
@@ -331,12 +349,42 @@ cc_library(
 )
 
 cc_library(
+    name = "lhlo_gpu",
+    srcs = [
+        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.cc.inc",
+        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h.inc",
+        "lib/Dialect/mhlo/IR/lhlo_gpu_ops.cc",
+    ],
+    hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":hlo_ops_base_inc_gen",
+        ":lhlo_gpu_ops_inc_gen",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:CopyOpInterface",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SideEffects",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:ViewLikeInterface",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "hlo_dialect_registration",
     srcs = ["lib/Dialect/mhlo/IR/init.cc"],
     hdrs = ["include/mlir-hlo/Dialect/mhlo/IR/register.h"],
     deps = [
         ":hlo",
         ":lhlo",
+        ":lhlo_gpu",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -878,6 +926,7 @@ cc_binary(
         ":all_passes",
         ":hlo",
         ":lhlo",
+        ":lhlo_gpu",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
         "@llvm-project//mlir:IR",

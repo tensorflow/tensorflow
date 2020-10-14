@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,8 +15,8 @@ limitations under the License.
 
 // This file defines the operations used in the LHLO dialect.
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_LHLO_OPS_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_LHLO_OPS_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_LHLO_GPU_OPS_H_
+#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_LHLO_GPU_OPS_H_
 
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Attributes.h"
@@ -35,21 +35,21 @@ namespace mlir {
 class OpBuilder;
 }  // namespace mlir
 
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.h.inc"
+#include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_structs.h.inc"
 
 namespace mlir {
-namespace lmhlo {
+namespace lmhlo_gpu {
 
-class LmhloDialect : public Dialect {
+class LmhloGpuDialect : public Dialect {
  public:
-  explicit LmhloDialect(MLIRContext *context);
-  static StringRef getDialectNamespace() { return "lmhlo"; }
+  explicit LmhloGpuDialect(MLIRContext *context);
+  static StringRef getDialectNamespace() { return "lmhlo_gpu"; }
 };
 
-}  // namespace lmhlo
+}  // namespace lmhlo_gpu
 }  // end namespace mlir
 
 #define GET_OP_CLASSES
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h.inc"
+#include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h.inc"
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_LHLO_OPS_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_LHLO_GPU_OPS_H_
