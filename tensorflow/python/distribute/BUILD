@@ -1044,7 +1044,6 @@ cuda_py_test(
         ":collective_util",
         ":combinations",
         ":cross_device_ops",
-        ":cross_device_utils",
         ":multi_process_runner",
         ":multi_worker_test_base",
         ":reduce_util",
