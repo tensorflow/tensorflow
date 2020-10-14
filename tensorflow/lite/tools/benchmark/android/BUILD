@@ -10,20 +10,9 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-# See README.md for details about building and executing the benchmark in APK
-# format.
-
-APK_VARIANTS = [
-    # (suffix, extra deps)
-    ("", []),
-    (
-        "_plus_flex",
-        ["//tensorflow/lite/delegates/flex:delegate"],
-    ),
-]
-
-[android_binary(
-    name = "benchmark_model%s" % suffix,
+# See README.md for details about building and executing this benchmark.
+android_binary(
+    name = "benchmark_model",
     srcs = glob([
         "src/**/*.java",
     ]),
@@ -35,12 +24,12 @@ APK_VARIANTS = [
     tags = ["manual"],
     deps = [
         ":hexagon_libs",
-        ":tensorflowlite_benchmark_native%s" % suffix,
+        ":tensorflowlite_benchmark_native",
     ],
-) for suffix, _ in APK_VARIANTS]
+)
 
-[tflite_jni_binary(
-    name = "libtensorflowlite_benchmark%s.so" % suffix,
+tflite_jni_binary(
+    name = "libtensorflowlite_benchmark.so",
     srcs = glob([
         "jni/**/*.cc",
         "jni/**/*.h",
@@ -48,14 +37,14 @@ APK_VARIANTS = [
     deps = [
         "//tensorflow/lite/java/jni",
         "//tensorflow/lite/tools/benchmark:benchmark_tflite_model_lib",
-    ] + extra_deps,
-) for suffix, extra_deps in APK_VARIANTS]
+    ],
+)
 
-[cc_library(
-    name = "tensorflowlite_benchmark_native%s" % suffix,
-    srcs = ["libtensorflowlite_benchmark%s.so" % suffix],
+cc_library(
+    name = "tensorflowlite_benchmark_native",
+    srcs = ["libtensorflowlite_benchmark.so"],
     visibility = ["//visibility:private"],
-) for suffix, _ in APK_VARIANTS]
+)
 
 cc_library(
     name = "hexagon_libs",
