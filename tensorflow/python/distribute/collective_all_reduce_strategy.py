@@ -250,7 +250,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._worker_device = device_util.canonicalize("/device:CPU:0")
     self._host_input_device = numpy_dataset.SingleDevice(self._worker_device)
 
-    self._collective_keys = cross_device_utils.CollectiveKeys()
+    self._collective_keys = cross_device_utils.CollectiveKeys(
+        group_key_start=1 + CollectiveAllReduceStrategy._collective_key_base)  # pylint: disable=protected-access
     self._cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
         devices=local_devices,
         group_size=len(local_devices),
