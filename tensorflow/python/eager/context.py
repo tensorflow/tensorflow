@@ -1237,8 +1237,8 @@ class Context(object):
 
   # Parse PhysicalDevice from the device string.
   # If the device string contains subdevice type string, then parse it.
-  #  e.g. '/physical_device:GPU:0:X_GPU' 
-  #           -> PhysicalDevice(name='/physical_device:GPU:0',
+  #  e.g. '/physical_device:GPU:X_GPU:0'
+  #           -> PhysicalDevice(name='/physical_device:GPU:X_GPU:0',
   #                             device_type='GPU', subdevice_type='X_GPU')
   # If the device string doesn't contains subdevice type string, subdevice 
   # type will be the same as the device type string.
@@ -1250,9 +1250,9 @@ class Context(object):
     for d in devices:
         device_spec = d.decode()
         if (device_spec.count(":") == 3):
-          name = device_spec.strip(device_spec.split(":")[3]).strip(":")
+          name = device_spec
           device_type = device_spec.split(":")[1]
-          subdevice_type = device_spec.split(":")[3]
+          subdevice_type = device_spec.split(":")[2]
         else:
           name = device_spec
           device_type = device_spec.split(":")[1]
