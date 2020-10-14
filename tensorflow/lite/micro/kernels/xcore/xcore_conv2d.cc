@@ -182,7 +182,6 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
     // create tasks
     for (int i_rg = 0; i_rg < op->execution_plan.regions.GetSize(); i_rg++) {
       const RowColRegion &region = op->execution_plan.regions[i_rg];
-      int32_t i_job = i_cg * op->execution_plan.regions.GetSize() + i_rg;
 
       thread_data[i_rg].data.Y = (nn_image_t *)output->data.int8;
       thread_data[i_rg].data.X = (const nn_image_t *)input->data.int8;
@@ -372,7 +371,7 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
 
     for (int i_rg = 0; i_rg < op->execution_plan.regions.GetSize(); i_rg++) {
       const RowColRegion &region = op->execution_plan.regions[i_rg];
-      int32_t i_job = i_cg * op->execution_plan.regions.GetSize() + i_rg;
+
       thread_data[i_rg].data.Y = (nn_image_t *)output->data.int8;
       thread_data[i_rg].data.X = (const nn_image_t *)input->data.int8;
       thread_data[i_rg].data.K = (const nn_tensor_t *)tK;
@@ -534,7 +533,7 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
 
     for (int i_rg = 0; i_rg < op->execution_plan.regions.GetSize(); i_rg++) {
       const RowColRegion &region = op->execution_plan.regions[i_rg];
-      int32_t i_job = i_cg * op->execution_plan.regions.GetSize() + i_rg;
+
       thread_data[i_rg].data.Y = (nn_image_t *)output->data.int8;
       thread_data[i_rg].data.X = (const nn_image_t *)input->data.int8;
       thread_data[i_rg].data.K = (const nn_tensor_t *)tK;
@@ -747,7 +746,7 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
 
     for (int i_rg = 0; i_rg < op->execution_plan.regions.GetSize(); i_rg++) {
       const RowColRegion &region = op->execution_plan.regions[i_rg];
-      int32_t i_job = i_cg * op->execution_plan.regions.GetSize() + i_rg;
+
       thread_data[i_rg].data.Y = (nn_image_t *)output->data.int8;
       thread_data[i_rg].data.X = (const nn_image_t *)input->data.int8;
       thread_data[i_rg].data.K = (const nn_tensor_t *)tK;
