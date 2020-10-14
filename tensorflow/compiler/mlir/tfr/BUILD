@@ -265,6 +265,7 @@ tf_py_test(
     tags = [
         "no_windows",  # TODO(b/170752141)
         "nomac",  # TODO(b/170752141)
+        "notsan",  # TODO(b/170862433)
     ],
     deps = [
         "//tensorflow/compiler/mlir/tfr/resources:composite_ops",
