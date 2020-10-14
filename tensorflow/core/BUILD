@@ -1882,14 +1882,6 @@ alias(
     visibility = ["//tensorflow:internal"],
 )
 
-test_suite(
-    name = "low_level_tests",
-    tests = [
-        ":low_level_library_tests",
-        "//tensorflow/core/platform:low_level_library_tests",
-    ],
-)
-
 tf_cc_tests(
     name = "low_level_library_tests",
     size = "small",
@@ -1910,7 +1902,6 @@ tf_cc_tests(
         "//tensorflow/core/lib/random:legacy_lib_random_tests",
         "//tensorflow/core/lib/strings:legacy_low_level_library_tests",
     ],
-    create_named_test_suite = True,
     deps = [
         ":lib",
         ":lib_internal",
@@ -1943,22 +1934,6 @@ tf_cc_test(
         ":test",
         ":test_main",
         "//third_party/eigen3",
-    ],
-)
-
-test_suite(
-    name = "platform_tests",
-    tests = [
-        "//tensorflow/core/platform:abi_test",
-        "//tensorflow/core/platform:env_test",
-        "//tensorflow/core/platform:fake_python_env_test",
-        "//tensorflow/core/platform:file_system_test",
-        "//tensorflow/core/platform:numa_test",
-        "//tensorflow/core/platform:platform_strings_test",
-        "//tensorflow/core/platform:rocm_rocdl_path_test",
-        "//tensorflow/core/platform:setround_test",
-        "//tensorflow/core/platform:unbounded_work_queue_test",
-        "//tensorflow/core/platform:vmodule_test",
     ],
 )
 
@@ -2014,15 +1989,6 @@ tf_cc_test(
     ],
 )
 
-test_suite(
-    name = "higher_level_tests",
-    tests = [
-        ":core_higher_level_tests",
-        "//tensorflow/core/framework:higher_level_tests",
-        "//tensorflow/core/util:higher_level_tests",
-    ],
-)
-
 tf_cc_tests(
     name = "core_higher_level_tests",
     size = "small",
@@ -2041,7 +2007,6 @@ tf_cc_tests(
         "//tensorflow/core/graph:validate_test.cc",
         "//tensorflow/core/util/sparse:higher_level_tests_group",
     ],
-    create_named_test_suite = True,
     linkopts = select({
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],

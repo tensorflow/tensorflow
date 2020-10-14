@@ -1175,7 +1175,6 @@ tf_cc_tests(
         "variant_op_registry_test.cc",
         "variant_test.cc",
     ],
-    create_named_test_suite = True,
     linkopts = select({
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
