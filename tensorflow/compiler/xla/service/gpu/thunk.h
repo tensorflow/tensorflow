@@ -69,10 +69,6 @@ class Thunk {
   };
 
   struct ThunkInfo {
-    // Optional. It's only used by subclasses which haven't been migrated away
-    // from HloInstructions. Once the migration is done, Thunks should be fully
-    // serializable.
-    const HloInstruction* hlo_instruction = nullptr;
     absl::optional<int64> profile_index;
     std::string profile_annotation;
   };

@@ -22,7 +22,6 @@ limitations under the License.
 namespace mlir {
 namespace mhlo {
 
-std::unique_ptr<Pass> createTestChloLegalizeToHloPass();
 std::unique_ptr<FunctionPass> createTestInferShapedTypeMethodsPass();
 std::unique_ptr<Pass> createTestMaterializeBroadcastsPass();
 std::unique_ptr<Pass> createTestUnfuseBatchNormPass();

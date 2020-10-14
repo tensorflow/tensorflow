@@ -1435,7 +1435,7 @@ def take_along_axis(arr, indices, axis):  # pylint: disable=missing-docstring
   indices = indices.data
 
   rank = array_ops.rank(arr)
-  axis = array_ops.where_v2(axis < 0, axis + rank, axis)
+  axis = axis + rank if axis < 0 else axis
 
   # Broadcast shapes to match, ensure that the axis of interest is not
   # broadcast.
@@ -1461,7 +1461,7 @@ def take_along_axis(arr, indices, axis):  # pylint: disable=missing-docstring
 
   swapaxes_ = lambda t: swapaxes(np_utils.tensor_to_ndarray(t), axis, -1).data
 
-  dont_move_axis_to_end = math_ops.equal(axis, rank - 1)
+  dont_move_axis_to_end = math_ops.equal(axis, np_utils.subtract(rank, 1))
   arr = np_utils.cond(dont_move_axis_to_end, lambda: arr,
                       lambda: swapaxes_(arr))
   indices = np_utils.cond(dont_move_axis_to_end, lambda: indices,
@@ -1730,6 +1730,10 @@ def _slice_helper(tensor, slice_spec, update_method=None, updates=None):
       if updates is None:
         return array_ops.gather_nd(tensor, stacked_indices)
       else:
+        # We only need to move-axis `updates` in the contiguous case becausce
+        # only in this case the result dimensions of advanced indexing are in
+        # the middle of `updates`. In the non-contiguous case, those dimensions
+        # are always at the front.
         if dims_contiguous:
           # TODO(wangpeng): Support unknown rank (e.g. by partially flattening
           #   `updates`)
@@ -1773,10 +1777,11 @@ def _slice_helper(tensor, slice_spec, update_method=None, updates=None):
     # do a gather instead.
     rank = np_utils._maybe_static(array_ops.rank(tensor))  # pylint: disable=protected-access
     dims = [(x + rank if x < 0 else x) for x in dims]
-    shape_tensor = array_ops.shape(tensor, out_type=stacked_indices.dtype)
+    shape_tensor = array_ops.shape(tensor)
     dim_sizes = array_ops.gather(shape_tensor, dims)
     if len(dims) == 1:
       stacked_indices = indices[0]
+    stacked_indices = math_ops.cast(stacked_indices, dtypes.int32)
     stacked_indices = array_ops.where_v2(stacked_indices < 0,
                                          stacked_indices + dim_sizes,
                                          stacked_indices)
@@ -1784,8 +1789,12 @@ def _slice_helper(tensor, slice_spec, update_method=None, updates=None):
     if len(dims) > 1:
       index_scaling = math_ops.cumprod(
           dim_sizes, reverse=True, exclusive=True)
-      stacked_indices = math_ops.tensordot(
-          stacked_indices, index_scaling, axes=1)
+      def _tensordot(a, b):
+        # TODO(b/168657656): This function should be replaced by
+        # tensordot(axis=1) once MatMul has int32 XLA kernel.
+        b = array_ops.broadcast_to(b, array_ops.shape(a))
+        return math_ops.reduce_sum(a * b, axis=-1)
+      stacked_indices = _tensordot(stacked_indices, index_scaling)
       flat_shape = array_ops.concat(
           [shape_tensor[:axis], [-1], shape_tensor[axis + len(dims):]],
           axis=0)

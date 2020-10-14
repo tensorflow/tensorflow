@@ -67,9 +67,14 @@ class ProfilerApiTest(test_util.TensorFlowTestCase):
         'kernel_stats.pb',
     ]
     for file in expected_files:
-      path = os.path.join(logdir, 'plugins/profile/*/*{}'.format(file))
+      path = os.path.join(logdir, 'plugins', 'profile', '*', '*{}'.format(file))
       self.assertEqual(1, len(glob.glob(path)),
                        'Expected one path match: ' + path)
+
+  def _check_xspace_pb_exist(self, logdir):
+    path = os.path.join(logdir, 'plugins', 'profile', '*', '*.xplane.pb')
+    self.assertEqual(1, len(glob.glob(path)),
+                     'Expected one path match: ' + path)
 
   def test_single_worker_no_profiling(self):
     """Test single worker without profiling."""
@@ -87,23 +92,28 @@ class ProfilerApiTest(test_util.TensorFlowTestCase):
       _, steps, train_ds, model = _model_setup()
       model.fit(x=train_ds, epochs=2, steps_per_epoch=steps)
 
-    port = portpicker.pick_unused_port()
-    thread = threading.Thread(target=on_worker, args=(port,))
-    thread.start()
-    # Request for 3 seconds of profile.
-    duration_ms = 3000
+    def on_profile(port, logdir):
+      # Request for 30 milliseconds of profile.
+      duration_ms = 30
+
+      options = profiler.ProfilerOptions(
+          host_tracer_level=2,
+          python_tracer_level=0,
+          device_tracer_level=1,
+      )
+
+      profiler_client.trace('localhost:{}'.format(port), logdir, duration_ms,
+                            '', 100, options)
+
     logdir = self.get_temp_dir()
-
-    options = profiler.ProfilerOptions(
-        host_tracer_level=2,
-        python_tracer_level=0,
-        device_tracer_level=1,
-    )
-
-    profiler_client.trace('localhost:{}'.format(port), logdir, duration_ms, '',
-                          3, options)
-    thread.join(30)
-    self._check_tools_pb_exist(logdir)
+    port = portpicker.pick_unused_port()
+    thread_profiler = threading.Thread(target=on_profile, args=(port, logdir))
+    thread_worker = threading.Thread(target=on_worker, args=(port,))
+    thread_worker.start()
+    thread_profiler.start()
+    thread_profiler.join()
+    thread_worker.join(120)
+    self._check_xspace_pb_exist(logdir)
 
   def test_single_worker_programmatic_mode(self):
     """Test single worker programmatic mode."""
@@ -118,6 +128,7 @@ class ProfilerApiTest(test_util.TensorFlowTestCase):
     _, steps, train_ds, model = _model_setup()
     model.fit(x=train_ds, epochs=2, steps_per_epoch=steps)
     profiler.stop()
+    self._check_xspace_pb_exist(logdir)
     self._check_tools_pb_exist(logdir)
 
 

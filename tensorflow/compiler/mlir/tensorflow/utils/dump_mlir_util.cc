@@ -227,4 +227,10 @@ void SetCrashReproducer(mlir::PassManager& pm, llvm::StringRef dir_path) {
   pm.enableCrashReproducerGeneration(path, /*genLocalReproducer=*/false);
 }
 
+void applyTensorflowAndCLOptions(mlir::PassManager& pm,
+                                 llvm::StringRef dir_path) {
+  mlir::applyPassManagerCLOptions(pm);
+  SetCrashReproducer(pm, dir_path);
+}
+
 }  // namespace tensorflow

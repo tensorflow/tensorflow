@@ -763,6 +763,7 @@ def _modify_model_output_type(model, inference_output_type=dtypes.float32):
     if quant_opcode_idx == -1:
       quant_op = schema_fb.OperatorCodeT()
       quant_op.builtinCode = schema_fb.BuiltinOperator.QUANTIZE
+      quant_op.deprecatedBuiltinCode = schema_fb.BuiltinOperator.QUANTIZE
       model.operatorCodes.append(quant_op)
       quant_opcode_idx = len(model.operatorCodes) - 1
     # Change dequant op (int8 to float) to quant op (int8 to uint8)

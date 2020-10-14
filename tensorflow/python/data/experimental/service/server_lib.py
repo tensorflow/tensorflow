@@ -122,10 +122,10 @@ class DispatchServer(object):
 
     Args:
       config: (Optional.) A `tf.data.experimental.service.DispatcherConfig`
-        configration. If `None`, the dispatcher will be use default
+        configration. If `None`, the dispatcher will use default
         configuration values.
       start: (Optional.) Boolean, indicating whether to start the server after
-        creating it.
+        creating it. Defaults to True.
     """
     config = config or DispatcherConfig()
     if config.fault_tolerant_mode and not config.work_dir:
@@ -289,7 +289,7 @@ class WorkerServer(object):
     Args:
       config: A `tf.data.experimental.service.WorkerConfig` configration.
       start: (Optional.) Boolean, indicating whether to start the server after
-        creating it.
+        creating it. Defaults to True.
     """
     if config.dispatcher_address is None:
       raise ValueError("must specify a dispatcher_address")

@@ -19,9 +19,9 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
+#include "tensorflow/lite/delegates/gpu/cl/device_info.h"
 #include "tensorflow/lite/delegates/gpu/cl/precision.h"
 #include "tensorflow/lite/delegates/gpu/cl/program_cache.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -75,9 +75,9 @@ class Environment {
   ProgramCache program_cache_;
 };
 
-TensorStorageType GetFastestStorageType(const CLDevice& gpu);
+TensorStorageType GetFastestStorageType(const DeviceInfo& gpu_info);
 TensorStorageType GetStorageTypeWithMinimalMemoryConsumption(
-    const CLDevice& gpu);
+    const DeviceInfo& gpu_info);
 
 absl::Status CreateEnvironment(Environment* result);
 

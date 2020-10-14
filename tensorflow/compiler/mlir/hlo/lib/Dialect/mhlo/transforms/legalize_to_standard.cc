@@ -193,7 +193,7 @@ std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> createLegalizeToStdPass() {
 
 void PopulateMhloToStdPatterns(OwningRewritePatternList *patterns,
                                mlir::MLIRContext *ctx) {
-  mlir::populateWithGenerated(ctx, patterns);
+  mlir::populateWithGenerated(ctx, *patterns);
   patterns->insert<CompareFConvert, CompareIConvert, ConvertIotaOp>(ctx);
 }
 

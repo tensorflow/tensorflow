@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/profiling/platform_profiler.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/shared_library.h"
 #include "tensorflow/lite/util.h"
 #include "tensorflow/lite/version.h"
@@ -165,7 +166,7 @@ TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
   }
   int num_custom_ops = 0;
   for (const OperatorCode* opcode : *opcodes) {
-    if (opcode->builtin_code() == BuiltinOperator_CUSTOM) {
+    if (GetBuiltinCode(opcode) == BuiltinOperator_CUSTOM) {
       num_custom_ops++;
     }
   }
@@ -175,7 +176,7 @@ TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
     status = GetRegistrationFromOpCode(opcode, op_resolver_, error_reporter_,
                                        &registration);
     if (status != kTfLiteOk) {
-      if (opcode->builtin_code() != BuiltinOperator_CUSTOM) {
+      if (GetBuiltinCode(opcode) != BuiltinOperator_CUSTOM) {
         return status;
       }
       // If it's an unresolved custom op, allow it for now. It might be resolved

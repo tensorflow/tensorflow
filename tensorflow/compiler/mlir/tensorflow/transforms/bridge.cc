@@ -58,7 +58,7 @@ tensorflow::Status RunTPUBridge(
     ModuleOp module, bool enable_logging,
     llvm::function_ref<void(OpPassManager &pm)> pipeline_builder) {
   PassManager bridge(module.getContext());
-  ::tensorflow::SetCrashReproducer(bridge);
+  ::tensorflow::applyTensorflowAndCLOptions(bridge);
   if (enable_logging) EnableLogging(&bridge);
 
   // Populate a passmanager with the list of passes that implement the bridge.
@@ -106,6 +106,7 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addPass(TFDevice::CreateResourceOpLiftingPass());
   pm.addPass(TFDevice::CreateMarkOpsForOutsideCompilationPass());
   pm.addPass(CreateTPUExtractHeadTailOutsideCompilationPass());
+  pm.addPass(CreateTPUOutsideCompilationClusterPass());
   pm.addPass(CreateTPUExtractOutsideCompilationPass());
 
   pm.addNestedPass<FuncOp>(tf_executor::CreateTFExecutorConstantSinkingPass());
@@ -119,7 +120,6 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addPass(createSymbolDCEPass());
   pm.addNestedPass<FuncOp>(TFDevice::CreateReplicateInvariantOpHoistingPass());
   pm.addNestedPass<FuncOp>(CreateTPUDynamicLayoutPass());
-  pm.addNestedPass<FuncOp>(CreateTPUParallelExecuteSinkResourceWritePass());
   pm.addNestedPass<FuncOp>(CreateTPUMergeVariablesWithExecutePass());
   pm.addNestedPass<FuncOp>(CreateTPUColocateCompositeResourceOps());
   pm.addPass(CreateTPUVariableReformattingPass());

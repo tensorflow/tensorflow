@@ -16,23 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_AUTOTUNE_BUFFER_SIZES_H_
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_AUTOTUNE_BUFFER_SIZES_H_
 
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/grappler/optimizers/data/optimizer_base.h"
 
 namespace tensorflow {
 namespace grappler {
 
-// This optimization does the following:
-//
-// 1. Adds `prefetch(AUTOTUNE)` after all asynchronous tf.data transformations
-// (e.g. parallel map, parallel interleave, and map + batch) if they are not
-// followed by a `prefetch` yet.
-//
-// 2. If there exists any `prefetch(buffer_size=N)` for `N>=0`,  it will replace
-// the transformation with autotunable version of `prefetch` which uses N as
-// the minimum size of the buffer.
-//
-// 3. Switches from using legacy autotuning for `prefetch` to using an algorithm
-// based on the performance model.
+constexpr char kAutotune[] = "autotune";
+
+// This optimization adds `prefetch(AUTOTUNE)` after all asynchronous tf.data
+// transformations (e.g. parallel map, parallel interleave, and map + batch).
 class AutotuneBufferSizes : public TFDataOptimizerBase {
  public:
   AutotuneBufferSizes() = default;
@@ -44,6 +37,17 @@ class AutotuneBufferSizes : public TFDataOptimizerBase {
 
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
+    if (!config) return Status::OK();
+
+    const string& autotune = config->parameter_map().at(kAutotune).s();
+    if (autotune == "true") {
+      autotune_ = true;
+    } else if (autotune == "false") {
+      autotune_ = false;
+    } else {
+      return errors::InvalidArgument("Received an invalid value for parameter ",
+                                     kAutotune, ": ", autotune);
+    }
     return Status::OK();
   }
 
@@ -53,6 +57,9 @@ class AutotuneBufferSizes : public TFDataOptimizerBase {
 
   void Feedback(Cluster* cluster, const GrapplerItem& item,
                 const GraphDef& optimize_output, double result) override;
+
+ private:
+  bool autotune_ = true;
 };
 
 }  // namespace grappler

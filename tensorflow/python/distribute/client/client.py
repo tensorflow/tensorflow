@@ -30,7 +30,6 @@ import re
 import sys
 import threading
 import weakref
-from absl import logging
 from six.moves import queue
 
 from tensorflow.python.data.ops import iterator_ops
@@ -47,6 +46,7 @@ from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
 # Maximum time for failed worker to come back is 1 hour
@@ -163,13 +163,14 @@ class RemoteValue(object):
       The remote value, as a numpy data type (if scalar) or ndarray.
 
     Raises:
-      FunctionRetryableError: If the function that produces this `RemoteValue`
+      tf.errors.CancelledError: If the function that produces this `RemoteValue`
         is aborted or cancelled due to failure, and the user should handle and
         reschedule.
     """
     self._status_available_event.wait()
     if self._status is _RemoteValueStatus.ABORTED:
-      raise FunctionRetryableError(
+      raise errors.CancelledError(
+          None, None,
           "The corresponding function is aborted. Please reschedule the "
           "function.")
     if self._error is not None:
@@ -189,11 +190,6 @@ class InputError(Exception):
                "error message is %s." %
                (original_exception, str(original_exception)))
     super().__init__(message)
-
-
-class FunctionRetryableError(Exception):
-  """An error that represents the closure was aborted and should be retried."""
-  pass
 
 
 def _maybe_rebuild_remote_values(worker, structure):
@@ -324,17 +320,12 @@ class Closure(object):
     # It will do nothing if there is no return value.
     nest.map_structure(lambda x: x.fetch(), self._output_remote_values)  # pylint: disable=protected-access
 
-  def _set_output_remote_values_aborted(self):
-    """Set output remote_value aborted."""
-    # It will do nothing if there is no return value.
-    nest.map_structure(lambda x: x._set_aborted(), self._output_remote_values)  # pylint: disable=protected-access
-
   def _set_output_remote_values_cancelled(self):
     nest.map_structure(
         lambda x: x._set_error(  # pylint: disable=protected-access,g-long-lambda
-            FunctionRetryableError("The corresponding function is "
-                                   "cancelled. Please reschedule the "
-                                   "function.")),
+            errors.CancelledError(
+                None, None, "The corresponding function is "
+                "cancelled. Please reschedule the function.")),
         self._output_remote_values)  # pylint: disable=protected-access
 
   def execute_on(self, worker):

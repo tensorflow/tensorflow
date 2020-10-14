@@ -30,6 +30,7 @@ import numpy as np
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -61,6 +62,13 @@ from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import get_canonical_name_for_symbol
 from tensorflow.python.util.tf_export import get_symbol_from_name
 from tensorflow.python.util.tf_export import keras_export
+
+# TODO(b/168039935): track dropout rate to decide whether/how to make a
+# dropout rate fastpath.
+keras_temporary_dropout_rate = monitoring.BoolGauge(
+    '/tensorflow/api/keras/dropout/temp_rate_is_zero',
+    'Temporarily record if Keras dropout layer was created w/'
+    'constant rate = 0')
 
 
 # pylint: disable=g-classes-have-attributes
@@ -186,6 +194,10 @@ class Dropout(Layer):
   def __init__(self, rate, noise_shape=None, seed=None, **kwargs):
     super(Dropout, self).__init__(**kwargs)
     self.rate = rate
+    if isinstance(rate, (int, float)) and not rate:
+      keras_temporary_dropout_rate.get_cell().set(True)
+    else:
+      keras_temporary_dropout_rate.get_cell().set(False)
     self.noise_shape = noise_shape
     self.seed = seed
     self.supports_masking = True
@@ -753,9 +765,10 @@ class Lambda(Layer):
 
   The main reason to subclass `tf.keras.layers.Layer` instead of using a
   `Lambda` layer is saving and inspecting a Model. `Lambda` layers
-  are saved by serializing the Python bytecode, whereas subclassed
-  Layers can be saved via overriding their `get_config` method. Overriding
-  `get_config` improves the portability of Models. Models that rely on
+  are saved by serializing the Python bytecode, which is fundamentally
+  non-portable. They should only be loaded in the same environment where
+  they were saved. Subclassed layers can be saved in a more portable way
+  by overriding their `get_config` method. Models that rely on
   subclassed Layers are also often easier to visualize and reason about.
 
   Examples:
@@ -1292,8 +1305,20 @@ class TFOpLambda(Layer):
                                       api_name='keras',
                                       add_prefix_to_v1_names=True))
     if 'name' not in kwargs:
+      # Generate a name.
+      # TFOpLambda layers avoid already-observed names,
+      # because users cannot easily control the generated names.
+      # Without this avoidance, users would be more likely to run
+      # into unavoidable duplicate layer name collisions.
+      # (For standard layers users could just set `name` when creating the
+      # layer to work around a collision, but they can't do that for
+      # auto-generated layers)
+      if self.symbol:
+        name = 'tf.' + self.symbol
+      else:
+        name = self.function.__name__
       kwargs['name'] = K.unique_object_name(
-          'tf.' + self.symbol, zero_based=True)
+          name, zero_based=True, avoid_observed_names=True)
     kwargs['autocast'] = False
 
     # Decorate the function to produce this layer's call method

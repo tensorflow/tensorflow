@@ -438,7 +438,6 @@ StatusOr<std::unique_ptr<gpu::KernelThunk>> TransformKernelToXlaThunk(
 
   // Finally, create the thunk and set the launch dimensions.
   gpu::Thunk::ThunkInfo info;
-  info.hlo_instruction = instr;
   auto thunk = absl::make_unique<gpu::KernelThunk>(info, buffers,
                                                    kernel.getName().str());
 

@@ -296,8 +296,8 @@ std::string ConvolutionTransposed4x4::GenerateConvolutionTransposedCode(
   return c;
 }
 
-absl::Status ConvolutionTransposed4x4::BindArguments() {
-  return args_.SetInt("filter_offset", 4 * 16 * src_[0]->Slices());
+absl::Status ConvolutionTransposed4x4::BindArguments(ArgumentsBinder* args) {
+  return args->SetInt("filter_offset", 4 * 16 * src_[0]->Slices());
 }
 
 int3 ConvolutionTransposed4x4::GetGridSize() const {

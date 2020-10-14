@@ -51,7 +51,11 @@ class TransferManager {
   // pre-allocated by the host, e.g. TransferLiteralToDevice, without the user
   // needing to consider device-specific behaviors.
   virtual Shape HostShapeToDeviceShape(const Shape& host_shape) const {
-    return host_shape;
+    // Strips off any preexisting tiling or memory space information.
+    // TODO(phawkins): fix clients not to including tiling or memory space
+    // information in shapes passed to this function and turn this into an
+    // assertion.
+    return ShapeUtil::DeviceShapeToHostShape(host_shape);
   }
 
   // Base class for specifying platform specific transfer metadata that can be
@@ -189,6 +193,7 @@ class TransferManager {
   // shapes, and returns static shapes with dynamic shapes updated.
   // The shape of the buffer also have to be compatible with the host shape and
   // device shape.
+  // TODO(b/170310047): remove host_shape.
   virtual Status ReadDynamicShapes(se::Stream* stream,
                                    ShapedBuffer* device_buffer,
                                    Shape* host_shape, Shape* device_shape);

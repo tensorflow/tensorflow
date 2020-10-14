@@ -101,6 +101,9 @@ class CollectiveAllReduceStrategy(distribute_lib.Strategy):
   # TODO(anjalisridhar): Update our guides with examples showing how we can use
   # the cluster_resolver argument.
 
+  # The starting number for collective keys. This should only be set in tests.
+  _collective_key_base = 0
+
   def __init__(
       self,
       communication=cross_device_ops_lib.CollectiveCommunication.AUTO,
@@ -247,7 +250,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._worker_device = device_util.canonicalize("/device:CPU:0")
     self._host_input_device = numpy_dataset.SingleDevice(self._worker_device)
 
-    self._collective_keys = cross_device_utils.CollectiveKeys()
+    self._collective_keys = cross_device_utils.CollectiveKeys(
+        group_key_start=1 + CollectiveAllReduceStrategy._collective_key_base)  # pylint: disable=protected-access
     self._cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
         devices=local_devices,
         group_size=len(local_devices),
@@ -362,7 +366,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     else:
       local_devices = (self._worker_device,)
 
-    self._collective_keys = cross_device_utils.CollectiveKeys()
+    self._collective_keys = cross_device_utils.CollectiveKeys(
+        group_key_start=1 + CollectiveAllReduceStrategy._collective_key_base)  # pylint: disable=protected-access
     self._cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
         devices=local_devices,
         group_size=len(local_devices) * self._num_workers,
@@ -428,7 +433,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         group_key = self._collective_keys.get_group_key([device])
         group_size = self._num_workers
         collective_instance_key = (
-            self._collective_keys.get_variable_instance_key())
+            self._collective_keys.get_instance_key(group_key, device))
 
         with ops.device(device):
           initial_value = kwargs["initial_value"]
@@ -476,7 +481,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         dataset,
         self._input_workers_with_options(options),
         self._container_strategy(),
-        split_batch_by=self._num_replicas_in_sync,
+        num_replicas_in_sync=self._num_replicas_in_sync,
         input_context=input_context)
 
   def _distribute_datasets_from_function(self, dataset_fn, options):
@@ -505,7 +510,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         dataset,
         self._input_workers,
         self._container_strategy(),
-        split_batch_by=self._num_replicas_in_sync,
+        num_replicas_in_sync=self._num_replicas_in_sync,
         input_context=input_context)
 
   def _make_input_fn_iterator(
@@ -767,3 +772,10 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       Boolean.
     """
     return True
+
+  def _get_replica_id_in_sync_group(self, replica_id):
+    return self._id_in_cluster * len(self.worker_devices) + replica_id
+
+  def _get_local_replica_id(self, replica_id_in_sync_group):
+    return (replica_id_in_sync_group -
+            self._id_in_cluster * len(self.worker_devices))

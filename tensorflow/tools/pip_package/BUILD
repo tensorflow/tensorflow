@@ -32,11 +32,11 @@ transitive_hdrs(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:stream_executor",
+        "//tensorflow/core/platform:stream_executor",
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/cc/saved_model:reader",
         "//tensorflow/cc/saved_model:bundle_v2",
-        "//tensorflow/c/experimental/filesystem:modular_filesystem",
+        "//tensorflow/c/experimental/filesystem:filesystem_interface",
         # WARNING: None of the C/C++ code under python/ has any API guarantees, and TF team
         # reserves the right to change APIs and other header-level interfaces.  If your custom
         # op uses these headers, it may break when users upgrade their version of tensorflow.
@@ -98,7 +98,6 @@ COMMON_PIP_DEPS = [
     "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_srcs",
     "//tensorflow/compiler/mlir/tensorflow:gen_mlir_passthrough_op_py",
     "//tensorflow/core:protos_all_proto_srcs",
-    "//tensorflow/examples/saved_model/integration_tests:mnist_util",
     "//tensorflow/lite/python/testdata:interpreter_test_data",
     "//tensorflow/lite/python:tflite_convert",
     "//tensorflow/lite/toco/python:toco_from_protos",

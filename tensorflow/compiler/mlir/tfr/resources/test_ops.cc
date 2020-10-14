@@ -50,6 +50,14 @@ REGISTER_OP("TestTwoInputsOp")
     .Attr("T: numbertype")
     .Attr("pred: bool = false");
 
+REGISTER_OP("TestComplexTFOp")
+    .Input("lhs: T")
+    .Input("rhs: Tlen")
+    .Output("output: N * T")
+    .Attr("N: int >= 1")
+    .Attr("T: numbertype")
+    .Attr("Tlen: {int32, int64} = DT_INT64");
+
 REGISTER_OP("TestNumAttrsOp")
     .Attr("x1: int = -10")
     .Attr("y1: int = 1")

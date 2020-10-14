@@ -106,7 +106,7 @@ class GuessIsTensorFlowLibraryTest(test_util.TensorFlowTestCase):
     self.assertTrue(
         source_utils.guess_is_tensorflow_py_library(source_utils.__file__))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("Tensor.op is not available in TF 2.x")
   def testFileInPythonKernelsPathReturnsTrue(self):
     x = constant_op.constant(42.0, name="x")
     self.assertTrue(
@@ -320,7 +320,7 @@ class SourceHelperTest(test_util.TensorFlowTestCase):
       source_utils.load_source(source_path)
 
 
-@test_util.run_v1_only("b/120545219")
+@test_util.run_v1_only("Sessions are not available in TF 2.x")
 class ListSourceAgainstDumpTest(test_util.TensorFlowTestCase):
 
   def createAndRunGraphWithWhileLoop(self):

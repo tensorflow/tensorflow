@@ -4,8 +4,9 @@ func @main(tensor<1x384xf32>, tensor<1x96xf32>, tensor<384x480xf32>, tensor<384x
 // CHECK: {
 // CHECK-NEXT:  version: 3,
 // CHECK-NEXT:  operator_codes: [ {
-// CHECK-NEXT:    builtin_code: LSTM,
+// CHECK-NEXT:    deprecated_builtin_code: 16,
 // CHECK-NEXT:    version: 2
+// CHECK-NEXT:    builtin_code: LSTM
 // CHECK-NEXT:  } ],
 // CHECK-NEXT:  subgraphs: [ {
 // CHECK-NEXT:    tensors: [ {

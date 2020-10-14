@@ -146,9 +146,14 @@ const NnApi LoadNnApi() {
   void* libneuralnetworks = nullptr;
   // TODO(b/123243014): change RTLD_LOCAL? Assumes there can be multiple
   // instances of nn api RT
-  libneuralnetworks = dlopen("libneuralnetworks.so", RTLD_LAZY | RTLD_LOCAL);
+  static const char nnapi_library_name[] = "libneuralnetworks.so";
+  libneuralnetworks = dlopen(nnapi_library_name, RTLD_LAZY | RTLD_LOCAL);
   if (libneuralnetworks == nullptr) {
-    NNAPI_LOG("nnapi error: unable to open library %s", "libneuralnetworks.so");
+    const char* error = dlerror();
+    if (error) {
+      NNAPI_LOG("%s\n", error);
+    }
+    NNAPI_LOG("nnapi error: unable to open library %s", nnapi_library_name);
   }
 
   nnapi.nnapi_exists = libneuralnetworks != nullptr;

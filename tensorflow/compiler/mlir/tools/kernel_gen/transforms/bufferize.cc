@@ -15,6 +15,8 @@ limitations under the License.
 
 // This file implements logic for translating mixed IR to buffer form.
 
+#include "mlir/Transforms/Bufferize.h"  // from @llvm-project
+
 #include <cstddef>
 #include <memory>
 
@@ -29,7 +31,6 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Transforms/BufferPlacement.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 
 namespace mlir {
@@ -140,12 +141,29 @@ class ExtractElementOpConversion
       ConversionPatternRewriter &rewriter) const final {
     ExtractElementOpAdaptor adaptor(operands);
 
-    if (!adaptor.aggregate().getType().isa<MemRefType>()) {
+    if (!adaptor.aggregate().getType().isa<BaseMemRefType>()) {
       return failure();
     }
 
     rewriter.replaceOpWithNewOp<LoadOp>(op, adaptor.aggregate(),
                                         adaptor.indices());
+    return success();
+  }
+};
+
+template <typename OpTy>
+class SimpleOpResultConversion
+    : public BufferAssignmentOpConversionPattern<OpTy> {
+ public:
+  using BufferAssignmentOpConversionPattern<
+      OpTy>::BufferAssignmentOpConversionPattern;
+  using BufferAssignmentOpConversionPattern<OpTy>::converter;
+
+  LogicalResult matchAndRewrite(
+      OpTy op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const final {
+    rewriter.replaceOpWithNewOp<OpTy>(op, converter.convertType(op.getType()),
+                                      operands);
     return success();
   }
 };
@@ -160,9 +178,9 @@ class TensorCastOpConverter
       TensorCastOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const final {
     Value arg = operands.front();
-    if (!arg.getType().isa<MemRefType>()) return failure();
+    if (!arg.getType().isa<BaseMemRefType>()) return failure();
 
-    auto result_ty = converter->convertType(op.getType());
+    auto result_ty = converter.convertType(op.getType());
     rewriter.replaceOpWithNewOp<MemRefCastOp>(op, arg, result_ty);
 
     return success();
@@ -175,8 +193,9 @@ void populateStandardBufferizePattern(MLIRContext *context,
                                       BufferAssignmentTypeConverter *converter,
                                       OwningRewritePatternList *patterns) {
   patterns->insert<ExtractElementOpConversion, TensorFromElementsOpConverter,
-                   DynamicTensorFromElementsOpConverter, TensorLoadOpConversion,
-                   TensorCastOpConverter>(context, converter);
+                   DynamicTensorFromElementsOpConverter,
+                   SimpleOpResultConversion<SelectOp>, TensorLoadOpConversion,
+                   TensorCastOpConverter>(context, *converter);
 }
 
 }  // namespace transforms

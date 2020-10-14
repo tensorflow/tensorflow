@@ -109,6 +109,18 @@ TEST(ConvertXPlaneToProfileResponse, TensorflowStats) {
   ASSERT_TRUE(tf_stats_db.ParseFromString(response.tool_data(0).data()));
 }
 
+TEST(ConvertXPlaneToProfileResponse, XPlane) {
+  XSpace xspace;
+  CreateXSpace(&xspace);
+  ProfileRequest request;
+  request.add_tools("xplane.pb");
+  ProfileResponse response;
+  TF_CHECK_OK(ConvertXSpaceToProfileResponse(xspace, request, &response));
+  EXPECT_EQ(1, response.tool_data_size());
+  EXPECT_EQ("xplane.pb", response.tool_data(0).name());
+  ASSERT_TRUE(xspace.ParseFromString(response.tool_data(0).data()));
+}
+
 }  // namespace
 }  // namespace profiler
 }  // namespace tensorflow

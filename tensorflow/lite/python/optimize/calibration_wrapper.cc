@@ -225,7 +225,8 @@ PyObject* CalibrationWrapper::SetTensor(int index, PyObject* value) {
   for (int j = 0; j < PyArray_NDIM(array); j++) {
     // Ensure the calibration data input shape is the same as the model input
     // shape unless the dimension is unknown.
-    if (tensor->dims_signature->size == tensor->dims->size &&
+    if (tensor->dims_signature != nullptr &&
+        tensor->dims_signature->size == tensor->dims->size &&
         tensor->dims_signature->data[j] == -1) {
       has_unknown_dims = true;
     } else if (tensor->dims->data[j] != PyArray_SHAPE(array)[j]) {

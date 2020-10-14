@@ -1,3 +1,4 @@
+load("//tensorflow:tensorflow.bzl", "filegroup")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
 package(licenses = ["notice"])
@@ -6,10 +7,6 @@ glob_lit_tests(
     data = [
         ":test_utilities",
         "@llvm-project//mlir:run_lit.sh",
-    ],
-    default_tags = [
-        # MSAN does not work with JIT: b/139082472
-        "nomsan",
     ],
     driver = "//tensorflow/compiler/mlir:run_lit.sh",
     test_file_exts = ["mlir"],
