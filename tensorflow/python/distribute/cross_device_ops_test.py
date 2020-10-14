@@ -31,6 +31,7 @@ from tensorflow.python.distribute import cluster_resolver as cluster_resolver_li
 from tensorflow.python.distribute import collective_util
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
+from tensorflow.python.distribute import cross_device_utils
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import reduce_util
@@ -202,9 +203,11 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
           "gpus_per_process",
           "reduce_op",
           "communication",
+          "use_scoped_allocator",
       ])
-  RunOptions.__new__.__defaults__ = (["eager", "func_graph"], 2, 0,
-                                     ReduceOp.SUM, CollectiveCommunication.AUTO)
+  RunOptions.__new__.__defaults__ = (["eager",
+                                      "func_graph"], 2, 0, ReduceOp.SUM,
+                                     CollectiveCommunication.AUTO, True)
 
   def reduce_and_verify(self, inputs, expect, options):
     """Reduce the given `inputs` and verify the output matches `expect`.
@@ -255,6 +258,8 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
     """
 
     def replica_fn():
+      cross_device_utils.CollectiveReplicaLauncher._use_scoped_allocator = (
+          options.use_scoped_allocator)
       collective, devices, pid = self.make_collective(options.num_processes,
                                                       options.gpus_per_process,
                                                       options.communication)
@@ -398,9 +403,10 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
               CollectiveCommunication.AUTO, CollectiveCommunication.RING,
               CollectiveCommunication.NCCL
           ],
-          reduce_op=[ReduceOp.SUM, ReduceOp.MEAN]))
+          reduce_op=[ReduceOp.SUM, ReduceOp.MEAN],
+          use_scoped_allocator=[True, False]))
   def testBatchAllReduceDense(self, num_processes, required_gpus, communication,
-                              reduce_op):
+                              reduce_op, use_scoped_allocator):
     if required_gpus == 0 and communication == CollectiveCommunication.NCCL:
       self.skipTest("Skip CPU + NCCL combination")
     if num_processes == 2 and communication == CollectiveCommunication.NCCL:
@@ -411,7 +417,8 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
         num_processes=num_processes,
         gpus_per_process=required_gpus,
         reduce_op=reduce_op,
-        communication=communication)
+        communication=communication,
+        use_scoped_allocator=use_scoped_allocator)
     group_size = options.num_processes * (options.gpus_per_process or 1)
 
     inputs_data = [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0]]
@@ -436,9 +443,10 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
               CollectiveCommunication.NCCL,
           ],
           # TODO(b/166682130): add MEAN reduce once the bug is fixed.
-          reduce_op=ReduceOp.SUM))
+          reduce_op=ReduceOp.SUM,
+          use_scoped_allocator=[True, False]))
   def testBatchAllReduceSparse(self, num_processes, required_gpus,
-                               communication, reduce_op):
+                               communication, reduce_op, use_scoped_allocator):
     if required_gpus == 0 and communication == CollectiveCommunication.NCCL:
       self.skipTest("Skip CPU + NCCL combination")
     if num_processes == 2 and communication == CollectiveCommunication.NCCL:
@@ -450,7 +458,8 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
         num_processes=num_processes,
         gpus_per_process=required_gpus,
         reduce_op=reduce_op,
-        communication=communication)
+        communication=communication,
+        use_scoped_allocator=use_scoped_allocator)
     group_size = options.num_processes * (options.gpus_per_process or 1)
 
     inputs_data = ([
