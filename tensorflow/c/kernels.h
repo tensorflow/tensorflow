@@ -168,6 +168,10 @@ TF_CAPI_EXPORT extern TF_DataType TF_ExpectedOutputDataType(
 // Returns the step ID of the given context.
 TF_CAPI_EXPORT extern int64_t TF_StepId(TF_OpKernelContext* ctx);
 
+// Returns metadata about the value of the attribute `attr_name` of `oper`.
+TF_CAPI_EXPORT extern TF_AttrMetadata TF_OpKernelConstruction_GetAttrMetadata(
+    TF_OpKernelConstruction* ctx, const char* attr_name, TF_Status* status);
+
 // Interprets the named kernel construction attribute as a TF_DataType and
 // places it into *val. *status is set to TF_OK.
 //
@@ -185,6 +189,107 @@ TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrType(
 TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrInt32(
     TF_OpKernelConstruction* ctx, const char* attr_name, int32_t* val,
     TF_Status* status);
+
+// Interprets the named kernel construction attribute as int64_t and
+// places it into *val. *status is set to TF_OK.
+//
+// If the attribute could not be found or could not be interpreted as
+// int64, *status is populated with an error.
+TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrInt64(
+    TF_OpKernelConstruction* ctx, const char* attr_name, int64_t* val,
+    TF_Status* status);
+
+// Interprets the named kernel construction attribute as float and
+// places it into *val. *status is set to TF_OK.
+//
+// If the attribute could not be found or could not be interpreted as
+// float, *status is populated with an error.
+TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrFloat(
+    TF_OpKernelConstruction* ctx, const char* attr_name, float* val,
+    TF_Status* status);
+
+// Interprets the named kernel construction attribute as bool and
+// places it into *val. *status is set to TF_OK.
+//
+// If the attribute could not be found or could not be interpreted as
+// bool, *status is populated with an error.
+TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrBool(
+    TF_OpKernelConstruction* ctx, const char* attr_name, unsigned char* val,
+    TF_Status* status);
+
+// Interprets the named kernel construction attribute as string and
+// places it into *val. `val` must
+// point to an array of length at least `max_length` (ideally set to
+// TF_AttrMetadata.total_size from TF_OpKernelConstruction_GetAttrMetadata(ctx,
+// attr_name)). *status is set to TF_OK.
+//
+// If the attribute could not be found or could not be interpreted as
+// bool, *status is populated with an error.
+TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrString(
+    TF_OpKernelConstruction* ctx, const char* attr_name, void* val,
+    size_t max_length, TF_Status* status);
+
+// Interprets the named kernel construction attribute as a TF_DataType and
+// places it into *vals. *status is set to TF_OK.
+// `vals` must point to an array of length at least `max_values` (ideally set
+// to TF_AttrMetadata.list_size from
+// TF_OpKernelConstruction_GetAttrMetadata(ctx, attr_name)).
+TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrTypeList(
+    TF_OpKernelConstruction* ctx, const char* attr_name, TF_DataType* vals,
+    int max_vals, TF_Status* status);
+
+// Interprets the named kernel construction attribute as int32_t and
+// places it into *vals. *status is set to TF_OK.
+// `vals` must point to an array of length at least `max_values` (ideally set
+// to TF_AttrMetadata.list_size from
+// TF_OpKernelConstruction_GetAttrMetadata(ctx, attr_name)).
+TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrInt32List(
+    TF_OpKernelConstruction* ctx, const char* attr_name, int32_t* vals,
+    int max_vals, TF_Status* status);
+
+// Interprets the named kernel construction attribute as int64_t and
+// places it into *vals. *status is set to TF_OK.
+// `vals` must point to an array of length at least `max_values` (ideally set
+// to TF_AttrMetadata.list_size from
+// TF_OpKernelConstruction_GetAttrMetadata(ctx, attr_name)).
+TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrInt64List(
+    TF_OpKernelConstruction* ctx, const char* attr_name, int64_t* vals,
+    int max_vals, TF_Status* status);
+
+// Interprets the named kernel construction attribute as float and
+// places it into *vals. *status is set to TF_OK.
+// `vals` must point to an array of length at least `max_values` (ideally set
+// to TF_AttrMetadata.list_size from
+// TF_OpKernelConstruction_GetAttrMetadata(ctx, attr_name)).
+TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrFloatList(
+    TF_OpKernelConstruction* ctx, const char* attr_name, float* vals,
+    int max_vals, TF_Status* status);
+
+// Interprets the named kernel construction attribute as bool and
+// places it into *vals. *status is set to TF_OK.
+// `vals` must point to an array of length at least `max_values` (ideally set
+// to TF_AttrMetadata.list_size from
+// TF_OpKernelConstruction_GetAttrMetadata(ctx, attr_name)).
+TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrBoolList(
+    TF_OpKernelConstruction* ctx, const char* attr_name, unsigned char* vals,
+    int max_vals, TF_Status* status);
+
+// Interprets the named kernel construction attribute as string and fills in
+// `vals` and `lengths`, each of which must point to an array of length at least
+// `max_values`. *status is set to TF_OK.
+// The elements of values will point to addresses in `storage` which must be at
+// least `storage_size` bytes in length. Ideally, max_values would be set to
+// TF_AttrMetadata.list_size and `storage` would be at least
+// TF_AttrMetadata.total_size, obtained from
+// TF_OpKernelConstruction_GetAttrMetadata(ctx, attr_name).
+TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrStringList(
+    TF_OpKernelConstruction* ctx, const char* attr_name, void** vals,
+    size_t* lengths, int max_values, void* storage, size_t storage_size,
+    TF_Status* status);
+
+// Return true if the kernel construction has the attr_name
+TF_CAPI_EXPORT extern bool TF_OpKernelConstruction_HasAttr(
+    TF_OpKernelConstruction* ctx, const char* attr_name, TF_Status* status);
 
 // Returns the unique operation name for this OpKernel.
 TF_CAPI_EXPORT extern TF_StringView TF_OpKernelConstruction_GetName(
