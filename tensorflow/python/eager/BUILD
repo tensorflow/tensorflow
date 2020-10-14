@@ -1072,6 +1072,7 @@ cuda_py_test(
     shard_count = 8,
     tags = [
         "no_oss",  # This test launches local server
+        "notsan",  # TODO(b/170783249)
     ],
     deps = [
         "//tensorflow/python:array_ops",
