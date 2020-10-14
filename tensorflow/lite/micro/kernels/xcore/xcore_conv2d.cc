@@ -83,7 +83,6 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  const TfLiteTensor *input = GetInput(context, node, 0);
   const TfLiteTensor *weights = GetInput(context, node, 1);
   const TfLiteTensor *bso = GetInput(context, node, 2);
 
@@ -258,31 +257,14 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  const TfLiteTensor *input = GetInput(context, node, 0);
   const TfLiteTensor *weights = GetInput(context, node, 1);
   const TfLiteTensor *bso = GetInput(context, node, 2);
-  const TfLiteTensor *output = GetOutput(context, node, 0);
 
   Conv2DDeepOpData *op = reinterpret_cast<Conv2DDeepOpData *>(node->user_data);
 
   // set param values not parsed from custom options
   op->params.K_h = weights->dims->data[1];
   op->params.K_w = weights->dims->data[2];
-
-  // setup kernel parameters
-  nn_image_params_t in_params = {(uint32_t)input->dims->data[1],
-                                 (uint32_t)input->dims->data[2],
-                                 (uint32_t)input->dims->data[3]};
-  nn_image_params_t out_params = {(uint32_t)output->dims->data[1],
-                                  (uint32_t)output->dims->data[2],
-                                  (uint32_t)output->dims->data[3]};
-  nn_window_params_t conv_window = {
-      {(uint32_t)op->params.K_h, (uint32_t)op->params.K_w},
-      {-op->params.pad.top, -op->params.pad.left},
-      {op->params.stride_h, op->params.stride_w}};
-
-  int32_t n_jobs = op->execution_plan.changrps.GetSize() *
-                   op->execution_plan.regions.GetSize();
 
   // allocate the stack for thread workers
   GET_THREAD_FUNCTION_STACKSIZE(op->stack_size, conv2d_deep_thread_worker);
@@ -447,7 +429,6 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  const TfLiteTensor *input = GetInput(context, node, 0);
   const TfLiteTensor *weights = GetInput(context, node, 1);
   const TfLiteTensor *bso = GetInput(context, node, 2);
 
@@ -633,7 +614,6 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  const TfLiteTensor *input = GetInput(context, node, 0);
   const TfLiteTensor *weights = GetInput(context, node, 1);
   const TfLiteTensor *bso = GetInput(context, node, 2);
 

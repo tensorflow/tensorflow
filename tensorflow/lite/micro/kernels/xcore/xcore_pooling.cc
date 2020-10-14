@@ -310,7 +310,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  const TfLiteTensor* input = GetInput(context, node, 0);
   const TfLiteTensor* bss = GetInput(context, node, 1);
 
   AvgPoolGlobalOpData* op =
