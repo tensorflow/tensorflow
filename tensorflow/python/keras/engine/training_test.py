@@ -2445,7 +2445,7 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
       output_a_np = np.random.random((10, 4))
       output_b_np = np.random.random((10, 3))
 
-      input_v = backend.variables_module.Variable(input_a_np, dtype='float32')
+      input_v = variables_lib.Variable(input_a_np, dtype='float32')
       self.evaluate(variables_lib.variables_initializer([input_v]))
       a = input_layer.Input(tensor=input_v)
       b = input_layer.Input(shape=(3,), name='input_b')
@@ -2656,7 +2656,7 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
       out = model.evaluate(input_a_np, None)
 
       # Test model with no external data at all.
-      input_v = backend.variables_module.Variable(input_a_np, dtype='float32')
+      input_v = variables_lib.Variable(input_a_np, dtype='float32')
       self.evaluate(variables_lib.variables_initializer([input_v]))
       a = input_layer.Input(tensor=input_v)
       a_2 = layers_module.Dense(4, name='dense_1')(a)
@@ -2815,7 +2815,7 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
                                })
 
       # test with custom TF placeholder as target
-      pl_target_a = backend.array_ops.placeholder('float32', shape=(None, 4))
+      pl_target_a = array_ops.placeholder('float32', shape=(None, 4))
       model.compile(optimizer='rmsprop', loss='mse',
                     target_tensors={'dense_1': pl_target_a})
       model.train_on_batch([input_a_np, input_b_np],
