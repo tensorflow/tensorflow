@@ -108,7 +108,7 @@ def get_distributed_datasets_from_function(dataset_fn,
                                            input_workers,
                                            input_contexts,
                                            strategy,
-                                           options):
+                                           options=None):
   """Returns a distributed dataset from the given input function.
 
   This is a common function that is used by all strategies to return a
@@ -126,8 +126,8 @@ def get_distributed_datasets_from_function(dataset_fn,
         `worker_device_pairs`.
     strategy: a `tf.distribute.Strategy` object, used to run all-reduce to
         handle last partial batch.
-    options: `tf.distribute.InputOptions` used to control options on how this
-        dataset is distributed.
+    options: Default to None. `tf.distribute.InputOptions` used to control 
+        options on how this dataset is distributed.
 
   Returns:
     A distributed dataset instance.
@@ -1756,7 +1756,7 @@ class _SingleWorkerCallableIterator(object):
 
 def _create_iterators_per_worker(worker_datasets, input_workers,
                                  enable_legacy_iterators,
-                                 options):
+                                 options=None):
   """Create a multidevice iterator on each of the workers."""
   assert isinstance(input_workers, InputWorkers)
   assert len(worker_datasets) == len(input_workers.worker_devices)
