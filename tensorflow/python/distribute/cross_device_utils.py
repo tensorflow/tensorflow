@@ -255,6 +255,8 @@ class CollectiveKeys(object):
 class CollectiveReplicaLauncher(object):
   """Launch collectives on one replica."""
 
+  _use_scoped_allocator = True
+
   def __init__(self,
                group_key,
                group_size,
@@ -337,22 +339,45 @@ class CollectiveReplicaLauncher(object):
     Returns:
       A flat list of reduced tensors.
     """
+    # We don't batch with concat in eager. It's easy to get it wrong because
+    # we need to avoid any numpy() calls on values produced by the async
+    # executor. This effectively disables batching in eager, but it's unlikely
+    # to all-reduce a large number of tensors in eager.
+    batch_with_concat = (not self._use_scoped_allocator and
+                         not context.executing_eagerly())
     outputs = []
     for pack in input_tensor_packs:
-      # By placing all CollectiveReduce ops in a batch under single name scope,
-      # we ensure they will be picked up by the `ScopedAllocator` grappler
-      # optimizer and packed into a single all-reduce.
-      with ops.name_scope('allreduce'):
-        # TODO(b/169168846): inserts a parallel all_gather to verify packings
-        # are the same on each replica.
-        for input_tensor in pack:
+      # TODO(b/169168846): inserts a parallel all_gather to verify packings
+      # are the same on each replica.
+      if batch_with_concat:
+        with ops.device(self._device):
+          flat_tensors = [array_ops.reshape(t, [-1]) for t in pack]
+          shapes = [array_ops.shape(t) for t in pack]
           if communication_hint == 'NCCL' and outputs:
             control_input = outputs[-1]
           else:
             control_input = None
-          outputs.append(
-              self.all_reduce(input_tensor, control_input, communication_hint,
-                              timeout))
+          reduced = self.all_reduce(
+              array_ops.concat(flat_tensors, axis=0), control_input,
+              communication_hint, timeout)
+          num_elements = [math_ops.reduce_prod(s) for s in shapes]
+          flat_outputs = array_ops.split(reduced, num_elements, axis=0)
+          for shape, flat_output in zip(shapes, flat_outputs):
+            outputs.append(array_ops.reshape(flat_output, shape))
+      else:
+        # By placing all CollectiveReduce ops in a batch under single name
+        # scope, we ensure they will be picked up by the `ScopedAllocator`
+        # grappler optimizer and packed into a single all-reduce.
+        with ops.name_scope('allreduce'):
+          for input_tensor in pack:
+            if communication_hint == 'NCCL' and outputs:
+              control_input = outputs[-1]
+            else:
+              control_input = None
+            outputs.append(
+                self.all_reduce(input_tensor, control_input, communication_hint,
+                                timeout))
+
     return outputs
 
   def all_gather(self,
