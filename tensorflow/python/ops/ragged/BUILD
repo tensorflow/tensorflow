@@ -642,6 +642,9 @@ py_test(
     python_version = "PY3",
     shard_count = 4,
     srcs_version = "PY2AND3",
+    tags = [
+        "notsan",  # TODO(b/170902201): Flaky
+    ],
     deps = [
         ":ragged_factory_ops",
         ":ragged_gather_ops",
