@@ -130,11 +130,17 @@ struct CallSignature {
   PjRtDevice* device;
 
   bool operator==(const CallSignature& other) const {
-    return std::tie(dynamic_positional_args_treedef, static_args, keyword_args,
+    return std::tie(dynamic_positional_args_treedef, keyword_args,
                     dynamic_args_signatures, device) ==
-           std::tie(other.dynamic_positional_args_treedef, other.static_args,
-                    other.keyword_args, other.dynamic_args_signatures,
-                    other.device);
+               std::tie(other.dynamic_positional_args_treedef,
+                        other.keyword_args, other.dynamic_args_signatures,
+                        other.device) &&
+           // `==` on py:objects is the Python `is`. We need equal.
+           std::equal(static_args.begin(), static_args.end(),
+                      other.static_args.begin(), other.static_args.end(),
+                      [](const py::object& a, const py::object& b) {
+                        return a.equal(b);
+                      });
   }
   bool operator!=(const CallSignature& other) const {
     return !(*this == other);
@@ -268,6 +274,8 @@ class CompiledFunction {
     static const auto* inspect = new py::module(py::module::import("inspect"));
     return inspect->attr("signature")(fun_);
   }
+
+  int cache_size() const { return executables_.size(); }
 
  private:
   // Returns nullptr if not present in the cache.
@@ -870,6 +878,7 @@ void BuildJaxjitSubmodule(pybind11::module& m) {
       });
 
   // Only for testing purposes
+  cfun.def("_cache_size", &CompiledFunction::cache_size);
   jitlib.def("_DtypeTo32BitDtype", [](const py::object obj) -> py::object {
     py::dtype dtype = py::dtype::from_args(obj);
     const py::dtype* res = DtypeTo32BitDtype(dtype);
