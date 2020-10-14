@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -142,8 +142,9 @@ TF_LITE_MICRO_TEST(TestInitializeRuntimeTensor) {
   simple_allocator->~SimpleMemoryAllocator();
 }
 
-// TODO(b/160894903): Drop this test when InitializeTfLiteTensorFromFlatbuffer()
-// always allocates from temp (kernels are using the new TfLiteEvalTensor API):
+// TODO(b/162311891): Drop this test when InitializeTfLiteTensorFromFlatbuffer()
+// always allocates from temp (interpreter returns buffers from
+// TfLiteEvalTensor):
 TF_LITE_MICRO_TEST(TestInitializeTempRuntimeTensor) {
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];

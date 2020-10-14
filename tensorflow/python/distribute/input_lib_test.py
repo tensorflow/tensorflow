@@ -35,6 +35,7 @@ from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute import test_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
@@ -1421,4 +1422,4 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
 
 
 if __name__ == "__main__":
-  combinations.main()
+  test_util.main()

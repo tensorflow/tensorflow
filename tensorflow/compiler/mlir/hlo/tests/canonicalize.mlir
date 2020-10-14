@@ -63,6 +63,24 @@ func @divide_fold_float() -> tensor<4xf64> {
   return %2 : tensor<4xf64>
 }
 
+// CHECK-LABEL: remainder_fold_int
+func @remainder_fold_int() -> tensor<4xi32> {
+  %0 = mhlo.constant dense<[5, 66, 5, 1]> : tensor<4xi32>
+  %1 = mhlo.constant dense<[3, 5, 1, 2]> : tensor<4xi32>
+  // CHECK: mhlo.constant dense<[2, 1, 0, 1]>
+  %2 = "mhlo.remainder"(%0, %1) : (tensor<4xi32>, tensor<4xi32>) -> (tensor<4xi32>)
+  return %2 : tensor<4xi32>
+}
+
+// CHECK-LABEL: remainder_fold_float
+func @remainder_fold_float() -> tensor<4xf32> {
+  %0 = mhlo.constant dense<[7.0, 66.5, 5.0, 3.1]> : tensor<4xf32>
+  %1 = mhlo.constant dense<[3.0, 5.0, 1.0, 2.6]> : tensor<4xf32>
+  // CHECK: mhlo.constant dense<[1.000000e+00, 1.500000e+00, 0.000000e+00, 5.000000e-01]>
+  %2 = "mhlo.remainder"(%0, %1) : (tensor<4xf32>, tensor<4xf32>) -> (tensor<4xf32>)
+  return %2 : tensor<4xf32>
+}
+
 // CHECK-LABEL: max_scalar_fold
 func @max_scalar_fold() -> tensor<4xi64> {
   %0 = mhlo.constant dense<7> : tensor<4xi64>

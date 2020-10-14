@@ -67,17 +67,18 @@ std::string GetSrcValue(int channel_multiplier, const std::string coords) {
   return c;
 }
 
-std::string GenerateDepthwiseConvolutionCode(const OperationDef& op_def,
-                                             bool stride_correction,
-                                             int channel_multiplier,
-                                             bool weights_are_buffer,
-                                             GPUOperation* op) {
+std::string GenerateDepthwiseConvolutionCode(
+    const OperationDef& op_def, bool stride_correction, int channel_multiplier,
+    bool weights_are_buffer, bool dynamic_weights, GPUOperation* op) {
   auto src_desc = op_def.src_tensors[0];
   src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
   if (op_def.IsBatchSupported()) {
     src_desc.SetStateVar("BatchedWidth", "true");
   }
   op->AddSrcTensor("src_tensor", src_desc);
+  if (dynamic_weights) {
+    op->AddSrcTensor("weights", op_def.src_tensors[1]);
+  }
 
   auto dst_desc = op_def.dst_tensors[0];
   if (op_def.IsBatchSupported()) {
@@ -122,16 +123,24 @@ std::string GenerateDepthwiseConvolutionCode(const OperationDef& op_def,
     }
   }
   c += "  int y_offseted = Y * args.stride_y + args.padding_y;\n";
-  std::string weights_offset = "args.kernel_size_x * args.kernel_size_y";
-  if (op_def.dst_tensors[0].HasAxis(Axis::DEPTH)) {
-    c += "  int z_offseted = Z * args.stride_z + args.padding_z;\n";
-    weights_offset += " * args.kernel_size_z";
+  if (!dynamic_weights) {
+    std::string weights_offset = "args.kernel_size_x * args.kernel_size_y";
+    if (op_def.dst_tensors[0].HasAxis(Axis::DEPTH)) {
+      c += "  int z_offseted = Z * args.stride_z + args.padding_z;\n";
+      weights_offset += " * args.kernel_size_z";
+    }
+    if (weights_are_buffer) {
+      c += "  int fx_c = S * " + weights_offset + ";\n";
+    } else {
+      c += "  int fx_c = 0;\n";
+    }
   }
-  if (weights_are_buffer) {
-    c += "  int fx_c = S * " + weights_offset + ";\n";
-  } else {
-    c += "  int fx_c = 0;\n";
-  }
+  std::string kernel_size_x =
+      dynamic_weights ? "args.weights.Width()" : "args.kernel_size_x";
+  std::string kernel_size_y =
+      dynamic_weights ? "args.weights.Height()" : "args.kernel_size_y";
+  std::string kernel_size_z =
+      dynamic_weights ? "args.weights.Depth()" : "args.kernel_size_z";
 
   std::string flat_coords = "x_c, y_c";
   if (manual_clamp) {
@@ -139,29 +148,35 @@ std::string GenerateDepthwiseConvolutionCode(const OperationDef& op_def,
     if (op_def.dst_tensors[0].HasAxis(Axis::DEPTH)) {
       check += " && !outside_z";
       flat_coords += ", z_c";
-      c += "  for (int kz = 0; kz < args.kernel_size_z; ++kz) {\n";
+      c += "  for (int kz = 0; kz < " + kernel_size_z + "; ++kz) {\n";
       c += "    int z_c = z_offseted + kz * args.dilation_z;\n";
       c += "    bool outside_z = z_c < 0 || z_c >= args.src_tensor.Depth();\n";
     }
-    c += "  for (int ky = 0; ky < args.kernel_size_y; ++ky) {\n";
+    c += "  for (int ky = 0; ky < " + kernel_size_y + "; ++ky) {\n";
     c += "    int y_c = y_offseted + ky * args.dilation_y;\n";
     c += "    bool outside_y = y_c < 0 || y_c >= args.src_tensor.Height();\n";
-    c += "    for (int kx = 0; kx < args.kernel_size_x; ++kx) {\n";
+    c += "    for (int kx = 0; kx < " + kernel_size_x + "; ++kx) {\n";
     const std::string dilation_x =
         op_def.IsBatchSupported() ? "args.dilation_x * args.src_tensor.Batch()"
                                   : "args.dilation_x";
     c += "      int x_c = x_offseted + kx * " + dilation_x + ";\n";
     c += "      bool outside_x = x_c < 0 || x_c >= args.src_tensor.Width();\n";
     c += "      if (" + check + ") {\n";
-    if (weights_are_buffer) {
-      c += "        FLT4 f = args.weights.Read(fx_c);\n";
+    if (dynamic_weights) {
+      c += "        FLT4 f = args.weights.Read(kx, ky, S);\n";
     } else {
-      c += "        FLT4 f = args.weights.Read(fx_c, S);\n";
+      if (weights_are_buffer) {
+        c += "        FLT4 f = args.weights.Read(fx_c);\n";
+      } else {
+        c += "        FLT4 f = args.weights.Read(fx_c, S);\n";
+      }
     }
     c += GetSrcValue(channel_multiplier, flat_coords);
     c += "        r += TO_ACCUM_TYPE(src_final * f);\n";
     c += "      };\n";
-    c += "      fx_c++;\n";
+    if (!dynamic_weights) {
+      c += "      fx_c++;\n";
+    }
     c += "    }\n";
     c += "  }\n";
     if (op_def.dst_tensors[0].HasAxis(Axis::DEPTH)) {
@@ -170,7 +185,7 @@ std::string GenerateDepthwiseConvolutionCode(const OperationDef& op_def,
   } else {  // Texture types with ZERO clamping
     if (op_def.dst_tensors[0].HasAxis(Axis::DEPTH)) {
       flat_coords += ", z_c";
-      c += "  for (int kz = 0; kz < args.kernel_size_z; ++kz) {\n";
+      c += "  for (int kz = 0; kz < " + kernel_size_z + "; ++kz) {\n";
       c += "    int z_c = z_offseted + kz * args.dilation_z;\n";
       if (src_tensor_type !=
           TensorStorageType::TEXTURE_3D) {  // Only TEXTURE_3D supports clamping
@@ -181,20 +196,24 @@ std::string GenerateDepthwiseConvolutionCode(const OperationDef& op_def,
         c += "    }\n";
       }
     }
-    c += "  for (int ky = 0; ky < args.kernel_size_y; ++ky) {\n";
+    c += "  for (int ky = 0; ky < " + kernel_size_y + "; ++ky) {\n";
     c += "    int y_c = y_offseted + ky * args.dilation_y;\n";
-    c += "    for (int kx = 0; kx < args.kernel_size_x; ++kx) {\n";
+    c += "    for (int kx = 0; kx < " + kernel_size_x + "; ++kx) {\n";
     const std::string dilation_x =
         op_def.IsBatchSupported() ? "args.dilation_x * args.src_tensor.Batch()"
                                   : "args.dilation_x";
     c += "      int x_c = x_offseted + kx * " + dilation_x + ";\n";
     c += GetSrcValue(channel_multiplier, flat_coords);
-    if (weights_are_buffer) {
-      c += "      FLT4 f = args.weights.Read(fx_c);\n";
+    if (dynamic_weights) {
+      c += "      FLT4 f = args.weights.Read(kx, ky, S);\n";
     } else {
-      c += "      FLT4 f = args.weights.Read(fx_c, S);\n";
+      if (weights_are_buffer) {
+        c += "      FLT4 f = args.weights.Read(fx_c);\n";
+      } else {
+        c += "      FLT4 f = args.weights.Read(fx_c, S);\n";
+      }
+      c += "      fx_c++;\n";
     }
-    c += "      fx_c++;\n";
     c += "      r += TO_ACCUM_TYPE(src_final * f);\n";
     c += "    }\n";
     c += "  }\n";
@@ -234,7 +253,7 @@ GPUOperation CreateDepthwiseConvolution2D(
       definition.IsBatchSupported() && attr.strides.w != 1;
   op.code_ = GenerateDepthwiseConvolutionCode(definition, stride_correction,
                                               attr.weights.shape.o,
-                                              weights_are_buffer, &op);
+                                              weights_are_buffer, false, &op);
   UploadWeightsForDWConv2D(attr.weights, weights_are_buffer,
                            definition.precision, &op);
   op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
@@ -242,6 +261,32 @@ GPUOperation CreateDepthwiseConvolution2D(
   TensorLinearDescriptor desc;
   desc.storage_type = weights_are_buffer ? LinearStorageType::BUFFER
                                          : LinearStorageType::TEXTURE_2D;
+  desc.element_type = definition.GetDataType();
+  desc.UploadLinearData(attr.bias);
+  op.args_.AddObject(
+      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  return op;
+}
+
+GPUOperation CreateDepthwiseConvolution2DDynamicWeights(
+    const DeviceInfo& device_info, const OperationDef& definition,
+    const DepthwiseConvolution2DAttributes& attr) {
+  GPUOperation op(definition);
+  op.args_.AddInt("stride_x", attr.strides.w);
+  op.args_.AddInt("padding_x", -attr.padding.prepended.w);
+  op.args_.AddInt("dilation_x", attr.dilations.w);
+  op.args_.AddInt("stride_y", attr.strides.h);
+  op.args_.AddInt("padding_y", -attr.padding.prepended.h);
+  op.args_.AddInt("dilation_y", attr.dilations.h);
+  const bool stride_correction =
+      definition.IsBatchSupported() && attr.strides.w != 1;
+  op.code_ = GenerateDepthwiseConvolutionCode(definition, stride_correction, 1,
+                                              false, true, &op);
+  op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
+
+  TensorLinearDescriptor desc;
+  desc.storage_type = device_info.IsMali() ? LinearStorageType::BUFFER
+                                           : LinearStorageType::TEXTURE_2D;
   desc.element_type = definition.GetDataType();
   desc.UploadLinearData(attr.bias);
   op.args_.AddObject(
@@ -273,7 +318,7 @@ GPUOperation CreateDepthwiseConvolution3D(
       definition.IsBatchSupported() && attr.strides.w != 1;
   op.code_ = GenerateDepthwiseConvolutionCode(definition, stride_correction,
                                               attr.weights.shape.o,
-                                              weights_are_buffer, &op);
+                                              weights_are_buffer, false, &op);
   UploadWeightsForDWConv3D(attr.weights, weights_are_buffer,
                            definition.precision, &op);
   op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;

@@ -1,5 +1,5 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
-b/160894903
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -32,10 +32,8 @@ namespace internal {
 
 // Sets up all of the data structure members for a TfLiteTensor based on the
 // contents of a serialized tensor in the flatbuffer.
-// TODO(b/160894903): Once all kernels have been updated to the new
-// TfLiteEvalTensor API - drop the allocate_temp flag. This enables internal
-// flatbuffer quantization or dimension allocations to take place in either the
-// temp or tail section of the arena.
+// TODO(b/162311891): Drop this method when the interpreter has an API for
+// returning buffers on TfLiteEvalTensor.
 TfLiteStatus InitializeTfLiteTensorFromFlatbuffer(
     SimpleMemoryAllocator* allocator, bool allocate_temp,
     const tflite::Tensor& flatbuffer_tensor,
@@ -167,7 +165,7 @@ class MicroAllocator {
   // Allocates persistent buffer which has the same life time as the allocator.
   // The memory is immediately available and is allocated from the tail of the
   // arena.
-  void* AllocatePersistentBuffer(size_t bytes);
+  virtual void* AllocatePersistentBuffer(size_t bytes);
 
   // Register a scratch buffer of size `bytes` for Node with `node_id`.
   // This method only requests a buffer with a given size to be used after a
@@ -215,17 +213,15 @@ class MicroAllocator {
   virtual TfLiteStatus AllocateVariables(const SubGraph* subgraph,
                                          TfLiteEvalTensor* eval_tensors);
 
-  // TODO(b/160894903): Once all kernels have been updated to the new API drop
-  // this method. It is only used to record TfLiteTensor persistent allocations.
+  // Allocate and return a persistent TfLiteTensor.
+  // TODO(b/162311891): Drop this method when the interpreter has an API for
+  // accessing TfLiteEvalTensor structs.
   virtual TfLiteTensor* AllocatePersistentTfLiteTensorInternal(
       const Model* model, TfLiteEvalTensor* eval_tensors, int tensor_index);
 
   // Populates a TfLiteTensor struct with data from the model flatbuffer. Any
   // quantization data is allocated from either the tail (persistent) or temp
   // sections of the arena based on the allocation flag.
-  // TODO(b/160894903): Once all kernels have been updated to the new API drop
-  // this function since all allocations for quantized data will take place in
-  // the temp section.
   virtual TfLiteStatus PopulateTfLiteTensorFromFlatbuffer(
       const Model* model, const SubGraph* subgraph, TfLiteTensor* tensor,
       int tensor_index, bool allocate_temp);

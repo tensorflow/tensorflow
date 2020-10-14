@@ -24,7 +24,6 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"
 
 using mlir::FunctionPass;
-using mlir::PassRegistration;
 using mlir::PassWrapper;
 
 namespace {

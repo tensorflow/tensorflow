@@ -112,6 +112,8 @@ tensorflow::Status SetExecutorStructFn(void* library_handle) {
 
   TFTPU_SET_FN(executor_fn, TpuTopology_LogicalDevicesPerHost);
   TFTPU_SET_FN(executor_fn, TpuTopology_LogicalDevicesPerChip);
+  TFTPU_SET_FN(executor_fn, TpuTopology_HostCount);
+  TFTPU_SET_FN(executor_fn, TpuTopology_ChipsPerHost);
   TFTPU_SET_FN(executor_fn, TpuTopology_ChipBounds_X);
   TFTPU_SET_FN(executor_fn, TpuTopology_ChipBounds_Y);
   TFTPU_SET_FN(executor_fn, TpuTopology_ChipBounds_Z);

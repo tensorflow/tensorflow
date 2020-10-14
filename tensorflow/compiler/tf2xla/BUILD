@@ -449,8 +449,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",
-        "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core/common_runtime:core_cpu_internal",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
     ],
     alwayslink = 1,
 )

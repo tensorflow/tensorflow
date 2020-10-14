@@ -41,26 +41,28 @@ class ModelCheckpointTest(test_base.IndependentWorkerTestBase,
           file_format=['h5', 'tf'],
           save_weights_only=[True, False]))
   def testCheckpointExists(self, file_format, save_weights_only):
-    train_ds, _ = multi_worker_testing_utils.mnist_synthetic_dataset(64, 2)
-    model = multi_worker_testing_utils.get_mnist_model((28, 28, 1))
-    saving_dir = self.get_temp_dir()
-    saving_filepath = os.path.join(saving_dir, 'checkpoint.' + file_format)
-    callbacks_list = [
-        callbacks.ModelCheckpoint(
-            filepath=saving_filepath, save_weights_only=save_weights_only)
-    ]
-    self.assertFalse(file_io.file_exists_v2(saving_filepath))
+    with self.cached_session():
+      train_ds, _ = multi_worker_testing_utils.mnist_synthetic_dataset(64, 2)
+      model = multi_worker_testing_utils.get_mnist_model((28, 28, 1))
+      saving_dir = self.get_temp_dir()
+      saving_filepath = os.path.join(saving_dir, 'checkpoint.' + file_format)
+      callbacks_list = [
+          callbacks.ModelCheckpoint(
+              filepath=saving_filepath, save_weights_only=save_weights_only)
+      ]
+      self.assertFalse(file_io.file_exists_v2(saving_filepath))
 
-    try:
-      model.fit(
-          x=train_ds, epochs=2, steps_per_epoch=2, callbacks=callbacks_list)
-    except NotFoundError as e:
-      if 'Failed to create a NewWriteableFile' in e.message:
-        self.skipTest('b/138941852, path not found error in Windows py35.')
-    tf_saved_model_exists = file_io.file_exists_v2(saving_filepath)
-    tf_weights_only_checkpoint_exists = file_io.file_exists_v2(
-        saving_filepath + '.index')
-    self.assertTrue(tf_saved_model_exists or tf_weights_only_checkpoint_exists)
+      try:
+        model.fit(
+            x=train_ds, epochs=2, steps_per_epoch=2, callbacks=callbacks_list)
+      except NotFoundError as e:
+        if 'Failed to create a NewWriteableFile' in e.message:
+          self.skipTest('b/138941852, path not found error in Windows py35.')
+      tf_saved_model_exists = file_io.file_exists_v2(saving_filepath)
+      tf_weights_only_checkpoint_exists = file_io.file_exists_v2(
+          saving_filepath + '.index')
+      self.assertTrue(
+          tf_saved_model_exists or tf_weights_only_checkpoint_exists)
 
 
 if __name__ == '__main__':

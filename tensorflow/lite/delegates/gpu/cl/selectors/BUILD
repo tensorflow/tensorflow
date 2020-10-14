@@ -14,7 +14,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/cl/kernels:conv_common",
         "//tensorflow/lite/delegates/gpu/cl/kernels:conv_constants",
         "//tensorflow/lite/delegates/gpu/cl/kernels:conv_powervr",
-        "//tensorflow/lite/delegates/gpu/cl/kernels:conv_texture",
         "//tensorflow/lite/delegates/gpu/cl/kernels:conv_weights_converter",
         "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
         "//tensorflow/lite/delegates/gpu/cl/kernels:work_group_picking",
@@ -82,7 +81,6 @@ cc_library(
     deps = [
         "//tensorflow/lite/delegates/gpu/cl/kernels:conv_buffer_1x1",
         "//tensorflow/lite/delegates/gpu/cl/kernels:conv_powervr",
-        "//tensorflow/lite/delegates/gpu/cl/kernels:conv_texture",
         "//tensorflow/lite/delegates/gpu/cl/kernels:fully_connected",
         "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common:operations",
@@ -132,6 +130,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/cl/kernels:add",
         "//tensorflow/lite/delegates/gpu/cl/kernels:concat_xy",
         "//tensorflow/lite/delegates/gpu/cl/kernels:concat_z",
+        "//tensorflow/lite/delegates/gpu/cl/kernels:depthwise_conv",
         "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
         "//tensorflow/lite/delegates/gpu/cl/kernels:lstm",
         "//tensorflow/lite/delegates/gpu/cl/kernels:max_unpooling",

@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -60,11 +60,13 @@ SimpleMemoryAllocator* SimpleMemoryAllocator::Create(
 
 SimpleMemoryAllocator::~SimpleMemoryAllocator() {}
 
-TfLiteStatus SimpleMemoryAllocator::SetHeadSize(size_t size, size_t alignment) {
+TfLiteStatus SimpleMemoryAllocator::SetHeadBufferSize(size_t size,
+                                                      size_t alignment) {
   if (head_ != temp_) {
-    TF_LITE_REPORT_ERROR(error_reporter_,
-                         "Internal error: SetHeadSize() needs to be called "
-                         "after ResetTempAllocations().");
+    TF_LITE_REPORT_ERROR(
+        error_reporter_,
+        "Internal error: SetHeadBufferSize() needs to be called "
+        "after ResetTempAllocations().");
     return kTfLiteError;
   }
 
@@ -73,7 +75,7 @@ TfLiteStatus SimpleMemoryAllocator::SetHeadSize(size_t size, size_t alignment) {
   if (available_memory < size) {
     TF_LITE_REPORT_ERROR(
         error_reporter_,
-        "Failed to adjust head size. Requested: %u, available %u, missing: %u",
+        "Failed to set head size. Requested: %u, available %u, missing: %u",
         size, available_memory, size - available_memory);
     return kTfLiteError;
   }
@@ -116,11 +118,7 @@ uint8_t* SimpleMemoryAllocator::AllocateTemp(size_t size, size_t alignment) {
 
 void SimpleMemoryAllocator::ResetTempAllocations() { temp_ = head_; }
 
-uint8_t* SimpleMemoryAllocator::GetHead() const { return head_; }
-
-uint8_t* SimpleMemoryAllocator::GetBufferHead() const { return buffer_head_; }
-
-uint8_t* SimpleMemoryAllocator::GetTail() const { return tail_; }
+uint8_t* SimpleMemoryAllocator::GetHeadBuffer() const { return buffer_head_; }
 
 size_t SimpleMemoryAllocator::GetHeadUsedBytes() const {
   return head_ - buffer_head_;
@@ -131,17 +129,21 @@ size_t SimpleMemoryAllocator::GetTailUsedBytes() const {
 }
 
 size_t SimpleMemoryAllocator::GetAvailableMemory(size_t alignment) const {
-  uint8_t* const aligned_head = AlignPointerUp(head_, alignment);
+  uint8_t* const aligned_temp = AlignPointerUp(temp_, alignment);
   uint8_t* const aligned_tail = AlignPointerDown(tail_, alignment);
-  return aligned_tail - aligned_head;
+  return aligned_tail - aligned_temp;
 }
 
 size_t SimpleMemoryAllocator::GetUsedBytes() const {
-  return GetBufferSize() - (tail_ - head_);
+  return GetBufferSize() - (tail_ - temp_);
 }
 
 size_t SimpleMemoryAllocator::GetBufferSize() const {
   return buffer_tail_ - buffer_head_;
 }
+
+uint8_t* SimpleMemoryAllocator::head() const { return head_; }
+
+uint8_t* SimpleMemoryAllocator::tail() const { return tail_; }
 
 }  // namespace tflite

@@ -27,6 +27,7 @@ limitations under the License.
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
@@ -1446,7 +1447,8 @@ static LogicalResult Verify(SplitVOp op) {
   if (!split_sizes_type) return success();
 
   if (split_sizes_type.getRank() != 1 ||
-      split_sizes_type.getDimSize(0) != op.getNumResults())
+      (split_sizes_type.getDimSize(0) != ShapedType::kDynamicSize &&
+       split_sizes_type.getDimSize(0) != op.getNumResults()))
     return op.emitOpError("split sizes should be a 1D tensor of ")
            << op.getNumResults() << " elements";
 
@@ -2385,6 +2387,27 @@ static LogicalResult VerifyUnsortedSegmentReduction(Op op) {
   }
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// VarHandleOp
+//===----------------------------------------------------------------------===//
+
+ResourceHandleValueAndId VarHandleOp::GetResourceHandleValueAndId(
+    llvm::SmallDenseMap<ResourceHandle, int64_t> &resource_handle_id_map,
+    int64_t &next_id) {
+  // Always create a new ID for anonymous handle.
+  if (IsResourceHandleAnonymous(shared_name())) return {resource(), next_id++};
+
+  llvm::StringRef device;
+  if (auto device_attr = getAttrOfType<StringAttr>("device"))
+    device = device_attr.getValue();
+
+  ResourceHandle handle(container(), shared_name(), device, /*op=*/nullptr);
+  auto emplace_res = resource_handle_id_map.try_emplace(handle, next_id);
+  // New ID created, increment next_id.
+  if (emplace_res.second) ++next_id;
+  return {resource(), emplace_res.first->second};
 }
 
 //===----------------------------------------------------------------------===//

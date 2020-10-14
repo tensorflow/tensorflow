@@ -190,6 +190,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(AttributeError, 'no attribute'):
       add(c)
 
+  @test_util.disable_tfrt('Packed tensor is not supported in tfrt yet.')
   def testPackedVariable(self):
     with ops.device('/cpu:0'):
       v0_0 = resource_variable_ops.ResourceVariable(1.0)
@@ -842,6 +843,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     expected = [4.0] * 100
     self.assertSequenceEqual(outputs, expected)
 
+  @test_util.disable_tfrt('b/169431085: This test is flaky on tfrt')
   def testExecutingStatefulDefunConcurrently(self):
 
     v = resource_variable_ops.ResourceVariable(1.0)
@@ -1320,6 +1322,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertIsInstance(
         self.v, resource_variable_ops.ResourceVariable)
 
+  @test_util.disable_tfrt('b/169294215')
   def testRunMetadata(self):
 
     @def_function.function
@@ -3347,6 +3350,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     test_fn()
     self.assertEqual(ag_ctx.control_status_ctx().status, prev_status)
 
+  @test_util.disable_tfrt('b/170435618')
   def testCancelBeforeFunctionExecution(self):
     if not context.executing_eagerly():
       self.skipTest('eager only')
@@ -3364,6 +3368,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(errors.CancelledError):
       cancelable_func()
 
+  @test_util.disable_tfrt('b/170435618')
   def testCancelBlockedFunctionExecution(self):
     if not context.executing_eagerly():
       self.skipTest('eager only')
@@ -3387,6 +3392,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       cancelable_func()
     t.join()
 
+  @test_util.disable_tfrt('b/170435618')
   def testCancelAfterFunctionExecution(self):
     if not context.executing_eagerly():
       self.skipTest('eager only')
@@ -4290,6 +4296,28 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     foo = Foo()
     with self.assertRaisesRegex(TypeError, 'missing required arguments: y'):
       foo.add(2)  # pylint: disable=no-value-for-parameter
+
+  @test_util.run_v2_only
+  def testControlDependencyAfterInline(self):
+    v = variables.Variable(0.)
+
+    @def_function.function
+    def assign():
+      return v.assign(1.)
+
+    @def_function.function
+    def assign_add():
+      return v.assign_add(1.)
+
+    @def_function.function
+    def f():
+      check_ops.assert_equal_v2(assign(), 1.)
+      check_ops.assert_equal_v2(assign_add(), 2.)
+
+    # We don't have a way to inspect the inlined graph in Python, so we run it
+    # multiple times to have more confidence the dependency is correct.
+    for _ in range(30):
+      f()
 
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):

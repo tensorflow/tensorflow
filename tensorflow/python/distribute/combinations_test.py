@@ -25,6 +25,7 @@ import unittest
 from absl.testing import parameterized
 
 from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute.cluster_resolver import tfconfig_cluster_resolver
 from tensorflow.python.framework import combinations as framework_combinations
 from tensorflow.python.platform import test
@@ -156,4 +157,4 @@ class CombinationsOnClassMultiWorkerExpectedFailureTest(test.TestCase,
 
 
 if __name__ == "__main__":
-  combinations.main()
+  test_util.main()

@@ -40,6 +40,7 @@ from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import sequential
+from tensorflow.python.keras.feature_column import dense_features
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.ops import array_ops
@@ -156,7 +157,7 @@ class TraceModelCallTest(keras_parameterized.TestCase):
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_trace_features_layer(self):
     columns = [feature_column_lib.numeric_column('x')]
-    model = sequential.Sequential([feature_column_lib.DenseFeatures(columns)])
+    model = sequential.Sequential([dense_features.DenseFeatures(columns)])
     model_input = {'x': constant_op.constant([[1.]])}
     model.predict(model_input, steps=1)
     fn = saving_utils.trace_model_call(model)
@@ -166,7 +167,7 @@ class TraceModelCallTest(keras_parameterized.TestCase):
         feature_column_lib.numeric_column('x'),
         feature_column_lib.numeric_column('y')
     ]
-    model = sequential.Sequential([feature_column_lib.DenseFeatures(columns)])
+    model = sequential.Sequential([dense_features.DenseFeatures(columns)])
     model_input = {'x': constant_op.constant([[1.]]),
                    'y': constant_op.constant([[2.]])}
     model.predict(model_input, steps=1)

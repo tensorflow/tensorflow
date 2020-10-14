@@ -47,7 +47,7 @@ def _gen_kernel_gpu_bin_impl(ctx):
 
     gpu_bins = []
     for arch in ctx.attr.gpu_archs:
-        # TODO(b/152737872): 'compute_' should generate both SASS and PTX.
+        # TODO(b/170283783): 'compute_' should generate both SASS and PTX.
         arch = arch.replace("compute_", "sm_")
         filename = "%s.%s.bin" % (name, arch)
         gpu_bin = ctx.actions.declare_file(filename)
@@ -57,8 +57,7 @@ def _gen_kernel_gpu_bin_impl(ctx):
             executable = ctx.executable._tool,
             arguments = cmd_args + [
                 "--tile_sizes=%s" % tile_sizes,
-                # For ROCM, remove the "gfx" prefix. For CUDA, remove the "sm_" prefix.
-                "--arch=%s" % arch[3:],
+                "--arch=%s" % arch,
                 "--input=%s" % ctx.file.mlir_op.path,
                 "--output=%s" % gpu_bin.path,
             ],
@@ -201,13 +200,19 @@ def _gen_kernel_image_hdr(name, mlir_op, gpu_archs, tile_size, same_shape = None
     )
 
 def _gen_mlir_op_impl(ctx):
-    ctx.actions.run_shell(
+    # In order to generate a ranked kernel we change *xelem_type to ?xelem_type
+    # and remove element type from the entry function name.
+    convert_to_ranked = ""
+    if ctx.attr.unranked == False:
+        convert_to_ranked = "sed s/*x/?x/g | sed s/_elem_type//g |"
+    cmd = ctx.actions.run_shell(
         inputs = [ctx.file.template],
         outputs = [ctx.outputs.out],
         command = (
-            ("cat %s | sed s/elem_type/%s/g | sed 's/c64/complex<f32>/g'" +
+            ("cat %s | %s sed s/elem_type/%s/g | sed 's/c64/complex<f32>/g'" +
              " | sed 's/c128/complex<f64>/g' > %s") % (
                 ctx.file.template.path,
+                convert_to_ranked,
                 ctx.attr.type,
                 ctx.outputs.out.path,
             )
@@ -221,18 +226,21 @@ _gen_mlir_op_rule = rule(
         "template": attr.label(mandatory = True, allow_single_file = True),
         "type": attr.string(mandatory = True),
         "out": attr.output(mandatory = True),
+        "unranked": attr.bool(mandatory = True),
     },
 )
 
-def _gen_mlir_op(name, type):
+def _gen_mlir_op(name, type, unranked):
+    tmpl_name = name.replace("_unranked", "") if unranked else name
     _gen_mlir_op_rule(
         name = "generate_{name}_{type}_mlir".format(name = name, type = type),
-        template = "op_definitions/{name}.mlir.tmpl".format(name = name),
+        template = "op_definitions/{name}.mlir.tmpl".format(name = tmpl_name),
         type = type,
         out = "{name}_{type}.mlir".format(name = name, type = type),
+        unranked = unranked,
     )
 
-def gen_kernel_library(name, types, tile_size, tags = [], same_shape = None, unroll_factors = None, extra_args = []):
+def gen_ranked_kernel_library(name, types, tile_size, tags = [], same_shape = None, unroll_factors = None, extra_args = []):
     """ Generate a library with kernels for a specific tensorflow op.
 
     Args:
@@ -250,6 +258,7 @@ def gen_kernel_library(name, types, tile_size, tags = [], same_shape = None, unr
             _gen_mlir_op(
                 name = name,
                 type = type,
+                unranked = False,
             )
             _gen_kernel_image_hdr(
                 name = "{name}_{type}_kernel".format(name = name, type = type),
@@ -279,27 +288,13 @@ def if_mlir_unranked_kernels_enabled(if_true, if_false = []):
 
 def _gen_unranked_kernel_fatbin_impl(ctx):
     name = ctx.attr.name
-    tile_sizes = ctx.attr.tile_size.replace("x", ",")
     cmd_args = []
     if ctx.attr.unroll_factors:
         cmd_args.append("--unroll_factors=%s" % ctx.attr.unroll_factors)
     if ctx.attr.extra_args:
         cmd_args.extend(ctx.attr.extra_args)
-
-    gpu_bins = []
-    archs_trimmed = []
-    for arch in ctx.attr.gpu_archs:
-        # TODO(b/169066682): Add support for the 'sm_'/'compute_' distinction.
-        arch = arch.replace("compute_", "sm_")
-
-        # For ROCM, remove the "gfx" prefix. For CUDA, remove the "sm_" prefix.
-        archs_trimmed.append(arch[3:])
-    arch_flag = ",".join(archs_trimmed)
-
-    # TODO(b/169066682): Generate Fatbin when lowering GPU module.
-    arch_flag = "75"
-
-    filename = "%s.a" % (name)
+    tile_sizes = ctx.attr.tile_size.replace("x", ",")
+    arch_flag = ",".join(ctx.attr.gpu_archs)
     gpu_bin = ctx.outputs.output
     ctx.actions.run(
         inputs = [ctx.file.mlir_op],
@@ -349,6 +344,7 @@ def gen_unranked_kernel_library(name, types, tile_size, tags = [], unroll_factor
             _gen_mlir_op(
                 name = name,
                 type = type,
+                unranked = True,
             )
             _gen_unranked_kernel_fatbin_rule(
                 name = "{name}_{type}_kernel_generator".format(name = name, type = type),
@@ -370,3 +366,24 @@ def gen_unranked_kernel_library(name, types, tile_size, tags = [], unroll_factor
         linkstatic = 1,
         tags = tags,
     )
+
+def gen_kernel_library(name, types, tile_size, tags = [], same_shape = None, unroll_factors = None, extra_args = [], generate_ranked = True, generate_unranked = False):
+    if (generate_ranked):
+        gen_ranked_kernel_library(
+            name = name,
+            types = types,
+            tile_size = tile_size,
+            tags = tags,
+            same_shape = same_shape,
+            unroll_factors = unroll_factors,
+            extra_args = extra_args,
+        )
+    if (generate_unranked):
+        gen_unranked_kernel_library(
+            name = name + "_unranked",
+            types = types,
+            tile_size = tile_size,
+            tags = tags,
+            unroll_factors = unroll_factors,
+            extra_args = extra_args,
+        )

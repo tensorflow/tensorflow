@@ -20,6 +20,9 @@ load("//tensorflow/core/kernels/mlir_generated:build_defs.bzl", "if_mlir_generat
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
 
 # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 
 # buildifier: disable=same-origin-load
@@ -512,7 +515,7 @@ tf_cuda_library(
     deps = [
         ":gpu_util_hdrs",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor",
+        "//tensorflow/core/platform:stream_executor",
         "//tensorflow/core/protobuf:autotuning_proto_cc",
         "//tensorflow/core/protobuf:conv_autotuning_proto_cc",
         "//tensorflow/core/util:env_var",
@@ -556,11 +559,11 @@ tf_cc_test(
     deps = [
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu",
-        "//tensorflow/core:direct_session_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime:direct_session_internal",
     ],
 )
 
@@ -712,7 +715,7 @@ cc_library(
 
 alias(
     name = "bounds_check",
-    actual = "//tensorflow/core:framework_bounds_check",
+    actual = "//tensorflow/core/framework:bounds_check",
     visibility = [":friends"],
 )
 
@@ -890,6 +893,7 @@ cc_library(
     hdrs = [
         "eigen_spatial_convolutions-inl.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":eigen_convolution_helpers",
     ],
@@ -900,6 +904,7 @@ cc_library(
     hdrs = [
         "eigen_convolution_helpers.h",
     ],
+    compatible_with = get_compatible_with_portable(),
 )
 
 # OpKernel libraries ----------------------------------------------------------
@@ -1100,7 +1105,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "one_hot_op",
     prefix = "one_hot_op",
-    deps = ARRAY_DEPS + ["//tensorflow/core:overflow"],
+    deps = ARRAY_DEPS + ["//tensorflow/core/util:overflow"],
 )
 
 tf_kernel_library(
@@ -1491,7 +1496,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:stream_executor",
+        "//tensorflow/core/platform:stream_executor",
         "//third_party/eigen3",
     ],
 )
@@ -1647,10 +1652,6 @@ tf_cuda_cc_test(
     name = "conv_ops_test",
     size = "medium",
     srcs = ["conv_ops_test.cc"],
-    tags = [
-        "no_cuda11",  # b/159664089
-        "no_oss",
-    ],
     deps = [
         ":conv_ops",
         ":ops_testutil",
@@ -3851,7 +3852,7 @@ tf_kernel_library(
         "//tensorflow/core/platform/default/build_config:cudnn_plugin",
         "//tensorflow/stream_executor:tf_allocator_adapter",
         "//tensorflow/stream_executor:stream_executor_headers",
-        "//tensorflow/core:stream_executor",
+        "//tensorflow/core/platform:stream_executor",
     ]) + if_cuda_or_rocm([
         ":gpu_utils",
         "//tensorflow/stream_executor/gpu:redzone_allocator",
@@ -3989,7 +3990,7 @@ tf_kernel_library(
         ":reduction_ops",
     ]) + if_cuda([
         "@local_config_cuda//cuda:cub_headers",
-        "//tensorflow/core:stream_executor",
+        "//tensorflow/core/platform:stream_executor",
         "//tensorflow/stream_executor/cuda:cuda_stream",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rocprim",
@@ -4004,7 +4005,7 @@ tf_kernel_library(
         ":redux_functor",
         ":transpose_functor",
     ] + if_cuda([
-        "//tensorflow/core:stream_executor",
+        "//tensorflow/core/platform:stream_executor",
     ]),
 )
 
@@ -4224,7 +4225,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:stream_executor",
+        "//tensorflow/core/platform:stream_executor",
         "//third_party/eigen3",
     ],
 )
@@ -6191,6 +6192,7 @@ filegroup(
         "queue_op.cc",
         "queue_ops.cc",
         "ragged_range_op.cc",
+        "ragged_gather_op.cc",
         "ragged_tensor_to_sparse_kernel.cc",
         "ragged_tensor_to_tensor_op.cc",
         "random_op.cc",

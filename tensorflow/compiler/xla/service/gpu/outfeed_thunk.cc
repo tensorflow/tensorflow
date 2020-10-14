@@ -14,26 +14,34 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/outfeed_thunk.h"
+
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/outfeed_manager.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
 namespace gpu {
 
-OutfeedThunk::OutfeedThunk(ThunkInfo thunk_info,
+OutfeedConfig GetOutfeedConfig(const HloInstruction* instr) {
+  OutfeedConfig config;
+  config.input_shape = instr->operand(0)->shape();
+  return config;
+}
+
+OutfeedThunk::OutfeedThunk(ThunkInfo thunk_info, OutfeedConfig&& config,
                            ShapeTree<BufferAllocation::Slice> outfeed_slices)
     : Thunk(Kind::kOutfeed, thunk_info),
-      hlo_instruction_(thunk_info.hlo_instruction),
+      config_(std::move(config)),
       outfeed_slices_(std::move(outfeed_slices)) {}
 
 Status OutfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
   auto& stream = *params.stream;
   auto& buffer_allocations = *params.buffer_allocations;
 
-  VLOG(2) << "Outfeeding from GPU: " << hlo_instruction_->ToString();
+  VLOG(2) << "Outfeeding from GPU";
 
   auto op_profiler =
       params.profiler->MakeScopedInstructionProfiler(profile_index());
@@ -42,13 +50,12 @@ Status OutfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
       outfeed_manager->BlockingGetNextDestination();
 
   // Nothing to be done for empty tuples.
-  if (ShapeUtil::IsEmptyTuple(hlo_instruction_->operand(0)->shape())) {
+  if (ShapeUtil::IsEmptyTuple(config_.input_shape)) {
     return Status::OK();
   }
-  CHECK(ShapeUtil::Compatible(hlo_instruction_->operand(0)->shape(),
-                              outfeed_buffers->shape()))
+  CHECK(ShapeUtil::Compatible(config_.input_shape, outfeed_buffers->shape()))
       << "XLA program outfeed request of shape "
-      << hlo_instruction_->operand(0)->shape().ToString()
+      << config_.input_shape.ToString()
       << " did not match the runtime's outfeed buffer of shape "
       << outfeed_buffers->shape().ToString();
 

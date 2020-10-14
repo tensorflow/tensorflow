@@ -196,5 +196,22 @@ TEST(TypeToShapeTest, ConvertMemRefToShape) {
   EXPECT_TRUE(ShapeUtil::Equal(converted, shape));
 }
 
+TEST(TypeToShapeTest, ConvertMemRefToShape2) {
+  Shape shape = ShapeUtil::MakeShapeWithLayout(PrimitiveType::C64, {2, 4, 3, 3},
+                                               {2, 3, 1, 0});
+  MLIRContext context;
+  mlir::Builder builder(&context);
+
+  StatusOr<mlir::Type> mlir_type =
+      ConvertShapeToType<MemRefType>(shape, builder);
+  ASSERT_TRUE(mlir_type.ok());
+  mlir::Type type = mlir_type.ConsumeValueOrDie();
+  Shape converted = TypeToShape(type);
+  EXPECT_TRUE(ShapeUtil::Equal(
+      converted, ShapeUtil::MakeShapeWithLayout(PrimitiveType::C64,
+                                                {2, 4, 3, 3}, {2, 3, 1, 0})));
+  EXPECT_TRUE(ShapeUtil::Equal(converted, shape));
+}
+
 }  // namespace
 }  // namespace xla

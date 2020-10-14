@@ -1624,4 +1624,14 @@ static Shape MergeDimensions(absl::Span<const size_t> segs,
   return absl::nullopt;
 }
 
+Shape ShapeUtil::DeviceShapeToHostShape(Shape s) {
+  ForEachMutableSubshape(&s, [](Shape* subshape, const ShapeIndex& index) {
+    if (subshape->IsArray()) {
+      subshape->mutable_layout()->clear_tiles();
+      subshape->mutable_layout()->set_memory_space(Layout::kDefaultMemorySpace);
+    }
+  });
+  return s;
+}
+
 }  // namespace xla

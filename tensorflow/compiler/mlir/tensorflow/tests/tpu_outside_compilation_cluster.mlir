@@ -321,27 +321,27 @@ func @check_op_inside_nested_region_clustered(%arg0 : tensor<*x!tf.resource>) {
   return
 }
 
-// CHECK-LABEL: func @check_ops_inside_different_block_in_different_cluster
-func @check_ops_inside_different_block_in_different_cluster(%arg0 : tensor<*x!tf.resource>) {
+// CHECK-LABEL: func @check_ops_inside_different_block_clustered
+func @check_ops_inside_different_block_clustered(%arg0 : tensor<*x!tf.resource>) {
   // CHECK:      tf_device.cluster
   // CHECK-NEXT:   "tf.Const"
   // CHECK-NEXT:   "tf.B"
   // CHECK-SAME:   _xla_outside_compilation = "[[CLUSTER17:[a-zA-Z_0-9]+]]"
   // CHECK-NEXT:   "tf.C"
-  // CHECK-SAME:   _xla_outside_compilation = "[[CLUSTER17:[a-zA-Z_0-9]+]]"
+  // CHECK-SAME:   _xla_outside_compilation = "[[CLUSTER18:[a-zA-Z_0-9]+]]"
   // CHECK:      "tf.IfRegion"
   // CHECK-NEXT:     "tf.Const"
   // CHECK-NEXT:     "tf.Const"
-  // CHECK-SAME:     _xla_outside_compilation = "[[CLUSTER18:[a-zA-Z_0-9]+]]"
+  // CHECK-SAME:     _xla_outside_compilation = "[[CLUSTER17]]"
   // CHECK-NEXT:     "tf.Const"
-  // CHECK-SAME:     _xla_outside_compilation = "[[CLUSTER18]]"
+  // CHECK-SAME:     _xla_outside_compilation = "[[CLUSTER17]]"
   // CHECK-NEXT:     "tf.WriteSummary"
-  // CHECK-SAME:     _xla_outside_compilation = "[[CLUSTER18]]"
+  // CHECK-SAME:     _xla_outside_compilation = "[[CLUSTER17]]"
   // CHECK:          "tf.Const"
   // CHECK-NEXT:     "tf.Const"
-  // CHECK-SAME:     _xla_outside_compilation = "[[CLUSTER19:[a-zA-Z_0-9]+]]"
+  // CHECK-SAME:     _xla_outside_compilation = "[[CLUSTER18]]"
   // CHECK-NEXT:     "tf.D"
-  // CHECK-SAME:     _xla_outside_compilation = "[[CLUSTER19]]"
+  // CHECK-SAME:     _xla_outside_compilation = "[[CLUSTER18]]"
   "tf_device.cluster"() ( {
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
     %2 = "tf.B"() {_xla_outside_compilation = "auto1"} : () -> (tensor<i64>)
@@ -371,16 +371,16 @@ func @check_clustering_ops_inside_nested_control_flow(%arg0 : tensor<*x!tf.resou
   // CHECK-NEXT:   "tf.B"
   // CHECK-SAME:   _xla_outside_compilation = "[[CLUSTER17:[a-zA-Z_0-9]+]]"
   // CHECK-NEXT:   "tf.C"
-  // CHECK-NOT:   _xla_outside_compilation = "[[CLUSTER17]]"
+  // CHECK:        _xla_outside_compilation = "[[CLUSTER17]]"
   // CHECK:        "tf.IfRegion"
   // CHECK:          "tf.IfRegion"
   // CHECK-NEXT:       "tf.Const"
   // CHECK-NEXT:       "tf.Const"
-  // CHECK-SAME:       _xla_outside_compilation = "[[CLUSTER18:[a-zA-Z_0-9]+]]"
+  // CHECK-SAME:       _xla_outside_compilation = "[[CLUSTER17]]"
   // CHECK-NEXT:       "tf.Const"
-  // CHECK-SAME:       _xla_outside_compilation = "[[CLUSTER18]]"
+  // CHECK-SAME:       _xla_outside_compilation = "[[CLUSTER17]]"
   // CHECK-NEXT:       "tf.WriteSummary"
-  // CHECK-SAME:       _xla_outside_compilation = "[[CLUSTER18]]"
+  // CHECK-SAME:       _xla_outside_compilation = "[[CLUSTER17]]"
   "tf_device.cluster"() ( {
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
     %2 = "tf.B"() {_xla_outside_compilation = "auto1"} : () -> (tensor<i64>)

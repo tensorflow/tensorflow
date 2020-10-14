@@ -2852,6 +2852,13 @@ func @testSplitV2(%input: tensor<4x4xf32>) {
 
 // -----
 
+func @testSplitVDynamic(%arg0: tensor<?x?xf32>, %arg1: tensor<?xi32>, %arg2: tensor<i32>) -> (tensor<?x?xf32>, tensor<?x?xf32>) {
+  %0:2 = "tf.SplitV"(%arg0, %arg1, %arg2) : (tensor<?x?xf32>, tensor<?xi32>, tensor<i32>) -> (tensor<?x?xf32>, tensor<?x?xf32>)
+  return %0#0, %0#1 : tensor<?x?xf32>, tensor<?x?xf32>
+}
+
+// -----
+
 //===--------------------------------------------------------------------===//
 //  tf.All
 //===--------------------------------------------------------------------===//

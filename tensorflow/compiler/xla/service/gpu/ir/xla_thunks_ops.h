@@ -33,10 +33,11 @@ class XLAThunksDialect : public Dialect {
   static StringRef getDialectNamespace() { return "xla_thunks"; }
 };
 
+}  // namespace xla_thunks
+
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/xla/service/gpu/ir/xla_thunks_ops.h.inc"
 
-}  // namespace xla_thunks
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_IR_XLA_THUNKS_OPS_H_

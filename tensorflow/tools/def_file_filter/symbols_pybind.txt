@@ -123,6 +123,7 @@ toco::TocoConvert
 toco::TocoGetPotentiallySupportedOps
 toco::MlirQuantizeModel
 toco::MlirSparsifyModel
+toco::RegisterCustomOpdefs
 
 [transform_graph_lib] # transform_graph
 tensorflow::graph_transforms::TransformGraph
@@ -331,13 +332,9 @@ tensorflow::grappler::GetNumAvailableLogicalCPUCores
 [traceme_recorder_impl] # profiler
 tensorflow::profiler::TraceMeRecorder::Record
 
-[annotation_stack_impl] # profiler
-tensorflow::profiler::AnnotationStack::ThreadAnnotationStack
-
 [profiler_session_impl] # profiler
 tensorflow::ProfilerSession::Create
 tensorflow::ProfilerSession::CollectData
-tensorflow::ProfilerSession::SerializeToString
 tensorflow::ProfilerSession::Status
 tensorflow::ProfilerSession::~ProfilerSession
 
@@ -349,6 +346,10 @@ tensorflow::profiler::ProfilerServer::~ProfilerServer
 tensorflow::profiler::ProfileGrpc
 tensorflow::profiler::NewSessionGrpc
 tensorflow::profiler::MonitorGrpc
+tensorflow::profiler::RemoteProfilerSession::Create
+tensorflow::profiler::RemoteProfilerSession::GetServiceAddress
+tensorflow::profiler::RemoteProfilerSession::WaitForCompletion
+tensorflow::profiler::RemoteProfilerSession::~RemoteProfilerSession
 
 [status_macros] # tfcompile
 xla::status_macros::MakeErrorStream::Impl::Impl

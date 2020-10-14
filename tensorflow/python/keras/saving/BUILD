@@ -208,6 +208,7 @@ tf_py_test(
     python_version = "PY3",
     tfrt_enabled = True,
     deps = [
+        ":saving",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
