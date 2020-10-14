@@ -71,6 +71,7 @@ PodStatsRecord CreatePodStatsRecord(absl::string_view host_name,
 
 PodStatsDatabase ConvertOpStatsToPodStats(const OpStats& op_stats) {
   PodStatsDatabase pod_stats_db;
+  const auto& core_id_map = op_stats.core_id_to_details();
   for (int i = GenericEventType::kFirstGenericEventType;
        i <= GenericEventType::kLastGenericEventType; i++) {
     auto& event = *pod_stats_db.add_step_breakdown_events();
@@ -81,10 +82,10 @@ PodStatsDatabase ConvertOpStatsToPodStats(const OpStats& op_stats) {
   }
 
   for (const auto& step_sequence : op_stats.step_db().step_sequence()) {
-    int count = 0;
     for (const auto& entry : step_sequence.step_info_per_core()) {
+      const CoreDetails& details = core_id_map.at(entry.first);
       *pod_stats_db.add_pod_stats_record() =
-          CreatePodStatsRecord(absl::StrCat(count++), entry.second);
+          CreatePodStatsRecord(details.hostname(), entry.second);
     }
   }
   PopulateStepDiagnostics(op_stats, pod_stats_db.mutable_diagnostics());
