@@ -102,7 +102,7 @@ class TimeDistributed(Wrapper):
   >>> outputs.shape
   TensorShape([None, 10, 126, 126, 64])
 
-  Because `TimeDistributed` applies an instance of `Conv2D` to each of the
+  Because `TimeDistributed` applies the same instance of `Conv2D` to each of the
   timestamps, the same set of weights are used at each timestamp.
 
   Arguments:
