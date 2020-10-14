@@ -46,7 +46,6 @@
 #
 # Public mobile targets, e.g. for Android:
 #
-# filegroup ":android_proto_srcs" - Protos
 # cc_library ":portable_tensorflow_lib" - Native library
 # cc_library ":portable_tensorflow_lib_lite" - Native library, without ops,
 #   supporting SELECTIVE_REGISTRATION feature.
@@ -288,12 +287,6 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
     ],
-)
-
-alias(
-    name = "framework_bounds_check",
-    actual = "//tensorflow/core/framework:bounds_check",
-    visibility = ["//tensorflow/core/kernels:friends"],
 )
 
 # Minimal lib so that tools used for mobile compilation
@@ -837,13 +830,6 @@ tf_cuda_library(
 
 # -----------------------------------------------------------------------------
 # Public Android targets
-
-# List of protos we want on android
-filegroup(
-    name = "android_proto_srcs",
-    srcs = CORE_PROTO_SRCS,
-    visibility = ["//visibility:public"],
-)
 
 # Sources required to build the TensorFlow framework without the runtime on
 # mobile platforms. This is essentially the sources required to build
