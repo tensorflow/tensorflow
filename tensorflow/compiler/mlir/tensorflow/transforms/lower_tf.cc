@@ -780,7 +780,7 @@ void PopulateLoweringTFPatterns(MLIRContext *context,
                    LowerDynamicStitchOp, LowerInvertPermutationOp, LowerPackOp,
                    LowerSpaceToBatchNDOp, LowerSparseMatMulOp,
                    Lower_UnaryOpsComposition>(context);
-  populateWithGenerated(context, patterns);
+  populateWithGenerated(context, *patterns);
 }
 
 }  // namespace TF

@@ -516,7 +516,7 @@ struct HloCompareAdaptor {
 
 void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
                                        OwningRewritePatternList *patterns) {
-  populateWithGenerated(context, patterns);
+  populateWithGenerated(context, *patterns);
 
   // Instantiate conversion templates for conforming binary elementwise ops
   // that do not have different dtypes between operands and results and do

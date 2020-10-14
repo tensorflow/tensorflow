@@ -37,7 +37,7 @@ struct TFOptimizePass : public PassWrapper<TFOptimizePass, FunctionPass> {
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     auto func = getFunction();
-    populateWithGenerated(&getContext(), &patterns);
+    populateWithGenerated(&getContext(), patterns);
     applyPatternsAndFoldGreedily(func, patterns);
   }
 };
