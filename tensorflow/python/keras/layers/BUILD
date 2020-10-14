@@ -777,7 +777,10 @@ tf_py_test(
     srcs = ["recurrent_test.py"],
     python_version = "PY3",
     shard_count = 12,
-    tags = ["no_rocm"],
+    tags = [
+        "no_rocm",
+        "notsan",  # TODO(b/170870794)
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
