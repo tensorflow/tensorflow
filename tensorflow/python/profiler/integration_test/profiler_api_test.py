@@ -128,6 +128,7 @@ class ProfilerApiTest(test_util.TensorFlowTestCase):
     _, steps, train_ds, model = _model_setup()
     model.fit(x=train_ds, epochs=2, steps_per_epoch=steps)
     profiler.stop()
+    self._check_xspace_pb_exist(logdir)
     self._check_tools_pb_exist(logdir)
 
 
