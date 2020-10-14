@@ -665,7 +665,7 @@ void LegalizeTF::runOnFunction() {
   auto func = getFunction();
 
   // Add the generated patterns to the list.
-  populateWithGenerated(context, &patterns);
+  populateWithGenerated(context, patterns);
   patterns
       .insert<ConvertTFConcatV2Op, ConvertTFMatMulOp, ConvertTFMatrixDiagV2Op,
               ConvertTFMatrixDiagV3Op, ConvertTFPackOp, ConvertTFReshapeOp,

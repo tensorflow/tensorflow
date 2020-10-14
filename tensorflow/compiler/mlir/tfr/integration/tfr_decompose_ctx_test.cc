@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/types.h"
@@ -94,9 +95,9 @@ class TFRDecomposeContextTest : public Test {
   std::unique_ptr<TFRDecomposeContext> test_ctx_;
 };
 
-std::vector<NodeAndType> NodesSequenceOf(const GraphDef& graph) {
+std::vector<NodeAndType> NodesSequenceOf(const FunctionDef& graph) {
   std::vector<NodeAndType> nodes;
-  for (auto& node : graph.node()) {
+  for (auto& node : graph.node_def()) {
     nodes.push_back({node.op(), node.attr().at("T").type()});
   }
   return nodes;
@@ -110,13 +111,10 @@ TEST_F(TFRDecomposeContextTest, FLOAT_1_ins) {
                     .Input(src_list)
                     .Finalize(&test_node);
   EXPECT_TRUE(status.ok());
-  std::vector<NodeAndType> input_node_types{{"input", DT_FLOAT}};
-  auto decomposed =
-      test_ctx_->Decompose(test_node, absl::MakeSpan(input_node_types));
+  auto decomposed = test_ctx_->Decompose(test_node, "test");
   EXPECT_TRUE(decomposed.ok());
-  std::vector<NodeAndType> expected_results{
-      {"_Arg", DT_FLOAT}, {"Identity", DT_FLOAT}, {"_Retval", DT_FLOAT}};
-  EXPECT_THAT(NodesSequenceOf(*decomposed.ValueOrDie()),
+  std::vector<NodeAndType> expected_results{{"Identity", DT_FLOAT}};
+  EXPECT_THAT(NodesSequenceOf(decomposed.ValueOrDie()),
               ElementsAreArray(expected_results));
 }
 
@@ -130,17 +128,12 @@ TEST_F(TFRDecomposeContextTest, FLOAT_3_ins) {
                     .Input(src_list)
                     .Finalize(&test_node);
   EXPECT_TRUE(status.ok());
-  std::vector<NodeAndType> input_node_types{
-      {"in0", DT_FLOAT}, {"in1", DT_FLOAT}, {"in2", DT_FLOAT}};
-  auto decomposed =
-      test_ctx_->Decompose(test_node, absl::MakeSpan(input_node_types));
+  auto decomposed = test_ctx_->Decompose(test_node, "test");
   EXPECT_TRUE(decomposed.ok());
 
-  std::vector<NodeAndType> expected_results{
-      {"_Arg", DT_FLOAT},    {"_Arg", DT_FLOAT},    {"_Arg", DT_FLOAT},
-      {"RiscAdd", DT_FLOAT}, {"RiscAdd", DT_FLOAT}, {"EnsureShape", DT_FLOAT},
-      {"_Retval", DT_FLOAT}};
-  EXPECT_THAT(NodesSequenceOf(*decomposed.ValueOrDie()),
+  std::vector<NodeAndType> expected_results{{"RiscAdd", DT_FLOAT},
+                                            {"RiscAdd", DT_FLOAT}};
+  EXPECT_THAT(NodesSequenceOf(decomposed.ValueOrDie()),
               ElementsAreArray(expected_results));
 }
 
@@ -153,17 +146,12 @@ TEST_F(TFRDecomposeContextTest, INT32_3_ins) {
   auto status =
       NodeDefBuilder("int_add", "MyAddN").Input(src_list).Finalize(&test_node);
   EXPECT_TRUE(status.ok());
-  std::vector<NodeAndType> input_node_types{
-      {"in0", DT_INT32}, {"in1", DT_INT32}, {"in2", DT_INT32}};
-  auto decomposed =
-      test_ctx_->Decompose(test_node, absl::MakeSpan(input_node_types));
+  auto decomposed = test_ctx_->Decompose(test_node, "test");
   EXPECT_TRUE(decomposed.ok());
 
-  std::vector<NodeAndType> expected_results{
-      {"_Arg", DT_INT32},    {"_Arg", DT_INT32},    {"_Arg", DT_INT32},
-      {"RiscAdd", DT_INT32}, {"RiscAdd", DT_INT32}, {"EnsureShape", DT_INT32},
-      {"_Retval", DT_INT32}};
-  EXPECT_THAT(NodesSequenceOf(*decomposed.ValueOrDie()),
+  std::vector<NodeAndType> expected_results{{"RiscAdd", DT_INT32},
+                                            {"RiscAdd", DT_INT32}};
+  EXPECT_THAT(NodesSequenceOf(decomposed.ValueOrDie()),
               ElementsAreArray(expected_results));
 }
 

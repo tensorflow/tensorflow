@@ -29,7 +29,6 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import cluster_resolver as cluster_resolver_lib
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
-from tensorflow.python.distribute import cross_device_utils
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context
@@ -59,6 +58,8 @@ from tensorflow.python.platform import test
 from tensorflow.python.training.server_lib import ClusterSpec
 
 
+CollectiveAllReduceStrategy = (
+    collective_all_reduce_strategy.CollectiveAllReduceStrategy)
 CollectiveAllReduceExtended = (
     collective_all_reduce_strategy.CollectiveAllReduceExtended)
 
@@ -93,14 +94,10 @@ def create_test_objects(cluster_spec=None,
 class CollectiveAllReduceStrategyTestBase(
     multi_worker_test_base.MultiWorkerTestBase):
 
-  collective_key_base = 0
-
   def setUp(self):
     # We use a different key_base for each test so that collective keys won't be
     # reused.
-    # TODO(yuefengz, ayushd): enable it to reuse collective keys in different
-    # tests.
-    CollectiveAllReduceStrategyTestBase.collective_key_base += 100000
+    CollectiveAllReduceStrategy._collective_key_base += 100000
     super(CollectiveAllReduceStrategyTestBase, self).setUp()
 
   def _get_test_object(self, task_type, task_id, num_gpus=0):
@@ -109,18 +106,6 @@ class CollectiveAllReduceStrategyTestBase(
         task_type=task_type,
         task_id=task_id,
         num_gpus=num_gpus)
-
-    collective_keys = cross_device_utils.CollectiveKeys(
-        group_key_start=10 +
-        CollectiveAllReduceStrategyTestBase.collective_key_base,
-        op_instance_key_start=100 +
-        CollectiveAllReduceStrategyTestBase.collective_key_base,
-        variable_instance_key_start=10000 +
-        CollectiveAllReduceStrategyTestBase.collective_key_base)
-    strategy.extended._collective_keys = collective_keys
-    strategy.extended._cross_device_ops._collective_keys = collective_keys
-    strategy.extended._host_cross_device_ops._collective_keys = collective_keys
-
     return strategy, target, session_config
 
   def _test_minimize_loss_graph(self, task_type, task_id, num_gpus):

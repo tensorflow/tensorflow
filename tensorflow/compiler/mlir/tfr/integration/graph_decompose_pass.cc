@@ -15,17 +15,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfr/integration/graph_decompose_pass.h"
 
 #include "tensorflow/compiler/mlir/tfr/integration/tfr_decompose_ctx.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 
-constexpr const char* const kTFRLibEnv = "TF_MLIR_TFR_LIB_DIR";
-
 bool GraphDecomposePass::IsEnabled(const ConfigProto& config_proto) const {
-  const char* tfr_lib_env_val = getenv(string(kTFRLibEnv).c_str());
+  const char* tfr_lib_env_val = getenv(std::string(kTFRLibEnv).c_str());
   return tfr_lib_env_val != nullptr;
 }
 
@@ -37,36 +32,9 @@ Status GraphDecomposePass::Run(const ConfigProto& config_proto,
     return Status::OK();
   }
   VLOG(1) << "Run Graph Decomposition Passes";
-  TF_ASSIGN_OR_RETURN(ctx_, LoadDecompositionLib(module.getContext()));
+  TF_ASSIGN_OR_RETURN(ctx_, TFRDecomposeContext::Get(module.getContext()));
   TF_RETURN_IF_ERROR(ctx_->Decompose(module));
   return ctx_->Destroy();
-}
-
-StatusOr<std::unique_ptr<TFRDecomposeContext>>
-GraphDecomposePass::LoadDecompositionLib(mlir::MLIRContext* mlir_ctx) {
-  Env* env = Env::Default();
-  std::string tfr_lib_dir;
-  TF_RETURN_IF_ERROR(ReadStringFromEnvVar(
-      kTFRLibEnv, "tensorflow/compiler/mlir/tfr/resources", &tfr_lib_dir));
-  string composite_mlir_dir = io::JoinPath(env->GetRunfilesDir(), tfr_lib_dir);
-  std::vector<string> files;
-  TF_RETURN_IF_ERROR(env->GetChildren(composite_mlir_dir, &files));
-  std::string tfr_raw_text;
-  for (const auto& file : files) {
-    string fullpath = io::JoinPath(composite_mlir_dir, file);
-    if (env->MatchPath(fullpath, io::JoinPath(composite_mlir_dir, "*.mlir"))) {
-      std::string text;
-      TF_RETURN_IF_ERROR(ReadFileToString(env, fullpath, &text));
-      tfr_raw_text.append(text);
-    }
-  }
-
-  auto ctx = TFRDecomposeContext::Get(tfr_raw_text, mlir_ctx);
-  if (!ctx) {
-    return errors::Internal(absl::StrCat(
-        "Failed to load the imported decomposition lib: ", tfr_raw_text));
-  }
-  return ctx;
 }
 
 namespace {

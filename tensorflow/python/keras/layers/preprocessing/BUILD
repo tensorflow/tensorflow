@@ -476,7 +476,9 @@ distribute_py_test(
     srcs = ["discretization_distribution_test.py"],
     main = "discretization_distribution_test.py",
     python_version = "PY3",
-    tags = ["multi_and_single_gpu"],
+    tags = [
+        "multi_and_single_gpu",
+    ],
     deps = [
         ":discretization",
         ":preprocessing_test_utils",
@@ -618,7 +620,9 @@ distribute_py_test(
     srcs = ["normalization_distribution_test.py"],
     main = "normalization_distribution_test.py",
     python_version = "PY3",
-    tags = ["no_oss"],
+    tags = [
+        "no_oss",
+    ],
     deps = [
         ":normalization",
         ":preprocessing_test_utils",

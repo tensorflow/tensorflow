@@ -129,6 +129,7 @@ cc_library(
     copts = tf_profiler_copts(),
     deps = [
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:pod_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",

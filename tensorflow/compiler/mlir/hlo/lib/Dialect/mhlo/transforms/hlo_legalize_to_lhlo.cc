@@ -464,9 +464,9 @@ struct HloLegalizeToLhlo
 
     populateHLOToLHLOConversionPattern(&context, &converter, &patterns);
     populateWithBufferAssignmentOpConversionPatterns<
-        mlir::ReturnOp, mlir::ReturnOp, lmhlo::CopyOp>(&context, &converter,
-                                                       &patterns);
-    populateShapeTypeConversionPatterns(&context, &converter, &patterns);
+        mlir::ReturnOp, mlir::ReturnOp, lmhlo::CopyOp>(&context, converter,
+                                                       patterns);
+    populateShapeTypeConversionPatterns(&context, converter, patterns);
     if (failed(applyPartialConversion(getOperation(), target, patterns)))
       signalPassFailure();
   }
@@ -531,7 +531,7 @@ void populateHLOToLHLOConversionPattern(
       HloToLhloReturnOpConverter,
       HloToLhloTensorLoadOpConverter,
       HloToLhloTensorStoreOpConverter
-  >(context, converter);
+  >(context, *converter);
   // clang-format on
 }
 

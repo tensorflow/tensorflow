@@ -171,25 +171,26 @@ cc_library(
     srcs = ["integration/tfr_decompose_ctx.cc"],
     hdrs = ["integration/tfr_decompose_ctx.h"],
     deps = [
+        ":passes",
+        ":tfr",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:convert_attr",
         "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
+        "//tensorflow/compiler/mlir/tensorflow:convert_type",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
-        "//tensorflow/compiler/mlir/tensorflow:translate_lib",
-        "//tensorflow/compiler/mlir/tfr",
-        "//tensorflow/compiler/mlir/tfr:passes",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/common_runtime:optimization_registry",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:TransformUtils",
     ],
 )
@@ -218,8 +219,6 @@ cc_library(
     deps = [
         ":tfr_decompose_ctx",
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/stream_executor/lib",
         "@llvm-project//mlir:IR",
     ],
@@ -233,12 +232,42 @@ tf_py_test(
     data = ["//tensorflow/compiler/mlir/tfr/resources:decomposition_lib"],
     python_version = "PY3",
     tags = [
-        "no_oss",
-        "notap",
+        "no_windows",  # TODO(b/170752141)
+        "nomac",  # TODO(b/170752141)
+        "notsan",  # TODO(b/170752141)
     ],
     deps = [
         "//tensorflow/compiler/mlir/tfr/resources:composite_ops",
         "//tensorflow/python/eager:def_function",
+    ],
+)
+
+cc_library(
+    name = "node_expansion_pass",
+    srcs = ["integration/node_expansion_pass.cc"],
+    hdrs = ["integration/node_expansion_pass.h"],
+    deps = [
+        ":tfr_decompose_ctx",
+        "//tensorflow/core/common_runtime/eager:core",
+        "//tensorflow/core/common_runtime/eager:eager_op_rewrite_registry",
+        "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/strings",
+    ],
+    alwayslink = 1,
+)
+
+tf_py_test(
+    name = "node_expansion_test",
+    size = "small",
+    srcs = ["integration/node_expansion_test.py"],
+    data = ["//tensorflow/compiler/mlir/tfr/resources:decomposition_lib"],
+    python_version = "PY3",
+    tags = [
+        "no_windows",  # TODO(b/170752141)
+        "nomac",  # TODO(b/170752141)
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/tfr/resources:composite_ops",
     ],
 )
 

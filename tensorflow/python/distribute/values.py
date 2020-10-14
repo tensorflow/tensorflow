@@ -961,6 +961,30 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
           self._primary.handle]
     return obj_map, resource_map
 
+  def _write_object_proto(self, proto, options):
+    """Update a SavedObject proto for the caller.
+
+    If a DistributedVariable object supports this method, it will be called when
+    saving with a pre-built `SavedObject` proto representing the object, plus an
+    instance of `SaveOptions`. This method is then free to modify that proto
+    instance.
+
+    `DistributedVariable` with `AUTO` or `ON_WRITE` synchronization optionally
+    write out information about their components to the
+    `experimental_distributed_variable_components` field of a
+    `SavedVariable` (depending on the `SaveOptions` variable policy).
+
+    Args:
+      proto: A pre-built `SavedObject` proto for this object. It is assumed this
+        will be a `SavedVariable` instance.
+      options: A `SaveOptions` instance.
+    """
+    if self._policy:
+      if self._policy._is_mirrored():  # pylint: disable=protected-access
+        self._policy._write_object_proto(self, proto, options)  # pylint: disable=protected-access
+    else:
+      self._write_object_proto(proto, options)
+
 
 # We extend from `saveable_object.SaveableObject` instead of
 # `saveable_object_util.ResourceVariableSaveable` since we need to read the
@@ -1062,14 +1086,16 @@ class MirroredVariable(DistributedVariable, Mirrored):
     return {trackable.VARIABLE_VALUE_KEY: _saveable_factory}
 
   def _write_object_proto(self, proto, options):
-    """Update a SavedObject proto for this object.
+    """Update a SavedObject proto for the caller.
 
-    If an object defines this method, it will be called when saving with a
-    pre-built `SavedObject` proto representing the object, plus an instance of
-    `SaveOptions`. This method is then free to modify that proto instance.
+    If a DistributedVariable object supports this method, it will be called when
+    saving with a pre-built `SavedObject` proto representing the object, plus an
+    instance of `SaveOptions`. This method is then free to modify that proto
+    instance.
 
-    `MirroredVariables` optionally write out information about their components
-    to the `experimental_distributed_variable_components` field of a
+    `DistributedVariable` with `AUTO` or `ON_WRITE` synchronization optionally
+    write out information about their components to the
+    `experimental_distributed_variable_components` field of a
     `SavedVariable` (depending on the `SaveOptions` variable policy).
 
     Args:
@@ -1077,13 +1103,7 @@ class MirroredVariable(DistributedVariable, Mirrored):
         will be a `SavedVariable` instance.
       options: A `SaveOptions` instance.
     """
-    if options.experimental_variable_policy._expand_distributed_variables(  # pylint: disable=protected-access
-    ):
-      for var in self.values:
-        var_proto = (
-            proto.variable.experimental_distributed_variable_components.add())
-        var_proto.name = var.name.split(":")[0]
-        var_proto.device = var.device
+    values_util.write_object_proto(self, proto, options)
 
   def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
     """Converts a variable to a tensor."""
@@ -1253,6 +1273,26 @@ class SyncOnReadVariable(DistributedVariable):
       return _SyncOnReadSaveable(self, name)
 
     return {trackable.VARIABLE_VALUE_KEY: _saveable_factory}
+
+  def _write_object_proto(self, proto, options):
+    """Update a SavedObject proto for the caller.
+
+    If a DistributedVariable object supports this method, it will be called when
+    saving with a pre-built `SavedObject` proto representing the object, plus an
+    instance of `SaveOptions`. This method is then free to modify that proto
+    instance.
+
+    `DistributedVariable` with `AUTO` or `ON_WRITE` synchronization optionally
+    write out information about their components to the
+    `experimental_distributed_variable_components` field of a
+    `SavedVariable` (depending on the `SaveOptions` variable policy).
+
+    Args:
+      proto: A pre-built `SavedObject` proto for this object. It is assumed this
+        will be a `SavedVariable` instance.
+      options: A `SaveOptions` instance.
+    """
+    pass
 
 
 # Register a conversion functions which reads the value of the variable,
@@ -1537,6 +1577,27 @@ class AutoPolicy(VariablePolicy):
 
   def get_restore_ops(self, var, tensor):
     return values_util.get_on_write_restore_ops(var, tensor)
+
+  def _write_object_proto(self, var, proto, options):
+    """Update a SavedObject proto for the caller.
+
+    If a DistributedVariable object supports this method, it will be called when
+    saving with a pre-built `SavedObject` proto representing the object, plus an
+    instance of `SaveOptions`. This method is then free to modify that proto
+    instance.
+
+    `DistributedVariable` with `AUTO` or `ON_WRITE` synchronization optionally
+    write out information about their components to the
+    `experimental_distributed_variable_components` field of a
+    `SavedVariable` (depending on the `SaveOptions` variable policy).
+
+    Args:
+      var : A DistributedVariable object
+      proto: A pre-built `SavedObject` proto for this object. It is assumed this
+        will be a `SavedVariable` instance.
+      options: A `SaveOptions` instance.
+    """
+    values_util.write_object_proto(var, proto, options)
 
 
 class OnWritePolicy(AutoPolicy):

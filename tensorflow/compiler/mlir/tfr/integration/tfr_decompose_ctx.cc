@@ -14,39 +14,79 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tfr/integration/tfr_decompose_ctx.h"
 
+#include <string>
+#include <vector>
+
 #include "absl/strings/str_cat.h"
-#include "absl/types/span.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
+#include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
+#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Identifier.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
-#include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/convert_attr.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tfr/ir/tfr_ops.h"
 #include "tensorflow/compiler/mlir/tfr/passes/passes.h"
-#include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/node_builder.h"
-#include "tensorflow/core/graph/tensor_id.h"
-#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
-#include "tensorflow/core/protobuf/struct.pb.h"
+#include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 
+const char* const kTFRLibEnv = "TF_MLIR_TFR_LIB_DIR";
+
+StatusOr<std::unique_ptr<TFRDecomposeContext>> TFRDecomposeContext::Get(
+    mlir::MLIRContext* mlir_ctx) {
+  Env* env = Env::Default();
+  std::string tfr_lib_dir;
+  TF_RETURN_IF_ERROR(ReadStringFromEnvVar(
+      kTFRLibEnv, "tensorflow/compiler/mlir/tfr/resources", &tfr_lib_dir));
+  string composite_mlir_dir = io::JoinPath(env->GetRunfilesDir(), tfr_lib_dir);
+  std::vector<string> files;
+  TF_RETURN_IF_ERROR(env->GetChildren(composite_mlir_dir, &files));
+  std::string tfr_raw_text;
+  for (const auto& file : files) {
+    string fullpath = io::JoinPath(composite_mlir_dir, file);
+    if (env->MatchPath(fullpath, io::JoinPath(composite_mlir_dir, "*.mlir"))) {
+      std::string text;
+      TF_RETURN_IF_ERROR(ReadFileToString(env, fullpath, &text));
+      tfr_raw_text.append(text);
+    }
+  }
+
+  auto ctx = TFRDecomposeContext::Get(tfr_raw_text, mlir_ctx);
+  if (!ctx) {
+    return errors::Internal(absl::StrCat(
+        "Failed to load the imported decomposition lib: ", tfr_raw_text));
+  }
+  return ctx;
+}
+
 std::unique_ptr<TFRDecomposeContext> TFRDecomposeContext::Get(
     StringPiece tfr_raw_text, mlir::MLIRContext* mlir_ctx) {
+  mlir_ctx->allowUnregisteredDialects(/*allow=*/true);
   // Load dialects involved in the conversion
   mlir::DialectRegistry& registry = mlir_ctx->getDialectRegistry();
   // clang-format off
@@ -70,47 +110,71 @@ std::unique_ptr<TFRDecomposeContext> TFRDecomposeContext::Get(
   return absl::make_unique<TFRDecomposeContext>(std::move(module));
 }
 
-StatusOr<std::unique_ptr<GraphDef>> TFRDecomposeContext::Decompose(
-    const NodeDef& node_def, absl::Span<NodeAndType> inputs) {
-  // TODO(fengliuai): implement a cache to return early.
+StatusOr<FunctionDef> TFRDecomposeContext::Decompose(const NodeDef& node_def,
+                                                     StringPiece func_name) {
+  const OpDef* op_def;
+  TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUpOpDef(node_def.op(), &op_def));
+  DataTypeVector input_dtys, output_dtys;
+  TF_RETURN_IF_ERROR(InputTypesForNode(node_def, *op_def, &input_dtys));
+  TF_RETURN_IF_ERROR(OutputTypesForNode(node_def, *op_def, &output_dtys));
 
-  // Creates a graph from the node def, so it can be imported to MLIR as module.
-  GraphImportConfig import_confs;
-  Status status;
-  Graph graph(OpRegistry::Global());
-
-  // Creates the placeholer nodes, which will be promoted as function arguments.
-  // Adds the argument nodes to the importer configs.
-  for (const auto& input : inputs) {
-    // TODO(fengliuai): how to get shape?
-    TensorShape unknown_shape;
-    Node* placeholder_node;
-    NodeBuilder builder(input.first, "Placeholder");
-    builder.Attr("shape", unknown_shape);
-    builder.Attr("dtype", input.second);
-    TF_RETURN_IF_ERROR(builder.Finalize(&graph, &placeholder_node));
-    import_confs.inputs.insert({std::string(input.first), {}});
+  mlir::MLIRContext* context = tfr_module_->getContext();
+  llvm::SmallVector<mlir::Type, 4> input_tys, output_tys;
+  mlir::Builder builder(context);
+  for (auto ty : input_dtys) {
+    mlir::Type elt_ty;
+    TF_RETURN_IF_ERROR(ConvertDataType(ty, builder, &elt_ty));
+    mlir::TensorType mlir_ty = mlir::UnrankedTensorType::get(elt_ty);
+    input_tys.push_back(mlir_ty);
   }
-  // Add the current node and also specify the outputs.
-  graph.AddNode(node_def, &status);
-  import_confs.outputs.emplace_back(node_def.name());
+  for (auto ty : output_dtys) {
+    mlir::Type elt_ty;
+    TF_RETURN_IF_ERROR(ConvertDataType(ty, builder, &elt_ty));
+    mlir::TensorType mlir_ty = mlir::UnrankedTensorType::get(elt_ty);
+    output_tys.push_back(mlir_ty);
+  }
+  llvm::SmallVector<mlir::NamedAttribute, 4> attrs;
+  for (const auto& attr : node_def.attr()) {
+    TF_ASSIGN_OR_RETURN(auto mlir_attr,
+                        ConvertAttributeValue(attr.second, &builder));
+    attrs.push_back({mlir::Identifier::get(attr.first, context), mlir_attr});
+  }
 
-  TF_ASSIGN_OR_RETURN(
-      auto node_module,
-      ConvertGraphToMlir(graph, debug_info_, flib_def_, import_confs,
-                         tfr_module_->getContext()));
-  if (failed(mlir::verify(*node_module))) {
+  mlir::Location loc = mlir::UnknownLoc::get(context);
+  mlir::ModuleOp module = mlir::ModuleOp::create(loc);
+  mlir::FunctionType func_type =
+      mlir::FunctionType::get(input_tys, output_tys, context);
+  llvm::StringRef func_name_str(func_name.data(), func_name.size());
+  auto func = mlir::FuncOp::create(loc, func_name_str, func_type, {});
+  module.push_back(func);
+  func.addEntryBlock();
+  mlir::OpBuilder op_builder(func.getBody());
+
+  // Create the TF op
+  const std::string tf_op_full_name = absl::StrCat("tf.", node_def.op());
+  mlir::OperationState op_state(loc, tf_op_full_name);
+  op_state.addOperands(func.getArguments());
+  op_state.addTypes(output_tys);
+  op_state.addAttributes(attrs);
+  mlir::Operation* tf_op = op_builder.createOperation(op_state);
+  op_builder.create<mlir::ReturnOp>(loc, tf_op->getResults());
+
+  if (failed(mlir::verify(module))) {
     return errors::Internal(absl::StrCat(
         "Failed to verify the imported NodeDef: ", node_def.DebugString()));
   }
 
   // Call the decompose passes by using the external symbol table.
-  if (failed(pm_.run(*node_module))) {
+  if (failed(pm_.run(module))) {
     return errors::Internal("Failed to run the decompose passes.");
   }
 
-  // Export the result as a GraphDef.
-  return ConvertMlirToGraphdef(*node_module, export_confs_);
+  // Export the result as a FunctionDef.
+  FunctionDef func_def;
+  TF_RETURN_IF_ERROR(
+      ConvertMlirFunctionToFunctionLibraryDef(func, export_confs_, &func_def));
+  module.erase();
+  return func_def;
 }
 
 Status TFRDecomposeContext::Decompose(mlir::ModuleOp user_module) {
@@ -121,6 +185,14 @@ Status TFRDecomposeContext::Decompose(mlir::ModuleOp user_module) {
   return Status::OK();
 }
 
+StatusOr<FunctionDef> TFRDecomposeContext::Expand(const NodeDef& node_def,
+                                                  StringPiece func_name) {
+  mlir::MLIRContext mlir_ctx;
+  mlir_ctx.allowUnregisteredDialects(/*allow=*/true);
+  TF_ASSIGN_OR_RETURN(auto ctx, Get(&mlir_ctx));
+  return ctx->Decompose(node_def, func_name);
+}
+
 Status TFRDecomposeContext::Destroy() {
   tfr_module_.release().erase();
   return Status::OK();
@@ -128,9 +200,7 @@ Status TFRDecomposeContext::Destroy() {
 
 // Constructor of the decompose context.
 TFRDecomposeContext::TFRDecomposeContext(mlir::OwningModuleRef tfr_module)
-    : tfr_module_(std::move(tfr_module)),
-      pm_(tfr_module_->getContext()),
-      flib_def_(OpRegistry::Global(), FunctionDefLibrary()) {
+    : tfr_module_(std::move(tfr_module)), pm_(tfr_module_->getContext()) {
   mlir::OpPassManager& func_pm = pm_.nest<mlir::FuncOp>();
 
   // Prepare the imported graph.

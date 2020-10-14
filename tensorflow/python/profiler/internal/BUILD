@@ -130,6 +130,7 @@ tf_python_pybind_extension(
         "//tensorflow/python:pybind11_status",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
         "@pybind11",
     ],
 )

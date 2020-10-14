@@ -346,6 +346,10 @@ tensorflow::profiler::ProfilerServer::~ProfilerServer
 tensorflow::profiler::ProfileGrpc
 tensorflow::profiler::NewSessionGrpc
 tensorflow::profiler::MonitorGrpc
+tensorflow::profiler::RemoteProfilerSession::Create
+tensorflow::profiler::RemoteProfilerSession::GetServiceAddress
+tensorflow::profiler::RemoteProfilerSession::WaitForCompletion
+tensorflow::profiler::RemoteProfilerSession::~RemoteProfilerSession
 
 [status_macros] # tfcompile
 xla::status_macros::MakeErrorStream::Impl::Impl

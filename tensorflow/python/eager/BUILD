@@ -376,6 +376,7 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "no_windows",  #TODO(b/139745667)
+        "notsan",  #TODO(b/139745667)
     ],
     deps = [
         ":backprop",

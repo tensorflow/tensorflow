@@ -27,7 +27,7 @@ from absl.testing import parameterized
 import numpy as np
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.distribute import cluster_resolver
-from tensorflow.python.distribute import collective_all_reduce_strategy
+from tensorflow.python.distribute import collective_all_reduce_strategy as mwms_lib
 from tensorflow.python.distribute import collective_util
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
@@ -451,6 +451,8 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
     # Reusing keys is not supported well. So we have to give a different
     # collective key base for different tests.
     CollectiveAllReduceTest.collective_key_base += 100000
+    mwms_lib.CollectiveAllReduceStrategy._collective_key_base = (
+        CollectiveAllReduceTest.collective_key_base)
 
   def _get_test_objects(self,
                         task_type,
@@ -460,10 +462,7 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
                         use_strategy_object=False,
                         local_mode=False):
     collective_keys = cross_device_utils.CollectiveKeys(
-        group_key_start=10 + CollectiveAllReduceTest.collective_key_base,
-        op_instance_key_start=100 + CollectiveAllReduceTest.collective_key_base,
-        variable_instance_key_start=10000 +
-        CollectiveAllReduceTest.collective_key_base)
+        group_key_start=10 + CollectiveAllReduceTest.collective_key_base)
     if local_mode:
       if num_gpus:
         devices = ["/device:GPU:%d" % i for i in range(num_gpus)]
@@ -471,13 +470,8 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
         devices = ["/device:CPU:0"]
 
       if use_strategy_object:
-        strategy = (
-            collective_all_reduce_strategy.CollectiveAllReduceStrategy
-            ._from_local_devices(devices, communication=communication))  # pylint: disable=protected-access
-        strategy.extended._collective_keys = collective_keys
-        strategy.extended._cross_device_ops._collective_keys = collective_keys
-        strategy.extended._host_cross_device_ops._collective_keys = (
-            collective_keys)
+        strategy = (mwms_lib.CollectiveAllReduceStrategy
+                    ._from_local_devices(devices, communication=communication))  # pylint: disable=protected-access
         return strategy, devices, ""
       else:
         collective_all_reduce_ops = cross_device_ops_lib.CollectiveAllReduce(
@@ -507,10 +501,8 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
             task_type=task_type,
             task_id=task_id,
             num_accelerators={"GPU": num_gpus})
-        strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy(
+        strategy = mwms_lib.CollectiveAllReduceStrategy(
             cluster_resolver=resolver, communication=communication)
-        strategy.extended._collective_keys = collective_keys
-        strategy.extended._cross_device_ops._collective_keys = collective_keys
         return (strategy, devices,
                 "grpc://" + self._cluster_spec[task_type][task_id])
       else:

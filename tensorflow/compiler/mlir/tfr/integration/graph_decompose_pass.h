@@ -39,10 +39,6 @@ class GraphDecomposePass : public MlirOptimizationPass {
   Status Run(const ConfigProto& config_proto, mlir::ModuleOp module) override;
 
  private:
-  // Load a predefined decomposition library.
-  StatusOr<std::unique_ptr<TFRDecomposeContext>> LoadDecompositionLib(
-      mlir::MLIRContext* mlir_ctx);
-
   std::unique_ptr<TFRDecomposeContext> ctx_;
 };
 
