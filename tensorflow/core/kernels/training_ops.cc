@@ -382,7 +382,7 @@ inline T FtrlCompute(const T& accum, const T& linear, const T& lr, const T& l1,
 
 template <typename T, typename Tindex, bool has_l2_shrinkage>
 struct SparseApplyFtrl<CPUDevice, T, Tindex, has_l2_shrinkage> {
-  Tindex operator()(const CPUDevice& d, typename TTypes<T>::Matrix var_flat,
+  Status operator()(const CPUDevice& d, typename TTypes<T>::Matrix var_flat,
                     typename TTypes<T>::Matrix accum_flat,
                     typename TTypes<T>::Matrix linear_flat,
                     typename TTypes<T>::ConstScalar lr,
@@ -409,7 +409,11 @@ struct SparseApplyFtrl<CPUDevice, T, Tindex, has_l2_shrinkage> {
 
         for (Tindex i = 0; i < N; i++) {
           const Tindex index = internal::SubtleMustCopy(indices_vec(i));
-          if (!FastBoundsCheck(index, first_dim_size)) return i;
+          if (!FastBoundsCheck(index, first_dim_size)) {
+            return errors::InvalidArgument(
+                strings::StrCat("Index ", index, " at offset ", i,
+                                " in indices is out of range"));
+          }
           auto accum = accum_flat.template chip<0>(index);
           auto linear = linear_flat.template chip<0>(index);
           auto grad = grad_flat.template chip<0>(i);
@@ -484,7 +488,11 @@ struct SparseApplyFtrl<CPUDevice, T, Tindex, has_l2_shrinkage> {
 
         for (Tindex i = 0; i < N; i++) {
           const Tindex index = internal::SubtleMustCopy(indices_vec(i));
-          if (!FastBoundsCheck(index, first_dim_size)) return i;
+          if (!FastBoundsCheck(index, first_dim_size)) {
+            return errors::InvalidArgument(
+                strings::StrCat("Index ", index, " at offset ", i,
+                                " in indices is out of range"));
+          }
           T& a = accum_flat(index);
           T& l = linear_flat(index);
           T& v = var_flat(index);
@@ -511,7 +519,7 @@ struct SparseApplyFtrl<CPUDevice, T, Tindex, has_l2_shrinkage> {
         }
       }
     }
-    return static_cast<Tindex>(-1);
+    return Status::OK();
   }
 };
 
@@ -2810,21 +2818,16 @@ class SparseApplyFtrlOp : public OpKernel {
 
     const Device& device = ctx->template eigen_device<Device>();
     auto indices_vec = indices.vec<Tindex>();
-    const Tindex bad_i =
-        functor::SparseApplyFtrl<Device, T, Tindex, has_l2_shrinkage>()(
-            device, var.flat_outer_dims<T>(), accum.flat_outer_dims<T>(),
-            linear.flat_outer_dims<T>(), lr.scalar<T>(), l1.scalar<T>(),
-            l2.scalar<T>(),
-            // Note: Passing l2 as a placeholder when not has_l2_shrinkage (it
-            // will not be used).
-            has_l2_shrinkage ? l2_shrinkage->scalar<T>() : l2.scalar<T>(),
-            lr_power.scalar<T>(), grad.flat_outer_dims<T>(), indices_vec,
-            inner_dim, multiply_linear_by_lr_);
-    OP_REQUIRES(
-        ctx, bad_i < 0,
-        errors::InvalidArgument(
-            "indices", SliceDebugString(indices.shape(), bad_i), " = ",
-            indices_vec(bad_i), " is not in [0, ", var.dim_size(0), ")"));
+    OP_REQUIRES_OK(
+        ctx, functor::SparseApplyFtrl<Device, T, Tindex, has_l2_shrinkage>()(
+                 device, var.flat_outer_dims<T>(), accum.flat_outer_dims<T>(),
+                 linear.flat_outer_dims<T>(), lr.scalar<T>(), l1.scalar<T>(),
+                 l2.scalar<T>(),
+                 // Note: Passing l2 as a placeholder when not has_l2_shrinkage
+                 // (it will not be used).
+                 has_l2_shrinkage ? l2_shrinkage->scalar<T>() : l2.scalar<T>(),
+                 lr_power.scalar<T>(), grad.flat_outer_dims<T>(), indices_vec,
+                 inner_dim, multiply_linear_by_lr_));
 
     MaybeForwardRefInputToRefOutput(ctx, 0, 0);
   }

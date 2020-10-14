@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -153,7 +154,7 @@ struct ApplyFtrlV2MultiplyLinearByLr {
 
 template <typename Device, typename T, typename Tindex, bool has_l2_shrinkage>
 struct SparseApplyFtrl {
-  Tindex operator()(const Device& d, typename TTypes<T>::Matrix var_flat,
+  Status operator()(const Device& d, typename TTypes<T>::Matrix var_flat,
                     typename TTypes<T>::Matrix accum_flat,
                     typename TTypes<T>::Matrix linear_flat,
                     typename TTypes<T>::ConstScalar lr,
