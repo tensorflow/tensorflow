@@ -157,7 +157,6 @@ tf_py_test(
     srcs = ["data_service_ops_test.py"],
     shard_count = 10,
     srcs_version = "PY3",
-    tags = ["notap"],  # TODO(b/170783829)
     deps = [
         ":data_service_test_base",
         "//tensorflow:tensorflow_py",

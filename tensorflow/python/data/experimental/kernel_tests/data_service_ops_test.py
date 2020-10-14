@@ -214,7 +214,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
   @combinations.generate(test_base.eager_only_combinations())
   def testSharedJobName(self):
     cluster = self.create_cluster(num_workers=1)
-    num_elements = 100
+    num_elements = 1000
 
     def make_ds():
       return dataset_ops.Dataset.range(num_elements).shuffle(num_elements)
