@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_input_pipeline_analysis.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_overview_page.h"
+#include "tensorflow/core/profiler/convert/op_stats_to_pod_viewer.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_tf_stats.h"
 #include "tensorflow/core/profiler/convert/xplane_to_memory_profile.h"
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/overview_page.pb.h"
+#include "tensorflow/core/profiler/protobuf/pod_viewer.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 
@@ -153,6 +155,23 @@ std::pair<std::string, bool> ConvertXSpaceToMemoryProfile(
   return std::make_pair(json_output, true);
 }
 
+std::pair<std::string, bool> ConvertMultiXSpacesToPodViewer(
+    const std::vector<std::string>& xspace_paths) {
+  OpStatsOptions options;
+  options.generate_op_metrics_db = true;
+  options.generate_step_db = true;
+  OpStats combined_op_stats;
+  Status status = ConvertMultiXSpacesToCombinedOpStats(xspace_paths, options,
+                                                       &combined_op_stats);
+  if (!status.ok()) {
+    LOG(WARNING) << "Could not generate OpStats for pod_viewer. Error: "
+                 << status.error_message();
+    return std::make_pair("", false);
+  }
+  return std::make_pair(
+      ConvertOpStatsToPodViewer(combined_op_stats).SerializeAsString(), true);
+}
+
 }  // namespace
 
 std::pair<std::string, bool> ConvertMultiXSpacesToToolData(
@@ -170,6 +189,8 @@ std::pair<std::string, bool> ConvertMultiXSpacesToToolData(
     return ConvertMultiXSpacesToKernelStats(xspace_paths);
   } else if (tool_name == "memory_profile") {
     return ConvertXSpaceToMemoryProfile(xspace_paths);
+  } else if (tool_name == "pod_viewer") {
+    return ConvertMultiXSpacesToPodViewer(xspace_paths);
   } else {
     LOG(WARNING) << "Can not find tool: " << tool_name << ". Please update to "
                  << "the latest version of Tensorflow.";
