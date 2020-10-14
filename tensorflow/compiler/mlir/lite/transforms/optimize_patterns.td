@@ -57,15 +57,31 @@ multiclass FuseActFnIntoConvOpPat<dag ActFnOp, dag ActFnAttr> {
     [(HasOneUse $conv_out)]>;
 }
 
+multiclass FuseActFnIntoPoolOpPat<dag ActFnOp, dag ActFnAttr> {
+  def FuseActivationFuncWithAvgPool#ActFnOp#ActFnAttr : Pat<
+    (ActFnOp (TFL_AveragePool2DOp:$pool_out $input, $filter_height,
+                  $filter_width, $padding, $stride_h, $stride_w, TFL_AF_None)),
+    (TFL_AveragePool2DOp $input, $filter_height, $filter_width, $padding,
+        $stride_h, $stride_w, ActFnAttr),
+    [(HasOneUse $pool_out)]>;
+  def FuseActivationFuncWithMaxPool#ActFnOp#ActFnAttr : Pat<
+    (ActFnOp (TFL_MaxPool2DOp:$pool_out $input, $padding, $stride_w, $stride_h,
+                  $filter_width, $filter_height, TFL_AF_None)),
+    (TFL_MaxPool2DOp $input, $padding, $stride_w, $stride_h,
+        $filter_width, $filter_height, ActFnAttr),
+    [(HasOneUse $pool_out)]>;
+}
+
 // TODO(hinsu): Also fuse ops corresponding to SIGN_BIT fused
 // activation functions.
 // Currently we're not fusing tanh, sigmoid, hard_swish and other activations
 // those cannot be simply translated into clamping.
 foreach actFnPair = [[TFL_ReluOp, TFL_AF_Relu],
                      [TFL_Relu6Op, TFL_AF_Relu6],
-                     [TFL_Relu1Op, TFL_AF_Relu1]] in
+                     [TFL_Relu1Op, TFL_AF_Relu1]] in {
   defm : FuseActFnIntoConvOpPat<actFnPair[0], actFnPair[1]>;
-
+  defm : FuseActFnIntoPoolOpPat<actFnPair[0], actFnPair[1]>;
+}
 
 class CanFuseConvOrDepthwiseConv<string is_depthwise> : Constraint<
   CPred<"TFL::CanFuseConvOrDepthwiseConv($0, $1, " # is_depthwise # ")">>;
