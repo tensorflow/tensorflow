@@ -245,6 +245,13 @@ message ComputationStats {
   double transcendental_count = 2;
 }
 
+// The type optimization profiles in use.
+enum ProfileType {
+  INVALID = 0;
+  WINDOW = 1;
+  FLAG = 2;
+}
+
 // Symbolization metadata for HLO Instructions.
 //
 // This metadata is used for debugging XLA code generation, as well as
@@ -268,6 +275,8 @@ message OpMetadata {
   // e.g. it could be the file and line of user code that generated the op.
   string source_file = 3;
   int32 source_line = 4;
+
+  repeated ProfileType profile_type = 5;
 }
 
 // Profile data from the execution of a computation.

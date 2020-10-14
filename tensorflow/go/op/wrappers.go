@@ -357,6 +357,40 @@ func QuantizedReshape(scope *Scope, tensor tf.Output, shape tf.Output, input_min
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
+// QuantizeAndDequantizeV4GradAttr is an optional argument to QuantizeAndDequantizeV4Grad.
+type QuantizeAndDequantizeV4GradAttr func(optionalAttr)
+
+// QuantizeAndDequantizeV4GradAxis sets the optional axis attribute to value.
+// If not specified, defaults to -1
+func QuantizeAndDequantizeV4GradAxis(value int64) QuantizeAndDequantizeV4GradAttr {
+	return func(m optionalAttr) {
+		m["axis"] = value
+	}
+}
+
+// Returns the gradient of `QuantizeAndDequantizeV4`.
+//
+// Returns a gradient of 1 for inputs that are within the quantization range,
+// or 0 otherwise.
+func QuantizeAndDequantizeV4Grad(scope *Scope, gradients tf.Output, input tf.Output, input_min tf.Output, input_max tf.Output, optional ...QuantizeAndDequantizeV4GradAttr) (input_backprop tf.Output, input_min_backprop tf.Output, input_max_backprop tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "QuantizeAndDequantizeV4Grad",
+		Input: []tf.Input{
+			gradients, input, input_min, input_max,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
+}
+
 // QuantizeAndDequantizeV2Attr is an optional argument to QuantizeAndDequantizeV2.
 type QuantizeAndDequantizeV2Attr func(optionalAttr)
 
@@ -8015,6 +8049,80 @@ func MultiDeviceIteratorToStringHandle(scope *Scope, multi_device_iterator tf.Ou
 	return op.Output(0)
 }
 
+// QuantizeAndDequantizeV4Attr is an optional argument to QuantizeAndDequantizeV4.
+type QuantizeAndDequantizeV4Attr func(optionalAttr)
+
+// QuantizeAndDequantizeV4SignedInput sets the optional signed_input attribute to value.
+// If not specified, defaults to true
+func QuantizeAndDequantizeV4SignedInput(value bool) QuantizeAndDequantizeV4Attr {
+	return func(m optionalAttr) {
+		m["signed_input"] = value
+	}
+}
+
+// QuantizeAndDequantizeV4NumBits sets the optional num_bits attribute to value.
+// If not specified, defaults to 8
+func QuantizeAndDequantizeV4NumBits(value int64) QuantizeAndDequantizeV4Attr {
+	return func(m optionalAttr) {
+		m["num_bits"] = value
+	}
+}
+
+// QuantizeAndDequantizeV4RangeGiven sets the optional range_given attribute to value.
+// If not specified, defaults to false
+func QuantizeAndDequantizeV4RangeGiven(value bool) QuantizeAndDequantizeV4Attr {
+	return func(m optionalAttr) {
+		m["range_given"] = value
+	}
+}
+
+// QuantizeAndDequantizeV4RoundMode sets the optional round_mode attribute to value.
+// If not specified, defaults to "HALF_TO_EVEN"
+func QuantizeAndDequantizeV4RoundMode(value string) QuantizeAndDequantizeV4Attr {
+	return func(m optionalAttr) {
+		m["round_mode"] = value
+	}
+}
+
+// QuantizeAndDequantizeV4NarrowRange sets the optional narrow_range attribute to value.
+// If not specified, defaults to false
+func QuantizeAndDequantizeV4NarrowRange(value bool) QuantizeAndDequantizeV4Attr {
+	return func(m optionalAttr) {
+		m["narrow_range"] = value
+	}
+}
+
+// QuantizeAndDequantizeV4Axis sets the optional axis attribute to value.
+// If not specified, defaults to -1
+func QuantizeAndDequantizeV4Axis(value int64) QuantizeAndDequantizeV4Attr {
+	return func(m optionalAttr) {
+		m["axis"] = value
+	}
+}
+
+// Returns the gradient of `QuantizeAndDequantizeV4`.
+//
+// This is almost identical to QuantizeAndDequantizeV2, except that it returns a
+// gradient of 1 for inputs that are within the quantization range, or 0 otherwise.
+func QuantizeAndDequantizeV4(scope *Scope, input tf.Output, input_min tf.Output, input_max tf.Output, optional ...QuantizeAndDequantizeV4Attr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "QuantizeAndDequantizeV4",
+		Input: []tf.Input{
+			input, input_min, input_max,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Gets next element for the provided shard number.
 //
 // Arguments:
@@ -14757,6 +14865,10 @@ func QrFullMatrices(value bool) QrAttr {
 // Computes the QR decomposition of each inner matrix in `tensor` such that
 // `tensor[..., :, :] = q[..., :, :] * r[..., :,:])`
 //
+// Currently, the gradient for the QR decomposition is well-defined only when
+// the first `P` columns of the inner matrix are linearly independent, where
+// `P` is the minimum of `M` and `N`, the 2 inner-most dimmensions of `tensor`.
+//
 // ```python
 // # a is a tensor.
 // # q is a tensor of orthonormal matrices.
@@ -18807,6 +18919,14 @@ func CollectiveReduceV2CommunicationHint(value string) CollectiveReduceV2Attr {
 	}
 }
 
+// CollectiveReduceV2TimeoutSeconds sets the optional timeout_seconds attribute to value.
+// If not specified, defaults to 0
+func CollectiveReduceV2TimeoutSeconds(value float32) CollectiveReduceV2Attr {
+	return func(m optionalAttr) {
+		m["timeout_seconds"] = value
+	}
+}
+
 // Mutually reduces multiple tensors of identical type and shape.
 func CollectiveReduceV2(scope *Scope, input tf.Output, group_size tf.Output, group_key tf.Output, instance_key tf.Output, merge_op string, final_op string, optional ...CollectiveReduceV2Attr) (data tf.Output) {
 	if scope.Err() != nil {
@@ -20963,73 +21083,36 @@ func DivNoNan(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 // scattered onto an existing tensor (as opposed to a zero-tensor). If the memory
 // for the existing tensor cannot be re-used, a copy is made and updated.
 //
-// If `indices` contains duplicates, then their updates are accumulated (summed).
+// If `indices` contains duplicates, then we pick the last update for the index.
 //
-// **WARNING**: The order in which updates are applied is nondeterministic, so the
-// output will be nondeterministic if `indices` contains duplicates -- because
-// of some numerical approximation issues, numbers summed in different order
-// may yield different results.
+// If an out of bound index is found on CPU, an error is returned.
+//
+// **WARNING**: There are some GPU specific semantics for this operation.
+// - If an out of bound index is found, the index is ignored.
+// - The order in which updates are applied is nondeterministic, so the output
+// will be nondeterministic if `indices` contains duplicates.
 //
 // `indices` is an integer tensor containing indices into a new tensor of shape
-// `shape`.  The last dimension of `indices` can be at most the rank of `shape`:
+// `shape`.
 //
-//     indices.shape[-1] <= shape.rank
+// * `indices` must have at least 2 axes: `(num_updates, index_depth)`.
+// * The last axis of `indices` is how deep to index into `tensor` so  this index
+//   depth must be less than the rank of `tensor`: `indices.shape[-1] <= tensor.ndim`
 //
-// The last dimension of `indices` corresponds to indices into elements
-// (if `indices.shape[-1] = shape.rank`) or slices
-// (if `indices.shape[-1] < shape.rank`) along dimension `indices.shape[-1]` of
-// `shape`.  `updates` is a tensor with shape
+// if `indices.shape[-1] = tensor.rank` this Op indexes and updates scalar elements.
+// if `indices.shape[-1] < tensor.rank` it indexes and updates slices of the input
+// `tensor`.
 //
-//     indices.shape[:-1] + shape[indices.shape[-1]:]
+// Each `update` has a rank of `tensor.rank - indices.shape[-1]`.
+// The overall shape of `updates` is:
 //
-// The simplest form of scatter is to insert individual elements in a tensor by
-// index. For example, say we want to insert 4 scattered elements in a rank-1
-// tensor with 8 elements.
+// ```
+// indices.shape[:-1] + tensor.shape[indices.shape[-1]:]
+// ```
 //
-// <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="https://www.tensorflow.org/images/ScatterNd1.png" alt>
-// </div>
+// For usage examples see the python [tf.tensor_scatter_nd_update](
+// https://www.tensorflow.org/api_docs/python/tf/tensor_scatter_nd_update) function
 //
-// In Python, this scatter operation would look like this:
-//
-//     >>> indices = tf.constant([[4], [3], [1], [7]])
-//     >>> updates = tf.constant([9, 10, 11, 12])
-//     >>> tensor = tf.ones([8], dtype=tf.int32)
-//     >>> print(tf.tensor_scatter_nd_update(tensor, indices, updates))
-//     tf.Tensor([ 1 11  1 10  9  1  1 12], shape=(8,), dtype=int32)
-//
-// We can also, insert entire slices of a higher rank tensor all at once. For
-// example, if we wanted to insert two slices in the first dimension of a
-// rank-3 tensor with two matrices of new values.
-//
-// In Python, this scatter operation would look like this:
-//
-//     >>> indices = tf.constant([[0], [2]])
-//     >>> updates = tf.constant([[[5, 5, 5, 5], [6, 6, 6, 6],
-//     ...                         [7, 7, 7, 7], [8, 8, 8, 8]],
-//     ...                        [[5, 5, 5, 5], [6, 6, 6, 6],
-//     ...                         [7, 7, 7, 7], [8, 8, 8, 8]]])
-//     >>> tensor = tf.ones([4, 4, 4], dtype=tf.int32)
-//     >>> print(tf.tensor_scatter_nd_update(tensor, indices, updates).numpy())
-//     [[[5 5 5 5]
-//       [6 6 6 6]
-//       [7 7 7 7]
-//       [8 8 8 8]]
-//      [[1 1 1 1]
-//       [1 1 1 1]
-//       [1 1 1 1]
-//       [1 1 1 1]]
-//      [[5 5 5 5]
-//       [6 6 6 6]
-//       [7 7 7 7]
-//       [8 8 8 8]]
-//      [[1 1 1 1]
-//       [1 1 1 1]
-//       [1 1 1 1]
-//       [1 1 1 1]]]
-//
-// Note that on CPU, if an out of bound index is found, an error is returned.
-// On GPU, if an out of bound index is found, the index is ignored.
 //
 // Arguments:
 //	tensor: Tensor to copy/update.

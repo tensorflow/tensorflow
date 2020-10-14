@@ -47,7 +47,7 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/dump_graph.h"
 
-#if !defined(LIBTFTPU)
+#if !defined(LIBTPU_ON_GCE)
 #include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/utils/array_container_utils.h"
 #endif
@@ -289,7 +289,7 @@ Status XlaCompilationCache::CompileSingleOp(
         });
     const ConfigProto* config = ctx->function_library()->config_proto();
     bool use_mlir = config && config->experimental().enable_mlir_bridge();
-#ifdef LIBTFTPU
+#ifdef LIBTPU_ON_GCE
     if (use_mlir && has_tensor_list_arg) {
       LOG(WARNING) << "MLIR is not supported in this environment.";
     }
@@ -303,8 +303,12 @@ Status XlaCompilationCache::CompileSingleOp(
     }
 
     GraphDebugInfo debug_info;
+    std::vector<std::string> control_rets;
+    if (result_dtypes.empty()) {
+      control_rets.push_back(node_def.name());
+    }
     return CompileGraphToXlaHlo(
-        *graph, mlir::SpanToArrayRef<XlaCompiler::Argument>(args),
+        *graph, mlir::SpanToArrayRef<XlaCompiler::Argument>(args), control_rets,
         options.device_type.type_string(), compile_options.use_tuple_arg,
         *options.flib_def, debug_info, options.shape_representation_fn, result);
 #endif

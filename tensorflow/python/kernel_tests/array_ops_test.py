@@ -1610,7 +1610,7 @@ class QuantizeAndDequantizeTest(test_util.TensorFlowTestCase):
         expected = self._scale_per_slice(shape, axis, quant_values)
         unused_minmax_value = 0 if axis is None else [0] * shape[axis]
         fake_quantized = self.evaluate(
-            array_ops.quantize_and_dequantize(
+            array_ops.quantize_and_dequantize_v2(
                 inputs,
                 unused_minmax_value,
                 unused_minmax_value,
@@ -1620,13 +1620,30 @@ class QuantizeAndDequantizeTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(fake_quantized, expected)
         if axis is not None:
           fake_quantized = self.evaluate(
-              array_ops.quantize_and_dequantize(
+              array_ops.quantize_and_dequantize_v2(
                   inputs,
                   unused_minmax_value,
                   unused_minmax_value,
                   range_given=False,
                   axis=(axis - 4)))
           self.assertAllClose(fake_quantized, expected)
+
+  def testQuantizeDequantizeGrad(self):
+    shape = (2, 2)
+    max_threshold = 0
+    min_threshold = -10
+    input_value = np.random.rand(2, 2) * 40.0 - 20.0
+    input_tensor = constant_op.constant(input_value, shape=shape,
+                                        name="input_tensor")
+    with self.cached_session():
+      def f(a):
+        return array_ops.quantize_and_dequantize_v2(
+            a,
+            input_min=min_threshold,
+            input_max=max_threshold,
+            range_given=True)
+      output_grad = gradient_checker_v2.compute_gradient(f, [input_tensor])
+      self.assertAllClose(output_grad[0], np.zeros([1, 4, 4]))
 
 
 @test_util.run_all_in_graph_and_eager_modes

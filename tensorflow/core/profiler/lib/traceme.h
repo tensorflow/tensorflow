@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"
 #if !defined(IS_MOBILE_PLATFORM)
-#include "tensorflow/core/profiler/internal/traceme_recorder.h"
+#include "tensorflow/core/profiler/internal/cpu/traceme_recorder.h"
 #endif
 #include "tensorflow/core/profiler/lib/traceme_encode.h"  // IWYU pragma: export
 
@@ -123,8 +123,11 @@ class TraceMe {
   // name_generator is templated, rather than a std::function to avoid
   // allocations std::function might make even if never called.
   // Example Usage:
+  //   TraceMe trace_me([&]() {
+  //     return StrCat("my_trace", id);
+  //   }
   //   TraceMe op_trace_me([&]() {
-  //     return StrCat(op_name, ":", op_type);
+  //     return TraceMeOp(op_name, op_type);
   //   }
   //   TraceMe trace_me_with_metadata([&value1]() {
   //     return TraceMeEncode("my_trace", {{"key1", value1}, {"key2", 42}});

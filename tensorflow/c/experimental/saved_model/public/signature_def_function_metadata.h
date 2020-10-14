@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EXPERIMENTAL_SAVED_MODEL_PUBLIC_SIGNATURE_DEF_FUNCTION_METADATA_H_
 #define TENSORFLOW_C_EXPERIMENTAL_SAVED_MODEL_PUBLIC_SIGNATURE_DEF_FUNCTION_METADATA_H_
 
+#include "tensorflow/c/c_api_macros.h"
+#include "tensorflow/c/experimental/saved_model/public/signature_def_param_list.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
@@ -23,6 +26,18 @@ extern "C" {
 // An opaque type that corresponds to a SignatureDefFunction loaded from a
 // SavedModel.
 typedef struct TF_SignatureDefFunctionMetadata TF_SignatureDefFunctionMetadata;
+
+// Retrieves the arguments of the SignatureDefFunction. The caller is not
+// responsible for freeing the returned pointer.
+TF_CAPI_EXPORT extern const TF_SignatureDefParamList*
+TF_SignatureDefFunctionMetadataArgs(
+    const TF_SignatureDefFunctionMetadata* list);
+
+// Retrieves the returns of the SignatureDefFunction. The caller is not
+// responsible for freeing the returned pointer.
+TF_CAPI_EXPORT extern const TF_SignatureDefParamList*
+TF_SignatureDefFunctionMetadataReturns(
+    const TF_SignatureDefFunctionMetadata* list);
 
 #ifdef __cplusplus
 }  // end extern "C"

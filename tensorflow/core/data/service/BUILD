@@ -27,8 +27,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 tf_proto_library(
     name = "common_proto",
     srcs = ["common.proto"],

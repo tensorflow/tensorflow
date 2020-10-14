@@ -47,7 +47,7 @@ class ConvPowerVR : public GPUOperation {
       TuningType tuning_type, const DeviceInfo& device_info,
       const KernelInfo& kernel_info,
       std::vector<int3>* work_groups) const override;
-  absl::Status BindArguments() override;
+  absl::Status BindArguments(ArgumentsBinder* args) override;
   int3 GetGridSize() const override;
 
   ConvWeightsDescription GetConvWeightsDescription() const {
@@ -83,7 +83,6 @@ class ConvPowerVR : public GPUOperation {
     // F32_F16 precision mode
     DataType weights_data_type;  // used for weights and biases
     int4 block_size;             // WHDS
-    int3 work_group_launch_order;
     bool fixed_work_group_size;
     bool linear_spatial;  // spatial dimensions are Width/Height/Depth
     bool different_weights_for_height;

@@ -145,7 +145,7 @@ class TFFunctionTest(test.TestCase, parameterized.TestCase):
   @combinations.generate(
       combinations.combine(
           distribution=strategy_combinations.all_strategies, mode=["eager"]))
-  def testRetraceOnSaving(self, distribution):
+  def testRetraceOnSavingFirstTraceInScope(self, distribution):
     with distribution.scope():
       v = variables.Variable(0.)
 
@@ -157,6 +157,31 @@ class TFFunctionTest(test.TestCase, parameterized.TestCase):
       return v + 1.
 
     distribution.run(func)
+    prev_tracing_count = tracing_count[0]
+    with save_context.save_context(save_options.SaveOptions()):
+      func()
+    self.assertEqual(prev_tracing_count + 1, tracing_count[0])
+
+    prev_tracing_count = tracing_count[0]
+    with save_context.save_context(save_options.SaveOptions()):
+      func()
+    self.assertEqual(prev_tracing_count, tracing_count[0])
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies, mode=["eager"]))
+  def testRetraceOnSavingFirstTraceOutsideScope(self, distribution):
+    with distribution.scope():
+      v = variables.Variable(0.)
+
+    tracing_count = [0]
+
+    @def_function.function
+    def func():
+      tracing_count[0] += 1
+      return v + 1.
+
+    func()
     prev_tracing_count = tracing_count[0]
     with save_context.save_context(save_options.SaveOptions()):
       func()

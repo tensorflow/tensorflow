@@ -16,8 +16,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 filegroup(
     name = "all_py_srcs",
     srcs = glob(["*.py"]),
@@ -54,7 +52,9 @@ py_library(
         ":recurrent_v2",
         ":rnn_cell_wrapper_v2",
         ":wrappers",
+        "//tensorflow/python/keras/feature_column",
         "//tensorflow/python/keras/layers/preprocessing",
+        "//tensorflow/python/keras/premade",
         "//tensorflow/python/keras/utils:tf_utils",
     ],
 )
@@ -439,8 +439,8 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":recurrent",
-        "//tensorflow/python:rnn_cell",
         "//tensorflow/python:util",
+        "//tensorflow/python/keras/layers/legacy_rnn:rnn_cell_wrapper_impl",
     ],
 )
 
@@ -541,10 +541,8 @@ cuda_py_test(
     python_version = "PY3",
     shard_count = 4,
     tags = [
-        "no_cuda11",
         "no_windows_gpu",
     ],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -825,7 +823,6 @@ cuda_py_test(
     tags = [
         "no_oss",
     ],
-    xla_enable_strict_auto_jit = False,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -844,7 +841,6 @@ cuda_py_test(
         "no_cuda11",
         "no_oss",
     ],
-    xla_enable_strict_auto_jit = False,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -873,7 +869,6 @@ tf_py_test(
     size = "small",
     srcs = ["kernelized_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":layers",
         "//tensorflow/python:array_ops",
@@ -932,6 +927,8 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
         "//tensorflow/python/keras:combinations",
+        "//tensorflow/python/keras/layers/legacy_rnn:rnn_cell_impl",
+        "//tensorflow/python/keras/legacy_tf_layers:layers_base",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],

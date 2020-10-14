@@ -66,6 +66,7 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import tfrt_utils
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
@@ -117,17 +118,6 @@ except ImportError:
     from tensorflow.python.framework.is_mlir_bridge_test_true import is_mlir_bridge_enabled  # pylint: disable=g-import-not-at-top, unused-import
   except ImportError:
     pass
-
-
-# Uses the same mechanism as above to selectively enable TFRT.
-def is_tfrt_enabled():
-  return False
-
-
-try:
-  from tensorflow.python.framework.is_tfrt_test_true import is_tfrt_enabled  # pylint: disable=g-import-not-at-top, unused-import
-except Exception:  # pylint: disable=broad-except
-  pass
 
 
 def _get_object_count_by_type():
@@ -290,7 +280,8 @@ def _strip_checkpoint_v2_randomized(graph_def):
       if attr_tensor_value and len(attr_tensor_value.string_val) == 1:
         attr_tensor_string_value = attr_tensor_value.string_val[0]
         if (attr_tensor_string_value and
-            re.match(_SHARDED_SAVE_OP_PATTERN, str(attr_tensor_string_value))):
+            re.match(compat.as_bytes(_SHARDED_SAVE_OP_PATTERN),
+                     attr_tensor_string_value)):
           delete_keys.append(attr_key)
     for attr_key in delete_keys:
       del node.attr[attr_key]
@@ -303,7 +294,8 @@ def _strip_hash_table_shared_name(graph_def):
   for node in graph_def.node:
     delete_keys = []
     if node.op == "HashTableV2" and "shared_name" in node.attr:
-      if re.match(_TABLE_SHARED_NAME_PATTERN, str(node.attr["shared_name"].s)):
+      if re.match(compat.as_bytes(_TABLE_SHARED_NAME_PATTERN),
+                  node.attr["shared_name"].s):
         delete_keys.append("shared_name")
     for attr_key in delete_keys:
       del node.attr[attr_key]
@@ -621,12 +613,12 @@ def enable_output_all_intermediates(fn):
     The wrapped function
   """
 
-  def wrapper(*args, **kwargs):
+  def wrapper(self, *args, **kwargs):
     output_all_intermediates_old = \
         control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE
     control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE = True
     try:
-      return fn(*args, **kwargs)
+      return fn(self, *args, **kwargs)
     finally:
       control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE = \
           output_all_intermediates_old
@@ -1829,7 +1821,7 @@ def disable_tfrt(unused_description):
     """Execute the test only if tfrt is not enabled."""
 
     if tf_inspect.isclass(cls_or_func):
-      if is_tfrt_enabled():
+      if tfrt_utils.enabled():
         return None
       else:
         return cls_or_func
@@ -1837,7 +1829,7 @@ def disable_tfrt(unused_description):
       def decorator(func):
 
         def decorated(self, *args, **kwargs):
-          if is_tfrt_enabled():
+          if tfrt_utils.enabled():
             return
           else:
             return func(self, *args, **kwargs)
@@ -2904,6 +2896,8 @@ class TensorFlowTestCase(googletest.TestCase):
     lines = []
     subscripts = np.transpose(subscripts)
     prefix = " " * indent
+    if np.ndim(value) == 0:
+      return [prefix + "[0] : " + str(value)]
     for subscript in itertools.islice(subscripts, limit):
       lines.append(prefix + str(subscript) + " : " +
                    str(value[tuple(subscript)]))

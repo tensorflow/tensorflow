@@ -573,7 +573,7 @@ Status EagerContext::FindFunctionOpData(
   return func_lib_def_.LookUp(name, op_data);
 }
 
-const FunctionDef* EagerContext::FindFunctionDef(const string& name) {
+const FunctionDef* EagerContext::FindFunctionDef(const string& name) const {
   return func_lib_def_.Find(name);
 }
 

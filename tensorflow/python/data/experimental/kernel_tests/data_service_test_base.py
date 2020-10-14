@@ -115,7 +115,14 @@ class TestCluster(object):
 
   # pylint: disable=protected-access
   def restart_dispatcher(self):
-    """Stops `dispatcher` and creates a new dispatcher with the same port."""
+    """Stops `dispatcher` and creates a new dispatcher with the same port.
+
+    Restarting is supported only when the dispatcher is configured with
+    `fault_tolerant_mode=True`.
+    """
+    if not self.dispatcher._config.fault_tolerant_mode:
+      raise ValueError(
+          "Trying to restart the dispatcher without fault-tolerance.")
     port = int(self.dispatcher_address().split(":")[1])
     self.dispatcher._stop()
     self.dispatcher = server_lib.DispatchServer(
@@ -190,12 +197,13 @@ class TestBase(test_base.DatasetTestBase):
   def make_distributed_dataset(self,
                                dataset,
                                cluster,
+                               processing_mode="parallel_epochs",
                                job_name=None,
                                max_outstanding_requests=None):
     # pylint: disable=protected-access
     return dataset.apply(
         data_service_ops._distribute(
-            "parallel_epochs",
+            processing_mode,
             cluster.target,
             job_name=job_name,
             max_outstanding_requests=max_outstanding_requests,
@@ -203,9 +211,12 @@ class TestBase(test_base.DatasetTestBase):
 
   def make_distributed_range_dataset(self,
                                      num_elements,
-                                     dispatcher,
+                                     cluster,
                                      job_name=None,
                                      max_outstanding_requests=None):
     dataset = dataset_ops.Dataset.range(num_elements)
-    return self.make_distributed_dataset(dataset, dispatcher, job_name,
-                                         max_outstanding_requests)
+    return self.make_distributed_dataset(
+        dataset,
+        cluster,
+        job_name=job_name,
+        max_outstanding_requests=max_outstanding_requests)

@@ -572,6 +572,7 @@ cuda_py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:test_ops",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:def_function",
         "@absl_py//absl/testing:parameterized",

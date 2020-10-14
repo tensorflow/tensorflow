@@ -18,8 +18,8 @@ limitations under the License.
 #include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/debug_log.h"
 #include "tensorflow/lite/micro/kernels/kernel_runner.h"
+#include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
-#include "tensorflow/lite/micro/testing/test_utils.h"
 
 namespace tflite {
 namespace testing {
@@ -64,8 +64,8 @@ void TestSplitVFloat(const int* input_dims_data, const float* input_data,
 
   TfLiteTensor tensors[tensors_size];
   tensors[0] = CreateFloatTensor(input_data, input_dims);
-  tensors[1] = CreateQuantized32Tensor(split_data, split_dims, 1.0);
-  tensors[2] = CreateQuantized32Tensor(axis_data, axis_dims, 1.0);
+  tensors[1] = CreateInt32Tensor(split_data, split_dims);
+  tensors[2] = CreateInt32Tensor(axis_data, axis_dims);
 
   // add output tensors
   for (int i = 0; i < N; i++)

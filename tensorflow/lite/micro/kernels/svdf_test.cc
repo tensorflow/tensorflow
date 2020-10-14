@@ -497,7 +497,7 @@ void ValidateSVDFGoldens(const int batch_size, const int num_units,
   int outputs_array_data[] = {1, 5};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  const TfLiteRegistration registration = tflite::ops::micro::Register_SVDF();
+  const TfLiteRegistration registration = Register_SVDF();
   micro::KernelRunner runner(registration, tensors, tensor_count, inputs_array,
                              outputs_array, &params, micro_test::reporter);
 

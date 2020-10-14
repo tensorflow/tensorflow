@@ -25,8 +25,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 cc_library(
     name = "nccl_lib",
     srcs = if_cuda_or_rocm([
@@ -45,7 +43,6 @@ cc_library(
     ]) + if_cuda_or_rocm([
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/memory",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:gpu_headers_lib",

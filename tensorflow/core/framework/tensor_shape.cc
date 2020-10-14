@@ -276,7 +276,6 @@ void TensorShapeRep::SlowCopyFrom(const TensorShapeRep& b) {
     //   set_ndims_byte(b.ndims_byte());
     //   set_data_type(b.data_type());
   } else {
-    DCHECK_EQ(b.tag(), REP_OUT_OF_LINE);
     set_ndims_byte(b.ndims_byte());
     set_data_type(b.data_type());
     if (tag() == REP_OUT_OF_LINE) {
@@ -502,8 +501,8 @@ TensorShapeIter<Shape> TensorShapeBase<Shape>::begin() const {
 
 template <class Shape>
 TensorShapeIter<Shape> TensorShapeBase<Shape>::end() const {
-  CHECK(!unknown_rank());
-  return TensorShapeIter<Shape>(static_cast<const Shape*>(this), dims());
+  const int max_dim = unknown_rank() ? -1 : dims();
+  return TensorShapeIter<Shape>(static_cast<const Shape*>(this), max_dim);
 }
 
 string TensorShapeRep::DebugString() const {

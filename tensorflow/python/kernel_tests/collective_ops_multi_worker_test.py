@@ -64,7 +64,7 @@ class CollectiveOpTest(test.TestCase):
         except errors.UnavailableError:
           continue
         break
-      multi_process_runner.barrier().wait()
+      multi_process_runner.get_barrier().wait()
 
     cluster_spec = multi_worker_test_base.create_cluster_spec(num_workers=2)
     mpr = multi_process_runner.MultiProcessRunner(worker_fn, cluster_spec)

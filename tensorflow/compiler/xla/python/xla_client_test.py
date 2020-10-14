@@ -105,7 +105,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
                                 c,
                                 arguments=(),
                                 expected=None,
-                                rtol=1e-7,
+                                rtol=1e-4,
                                 atol=0):
       self._ExecuteAndAssertWith(
           functools.partial(np.testing.assert_allclose, rtol=rtol, atol=atol),
@@ -172,6 +172,13 @@ def TestFactory(xla_backend, cloud_tpu=False):
       hlo_text = hlo_modules[0].to_string()
       self.assertTrue(hlo_text.startswith("HloModule acomputation"))
       self.assertIn("fusion", hlo_text)
+
+    @unittest.skipIf(cloud_tpu, "not implemented")
+    def testFlopEstimate(self):
+      computation = self.ExampleComputation()
+      properties = xla_client._xla.hlo_module_cost_analysis(
+          self.backend, computation.as_hlo_module())
+      self.assertEqual(properties["flops"], 8.0)
 
   tests.append(ComputationPrinting)
 

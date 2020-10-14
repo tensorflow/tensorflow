@@ -248,14 +248,6 @@ filegroup(
 )
 
 filegroup(
-    name = "legacy_lib_core_threadpool_options_header",
-    srcs = [
-        "threadpool_options.h",
-    ],
-    visibility = ["//tensorflow/core:__pkg__"],
-)
-
-filegroup(
     name = "legacy_lib_proto_parsing_headers",
     srcs = [
         "errors.h",
@@ -279,6 +271,7 @@ filegroup(
         "stringpiece.h",
         "threadpool.h",
         "threadpool_interface.h",
+        "threadpool_options.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

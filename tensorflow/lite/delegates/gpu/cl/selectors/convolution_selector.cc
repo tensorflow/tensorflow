@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/conv_buffer_1x1.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/conv_constants.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/conv_powervr.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/conv_texture.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/conv_weights_converter.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
@@ -38,8 +37,8 @@ std::unique_ptr<GPUOperation> SelectConvolutionAdreno(
     GPUOperation conv = CreateConvConstants(device_info, op_def, attr);
     return absl::make_unique<GPUOperation>(std::move(conv));
   } else {
-    ConvTexture conv = CreateConvTexture(device_info, op_def, attr);
-    return absl::make_unique<ConvTexture>(std::move(conv));
+    ConvPowerVR conv = CreateConvPowerVR(device_info, op_def, attr, &dst_shape);
+    return absl::make_unique<ConvPowerVR>(std::move(conv));
   }
 }
 
@@ -47,8 +46,8 @@ std::unique_ptr<GPUOperation> SelectConvolutionWinogradAdreno(
     const Convolution2DAttributes& attr, const BHWC& dst_shape,
     const DeviceInfo& device_info, const OperationDef& op_def,
     ModelHints hints) {
-  ConvTexture conv = CreateConvTextureWino4x4To6x6(device_info, op_def, attr);
-  return absl::make_unique<ConvTexture>(std::move(conv));
+  ConvPowerVR conv = CreateConvPowerVR(device_info, op_def, attr, &dst_shape);
+  return absl::make_unique<ConvPowerVR>(std::move(conv));
 }
 
 std::unique_ptr<GPUOperation> SelectConvolutionDynamicWeightsAdreno(

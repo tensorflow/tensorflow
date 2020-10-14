@@ -5,11 +5,13 @@ func @main(tensor<1x224x224x3xf32>) -> tensor<1x112x112x32xf32> {
   // CHECK:      {
   // CHECK-NEXT:  version: 3,
   // CHECK-NEXT:  operator_codes: [ {
-  // CHECK-NEXT:    builtin_code: DEQUANTIZE,
-  // CHECK-NEXT:    version: 1
+  // CHECK-NEXT:    deprecated_builtin_code: 6,
+  // CHECK-NEXT:    version: 1,
+  // CHECK-NEXT:    builtin_code: DEQUANTIZE
   // CHECK-NEXT:  }, {
-  // CHECK-NEXT:    builtin_code: DEPTHWISE_CONV_2D,
-  // CHECK-NEXT:    version: 2
+  // CHECK-NEXT:    deprecated_builtin_code: 4,
+  // CHECK-NEXT:    version: 2,
+  // CHECK-NEXT:    builtin_code: DEPTHWISE_CONV_2D
   // CHECK-NEXT:  } ],
   // CHECK-NEXT:  subgraphs: [ {
   // CHECK-NEXT:    tensors: [ {

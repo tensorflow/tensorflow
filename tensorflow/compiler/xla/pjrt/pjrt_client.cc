@@ -90,6 +90,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/local_device_state.h"
 #include "tensorflow/compiler/xla/pjrt/tracked_device_buffer.h"
 #include "tensorflow/compiler/xla/service/executable.h"
+#include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
@@ -280,6 +281,11 @@ StatusOr<absl::flat_hash_set<int>> PjRtClient::GetParametersThatMustBeDonated(
         return Status::OK();
       }));
   return parameters_to_donate;
+}
+
+std::unique_ptr<HloCostAnalysis> PjRtClient::GetHloCostAnalysis() {
+  return absl::make_unique<HloCostAnalysis>(
+      client_->backend().compiler()->ShapeSizeBytesFunction());
 }
 
 namespace {
@@ -1256,6 +1262,14 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::CopyToDevice(
   if (dst_device == device_) {
     return InvalidArgument(
         "CopyToDevice cannot accept the same source and destination devices");
+  }
+
+  // Copying across PjRtClients involves a copy through the host.
+  if (dst_device->client() != client_) {
+    TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal, ToLiteral());
+    return FromHostBuffer(literal->untyped_data(), literal->shape(),
+                          HostBufferSemantics::kZeroCopy, nullptr,
+                          dst_device->client(), dst_device);
   }
 
   TF_ASSIGN_OR_RETURN(LocalDeviceState * dst_local_device,

@@ -787,7 +787,7 @@ This operation holds the metadata common to operations of a `tpu.replicate()` co
   let results = (outs);
 }
 
-def TF_VarHandleOp : TF_Op<"VarHandleOp", []> {
+def TF_VarHandleOp : TF_Op<"VarHandleOp", [TF_ResourceHandleAllocatorInterface]> {
   let summary = "Creates a handle to a Variable resource from its name.";
 
   let description = [{
@@ -816,6 +816,13 @@ Example:
     TF_DerivedOperandOrResultHandleTypeAttr<"resource">;
   TF_DerivedOperandOrResultHandleShapeAttr shape =
     TF_DerivedOperandOrResultHandleShapeAttr<"resource">;
+
+  let extraClassDeclaration = [{
+    // TF_ResourceHandleAllocatorInterface:
+    ResourceHandleValueAndId GetResourceHandleValueAndId(
+      llvm::SmallDenseMap<ResourceHandle, int64_t> &resource_handle_id_map,
+      int64_t &next_id);
+  }];
 }
 
 // Multiple variadic operands with different sizes are not supported by the

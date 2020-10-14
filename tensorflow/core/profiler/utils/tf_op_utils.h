@@ -21,15 +21,16 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 namespace profiler {
 
 // Special op types.
-ABSL_CONST_INIT extern const absl::string_view kUnknownOp;
-ABSL_CONST_INIT extern const absl::string_view kDatasetOp;
-ABSL_CONST_INIT extern const absl::string_view kMemcpyHToDOp;
-ABSL_CONST_INIT extern const absl::string_view kMemcpyDToHOp;
+TF_CONST_INIT extern const absl::string_view kUnknownOp;
+TF_CONST_INIT extern const absl::string_view kDatasetOp;
+TF_CONST_INIT extern const absl::string_view kMemcpyHToDOp;
+TF_CONST_INIT extern const absl::string_view kMemcpyDToHOp;
 
 enum class Category {
   kTensorFlow,

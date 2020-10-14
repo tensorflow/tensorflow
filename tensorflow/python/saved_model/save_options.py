@@ -56,13 +56,11 @@ class VariablePolicy(enum.Enum):
     Distributed variables are still saved as one variable under this policy.
 
   EXPAND_DISTRIBUTED_VARIABLES
-    Distributed variables will be explicitly expanded into their respective
-    distributed replicas, and their assigned devices will be saved. This is
-    useful when one wants to use the model for training in environments where
-    the original distribution strategy is not available. Checkpoints are
-    currently incompatible with this option, so it is not implemented in
-    `saved_model.save` (only the internal `saved_model.export_meta_graph` API
-    supports it for now).
+    Distributed variables will be saved with information about their components,
+    allowing for their restoration on load. Also, the saved graph will contain
+    references to those variables. This is useful when one wants to use the
+    model for training in environments where the original distribution strategy
+    is not available.
   """
 
   NONE = None
