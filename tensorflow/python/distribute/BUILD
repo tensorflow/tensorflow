@@ -935,7 +935,6 @@ cuda_py_test(
 distribute_py_test(
     name = "checkpointing_test",
     srcs = ["checkpointing_test.py"],
-    disable_mlir_bridge = False,
     main = "checkpointing_test.py",
     tags = [
         "multi_and_single_gpu",
@@ -1154,7 +1153,6 @@ distribute_py_test(
     name = "values_test",
     size = "medium",
     srcs = ["values_test.py"],
-    disable_mlir_bridge = False,
     main = "values_test.py",
     shard_count = 5,
     tags = [
@@ -1302,7 +1300,6 @@ distribute_py_test(
 distribute_py_test(
     name = "moving_averages_test",
     srcs = ["moving_averages_test.py"],
-    disable_mlir_bridge = False,
     main = "moving_averages_test.py",
     deps = [
         ":combinations",
