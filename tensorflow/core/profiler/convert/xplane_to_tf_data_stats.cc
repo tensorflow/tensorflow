@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/profiler/protobuf/tf_data_stats.pb.h"
 #include "tensorflow/core/profiler/utils/group_events.h"
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
@@ -248,10 +249,38 @@ void ProcessInputPipelines(
   }
 }
 
+void SetBottleneckAnalysis(absl::string_view host_name,
+                           const TfDataStats& tf_data_stats,
+                           TfDataBottleneckAnalysis* bottleneck_analysis) {
+  for (const auto& id_and_stats : tf_data_stats.input_pipelines()) {
+    const InputPipelineStats& input_pipeline_stats = id_and_stats.second;
+    if (input_pipeline_stats.metadata().type() ==
+            InputPipelineMetadata::DEVICE ||
+        input_pipeline_stats.max_latency_ps() <=
+            bottleneck_analysis->max_latency_ps()) {
+      // Ignore device input pipelines and input pipelines faster than the
+      // current bottleneck.
+      continue;
+    }
+    bottleneck_analysis->set_host(host_name.data(), host_name.size());
+    bottleneck_analysis->set_input_pipeline(
+        input_pipeline_stats.metadata().name());
+    bottleneck_analysis->set_max_latency_ps(
+        input_pipeline_stats.max_latency_ps());
+    const IteratorMetadata& metadata = tf_data_stats.iterator_metadata().at(
+        input_pipeline_stats.stats(0).bottleneck_iterator_id());
+    bottleneck_analysis->set_iterator_name(metadata.name());
+    bottleneck_analysis->set_iterator_long_name(metadata.long_name());
+  }
+}
+
 }  // namespace
 
-TfDataStats ConvertXPlaneToTfDataStats(XPlane* host_plane) {
-  TfDataStats tf_data_stats;
+void CombinedTfDataStatsBuilder::Add(absl::string_view host_name,
+                                     XPlane* host_plane) {
+  TfDataStats& tf_data_stats =
+      (*combined_tf_data_stats_
+            ->mutable_tf_data_stats())[std::string(host_name)];
   EventForest event_forest;
   event_forest.AddPlanes(CreateTfXPlaneVisitor, {host_plane});
   event_forest.ConnectEvents();
@@ -262,7 +291,17 @@ TfDataStats ConvertXPlaneToTfDataStats(XPlane* host_plane) {
                      &root_iterator_event_map, &tf_data_stats);
   ProcessInputPipelines(device_input_pipeline_ids, &root_iterator_event_map,
                         &tf_data_stats);
-  return tf_data_stats;
+}
+
+void CombinedTfDataStatsBuilder::Finalize() {
+  TfDataBottleneckAnalysis* bottleneck_analysis =
+      combined_tf_data_stats_->mutable_bottleneck_analysis();
+  for (const auto& host_name_and_tf_data_stats :
+       combined_tf_data_stats_->tf_data_stats()) {
+    SetBottleneckAnalysis(host_name_and_tf_data_stats.first,
+                          host_name_and_tf_data_stats.second,
+                          bottleneck_analysis);
+  }
 }
 
 }  // namespace profiler

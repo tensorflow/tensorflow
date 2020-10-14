@@ -89,3 +89,24 @@ message TfDataStats {
   // Stats per input pipeline.
   map<int64, InputPipelineStats> input_pipelines = 1;
 }
+
+message TfDataBottleneckAnalysis {
+  // Host name.
+  string host = 1;
+  // Input pipeline name.
+  string input_pipeline = 2;
+  // Maximum latency of the input pipeline.
+  int64 max_latency_ps = 3;
+  // Name of the bottleneck iterator.
+  string iterator_name = 4;
+  // Long name of the bottleneck iterator.
+  string iterator_long_name = 5;
+}
+
+// TfDataStats of all hosts.
+message CombinedTfDataStats {
+  // Bottleneck analysis result.
+  TfDataBottleneckAnalysis bottleneck_analysis = 1;
+  // TfDataStats per host.
+  map<string, TfDataStats> tf_data_stats = 2;
+}

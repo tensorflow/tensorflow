@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_TF_DATA_STATS_H_
 #define TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_TF_DATA_STATS_H_
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/tf_data_stats.pb.h"
@@ -26,7 +27,20 @@ namespace profiler {
 
 TF_CONST_INIT extern const int64 kSlowCallThresholdPs;
 
-TfDataStats ConvertXPlaneToTfDataStats(XPlane* host_plane);
+class CombinedTfDataStatsBuilder {
+ public:
+  explicit CombinedTfDataStatsBuilder(
+      CombinedTfDataStats* combined_tf_data_stats)
+      : combined_tf_data_stats_(combined_tf_data_stats) {}
+
+  void Add(absl::string_view host_name, XPlane* host_plane);
+
+  // Finalizes by populating TfDataBottleneckAnalysis.
+  void Finalize();
+
+ private:
+  CombinedTfDataStats* combined_tf_data_stats_;
+};
 
 }  // namespace profiler
 }  // namespace tensorflow
