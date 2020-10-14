@@ -768,13 +768,13 @@ class PodTpuDriver : public TpuDriver {
       } else {
         fn(event_status->second);
       }
-    }
-
-    if (event->second->underlying_event != nullptr &&
-        event->second->underlying_event.use_count() != 0) {
-      event->second->underlying_event->AddCallback(fn);
     } else {
-      event->second->callbacks.push_back(std::move(fn));
+      if (event->second->underlying_event != nullptr &&
+          event->second->underlying_event.use_count() != 0) {
+        event->second->underlying_event->AddCallback(fn);
+      } else {
+        event->second->callbacks.push_back(std::move(fn));
+      }
     }
   }
 
