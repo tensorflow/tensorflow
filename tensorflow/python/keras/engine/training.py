@@ -58,6 +58,7 @@ from tensorflow.python.keras.saving.saved_model import json_utils
 from tensorflow.python.keras.saving.saved_model import model_serialization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils import version_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
@@ -1099,6 +1100,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         if validation_data and self._should_eval(epoch, validation_freq):
           # Create data_handler for evaluation and cache it.
           if getattr(self, '_eval_data_handler', None) is None:
+            self._fit_frame = tf_inspect.currentframe()
             self._eval_data_handler = data_adapter.DataHandler(
                 x=val_x,
                 y=val_y,
@@ -1134,6 +1136,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       # If eval data_hanlder exists, delete it after all epochs are done.
       if getattr(self, '_eval_data_handler', None) is not None:
         del self._eval_data_handler
+        del self._fit_frame
       callbacks.on_train_end(logs=training_logs)
       return self.history
 
@@ -1327,7 +1330,10 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     _disallow_inside_tf_function('evaluate')
 
     with self.distribute_strategy.scope():
-      if getattr(self, '_eval_data_handler', None) is not None:
+      # Use cached evaluation data only when it's called in `Model.fit`
+      if (getattr(self, '_fit_frame', None) is not None
+          and tf_inspect.currentframe().f_back is self._fit_frame
+          and getattr(self, '_eval_data_handler', None) is not None):
         data_handler = self._eval_data_handler
       else:
         # Creates a `tf.data.Dataset` and handles batch and epoch iteration.

@@ -3642,16 +3642,20 @@ class TestAutoUpdates(keras_parameterized.TestCase):
 
 class TestFunctionTracing(keras_parameterized.TestCase):
 
+  def _seq_model_and_data(self):
+    model = sequential.Sequential([layers_module.Dense(4, activation='relu')])
+    model.compile(loss='mse', optimizer='rmsprop')
+    x = np.random.random((10, 6))
+    y = np.random.random((10, 4))
+    return model, x, y
+
   @keras_parameterized.run_all_keras_modes(
       always_skip_v1=True, always_skip_eager=True)
   def test_no_tracing_between_epoch(self):
     if sys.version_info[0] < 3:
       self.skipTest('self.assertLogs() call is not available in Python 2.')
 
-    model = sequential.Sequential([layers_module.Dense(4, activation='relu')])
-    model.compile(loss='mse', optimizer='rmsprop')
-    x = np.random.random((10, 6))
-    y = np.random.random((10, 4))
+    model, x, y = self._seq_model_and_data()
 
     logging.set_verbosity(1)
     with self.assertLogs(level=1) as logs:
@@ -3659,6 +3663,21 @@ class TestFunctionTracing(keras_parameterized.TestCase):
 
     new_func_graph = 'INFO:absl:Creating new FuncGraph for Python function'
     self.assertEqual(sum(new_func_graph in log for log in logs.output), 9)
+
+  @keras_parameterized.run_all_keras_modes(
+      always_skip_v1=True, always_skip_eager=True)
+  def test_evaluate_no_cached_data(self):
+    if sys.version_info[0] < 3:
+      self.skipTest('self.assertLogs() call is not available in Python 2.')
+
+    model, x, y = self._seq_model_and_data()
+
+    new_func_graph = 'INFO:absl:Creating new FuncGraph for Python function'
+    logging.set_verbosity(1)
+    with self.assertLogs(level=1) as eval_logs:
+      for _ in range(6):
+        model.evaluate(x, y, batch_size=5)
+    self.assertEqual(sum(new_func_graph in log for log in eval_logs.output), 20)
 
 
 class TestBuildCustomModel(keras_parameterized.TestCase):
