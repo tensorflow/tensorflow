@@ -789,6 +789,10 @@ py::object CompiledFunction::Call(py::args args, py::kwargs kwargs) {
         }
         default_pyclient_ = default_pydevice_.client;
         default_device_ = default_pydevice_.contents;
+        if (!default_device_) {  // UPTC
+          always_fallback_to_python_ = true;
+          return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
+        }
         is_committed_ =
             py::cast<bool>(device_and_is_committed.attr("committed_to_device"));
       }
