@@ -487,7 +487,6 @@ cc_library(
         ":cpu_runtime",
         ":ir_emission_utils",
         ":mlir_emitter",
-        ":mlir_matmul_codegen_strategy",
         ":target_machine_features",
         ":tiled_dot_emitter",
         ":vector_support_library",
@@ -509,6 +508,7 @@ cc_library(
         "@llvm-project//mlir:EDSC",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgOps",
+        "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:StandardOps",
     ],
 )
@@ -1141,26 +1141,5 @@ cc_library(
         "@llvm-project//mlir:TargetLLVMIR",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorToLLVM",
-    ],
-)
-
-cc_library(
-    name = "mlir_matmul_codegen_strategy",
-    srcs = ["mlir_matmul_codegen_strategy.cc"],
-    hdrs = ["mlir_matmul_codegen_strategy.h"],
-    deps = [
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:Affine",
-        "@llvm-project//mlir:Analysis",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LinalgOps",
-        "@llvm-project//mlir:LinalgTransforms",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Transforms",
-        "@llvm-project//mlir:VectorOps",
-        "@llvm-project//mlir:VectorToSCF",
     ],
 )
