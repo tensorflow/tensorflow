@@ -119,6 +119,9 @@ class Arguments : public ArgumentsBinder {
                           const std::vector<std::string>& member_names,
                           std::string* code);
 
+  GPUObjectDescriptor* GetObjectDescriptor(
+      const std::string& object_name) const;
+
   static constexpr char kArgsPrefix[] = "args.";
 
   struct IntValue {

@@ -756,24 +756,38 @@ void Arguments::ResolveObjectNames(const std::string& object_name,
   }
 }
 
+GPUObjectDescriptor* Arguments::GetObjectDescriptor(
+    const std::string& object_name) const {
+  {
+    auto it = object_refs_.find(object_name);
+    if (it != object_refs_.end()) {
+      return it->second.descriptor.get();
+    }
+  }
+  {
+    auto it = objects_.find(object_name);
+    if (it != objects_.end()) {
+      return it->second.descriptor.get();
+    }
+  }
+  return nullptr;
+}
+
 absl::Status Arguments::ResolveSelector(
     const std::map<std::string, std::string>& linkables,
     const std::string& object_name, const std::string& selector,
     const std::vector<std::string>& args,
     const std::vector<std::string>& template_args, std::string* result) {
-  const GPUObjectDescriptor* desc_ptr;
-  if (auto it = object_refs_.find(object_name); it != object_refs_.end()) {
-    desc_ptr = it->second.descriptor.get();
-  } else if (auto it = objects_.find(object_name); it != objects_.end()) {
-    desc_ptr = it->second.descriptor.get();
-  } else {
+  const GPUObjectDescriptor* desc_ptr = GetObjectDescriptor(object_name);
+  if (!desc_ptr) {
     return absl::NotFoundError(
         absl::StrCat("No object with name - ", object_name));
   }
   auto names = desc_ptr->GetGPUResources().GetNames();
   const auto* tensor_desc = dynamic_cast<const TensorDescriptor*>(desc_ptr);
   if (tensor_desc && selector == "Write") {
-    if (auto it = linkables.find(object_name); it != linkables.end()) {
+    auto it = linkables.find(object_name);
+    if (it != linkables.end()) {
       if (desc_ptr->GetAccess() != AccessType::WRITE &&
           desc_ptr->GetAccess() != AccessType::READ_WRITE) {
         return absl::FailedPreconditionError(absl::StrCat(
