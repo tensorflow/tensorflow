@@ -2863,9 +2863,6 @@ def _get_optional_partition_dtype(values):
   return None
 
 
-ops.no_gradient("RaggedTensorToVariant")
-
-
 _SUPPORTED_RAGGED_VALUE_TYPES = (ops.Tensor, RaggedTensor)
 
 

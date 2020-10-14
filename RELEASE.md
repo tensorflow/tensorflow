@@ -138,6 +138,7 @@
         stateful ops.
     *   Added `tf.config.experimental.get_memory_usage` to return total memory
         usage of the device.
+    * Added gradients for `RaggedTensorToVariant` and `RaggedTensorFromVariant`.
 *   `tf.data`:
     *   tf.data service:
     *   Added new `tf.data.experimental.service.register_dataset` and
