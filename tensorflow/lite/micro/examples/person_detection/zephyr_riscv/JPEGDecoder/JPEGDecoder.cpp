@@ -1,43 +1,14 @@
 /*
-JPEGDecoder.cpp
-
-JPEG Decoder for Arduino
-https://github.com/MakotoKurauchi/JPEGDecoder
-Public domain, Makoto Kurauchi <http://yushakobo.jp>
-
-Latest version here:
-https://github.com/Bodmer/JPEGDecoder
-
-Bodmer (21/6/15): Adapted by Bodmer to display JPEGs on TFT (works with Mega and Due) but there
-is a memory leak somewhere, crashes after decoding 1 file :-)
-
-Bodmer (29/1/16): Now in a state with sufficient Mega and Due testing to release in the wild
-
-Bodmer (various): Various updates and latent bugs fixed
-
-Bodmer (14/1/17): Tried to merge ESP8266 and SPIFFS support from Frederic Plante's broken branch,
-				worked on ESP8266, but broke the array handling :-(
-
-Bodmer (14/1/17): Scrapped all FP's updates, extended the built-in approach to using different
-				data sources (currently array, SD files and/or SPIFFS files)
-
-Bodmer (14/1/17): Added ESP8266 support and SPIFFS as a source, added configuration option to
-				swap bytes to support fast image transfer to TFT using ESP8266 SPI writePattern().
-
-Bodmer (15/1/17): Now supports ad hoc use of SPIFFS, SD and arrays without manual configuration.
-
-Bodmer (19/1/17): Add support for filename being String type
-
-Bodmer (20/1/17): Correct last mcu block corruption (thanks stevstrong for tracking that bug down!)
-
-Bodmer (20/1/17): Prevent deleting the pImage pointer twice (causes an exception on ESP8266),
-				tidy up code.
-
-Bodmer (24/1/17): Correct greyscale images, update examples
+Copyright 2020 Antmicro <www.antmicro.com>
+Copyright 2019 Makoto Kurauchi, Bodmer
+Copyright 2013 Rich Geldreich
 */
 
 #include "JPEGDecoder.h"
 #include "picojpeg.h"
+#ifdef ZEPHYR_RISCV
+	#include <cstring>
+#endif
 
 JPEGDecoder JpegDec;
 
@@ -71,7 +42,11 @@ uint8_t JPEGDecoder::pjpeg_need_bytes_callback(uint8_t* pBuf, uint8_t buf_size, 
 
 	if (jpg_source == JPEG_ARRAY) { // We are handling an array
 		for (int i = 0; i < n; i++) {
-			pBuf[i] = pgm_read_byte(jpg_data++);
+			#ifdef ZEPHYR_RISCV
+				pBuf[i] = *jpg_data++;
+			#else
+				pBuf[i] = pgm_read_byte(jpg_data++);
+			#endif
 			//Serial.println(pBuf[i],HEX);
 		}
 	}

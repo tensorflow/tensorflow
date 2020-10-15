@@ -1,25 +1,21 @@
 /*
-JPEGDecoder.h
-
-JPEG Decoder for Arduino
-Public domain, Makoto Kurauchi <http://yushakobo.jp>
-
-Adapted by Bodmer for use with a TFT screen
-
-Latest version here:
-https://github.com/Bodmer/JPEGDecoder
-
+Copyright 2020 Antmicro <www.antmicro.com>
+Copyright 2019 Makoto Kurauchi, Bodmer
+Copyright 2013 Rich Geldreich
 */
 
 #ifndef JPEGDECODER_H
   #define JPEGDECODER_H
+  #define ZEPHYR_RISCV
 
-  #ifndef JPEGDECODER_SETUP_LOADED //  Lets PlatformIO users define settings in
-                                   //  platformio.ini
-    #include "User_Config.h"
-  #endif // JPEGDECODER_SETUP_LOADED
+  #ifndef ZEPHYR_RISCV
+    #ifndef JPEGDECODER_SETUP_LOADED //  Lets PlatformIO users define settings in
+                                    //  platformio.ini
+      #include "User_Config.h"
+    #endif // JPEGDECODER_SETUP_LOADED
 
-  #include "Arduino.h"
+    #include "Arduino.h"    
+  #endif
 
   #ifdef __AVR__
     #include <avr/pgmspace.h>
@@ -65,6 +61,10 @@ https://github.com/Bodmer/JPEGDecoder
 
   
 #include "picojpeg.h"
+#ifdef ZEPHYR_RISCV
+  #include <string>
+  #define String std::string
+#endif
 
 enum {
   JPEG_ARRAY = 0,
