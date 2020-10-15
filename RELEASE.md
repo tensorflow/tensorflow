@@ -228,6 +228,12 @@
     *   For Keras model, the individual call of `Model.evaluate` uses no cached
         data for evaluation, while `Model.fit` uses cached data when
         `validation_data` arg is provided for better performance.
+    *   Added a `save_traces` argument to `model.save`/
+        `tf.keras.models.save_model` which determines whether the SavedModel
+        format stores the Keras model/layer call functions. The traced functions
+        allow Keras to revive custom models and layers without the original
+        class definition, but if this isn't required the tracing can be
+        disabled with the added option.
 *   `tf.function` / AutoGraph:
     *   Added `experimental_follow_type_hints` argument for `tf.function`. When
         True, the function may use type annotations to optimize the tracing
