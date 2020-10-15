@@ -24,21 +24,23 @@ cd "${ROOT_DIR}"
 
 source tensorflow/lite/micro/tools/ci_build/helper_functions.sh
 
+TARGET=cortex_m_generic
+
 # TODO(b/143715361): downloading first to allow for parallel builds.
-readable_run make -f tensorflow/lite/micro/tools/make/Makefile TAGS="cmsis-nn armgcc" TARGET=cortex-m4-generic microlite
+readable_run make -f tensorflow/lite/micro/tools/make/Makefile TOOLCHAIN=armgcc TAGS=cmsis-nn TARGET=${TARGET} TARGET_ARCH=cortex-m4 microlite
 
 # Build for Cortex-M4 (no FPU) without CMSIS
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
-readable_run make -j$(nproc) -f tensorflow/lite/micro/tools/make/Makefile TAGS=armgcc TARGET=cortex-m4-generic microlite
+readable_run make -j$(nproc) -f tensorflow/lite/micro/tools/make/Makefile TOOLCHAIN=armgcc TARGET=${TARGET} TARGET_ARCH=cortex-m4 microlite
 
 # Build for Cortex-M4F (FPU present) without CMSIS
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
-readable_run make -j$(nproc) -f tensorflow/lite/micro/tools/make/Makefile TAGS=armgcc TARGET=cortex-m4+fp-generic microlite
+readable_run make -j$(nproc) -f tensorflow/lite/micro/tools/make/Makefile TOOLCHAIN=armgcc TARGET=${TARGET} TARGET_ARCH=cortex-m4+fp microlite
 
 # Build for Cortex-M4 (no FPU) with CMSIS
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
-readable_run make -j$(nproc) -f tensorflow/lite/micro/tools/make/Makefile TAGS="cmsis-nn armgcc" TARGET=cortex-m4-generic microlite
+readable_run make -j$(nproc) -f tensorflow/lite/micro/tools/make/Makefile TOOLCHAIN=armgcc TAGS=cmsis-nn TARGET=${TARGET} TARGET_ARCH=cortex-m4 microlite
 
 # Build for Cortex-M4 (FPU present) with CMSIS
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
-readable_run make -j$(nproc) -f tensorflow/lite/micro/tools/make/Makefile TAGS="cmsis-nn armgcc" TARGET=cortex-m4+fp-generic microlite
+readable_run make -j$(nproc) -f tensorflow/lite/micro/tools/make/Makefile TOOLCHAIN=armgcc TAGS=cmsis-nn TARGET=${TARGET} TARGET_ARCH=cortex-m4+fp microlite
