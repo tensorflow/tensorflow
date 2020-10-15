@@ -281,23 +281,24 @@ class NamedDistribution(object):
     self.use_cloud_tpu = use_cloud_tpu
     self.has_chief = has_chief
     self.num_workers = num_workers
+    self.use_pool_runner = use_pool_runner
     self.no_xla = no_xla
     self._runner = None
 
-    if _num_total_workers(self.has_chief, self.num_workers) > 1:
-      cluster_spec = multi_worker_test_base.create_cluster_spec(
-          has_chief=has_chief,
-          num_workers=num_workers,
-          num_ps=0,
-          has_eval=False)
-      if use_pool_runner:
-        # Need to create the strategy in the initializer so that collectives are
-        # configured before eager context initialization.
-        self._runner = multi_process_runner.MultiProcessPoolRunner(
-            cluster_spec, initializer=self._distribution_fn)
-
   @property
   def runner(self):
+    if not self._runner:
+      if (_num_total_workers(self.has_chief, self.num_workers) > 1 and
+          self.use_pool_runner):
+        # Need to create the strategy in the initializer so that collectives are
+        # configured before eager context initialization.
+        cluster_spec = multi_worker_test_base.create_cluster_spec(
+            has_chief=self.has_chief,
+            num_workers=self.num_workers,
+            num_ps=0,
+            has_eval=False)
+        self._runner = multi_process_runner.MultiProcessPoolRunner(
+            cluster_spec, initializer=self._distribution_fn)
     return self._runner
 
   @property
