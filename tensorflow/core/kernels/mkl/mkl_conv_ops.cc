@@ -24,8 +24,8 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "mkldnn.hpp"
 #include "absl/strings/str_join.h"
+#include "mkldnn.hpp"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -944,23 +944,18 @@ class MklConvOp : public OpKernel {
       if (native_format) {
         // Forward the summand tensor to the output only if it has no other
         // references, otherwise make a copy of it.
-        if (!context->forward_input_to_output_with_shape(
+        if (context->forward_input_to_output_with_shape(
                 kInputIndex_Add, kOutputIndex_Dst, output_tf_shape,
                 output_tensor)) {
-          AllocateOutputSetMklShape(context, kOutputIndex_Dst, output_tensor,
-                                    output_tf_shape, *output_mkl_shape,
-                                    native_format);
-          bool result =
-              (*output_tensor)->CopyFrom(add_tensor, add_tensor.shape());
-          DCHECK(result);
+          return;
         }
-        return;
       }
       // Check if reorder is needed
       if (add_mkl_shape == *output_mkl_shape &&
           ForwardMklTensorInToOutWithMklShape(context, kInputIndex_Add,
                                               kOutputIndex_Dst, output_tensor,
-                                              add_mkl_shape, false)) {
+                                              add_mkl_shape, false) &&
+          !native_format) {
         return;
       } else {
         AllocateOutputSetMklShape(context, kOutputIndex_Dst, output_tensor,
@@ -987,6 +982,13 @@ class MklConvOp : public OpKernel {
             const_cast<Toutput*>(add_tensor.flat<Toutput>().data()));
         void* dst_buf =
             static_cast<void*>((*output_tensor)->flat<Ttemp_output>().data());
+        if (native_format) {
+          // We are simply deep copying the add_tensor to output_tensor without
+          // changing memory layout, hence using same memory descriptor.
+          ADD_MD = DST_MD =
+              memory::desc({add_tensor.NumElements()}, MklDnnType<Toutput>(),
+                           mkldnn::memory::format_tag::x);
+        }
         fuse_add_src_.reset(
             new MEMORY_CONSTRUCTOR(ADD_MD, this->cpu_engine_, add_buf));
         fuse_add_dst_.reset(
