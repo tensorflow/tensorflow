@@ -111,10 +111,9 @@ py_library(
 cuda_py_test(
     name = "control_flow_ops_test",
     srcs = ["control_flow_ops_test.py"],
+    shard_count = 10,
     tags = [
         "no_rocm",
-        "nofwdcompat",  # TODO(b/170972189): Flaky
-        "notsan",  # TODO(b/170901706): Flaky
     ],
     deps = [
         ":control_flow_ops",
