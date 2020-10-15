@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Xtensa timer implementation.
-// To include this with make, add TARGET=xtensa_hifimini.
+// Hexagon timer implementation.
+// To include this with make, add TARGET=hexagon.
 #include "tensorflow/lite/micro/micro_time.h"
 
 #include <time.h>
