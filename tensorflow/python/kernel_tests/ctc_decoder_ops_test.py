@@ -100,7 +100,6 @@ class CTCGreedyDecoderTest(test.TestCase):
     """Test two batch entries - best path decoder."""
     max_time_steps = 6
     # depth == 4
-
     seq_len_0 = 4
     input_prob_matrix_0 = np.asarray(
         [[1.0, 0.0, 0.0, 0.0],  # t=0
@@ -114,7 +113,6 @@ class CTCGreedyDecoderTest(test.TestCase):
 
     seq_len_1 = 5
     # dimensions are time x depth
-
     input_prob_matrix_1 = np.asarray(
         [
             [0.1, 0.9, 0.0, 0.0],  # t=0

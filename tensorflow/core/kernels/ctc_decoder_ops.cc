@@ -177,6 +177,7 @@ class CTCGreedyDecoderOp : public OpKernel {
  public:
   explicit CTCGreedyDecoderOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("merge_repeated", &merge_repeated_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("blank_index", &blank_index_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -212,9 +213,6 @@ class CTCGreedyDecoderOp : public OpKernel {
 
     log_prob_t.setZero();
 
-    // Assumption: the blank index is num_classes - 1
-    int blank_index = num_classes - 1;
-
     // Perform best path decoding
     std::vector<std::vector<std::vector<int> > > sequences(batch_size);
     auto decode = [&](const int64 begin, const int64 end) {
@@ -226,7 +224,7 @@ class CTCGreedyDecoderOp : public OpKernel {
           int max_class_indices;
           log_prob_t(b, 0) +=
               -RowMax<T>(input_list_t[t], b, &max_class_indices);
-          if (max_class_indices != blank_index &&
+          if (max_class_indices != blank_index_ &&
               !(merge_repeated_ && max_class_indices == prev_indices)) {
             sequence.push_back(max_class_indices);
           }
@@ -250,6 +248,7 @@ class CTCGreedyDecoderOp : public OpKernel {
  private:
   CTCDecodeHelper decode_helper_;
   bool merge_repeated_;
+  int blank_index_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CTCGreedyDecoderOp);
 };
