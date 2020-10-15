@@ -577,7 +577,7 @@ bool GetImageInfo(const void* srcdata, int datasize, int* width, int* height,
   SetSrc(&cinfo, srcdata, datasize, false);
 
   jpeg_read_header(&cinfo, TRUE);
-  jpeg_start_decompress(&cinfo);  // required to transfer image size to cinfo
+  jpeg_calc_output_dimensions(&cinfo);
   if (width) *width = cinfo.output_width;
   if (height) *height = cinfo.output_height;
   if (components) *components = cinfo.output_components;
