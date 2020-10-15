@@ -1,8 +1,8 @@
 # Description:
 #   Contains the Keras layers (internal TensorFlow version).
 
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
     # TODO(scottzhu): Remove non-keras deps from TF.
@@ -825,6 +825,7 @@ cuda_py_test(
     shard_count = 12,
     tags = [
         "no_oss",
+        "notsan",  # TODO(b/170954246)
     ],
     deps = [
         "//tensorflow/python:client_testlib",
