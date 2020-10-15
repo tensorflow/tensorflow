@@ -433,6 +433,7 @@ distribute_py_test(
     main = "keras_embedding_model_correctness_test.py",
     shard_count = 8,
     tags = [
+        "broken",  # b/170975619
         "multi_and_single_gpu",
         "no_windows_gpu",
         "notsan",
