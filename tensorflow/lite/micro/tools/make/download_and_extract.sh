@@ -112,6 +112,7 @@ patch_cmsis() {
   dspfiles+="\|dsp/svm_defines.h"
   dspfiles+="\|dsp/transform_functions.h"
   dspfiles+="\|dsp/utils.h"
+  dspfiles+="\|dsp/arm_helium_utils.h"
   find tensorflow/lite/micro/tools/make/downloads/cmsis \
     \( -name *.c -or -name *.h -or -name *.cpp \) -exec \
     sed -i "s@#include \"\($dspfiles\)\"@#include \"cmsis/CMSIS/DSP/Include/\1\"@g" {} \;
@@ -123,6 +124,11 @@ patch_cmsis() {
   find tensorflow/lite/micro/tools/make/downloads/cmsis \
     \( -name *.c -or -name *.h -or -name *.cpp \) -exec \
     sed -i "s@#include \"\($nnfiles\)\"@#include \"cmsis/CMSIS/NN/Include/\1\"@g" {} \;
+
+  corefiles="cmsis_compiler.h"
+  find tensorflow/lite/micro/tools/make/downloads/cmsis \
+    \( -name *.c -or -name *.h -or -name *.cpp \) -exec \
+    sed -i "s@#include \"\($corefiles\)\"@#include \"cmsis/CMSIS/Core/Include/\1\"@g" {} \;
 
   # Until the fix for https://github.com/ARMmbed/mbed-os/issues/12568 is
   # rolled into Mbed version used on the Arduino IDE, we have to replace
