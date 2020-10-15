@@ -514,8 +514,7 @@ Status TpuCompileOpKernelCommon::OptimizeGraph(
     // Converts the GraphShapeInfo into the form needed by the constant-folding
     // pass of the optimizer.
     std::unordered_map<string, std::vector<PartialTensorShape>> shape_map;
-    TF_RETURN_IF_ERROR(RunShapeInferenceOnComputation(
-        metadata, arg_shapes, graph->get(), flr, &shape_info));
+    ConvertGraphShapeInfoToShapeMap(**graph, shape_info, &shape_map);
     optimizer_opts.shape_map = &shape_map;
     optimizer.Optimize(flr, flr->env(), flr->device(), graph, optimizer_opts);
   }
