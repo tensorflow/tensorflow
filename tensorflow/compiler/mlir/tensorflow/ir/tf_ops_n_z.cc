@@ -79,15 +79,6 @@ namespace {
 }  // namespace
 
 //===----------------------------------------------------------------------===//
-// NegOp
-//===----------------------------------------------------------------------===//
-
-void NegOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                        MLIRContext *context) {
-  results.insert<NegNested>(context);
-}
-
-//===----------------------------------------------------------------------===//
 // NotEqualOp
 //===----------------------------------------------------------------------===//
 
@@ -482,15 +473,6 @@ static LogicalResult Verify(QrOp op) {
 void ReadVariableOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   results.insert<ReadVariableOfCast>(context);
-}
-
-//===----------------------------------------------------------------------===//
-// ReciprocalOp
-//===----------------------------------------------------------------------===//
-
-void ReciprocalOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
-  results.insert<ReciprocalNested>(context);
 }
 
 //===----------------------------------------------------------------------===//

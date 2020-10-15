@@ -1124,15 +1124,6 @@ LogicalResult ConcatOffsetOp::fold(ArrayRef<Attribute> operands,
 }
 
 //===----------------------------------------------------------------------===//
-// ConjOp
-//===----------------------------------------------------------------------===//
-
-void ConjOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                         MLIRContext *context) {
-  results.insert<ConjNested>(context);
-}
-
-//===----------------------------------------------------------------------===//
 // ConstOp
 //===----------------------------------------------------------------------===//
 
@@ -2186,15 +2177,6 @@ void IfRegionOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 }
 
 //===----------------------------------------------------------------------===//
-// InvertOp
-//===----------------------------------------------------------------------===//
-
-void InvertOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                           MLIRContext *context) {
-  results.insert<InvertNested>(context);
-}
-
-//===----------------------------------------------------------------------===//
 // InvertPermutationOp
 //===----------------------------------------------------------------------===//
 
@@ -2257,7 +2239,7 @@ void LogOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 
 void LogicalNotOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
-  results.insert<LogicalNotNested, LogicalNotOfEqual, LogicalNotOfNotEqual,
+  results.insert<LogicalNotOfEqual, LogicalNotOfNotEqual,
                  LogicalNotOfGreater, LogicalNotOfGreaterEqual,
                  LogicalNotOfLess, LogicalNotOfLessEqual>(context);
 }
