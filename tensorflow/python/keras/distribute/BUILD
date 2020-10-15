@@ -345,6 +345,7 @@ distribute_py_test(
         "no_rocm",  # times out on ROCm
         "no_windows_gpu",
         "noasan",  # TODO(b/170902997)
+        "notap",  # TODO(b/170902997)
         "notsan",
     ],
     tpu_tags = [
