@@ -1100,6 +1100,10 @@ tf_py_test(
     name = "sharded_variable_test",
     size = "small",
     srcs = ["sharded_variable_test.py"],
+    tags = [
+        # depend through //third_party/tensorflow/python:extra_py_tests_deps.
+        "ignore_for_dep=third_party.tensorflow.python.keras.engine.base_layer",
+    ],
     deps = [
         ":sharded_variable",
         "//tensorflow/python:array_ops",
@@ -1110,9 +1114,12 @@ tf_py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/module",
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:save",
         "//tensorflow/python/saved_model:signature_constants",
