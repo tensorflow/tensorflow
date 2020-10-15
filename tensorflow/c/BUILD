@@ -499,7 +499,6 @@ tf_cuda_library(
         ":tf_status",
         ":tf_status_helper",
         ":tf_tensor_internal",
-        "//tensorflow/c/experimental/stream_executor:stream_executor",
     ] + select({
         "//tensorflow:android": [
             ":c_api_internal",
@@ -510,6 +509,7 @@ tf_cuda_library(
             ":tf_tensor",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_lite",
+            "//tensorflow/c/experimental/stream_executor:stream_executor",
         ],
     }),
 )

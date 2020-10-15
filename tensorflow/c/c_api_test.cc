@@ -1467,7 +1467,6 @@ TEST(CAPI, DeletingNullPointerIsSafe) {
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TF_DeleteDeviceList(nullptr);
   TF_DeleteLibraryHandle(nullptr);
-  TF_DeletePluggableDeviceLibraryHandle(nullptr);
   TF_DeleteApiDefMap(nullptr);
 
   TF_DeleteStatus(status);

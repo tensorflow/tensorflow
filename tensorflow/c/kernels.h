@@ -67,7 +67,8 @@ typedef struct TF_OpKernelConstruction TF_OpKernelConstruction;
 typedef struct TF_OpKernelContext TF_OpKernelContext;
 
 // TF_InitKernel to do op/kernel registration.
-// Plugin needs to implement this function to register all kernels.
+// Plugin should either implement TF_InitKernel to register kernels or use
+// static registration. This function should register all kernels in a plugin.
 void TF_InitKernel();
 
 // Allocates a new kernel builder and returns a pointer to it.
@@ -134,8 +135,11 @@ TF_CAPI_EXPORT extern void TF_DeleteKernelBuilder(TF_KernelBuilder* builder);
 // OpKernelContext routines
 
 // TF_GetStream returns the SP_Stream available in ctx
-// This function is only for pluggable device
-// it will return nullptr in all other cased.
+// This function returns a stream only for devices registered using the
+// StreamExecutor C API
+// (tensorflow/c/experimental/stream_executor/stream_executor.h). It will return
+// nullptr in all other cases. Experimental: this function doesn't have
+// compatibility guarantees and subject to change at any time."
 TF_CAPI_EXPORT extern SP_Stream TF_GetStream(TF_OpKernelContext* ctx);
 
 // TF_NumInputs returns the number of inputs available in ctx.
