@@ -358,14 +358,17 @@ $(eval $(call add_third_party_download,$(PERSON_MODEL_INT8_URL),$(PERSON_MODEL_I
 # The target-specific makefile must have a name that is exactly
 # TARGET_makefile.inc and is only needed for cross-compilation (i.e. when TARGET
 # is different from the HOST_OS).
-ifneq ($(TARGET),$(HOST_OS))
-	# The arduino is also special in that it does not have an arduino_makefile but
-	# the TARGET=arduino is still used to create a directory for the generated
-	# artifacts. We are using a workaround right now and will be separating the
-	# project generation from the Makefile in the future.
-	ifneq ($(TARGET),arduino)
+# There are also some other targets like arduino and CHRE that are also special
+# in that they do no have a <target>_makefile but are still used to create a
+# directory for the generated artifacts. We are using a workaround right now and
+# will be separating the project generation from the Makefile in the future.
+TARGETS_WITHOUT_MAKEFILES := \
+$(HOST_OS) \
+arduino \
+chre
+
+ifeq ($(findstring $(TARGET),$(TARGETS_WITHOUT_MAKEFILES)),)
   include $(MAKEFILE_DIR)/targets/$(TARGET)_makefile.inc
-  endif
 endif
 
 # Load dependencies for optimized kernel implementations.
