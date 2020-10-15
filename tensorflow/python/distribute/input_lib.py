@@ -144,9 +144,11 @@ def get_distributed_datasets_from_function(dataset_fn,
   
   if (options is not None
           and options.experimental_replication_mode == InputReplicationMode.PER_REPLICA
-          and options.experimental_prefetch_to_device):
-    raise ValueError("When `experimental_prefetch_to_device` is set, "
-                     "you must also specify `PER_WORKER` for the replication mode")
+          and options.experimental_prefetch_to_device
+          and options.experimental_place_dataset_on_device):
+    raise ValueError("`experimental_place_dataset_on_device` can not be set to True "
+                     "when experimental_prefetch_to_device is True and "
+                     "replication mode is set to `PER_REPLICA`")
 
   
   if tf2.enabled():
@@ -657,7 +659,7 @@ class DistributedIteratorBase(DistributedIteratorInterface):
               self._iterators[i].get_next_as_list_static_shapes(new_name))
       if (self._options
           and self._options.experimental_replication_mode == InputReplicationMode.PER_REPLICA
-              and self._options.experimental_place_dataset_on_device):
+              and not self._options.experimental_prefetch_to_device):
         replicas = tuple((p,) for p in replicas)
       return distribute_utils.regroup(replicas)
 
@@ -1642,10 +1644,7 @@ class _SingleWorkerOwnedDatasetIterator(_SingleWorkerDatasetIteratorBase,
         self._iterator = multi_device_iterator_ops.OwnedMultiDeviceIterator(
             self._dataset, self._devices, source_device=host_device)
     else:
-      if self._options.experimental_place_dataset_on_device:
-        worker_device = self._devices[0]
-      else:
-        worker_device = self._worker
+      worker_device = self._worker
       if self._options.experimental_prefetch_to_device:
         raise ValueError("`experimental_prefetch_to_device` is not supported together with "
                          "`InputReplicationMode.PER_REPLICA`")

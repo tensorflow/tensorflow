@@ -398,8 +398,12 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     if not options:
       return input_lib.InputWorkers(self._input_workers_devices)
     if options.experimental_replication_mode == distribute_lib.InputReplicationMode.PER_REPLICA:
-      self._input_workers_devices = (
-          tuple((device_util.canonicalize(d, d), (d,)) for d in self._devices))
+      if options.experimental_place_dataset_on_device:
+        self._input_workers_devices = (
+            tuple((device_util.canonicalize(d, d), (d,)) for d in self._devices))
+      else:
+        self._input_workers_devices = (
+            tuple((device_util.canonicalize("/device:CPU:0", d), (d,)) for d in self._devices))
       return input_lib.InputWorkers(self._input_workers_devices)
     else:
       if not options.experimental_prefetch_to_device:

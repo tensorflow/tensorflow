@@ -655,7 +655,7 @@ class InputOptions(
       The default value is InputReplicationMode.PER_WORKER.
     experimental_place_dataset_on_device: Boolean. Default to False. When True, dataset
       will be placed on the device, otherwise it will remain on the host. 
-      experimental_copy_dataset_on_device=True can only be used with 
+      experimental_place_dataset_on_device=True can only be used with 
       experimental_replication_mode=PER_REPLICA
   """
 
