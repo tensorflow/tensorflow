@@ -73,6 +73,9 @@ tf_py_test(
     srcs = ["metrics_serialization_test.py"],
     python_version = "PY3",
     shard_count = 8,
+    tags = [
+        "notsan",  # TODO(b/170870790)
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",

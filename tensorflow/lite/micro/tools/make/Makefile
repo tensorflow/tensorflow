@@ -111,6 +111,7 @@ COMMON_FLAGS := \
   -fdata-sections \
   -fmessage-length=0 \
   -DTF_LITE_STATIC_MEMORY \
+  -DTF_LITE_DISABLE_X86_NEON \
   $(OPTIMIZATION_LEVEL) \
   $(CC_WARNINGS) \
   $(TAG_DEFINES)
@@ -354,11 +355,18 @@ $(eval $(call add_third_party_download,$(RUY_URL),$(RUY_MD5),ruy,))
 $(eval $(call add_third_party_download,$(PERSON_MODEL_URL),$(PERSON_MODEL_MD5),person_model_grayscale,))
 $(eval $(call add_third_party_download,$(PERSON_MODEL_INT8_URL),$(PERSON_MODEL_INT8_MD5),person_model_int8,))
 
-# These target-specific makefiles should modify or replace options like
-# CXXFLAGS or LIBS to work for a specific targeted architecture. All logic
-# based on platforms or architectures should happen within these files, to
-# keep this main makefile focused on the sources and dependencies.
-include $(wildcard $(MAKEFILE_DIR)/targets/*_makefile.inc)
+# The target-specific makefile must have a name that is exactly
+# TARGET_makefile.inc and is only needed for cross-compilation (i.e. when TARGET
+# is different from the HOST_OS).
+ifneq ($(TARGET),$(HOST_OS))
+	# The arduino is also special in that it does not have an arduino_makefile but
+	# the TARGET=arduino is still used to create a directory for the generated
+	# artifacts. We are using a workaround right now and will be separating the
+	# project generation from the Makefile in the future.
+	ifneq ($(TARGET),arduino)
+  include $(MAKEFILE_DIR)/targets/$(TARGET)_makefile.inc
+  endif
+endif
 
 # Load dependencies for optimized kernel implementations.
 include $(wildcard $(MAKEFILE_DIR)/ext_libs/*.inc)

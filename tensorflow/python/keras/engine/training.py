@@ -58,6 +58,7 @@ from tensorflow.python.keras.saving.saved_model import json_utils
 from tensorflow.python.keras.saving.saved_model import model_serialization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils import version_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
@@ -1099,6 +1100,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         if validation_data and self._should_eval(epoch, validation_freq):
           # Create data_handler for evaluation and cache it.
           if getattr(self, '_eval_data_handler', None) is None:
+            self._fit_frame = tf_inspect.currentframe()
             self._eval_data_handler = data_adapter.DataHandler(
                 x=val_x,
                 y=val_y,
@@ -1134,6 +1136,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       # If eval data_hanlder exists, delete it after all epochs are done.
       if getattr(self, '_eval_data_handler', None) is not None:
         del self._eval_data_handler
+        del self._fit_frame
       callbacks.on_train_end(logs=training_logs)
       return self.history
 
@@ -1327,7 +1330,10 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     _disallow_inside_tf_function('evaluate')
 
     with self.distribute_strategy.scope():
-      if getattr(self, '_eval_data_handler', None) is not None:
+      # Use cached evaluation data only when it's called in `Model.fit`
+      if (getattr(self, '_fit_frame', None) is not None
+          and tf_inspect.currentframe().f_back is self._fit_frame
+          and getattr(self, '_eval_data_handler', None) is not None):
         data_handler = self._eval_data_handler
       else:
         # Creates a `tf.data.Dataset` and handles batch and epoch iteration.
@@ -2735,7 +2741,7 @@ def _collective_all_reduce_multi_worker(strategy):
 # for all strategies
 def _multi_worker_concat(v, strategy):
   """Order PerReplica objects for CollectiveAllReduceStrategy and concat."""
-  replicas = strategy._gather(v, axis=0)  # pylint: disable=protected-access
+  replicas = strategy.gather(v, axis=0)
   # v might not have the same shape on different replicas
   if isinstance(v, ds_values.PerReplica):
     shapes = array_ops.concat([
@@ -2743,10 +2749,10 @@ def _multi_worker_concat(v, strategy):
         for single_value in v.values
     ],
                               axis=0)
-    all_shapes = strategy._gather(shapes, axis=0)  # pylint: disable=protected-access
+    all_shapes = strategy.gather(shapes, axis=0)
   else:
     # v is a tensor. This may happen when, say, we have 2x1 multi-worker.
-    all_shapes = strategy._gather(  # pylint: disable=protected-access
+    all_shapes = strategy.gather(
         array_ops.expand_dims_v2(array_ops.shape(v)[0], axis=0),
         axis=0)
 

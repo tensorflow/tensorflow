@@ -201,6 +201,11 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
     *op_stats.mutable_device_op_metrics_db()->mutable_precision_stats() =
         ComputePrecisionStats(nonoverlapped_step_events);
   }
+
+  CoreDetails& details =
+      (*op_stats.mutable_core_id_to_details())[kDefaultGpuLocalCoreId];
+  details.set_hostname(space.hostnames().empty() ? "localhost"
+                                                 : space.hostnames(0));
   return op_stats;
 }
 

@@ -2799,6 +2799,23 @@ Converts the given variant tensor to an iterator and stores it in the given reso
   let results = (outs);
 }
 
+def TF_DestroyResourceOp : TF_Op<"DestroyResourceOp", []> {
+  let summary = "Deletes the resource specified by the handle.";
+
+  let description = [{
+All subsequent operations using the resource will result in a NotFound
+error status.
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$resource,
+
+    DefaultValuedAttr<BoolAttr, "true">:$ignore_lookup_error
+  );
+
+  let results = (outs);
+}
+
 def TF_DeviceIndexOp : TF_Op<"DeviceIndex", [NoSideEffect]> {
   let summary = "Return the index of device the op runs.";
 

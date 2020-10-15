@@ -57,7 +57,6 @@ tpu_py_test(
         "automatic_outside_compilation_test.py",
     ],
     disable_experimental = True,
-    disable_mlir_bridge = False,
     python_version = "PY3",
     tags = ["no_oss"],
     deps = [

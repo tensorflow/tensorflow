@@ -392,7 +392,6 @@ StatusOr<lmhlo::FusionOp> LhloDialectEmitter::EmitFusionOp(
     }
   }
 
-  LOG(ERROR) << instr->GetModule()->ToString();
   builder_.restoreInsertionPoint(after_fusion);
   return fusion;
 }

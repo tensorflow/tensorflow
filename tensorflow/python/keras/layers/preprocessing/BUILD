@@ -701,6 +701,7 @@ tf_py_test(
     name = "reduction_test",
     srcs = ["reduction_test.py"],
     python_version = "PY3",
+    tags = ["notsan"],  # TODO(b/170783154)
     deps = [
         ":reduction",
         "//tensorflow/python:client_testlib",

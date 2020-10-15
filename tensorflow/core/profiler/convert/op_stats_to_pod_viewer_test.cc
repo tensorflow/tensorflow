@@ -34,7 +34,7 @@ namespace {
 
 const double kMaxError = 1e-6;
 constexpr int kStepNum = 2;
-constexpr int kCoreId = 1;
+constexpr int kCoreId = 1001;
 constexpr int kStepTimePs = 1000;
 constexpr int kHostComputePs = 50;
 constexpr int kHostCompilePs = 50;
@@ -50,6 +50,7 @@ constexpr int kDeviceCompute16Ps = 50;
 constexpr int kDeviceWaitDevicePs = 50;
 constexpr int kDeviceWaitHostPs = 50;
 constexpr int kUnknownTimePs = 50;
+static constexpr char kHostname[] = "host:123";
 
 void CreateOpStats(OpStats* op_stats) {
   PerCoreStepInfo* info = op_stats->mutable_step_db()->add_step_sequence();
@@ -74,6 +75,8 @@ void CreateOpStats(OpStats* op_stats) {
   type_ps[DEVICE_WAIT_HOST] = kDeviceWaitHostPs;
   type_ps[UNKNOWN_TIME] = kUnknownTimePs;
   step_info.mutable_step_breakdown()->PackFrom(breakdown);
+  CoreDetails& details = (*op_stats->mutable_core_id_to_details())[kCoreId];
+  details.set_hostname(kHostname);
 }
 
 TEST(OpStatsToPodViewer, GpuPodViewer) {
@@ -86,6 +89,7 @@ TEST(OpStatsToPodViewer, GpuPodViewer) {
   EXPECT_EQ(kStepNum, pod_stats_map.step_num());
   const PodStatsRecord& record = pod_stats_map.pod_stats_per_core().at(kCoreId);
   EXPECT_EQ(kStepNum, record.step_num());
+  EXPECT_EQ(kHostname, record.host_name());
   EXPECT_NEAR(PicosToMicros(kStepTimePs), record.total_duration_us(),
               kMaxError);
   const auto& breakdown = record.step_breakdown_us();

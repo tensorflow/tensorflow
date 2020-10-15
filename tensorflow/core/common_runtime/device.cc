@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/common_runtime/device.h"
 
 #include "tensorflow/core/framework/op_segment.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {

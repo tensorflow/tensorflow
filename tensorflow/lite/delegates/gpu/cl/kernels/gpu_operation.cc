@@ -223,7 +223,8 @@ absl::Status GPUOperation::UpdateParams() {
   return absl::OkStatus();
 }
 
-absl::Status GPUOperation::Compile(const CreationContext& creation_context) {
+absl::Status GPUOperation::AssembleCode(const DeviceInfo& device_info,
+                                        CLContext* context) {
   if (elementwise_) {
     auto src_desc =
         absl::make_unique<TensorDescriptor>(definition_.src_tensors[0]);
@@ -241,26 +242,33 @@ absl::Status GPUOperation::Compile(const CreationContext& creation_context) {
     dst_tensors_names_.insert(dst_tensors_names_.begin(), "dst_tensor");
     args_.AddObjectRef("dst_tensor", AccessType::WRITE, std::move(dst_desc));
 
-    std::string code =
-        GetElementWiseCode(definition_, check_src_channels_size_);
     elementwise_code_ = "{\n" + code_ + "\n}\n" + elementwise_code_;
-    RETURN_IF_ERROR(args_.AllocateObjects(creation_context.context));
+    code_ = GetElementWiseCode(definition_, check_src_channels_size_);
+    RETURN_IF_ERROR(args_.AllocateObjects(context));
     RETURN_IF_ERROR(args_.TransformToCLCode(
-        creation_context.device->info_,
-        {{dst_tensors_names_[0], elementwise_code_}}, &code));
-    RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
-        code, "main_function", *creation_context.context,
-        *creation_context.device, &kernel_));
+        device_info, {{dst_tensors_names_[0], elementwise_code_}}, &code_));
   } else {
-    RETURN_IF_ERROR(args_.AllocateObjects(creation_context.context));
+    RETURN_IF_ERROR(args_.AllocateObjects(context));
     RETURN_IF_ERROR(args_.TransformToCLCode(
-        creation_context.device->info_,
-        {{dst_tensors_names_[0], elementwise_code_}}, &code_));
-    RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
-        code_, "main_function", compiler_options_, *creation_context.context,
-        *creation_context.device, &kernel_));
+        device_info, {{dst_tensors_names_[0], elementwise_code_}}, &code_));
   }
+  return absl::OkStatus();
+}
+
+absl::Status GPUOperation::Compile(const CreationContext& creation_context) {
+  RETURN_IF_ERROR(
+      AssembleCode(creation_context.GetDeviceInfo(), creation_context.context));
+  RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
+      code_, "main_function", compiler_options_, *creation_context.context,
+      *creation_context.device, &kernel_));
   return PostCompileCheck(creation_context.device->info_, kernel_.info_);
+}
+
+absl::Status GPUOperation::CompileDeserialized(
+    const CreationContext& creation_context) {
+  return creation_context.cache->GetOrCreateCLKernel(
+      code_, "main_function", compiler_options_, *creation_context.context,
+      *creation_context.device, &kernel_);
 }
 
 void GPUOperation::GetPossibleKernelWorkGroups(
@@ -329,7 +337,7 @@ int3 GPUOperation::GetGridSize() const {
     const int grid_z = 1;
     return int3(grid_x, grid_y, grid_z);
   }
-  return int3(0, 0, 0);
+  return grid_size_;
 }
 
 void GPUOperation::AddUniquePostfix(const std::string& unique_postfix) {

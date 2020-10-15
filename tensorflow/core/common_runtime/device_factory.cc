@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/device_factory.h"
+#include "tensorflow/core/common_runtime/device_factory.h"
 
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
-#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"

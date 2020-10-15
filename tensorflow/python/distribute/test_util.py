@@ -58,7 +58,7 @@ def _gather(strategy, value):
     return array_ops.stack(value._values)
   assert len(strategy.extended.worker_devices) == len(value._values)
   inputs = [array_ops.expand_dims_v2(v, axis=0) for v in value._values]
-  return strategy._gather(values.PerReplica(inputs), axis=0)
+  return strategy.gather(values.PerReplica(inputs), axis=0)
   # pylint: enable=protected-access
 
 

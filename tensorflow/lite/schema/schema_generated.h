@@ -364,6 +364,12 @@ struct BufferT;
 struct Metadata;
 struct MetadataT;
 
+struct TensorMap;
+struct TensorMapT;
+
+struct SignatureDef;
+struct SignatureDefT;
+
 struct Model;
 struct ModelT;
 
@@ -10593,6 +10599,193 @@ inline flatbuffers::Offset<Metadata> CreateMetadataDirect(
 
 flatbuffers::Offset<Metadata> CreateMetadata(flatbuffers::FlatBufferBuilder &_fbb, const MetadataT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct TensorMapT : public flatbuffers::NativeTable {
+  typedef TensorMap TableType;
+  std::string name;
+  uint32_t tensor_index;
+  TensorMapT()
+      : tensor_index(0) {
+  }
+};
+
+struct TensorMap FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef TensorMapT NativeTableType;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_NAME = 4,
+    VT_TENSOR_INDEX = 6
+  };
+  const flatbuffers::String *name() const {
+    return GetPointer<const flatbuffers::String *>(VT_NAME);
+  }
+  uint32_t tensor_index() const {
+    return GetField<uint32_t>(VT_TENSOR_INDEX, 0);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyOffset(verifier, VT_NAME) &&
+           verifier.VerifyString(name()) &&
+           VerifyField<uint32_t>(verifier, VT_TENSOR_INDEX) &&
+           verifier.EndTable();
+  }
+  TensorMapT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(TensorMapT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<TensorMap> Pack(flatbuffers::FlatBufferBuilder &_fbb, const TensorMapT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct TensorMapBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_name(flatbuffers::Offset<flatbuffers::String> name) {
+    fbb_.AddOffset(TensorMap::VT_NAME, name);
+  }
+  void add_tensor_index(uint32_t tensor_index) {
+    fbb_.AddElement<uint32_t>(TensorMap::VT_TENSOR_INDEX, tensor_index, 0);
+  }
+  explicit TensorMapBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  TensorMapBuilder &operator=(const TensorMapBuilder &);
+  flatbuffers::Offset<TensorMap> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<TensorMap>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<TensorMap> CreateTensorMap(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    flatbuffers::Offset<flatbuffers::String> name = 0,
+    uint32_t tensor_index = 0) {
+  TensorMapBuilder builder_(_fbb);
+  builder_.add_tensor_index(tensor_index);
+  builder_.add_name(name);
+  return builder_.Finish();
+}
+
+inline flatbuffers::Offset<TensorMap> CreateTensorMapDirect(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    const char *name = nullptr,
+    uint32_t tensor_index = 0) {
+  auto name__ = name ? _fbb.CreateString(name) : 0;
+  return tflite::CreateTensorMap(
+      _fbb,
+      name__,
+      tensor_index);
+}
+
+flatbuffers::Offset<TensorMap> CreateTensorMap(flatbuffers::FlatBufferBuilder &_fbb, const TensorMapT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct SignatureDefT : public flatbuffers::NativeTable {
+  typedef SignatureDef TableType;
+  std::vector<std::unique_ptr<tflite::TensorMapT>> inputs;
+  std::vector<std::unique_ptr<tflite::TensorMapT>> outputs;
+  std::string method_name;
+  std::string key;
+  SignatureDefT() {
+  }
+};
+
+struct SignatureDef FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef SignatureDefT NativeTableType;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_INPUTS = 4,
+    VT_OUTPUTS = 6,
+    VT_METHOD_NAME = 8,
+    VT_KEY = 10
+  };
+  const flatbuffers::Vector<flatbuffers::Offset<tflite::TensorMap>> *inputs() const {
+    return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<tflite::TensorMap>> *>(VT_INPUTS);
+  }
+  const flatbuffers::Vector<flatbuffers::Offset<tflite::TensorMap>> *outputs() const {
+    return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<tflite::TensorMap>> *>(VT_OUTPUTS);
+  }
+  const flatbuffers::String *method_name() const {
+    return GetPointer<const flatbuffers::String *>(VT_METHOD_NAME);
+  }
+  const flatbuffers::String *key() const {
+    return GetPointer<const flatbuffers::String *>(VT_KEY);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyOffset(verifier, VT_INPUTS) &&
+           verifier.VerifyVector(inputs()) &&
+           verifier.VerifyVectorOfTables(inputs()) &&
+           VerifyOffset(verifier, VT_OUTPUTS) &&
+           verifier.VerifyVector(outputs()) &&
+           verifier.VerifyVectorOfTables(outputs()) &&
+           VerifyOffset(verifier, VT_METHOD_NAME) &&
+           verifier.VerifyString(method_name()) &&
+           VerifyOffset(verifier, VT_KEY) &&
+           verifier.VerifyString(key()) &&
+           verifier.EndTable();
+  }
+  SignatureDefT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(SignatureDefT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<SignatureDef> Pack(flatbuffers::FlatBufferBuilder &_fbb, const SignatureDefT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct SignatureDefBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_inputs(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::TensorMap>>> inputs) {
+    fbb_.AddOffset(SignatureDef::VT_INPUTS, inputs);
+  }
+  void add_outputs(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::TensorMap>>> outputs) {
+    fbb_.AddOffset(SignatureDef::VT_OUTPUTS, outputs);
+  }
+  void add_method_name(flatbuffers::Offset<flatbuffers::String> method_name) {
+    fbb_.AddOffset(SignatureDef::VT_METHOD_NAME, method_name);
+  }
+  void add_key(flatbuffers::Offset<flatbuffers::String> key) {
+    fbb_.AddOffset(SignatureDef::VT_KEY, key);
+  }
+  explicit SignatureDefBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  SignatureDefBuilder &operator=(const SignatureDefBuilder &);
+  flatbuffers::Offset<SignatureDef> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<SignatureDef>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<SignatureDef> CreateSignatureDef(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::TensorMap>>> inputs = 0,
+    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::TensorMap>>> outputs = 0,
+    flatbuffers::Offset<flatbuffers::String> method_name = 0,
+    flatbuffers::Offset<flatbuffers::String> key = 0) {
+  SignatureDefBuilder builder_(_fbb);
+  builder_.add_key(key);
+  builder_.add_method_name(method_name);
+  builder_.add_outputs(outputs);
+  builder_.add_inputs(inputs);
+  return builder_.Finish();
+}
+
+inline flatbuffers::Offset<SignatureDef> CreateSignatureDefDirect(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    const std::vector<flatbuffers::Offset<tflite::TensorMap>> *inputs = nullptr,
+    const std::vector<flatbuffers::Offset<tflite::TensorMap>> *outputs = nullptr,
+    const char *method_name = nullptr,
+    const char *key = nullptr) {
+  auto inputs__ = inputs ? _fbb.CreateVector<flatbuffers::Offset<tflite::TensorMap>>(*inputs) : 0;
+  auto outputs__ = outputs ? _fbb.CreateVector<flatbuffers::Offset<tflite::TensorMap>>(*outputs) : 0;
+  auto method_name__ = method_name ? _fbb.CreateString(method_name) : 0;
+  auto key__ = key ? _fbb.CreateString(key) : 0;
+  return tflite::CreateSignatureDef(
+      _fbb,
+      inputs__,
+      outputs__,
+      method_name__,
+      key__);
+}
+
+flatbuffers::Offset<SignatureDef> CreateSignatureDef(flatbuffers::FlatBufferBuilder &_fbb, const SignatureDefT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct ModelT : public flatbuffers::NativeTable {
   typedef Model TableType;
   uint32_t version;
@@ -10602,6 +10795,7 @@ struct ModelT : public flatbuffers::NativeTable {
   std::vector<std::unique_ptr<tflite::BufferT>> buffers;
   std::vector<int32_t> metadata_buffer;
   std::vector<std::unique_ptr<tflite::MetadataT>> metadata;
+  std::vector<std::unique_ptr<tflite::SignatureDefT>> signature_defs;
   ModelT()
       : version(0) {
   }
@@ -10616,7 +10810,8 @@ struct Model FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_DESCRIPTION = 10,
     VT_BUFFERS = 12,
     VT_METADATA_BUFFER = 14,
-    VT_METADATA = 16
+    VT_METADATA = 16,
+    VT_SIGNATURE_DEFS = 18
   };
   uint32_t version() const {
     return GetField<uint32_t>(VT_VERSION, 0);
@@ -10639,6 +10834,9 @@ struct Model FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const flatbuffers::Vector<flatbuffers::Offset<tflite::Metadata>> *metadata() const {
     return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<tflite::Metadata>> *>(VT_METADATA);
   }
+  const flatbuffers::Vector<flatbuffers::Offset<tflite::SignatureDef>> *signature_defs() const {
+    return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<tflite::SignatureDef>> *>(VT_SIGNATURE_DEFS);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint32_t>(verifier, VT_VERSION) &&
@@ -10658,6 +10856,9 @@ struct Model FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyOffset(verifier, VT_METADATA) &&
            verifier.VerifyVector(metadata()) &&
            verifier.VerifyVectorOfTables(metadata()) &&
+           VerifyOffset(verifier, VT_SIGNATURE_DEFS) &&
+           verifier.VerifyVector(signature_defs()) &&
+           verifier.VerifyVectorOfTables(signature_defs()) &&
            verifier.EndTable();
   }
   ModelT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -10689,6 +10890,9 @@ struct ModelBuilder {
   void add_metadata(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::Metadata>>> metadata) {
     fbb_.AddOffset(Model::VT_METADATA, metadata);
   }
+  void add_signature_defs(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::SignatureDef>>> signature_defs) {
+    fbb_.AddOffset(Model::VT_SIGNATURE_DEFS, signature_defs);
+  }
   explicit ModelBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -10709,8 +10913,10 @@ inline flatbuffers::Offset<Model> CreateModel(
     flatbuffers::Offset<flatbuffers::String> description = 0,
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::Buffer>>> buffers = 0,
     flatbuffers::Offset<flatbuffers::Vector<int32_t>> metadata_buffer = 0,
-    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::Metadata>>> metadata = 0) {
+    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::Metadata>>> metadata = 0,
+    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::SignatureDef>>> signature_defs = 0) {
   ModelBuilder builder_(_fbb);
+  builder_.add_signature_defs(signature_defs);
   builder_.add_metadata(metadata);
   builder_.add_metadata_buffer(metadata_buffer);
   builder_.add_buffers(buffers);
@@ -10729,13 +10935,15 @@ inline flatbuffers::Offset<Model> CreateModelDirect(
     const char *description = nullptr,
     const std::vector<flatbuffers::Offset<tflite::Buffer>> *buffers = nullptr,
     const std::vector<int32_t> *metadata_buffer = nullptr,
-    const std::vector<flatbuffers::Offset<tflite::Metadata>> *metadata = nullptr) {
+    const std::vector<flatbuffers::Offset<tflite::Metadata>> *metadata = nullptr,
+    const std::vector<flatbuffers::Offset<tflite::SignatureDef>> *signature_defs = nullptr) {
   auto operator_codes__ = operator_codes ? _fbb.CreateVector<flatbuffers::Offset<tflite::OperatorCode>>(*operator_codes) : 0;
   auto subgraphs__ = subgraphs ? _fbb.CreateVector<flatbuffers::Offset<tflite::SubGraph>>(*subgraphs) : 0;
   auto description__ = description ? _fbb.CreateString(description) : 0;
   auto buffers__ = buffers ? _fbb.CreateVector<flatbuffers::Offset<tflite::Buffer>>(*buffers) : 0;
   auto metadata_buffer__ = metadata_buffer ? _fbb.CreateVector<int32_t>(*metadata_buffer) : 0;
   auto metadata__ = metadata ? _fbb.CreateVector<flatbuffers::Offset<tflite::Metadata>>(*metadata) : 0;
+  auto signature_defs__ = signature_defs ? _fbb.CreateVector<flatbuffers::Offset<tflite::SignatureDef>>(*signature_defs) : 0;
   return tflite::CreateModel(
       _fbb,
       version,
@@ -10744,7 +10952,8 @@ inline flatbuffers::Offset<Model> CreateModelDirect(
       description__,
       buffers__,
       metadata_buffer__,
-      metadata__);
+      metadata__,
+      signature_defs__);
 }
 
 flatbuffers::Offset<Model> CreateModel(flatbuffers::FlatBufferBuilder &_fbb, const ModelT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -10758,7 +10967,7 @@ inline CustomQuantizationT *CustomQuantization::UnPack(const flatbuffers::resolv
 inline void CustomQuantization::UnPackTo(CustomQuantizationT *_o, const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
-  { auto _e = custom(); if (_e) { _o->custom.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->custom[_i] = _e->Get(_i); } } }
+  { auto _e = custom(); if (_e) { _o->custom.resize(_e->size()); std::copy(_e->begin(), _e->end(), _o->custom.begin()); } }
 }
 
 inline flatbuffers::Offset<CustomQuantization> CustomQuantization::Pack(flatbuffers::FlatBufferBuilder &_fbb, const CustomQuantizationT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -10882,7 +11091,7 @@ inline Uint8VectorT *Uint8Vector::UnPack(const flatbuffers::resolver_function_t 
 inline void Uint8Vector::UnPackTo(Uint8VectorT *_o, const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
-  { auto _e = values(); if (_e) { _o->values.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->values[_i] = _e->Get(_i); } } }
+  { auto _e = values(); if (_e) { _o->values.resize(_e->size()); std::copy(_e->begin(), _e->end(), _o->values.begin()); } }
 }
 
 inline flatbuffers::Offset<Uint8Vector> Uint8Vector::Pack(flatbuffers::FlatBufferBuilder &_fbb, const Uint8VectorT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -13752,7 +13961,7 @@ inline void Operator::UnPackTo(OperatorT *_o, const flatbuffers::resolver_functi
   { auto _e = outputs(); if (_e) { _o->outputs.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->outputs[_i] = _e->Get(_i); } } }
   { auto _e = builtin_options_type(); _o->builtin_options.type = _e; }
   { auto _e = builtin_options(); if (_e) _o->builtin_options.value = tflite::BuiltinOptionsUnion::UnPack(_e, builtin_options_type(), _resolver); }
-  { auto _e = custom_options(); if (_e) { _o->custom_options.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->custom_options[_i] = _e->Get(_i); } } }
+  { auto _e = custom_options(); if (_e) { _o->custom_options.resize(_e->size()); std::copy(_e->begin(), _e->end(), _o->custom_options.begin()); } }
   { auto _e = custom_options_format(); _o->custom_options_format = _e; }
   { auto _e = mutating_variable_inputs(); if (_e) { _o->mutating_variable_inputs.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->mutating_variable_inputs[_i] = _e->Get(_i) != 0; } } }
   { auto _e = intermediates(); if (_e) { _o->intermediates.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->intermediates[_i] = _e->Get(_i); } } }
@@ -13835,7 +14044,7 @@ inline BufferT *Buffer::UnPack(const flatbuffers::resolver_function_t *_resolver
 inline void Buffer::UnPackTo(BufferT *_o, const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
-  { auto _e = data(); if (_e) { _o->data.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->data[_i] = _e->Get(_i); } } }
+  { auto _e = data(); if (_e) { _o->data.resize(_e->size()); std::copy(_e->begin(), _e->end(), _o->data.begin()); } }
 }
 
 inline flatbuffers::Offset<Buffer> Buffer::Pack(flatbuffers::FlatBufferBuilder &_fbb, const BufferT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -13882,6 +14091,70 @@ inline flatbuffers::Offset<Metadata> CreateMetadata(flatbuffers::FlatBufferBuild
       _buffer);
 }
 
+inline TensorMapT *TensorMap::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new TensorMapT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void TensorMap::UnPackTo(TensorMapT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = name(); if (_e) _o->name = _e->str(); }
+  { auto _e = tensor_index(); _o->tensor_index = _e; }
+}
+
+inline flatbuffers::Offset<TensorMap> TensorMap::Pack(flatbuffers::FlatBufferBuilder &_fbb, const TensorMapT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateTensorMap(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<TensorMap> CreateTensorMap(flatbuffers::FlatBufferBuilder &_fbb, const TensorMapT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const TensorMapT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _name = _o->name.empty() ? 0 : _fbb.CreateString(_o->name);
+  auto _tensor_index = _o->tensor_index;
+  return tflite::CreateTensorMap(
+      _fbb,
+      _name,
+      _tensor_index);
+}
+
+inline SignatureDefT *SignatureDef::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new SignatureDefT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void SignatureDef::UnPackTo(SignatureDefT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = inputs(); if (_e) { _o->inputs.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->inputs[_i] = std::unique_ptr<tflite::TensorMapT>(_e->Get(_i)->UnPack(_resolver)); } } }
+  { auto _e = outputs(); if (_e) { _o->outputs.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->outputs[_i] = std::unique_ptr<tflite::TensorMapT>(_e->Get(_i)->UnPack(_resolver)); } } }
+  { auto _e = method_name(); if (_e) _o->method_name = _e->str(); }
+  { auto _e = key(); if (_e) _o->key = _e->str(); }
+}
+
+inline flatbuffers::Offset<SignatureDef> SignatureDef::Pack(flatbuffers::FlatBufferBuilder &_fbb, const SignatureDefT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateSignatureDef(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<SignatureDef> CreateSignatureDef(flatbuffers::FlatBufferBuilder &_fbb, const SignatureDefT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const SignatureDefT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _inputs = _o->inputs.size() ? _fbb.CreateVector<flatbuffers::Offset<tflite::TensorMap>> (_o->inputs.size(), [](size_t i, _VectorArgs *__va) { return CreateTensorMap(*__va->__fbb, __va->__o->inputs[i].get(), __va->__rehasher); }, &_va ) : 0;
+  auto _outputs = _o->outputs.size() ? _fbb.CreateVector<flatbuffers::Offset<tflite::TensorMap>> (_o->outputs.size(), [](size_t i, _VectorArgs *__va) { return CreateTensorMap(*__va->__fbb, __va->__o->outputs[i].get(), __va->__rehasher); }, &_va ) : 0;
+  auto _method_name = _o->method_name.empty() ? 0 : _fbb.CreateString(_o->method_name);
+  auto _key = _o->key.empty() ? 0 : _fbb.CreateString(_o->key);
+  return tflite::CreateSignatureDef(
+      _fbb,
+      _inputs,
+      _outputs,
+      _method_name,
+      _key);
+}
+
 inline ModelT *Model::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new ModelT();
   UnPackTo(_o, _resolver);
@@ -13898,6 +14171,7 @@ inline void Model::UnPackTo(ModelT *_o, const flatbuffers::resolver_function_t *
   { auto _e = buffers(); if (_e) { _o->buffers.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->buffers[_i] = std::unique_ptr<tflite::BufferT>(_e->Get(_i)->UnPack(_resolver)); } } }
   { auto _e = metadata_buffer(); if (_e) { _o->metadata_buffer.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->metadata_buffer[_i] = _e->Get(_i); } } }
   { auto _e = metadata(); if (_e) { _o->metadata.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->metadata[_i] = std::unique_ptr<tflite::MetadataT>(_e->Get(_i)->UnPack(_resolver)); } } }
+  { auto _e = signature_defs(); if (_e) { _o->signature_defs.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->signature_defs[_i] = std::unique_ptr<tflite::SignatureDefT>(_e->Get(_i)->UnPack(_resolver)); } } }
 }
 
 inline flatbuffers::Offset<Model> Model::Pack(flatbuffers::FlatBufferBuilder &_fbb, const ModelT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -13915,6 +14189,7 @@ inline flatbuffers::Offset<Model> CreateModel(flatbuffers::FlatBufferBuilder &_f
   auto _buffers = _o->buffers.size() ? _fbb.CreateVector<flatbuffers::Offset<tflite::Buffer>> (_o->buffers.size(), [](size_t i, _VectorArgs *__va) { return CreateBuffer(*__va->__fbb, __va->__o->buffers[i].get(), __va->__rehasher); }, &_va ) : 0;
   auto _metadata_buffer = _o->metadata_buffer.size() ? _fbb.CreateVector(_o->metadata_buffer) : 0;
   auto _metadata = _o->metadata.size() ? _fbb.CreateVector<flatbuffers::Offset<tflite::Metadata>> (_o->metadata.size(), [](size_t i, _VectorArgs *__va) { return CreateMetadata(*__va->__fbb, __va->__o->metadata[i].get(), __va->__rehasher); }, &_va ) : 0;
+  auto _signature_defs = _o->signature_defs.size() ? _fbb.CreateVector<flatbuffers::Offset<tflite::SignatureDef>> (_o->signature_defs.size(), [](size_t i, _VectorArgs *__va) { return CreateSignatureDef(*__va->__fbb, __va->__o->signature_defs[i].get(), __va->__rehasher); }, &_va ) : 0;
   return tflite::CreateModel(
       _fbb,
       _version,
@@ -13923,7 +14198,8 @@ inline flatbuffers::Offset<Model> CreateModel(flatbuffers::FlatBufferBuilder &_f
       _description,
       _buffers,
       _metadata_buffer,
-      _metadata);
+      _metadata,
+      _signature_defs);
 }
 
 inline bool VerifyQuantizationDetails(flatbuffers::Verifier &verifier, const void *obj, QuantizationDetails type) {

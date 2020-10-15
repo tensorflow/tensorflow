@@ -46,7 +46,6 @@
 #
 # Public mobile targets, e.g. for Android:
 #
-# filegroup ":android_proto_srcs" - Protos
 # cc_library ":portable_tensorflow_lib" - Native library
 # cc_library ":portable_tensorflow_lib_lite" - Native library, without ops,
 #   supporting SELECTIVE_REGISTRATION feature.
@@ -88,7 +87,7 @@ load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
 load("//tensorflow:tensorflow.bzl", "if_nccl")
 
 # buildifier: disable=same-origin-load
-load("@tf_toolchains//macros:cpp.bzl", "tensorflow_opensource_extra_deps")
+load("//tensorflow:tensorflow.bzl", "tensorflow_opensource_extra_deps")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests_gpu")
@@ -290,12 +289,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "framework_bounds_check",
-    actual = "//tensorflow/core/framework:bounds_check",
-    visibility = ["//tensorflow/core/kernels:friends"],
-)
-
 # Minimal lib so that tools used for mobile compilation
 # don't have to depend on lib/platformlib.
 cc_library(
@@ -425,9 +418,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:control_flow.h",  # TODO(josh11b): Make internal?
         "//tensorflow/core/framework:dataset.h",
         "//tensorflow/core/framework:dataset_stateful_op_allowlist.h",
-        "//tensorflow/core/framework:device.h",
         "//tensorflow/core/framework:device_base.h",
-        "//tensorflow/core/framework:device_factory.h",
         "//tensorflow/core/framework:function.h",
         "//tensorflow/core/framework:function_handle_cache.h",
         "//tensorflow/core/framework:graph_def_util.h",
@@ -839,13 +830,6 @@ tf_cuda_library(
 
 # -----------------------------------------------------------------------------
 # Public Android targets
-
-# List of protos we want on android
-filegroup(
-    name = "android_proto_srcs",
-    srcs = CORE_PROTO_SRCS,
-    visibility = ["//visibility:public"],
-)
 
 # Sources required to build the TensorFlow framework without the runtime on
 # mobile platforms. This is essentially the sources required to build
@@ -1597,7 +1581,6 @@ filegroup(
         "//tensorflow/core/example:feature_util.h",
         "//tensorflow/core/framework:framework_internal_private_hdrs",
         "//tensorflow/core/graph:framework_internal_private_headers",
-        "//tensorflow/core/public:session_options.h",
         "//tensorflow/core/util:framework_internal_private_hdrs",
         "//tensorflow/core/util:memmapped_file_system_hdrs",
         "//tensorflow/core/util/sparse:framework_internal_private_headers_group",
@@ -1885,14 +1868,6 @@ alias(
     visibility = ["//tensorflow:internal"],
 )
 
-test_suite(
-    name = "low_level_tests",
-    tests = [
-        ":low_level_library_tests",
-        "//tensorflow/core/platform:low_level_library_tests",
-    ],
-)
-
 tf_cc_tests(
     name = "low_level_library_tests",
     size = "small",
@@ -1913,7 +1888,6 @@ tf_cc_tests(
         "//tensorflow/core/lib/random:legacy_lib_random_tests",
         "//tensorflow/core/lib/strings:legacy_low_level_library_tests",
     ],
-    create_named_test_suite = True,
     deps = [
         ":lib",
         ":lib_internal",
@@ -1946,22 +1920,6 @@ tf_cc_test(
         ":test",
         ":test_main",
         "//third_party/eigen3",
-    ],
-)
-
-test_suite(
-    name = "platform_tests",
-    tests = [
-        "//tensorflow/core/platform:abi_test",
-        "//tensorflow/core/platform:env_test",
-        "//tensorflow/core/platform:fake_python_env_test",
-        "//tensorflow/core/platform:file_system_test",
-        "//tensorflow/core/platform:numa_test",
-        "//tensorflow/core/platform:platform_strings_test",
-        "//tensorflow/core/platform:rocm_rocdl_path_test",
-        "//tensorflow/core/platform:setround_test",
-        "//tensorflow/core/platform:unbounded_work_queue_test",
-        "//tensorflow/core/platform:vmodule_test",
     ],
 )
 
@@ -2017,15 +1975,6 @@ tf_cc_test(
     ],
 )
 
-test_suite(
-    name = "higher_level_tests",
-    tests = [
-        ":core_higher_level_tests",
-        "//tensorflow/core/framework:higher_level_tests",
-        "//tensorflow/core/util:higher_level_tests",
-    ],
-)
-
 tf_cc_tests(
     name = "core_higher_level_tests",
     size = "small",
@@ -2044,7 +1993,6 @@ tf_cc_tests(
         "//tensorflow/core/graph:validate_test.cc",
         "//tensorflow/core/util/sparse:higher_level_tests_group",
     ],
-    create_named_test_suite = True,
     linkopts = select({
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],

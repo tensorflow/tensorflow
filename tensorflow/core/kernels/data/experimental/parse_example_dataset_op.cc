@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/kernels/data/parallel_map_dataset_op.h"
 #include "tensorflow/core/kernels/data/stats_utils.h"
+#include "tensorflow/core/kernels/ragged_tensor_variant.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -678,12 +679,9 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
         for (int d = 0; d < dataset()->ragged_keys_.size(); ++d) {
           int output_index =
               dataset()->key_to_output_index_.at(dataset()->ragged_keys_[d]);
-          (*output)[output_index] = Tensor(ctx->allocator({}), DT_VARIANT, {});
-          Tensor serialized_ragged =
-              Tensor(ctx->allocator({}), DT_VARIANT, {2});
-          auto serialized_ragged_t = serialized_ragged.vec<Variant>();
-          serialized_ragged_t(0) = example_result.ragged_splits[d];
-          serialized_ragged_t(1) = example_result.ragged_values[d];
+          RaggedTensorVariant serialized_ragged;
+          serialized_ragged.append_splits(example_result.ragged_splits[d]);
+          serialized_ragged.set_values(example_result.ragged_values[d]);
           (*output)[output_index] = Tensor(ctx->allocator({}), DT_VARIANT, {});
           Tensor& ragged_wrapper = (*output)[output_index];
           ragged_wrapper.scalar<Variant>()() = serialized_ragged;

@@ -283,25 +283,27 @@ Status XlaCompilationCache::CompileSingleOp(
     const NodeDef& node_def = ctx->op_kernel().def();
     TF_ASSIGN_OR_RETURN(auto graph, CreateGraph(node_def, args, result_dtypes));
 
+    // TODO(b/155596779): Support TensorList args.
     bool has_tensor_list_arg =
         absl::c_any_of(args, [](const XlaCompiler::Argument arg) {
           return arg.kind == XlaCompiler::Argument::kTensorList;
         });
     const ConfigProto* config = ctx->function_library()->config_proto();
-    bool use_mlir = config && config->experimental().enable_mlir_bridge();
+    bool use_mlir = config && config->experimental().enable_mlir_bridge() &&
+                    !has_tensor_list_arg;
 #ifdef LIBTPU_ON_GCE
-    if (use_mlir && has_tensor_list_arg) {
+    if (use_mlir) {
       LOG(WARNING) << "MLIR is not supported in this environment.";
     }
     return compiler->CompileGraph(compile_options, node_def.name(),
                                   std::move(graph), args, result);
 #else
-    // TODO(b/155596779): Support TensorList args.
-    if (!use_mlir || !has_tensor_list_arg) {
+    if (!use_mlir) {
       return compiler->CompileGraph(compile_options, node_def.name(),
                                     std::move(graph), args, result);
     }
 
+    VLOG(1) << "Using MLIR bridge";
     GraphDebugInfo debug_info;
     std::vector<std::string> control_rets;
     if (result_dtypes.empty()) {

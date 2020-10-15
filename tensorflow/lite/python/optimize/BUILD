@@ -50,6 +50,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":_pywrap_tensorflow_lite_calibration_wrapper",  # buildcleaner: keep
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:util",
         "//third_party/py/numpy",
     ],
@@ -67,8 +68,8 @@ py_test(
     tags = ["no_oss"],
     deps = [
         ":calibrator",
-        "//tensorflow/lite/python:lite_constants",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
         "//third_party/py/numpy",
