@@ -1231,7 +1231,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
         diff_dst_data = static_cast<T*>(diff_dst.GetOpMem().get_data_handle());
       }
 
-      if (!native_format && (src_md != bn_bwd_pd->src_desc()) {
+      if (!native_format && (src_md != bn_bwd_pd->src_desc())) {
         src.SetUsrMem(src_md, src_data);
         src.CheckReorderToOpMem(bn_bwd_pd->src_desc(), cpu_engine_, context);
         src_data = static_cast<T*>(src.GetOpMem().get_data_handle());
