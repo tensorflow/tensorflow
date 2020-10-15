@@ -497,9 +497,9 @@ def ConvertExpandDimsToReshape : Pat<
   [(AnyStaticShapeTensor $expand_dims_op)]>;
 
 class FloatValueEquals<string val> : Constraint<CPred<
-  "$0.cast<DenseElementsAttr>().getNumElements() == 1 &&"
-  "$0.isa<DenseFPElementsAttr>() &&"
-  "*$0.cast<DenseElementsAttr>().getValues<float>().begin() == " # val>>;
+  "$0.isa<DenseFPElementsAttr>() && "
+  "llvm::all_of($0.cast<DenseElementsAttr>().getFloatValues(), "
+  "[](const APFloat& f) { return f.isExactlyValue(" # val # "); })">>;
 
 // ReLU patterns
 def MatchReluPattern : Pat<
