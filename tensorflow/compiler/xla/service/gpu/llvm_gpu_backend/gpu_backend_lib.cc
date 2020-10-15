@@ -149,7 +149,7 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
   }
 
   llvm::TargetOptions target_options =
-      llvm::codegen::InitTargetOptionsFromCodeGenFlags();
+      llvm::codegen::InitTargetOptionsFromCodeGenFlags(llvm::Triple());
 
   // Set the verbose assembly options.
   target_options.MCOptions.AsmVerbose = false;

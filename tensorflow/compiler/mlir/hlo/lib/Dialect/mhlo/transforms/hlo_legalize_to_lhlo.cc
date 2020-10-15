@@ -42,7 +42,7 @@ namespace mhlo {
 namespace {
 
 template <typename T>
-using BaseOpConversion = BufferAssignmentOpConversionPattern<T>;
+using BaseOpConversion = BufferizeOpConversionPattern<T>;
 
 Value InsertDynamicAllocAndDealloc(Location loc, Value result,
                                    Value shape_operand,
@@ -433,7 +433,7 @@ struct HloLegalizeToLhlo
     target.addLegalOp<TensorFromElementsOp>();
     target.addIllegalDialect<mhlo::MhloDialect>();
 
-    BufferAssignmentTypeConverter converter;
+    BufferizeTypeConverter converter;
     auto isMemRefType = [](Type type) { return type.isa<BaseMemRefType>(); };
     target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
       auto inputs = op.getType().getInputs();
@@ -456,16 +456,16 @@ struct HloLegalizeToLhlo
     });
 
     auto kind = results_escape_function
-                    ? BufferAssignmentTypeConverter::KeepAsFunctionResult
-                    : BufferAssignmentTypeConverter::AppendToArgumentsList;
+                    ? BufferizeTypeConverter::KeepAsFunctionResult
+                    : BufferizeTypeConverter::AppendToArgumentsList;
     converter.setResultConversionKind<UnrankedTensorType, UnrankedMemRefType>(
         kind);
     converter.setResultConversionKind<RankedTensorType, MemRefType>(kind);
 
     populateHLOToLHLOConversionPattern(&context, &converter, &patterns);
-    populateWithBufferAssignmentOpConversionPatterns<
-        mlir::ReturnOp, mlir::ReturnOp, lmhlo::CopyOp>(&context, converter,
-                                                       patterns);
+    populateWithBufferizeOpConversionPatterns<mlir::ReturnOp, mlir::ReturnOp,
+                                              lmhlo::CopyOp>(
+        &context, converter, patterns);
     populateShapeTypeConversionPatterns(&context, converter, patterns);
     if (failed(applyPartialConversion(getOperation(), target, patterns)))
       signalPassFailure();
@@ -480,9 +480,9 @@ struct HloLegalizeToLhlo
 };
 }  // namespace
 
-void populateHLOToLHLOConversionPattern(
-    MLIRContext* context, BufferAssignmentTypeConverter* converter,
-    OwningRewritePatternList* patterns) {
+void populateHLOToLHLOConversionPattern(MLIRContext* context,
+                                        BufferizeTypeConverter* converter,
+                                        OwningRewritePatternList* patterns) {
   // clang-format off
   patterns->insert<
       HloToLhloDynamicBroadcastInDimOpConverter,
