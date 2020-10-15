@@ -35,14 +35,6 @@ load_library.load_op_library(os.path.join(_lib_dir, _lib_name))
 
 class GraphDecomposeTest(test.TestCase):
 
-  def setUp(self):
-    os.environ['TF_MLIR_TFR_LIB_DIR'] = 'tensorflow/compiler/mlir/tfr/resources'
-    super(GraphDecomposeTest, self).setUp()
-
-  def tearDown(self):
-    del os.environ['TF_MLIR_TFR_LIB_DIR']
-    super(GraphDecomposeTest, self).tearDown()
-
   def testAddN(self):
     add = def_function.function(gen_composite_ops.my_add_n)
     t1 = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
@@ -86,5 +78,6 @@ class GraphDecomposeTest(test.TestCase):
 
 
 if __name__ == '__main__':
+  os.environ['TF_MLIR_TFR_LIB_DIR'] = 'tensorflow/compiler/mlir/tfr/resources'
   ops.enable_eager_execution()
   test.main()

@@ -36,6 +36,7 @@ limitations under the License.
 
 using testing::ElementsAreArray;
 using testing::Test;
+using NodeAndType = std::pair<std::string, tensorflow::DataType>;
 
 namespace tensorflow {
 
@@ -88,11 +89,13 @@ tfr.func @tf__risc_add_(!tfr.tensor<T>, !tfr.tensor<T>) -> !tfr.tensor<T> attrib
 class TFRDecomposeContextTest : public Test {
  protected:
   void SetUp() override {
-    test_ctx_ = TFRDecomposeContext::Get(tfr_raw_text, &ctx_);
+    test_ctx_ = tfr::TFRDecomposeContext::GetFromText(tfr_raw_text, &ctx_);
   }
 
+  void TearDown() override { test_ctx_->Destroy(); }
+
   mlir::MLIRContext ctx_;
-  std::unique_ptr<TFRDecomposeContext> test_ctx_;
+  std::unique_ptr<tfr::TFRDecomposeContext> test_ctx_;
 };
 
 std::vector<NodeAndType> NodesSequenceOf(const FunctionDef& graph) {
@@ -111,7 +114,7 @@ TEST_F(TFRDecomposeContextTest, FLOAT_1_ins) {
                     .Input(src_list)
                     .Finalize(&test_node);
   EXPECT_TRUE(status.ok());
-  auto decomposed = test_ctx_->Decompose(test_node, "test");
+  auto decomposed = test_ctx_->ExpandNode(test_node, "test");
   EXPECT_TRUE(decomposed.ok());
   std::vector<NodeAndType> expected_results{{"Identity", DT_FLOAT}};
   EXPECT_THAT(NodesSequenceOf(decomposed.ValueOrDie()),
@@ -128,7 +131,7 @@ TEST_F(TFRDecomposeContextTest, FLOAT_3_ins) {
                     .Input(src_list)
                     .Finalize(&test_node);
   EXPECT_TRUE(status.ok());
-  auto decomposed = test_ctx_->Decompose(test_node, "test");
+  auto decomposed = test_ctx_->ExpandNode(test_node, "test");
   EXPECT_TRUE(decomposed.ok());
 
   std::vector<NodeAndType> expected_results{{"RiscAdd", DT_FLOAT},
@@ -146,7 +149,7 @@ TEST_F(TFRDecomposeContextTest, INT32_3_ins) {
   auto status =
       NodeDefBuilder("int_add", "MyAddN").Input(src_list).Finalize(&test_node);
   EXPECT_TRUE(status.ok());
-  auto decomposed = test_ctx_->Decompose(test_node, "test");
+  auto decomposed = test_ctx_->ExpandNode(test_node, "test");
   EXPECT_TRUE(decomposed.ok());
 
   std::vector<NodeAndType> expected_results{{"RiscAdd", DT_INT32},

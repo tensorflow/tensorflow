@@ -23,11 +23,11 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
+namespace tfr {
 
 extern const char* const kTFRLibEnv;
 
 using stream_executor::port::StatusOr;
-using NodeAndType = std::pair<std::string, DataType>;
 
 // An wrapper for all the objects used to decompose a module (graph mode) and
 // node_def (eager mode). Note that this class owns the decomposition library.
@@ -38,38 +38,44 @@ class TFRDecomposeContext {
   static StatusOr<std::unique_ptr<TFRDecomposeContext>> Get(
       mlir::MLIRContext* mlir_ctx);
 
-  static std::unique_ptr<TFRDecomposeContext> Get(StringPiece tfr_raw_text,
-                                                  mlir::MLIRContext* mlir_ctx);
-
-  // Decompose the NodeDef to a set of primitive ops according to the decompose
-  // library loaded. Wrap the decomposed result in a FunctionDef.
-  static StatusOr<FunctionDef> Expand(const NodeDef& node_def,
-                                      StringPiece func_name);
-
   // Constructor of the decompose context. To share the decompose library, the
   // whole decompose TFR function library is loaded.
-  explicit TFRDecomposeContext(mlir::OwningModuleRef tfr_module);
+  explicit TFRDecomposeContext(mlir::ModuleOp tfr_module);
 
-  // Decompose the op in the NodeDef to a set of primitive ops according to the
+  // Constructs the decompose context from the tfr text module and the mlir
+  // context. The tfr text module is added to the mlir context.
+  static std::unique_ptr<TFRDecomposeContext> GetFromText(
+      StringPiece tfr_raw_text, mlir::MLIRContext* mlir_ctx);
+
+  // Decomposes the op in the NodeDef to a set of primitive ops according to the
   // decompose library in the context. Wrap the decomposed result in a
   // FunctionDef.
-  StatusOr<FunctionDef> Decompose(const NodeDef& node_def,
-                                  StringPiece func_name);
+  StatusOr<FunctionDef> ExpandNode(const NodeDef& node_def,
+                                   StringPiece func_name);
 
-  // Decompose the ops in the ModuleOp to a set of primitive ops according to
-  // decompose library in the context.
-  Status Decompose(mlir::ModuleOp user_module);
+  // Runs the decompose passes on the user_module.
+  Status DecomposeGraph(mlir::ModuleOp user_module);
 
-  // Release all the owned references.
-  Status Destroy();
+  // Erases the tfr_module created.
+  void Destroy();
 
  private:
-  mlir::OwningModuleRef tfr_module_;
+  mlir::ModuleOp tfr_module_;
   mlir::PassManager pm_;
 
   GraphExportConfig export_confs_;
 };
 
+// Decomposes the NodeDef to a set of primitive ops according to the decompose
+// library loaded. Wrap the decomposed result in a FunctionDef.
+StatusOr<FunctionDef> ExpandNode(const NodeDef& node_def,
+                                 StringPiece func_name);
+
+// Decomposes the ops in the ModuleOp to a set of primitive ops according to
+// decompose library in the context.
+Status DecomposeGraph(mlir::ModuleOp user_module);
+
+}  // namespace tfr
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TFR_INTEGRATION_TFR_DECOMPOSE_CTX_H_

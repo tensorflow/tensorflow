@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
+namespace tfr {
 
 // An optimization pass that decompose the composite ops in a module according
 // to the decomposition library. Currently the decomposition library is loaded
@@ -37,11 +38,9 @@ class GraphDecomposePass : public MlirOptimizationPass {
   // This should be used as a thin mapper around mlir::ModulePass::runOnModule
   // API integrated with the Tensorflow runtime.
   Status Run(const ConfigProto& config_proto, mlir::ModuleOp module) override;
-
- private:
-  std::unique_ptr<TFRDecomposeContext> ctx_;
 };
 
+}  // namespace tfr
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TFR_INTEGRATION_GRAPH_DECOMPOSE_PASS_H_

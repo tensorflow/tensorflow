@@ -34,14 +34,6 @@ load_library.load_op_library(os.path.join(_lib_dir, _lib_name))
 
 class NodeExpansionTest(test.TestCase):
 
-  def setUp(self):
-    os.environ['TF_MLIR_TFR_LIB_DIR'] = 'tensorflow/compiler/mlir/tfr/resources'
-    super(NodeExpansionTest, self).setUp()
-
-  def tearDown(self):
-    del os.environ['TF_MLIR_TFR_LIB_DIR']
-    super(NodeExpansionTest, self).tearDown()
-
   def testAddN(self):
     t1 = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
     t2 = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
@@ -81,5 +73,6 @@ class NodeExpansionTest(test.TestCase):
 
 
 if __name__ == '__main__':
+  os.environ['TF_MLIR_TFR_LIB_DIR'] = 'tensorflow/compiler/mlir/tfr/resources'
   ops.enable_eager_execution()
   test.main()

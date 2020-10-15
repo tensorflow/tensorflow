@@ -232,9 +232,9 @@ tf_py_test(
     data = ["//tensorflow/compiler/mlir/tfr/resources:decomposition_lib"],
     python_version = "PY3",
     tags = [
+        "no_pip",
         "no_windows",  # TODO(b/170752141)
         "nomac",  # TODO(b/170752141)
-        "notsan",  # TODO(b/170752141)
     ],
     deps = [
         "//tensorflow/compiler/mlir/tfr/resources:composite_ops",
@@ -263,9 +263,9 @@ tf_py_test(
     data = ["//tensorflow/compiler/mlir/tfr/resources:decomposition_lib"],
     python_version = "PY3",
     tags = [
+        "no_pip",
         "no_windows",  # TODO(b/170752141)
         "nomac",  # TODO(b/170752141)
-        "notsan",  # TODO(b/170862433)
     ],
     deps = [
         "//tensorflow/compiler/mlir/tfr/resources:composite_ops",
