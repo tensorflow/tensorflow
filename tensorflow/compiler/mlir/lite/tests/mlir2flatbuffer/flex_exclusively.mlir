@@ -47,6 +47,7 @@ func @main(%arg0: tensor<3x2xf32>) -> tensor<3x2xf32> {
 // CHECK-NEXT:    name: "min_runtime_version",
 // CHECK-NEXT:    buffer: 3
 // CHECK-NEXT:    } ]
+// CHECK-NEXT:  signature_defs: [ ]
 // CHECK-NEXT:  }
 
   %0 = "tf.AddV2"(%arg0, %arg0) : (tensor<3x2xf32>, tensor<3x2xf32>) -> tensor<3x2xf32>

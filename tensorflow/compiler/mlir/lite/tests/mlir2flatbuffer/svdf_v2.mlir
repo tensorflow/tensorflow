@@ -88,6 +88,7 @@ func @main(tensor<4 x f32>, tensor<4 x i8>, tensor<4 x f32>, tensor<4 x f32>) ->
 // CHECK-NEXT:     name: "min_runtime_version",
 // CHECK-NEXT:     buffer: 7
 // CHECK-NEXT:     } ]
+// CHECK-NEXT:     signature_defs: [ ]
 // CHECK-NEXT:   }
 // CHECK-EMPTY:
 
