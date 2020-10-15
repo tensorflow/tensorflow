@@ -2831,7 +2831,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # Append value to list of trainable / non-trainable weights if relevant
     # TODO(b/125122625): This won't pick up on any variables added to a
     # list/dict after creation.
-    for val in nest.flatten(value):
+    for val in nest.flatten(value, expand_composites=True):
       # TODO(b/126450014): Remove `_UnreadVariable` check here when assign ops
       # no longer return True for isinstance Variable checks.
       if not isinstance(val, tf_variables.Variable):
