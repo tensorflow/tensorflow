@@ -309,8 +309,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
     visibility = [
-        "//tensorflow/lite:__subpackages__",
-        "//tensorflow_lite_support:__subpackages__",
+        "//visibility:public",
     ],
     deps = [
         "//tensorflow/lite:stderr_reporter",
@@ -325,8 +324,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
     visibility = [
-        "//tensorflow/lite:__subpackages__",
-        "//tensorflow_lite_support:__subpackages__",
+        "//visibility:public",
     ],
     deps = [
         ":minimal_logging",
@@ -341,8 +339,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
     visibility = [
-        "//tensorflow/lite:__subpackages__",
-        "//tensorflow_lite_support:__subpackages__",
+        "//visibility:public",
     ],
     deps = [
         "//tensorflow/lite:mutable_op_resolver",
@@ -357,8 +354,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
     visibility = [
-        "//tensorflow/lite:__subpackages__",
-        "//tensorflow_lite_support:__subpackages__",
+        "//visibility:public",
     ],
     deps = [
         ":util",
