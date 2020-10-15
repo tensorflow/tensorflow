@@ -36,6 +36,7 @@ Status RegisterGradients(GradientRegistry* registry) {
   TF_RETURN_IF_ERROR(
       registry->Register("SparseSoftmaxCrossEntropyWithLogits",
                          SparseSoftmaxCrossEntropyWithLogitsRegisterer));
+  TF_RETURN_IF_ERROR(registry->Register("Neg", NegRegisterer));
   return Status::OK();
 }
 

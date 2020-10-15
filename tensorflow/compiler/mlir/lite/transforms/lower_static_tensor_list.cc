@@ -892,7 +892,7 @@ LogicalResult LowerStaticTensorListPass::RewriteFunction(
   target.addLegalOp<TFL::BidirectionalSequenceLSTMOp>();
 
   OwningRewritePatternList patterns;
-  populateWithGenerated(context, &patterns);
+  populateWithGenerated(context, patterns);
   patterns.insert<ConvertConst, ConvertEmptyTensorList, ConvertIdentity,
                   ConvertTensorListGetItem, ConvertTensorListLength,
                   ConvertTensorListPushBack, ConvertTensorListReserve,

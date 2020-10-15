@@ -30,3 +30,8 @@ def add(a, b, name=None):
 def mat_mul(a, b, name=None):
   ctx = context.get_default()
   return _math_ops.mat_mul(ctx, a, b, name)
+
+
+def neg(a, name=None):
+  ctx = context.get_default()
+  return _math_ops.neg(ctx, a, name)

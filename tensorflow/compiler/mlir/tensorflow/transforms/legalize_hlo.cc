@@ -821,7 +821,7 @@ static PassRegistration<LegalizeHloToTf> pass(
 
 void PopulateLegalizeHloToTfPatterns(OwningRewritePatternList *patterns,
                                      MLIRContext *context) {
-  populateWithGenerated(context, patterns);
+  populateWithGenerated(context, *patterns);
   patterns->insert<ConvertConvOp, ConvertSliceOp, ConvertReduceOpToTfMax,
                    ConvertReduceOpToTfMin, ConvertReduceOpToTfSum,
                    ConvertIotaOpToTfRange>(context);

@@ -178,6 +178,9 @@ An n-way switch statement, implementing the following:
   let verifier = [{
     return Verify(*this);
   }];
+
+  let hasCanonicalizer = 1;
+
 }
 
 // In MLIR, the TensorFlow tensor value is represented as an ElementsAttr, with
@@ -386,6 +389,12 @@ else_branch: A region that computes the outputs of the op if cond = false.
   let verifier = [{
     return Verify(*this);
   }];
+
+  let builders = [OpBuilder<
+    "OpBuilder &builder, OperationState &result, TypeRange resultTypes, ValueRange operands, llvm::ArrayRef<::mlir::NamedAttribute> attributes, unsigned numRegions", [{
+      assert(numRegions == 2u && "mismatched number of regions");
+      build(builder, result, resultTypes, operands, attributes);
+    }]>];
 
   let hasCanonicalizer = 1;
 }

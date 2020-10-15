@@ -765,9 +765,10 @@ class Lambda(Layer):
 
   The main reason to subclass `tf.keras.layers.Layer` instead of using a
   `Lambda` layer is saving and inspecting a Model. `Lambda` layers
-  are saved by serializing the Python bytecode, whereas subclassed
-  Layers can be saved via overriding their `get_config` method. Overriding
-  `get_config` improves the portability of Models. Models that rely on
+  are saved by serializing the Python bytecode, which is fundamentally
+  non-portable. They should only be loaded in the same environment where
+  they were saved. Subclassed layers can be saved in a more portable way
+  by overriding their `get_config` method. Models that rely on
   subclassed Layers are also often easier to visualize and reason about.
 
   Examples:

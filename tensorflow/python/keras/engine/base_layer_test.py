@@ -27,12 +27,14 @@ import numpy as np
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import type_spec
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
@@ -432,6 +434,49 @@ class BaseLayerTest(keras_parameterized.TestCase):
     x, y = np.ones((10, 10)), np.ones((10, 10))
     # Checks that variables get initialized.
     model.fit(x, y, batch_size=2, epochs=2)
+
+  @combinations.generate(combinations.combine(mode=['eager']))
+  def test_composite_variable_assignment(self):
+
+    class Spec(type_spec.TypeSpec):
+
+      value_type = property(lambda self: CompositeVariable)
+
+      def _component_specs(self):
+        pass
+
+      def _serialize(self):
+        pass
+
+      def _to_components(self, value):
+        return value._variables
+
+      def _from_components(self, variable_list):
+        return CompositeVariable(variable_list)
+
+    class CompositeVariable(composite_tensor.CompositeTensor):
+
+      def __init__(self, variable_list):
+        self._variables = variable_list
+
+      @property
+      def _type_spec(self):
+        return Spec()
+
+    class CompositeVariableLayer(base_layer.Layer):
+
+      def __init__(self):
+        super().__init__()
+        self.composite_var = CompositeVariable(
+            [variables.Variable(1.),
+             variables.Variable(2.)])
+
+    layer = CompositeVariableLayer()
+    self.assertLen(layer.weights, 2)
+    self.assertIsInstance(layer.weights[0], variables.Variable)
+    self.assertIsInstance(layer.weights[1], variables.Variable)
+    self.assertEqual(self.evaluate(layer.weights[0]), 1.)
+    self.assertEqual(self.evaluate(layer.weights[1]), 2.)
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_layer_names(self):

@@ -2276,6 +2276,7 @@ tf_cc_test(
     srcs = ["direct_session_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = [
+        "noasan",  #b/168811551
         "notsan",  #b/168811551
     ],
     deps = [

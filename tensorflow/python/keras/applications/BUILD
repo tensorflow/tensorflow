@@ -101,6 +101,7 @@ tf_py_test(
     tags = [
         "no_oss",
         "no_pip",
+        "notsan",  # TODO(b/170901700)
     ],
     deps = [
         ":applications",

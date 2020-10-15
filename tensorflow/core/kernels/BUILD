@@ -515,7 +515,7 @@ tf_cuda_library(
     deps = [
         ":gpu_util_hdrs",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor",
+        "//tensorflow/core/platform:stream_executor",
         "//tensorflow/core/protobuf:autotuning_proto_cc",
         "//tensorflow/core/protobuf:conv_autotuning_proto_cc",
         "//tensorflow/core/util:env_var",
@@ -559,11 +559,11 @@ tf_cc_test(
     deps = [
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu",
-        "//tensorflow/core:direct_session_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime:direct_session_internal",
     ],
 )
 
@@ -1419,10 +1419,22 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "ragged_tensor_variant",
+    srcs = ["ragged_tensor_variant.cc"],
+    hdrs = ["ragged_tensor_variant.h"],
+    deps = [
+        ":cwise_op",
+        "//tensorflow/core:framework",
+    ],
+)
+
 tf_kernel_library(
     name = "ragged_tensor_to_variant_op",
     srcs = ["ragged_tensor_to_variant_op.cc"],
     deps = [
+        ":concat_lib",
+        ":ragged_tensor_variant",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ],
@@ -1432,6 +1444,7 @@ tf_kernel_library(
     name = "ragged_tensor_from_variant_op",
     srcs = ["ragged_tensor_from_variant_op.cc"],
     deps = [
+        ":ragged_tensor_variant",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ],
@@ -1444,6 +1457,7 @@ tf_cc_test(
     deps = [
         ":ops_testutil",
         ":ragged_tensor_to_variant_op",
+        ":ragged_tensor_variant",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
@@ -1460,6 +1474,7 @@ tf_cc_test(
     deps = [
         ":ops_testutil",
         ":ragged_tensor_from_variant_op",
+        ":ragged_tensor_variant",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
@@ -1496,7 +1511,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:stream_executor",
+        "//tensorflow/core/platform:stream_executor",
         "//third_party/eigen3",
     ],
 )
@@ -1652,10 +1667,6 @@ tf_cuda_cc_test(
     name = "conv_ops_test",
     size = "medium",
     srcs = ["conv_ops_test.cc"],
-    tags = [
-        "no_cuda11",  # b/159664089
-        "no_oss",
-    ],
     deps = [
         ":conv_ops",
         ":ops_testutil",
@@ -3856,7 +3867,7 @@ tf_kernel_library(
         "//tensorflow/core/platform/default/build_config:cudnn_plugin",
         "//tensorflow/stream_executor:tf_allocator_adapter",
         "//tensorflow/stream_executor:stream_executor_headers",
-        "//tensorflow/core:stream_executor",
+        "//tensorflow/core/platform:stream_executor",
     ]) + if_cuda_or_rocm([
         ":gpu_utils",
         "//tensorflow/stream_executor/gpu:redzone_allocator",
@@ -3994,7 +4005,7 @@ tf_kernel_library(
         ":reduction_ops",
     ]) + if_cuda([
         "@local_config_cuda//cuda:cub_headers",
-        "//tensorflow/core:stream_executor",
+        "//tensorflow/core/platform:stream_executor",
         "//tensorflow/stream_executor/cuda:cuda_stream",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rocprim",
@@ -4009,7 +4020,7 @@ tf_kernel_library(
         ":redux_functor",
         ":transpose_functor",
     ] + if_cuda([
-        "//tensorflow/core:stream_executor",
+        "//tensorflow/core/platform:stream_executor",
     ]),
 )
 
@@ -4229,7 +4240,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:stream_executor",
+        "//tensorflow/core/platform:stream_executor",
         "//third_party/eigen3",
     ],
 )

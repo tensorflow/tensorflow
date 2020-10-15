@@ -5976,8 +5976,8 @@ cc_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:replay_log_proto_cc",
         "//tensorflow/core/protobuf:master_proto_cc",
+        "//tensorflow/core/protobuf:replay_log_proto_cc",
     ],
 )
 

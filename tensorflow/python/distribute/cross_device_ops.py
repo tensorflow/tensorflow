@@ -36,7 +36,7 @@ from tensorflow.python.distribute import tpu_values
 from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import executor
+from tensorflow.python.eager import executor as executor_lib
 from tensorflow.python.framework import kernels
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -144,8 +144,8 @@ def _normalize_value_destination_pairs(value_destination_pairs):
 
 
 def _validate_value_destination_pairs(value_destination_pairs):
+  """Validates value_destination_pairs are valid."""
   # TODO(yuefengz): raise exceptions instead of returning False.
-  # pylint: disable=g-missing-docstring
   if not value_destination_pairs: return False
   if not isinstance(value_destination_pairs, (list, tuple)): return False
   if not all(isinstance(pair, tuple) for pair in value_destination_pairs):
@@ -197,7 +197,7 @@ def simple_broadcast(value, destinations, always_mirrored=False):
 
 def _simple_reduce(per_replica_value, reduce_to_device, accumulation_fn,
                    reduce_op):
-  # pylint: disable=g-missing-docstring
+  """Reduces the value by accumulation_fn and reduce_op."""
   all_values = per_replica_value.values
   if not all_values:
     raise ValueError("`per_replica_value` must be non-empty")
@@ -1019,7 +1019,6 @@ class CollectiveAllReduce(CrossDeviceOps):
     if group_size % len(devices) > 0:
       raise ValueError("group_size must be divisible by the number of devices.")
 
-    self._devices = tuple(device_util.canonicalize(d) for d in devices)
     self._group_size = group_size
     self._collective_keys = (collective_keys or
                              cross_device_utils.CollectiveKeys())
@@ -1039,14 +1038,21 @@ class CollectiveAllReduce(CrossDeviceOps):
     # This deadlocks since neither collective is able to finish.
     self._lock = threading.Lock()
 
+    self._devices = tuple(device_util.canonicalize(d) for d in devices)
+    group_key = self._collective_keys.get_group_key(self._devices)
     # Collective ops requires all devices to participate and is blocking. In
     # eager, we need one async executor for each device to be able to launch
     # them altogether. Note that async doesn't imply concurrency. Within an
     # async executor operations are still executed sequentially. In graph or
     # function building, the executors are not used.
     self._executors = []
-    for _ in range(len(devices)):
-      self._executors.append(executor.new_executor(enable_async=True))
+    self._launchers = []
+    for device in self._devices:
+      executor = executor_lib.new_executor(enable_async=True)
+      self._executors.append(executor)
+      launcher = cross_device_utils.CollectiveReplicaLauncher(
+          group_key, group_size, self._collective_keys, device, executor)
+      self._launchers.append(launcher)
 
     super(CollectiveAllReduce, self).__init__()
 
@@ -1148,63 +1154,39 @@ class CollectiveAllReduce(CrossDeviceOps):
     # queuing time due to concurrent intense computation.
     #
     # TODO(b/147393503): explore solutions for optimal ordering.
-    packs = cross_device_utils.pack_by_size(
-        list(reversed(per_replica_values)), experimental_hints.bytes_per_pack)
+    values_by_device = [[] for _ in range(len(self._devices))]
+    for per_replica in reversed(per_replica_values):
+      for i in range(len(self._devices)):
+        values_by_device[i].append(per_replica.values[i])
 
-    if batch_size > 1:
-      logging.info(
-          "Collective batch_all_reduce: %d all-reduces, num_devices = %d, "
-          "group_size = %d, communication_hint = %s, num_packs = %d",
-          batch_size, len(self._devices), self._group_size, communication,
-          len(packs))
-    else:
-      logging.log_first_n(
-          logging.INFO, "Collective batch_all_reduce: %d all-reduces, "
-          "num_devices = %d, group_size = %d, communication_hint = %s, "
-          "num_packs = %d" % (batch_size, len(
-              self._devices), self._group_size, communication, len(packs)), 10)
-
-    reduced_values = []
+    outputs_by_device = []
     with self._lock:
-      for pack in packs:
-        # By placing all CollectiveReduce ops in a pack under single name scope,
-        # we ensure they will be picked up by the `ScopedAllocator` grappler
-        # optimizer and packed into a single all-reduce.
-        with ops.name_scope("allreduce"):
-          for per_replica in pack:
-            # Add control dependencies per device from the last gradients to the
-            # current set, in order to serialize NCCL launches.
-            if (communication == CollectiveCommunication.NCCL.value and
-                reduced_values):
-              control_inputs = list(reduced_values[-1])
-            else:
-              control_inputs = None
-            reduced_values.append(
-                cross_device_utils.build_collective_reduce(
-                    per_replica.values,
-                    self._devices,
-                    self._group_size,
-                    self._collective_keys,
-                    "Add",
-                    "Id",
-                    communication,
-                    control_inputs,
-                    executors=self._executors,
-                    timeout=experimental_hints.timeout_seconds))
+      for i in range(len(self._devices)):
+        packs = cross_device_utils.group_by_size(
+            values_by_device[i], experimental_hints.bytes_per_pack)
+        if not context.executing_eagerly() and i == 0:
+          logging.info(
+              "Collective batch_all_reduce: %d all-reduces, num_devices = %d, "
+              "group_size = %d, communication_hint = %s, num_packs = %d",
+              batch_size, len(self._launchers), self._group_size, communication,
+              len(packs))
+        outputs_by_device.append(self._launchers[i].batch_all_reduce(
+            packs, communication, experimental_hints.timeout_seconds))
 
     for e in self._executors:
       e.wait()
 
     mirrored = []
-    # Reverse the order of reduced value to recover the order in the input.
-    for value in reversed(reduced_values):
+    for values in zip(*outputs_by_device):
       if reduce_op == reduce_util.ReduceOp.MEAN:
-        for i, v in enumerate(value):
+        values = list(values)
+        for i, v in enumerate(values):
           with ops.device(v.device):
-            value[i] = v / self._group_size
+            values[i] = v / self._group_size
       mirrored.append(
-          distribute_utils.regroup(value, wrap_class=value_lib.Mirrored))
-    return mirrored
+          distribute_utils.regroup(values, wrap_class=value_lib.Mirrored))
+    # Reverse the order of reduced value to recover the order in the input.
+    return list(reversed(mirrored))
 
   def _do_batch_all_reduce_sparse(self, reduce_op, per_replica_values,
                                   experimental_hints):
@@ -1217,24 +1199,16 @@ class CollectiveAllReduce(CrossDeviceOps):
 
     # Pass self._communication to the runtime as a communication hint.
     communication_hint = self._communication.value
-    # For now, we use NCCL only when batch_size > 1.
-    # TODO(b/132575814): switch to NCCL for all collectives when communication
-    # is NCCL.
-    if self._communication == CollectiveCommunication.NCCL and len(
-        per_replica_values) == 1:
-      communication_hint = CollectiveCommunication.AUTO.value
 
     gathered_values = []
-    with self._lock, ops.name_scope("allreduce"):
+    with self._lock:
       for per_replica in per_replica_values:
-        gathered_values.append(
-            cross_device_utils.build_collective_gather_indexed_slices(
-                per_replica.values,
-                self._devices,
-                self._group_size,
-                self._collective_keys,
-                communication_hint,
-                timeout=experimental_hints.timeout_seconds))
+        outputs = []
+        for i in range(len(self._devices)):
+          outputs.append(self._launchers[i].all_reduce_indexed_slices(
+              per_replica.values[i], communication_hint,
+              experimental_hints.timeout_seconds))
+        gathered_values.append(outputs)
 
     mirrored = []
     for value in gathered_values:
@@ -1281,11 +1255,6 @@ class CollectiveAllReduce(CrossDeviceOps):
     batch_size = len(per_replica_values)
     # Pass self._communication to the runtime as a communication hint.
     communication = self._communication.value
-    # For now, we use NCCL only when batch_size > 1.
-    # TODO(b/132575814): switch to NCCL for all collectives when communication
-    # is NCCL.
-    if self._communication == CollectiveCommunication.NCCL and batch_size == 1:
-      communication = CollectiveCommunication.AUTO.value
 
     logging.log_first_n(
         logging.INFO, "Collective batch_all_gather: %d all-gathers, "
@@ -1296,21 +1265,12 @@ class CollectiveAllReduce(CrossDeviceOps):
       gathered_values = []
       with self._lock, ops.name_scope("allgather"):
         for per_replica in per_replica_values:
-          if (communication == CollectiveCommunication.NCCL.value and
-              gathered_values):
-            control_inputs = list(gathered_values[-1])
-          else:
-            control_inputs = None
-          gathered_values.append(
-              cross_device_utils.build_collective_gather(
-                  per_replica.values,
-                  self._devices,
-                  self._group_size,
-                  self._collective_keys,
-                  axis,
-                  communication,
-                  control_inputs,
-                  timeout=experimental_hints.timeout_seconds))
+          outputs = []
+          for i in range(len(self._devices)):
+            outputs.append(self._launchers[i].all_gather(
+                per_replica.values[i], axis, communication,
+                experimental_hints.timeout_seconds))
+          gathered_values.append(outputs)
       return gathered_values
 
     if context.executing_eagerly():
@@ -1319,8 +1279,7 @@ class CollectiveAllReduce(CrossDeviceOps):
       gathered_values = compute_gathered_values()
 
     mirrored = []
-    # Reverse the order of gathered value to recover the order in the input.
-    for value in reversed(gathered_values):
+    for value in gathered_values:
       mirrored.append(
           distribute_utils.regroup(value, wrap_class=value_lib.Mirrored))
     return mirrored

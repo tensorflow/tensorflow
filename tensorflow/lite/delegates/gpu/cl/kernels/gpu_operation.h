@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/tuning_parameters.h"
 #include "tensorflow/lite/delegates/gpu/cl/precision.h"
 #include "tensorflow/lite/delegates/gpu/cl/program_cache.h"
+#include "tensorflow/lite/delegates/gpu/cl/serialization_generated.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -129,7 +130,11 @@ class GPUOperation {
 
   absl::Status Tune(const TuningParameters& params);
 
+  absl::Status AssembleCode(const DeviceInfo& device_info, CLContext* context);
+
   absl::Status Compile(const CreationContext& creation_context);
+
+  absl::Status CompileDeserialized(const CreationContext& creation_context);
 
   virtual absl::Status PostCompileCheck(const DeviceInfo& device_info,
                                         const KernelInfo& kernel_info) {
@@ -164,6 +169,11 @@ class GPUOperation {
   bool check_src_channels_size_ = false;
 
  protected:
+  friend flatbuffers::Offset<data::GPUOperation> Encode(
+      const GPUOperation& op, flatbuffers::FlatBufferBuilder* builder);
+  friend absl::Status Decode(CLContext* context,
+                             const data::GPUOperation* fb_op, GPUOperation* op);
+
   virtual absl::Status BindArguments(ArgumentsBinder* args) {
     return absl::OkStatus();
   }

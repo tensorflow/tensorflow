@@ -357,10 +357,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TFLITE_DCHECK(node->user_data != nullptr);
   OpData* data = static_cast<OpData*>(node->user_data);
 
-  QuantizeMultiplier(effective_scale_1, &data->effective_scale_1_a,
-                     &data->effective_scale_1_b);
-  QuantizeMultiplier(effective_scale_2, &data->effective_scale_2_a,
-                     &data->effective_scale_2_b);
+  QuantizeMultiplierForInt24(effective_scale_1, &data->effective_scale_1_a,
+                             &data->effective_scale_1_b);
+  QuantizeMultiplierForInt24(effective_scale_2, &data->effective_scale_2_a,
+                             &data->effective_scale_2_b);
 
   data->input_zero_point = input->params.zero_point;
   data->output_zero_point = output->params.zero_point;

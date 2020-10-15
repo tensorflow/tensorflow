@@ -96,13 +96,14 @@ py_library(
         ":values",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:collective_ops",
-        "//tensorflow/python:device",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nccl_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:context",
     ],
 )
 
@@ -934,7 +935,6 @@ cuda_py_test(
 distribute_py_test(
     name = "checkpointing_test",
     srcs = ["checkpointing_test.py"],
-    disable_mlir_bridge = False,
     main = "checkpointing_test.py",
     tags = [
         "multi_and_single_gpu",
@@ -1043,6 +1043,7 @@ cuda_py_test(
         ":collective_util",
         ":combinations",
         ":cross_device_ops",
+        ":cross_device_utils",
         ":multi_process_runner",
         ":multi_worker_test_base",
         ":reduce_util",
@@ -1152,7 +1153,6 @@ distribute_py_test(
     name = "values_test",
     size = "medium",
     srcs = ["values_test.py"],
-    disable_mlir_bridge = False,
     main = "values_test.py",
     shard_count = 5,
     tags = [
@@ -1300,7 +1300,6 @@ distribute_py_test(
 distribute_py_test(
     name = "moving_averages_test",
     srcs = ["moving_averages_test.py"],
-    disable_mlir_bridge = False,
     main = "moving_averages_test.py",
     deps = [
         ":combinations",
@@ -1704,6 +1703,37 @@ py_test(
 distribute_py_test(
     name = "strategy_common_test",
     srcs = ["strategy_common_test.py"],
+    disable_mlir_bridge = False,
+    python_version = "PY3",
+    shard_count = 2,
+    tags = [
+        "multi_and_single_gpu",
+        "notsan",  # TODO(b/160006974)
+    ],
+    xla_enable_strict_auto_jit = True,
+    deps = [
+        ":collective_all_reduce_strategy",
+        ":combinations",
+        ":multi_worker_test_base",
+        ":reduce_util",
+        ":strategy_combinations",
+        ":strategy_test_lib",
+        ":test_util",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:def_function",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
+    name = "strategy_gather_test",
+    srcs = ["strategy_gather_test.py"],
     disable_mlir_bridge = False,
     python_version = "PY3",
     shard_count = 2,

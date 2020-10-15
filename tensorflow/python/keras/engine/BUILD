@@ -409,6 +409,7 @@ tf_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/keras",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:callbacks",
         "//tensorflow/python/keras:combinations",
@@ -665,6 +666,7 @@ tf_py_test(
         ":engine",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:composite_tensor",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
@@ -677,6 +679,7 @@ tf_py_test(
         "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:type_spec",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
@@ -731,7 +734,7 @@ tf_py_test(
 
 tf_py_test(
     name = "deferred_sequential_test",
-    size = "small",
+    size = "medium",
     srcs = ["deferred_sequential_test.py"],
     python_version = "PY3",
     tags = [

@@ -162,7 +162,7 @@ class SimpleOpResultConversion
   LogicalResult matchAndRewrite(
       OpTy op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const final {
-    rewriter.replaceOpWithNewOp<OpTy>(op, converter->convertType(op.getType()),
+    rewriter.replaceOpWithNewOp<OpTy>(op, converter.convertType(op.getType()),
                                       operands);
     return success();
   }
@@ -180,7 +180,7 @@ class TensorCastOpConverter
     Value arg = operands.front();
     if (!arg.getType().isa<BaseMemRefType>()) return failure();
 
-    auto result_ty = converter->convertType(op.getType());
+    auto result_ty = converter.convertType(op.getType());
     rewriter.replaceOpWithNewOp<MemRefCastOp>(op, arg, result_ty);
 
     return success();
@@ -195,7 +195,7 @@ void populateStandardBufferizePattern(MLIRContext *context,
   patterns->insert<ExtractElementOpConversion, TensorFromElementsOpConverter,
                    DynamicTensorFromElementsOpConverter,
                    SimpleOpResultConversion<SelectOp>, TensorLoadOpConversion,
-                   TensorCastOpConverter>(context, converter);
+                   TensorCastOpConverter>(context, *converter);
 }
 
 }  // namespace transforms

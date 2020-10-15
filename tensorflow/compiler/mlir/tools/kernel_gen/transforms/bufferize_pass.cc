@@ -104,9 +104,9 @@ struct BufferizePass : public BufferizePassBase<BufferizePass> {
     mhlo::populateHLOToLHLOConversionPattern(&context, &converter, &patterns);
     populateWithBufferAssignmentOpConversionPatterns<ReturnOp, ReturnOp,
                                                      lmhlo::CopyOp>(
-        &context, &converter, &patterns);
+        &context, converter, patterns);
     populateStandardBufferizePattern(&context, &converter, &patterns);
-    populateShapeTypeConversionPatterns(&context, &converter, &patterns);
+    populateShapeTypeConversionPatterns(&context, converter, patterns);
     patterns.insert<UnrankedTensorStoreTestOnlyPattern>(&context);
 
     auto module = getOperation();

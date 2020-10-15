@@ -57,7 +57,6 @@ tpu_py_test(
         "automatic_outside_compilation_test.py",
     ],
     disable_experimental = True,
-    disable_mlir_bridge = False,
     python_version = "PY3",
     tags = ["no_oss"],
     deps = [
@@ -454,6 +453,7 @@ tf_py_test(
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/keras",
         "//tensorflow/python/keras:combinations",
         "//tensorflow/python/keras/engine",
         "//tensorflow/python/keras/layers:core",
@@ -488,6 +488,7 @@ tf_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras",
         "//tensorflow/python/keras:combinations",
         "//tensorflow/python/keras/engine",
         "//tensorflow/python/keras/layers:core",

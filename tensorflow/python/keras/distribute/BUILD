@@ -150,7 +150,6 @@ cuda_py_test(
 distribute_py_test(
     name = "checkpointing_test",
     srcs = ["checkpointing_test.py"],
-    disable_mlir_bridge = False,
     main = "checkpointing_test.py",
     tags = [
         "multi_and_single_gpu",
@@ -254,6 +253,7 @@ distribute_py_test(
     ],
     tpu_tags = [
         "no_oss",  # b/153615544.
+        "no_tsan",  # TODO(b/170869466)
     ],
     deps = [
         "//tensorflow/python:math_ops",
@@ -344,6 +344,8 @@ distribute_py_test(
         "multi_and_single_gpu",
         "no_rocm",  # times out on ROCm
         "no_windows_gpu",
+        "noasan",  # TODO(b/170902997)
+        "notap",  # TODO(b/170902997)
         "notsan",
     ],
     tpu_tags = [
@@ -413,6 +415,7 @@ distribute_py_test(
         "multi_and_single_gpu",
         "no_rocm",  # times out on ROCm
         "no_windows_gpu",
+        "nogpu",  # TODO(b/170905292)
         "notsan",
     ],
     deps = [
@@ -520,7 +523,6 @@ distribute_py_test(
     name = "keras_save_load_test",
     size = "medium",
     srcs = ["keras_save_load_test.py"],
-    disable_mlir_bridge = False,
     full_precision = True,
     main = "keras_save_load_test.py",
     shard_count = 7,
@@ -689,7 +691,7 @@ cuda_py_test(
     name = "multi_worker_test",
     srcs = ["multi_worker_test.py"],
     python_version = "PY3",
-    shard_count = 32,
+    shard_count = 2,
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/130369494): Investigate why it times out on OSS.
@@ -790,7 +792,6 @@ distribute_py_test(
     name = "saved_model_save_load_test",
     size = "medium",
     srcs = ["saved_model_save_load_test.py"],
-    disable_mlir_bridge = False,
     full_precision = True,
     main = "saved_model_save_load_test.py",
     shard_count = 7,
@@ -808,7 +809,6 @@ distribute_py_test(
     name = "saved_model_mixed_api_test",
     size = "medium",
     srcs = ["saved_model_mixed_api_test.py"],
-    disable_mlir_bridge = False,
     full_precision = True,
     main = "saved_model_mixed_api_test.py",
     shard_count = 7,

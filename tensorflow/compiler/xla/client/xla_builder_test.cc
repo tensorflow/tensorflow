@@ -19,6 +19,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -1203,5 +1205,16 @@ TEST_F(XlaBuilderTest, AddFrontendAttribute) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   ExpectInstructionsAttributesMatch(*module, expected);
 }
+
+TEST_F(XlaBuilderTest, ComparisonType) {
+  XlaBuilder b(TestName());
+  (void)Le(ConstantR0<int32>(&b, 1), ConstantR0<int32>(&b, 2));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto root = module->entry_computation()->root_instruction();
+  ASSERT_THAT(root, op::Compare(op::Constant(), op::Constant()));
+  EXPECT_EQ(Comparison::Type::kSigned,
+            DynCast<HloCompareInstruction>(root)->type());
+}
+
 }  // namespace
 }  // namespace xla

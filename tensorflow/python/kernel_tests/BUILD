@@ -1631,7 +1631,7 @@ tf_py_test(
     name = "reader_ops_test",
     size = "small",
     srcs = ["reader_ops_test.py"],
-    data = ["//tensorflow/core:lmdb_testdata"],
+    data = ["//tensorflow/core/lib/lmdb:lmdb_testdata"],
     tfrt_enabled = True,
     deps = [
         "//tensorflow/core:protos_all_py",

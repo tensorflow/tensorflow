@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "google/protobuf/any.pb.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/utils/diagnostics.h"
@@ -38,14 +39,31 @@ PodStatsRecord CreatePodStatsRecord(absl::string_view host_name,
   record.set_step_num(step_info.step_num());
   record.set_total_duration_us(PicosToMicros(step_info.duration_ps()));
   auto& step_breakdown_map = *record.mutable_step_breakdown_us();
-  std::vector<std::pair<uint64, std::string>> metrics;
-  for (const auto& entry : generic.type_ps()) {
-    step_breakdown_map[entry.first] = PicosToMicros(entry.second);
-    metrics.emplace_back(
-        entry.second, PrintEventTypeLabel(static_cast<EventType>(entry.first)));
-  }
+  std::vector<std::pair<uint64, absl::string_view>> metrics;
+
+  auto add_event = [&](GenericEventType type,
+                       std::initializer_list<EventType> event_list) {
+    uint64 ps = 0;
+    for (const auto& event_type : event_list) {
+      ps += gtl::FindWithDefault(generic.type_ps(), event_type, /*value=*/0);
+    }
+    step_breakdown_map[type] = PicosToMicros(ps);
+    metrics.emplace_back(ps, GetGenericEventTypeStr(type));
+  };
+
+  add_event(kDeviceCompute, {DEVICE_COMPUTE_32, DEVICE_COMPUTE_16});
+  add_event(kDeviceToDevice, {DEVICE_TO_DEVICE, DEVICE_WAIT_DEVICE});
+  add_event(kDeviceCollectives, {DEVICE_COLLECTIVES});
+  add_event(kHostCompute, {HOST_COMPUTE});
+  add_event(kHostPrepare, {HOST_PREPARE});
+  add_event(kInput, {HOST_WAIT_INPUT, HOST_TO_DEVICE, DEVICE_WAIT_HOST});
+  add_event(kOutput, {DEVICE_TO_HOST});
+  add_event(kCompile, {HOST_COMPILE});
+  add_event(kAllOthers, {UNKNOWN_TIME});
+
   std::sort(metrics.begin(), metrics.end());
-  record.set_bottleneck(metrics.back().second);
+  record.set_bottleneck(metrics.back().second.data(),
+                        metrics.back().second.size());
   return record;
 }
 
@@ -53,31 +71,21 @@ PodStatsRecord CreatePodStatsRecord(absl::string_view host_name,
 
 PodStatsDatabase ConvertOpStatsToPodStats(const OpStats& op_stats) {
   PodStatsDatabase pod_stats_db;
-  auto add_event = [&pod_stats_db](EventType type) {
-    StepBreakdownEvents* event = pod_stats_db.add_step_breakdown_events();
-    event->set_id(type);
-    event->set_name(PrintEventTypeLabel(type));
-  };
-  add_event(HOST_COMPUTE);
-  add_event(HOST_COMPILE);
-  add_event(HOST_TO_HOST);
-  add_event(HOST_TO_DEVICE);
-  add_event(HOST_PREPARE);
-  add_event(DEVICE_COLLECTIVES);
-  add_event(HOST_WAIT_INPUT);
-  add_event(DEVICE_TO_DEVICE);
-  add_event(DEVICE_TO_HOST);
-  add_event(DEVICE_COMPUTE_32);
-  add_event(DEVICE_COMPUTE_16);
-  add_event(DEVICE_WAIT_DEVICE);
-  add_event(DEVICE_WAIT_HOST);
-  add_event(UNKNOWN_TIME);
+  const auto& core_id_map = op_stats.core_id_to_details();
+  for (int i = GenericEventType::kFirstGenericEventType;
+       i <= GenericEventType::kLastGenericEventType; i++) {
+    auto& event = *pod_stats_db.add_step_breakdown_events();
+    event.set_id(i);
+    absl::string_view type_str =
+        GetGenericEventTypeStr(static_cast<GenericEventType>(i));
+    event.set_name(type_str.data(), type_str.size());
+  }
 
   for (const auto& step_sequence : op_stats.step_db().step_sequence()) {
-    int count = 0;
     for (const auto& entry : step_sequence.step_info_per_core()) {
+      const CoreDetails& details = core_id_map.at(entry.first);
       *pod_stats_db.add_pod_stats_record() =
-          CreatePodStatsRecord(absl::StrCat(count++), entry.second);
+          CreatePodStatsRecord(details.hostname(), entry.second);
     }
   }
   PopulateStepDiagnostics(op_stats, pod_stats_db.mutable_diagnostics());

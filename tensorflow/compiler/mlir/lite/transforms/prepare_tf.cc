@@ -1203,7 +1203,7 @@ void PrepareTFPass::runOnFunction() {
                   ConvertTFDilatedConvOp<TF::DepthwiseConv2dNativeOp>>(ctx);
 
   patterns.insert<ConvertFusedBatchNorm>(ctx);
-  TFL::populateWithGenerated(ctx, &patterns);
+  TFL::populateWithGenerated(ctx, patterns);
   // TODO(karimnosseir): Split to separate pass probably after
   // deciding on long term plan for this optimization.
   // This will allow optimizing any TF_Mul->TF_Conv in the graph
@@ -1214,7 +1214,7 @@ void PrepareTFPass::runOnFunction() {
   // Load the generated pattern again, so new quantization pass-through
   // will be applied.
   patterns.clear();
-  TFL::populateWithGenerated(ctx, &patterns);
+  TFL::populateWithGenerated(ctx, patterns);
   if (unfold_batch_matmul_) {
     patterns.insert<TF::ConvertTFBatchMatMulOp<TF::BatchMatMulOp>,
                     TF::ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>>(ctx);

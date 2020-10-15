@@ -138,6 +138,7 @@
         stateful ops.
     *   Added `tf.config.experimental.get_memory_usage` to return total memory
         usage of the device.
+    * Added gradients for `RaggedTensorToVariant` and `RaggedTensorFromVariant`.
 *   `tf.data`:
     *   tf.data service:
     *   Added new `tf.data.experimental.service.register_dataset` and
@@ -224,6 +225,9 @@
         argument.
     *   Added `tf.metrics.log_cosh` and `tf.metrics.logcosh` API entrypoints
         with the same implementation as their `tf.losses` equivalent.
+    *   For Keras model, the individual call of `Model.evaluate` uses no cached
+        data for evaluation, while `Model.fit` uses cached data when
+        `validation_data` arg is provided for better performance.
 *   `tf.function` / AutoGraph:
     *   Added `experimental_follow_type_hints` argument for `tf.function`. When
         True, the function may use type annotations to optimize the tracing
@@ -263,6 +267,10 @@
         *   Deprecate `Interpreter::UseNNAPI(bool)` C++ API.
             *   Use `NnApiDelegate()` and related delegate configuration methods
                 directly.
+        *   Deprecate `Interpreter::SetAllowFp16PrecisionForFp32(bool)` C++ API
+            *   Prefer controlling this via delegate options, e.g.
+                `tflite::StatefulNnApiDelegate::Options::allow_fp16' or
+                `TfLiteGpuDelegateOptionsV2::is_precision_loss_allowed`.
     *   `DynamicBuffer::AddJoinedString()` will now add a separator if the first
         string to be joined is empty.
     *   <ADD RELEASE NOTES HERE>

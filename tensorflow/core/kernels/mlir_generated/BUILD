@@ -84,7 +84,7 @@ tf_kernel_library(
         "//third_party/eigen3",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor",
+        "//tensorflow/core/platform:stream_executor",
     ]),
 )
 

@@ -140,30 +140,41 @@ tensorflow::Status HloFunctionImporter::ImportAsRegion(
   return ImportInstructions(computation, block);
 }
 
-tensorflow::Status HloFunctionImporter::ImportInstructions(
-    const HloComputation& computation, mlir::Block* block) {
+StatusOr<Value> HloFunctionImporter::ImportInstructionsImpl(
+    const xla::HloComputation& computation,
+    const llvm::SmallVectorImpl<Value>& arguments, mlir::OpBuilder* builder) {
   // Setup the input parameters.
   const int num_parameters = computation.num_parameters();
+
+  if (arguments.size() != num_parameters)
+    return InvalidArgument("Caller vs callee argument sizes do not match");
+
   for (int i = 0; i < num_parameters; i++) {
     auto hlo_parameter = computation.parameter_instruction(i);
-    instruction_value_map_[hlo_parameter] = block->getArgument(i);
+    instruction_value_map_[hlo_parameter] = arguments[i];
   }
 
-  mlir::OpBuilder builder = mlir::OpBuilder::atBlockEnd(block);
   for (auto instruction : computation.MakeInstructionPostOrder()) {
     TF_ASSIGN_OR_RETURN(auto new_operation,
-                        ImportInstruction(instruction, &builder));
+                        ImportInstruction(instruction, builder));
     if (new_operation) {
       instruction_value_map_[instruction] = new_operation->getResult(0);
     }
   }
 
+  // Setup the return type (HLO only supports a single return value).
+  return GetMlirValue(computation.root_instruction());
+}
+
+Status HloFunctionImporter::ImportInstructions(
+    const HloComputation& computation, mlir::Block* block) {
+  llvm::SmallVector<Value, 4> arguments(block->args_begin(), block->args_end());
+  mlir::OpBuilder builder = mlir::OpBuilder::atBlockEnd(block);
+  TF_ASSIGN_OR_RETURN(Value result,
+                      ImportInstructionsImpl(computation, arguments, &builder));
+
   // TODO(suderman): Add location tracking details.
   mlir::Location loc = builder.getUnknownLoc();
-
-  // Setup the return type (HLO only supports a single return value).
-  TF_ASSIGN_OR_RETURN(auto result,
-                      GetMlirValue(computation.root_instruction()));
 
   // Create terminator op depending on the parent op of this region.
   if (llvm::isa<FuncOp>(block->getParentOp())) {
@@ -172,6 +183,19 @@ tensorflow::Status HloFunctionImporter::ImportInstructions(
     builder.create<mlir::mhlo::ReturnOp>(loc, result);
   }
   return tensorflow::Status::OK();
+}
+
+StatusOr<Value> HloFunctionImporter::ImportInstructions(
+    const xla::HloComputation& computation,
+    const llvm::SmallVectorImpl<Value>& arguments, mlir::OpBuilder* builder) {
+  mlir::Block* block = builder->getBlock();
+  if (block == nullptr)
+    return InvalidArgument(
+        "ImportInstructions requires a valid block in the builder");
+
+  HloFunctionImporter importer(
+      block->getParent()->getParentOfType<mlir::ModuleOp>(), {}, builder);
+  return importer.ImportInstructionsImpl(computation, arguments, builder);
 }
 
 StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(

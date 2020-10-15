@@ -27,5 +27,6 @@ endfunction()
 add_mlir_hlo_dialect(chlo_ops chlo)
 add_mlir_hlo_dialect(hlo_ops mhlo)
 add_mlir_hlo_dialect(lhlo_ops lmhlo)
+add_mlir_hlo_dialect(lhlo_gpu_ops lmhlo_gpu)
 
 add_mlir_interface(infer_fusibility_op_interface)

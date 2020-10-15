@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/model_hints.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 #include "tensorflow/lite/delegates/gpu/cl/precision.h"
+#include "tensorflow/lite/delegates/gpu/cl/serialization_generated.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -65,14 +66,15 @@ class InferenceContext {
   };
 
   absl::Status InitFromGraph(const CreateInferenceInfo& create_info,
-                             const GraphFloat32& graph, Environment* env);
+                             const GraphFloat32& graph, Environment* env,
+                             std::vector<uint8_t>* serialized_model = nullptr);
 
   // Applies OpenCL-specific transformations to the graph before the
   // initialization. These transformations are either impossible or useless in
   // other backends.
   absl::Status InitFromGraphWithTransforms(
       const CreateInferenceInfo& create_info, GraphFloat32* graph,
-      Environment* env);
+      Environment* env, std::vector<uint8_t>* serialized_model = nullptr);
 
   absl::Status AddToQueue(CLCommandQueue* queue);
   absl::Status Profile(ProfilingCommandQueue* queue, ProfilingInfo* result);
@@ -92,8 +94,18 @@ class InferenceContext {
   const std::vector<ValueId>& GetInputIds() const { return input_ids_; }
   const std::vector<ValueId>& GetOutputIds() const { return output_ids_; }
 
+  absl::Status RestoreDeserialized(const std::vector<uint8_t>& serialized_model,
+                                   Environment* env);
+
  private:
   enum TensorMemoryType { STRONG_SHAPE = 0, BUFFER = 1, VARIABLE = 2 };
+
+  friend flatbuffers::Offset<data::InferenceContext> Encode(
+      const InferenceContext& inference,
+      flatbuffers::FlatBufferBuilder* builder);
+  friend absl::Status Decode(CLContext* context,
+                             const data::InferenceContext* fb_inference,
+                             InferenceContext* inference);
 
   void CopyInAndOutIds(const GraphFloat32& graph);
   absl::Status ConvertOperations(const DeviceInfo& device_info,
@@ -164,6 +176,32 @@ class InferenceContext {
     }
     void SetNext(ValueId id) { next_ = id; }
     DummyTensor Get(ValueId id) { return reservations_[id]; }
+
+    std::vector<std::pair<ValueId, TensorDescriptor>> GetTensorDescs() const {
+      std::vector<std::pair<ValueId, TensorDescriptor>> result;
+      for (auto& v : reservations_) {
+        TensorDescriptor desc = v.second.descriptor;
+        desc.shape.b = v.second.shape.b;
+        desc.shape.h = v.second.shape.h;
+        desc.shape.w = v.second.shape.w;
+        desc.shape.d = 1;
+        desc.shape.c = v.second.shape.c;
+        result.push_back({v.first, desc});
+      }
+      return result;
+    }
+
+    void Add(const std::vector<std::pair<ValueId, TensorDescriptor>>& tensors) {
+      for (auto& v : tensors) {
+        DummyTensor dummy;
+        dummy.descriptor = v.second;
+        dummy.shape.b = v.second.shape.b;
+        dummy.shape.h = v.second.shape.h;
+        dummy.shape.w = v.second.shape.w;
+        dummy.shape.c = v.second.shape.c;
+        Add(v.first, dummy);
+      }
+    }
 
    private:
     absl::flat_hash_map<ValueId, DummyTensor> reservations_;

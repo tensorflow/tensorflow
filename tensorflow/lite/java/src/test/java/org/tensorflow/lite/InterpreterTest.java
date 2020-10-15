@@ -394,9 +394,13 @@ public final class InterpreterTest {
   }
 
   @Test
+  // setAllowFp16PrecisionForFp32 is deprecated, suppress the warning to allow testing.
+  @SuppressWarnings("deprecation")
   public void testTurnOnNNAPI() throws Exception {
     Interpreter interpreter =
-        new Interpreter(MODEL_BUFFER, new Interpreter.Options().setUseNNAPI(true));
+        new Interpreter(
+            MODEL_BUFFER,
+            new Interpreter.Options().setUseNNAPI(true).setAllowFp16PrecisionForFp32(true));
     float[] oneD = {1.23f, 6.54f, 7.81f};
     float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
     float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
