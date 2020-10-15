@@ -267,7 +267,7 @@ class TransposeTest(test.TestCase):
     if not test.is_gpu_available(cuda_only=True):
       return
 
-    large_shapes = [[1000000, 31, 3], [3, 1000000, 31], [3, 31, 1000000],
+    large_shapes = [[500000, 31, 3], [3, 500000, 31], [3, 31, 500000],
                     [10000, 310, 3], [3, 10000, 310], [3, 310, 10000],
                     [2, 1000, 1000], [1000, 2, 1000], [1000, 1000, 2]]
     perms = [[0, 2, 1]] * 9
