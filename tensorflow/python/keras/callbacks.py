@@ -1689,8 +1689,8 @@ class EarlyStopping(Callback):
     baseline: Baseline value for the monitored quantity.
         Training will stop if the model doesn't show improvement over the
         baseline.
-    restore_best_weights: Whether to restore model weights from
-        the epoch with the best value of the monitored quantity.
+    restore_best_weights: Whether to restore model weights at each
+        epoch with the best value of the monitored quantity.
         If False, the model weights obtained at the last step of
         training are used.
 
