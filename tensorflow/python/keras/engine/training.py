@@ -2741,7 +2741,7 @@ def _collective_all_reduce_multi_worker(strategy):
 # for all strategies
 def _multi_worker_concat(v, strategy):
   """Order PerReplica objects for CollectiveAllReduceStrategy and concat."""
-  replicas = strategy._gather(v, axis=0)  # pylint: disable=protected-access
+  replicas = strategy.gather(v, axis=0)
   # v might not have the same shape on different replicas
   if isinstance(v, ds_values.PerReplica):
     shapes = array_ops.concat([
@@ -2749,10 +2749,10 @@ def _multi_worker_concat(v, strategy):
         for single_value in v.values
     ],
                               axis=0)
-    all_shapes = strategy._gather(shapes, axis=0)  # pylint: disable=protected-access
+    all_shapes = strategy.gather(shapes, axis=0)
   else:
     # v is a tensor. This may happen when, say, we have 2x1 multi-worker.
-    all_shapes = strategy._gather(  # pylint: disable=protected-access
+    all_shapes = strategy.gather(
         array_ops.expand_dims_v2(array_ops.shape(v)[0], axis=0),
         axis=0)
 

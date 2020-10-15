@@ -52,6 +52,10 @@ tf_class {
     argspec: "args=[\'self\', \'fn\', \'input_iterator\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "gather"
+    argspec: "args=[\'self\', \'value\', \'axis\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "group"
     argspec: "args=[\'self\', \'value\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
