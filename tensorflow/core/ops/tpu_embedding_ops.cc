@@ -70,7 +70,6 @@ REGISTER_OP("RecvTPUEmbeddingActivations")
       if (!config.ParseFromString(config_string)) {
         return errors::InvalidArgument("Malformed tpu_embedding_config.");
       }
-      tpu::AddDefaultEmbeddingOutputLayoutIfNeeded(&config);
       std::vector<TensorShapeProto> output_shapes;
       TF_RETURN_IF_ERROR(ComputeOutputTensorShapes(config, &output_shapes));
       if (c->num_outputs() != output_shapes.size()) {

@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/abstract_stack_trace.h"
@@ -50,6 +51,7 @@ limitations under the License.
 #include "tensorflow/python/util/stack_trace.h"
 #include "tensorflow/python/util/util.h"
 
+using tensorflow::Status;
 using tensorflow::string;
 using tensorflow::strings::Printf;
 
@@ -1278,6 +1280,13 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
       return nullptr;
     }
     return PyObject_CallFunctionObjArgs(ones_like_fn_, tensor, NULL);
+  }
+
+  // Builds a tensor filled with ones with the same shape and dtype as `t`.
+  Status BuildOnesLike(const PyTapeTensor& t,
+                       PyObject** result) const override {
+    *result = t.OnesLike();
+    return Status::OK();
   }
 
   PyObject* Zeros(PyObject* shape, PyObject* dtype) const {

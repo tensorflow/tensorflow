@@ -315,7 +315,16 @@ absl::Status GPUOperationFromNode(const DeviceInfo& device_info,
     case OperationType::DEPTHWISE_CONVOLUTION: {
       auto attr = absl::any_cast<DepthwiseConvolution2DAttributes>(
           node.operation.attributes);
-      *gpu_op = SelectDWConvolution(attr, device_info, op_def);
+      if (inputs.size() == 1) {
+        *gpu_op = SelectDWConvolution(attr, device_info, op_def);
+      } else {
+        if (inputs[1]->tensor.shape.b != 1) {
+          return absl::UnimplementedError(
+              "No support of depthwise runtime weights with channel multiplier "
+              "!= 1");
+        }
+        *gpu_op = SelectDWConvolutionDynamicWeights(attr, device_info, op_def);
+      }
       return absl::OkStatus();
     }
     case OperationType::FULLY_CONNECTED: {

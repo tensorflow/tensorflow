@@ -58,6 +58,7 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
   TF_RETURN_IF_ERROR(RunInvariantCheckers(hlo, last_pass_name));
   bool changed = false;
   for (HloPassInterface* pass : passes) {
+    XLA_SCOPED_LOGGING_TIMER(absl::StrCat("HLO pass: ", pass->name()));
     absl::string_view pass_name = pass->name();
     VLOG(1) << "  HLO pass " << pass_name;
     VLOG(2) << "  Module hash " << hlo->Hash();

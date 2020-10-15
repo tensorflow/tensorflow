@@ -71,16 +71,20 @@ def softmax(x, axis=-1):
   Raises:
       ValueError: In case `dim(x) == 1`.
   """
-  ndim = K.ndim(x)
-  if ndim == 2:
-    return nn.softmax(x)
-  elif ndim > 2:
+  rank = x.shape.rank
+  if rank == 2:
+    output = nn.softmax(x)
+  elif rank > 2:
     e = math_ops.exp(x - math_ops.reduce_max(x, axis=axis, keepdims=True))
     s = math_ops.reduce_sum(e, axis=axis, keepdims=True)
-    return e / s
+    output = e / s
   else:
     raise ValueError('Cannot apply softmax to a tensor that is 1D. '
                      'Received input: %s' % (x,))
+
+  # Cache the logits to use for crossentropy loss.
+  output._keras_logits = x  # pylint: disable=protected-access
+  return output
 
 
 @keras_export('keras.activations.elu')
@@ -391,7 +395,10 @@ def sigmoid(x):
   Returns:
       Tensor with the sigmoid activation: `1 / (1 + exp(-x))`.
   """
-  return nn.sigmoid(x)
+  output = nn.sigmoid(x)
+  # Cache the logits to use for crossentropy loss.
+  output._keras_logits = x  # pylint: disable=protected-access
+  return output
 
 
 @keras_export('keras.activations.exponential')

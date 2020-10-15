@@ -25,6 +25,18 @@ limitations under the License.
 
 namespace mlir {
 
+struct MlirToHloConversionOptions {
+  // Best-effort propagation of the layouts. These layouts serve as performance
+  // hints to the backend.
+  //
+  // Note that non-array shapes are not carrying layouts, and users have to
+  // figure out the proper layouts of them through context. This is one of the
+  // reasons why the attribute-based solution is temporary.
+  //
+  // TODO(timshen): Investigate the necessity of having layouts in MHLO.
+  bool propagate_layouts = false;
+};
+
 // Converts a MLIR module in HLO dialect into a HloModuleProto. If
 // use_tuple_args is set, then the entry computations's arguments are converted
 // to a tuple and passed as a single parameter.
@@ -32,15 +44,19 @@ namespace mlir {
 // are converted to a tuple even when there is only a single return value.
 // Multiple return values are always converted to a tuple and returned as a
 // single value.
+//
+// TODO(timshen): move other options into `options`.
 Status ConvertMlirHloToHlo(mlir::ModuleOp module, ::xla::HloProto* hlo_proto,
                            bool use_tuple_args, bool return_tuple,
                            const tensorflow::XlaHelpers::ShapeRepresentationFn
-                               shape_representation_fn = nullptr);
+                               shape_representation_fn = nullptr,
+                           MlirToHloConversionOptions options = {});
 
 // Converts a region to a computation. It returns a standalone module that
 // contains the converted region as the entry computation.
 Status ConvertRegionToComputation(mlir::Region* region,
-                                  ::xla::XlaComputation* func);
+                                  ::xla::XlaComputation* func,
+                                  MlirToHloConversionOptions options = {});
 
 // Creates XlaOp equivalent of a given MLIR operation using the operand info
 // from `value_lowering` map.

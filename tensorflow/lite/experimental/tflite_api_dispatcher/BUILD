@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+
 package(
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],  # Apache 2.0
@@ -6,6 +8,7 @@ package(
 cc_library(
     name = "tflite_api_dispatcher",
     hdrs = ["tflite_api_dispatcher.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/lite:framework_lib",
     ],

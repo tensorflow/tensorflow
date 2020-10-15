@@ -479,12 +479,13 @@ func @floordiv_f16_broadcast(%arg0: tensor<2x3xf16>, %arg1: tensor<3xf16>) -> te
 }
 
 // CHECK-LABEL:   func @equal(
-// CHECK-SAME:                %[[VAL_0:.*]]: tensor<2xi32>) -> tensor<2xi1> {
-// CHECK:           %[[VAL_1:.*]] = "tf.Equal"(%[[VAL_0]], %[[VAL_0]]) {incompatible_shape_error = true} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
-// CHECK:           return %[[VAL_1]] : tensor<2xi1>
+// CHECK-SAME:                %[[VAL_0:.*]]: tensor<2xi32>,
+// CHECK-SAME:                %[[VAL_1:.*]]: tensor<2xi32>) -> tensor<2xi1> {
+// CHECK:           %[[VAL_2:.*]] = "tf.Equal"(%[[VAL_0]], %[[VAL_1]]) {incompatible_shape_error = true} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+// CHECK:           return %[[VAL_2]] : tensor<2xi1>
 // CHECK:         }
-func @equal(%arg0: tensor<2xi32>) -> tensor<2xi1> {
-  %0 = "mhlo.compare"(%arg0, %arg0) {comparison_direction = "EQ"} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+func @equal(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
+  %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "EQ"} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
   return %0 : tensor<2xi1>
 }
 
@@ -533,12 +534,13 @@ func @equal_incompatible_shape_broadcastable(%arg0: tensor<?xi32>, %arg1: tensor
 }
 
 // CHECK-LABEL:   func @notequal(
-// CHECK-SAME:                   %[[VAL_0:.*]]: tensor<2xi32>) -> tensor<2xi1> {
-// CHECK:           %[[VAL_1:.*]] = "tf.NotEqual"(%[[VAL_0]], %[[VAL_0]]) {incompatible_shape_error = true} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
-// CHECK:           return %[[VAL_1]] : tensor<2xi1>
+// CHECK-SAME:                   %[[VAL_0:.*]]: tensor<2xi32>,
+// CHECK-SAME:                   %[[VAL_1:.*]]: tensor<2xi32>) -> tensor<2xi1> {
+// CHECK:           %[[VAL_2:.*]] = "tf.NotEqual"(%[[VAL_0]], %[[VAL_1]]) {incompatible_shape_error = true} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+// CHECK:           return %[[VAL_2]] : tensor<2xi1>
 // CHECK:         }
-func @notequal(%arg0: tensor<2xi32>) -> tensor<2xi1> {
-  %0 = "mhlo.compare"(%arg0, %arg0) {comparison_direction = "NE"} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+func @notequal(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
+  %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "NE"} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
   return %0 : tensor<2xi1>
 }
 
@@ -576,12 +578,13 @@ func @notequal_incompatible_shape_broadcastable(%arg0: tensor<?xi32>, %arg1: ten
 }
 
 // CHECK-LABEL:   func @greater(
-// CHECK-SAME:                  %[[VAL_0:.*]]: tensor<2xi32>) -> tensor<2xi1> {
-// CHECK:           %[[VAL_1:.*]] = "tf.Greater"(%[[VAL_0]], %[[VAL_0]]) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
-// CHECK:           return %[[VAL_1]] : tensor<2xi1>
+// CHECK-SAME:                  %[[VAL_0:.*]]: tensor<2xi32>,
+// CHECK-SAME:                  %[[VAL_1:.*]]: tensor<2xi32>) -> tensor<2xi1> {
+// CHECK:           %[[VAL_2:.*]] = "tf.Greater"(%[[VAL_0]], %[[VAL_1]]) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+// CHECK:           return %[[VAL_2]] : tensor<2xi1>
 // CHECK:         }
-func @greater(%arg0: tensor<2xi32>) -> tensor<2xi1> {
-  %0 = "mhlo.compare"(%arg0, %arg0) {comparison_direction = "GT"} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+func @greater(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
+  %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "GT"} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
   return %0 : tensor<2xi1>
 }
 
@@ -597,12 +600,13 @@ func @broadcast_greater(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<
 }
 
 // CHECK-LABEL:   func @greater_equal(
-// CHECK-SAME:                        %[[VAL_0:.*]]: tensor<2xi32>) -> tensor<2xi1> {
-// CHECK:           %[[VAL_1:.*]] = "tf.GreaterEqual"(%[[VAL_0]], %[[VAL_0]]) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
-// CHECK:           return %[[VAL_1]] : tensor<2xi1>
+// CHECK-SAME:                        %[[VAL_0:.*]]: tensor<2xi32>,
+// CHECK-SAME:                        %[[VAL_1:.*]]: tensor<2xi32>) -> tensor<2xi1> {
+// CHECK:           %[[VAL_2:.*]] = "tf.GreaterEqual"(%[[VAL_0]], %[[VAL_1]]) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+// CHECK:           return %[[VAL_2]] : tensor<2xi1>
 // CHECK:         }
-func @greater_equal(%arg0: tensor<2xi32>) -> tensor<2xi1> {
-  %0 = "mhlo.compare"(%arg0, %arg0) {comparison_direction = "GE"} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+func @greater_equal(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
+  %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "GE"} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
   return %0 : tensor<2xi1>
 }
 
@@ -618,12 +622,13 @@ func @broadcast_greater_equal(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> t
 }
 
 // CHECK-LABEL:   func @less(
-// CHECK-SAME:               %[[VAL_0:.*]]: tensor<2xi32>) -> tensor<2xi1> {
-// CHECK:           %[[VAL_1:.*]] = "tf.Less"(%[[VAL_0]], %[[VAL_0]]) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
-// CHECK:           return %[[VAL_1]] : tensor<2xi1>
+// CHECK-SAME:               %[[VAL_0:.*]]: tensor<2xi32>,
+// CHECK-SAME:               %[[VAL_1:.*]]: tensor<2xi32>) -> tensor<2xi1> {
+// CHECK:           %[[VAL_2:.*]] = "tf.Less"(%[[VAL_0]], %[[VAL_1]]) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+// CHECK:           return %[[VAL_2]] : tensor<2xi1>
 // CHECK:         }
-func @less(%arg0: tensor<2xi32>) -> tensor<2xi1> {
-  %0 = "mhlo.compare"(%arg0, %arg0) {comparison_direction = "LT"} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+func @less(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
+  %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "LT"} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
   return %0 : tensor<2xi1>
 }
 
@@ -639,12 +644,13 @@ func @broadcast_less(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2
 }
 
 // CHECK-LABEL:   func @less_equal(
-// CHECK-SAME:                     %[[VAL_0:.*]]: tensor<2xi32>) -> tensor<2xi1> {
-// CHECK:           %[[VAL_1:.*]] = "tf.LessEqual"(%[[VAL_0]], %[[VAL_0]]) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
-// CHECK:           return %[[VAL_1]] : tensor<2xi1>
+// CHECK-SAME:                     %[[VAL_0:.*]]: tensor<2xi32>,
+// CHECK-SAME:                     %[[VAL_1:.*]]: tensor<2xi32>) -> tensor<2xi1> {
+// CHECK:           %[[VAL_2:.*]] = "tf.LessEqual"(%[[VAL_0]], %[[VAL_1]]) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+// CHECK:           return %[[VAL_2]] : tensor<2xi1>
 // CHECK:         }
-func @less_equal(%arg0: tensor<2xi32>) -> tensor<2xi1> {
-  %0 = "mhlo.compare"(%arg0, %arg0) {comparison_direction = "LE"} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+func @less_equal(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
+  %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "LE"} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
   return %0 : tensor<2xi1>
 }
 
@@ -1363,20 +1369,21 @@ func @bitcast_same_widths(%arg0: tensor<2xf32>) -> tensor<2xi32> {
 }
 
 // CHECK-LABEL:   func @sign(
-// CHECK-SAME:               %[[VAL_0:.*]]: tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32> {
-// CHECK:           %[[VAL_1:.*]] = "tf.NotEqual"(%[[VAL_0]], %[[VAL_0]]) {incompatible_shape_error = true} : (tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xi1>
-// CHECK:           %[[VAL_2:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<1x2x3x4xf32>} : () -> tensor<1x2x3x4xf32>
-// CHECK:           %[[VAL_3:.*]] = "tf.NotEqual"(%[[VAL_0]], %[[VAL_0]]) {incompatible_shape_error = true} : (tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xi1>
-// CHECK:           %[[VAL_4:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<1x2x3x4xf32>} : () -> tensor<1x2x3x4xf32>
-// CHECK:           %[[VAL_5:.*]] = "tf.Sign"(%[[VAL_0]]) : (tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32>
-// CHECK:           %[[VAL_6:.*]] = "tf.Select"(%[[VAL_3]], %[[VAL_4]], %[[VAL_5]]) : (tensor<1x2x3x4xi1>, tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32>
-// CHECK:           %[[VAL_7:.*]] = "tf.Select"(%[[VAL_1]], %[[VAL_2]], %[[VAL_6]]) : (tensor<1x2x3x4xi1>, tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32>
-// CHECK:           return %[[VAL_7]] : tensor<1x2x3x4xf32>
+// CHECK-SAME:               %[[VAL_0:.*]]: tensor<1x2x3x4xf32>,
+// CHECK-SAME:               %[[VAL_1:.*]]: tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32> {
+// CHECK:           %[[VAL_2:.*]] = "tf.NotEqual"(%[[VAL_0]], %[[VAL_1]]) {incompatible_shape_error = true} : (tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xi1>
+// CHECK:           %[[VAL_3:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<1x2x3x4xf32>} : () -> tensor<1x2x3x4xf32>
+// CHECK:           %[[VAL_4:.*]] = "tf.NotEqual"(%[[VAL_0]], %[[VAL_1]]) {incompatible_shape_error = true} : (tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xi1>
+// CHECK:           %[[VAL_5:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<1x2x3x4xf32>} : () -> tensor<1x2x3x4xf32>
+// CHECK:           %[[VAL_6:.*]] = "tf.Sign"(%[[VAL_0]]) : (tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32>
+// CHECK:           %[[VAL_7:.*]] = "tf.Select"(%[[VAL_4]], %[[VAL_5]], %[[VAL_6]]) : (tensor<1x2x3x4xi1>, tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32>
+// CHECK:           %[[VAL_8:.*]] = "tf.Select"(%[[VAL_2]], %[[VAL_3]], %[[VAL_7]]) : (tensor<1x2x3x4xi1>, tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32>
+// CHECK:           return %[[VAL_8]] : tensor<1x2x3x4xf32>
 // CHECK:         }
-func @sign(%arg0: tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32> {
-  %0 = "mhlo.compare"(%arg0, %arg0) {comparison_direction = "NE"} : (tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xi1>
+func @sign(%arg0: tensor<1x2x3x4xf32>, %arg1: tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32> {
+  %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "NE"} : (tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xi1>
   %1 = mhlo.constant dense<0.000000e+00> : tensor<1x2x3x4xf32>
-  %2 = "mhlo.compare"(%arg0, %arg0) {comparison_direction = "NE"} : (tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xi1>
+  %2 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "NE"} : (tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xi1>
   %3 = mhlo.constant dense<0.000000e+00> : tensor<1x2x3x4xf32>
   %4 = "mhlo.sign"(%arg0) : (tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32>
   %5 = "mhlo.select"(%2, %3, %4) : (tensor<1x2x3x4xi1>, tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32>

@@ -149,6 +149,11 @@ tensorflow::Tensor BufferMap::GetTensor(int tensor_index) const {
   return id_to_tensor_.at(tensor_index);
 }
 
+const tensorflow::Tensor* BufferMap::GetTensorPtr(int tensor_index) const {
+  auto& tensor = id_to_tensor_.at(tensor_index);
+  return &tensor;
+}
+
 void BufferMap::SetFromTfLite(int tensor_index, const TfLiteTensor* tensor) {
   tensorflow::TensorShape shape;
   int num_dims = tensor->dims->size;

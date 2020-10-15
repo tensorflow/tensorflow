@@ -99,18 +99,18 @@ TEST_F(HorizontalInputFusionTest, ManyInputFusions) {
   auto output_shape = ShapeUtil::MakeShape(F32, {1024});
   for (int64 i = 0; i < 130; ++i) {
     // %fused_computation.3 (param_0: f32[1024,1024], param_1: f32[]) ->
-    //  f32[1024] {
-    //   %param_0 = f32[1024,1024]{1,0} parameter(0)
-    //   %param_1 = f32[] parameter(1)
-    //   %broadcast = f32[1024,1024]{1,0} broadcast(f32[] %param_1),
-    //   dimensions={}
-    //   %multiply = f32[1024,1024]{1,0}
-    //       multiply(f32[1024,1024]{1,0} %param_0, f32[1024,1024]{1,0}
-    //       %broadcast)
-    //   %constant0 = f32[] constant(0)
-    //   ROOT %reduce = f32[1024]{0}
-    //       reduce(f32[1024,1024]{1,0} %multiply, f32[] %constant0),
-    //           dimensions={1}, to_apply=%add
+    // f32[1024] {
+    //  %param_0 = f32[1024,1024]{1,0} parameter(0)
+    //  %param_1 = f32[] parameter(1)
+    //  %broadcast = f32[1024,1024]{1,0} broadcast(f32[] %param_1),
+    //  dimensions={}
+    //  %multiply = f32[1024,1024]{1,0}
+    //      multiply(f32[1024,1024]{1,0} %param_0, f32[1024,1024]{1,0}
+    //      %broadcast)
+    //  %constant0 = f32[] constant(0)
+    //  ROOT %reduce = f32[1024]{0}
+    //      reduce(f32[1024,1024]{1,0} %multiply, f32[] %constant0),
+    //          dimensions={1}, to_apply=%add
     // }
     HloInstruction* param_var_in = builder.AddInstruction(
         HloInstruction::CreateParameter(i * 2 + 0, input_shape, "var.in"));
@@ -139,6 +139,76 @@ TEST_F(HorizontalInputFusionTest, ManyInputFusions) {
 
   // Testing with the entire gpu optimization pipeline.
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-5, 1e-5}));
+}
+
+TEST_F(HorizontalInputFusionTest, MultiOutputFusionTest) {
+  // This tests the below pattern. One known issue is that gtes (to fusions) can
+  // be removed after their producer fusions are merged. In the below case, gte2
+  // and gte6 will be gone if Fusion2 is fused into Fusion1.
+  //
+  // Fusion1   Fusion2
+  //  |   |    |     |
+  //  |  gte1 gte2   |
+  //  |   |    |     |
+  //  |   Fusion3    |
+  //  |    |   |     |
+  // gte3 gte4 gte5 gte6
+  //  \  |     |    /
+  //  =====ROOT=====
+  //
+  auto module = ParseAndReturnVerifiedModule(R"(
+ HloModule MultiOutputFusionTest
+
+  %add_f16 {
+    %x = f16[] parameter(0)
+    %y = f16[] parameter(1)
+    ROOT %add = f16[] add(%x, %y)
+  }
+
+ fused_computation.1 {
+   arg.1 = f16[1024]{0} parameter(0)
+   constant0 = f16[] constant(0)
+   reduce.1 = f16[] reduce(arg.1, constant0), dimensions={0}, to_apply=%add_f16
+   add.0 = f16[1024] add(arg.1, arg.1)
+   ROOT tuple.1 = (f16[], f16[1024]) tuple(reduce.1, add.0)
+ }
+
+ fused_computation.2 {
+   arg.1 = f16[1024]{0} parameter(0)
+   constant0 = f16[] constant(0)
+   reduce.1 = f16[] reduce(arg.1, constant0), dimensions={0}, to_apply=%add_f16
+   add.0 = f16[1024] add(arg.1, arg.1)
+   ROOT tuple.1 = (f16[], f16[1024]) tuple(reduce.1, add.0)
+ }
+
+ fused_computation.3 {
+   arg.0 = f16[1024]{0} parameter(0)
+   arg.1 = f16[1024]{0} parameter(1)
+   add.0 = f16[1024] add(arg.0, arg.1)
+   mul.0 = f16[1024] multiply(arg.0, arg.1)
+   ROOT tuple.1 = (f16[1024], f16[1024]) tuple(add.0, mul.0)
+ }
+
+ ENTRY entry_computation {
+   arg.1 = f16[1024]{0} parameter(0)
+   arg.2 = f16[1024]{0} parameter(1)
+   fusion.1 = (f16[],f16[1024]) fusion(arg.1), kind=kInput, calls=fused_computation.1
+   fusion.2 = (f16[],f16[1024]) fusion(arg.2), kind=kInput, calls=fused_computation.2
+   gte.3 = f16[] get-tuple-element(fusion.1), index=0
+   gte.1 = f16[1024]{0} get-tuple-element(fusion.1), index=1
+   gte.2 = f16[1024]{0} get-tuple-element(fusion.2), index=1
+   gte.6 = f16[] get-tuple-element(fusion.2), index=0
+   fusion.3 = (f16[1024],f16[1024]) fusion(gte.1, gte.2),
+       kind=kLoop, calls=fused_computation.3
+   gte.4 = f16[1024] get-tuple-element(fusion.3), index=0
+   gte.5 = f16[1024]{0} get-tuple-element(fusion.3), index=1
+   ROOT tuple.1 = (f16[], f16[1024]{0}, f16[], f16[1024]{0})
+       tuple(gte.3, gte.4, gte.5, gte.6)
+ }
+)")
+                    .ValueOrDie();
+
+  EXPECT_TRUE(GpuHorizontalInputFusion().Run(module.get()).ValueOrDie());
 }
 
 }  // namespace

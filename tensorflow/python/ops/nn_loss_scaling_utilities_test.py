@@ -22,6 +22,7 @@ from absl.testing import parameterized
 
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute import test_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -35,7 +36,7 @@ from tensorflow.python.platform import test as test_lib
 class LossUtilitiesTest(test_lib.TestCase, parameterized.TestCase):
 
   def setUp(self):
-    strategy_combinations.set_virtual_cpus_to_at_least(3)
+    test_util.set_logical_devices_to_at_least("CPU", 3)
     super(LossUtilitiesTest, self).setUp()
 
   def testComputeAverageLossGlobalBatchSize(self):

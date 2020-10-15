@@ -1,7 +1,6 @@
 load(
     "//tensorflow:tensorflow.bzl",
-    "cc_header_only_library",
-    "if_tpu",
+    "if_libtpu",
     "tf_cc_test",
     "tf_cc_test_mkl",
     "tf_cc_tests",
@@ -11,10 +10,16 @@ load(
 )
 
 # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
 
 # For platform specific build config
 load(
@@ -88,7 +93,7 @@ cc_library(
     deps = [
         ":core_cpu",
         "//tensorflow/core/common_runtime/gpu:gpu_runtime",
-    ] + if_tpu(["//tensorflow/core/tpu:tpu_runtime"]),
+    ] + if_libtpu(["//tensorflow/core/tpu:tpu_runtime"]),
 )
 
 filegroup(
@@ -1734,7 +1739,6 @@ tf_cuda_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_experimental",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/debug:debug_graph_utils",
@@ -2225,7 +2229,10 @@ tf_cuda_cc_test(
     srcs = ["direct_session_test.cc"],
     args = [] + if_cuda(["--heap_check=local"]),  # The GPU tracer leaks memory
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = ["notsan"],  # b/168317266
+    tags = [
+        "noasan",  # b/168317266
+        "notsan",  # b/168317266
+    ],
     deps = [
         ":core_cpu",
         ":core_cpu_internal",
@@ -2269,6 +2276,7 @@ tf_cc_test(
     srcs = ["direct_session_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = [
+        "noasan",  #b/168811551
         "notsan",  #b/168811551
     ],
     deps = [

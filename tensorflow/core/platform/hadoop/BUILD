@@ -1,6 +1,7 @@
 # Description:
 # Hadoop file system implementation.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -15,6 +16,7 @@ cc_library(
     name = "hadoop_file_system",
     srcs = ["hadoop_file_system.cc"],
     hdrs = ["hadoop_file_system.h"],
+    compatible_with = [],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",

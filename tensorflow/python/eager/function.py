@@ -589,6 +589,8 @@ class _EagerDefinedFunction(object):
                 config=config,
                 executor_type=executor_type)
 
+    for i, func_graph_output in enumerate(self._func_graph_outputs):
+      custom_gradient.copy_handle_data(func_graph_output, outputs[i])
     if executing_eagerly:
       return outputs
     else:
@@ -597,8 +599,6 @@ class _EagerDefinedFunction(object):
       # once that's done.
       for i, shape in enumerate(self._output_shapes):
         outputs[i].set_shape(shape)
-      for i, func_graph_output in enumerate(self._func_graph_outputs):
-        custom_gradient.copy_handle_data(func_graph_output, outputs[i])
       return outputs
 
 
@@ -900,8 +900,9 @@ class _TapeGradientFunctions(object):
       for output in trainable_outputs:
         gradient_shape, gradient_dtype = default_gradient.shape_and_dtype(
             output)
-        gradients_wrt_outputs.append(
-            graph_placeholder(gradient_dtype, gradient_shape))
+        gradient_placeholder = graph_placeholder(gradient_dtype, gradient_shape)
+        custom_gradient.copy_handle_data(output, gradient_placeholder)
+        gradients_wrt_outputs.append(gradient_placeholder)
       with ops.device(None):
         gradients_wrt_inputs = gradients_util._GradientsHelper(  # pylint: disable=protected-access
             trainable_outputs,
@@ -909,6 +910,13 @@ class _TapeGradientFunctions(object):
             grad_ys=gradients_wrt_outputs,
             src_graph=self._func_graph)
 
+      if input_tangents:
+        # Convert IndexedSlices to dense tensors (as we do elsewhere for
+        # function gradients). Our C++ bindings don't know how to handle them
+        # currently.
+        gradients_wrt_inputs = nest.map_structure(
+            lambda x: ops.convert_to_tensor(x) if x is not None else None,
+            gradients_wrt_inputs)
       captures_from_forward = [
           c for c in backwards_graph.external_captures
           if not isinstance(c, ops.EagerTensor) and c.graph is self._func_graph
@@ -1590,9 +1598,9 @@ class ConcreteFunction(object):
     function_spec = self._pre_initialized_function_spec
     args = function_spec.fullargspec.args
     arg_specs, kwarg_specs = self.structured_input_signature
+    vararg_indices = range(len(function_spec.arg_names), len(arg_specs))
     fullargspec = tf_inspect.FullArgSpec(
-        args=list(args) +
-        ["<arg{}>".format(i + 1) for i in range(len(args), len(arg_specs))],
+        args=list(args) + ["<arg{}>".format(i + 1) for i in vararg_indices],
         varargs=None,
         varkw=None,
         defaults=[_BOUND_VALUE] * len(arg_specs),
@@ -2167,6 +2175,7 @@ class ConcreteFunction(object):
     j = 0
     for i, o in enumerate(outputs_list):
       if o is not None:
+        custom_gradient.copy_handle_data(self.outputs[j], result[j])
         outputs_list[i] = result[j]
         j += 1
     ret = nest.pack_sequence_as(self._func_graph.structured_outputs,
@@ -2272,10 +2281,16 @@ class ConcreteFunction(object):
       lines.append("  Args:")
       lines.extend(arg_details)
     lines.append("  Returns:")
+
+    def spec_from_value(value):
+      # For loaded function, structured_outputs are already specs.
+      if isinstance(value, type_spec.TypeSpec):
+        return value
+      return type_spec.type_spec_from_value(value)
+
     lines.append("    {}".format(
         pretty_print_spec(
-            nest.map_structure(type_spec.type_spec_from_value,
-                               self.structured_outputs))))
+            nest.map_structure(spec_from_value, self.structured_outputs))))
 
     return "\n".join(lines)
 
@@ -2926,10 +2941,6 @@ class Function(object):
     self._experimental_compile = experimental_compile
     self._experimental_follow_type_hints = experimental_follow_type_hints
 
-    # A boolean indicating whether the function has been traced with
-    # distribution strategy.
-    self._traced_with_distribution_strategy = False
-
   def __call__(self, *args, **kwargs):
     """Calls a graph function specialized to the inputs."""
     with self._lock:
@@ -3162,18 +3173,13 @@ class Function(object):
     except (AttributeError, IndexError):
       pass
 
-    # If the function has been traced with a distribution strategy, it might
-    # need to be retraced at saving time as DistributedVariable created under
-    # distribution strategy may want different tracing behavior at training and
-    # saving, e.g, it wants to resolve to the primary component at saving time,
-    # but wants resolve to the component residing in the current device at
-    # training time. We achieve this by adding variable_policy to the function
-    # cache key.
-    if save_context.in_save_context(
-    ) and self._traced_with_distribution_strategy:
+    if save_context.in_save_context():
       variable_policy = (
           save_context.get_save_options().experimental_variable_policy)
     else:
+      # With EXPAND_DISTRIBUTED_VARIABLES the variables have the same behavior
+      # in and out of saving. We use EXPAND_DISTRIBUTED_VARIABLES so that if the
+      # user saves with it, there's no need to retrace the functions.
       variable_policy = save_options.VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES
 
     return (parent_graph, device_functions, colocation_stack,
@@ -3364,9 +3370,6 @@ class Function(object):
           self._function_cache.missed.add(call_context_key)
           graph_function = self._create_graph_function(args, kwargs)
           self._function_cache.primary[cache_key] = graph_function
-
-          if ops.get_default_graph()._distribution_strategy_stack:
-            self._traced_with_distribution_strategy = True
 
           return graph_function, filtered_flat_args
 

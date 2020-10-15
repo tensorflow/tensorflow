@@ -158,6 +158,7 @@ static std::vector<ComputeTaskDescriptorPtr> Add2Linkable(int id, ValueId input_
                                                           ValueId input_id2, ValueId output_id) {
   std::vector<ComputeTaskDescriptorPtr> descriptors;
   descriptors.push_back(ComputeTaskDescriptorPtr(new ComputeTaskDescriptor({
+      {},  // args
       id,
       true,  // linkable
       true,  // associative_op

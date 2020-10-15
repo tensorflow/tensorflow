@@ -20,11 +20,13 @@ limitations under the License.
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/data/dataset.pb.h"
+#include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
 #include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
+#include "tensorflow/core/data/service/split_provider.h"
 #include "tensorflow/core/data/service/utils.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -32,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/snappy.h"
 #include "tensorflow/core/public/session_options.h"
 
@@ -108,7 +111,8 @@ Status DataServiceWorkerImpl::ProcessTaskInternal(const TaskDef& task_def)
     return Status::OK();
   }
   task = absl::make_unique<Task>(task_def);
-  VLOG(3) << "Began processing for task " << task_def.task_id();
+  VLOG(3) << "Began processing for task " << task_def.task_id()
+          << " with processing mode " << task_def.processing_mode();
   return Status::OK();
 }
 
@@ -142,7 +146,22 @@ Status DataServiceWorkerImpl::EnsureTaskInitialized(
       return errors::Internal("Unrecognized dataset case: ",
                               task.task_def.dataset_case());
   }
-  TF_RETURN_IF_ERROR(task.dataset->MakeIterator(&task.iterator));
+  switch (task.task_def.processing_mode()) {
+    case DISTRIBUTED_EPOCH: {
+      auto split_provider = absl::make_unique<DataServiceSplitProvider>(
+          config_.dispatcher_address(), config_.protocol(),
+          task.task_def.job_id());
+      TF_RETURN_IF_ERROR(task.dataset->MakeIterator(std::move(split_provider),
+                                                    &task.iterator));
+      break;
+    }
+    case PARALLEL_EPOCHS:
+      TF_RETURN_IF_ERROR(task.dataset->MakeIterator(&task.iterator));
+      break;
+    default:
+      return errors::InvalidArgument("Unrecognized processing mode: ",
+                                     task.task_def.processing_mode());
+  }
   task.initialized = true;
   VLOG(3) << "Created iterator for task " << task.task_def.task_id();
   return Status::OK();
@@ -163,7 +182,7 @@ Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
           "Worker has not yet registered with dispatcher.");
     }
     auto it = tasks_.find(request->task_id());
-    if (it == tasks_.end()) {
+    if (it == tasks_.end() || it->second->finished) {
       response->set_end_of_sequence(true);
       return Status::OK();
     }
@@ -172,7 +191,7 @@ Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
     TF_RETURN_IF_ERROR(task->iterator->GetNext(&outputs, &end_of_sequence));
     if (end_of_sequence) {
       VLOG(3) << "Reached end_of_sequence for task " << request->task_id();
-      tasks_.erase(request->task_id());
+      task->finished = true;
       pending_completed_tasks_.insert(request->task_id());
       task_completion_cv_.notify_one();
     }

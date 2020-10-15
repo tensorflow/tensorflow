@@ -44,6 +44,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.profiler import trace
 from tensorflow.python.saved_model import builder
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import loader
@@ -418,7 +419,6 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
                 run_params,
                 saved_model_dir,
                 inputs_data,
-                config,
                 graph_state,
                 num_runs=2):
     params = self._GetParamsCached()
@@ -430,6 +430,14 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
                                  num_runs)
       gc.collect()  # Force GC to destroy the TRT engine cache.
       return results
+
+    # The default config for tf.session is None. Create a config with
+    # TensorRTOptimizer enabled to support convert_online for inference.
+    config = None
+    # TODO(b/170220818): use the default session config to run inferenence
+    #   graphs for the offline conversion case after fixing the bug.
+    if graph_state == GraphState.INFERENCE:
+      config = self._GetConfigProto(run_params, GraphState.INFERENCE)
     return self._RunGraphV1(saved_model_dir, inputs_data, config, num_runs)
 
   def _CreateConverter(self, run_params, saved_model_dir, session_config,
@@ -814,70 +822,72 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     return self._MakeSavedModelV1(run_params)
 
   def RunTest(self, run_params):
-    should_run, reason_for_skipping = self.ShouldRunTest(run_params)
-    if not should_run:
-      return self.skipTest(reason_for_skipping)
+    with trace.Trace(run_params.test_name):
+      should_run, reason_for_skipping = self.ShouldRunTest(run_params)
+      if not should_run:
+        return self.skipTest(reason_for_skipping)
 
-    saved_model_dir = self._MakeSavedModel(run_params)
+      saved_model_dir = self._MakeSavedModel(run_params)
 
-    np.random.seed(12345)  # Fix the seed so the test is deterministic.
-    inputs_data = []
-    input_specs = self._GetParamsCached().input_specs
-    for dim_list in self._GetParamsCached().input_dims:
-      assert len(input_specs) == len(dim_list)
-      current_input_data = []
-      for spec, np_shape in zip(input_specs, dim_list):
-        np_dtype = spec.dtype.as_numpy_dtype()
-        # Multiply the input by some constant to avoid all zeros input for
-        # integer types.
-        scale = 10.0 if np.issubdtype(np_dtype, np.integer) else 1.0
-        # TODO(laigd): add debug options. E.g. we can set the input data to be
-        # continuous natural numbers:
-        # seq = np.arange(np.prod(np_shape))
-        # seq.resize(np_shape)
-        # current_inputs_data.append(scale * seq.astype(np_dtype))
-        data = (scale * np.random.random_sample(np_shape)).astype(np_dtype)
-        if run_params.is_v2:
-          with ops.device("/GPU:0"):
-            data = ops.convert_to_tensor(data)
-        current_input_data.append(data)
-      inputs_data.append(current_input_data)
+      np.random.seed(12345)  # Fix the seed so the test is deterministic.
+      inputs_data = []
+      input_specs = self._GetParamsCached().input_specs
+      for dim_list in self._GetParamsCached().input_dims:
+        assert len(input_specs) == len(dim_list)
+        current_input_data = []
+        for spec, np_shape in zip(input_specs, dim_list):
+          np_dtype = spec.dtype.as_numpy_dtype()
+          # Multiply the input by some constant to avoid all zeros input for
+          # integer types.
+          scale = 10.0 if np.issubdtype(np_dtype, np.integer) else 1.0
+          # TODO(laigd): add debug options. E.g. we can set the input data to be
+          # continuous natural numbers:
+          # seq = np.arange(np.prod(np_shape))
+          # seq.resize(np_shape)
+          # current_inputs_data.append(scale * seq.astype(np_dtype))
+          data = (scale * np.random.random_sample(np_shape)).astype(np_dtype)
+          if run_params.is_v2:
+            with ops.device("/GPU:0"):
+              data = ops.convert_to_tensor(data)
+          current_input_data.append(data)
+        inputs_data.append(current_input_data)
 
-    # Verify original graph.
-    self._VerifyGraphDef(run_params, saved_model_dir, saved_model_dir,
-                         GraphState.ORIGINAL)
+      # Verify the original graph.
+      self._VerifyGraphDef(run_params, saved_model_dir, saved_model_dir,
+                           GraphState.ORIGINAL)
 
-    # Run original graph without trt to get reference result.
-    config_no_trt = self._GetConfigProto(run_params, GraphState.ORIGINAL)
-    logging.info("Running original graph w/o trt, config:\n%s",
-                 str(config_no_trt))
-    ref_result = self._RunGraph(run_params, saved_model_dir, inputs_data,
-                                config_no_trt, GraphState.ORIGINAL)
+      # Run the original graph without TensorRT to get the reference result.
+      logging.info("Running original graph w/o TensorRT\n")
+      ref_result = self._RunGraph(
+          run_params,
+          saved_model_dir,
+          inputs_data,
+          GraphState.ORIGINAL,
+          num_runs=1)
 
-    # Run calibration if necessary.
-    if IsQuantizationWithCalibration(run_params):
-      infer_saved_model_dir = self._GetCalibratedInferGraph(
-          run_params, saved_model_dir, inputs_data)
-      self._VerifyGraphDef(run_params, saved_model_dir, infer_saved_model_dir,
-                           GraphState.INFERENCE)
-    elif not run_params.convert_online:
-      infer_saved_model_dir = self._GetInferGraph(run_params, saved_model_dir)
-      self._VerifyGraphDef(run_params, saved_model_dir, infer_saved_model_dir,
-                           GraphState.INFERENCE)
-    else:
-      infer_saved_model_dir = saved_model_dir
+      # Run calibration if necessary.
+      if IsQuantizationWithCalibration(run_params):
+        infer_saved_model_dir = self._GetCalibratedInferGraph(
+            run_params, saved_model_dir, inputs_data)
+        self._VerifyGraphDef(run_params, saved_model_dir, infer_saved_model_dir,
+                             GraphState.INFERENCE)
+      elif not run_params.convert_online:
+        infer_saved_model_dir = self._GetInferGraph(run_params, saved_model_dir)
+        self._VerifyGraphDef(run_params, saved_model_dir, infer_saved_model_dir,
+                             GraphState.INFERENCE)
+      else:
+        infer_saved_model_dir = saved_model_dir
 
-    # Run inference.
-    infer_config = self._GetConfigProto(run_params, GraphState.INFERENCE)
-    logging.info("Running final inference graph, config:\n%s",
-                 str(infer_config))
-    result = self._RunGraph(run_params, infer_saved_model_dir, inputs_data,
-                            infer_config, GraphState.INFERENCE)
-    self.assertAllClose(
-        ref_result,
-        result,
-        atol=self.ExpectedAbsoluteTolerance(run_params),
-        rtol=self.ExpectedRelativeTolerance(run_params))
+      # Run the inference graph, either using the converted graph or the
+      # original graph with convert_online == True.
+      logging.info("Running final inference graph\n")
+      result = self._RunGraph(run_params, infer_saved_model_dir, inputs_data,
+                              GraphState.INFERENCE)
+      self.assertAllClose(
+          ref_result,
+          result,
+          atol=self.ExpectedAbsoluteTolerance(run_params),
+          rtol=self.ExpectedRelativeTolerance(run_params))
 
   def testIdempotence(self):
     # Test that applying tensorrt optimizer or offline conversion tools multiple

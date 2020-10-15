@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 
@@ -49,6 +50,40 @@ REGISTER_OP("OutfeedDequeueTuple")
     .Attr("device_ordinal: int = -1")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
+      std::vector<PartialTensorShape> shapes;
+      std::vector<DataType> dtypes;
+      TF_RETURN_IF_ERROR(c->GetAttr("shapes", &shapes));
+      TF_RETURN_IF_ERROR(c->GetAttr("dtypes", &dtypes));
+      if (shapes.size() != dtypes.size()) {
+        return errors::InvalidArgument(
+            "Incorrect number of output shapes specified");
+      }
+      for (int i = 0; i < shapes.size(); ++i) {
+        ShapeHandle out;
+        TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shapes[i], &out));
+        c->set_output(i, out);
+      }
+      return Status::OK();
+    });
+
+REGISTER_OP("OutfeedDequeueV2")
+    .Input("device_ordinal: int32")
+    .Output("output: dtype")
+    .Attr("dtype: type")
+    .Attr("shape: shape")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::ExplicitShape);
+
+REGISTER_OP("OutfeedDequeueTupleV2")
+    .Input("device_ordinal: int32")
+    .Output("outputs: dtypes")
+    .Attr("dtypes: list(type)")
+    .Attr("shapes: list(shape)")
+    .SetIsStateful()
+    .SetShapeFn([](InferenceContext* c) {
+      if (c->Rank(c->input(0)) != 0) {
+        return errors::InvalidArgument("device ordinal must be a scalar.");
+      }
       std::vector<PartialTensorShape> shapes;
       std::vector<DataType> dtypes;
       TF_RETURN_IF_ERROR(c->GetAttr("shapes", &shapes));

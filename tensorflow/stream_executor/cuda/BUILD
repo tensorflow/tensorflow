@@ -2,6 +2,7 @@
 #   CUDA-platform specific StreamExecutor support code.
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_copts", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.bzl", "filegroup")
 load(
     "//tensorflow/stream_executor:build_defs.bzl",
     "stream_executor_friends",
@@ -16,6 +17,10 @@ load(
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
+)
+load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
 )
 
 package(
@@ -100,6 +105,10 @@ cc_library(
 # Buildozer can not remove dependencies inside select guards, so we have to use
 # an intermediate target.
 cc_library(name = "ptxas_wrapper")
+
+# Buildozer can not remove dependencies inside select guards, so we have to use
+# an intermediate target.
+cc_library(name = "fatbinary_wrapper")
 
 cc_library(
     name = "cuda_driver",
@@ -627,9 +636,9 @@ tf_cuda_cc_test(
     deps = [
         ":cuda_activation",
         ":cuda_gpu_executor",
-        "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
         "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor:event",

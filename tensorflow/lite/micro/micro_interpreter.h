@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,8 +32,6 @@ namespace tflite {
 
 namespace internal {
 
-constexpr size_t kMaxScratchBuffersPerOp = 8;
-
 // A helper class to encapsulate the implementation of APIs in Context.
 // context->impl_ points to an instance of this class.
 // Check tensorflow/lite/c/common.h for detailed descriptions.
@@ -55,28 +53,19 @@ class ContextHelper {
                                  int tensor_idx);
   static TfLiteEvalTensor* GetEvalTensor(const struct TfLiteContext* context,
                                          int tensor_idx);
-  // Commits all scratch buffer allocations to MicroAllocator.
-  TfLiteStatus CommitScratchBuffers();
-
-  // Sets the current node index to assist with scratch buffer allocations:
-  void SetNodeIndex(int idx);
 
   // Sets the pointer to a list of TfLiteEvalTensor instances.
   void SetTfLiteEvalTensors(TfLiteEvalTensor* eval_tensors);
-  // Sets the pointer to scratch buffer handle, which is needed by
-  // `GetScratchBuffer`.
-  void SetScratchBufferHandles(void* scratch_buffer_handle);
+
+  // Sets the pointer to a list of ScratchBufferHandle instances.
+  void SetScratchBufferHandles(ScratchBufferHandle* scratch_buffer_handles);
 
  private:
   MicroAllocator* allocator_ = nullptr;
   ErrorReporter* error_reporter_ = nullptr;
   const Model* model_ = nullptr;
   TfLiteEvalTensor* eval_tensors_ = nullptr;
-  void* scratch_buffer_handles_ = nullptr;
-  int current_node_idx_ = -1;
-
-  size_t scrach_buffer_sizes_[kMaxScratchBuffersPerOp];
-  size_t scratch_buffer_count_ = 0;
+  ScratchBufferHandle* scratch_buffer_handles_ = nullptr;
 };
 
 }  // namespace internal
@@ -204,12 +193,15 @@ class MicroInterpreter {
 
   TfLiteStatus initialization_status_;
 
-  const SubGraph* subgraph_;
-  TfLiteEvalTensor* eval_tensors_;
+  const SubGraph* subgraph_ = nullptr;
+  TfLiteEvalTensor* eval_tensors_ = nullptr;
+  ScratchBufferHandle* scratch_buffer_handles_ = nullptr;
+
+  // TODO(b/16157777): Drop this reference:
   internal::ContextHelper context_helper_;
 
-  // TODO(b/160894903): Clean these pointers up when all APIs are updated to new
-  // TfLiteEvalTensor buffers.
+  // TODO(b/162311891): Clean these pointers up when this class supports buffers
+  // from TfLiteEvalTensor.
   TfLiteTensor* input_tensor_;
   TfLiteTensor* output_tensor_;
 };

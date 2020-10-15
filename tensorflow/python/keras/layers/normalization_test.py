@@ -66,6 +66,15 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
         kwargs={'scale': False,
                 'center': False},
         input_shape=(3, 3))
+    testing_utils.layer_test(
+        keras.layers.BatchNormalization,
+        kwargs={
+            'gamma_initializer': 'ones',
+            'beta_initializer': 'ones',
+            'moving_mean_initializer': 'zeros',
+            'moving_variance_initializer': 'ones'
+        },
+        input_shape=(3, 2, 4, 2))
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_batchnorm_weights(self):
@@ -319,7 +328,7 @@ class BatchNormalizationV2Test(keras_parameterized.TestCase):
     norm = normalization_v2.BatchNormalization(fused=True)
     self.assertEqual(norm.fused, True)
     inp = keras.layers.Input(shape=(4, 4))
-    with self.assertRaisesRegex(ValueError, '4D input tensors'):
+    with self.assertRaisesRegex(ValueError, '4D or 5D input tensors'):
       norm(inp)
 
   def test_updates_in_wrap_function(self):

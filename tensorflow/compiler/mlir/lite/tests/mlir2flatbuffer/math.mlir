@@ -5,20 +5,25 @@ func @main(tensor<4xf32>) -> tensor<4xf32> {
   // CHECK:      {
   // CHECK-NEXT:   version: 3,
   // CHECK-NEXT:   operator_codes: [ {
-  // CHECK-NEXT:     builtin_code: SQUARED_DIFFERENCE,
-  // CHECK-NEXT:     version: 1
+  // CHECK-NEXT:     deprecated_builtin_code: 99,
+  // CHECK-NEXT:     version: 1,
+  // CHECK-NEXT:     builtin_code: SQUARED_DIFFERENCE
   // CHECK-NEXT:   }, {
-  // CHECK-NEXT:     builtin_code: MUL,
-  // CHECK-NEXT:     version: 1
+  // CHECK-NEXT:     deprecated_builtin_code: 18,
+  // CHECK-NEXT:     version: 1,
+  // CHECK-NEXT:     builtin_code: MUL
   // CHECK-NEXT:   }, {
-  // CHECK-NEXT:     builtin_code: DIV,
-  // CHECK-NEXT:     version: 1
+  // CHECK-NEXT:     deprecated_builtin_code: 42,
+  // CHECK-NEXT:     version: 1,
+  // CHECK-NEXT:     builtin_code: DIV
   // CHECK-NEXT:   }, {
-  // CHECK-NEXT:     builtin_code: EXP,
-  // CHECK-NEXT:     version: 1
+  // CHECK-NEXT:     deprecated_builtin_code: 47,
+  // CHECK-NEXT:     version: 1,
+  // CHECK-NEXT:     builtin_code: EXP
   // CHECK-NEXT:   }, {
-  // CHECK-NEXT:     builtin_code: NEG,
-  // CHECK-NEXT:     version: 1
+  // CHECK-NEXT:     deprecated_builtin_code: 59,
+  // CHECK-NEXT:     version: 1,
+  // CHECK-NEXT:     builtin_code: NEG
   // CHECK-NEXT:   } ],
   // CHECK-NEXT:   subgraphs: [ {
   // CHECK-NEXT:     tensors: [ {

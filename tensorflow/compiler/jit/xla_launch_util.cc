@@ -89,9 +89,9 @@ Status GetVariableInfosFromInputs(ResourceMgr* rm, DeviceBase* dev,
     Var* variable = nullptr;
     ResourceHandle handle = inputs[var_idx]->flat<ResourceHandle>()(0);
     if (handle.device() != dev->attributes().name()) {
-      return errors::InvalidArgument("Trying to access resource ",
-                                     handle.name(), " located in device ",
-                                     dev->name());
+      return errors::InvalidArgument(
+          "Trying to access resource ", handle.name(), " located in device ",
+          handle.device(), " from device ", dev->attributes().name());
     }
     TF_RETURN_IF_ERROR(rm->LookupOrCreate<Var>(
         handle.container(), handle.name(), &variable, [](Var** ptr) {

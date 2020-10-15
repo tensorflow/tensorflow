@@ -1,6 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_opts_nortti_if_lite_protos")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_cc_library")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 #
 # This is a TF Lite delegate that is powered by TensorFlow's Eager.
@@ -126,7 +127,9 @@ tf_cc_test(
     name = "delegate_test",
     size = "small",
     srcs = ["delegate_test.cc"],
-    tags = ["no_gpu"],  # GPU + flex is not officially supported.
+    tags = [
+        "no_gpu",  # GPU + flex is not officially supported.
+    ],
     deps = [
         ":delegate",
         ":test_util",
@@ -244,6 +247,7 @@ cc_library(
         "allowlisted_flex_ops.h",
         "allowlisted_flex_ops_internal.h",
     ],
+    compatible_with = get_compatible_with_cloud(),
     deps = select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -288,6 +292,6 @@ cc_library(
     deps = [
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:portable_jpeg_internal",
-        "//tensorflow/core:portable_png_internal",
+        "//tensorflow/core/lib/png:png_io",
     ],
 )

@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_FULLY_CONNECTED_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_FULLY_CONNECTED_H_
 
+#include <stdint.h>
+
 #include <string>
 #include <utility>
 #include <vector>
@@ -27,8 +29,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/device_info.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/tuning_parameters.h"
-#include "tensorflow/lite/delegates/gpu/cl/linear_storage.h"
 #include "tensorflow/lite/delegates/gpu/cl/precision.h"
+#include "tensorflow/lite/delegates/gpu/cl/texture2d.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
@@ -91,6 +93,32 @@ void RearrangeFCWeightsToIOO4I4(const tflite::gpu::Tensor<OHWI, T>& weights,
   }
 }
 
+template <DataType T, typename S>
+void RearrangeFCWeightsToOIO4I4(const tflite::gpu::Tensor<OHWI, T>& weights,
+                                S* dst) {
+  const int src_channels = weights.shape.i;
+  const int src_depth = DivideRoundUp(src_channels, 4);
+  const int dst_channels = weights.shape.o;
+  const int dst_depth = DivideRoundUp(dst_channels, 4);
+
+  int counter = 0;
+  for (int d = 0; d < dst_depth; ++d) {
+    for (int s = 0; s < src_depth; ++s) {
+      for (int i = 0; i < 4; ++i) {
+        const int src_ch = s * 4 + i;
+        for (int j = 0; j < 4; ++j) {
+          const int dst_ch = d * 4 + j;
+          if (src_ch < src_channels && dst_ch < dst_channels) {
+            dst[counter++] = weights.data[dst_ch * src_channels + src_ch];
+          } else {
+            dst[counter++] = 0.0f;
+          }
+        }
+      }
+    }
+  }
+}
+
 class FullyConnected : public GPUOperation {
  public:
   FullyConnected() = default;
@@ -115,15 +143,16 @@ class FullyConnected : public GPUOperation {
       const FullyConnectedAttributes& attr);
 
   template <DataType T>
-  void UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights);
+  void UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
+                     bool weights_are_buffer);
 
   std::string GetFullyConnectedKernelCode(const OperationDef& op_def,
-                                          const int3& work_group_size);
+                                          const DeviceInfo& device_info);
 };
 
 template <DataType T>
-void FullyConnected::UploadWeights(
-    const tflite::gpu::Tensor<OHWI, T>& weights) {
+void FullyConnected::UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
+                                   bool weights_are_buffer) {
   const int src_depth = DivideRoundUp(weights.shape.i, 4);
   const int dst_depth = DivideRoundUp(weights.shape.o, 4);
 
@@ -132,22 +161,40 @@ void FullyConnected::UploadWeights(
 
   const int float4_size = f32_weights ? 16 : 8;
 
-  BufferDescriptor desc;
-  desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
-  desc.element_size = 16;
-  desc.size = float4_size * elements_count;
-  desc.data.resize(desc.size);
+  if (weights_are_buffer) {
+    BufferDescriptor desc;
+    desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
+    desc.element_size = 16;
+    desc.size = float4_size * elements_count;
+    desc.data.resize(desc.size);
 
-  if (f32_weights) {
-    float* ptr = reinterpret_cast<float*>(desc.data.data());
-    RearrangeFCWeightsToIOO4I4(weights, ptr);
+    if (f32_weights) {
+      float* ptr = reinterpret_cast<float*>(desc.data.data());
+      RearrangeFCWeightsToIOO4I4(weights, ptr);
+    } else {
+      half* ptr = reinterpret_cast<half*>(desc.data.data());
+      RearrangeFCWeightsToIOO4I4(weights, ptr);
+    }
+
+    args_.AddObject("weights",
+                    absl::make_unique<BufferDescriptor>(std::move(desc)));
   } else {
-    half* ptr = reinterpret_cast<half*>(desc.data.data());
-    RearrangeFCWeightsToIOO4I4(weights, ptr);
-  }
+    Texture2DDescriptor desc;
+    desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
+    desc.size = int2(src_depth * 4, dst_depth);
+    desc.data.resize(float4_size * elements_count);
 
-  args_.AddObject("weights",
-                  absl::make_unique<BufferDescriptor>(std::move(desc)));
+    if (f32_weights) {
+      float* ptr = reinterpret_cast<float*>(desc.data.data());
+      RearrangeFCWeightsToOIO4I4(weights, ptr);
+    } else {
+      half* ptr = reinterpret_cast<half*>(desc.data.data());
+      RearrangeFCWeightsToOIO4I4(weights, ptr);
+    }
+
+    args_.AddObject("weights",
+                    absl::make_unique<Texture2DDescriptor>(std::move(desc)));
+  }
 }
 
 FullyConnected CreateFullyConnected(const DeviceInfo& device_info,

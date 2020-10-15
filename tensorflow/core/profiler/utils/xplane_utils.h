@@ -110,6 +110,9 @@ void MergePlanes(const XPlane& src_plane, XPlane* dst_plane);
 // timestamps. If zero line exists, return 0;
 uint64 GetStartTimestampNs(const XPlane& plane);
 
+// Returns true if there are no XEvents.
+bool IsEmpty(const XSpace& space);
+
 }  // namespace profiler
 }  // namespace tensorflow
 

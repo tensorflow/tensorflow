@@ -32,6 +32,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import metrics
 from tensorflow.python.keras import models
+from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -420,10 +421,9 @@ class TestCloneAndBuildModel(keras_parameterized.TestCase):
     """Assert that two models have the same compile parameters."""
 
     self.assertEqual('mse', model.loss)
-    self.assertTrue(
-        isinstance(model.optimizer,
-                   (keras.optimizers.RMSprop,
-                    keras.optimizer_v2.rmsprop.RMSprop)))
+    self.assertIsInstance(
+        model.optimizer,
+        (optimizer_v1.RMSprop, keras.optimizer_v2.rmsprop.RMSprop))
 
   def _clone_and_build_test_helper(self, model, model_type):
     inp = np.random.random((10, 4))

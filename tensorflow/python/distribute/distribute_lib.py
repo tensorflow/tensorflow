@@ -114,7 +114,7 @@ the same way with eager and graph execution.
   devices, with a different value for each replica. They are produced by
   iterating through a distributed dataset returned by
   `tf.distribute.Strategy.experimental_distribute_dataset` and
-  `tf.distribute.Strategy.experimental_distribute_datasets_from_function`. They
+  `tf.distribute.Strategy.distribute_datasets_from_function`. They
   are also the typical result returned by
   `tf.distribute.Strategy.run`.
 
@@ -681,14 +681,12 @@ class StrategyBase(object):
     [see the
     guide](https://www.tensorflow.org/guide/distributed_training#using_tfdistributestrategy_with_custom_training_loops):
 
-      * Start by either creating a `tf.data.Dataset` normally or using
-        `tf.distribute.experimental_make_numpy_dataset` to make a dataset out of
-        a `numpy` array.
+      * Start by creating a `tf.data.Dataset` normally.
       * Use `tf.distribute.Strategy.experimental_distribute_dataset` to convert
         a `tf.data.Dataset` to something that produces "per-replica" values.
         If you want to manually specify how the dataset should be partitioned
         across replicas, use
-        `tf.distribute.Strategy.experimental_distribute_datasets_from_function`
+        `tf.distribute.Strategy.distribute_datasets_from_function`
         instead.
       * Use `tf.distribute.Strategy.run` to run a function
         once per replica, taking values that may be "per-replica" (e.g.
@@ -908,39 +906,6 @@ class StrategyBase(object):
       return self.extended._make_input_fn_iterator(  # pylint: disable=protected-access
           input_fn, replication_mode=replication_mode)
 
-  @deprecation.deprecated(
-      "2020-09-30", "Please use tf.data.Dataset.from_tensor_slices instead")
-  def experimental_make_numpy_dataset(self, numpy_input):
-    """Makes a `tf.data.Dataset` from a numpy array.
-
-    This avoids adding `numpy_input` as a large constant in the graph,
-    and copies the data to the machine or machines that will be processing
-    the input.
-
-    Note that you will likely need to use `experimental_distribute_dataset`
-    with the returned dataset to further distribute it with the strategy.
-
-    Example:
-
-    >>> strategy = tf.distribute.MirroredStrategy()
-    >>> numpy_input = np.ones([10], dtype=np.float32)
-    >>> dataset = strategy.experimental_make_numpy_dataset(numpy_input)
-    >>> dataset
-    <TensorSliceDataset shapes: (), types: tf.float32>
-    >>> dataset = dataset.batch(2)
-    >>> dist_dataset = strategy.experimental_distribute_dataset(dataset)
-
-    Args:
-      numpy_input: a nest of NumPy input arrays that will be converted into a
-        dataset. Note that the NumPy arrays are stacked, as that is normal
-        `tf.data.Dataset` behavior.
-
-    Returns:
-      A `tf.data.Dataset` representing `numpy_input`.
-    """
-    return self.extended.experimental_make_numpy_dataset(
-        numpy_input, session=None)
-
   @doc_controls.do_not_generate_docs  # DEPRECATED: TF 1.x only
   def experimental_run(self, fn, input_iterator=None):
     """DEPRECATED TF 1.x ONLY."""
@@ -1030,13 +995,13 @@ class StrategyBase(object):
 
     If the above batch splitting and dataset sharding logic is undesirable,
     please use
-    `tf.distribute.Strategy.experimental_distribute_datasets_from_function`
+    `tf.distribute.Strategy.distribute_datasets_from_function`
     instead, which does not do any automatic batching or sharding for you.
 
     Note: If you are using TPUStrategy, the order in which the data is processed
     by the workers when using
     `tf.distribute.Strategy.experimental_distribute_dataset` or
-    `tf.distribute.Strategy.experimental_distribute_datasets_from_function` is
+    `tf.distribute.Strategy.distribute_datasets_from_function` is
     not guaranteed. This is typically required if you are using
     `tf.distribute` to scale prediction. You can however insert an index for
     each element in the batch and order outputs accordingly. Refer to [this
@@ -1045,7 +1010,7 @@ class StrategyBase(object):
 
     Note: Stateful dataset transformations are currently not supported with
     `tf.distribute.experimental_distribute_dataset` or
-    `tf.distribute.experimental_distribute_datasets_from_function`. Any stateful
+    `tf.distribute.distribute_datasets_from_function`. Any stateful
     ops that the dataset may have are currently ignored. For example, if your
     dataset has a `map_fn` that uses `tf.random.uniform` to rotate an image,
     then you have a dataset graph that depends on state (i.e the random seed) on
@@ -1067,8 +1032,7 @@ class StrategyBase(object):
     # pylint: enable=line-too-long
     return self._extended._experimental_distribute_dataset(dataset, options)  # pylint: disable=protected-access
 
-  def experimental_distribute_datasets_from_function(self, dataset_fn,
-                                                     options=None):
+  def distribute_datasets_from_function(self, dataset_fn, options=None):
     # pylint: disable=line-too-long
     """Distributes `tf.data.Dataset` instances created by calls to `dataset_fn`.
 
@@ -1077,7 +1041,7 @@ class StrategyBase(object):
     instance. It is expected that the returned dataset from `dataset_fn` is
     already batched by per-replica batch size (i.e. global batch size divided by
     the number of replicas in sync) and sharded.
-    `tf.distribute.Strategy.experimental_distribute_datasets_from_function` does
+    `tf.distribute.Strategy.distribute_datasets_from_function` does
     not batch or shard the `tf.data.Dataset` instance
     returned from the input function. `dataset_fn` will be called on the CPU
     device of each of the workers and each generates a dataset where every
@@ -1088,7 +1052,7 @@ class StrategyBase(object):
     This method can be used for several purposes. First, it allows you to
     specify your own batching and sharding logic. (In contrast,
     `tf.distribute.experimental_distribute_dataset` does batching and sharding
-    for you.)For example, where
+    for you.) For example, where
     `experimental_distribute_dataset` is unable to shard the input files, this
     method might be used to manually shard the dataset (avoiding the slow
     fallback behavior in `experimental_distribute_dataset`). In cases where the
@@ -1112,7 +1076,7 @@ class StrategyBase(object):
     Note: If you are using TPUStrategy, the order in which the data is processed
     by the workers when using
     `tf.distribute.Strategy.experimental_distribute_dataset` or
-    `tf.distribute.Strategy.experimental_distribute_datasets_from_function` is
+    `tf.distribute.Strategy.distribute_datasets_from_function` is
     not guaranteed. This is typically required if you are using
     `tf.distribute` to scale prediction. You can however insert an index for
     each element in the batch and order outputs accordingly. Refer to [this
@@ -1121,14 +1085,14 @@ class StrategyBase(object):
 
     Note: Stateful dataset transformations are currently not supported with
     `tf.distribute.experimental_distribute_dataset` or
-    `tf.distribute.experimental_distribute_datasets_from_function`. Any stateful
+    `tf.distribute.distribute_datasets_from_function`. Any stateful
     ops that the dataset may have are currently ignored. For example, if your
     dataset has a `map_fn` that uses `tf.random.uniform` to rotate an image,
     then you have a dataset graph that depends on state (i.e the random seed) on
     the local machine where the python process is being executed.
 
     For a tutorial on more usage and properties of this method, refer to the
-    [tutorial on distributed input](https://www.tensorflow.org/tutorials/distribute/input#tfdistributestrategyexperimental_distribute_datasets_from_function).
+    [tutorial on distributed input](https://www.tensorflow.org/tutorials/distribute/input#tfdistributestrategyexperimental_distribute_datasets_from_function)).
     If you are interested in last partial batch handling, read [this section](https://www.tensorflow.org/tutorials/distribute/input#partial_batches).
 
     Args:
@@ -1141,8 +1105,16 @@ class StrategyBase(object):
       A `tf.distribute.DistributedDataset`.
     """
     # pylint: enable=line-too-long
-    return self._extended._experimental_distribute_datasets_from_function(  # pylint: disable=protected-access
+    return self._extended._distribute_datasets_from_function(  # pylint: disable=protected-access
         dataset_fn, options)
+
+  # TODO(b/162776748): Remove deprecated symbol.
+  @doc_controls.do_not_doc_inheritable
+  @deprecation.deprecated(None, "rename to distribute_datasets_from_function")
+  def experimental_distribute_datasets_from_function(self,
+                                                     dataset_fn,
+                                                     options=None):
+    return self.distribute_datasets_from_function(dataset_fn, options)
 
   def run(self, fn, args=(), kwargs=None, options=None):
     """Invokes `fn` on each replica, with the given arguments.
@@ -1152,7 +1124,7 @@ class StrategyBase(object):
     have `tf.distribute.DistributedValues`, such as those produced by a
     `tf.distribute.DistributedDataset` from
     `tf.distribute.Strategy.experimental_distribute_dataset` or
-    `tf.distribute.Strategy.experimental_distribute_datasets_from_function`,
+    `tf.distribute.Strategy.distribute_datasets_from_function`,
     when `fn` is executed on a particular replica, it will be executed with the
     component of `tf.distribute.DistributedValues` that correspond to that
     replica.
@@ -1554,6 +1526,9 @@ class StrategyBase(object):
     _require_cross_replica_or_default_context_extended(self._extended)
     dst = device_util.current(
     ) or self._extended._default_device or "/device:CPU:0"
+    if isinstance(value, ops.IndexedSlices):
+      raise NotImplementedError("gather/all_gather does not support "
+                                "IndexedSlices")
     return self._extended._local_results(
         self._extended._gather_to(value, dst, axis))[0]
 
@@ -2196,8 +2171,7 @@ class StrategyExtendedV2(object):
   def _experimental_distribute_dataset(self, dataset, options):
     raise NotImplementedError("must be implemented in descendants")
 
-  def _experimental_distribute_datasets_from_function(self, dataset_fn,
-                                                      options):
+  def _distribute_datasets_from_function(self, dataset_fn, options):
     raise NotImplementedError("must be implemented in descendants")
 
   def _experimental_distribute_values_from_function(self, value_fn):
@@ -2874,6 +2848,11 @@ class ReplicaContext(object):
       raise ValueError(
           "replica_id_in_sync_group can only be an integer, a Tensor or None.")
     self._replica_id_in_sync_group = replica_id_in_sync_group
+    # We need this check becaused TPUContext extends from ReplicaContext and
+    # does not pass a strategy object since it is used by TPUEstimator.
+    if strategy:
+      self._local_replica_id = strategy.extended._get_local_replica_id(
+          replica_id_in_sync_group)
     self._summary_recording_distribution_strategy = None
 
   @doc_controls.do_not_generate_docs
@@ -2972,6 +2951,11 @@ class ReplicaContext(object):
         self._replica_id_in_sync_group,
         dtypes.int32,
         name="replica_id_in_sync_group")
+
+  @property
+  def _replica_id(self):
+    """This is the local replica id in a given sync group."""
+    return self._local_replica_id
 
   @property
   def strategy(self):
@@ -3187,7 +3171,7 @@ class ReplicaContext(object):
     def grad_wrapper(*xs):
       ys = self.merge_call(batch_all_gather, args=xs)
       # The gradient of an all-gather is itself an all-gather.
-      return ys, lambda *dy_s: self.all_gather(dy_s, axis)
+      return ys, lambda *dy_s: self._all_gather(dy_s, axis)
 
     return nest.pack_sequence_as(value, grad_wrapper(*nest.flatten(value)))
 
@@ -3298,8 +3282,7 @@ class _DefaultDistributionExtended(StrategyExtendedV1):
   def _experimental_distribute_dataset(self, dataset, options):
     return dataset
 
-  def _experimental_distribute_datasets_from_function(self, dataset_fn,
-                                                      options):
+  def _distribute_datasets_from_function(self, dataset_fn, options):
     return dataset_fn(InputContext())
 
   def _experimental_distribute_values_from_function(self, value_fn):
@@ -3339,6 +3322,10 @@ class _DefaultDistributionExtended(StrategyExtendedV1):
   def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
     # TODO(josh11b): Use destinations?
     del reduce_op, destinations, experimental_hints
+    return value
+
+  def _gather_to_implementation(self, value, destinations, axis, experimental_hints):
+    del destinations, axis, experimental_hints
     return value
 
   def _update(self, var, fn, args, kwargs, group):
@@ -3394,6 +3381,12 @@ class _DefaultDistributionExtended(StrategyExtendedV1):
   @property
   def should_save_summary(self):
     return True
+
+  def _get_local_replica_id(self, replica_id_in_sync_group):
+    return replica_id_in_sync_group
+
+  def _get_replica_id_in_sync_group(self, replica_id):
+    return replica_id
 
   # TODO(priyag): This should inherit from `InputIterator`, once dependency
   # issues have been resolved.

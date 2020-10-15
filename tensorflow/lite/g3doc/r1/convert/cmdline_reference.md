@@ -63,8 +63,7 @@ based on index.
         has a shape of [2, 3] and "bar" has a shape of [4, 5, 6].
 *   `--std_dev_values`, `--mean_values`. Type: comma-separated list of floats.
     These specify the (de-)quantization parameters of the input array, when it
-    is quantized. This is only needed if `inference_input_type` is `INT8` or
-    `QUANTIZED_UINT8`.
+    is quantized. Only needed if `inference_input_type` is `INT8` or `UINT8`.
     *   The meaning of `mean_values` and `std_dev_values` is as follows: each
         quantized value in the quantized input array will be interpreted as a
         mathematical real number (i.e. as an input activation value) according
@@ -75,12 +74,12 @@ based on index.
         the inference code according to the above formula, before proceeding
         with float inference.
     *   When performing quantized inference (`inference_type`
-        is`INT8`or`QUANTIZED_UINT8`), no dequantization is performed by the
-        inference code. However, the quantization parameters of all arrays,
-        including those of the input arrays as specified
-        by`mean_value`and`std_dev_value`, determine the fixed-point multipliers
-        used in the quantized inference code.`mean_value` must be an integer
-        when performing quantized inference.
+        is`INT8`or`UINT8`), no dequantization is performed by the inference
+        code. However, the quantization parameters of all arrays, including
+        those of the input arrays as specified by`mean_value`and`std_dev_value`,
+        determine the fixed-point multipliers used in the quantized inference
+        code.`mean_value` must be an integer when performing quantized
+        inference.
 
 ## Transformation flags
 
@@ -90,7 +89,7 @@ have.
 
 *   `--inference_type`. Type: string. Default: `FLOAT`. Data type of all
     real-number arrays in the output file except for input arrays (defined by
-    `--inference_input_type`). Must be `{FLOAT, INT8, QUANTIZED_UINT8}`.
+    `--inference_input_type`). Must be `{FLOAT, INT8, UINT8}`.
 
     This flag only impacts real-number arrays including float and quantized
     arrays. This excludes all other data types including plain integer arrays
@@ -102,16 +101,15 @@ have.
     *   If `INT8`, then real-numbers arrays will be quantized as int8 in the
         output file. If they were float in the input file, then they get
         quantized.
-    *   If `QUANTIZED_UINT8`, then real-numbers arrays will be quantized as
-        uint8 in the output file. If they were float in the input file, then
-        they get quantized.
+    *   If `UINT8`, then real-numbers arrays will be quantized as uint8 in the
+        output file. If they were float in the input file, then they get
+        quantized.
 
 *   `--inference_input_type`. Type: string. Data type of a real-number input
     array in the output file. By default the `--inference_type` is used as type
     of all of the input arrays. Flag is primarily intended for generating a
     float-point graph with a quantized input array. A Dequantized operator is
-    added immediately after the input array. Must be `{FLOAT, INT8,
-    QUANTIZED_UINT8}`.
+    added immediately after the input array. Must be `{FLOAT, INT8, UINT8}`.
 
     The flag is typically used for vision models taking a bitmap as input but
     requiring floating-point inference. For such image models, the uint8 input

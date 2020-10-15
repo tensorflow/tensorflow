@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/platform/test.h"
@@ -67,15 +68,17 @@ TEST(GroupEventsTest, GroupGpuTraceLegacyRootTest) {
   CreateXEvent(&device_plane_builder, &stream, "matmul", 200, 300,
                {{StatType::kCorrelationId, kCorrelationId}});
 
-  GroupMetadataMap group_metadata_map;
-  GroupTfEvents(&space, &group_metadata_map);
+  EventForest event_forest;
+  GroupTfEvents(&space, &event_forest);
+  const GroupMetadataMap& group_metadata_map =
+      event_forest.GetGroupMetadataMap();
   XPlaneVisitor device_plane_visitor = CreateTfXPlaneVisitor(device_plane);
   EXPECT_EQ(device_plane->lines(0).events(0).stats_size(), 3);
   EXPECT_EQ(device_plane_visitor.GetStatType(
                 device_plane->lines(0).events(0).stats(1)),
             StatType::kGroupId);
   EXPECT_EQ(group_metadata_map.size(), 1);
-  EXPECT_EQ(group_metadata_map[0].name, "train 123");
+  EXPECT_EQ(group_metadata_map.at(0).name, "train 123");
 }
 
 TEST(GroupEventsTest, GroupGpuTraceTest) {
@@ -108,15 +111,17 @@ TEST(GroupEventsTest, GroupGpuTraceTest) {
   CreateXEvent(&device_plane_builder, &stream, "matmul", 200, 300,
                {{StatType::kCorrelationId, kCorrelationId}});
 
-  GroupMetadataMap group_metadata_map;
-  GroupTfEvents(&space, &group_metadata_map);
+  EventForest event_forest;
+  GroupTfEvents(&space, &event_forest);
+  const GroupMetadataMap& group_metadata_map =
+      event_forest.GetGroupMetadataMap();
   XPlaneVisitor device_plane_visitor = CreateTfXPlaneVisitor(device_plane);
   EXPECT_EQ(device_plane->lines(0).events(0).stats_size(), 3);
   EXPECT_EQ(device_plane_visitor.GetStatType(
                 device_plane->lines(0).events(0).stats(1)),
             StatType::kGroupId);
   EXPECT_EQ(group_metadata_map.size(), 1);
-  EXPECT_EQ(group_metadata_map[0].name, "train 123");
+  EXPECT_EQ(group_metadata_map.at(0).name, "train 123");
 }
 
 TEST(GroupEventsTest, GroupTensorFlowLoopTest) {
@@ -146,8 +151,10 @@ TEST(GroupEventsTest, GroupTensorFlowLoopTest) {
   CreateXEvent(&device_plane_builder, &stream, "matmul", 200, 300,
                {{StatType::kCorrelationId, kCorrelationId}});
 
-  GroupMetadataMap group_metadata_map;
-  GroupTfEvents(&space, &group_metadata_map);
+  EventForest event_forest;
+  GroupTfEvents(&space, &event_forest);
+  const GroupMetadataMap& group_metadata_map =
+      event_forest.GetGroupMetadataMap();
   XPlaneVisitor device_plane_visitor = CreateTfXPlaneVisitor(device_plane);
   EXPECT_EQ(device_plane->lines(0).events(0).stats_size(), 3);
   EXPECT_EQ(device_plane_visitor.GetStatType(
@@ -155,7 +162,7 @@ TEST(GroupEventsTest, GroupTensorFlowLoopTest) {
             StatType::kGroupId);
   EXPECT_EQ(device_plane->lines(0).events(0).stats(1).int64_value(), 10);
   EXPECT_EQ(group_metadata_map.size(), 1);
-  EXPECT_EQ(group_metadata_map[10].name, "10");
+  EXPECT_EQ(group_metadata_map.at(10).name, "10");
 }
 
 // When there are multiple TF loops, group_id is assigned in the order of TF
@@ -193,8 +200,10 @@ TEST(GroupEventsTest, GroupMultipleTensorFlowLoopsTest) {
                {{StatType::kStepId, kFirstStepId},
                 {StatType::kIterNum, kFirstIterNumStart + 1}});
 
-  GroupMetadataMap group_metadata_map;
-  GroupTfEvents(&space, &group_metadata_map);
+  EventForest event_forest;
+  GroupTfEvents(&space, &event_forest);
+  const GroupMetadataMap& group_metadata_map =
+      event_forest.GetGroupMetadataMap();
   EXPECT_EQ(group_metadata_map.size(), 4);
   EXPECT_TRUE(group_metadata_map.count(10));
   EXPECT_TRUE(group_metadata_map.count(11));
@@ -229,8 +238,7 @@ TEST(GroupEventsTest, GroupFunctionalOp) {
                HostEventType::kExecutorStateProcess, 100, 150,
                {{StatType::kStepId, kFunctionStepId}});
 
-  GroupMetadataMap group_metadata_map;
-  GroupTfEvents(&space, &group_metadata_map);
+  GroupTfEvents(&space);
   XPlaneVisitor host_plane_visitor = CreateTfXPlaneVisitor(host_plane);
   // Check that RemoteCallOp is grouped correctly so that all events belong
   // to the same group.
@@ -277,7 +285,7 @@ TEST(GroupEventsTest, EagerOpTest) {
   CreateXEvent(&device_plane_builder, &stream, "matmul", 200, 300,
                {{StatType::kCorrelationId, kCorrelationId}});
 
-  GroupTfEvents(&space, /*group_metadata_map=*/nullptr);
+  GroupTfEvents(&space);
   XPlaneVisitor host_plane_visitor = CreateTfXPlaneVisitor(host_plane);
   const XEvent& eager_cpu_tf_op = host_plane->lines(0).events(3);
   EXPECT_EQ(eager_cpu_tf_op.stats_size(), 1);
@@ -329,7 +337,7 @@ TEST(GroupEventsTest, FunctionOpTest) {
   CreateXEvent(&device_plane_builder, &stream, "matmul", 200, 300,
                {{StatType::kCorrelationId, kCorrelationId}});
 
-  GroupTfEvents(&space, /*group_metadata_map=*/nullptr);
+  GroupTfEvents(&space);
   XPlaneVisitor host_plane_visitor = CreateTfXPlaneVisitor(host_plane);
   const XEvent& cpu_tf_op = host_plane->lines(1).events(2);
   EXPECT_EQ(cpu_tf_op.stats_size(), 2);
@@ -365,7 +373,7 @@ TEST(GroupEventsTest, SemanticArgTest) {
                {{StatType::kConsumerType, kContextType},
                 {StatType::kConsumerId, kContextId}});
 
-  GroupTfEvents(&raw_space, /*group_metadata_map=*/nullptr);
+  GroupTfEvents(&raw_space);
   int num_events = 0;
   CreateTfXPlaneVisitor(raw_plane).ForEachLine(
       [&](const tensorflow::profiler::XLineVisitor& line) {
@@ -406,7 +414,7 @@ TEST(GroupEventsTest, SemanticIntArgNoMatchTest) {
                {{StatType::kConsumerType, kContextType},
                 {StatType::kConsumerId, kConsumerId}});
 
-  GroupTfEvents(&raw_space, /*group_metadata_map=*/nullptr);
+  GroupTfEvents(&raw_space);
   int num_events = 0;
   CreateTfXPlaneVisitor(raw_plane).ForEachLine(
       [&](const tensorflow::profiler::XLineVisitor& line) {
@@ -451,7 +459,7 @@ TEST(GroupEventsTest, SemanticUintArgNoMatchTest) {
                {{StatType::kConsumerType, kContextType},
                 {StatType::kConsumerId, kConsumerId}});
 
-  GroupTfEvents(&raw_space, /*group_metadata_map=*/nullptr);
+  GroupTfEvents(&raw_space);
   int num_events = 0;
   CreateTfXPlaneVisitor(raw_plane).ForEachLine(
       [&](const tensorflow::profiler::XLineVisitor& line) {
@@ -491,7 +499,7 @@ TEST(GroupEventsTest, AsyncEventTest) {
                {{StatType::kIsAsync, kIsAsync}});
   CreateXEvent(&plane, &line, kChild, 20, 80);
 
-  GroupTfEvents(&raw_space, /*group_metadata_map=*/nullptr);
+  GroupTfEvents(&raw_space);
   CreateTfXPlaneVisitor(raw_plane).ForEachLine(
       [&](const tensorflow::profiler::XLineVisitor& line) {
         EXPECT_EQ(line.NumEvents(), 3);
@@ -544,7 +552,7 @@ TEST(GroupEventsTest, WorkerTest) {
   CreateXEvent(&plane, &line, HostEventType::kFunctionRun,
                kSecondFunctionRunStartTime, kFunctionRunDuration);
 
-  GroupTfEvents(&raw_space, /*group_metadata_map=*/nullptr);
+  GroupTfEvents(&raw_space);
   CreateTfXPlaneVisitor(raw_plane).ForEachLine(
       [&](const tensorflow::profiler::XLineVisitor& line) {
         EXPECT_EQ(line.NumEvents(), 6);
@@ -608,16 +616,18 @@ TEST(GroupEventsTest, BatchingSessionTest) {
                {{StatType::kConsumerType, kBatchContextType},
                 {StatType::kConsumerId, kBatchContextId}});
 
-  GroupMetadataMap group_metadata_map;
-  GroupTfEvents(&raw_space, &group_metadata_map);
+  EventForest event_forest;
+  GroupTfEvents(&raw_space, &event_forest);
+  const GroupMetadataMap& group_metadata_map =
+      event_forest.GetGroupMetadataMap();
   EXPECT_EQ(group_metadata_map.size(), 3);
   // Check that the ProcessBatch group has two BatchingSessionRun groups as
   // parents.
-  EXPECT_EQ(group_metadata_map[0].parents.size(), 2);
+  EXPECT_EQ(group_metadata_map.at(0).parents.size(), 2);
   // Check that the BatchingSessionRun groups have one ProcessBatch group as a
   // child.
-  EXPECT_EQ(group_metadata_map[1].children.size(), 1);
-  EXPECT_EQ(group_metadata_map[2].children.size(), 1);
+  EXPECT_EQ(group_metadata_map.at(1).children.size(), 1);
+  EXPECT_EQ(group_metadata_map.at(2).children.size(), 1);
   // Chech that the events have the selected_group_ids stat set.
   uint64 num_checked = 0;
   CreateTfXPlaneVisitor(raw_plane).ForEachLine(

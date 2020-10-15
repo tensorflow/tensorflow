@@ -113,9 +113,6 @@ string ToString(miopenConvFwdAlgorithm_t algorithm) {
     case miopenConvolutionFwdAlgoImplicitGEMM:
       s = "Implicit GEMM";
       break;
-    case miopenConvolutionFwdAlgoStaticCompiledGEMM:
-      s = "Static Compiled GEMM";
-      break;
   }
   return s;
 }
@@ -181,9 +178,6 @@ string ToString(miopenConvAlgorithm_t algorithm) {
       break;
     case miopenConvolutionAlgoImplicitGEMM:
       s = "Implicit GEMM";
-      break;
-    case miopenConvolutionAlgoStaticCompiledGEMM:
-      s = "Static Compiled GEMM";
       break;
   }
   return s;

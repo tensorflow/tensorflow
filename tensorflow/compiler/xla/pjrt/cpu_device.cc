@@ -28,7 +28,7 @@ CpuDevice::CpuDevice(int id,
     : PjRtDevice(id, std::move(local_device_state), kCpuPlatformName,
                  /*device_kind=*/kCpuPlatformName) {}
 
-StatusOr<std::shared_ptr<PjRtClient>> GetCpuClient(bool asynchronous) {
+StatusOr<std::unique_ptr<PjRtClient>> GetCpuClient(bool asynchronous) {
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       PlatformUtil::GetPlatform("Host"));
   if (platform->VisibleDeviceCount() <= 0) {
@@ -56,7 +56,7 @@ StatusOr<std::shared_ptr<PjRtClient>> GetCpuClient(bool asynchronous) {
     devices.push_back(std::move(device));
   }
 
-  return std::make_shared<PjRtClient>(
+  return std::make_unique<PjRtClient>(
       kCpuPlatformName, client, std::move(devices), /*host_id=*/0,
       /*allocator=*/nullptr, /*host_memory_allocator=*/nullptr,
       /*should_stage_host_to_device_transfers=*/false,

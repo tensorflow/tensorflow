@@ -34,16 +34,17 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.eager import context
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework.ops import composite_tensor
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils import data_utils
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -51,6 +52,9 @@ from tensorflow.python.ops import script_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
+
+keras_data_adapter_gauge = monitoring.BoolGauge(
+    "/tensorflow/api/keras/data_adapters", "keras data adapter usage", "method")
 
 try:
   from scipy import sparse as scipy_sparse  # pylint: disable=g-import-not-at-top
@@ -60,13 +64,6 @@ try:
   import pandas as pd  # pylint: disable=g-import-not-at-top
 except ImportError:
   pd = None
-
-try:
-  # In Python2 unicode is a scalar type
-  scalar_types = (float, int, str, unicode)
-except NameError:
-  # In Python3 unicode is not present, it always uses string
-  scalar_types = (float, int, str)
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -527,7 +524,7 @@ class CompositeTensorDataAdapter(DataAdapter):
 
     def _is_composite(v):
       # Dataset inherits from CompositeTensor but shouldn't be handled here.
-      if (isinstance(v, composite_tensor.CompositeTensor) and
+      if (tf_utils.is_extension_type(v) and
           not isinstance(v, dataset_ops.DatasetV2)):
         return True
       # Support Scipy sparse tensors if scipy is installed
@@ -617,7 +614,7 @@ class ListsOfScalarsDataAdapter(DataAdapter):
 
   @staticmethod
   def _is_list_of_scalars(inp):
-    if isinstance(inp, scalar_types):
+    if isinstance(inp, (float, int, str, bytes, bytearray)):
       return True
     if isinstance(inp, (list, tuple)):
       return ListsOfScalarsDataAdapter._is_list_of_scalars(inp[0])
@@ -968,6 +965,8 @@ def select_data_adapter(x, y):
         "handling inputs. Found multiple adapters {} to handle "
         "input: {}, {}".format(
             adapter_cls, _type_name(x), _type_name(y)))
+  # Instrument the data adapter usage before returning it
+  keras_data_adapter_gauge.get_cell(adapter_cls[0].__name__).set(True)
   return adapter_cls[0]
 
 

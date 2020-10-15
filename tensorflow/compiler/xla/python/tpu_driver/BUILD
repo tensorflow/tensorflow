@@ -1,24 +1,24 @@
-load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library_cc")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")
 load(
     "//tensorflow/compiler/xla/python/tpu_driver:platform/external/tools.bzl",
     "external_deps",
     "go_grpc_library",
-    "go_proto_library",
 )
 
 licenses(["notice"])  # Apache 2.0
 
 package(default_visibility = ["//visibility:public"])
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "tpu_driver_proto",
     srcs = ["tpu_driver.proto"],
     cc_api_version = 2,
     protodeps = [],
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "tpu_service_proto",
     srcs = ["tpu_service.proto"],
     has_services = 1,
@@ -77,6 +77,7 @@ cc_library(
 cc_library(
     name = "direct_tpu_driver",
     srcs = ["direct_tpu_driver.cc"],
+    compatible_with = [],
     deps = [
         ":tpu_driver",
         "@com_google_absl//absl/strings:str_format",
@@ -131,12 +132,6 @@ cc_library(
         tf_grpc_cc_dependency(),
     ] + external_deps(),
     alwayslink = 1,
-)
-
-go_proto_library(
-    name = "tpu_service_go_proto",
-    compatible_with = ["//buildenv/target:gce"],
-    deps = [":tpu_service_proto"],
 )
 
 go_grpc_library(

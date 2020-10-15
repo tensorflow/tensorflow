@@ -17,8 +17,8 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/micro/kernels/kernel_runner.h"
+#include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
-#include "tensorflow/lite/micro/testing/test_utils.h"
 
 namespace tflite {
 namespace testing {
@@ -47,8 +47,7 @@ TfLiteStatus ValidateDepthwiseConvGoldens(
   int outputs_array_data[] = {1, 3};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  const TfLiteRegistration registration =
-      tflite::ops::micro::Register_DEPTHWISE_CONV_2D();
+  const TfLiteRegistration registration = Register_DEPTHWISE_CONV_2D();
   micro::KernelRunner runner(
       registration, tensors, tensors_size, inputs_array, outputs_array,
       reinterpret_cast<void*>(conv_params), micro_test::reporter);

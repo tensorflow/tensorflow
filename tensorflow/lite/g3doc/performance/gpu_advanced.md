@@ -65,27 +65,83 @@ allows the appropriate versions; for example, ADD v2.
 
 ## Basic usage
 
-### Android (Java)
+### Android (Kotlin / Java)
 
-Run TensorFlow Lite on GPU with `TfLiteDelegate`. In Java, you can specify the
-`GpuDelegate` through `Interpreter.Options`.
+Add the `tensorflow-lite-gpu` package alongside the existing `tensorflow-lite`
+package in the existing `dependencies` block.
 
-```java
-// NEW: Prepare GPU delegate.
-GpuDelegate delegate = new GpuDelegate();
-Interpreter.Options options = (new Interpreter.Options()).addDelegate(delegate);
-
-// Set up interpreter.
-Interpreter interpreter = new Interpreter(model, options);
-
-// Run inference.
-writeToInputTensor(inputTensor);
-interpreter.run(inputTensor, outputTensor);
-readFromOutputTensor(outputTensor);
-
-// Clean up.
-delegate.close();
 ```
+dependencies {
+    ...
+    implementation 'org.tensorflow:tensorflow-lite:2.3.0'
+    implementation 'org.tensorflow:tensorflow-lite-gpu:2.3.0'
+}
+```
+
+Then run TensorFlow Lite on GPU with `TfLiteDelegate`. In Java, you can specify
+the `GpuDelegate` through `Interpreter.Options`.
+
+<div>
+  <devsite-selector>
+    <section>
+      <h3>Kotlin</h3>
+      <p><pre class="prettyprint lang-kotlin">
+    import org.tensorflow.lite.Interpreter
+    import org.tensorflow.lite.gpu.CompatibilityList
+    import org.tensorflow.lite.gpu.GpuDelegate
+
+    val compatList = CompatibilityList()
+
+    val options = Interpreter.Options().apply{
+        if(compatList.isDelegateSupportedOnThisDevice){
+            // if the device has a supported GPU, add the GPU delegate
+            val delegateOptions = compatList.bestOptionsForThisDevice
+            this.addDelegate(GpuDelegate(delegateOptions))
+        } else {
+            // if the GPU is not supported, run on 4 threads
+            this.setNumThreads(4)
+        }
+    }
+
+    val interpreter = Interpreter(model, options)
+
+    // Run inference
+    writeToInput(input)
+    interpreter.run(input, output)
+    readFromOutput(output)
+      </pre></p>
+    </section>
+    <section>
+      <h3>Java</h3>
+      <p><pre class="prettyprint lang-java">
+    import org.tensorflow.lite.Interpreter;
+    import org.tensorflow.lite.gpu.CompatibilityList;
+    import org.tensorflow.lite.gpu.GpuDelegate;
+
+    // Initialize interpreter with GPU delegate
+    Interpreter.Options options = new Interpreter.Options();
+    CompatibilityList compatList = CompatibilityList();
+
+    if(compatList.isDelegateSupportedOnThisDevice()){
+        // if the device has a supported GPU, add the GPU delegate
+        GpuDelegate.Options delegateOptions = compatList.getBestOptionsForThisDevice();
+        GpuDelegate gpuDelegate = new GpuDelegate(delegateOptions);
+        options.addDelegate(gpuDelegate);
+    } else {
+        // if the GPU is not supported, run on 4 threads
+        options.setNumThreads(4);
+    }
+
+    Interpreter interpreter = new Interpreter(model, options);
+
+    // Run inference
+    writeToInput(input);
+    interpreter.run(input, output);
+    readFromOutput(output);
+      </pre></p>
+    </section>
+  </devsite-selector>
+</div>
 
 ### Android (C/C++)
 
@@ -229,12 +285,10 @@ While it is convenient to use `nullptr`, we recommend that you explicitly set
 the options, to avoid any unexpected behavior if default values are changed in
 the future.
 
-### Running quantized models (Experimental)
+### Running quantized models on GPU
 
-The GPU delegate already supports
-[float16 quantized](https://www.tensorflow.org/lite/performance/post_training_float16_quant)
-models. There is experimental support on Android and iOS to run 8-bit quantized
-as well. This includes all flavors of quantization, including:
+This section explains how the GPU delegate accelerates 8-bit quantized models.
+This includes all flavors of quantization, including:
 
 *   Models trained with
     [Quantization-aware training](https://www.tensorflow.org/lite/convert/quantization)
@@ -266,12 +320,14 @@ This feature can be enabled using delegate options as follows:
 
 #### Android
 
+Android APIs support quantized models by default. To disable, do the following:
+
 **C++ API**
 
 ```c++
 // NEW: Prepare custom options with feature enabled.
 TfLiteGpuDelegateOptionsV2 options = TfLiteGpuDelegateOptionsV2Default();
-options.experimental_flags |= TFLITE_GPU_EXPERIMENTAL_FLAGS_ENABLE_QUANT;
+options.experimental_flags = TFLITE_GPU_EXPERIMENTAL_FLAGS_NONE;
 
 auto* delegate = TfLiteGpuDelegateV2Create(options);
 if (interpreter->ModifyGraphWithDelegate(delegate) != kTfLiteOk) return false;
@@ -281,12 +337,15 @@ if (interpreter->ModifyGraphWithDelegate(delegate) != kTfLiteOk) return false;
 
 ```java
 // NEW: Prepare GPU delegate with feature turned on.
-GpuDelegate delegate = new GpuDelegate(new GpuDelegate.Options().setQuantizedModelsAllowed(true));
+GpuDelegate delegate = new GpuDelegate(new GpuDelegate.Options().setQuantizedModelsAllowed(false));
 
 Interpreter.Options options = (new Interpreter.Options()).addDelegate(delegate);
 ```
 
 #### iOS
+
+Support for quantized models on iOS APIs is experimental. To enable, do the
+following:
 
 **Swift API**
 
