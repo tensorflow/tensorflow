@@ -30,21 +30,13 @@ declare -r MICRO_LOG_PATH=${TEST_TMPDIR}
 declare -r MICRO_LOG_FILENAME=${MICRO_LOG_PATH}logs.txt
 mkdir -p ${MICRO_LOG_PATH}
 
-docker build -t renode_stm32f4 \
-  -f ${ROOT_DIR}/tensorflow/lite/micro/testing/Dockerfile.stm32f4 \
-  ${ROOT_DIR}/tensorflow/lite/micro/testing/
-
 exit_code=0
-# running in `if` to avoid setting +e
-if ! docker run \
-  --log-driver=none -a stdout -a stderr \
-  -v ${ROOT_DIR}:/workspace \
-  -v /tmp:/tmp \
-  -e BIN=/workspace/$1 \
-  -e SCRIPT=/workspace/tensorflow/lite/micro/testing/stm32f4.resc \
-  -e EXPECTED="$2" \
-  -it renode_stm32f4 \
-  /bin/bash -c "/opt/renode/tests/test.sh /workspace/tensorflow/lite/micro/testing/stm32f4.robot 2>&1 >${MICRO_LOG_FILENAME}"
+
+if ! BIN=${ROOT_DIR}/$1 \
+  SCRIPT=${ROOT_DIR}/tensorflow/lite/micro/testing/stm32f4.resc \
+  EXPECTED="$2" \
+  ${ROOT_DIR}/tensorflow/lite/micro/tools/make/downloads/renode/test.sh \
+  ${ROOT_DIR}/tensorflow/lite/micro/testing/stm32f4.robot &> ${MICRO_LOG_FILENAME}
 then
   exit_code=1
 fi
