@@ -152,8 +152,8 @@ class Layer(base_layer.Layer):
   @trackable.no_automatic_dependency_tracking
   def __init__(self, trainable=True, name=None, dtype=None, dynamic=False,
                **kwargs):
-    base_layer.keras_api_gauge.get_cell('layer').set(True)
-    base_layer.keras_layers_gauge.get_cell(self.__class__.__name__).set(True)
+    self._instrument_layer_creation()
+
     # These properties should be set by the user via keyword arguments.
     # note that 'dtype', 'input_shape' and 'batch_input_shape'
     # are only applicable to input layers: do not pass these keywords
