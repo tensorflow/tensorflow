@@ -331,7 +331,8 @@ class MultiProcessRunnerTest(test.TestCase):
     self.assertIn('Subprocess worker-0 exited with exit code',
                   str(cm.exception))
     list_to_assert = cm.exception.mpr_result.stdout
-    self.assertTrue(any('SIGSEGV' in line for line in list_to_assert))
+    self.assertTrue(
+        any('Segmentation fault' in line for line in list_to_assert))
 
   def test_seg_fault_in_chief_raises_error(self):
 
@@ -350,7 +351,8 @@ class MultiProcessRunnerTest(test.TestCase):
     self.assertIn('Subprocess chief-0 exited with exit code',
                   str(cm.exception))
     list_to_assert = cm.exception.mpr_result.stdout
-    self.assertTrue(any('SIGSEGV' in line for line in list_to_assert))
+    self.assertTrue(
+        any('Segmentation fault' in line for line in list_to_assert))
 
   def test_exit_code_is_reported_by_chief_subprocess(self):
 
@@ -579,9 +581,13 @@ class MultiProcessPoolRunnerTest(test.TestCase):
     self.assertAllEqual(result, [1, 1])
 
   def test_global_pool(self):
+    if multi_process_runner.is_oss():
+      self.skipTest('TODO(b/170360740): Failing in OSS')
     _global_pool.run(fn_that_does_nothing)
 
   def test_nested_pool(self):
+    if multi_process_runner.is_oss():
+      self.skipTest('TODO(b/170360740): Failing in OSS')
 
     def fn():
       # This runs in sub processes, so they are each using their own

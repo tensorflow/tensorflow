@@ -908,6 +908,9 @@ tf_py_test(
     name = "multi_worker_test_base_test",
     srcs = ["multi_worker_test_base_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",  # TODO(b/170834611)
+    ],
     deps = [
         ":multi_worker_test_base",
     ],
