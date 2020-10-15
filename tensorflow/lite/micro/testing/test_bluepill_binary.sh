@@ -27,7 +27,7 @@
 declare -r ROOT_DIR=`pwd`
 declare -r TEST_TMPDIR=/tmp/test_bluepill_binary/
 declare -r MICRO_LOG_PATH=${TEST_TMPDIR}
-declare -r MICRO_LOG_FILENAME=${MICRO_LOG_PATH}/logs.txt
+declare -r MICRO_LOG_FILENAME=${MICRO_LOG_PATH}logs.txt
 mkdir -p ${MICRO_LOG_PATH}
 
 docker build -t renode_bluepill \
