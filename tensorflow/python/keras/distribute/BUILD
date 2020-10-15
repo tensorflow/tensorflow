@@ -455,6 +455,7 @@ distribute_py_test(
         "multi_and_single_gpu",
         "no_rocm",  # times out on ROCm
         "no_windows_gpu",
+        "noasan",  # TODO(b/337374867) fails with -fsanitize=null
         "notsan",
     ],
     xla_enable_strict_auto_jit = False,  # Tensorflow also fails.
@@ -513,6 +514,7 @@ distribute_py_test(
         "no_cuda11",
         "no_oss",
         "no_windows_gpu",
+        "noasan",  # TODO(b/337374867) fails with -fsanitize=null
         "notpu",  # TODO(b/153672562)
         "notsan",
     ],

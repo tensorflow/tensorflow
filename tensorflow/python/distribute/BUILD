@@ -1171,7 +1171,8 @@ distribute_py_test(
         "notsan",  # b/168645872
     ],
     tpu_tags = [
-        "no_oss",  # b/150954621 Target too big to run serially reliably.
+        "no_oss",  # TODO(b/150954621) Target too big to run serially reliably.
+        "noasan",  # TODO(b/337374867) fails with -fsanitize=null
     ],
     deps = [
         ":combinations",
