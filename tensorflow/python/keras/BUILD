@@ -118,8 +118,8 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":backend",
-        "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/layers:advanced_activations",
+        "//tensorflow/python/keras/utils:engine_utils",
     ],
 )
 
