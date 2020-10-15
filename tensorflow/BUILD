@@ -568,7 +568,10 @@ selects.config_setting_group(
 # If you need functionality that is not exposed, we will work with you to expand our public APIs.
 package_group(
     name = "internal",
-    packages = ["//tensorflow/..."],
+    packages = [
+        "//learning/lib/ami/simple_ml/...",
+        "//tensorflow/...",
+    ],
 )
 
 package_group(
