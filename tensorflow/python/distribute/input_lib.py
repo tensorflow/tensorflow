@@ -1628,9 +1628,8 @@ class _SingleWorkerOwnedDatasetIterator(_SingleWorkerDatasetIteratorBase,
     else:
       if (components is not None or element_spec is not None):
         raise ValueError(error_message)
-      super(_SingleWorkerOwnedDatasetIterator, self).__init__(dataset=dataset,
-                                                              worker=worker,
-                                                              devices=devices)
+      super(_SingleWorkerOwnedDatasetIterator, self).__init__(dataset, worker,
+                                                              devices)
 
   def _make_iterator(self):
     """Make appropriate iterator on the dataset."""
@@ -1638,19 +1637,16 @@ class _SingleWorkerOwnedDatasetIterator(_SingleWorkerDatasetIteratorBase,
       raise ValueError("Worked device must be specified when creating an "
                        "owned iterator.")
     if (self._options is None
-            or self._options.experimental_replication_mode == InputReplicationMode.PER_WORKER):
+            or self._options.experimental_replication_mode == InputReplicationMode.PER_WORKER
+            or (self._options.experimental_replication_mode == InputReplicationMode.PER_REPLICA
+                and self._options.experimental_prefetch_to_device)):
       host_device = device_util.get_host_for_device(self._worker)
       with ops.device(self._worker):
         self._iterator = multi_device_iterator_ops.OwnedMultiDeviceIterator(
             self._dataset, self._devices, source_device=host_device)
     else:
-      worker_device = self._worker
-      if self._options.experimental_prefetch_to_device:
-        raise ValueError("`experimental_prefetch_to_device` is not supported together with "
-                         "`InputReplicationMode.PER_REPLICA`")
-      else:
-        with ops.device(worker_device):
-          self._iterator = iter(self._dataset)
+      with ops.device(self._worker):
+        self._iterator = iter(self._dataset)
 
   @property
   def element_spec(self):

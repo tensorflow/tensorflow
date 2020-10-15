@@ -1250,55 +1250,99 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
     self.assertAllEqual(nest.flatten(sums), [expected_for_sum] * 3)
 
 
-class DistributedIteratorPerReplicaTest(test.TestCase, parameterized.TestCase):
+class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase, parameterized.TestCase):
+  """Tests for PER_WORKER and PER_REPLICA's InputOptions variants."""
+
+  def setUp(self):
+    context._reset_context()
+    strategy_combinations.set_virtual_cpus_to_at_least(3)
+    super(DistributedIteratorPerDeviceTest, self).setUp()
 
   @combinations.generate(
       combinations.combine(
+          input_options=[
+              distribute_lib.InputOptions(
+                  experimental_place_dataset_on_device=False,
+                  experimental_prefetch_to_device=True,
+                  experimental_replication_mode=distribute_lib.InputReplicationMode.PER_WORKER),
+              distribute_lib.InputOptions(
+                  experimental_place_dataset_on_device=False,
+                  experimental_prefetch_to_device=True,
+                  experimental_replication_mode=distribute_lib.InputReplicationMode.PER_REPLICA),
+          ],
           mode=["eager"],
           distribution=[
               strategy_combinations.mirrored_strategy_with_two_gpus,
               strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-              ]))
-
-  def setUp(self):
-    super(DistributedIteratorPerReplicaTest, self).setUp()
-    strategy_combinations.set_virtual_cpus_to_at_least(3)
-
-  def testInputSignatureForPerReplicaValues(self, distribution):
+          ]))
+  def testInputSignatureForPerWorkerValuesWithPrefetch(self, distribution, input_options):
     def dataset_fn(input_context):
-      return tf.data.Dataset.from_tensor_slices(
-          np.array(np.arange(0, 16)).reshape(4, 4))
-
-    input_options = tf.distribute.InputOptions(
-        replication_mode=tf.distribute.InputReplicationMode.PER_REPLICA)
+      return dataset_ops.Dataset.from_tensor_slices(
+          [1, 2, 3])
 
     ds = distribution.experimental_distribute_datasets_from_function(
         dataset_fn, input_options)
 
-    iterator = iter(ds)
-    type_spec = iterator.element_spec
+    for x in ds:
+      assert x.values[0].device == distribution.extended.worker_devices[0]
+      assert x.values[0].backing_device == distribution.extended.worker_devices[0]
+      assert x.values[1].device == distribution.extended.worker_devices[1]
+      assert x.values[1].backing_device == distribution.extended.worker_devices[1]
 
-    @def_function.function(input_signature=[type_spec])
-    def process_inputs(inputs):
-      distribution.run(lambda inputs: inputs, args=(inputs,))
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_two_gpus,
+              strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          ],
+          input_options=[
+              distribute_lib.InputOptions(
+                  experimental_place_dataset_on_device=False,
+                  experimental_prefetch_to_device=False,
+                  experimental_replication_mode=distribute_lib.InputReplicationMode.PER_WORKER)
+          ],
+          mode=["eager"],))
+  def testInputSignatureForPerWorkerValuesWithoutPrefetch(self, distribution, input_options):
+    def dataset_fn(input_context):
+      return dataset_ops.Dataset.from_tensor_slices(
+          np.full(4, input_context.input_pipeline_id))
+
+    ds = distribution.experimental_distribute_datasets_from_function(
+        dataset_fn, input_options)
 
     for x in ds:
-      process_inputs(x)
-      self.assertEqual(
-          x.values[0].device,
-          distribution.extended.worker_devices[0])
-      self.assertEqual(
-          x.values[0].backing_device,
-          distribution.extended.worker_devices[0])
-      self.assertEqual(
-          x.values[1].device,
-          distribution.extended.worker_devices[1])
-      self.assertEqual(
-          x.values[1].backing_device,
-          distribution.extended.worker_devices[1])
-      break
+      x = distribution.run(lambda inputs: inputs, args=(x,))
+      assert x.values[0].device == '/job:localhost/replica:0/task:0/device:CPU:0'
+      assert x.values[0].backing_device == '/job:localhost/replica:0/task:0/device:CPU:0'
+      assert x.values[1].device == '/job:localhost/replica:0/task:0/device:CPU:0'
+      assert x.values[1].backing_device == '/job:localhost/replica:0/task:0/device:CPU:0'
 
+  @combinations.generate(
+      combinations.combine(
+          input_options=[distribute_lib.InputOptions(
+              experimental_place_dataset_on_device=True,
+              experimental_prefetch_to_device=False,
+              experimental_replication_mode=distribute_lib.InputReplicationMode.PER_WORKER),
+              distribute_lib.InputOptions(
+              experimental_place_dataset_on_device=True,
+              experimental_prefetch_to_device=True,
+              experimental_replication_mode=distribute_lib.InputReplicationMode.PER_REPLICA)],
+          mode=["eager"],
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_two_gpus,
+              strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          ]))
+  def testInputSignatureForInputOptionsInvalidCombinations(self, distribution, input_options):
+    def dataset_fn(input_context):
+      return dataset_ops.Dataset.from_tensor_slices(
+          np.full(4, input_context.input_pipeline_id))
+
+    with self.assertRaises(ValueError):
+      ds = distribution.experimental_distribute_datasets_from_function(
+          dataset_fn, input_options)
 
 if __name__ == "__main__":
   combinations.main()
