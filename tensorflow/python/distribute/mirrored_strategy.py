@@ -399,7 +399,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       return input_lib.InputWorkers(self._input_workers_devices)
     if options.experimental_replication_mode == distribute_lib.InputReplicationMode.PER_REPLICA:
       self._input_workers_devices = (
-          tuple((device_util.canonicalize("/device:CPU:0", d), (d,)) for d in self._devices))
+          tuple((device_util.canonicalize(d, d), (d,)) for d in self._devices))
       return input_lib.InputWorkers(self._input_workers_devices)
     else:
       if not options.experimental_prefetch_to_device:
@@ -518,8 +518,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     return numpy_dataset.one_host_numpy_dataset(
         numpy_input, self._host_input_device, session)
 
-  def _distribute_datasets_from_function(self, dataset_fn,
-                                         options):
+  def _distribute_datasets_from_function(self, dataset_fn, options):
     input_workers = self._input_workers_with_options(options)
     input_contexts = []
     num_workers = input_workers.num_workers

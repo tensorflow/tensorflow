@@ -126,7 +126,7 @@ def get_distributed_datasets_from_function(dataset_fn,
         `worker_device_pairs`.
     strategy: a `tf.distribute.Strategy` object, used to run all-reduce to
         handle last partial batch.
-    options: Default to None. `tf.distribute.InputOptions` used to control 
+    options: Default is None. `tf.distribute.InputOptions` used to control 
         options on how this dataset is distributed.
 
   Returns:
@@ -134,13 +134,20 @@ def get_distributed_datasets_from_function(dataset_fn,
 
   Raises:
     ValueError: if `options.experimental_replication_mode` and
-    `options.experimental_copy_dataset_on_device` are not consistent
+    `options.experimental_place_dataset_on_device` are not consistent
   """
   if (options is not None
           and options.experimental_replication_mode != InputReplicationMode.PER_REPLICA
-          and options.experimental_copy_dataset_on_device):
-    raise ValueError("When `experimental_copy_dataset_on_device` is set for dataset placement, "
+          and options.experimental_place_dataset_on_device):
+    raise ValueError("When `experimental_place_dataset_on_device` is set for dataset placement, "
                      "you must also specify `PER_REPLICA` for the replication mode")
+  
+  if (options is not None
+          and options.experimental_replication_mode == InputReplicationMode.PER_REPLICA
+          and options.experimental_prefetch_to_device):
+    raise ValueError("When `experimental_prefetch_to_device` is set, "
+                     "you must also specify `PER_WORKER` for the replication mode")
+
   
   if tf2.enabled():
     return DistributedDatasetsFromFunction(
@@ -600,7 +607,7 @@ class DistributedIteratorBase(DistributedIteratorInterface):
 
   # pylint: disable=super-init-not-called
   def __init__(self, input_workers, iterators, strategy,
-               enable_get_next_as_optional):
+               enable_get_next_as_optional, options=None):
     assert isinstance(input_workers, InputWorkers)
     if not input_workers.worker_devices:
       raise ValueError("Should have at least one worker for input iterator.")
@@ -609,6 +616,7 @@ class DistributedIteratorBase(DistributedIteratorInterface):
     self._input_workers = input_workers
     self._strategy = strategy
     self._enable_get_next_as_optional = enable_get_next_as_optional
+    self._options=options
 
   def next(self):
     return self.__next__()
@@ -647,6 +655,10 @@ class DistributedIteratorBase(DistributedIteratorInterface):
           # Make `replicas` a flat list of values across all replicas.
           replicas.extend(
               self._iterators[i].get_next_as_list_static_shapes(new_name))
+      if (self._options
+          and self._options.experimental_replication_mode == InputReplicationMode.PER_REPLICA
+              and self._options.experimental_place_dataset_on_device):
+        replicas = tuple((p,) for p in replicas)
       return distribute_utils.regroup(replicas)
 
     out_of_range_replicas = []
@@ -854,7 +866,8 @@ class DistributedIterator(DistributedIteratorBase,
                strategy=None,
                components=None,
                element_spec=None,
-               enable_get_next_as_optional=False):
+               enable_get_next_as_optional=False,
+               options=None):
     if input_workers is None:
       raise ValueError("`input_workers` should be "
                        "provided.")
@@ -871,13 +884,17 @@ class DistributedIterator(DistributedIteratorBase,
       self._iterators = components
       self._strategy = strategy
       self._enable_get_next_as_optional = enable_get_next_as_optional
+      self._options = options
     else:
       if (components is not None and element_spec is not None):
         raise ValueError(error_message)
 
       super(DistributedIterator,
-            self).__init__(input_workers, iterators, strategy,
-                           enable_get_next_as_optional)
+            self).__init__(input_workers=input_workers,
+                           iterators=iterators,
+                           strategy=strategy,
+                           enable_get_next_as_optional=enable_get_next_as_optional,
+                           options=options)
 
   @property
   def element_spec(self):
@@ -1192,8 +1209,11 @@ class DistributedDatasetsFromFunction(_IterableInput):
                                          self._strategy,
                                          enable_get_next_as_optional=self._enable_get_next_as_optional)
       else:
-        iterator = DistributedIterator(self._input_workers, iterators,
-                                       self._strategy)
+        iterator = DistributedIterator(input_workers=self._input_workers,
+                                       iterators=iterators,
+                                       strategy=self._strategy,
+                                       enable_get_next_as_optional=self._enable_get_next_as_optional,
+                                       options=self._options)
       iterator._element_spec = self._element_spec  # pylint: disable=protected-access
 
       # When async eager is enabled, sometimes the iterator may not finish
@@ -1622,15 +1642,13 @@ class _SingleWorkerOwnedDatasetIterator(_SingleWorkerDatasetIteratorBase,
         self._iterator = multi_device_iterator_ops.OwnedMultiDeviceIterator(
             self._dataset, self._devices, source_device=host_device)
     else:
-      if self._options.experimental_copy_dataset_on_device:
+      if self._options.experimental_place_dataset_on_device:
         worker_device = self._devices[0]
       else:
         worker_device = self._worker
       if self._options.experimental_prefetch_to_device:
-        host_device = device_util.get_host_for_device(self._worker)
-        with ops.device(worker_device):
-          self._iterator = multi_device_iterator_ops.OwnedMultiDeviceIterator(
-              self._dataset, self._devices, source_device=host_device)
+        raise ValueError("`experimental_prefetch_to_device` is not supported together with "
+                         "`InputReplicationMode.PER_REPLICA`")
       else:
         with ops.device(worker_device):
           self._iterator = iter(self._dataset)
