@@ -22,12 +22,9 @@ limitations under the License.
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops_base.td"
+include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_base.td"
+include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_structs.td"
 
-
-def LHLO_GPU_Dialect : Dialect {
-  let name = "lmhlo_gpu";
-  let cppNamespace = "::mlir::lmhlo_gpu";
-}
 
 class LHLOGPU_Op<string mnemonic, list<OpTrait> traits = []> :
   Op<LHLO_GPU_Dialect, mnemonic,
@@ -109,13 +106,6 @@ def ActivationAttr : StrEnumAttr<"Activation",
      ActivationModeRelu, ActivationModeRelu6, ActivationModeReluX,
      ActivationModeBandPass]>;
 
-def ConvolutionBackendConfigAttr : StructAttr<"ConvolutionBackendConfig",
-                                          LHLO_GPU_Dialect, [
-   StructFieldAttr<"algorithm", I64Attr>,
-   StructFieldAttr<"tensor_ops_enabled", BoolAttr>]> {
-   let description = "GPU Convolution backend configuration";
-}
-
 def GpuConvolutionAttributes {
   dag attributes = !con(
     ConvolutionAttributes<LHLO_GPU_Dialect>.attributes,
@@ -181,16 +171,6 @@ def LHLOGPU_ConvForwardFusedOp : LHLOGPU_Op<"conv_forward_fused"> {
 // LMHLO ops representing other library functions.
 //===----------------------------------------------------------------------===//
 
-// TODO(jurahul): Share this with the MHLO dialect.
-def DotDimensionNumbersAttr : StructAttr<"DotDimensionNumbers", LHLO_GPU_Dialect, [
-                StructFieldAttr<"lhs_batching_dimensions",   I64ElementsAttr>,
-                StructFieldAttr<"rhs_batching_dimensions",   I64ElementsAttr>,
-                StructFieldAttr<"lhs_contracting_dimensions", I64ElementsAttr>,
-                StructFieldAttr<"rhs_contracting_dimensions", I64ElementsAttr>
-  ]> {
-  let description = "Structure of dimension information for dot product";
-}
-
 // output = alpha * (lhs * rhs)
 // Verify: beta = 0.0
 def LHLOGPU_GEMMOp : LHLOGPU_Op<"gemm"> {
@@ -198,7 +178,7 @@ def LHLOGPU_GEMMOp : LHLOGPU_Op<"gemm"> {
     Arg<LHLO_Buffer, "", [MemRead]>:$lhs,
     Arg<LHLO_Buffer, "", [MemRead]>:$rhs,
     Arg<LHLO_Buffer, "", [MemRead]>:$output,
-    DotDimensionNumbersAttr:$dot_dimension_numbers,
+    DotDimensionNumbers:$dot_dimension_numbers,
     F64Attr:$alpha,
     I64Attr:$batch_size,
     I64Attr:$algorithm);
@@ -211,7 +191,7 @@ def LHLOGPU_GEMM_BiasOp : LHLOGPU_Op<"gemm_bias"> {
     Arg<LHLO_Buffer, "", [MemRead]>:$rhs,
     Arg<LHLO_Buffer, "", [MemRead]>:$bias,
     Arg<LHLO_Buffer, "", [MemRead]>:$output,
-    DotDimensionNumbersAttr:$dot_dimension_numbers,
+    DotDimensionNumbers:$dot_dimension_numbers,
     F64Attr:$alpha,
     F64Attr:$beta,
     I64Attr:$batch_size,

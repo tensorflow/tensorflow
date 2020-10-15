@@ -63,8 +63,6 @@ namespace mlir {
 #include "hlo_patterns.cc.inc"
 }  // namespace mlir
 
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_structs.cc.inc"
-
 namespace mlir {
 namespace mhlo {
 
