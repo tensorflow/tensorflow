@@ -237,6 +237,7 @@ class SubGradientFunction : public GradientFunction {
     // Grad for A
     DCHECK(grad_inputs[0]);
     (*grad_outputs)[0] = grad_inputs[0];
+    (*grad_outputs)[0]->Ref();
 
     // Grad for B
     // negate the upstream grad
