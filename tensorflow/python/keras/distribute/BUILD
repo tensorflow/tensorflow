@@ -250,10 +250,11 @@ distribute_py_test(
     main = "custom_training_loop_models_test.py",
     tags = [
         "multi_and_single_gpu",
+        "notsan",  # TODO(b/170954243)
     ],
     tpu_tags = [
         "no_oss",  # b/153615544.
-        "no_tsan",  # TODO(b/170869466)
+        "notsan",  # TODO(b/170869466)
     ],
     deps = [
         "//tensorflow/python:math_ops",
