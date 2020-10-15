@@ -130,6 +130,26 @@ REGISTER_TEST_ALL_TYPES(ConvOpsExplicitPadding_Negative);
 REGISTER_TEST_ALL_TYPES(MostOps_Positive);
 #undef REGISTER_TEST
 
+#define REGISTER_TEST(NAME, T, INPUT)                                 \
+  TEST_F(EagerOpRewriteTest, NAME##_##T) {                            \
+    std::vector<string> Fused_BN_ops = {"FusedBatchNormV3",           \
+                                        "FusedBatchNormGradV3"};      \
+    for (int i = 0; i < Fused_BN_ops.size(); ++i) {                   \
+      auto orig_op = CreateOp(Fused_BN_ops[i]);                       \
+      orig_op->MutableAttrs()->Set("T", T);                           \
+      orig_op->MutableAttrs()->Set("data_format", "" DATA_FORMAT ""); \
+      CheckRewrite(orig_op.get(), Fused_BN_ops[i]);                   \
+    }                                                                 \
+  }
+#define DATA_FORMAT "NCDHW"
+REGISTER_TEST_ALL_TYPES(FusedBatchNormV3_5D_Negative_1);
+
+#define DATA_FORMAT "NDHWC"
+REGISTER_TEST_ALL_TYPES(FusedBatchNormV3_5D_Negative_2);
+
+#undef DATA_FORMAT
+#undef REGISTER_TEST
+
 }  // namespace tensorflow
 
 #endif  // INTEL_MKL
