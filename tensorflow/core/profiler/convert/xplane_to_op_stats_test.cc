@@ -216,7 +216,7 @@ void BuildAndStoreXSpaceForTest(Env* test_env, absl::string_view test_dir,
   CreateXEvent(&host_plane_builder, &executor_thread, "aaa:bbb", 30, 70);
   GroupTfEvents(&xspace);
 
-  xspace.add_hostnames(hostname);
+  xspace.add_hostnames(std::string(hostname));
 
   std::string xspace_name = absl::StrCat(hostname, ".", kXPlanePb);
   TF_CHECK_OK(
