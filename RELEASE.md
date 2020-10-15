@@ -281,7 +281,7 @@
 
 *   Math and Linear Algebra:
 
-    *   <ADD RELEASE NOTES HERE>
+    * Add `tf.math.erfcinv`, the inverse to `tf.math.erfc`.
 
 *   TPU Enhancements:
 
