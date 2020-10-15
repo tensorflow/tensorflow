@@ -108,11 +108,6 @@ function install_pip2 {
   sudo python2 get-pip.py
 }
 
-function install_pip3.5 {
-  curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
-  sudo python3.5 get-pip.py
-}
-
 function install_pip_deps {
   SUDO_CMD=""
   PIP_CMD="pip"
