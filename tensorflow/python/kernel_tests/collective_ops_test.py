@@ -418,18 +418,17 @@ class TimeoutTest(test.TestCase, parameterized.TestCase):
 
     # We launch the second device after the first device times out. This is to
     # simulate the situation when other workers are slow and the timeout is
-    # short. Since the CPU:0 times out in the param resolution phase, CPU:1
-    # should times out as well, but in the execute phase.
-    with self.assertRaisesRegex(errors.DeadlineExceededError,
-                                'Collective has timed out during execution'):
+    # short. It should error immediately.
+    with self.assertRaisesRegex(
+        errors.DeadlineExceededError,
+        'Collective has timed out waiting for other workers'):
       with ops.device('CPU:1'):
         collective_op(
             input_data,
             group_size=2,
             group_key=group_key,
             instance_key=instance_key,
-            communication_hint=communication,
-            timeout=timeout)
+            communication_hint=communication)
 
   def testExecutionAfterTimeoutV2(self, collective_op, communication):
     timeout = 1.5

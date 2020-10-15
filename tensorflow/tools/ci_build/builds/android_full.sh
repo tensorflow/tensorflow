@@ -44,7 +44,7 @@ do
         --compilation_mode=opt --cxxopt=-std=c++14 \
         --crosstool_top=//external:android/crosstool \
         --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
-        //tensorflow/core:android_tensorflow_lib \
+        //tensorflow/core:portable_tensorflow_lib \
         //tensorflow/tools/android/inference_interface:libtensorflow_inference.so \
         //tensorflow/tools/android/test:libtensorflow_demo.so \
         //tensorflow/tools/benchmark:benchmark_model

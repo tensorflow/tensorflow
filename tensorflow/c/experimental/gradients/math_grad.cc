@@ -24,6 +24,8 @@ using std::vector;
 using tensorflow::ops::Conj;
 using tensorflow::ops::MatMul;
 using tensorflow::ops::Mul;
+using tensorflow::ops::Neg;
+using tensorflow::ops::SqrtGrad;
 
 namespace tensorflow {
 namespace gradients {
@@ -70,6 +72,25 @@ class ExpGradientFunction : public GradientFunction {
 
  private:
   AbstractTensorHandlePtr exp_;
+};
+
+class SqrtGradientFunction : public GradientFunction {
+ public:
+  explicit SqrtGradientFunction(AbstractTensorHandle* sqrt) : sqrt_(sqrt) {
+    sqrt->Ref();
+  }
+  Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
+                 vector<AbstractTensorHandle*>* grad_outputs) override {
+    std::string name = "Sqrt_Grad";
+    grad_outputs->resize(1);
+    TF_RETURN_IF_ERROR(SqrtGrad(ctx->ctx, {sqrt_.get(), grad_inputs[0]},
+                                absl::MakeSpan(*grad_outputs), name.c_str()));
+    return Status::OK();
+  }
+  ~SqrtGradientFunction() override {}
+
+ private:
+  AbstractTensorHandlePtr sqrt_;
 };
 
 class MatMulGradientFunction : public GradientFunction {
@@ -181,6 +202,25 @@ class MatMulGradientFunction : public GradientFunction {
   AttrBuilder forward_attrs;
 };
 
+class NegGradientFunction : public GradientFunction {
+ public:
+  Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
+                 vector<AbstractTensorHandle*>* grad_outputs) override {
+    /* Given upstream grad U and a Neg op Y = -X, the gradients are:
+     *
+     *    dX =  -U
+     *
+     */
+
+    grad_outputs->resize(1);
+    std::string name = "Neg_Grad";
+    TF_RETURN_IF_ERROR(ops::Neg(ctx->ctx, {grad_inputs[0]},
+                                absl::MakeSpan(*grad_outputs), name.c_str()));
+    return Status::OK();
+  }
+  ~NegGradientFunction() override {}
+};
+
 }  // namespace
 
 BackwardFunction* AddRegisterer(const ForwardOperation& op) {
@@ -203,6 +243,24 @@ BackwardFunction* ExpRegisterer(const ForwardOperation& op) {
 
 BackwardFunction* MatMulRegisterer(const ForwardOperation& op) {
   auto gradient_function = new MatMulGradientFunction(op.inputs, op.attrs);
+  // For ops with a single output, the gradient function is not called if there
+  // is no incoming gradient. So we do not need to worry about creating zeros
+  // grads in this case.
+  auto default_gradients = new PassThroughDefaultGradients(op);
+  return new BackwardFunction(gradient_function, default_gradients);
+}
+
+BackwardFunction* SqrtRegisterer(const ForwardOperation& op) {
+  auto gradient_function = new SqrtGradientFunction(op.outputs[0]);
+  // For ops with a single output, the gradient function is not called if there
+  // is no incoming gradient. So we do not need to worry about creating zeros
+  // grads in this case.
+  auto default_gradients = new PassThroughDefaultGradients(op);
+  return new BackwardFunction(gradient_function, default_gradients);
+}
+
+BackwardFunction* NegRegisterer(const ForwardOperation& op) {
+  auto gradient_function = new NegGradientFunction;
   // For ops with a single output, the gradient function is not called if there
   // is no incoming gradient. So we do not need to worry about creating zeros
   // grads in this case.

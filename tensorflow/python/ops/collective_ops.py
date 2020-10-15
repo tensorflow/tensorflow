@@ -177,9 +177,8 @@ def all_gather_v2(t,
   Returns:
     An Op implementing the distributed operation.
   """
-  return gen_collective_ops.collective_gather(
+  return gen_collective_ops.collective_gather_v2(
       t,
-      shape=[0],
       group_size=group_size,
       group_key=group_key,
       instance_key=instance_key,

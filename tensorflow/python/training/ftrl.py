@@ -149,7 +149,7 @@ class FtrlOptimizer(optimizer.Optimizer):
     # TensorFlow ops do not need to include that parameter.
     self._adjusted_l2_regularization_strength_tensor = ops.convert_to_tensor(
         self._l2_regularization_strength + self._beta /
-        (2. * self._learning_rate),
+        (2. * math_ops.maximum(self._learning_rate, 1e-36)),
         name="adjusted_l2_regularization_strength")
     assert self._adjusted_l2_regularization_strength_tensor is not None
     self._beta_tensor = ops.convert_to_tensor(self._beta, name="beta")

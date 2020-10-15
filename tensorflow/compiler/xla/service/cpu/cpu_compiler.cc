@@ -562,9 +562,11 @@ StatusOr<
     std::tuple<std::unique_ptr<HloModule>, std::unique_ptr<BufferAssignment>>>
 CpuCompiler::RunHloPassesAndBufferAssignement(
     std::unique_ptr<HloModule> module, se::StreamExecutor* executor,
-    se::DeviceMemoryAllocator* device_allocator) {
-  TF_ASSIGN_OR_RETURN(
-      module, RunHloPasses(std::move(module), executor, device_allocator));
+    se::DeviceMemoryAllocator* device_allocator, bool optimize) {
+  if (optimize) {
+    TF_ASSIGN_OR_RETURN(
+        module, RunHloPasses(std::move(module), executor, device_allocator));
+  }
 
   // Select an order for emitting the HLO instructions for each computation.
   // Using this sequence enables tighter buffer liveness analysis and reduced

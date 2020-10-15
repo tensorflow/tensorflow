@@ -212,6 +212,7 @@ py_library(
         "//tensorflow/python:pywrap_tf_session",
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:tf2",
+        "//tensorflow/python:tfrt_utils",
         "//tensorflow/python:util",
         "//third_party/py/numpy",
     ],
@@ -375,6 +376,7 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "no_windows",  #TODO(b/139745667)
+        "notsan",  #TODO(b/139745667)
     ],
     deps = [
         ":backprop",
@@ -1070,6 +1072,7 @@ cuda_py_test(
     shard_count = 8,
     tags = [
         "no_oss",  # This test launches local server
+        "notsan",  # TODO(b/170783249)
     ],
     deps = [
         "//tensorflow/python:array_ops",

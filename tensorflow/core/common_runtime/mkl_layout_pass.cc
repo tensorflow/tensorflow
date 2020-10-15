@@ -305,6 +305,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.mkl_native_fused_conv2d = "_MklNativeFusedConv2D";
     csinfo_.mkl_native_fused_depthwise_conv2d =
         "_MklNativeFusedDepthwiseConv2dNative";
+    csinfo_.mkl_native_fused_matmul = "_MklNativeFusedMatMul";
     csinfo_.mkl_native_pad_with_conv2d = "_MklNativePadWithConv2D";
     csinfo_.mkl_native_pad_with_fused_conv2d = "_MklNativePadWithFusedConv2D";
     csinfo_.mkl_pad_with_conv2d = "_MklPadWithConv2D";
@@ -407,7 +408,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       CopyAttrsAll, AlwaysRewrite, GetRewriteCause()});
     rinfo_.push_back({csinfo_.concatv2,
                       mkl_op_registry::GetMklOpName(csinfo_.concatv2),
-                      CopyAttrsAll, AlwaysRewrite, GetRewriteCause()});
+                      CopyAttrsAll, ConcatV2Rewrite, GetRewriteCause()});
     rinfo_.push_back(
         {csinfo_.conjugate_transpose,
          mkl_op_registry::GetMklOpName(csinfo_.conjugate_transpose),
@@ -474,11 +475,11 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back(
         {csinfo_.fused_batch_norm_v3,
          mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm_v3),
-         CopyAttrsAll, AlwaysRewrite, GetRewriteCause()});
+         CopyAttrsAll, FusedBatchNormV3Rewrite, GetRewriteCause()});
     rinfo_.push_back(
         {csinfo_.fused_batch_norm_grad_v3,
          mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm_grad_v3),
-         CopyAttrsAll, AlwaysRewrite, GetRewriteCause()});
+         CopyAttrsAll, FusedBatchNormV3Rewrite, GetRewriteCause()});
 #ifdef ENABLE_MKLDNN_V1
     rinfo_.push_back({csinfo_.fused_batch_norm_ex,
                       native_fmt ? csinfo_.mkl_native_fused_batch_norm_ex
@@ -496,8 +497,11 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                                  : csinfo_.mkl_fused_depthwise_conv2d,
                       CopyAttrsFusedConv2D, FusedDepthwiseConv2DRewrite,
                       GetRewriteCause()});
-    rinfo_.push_back({csinfo_.fused_matmul, csinfo_.mkl_fused_matmul,
-                      CopyAttrsAllCheckConstFilter, FusedMatMulRewrite});
+    rinfo_.push_back({csinfo_.fused_matmul,
+                      native_fmt ? csinfo_.mkl_native_fused_matmul
+                                 : csinfo_.mkl_fused_matmul,
+                      CopyAttrsAllCheckConstFilter, FusedMatMulRewrite,
+                      GetRewriteCause()});
 
     rinfo_.push_back(
         {csinfo_.identity, mkl_op_registry::GetMklOpName(csinfo_.identity),
@@ -549,7 +553,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       CopyAttrsAll, AlwaysRewrite, GetRewriteCause()});
     rinfo_.push_back({csinfo_.quantized_concatv2,
                       mkl_op_registry::GetMklOpName(csinfo_.quantized_concatv2),
-                      CopyAttrsAll, AlwaysRewrite, GetRewriteCause()});
+                      CopyAttrsAll, ConcatV2Rewrite, GetRewriteCause()});
     rinfo_.push_back({csinfo_.quantized_conv2d,
                       mkl_op_registry::GetMklOpName(csinfo_.quantized_conv2d),
                       CopyAttrsQuantizedConv2D, AlwaysRewrite,
@@ -961,6 +965,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string mkl_native_fused_batch_norm_ex;
     string mkl_native_fused_conv2d;
     string mkl_native_fused_depthwise_conv2d;
+    string mkl_native_fused_matmul;
     string mkl_native_pad_with_conv2d;
     string mkl_native_pad_with_fused_conv2d;
     string mkl_pad_with_conv2d;
@@ -1496,6 +1501,12 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     }
     return false;
   }
+  // For oneDNN, only int32 is supported for axis data type
+  static bool ConcatV2Rewrite(const Node* n) {
+    DataType T;
+    GetNodeAttr(n->def(), "Tidx", &T);
+    return (T == DT_INT32);
+  }
 
   static bool DequantizeRewrite(const Node* n) {
     DCHECK(n);
@@ -1709,6 +1720,16 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
       }
     }
     return false;
+  }
+  
+  static bool FusedBatchNormV3Rewrite(const Node* n) {
+    DCHECK(n);
+    if (Check5DFormat(n->def())) {
+      VLOG(1) << "Graph Rewrite: FusedBatchNorm(Grad)V3 op currently does not "
+              << "support 5D tensors.";
+      return false;
+    }
+    return true;
   }
 
   static bool FusedBatchNormExRewrite(const Node* n) {
@@ -2464,7 +2485,7 @@ void MklLayoutRewritePass::AddWorkSpaceEdgeIfNeeded(
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
   for (auto ws : wsinfo_) {
     if (orig_node->type_string() == ws.fwd_op &&
-        mkl_op_registry::IsMklLayoutDependentOp(
+        mkl_op_registry::IsMklOp(
             mkl_op_registry::GetMklOpName(orig_node->type_string()), T)) {
       // If this op is a fwd op, then we need to check if there is an
       // edge from this node's fwd_slot to bwdop's bwd_slot. If there is
@@ -2491,7 +2512,7 @@ void MklLayoutRewritePass::AddWorkSpaceEdgeIfNeeded(
         nb->Attr("workspace_enabled", false);
       }
     } else if (orig_node->type_string() == ws.bwd_op &&
-               mkl_op_registry::IsMklLayoutDependentOp(
+               mkl_op_registry::IsMklOp(
                    mkl_op_registry::GetMklOpName(orig_node->type_string()),
                    T)) {
       // If this op is a bwd op, then we need to add workspace edge and
@@ -2515,10 +2536,14 @@ void MklLayoutRewritePass::AddWorkSpaceEdgeIfNeeded(
           DCHECK(ws_tensors);
           // Add workspace edge between fwd op and bwd op.
           ws_tensors->push_back(NodeBuilder::NodeOut(e->src(), ws.ws_fwd_slot));
-          // Add Mkl tensor edge for workspace edge between fwd op and bwd op.
-          ws_tensors->push_back(NodeBuilder::NodeOut(
-              e->src(), DataIndexToMetaDataIndex(ws.ws_fwd_slot,
-                                                 e->src()->num_outputs())));
+          // Check if we are running in native format mode. If so,
+          // we don't need to have an Mkl metadata tensor for the workspace.
+          if (!NativeFormatEnabled()) {
+            // Add Mkl tensor edge for workspace edge between fwd op and bwd op.
+            ws_tensors->push_back(NodeBuilder::NodeOut(
+                e->src(), DataIndexToMetaDataIndex(ws.ws_fwd_slot,
+                                                   e->src()->num_outputs())));
+          }
           *are_ws_tensors_added = true;
           // In terms of input ordering, we add these calls to add Input
           // here because workspace edge (and its Mkl tensor) is the last
@@ -3675,6 +3700,15 @@ Status MklLayoutRewritePass::RewriteNodeForJustOpNameChange(
   Status s = CopyInputs(orig_node, inputs, &nb);
   if (s != Status::OK()) {
     return s;
+  }
+
+  std::vector<NodeBuilder::NodeOut> workspace_tensors;
+  bool are_workspace_tensors_available = false;
+  AddWorkSpaceEdgeIfNeeded(g, orig_node, &nb, &workspace_tensors,
+                           &are_workspace_tensors_available);
+  if (are_workspace_tensors_available) {
+    DCHECK_EQ(workspace_tensors.size(), 1);
+    nb.Input(workspace_tensors[0].node, workspace_tensors[0].index);
   }
 
   if (!NativeFormatEnabled()) {

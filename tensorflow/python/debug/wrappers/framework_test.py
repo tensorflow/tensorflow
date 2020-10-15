@@ -141,7 +141,7 @@ class TestDebugWrapperSessionBadAction(framework.BaseDebugWrapperSession):
     return framework.OnRunEndResponse()
 
 
-@test_util.run_deprecated_v1
+@test_util.run_v1_only("Sessions are not available in TF 2.x")
 class DebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
   def _no_rewrite_session_config(self):

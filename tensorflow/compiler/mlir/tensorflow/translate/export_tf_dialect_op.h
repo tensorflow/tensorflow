@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
@@ -29,9 +30,10 @@ namespace tensorflow {
 
 // Extracts the attributes of a MLIR operation and populates the converted
 // attributes in a proto map<string, AttrValue>.
-Status GetAttrValuesFromOperation(mlir::Operation* inst, llvm::StringRef name,
-                                  bool ignore_unregistered_attrs,
-                                  AttrValueMap* attributes);
+Status GetAttrValuesFromOperation(
+    mlir::Operation* inst, llvm::StringRef name,
+    const tensorflow::OpRegistrationData* op_reg_data,
+    bool ignore_unregistered_attrs, AttrValueMap* attributes);
 
 // Converts a MLIR operation to TensorFlow NodeDef with given node name. This
 // name should be unique to the graph it is being inserted to. If the

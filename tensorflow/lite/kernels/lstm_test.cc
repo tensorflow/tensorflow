@@ -1458,8 +1458,12 @@ class LSTMIntegerOpModel : public SingleOpModel {
         BuiltinOperator_LSTM, BuiltinOptions_LSTMOptions,
         CreateLSTMOptions(builder_, ActivationFunctionType_TANH).Union());
 
-    BuildInterpreter({});  // Input sizes are already set
+    BuildInterpreter(/*input_shapes=*/{}, /*num_threads=*/-1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/true, /*allocate_and_delegate=*/false);
   }
+
+  void PerformAllocateAndDelegate() { AllocateAndDelegate(true); }
 
   void SetInputToInputWeights(const std::vector<float>& f) {
     QuantizeAndPopulate<int8_t>(input_to_input_weights_, f);
@@ -1692,6 +1696,8 @@ TEST(IntegerLstmOpTest, NoCifg_NoPeephole_Projection_LayerNorm) {
                           /*use_layer_norm=*/true,
                           /*use_8x8_8_implementation=*/false, ranges,
                           intermediates);
+  // Do allocate.
+  lstm.PerformAllocateAndDelegate();
 
   // Set weights.
   lstm.SetInputToInputWeights(input_to_input_weights);
@@ -1859,6 +1865,9 @@ TEST(IntegerLstmOpTest, NoCifg_Peephole_Projection_LayerNorm) {
                           /*use_8x8_8_implementation=*/false, ranges,
                           intermediates);
 
+  // Do allocate.
+  lstm.PerformAllocateAndDelegate();
+
   // Set weights.
   lstm.SetInputToInputWeights(input_to_input_weights);
   lstm.SetInputToCellWeights(input_to_cell_weights);
@@ -2025,6 +2034,9 @@ TEST(IntegerLstmOpTest, Cifg_NoPeephole_Projection_LayerNorm_8x8_8) {
                           /*use_layer_norm=*/true,
                           /*use_8x8_8_implementation=*/true, ranges,
                           intermediates);
+
+  // Do allocate.
+  lstm.PerformAllocateAndDelegate();
 
   // Set weights.
   // lstm.SetInputToInputWeights(input_to_input_weights);

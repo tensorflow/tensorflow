@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -59,7 +59,7 @@ struct AllocationInfo {
 // requirement for SIMD extensions.
 constexpr int kBufferAlignment = 16;
 constexpr char kOfflineMemAllocMetadata[] = "OfflineMemoryAllocation";
-const TfLiteIntArray kZeroLengthIntArray = {0, {}};
+const TfLiteIntArray kZeroLengthIntArray = {};
 
 class MicroBuiltinDataAllocator : public BuiltinDataAllocator {
  public:
@@ -152,17 +152,12 @@ TfLiteStatus CheckOfflinePlannedOffsets(const Model* model,
 // plan. Methods need to be called in order from `Init`, `Add*`, to `Finish`.
 class AllocationInfoBuilder {
  public:
-  AllocationInfoBuilder(ErrorReporter* reporter,
-                        SimpleMemoryAllocator* allocator)
-      : reporter_(reporter), allocator_(allocator) {}
-
-  // Initializes the builder by allocating AllocationInfo array from the
-  // simple memory allocator.
-  TfLiteStatus Init(size_t tensor_count, size_t scratch_buffer_count) {
-    tensor_count_ = tensor_count;
-    buffer_count_ = scratch_buffer_count;
-    return Allocate();
-  }
+  AllocationInfoBuilder(AllocationInfo* info, size_t tensor_count,
+                        size_t scratch_buffer_count, ErrorReporter* reporter)
+      : info_(info),
+        tensor_count_(tensor_count),
+        buffer_count_(scratch_buffer_count),
+        reporter_(reporter) {}
 
   // Check if model contains offline planned buffer offsets.
   //  - If there's no metadata available, offline_planner_offsets is not set
@@ -183,32 +178,13 @@ class AllocationInfoBuilder {
 
   // Returns a pointer to the built AllocationInfo array.
   const AllocationInfo* Finish() const { return info_; }
-  size_t Size() const { return tensor_count_ + buffer_count_; }
 
  private:
-  // Allocate the output AllocationInfo array from the allocator_;
-  TfLiteStatus Allocate();
-
-  ErrorReporter* reporter_ = nullptr;
-  SimpleMemoryAllocator* allocator_ = nullptr;
+  AllocationInfo* info_ = nullptr;
   size_t tensor_count_ = 0;
   size_t buffer_count_ = 0;
-  AllocationInfo* info_ = nullptr;
+  ErrorReporter* reporter_ = nullptr;
 };
-
-TfLiteStatus AllocationInfoBuilder::Allocate() {
-  size_t bytes = sizeof(AllocationInfo) * Size();
-  info_ = reinterpret_cast<AllocationInfo*>(
-      allocator_->AllocateFromTail(bytes, alignof(AllocationInfo)));
-  if (info_ == nullptr) {
-    TF_LITE_REPORT_ERROR(
-        reporter_,
-        "Failed to allocate memory for allocation_info, %d bytes required",
-        bytes);
-    return kTfLiteError;
-  }
-  return kTfLiteOk;
-}
 
 TfLiteStatus AllocationInfoBuilder::AddTensors(const SubGraph* subgraph,
                                                const int32_t* offline_offsets,
@@ -474,7 +450,7 @@ void* GetFlatbufferTensorBuffer(
   // and if there is update the runtime structure to point to its location in
   // memory.
   // First see if there's any buffer information in the serialized tensor.
-  // TODO(b/160894903): Add better unit tests that validate flatbuffer values.
+  // TODO(b/170379532): Add better unit tests to validate flatbuffer values.
   void* out_buffer = nullptr;
   if (auto* buffer = (*buffers)[flatbuffer_tensor.buffer()]) {
     // If we've found a buffer, does it have any data?
@@ -784,7 +760,7 @@ TfLiteStatus MicroAllocator::FinishPrepareNodeAllocations(int node_id) {
 
   // Ensure that the head is re-adjusted to allow for another at-most
   // kMaxScratchBuffersPerOp scratch buffer requests in the next operator:
-  TF_LITE_ENSURE_STATUS(memory_allocator_->SetHeadSize(
+  TF_LITE_ENSURE_STATUS(memory_allocator_->SetHeadBufferSize(
       sizeof(internal::ScratchBufferRequest) *
           (scratch_buffer_request_count_ + kMaxScratchBuffersPerOp),
       alignof(internal::ScratchBufferRequest)));
@@ -1043,9 +1019,9 @@ TfLiteTensor* MicroAllocator::AllocatePersistentTfLiteTensorInternal(
 TfLiteStatus MicroAllocator::PopulateTfLiteTensorFromFlatbuffer(
     const Model* model, const SubGraph* subgraph, TfLiteTensor* tensor,
     int tensor_index, bool allocate_temp) {
-  // TODO(b/160894903): This method serves as a stub to ensure quantized
-  // allocations in the tail can be recorded. Once all kernels have been ported
-  // to the new API this can be dropped.
+  // TODO(b/162311891): This method serves as a stub to ensure quantized
+  // allocations in the tail can be recorded. Once the interpreter has APIs for
+  // accessing buffers on TfLiteEvalTensor this method can be dropped.
   return internal::InitializeTfLiteTensorFromFlatbuffer(
       memory_allocator_, allocate_temp, *subgraph->tensors()->Get(tensor_index),
       model->buffers(), error_reporter_, tensor);
@@ -1075,61 +1051,74 @@ TfLiteStatus MicroAllocator::CommitStaticMemoryPlan(
   // 2. Add them into the planner (such as the GreedyMemoryPlanner).
   // 3. Static memory planning using the planner.
   // 4. Set tensor/buffer pointers based on the offsets from the previous step.
+  //
   // Note that AllocationInfo is only needed for creating the plan. It will be
-  // thrown away when the child allocator (tmp_allocator) goes out of scope.
-  {
-    // TODO(b/162595810): Use temp allocation buffer instead of a stack
-    // instance:
-    SimpleMemoryAllocator tmp_allocator(error_reporter_,
-                                        memory_allocator_->GetBufferHead(),
-                                        memory_allocator_->GetTail());
+  // allocated from the temp section and cleaned up at the bottom of this
+  // function.
 
-    AllocationInfoBuilder builder(error_reporter_, &tmp_allocator);
-    TF_LITE_ENSURE_STATUS(builder.Init(subgraph->tensors()->size(),
-                                       scratch_buffer_request_count_));
+  size_t allocation_info_count =
+      subgraph->tensors()->size() + scratch_buffer_request_count_;
+  size_t bytes = sizeof(AllocationInfo) * allocation_info_count;
 
-    const int32_t* offline_planner_offsets = nullptr;
-    TF_LITE_ENSURE_STATUS(
-        builder.GetOfflinePlannedOffsets(model, &offline_planner_offsets));
-    TF_LITE_ENSURE_STATUS(
-        builder.AddTensors(subgraph, offline_planner_offsets, eval_tensors));
-
-    internal::ScratchBufferRequest* scratch_buffer_requests =
-        GetScratchBufferRequests();
-
-    TF_LITE_ENSURE_STATUS(builder.AddScratchBuffers(scratch_buffer_requests,
-                                                    scratch_buffer_handles));
-
-    const AllocationInfo* allocation_info = builder.Finish();
-
-    // Remaining arena size that memory planner can use for calculating offsets.
-    size_t remaining_arena_size =
-        tmp_allocator.GetAvailableMemory(kBufferAlignment);
-    uint8_t* planner_arena =
-        tmp_allocator.AllocateTemp(remaining_arena_size, kBufferAlignment);
-    TF_LITE_ENSURE(error_reporter_, planner_arena != nullptr);
-    GreedyMemoryPlanner planner(planner_arena, remaining_arena_size);
-    TF_LITE_ENSURE_STATUS(
-        CreatePlan(error_reporter_, &planner, allocation_info, builder.Size()));
-
-    size_t actual_available_arena_size =
-        memory_allocator_->GetAvailableMemory(kBufferAlignment);
-
-    // Make sure we have enough arena size.
-    if (planner.GetMaximumMemorySize() > actual_available_arena_size) {
-      TF_LITE_REPORT_ERROR(
-          error_reporter_,
-          "Arena size is too small for all buffers. Needed %u but only "
-          "%u was available.",
-          planner.GetMaximumMemorySize(), actual_available_arena_size);
-      return kTfLiteError;
-    }
-    // Commit the plan.
-    TF_LITE_ENSURE_STATUS(CommitPlan(error_reporter_, &planner,
-                                     memory_allocator_->GetBufferHead(),
-                                     allocation_info, builder.Size()));
-    head_usage = planner.GetMaximumMemorySize();
+  // Allocate an array of AllocationInfo structs from the temp section. This
+  // struct will be used by AllocationInfoBuilder to find buffer usage.
+  AllocationInfo* allocation_info = reinterpret_cast<AllocationInfo*>(
+      memory_allocator_->AllocateTemp(bytes, alignof(AllocationInfo)));
+  if (allocation_info == nullptr) {
+    TF_LITE_REPORT_ERROR(
+        error_reporter_,
+        "Failed to allocate memory for allocation_info, %d bytes required",
+        bytes);
+    return kTfLiteError;
   }
+
+  // Use the AllocationInfoBuilder class to help determine where buffers are
+  // used in the subgraph.
+  AllocationInfoBuilder builder(allocation_info, subgraph->tensors()->size(),
+                                scratch_buffer_request_count_, error_reporter_);
+
+  const int32_t* offline_planner_offsets = nullptr;
+  TF_LITE_ENSURE_STATUS(
+      builder.GetOfflinePlannedOffsets(model, &offline_planner_offsets));
+  TF_LITE_ENSURE_STATUS(
+      builder.AddTensors(subgraph, offline_planner_offsets, eval_tensors));
+
+  internal::ScratchBufferRequest* scratch_buffer_requests =
+      GetScratchBufferRequests();
+
+  TF_LITE_ENSURE_STATUS(builder.AddScratchBuffers(scratch_buffer_requests,
+                                                  scratch_buffer_handles));
+
+  // Remaining arena size that memory planner can use for calculating offsets.
+  size_t remaining_arena_size =
+      memory_allocator_->GetAvailableMemory(kBufferAlignment);
+  uint8_t* planner_arena =
+      memory_allocator_->AllocateTemp(remaining_arena_size, kBufferAlignment);
+  TF_LITE_ENSURE(error_reporter_, planner_arena != nullptr);
+  GreedyMemoryPlanner planner(planner_arena, remaining_arena_size);
+  TF_LITE_ENSURE_STATUS(CreatePlan(error_reporter_, &planner, allocation_info,
+                                   allocation_info_count));
+
+  // Reset all temp allocations used above:
+  memory_allocator_->ResetTempAllocations();
+
+  size_t actual_available_arena_size =
+      memory_allocator_->GetAvailableMemory(kBufferAlignment);
+
+  // Make sure we have enough arena size.
+  if (planner.GetMaximumMemorySize() > actual_available_arena_size) {
+    TF_LITE_REPORT_ERROR(
+        error_reporter_,
+        "Arena size is too small for all buffers. Needed %u but only "
+        "%u was available.",
+        planner.GetMaximumMemorySize(), actual_available_arena_size);
+    return kTfLiteError;
+  }
+  // Commit the plan.
+  TF_LITE_ENSURE_STATUS(CommitPlan(error_reporter_, &planner,
+                                   memory_allocator_->GetHeadBuffer(),
+                                   allocation_info, allocation_info_count));
+  head_usage = planner.GetMaximumMemorySize();
 
   // The head is used to store memory plans for one model at a time during the
   // model preparation stage, and is re-purposed to store scratch buffer handles
@@ -1143,8 +1132,8 @@ TfLiteStatus MicroAllocator::CommitStaticMemoryPlan(
   // The head is used for storing scratch buffer allocations before finalizing a
   // memory plan in this function. Ensure that the head is set to the largest
   // memory plan sent through the allocator:
-  TF_LITE_ENSURE_STATUS(
-      memory_allocator_->SetHeadSize(max_head_buffer_usage_, kBufferAlignment));
+  TF_LITE_ENSURE_STATUS(memory_allocator_->SetHeadBufferSize(
+      max_head_buffer_usage_, kBufferAlignment));
   return kTfLiteOk;
 }
 
@@ -1175,7 +1164,7 @@ TfLiteStatus MicroAllocator::InitScratchBufferData() {
   // All requests will be stored in the head section. Each kernel is allowed at
   // most kMaxScratchBuffersPerOp requests. Adjust the head to reserve at most
   // that many requests to begin:
-  TF_LITE_ENSURE_STATUS(memory_allocator_->SetHeadSize(
+  TF_LITE_ENSURE_STATUS(memory_allocator_->SetHeadBufferSize(
       sizeof(internal::ScratchBufferRequest) * kMaxScratchBuffersPerOp,
       alignof(internal::ScratchBufferRequest)));
 
@@ -1184,7 +1173,7 @@ TfLiteStatus MicroAllocator::InitScratchBufferData() {
 
 internal::ScratchBufferRequest* MicroAllocator::GetScratchBufferRequests() {
   return reinterpret_cast<internal::ScratchBufferRequest*>(
-      AlignPointerUp(memory_allocator_->GetBufferHead(),
+      AlignPointerUp(memory_allocator_->GetHeadBuffer(),
                      alignof(internal::ScratchBufferRequest)));
 }
 

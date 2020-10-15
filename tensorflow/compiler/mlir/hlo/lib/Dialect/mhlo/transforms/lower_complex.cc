@@ -37,7 +37,6 @@ limitations under the License.
 
 using mlir::FunctionPass;
 using mlir::OwningRewritePatternList;
-using mlir::PassRegistration;
 using mlir::PassWrapper;
 
 namespace {
@@ -60,7 +59,7 @@ namespace {
 
 void PopulateComplexLoweringPatterns(MLIRContext* context,
                                      OwningRewritePatternList* patterns) {
-  populateWithGenerated(context, patterns);
+  populateWithGenerated(context, *patterns);
 }
 }  // end namespace mhlo
 }  // end namespace mlir

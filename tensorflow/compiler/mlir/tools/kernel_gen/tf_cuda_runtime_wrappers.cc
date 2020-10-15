@@ -64,8 +64,13 @@ extern "C" void mgpuLaunchKernel(CUfunction function, intptr_t gridX,
 }
 
 extern "C" CUstream mgpuStreamCreate() {
-  CUstream stream = nullptr;
-  CUDA_REPORT_IF_ERROR(cuStreamCreate(&stream, CU_STREAM_NON_BLOCKING));
+  static CUstream stream = []() {
+    // TODO(b/170649852): This is neither thread-safe nor handles
+    // creation/descruction of one stream per context.
+    CUstream stream = nullptr;
+    CUDA_REPORT_IF_ERROR(cuStreamCreate(&stream, CU_STREAM_NON_BLOCKING));
+    return stream;
+  }();
   return stream;
 }
 

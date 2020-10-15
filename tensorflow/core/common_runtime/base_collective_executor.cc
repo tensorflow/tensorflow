@@ -229,30 +229,29 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
                                           StatusCallback done) {
   const auto is_callback_called = std::make_shared<std::atomic<bool>>(false);
 
-  // On any individual collective Op failure we need to abort the
-  // BufRendezvous so that other Ops in the instance don't hang
-  // waiting for transmissions that will never happen.
-  StatusCallback done_safe = [this, done, is_callback_called](const Status& s) {
-    auto should_call_callback = !is_callback_called->exchange(true);
-    if (should_call_callback) {
-      if (!s.ok()) {
-        remote_access_->buf_rendezvous()->StartAbort(s);
-      }
-      done(s);
-    }
+  StatusCallback done_safe = [done = std::move(done),
+                              is_callback_called](const Status& s) {
+    bool called = is_callback_called->exchange(true);
+    CHECK(!called) << "done callback is called twice in "  // Crash OK
+                      "BaseCollectiveExecutor::ExecuteAsync. Please file a "
+                      "issue on https://github.com/tensorflow/tensorflow.";
+    done(s);
   };
 
   auto timeout_microseconds = static_cast<int64>(
       col_params.instance.impl_details.timeout_seconds * 1'000'000);
   if (timeout_microseconds > 0) {
+    // Ensure this BaseCollectiveExecutor is alive when StartAbort() is called.
+    Ref();
     // TODO(xldrx): Share the timeout watchdog thread among collectives.
     SchedNonBlockingClosureAfter(
-        timeout_microseconds, [is_callback_called, done_safe] {
+        timeout_microseconds, [this, is_callback_called] {
           if (!is_callback_called->load()) {
-            auto status = Status(error::DEADLINE_EXCEEDED,
-                                 "Collective has timed out during execution.");
-            done_safe(status);
+            Status status(error::DEADLINE_EXCEEDED,
+                          "Collective has timed out during execution.");
+            StartAbort(status);
           }
+          Unref();
         });
   }
 
@@ -308,30 +307,32 @@ void BaseCollectiveExecutor::CompleteParamsAsync(
     CancellationManager* cancel_mgr, StatusCallback done) {
   cp->group.gpu_ring_order = *gpu_ring_order_;
   const auto is_callback_called = std::make_shared<std::atomic<bool>>(false);
-  auto done_with_timeout = done;
+  auto done_safe = [is_callback_called,
+                    done = std::move(done)](const Status& s) {
+    bool called = is_callback_called->exchange(true);
+    CHECK(!called) << "done callback is called twice in "  // Crash OK
+                      "BaseCollectiveExecutor::ExecuteAsync. Please file a "
+                      "issue on https://github.com/tensorflow/tensorflow.";
+    done(s);
+  };
   auto timeout_microseconds =
       static_cast<int64>(cp->instance.impl_details.timeout_seconds * 1'000'000);
   if (timeout_microseconds > 0) {
+    // Ensure this BaseCollectiveExecutor is alive when StartAbort() is called.
+    Ref();
     // TODO(xldrx): Share the timeout watchdog thread among collectives.
-    SchedNonBlockingClosureAfter(
-        timeout_microseconds, [is_callback_called, done] {
-          auto should_call_callback = !is_callback_called->exchange(true);
-          if (should_call_callback) {
-            auto status =
-                Status(error::DEADLINE_EXCEEDED,
-                       "Collective has timed out waiting for other workers.");
-            done(status);
-          }
-        });
-    done_with_timeout = [is_callback_called, done](const Status& s) {
-      auto should_call_callback = !is_callback_called->exchange(true);
-      if (should_call_callback) {
-        done(s);
+    SchedNonBlockingClosureAfter(timeout_microseconds, [this,
+                                                        is_callback_called]() {
+      if (!is_callback_called->load()) {
+        Status status(error::DEADLINE_EXCEEDED,
+                      "Collective has timed out waiting for other workers.");
+        StartAbort(status);
       }
-    };
+      Unref();
+    });
   }
   cem_->GetParamResolver()->CompleteParamsAsync(device, cp, cancel_mgr,
-                                                done_with_timeout);
+                                                done_safe);
 }
 
 Status BaseCollectiveExecutor::CreateCollective(

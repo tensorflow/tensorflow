@@ -975,6 +975,65 @@ func @foldIfRegionMismatchedTypes(%arg0: tensor<?xf32>, %arg1: tensor<?xf32>, %a
   return %0 : tensor<1xf32>
 }
 
+// CHECK-LABEL: func @eliminatePassThroughIfRegion(
+// CHECK-SAME:    %[[ARG0:.*]]: tensor<f32>, %[[ARG1:.*]]: tensor<f32>, %[[ARG2:.*]]: tensor<!tf.resource>
+func @eliminatePassThroughIfRegion(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<!tf.resource>) -> (tensor<f32>) {
+  // CHECK: %[[PRED:.*]] = "tf._SomeOp"() : () -> tensor<i1>
+  %pred = "tf._SomeOp"() : () -> tensor<i1>
+  // CHECK: %[[IF_OUTPUT:.*]] = "tf.IfRegion"(%[[PRED]]) ( {
+  // CHECK:   %[[MUL:.*]] = "tf.Mul"(%[[ARG0]], %[[ARG1]])
+  // CHECK:   "tf.Yield"(%[[MUL]]) : (tensor<f32>)
+  // CHECK:  },  {
+  // CHECK:    %[[SUB:.*]] = "tf.Sub"(%[[ARG0]], %[[ARG1]])
+  // CHECK:    "tf.Yield"(%[[SUB]]) : (tensor<f32>)
+  // CHECK:  }) {is_stateless = true} : (tensor<i1>) -> tensor<f32>
+  %0:4 = "tf.IfRegion"(%pred) ({
+      %true_value = "tf.Mul"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+      "tf.Yield"(%arg1, %arg2, %true_value, %arg2) : (tensor<f32>, tensor<!tf.resource>, tensor<f32>, tensor<!tf.resource>) -> ()
+    }, {
+      %false_value = "tf.Sub"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+      "tf.Yield"(%arg1, %arg2, %false_value, %arg2) : (tensor<f32>, tensor<!tf.resource>, tensor<f32>, tensor<!tf.resource>) -> ()
+    }) { is_stateless = true}: (tensor<i1>) -> (tensor<f32>, tensor<!tf.resource>, tensor<f32>, tensor<!tf.resource>)
+  // CHECK: "tf._SomeOp"(%[[ARG2]], %[[ARG1]]) : (tensor<!tf.resource>, tensor<f32>) -> ()
+  "tf._SomeOp"(%0#1, %0#0) : (tensor<!tf.resource>, tensor<f32>) -> ()
+  // CHECK: "tf._SomeOp"(%[[ARG2]], %[[IF_OUTPUT]]) : (tensor<!tf.resource>, tensor<f32>) -> ()
+  "tf._SomeOp"(%0#3, %0#2) : (tensor<!tf.resource>, tensor<f32>) -> ()
+  // CHECK: return %[[IF_OUTPUT]] : tensor<f32>
+  return %0#2 : tensor<f32>
+}
+
+// CHECK-LABEL: func @eliminatePassThroughCaseRegion(
+// CHECK-SAME:    %[[ARG0:.*]]: tensor<f32>, %[[ARG1:.*]]: tensor<f32>, %[[ARG2:.*]]: tensor<!tf.resource>
+func @eliminatePassThroughCaseRegion(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<!tf.resource>) -> (tensor<f32>) {
+  // CHECK: %[[INDEX:.*]] = "tf._SomeOp"() : () -> tensor<i32>
+  %index = "tf._SomeOp"() : () -> tensor<i32>
+  // CHECK: %[[CASE_OUTPUT:.*]] = "tf.CaseRegion"(%[[INDEX]]) ( {
+  // CHECK:   %[[MUL:.*]] = "tf.Mul"(%[[ARG0]], %[[ARG1]])
+  // CHECK:   "tf.Yield"(%[[MUL]]) : (tensor<f32>)
+  // CHECK:  },  {
+  // CHECK:    %[[SUB:.*]] = "tf.Sub"(%[[ARG0]], %[[ARG1]])
+  // CHECK:    "tf.Yield"(%[[SUB]]) : (tensor<f32>)
+  // CHECK:  },  {
+  // CHECK:    %[[ADD:.*]] = "tf.AddV2"(%[[ARG0]], %[[ARG1]])
+  // CHECK:    "tf.Yield"(%[[ADD]]) : (tensor<f32>)
+  // CHECK:  }) {is_stateless = true} : (tensor<i32>) -> tensor<f32>
+  %0:3 = "tf.CaseRegion"(%index) ({
+      %mul = "tf.Mul"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+      "tf.Yield"(%arg1, %mul, %arg2) : (tensor<f32>, tensor<f32>, tensor<!tf.resource>) -> ()
+    }, {
+      %sub = "tf.Sub"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+      "tf.Yield"(%arg1, %sub, %arg2) : (tensor<f32>, tensor<f32>, tensor<!tf.resource>) -> ()
+    }, {
+      %add = "tf.AddV2"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+      "tf.Yield"(%arg1, %add, %arg2) : (tensor<f32>, tensor<f32>, tensor<!tf.resource>) -> ()
+    }) { is_stateless = true}: (tensor<i32>) -> (tensor<f32>, tensor<f32>, tensor<!tf.resource>)
+  // CHECK: "tf._SomeOp"(%[[ARG2]], %[[ARG1]]) : (tensor<!tf.resource>, tensor<f32>) -> ()
+  "tf._SomeOp"(%0#2, %0#0) : (tensor<!tf.resource>, tensor<f32>) -> ()
+  // CHECK: return %[[CASE_OUTPUT]] : tensor<f32>
+  return %0#1 : tensor<f32>
+}
+
+
 // CHECK-LABEL: foldCase
 func @foldCase(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>) {
   %2 = constant dense<1> : tensor<i32>

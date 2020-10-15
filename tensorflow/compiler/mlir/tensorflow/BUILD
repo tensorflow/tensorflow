@@ -110,6 +110,8 @@ cc_library(
     deps = [
         ":tensorflow_op_interfaces_inc_gen",
         ":tensorflow_structs",
+        "//tensorflow/core:framework",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
@@ -810,8 +812,8 @@ cc_library(
     ],
     deps = [
         ":tensorflow",
+        ":tensorflow_op_interfaces",
         ":tensorflow_types",
-        "//tensorflow/core:framework",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
@@ -1045,6 +1047,7 @@ cc_library(
         "translate/import_model.h",
     ],
     deps = [
+        ":convert_attr",
         ":convert_tensor",
         ":convert_type",
         ":dump_mlir_util",
@@ -1263,6 +1266,24 @@ cc_library(
 )
 
 cc_library(
+    name = "convert_attr",
+    srcs = ["utils/convert_attr.cc"],
+    hdrs = ["utils/convert_attr.h"],
+    visibility = [
+        "//visibility:public",
+    ],
+    deps = [
+        ":convert_tensor",
+        ":convert_type",
+        ":tensorflow_attributes",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/stream_executor/lib",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
     name = "convert_type",
     srcs = ["utils/convert_type.cc"],
     hdrs = ["utils/convert_type.h"],
@@ -1394,6 +1415,7 @@ cc_library(
         ":decode_constant_pass",
         ":eval_util",
         ":tensorflow",
+        ":tensorflow_traits",
         ":tensorflow_types",
         "//tensorflow/c:tf_status",
         "//tensorflow/c/eager:c_api",
@@ -1961,6 +1983,7 @@ cc_library(
     deps = [
         ":convert_tensor",
         ":convert_type",
+        ":export_tf_dialect_op",
         ":export_utils",
         ":tensorflow",
         ":tensorflow_attributes",

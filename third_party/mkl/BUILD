@@ -22,6 +22,14 @@ config_setting(
 )
 
 config_setting(
+    name = "build_with_mkl_aarch64",
+    define_values = {
+        "build_with_mkl_aarch64": "true",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "enable_mkl",
     define_values = {
         "enable_mkl": "true",

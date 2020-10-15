@@ -90,7 +90,7 @@ class InterfaceTests(test.TestCase):
 
   def testSaveWithOnlyKerasSession(self):
 
-    with ops.Graph().as_default():
+    with ops.Graph().as_default(), self.cached_session():
       inp = input_layer.Input([1])
       dense = core.Dense(1)(inp)
       model = training.Model(inp, dense)
@@ -356,6 +356,7 @@ class CheckpointingTests(keras_parameterized.TestCase):
     with self.test_session():
       num_training_steps = 10
       checkpoint_directory = self.get_temp_dir()
+      optimizer = adam.Adam(0.001)
       def _train_fn(model, input_value):
         with backprop.GradientTape() as tape:
           loss = model(input_value)
@@ -365,7 +366,6 @@ class CheckpointingTests(keras_parameterized.TestCase):
       for training_continuation in range(3):
         with testing_utils.device(should_use_gpu=True):
           model = MyModel()
-          optimizer = adam.Adam(0.001)
           root = trackable_utils.Checkpoint(
               optimizer=optimizer, model=model)
           manager = checkpoint_management.CheckpointManager(

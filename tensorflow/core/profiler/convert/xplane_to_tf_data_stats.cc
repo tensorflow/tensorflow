@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/profiler/protobuf/tf_data_stats.pb.h"
 #include "tensorflow/core/profiler/utils/group_events.h"
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
@@ -30,6 +31,10 @@ limitations under the License.
 
 namespace tensorflow {
 namespace profiler {
+
+// 50 us from https://www.tensorflow.org/guide/data_performance_analysis
+const int64 kSlowCallThresholdPs = 50 * 1000000;
+
 namespace {
 
 // Returns true if the given iterator event is for a root iterator.
@@ -129,7 +134,7 @@ void ProcessEventForest(const EventForest& event_forest,
   }
 }
 
-void SetInputPipelineMetadata(int64 id, uint64 name_id,
+void SetInputPipelineMetadata(int64 id, int64 name_id,
                               bool is_device_input_pipeline,
                               InputPipelineMetadata* metadata) {
   constexpr absl::string_view kHostInputPipelinePrefix = "Host:";
@@ -199,8 +204,8 @@ void ProcessInputPipelines(
         root_iterator_event_map,
     TfDataStats* tf_data_stats) {
   auto* input_pipelines = tf_data_stats->mutable_input_pipelines();
-  uint64 num_host_input_pipelines = 0;
-  uint64 num_device_input_pipelines = 0;
+  int64 num_host_input_pipelines = 0;
+  int64 num_device_input_pipelines = 0;
   for (auto& id_and_events : *root_iterator_event_map) {
     auto& root_iterator_id = id_and_events.first;
     auto& root_iterator_events = id_and_events.second;
@@ -216,35 +221,66 @@ void ProcessInputPipelines(
     if (result.second) {
       bool is_device_input_pipeline =
           device_input_pipeline_ids.contains(root_iterator_id);
-      uint64 name_id = is_device_input_pipeline ? num_device_input_pipelines++
-                                                : num_host_input_pipelines++;
+      int64 name_id = is_device_input_pipeline ? num_device_input_pipelines++
+                                               : num_host_input_pipelines++;
       SetInputPipelineMetadata(root_iterator_id, name_id,
                                is_device_input_pipeline, metadata);
     }
-    uint64 sum_latency_ps = 0;
-    uint64 min_latency_ps = UINT64_MAX;
-    uint64 max_latency_ps = 0;
+    int64 sum_latency_ps = 0;
+    int64 min_latency_ps = INT64_MAX;
+    int64 max_latency_ps = 0;
+    int64 num_slow_calls = 0;
     for (const EventNode* root_iterator_event : root_iterator_events) {
       InputPipelineStat* stat = input_pipeline_stats.add_stats();
       ProcessIteratorEvent(*root_iterator_event, stat,
                            /*is_blocking*/ true);
       SetBottleneckIteratorId(stat);
-      uint64 latency_ps = root_iterator_event->GetEventVisitor().DurationPs();
+      int64 latency_ps = root_iterator_event->GetEventVisitor().DurationPs();
       sum_latency_ps += latency_ps;
       min_latency_ps = std::min(min_latency_ps, latency_ps);
       max_latency_ps = std::max(max_latency_ps, latency_ps);
+      if (latency_ps > kSlowCallThresholdPs) num_slow_calls++;
     }
     input_pipeline_stats.set_avg_latency_ps(sum_latency_ps /
                                             root_iterator_events.size());
     input_pipeline_stats.set_min_latency_ps(min_latency_ps);
     input_pipeline_stats.set_max_latency_ps(max_latency_ps);
+    input_pipeline_stats.set_num_slow_calls(num_slow_calls);
+  }
+}
+
+void SetBottleneckAnalysis(absl::string_view host_name,
+                           const TfDataStats& tf_data_stats,
+                           TfDataBottleneckAnalysis* bottleneck_analysis) {
+  for (const auto& id_and_stats : tf_data_stats.input_pipelines()) {
+    const InputPipelineStats& input_pipeline_stats = id_and_stats.second;
+    if (input_pipeline_stats.metadata().type() ==
+            InputPipelineMetadata::DEVICE ||
+        input_pipeline_stats.max_latency_ps() <=
+            bottleneck_analysis->max_latency_ps()) {
+      // Ignore device input pipelines and input pipelines faster than the
+      // current bottleneck.
+      continue;
+    }
+    bottleneck_analysis->set_host(host_name.data(), host_name.size());
+    bottleneck_analysis->set_input_pipeline(
+        input_pipeline_stats.metadata().name());
+    bottleneck_analysis->set_max_latency_ps(
+        input_pipeline_stats.max_latency_ps());
+    const IteratorMetadata& metadata = tf_data_stats.iterator_metadata().at(
+        input_pipeline_stats.stats(0).bottleneck_iterator_id());
+    bottleneck_analysis->set_iterator_name(metadata.name());
+    bottleneck_analysis->set_iterator_long_name(metadata.long_name());
   }
 }
 
 }  // namespace
 
-TfDataStats ConvertXPlaneToTfDataStats(XPlane* host_plane) {
-  TfDataStats tf_data_stats;
+void CombinedTfDataStatsBuilder::Add(absl::string_view host_name,
+                                     XPlane* host_plane) {
+  TfDataStats& tf_data_stats =
+      (*combined_tf_data_stats_
+            ->mutable_tf_data_stats())[std::string(host_name)];
   EventForest event_forest;
   event_forest.AddPlanes(CreateTfXPlaneVisitor, {host_plane});
   event_forest.ConnectEvents();
@@ -255,7 +291,17 @@ TfDataStats ConvertXPlaneToTfDataStats(XPlane* host_plane) {
                      &root_iterator_event_map, &tf_data_stats);
   ProcessInputPipelines(device_input_pipeline_ids, &root_iterator_event_map,
                         &tf_data_stats);
-  return tf_data_stats;
+}
+
+void CombinedTfDataStatsBuilder::Finalize() {
+  TfDataBottleneckAnalysis* bottleneck_analysis =
+      combined_tf_data_stats_->mutable_bottleneck_analysis();
+  for (const auto& host_name_and_tf_data_stats :
+       combined_tf_data_stats_->tf_data_stats()) {
+    SetBottleneckAnalysis(host_name_and_tf_data_stats.first,
+                          host_name_and_tf_data_stats.second,
+                          bottleneck_analysis);
+  }
 }
 
 }  // namespace profiler

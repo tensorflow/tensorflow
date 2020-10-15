@@ -182,7 +182,7 @@ Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
           "Worker has not yet registered with dispatcher.");
     }
     auto it = tasks_.find(request->task_id());
-    if (it == tasks_.end()) {
+    if (it == tasks_.end() || it->second->finished) {
       response->set_end_of_sequence(true);
       return Status::OK();
     }
@@ -191,7 +191,7 @@ Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
     TF_RETURN_IF_ERROR(task->iterator->GetNext(&outputs, &end_of_sequence));
     if (end_of_sequence) {
       VLOG(3) << "Reached end_of_sequence for task " << request->task_id();
-      tasks_.erase(request->task_id());
+      task->finished = true;
       pending_completed_tasks_.insert(request->task_id());
       task_completion_cv_.notify_one();
     }

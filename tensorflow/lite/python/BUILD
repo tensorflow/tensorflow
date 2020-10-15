@@ -1,4 +1,5 @@
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_py_library")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -17,6 +18,7 @@ py_library(
     srcs = [
         "interpreter.py",
     ],
+    compatible_with = get_compatible_with_portable(),
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
@@ -97,7 +99,7 @@ py_test(
     ],
     python_version = "PY3",
     # Increased thread count for reducing timeout failures.
-    shard_count = 4,
+    shard_count = 10,
     srcs_version = "PY2AND3",
     tags = [
         "no_oss",
@@ -107,9 +109,26 @@ py_test(
         "notsan",  # b/160824139
     ],
     deps = [
+        ":convert",
         ":tflite_convert",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python:tf2",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/saved_model",
+        "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/training:training_util",
+        "//tensorflow/python/training/tracking",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -128,6 +147,7 @@ py_library(
         "//tensorflow/lite/experimental/examples/lstm:tflite_lstm_ops",
         "//tensorflow/lite/experimental/microfrontend:audio_microfrontend_py",
         "//tensorflow/lite/experimental/tensorboard:ops_util",
+        "//tensorflow/lite/python/keras/saving:saving_utils",
         "//tensorflow/lite/python/optimize:calibrator",
         "//tensorflow/python:graph_util",
         "//tensorflow/python/keras",
@@ -145,6 +165,7 @@ py_test(
     shard_count = 4,
     srcs_version = "PY2AND3",
     tags = [
+        "no_mac",  # b/170882617
         "no_windows",
     ],
     deps = [
@@ -159,7 +180,7 @@ py_test(
     name = "lite_v2_test",
     srcs = ["lite_v2_test.py"],
     python_version = "PY3",
-    shard_count = 6,
+    shard_count = 12,
     srcs_version = "PY2AND3",
     tags = [
         "no_mac",  # TODO(b/148247402): flatbuffers import broken on Mac OS.
@@ -169,7 +190,6 @@ py_test(
         ":lite",
         ":lite_v2_test_util",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/lite/tools/sanitizers:_pywrap_tensorflow_lite_sanitizers",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "@six_archive//:six",

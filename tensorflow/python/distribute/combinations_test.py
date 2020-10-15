@@ -25,6 +25,7 @@ import unittest
 from absl.testing import parameterized
 
 from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute.cluster_resolver import tfconfig_cluster_resolver
 from tensorflow.python.framework import combinations as framework_combinations
 from tensorflow.python.platform import test
@@ -95,6 +96,13 @@ class ClusterCombinationTest(test.TestCase, parameterized.TestCase):
     # set to the main process.
     self.assertNotEqual(os.getenv("TF_CONFIG"), "")
 
+  def test_runner_creation(self):
+    cmb = combinations.NamedDistribution(
+        "Strategy1", lambda: None, has_chief=True, num_workers=2,
+        use_pool_runner=True)
+    self.assertIsNone(cmb._runner)
+    self.assertIsNotNone(cmb.runner)
+
 
 # unittest.expectedFailure doesn't work with parameterized test methods, so we
 # have to decorate the class instead.
@@ -156,4 +164,4 @@ class CombinationsOnClassMultiWorkerExpectedFailureTest(test.TestCase,
 
 
 if __name__ == "__main__":
-  combinations.main()
+  test_util.main()

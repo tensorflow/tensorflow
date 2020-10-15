@@ -416,6 +416,10 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
 
   LogicalResult matchAndRewrite(TFL::MulOp mul_op,
                                 PatternRewriter &rewriter) const override {
+    // If we are broadcasting on the lhs then don't fold the multiply as it
+    // would increase the amount of compute done by the fully connected op.
+    if (mul_op.lhs().getType() != mul_op.getType()) return failure();
+
     // Mul.
     DenseElementsAttr cst;
     Value constant_val = mul_op.rhs();
@@ -794,7 +798,7 @@ void Optimize::runOnFunction() {
   // Potentially the binary ops might be fused together, like hard_swish, thus
   // we explore these potentially first and then fuse the binary ops with the
   // following ops in a second pattern match.
-  TFL::populateWithGenerated(ctx, &patterns);
+  TFL::populateWithGenerated(ctx, patterns);
   patterns.insert<FuseFullyConnectedAndAdd,
                   FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
                   FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,

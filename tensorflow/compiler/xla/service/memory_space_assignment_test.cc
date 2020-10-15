@@ -5148,5 +5148,75 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, NestedWhile) {
             4);
 }
 
+TEST_F(CostAnalysisPrefetchIntervalPickerTest, ConsecutiveConditionals) {
+  // This is a test for b/170668492, where prefetching for consecutive
+  // conditionals can cause the prefetch to start in the conditional's
+  // computation.
+  absl::string_view hlo_string = R"(
+  HloModule bug, is_scheduled=true
+
+  true_computation.0 {
+    p0 = (f32[3]{0}) parameter(0)                   // 5
+    gte = f32[3]{0} get-tuple-element(p0), index=0  // 6
+    ROOT neg1 = f32[3]{0} negate(gte)               // 7
+  }
+
+  false_computation.0 {
+    p0 = (f32[3]{0}) parameter(0)                   // 8
+    gte = f32[3]{0} get-tuple-element(p0), index=0  // 9
+    ROOT neg2 = f32[3]{0} negate(gte)               // 10
+  }
+
+  true_computation.1 {
+    p0 = (f32[3]{0}) parameter(0)                   // 12
+    gte = f32[3]{0} get-tuple-element(p0), index=0  // 13
+    ROOT neg1 = f32[3]{0} negate(gte)               // 14
+  }
+
+  false_computation.1 {
+    p0 = (f32[3]{0}) parameter(0)                   // 15
+    gte = f32[3]{0} get-tuple-element(p0), index=0  // 16
+    ROOT neg2 = f32[3]{0} negate(gte)               // 17
+  }
+
+  ENTRY entry {
+    p0 = f32[3]{0} parameter(0)       // 0
+    p1 = f32[3]{0} parameter(1)       // 1
+    p2 = pred[] parameter(2)          // 2
+    tuple0 = (f32[3]{0}) tuple(p0)    // 3
+    tuple1 = (f32[3]{0}) tuple(p1)    // 4
+    conditional0 = f32[3]{0} conditional(p2, tuple0, tuple0), true_computation=true_computation.0, false_computation=false_computation.0  // 11
+    conditional1 = f32[3]{0} conditional(p2, tuple1, tuple1), true_computation=true_computation.1, false_computation=false_computation.1  // 18
+    ROOT tuple2 = (f32[3]{0}, f32[3]{0}) tuple(conditional0, conditional1)  // 19
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  HloCostAnalysis hlo_cost_analysis(ShapeSize);
+  TF_ASSERT_OK_AND_ASSIGN(auto cost_analysis,
+                          FakeMemorySpaceAssignmentCostAnalysis::Create(
+                              hlo_cost_analysis, *module));
+  CostAnalysisPrefetchIntervalPicker interval_picker(
+      *cost_analysis,
+      /*min_async_copy_to_overlap_ratio=*/1.0,
+      /*max_async_copy_to_overlap_ratio=*/12.0,
+      /*preferred_async_copy_to_overlap_ratio=*/2.0);
+
+  LOG(INFO) << module->ToString();
+
+  HloInstruction* conditional1 =
+      module->entry_computation()->GetInstructionWithName("conditional1");
+  const HloUse use{conditional1, /*operand_number=*/1, /*operand_index=*/{0}};
+  const Shape& shape =
+      module->entry_computation()->parameter_instruction(0)->shape();
+
+  // Expect that the prefetch to start before conditional0's called
+  // computations.
+  EXPECT_LT(interval_picker.LatestPrefetchStartTime(shape, /*start_time=*/0,
+                                                    /*end_time=*/11, &use),
+            5);
+}
+
 }  // namespace
 }  // namespace xla

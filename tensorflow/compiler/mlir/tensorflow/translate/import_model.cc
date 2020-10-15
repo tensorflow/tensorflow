@@ -74,6 +74,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/upgrade_graph.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/convert_attr.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
@@ -308,21 +309,6 @@ class ImporterBase {
   // Converts the tensor proto into an MLIR elements attribute.
   StatusOr<mlir::ElementsAttr> ConvertTensorProto(const TensorProto& value) {
     return ::tensorflow::ConvertTensorProto(value, &builder_);
-  }
-
-  // Converts the tensor shape proto into an MLIR shape attribute.
-  StatusOr<mlir::TF::ShapeAttr> ConvertTensorShapeProto(
-      const TensorShapeProto& shape) {
-    if (shape.unknown_rank())
-      return mlir::TF::ShapeAttr::get(builder_.getContext(), llvm::None);
-
-    llvm::SmallVector<int64_t, 4> dims;
-    dims.reserve(shape.dim().size());
-    for (const auto& dim : shape.dim()) {
-      dims.push_back(dim.size());
-    }
-    return mlir::TF::ShapeAttr::get(builder_.getContext(),
-                                    llvm::makeArrayRef(dims));
   }
 
   // Converts func name in graphdef to mlir::SymbolRefAttribute.
@@ -1142,74 +1128,36 @@ StatusOr<mlir::FlatSymbolRefAttr> ImporterBase::ConvertFunctionCallName(
 StatusOr<mlir::Attribute> ImporterBase::ConvertAttributeValue(
     const AttrValue& value) {
   switch (value.value_case()) {
-    case AttrValue::kI:
-      return builder_.getI64IntegerAttr(value.i());
-    case AttrValue::kS:
-      return builder_.getStringAttr(value.s());
-    case AttrValue::kF:
-      return builder_.getFloatAttr(builder_.getF32Type(), value.f());
-    case AttrValue::kB:
-      return builder_.getBoolAttr(value.b());
-    case AttrValue::kType: {
-      mlir::Type type;
-      TF_RETURN_IF_ERROR(ConvertDataType(value.type(), builder_, &type));
-      return mlir::TypeAttr::get(type);
-    }
-    case AttrValue::kShape:
-      return ConvertTensorShapeProto(value.shape());
-    case AttrValue::kTensor:
-      return ConvertTensorProto(value.tensor());
-    case AttrValue::kList: {
-      absl::InlinedVector<mlir::Attribute, 8> attrs;
-      for (const auto& item : value.list().i())
-        attrs.push_back(builder_.getI64IntegerAttr(item));
-      for (const auto& item : value.list().s())
-        attrs.push_back(builder_.getStringAttr(item));
-      for (const auto& item : value.list().f())
-        attrs.push_back(builder_.getFloatAttr(builder_.getF32Type(), item));
-      for (const auto& item : value.list().b())
-        attrs.push_back(builder_.getBoolAttr(item));
-      for (const auto& item : value.list().type()) {
-        mlir::Type type;
-        TF_RETURN_IF_ERROR(ConvertDataType(DataType(item), builder_, &type));
-        attrs.push_back(mlir::TypeAttr::get(type));
-      }
-      for (const auto& item : value.list().shape()) {
-        TF_ASSIGN_OR_RETURN(auto attr, ConvertTensorShapeProto(item));
-        attrs.push_back(attr);
-      }
-      for (const auto& item : value.list().tensor()) {
-        TF_ASSIGN_OR_RETURN(auto attr, ConvertTensorProto(item));
-        attrs.push_back(attr);
-      }
-      for (const auto& item : value.list().func()) {
-        TF_ASSIGN_OR_RETURN(auto attr, ConvertFunctionCallName(item.name()));
-        if (item.attr_size() != 0)
-          return errors::Unimplemented(
-              "func attributes with non-zero attr.size()");
-        attrs.push_back(attr);
-      }
-      return builder_.getArrayAttr(
-          llvm::makeArrayRef(attrs.begin(), attrs.end()));
-    }
     case AttrValue::kFunc: {
       // TODO(b/156546237): Unify kFunc/NameAttrList attribute representation.
       // Currently kFunc/NameAttrList attributes in a kList/repeated AttrValue
       // will not use this representation.
       NamedAttrList attrs;
       for (const auto& func_attr : value.func().attr()) {
-        TF_ASSIGN_OR_RETURN(auto attr, ConvertAttributeValue(func_attr.second));
+        TF_ASSIGN_OR_RETURN(
+            auto attr, ImporterBase::ConvertAttributeValue(func_attr.second));
         attrs.push_back(builder_.getNamedAttr(func_attr.first, attr));
       }
       auto func_attrs = builder_.getDictionaryAttr(attrs);
       return mlir::TF::FuncAttr::get(context_, value.func().name(), func_attrs);
     }
-    case AttrValue::VALUE_NOT_SET:
-      return builder_.getUnitAttr();
-    // kPlaceholder is not implemented.
+    case AttrValue::kList: {
+      if (!value.list().func().empty()) {
+        absl::InlinedVector<mlir::Attribute, 8> attrs;
+        for (const auto& item : value.list().func()) {
+          TF_ASSIGN_OR_RETURN(auto attr, ConvertFunctionCallName(item.name()));
+          if (item.attr_size() != 0)
+            return errors::Unimplemented(
+                "func attributes with non-zero attr.size()");
+          attrs.push_back(attr);
+        }
+        return builder_.getArrayAttr(
+            llvm::makeArrayRef(attrs.begin(), attrs.end()));
+      }
+      return ConvertNonFuncAttributeValue(value, &builder_);
+    }
     default:
-      return errors::Unimplemented(
-          absl::StrCat("Attribute ", value.DebugString()));
+      return ConvertNonFuncAttributeValue(value, &builder_);
   }
 }
 

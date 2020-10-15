@@ -27,12 +27,14 @@ import numpy as np
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import type_spec
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
@@ -433,6 +435,49 @@ class BaseLayerTest(keras_parameterized.TestCase):
     # Checks that variables get initialized.
     model.fit(x, y, batch_size=2, epochs=2)
 
+  @combinations.generate(combinations.combine(mode=['eager']))
+  def test_composite_variable_assignment(self):
+
+    class Spec(type_spec.TypeSpec):
+
+      value_type = property(lambda self: CompositeVariable)
+
+      def _component_specs(self):
+        pass
+
+      def _serialize(self):
+        pass
+
+      def _to_components(self, value):
+        return value._variables
+
+      def _from_components(self, variable_list):
+        return CompositeVariable(variable_list)
+
+    class CompositeVariable(composite_tensor.CompositeTensor):
+
+      def __init__(self, variable_list):
+        self._variables = variable_list
+
+      @property
+      def _type_spec(self):
+        return Spec()
+
+    class CompositeVariableLayer(base_layer.Layer):
+
+      def __init__(self):
+        super().__init__()
+        self.composite_var = CompositeVariable(
+            [variables.Variable(1.),
+             variables.Variable(2.)])
+
+    layer = CompositeVariableLayer()
+    self.assertLen(layer.weights, 2)
+    self.assertIsInstance(layer.weights[0], variables.Variable)
+    self.assertIsInstance(layer.weights[1], variables.Variable)
+    self.assertEqual(self.evaluate(layer.weights[0]), 1.)
+    self.assertEqual(self.evaluate(layer.weights[1]), 2.)
+
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_layer_names(self):
     with testing_utils.use_keras_tensors_scope(False):
@@ -466,6 +511,32 @@ class BaseLayerTest(keras_parameterized.TestCase):
         expected_names = [
             'input_1', 'tf.__operators__.add', 'add', 'tf.__operators__.add_1',
             'add_1'
+        ]
+        self.assertAllEqual(actual_names, expected_names)
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_layer_names_after_loading(self):
+    if context.executing_eagerly():
+      backend.clear_session()
+      with testing_utils.use_keras_tensors_scope(True):
+        # Mimic loading a model that already contained add layers with
+        # name = 'add_1' and 'tf.__operators__.add'
+        layers.Add(name='add_1')
+        layers.Add(name='tf.__operators__.add')
+
+        inputs = input_layer.Input(shape=[2])
+        add1 = inputs + inputs
+        add2 = layers.Add()([inputs, inputs])
+        add3 = inputs + inputs
+        add4 = layers.Add()([inputs, inputs])
+        model = training_lib.Model(
+            inputs=[inputs], outputs=[add1, add2, add3, add4])
+        actual_names = [l.name for l in model.layers]
+        # The generated op layer names should have avoided layer names seen in
+        # the loaded model. (This avoiance should not apply to non-op-layers)
+        expected_names = [
+            'input_1', 'tf.__operators__.add_1',
+            'add', 'tf.__operators__.add_2', 'add_1'
         ]
         self.assertAllEqual(actual_names, expected_names)
 

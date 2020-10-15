@@ -31,7 +31,6 @@ namespace grappler {
 namespace {
 
 constexpr char kLegacyAutotune[] = "legacy_autotune";
-constexpr char kBufferSizeMin[] = "buffer_size_min";
 constexpr char kPrefetchDataset[] = "PrefetchDataset";
 
 constexpr std::array<const char*, 7> kAsyncDatasetOps = {
@@ -55,46 +54,8 @@ Status AutotuneBufferSizes::OptimizeAndCollectStats(Cluster* cluster,
   }
   MutableGraphView graph(output);
 
-  // Add a const node with value kAutotune
-  NodeDef* autotune_value =
-      graph_utils::AddScalarConstNode(data::model::kAutotune, &graph);
-
-  absl::flat_hash_set<string> already_prefetched;
-  // 1) Collect about all existing `PrefetchDataset` nodes, replacing
-  // `prefetch(N)` with `prefetch(AUTOTUNE, buffer_size_min=N)` for all N !=-1.
-  for (NodeDef& node : *output->mutable_node()) {
-    if (node.op() == kPrefetchDataset) {
-      NodeDef* buffer_size_node = graph.GetNode(node.input(1));
-      // We only consider to rewrite if `buffer_size` is constant.
-      if (buffer_size_node->op() == "Const") {
-        int64 initial_buffer_size =
-            buffer_size_node->attr().at("value").tensor().int64_val(0);
-        if (initial_buffer_size != data::model::kAutotune) {
-          TF_RETURN_IF_ERROR(graph.UpdateFanin(node.name(),
-                                               {buffer_size_node->name(), 0},
-                                               {autotune_value->name(), 0}));
-          node.mutable_attr()->at(kBufferSizeMin).set_i(initial_buffer_size);
-          stats->num_changes++;
-        }
-      } else {
-        return errors::FailedPrecondition(
-            "The autotune_buffer_sizes rewrite does not currently support "
-            "non-constant buffer_size input.");
-      }
-      NodeDef* prefetched_node = graph_utils::GetInputNode(node, graph);
-      if (prefetched_node) {
-        already_prefetched.insert(prefetched_node->name());
-      }
-    }
-  }
-
   std::vector<const NodeDef*> async_datasets;
-  // 2) Insert `prefetch(AUTOTUNE)` after all asynchronous transformations that
-  // are not followed by a `prefetch` yet.
   for (const NodeDef& node : item.graph.node()) {
-    if (already_prefetched.find(node.name()) != already_prefetched.end()) {
-      continue;
-    }
     for (const auto& async_dataset_op : kAsyncDatasetOps) {
       if (node.op() == async_dataset_op) {
         async_datasets.push_back(&node);
@@ -106,6 +67,10 @@ Status AutotuneBufferSizes::OptimizeAndCollectStats(Cluster* cluster,
 
   if (async_datasets.empty()) return Status::OK();
 
+  // Add a const node with value kAutotune
+  NodeDef* autotune_value =
+      graph_utils::AddScalarConstNode(data::model::kAutotune, &graph);
+
   for (const NodeDef* async_dataset_node : async_datasets) {
     NodeDef prefetch_node;
     graph_utils::SetUniqueGraphNodeName(
@@ -116,6 +81,7 @@ Status AutotuneBufferSizes::OptimizeAndCollectStats(Cluster* cluster,
     *prefetch_node.mutable_input()->Add() = async_dataset_node->name();
     // `buffer_size` input
     *prefetch_node.mutable_input()->Add() = autotune_value->name();
+
     for (const auto& attr_name : {"output_types", "output_shapes"}) {
       graph_utils::CopyAttribute(attr_name, *async_dataset_node,
                                  &prefetch_node);

@@ -21,11 +21,14 @@ limitations under the License.
 #include <string>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/platform/platform.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
+#include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/core/profiler/profiler_service.pb.h"
 #include "tensorflow/core/profiler/rpc/profiler_server.h"
 
@@ -34,14 +37,14 @@ namespace profiler {
 namespace test {
 
 inline std::unique_ptr<ProfilerServer> StartServer(
-    absl::Duration duration, std::string* service_addresses,
+    absl::Duration duration, std::string* service_address,
     ProfileRequest* request = nullptr) {
   auto profiler_server = absl::make_unique<ProfilerServer>();
   int port = testing::PickUnusedPortOrDie();
   profiler_server->StartProfilerServer(port);
 
-  DCHECK(service_addresses);
-  *service_addresses = absl::StrFormat("localhost:%d", port);
+  DCHECK(service_address);
+  *service_address = absl::StrCat("localhost:", port);
 
   if (request) {
     request->set_duration_ms(absl::ToInt64Milliseconds(duration));
@@ -50,10 +53,11 @@ inline std::unique_ptr<ProfilerServer> StartServer(
     request->mutable_opts()->set_duration_ms(
         absl::ToInt64Milliseconds(duration));
     request->set_session_id("test_session");
-    request->set_host_name(*service_addresses);
+    request->set_host_name(*service_address);
+    request->set_repository_root(testing::TmpDir());
   }
 
-  LOG(INFO) << "Started " << *service_addresses << " at " << absl::Now();
+  LOG(INFO) << "Started " << *service_address << " at " << absl::Now();
   LOG(INFO) << "Duration: " << duration;
 
   return profiler_server;

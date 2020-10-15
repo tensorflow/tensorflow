@@ -190,6 +190,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(AttributeError, 'no attribute'):
       add(c)
 
+  @test_util.disable_tfrt('Packed tensor is not supported in tfrt yet.')
   def testPackedVariable(self):
     with ops.device('/cpu:0'):
       v0_0 = resource_variable_ops.ResourceVariable(1.0)
@@ -842,6 +843,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     expected = [4.0] * 100
     self.assertSequenceEqual(outputs, expected)
 
+  @test_util.disable_tfrt('b/169431085: This test is flaky on tfrt')
   def testExecutingStatefulDefunConcurrently(self):
 
     v = resource_variable_ops.ResourceVariable(1.0)
@@ -1320,6 +1322,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertIsInstance(
         self.v, resource_variable_ops.ResourceVariable)
 
+  @test_util.disable_tfrt('b/169294215')
   def testRunMetadata(self):
 
     @def_function.function
@@ -3347,6 +3350,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     test_fn()
     self.assertEqual(ag_ctx.control_status_ctx().status, prev_status)
 
+  @test_util.disable_tfrt('b/170435618')
   def testCancelBeforeFunctionExecution(self):
     if not context.executing_eagerly():
       self.skipTest('eager only')
@@ -3364,6 +3368,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(errors.CancelledError):
       cancelable_func()
 
+  @test_util.disable_tfrt('b/170435618')
   def testCancelBlockedFunctionExecution(self):
     if not context.executing_eagerly():
       self.skipTest('eager only')
@@ -3387,6 +3392,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       cancelable_func()
     t.join()
 
+  @test_util.disable_tfrt('b/170435618')
   def testCancelAfterFunctionExecution(self):
     if not context.executing_eagerly():
       self.skipTest('eager only')

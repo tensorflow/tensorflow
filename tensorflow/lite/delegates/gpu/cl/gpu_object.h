@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
+#include "tensorflow/lite/delegates/gpu/cl/serialization_generated.h"
 #include "tensorflow/lite/delegates/gpu/common/access_type.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -164,6 +165,10 @@ class GPUObjectDescriptor {
   AccessType GetAccess() const { return access_type_; }
 
  protected:
+  friend flatbuffers::Offset<data::GPUObjectDescriptor> Encode(
+      const GPUObjectDescriptor& desc, flatbuffers::FlatBufferBuilder* builder);
+  friend void Decode(const data::GPUObjectDescriptor* fb_obj,
+                     GPUObjectDescriptor* obj);
   mutable std::map<std::string, std::string> state_vars_;
   AccessType access_type_;
 };

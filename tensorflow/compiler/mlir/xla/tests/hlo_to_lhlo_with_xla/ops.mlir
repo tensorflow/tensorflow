@@ -325,3 +325,52 @@ func @main(%key: tensor<5x5xi32>, %value: tensor<5x5xf32>) -> (tensor<5x5xi32>, 
 
   return %res#0, %res#1 : tensor<5x5xi32>, tensor<5x5xf32>
 }
+
+// -----
+
+// CHECK-LABEL: func @main
+// CHECK-SAME: %[[ARG0:.*]]: memref<f32> {{.*}}lmhlo.params = 0
+// CHECK-SAME: %[[ARG1:.*]]: memref<f32> {{.*}}lmhlo.params = 1
+// CHECK-SAME: %[[ARG2:.*]]: memref<4xi8>
+// CHECK: "lmhlo.fusion"() ( {
+// CHECK:   %[[VAR0:.*]] = tensor_load %[[ARG0]] : memref<f32>
+// CHECK:   %[[VAR1:.*]] = tensor_load %[[ARG1]] : memref<f32>
+// CHECK:   %[[VAR2:.*]] = mhlo.add %[[VAR0]], %[[VAR1]] : tensor<f32>
+// CHECK:   tensor_store %[[VAR2]], %[[MEMREF:.*]] : memref<f32>
+// CHECK:   "lmhlo.terminator"() : () -> ()
+// CHECK: }) : () -> ()
+func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
+  %result = "mhlo.fusion"(%arg0, %arg1) ( {
+    ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+      %result = "mhlo.add"(%arg2, %arg3): (tensor<f32>, tensor<f32>) -> tensor<f32>
+      "mhlo.return"(%result) : (tensor<f32>) -> ()
+    }) { fusion_kind = "kLoop" } : (tensor<f32>, tensor<f32>) -> tensor<f32>
+
+  return %result : tensor<f32>
+}
+
+// -----
+
+// CHECK-LABEL: func @main
+// CHECK: "lmhlo.fusion"() ( {
+// CHECK:   %[[VAL0:.*]] = tensor_load %{{.*}} : memref<f32>
+// CHECK:   %[[VAL1:.*]] = tensor_load %{{.*}} : memref<f32>
+// CHECK:   %[[VAL2:.*]] = tensor_load %{{.*}} : memref<f32>
+// CHECK:   tensor_store %[[VAL0]], %{{.*}} : memref<f32>
+// CHECK:   tensor_store %[[VAL1]], %{{.*}} : memref<f32>
+// CHECK:   tensor_store %[[VAL2]], %{{.*}} : memref<f32>
+// CHECK:   "lmhlo.terminator"() : () -> ()
+// CHECK: }) : () -> ()
+func @main(%arg0: tuple<tuple<tensor<f32>>, tensor<f32>>, %arg1: tuple<tensor<f32>>) -> tuple<tensor<f32>, tensor<f32>, tensor<f32>> {
+  %result = "mhlo.fusion"(%arg0, %arg1) ( {
+    ^bb0(%arg2: tuple<tuple<tensor<f32>>, tensor<f32>>, %arg3: tuple<tensor<f32>>):
+      %0 = "mhlo.get_tuple_element"(%arg2) {index = 0 : i32} : (tuple<tuple<tensor<f32>>, tensor<f32>>) -> tuple<tensor<f32>>
+      %1 = "mhlo.get_tuple_element"(%0) {index = 0 : i32} : (tuple<tensor<f32>>) -> tensor<f32>
+      %2 = "mhlo.get_tuple_element"(%arg2) {index = 1 : i32} : (tuple<tuple<tensor<f32>>, tensor<f32>>) -> tensor<f32>
+      %3 = "mhlo.get_tuple_element"(%arg3) {index = 0 : i32} : (tuple<tensor<f32>>) -> tensor<f32>
+      %4 = "mhlo.tuple"(%1, %2, %3) : (tensor<f32>, tensor<f32>, tensor<f32>) -> tuple<tensor<f32>, tensor<f32>, tensor<f32>>
+      "mhlo.return"(%4) : (tuple<tensor<f32>, tensor<f32>, tensor<f32>>) -> ()
+    }) { fusion_kind = "kLoop" } : (tuple<tuple<tensor<f32>>, tensor<f32>>, tuple<tensor<f32>>) -> tuple<tensor<f32>, tensor<f32>, tensor<f32>>
+
+  return %result : tuple<tensor<f32>, tensor<f32>, tensor<f32>>
+}
