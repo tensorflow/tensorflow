@@ -475,11 +475,11 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back(
         {csinfo_.fused_batch_norm_v3,
          mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm_v3),
-         CopyAttrsAll, AlwaysRewrite, GetRewriteCause()});
+         CopyAttrsAll, FusedBatchNormV3Rewrite, GetRewriteCause()});
     rinfo_.push_back(
         {csinfo_.fused_batch_norm_grad_v3,
          mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm_grad_v3),
-         CopyAttrsAll, AlwaysRewrite, GetRewriteCause()});
+         CopyAttrsAll, FusedBatchNormV3Rewrite, GetRewriteCause()});
 #ifdef ENABLE_MKLDNN_V1
     rinfo_.push_back({csinfo_.fused_batch_norm_ex,
                       native_fmt ? csinfo_.mkl_native_fused_batch_norm_ex
@@ -1703,6 +1703,16 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
       }
     }
     return do_rewrite;
+  }
+
+  static bool FusedBatchNormV3Rewrite(const Node* n) {
+    DCHECK(n);
+    if (Check5DFormat(n->def())) {
+      VLOG(1) << "Graph Rewrite: FusedBatchNorm(Grad)V3 op currently does not "
+              << "support 5D tensors.";
+      return false;
+    }
+    return true;
   }
 
   static bool FusedBatchNormExRewrite(const Node* n) {
