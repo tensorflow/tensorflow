@@ -113,6 +113,7 @@ cuda_py_test(
     srcs = ["control_flow_ops_test.py"],
     tags = [
         "no_rocm",
+        "nofwdcompat",  # TODO(b/170972189): Flaky
         "notsan",  # TODO(b/170901706): Flaky
     ],
     deps = [
