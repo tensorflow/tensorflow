@@ -295,8 +295,7 @@ def get_loss_reduction():
 # Internal API for validating the current thread mode
 
 
-def _require_cross_replica_or_default_context_extended(extended,
-                                                       error_message=None):
+def _require_cross_replica_or_default_context_extended(extended):
   """Verify in cross-replica context."""
   context = _get_per_thread_mode()
   cross_replica = context.cross_replica_context
@@ -309,10 +308,8 @@ def _require_cross_replica_or_default_context_extended(extended,
   if context.strategy is not strategy:
     _wrong_strategy_scope(strategy, context)
   assert cross_replica is None
-  if not error_message:
-    error_message = ("Method requires being in cross-replica context, use "
+  raise RuntimeError("Method requires being in cross-replica context, use "
                      "get_replica_context().merge_call()")
-  raise RuntimeError(error_message)
 
 
 def _wrong_strategy_scope(strategy, context):
@@ -1434,6 +1431,107 @@ class StrategyBase(object):
     denom = math_ops.cast(denom, numer.dtype)
     return math_ops.truediv(numer, denom)
 
+  # TODO(wxinyi): generate docs after it is implemented for all strategies.
+  # TODO(wxinyi): hide from V1 API
+  def _gather(self, value, axis):
+    # pylint: disable=line-too-long, protected-access
+    """Gather `value` across replicas along `axis` to the current device.
+
+    Given a `tf.distribute.DistributedValues` or `tf.Tensor`-like
+    object `value`, this API gathers and concatenates `value` along the
+    `axis`-th dimension. The result is copied to the "current" device - which
+    would typically be the CPU of the worker on which the program is running.
+    For `tf.distribute.TPUStrategy`, it is the first TPU host. For multi-client
+    `MultiWorkerMirroredStrategy`, this is CPU of each worker.
+
+    This API can only be called in the cross-replica context. For a counterpart
+    in the replica context, see `tf.distribute.ReplicaContext.all_gather`.
+
+    Note: the input `value` on different replicas must have the same rank, and
+    they must have shapes that are consistent along all dimensions except the
+    `axis`-th dimension. For example, given a `tf.distribute.DistributedValues`
+    with tensors of shape `(1, 2, 3)` and `(1, 3, 3)` on two replicas, you can
+    call `gather(..., axis=1, ...)` on it, but not `gather(..., axis=0, ...)` or
+    `gather(..., axis=2, ...)`.
+
+
+    # TODO(wxinyi): convert to testable docstring after implemented for MirroredStrategy
+    ```python
+    strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
+    local_tensor = tf.constant([[1, 2], [3, 4]])
+    distributed_values = strategy.experimental_distribute_values_from_function(lambda _: tf.identity(local_tensor))
+    @tf.function
+    def run():
+      return strategy.gather(distributed_values, axis=0)
+    run()
+    # <tf.Tensor: shape=(4, 2), dtype=int32, numpy=
+    # array([[1, 2],
+    #        [3, 4],
+    #        [1, 2],
+    #        [3, 4]], dtype=int32)>
+    ```
+
+    Some more example cases:
+
+    ```python
+    strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1", "GPU:2", "GPU:3"])
+    local_tensor = tf.reshape(tf.range(6), shape=(1,2,3))
+    distributed_values = strategy.experimental_distribute_values_from_function(lambda _: local_tensor)
+    @tf.function
+    def run():
+      return strategy.gather(distributed_values, axis=AXIS)
+    run()
+
+    #     With AXIS=0, the result is
+    #     <tf.Tensor: shape=(4, 2, 3), dtype=int32, numpy=
+    #     array([[[0, 1, 2],
+    #             [3, 4, 5]],
+    #            [[0, 1, 2],
+    #             [3, 4, 5]],
+    #            [[0, 1, 2],
+    #             [3, 4, 5]],
+    #            [[0, 1, 2],
+    #             [3, 4, 5]]], dtype=int32)>
+    #     With AXIS=1, the result is
+    #     <tf.Tensor: shape=(1, 8, 3), dtype=int32, numpy=
+    #     array([[[0, 1, 2],
+    #             [3, 4, 5],
+    #             [0, 1, 2],
+    #             [3, 4, 5],
+    #             [0, 1, 2],
+    #             [3, 4, 5],
+    #             [0, 1, 2],
+    #             [3, 4, 5]]], dtype=int32)>
+    #     With AXIS=2, the result is
+    #     <tf.Tensor: shape=(1, 2, 12), dtype=int32, numpy=
+    #     array([[[0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2],
+    #             [3, 4, 5, 3, 4, 5, 3, 4, 5, 3, 4, 5]]], dtype=int32)>
+
+    ```
+
+    Args:
+      value: a `tf.distribute.DistributedValues` instance, e.g. returned by
+        `Strategy.run`, to be combined into a single tensor. It can also be a
+        regular tensor when used with `OneDeviceStrategy` or default strategy.
+        The underlying tensor constructs can only be dense tensors with non-zero
+        rank, NOT `tf.IndexedSlices`.
+      axis: 0-D int32 Tensor. Dimension along which to gather. Must be in the
+        range [0, rank(value)).
+
+    Returns:
+       A `Tensor` that's the concatenation of `value` across replicas along
+       `axis` dimension.
+    """
+    # pylint: enable=line-too-long
+    _require_cross_replica_or_default_context_extended(self._extended)
+    dst = device_util.current(
+    ) or self._extended._default_device or "/device:CPU:0"
+    if isinstance(value, ops.IndexedSlices):
+      raise NotImplementedError("gather/all_gather does not support "
+                                "IndexedSlices")
+    return self._extended._local_results(
+        self._extended._gather_to(value, dst, axis))[0]
+
   @doc_controls.do_not_doc_inheritable  # DEPRECATED
   def unwrap(self, value):
     """Returns the list of all local per-replica values contained in `value`.
@@ -1665,112 +1763,6 @@ class Strategy(StrategyBase):
     """
     return self._extended._experimental_distribute_values_from_function(  # pylint: disable=protected-access
         value_fn)
-
-  def gather(self, value, axis):
-    # pylint: disable=line-too-long, protected-access
-    """Gather `value` across replicas along `axis` to the current device.
-
-    Given a `tf.distribute.DistributedValues` or `tf.Tensor`-like
-    object `value`, this API gathers and concatenates `value` across replicas
-    along the `axis`-th dimension. The result is copied to the "current" device
-    - which would typically be the CPU of the worker on which the program is
-    running. For `tf.distribute.TPUStrategy`, it is the first TPU host. For
-    multi-client `MultiWorkerMirroredStrategy`, this is CPU of each worker.
-
-    This API can only be called in the cross-replica context. For a counterpart
-    in the replica context, see `tf.distribute.ReplicaContext.all_gather`.
-
-    Note: For all strategies except `tf.distribute.TPUStrategy`, the input
-    `value` on different replicas must have the same rank, and their shapes must
-    be the same in all dimensions except the `axis`-th dimension. In other
-    words, their shapes cannot be different in a dimension `d` where `d` does
-    not equal to the `axis` argument. For example, given a
-    `tf.distribute.DistributedValues` with component tensors of shape
-    `(1, 2, 3)` and `(1, 3, 3)` on two replicas, you can call
-    `gather(..., axis=1, ...)` on it, but not `gather(..., axis=0, ...)` or
-    `gather(..., axis=2, ...)`. However, for `tf.distribute.TPUStrategy.gather`,
-    all tensors must have exactly the same rank and same shape.
-
-    Note: Given a `tf.distribute.DistributedValues` `value`, its component
-    tensors must have a non-zero rank. Otherwise, consider using
-    `tf.expand_dims` before gathering them.
-
-    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
-    >>> # A DistributedValues with component tensor of shape (2, 1) on each replica
-    ... distributed_values = strategy.experimental_distribute_values_from_function(lambda _: tf.identity(tf.constant([[1], [2]])))
-    >>> @tf.function
-    ... def run():
-    ...   return strategy.gather(distributed_values, axis=0)
-    >>> run()
-    <tf.Tensor: shape=(4, 1), dtype=int32, numpy=
-    array([[1],
-           [2],
-           [1],
-           [2]], dtype=int32)>
-
-
-    Consider the following example for more combinations:
-
-    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1", "GPU:2", "GPU:3"])
-    >>> single_tensor = tf.reshape(tf.range(6), shape=(1,2,3))
-    >>> distributed_values = strategy.experimental_distribute_values_from_function(lambda _: tf.identity(single_tensor))
-    >>> @tf.function
-    ... def run(axis):
-    ...   return strategy.gather(distributed_values, axis=axis)
-    >>> axis=0
-    >>> run(axis)
-    <tf.Tensor: shape=(4, 2, 3), dtype=int32, numpy=
-    array([[[0, 1, 2],
-            [3, 4, 5]],
-           [[0, 1, 2],
-            [3, 4, 5]],
-           [[0, 1, 2],
-            [3, 4, 5]],
-           [[0, 1, 2],
-            [3, 4, 5]]], dtype=int32)>
-    >>> axis=1
-    >>> run(axis)
-    <tf.Tensor: shape=(1, 8, 3), dtype=int32, numpy=
-    array([[[0, 1, 2],
-            [3, 4, 5],
-            [0, 1, 2],
-            [3, 4, 5],
-            [0, 1, 2],
-            [3, 4, 5],
-            [0, 1, 2],
-            [3, 4, 5]]], dtype=int32)>
-    >>> axis=2
-    >>> run(axis)
-    <tf.Tensor: shape=(1, 2, 12), dtype=int32, numpy=
-    array([[[0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2],
-            [3, 4, 5, 3, 4, 5, 3, 4, 5, 3, 4, 5]]], dtype=int32)>
-
-
-    Args:
-      value: a `tf.distribute.DistributedValues` instance, e.g. returned by
-        `Strategy.run`, to be combined into a single tensor. It can also be a
-        regular tensor when used with `tf.distribute.OneDeviceStrategy` or the
-        default strategy. The tensors that constitute the DistributedValues
-        can only be dense tensors with non-zero rank, NOT a `tf.IndexedSlices`.
-      axis: 0-D int32 Tensor. Dimension along which to gather. Must be in the
-        range [0, rank(value)).
-
-    Returns:
-       A `Tensor` that's the concatenation of `value` across replicas along
-       `axis` dimension.
-    """
-    # pylint: enable=line-too-long
-    error_message = ("tf.distribute.Strategy.gather method requires "
-                     "cross-replica context, use "
-                     "get_replica_context().all_gather() instead")
-    _require_cross_replica_or_default_context_extended(self._extended,
-                                                       error_message)
-    dst = device_util.current(
-    ) or self._extended._default_device or "/device:CPU:0"
-    if isinstance(value, ops.IndexedSlices):
-      raise NotImplementedError("gather does not support IndexedSlices")
-    return self._extended._local_results(
-        self._extended._gather_to(value, dst, axis))[0]
 
 
 # TF v1.x version has additional deprecated APIs
@@ -2819,7 +2811,8 @@ class StrategyExtendedV1(StrategyExtendedV2):
 #   It sets the current Strategy for purposes of
 #   `get_strategy()` and `has_strategy()`
 #   and switches the thread mode to a "cross-replica context".
-class ReplicaContextBase(object):
+@tf_export("distribute.ReplicaContext")
+class ReplicaContext(object):
   """A class with a collection of APIs that can be called in a replica context.
 
   You can use `tf.distribute.get_replica_context` to get an instance of
@@ -3076,117 +3069,76 @@ class ReplicaContextBase(object):
   #   to that point that the first result is needed. Most likely this can be
   #   implemented in terms of `merge_call()` and `batch_reduce_to()`.
 
-
-@tf_export("distribute.ReplicaContext", v1=[])
-class ReplicaContext(ReplicaContextBase):
-
-  __doc__ = ReplicaContextBase.__doc__
-
-  def all_gather(self, value, axis, experimental_hints=None):
+  # TODO(wxinyi): generate docs after it is implemented for all strategies.
+  def _all_gather(self, value, axis, experimental_hints=None):
     """All-gathers `value` across all replicas along `axis`.
 
-    Note: An `all_gather` method can only be called in replica context. For
+    Note: An `all_gather` method can only be called in replica context. To find
     a cross-replica context counterpart, see `tf.distribute.Strategy.gather`.
     All replicas need to participate in the all-gather, otherwise this
     operation hangs. So if `all_gather` is called in any replica, it must be
     called in all replicas.
 
-    Note: If there are multiple `all_gather` calls, they need to be executed in
-    the same order on all replicas. Dispatching `all_gather` based on conditions
+    Note: If there're multiple all-gather calls, they need to execute in
+    the same order on all replicas. Dispatching all-gather based on conditions
     is usually error-prone.
 
-    For all strategies except `tf.distribute.TPUStrategy`, the input
-    `value` on different replicas must have the same rank, and their shapes must
-    be the same in all dimensions except the `axis`-th dimension. In other
-    words, their shapes cannot be different in a dimension `d` where `d` does
-    not equal to the `axis` argument. For example, given a
-    `tf.distribute.DistributedValues` with component tensors of shape
-    `(1, 2, 3)` and `(1, 3, 3)` on two replicas, you can call
-    `all_gather(..., axis=1, ...)` on it, but not `all_gather(..., axis=0, ...)`
-    or `all_gather(..., axis=2, ...)`. However, with
-    `tf.distribute.TPUStrategy`, all tensors must have exactly the same rank and
-    same shape.
+    # TODO(wxinyi): convert to testable docstring after implemented for MirroredStrategy
+    ```python
+    strategy = tf.distribute.MirroredStrategy(["GPU:0", "CPU:0"])
+    @tf.function
+    def gather_value():
+      ctx = tf.distribute.get_replica_context()
+      value = tf.constant([1, 2, 3])
+      # all_gather a `tf.distribute.DistributedValues`
+      return strategy.run(ctx.all_gather(value, axis=0))
+    strategy.experimental_local_results(gather_value)
+    # Result:
+    # (<tf.Tensor: shape=(6,), dtype=int32, numpy=array([1, 2, 3, 1, 2, 3],
+    # dtype=int32)>,
+    #  <tf.Tensor: shape=(6,), dtype=int32, numpy=array([1, 2, 3, 1, 2, 3],
+    # dtype=int32)>)
+    ```
 
-    Note: The input `value` must have a non-zero rank. Otherwise, consider using
-    `tf.expand_dims` before gathering them.
+    ```python
+    strategy = tf.distribute.MirroredStrategy(["GPU:0", "CPU:0"])
+    @tf.function
+    def gather_nest():
+      ctx = tf.distribute.get_replica_context()
+      value_1 = tf.constant([1, 2, 3])
+      value_2 = tf.constant([[1, 2], [3, 4]])
+      # all_gather a nest of `tf.distribute.DistributedValues`
+      return ctx.all_gather([value_1, value_2], axis=0)
+    strategy.experimental_local_results(gather_nest)
+    # Result:
+    # ([<tf.Tensor: shape=(6,), dtype=int32, numpy=array([1, 2, 3, 1, 2, 3],
+    # dtype=int32)>, <tf.Tensor: shape=(4, 2), dtype=int32, numpy=
+    # array([[1, 2],
+    #        [3, 4],
+    #        [1, 2],
+    #        [3, 4]], dtype=int32)],
+    # [<tf.Tensor: shape=(6,), dtype=int32, numpy=array([1, 2, 3, 1, 2, 3],
+    # dtype=int32)>, <tf.Tensor: shape=(4, 2), dtype=int32, numpy=
+    # array([[1, 2],
+    #        [3, 4],
+    #        [1, 2],
+    #        [3, 4]], dtype=int32)])
+    ```
 
-    You can pass in a single tensor to all-gather:
+    Example with two replicas:
+      Replica 0 `value`: {'a': [0], 'b': [[0, 1]]}
+      Replica 1 `value`: {'a': [1], 'b': [[2, 3], [4, 5]]}
 
-    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
-    >>> @tf.function
-    ... def gather_value():
-    ...   ctx = tf.distribute.get_replica_context()
-    ...   local_value = tf.constant([1, 2, 3])
-    ...   return ctx.all_gather(local_value, axis=0)
-    >>> result = strategy.run(gather_value)
-    >>> result
-    PerReplica:{
-      0: <tf.Tensor: shape=(6,), dtype=int32, numpy=array([1, 2, 3, 1, 2, 3], dtype=int32)>,
-      1: <tf.Tensor: shape=(6,), dtype=int32, numpy=array([1, 2, 3, 1, 2, 3], dtype=int32)>
-    }
-    >>> strategy.experimental_local_results(result)
-    (<tf.Tensor: shape=(6,), dtype=int32, numpy=array([1, 2, 3, 1, 2, 3],
-    dtype=int32)>,
-    <tf.Tensor: shape=(6,), dtype=int32, numpy=array([1, 2, 3, 1, 2, 3],
-    dtype=int32)>)
-
-
-    You can also pass in a nested structure of tensors to all-gather, say, a
-    list:
-
-    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
-    >>> @tf.function
-    ... def gather_nest():
-    ...   ctx = tf.distribute.get_replica_context()
-    ...   value_1 = tf.constant([1, 2, 3])
-    ...   value_2 = tf.constant([[1, 2], [3, 4]])
-    ...   # all_gather a nest of `tf.distribute.DistributedValues`
-    ...   return ctx.all_gather([value_1, value_2], axis=0)
-    >>> result = strategy.run(gather_nest)
-    >>> result
-    [PerReplica:{
-      0: <tf.Tensor: shape=(6,), dtype=int32, numpy=array([1, 2, 3, 1, 2, 3], dtype=int32)>,
-      1: <tf.Tensor: shape=(6,), dtype=int32, numpy=array([1, 2, 3, 1, 2, 3], dtype=int32)>
-    }, PerReplica:{
-      0: <tf.Tensor: shape=(4, 2), dtype=int32, numpy=
-    array([[1, 2],
-           [3, 4],
-           [1, 2],
-           [3, 4]], dtype=int32)>,
-      1: <tf.Tensor: shape=(4, 2), dtype=int32, numpy=
-    array([[1, 2],
-           [3, 4],
-           [1, 2],
-           [3, 4]], dtype=int32)>
-    }]
-    >>> strategy.experimental_local_results(result)
-    ([PerReplica:{
-      0: <tf.Tensor: shape=(6,), dtype=int32, numpy=array([1, 2, 3, 1, 2, 3], dtype=int32)>,
-      1: <tf.Tensor: shape=(6,), dtype=int32, numpy=array([1, 2, 3, 1, 2, 3], dtype=int32)>
-    }, PerReplica:{
-      0: <tf.Tensor: shape=(4, 2), dtype=int32, numpy=
-    array([[1, 2],
-           [3, 4],
-           [1, 2],
-           [3, 4]], dtype=int32)>,
-      1: <tf.Tensor: shape=(4, 2), dtype=int32, numpy=
-    array([[1, 2],
-           [3, 4],
-           [1, 2],
-           [3, 4]], dtype=int32)>
-    }],)
-
-
-    What if you are all-gathering tensors with different shapes on different
-    replicas? Consider the following example with two replicas, where you have
-    `value` as a nested structure consisting of two items to all-gather, `a` and
-    `b`.
-
-      On Replica 0, `value` is {'a': [0], 'b': [[0, 1]]}
-      On Replica 1, `value` is {'a': [1], 'b': [[2, 3], [4, 5]]}
-
-      Result for `all_gather` with `axis`=0: (on each of the replicas):
+      Result for `all_gather` with `axis`=0: (on all replicas):
       {'a': [1, 2], 'b': [[0, 1], [2, 3], [4, 5]]}
+
+    Note: an input to be all_gathered must have the same rank on different
+    replicas, and they must have shapes that are consistent along all dimensions
+    except the `axis`-th dimension. For example, given a
+    `tf.distribute.DistributedValues` with tensors of shape `(1, 2, 3)` and
+    `(1, 3, 3)` on two replicas, you can call `all_gather(..., axis=1, ...)` on
+    it, but not `all_gather(..., axis=0, ...)` or `all_gather(..., axis=2, ...)`.
+
 
     Args:
       value: a nested structure of `tf.Tensor` which `tf.nest.flatten` accepts,
@@ -3204,7 +3156,8 @@ class ReplicaContext(ReplicaContextBase):
     """
     for v in nest.flatten(value):
       if isinstance(v, ops.IndexedSlices):
-        raise NotImplementedError("all_gather does not support IndexedSlices")
+        raise NotImplementedError("gather/all_gather does not support "
+                                  "IndexedSlices")
 
     if experimental_hints is None:
       experimental_hints = collective_util.Hints()
@@ -3218,14 +3171,9 @@ class ReplicaContext(ReplicaContextBase):
     def grad_wrapper(*xs):
       ys = self.merge_call(batch_all_gather, args=xs)
       # The gradient of an all-gather is itself an all-gather.
-      return ys, lambda *dy_s: self.all_gather(dy_s, axis)
+      return ys, lambda *dy_s: self._all_gather(dy_s, axis)
 
     return nest.pack_sequence_as(value, grad_wrapper(*nest.flatten(value)))
-
-
-@tf_export(v1=["distribute.ReplicaContext"])
-class ReplicaContextV1(ReplicaContextBase):
-  __doc__ = ReplicaContextBase.__doc__
 
 
 def _batch_reduce_destination(x):
