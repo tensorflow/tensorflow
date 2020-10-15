@@ -1124,6 +1124,8 @@ def HLO_ScatterOp: HLO_Op<"scatter", [RecursiveSideEffects]>,
   let results = (outs HLO_Tensor);
 
   let hasCustomHLOConverter = 1;
+
+  let hasFolder = 1;
 }
 
 // TODO(jpienaar): Add broadcastable trait.
