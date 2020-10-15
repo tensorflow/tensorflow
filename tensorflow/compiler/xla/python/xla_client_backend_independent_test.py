@@ -35,6 +35,23 @@ except ImportError:
 ops = xla_client.ops
 
 
+class ShapeTest(absltest.TestCase):
+
+  def testInvalidShapes(self):
+    with self.assertRaisesRegex(RuntimeError,
+                                "shape's dimensions must not be < 0.*"):
+      xla_client.Shape.array_shape(xla_client.PrimitiveType.F32, [-2, 4])
+
+    with self.assertRaisesRegex(
+        RuntimeError, "layout minor_to_major field contains 1 element.*"):
+      xla_client.Shape.array_shape(xla_client.PrimitiveType.F32, [2, 4], [3])
+
+    with self.assertRaisesRegex(
+        RuntimeError, "layout minor_to_major field has out-of-bounds value.*"):
+      xla_client.Shape.array_shape(xla_client.PrimitiveType.F32, [2, 4],
+                                   [1, -1])
+
+
 class ComputationPrinting(absltest.TestCase):
 
   def ExampleComputation(self):
