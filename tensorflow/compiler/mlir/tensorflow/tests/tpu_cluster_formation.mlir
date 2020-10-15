@@ -480,6 +480,38 @@ func @cluster_nested_op_using_resource() {
 // CHECK:  "tf.opA"() ( {
 // CHECK:   "tf.AssignAddVariableOp"([[VAR]], [[CONST]])
 
+
+// -----
+
+
+!tf_res = type tensor<*x!tf.resource<tensor<f32>>>
+
+// Test multiple replicated clusters interleaved and uses resource variables.
+// CHECK-LABEL: func @multiple_replicated_interleaved
+func @multiple_replicated_interleaved(%arg0: !tf_res) {
+  "tf.TPUReplicateMetadata"() {_tpu_replicate = "a", num_replicas = 2, topology = "topology"} : () -> ()
+  "tf.TPUReplicateMetadata"() {_tpu_replicate = "b", num_replicas = 2, topology = "topology"} : () -> ()
+  "tf.TPUReplicateMetadata"() {_tpu_replicate = "c", num_replicas = 2, topology = "topology"} : () -> ()
+  %0 = "tf.TPUReplicatedInput"(%arg0, %arg0) : (!tf_res, !tf_res) -> !tf_res
+  %1 = "tf.TPUReplicatedInput"(%arg0, %arg0) : (!tf_res, !tf_res) -> !tf_res
+  %2 = "tf.TPUReplicatedInput"(%arg0, %arg0) : (!tf_res, !tf_res) -> !tf_res
+  %3 = "tf.ReadVariableOp"(%0) {_tpu_replicate = "a"} : (!tf_res) -> tensor<f32>
+  %4 = "tf.ReadVariableOp"(%1) {_tpu_replicate = "b"} : (!tf_res) -> tensor<f32>
+  %5 = "tf.ReadVariableOp"(%2) {_tpu_replicate = "c"} : (!tf_res) -> tensor<f32>
+  %6 = "tf.Identity"(%3) {_tpu_replicate = "a"} : (tensor<f32>) -> tensor<f32>
+  %7 = "tf.Identity"(%4) {_tpu_replicate = "b"} : (tensor<f32>) -> tensor<f32>
+  %8 = "tf.Identity"(%5) {_tpu_replicate = "c"} : (tensor<f32>) -> tensor<f32>
+  %9:2 = "tf.TPUReplicatedOutput"(%6) : (tensor<f32>) -> (tensor<f32>, tensor<f32>)
+  %10:2 = "tf.TPUReplicatedOutput"(%7) : (tensor<f32>) -> (tensor<f32>, tensor<f32>)
+  %11:2 = "tf.TPUReplicatedOutput"(%8) : (tensor<f32>) -> (tensor<f32>, tensor<f32>)
+  return
+}
+
+// CHECK: tf_device.replicate
+// CHECK: tf_device.replicate
+// CHECK: tf_device.replicate
+
+
 // -----
 
 
