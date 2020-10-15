@@ -3347,6 +3347,9 @@ tf_kernel_library(
     prefix = "batch_matmul_op",
     deps = MATH_DEPS + [":eigen_contraction_kernel"] + if_mkl_ml([
         "//third_party/mkl:intel_binary_blob",
+    ]) + if_cuda_or_rocm([
+        "//tensorflow/core/kernels:gpu_utils",
+        "//tensorflow/core/platform:tensor_float_32_utils",
     ]),
 )
 
@@ -3404,7 +3407,7 @@ tf_kernel_library(
     name = "fft_ops",
     prefix = "fft_ops",
     deps = MATH_DEPS + [
-    ] + if_cuda([
+    ] + if_cuda_or_rocm([":gpu_utils"]) + if_cuda([
         "//tensorflow/core/platform/default/build_config:cufft_plugin",
     ]),
 )

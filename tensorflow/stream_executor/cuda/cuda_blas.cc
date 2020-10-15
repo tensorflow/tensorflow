@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "third_party/gpus/cuda/include/cublasLt.h"
 #include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 
@@ -226,17 +227,38 @@ bool CUDABlas::Init() {
     return false;
   }
 
+#if CUDA_VERSION >= 11000
+  ret = cublasLtCreate(&blasLt_);
+  if (ret != CUBLAS_STATUS_SUCCESS) {
+    LOG(ERROR) << "failed to create cublasLt handle: " << ToString(ret);
+    return false;
+  }
+#endif  // CUDA_VERSION >= 11000
+
   return true;
 }
 
 CUDABlas::CUDABlas(gpu::GpuExecutor *parent)
-    : parent_(CHECK_NOTNULL(parent)), blas_(nullptr) {}
+    : parent_(CHECK_NOTNULL(parent)),
+      blas_(nullptr)
+#if CUDA_VERSION >= 11000
+      ,
+      blasLt_(nullptr)
+#endif
+{
+}
 
 CUDABlas::~CUDABlas() {
   if (blas_ != nullptr) {
     gpu::ScopedActivateExecutorContext sac{parent_};
     cublasDestroy(blas_);
   }
+#if CUDA_VERSION >= 11000
+  if (blasLt_ != nullptr) {
+    gpu::ScopedActivateExecutorContext sac{parent_};
+    cublasLtDestroy(blasLt_);
+  }
+#endif
 }
 
 bool CUDABlas::SetStream(Stream *stream) {
@@ -251,6 +273,13 @@ bool CUDABlas::SetStream(Stream *stream) {
   }
 
   return true;
+}
+
+cudaStream_t CUDABlas::CUDAStream(Stream *stream) {
+  CHECK(stream != nullptr);
+  CHECK(AsGpuStreamValue(stream) != nullptr);
+  gpu::ScopedActivateExecutorContext sac{parent_};
+  return AsGpuStreamValue(stream);
 }
 
 namespace {
@@ -381,8 +410,122 @@ cudaDataType_t CUDAComputationType(blas::ComputationType ty) {
       return CUDA_C_32F;
     case blas::ComputationType::kComplexF64:
       return CUDA_C_64F;
+    case blas::ComputationType::kTF32AsF32:  // fall-through
+    case blas::ComputationType::kBF16AsF32:
+      // These cases are currently only supported in the blasLt routines, which
+      // use CUBLASComputationType() instead.
+      LOG(FATAL) << "Invalid value of blas::ComputationType.";
   }
 }
+
+#if CUDA_VERSION >= 11000
+cublasComputeType_t CUBLASComputationType(blas::ComputationType ty) {
+  switch (ty) {
+    case blas::ComputationType::kF16:
+      return CUBLAS_COMPUTE_16F;
+    case blas::ComputationType::kF32:  // fall-through
+    case blas::ComputationType::kComplexF32:
+      return CUBLAS_COMPUTE_32F;
+    case blas::ComputationType::kF64:  // fall-through
+    case blas::ComputationType::kComplexF64:
+      return CUBLAS_COMPUTE_64F;
+    case blas::ComputationType::kI32:
+      return CUBLAS_COMPUTE_32I;
+    case blas::ComputationType::kTF32AsF32:
+      return CUBLAS_COMPUTE_32F_FAST_TF32;
+    case blas::ComputationType::kBF16AsF32:
+      return CUBLAS_COMPUTE_32F_FAST_16BF;
+  }
+}
+#endif  // CUDA_VERSION >= 11000
+
+blas::DataType GetScaleType(blas::DataType data_type,
+                            blas::ComputationType compute_type) {
+  bool is_complex = data_type == blas::DataType::kComplexFloat ||
+                    data_type == blas::DataType::kComplexDouble;
+  switch (compute_type) {
+    case blas::ComputationType::kF16:
+      return blas::DataType::kHalf;
+    case blas::ComputationType::kF32:         // fall-through
+    case blas::ComputationType::kComplexF32:  // fall-through
+    case blas::ComputationType::kTF32AsF32:   // fall-through
+    case blas::ComputationType::kBF16AsF32:
+      return is_complex ? blas::DataType::kComplexFloat
+                        : blas::DataType::kFloat;
+    case blas::ComputationType::kF64:  // fall-through
+    case blas::ComputationType::kComplexF64:
+      return is_complex ? blas::DataType::kComplexDouble
+                        : blas::DataType::kDouble;
+    case blas::ComputationType::kI32:
+      return blas::DataType::kInt32;
+  }
+}
+
+#if CUDA_VERSION >= 11000
+cublasLtPointerMode_t CUBLASPointerMode(blas::PointerMode pointer_mode) {
+  switch (pointer_mode) {
+    case blas::PointerMode::kHost:
+      return CUBLASLT_POINTER_MODE_HOST;
+    case blas::PointerMode::kDevice:
+      return CUBLASLT_POINTER_MODE_DEVICE;
+  }
+}
+cublasLtEpilogue_t CUBLASEpilogue(blas::Epilogue epilogue) {
+  switch (epilogue) {
+    case blas::Epilogue::kDefault:
+      return CUBLASLT_EPILOGUE_DEFAULT;
+    case blas::Epilogue::kReLU:
+      return CUBLASLT_EPILOGUE_RELU;
+    case blas::Epilogue::kBias:
+      return CUBLASLT_EPILOGUE_BIAS;
+    case blas::Epilogue::kBiasThenReLU:
+      return CUBLASLT_EPILOGUE_RELU_BIAS;
+  }
+}
+#endif  // CUDA_VERSION >= 11000
+
+cudaDataType_t GetCUDADataType(blas::DataType ty) {
+  switch (ty) {
+    case blas::DataType::kHalf:
+      return CUDA_R_16F;
+    case blas::DataType::kFloat:
+      return CUDA_R_32F;
+    case blas::DataType::kDouble:
+      return CUDA_R_64F;
+    case blas::DataType::kInt8:
+      return CUDA_R_8I;
+    case blas::DataType::kInt32:
+      return CUDA_R_32I;
+    case blas::DataType::kComplexFloat:
+      return CUDA_C_32F;
+    case blas::DataType::kComplexDouble:
+      return CUDA_C_64F;
+    default:
+      LOG(FATAL) << "Invalid value of blas::DataType in GetCUDADataType";
+  }
+}
+
+int GetDataTypeSizeBytes(blas::DataType ty) {
+  switch (ty) {
+    case blas::DataType::kHalf:
+      return 2;
+    case blas::DataType::kFloat:
+      return 4;
+    case blas::DataType::kDouble:
+      return 8;
+    case blas::DataType::kInt8:
+      return 1;
+    case blas::DataType::kInt32:
+      return 4;
+    case blas::DataType::kComplexFloat:
+      return 8;
+    case blas::DataType::kComplexDouble:
+      return 16;
+    default:
+      LOG(FATAL) << "Invalid value of blas::DataType in GetDataTypeSizeBytes";
+  }
+}
+
 }  // namespace
 
 template <typename FuncT, typename... Args>
@@ -2919,6 +3062,575 @@ bool CUDABlas::DoBlasTrsm(Stream *stream, blas::Side side,
                         CUDABlasTranspose(transa), CUDABlasDiagonal(diag), m, n,
                         GpuComplex(&cb_alpha), GpuComplex(GpuMemory(a)), lda,
                         GpuComplex(GpuMemoryMutable(b)), ldb);
+}
+
+// We only use cublasLt from CUDA 11.0 onward.
+#if CUDA_VERSION >= 11000
+
+namespace {
+
+template <typename T>
+inline port::Status SetCublasLtAttr(cublasLtMatrixLayout_t handle,
+                                    cublasLtMatrixLayoutAttribute_t attr,
+                                    const T &value) {
+  cublasStatus_t status =
+      cublasLtMatrixLayoutSetAttribute(handle, attr, &value, sizeof(T));
+  if (status != CUBLAS_STATUS_SUCCESS) {
+    return port::Status(
+        port::error::INTERNAL,
+        absl::StrCat("cublasLtMatrixLayoutSetAttribute(attr=", attr,
+                     ", value=", value, ") failed: ", ToString(status)));
+  }
+  return port::Status::OK();
+}
+
+template <typename T>
+inline port::Status SetCublasLtAttr(cublasLtMatmulAlgo_t *handle,
+                                    cublasLtMatmulAlgoConfigAttributes_t attr,
+                                    const T &value) {
+  cublasStatus_t status =
+      cublasLtMatmulAlgoConfigSetAttribute(handle, attr, &value, sizeof(T));
+  if (status != CUBLAS_STATUS_SUCCESS) {
+    return port::Status(
+        port::error::INTERNAL,
+        absl::StrCat("cublasLtMatmulAlgoConfigSetAttribute(attr=", attr,
+                     ", value=", value, ") failed: ", ToString(status)));
+  }
+  return port::Status::OK();
+}
+
+template <typename T>
+inline port::Status SetCublasLtAttr(cublasLtMatmulPreference_t handle,
+                                    cublasLtMatmulPreferenceAttributes_t attr,
+                                    const T &value) {
+  cublasStatus_t status =
+      cublasLtMatmulPreferenceSetAttribute(handle, attr, &value, sizeof(value));
+  if (status != CUBLAS_STATUS_SUCCESS) {
+    return port::Status(
+        port::error::INTERNAL,
+        absl::StrCat("cublasLtMatmulPreferenceSetAttribute(attr=", attr,
+                     ", value=", value, ") failed: ", ToString(status)));
+  }
+  return port::Status::OK();
+}
+
+template <typename T>
+inline bool GetCublasLtAttr(const cublasLtMatmulAlgo_t *handle,
+                            cublasLtMatmulAlgoConfigAttributes_t attr,
+                            T *value) {
+  auto mutable_handle = const_cast<cublasLtMatmulAlgo_t *>(handle);
+  size_t bytes_written = 0;
+  return cublasLtMatmulAlgoConfigGetAttribute(mutable_handle, attr, value,
+                                              sizeof(T), &bytes_written) ==
+             CUBLAS_STATUS_SUCCESS &&
+         bytes_written == sizeof(T);
+}
+
+template <typename T>
+inline const T &ValueForStrCat(const T &value) {
+  return value;
+}
+template <typename T>
+inline absl::Hex ValueForStrCat(T *ptr) {
+  return absl::Hex(reinterpret_cast<uintptr_t>(ptr));
+}
+
+template <typename T>
+inline port::Status SetCublasLtAttr(cublasLtMatmulDesc_t handle,
+                                    cublasLtMatmulDescAttributes_t attr,
+                                    const T &value) {
+  cublasStatus_t status =
+      cublasLtMatmulDescSetAttribute(handle, attr, &value, sizeof(value));
+  if (status != CUBLAS_STATUS_SUCCESS) {
+    return port::Status(
+        port::error::INTERNAL,
+        absl::StrCat("cublasLtMatmulDescSetAttribute(attr=", attr, ", value=",
+                     ValueForStrCat(value), ") failed: ", ToString(status)));
+  }
+  return port::Status::OK();
+}
+
+struct MatmulDescDestroyer {
+  void operator()(cublasLtMatmulDesc_t matmul_desc) const {
+    cublasLtMatmulDescDestroy(matmul_desc);
+  }
+};
+struct LayoutDestroyer {
+  void operator()(cublasLtMatrixLayout_t layout) const {
+    cublasLtMatrixLayoutDestroy(layout);
+  }
+};
+struct MatmulPreferenceDestroyer {
+  void operator()(cublasLtMatmulPreference_t matmul_pref) const {
+    cublasLtMatmulPreferenceDestroy(matmul_pref);
+  }
+};
+using UniqueOpDesc =
+    std::unique_ptr<std::remove_pointer<cublasLtMatmulDesc_t>::type,
+                    MatmulDescDestroyer>;
+using UniqueLayoutDesc =
+    std::unique_ptr<std::remove_pointer<cublasLtMatrixLayout_t>::type,
+                    LayoutDestroyer>;
+using UniqueMatmulPreference =
+    std::unique_ptr<std::remove_pointer<cublasLtMatmulPreference_t>::type,
+                    MatmulPreferenceDestroyer>;
+
+port::StatusOr<UniqueOpDesc> CreateCublasLtOperationDesc(
+    blas::ComputationType computation_type, blas::DataType scale_type,
+    blas::PointerMode pointer_mode, blas::Epilogue epilogue,
+    blas::Transpose transa, blas::Transpose transb) {
+  cublasLtMatmulDesc_t desc;
+  cublasComputeType_t cublas_compute_type =
+      CUBLASComputationType(computation_type);
+  cudaDataType_t cuda_scale_type = GetCUDADataType(scale_type);
+  cublasStatus_t status =
+      cublasLtMatmulDescCreate(&desc, cublas_compute_type, cuda_scale_type);
+  if (status != CUBLAS_STATUS_SUCCESS) {
+    return port::Status(
+        port::error::INTERNAL,
+        absl::StrCat("cublasLtMatmulDescCreate(computation_type=",
+                     computation_type, ") failed: ", ToString(status)));
+  }
+  UniqueOpDesc unique_desc(desc);
+  SE_RETURN_IF_ERROR(SetCublasLtAttr(desc, CUBLASLT_MATMUL_DESC_POINTER_MODE,
+                                     CUBLASPointerMode(pointer_mode)));
+  SE_RETURN_IF_ERROR(SetCublasLtAttr(desc, CUBLASLT_MATMUL_DESC_EPILOGUE,
+                                     CUBLASEpilogue(epilogue)));
+  SE_RETURN_IF_ERROR(SetCublasLtAttr(desc, CUBLASLT_MATMUL_DESC_TRANSA,
+                                     CUDABlasTranspose(transa)));
+  SE_RETURN_IF_ERROR(SetCublasLtAttr(desc, CUBLASLT_MATMUL_DESC_TRANSB,
+                                     CUDABlasTranspose(transb)));
+  return unique_desc;
+}
+
+port::StatusOr<UniqueLayoutDesc> CreateCublasLtLayoutDesc(
+    blas::DataType data_type, uint64 rows, uint64 cols, int64 ld, int64 stride,
+    int batch_count) {
+  cublasLtMatrixLayout_t desc;
+  cublasStatus_t status = cublasLtMatrixLayoutCreate(
+      &desc, GetCUDADataType(data_type), rows, cols, ld);
+  if (status != CUBLAS_STATUS_SUCCESS) {
+    return port::Status(
+        port::error::INTERNAL,
+        absl::StrCat("cublasLtMatrixLayoutCreate failed: ", ToString(status)));
+  }
+  UniqueLayoutDesc unique_desc(desc);
+  SE_RETURN_IF_ERROR(
+      SetCublasLtAttr(desc, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, batch_count));
+  SE_RETURN_IF_ERROR(SetCublasLtAttr(
+      desc, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, stride));
+  return unique_desc;
+}
+
+// Helper function to allocate workspace.
+port::Status AllocateWorkspace(void **workspace,
+                               ScratchAllocator *scratch_allocator,
+                               size_t num_bytes) {
+  SE_ASSIGN_OR_RETURN(DeviceMemory<uint8> workspace_bytes,
+                      scratch_allocator->AllocateBytes(num_bytes));
+  *workspace = (void *)GpuMemoryMutable(&workspace_bytes);
+  return port::Status::OK();
+}
+
+template <typename T>
+blas::ComputationType ToComputationType();
+template <>
+blas::ComputationType ToComputationType<Eigen::half>() {
+  return blas::ComputationType::kF16;
+}
+template <>
+blas::ComputationType ToComputationType<float>() {
+  return blas::ComputationType::kF32;
+}
+template <>
+blas::ComputationType ToComputationType<double>() {
+  return blas::ComputationType::kF64;
+}
+template <>
+blas::ComputationType ToComputationType<std::complex<float>>() {
+  return blas::ComputationType::kComplexF32;
+}
+template <>
+blas::ComputationType ToComputationType<std::complex<double>>() {
+  return blas::ComputationType::kComplexF64;
+}
+
+class CUDABlasLtMatmulPlan final : public blas::IBlasLtMatmulPlan {
+ public:
+  CUDABlasLtMatmulPlan(UniqueOpDesc op_desc, UniqueLayoutDesc a_desc,
+                       UniqueLayoutDesc b_desc, UniqueLayoutDesc c_desc,
+                       UniqueLayoutDesc d_desc, blas::DataType ab_type,
+                       blas::DataType c_type, blas::DataType scale_type,
+                       blas::PointerMode pointer_mode, blas::Epilogue epilogue,
+                       int batch_count, int64 stride_a, int64 stride_b,
+                       int64 stride_c, int64 stride_d)
+      : op_desc_(std::move(op_desc)),
+        a_desc_(std::move(a_desc)),
+        b_desc_(std::move(b_desc)),
+        c_desc_(std::move(c_desc)),
+        d_desc_(std::move(d_desc)),
+        ab_type_(ab_type),
+        c_type_(c_type),
+        scale_type_(scale_type),
+        pointer_mode_(pointer_mode),
+        epilogue_(epilogue),
+        batch_count_(batch_count),
+        stride_a_(stride_a),
+        stride_b_(stride_b),
+        stride_c_(stride_c),
+        stride_d_(stride_d) {}
+
+  cublasLtMatmulDesc_t op_desc() const { return op_desc_.get(); }
+  cublasLtMatrixLayout_t a_desc() const { return a_desc_.get(); }
+  cublasLtMatrixLayout_t b_desc() const { return b_desc_.get(); }
+  cublasLtMatrixLayout_t c_desc() const { return c_desc_.get(); }
+  cublasLtMatrixLayout_t d_desc() const { return d_desc_.get(); }
+  bool ok() { return op_desc_ && a_desc_ && b_desc_ && c_desc_ && d_desc_; }
+
+  blas::DataType ab_type() const override { return ab_type_; }
+  blas::DataType c_type() const override { return c_type_; }
+  blas::DataType scale_type() const { return scale_type_; }
+  blas::PointerMode pointer_mode() const { return pointer_mode_; }
+  blas::Epilogue epilogue() const { return epilogue_; }
+  int batch_count() const { return batch_count_; }
+  int64 stride_a() const { return stride_a_; }
+  int64 stride_b() const { return stride_b_; }
+  int64 stride_c() const { return stride_c_; }
+  int64 stride_d() const { return stride_d_; }
+
+  // Note: Must be const to satisfy API. This is always called before the plan
+  // is executed, so the state change is not observed in subsequent executions.
+  bool SetBiasPointer(const void *bias) const;
+
+ private:
+  UniqueOpDesc op_desc_;
+  UniqueLayoutDesc a_desc_;
+  UniqueLayoutDesc b_desc_;
+  UniqueLayoutDesc c_desc_;
+  UniqueLayoutDesc d_desc_;
+  blas::DataType ab_type_;
+  blas::DataType c_type_;
+  blas::DataType scale_type_;
+  blas::PointerMode pointer_mode_;
+  blas::Epilogue epilogue_;
+  int batch_count_;
+  int64 stride_a_;
+  int64 stride_b_;
+  int64 stride_c_;
+  int64 stride_d_;
+};
+
+bool CUDABlasLtMatmulPlan::SetBiasPointer(const void *bias) const {
+  return SetCublasLtAttr(op_desc_.get(), CUBLASLT_MATMUL_DESC_BIAS_POINTER,
+                         bias)
+      .ok();
+}
+
+class CUDABlasLtMatmulAlgorithm final : public blas::IBlasLtMatmulAlgorithm {
+ public:
+  CUDABlasLtMatmulAlgorithm(blas::AlgorithmType index,
+                            cublasLtMatmulAlgo_t algo, size_t workspace_size)
+      : index_(index), algo_(algo), workspace_size_(workspace_size) {}
+
+  blas::AlgorithmType index() const override { return index_; }
+
+  size_t workspace_size() const override { return workspace_size_; }
+
+  const cublasLtMatmulAlgo_t *algo() const { return &algo_; }
+
+  int algo_id() const {
+    int id;
+    GetCublasLtAttr(&algo_, CUBLASLT_ALGO_CONFIG_ID, &id);
+    return id;
+  }
+
+ private:
+  blas::AlgorithmType index_;
+  cublasLtMatmulAlgo_t algo_;
+  size_t workspace_size_;
+};
+
+port::StatusOr<UniqueMatmulPreference> CreateCublasLtMatmulPreference(
+    const blas::IBlasLtMatmulPlan *plan, size_t max_workspace_bytes) {
+  cublasLtMatmulPreference_t preference;
+  cublasStatus_t status = cublasLtMatmulPreferenceCreate(&preference);
+  if (status != CUBLAS_STATUS_SUCCESS) {
+    return port::Status(port::error::INTERNAL,
+                        absl::StrCat("cublasLtMatmulPreferenceCreate failed: ",
+                                     ToString(status)));
+  }
+  UniqueMatmulPreference unique_preference(preference);
+  SE_RETURN_IF_ERROR(SetCublasLtAttr(preference,
+                                     CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES,
+                                     max_workspace_bytes));
+
+  const auto &cuda_plan = *static_cast<const CUDABlasLtMatmulPlan *>(plan);
+  if (cuda_plan.batch_count() == 0) {
+    return unique_preference;
+  }
+  // This is a workaround for a known issue in cuBlasLt where the heuristic may
+  // in rare cases select an algo that does not support the specified stride.
+  // Specifying the alignment requirements manually like this avoids the issue.
+  auto get_alignment_bytes = [](int64 stride, blas::DataType dtype) {
+    return (stride & -stride) * GetDataTypeSizeBytes(dtype);
+  };
+  if (cuda_plan.stride_a()) {
+    SE_RETURN_IF_ERROR(
+        SetCublasLtAttr(preference, CUBLASLT_MATMUL_PREF_MIN_ALIGNMENT_A_BYTES,
+                        (uint32)get_alignment_bytes(cuda_plan.stride_a(),
+                                                    cuda_plan.ab_type())));
+  }
+  if (cuda_plan.stride_b()) {
+    SE_RETURN_IF_ERROR(
+        SetCublasLtAttr(preference, CUBLASLT_MATMUL_PREF_MIN_ALIGNMENT_B_BYTES,
+                        (uint32)get_alignment_bytes(cuda_plan.stride_b(),
+                                                    cuda_plan.ab_type())));
+  }
+  if (cuda_plan.stride_c()) {
+    SE_RETURN_IF_ERROR(SetCublasLtAttr(
+        preference, CUBLASLT_MATMUL_PREF_MIN_ALIGNMENT_C_BYTES,
+        (uint32)get_alignment_bytes(cuda_plan.stride_c(), cuda_plan.c_type())));
+  }
+  if (cuda_plan.stride_d()) {
+    SE_RETURN_IF_ERROR(SetCublasLtAttr(
+        preference, CUBLASLT_MATMUL_PREF_MIN_ALIGNMENT_D_BYTES,
+        (uint32)get_alignment_bytes(cuda_plan.stride_d(), cuda_plan.c_type())));
+  }
+  return unique_preference;
+}
+
+}  // namespace
+
+#endif  // CUDA_VERSION >= 11000
+
+port::StatusOr<std::unique_ptr<blas::IBlasLtMatmulPlan>>
+CUDABlas::CreateBlasLtMatmulPlan(const blas::BlasLtMatmulPlanParams &p) {
+#if CUDA_VERSION >= 11000
+  SE_ASSIGN_OR_RETURN(
+      auto op_desc,
+      CreateCublasLtOperationDesc(
+          p.computation_type, GetScaleType(p.c_type, p.computation_type),
+          p.pointer_mode, p.epilogue, p.transa, p.transb));
+  uint64 rows_a = p.transa == blas::Transpose::kNoTranspose ? p.m : p.k;
+  uint64 cols_a = p.transa == blas::Transpose::kNoTranspose ? p.k : p.m;
+  uint64 rows_b = p.transb == blas::Transpose::kNoTranspose ? p.k : p.n;
+  uint64 cols_b = p.transb == blas::Transpose::kNoTranspose ? p.n : p.k;
+  SE_ASSIGN_OR_RETURN(auto a_desc,
+                      CreateCublasLtLayoutDesc(p.ab_type, rows_a, cols_a, p.lda,
+                                               p.stride_a, p.batch_count));
+  SE_ASSIGN_OR_RETURN(auto b_desc,
+                      CreateCublasLtLayoutDesc(p.ab_type, rows_b, cols_b, p.ldb,
+                                               p.stride_b, p.batch_count));
+  SE_ASSIGN_OR_RETURN(auto c_desc,
+                      CreateCublasLtLayoutDesc(p.c_type, p.m, p.n, p.ldc,
+                                               p.stride_c, p.batch_count));
+  SE_ASSIGN_OR_RETURN(auto d_desc,
+                      CreateCublasLtLayoutDesc(p.c_type, p.m, p.n, p.ldc,
+                                               p.stride_c, p.batch_count));
+  blas::DataType scale_type = GetScaleType(p.c_type, p.computation_type);
+
+  return static_cast<std::unique_ptr<blas::IBlasLtMatmulPlan>>(
+      std::make_unique<CUDABlasLtMatmulPlan>(
+          std::move(op_desc), std::move(a_desc), std::move(b_desc),
+          std::move(c_desc), std::move(d_desc), p.ab_type, p.c_type, scale_type,
+          p.pointer_mode, p.epilogue, p.batch_count, p.stride_a, p.stride_b,
+          p.stride_c, p.stride_c));
+#else
+  return port::Status(
+      port::error::UNIMPLEMENTED,
+      "CreateBlasLtMatmulPlan is not supported with this version of CUDA");
+#endif
+}
+
+port::StatusOr<std::vector<std::unique_ptr<blas::IBlasLtMatmulAlgorithm>>>
+CUDABlas::GetBlasLtMatmulAlgorithms(const blas::IBlasLtMatmulPlan *plan,
+                                    size_t max_workspace_size,
+                                    int max_algorithm_count) {
+#if CUDA_VERSION >= 11000
+  SE_ASSIGN_OR_RETURN(UniqueMatmulPreference preference,
+                      CreateCublasLtMatmulPreference(plan, max_workspace_size));
+
+  std::vector<cublasLtMatmulHeuristicResult_t> results(max_algorithm_count);
+  {
+    absl::MutexLock lock(&mu_);
+
+    CHECK(blasLt_ != nullptr);
+
+    gpu::ScopedActivateExecutorContext sac{parent_};
+
+    int found_algorithm_count = 0;
+    const auto &cuda_plan = *static_cast<const CUDABlasLtMatmulPlan *>(plan);
+    cublasStatus_t status = cublasLtMatmulAlgoGetHeuristic(
+        blasLt_, cuda_plan.op_desc(), cuda_plan.a_desc(), cuda_plan.b_desc(),
+        cuda_plan.c_desc(), cuda_plan.d_desc(), preference.get(),
+        max_algorithm_count, results.data(), &found_algorithm_count);
+    if (status != CUBLAS_STATUS_SUCCESS) {
+      return port::Status(
+          port::error::INTERNAL,
+          absl::StrCat("cublasLtMatmulAlgoGetHeuristic failed: ",
+                       ToString(status)));
+    }
+    results.resize(found_algorithm_count);
+  }
+
+  std::vector<std::unique_ptr<blas::IBlasLtMatmulAlgorithm>> out_algorithms;
+  out_algorithms.reserve(results.size());
+  for (size_t i = 0; i < results.size(); ++i) {
+    const auto &result = results[i];
+    if (result.state != CUBLAS_STATUS_SUCCESS) continue;  // Skip failed algos
+    out_algorithms.emplace_back(std::make_unique<CUDABlasLtMatmulAlgorithm>(
+        i, result.algo, result.workspaceSize));
+  }
+  return out_algorithms;
+#else  // if CUDA_VERSION < 11000
+  return port::Status(
+      port::error::UNIMPLEMENTED,
+      "GetBlasLtMatmulAlgorithms is not supported with this version of CUDA");
+#endif
+}
+
+#if CUDA_VERSION >= 11000
+bool CUDABlas::DoBlasLtMatmulInternal(
+    Stream *stream, bool err_on_failure, const blas::IBlasLtMatmulPlan *plan,
+    const HostOrDeviceScalar<void> &alpha, DeviceMemoryBase a,
+    DeviceMemoryBase b, const HostOrDeviceScalar<void> &beta,
+    DeviceMemoryBase c, DeviceMemoryBase d, ScratchAllocator *scratch_allocator,
+    const blas::IBlasLtMatmulAlgorithm *algorithm, DeviceMemoryBase bias) {
+  const auto &cuda_plan = *static_cast<const CUDABlasLtMatmulPlan *>(plan);
+  const auto &cuda_algo =
+      *static_cast<const CUDABlasLtMatmulAlgorithm *>(algorithm);
+
+  if (alpha.data_type() != cuda_plan.scale_type() ||
+      beta.data_type() != cuda_plan.scale_type()) {
+    VLOG(2) << "DoBlasLtMatmul returning false because alpha and beta types do "
+               "not match plan: expected "
+            << cuda_plan.c_type() << ", got alpha=" << alpha.data_type()
+            << " beta=" << beta.data_type();
+    return false;
+  }
+  if (alpha.is_pointer() != beta.is_pointer()) {
+    VLOG(2) << "DoBlasLtMatmul returning false because one of `alpha` "
+               "and `beta` is a pointer, but the other is not.";
+    return false;
+  }
+  bool is_pointer_mode_host = !alpha.is_pointer();
+  if ((cuda_plan.pointer_mode() == blas::PointerMode::kHost) !=
+      is_pointer_mode_host) {
+    VLOG(2) << "DoBlasLtMatmul returning false because plan has wrong "
+               "pointer_mode for the given alpha/beta.";
+    return false;
+  }
+  if ((cuda_plan.epilogue() == blas::Epilogue::kBias ||
+       cuda_plan.epilogue() == blas::Epilogue::kBiasThenReLU) !=
+      (bias != nullptr)) {
+    VLOG(2) << "DoBlasLtMatmul returning false because plan has wrong "
+               "epilogue for the given bias pointer.";
+    return false;
+  }
+  if (bias != nullptr) {
+    if (!cuda_plan.SetBiasPointer(bias.opaque())) {
+      VLOG(2) << "DoBlasLtMatmul returning false because setting the bias "
+                 "pointer failed.";
+      return false;
+    }
+  }
+  const void *alpha_ptr = alpha.is_pointer() ? alpha.opaque_pointer().opaque()
+                                             : alpha.opaque_value();
+  const void *beta_ptr =
+      beta.is_pointer() ? beta.opaque_pointer().opaque() : beta.opaque_value();
+
+  void *workspace = nullptr;
+  if (cuda_algo.workspace_size()) {
+    port::Status allocation_status = AllocateWorkspace(
+        &workspace, scratch_allocator, cuda_algo.workspace_size());
+    if (!allocation_status.ok()) {
+      if (err_on_failure || VLOG_IS_ON(3)) {
+        LOG(ERROR)
+            << "Failed to allocate workspace for cublasLtMatmul algo with id: "
+            << cuda_algo.algo_id() << " requiring "
+            << cuda_algo.workspace_size() << " bytes of workspace";
+      }
+      return false;
+    }
+  }
+
+  cudaStream_t cuda_stream = CUDAStream(stream);
+
+  absl::MutexLock lock(&mu_);
+
+  CHECK(blasLt_ != nullptr);
+
+  gpu::ScopedActivateExecutorContext sac{parent_};
+
+  cublasStatus_t ret = cublasLtMatmul(
+      blasLt_, cuda_plan.op_desc(), alpha_ptr, a.opaque(), cuda_plan.a_desc(),
+      b.opaque(), cuda_plan.b_desc(), beta_ptr, c.opaque(), cuda_plan.c_desc(),
+      d.opaque(), cuda_plan.d_desc(), cuda_algo.algo(), workspace,
+      cuda_algo.workspace_size(), cuda_stream);
+  if (ret != CUBLAS_STATUS_SUCCESS) {
+    if (err_on_failure || VLOG_IS_ON(3)) {
+      LOG(ERROR) << "failed to run cublasLtMatmul routine: " << ToString(ret);
+    }
+    return false;
+  }
+  return true;
+}
+#endif  // CUDA_VERSION >= 11000
+
+bool CUDABlas::DoBlasLtMatmul(
+    Stream *stream, const blas::IBlasLtMatmulPlan *plan,
+    const HostOrDeviceScalar<void> &alpha, DeviceMemoryBase a,
+    DeviceMemoryBase b, const HostOrDeviceScalar<void> &beta,
+    DeviceMemoryBase c, ScratchAllocator *scratch_allocator,
+    const blas::IBlasLtMatmulAlgorithm *algorithm, DeviceMemoryBase bias,
+    blas::ProfileResult *output_profile_result) {
+#if CUDA_VERSION >= 11000
+  const auto &cuda_plan = *static_cast<const CUDABlasLtMatmulPlan *>(plan);
+  HostOrDeviceScalar<void> alpha_cast = alpha;
+  HostOrDeviceScalar<void> beta_cast = beta;
+  if (cuda_plan.c_type() == blas::DataType::kHalf &&
+      cuda_plan.scale_type() == blas::DataType::kFloat) {
+    // The given alpha and beta types are F16 (they always match c), but F32*
+    // computation type requires that they be F32, so we must cast them.
+    if (alpha.is_pointer() || beta.is_pointer()) {
+      // We cannot easily convert a pointer to f16 memory to a pointer to f32
+      // memory from here, so we don't support this for now.
+      return false;
+    }
+    alpha_cast = HostOrDeviceScalar<void>(
+        static_cast<float>(alpha.value<Eigen::half>()));
+    beta_cast =
+        HostOrDeviceScalar<void>(static_cast<float>(beta.value<Eigen::half>()));
+  }
+
+  std::unique_ptr<GpuTimer, GpuTimerDeleter> timer;
+  if (output_profile_result) {
+    timer.reset(new GpuTimer(parent_));
+    if (!timer->Init() || !timer->Start(AsGpuStream(stream))) {
+      return false;
+    }
+  }
+
+  bool err_on_failure = timer != nullptr;
+  bool result = DoBlasLtMatmulInternal(stream, err_on_failure, plan, alpha_cast,
+                                       a, b, beta_cast, c, c, scratch_allocator,
+                                       algorithm, bias);
+
+  if (timer && result) {
+    // GpuTimer will CHECK-fail if we Stop() it while the stream is in an error
+    // state.
+    if (!timer->Stop(AsGpuStream(stream))) {
+      return false;
+    }
+    output_profile_result->set_is_valid(true);
+    output_profile_result->set_algorithm(algorithm->index());
+    output_profile_result->set_elapsed_time_in_ms(
+        timer->GetElapsedMilliseconds());
+  }
+  return result;
+#else  // if CUDA_VERSION < 11000
+  return false;
+#endif
 }
 
 port::Status CUDABlas::GetVersion(std::string *version) {
