@@ -1855,12 +1855,6 @@ cc_library(
     ],
 )
 
-# TODO(gonnet): Remove this alias once all users have been moved to the actual target.
-alias(
-    name = "tensor_testutil",
-    actual = "//tensorflow/core/framework:tensor_testutil",
-)
-
 # Main program for tests
 alias(
     name = "test_main",
