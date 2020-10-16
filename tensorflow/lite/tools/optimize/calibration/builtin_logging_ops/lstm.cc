@@ -461,10 +461,9 @@ struct OpData {
 // Resize the output, state tensors based on the sizes of the input tensors.
 // Allocate a temporary scratch tensor. Also check that the sizes of the input
 // tensors match each other.
-TfLiteStatus lstm_eval(TfLiteContext* context, TfLiteNode* node, Logger* logger,
+TfLiteStatus lstm_eval(TfLiteContext* context, TfLiteNode* node,
+                       LSTMType lstm_type, Logger* logger,
                        ErrorReporter* error_reporter) {
-  const auto* params = static_cast<TfLiteLSTMParams*>(node->builtin_data);
-
   const TfLiteTensor* input;
   TF_LITE_ENSURE_OK(
       context, GetInputSafe(context, node,
@@ -578,6 +577,31 @@ TfLiteStatus lstm_eval(TfLiteContext* context, TfLiteNode* node, Logger* logger,
     intermediate_tensor_indexes[i] = node->intermediates->data[i];
   }
 
+  TfLiteLSTMParams lstm_params;
+  bool time_major = true;
+  switch (lstm_type) {
+    case LSTMType::kLSTM: {
+      lstm_params = *(static_cast<TfLiteLSTMParams*>(node->builtin_data));
+      time_major = true;
+      break;
+    }
+    case LSTMType::kUnidirectionalSequenceLSTM: {
+      const auto* params = static_cast<TfLiteUnidirectionalSequenceLSTMParams*>(
+          node->builtin_data);
+      // Copy out the LSTM specific params so they can be passed in the
+      // function.
+      lstm_params.activation = params->activation;
+      lstm_params.cell_clip = params->cell_clip;
+      lstm_params.proj_clip = params->proj_clip;
+      lstm_params.asymmetric_quantize_inputs =
+          params->asymmetric_quantize_inputs;
+      time_major = params->time_major;
+      break;
+    }
+    default:
+      return kTfLiteError;
+  }
+
   switch (input_to_output_weights->type) {
     case kTfLiteFloat32: {
       return EvalCalibration(
@@ -594,9 +618,9 @@ TfLiteStatus lstm_eval(TfLiteContext* context, TfLiteNode* node, Logger* logger,
           /*aux_input_to_cell_weights=*/nullptr,
           /*aux_input_to_output_weights=*/nullptr, input_gate_bias,
           forget_gate_bias, cell_gate_bias, output_gate_bias,
-          projection_weights, projection_bias, params,
+          projection_weights, projection_bias, &lstm_params,
           /*forward_sequence=*/true,
-          /*time_major=*/true,
+          /*time_major=*/time_major,
           /*output_offset=*/0, scratch_buffer, output_state, cell_state, output,
           logger, intermediate_tensor_indexes, error_reporter);
     }
@@ -613,7 +637,14 @@ TfLiteStatus lstm_eval(TfLiteContext* context, TfLiteNode* node, Logger* logger,
 TfLiteStatus lstm_logging_kernel(TfLiteContext* context, TfLiteNode* node,
                                  Logger* logger,
                                  ErrorReporter* error_reporter) {
-  return lstm_eval(context, node, logger, error_reporter);
+  return lstm_eval(context, node, LSTMType::kLSTM, logger, error_reporter);
+}
+
+TfLiteStatus unidirectional_sequence_lstm_logging_kernel(
+    TfLiteContext* context, TfLiteNode* node, Logger* logger,
+    ErrorReporter* error_reporter) {
+  return lstm_eval(context, node, LSTMType::kUnidirectionalSequenceLSTM, logger,
+                   error_reporter);
 }
 
 }  // namespace builtin

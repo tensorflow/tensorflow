@@ -65,6 +65,7 @@ tf_cc_test(
     data = [
         "//tensorflow/lite:testdata/lstm.bin",
         "//tensorflow/lite:testdata/multi_add.bin",
+        "//tensorflow/lite:testdata/unidirectional_sequence_lstm.bin",
     ],
     tags = [
         "tflite_not_portable_android",

@@ -174,13 +174,17 @@ GlobalCalibratorRegistry* GetCalibratorRegistry() {
 // TODO(jianlijianli): extend this to support multiple recipe for the same
 // model.
 logging_kernel_func_ptr GetLoggingEvalFunc(TfLiteContext* context,
-                                           TfLiteNode* node) {
-  const int lstm_number_input = 24;
-  if (node->inputs->size == lstm_number_input) {
-    // LSTM Op.
-    return tflite::optimize::calibration::builtin::lstm_logging_kernel;
+                                           TfLiteNode* node,
+                                           int builtin_op_code) {
+  switch (builtin_op_code) {
+    case BuiltinOperator_LSTM:
+      return tflite::optimize::calibration::builtin::lstm_logging_kernel;
+    case BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM:
+      return tflite::optimize::calibration::builtin::
+          unidirectional_sequence_lstm_logging_kernel;
+    default:
+      return nullptr;
   }
-  return nullptr;
 }
 
 // A wrapper implementation for |TfLiteRegistration.invoke| that logs inputs,
@@ -203,7 +207,9 @@ TfLiteStatus LoggingEval(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_STATUS(logger->LogTensorValue(
         i, tensor.data.f, tensor.bytes / sizeof(float), error_reporter));
   }
-  auto kernel_invoke_intermediate = GetLoggingEvalFunc(context, node);
+  auto builtin_op_code = calibrator->GetOpInfo(node).builtin_op_code;
+  auto kernel_invoke_intermediate =
+      GetLoggingEvalFunc(context, node, builtin_op_code);
   TfLiteStatus status;
   if (kernel_invoke_intermediate == nullptr) {
     status = kernel_invoke(context, node);
