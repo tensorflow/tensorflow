@@ -58,7 +58,6 @@ struct MlirBufferSlice : public BufferSlice {
 
 struct MlirEmitterInput {
   mlir::Operation* op;
-  absl::string_view name;
   Thunk::ThunkInfo thunk_info;
   MlirBufferSlice extra_slice;
 };
@@ -161,7 +160,7 @@ class IrEmitterUnnested : public IrEmitter,
   Status HandleScatter(HloInstruction* scatter) override;
   Status HandleSelect(HloInstruction* select) override;
   Status HandleSort(HloInstruction* sort) override;
-  Status EmitSortFromMlir(MlirEmitterInput input);
+  Status EmitSortFromMlir(MlirEmitterInput mlir_input);
   Status HandleTriangularSolve(HloInstruction* hlo) override;
   Status HandleTupleSelect(HloInstruction* tuple_select) override;
   Status HandleAllReduce(HloInstruction* crs) override;
@@ -178,7 +177,7 @@ class IrEmitterUnnested : public IrEmitter,
   // `unroll_factor` is greater than one.
   Status EmitTargetElementLoopInThunk(
       const HloInstruction& hlo, const llvm_ir::ElementGenerator& body_emitter,
-      KernelThunk* thunk, int unroll_factor);
+      KernelThunk* thunk, int unroll_factor, bool few_waves = false);
 
   Status Postprocess(HloInstruction* hlo) override;
 

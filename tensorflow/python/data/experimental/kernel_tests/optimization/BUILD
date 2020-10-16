@@ -1,5 +1,5 @@
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -255,6 +255,7 @@ tf_py_test(
         "no_oss",
         "no_pip",
         "no_windows",
+        "noasan",  # TODO(b/337374867) fails with -fsanitize=null
     ],
     deps = [
         "//tensorflow/core:protos_all_py",

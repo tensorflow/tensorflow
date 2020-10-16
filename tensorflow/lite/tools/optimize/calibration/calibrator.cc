@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/tools/optimize/calibration/builtin_logging_ops/lstm.h"
@@ -286,7 +287,7 @@ string GetOpName(const tflite::OperatorCode& opcode) {
   if (opcode.custom_code() != nullptr) {
     return opcode.custom_code()->str();
   }
-  return tflite::EnumNamesBuiltinOperator()[opcode.builtin_code()];
+  return tflite::EnumNamesBuiltinOperator()[GetBuiltinCode(&opcode)];
 }
 
 // A |CalibrationReader| that owns the Calibrator.
@@ -348,7 +349,7 @@ TfLiteStatus BuildLoggingInterpreter(
     op_info.node_index = i;
     auto op = operators->Get(i);
     auto operator_code = operator_codes->Get(op->opcode_index());
-    op_info.builtin_op_code = operator_code->builtin_code();
+    op_info.builtin_op_code = GetBuiltinCode(operator_code);
     op_info.name = GetOpName(*operator_code);
     op_info.is_custom_op = operator_code->custom_code() != nullptr;
     op_info.version = operator_code->version();
@@ -367,7 +368,7 @@ TfLiteStatus BuildLoggingInterpreter(
       custom_op_and_versions.insert(
           {op_info.name.c_str(), operator_code->version()});
     } else {
-      op_info.registration = op_resolver.FindOp(operator_code->builtin_code(),
+      op_info.registration = op_resolver.FindOp(GetBuiltinCode(operator_code),
                                                 operator_code->version());
       builtin_op_and_versions.insert(
           {op_info.builtin_op_code, operator_code->version()});

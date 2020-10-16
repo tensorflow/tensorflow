@@ -170,13 +170,12 @@ class _OptionalImpl(Optional):
   `Optional.__init__()` in the public API.
   """
 
-  def __init__(self, variant_tensor, element_spec, device=None):
+  def __init__(self, variant_tensor, element_spec):
     self._variant_tensor = variant_tensor
     self._element_spec = element_spec
-    self._device = device
 
   def has_value(self, name=None):
-    with ops.device(self._device):
+    with ops.colocate_with(self._variant_tensor):
       return gen_dataset_ops.optional_has_value(self._variant_tensor, name=name)
 
   def get_value(self, name=None):
@@ -184,16 +183,15 @@ class _OptionalImpl(Optional):
     # in `Iterator.get_next()` and `StructuredFunctionWrapper`.
     with ops.name_scope(name, "OptionalGetValue",
                         [self._variant_tensor]) as scope:
-      with ops.device(self._device):
-        return structure.from_tensor_list(
-            self._element_spec,
-            gen_dataset_ops.optional_get_value(
-                self._variant_tensor,
-                name=scope,
-                output_types=structure.get_flat_tensor_types(
-                    self._element_spec),
-                output_shapes=structure.get_flat_tensor_shapes(
-                    self._element_spec)))
+      with ops.colocate_with(self._variant_tensor):
+        result = gen_dataset_ops.optional_get_value(
+            self._variant_tensor,
+            name=scope,
+            output_types=structure.get_flat_tensor_types(self._element_spec),
+            output_shapes=structure.get_flat_tensor_shapes(self._element_spec))
+      # NOTE: We do not colocate the deserialization of composite tensors
+      # because not all ops are guaranteed to have non-GPU kernels.
+      return structure.from_tensor_list(self._element_spec, result)
 
   @property
   def element_spec(self):

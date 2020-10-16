@@ -333,7 +333,7 @@ def _MaybeCompile(scope, op, func, grad_fn):
           "_XlaSeparateCompiledGradients")
       xla_scope = op.get_attr("_XlaScope").decode()
     except ValueError:
-      return grad_fn()  # Exit early
+      xla_compile = False
 
   if not xla_compile:
     return grad_fn()  # Exit early

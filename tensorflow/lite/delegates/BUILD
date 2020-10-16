@@ -86,6 +86,7 @@ cc_test(
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_utils",
         "//tensorflow/lite/testing:util",
         "//third_party/eigen3",
         "@com_google_googletest//:gtest",

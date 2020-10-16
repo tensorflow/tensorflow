@@ -172,6 +172,7 @@ bool ShouldMoveOpAfterCluster(
     const llvm::SmallSetVector<Operation*, 8>& preceding_users,
     const TF::ResourceAliasAnalysis::Info& resource_alias_analysis,
     const llvm::SmallDenseSet<int64_t>& observed_resource_ids) {
+  const bool is_replicate = llvm::isa<tf_device::ReplicateOp>(op);
   auto result = op->walk([&](Operation* inner_op) {
     for (Value operand : inner_op->getOperands()) {
       Operation* def = operand.getDefiningOp();
@@ -185,6 +186,11 @@ bool ShouldMoveOpAfterCluster(
         return WalkResult::interrupt();
       }
     }
+
+    // Don't visit replicate op inner op operands as new resource
+    // values/arguments may have been created but are not known in
+    // `resource_alias_analysis`.
+    if (is_replicate && inner_op != op) return WalkResult::advance();
 
     // Check for uses of any resource in or after cluster.
     for (Value operand : TF::filter_resources(inner_op->getOperands())) {

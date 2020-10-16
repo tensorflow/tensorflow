@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
-#include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
@@ -79,16 +78,7 @@ int64 GetEventType(bool is_host_plane, const EventNode& event) {
     } else if (absl::StartsWith(name, "ProcessBatch")) {
       return HostEventType::kProcessBatch;
     }
-    // TF op names.
-    Category category = ParseTfOpFullname(name).category;
-    switch (category) {
-      case Category::kTensorFlow:
-        return HostEventType::kTfOpRun;
-      case Category::kTfData:
-        return HostEventType::kIterator;
-      default:
-        return HostEventType::kUnknownHostEventType;
-    }
+    return HostEventType::kUnknownHostEventType;
   }
 }
 
@@ -304,6 +294,11 @@ bool HasJaxEvent(const EventNodeMap& event_node_map) {
   return event_node_map.contains(HostEventType::kExecuteOnLocalDevices);
 }
 
+bool IsIteratorEventType(absl::optional<int64> event_type) {
+  return event_type == HostEventType::kIterator ||
+         event_type == HostEventType::kDeviceInputPipelineSecondIterator;
+}
+
 }  // namespace
 
 EventNode::EventNode(const XPlaneVisitor* plane, XLine* raw_line,
@@ -488,15 +483,14 @@ bool EventNode::StartsBefore(const EventNode& other) const {
          other.GetEventVisitor().TimestampPs();
 }
 
-void EventForest::ConnectIntraThread(const XPlaneVisitor& visitor,
-                                     XPlane* plane,
+void EventForest::ConnectIntraThread(XPlane* plane, XPlaneVisitor* visitor,
                                      ContextGroupMap* context_groups) {
   // TODO(b/149095099): avoid string comparison.
-  bool is_host_plane = (visitor.Name() == kHostThreadsPlaneName);
+  bool is_host_plane = (visitor->Name() == kHostThreadsPlaneName);
   for (auto& line : *plane->mutable_lines()) {
     std::vector<EventNode*> parent_nodes;
     for (auto& event : *line.mutable_events()) {
-      auto cur_node = absl::make_unique<EventNode>(&visitor, &line, &event);
+      auto cur_node = absl::make_unique<EventNode>(visitor, &line, &event);
       // Update `context_groups` for `ConnectInterThread`.
       SetContextGroup(cur_node.get(), context_groups);
       // Update `root_events_` for `CreateEventGroup`.
@@ -578,7 +572,7 @@ void EventForest::ProcessLegacyRootEvents(
   }
 }
 
-void EventForest::CreateEventGroup() {
+void EventForest::CreateEventGroups() {
   // Handle inference batching profiles.
   if (event_node_map_.contains(HostEventType::kProcessBatch)) {
     // Assign group_id per batch.
@@ -746,7 +740,41 @@ void EventForest::ProcessModelIds() {
   }
 }
 
-void EventForest::ProcessTfDataEvents() {
+void EventForest::AddPlane(
+    const std::function<XPlaneVisitor(const XPlane*)> visitor_factory,
+    XPlane* plane) {
+  CreateStatMetadata(plane);
+  planes_.push_back({plane, visitor_factory(plane)});
+}
+
+void EventForest::AddSpace(
+    const std::function<XPlaneVisitor(const XPlane*)> visitor_factory,
+    XSpace* space) {
+  for (XPlane& plane : *space->mutable_planes()) {
+    AddPlane(visitor_factory, &plane);
+  }
+}
+
+void EventForest::AddPlanes(
+    const std::function<XPlaneVisitor(const XPlane*)> visitor_factory,
+    const std::vector<XPlane*>& planes) {
+  for (XPlane* plane : planes) {
+    AddPlane(visitor_factory, plane);
+  }
+}
+
+void EventForest::ConnectEvents(
+    const std::vector<InterThreadConnectInfo>& connect_info_list) {
+  ContextGroupMap context_groups;
+  for (auto& plane_visitor : planes_) {
+    ConnectIntraThread(plane_visitor.first, &plane_visitor.second,
+                       &context_groups);
+  }
+  ConnectInterThread(connect_info_list);
+  ConnectContextGroups(context_groups);
+}
+
+void EventForest::ConnectTfDataEvents() {
   absl::flat_hash_map<std::pair<int64 /*iterator_id*/, int64 /*element_id*/>,
                       std::vector<EventNode*>>
       produce_iterator_map;
@@ -765,8 +793,7 @@ void EventForest::ProcessTfDataEvents() {
           produce_event->GetEventVisitor().GetStat(StatType::kElementId);
       if (!element_id.has_value()) continue;
       for (EventNode* produce_iterator : produce_event->GetChildren()) {
-        if (IsDatasetOp(ParseTfOpFullname(
-                produce_iterator->GetEventVisitor().Name()))) {
+        if (IsIteratorEventType(produce_iterator->GetEventVisitor().Type())) {
           absl::optional<XStatVisitor> iterator_id =
               produce_iterator->GetEventVisitor().GetStat(StatType::kParentId);
           if (!iterator_id.has_value()) break;
@@ -799,8 +826,7 @@ void EventForest::ProcessTfDataEvents() {
       // parents.
       EventNode* consume_iterator = consume_event->GetParents().at(0);
       if (!consume_iterator ||
-          !IsDatasetOp(
-              ParseTfOpFullname(consume_iterator->GetEventVisitor().Name()))) {
+          !IsIteratorEventType(consume_iterator->GetEventVisitor().Type())) {
         continue;
       }
       absl::optional<XStatVisitor> iterator_id =
@@ -819,38 +845,14 @@ void EventForest::ProcessTfDataEvents() {
   VLOG(1) << num_matched << " consumer iterators matched.";
 }
 
-EventForest::EventForest(
-    const std::vector<InterThreadConnectInfo>& connect_info_list,
-    const std::vector<int64>& root_event_types,
-    const std::function<XPlaneVisitor(const XPlane*)> visitor_factory,
-    XSpace* space) {
-  ContextGroupMap context_groups;
-  visitors_.reserve(space->planes_size());
-  for (auto& plane : *space->mutable_planes()) {
-    CreateStatMetadata(&plane);
-    visitors_.push_back(visitor_factory(&plane));
-    ConnectIntraThread(visitors_.back(), &plane, &context_groups);
-  }
-  ConnectInterThread(connect_info_list);
-  ConnectContextGroups(context_groups);
+void EventForest::GroupEvents(const std::vector<int64>& root_event_types) {
   ProcessTensorFlowLoop();
   ProcessWorker();
   ProcessLegacyRootEvents(root_event_types);
-  CreateEventGroup();
+  CreateEventGroups();
   MarkEagerlyExecutedGpuKernels();
   MarkEagerlyExecutedCpuTfOps();
   ProcessModelIds();
-}
-
-EventForest::EventForest(
-    const std::function<XPlaneVisitor(const XPlane*)> visitor_factory,
-    XPlane* plane) {
-  ContextGroupMap context_groups;
-  visitors_.reserve(1);
-  CreateStatMetadata(plane);
-  visitors_.push_back(visitor_factory(plane));
-  ConnectIntraThread(visitors_.back(), plane, &context_groups);
-  ConnectContextGroups(context_groups);
 }
 
 std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList() {
@@ -867,14 +869,17 @@ std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList() {
   return connect_info_list;
 }
 
-void GroupTfEvents(XSpace* space, GroupMetadataMap* group_metadata_map) {
-  if (!space) return;
+void GroupTfEvents(XSpace* space, EventForest* event_forest) {
   std::vector<InterThreadConnectInfo> connect_info_list =
       CreateInterThreadConnectInfoList();
-  EventForest event_forest(connect_info_list, {}, CreateTfXPlaneVisitor, space);
-  if (group_metadata_map) {
-    *group_metadata_map = event_forest.GetGroupMetadataMap();
-  }
+  event_forest->AddSpace(CreateTfXPlaneVisitor, space);
+  event_forest->ConnectEvents(connect_info_list);
+  event_forest->GroupEvents();
+}
+
+void GroupTfEvents(XSpace* space) {
+  EventForest event_forest;
+  GroupTfEvents(space, &event_forest);
 }
 
 }  // namespace profiler

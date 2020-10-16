@@ -152,8 +152,8 @@ class Layer(base_layer.Layer):
   @trackable.no_automatic_dependency_tracking
   def __init__(self, trainable=True, name=None, dtype=None, dynamic=False,
                **kwargs):
-    base_layer.keras_api_gauge.get_cell('layer').set(True)
-    base_layer.keras_layers_gauge.get_cell(self.__class__.__name__).set(True)
+    self._instrument_layer_creation()
+
     # These properties should be set by the user via keyword arguments.
     # note that 'dtype', 'input_shape' and 'batch_input_shape'
     # are only applicable to input layers: do not pass these keywords
@@ -835,8 +835,9 @@ class Layer(base_layer.Layer):
   def _assert_built_as_v1(self):
     if not hasattr(self, '_originally_built_as_v1'):
       raise ValueError(
-          'Your Layer or Model is in an invalid state. This can happen if you '
-          'are interleaving estimator/non-estimator models or '
+          'Your Layer or Model is in an invalid state. '
+          'This can happen for the following cases:\n '
+          '1. You might be interleaving estimator/non-estimator models or '
           'interleaving models/layers made in tf.compat.v1.Graph.as_default() '
           'with models/layers created outside of it. '
           'Converting a model to an estimator (via model_to_estimator) '
@@ -844,7 +845,11 @@ class Layer(base_layer.Layer):
           'if they were not the model converted to an estimator). '
           'Similarly, making a layer or a model inside a '
           'a tf.compat.v1.Graph invalidates all layers/models you previously '
-          'made outside of the graph.')
+          'made outside of the graph.\n'
+          '2. You might be using a custom keras layer implementation with '
+          ' custom __init__ which didn\'t call super().__init__. '
+          ' Please check the implementation of %s and its bases.' %
+          (type(self),))
 
   @property
   def dtype(self):
@@ -2097,9 +2102,10 @@ class Layer(base_layer.Layer):
         # operations.
         with tf_utils.maybe_init_scope(self):
           self.build(input_shapes)
-      # We must set self.built since user defined build functions are not
-      # constrained to set self.built.
-      self.built = True
+      # We must set also ensure that the layer is marked as built, and the build
+      # shape is stored since user defined build functions may not be calling
+      # `super.build()`
+      Layer.build(self, input_shapes)
 
     # Optionally load weight values specified at layer instantiation.
     if self._initial_weights is not None:

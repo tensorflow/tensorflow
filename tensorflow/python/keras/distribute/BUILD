@@ -16,8 +16,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 filegroup(
     name = "all_py_srcs",
     srcs = glob(["*.py"]),
@@ -152,7 +150,6 @@ cuda_py_test(
 distribute_py_test(
     name = "checkpointing_test",
     srcs = ["checkpointing_test.py"],
-    disable_mlir_bridge = False,
     main = "checkpointing_test.py",
     tags = [
         "multi_and_single_gpu",
@@ -253,9 +250,11 @@ distribute_py_test(
     main = "custom_training_loop_models_test.py",
     tags = [
         "multi_and_single_gpu",
+        "notsan",  # TODO(b/170954243)
     ],
     tpu_tags = [
         "no_oss",  # b/153615544.
+        "notsan",  # TODO(b/170869466)
     ],
     deps = [
         "//tensorflow/python:math_ops",
@@ -337,13 +336,17 @@ distribute_py_test(
 distribute_py_test(
     name = "distribute_strategy_test",
     srcs = ["distribute_strategy_test.py"],
+    disable_mlir_bridge = True,  # TODO(b/170352626)
     full_precision = True,
     main = "distribute_strategy_test.py",
+    python_version = "PY3",
     shard_count = 10,
     tags = [
         "multi_and_single_gpu",
         "no_rocm",  # times out on ROCm
         "no_windows_gpu",
+        "noasan",  # TODO(b/170902997)
+        "notap",  # TODO(b/170902997)
         "notsan",
     ],
     tpu_tags = [
@@ -403,7 +406,7 @@ distribute_py_test(
     name = "keras_dnn_correctness_test",
     size = "medium",
     srcs = ["keras_dnn_correctness_test.py"],
-    disable_mlir_bridge = False,
+    disable_mlir_bridge = True,  # TODO(b/170352626)
     full_precision = True,
     main = "keras_dnn_correctness_test.py",
     # Shard count is set to an odd number to distribute tasks across
@@ -413,6 +416,7 @@ distribute_py_test(
         "multi_and_single_gpu",
         "no_rocm",  # times out on ROCm
         "no_windows_gpu",
+        "nogpu",  # TODO(b/170905292)
         "notsan",
     ],
     deps = [
@@ -424,10 +428,12 @@ distribute_py_test(
     name = "keras_embedding_model_correctness_test",
     size = "medium",
     srcs = ["keras_embedding_model_correctness_test.py"],
+    disable_mlir_bridge = True,  # TODO(b/170352626)
     full_precision = True,
     main = "keras_embedding_model_correctness_test.py",
     shard_count = 8,
     tags = [
+        "broken",  # b/170975619
         "multi_and_single_gpu",
         "no_windows_gpu",
         "notsan",
@@ -441,7 +447,7 @@ distribute_py_test(
     name = "keras_image_model_correctness_test",
     size = "medium",
     srcs = ["keras_image_model_correctness_test.py"],
-    disable_mlir_bridge = False,
+    disable_mlir_bridge = True,  # TODO(b/170352626)
     full_precision = True,
     main = "keras_image_model_correctness_test.py",
     shard_count = 16,
@@ -449,6 +455,7 @@ distribute_py_test(
         "multi_and_single_gpu",
         "no_rocm",  # times out on ROCm
         "no_windows_gpu",
+        "noasan",  # TODO(b/337374867) fails with -fsanitize=null
         "notsan",
     ],
     xla_enable_strict_auto_jit = False,  # Tensorflow also fails.
@@ -488,6 +495,7 @@ distribute_py_test(
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -506,6 +514,7 @@ distribute_py_test(
         "no_cuda11",
         "no_oss",
         "no_windows_gpu",
+        "noasan",  # TODO(b/337374867) fails with -fsanitize=null
         "notpu",  # TODO(b/153672562)
         "notsan",
     ],
@@ -518,7 +527,6 @@ distribute_py_test(
     name = "keras_save_load_test",
     size = "medium",
     srcs = ["keras_save_load_test.py"],
-    disable_mlir_bridge = False,
     full_precision = True,
     main = "keras_save_load_test.py",
     shard_count = 7,
@@ -553,6 +561,7 @@ distribute_py_test(
 distribute_py_test(
     name = "keras_utils_test",
     srcs = ["keras_utils_test.py"],
+    disable_mlir_bridge = True,  # TODO(b/170352626)
     full_precision = True,
     main = "keras_utils_test.py",
     shard_count = 4,
@@ -677,6 +686,7 @@ cuda_py_test(
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras:metrics",
         "//tensorflow/python/keras/layers:core",
     ],
 )
@@ -685,7 +695,7 @@ cuda_py_test(
     name = "multi_worker_test",
     srcs = ["multi_worker_test.py"],
     python_version = "PY3",
-    shard_count = 32,
+    shard_count = 2,
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/130369494): Investigate why it times out on OSS.
@@ -786,7 +796,6 @@ distribute_py_test(
     name = "saved_model_save_load_test",
     size = "medium",
     srcs = ["saved_model_save_load_test.py"],
-    disable_mlir_bridge = False,
     full_precision = True,
     main = "saved_model_save_load_test.py",
     shard_count = 7,
@@ -804,7 +813,6 @@ distribute_py_test(
     name = "saved_model_mixed_api_test",
     size = "medium",
     srcs = ["saved_model_mixed_api_test.py"],
-    disable_mlir_bridge = False,
     full_precision = True,
     main = "saved_model_mixed_api_test.py",
     shard_count = 7,

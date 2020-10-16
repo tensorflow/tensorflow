@@ -882,5 +882,14 @@ class RangeTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(values, self.evaluate(tensor))
 
 
+@test_util.run_all_in_graph_and_eager_modes
+class ErfcinvTest(test_util.TensorFlowTestCase):
+
+  def testErfcinv(self):
+    values = np.random.uniform(0.1, 1.9, size=int(1e4)).astype(np.float32)
+    approx_id = math_ops.erfc(math_ops.erfcinv(values))
+    self.assertAllClose(values, self.evaluate(approx_id))
+
+
 if __name__ == "__main__":
   googletest.main()

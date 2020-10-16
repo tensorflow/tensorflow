@@ -12,8 +12,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 filegroup(
     name = "all_py_srcs",
     srcs = glob(["*.py"]),
@@ -47,6 +45,7 @@ py_library(
         "//tensorflow/python:tf_export",
         "//tensorflow/python/keras:activations",
         "//tensorflow/python/keras:backend",
+        "//tensorflow/python/keras:models",
         "//tensorflow/python/keras/engine",
         "//tensorflow/python/keras/layers",
         "//tensorflow/python/keras/utils:data_utils",
@@ -86,10 +85,10 @@ tf_py_test(
         "no_pip",
         "notsan",  # b/168814536
     ],
-    tfrt_enabled = True,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras/preprocessing",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -102,11 +101,12 @@ tf_py_test(
     tags = [
         "no_oss",
         "no_pip",
+        "notsan",  # TODO(b/170901700)
     ],
-    tfrt_enabled = True,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras/preprocessing",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -120,10 +120,10 @@ tf_py_test(
         "no_oss",
         "no_pip",
     ],
-    tfrt_enabled = True,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras/preprocessing",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -137,10 +137,10 @@ tf_py_test(
         "no_oss",
         "no_pip",
     ],
-    tfrt_enabled = True,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras/preprocessing",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -154,10 +154,10 @@ tf_py_test(
         "no_oss",
         "no_pip",
     ],
-    tfrt_enabled = True,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras/preprocessing",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -171,10 +171,10 @@ tf_py_test(
         "no_oss",
         "no_pip",
     ],
-    tfrt_enabled = True,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras/preprocessing",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -188,10 +188,10 @@ tf_py_test(
         "no_oss",
         "no_pip",
     ],
-    tfrt_enabled = True,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras/preprocessing",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -205,10 +205,10 @@ tf_py_test(
         "no_oss",
         "no_pip",
     ],
-    tfrt_enabled = True,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras/preprocessing",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -222,10 +222,10 @@ tf_py_test(
         "no_oss",
         "no_pip",
     ],
-    tfrt_enabled = True,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras/preprocessing",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -239,10 +239,10 @@ tf_py_test(
         "no_oss",
         "no_pip",
     ],
-    tfrt_enabled = True,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras/preprocessing",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -256,10 +256,10 @@ tf_py_test(
         "no_oss",
         "no_pip",
     ],
-    tfrt_enabled = True,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras/preprocessing",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -275,10 +275,10 @@ tf_py_test(
         "no_oss",
         "no_pip",
     ],
-    tfrt_enabled = True,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras/preprocessing",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -294,10 +294,10 @@ tf_py_test(
         "no_oss",
         "no_pip",
     ],
-    tfrt_enabled = True,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras/preprocessing",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -311,10 +311,10 @@ tf_py_test(
         "no_oss",
         "no_pip",
     ],
-    tfrt_enabled = True,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras/preprocessing",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -328,10 +328,10 @@ tf_py_test(
         "no_oss",
         "no_pip",
     ],
-    tfrt_enabled = True,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras/preprocessing",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -341,10 +341,10 @@ tf_py_test(
     size = "medium",
     srcs = ["imagenet_utils_test.py"],
     shard_count = 2,
-    tfrt_enabled = True,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
         "@absl_py//absl/testing:parameterized",
     ],
 )

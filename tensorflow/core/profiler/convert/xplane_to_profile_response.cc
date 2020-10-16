@@ -50,6 +50,7 @@ const absl::string_view kInputPipeline = "input_pipeline";
 const absl::string_view kOverviewPage = "overview_page";
 const absl::string_view kKernelStats = "kernel_stats";
 const absl::string_view kMemoryProfile = "memory_profile";
+const absl::string_view kXPlanePb = "xplane.pb";
 
 template <typename Proto>
 void AddToolData(absl::string_view tool_name, const Proto& tool_output,
@@ -74,6 +75,9 @@ Status ConvertXSpaceToProfileResponse(const XSpace& xspace,
   absl::flat_hash_set<absl::string_view> tools(req.tools().begin(),
                                                req.tools().end());
   if (tools.empty()) return Status::OK();
+  if (tools.contains(kXPlanePb)) {
+    AddToolData(kXPlanePb, xspace, response);
+  }
   if (tools.contains(kTraceViewer)) {
     Trace trace;
     ConvertXSpaceToTraceEvents(xspace, &trace);

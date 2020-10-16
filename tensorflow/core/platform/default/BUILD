@@ -74,7 +74,6 @@ cc_library(
 cc_library(
     name = "env",
     srcs = [
-        "env.cc",
         "posix_file_system.cc",
         "posix_file_system.h",
         "//tensorflow/core/platform:env.cc",
@@ -126,6 +125,21 @@ cc_library(
         "//third_party/eigen3",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "env_impl",
+    srcs = [
+        "env.cc",
+    ],
+    tags = [
+        "manual",
+        "no_oss",
+        "nobuilder",
+    ],
+    deps = [
+        ":env",
     ],
 )
 

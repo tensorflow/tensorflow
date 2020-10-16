@@ -210,8 +210,7 @@ StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
     absl::Span<MaybeOwningDeviceMemory> buffers,
     absl::Span<ExecutionInput> arguments) {
   se::Stream* stream = run_options->stream();
-  ExecutionOutput result(/*on_host_shape=*/result_shape(),
-                         /*on_device_shape=*/result_shape(),
+  ExecutionOutput result(/*on_device_shape=*/result_shape(),
                          run_options->allocator(),
                          stream->parent()->device_ordinal());
   const HloInputOutputAliasConfig& input_output_alias =

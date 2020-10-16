@@ -4188,7 +4188,6 @@ class JpegTest(test_util.TensorFlowTestCase):
         image1_crop, image2 = self.evaluate([image1_crop, image2])
         self.assertAllEqual(image1_crop, image2)
 
-  @test_util.run_deprecated_v1
   def testCropAndDecodeJpegWithInvalidCropWindow(self):
     with self.cached_session() as sess:
       # Encode it, then decode it, then encode it
@@ -4201,10 +4200,10 @@ class JpegTest(test_util.TensorFlowTestCase):
                       [11, 11, 11, -1], [11, 11, 0, 11], [11, 11, 11, 0],
                       [0, 0, h + 1, w], [0, 0, h, w + 1]]
       for crop_window in crop_windows:
-        result = image_ops.decode_and_crop_jpeg(jpeg0, crop_window)
-        with self.assertRaisesWithPredicateMatch(
-            errors.InvalidArgumentError,
-            lambda e: "Invalid JPEG data or crop window" in str(e)):
+        with self.assertRaisesRegex(
+            (ValueError, errors.InvalidArgumentError),
+            "Invalid JPEG data or crop window"):
+          result = image_ops.decode_and_crop_jpeg(jpeg0, crop_window)
           self.evaluate(result)
 
   def testSynthetic(self):
@@ -4265,36 +4264,35 @@ class JpegTest(test_util.TensorFlowTestCase):
       # The images should be the same.
       self.assertAllClose(image1, image2)
 
-  @test_util.run_deprecated_v1
   def testShape(self):
-    with self.cached_session(use_gpu=True) as sess:
-      jpeg = constant_op.constant("nonsense")
-      for channels in 0, 1, 3:
-        image = image_ops.decode_jpeg(jpeg, channels=channels)
-        self.assertEqual(image.get_shape().as_list(),
-                         [None, None, channels or None])
+    # Shape function requires placeholders and a graph.
+    with ops.Graph().as_default():
+      with self.cached_session(use_gpu=True) as sess:
+        jpeg = constant_op.constant("nonsense")
+        for channels in 0, 1, 3:
+          image = image_ops.decode_jpeg(jpeg, channels=channels)
+          self.assertEqual(image.get_shape().as_list(),
+                           [None, None, channels or None])
 
-  @test_util.run_deprecated_v1
   def testExtractJpegShape(self):
     # Read a real jpeg and verify shape.
     path = ("tensorflow/core/lib/jpeg/testdata/"
             "jpeg_merge_test1.jpg")
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session(use_gpu=True):
       jpeg = io_ops.read_file(path)
       # Extract shape without decoding.
-      [image_shape] = sess.run([image_ops.extract_jpeg_shape(jpeg)])
-      self.assertEqual(image_shape.tolist(), [256, 128, 3])
+      image_shape = self.evaluate(image_ops.extract_jpeg_shape(jpeg))
+      self.assertAllEqual(image_shape, [256, 128, 3])
 
-  @test_util.run_deprecated_v1
   def testExtractJpegShapeforCmyk(self):
     # Read a cmyk jpeg image, and verify its shape.
     path = ("tensorflow/core/lib/jpeg/testdata/"
             "jpeg_merge_test1_cmyk.jpg")
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session(use_gpu=True):
       jpeg = io_ops.read_file(path)
-      [image_shape] = sess.run([image_ops.extract_jpeg_shape(jpeg)])
+      image_shape = self.evaluate(image_ops.extract_jpeg_shape(jpeg))
       # Cmyk jpeg image has 4 channels.
-      self.assertEqual(image_shape.tolist(), [256, 128, 4])
+      self.assertAllEqual(image_shape, [256, 128, 4])
 
   def testRandomJpegQuality(self):
     # Previous implementation of random_jpeg_quality had a bug.
@@ -4362,14 +4360,12 @@ class JpegTest(test_util.TensorFlowTestCase):
       with self.cached_session(use_gpu=True) as sess:
         sess.run(adjust_jpeg_quality_image)
 
-  @test_util.run_deprecated_v1
   def testAdjustJpegQualityShape(self):
     with self.cached_session(use_gpu=True):
       image = constant_op.constant(
           np.arange(24, dtype=np.uint8).reshape([2, 4, 3]))
       adjusted_image = image_ops.adjust_jpeg_quality(image, 80)
-      self.assertListEqual(adjusted_image.shape.as_list(),
-                           [None, None, 3])
+      adjusted_image.shape.assert_is_compatible_with([None, None, 3])
 
 
 class PngTest(test_util.TensorFlowTestCase):
@@ -4442,14 +4438,15 @@ class PngTest(test_util.TensorFlowTestCase):
       self.assertEqual(2, image0.shape[-1])
       self.assertAllEqual(image0, image1)
 
-  @test_util.run_deprecated_v1
   def testShape(self):
-    with self.cached_session(use_gpu=True):
-      png = constant_op.constant("nonsense")
-      for channels in 0, 1, 3:
-        image = image_ops.decode_png(png, channels=channels)
-        self.assertEqual(image.get_shape().as_list(),
-                         [None, None, channels or None])
+    # Shape function requires placeholders and a graph.
+    with ops.Graph().as_default():
+      with self.cached_session(use_gpu=True):
+        png = constant_op.constant("nonsense")
+        for channels in 0, 1, 3:
+          image = image_ops.decode_png(png, channels=channels)
+          self.assertEqual(image.get_shape().as_list(),
+                           [None, None, channels or None])
 
 
 class GifTest(test_util.TensorFlowTestCase):
@@ -4487,12 +4484,13 @@ class GifTest(test_util.TensorFlowTestCase):
     self._testValid("scan.gif")
     self._testValid("optimized.gif")
 
-  @test_util.run_deprecated_v1
   def testShape(self):
-    with self.cached_session(use_gpu=True) as sess:
-      gif = constant_op.constant("nonsense")
-      image = image_ops.decode_gif(gif)
-      self.assertEqual(image.get_shape().as_list(), [None, None, None, 3])
+    # Shape function requires placeholders and a graph.
+    with ops.Graph().as_default():
+      with self.cached_session(use_gpu=True) as sess:
+        gif = constant_op.constant("nonsense")
+        image = image_ops.decode_gif(gif)
+        self.assertEqual(image.get_shape().as_list(), [None, None, None, 3])
 
 
 class ConvertImageTest(test_util.TensorFlowTestCase):
@@ -4514,17 +4512,17 @@ class ConvertImageTest(test_util.TensorFlowTestCase):
         self.assertTrue(y_saturate.dtype == output_dtype)
         self.assertAllClose(y_saturate, y_np, atol=1e-5)
 
-  @test_util.run_deprecated_v1
   def testNoConvert(self):
-    # Make sure converting to the same data type creates only an identity op
-    with self.cached_session(use_gpu=True):
-      image = constant_op.constant([1], dtype=dtypes.uint8)
-      image_ops.convert_image_dtype(image, dtypes.uint8)
-      y = image_ops.convert_image_dtype(image, dtypes.uint8)
-      self.assertEqual(y.op.type, "Identity")
-      self.assertEqual(y.op.inputs[0], image)
+    # Tests with Tensor.op requires a graph.
+    with ops.Graph().as_default():
+      # Make sure converting to the same data type creates only an identity op
+      with self.cached_session(use_gpu=True):
+        image = constant_op.constant([1], dtype=dtypes.uint8)
+        image_ops.convert_image_dtype(image, dtypes.uint8)
+        y = image_ops.convert_image_dtype(image, dtypes.uint8)
+        self.assertEqual(y.op.type, "Identity")
+        self.assertEqual(y.op.inputs[0], image)
 
-  @test_util.run_deprecated_v1
   def testConvertBetweenInteger(self):
     # Make sure converting to between integer types scales appropriately
     with self.cached_session(use_gpu=True):
@@ -4533,7 +4531,6 @@ class ConvertImageTest(test_util.TensorFlowTestCase):
       self._convert([0, 2**32], dtypes.int64, dtypes.int32, [0, 1])
       self._convert([0, 1], dtypes.int32, dtypes.int64, [0, 2**32])
 
-  @test_util.run_deprecated_v1
   def testConvertBetweenFloat(self):
     # Make sure converting to between float types does nothing interesting
     with self.cached_session(use_gpu=True):
@@ -4542,7 +4539,6 @@ class ConvertImageTest(test_util.TensorFlowTestCase):
       self._convert([-1.0, 0, 1.0, 200000], dtypes.float64, dtypes.float32,
                     [-1.0, 0, 1.0, 200000])
 
-  @test_util.run_deprecated_v1
   def testConvertBetweenIntegerAndFloat(self):
     # Make sure converting from and to a float type scales appropriately
     with self.cached_session(use_gpu=True):
@@ -4551,7 +4547,6 @@ class ConvertImageTest(test_util.TensorFlowTestCase):
       self._convert([0, 1.1 / 255.0, 1], dtypes.float32, dtypes.uint8,
                     [0, 1, 255])
 
-  @test_util.run_deprecated_v1
   def testConvertBetweenInt16AndInt8(self):
     with self.cached_session(use_gpu=True):
       # uint8, uint16

@@ -77,6 +77,23 @@ TEST(CumsumOpTest, SimpleIntTest) {
               testing::ElementsAreArray({1, 3, 6, 10, 5, 11, 18, 26}));
 }
 
+TEST(CumsumOpTest, SimpleInt64Test) {
+  CumsumOpModel<int64_t> m({TensorType_INT64, {2, 4}}, {TensorType_INT64, {}},
+                           false, false);
+
+  m.PopulateTensor<int64_t>(
+      m.input(), {100000000001l, 100000000002l, 100000000003l, 100000000004l,
+                  100000000005l, 100000000006l, 100000000007l, 100000000008l});
+  m.PopulateTensor<int>(m.axis(), {1});
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput(), testing::ElementsAreArray(
+                                 {100000000001l, 200000000003l, 300000000006l,
+                                  400000000010l, 100000000005l, 200000000011l,
+                                  300000000018l, 400000000026l}));
+}
+
 TEST(CumsumOpTest, SimpleIntAxis0Test) {
   CumsumOpModel<int32_t> m({TensorType_INT32, {2, 4}}, {TensorType_INT32, {}},
                            false, false);

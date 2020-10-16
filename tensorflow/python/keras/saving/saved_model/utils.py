@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
+import threading
 import types
 
 from tensorflow.python.eager import context
@@ -25,6 +26,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.keras.utils import tf_contextlib
 from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils.generic_utils import LazyLoader
 from tensorflow.python.util import tf_decorator
@@ -245,3 +247,21 @@ def remove_training_arg(index, args, kwargs):
     args.pop(index)
   else:
     kwargs.pop('training', None)
+
+
+_thread_local_data = threading.local()
+_thread_local_data.save_traces = True
+
+
+@tf_contextlib.contextmanager
+def keras_option_scope(save_traces):
+  previous_value = _thread_local_data.save_traces
+  try:
+    _thread_local_data.save_traces = save_traces
+    yield
+  finally:
+    _thread_local_data.save_traces = previous_value
+
+
+def should_save_traces():
+  return _thread_local_data.save_traces

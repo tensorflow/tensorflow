@@ -28,7 +28,6 @@ tf_py_test(
         "no_pip",  # TODO(b/78026780)
         "no_windows",  # TODO(b/78028010)
     ],
-    tfrt_enabled = True,
     deps = [
         ":decode_proto_op_test_base",
         ":py_test_deps",
@@ -49,7 +48,6 @@ tf_py_test(
         "no_pip",  # TODO(b/78026780)
         "no_windows",  # TODO(b/78028010)
     ],
-    tfrt_enabled = True,
     deps = [
         ":encode_proto_op_test_base",
         ":py_test_deps",

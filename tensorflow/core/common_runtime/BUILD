@@ -1,6 +1,6 @@
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_tpu",
+    "if_libtpu",
     "tf_cc_test",
     "tf_cc_test_mkl",
     "tf_cc_tests",
@@ -93,7 +93,7 @@ cc_library(
     deps = [
         ":core_cpu",
         "//tensorflow/core/common_runtime/gpu:gpu_runtime",
-    ] + if_tpu(["//tensorflow/core/tpu:tpu_runtime"]),
+    ] + if_libtpu(["//tensorflow/core/tpu:tpu_runtime"]),
 )
 
 filegroup(
@@ -1739,7 +1739,6 @@ tf_cuda_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_experimental",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/debug:debug_graph_utils",
@@ -2230,7 +2229,10 @@ tf_cuda_cc_test(
     srcs = ["direct_session_test.cc"],
     args = [] + if_cuda(["--heap_check=local"]),  # The GPU tracer leaks memory
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = ["notsan"],  # b/168317266
+    tags = [
+        "noasan",  # b/168317266
+        "notsan",  # b/168317266
+    ],
     deps = [
         ":core_cpu",
         ":core_cpu_internal",
@@ -2274,6 +2276,7 @@ tf_cc_test(
     srcs = ["direct_session_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = [
+        "noasan",  #b/168811551
         "notsan",  #b/168811551
     ],
     deps = [

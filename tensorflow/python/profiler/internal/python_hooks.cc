@@ -189,7 +189,7 @@ void PythonHooks::CollectData(XPlane* raw_plane) {
 }
 
 void PythonHooks::Finalize(XSpace* space) {
-  if (space) {
+  if (space && options_.enable_trace_python_function) {
     XPlane* plane =
         FindOrAddMutablePlaneWithName(space, kPythonTracerPlaneName);
     if (options_.end_to_end_mode) {

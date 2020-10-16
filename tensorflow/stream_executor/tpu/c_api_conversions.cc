@@ -23,7 +23,6 @@ limitations under the License.
 namespace ApiConverter {
 
 xla::ShapedBuffer FromC(XLA_ShapedBuffer* c_buffer) {
-  xla::Shape xla_on_host_shape = ApiConverter::FromC(&c_buffer->on_host_shape);
   xla::Shape xla_on_device_shape =
       ApiConverter::FromC(&c_buffer->on_device_shape);
 
@@ -36,7 +35,7 @@ xla::ShapedBuffer FromC(XLA_ShapedBuffer* c_buffer) {
   }
 
   xla::ShapedBuffer xla_shaped_buffer(
-      xla_on_host_shape, xla_on_device_shape,
+      xla_on_device_shape,
       tensorflow::tpu::TpuPlatformInterface::GetRegisteredPlatform(),
       c_buffer->device_ordinal);
   xla_shaped_buffer.set_buffers(xla_shape_tree);
@@ -199,7 +198,6 @@ xla::MutableBorrowingLiteral FromC(XLA_Literal* c_literal) {
 }
 
 void ToC(const xla::ShapedBuffer& buffer, XLA_ShapedBuffer* c_device_buffer) {
-  ApiConverter::ToC(buffer.on_host_shape(), &c_device_buffer->on_host_shape);
   ApiConverter::ToC(buffer.on_device_shape(),
                     &c_device_buffer->on_device_shape);
   c_device_buffer->device_ordinal = buffer.device_ordinal();
@@ -226,7 +224,6 @@ void Free(XLA_Literal* c_literal) {
 
 void Free(XLA_ShapedBuffer* c_buffer) {
   ApiConverter::Free(&c_buffer->on_device_shape);
-  ApiConverter::Free(&c_buffer->on_host_shape);
   delete[] c_buffer->bases;
 }
 

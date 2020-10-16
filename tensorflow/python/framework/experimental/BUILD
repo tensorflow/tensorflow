@@ -88,8 +88,7 @@ py_library(
     srcs = ["math_ops.py"],
     deps = [
         ":_math_ops",
-        ":gradient_registry",
-        ":tape_stack",
+        ":context_stack",
     ],
 )
 
@@ -98,8 +97,7 @@ py_library(
     srcs = ["nn_ops.py"],
     deps = [
         ":_nn_ops",
-        ":gradient_registry",
-        ":tape_stack",
+        ":context_stack",
     ],
 )
 
@@ -109,7 +107,7 @@ py_library(
     deps = [
         ":_tape",
         ":context_stack",
-        ":tape_stack",
+        ":gradient_registry",
         "//tensorflow/python/data/util:nest",
     ],
 )
@@ -127,12 +125,6 @@ py_library(
 py_library(
     name = "context_stack",
     srcs = ["context_stack.py"],
-    deps = [":thread_local_stack"],
-)
-
-py_library(
-    name = "tape_stack",
-    srcs = ["tape_stack.py"],
     deps = [":thread_local_stack"],
 )
 

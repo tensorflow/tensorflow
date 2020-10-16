@@ -1340,9 +1340,15 @@ LogicalResult ResourceLiftingForFunctionalControlFlow(FuncOp function) {
 
   llvm::SmallDenseMap<llvm::StringRef, PartitionedCallLiftingInfo>
       lifted_partitioned_call_callees;
-  return HoistForControlFlow(&function.front(),
-                             cast<ModuleOp>(function.getParentOp()),
-                             &lifted_partitioned_call_callees);
+  if (failed(HoistForControlFlow(&function.front(),
+                                 cast<ModuleOp>(function.getParentOp()),
+                                 &lifted_partitioned_call_callees)))
+    return failure();
+
+  // Clean up and canonicalize to remove dead local variables as some local
+  // variables might be dead after hoisting resource loads/stores from control
+  // flow ops.
+  return TF::CleanupAndCanonicalizeForResourceOpLifting(function);
 }
 }  // namespace TF
 

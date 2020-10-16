@@ -113,8 +113,7 @@ class TensorFlowDialect : public Dialect {
   // same interface.
   template <typename... Args>
   void addOperations() {
-    (void)std::initializer_list<int>{
-        0, (addOperation(AbstractOperation::get<Args>(*this)), 0)...};
+    Dialect::addOperations<Args...>();
   }
 
   using ConstantFoldHook = LogicalResult (*)(Operation *, ArrayRef<Attribute>,

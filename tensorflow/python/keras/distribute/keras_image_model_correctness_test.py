@@ -51,7 +51,10 @@ class DistributionStrategyCnnCorrectnessTest(
       if self.with_batch_norm == 'regular':
         c1 = keras.layers.BatchNormalization(name='bn1')(c1)
       elif self.with_batch_norm == 'sync':
-        c1 = keras.layers.SyncBatchNormalization(name='bn1')(c1)
+        # Test with parallel batch norms to verify all-reduce works OK.
+        bn1 = keras.layers.SyncBatchNormalization(name='bn1')(c1)
+        bn2 = keras.layers.SyncBatchNormalization(name='bn2')(c1)
+        c1 = keras.layers.Add()([bn1, bn2])
       c1 = keras.layers.MaxPooling2D(pool_size=(2, 2))(c1)
       logits = keras.layers.Dense(
           10, activation='softmax', name='pred')(

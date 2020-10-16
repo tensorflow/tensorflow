@@ -34,6 +34,18 @@ For each example, we provide a guide that explains how it works.
 
 #### Android
 
+You can leverage the out-of-box API from TensorFlow Lite Task Library to
+[integrate image classification models](../../inference_with_metadata/task_library/image_classifier)
+in just a few lines of code. You can also
+[build your own custom inference pipleline](../../inference_with_metadata/lite_support)
+using the TensorFlow Lite Support Library.
+
+The Android example below demonstrates the implementation for both methods as
+[lib_task_api](https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/android/lib_task_api)
+and
+[lib_support](https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/android/lib_support),
+respectively.
+
 <a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/android">View
 Android example</a>
 

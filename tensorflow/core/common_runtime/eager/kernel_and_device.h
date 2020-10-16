@@ -47,6 +47,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+static constexpr const char* const kOutputsOnOpDevice = "_OutputsOnOpDevice";
+
 class ProcessFunctionLibraryRuntime;
 class FunctionLibraryRuntime;
 
@@ -270,12 +272,14 @@ class KernelAndDeviceFunc : public KernelAndDevice {
       std::function<void(std::function<void()>)>* runner,
       std::unique_ptr<CollectiveExecutor::Handle> collective_executor,
       Device* host_cpu_device, const string& name,
+      const bool outputs_on_op_device,
       std::function<Rendezvous*(const int64)> rendezvous_creator,
       std::function<int64()> get_op_id)
       : KernelAndDevice(flr, runner, std::move(collective_executor),
                         host_cpu_device),
         pflr_(pflr),
         handle_(kInvalidHandle),
+        outputs_on_op_device_(outputs_on_op_device),
         input_devices_(std::move(input_devices)),
         composite_devices_(std::move(composite_devices)),
         input_resource_dtypes_and_shapes_(
@@ -336,6 +340,11 @@ class KernelAndDeviceFunc : public KernelAndDevice {
   FunctionLibraryRuntime::Handle handle_;
   // Indicates whether the function needs to execute cross process.
   bool is_cross_process_;
+
+  // If true, function outputs are explicitly assigned to the default device;
+  // if false, the output devices are inferred by pflr_.
+  bool outputs_on_op_device_;
+
   // CPU devices are null. Resource handles' devices are actual backing
   // devices.
   std::vector<Device*> output_devices_;

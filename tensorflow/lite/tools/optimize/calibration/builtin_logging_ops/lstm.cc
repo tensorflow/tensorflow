@@ -125,15 +125,14 @@ void CalculateLstmOutputCalibration(
     const float* output_gate, TfLiteFusedActivation activation,
     const float* projection_weights, const float* projection_bias,
     const float proj_clip, float* output_state, float* scratch, Logger* logger,
-    const std::vector<int>& intermediate_tensor_indexes,
-    ErrorReporter* error_reporter) {
+    int intermediate_tensor_index, ErrorReporter* error_reporter) {
   tensor_utils::ApplyActivationToVector(cell_state, n_batch * n_cell,
                                         activation, scratch);
   tensor_utils::VectorVectorCwiseProduct(output_gate, scratch, n_batch * n_cell,
                                          scratch);
 
-  logger->LogTensorValue(intermediate_tensor_indexes[4], scratch,
-                         n_cell * n_batch, error_reporter);
+  logger->LogTensorValue(intermediate_tensor_index, scratch, n_cell * n_batch,
+                         error_reporter);
 
   const bool use_projection = (projection_weights != nullptr);
   const bool use_projection_bias = (projection_bias != nullptr);
@@ -252,7 +251,7 @@ inline void LstmStepCalibration(
       n_batch, n_cell, n_output, cell_state_ptr, output_gate_scratch,
       params->activation, projection_weights_ptr, projection_bias_ptr,
       params->proj_clip, output_state_ptr, scratch2, logger,
-      intermediate_tensor_indexes, error_reporter);
+      intermediate_tensor_indexes[4], error_reporter);
   // Copy output state to the output. Note that the output's rows may not be
   // contiguous (output_batch_leading_dim != n_output).
   for (int b = 0; b < n_batch; b++) {
@@ -573,6 +572,8 @@ TfLiteStatus lstm_eval(TfLiteContext* context, TfLiteNode* node, Logger* logger,
                              ops::builtin::lstm::full::kOutputTensor, &output));
 
   std::vector<int> intermediate_tensor_indexes(node->intermediates->size);
+  // LSTM expect 5 intermediate tensors.
+  TF_LITE_ENSURE_EQ(context, node->intermediates->size, 5);
   for (int i = 0; i < node->intermediates->size; ++i) {
     intermediate_tensor_indexes[i] = node->intermediates->data[i];
   }

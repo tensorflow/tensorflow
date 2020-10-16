@@ -461,9 +461,11 @@ Status TpuCompilationCacheInterface::CompileIfKeyAbsentHelper(
             << marked_for_eviction_size_ << " bytes).";
     // Note that InitializeEntry() will Release/Reacquire mu_.
     entry = InitializeEntry(cache_key, compile_function, subgraph_key);
+    bool compilation_success = entry->tpu_program_group->program_count() > 0;
     TRACELITERAL("TPU host compilation cache: compilation done.");
     LOG(INFO) << strings::StrCat(
-        "TPU host compilation cache: compilation done for cache_key(",
+        "TPU host compilation cache: compilation ",
+        compilation_success ? "complete" : "failed", " for cache_key(",
         cache_key, "), session_name(", session_name, "), subgraph_key(",
         subgraph_key.debug_string, ")");
     // If session_name is present, log some additional stats related to HBM

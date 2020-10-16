@@ -24,6 +24,10 @@ class GetScalarOfType<int value> : NativeCodeCall<
 class GetScalarOfFloatType<string value> : NativeCodeCall<
   "GetScalarOfFloatType(getElementTypeOrSelf($0)," # value # ")">;
 
+def GetScalarInfOfType : NativeCodeCall<
+  "GetScalarOfFloatType(getElementTypeOrSelf($0), "
+  "std::numeric_limits<double>::infinity())">;
+
 def GetScalarNanOfType : NativeCodeCall<
   "GetScalarOfFloatType(getElementTypeOrSelf($0), "
   "std::numeric_limits<double>::quiet_NaN())">;
@@ -155,12 +159,21 @@ def LowerFillOp : Pat<(TF_FillOp $dims, $value),
                       (TF_BroadcastToOp $value, $dims)>;
 
 //===----------------------------------------------------------------------===//
+// Inf op patterns.
+//===----------------------------------------------------------------------===//
+
+def LowerIsInfOp : Pat<(TF_IsInfOp $x),
+                       (TF_EqualOp (TF_AbsOp:$abs $x),
+                        (TF_ConstOp:$inf (GetScalarInfOfType $x)),
+                        /*incompatible_shape_error*/ConstBoolAttrTrue)>;
+
+//===----------------------------------------------------------------------===//
 // NaN op patterns.
 //===----------------------------------------------------------------------===//
 
 def LowerIsNanOp : Pat<(TF_IsNanOp $x),
-                     (TF_EqualOp $x, (TF_ConstOp:$nan (GetScalarNanOfType $x)),
-                      /*incompatible_shape_error*/ConstBoolAttrTrue)>;
+                       (TF_NotEqualOp $x, $x,
+                        /*incompatible_shape_error*/ConstBoolAttrTrue)>;
 
 //===----------------------------------------------------------------------===//
 // L2Loss op patterns.
@@ -241,7 +254,17 @@ def LowerTanhGradOp :
                 (TF_SubOp (TF_ConstOp (GetScalarOfType<1> $y)),
                           (TF_SquareOp $y)))>;
 
+
 //===----------------------------------------------------------------------===//
+// LowerFakeQuantWithMinMaxArgs op patterns.
+//===----------------------------------------------------------------------===//
+
+def LowerFakeQuantWithMinMaxArgs :
+  Pat<(TF_FakeQuantWithMinMaxArgsOp TF_FloatTensor: $input,
+       $min, $max, $bits, $narrow_range),
+      (TF_FakeQuantWithMinMaxVarsOp $input,
+         (TF_ConstOp $min), (TF_ConstOp $max), $bits, $narrow_range)>;
+
 // ZerosLike op patterns.
 //===----------------------------------------------------------------------===//
 

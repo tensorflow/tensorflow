@@ -91,14 +91,23 @@ cc_library(
         ":signature_def_function_metadata",
         "//tensorflow/c/eager:immediate_execution_operation",
         "//tensorflow/c/eager:immediate_execution_tensor_handle",
+        "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/types:span",
     ],
 )
 
 cc_library(
     name = "signature_def_function_metadata",
+    srcs = [
+        "signature_def_function_metadata.cc",
+    ],
     hdrs = [
         "signature_def_function_metadata.h",
+    ],
+    deps = [
+        ":tensor_spec",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -265,6 +274,20 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/common_runtime/eager:core",
+    ],
+)
+
+cc_library(
+    name = "tensor_spec",
+    srcs = [
+        "tensor_spec.cc",
+    ],
+    hdrs = [
+        "tensor_spec.h",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 

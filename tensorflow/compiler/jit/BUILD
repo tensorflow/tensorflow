@@ -4,7 +4,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "tf_cc_test")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "if_tpu", "tf_copts")
+load("//tensorflow:tensorflow.bzl", "if_libtpu", "tf_copts")
 load("//tensorflow/stream_executor:build_defs.bzl", "if_cuda_or_rocm")
 
 # buildifier: disable=same-origin-load
@@ -77,7 +77,7 @@ cc_library(
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
-    ] + if_tpu(
+    ] + if_libtpu(
         if_false = ["//tensorflow/compiler/xla/service:cpu_plugin"],
         if_true = [],
     ),
@@ -114,7 +114,7 @@ cc_library(
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
-    ] + if_tpu(
+    ] + if_libtpu(
         if_false = [
             "//tensorflow/compiler/xla/service:cpu_plugin",  # buildcleaner: keep
         ],
@@ -141,7 +141,7 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime/gpu:gpu_init",
-    ] + if_tpu(
+    ] + if_libtpu(
         if_false = [
             "//tensorflow/compiler/xla/service:gpu_plugin",  # buildcleaner: keep
         ],
@@ -204,7 +204,7 @@ XLA_DEVICE_DEPS = [
     "//tensorflow/core:resource_variable_ops_op_lib",
     "//tensorflow/core:sendrecv_ops_op_lib",
     "//tensorflow/core:state_ops_op_lib",
-    "//tensorflow/core:stream_executor_no_cuda",
+    "//tensorflow/core/platform:stream_executor_no_cuda",
     "//tensorflow/core/kernels:constant_op",
     "//tensorflow/core/kernels:fifo_queue",
     "//tensorflow/core/kernels:function_ops",
@@ -375,7 +375,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:logging",
-    ] + if_tpu(
+    ] + if_libtpu(
         if_false = [
             "//tensorflow/compiler/mlir:array_container_utils",
             "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util_no_tf_dialect_passes",
@@ -435,6 +435,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime:core_cpu_internal",
+        "//tensorflow/core/common_runtime/eager:tensor_handle",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -1022,10 +1023,10 @@ tf_cc_test(
         "//tensorflow/cc:ops",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu",
-        "//tensorflow/core:direct_session_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:ops",
         "//tensorflow/core:test",
+        "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:matmul_op",
         "//tensorflow/core/kernels:partitioned_function_ops",
