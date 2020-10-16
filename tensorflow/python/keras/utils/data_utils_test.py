@@ -86,6 +86,19 @@ class TestGetFileAndValidateIt(test.TestCase):
     self.assertTrue(os.path.exists(path))
     self.assertTrue(keras.utils.data_utils.validate_file(path, hashval_sha256))
     self.assertTrue(keras.utils.data_utils.validate_file(path, hashval_md5))
+    os.remove(path)
+
+    for file_path, extract in [
+        (text_file_path, False), (tar_file_path, True), (zip_file_path, True)]:
+      origin = urljoin('file://', pathname2url(os.path.abspath(file_path)))
+      hashval_sha256 = keras.utils.data_utils._hash_file(file_path)
+      path = keras.utils.data_utils.get_file(
+          origin=origin, file_hash=hashval_sha256,
+          extract=extract, cache_subdir=dest_dir)
+      self.assertTrue(os.path.exists(path))
+      self.assertTrue(
+          keras.utils.data_utils.validate_file(path, hashval_sha256))
+      os.remove(path)
 
 
 class TestSequence(keras.utils.data_utils.Sequence):
