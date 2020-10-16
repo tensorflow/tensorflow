@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -142,8 +142,9 @@ TF_LITE_MICRO_TEST(TestInitializeRuntimeTensor) {
   simple_allocator->~SimpleMemoryAllocator();
 }
 
-// TODO(b/160894903): Drop this test when InitializeTfLiteTensorFromFlatbuffer()
-// always allocates from temp (kernels are using the new TfLiteEvalTensor API):
+// TODO(b/162311891): Drop this test when InitializeTfLiteTensorFromFlatbuffer()
+// always allocates from temp (interpreter returns buffers from
+// TfLiteEvalTensor):
 TF_LITE_MICRO_TEST(TestInitializeTempRuntimeTensor) {
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
@@ -243,22 +244,38 @@ TF_LITE_MICRO_TEST(TestFailsWhenModelStartsTwice) {
                                       &node_and_registration, &eval_tensors));
 }
 
-TF_LITE_MICRO_TEST(TestFailsWhenModelFinishesBeforeStart) {
+TF_LITE_MICRO_TEST(TestFailsWithWrongSequence) {
   const tflite::Model* model = tflite::testing::GetSimpleMockModel();
   TfLiteEvalTensor* eval_tensors = nullptr;
+  tflite::ScratchBufferHandle* scratch_buffer_handles = nullptr;
   tflite::AllOpsResolver op_resolver = tflite::testing::GetOpResolver();
+  tflite::NodeAndRegistration* node_and_registration;
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
   tflite::MicroAllocator* allocator =
       tflite::MicroAllocator::Create(arena, arena_size, micro_test::reporter);
   TF_LITE_MICRO_EXPECT_NE(nullptr, allocator);
+
+  // We can't finish allocation before it ever got started.
   TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteError, allocator->FinishModelAllocation(model, eval_tensors));
+      kTfLiteError, allocator->FinishModelAllocation(model, eval_tensors,
+                                                     &scratch_buffer_handles));
+
+  // Start twice is not allowed.
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk,
+      allocator->StartModelAllocation(model, op_resolver,
+                                      &node_and_registration, &eval_tensors));
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteError,
+      allocator->StartModelAllocation(model, op_resolver,
+                                      &node_and_registration, &eval_tensors));
 }
 
 TF_LITE_MICRO_TEST(TestMockModelAllocation) {
   const tflite::Model* model = tflite::testing::GetSimpleMockModel();
   TfLiteEvalTensor* eval_tensors = nullptr;
+  tflite::ScratchBufferHandle* scratch_buffer_handles = nullptr;
   tflite::AllOpsResolver op_resolver = tflite::testing::GetOpResolver();
   tflite::NodeAndRegistration* node_and_registration;
   constexpr size_t arena_size = 1024;
@@ -271,7 +288,8 @@ TF_LITE_MICRO_TEST(TestMockModelAllocation) {
       allocator->StartModelAllocation(model, op_resolver,
                                       &node_and_registration, &eval_tensors));
   TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk, allocator->FinishModelAllocation(model, eval_tensors));
+      kTfLiteOk, allocator->FinishModelAllocation(model, eval_tensors,
+                                                  &scratch_buffer_handles));
 
   size_t model_tensor_size = tflite::testing::GetModelTensorCount(model);
   TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(4), model_tensor_size);
@@ -294,9 +312,53 @@ TF_LITE_MICRO_TEST(TestMockModelAllocation) {
                                                        /*count=*/2);
 }
 
+TF_LITE_MICRO_TEST(TestMultiTenantAllocation) {
+  // The `OpResolver` is shared among different models in this test for
+  // simplicity but in practice you could have different `OpResolver`.
+  tflite::AllOpsResolver op_resolver = tflite::testing::GetOpResolver();
+
+  // Create a shared allocator.
+  constexpr size_t arena_size = 4096;
+  uint8_t arena[arena_size];
+  tflite::MicroAllocator* allocator =
+      tflite::MicroAllocator::Create(arena, arena_size, micro_test::reporter);
+  TF_LITE_MICRO_EXPECT_NE(nullptr, allocator);
+  TfLiteEvalTensor* eval_tensors = nullptr;
+  tflite::ScratchBufferHandle* scratch_buffer_handles = nullptr;
+
+  // Allocate for model 1. We use ComplexMockModel here to cover the code path
+  // allocatig variables.
+  const tflite::Model* model1 = tflite::testing::GetComplexMockModel();
+  tflite::NodeAndRegistration* node_and_registration1;
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk,
+      allocator->StartModelAllocation(model1, op_resolver,
+                                      &node_and_registration1, &eval_tensors));
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk, allocator->FinishModelAllocation(model1, eval_tensors,
+                                                  &scratch_buffer_handles));
+  const size_t single_model_used_bytes = allocator->used_bytes();
+
+  // Allocate for model 2.
+  const tflite::Model* model2 = tflite::testing::GetComplexMockModel();
+  tflite::NodeAndRegistration* node_and_registration2;
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk,
+      allocator->StartModelAllocation(model2, op_resolver,
+                                      &node_and_registration2, &eval_tensors));
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk, allocator->FinishModelAllocation(model2, eval_tensors,
+                                                  &scratch_buffer_handles));
+
+  // Allocation for two instances of the same model takes less memory as `head`
+  // of the arena is reused.
+  TF_LITE_MICRO_EXPECT_LE(allocator->used_bytes(), 2 * single_model_used_bytes);
+}
+
 TF_LITE_MICRO_TEST(TestAllocationForModelsWithBranches) {
   const tflite::Model* model = tflite::testing::GetSimpleModelWithBranch();
   TfLiteEvalTensor* eval_tensors = nullptr;
+  tflite::ScratchBufferHandle* scratch_buffer_handles = nullptr;
   tflite::AllOpsResolver op_resolver = tflite::testing::GetOpResolver();
   tflite::NodeAndRegistration* node_and_registration;
   constexpr size_t arena_size = 4096;
@@ -309,7 +371,8 @@ TF_LITE_MICRO_TEST(TestAllocationForModelsWithBranches) {
       allocator->StartModelAllocation(model, op_resolver,
                                       &node_and_registration, &eval_tensors));
   TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk, allocator->FinishModelAllocation(model, eval_tensors));
+      kTfLiteOk, allocator->FinishModelAllocation(model, eval_tensors,
+                                                  &scratch_buffer_handles));
 
   uint8_t* start = eval_tensors[0].data.uint8;
   // Check test_helpers.cc BuildSimpleModelWithBranch for model structure.
@@ -336,6 +399,7 @@ TF_LITE_MICRO_TEST(TestAllocationForModelsWithBranches) {
 TF_LITE_MICRO_TEST(TestAllocationForComplexModelAllocation) {
   const tflite::Model* model = tflite::testing::GetComplexMockModel();
   TfLiteEvalTensor* eval_tensors = nullptr;
+  tflite::ScratchBufferHandle* scratch_buffer_handles = nullptr;
   tflite::AllOpsResolver op_resolver = tflite::testing::GetOpResolver();
   tflite::NodeAndRegistration* node_and_registration;
   constexpr size_t arena_size = 2048;
@@ -348,7 +412,8 @@ TF_LITE_MICRO_TEST(TestAllocationForComplexModelAllocation) {
       allocator->StartModelAllocation(model, op_resolver,
                                       &node_and_registration, &eval_tensors));
   TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk, allocator->FinishModelAllocation(model, eval_tensors));
+      kTfLiteOk, allocator->FinishModelAllocation(model, eval_tensors,
+                                                  &scratch_buffer_handles));
 
   size_t model_tensor_size = tflite::testing::GetModelTensorCount(model);
   TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(10), model_tensor_size);
@@ -410,6 +475,8 @@ TF_LITE_MICRO_TEST(OfflinePlannerBranchesAllOnline) {
       nbr_tensors, metadata_buffer, node_list, num_conns);
 
   TfLiteEvalTensor* eval_tensors = nullptr;
+  tflite::ScratchBufferHandle* scratch_buffer_handles = nullptr;
+
   constexpr size_t arena_size = 4096;
   uint8_t arena[arena_size];
   tflite::MicroAllocator* allocator =
@@ -420,7 +487,8 @@ TF_LITE_MICRO_TEST(OfflinePlannerBranchesAllOnline) {
       allocator->StartModelAllocation(model, op_resolver,
                                       &node_and_registration, &eval_tensors));
   TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk, allocator->FinishModelAllocation(model, eval_tensors));
+      kTfLiteOk, allocator->FinishModelAllocation(model, eval_tensors,
+                                                  &scratch_buffer_handles));
 
   // Since all of the tensors are online planned and the model structure is
   // identical to that in TestAllocationForModelsWithBranches,
@@ -471,6 +539,7 @@ TF_LITE_MICRO_TEST(OfflinePlannerBasic) {
       nbr_tensors, metadata_buffer, node_list, num_conns);
 
   TfLiteEvalTensor* eval_tensors = nullptr;
+  tflite::ScratchBufferHandle* scratch_buffer_handles = nullptr;
   constexpr size_t arena_size = 4096;
   uint8_t arena[arena_size];
   tflite::MicroAllocator* allocator =
@@ -481,7 +550,8 @@ TF_LITE_MICRO_TEST(OfflinePlannerBasic) {
       allocator->StartModelAllocation(model, op_resolver,
                                       &node_and_registration, &eval_tensors));
   TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk, allocator->FinishModelAllocation(model, eval_tensors));
+      kTfLiteOk, allocator->FinishModelAllocation(model, eval_tensors,
+                                                  &scratch_buffer_handles));
 
   uint8_t* start = eval_tensors[0].data.uint8;
   TF_LITE_MICRO_EXPECT_EQ(0, eval_tensors[0].data.uint8 - start);
@@ -524,6 +594,7 @@ TF_LITE_MICRO_TEST(OfflinePlannerOverlappingAllocation) {
       nbr_tensors, metadata_buffer, node_list, num_conns);
 
   TfLiteEvalTensor* eval_tensors = nullptr;
+  tflite::ScratchBufferHandle* scratch_buffer_handles = nullptr;
   constexpr size_t arena_size = 4096;
   uint8_t arena[arena_size];
   tflite::MicroAllocator* allocator =
@@ -534,7 +605,8 @@ TF_LITE_MICRO_TEST(OfflinePlannerOverlappingAllocation) {
       allocator->StartModelAllocation(model, op_resolver,
                                       &node_and_registration, &eval_tensors));
   TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk, allocator->FinishModelAllocation(model, eval_tensors));
+      kTfLiteOk, allocator->FinishModelAllocation(model, eval_tensors,
+                                                  &scratch_buffer_handles));
 
   uint8_t* start = eval_tensors[0].data.uint8;
   TF_LITE_MICRO_EXPECT_EQ(0, eval_tensors[0].data.uint8 - start);
@@ -580,6 +652,7 @@ TF_LITE_MICRO_TEST(OfflinePlannerOfflineOnline) {
       nbr_tensors, metadata_buffer, node_list, num_conns);
 
   TfLiteEvalTensor* eval_tensors = nullptr;
+  tflite::ScratchBufferHandle* scratch_buffer_handles = nullptr;
   constexpr size_t arena_size = 4096;
   uint8_t arena[arena_size];
   tflite::MicroAllocator* allocator =
@@ -590,7 +663,8 @@ TF_LITE_MICRO_TEST(OfflinePlannerOfflineOnline) {
       allocator->StartModelAllocation(model, op_resolver,
                                       &node_and_registration, &eval_tensors));
   TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk, allocator->FinishModelAllocation(model, eval_tensors));
+      kTfLiteOk, allocator->FinishModelAllocation(model, eval_tensors,
+                                                  &scratch_buffer_handles));
 
   uint8_t* start = eval_tensors[0].data.uint8;
   TF_LITE_MICRO_EXPECT_EQ(0, eval_tensors[0].data.uint8 - start);
@@ -680,6 +754,68 @@ TF_LITE_MICRO_TEST(TestAllocateTfLiteTensorWithReset) {
   // The address of tensor2 should be equal than the address of tensor1 since
   // allocations were not chained:
   TF_LITE_MICRO_EXPECT(tensor2 == tensor1);
+}
+
+TF_LITE_MICRO_TEST(TestOperatorInputsNotInSubgraphInputs) {
+  constexpr int nbr_tensors = 5;
+  tflite::AllOpsResolver op_resolver = tflite::testing::GetOpResolver();
+  tflite::NodeAndRegistration* node_and_registration;
+  const int32_t metadata_buffer[tflite::testing::kOfflinePlannerHeaderSize +
+                                nbr_tensors] = {
+      1, 0, nbr_tensors,  // header: version, subgraph, nbr tensors
+      // memory offsets:
+      0,    // t0
+      0,    // t1
+      0,    // t2
+      48,   // t3
+      -1};  // t4
+
+  int t0 = 0;
+  int t1 = 1;
+  int t2 = 2;
+  int t3 = 3;
+  int t4 = 4;
+
+  int num_conns = 2;
+  tflite::testing::NodeConnection node_list[2] = {
+      {
+          {t0, t1, t2},  // t0: input (actual input part of subgraph inputs as
+                         // well as operator inputs)
+                         // t1: scratch1 (only in operator inputs)
+                         // t2: scratch2 (only in operator inputs)
+          {t3}           // output
+      },
+      {
+          {t3},  // input
+          {t4}   // output
+      },
+  };
+
+  const tflite::Model* model = tflite::testing::GetModelWithOfflinePlanning(
+      nbr_tensors, metadata_buffer, node_list, num_conns,
+      1 /* only first tensor (t0) is in subgraph input list*/);
+
+  TfLiteEvalTensor* eval_tensors = nullptr;
+  tflite::ScratchBufferHandle* scratch_buffer_handles = nullptr;
+  constexpr size_t arena_size = 4096;
+  uint8_t arena[arena_size];
+  tflite::MicroAllocator* allocator =
+      tflite::MicroAllocator::Create(arena, arena_size, micro_test::reporter);
+
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk,
+      allocator->StartModelAllocation(model, op_resolver,
+                                      &node_and_registration, &eval_tensors));
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk, allocator->FinishModelAllocation(model, eval_tensors,
+                                                  &scratch_buffer_handles));
+
+  uint8_t* start = eval_tensors[0].data.uint8;
+  TF_LITE_MICRO_EXPECT_EQ(0, eval_tensors[0].data.uint8 - start);
+  TF_LITE_MICRO_EXPECT_EQ(0, eval_tensors[1].data.uint8 - start);
+  TF_LITE_MICRO_EXPECT_EQ(0, eval_tensors[2].data.uint8 - start);
+  TF_LITE_MICRO_EXPECT_EQ(48, eval_tensors[3].data.uint8 - start);
+  TF_LITE_MICRO_EXPECT_EQ(0, eval_tensors[4].data.uint8 - start);
 }
 
 TF_LITE_MICRO_TESTS_END

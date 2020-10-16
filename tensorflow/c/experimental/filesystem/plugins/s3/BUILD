@@ -1,11 +1,11 @@
-# Experimental gcs filesystem plugin.
-load("//tensorflow:tensorflow.bzl", "get_win_copts", "tf_cc_shared_object")
+# Experimental s3 filesystem plugin.
+load("//tensorflow:tensorflow.bzl", "get_win_copts", "tf_cc_shared_object", "tf_cc_test")
 
 package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-# Filesystem implementation for GCS environments
+# Filesystem implementation for S3 environments
 tf_cc_shared_object(
     name = "s3_filesystem",
     framework_so = [],
@@ -26,6 +26,8 @@ cc_library(
     }),
     deps = [
         ":aws_crypto",
+        ":aws_logging",
+        "//tensorflow/c:logging",
         "//tensorflow/c:tf_status",
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
         "@aws",
@@ -43,4 +45,33 @@ cc_library(
         "@boringssl//:crypto",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "aws_logging",
+    srcs = ["aws_logging.cc"],
+    hdrs = ["aws_logging.h"],
+    deps = [
+        "//tensorflow/c:logging",
+        "@aws",
+        "@com_google_absl//absl/synchronization",
+    ],
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "s3_filesystem_test",
+    srcs = [
+        "s3_filesystem_test.cc",
+    ],
+    tags = [
+        "manual",
+        "notap",
+    ],
+    deps = [
+        ":s3_filesystem_impl",
+        "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:stacktrace_handler",
+        "//tensorflow/core/platform:test",
+    ],
 )

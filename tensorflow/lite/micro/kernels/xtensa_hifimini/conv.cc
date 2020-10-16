@@ -24,14 +24,41 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/xtensa_hifimini/fixedpoint_utils.h"
 
 namespace tflite {
-namespace ops {
-namespace micro {
-namespace conv {
-namespace xtensa {
-namespace hifimini {
+namespace {
+
+constexpr int kInputTensor = 0;
+constexpr int kFilterTensor = 1;
+constexpr int kBiasTensor = 2;
+constexpr int kOutputTensor = 0;
+
+// Conv is quantized along dimension 0:
+// https://www.tensorflow.org/lite/performance/quantization_spec
+constexpr int kConvQuantizedDimension = 0;
+
+struct OpData {
+  TfLitePaddingValues padding;
+  // The scaling factor from input to output (aka the 'real multiplier') can
+  // be represented as a fixed point multiplier plus a left shift.
+  int32_t output_multiplier;
+  int output_shift;
+
+  // Cached tensor zero point values for quantized operations.
+  int32_t input_zero_point;
+  int32_t output_zero_point;
+
+  // Per channel output multiplier and shift.
+  int32_t* per_channel_output_multiplier;
+  int32_t* per_channel_output_shift;
+
+  // The range of the fused activation layer. For example for kNone and
+  // uint8_t these would be 0 and 255.
+  int32_t output_activation_min;
+  int32_t output_activation_max;
+};
 
 void ConvPerChannel(const ConvParams& params, const int32_t* output_multiplier,
                     const int32_t* output_shift,
@@ -55,7 +82,6 @@ void ConvPerChannel(const ConvParams& params, const int32_t* output_multiplier,
   const int input_height = input_shape.Dims(1);
   const int input_width = input_shape.Dims(2);
   const int input_depth = input_shape.Dims(3);
-  const int input_depth_iters = input_depth / 2;
 
   const int filter_height = filter_shape.Dims(1);
   const int filter_width = filter_shape.Dims(2);
@@ -79,7 +105,7 @@ void ConvPerChannel(const ConvParams& params, const int32_t* output_multiplier,
           ae_q56s acc_56 = AE_ZEROQ56();
 
           for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
-            for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
+            for (int filter_x = 0; filter_x < filter_width; filter_x += 2) {
               const int in_x = in_x_origin + dilation_width_factor * filter_x;
               const int in_y = in_y_origin + dilation_height_factor * filter_y;
               const bool is_point_inside_image =
@@ -92,10 +118,10 @@ void ConvPerChannel(const ConvParams& params, const int32_t* output_multiplier,
                 // with intrinsics:
                 int input_idx =
                     ((batch * input_height + in_y) * input_width + in_x) *
-                        input_depth -
+                        input_depth * 2 -
                     2;
                 const int8_t* input_vals_offset_ptr = input_data + input_idx;
-                for (int i = 0; i < input_depth_iters; ++i) {
+                for (int i = 0; i < input_depth; i += 2) {
                   // Load signed 2x 8bit values and right shift into 24bit
                   // alignment:
                   ae_p24x2s input_vals_24x2;
@@ -112,7 +138,7 @@ void ConvPerChannel(const ConvParams& params, const int32_t* output_multiplier,
                       ((out_channel * filter_height + filter_y) * filter_width +
                        filter_x) *
                           filter_depth +
-                      (i * 2) - 2;
+                      i - 2;
                   const int8_t* filter_vals_offset_ptr =
                       filter_data + filter_idx;
 
@@ -144,9 +170,10 @@ void ConvPerChannel(const ConvParams& params, const int32_t* output_multiplier,
           ae_p24x2s acc_24x2 = AE_TRUNCP24Q48(acc_56);
 
           // Apply quantized multiplier and accumulate result at 48bit
-          // alignment:
-          acc_56 = micro::xtensa::hifimini::MultiplyByQuantizedMultiplier(
-              acc_24x2, output_multiplier[out_channel],
+          // alignment. Convert the (unsigned) 32-bit multiplier down to a
+          // 24-bit multiplier.
+          acc_56 = MultiplyByQuantizedMultiplier(
+              acc_24x2, output_multiplier[out_channel] >> 8,
               output_shift[out_channel]);
 
           // Add output offset, cap activation, and assign to the output:
@@ -222,8 +249,8 @@ inline void Conv1x32Input32x32Filter(
 
     // Apply quantized multiplier and accumulate result at 48bit alignment.
     // Convert the (unsigned) 32-bit multiplier down to a 24-bit multiplier.
-    acc_56 = micro::xtensa::hifimini::MultiplyByQuantizedMultiplier(
-        acc_24x2, output_multiplier[ch] >> 8, output_shift[ch]);
+    acc_56 = MultiplyByQuantizedMultiplier(acc_24x2, output_multiplier[ch] >> 8,
+                                           output_shift[ch]);
 
     // Add output offset, cap activation, and assign to the output:
     acc_56 = AE_ADDQ56(acc_56, output_offset_56);
@@ -233,35 +260,6 @@ inline void Conv1x32Input32x32Filter(
     output_data[ch] = static_cast<int8_t>(AE_TRUNCA32Q48(acc_56));
   }
 }
-
-}  // namespace hifimini
-}  // namespace xtensa
-
-constexpr int kInputTensor = 0;
-constexpr int kFilterTensor = 1;
-constexpr int kBiasTensor = 2;
-constexpr int kOutputTensor = 0;
-
-// Conv is quantized along dimension 0:
-// https://www.tensorflow.org/lite/performance/quantization_spec
-constexpr int kConvQuantizedDimension = 0;
-
-struct OpData {
-  TfLitePaddingValues padding;
-  // The scaling factor from input to output (aka the 'real multiplier') can
-  // be represented as a fixed point multiplier plus a left shift.
-  int32_t output_multiplier;
-  int output_shift;
-
-  // Per channel output multiplier and shift.
-  int32_t* per_channel_output_multiplier;
-  int32_t* per_channel_output_shift;
-
-  // The range of the fused activation layer. For example for kNone and
-  // uint8_t these would be 0 and 255.
-  int32_t output_activation_min;
-  int32_t output_activation_max;
-};
 
 TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
                              TfLiteConvParams* params, int width, int height,
@@ -334,7 +332,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   op_data->per_channel_output_shift =
       reinterpret_cast<int32_t*>(context->AllocatePersistentBuffer(
           context, num_channels * sizeof(int32_t)));
-
+  op_data->input_zero_point = input->params.zero_point;
+  op_data->output_zero_point = output->params.zero_point;
   // All per-channel quantized tensors need valid zero point and scale arrays.
   if (input->type == kTfLiteInt8) {
     TF_LITE_ENSURE_EQ(context, filter->quantization.type,
@@ -362,14 +361,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
 void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
                              TfLiteConvParams* params, OpData* data,
-                             const TfLiteTensor* input,
-                             const TfLiteTensor* filter,
-                             const TfLiteTensor* bias, TfLiteTensor* output,
-                             TfLiteTensor* im2col) {
+                             const TfLiteEvalTensor* input,
+                             const TfLiteEvalTensor* filter,
+                             const TfLiteEvalTensor* bias,
+                             TfLiteEvalTensor* output,
+                             TfLiteEvalTensor* im2col) {
   // TODO(b/154032858): Investigate removing extra copies.
   ConvParams op_params;
-  op_params.input_offset = -input->params.zero_point;
-  op_params.output_offset = output->params.zero_point;
+  op_params.input_offset = -data->input_zero_point;
+  op_params.output_offset = data->output_zero_point;
   op_params.stride_height = params->stride_height;
   op_params.stride_width = params->stride_width;
   op_params.dilation_height_factor = params->dilation_height_factor;
@@ -379,13 +379,16 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
   op_params.quantized_activation_min = data->output_activation_min;
   op_params.quantized_activation_max = data->output_activation_max;
 
-  xtensa::hifimini::ConvPerChannel(
-      op_params, data->per_channel_output_multiplier,
-      data->per_channel_output_shift, GetTensorShape(input),
-      GetTensorData<int8_t>(input), GetTensorShape(filter),
-      GetTensorData<int8_t>(filter), GetTensorShape(bias),
-      GetTensorData<int32_t>(bias), GetTensorShape(output),
-      GetTensorData<int8_t>(output));
+  ConvPerChannel(op_params, data->per_channel_output_multiplier,
+                 data->per_channel_output_shift,
+                 tflite::micro::GetTensorShape(input),
+                 tflite::micro::GetTensorData<int8_t>(input),
+                 tflite::micro::GetTensorShape(filter),
+                 tflite::micro::GetTensorData<int8_t>(filter),
+                 tflite::micro::GetTensorShape(bias),
+                 tflite::micro::GetTensorData<int32_t>(bias),
+                 tflite::micro::GetTensorShape(output),
+                 tflite::micro::GetTensorData<int8_t>(output));
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
@@ -394,25 +397,34 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteConvParams*>(node->builtin_data);
   auto* op_data = reinterpret_cast<OpData*>(node->user_data);
 
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  const TfLiteTensor* filter = GetInput(context, node, kFilterTensor);
-  const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
+  TfLiteEvalTensor* output =
+      tflite::micro::GetEvalOutput(context, node, kOutputTensor);
+  const TfLiteEvalTensor* input =
+      tflite::micro::GetEvalInput(context, node, kInputTensor);
+  const TfLiteEvalTensor* filter =
+      tflite::micro::GetEvalInput(context, node, kFilterTensor);
+  const TfLiteEvalTensor* bias =
+      (NumInputs(node) == 3)
+          ? tflite::micro::GetEvalInput(context, node, kBiasTensor)
+          : nullptr;
 
   int* input_dims = input->dims->data;
   int* filter_dims = filter->dims->data;
   if (input_dims[0] == 1 && input_dims[1] == 1 && input_dims[2] == 1 &&
       input_dims[3] == 32 && filter_dims[0] == 32 && filter_dims[1] == 1 &&
       filter_dims[2] == 1 && filter_dims[3] == 32) {
-    xtensa::hifimini::Conv1x32Input32x32Filter(
-        -input->params.zero_point, output->params.zero_point,
+    Conv1x32Input32x32Filter(
+        -op_data->input_zero_point, op_data->output_zero_point,
         op_data->output_activation_min, op_data->output_activation_max,
         op_data->per_channel_output_multiplier,
-        op_data->per_channel_output_shift, GetTensorShape(input),
-        GetTensorData<int8_t>(input), GetTensorShape(filter),
-        GetTensorData<int8_t>(filter), GetTensorShape(bias),
-        GetTensorData<int32_t>(bias), GetTensorShape(output),
-        GetTensorData<int8_t>(output));
+        op_data->per_channel_output_shift, tflite::micro::GetTensorShape(input),
+        tflite::micro::GetTensorData<int8_t>(input),
+        tflite::micro::GetTensorShape(filter),
+        tflite::micro::GetTensorData<int8_t>(filter),
+        tflite::micro::GetTensorShape(bias),
+        tflite::micro::GetTensorData<int32_t>(bias),
+        tflite::micro::GetTensorShape(output),
+        tflite::micro::GetTensorData<int8_t>(output));
     return kTfLiteOk;
   }
 
@@ -428,20 +440,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
   return kTfLiteOk;
 }
-
-}  // namespace conv
+}  // namespace
 
 TfLiteRegistration Register_CONV_2D() {
-  return {/*init=*/conv::Init,
+  return {/*init=*/Init,
           /*free=*/nullptr,
-          /*prepare=*/conv::Prepare,
-          /*invoke=*/conv::Eval,
+          /*prepare=*/Prepare,
+          /*invoke=*/Eval,
           /*profiling_string=*/nullptr,
           /*builtin_code=*/0,
           /*custom_name=*/nullptr,
           /*version=*/0};
 }
 
-}  // namespace micro
-}  // namespace ops
 }  // namespace tflite

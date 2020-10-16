@@ -25,70 +25,19 @@ from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import smart_cond as smart_module
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.keras import backend as K
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.keras.engine import keras_tensor
+from tensorflow.python.keras.utils import tf_contextlib
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
-from tensorflow.python.util import tf_contextlib
-
-
-def smart_cond(pred, true_fn=None, false_fn=None, name=None):
-  """Return either `true_fn()` if predicate `pred` is true else `false_fn()`.
-
-  If `pred` is a bool or has a constant value, we return either `true_fn()`
-  or `false_fn()`, otherwise we use `tf.cond` to dynamically route to both.
-
-  Arguments:
-    pred: A scalar determining whether to return the result of `true_fn` or
-      `false_fn`.
-    true_fn: The callable to be performed if pred is true.
-    false_fn: The callable to be performed if pred is false.
-    name: Optional name prefix when using `tf.cond`.
-
-  Returns:
-    Tensors returned by the call to either `true_fn` or `false_fn`.
-
-  Raises:
-    TypeError: If `true_fn` or `false_fn` is not callable.
-  """
-  if isinstance(pred, variables.Variable):
-    return control_flow_ops.cond(
-        pred, true_fn=true_fn, false_fn=false_fn, name=name)
-  return smart_module.smart_cond(
-      pred, true_fn=true_fn, false_fn=false_fn, name=name)
-
-
-def constant_value(pred):
-  """Return the bool value for `pred`, or None if `pred` had a dynamic value.
-
-  Arguments:
-    pred: A scalar, either a Python bool or a TensorFlow boolean variable
-      or tensor, or the Python integer 1 or 0.
-
-  Returns:
-    True or False if `pred` has a constant boolean value, None otherwise.
-
-  Raises:
-    TypeError: If `pred` is not a Variable, Tensor or bool, or Python
-      integer 1 or 0.
-  """
-  # Allow integer booleans.
-  if isinstance(pred, int):
-    if pred == 1:
-      pred = True
-    elif pred == 0:
-      pred = False
-
-  if isinstance(pred, variables.Variable):
-    return None
-  return smart_module.smart_constant_value(pred)
 
 
 def is_tensor_or_tensor_list(v):
@@ -336,6 +285,23 @@ def are_all_symbolic_tensors(tensors):
 _user_convertible_tensor_types = set()
 
 
+def is_extension_type(tensor):
+  """Returns whether a tensor is of an ExtensionType.
+
+  github.com/tensorflow/community/pull/269
+  Currently it works by checking if `tensor` is a `CompositeTensor` instance,
+  but this will be changed to use an appropriate extensiontype protocol
+  check once ExtensionType is made public.
+
+  Arguments:
+    tensor: An object to test
+
+  Returns:
+    True if the tensor is an extension type object, false if not.
+  """
+  return isinstance(tensor, composite_tensor.CompositeTensor)
+
+
 def is_symbolic_tensor(tensor):
   """Returns whether a tensor is symbolic (from a TF graph) or an eager tensor.
 
@@ -350,7 +316,7 @@ def is_symbolic_tensor(tensor):
   """
   if isinstance(tensor, ops.Tensor):
     return hasattr(tensor, 'graph')
-  elif isinstance(tensor, composite_tensor.CompositeTensor):
+  elif is_extension_type(tensor):
     component_tensors = nest.flatten(tensor, expand_composites=True)
     return any(hasattr(t, 'graph') for t in component_tensors)
   elif isinstance(tensor, variables.Variable):
@@ -398,12 +364,15 @@ def register_symbolic_tensor_type(cls):
     cls: A `class` type which shall be regarded as a symbolic `Tensor`.
   """
   global _user_convertible_tensor_types
+  if cls not in _user_convertible_tensor_types:
+    keras_tensor.register_keras_tensor_specialization(
+        cls, keras_tensor.UserRegisteredTypeKerasTensor)
   _user_convertible_tensor_types.add(cls)
 
 
 def type_spec_from_value(value):
   """Grab type_spec without converting array-likes to tensors."""
-  if isinstance(value, composite_tensor.CompositeTensor):
+  if is_extension_type(value):
     return value._type_spec  # pylint: disable=protected-access
   # Get a TensorSpec for array-like data without
   # converting the data to a Tensor
@@ -411,6 +380,13 @@ def type_spec_from_value(value):
     return tensor_spec.TensorSpec(value.shape, value.dtype)
   else:
     return type_spec.type_spec_from_value(value)
+
+
+def is_ragged(tensor):
+  """Returns true if `tensor` is a ragged tensor or ragged tensor value."""
+  return isinstance(
+      tensor,
+      (ragged_tensor.RaggedTensor, ragged_tensor_value.RaggedTensorValue))
 
 
 def is_tensor_or_variable(x):
@@ -486,7 +462,7 @@ def get_tensor_spec(t, dynamic_batch=False, name=None):
   # pylint: disable=protected-access
   if isinstance(t, type_spec.TypeSpec):
     spec = t
-  elif isinstance(t, composite_tensor.CompositeTensor):
+  elif is_extension_type(t):
     # TODO(b/148821952): Should these specs have a name attr?
     spec = t._type_spec
   elif (hasattr(t, '_keras_history') and
@@ -502,10 +478,11 @@ def get_tensor_spec(t, dynamic_batch=False, name=None):
 
   dynamic_batch_spec = copy.deepcopy(spec)
   # RaggedTensorSpec only has a private _shape.
-  shape = dynamic_batch_spec._shape.as_list()
-  if shape:
-    shape[0] = None
-    dynamic_batch_spec._shape = tensor_shape.TensorShape(shape)
+  shape = dynamic_batch_spec._shape
+  if shape.rank is not None and shape.rank > 0:
+    shape_list = shape.as_list()
+    shape_list[0] = None
+    dynamic_batch_spec._shape = tensor_shape.TensorShape(shape_list)
   return dynamic_batch_spec
   # pylint: enable=protected-access
 

@@ -85,7 +85,11 @@ class GraphOperation : public TracingOperation {
       return errors::FailedPrecondition(
           "GraphOperation::Reset must be called before calling SetOpName.");
     }
-    op_.reset(TF_NewOperation(g_, op_type_.c_str(), op_name));
+    // TODO(b/145674566): We use Graph::NewName to get a unique name here but
+    // this may not be consistent with python's naming policy.
+    mutex_lock l(g_->mu);
+    op_.reset(new TF_OperationDescription(g_, op_type_.c_str(),
+                                          g_->graph.NewName(op_name).c_str()));
     return Status::OK();
   }
   const string& Name() const override { return op_type_; }
@@ -361,9 +365,10 @@ class GraphContext : public TracingContext {
     }
 
     auto s = TF_NewStatus();
-    func->func = TF_GraphToFunction(
-        graph_.get(), name_, 0, -1, nullptr, inputs_.size(), inputs_.data(),
-        graph_outputs.size(), graph_outputs.data(), nullptr, nullptr, name_, s);
+    func->func = TF_GraphToFunction(graph_.get(), name_.data(), 0, -1, nullptr,
+                                    inputs_.size(), inputs_.data(),
+                                    graph_outputs.size(), graph_outputs.data(),
+                                    nullptr, nullptr, name_.data(), s);
     TF_RETURN_IF_ERROR(StatusFromTF_Status(s));
     TF_DeleteStatus(s);
     *f = func.release();
@@ -387,7 +392,7 @@ class GraphContext : public TracingContext {
  private:
   std::unique_ptr<TF_Graph, decltype(&TF_DeleteGraph)> graph_;
   std::vector<TF_Output> inputs_;
-  const char* name_;
+  string name_;
 };
 
 static TracingContext* GraphTracingFactory(const char* name, TF_Status* s) {
@@ -397,7 +402,7 @@ static TracingContext* GraphTracingFactory(const char* name, TF_Status* s) {
 // Register the tracing implemented in this file as the default tracing engine.
 static bool register_tracing = [] {
   RegisterTracingEngineFactory("graphdef", GraphTracingFactory);
-  SetDefaultTracingEngine("graphdef");
+  SetDefaultTracingEngine("graphdef").IgnoreError();
   return true;
 }();
 

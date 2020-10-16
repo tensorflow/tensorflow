@@ -51,8 +51,8 @@ bool RunWithRandomInputs(const std::string& filename) {
     for (auto it = data.begin(); it != data.end(); ++it) {
       *it = random();
     }
-    tensor->data.raw = reinterpret_cast<char*>(data.data());
     sample.push_back(data);
+    tensor->data.raw = reinterpret_cast<char*>(sample.rbegin()->data());
   }
 
   // Running inference.
@@ -68,7 +68,7 @@ TEST(SelectiveBuiltTest, AddModel) {
   EXPECT_THAT(RunWithRandomInputs(model), true);
 }
 
-TEST(SelectiveBuiltTest, LGTMModel) {
+TEST(SelectiveBuiltTest, LSTMModel) {
   std::string model = "third_party/tensorflow/lite/testdata/lstm.bin";
   EXPECT_THAT(RunWithRandomInputs(model), true);
 }

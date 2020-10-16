@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/optimize/operator_property.h"
 
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 
 namespace tflite {
 namespace optimize {
@@ -41,7 +42,8 @@ const OpVariant GetOperatorVariant(const ModelT* model, int subgraph_index,
   OpVariant op_variant;
   OperatorT* op =
       model->subgraphs.at(subgraph_index)->operators[op_index].get();
-  op_variant.op_code = model->operator_codes[op->opcode_index]->builtin_code;
+  op_variant.op_code =
+      GetBuiltinCode(model->operator_codes[op->opcode_index].get());
   if (op_variant.op_code == BuiltinOperator_LSTM) {
     if (op->inputs.size() == 5) {
       // The 5 input ("basic") LSTM is not supported in this tooling (yet).
@@ -70,6 +72,11 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
   BuiltinOperator op_code = op_variant.op_code;
   OperatorProperty property;
   switch (op_code) {
+    case BuiltinOperator_ABS:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.version = 2;
+      break;
     case BuiltinOperator_ADD:
       property.inputs = {{0, {}}, {1, {}}};
       property.outputs = {{0, {}}};
@@ -92,6 +99,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.inputs = {{0, {}}, {1, {}}};
       property.outputs = {{0, {}}};
       property.version = 2;
+      property.quantize_input_as_activations = true;
       break;
     }
     case BuiltinOperator_BATCH_TO_SPACE_ND:
@@ -190,8 +198,8 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
       property.restrict_same_input_output_scale = true;
+      property.quantize_input_as_activations = true;
       property.version = 2;
-      property.quantizable_int16 = false;
       break;
     case BuiltinOperator_HARD_SWISH: {
       property.inputs = {{0, {}}};
@@ -829,7 +837,6 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.outputs = {{0, {}}};
       property.restrict_same_input_output_scale = true;
       property.version = 2;
-      property.quantizable_int16 = false;
       break;
     case BuiltinOperator_QUANTIZE:
       property.inputs = {{0, {}}};
@@ -867,12 +874,17 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.version = 1;
       break;
     case BuiltinOperator_RESIZE_BILINEAR:
-    case BuiltinOperator_RESIZE_NEAREST_NEIGHBOR:
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
       property.restrict_same_input_output_scale = true;
       property.version = 2;
       property.quantizable_int16 = false;
+      break;
+    case BuiltinOperator_RESIZE_NEAREST_NEIGHBOR:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
+      property.version = 2;
       break;
     case BuiltinOperator_SHAPE:
       property.inputs = {{0, {}}};

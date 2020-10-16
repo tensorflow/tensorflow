@@ -101,11 +101,18 @@ class XStatsOwner {
   const XPlaneVisitor* metadata_;
 };
 
+using XEventMetadataVisitor = XStatsOwner<XEventMetadata>;
+
 class XEventVisitor : public XStatsOwner<XEvent> {
  public:
   // REQUIRED: plane, line and event cannot be nullptr.
   XEventVisitor(const XPlaneVisitor* plane, const XLine* line,
                 const XEvent* event);
+
+  XEventMetadataVisitor MetadataStats() const {
+    return XEventMetadataVisitor(plane_, metadata_);
+  }
+
   int64 Id() const { return event_->metadata_id(); }
 
   absl::string_view Name() const { return metadata_->name(); }
@@ -232,9 +239,9 @@ class XPlaneVisitor : public XStatsOwner<XPlane> {
 
  private:
   void BuildEventTypeMap(const XPlane* plane,
-                         const TypeGetter& event_type_getter);
+                         const TypeGetterList& event_type_getter_list);
   void BuildStatTypeMap(const XPlane* plane,
-                        const TypeGetter& stat_type_getter);
+                        const TypeGetterList& stat_type_getter_list);
 
   const XPlane* plane_;
 

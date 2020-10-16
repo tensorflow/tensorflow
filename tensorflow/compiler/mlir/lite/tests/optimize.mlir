@@ -26,6 +26,26 @@ func @fusedDepthwiseConv2dRelu6(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<16
   // CHECK: return %0
 }
 
+// CHECK-LABEL: fusedMaxPool2dRelu
+func @fusedMaxPool2dRelu(%arg0: tensor<1x147x147x16xf32>) -> tensor<1x73x73x16xf32> {
+  %0 = "tfl.max_pool_2d"(%arg0) {filter_height = 3 : i32, filter_width = 3 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<1x147x147x16xf32>) -> tensor<1x73x73x16xf32>
+  %1 = "tfl.relu"(%0) : (tensor<1x73x73x16xf32>) -> tensor<1x73x73x16xf32>
+  return %1 : tensor<1x73x73x16xf32>
+
+  // CHECK: %0 = "tfl.max_pool_2d"(%arg0) {filter_height = 3 : i32, filter_width = 3 : i32, fused_activation_function = "RELU", padding = "VALID", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<1x147x147x16xf32>) -> tensor<1x73x73x16xf32>
+  // CHECK: return %0
+}
+
+// CHECK-LABEL: fusedAvgPool2dRelu1
+func @fusedAvgPool2dRelu1(%arg0: tensor<1x147x147x16xf32>) -> tensor<1x73x73x16xf32> {
+  %0 = "tfl.average_pool_2d"(%arg0) {filter_height = 3 : i32, filter_width = 3 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<1x147x147x16xf32>) -> tensor<1x73x73x16xf32>
+  %1 = "tfl.relu_n1_to_1"(%0) : (tensor<1x73x73x16xf32>) -> tensor<1x73x73x16xf32>
+  return %1 : tensor<1x73x73x16xf32>
+
+  // CHECK: %0 = "tfl.average_pool_2d"(%arg0) {filter_height = 3 : i32, filter_width = 3 : i32, fused_activation_function = "RELU_N1_TO_1", padding = "VALID", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<1x147x147x16xf32>) -> tensor<1x73x73x16xf32>
+  // CHECK: return %0
+}
+
 // CHECK-LABEL: fuseAddIntoConv2d
 func @fuseAddIntoConv2d(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<16x3x3x3xf32>) -> tensor<256x30x30x16xf32> {
   %cst = constant dense<1.5> : tensor<16xf32>
@@ -48,6 +68,96 @@ func @fuseSubIntoConv2d(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<16x3x3x3xf
 
   // CHECK: %cst = constant dense<[5.000000e-01, 1.500000e+00, 2.500000e+00, 3.500000e+00, 4.500000e+00, 5.500000e+00, 6.500000e+00, 7.500000e+00, 8.500000e+00, 9.500000e+00, 1.050000e+01, 1.150000e+01, 1.250000e+01, 1.350000e+01, 1.450000e+01, 1.550000e+01]> : tensor<16xf32>
   // CHECK: %0 = "tfl.conv_2d"(%arg0, %arg1, %cst)
+}
+
+// CHECK-LABEL: fuseAddIntoTransposeConv
+func @fuseAddIntoTransposeConv(%arg0: tensor<1x32x42x128xf32>) -> tensor<1x64x84x32xf32> {
+  %cst = constant dense<1.5> : tensor<32xf32>
+  %cst_0 = constant dense<[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0]> : tensor<16xf32>
+  %cst_1 = constant dense<[1, 64, 84, 32]> : tensor<4xi32>
+  %cst_2 = constant dense<1.0> : tensor<32x4x4x128xf32>
+  %cst_3 = constant dense<[1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0]> : tensor<32xf32>
+  %0 = "tfl.transpose_conv"(%cst_1, %cst_2, %arg0, %cst_3) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, tensor<32xf32>) -> tensor<1x64x84x32xf32>
+  %1 = "tfl.add"(%0, %cst) {fused_activation_function = "NONE"} : (tensor<1x64x84x32xf32>, tensor<32xf32>) -> tensor<1x64x84x32xf32>
+  return %1 : tensor<1x64x84x32xf32>
+
+  // CHECK: %[[SHAPE:.*]] = constant dense<[1, 64, 84, 32]> : tensor<4xi32>
+  // CHECK: %[[WEIGHTS:.*]] = constant dense<1.000000e+00> : tensor<32x4x4x128xf32>
+  // CHECK: %[[BIAS:.*]] = constant dense<[2.500000e+00, 3.500000e+00, 2.500000e+00, 3.500000e+00, 2.500000e+00, 3.500000e+00, 2.500000e+00, 3.500000e+00, 2.500000e+00, 3.500000e+00, 2.500000e+00, 3.500000e+00, 2.500000e+00, 3.500000e+00, 2.500000e+00, 3.500000e+00, 2.500000e+00, 3.500000e+00, 2.500000e+00, 3.500000e+00, 2.500000e+00, 3.500000e+00, 2.500000e+00, 3.500000e+00, 2.500000e+00, 3.500000e+00, 2.500000e+00, 3.500000e+00, 2.500000e+00, 3.500000e+00, 2.500000e+00, 3.500000e+00]> : tensor<32xf32>
+  // CHECK: %[[RESULT:.*]] = "tfl.transpose_conv"(%[[SHAPE]], %[[WEIGHTS]], %arg0, %[[BIAS]])
+  // CHECK: return %[[RESULT]]
+}
+
+// CHECK-LABEL: fuseSubIntoTransposeConv
+func @fuseSubIntoTransposeConv(%arg0: tensor<1x32x42x128xf32>) -> tensor<1x64x84x32xf32> {
+  %cst = constant dense<1.5> : tensor<32xf32>
+  %cst_0 = constant dense<[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0]> : tensor<16xf32>
+  %cst_1 = constant dense<[1, 64, 84, 32]> : tensor<4xi32>
+  %cst_2 = constant dense<1.0> : tensor<32x4x4x128xf32>
+  %cst_3 = constant dense<[1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0]> : tensor<32xf32>
+  %0 = "tfl.transpose_conv"(%cst_1, %cst_2, %arg0, %cst_3) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, tensor<32xf32>) -> tensor<1x64x84x32xf32>
+  %1 = "tfl.sub"(%0, %cst) {fused_activation_function = "NONE"} : (tensor<1x64x84x32xf32>, tensor<32xf32>) -> tensor<1x64x84x32xf32>
+  return %1 : tensor<1x64x84x32xf32>
+
+  // CHECK: %[[SHAPE:.*]] = constant dense<[1, 64, 84, 32]> : tensor<4xi32>
+  // CHECK: %[[WEIGHTS:.*]] = constant dense<1.000000e+00> : tensor<32x4x4x128xf32>
+  // CHECK: %[[BIAS:.*]] = constant dense<[-5.000000e-01, 5.000000e-01, -5.000000e-01, 5.000000e-01, -5.000000e-01, 5.000000e-01, -5.000000e-01, 5.000000e-01, -5.000000e-01, 5.000000e-01, -5.000000e-01, 5.000000e-01, -5.000000e-01, 5.000000e-01, -5.000000e-01, 5.000000e-01, -5.000000e-01, 5.000000e-01, -5.000000e-01, 5.000000e-01, -5.000000e-01, 5.000000e-01, -5.000000e-01, 5.000000e-01, -5.000000e-01, 5.000000e-01, -5.000000e-01, 5.000000e-01, -5.000000e-01, 5.000000e-01, -5.000000e-01, 5.000000e-01]> : tensor<32xf32>
+  // CHECK: %[[RESULT:.*]] = "tfl.transpose_conv"(%[[SHAPE]], %[[WEIGHTS]], %arg0, %[[BIAS]])
+  // CHECK: return %[[RESULT]]
+}
+
+// CHECK-LABEL: fuseAddIntoTransposeConvNoBias
+func @fuseAddIntoTransposeConvNoBias(%arg0: tensor<1x32x42x128xf32>) -> tensor<1x64x84x32xf32> {
+  %cst = constant dense<1.5> : tensor<32xf32>
+  %cst_0 = constant dense<[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0]> : tensor<16xf32>
+  %cst_1 = constant dense<[1, 64, 84, 32]> : tensor<4xi32>
+  %cst_2 = constant dense<1.0> : tensor<32x4x4x128xf32>
+  %cst_3 = constant unit
+  %0 = "tfl.transpose_conv"(%cst_1, %cst_2, %arg0, %cst_3) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, none) -> tensor<1x64x84x32xf32>
+  %1 = "tfl.add"(%0, %cst) {fused_activation_function = "NONE"} : (tensor<1x64x84x32xf32>, tensor<32xf32>) -> tensor<1x64x84x32xf32>
+  return %1 : tensor<1x64x84x32xf32>
+
+  // CHECK: %[[SHAPE:.*]] = constant dense<[1, 64, 84, 32]> : tensor<4xi32>
+  // CHECK: %[[WEIGHTS:.*]] = constant dense<1.000000e+00> : tensor<32x4x4x128xf32>
+  // CHECK: %[[BIAS:.*]] = constant dense<1.500000e+00> : tensor<32xf32>
+  // CHECK: %[[RESULT:.*]] = "tfl.transpose_conv"(%[[SHAPE]], %[[WEIGHTS]], %arg0, %[[BIAS]])
+  // CHECK: return %[[RESULT]]
+}
+
+// CHECK-LABEL: fuseMulIntoTransposeConv
+func @fuseMulIntoTransposeConv(%arg0: tensor<1x32x42x128xf32>) -> tensor<1x64x84x32xf32> {
+  %cst = constant dense<1.5> : tensor<32xf32>
+  %cst_0 = constant dense<[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0]> : tensor<16xf32>
+  %cst_1 = constant dense<[1, 64, 84, 32]> : tensor<4xi32>
+  %cst_2 = constant dense<1.0> : tensor<32x4x4x128xf32>
+  %cst_3 = constant dense<[1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0]> : tensor<32xf32>
+  %0 = "tfl.transpose_conv"(%cst_1, %cst_2, %arg0, %cst_3) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, tensor<32xf32>) -> tensor<1x64x84x32xf32>
+  %1 = "tfl.mul"(%0, %cst) {fused_activation_function = "NONE"} : (tensor<1x64x84x32xf32>, tensor<32xf32>) -> tensor<1x64x84x32xf32>
+  return %1 : tensor<1x64x84x32xf32>
+
+  // CHECK: %[[SHAPE:.*]] = constant dense<[1, 64, 84, 32]> : tensor<4xi32>
+  // CHECK: %[[WEIGHTS:.*]] = constant dense<1.500000e+00> : tensor<32x4x4x128xf32>
+  // CHECK: %[[BIAS:.*]] = constant dense<[1.500000e+00, 3.000000e+00, 1.500000e+00, 3.000000e+00, 1.500000e+00, 3.000000e+00, 1.500000e+00, 3.000000e+00, 1.500000e+00, 3.000000e+00, 1.500000e+00, 3.000000e+00, 1.500000e+00, 3.000000e+00, 1.500000e+00, 3.000000e+00, 1.500000e+00, 3.000000e+00, 1.500000e+00, 3.000000e+00, 1.500000e+00, 3.000000e+00, 1.500000e+00, 3.000000e+00, 1.500000e+00, 3.000000e+00, 1.500000e+00, 3.000000e+00, 1.500000e+00, 3.000000e+00, 1.500000e+00, 3.000000e+00]> : tensor<32xf32>
+  // CHECK: %[[RESULT:.*]] = "tfl.transpose_conv"(%[[SHAPE]], %[[WEIGHTS]], %arg0, %[[BIAS]])
+  // CHECK: return %[[RESULT]]
+}
+
+// CHECK-LABEL: fuseMulIntoTransposeConvNoBias
+func @fuseMulIntoTransposeConvNoBias(%arg0: tensor<1x32x42x128xf32>) -> tensor<1x64x84x32xf32> {
+  %cst = constant dense<1.5> : tensor<32xf32>
+  %cst_0 = constant dense<[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0]> : tensor<16xf32>
+  %cst_1 = constant dense<[1, 64, 84, 32]> : tensor<4xi32>
+  %cst_2 = constant dense<1.0> : tensor<32x4x4x128xf32>
+  %cst_3 = constant unit
+  %0 = "tfl.transpose_conv"(%cst_1, %cst_2, %arg0, %cst_3) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, none) -> tensor<1x64x84x32xf32>
+  %1 = "tfl.mul"(%0, %cst) {fused_activation_function = "NONE"} : (tensor<1x64x84x32xf32>, tensor<32xf32>) -> tensor<1x64x84x32xf32>
+  return %1 : tensor<1x64x84x32xf32>
+
+  // CHECK: %[[SHAPE:.*]] = constant dense<[1, 64, 84, 32]> : tensor<4xi32>
+  // CHECK: %[[WEIGHTS:.*]] = constant dense<1.500000e+00> : tensor<32x4x4x128xf32>
+  // CHECK: %[[BIAS:.*]] = constant unit
+  // CHECK: %[[RESULT:.*]] = "tfl.transpose_conv"(%[[SHAPE]], %[[WEIGHTS]], %arg0, %[[BIAS]])
+  // CHECK: return %[[RESULT]]
 }
 
 // CHECK-LABEL: fuseAddIntoFollowingConv2d
@@ -180,6 +290,22 @@ func @fuseMulIntoFullyConnected(%arg0: tensor<4x2xf32>) -> tensor<4x2xf32> {
 // CHECK:  %[[CONSTANT0:.*]] = constant dense<[2.000000e+00, 4.000000e+00]> : tensor<2xf32>
 // CHECK:  %[[RES:.*]] = "tfl.fully_connected"(%arg0, %[[CONSTANT]], %[[CONSTANT0]]) {fused_activation_function = "RELU6", keep_num_dims = false, weights_format = "DEFAULT"}
 // CHECK:  return %[[RES]] : tensor<4x2xf32>
+}
+
+// CHECK-LABEL: @fuseBroadcastMulIntoFullyConnected
+func @fuseBroadcastMulIntoFullyConnected(%arg0: tensor<1x10368xbf16>) -> tensor<32x1x256xbf16> {
+  %cst_0 = constant dense<2.0> : tensor<256x10368xbf16>
+  %cst_1 = constant unit
+  %cst_2 = constant dense<3.0> : tensor<32x1x256xbf16>
+  %0 = "tfl.fully_connected"(%arg0, %cst_0, %cst_1) {
+    fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"
+  } : (tensor<1x10368xbf16>, tensor<256x10368xbf16>, none) -> tensor<1x256xbf16>
+  %1 = "tfl.mul"(%0, %cst_2) {fused_activation_function = "NONE"} : (tensor<1x256xbf16>, tensor<32x1x256xbf16>) -> tensor<32x1x256xbf16>
+  return %1 : tensor<32x1x256xbf16>
+
+// CHECK:  %[[V0:.*]] = "tfl.fully_connected"(%arg0, {{.*}}) {{{.*}}} : (tensor<1x10368xbf16>, tensor<256x10368xbf16>, none) -> tensor<1x256xbf16>
+// CHECK:  %[[V1:.*]] = "tfl.mul"(%[[V0]], {{.*}}) {{{.*}}} : (tensor<1x256xbf16>, tensor<32x1x256xbf16>) -> tensor<32x1x256xbf16>
+// CHECK:  return %[[V1]] : tensor<32x1x256xbf16>
 }
 
 
@@ -397,6 +523,32 @@ func @FuseFullyConnectedReshapeAddConst(%arg0: tensor<40x37xf32>, %arg1: tensor<
 
   // FOLD: %[[cst:.*]] = constant dense<5.000000e+00> : tensor<40x40xf32>
   // FOLD: %[[fc:.*]] = "tfl.fully_connected"(%arg0, %arg1, %[[cst]])
+  // FOLD: return %[[fc]]
+}
+
+// CHECK-LABEL: @FuseFullyConnectedReshapeAddConstWithActivation
+// FOLD-LABEL: @FuseFullyConnectedReshapeAddConstWithActivation
+func @FuseFullyConnectedReshapeAddConstWithActivation(%arg0: tensor<40x37xf32>, %arg1: tensor<40x37xf32>) -> tensor<40x40xf32> {
+  %cst = constant dense<3.0> : tensor<40x40xf32>
+  %cst2 = constant dense<2.0> : tensor<40xf32>
+  %shape1 = constant dense<[1, 40, 40]> : tensor<3xi32>
+  %shape2 = constant dense<[40, 40]> : tensor<2xi32>
+
+  %0 = "tfl.fully_connected"(%arg0, %arg1, %cst) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<40x37xf32>, tensor<40x37xf32>, tensor<40x40xf32>) -> (tensor<40x40xf32>)
+  %1 = "tfl.reshape"(%0, %shape1) : (tensor<40x40xf32>, tensor<3xi32>) -> tensor<1x40x40xf32>
+  %2 = "tfl.add"(%1, %cst2) {fused_activation_function = "RELU6"} : (tensor<1x40x40xf32>, tensor<40xf32>) -> tensor<1x40x40xf32>
+  %3 = "tfl.reshape"(%2, %shape2) : (tensor<1x40x40xf32>, tensor<2xi32>) -> tensor<40x40xf32>
+
+  return %3 : tensor<40x40xf32>
+
+  // CHECK: %[[cst:.*]] = constant dense<5.000000e+00> : tensor<40x40xf32>
+  // CHECK: %[[fc:.*]] = "tfl.fully_connected"(%arg0, %arg1, %[[cst]]) {fused_activation_function = "RELU6", keep_num_dims = false, weights_format = "DEFAULT"}
+  // CHECK: %[[rs1:.*]] = "tfl.reshape"(%[[fc]]
+  // CHECK: %[[rs2:.*]] = "tfl.reshape"(%[[rs1]]
+  // CHECK: return %[[rs2]]
+
+  // FOLD: %[[cst:.*]] = constant dense<5.000000e+00> : tensor<40x40xf32>
+  // FOLD: %[[fc:.*]] = "tfl.fully_connected"(%arg0, %arg1, %[[cst]]) {fused_activation_function = "RELU6", keep_num_dims = false, weights_format = "DEFAULT"}
   // FOLD: return %[[fc]]
 }
 
@@ -829,6 +981,25 @@ func @doNotConvertNonTrivialTransposeToReshape(%arg0: tensor<6x6x256x1xf32>) -> 
   // CHECK: return %[[RESULT]]
 }
 
+// CHECK-LABEL: Relu
+func @Relu(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+  %cst = constant dense<0.0> : tensor<f32>
+  %0 = "tfl.maximum"(%arg0, %cst) : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+  return %0 : tensor<2x3xf32>
+
+  // CHECK: %[[RESULT:.*]] = "tfl.relu"(%arg0)
+  // CHECK: return %[[RESULT]]
+}
+
+// CHECK-LABEL: Relu_bf16
+func @Relu_bf16(%arg0: tensor<2x3xbf16>) -> tensor<2x3xbf16> {
+  %cst = constant dense<0.0> : tensor<2x3xbf16>
+  %0 = "tfl.maximum"(%arg0, %cst) : (tensor<2x3xbf16>, tensor<2x3xbf16>) -> tensor<2x3xbf16>
+  return %0 : tensor<2x3xbf16>
+
+  // CHECK: %[[RESULT:.*]] = "tfl.relu"(%arg0)
+  // CHECK: return %[[RESULT]]
+}
 
 // CHECK-LABEL: Relu1
 func @Relu1(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
@@ -1002,3 +1173,167 @@ func @squaredDifferenceReluRemoveRelu(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>
 // CHECK:  return %[[RESULT]]
 }
 
+func @ConvertSqueezeToReshapeWithDynamicDimension(%arg0: tensor<?x1x8x3xf32>) -> tensor<?x8x3xf32> {
+  %0 = "tfl.squeeze"(%arg0) {squeeze_dims = [1]}: (tensor<?x1x8x3xf32>) -> tensor<?x8x3xf32>
+  return %0: tensor<?x8x3xf32>
+
+// CHECK-LABEL: ConvertSqueezeToReshapeWithDynamicDimension
+// CHECK: [[CONST:.*]] = constant dense<[-1, 8, 3]> : tensor<3xi32>
+// CHECK: %[[RESULT:.*]] = "tfl.reshape"(%arg0, %[[CONST:.*]]) : (tensor<?x1x8x3xf32>, tensor<3xi32>) -> tensor<?x8x3xf32>
+// CHECK:  return %[[RESULT]]
+}
+
+func @ConvertSqueezeToReshapeWithDynamicDimension2(%arg0: tensor<?x1x8x3xf32>) -> tensor<1x8x3xf32> {
+  %0 = "tfl.squeeze"(%arg0) {squeeze_dims = [0]}: (tensor<?x1x8x3xf32>) -> tensor<1x8x3xf32>
+  return %0: tensor<1x8x3xf32>
+
+// CHECK-LABEL: ConvertSqueezeToReshapeWithDynamicDimension2
+// CHECK: [[CONST:.*]] = constant dense<[1, 8, 3]> : tensor<3xi32>
+// CHECK: %[[RESULT:.*]] = "tfl.reshape"(%arg0, %[[CONST:.*]]) : (tensor<?x1x8x3xf32>, tensor<3xi32>) -> tensor<1x8x3xf32>
+// CHECK:  return %[[RESULT]]
+}
+
+func @DontConvertSqueezeToReshape(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  %0 = "tfl.squeeze"(%arg0) {squeeze_dims = [0]}: (tensor<*xf32>) -> tensor<*xf32>
+  return %0: tensor<*xf32>
+
+// CHECK-LABEL: DontConvertSqueezeToReshape
+// CHECK: %[[RESULT:.*]] = "tfl.squeeze"(%arg0)
+// CHECK:  return %[[RESULT]]
+}
+
+func @ConvertPow1ToIdentity(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  %cst = constant dense<1.000000e+00> : tensor<f32>
+  %0 = "tfl.pow"(%arg0, %cst) : (tensor<2x2xf32>, tensor<f32>) -> tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
+
+// CHECK-LABEL: ConvertPow1ToIdentity
+// CHECK: return %arg0
+}
+
+func @ConvertPow2ToSquare(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  %cst = constant dense<2.000000e+00> : tensor<f32>
+  %0 = "tfl.pow"(%arg0, %cst) : (tensor<2x2xf32>, tensor<f32>) -> tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
+
+// CHECK-LABEL: ConvertPow2ToSquare
+// CHECK: %[[RESULT:.*]] = tfl.mul %arg0, %arg0 {fused_activation_function = "NONE"} : tensor<2x2xf32>
+// CHECK: return %[[RESULT]]
+}
+
+func @ConvertIdentityGatherNdOp(%arg0: tensor<4x3xf32>) -> tensor<4x3xf32> {
+  %cst = constant dense<[[0], [1], [2], [3]]> : tensor<4x1xi32>
+  %0 = "tfl.gather_nd"(%arg0, %cst) : (tensor<4x3xf32>, tensor<4x1xi32>) -> tensor<4x3xf32>
+  return %0 : tensor<4x3xf32>
+
+// CHECK-LABEL: ConvertIdentityGatherNdOp
+// CHECK-SAME: (%[[ARG:.*]]: tensor<4x3xf32>) -> tensor<4x3xf32>
+// CHECK-NEXT: return %[[ARG]] : tensor<4x3xf32>
+}
+
+func @ConvertIdentityGatherNdOp3D(%arg0: tensor<4x3x4xf32>) -> tensor<4x3x4xf32> {
+  %cst = constant dense<[[0], [1], [2], [3]]> : tensor<4x1xi32>
+  %0 = "tfl.gather_nd"(%arg0, %cst) : (tensor<4x3x4xf32>, tensor<4x1xi32>) -> tensor<4x3x4xf32>
+  return %0 : tensor<4x3x4xf32>
+
+// CHECK-LABEL: ConvertIdentityGatherNdOp3D
+// CHECK-SAME: (%[[ARG:.*]]: tensor<4x3x4xf32>) -> tensor<4x3x4xf32>
+// CHECK-NEXT: return %[[ARG]] : tensor<4x3x4xf32>
+}
+
+func @ConvertIdentityScatterNd(%arg0: tensor<4x3xf32>) -> tensor<4x3xf32> {
+  %cst = constant dense<[[0], [1], [2], [3]]> : tensor<4x1xi32>
+  %shape = constant dense<[4, 3]> : tensor<2xi32>
+  %0 = "tfl.scatter_nd"(%cst, %arg0, %shape) : (tensor<4x1xi32>, tensor<4x3xf32>, tensor<2xi32>) -> tensor<4x3xf32>
+  return %0 : tensor<4x3xf32>
+
+// CHECK-LABEL: ConvertIdentityScatterNd
+// CHECK-SAME: (%[[ARG:.*]]: tensor<4x3xf32>) -> tensor<4x3xf32>
+// CHECK-NEXT: return %[[ARG]] : tensor<4x3xf32>
+}
+
+func @ReshapeAddUnknownShape(%arg0: tensor<*xf32>) -> tensor<3x4xf32> {
+  %cst = constant dense<[3, 4]> : tensor<2xi32>
+  %cst_0 = constant dense<1.000000e+00> : tensor<3x4xf32>
+  %0 = "tfl.reshape"(%arg0, %cst) : (tensor<*xf32>, tensor<2xi32>) -> tensor<3x4xf32>
+  %1 = "tfl.add"(%0, %cst_0) {fused_activation_function = "NONE"} : (tensor<3x4xf32>, tensor<3x4xf32>) -> tensor<3x4xf32>
+  return %1 : tensor<3x4xf32>
+// CHECK-LABEL: ReshapeAddUnknownShape
+// CHECK: %[[rs1:.*]] = "tfl.reshape"(%arg0
+// CHECK: %[[rs2:.*]] = tfl.add %[[rs1]]
+// CHECK: return %[[rs2]]
+}
+
+func @FoldSumKeepDim(%arg0: tensor<8x128xf32>) -> tensor<8x1xf32> {
+  %cst = constant dense<1> : tensor<1xi32>
+  %cst_1 = constant dense<[8, 1]> : tensor<2xi32>
+  %0 = "tfl.sum"(%arg0, %cst) {keep_dims = false} : (tensor<8x128xf32>, tensor<1xi32>) -> tensor<8xf32>
+  %1 = "tfl.reshape"(%0, %cst_1) : (tensor<8xf32>, tensor<2xi32>) -> tensor<8x1xf32>
+  return %1 : tensor<8x1xf32>
+
+// CHECK-LABEL: FoldSumKeepDim
+// CHECK: %[[RESULT:.*]] = "tfl.sum"(%arg0, %cst) {keep_dims = true} : (tensor<8x128xf32>, tensor<1xi32>) -> tensor<8x1xf32>
+// CHECK: return %[[RESULT]] : tensor<8x1xf32>
+}
+
+func @FoldReduceMinKeepDim(%arg0: tensor<8x128xf32>) -> tensor<1x128xf32> {
+  %cst = constant dense<0> : tensor<1xi32>
+  %cst_1 = constant dense<[1, 128]> : tensor<2xi32>
+  %0 = "tfl.reduce_min"(%arg0, %cst) {keep_dims = false} : (tensor<8x128xf32>, tensor<1xi32>) -> tensor<128xf32>
+  %1 = "tfl.reshape"(%0, %cst_1) : (tensor<128xf32>, tensor<2xi32>) -> tensor<1x128xf32>
+  return %1 : tensor<1x128xf32>
+
+// CHECK-LABEL: FoldReduceMinKeepDim
+// CHECK: %[[RESULT:.*]] = "tfl.reduce_min"(%arg0, %cst) {keep_dims = true} : (tensor<8x128xf32>, tensor<1xi32>) -> tensor<1x128xf32>
+// CHECK: return %[[RESULT]] : tensor<1x128xf32>
+}
+
+func @FoldReduceMaxKeepDim(%arg0: tensor<8x128xf32>) -> tensor<1x128xf32> {
+  %cst = constant dense<0> : tensor<1xi32>
+  %cst_1 = constant dense<[1, 128]> : tensor<2xi32>
+  %0 = "tfl.reduce_max"(%arg0, %cst) {keep_dims = false} : (tensor<8x128xf32>, tensor<1xi32>) -> tensor<128xf32>
+  %1 = "tfl.reshape"(%0, %cst_1) : (tensor<128xf32>, tensor<2xi32>) -> tensor<1x128xf32>
+  return %1 : tensor<1x128xf32>
+
+// CHECK-LABEL: FoldReduceMaxKeepDim
+// CHECK: %[[RESULT:.*]] = "tfl.reduce_max"(%arg0, %cst) {keep_dims = true} : (tensor<8x128xf32>, tensor<1xi32>) -> tensor<1x128xf32>
+// CHECK: return %[[RESULT]] : tensor<1x128xf32>
+}
+
+func @FoldReduceProdKeepDim(%arg0: tensor<8x128xf32>) -> tensor<1x1xf32> {
+  %cst = constant dense<[0, 1]> : tensor<2xi32>
+  %cst_1 = constant dense<[1, 1]> : tensor<2xi32>
+  %0 = "tfl.reduce_prod"(%arg0, %cst) {keep_dims = false} : (tensor<8x128xf32>, tensor<2xi32>) -> tensor<f32>
+  %1 = "tfl.reshape"(%0, %cst_1) : (tensor<f32>, tensor<2xi32>) -> tensor<1x1xf32>
+  return %1 : tensor<1x1xf32>
+
+// CHECK-LABEL: FoldReduceProdKeepDim
+// CHECK: %[[RESULT:.*]] = "tfl.reduce_prod"(%arg0, %cst) {keep_dims = true} : (tensor<8x128xf32>, tensor<2xi32>) -> tensor<1x1xf32>
+// CHECK: return %[[RESULT]] : tensor<1x1xf32>
+}
+
+func @SoftMaxWithNormalization(%arg0: tensor<8x128xf32>) -> tensor<8x128xf32> {
+  %cst = constant dense<1> : tensor<1xi32>
+  %0 = "tfl.reduce_max"(%arg0, %cst) {keep_dims = true} : (tensor<8x128xf32>, tensor<1xi32>) -> tensor<8x1xf32>
+  %1 = "tfl.sub"(%arg0, %0) {fused_activation_function = "NONE"} : (tensor<8x128xf32>, tensor<8x1xf32>) -> tensor<8x128xf32>
+  %2 = "tfl.exp"(%1) : (tensor<8x128xf32>) -> tensor<8x128xf32>
+  %3 = "tfl.sum"(%2, %cst) {keep_dims = true} : (tensor<8x128xf32>, tensor<1xi32>) -> tensor<8x1xf32>
+  %4 = "tfl.div"(%2, %3) {fused_activation_function = "NONE"} : (tensor<8x128xf32>, tensor<8x1xf32>) -> tensor<8x128xf32>
+  return %4 : tensor<8x128xf32>
+
+// CHECK-LABEL: SoftMaxWithNormalization
+// CHECK: %[[RESULT:.*]] = "tfl.softmax"(%arg0) {beta = 1.000000e+00 : f32} : (tensor<8x128xf32>) -> tensor<8x128xf32>
+// CHECK: return %[[RESULT]] : tensor<8x128xf32>
+}
+
+func @SoftMaxWithoutNormalization(%arg0: tensor<8x128xf32>) -> tensor<8x128xf32> {
+  %cst = constant dense<1> : tensor<1xi32>
+  %0 = "tfl.exp"(%arg0) : (tensor<8x128xf32>) -> tensor<8x128xf32>
+  %1 = "tfl.sum"(%0, %cst) {keep_dims = true} : (tensor<8x128xf32>, tensor<1xi32>) -> tensor<8x1xf32>
+  %2 = "tfl.div"(%0, %1) {fused_activation_function = "NONE"} : (tensor<8x128xf32>, tensor<8x1xf32>) -> tensor<8x128xf32>
+  return %2 : tensor<8x128xf32>
+
+// CHECK-LABEL: SoftMaxWithoutNormalization
+// CHECK: %[[RESULT:.*]] = "tfl.softmax"(%arg0) {beta = 1.000000e+00 : f32} : (tensor<8x128xf32>) -> tensor<8x128xf32>
+// CHECK: return %[[RESULT]] : tensor<8x128xf32>
+}

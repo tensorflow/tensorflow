@@ -133,9 +133,14 @@ struct DimensionOrConstant {
 struct ShapeAndType {
   ShapeAndType() {}
   ShapeAndType(ShapeHandle s, DataType t) : shape(s), dtype(t) {}
+  ShapeAndType(ShapeHandle s, DataType t, SpecializedType specialized_t)
+      : shape(s), dtype(t), specialized_type(specialized_t) {}
 
   ShapeHandle shape;
   DataType dtype = DT_INVALID;
+  // The type of a variant-dtype tensor sometimes affects graph building
+  // (e.g. for vectorization), and needs to be know statically in such cases.
+  SpecializedType specialized_type = ST_INVALID;
 };
 
 // Shape inference functions registered on ops in REGISTER_OP implement
@@ -344,13 +349,13 @@ class InferenceContext {
   // incomplete shape.
   DimensionHandle NumElements(ShapeHandle s);
 
-  string DebugString(ShapeHandle s);
-  string DebugString(DimensionHandle d);
-  string DebugString(const ShapeAndType& shape_and_type);
-  string DebugString(gtl::ArraySlice<ShapeAndType> shape_and_types);
+  std::string DebugString(ShapeHandle s);
+  std::string DebugString(DimensionHandle d);
+  std::string DebugString(const ShapeAndType& shape_and_type);
+  std::string DebugString(gtl::ArraySlice<ShapeAndType> shape_and_types);
 
   // Describes the whole context, for debugging purposes.
-  string DebugString() const;
+  std::string DebugString() const;
 
   // If <shape> has rank <rank>, or its rank is unknown, return OK and return
   // the shape with asserted rank in <*out>. Otherwise return an error.

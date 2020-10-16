@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/types/span.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/ToolOutputFile.h"
@@ -75,7 +76,8 @@ Status HandleInputOutputArraysWithModule(const toco::ModelFlags& model_flags,
   }
   auto input_names = input_attr.cast<mlir::StringAttr>().getValue();
   input_names.split(function_input_names, ",");
-  if (function_input_names.size() != model_flags.input_arrays().size()) {
+  const int function_input_names_size = function_input_names.size();
+  if (function_input_names_size != model_flags.input_arrays().size()) {
     return errors::InvalidArgument(
         "input array size mismatch: got ", function_input_names.size(),
         ", expected: ", model_flags.input_arrays().size());
@@ -99,7 +101,8 @@ Status HandleInputOutputArraysWithModule(const toco::ModelFlags& model_flags,
   }
   auto output_names = output_attr.cast<mlir::StringAttr>().getValue();
   output_names.split(function_output_names, ",");
-  if (function_output_names.size() != model_flags.output_arrays().size()) {
+  const int function_output_names_size = function_output_names.size();
+  if (function_output_names_size != model_flags.output_arrays().size()) {
     return errors::InvalidArgument(
         "output array size mismatch: got ", function_output_names.size(),
         ", expected: ", model_flags.output_arrays().size());
@@ -116,9 +119,9 @@ Status HandleInputOutputArraysWithModule(const toco::ModelFlags& model_flags,
   return Status::OK();
 }
 
-Status ConvertSavedModelToTFLiteFlatBuffer(
-    const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
-    string* result) {
+Status ConvertSavedModelToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
+                                           const toco::TocoFlags& toco_flags,
+                                           string* result) {
   mlir::MLIRContext context;
   mlir::TFL::QuantizationSpecs quant_specs;
 
@@ -154,9 +157,12 @@ Status ConvertSavedModelToTFLiteFlatBuffer(
   tensorflow::GraphImportConfig specs;
   specs.upgrade_legacy = true;
 
+  std::vector<std::string> custom_opdefs(toco_flags.custom_opdefs().begin(),
+                                         toco_flags.custom_opdefs().end());
   TF_ASSIGN_OR_RETURN(auto module,
                       ImportSavedModel(model_flags.saved_model_dir(),
                                        model_flags.saved_model_version(), tags,
+                                       absl::MakeSpan(custom_opdefs),
                                        exported_names, specs, &context));
 
   if (!model_flags.input_arrays().empty() ||
@@ -171,7 +177,7 @@ Status ConvertSavedModelToTFLiteFlatBuffer(
 
   // TODO(b/153507667): Pass the session object when importing logic is removed.
   auto status = internal::ConvertMLIRToTFLiteFlatBuffer(
-      toco_flags, std::move(module), pass_config, result,
+      toco_flags, std::move(module), pass_config, tags, result,
       /*session=*/llvm::None);
   return status;
 }

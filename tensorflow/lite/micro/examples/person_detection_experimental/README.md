@@ -50,8 +50,13 @@ The example project for ARC EM SDP platform can be generated with the following
 command:
 
 ```
-make -f tensorflow/lite/micro/tools/make/Makefile TARGET=arc_emsdp generate_person_detection_int8_make_project
+make -f tensorflow/lite/micro/tools/make/Makefile \
+TARGET=arc_emsdp TAGS=reduce_codesize \
+generate_person_detection_int8_make_project
 ```
+
+Note that `TAGS=reduce_codesize` applies example specific changes of code to
+reduce total size of application. It can be ommited.
 
 ### Build and Run Example
 
@@ -93,6 +98,11 @@ get it started.
     *   Plug in the microSD card into the J11 connector.
     *   Push the RST button. If a red LED is lit beside RST button, push the CFG
         button.
+    *   Type or copy next commands one-by-another into serial terminal: `setenv
+        loadaddr 0x10800000 setenv bootfile app.elf setenv bootdelay 1 setenv
+        bootcmd fatload mmc 0 \$\{loadaddr\} \$\{bootfile\} \&\& bootelf
+        saveenv`
+    *   Push the RST button.
 
 6.  If you have the MetaWare Debugger installed in your environment:
 
@@ -341,6 +351,13 @@ Following the Steps to run person detection example at HIMAX WE1 EVB platform.
 
     ```
     cd ../../../../../downloads/himax_we1_sdk/image_gen_linux_v3/
+    ```
+
+    make sure this tool directory is in $PATH. You can permanently set it to
+    PATH by
+
+    ```
+    export PATH=$PATH:$(pwd)
     ```
 
 5.  run image generate tool, generate flash image file.

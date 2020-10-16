@@ -591,6 +591,9 @@ def _create_example_string(example_dict):
           feature_list)
     elif isinstance(feature_list[0], str):
       example.features.feature[feature_name].bytes_list.value.extend(
+          [f.encode('utf8') for f in feature_list])
+    elif isinstance(feature_list[0], bytes):
+      example.features.feature[feature_name].bytes_list.value.extend(
           feature_list)
     elif isinstance(feature_list[0], six.integer_types):
       example.features.feature[feature_name].int64_list.value.extend(

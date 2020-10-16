@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 namespace tflite {
 namespace ops {
@@ -72,7 +73,7 @@ TfLiteStatus CalculateOpData(TfLiteContext* context,
 
 void AverageEvalFloat(const TfLiteContext* context, const TfLiteNode* node,
                       const TfLitePoolParams* params, const OpData& data,
-                      const TfLiteTensor* input, TfLiteTensor* output) {
+                      const TfLiteEvalTensor* input, TfLiteEvalTensor* output) {
   float activation_min, activation_max;
   CalculateActivationRange(params->activation, &activation_min,
                            &activation_max);
@@ -86,14 +87,16 @@ void AverageEvalFloat(const TfLiteContext* context, const TfLiteNode* node,
   op_params.padding_values.width = data.padding.width;
   op_params.float_activation_min = activation_min;
   op_params.float_activation_max = activation_max;
-  reference_ops::AveragePool(
-      op_params, GetTensorShape(input), GetTensorData<float>(input),
-      GetTensorShape(output), GetTensorData<float>(output));
+  reference_ops::AveragePool(op_params, tflite::micro::GetTensorShape(input),
+                             tflite::micro::GetTensorData<float>(input),
+                             tflite::micro::GetTensorShape(output),
+                             tflite::micro::GetTensorData<float>(output));
 }
 
 void AverageEvalQuantized(TfLiteContext* context, const TfLiteNode* node,
                           const TfLitePoolParams* params, const OpData& data,
-                          const TfLiteTensor* input, TfLiteTensor* output) {
+                          const TfLiteEvalTensor* input,
+                          TfLiteEvalTensor* output) {
   TFLITE_DCHECK(input->type == kTfLiteUInt8 || input->type == kTfLiteInt8);
 
   PoolParams op_params;
@@ -107,14 +110,15 @@ void AverageEvalQuantized(TfLiteContext* context, const TfLiteNode* node,
   op_params.quantized_activation_max = data.activation_max;
 
   if (input->type == kTfLiteUInt8) {
-    reference_ops::AveragePool(
-        op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
-        GetTensorShape(output), GetTensorData<uint8_t>(output));
+    reference_ops::AveragePool(op_params, tflite::micro::GetTensorShape(input),
+                               tflite::micro::GetTensorData<uint8_t>(input),
+                               tflite::micro::GetTensorShape(output),
+                               tflite::micro::GetTensorData<uint8_t>(output));
   } else {
-    RuntimeShape input_shape = GetTensorShape(input);
+    RuntimeShape input_shape = tflite::micro::GetTensorShape(input);
     TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
 
-    RuntimeShape output_shape = GetTensorShape(output);
+    RuntimeShape output_shape = tflite::micro::GetTensorShape(output);
     TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
 
     const int depth = MatchingDim(input_shape, 3, output_shape, 3);
@@ -154,15 +158,16 @@ void AverageEvalQuantized(TfLiteContext* context, const TfLiteNode* node,
 
     TFLITE_DCHECK_EQ(
         arm_avgpool_s8(&ctx, &pool_params, &input_dims,
-                       GetTensorData<int8_t>(input), &filter_dims, &output_dims,
-                       GetTensorData<int8_t>(output)),
+                       tflite::micro::GetTensorData<int8_t>(input),
+                       &filter_dims, &output_dims,
+                       tflite::micro::GetTensorData<int8_t>(output)),
         ARM_MATH_SUCCESS);
   }
 }
 
 void MaxEvalFloat(TfLiteContext* context, TfLiteNode* node,
                   TfLitePoolParams* params, const OpData& data,
-                  TfLiteTensor* input, TfLiteTensor* output) {
+                  const TfLiteEvalTensor* input, TfLiteEvalTensor* output) {
   float activation_min, activation_max;
   CalculateActivationRange(params->activation, &activation_min,
                            &activation_max);
@@ -175,14 +180,16 @@ void MaxEvalFloat(TfLiteContext* context, TfLiteNode* node,
   op_params.padding_values.width = data.padding.width;
   op_params.float_activation_min = activation_min;
   op_params.float_activation_max = activation_max;
-  reference_ops::MaxPool(op_params, GetTensorShape(input),
-                         GetTensorData<float>(input), GetTensorShape(output),
-                         GetTensorData<float>(output));
+  reference_ops::MaxPool(op_params, tflite::micro::GetTensorShape(input),
+                         tflite::micro::GetTensorData<float>(input),
+                         tflite::micro::GetTensorShape(output),
+                         tflite::micro::GetTensorData<float>(output));
 }
 
 void MaxEvalQuantizedUInt8(TfLiteContext* context, TfLiteNode* node,
                            TfLitePoolParams* params, const OpData& data,
-                           TfLiteTensor* input, TfLiteTensor* output) {
+                           const TfLiteEvalTensor* input,
+                           TfLiteEvalTensor* output) {
   tflite::PoolParams op_params;
   op_params.stride_height = params->stride_height;
   op_params.stride_width = params->stride_width;
@@ -192,16 +199,18 @@ void MaxEvalQuantizedUInt8(TfLiteContext* context, TfLiteNode* node,
   op_params.padding_values.width = data.padding.width;
   op_params.quantized_activation_min = data.activation_min;
   op_params.quantized_activation_max = data.activation_max;
-  reference_ops::MaxPool(op_params, GetTensorShape(input),
-                         GetTensorData<uint8_t>(input), GetTensorShape(output),
-                         GetTensorData<uint8_t>(output));
+  reference_ops::MaxPool(op_params, tflite::micro::GetTensorShape(input),
+                         tflite::micro::GetTensorData<uint8_t>(input),
+                         tflite::micro::GetTensorShape(output),
+                         tflite::micro::GetTensorData<uint8_t>(output));
 }
 
 TfLiteStatus MaxEvalInt8(TfLiteContext* context, const TfLiteNode* node,
                          const TfLitePoolParams* params, const OpData& data,
-                         TfLiteTensor* input, TfLiteTensor* output) {
-  RuntimeShape input_shape = GetTensorShape(input);
-  RuntimeShape output_shape = GetTensorShape(output);
+                         const TfLiteEvalTensor* input,
+                         TfLiteEvalTensor* output) {
+  RuntimeShape input_shape = tflite::micro::GetTensorShape(input);
+  RuntimeShape output_shape = tflite::micro::GetTensorShape(output);
   const int depth = MatchingDim(input_shape, 3, output_shape, 3);
 
   cmsis_nn_dims input_dims;
@@ -237,10 +246,12 @@ TfLiteStatus MaxEvalInt8(TfLiteContext* context, const TfLiteNode* node,
     ctx.buf = context->GetScratchBuffer(context, data.buffer_idx);
   }
 
-  TFLITE_DCHECK_EQ(arm_max_pool_s8(&ctx, &pool_params, &input_dims,
-                                   GetTensorData<int8_t>(input), &filter_dims,
-                                   &output_dims, GetTensorData<int8_t>(output)),
-                   ARM_MATH_SUCCESS);
+  TFLITE_DCHECK_EQ(
+      arm_max_pool_s8(&ctx, &pool_params, &input_dims,
+                      tflite::micro::GetTensorData<int8_t>(input), &filter_dims,
+                      &output_dims,
+                      tflite::micro::GetTensorData<int8_t>(output)),
+      ARM_MATH_SUCCESS);
 
   return kTfLiteOk;
 }
@@ -307,8 +318,10 @@ TfLiteStatus AverageEval(TfLiteContext* context, TfLiteNode* node) {
 
   const OpData& data = *(static_cast<const OpData*>(node->user_data));
 
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteEvalTensor* input =
+      tflite::micro::GetEvalInput(context, node, kInputTensor);
+  TfLiteEvalTensor* output =
+      tflite::micro::GetEvalOutput(context, node, kOutputTensor);
 
   // Inputs and outputs share the same type, guaranteed by the converter.
   switch (input->type) {
@@ -332,9 +345,10 @@ TfLiteStatus MaxEval(TfLiteContext* context, TfLiteNode* node) {
 
   const OpData& data = *(static_cast<const OpData*>(node->user_data));
 
-  TfLiteTensor* input = &context->tensors[flatbuffers::EndianScalar(
-      node->inputs->data[kInputTensor])];
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteEvalTensor* input =
+      tflite::micro::GetEvalInput(context, node, kInputTensor);
+  TfLiteEvalTensor* output =
+      tflite::micro::GetEvalOutput(context, node, kOutputTensor);
 
   switch (input->type) {
     case kTfLiteFloat32:

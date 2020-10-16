@@ -15,6 +15,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/kernels/test_delegate_providers.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
@@ -30,8 +31,10 @@ void InitKernelTest(int* argc, char** argv) {
     // In Android Q, the NNAPI delegate avoids delegation if the only device
     // is the reference CPU. However, for testing purposes, we still want
     // delegation coverage, so force use of this reference path.
-    delegate_providers->MutableParams()->Set<std::string>(
-        "nnapi_accelerator_name", "nnapi-reference");
+    auto* params = delegate_providers->MutableParams();
+    if (!params->HasValueSet<std::string>("nnapi_accelerator_name")) {
+      params->Set<std::string>("nnapi_accelerator_name", "nnapi-reference");
+    }
   }
 }
 

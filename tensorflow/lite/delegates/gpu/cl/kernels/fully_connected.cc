@@ -17,13 +17,61 @@ limitations under the License.
 
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/memory/memory.h"
+#include "tensorflow/lite/delegates/gpu/cl/arguments.h"
+#include "tensorflow/lite/delegates/gpu/cl/device_info.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
+#include "tensorflow/lite/delegates/gpu/cl/linear_storage.h"
+#include "tensorflow/lite/delegates/gpu/cl/precision.h"
+#include "tensorflow/lite/delegates/gpu/cl/tensor.h"
+#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
+#include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/types.h"
 
 namespace tflite {
 namespace gpu {
 namespace cl {
 namespace {
+bool UseBufferForWeights(const DeviceInfo& device_info) {
+  return device_info.IsAdreno() || device_info.IsAMD() || device_info.IsMali();
+}
+}  // namespace
+
+FullyConnected::FullyConnected(const OperationDef& definition,
+                               const DeviceInfo& device_info)
+    : GPUOperation(definition) {
+  if (device_info.IsAdreno()) {
+    if (device_info.IsAdreno3xx()) {
+      work_group_size_ = int3(16, 4, 1);
+    } else if (device_info.IsAdreno4xx()) {
+      work_group_size_ = int3(32, 4, 1);
+    } else {
+      work_group_size_ = int3(32, 4, 1);
+    }
+  } else if (device_info.IsIntel()) {
+    work_group_size_ = int3(8, 4, 1);
+  } else if (device_info.IsNvidia()) {
+    work_group_size_ = int3(8, 4, 1);
+  } else if (device_info.IsPowerVR()) {
+    work_group_size_ = int3(8, 4, 1);
+  } else {
+    work_group_size_ = int3(16, 4, 1);
+  }
+  code_ = GetFullyConnectedKernelCode(definition_, device_info);
+}
+
+FullyConnected::FullyConnected(FullyConnected&& kernel)
+    : GPUOperation(std::move(kernel)) {}
+
+FullyConnected& FullyConnected::operator=(FullyConnected&& kernel) {
+  if (this != &kernel) {
+    GPUOperation::operator=(std::move(kernel));
+  }
+  return *this;
+}
 
 // We split vec vec dot (every thread do vec vec dot product in basic
 // vec mat mult) on 4 parts to create more threads
@@ -31,15 +79,12 @@ namespace {
 // Good results for ~1024 x 1024 sizes, for other can be written more
 // optimized shaders
 
-std::string GetFullyConnectedKernelCode(const OperationDef& op_def,
-                                        const int3& work_group_size,
-                                        Arguments* args) {
-  args->AddObjectRef(
-      "src_tensor", AccessType::READ,
-      absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]));
-  args->AddObjectRef(
-      "dst_tensor", AccessType::WRITE,
-      absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]));
+std::string FullyConnected::GetFullyConnectedKernelCode(
+    const OperationDef& op_def, const DeviceInfo& device_info) {
+  AddSrcTensor("src_tensor", op_def.src_tensors[0]);
+  AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
+
+  const bool weights_are_buffer = UseBufferForWeights(device_info);
 
   std::string c = GetCommonDefines(op_def.precision);
   switch (op_def.precision) {
@@ -52,112 +97,76 @@ std::string GetFullyConnectedKernelCode(const OperationDef& op_def,
       break;
   }
 
-  const std::string wg_x = std::to_string(work_group_size.x);
-  const std::string wg_y = std::to_string(work_group_size.y);
-  c += "__kernel void main_function(\n";
-  c += "$0) {\n";
-  c += "  int gid = get_global_id(0);\n";
-  c += "  bool inside = gid < args.dst_tensor.Slices();\n";
-  c += "  gid = min(gid, args.dst_tensor.Slices() - 1);\n";
-  c += "  int2 tid = (int2)(get_local_id(0), get_local_id(1));\n";
-  c += "  ACCUM_FLT4 s = (ACCUM_FLT4)(0.0f);\n";
-  c += "  for (uint c = tid.y; c < args.src_tensor.Slices(); c += " + wg_y +
-       ") {\n";
-  c += "    FLT4 v = args.src_tensor.Read(0, 0, c);\n";
-  c += "    FLT16 w = args.weights.Read(c * args.dst_tensor.Slices() + gid);\n";
-  c += "    s.x += dot(v, w.s0123);\n";
-  c += "    s.y += dot(v, w.s4567);\n";
-  c += "    s.z += dot(v, w.s89ab);\n";
-  c += "    s.w += dot(v, w.scdef);\n";
-  c += "  }\n";
-  c += "  __local ACCUM_FLT4 temp[" + wg_x + "][" + wg_y + "];\n";
-  c += "  temp[tid.x][tid.y] = s;\n";
-  c += "  barrier(CLK_LOCAL_MEM_FENCE);\n";
-  c += "  if (tid.y == 0 && inside) {\n";
-  for (int i = 1; i < work_group_size.y; ++i) {
+  c += "#define WG_X " + std::to_string(work_group_size_.x) + "\n";
+  c += "#define WG_Y " + std::to_string(work_group_size_.y) + "\n";
+
+  c += R"(__kernel void main_function($0) {
+  int gid = get_global_id(0);
+  int2 tid = (int2)(get_local_id(0), get_local_id(1));
+  ACCUM_FLT4 s = (ACCUM_FLT4)(0.0f);
+  if (gid < args.dst_tensor.Slices()) {
+    for (int c = tid.y; c < args.src_tensor.Slices(); c += WG_Y) {
+      FLT4 v = args.src_tensor.Read(0, 0, c);
+)";
+  if (weights_are_buffer) {
+    c += R"(FLT16 w = args.weights.Read(c * args.dst_tensor.Slices() + gid);
+      FLT4 partial = v.s0 * w.s0123;
+      partial = mad(v.s1, w.s4567, partial);
+      partial = mad(v.s2, w.s89ab, partial);
+      partial = mad(v.s3, w.scdef, partial);
+      s += TO_ACCUM_TYPE(partial);
+)";
+  } else {
+    c += R"(FLT4 w0 = args.weights.Read(c * 4 + 0, gid);
+      FLT4 w1 = args.weights.Read(c * 4 + 1, gid);
+      FLT4 w2 = args.weights.Read(c * 4 + 2, gid);
+      FLT4 w3 = args.weights.Read(c * 4 + 3, gid);
+      FLT4 partial = v.s0 * w0;
+      partial = mad(v.s1, w1, partial);
+      partial = mad(v.s2, w2, partial);
+      partial = mad(v.s3, w3, partial);
+      s += TO_ACCUM_TYPE(partial);
+)";
+  }
+  c += R"(    }
+  }
+  __local ACCUM_FLT4 temp[WG_X][WG_Y];
+  temp[tid.x][tid.y] = s;
+  barrier(CLK_LOCAL_MEM_FENCE);
+  if (gid >= args.dst_tensor.Slices()) {
+    return;
+  }
+  if (tid.y == 0) {
+)";
+  for (int i = 1; i < work_group_size_.y; ++i) {
     c += "    s += temp[tid.x][" + std::to_string(i) + "];\n";
   }
-  c += "    FLT4 r0 = TO_FLT4(s) + args.biases.Read(gid);\n";
-  c += "    args.dst_tensor.Write(r0, 0, 0, gid);\n";
-  c += "  }\n";
-  c += "}\n";
+  c += R"(    FLT4 r0 = TO_FLT4(s) + args.biases.Read(gid);
+    args.dst_tensor.Write(r0, 0, 0, gid);
+  }
+})";
 
   return c;
-}
-}  // namespace
-
-FullyConnected::FullyConnected(const OperationDef& definition)
-    : GPUOperation(definition) {}
-
-FullyConnected::FullyConnected(FullyConnected&& kernel)
-    : GPUOperation(std::move(kernel)) {}
-
-FullyConnected& FullyConnected::operator=(FullyConnected&& kernel) {
-  if (this != &kernel) {
-    GPUOperation::operator=(std::move(kernel));
-  }
-  return *this;
-}
-
-absl::Status FullyConnected::Compile(const CreationContext& creation_context) {
-  int wg_width = 32;
-  int wg_height = 4;
-  int work_items;
-  do {
-    work_group_size_ = {wg_width, wg_height, 1};
-    wg_width /= 2;
-    std::string code =
-        GetFullyConnectedKernelCode(definition_, work_group_size_, &args_);
-    std::string element_wise_code;
-    RETURN_IF_ERROR(
-        MergeOperations(linked_operations_, &args_, &element_wise_code));
-    RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                            {{"dst_tensor", element_wise_code}},
-                                            &code));
-    auto status = creation_context.cache->GetOrCreateCLKernel(
-        code, "main_function", *creation_context.context,
-        *creation_context.device, &kernel_);
-    if (!status.ok()) {
-      if (work_group_size_.x == 1) {
-        return status;
-      } else {
-        continue;
-      }
-    }
-    work_items = work_group_size_.x * work_group_size_.y * work_group_size_.z;
-  } while (work_items > kernel_.GetMaxWorkGroupSize());
-  return absl::OkStatus();
-}
-
-absl::Status FullyConnected::BindArguments() {
-  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
-  return args_.SetObjectRef("dst_tensor", dst_[0]);
 }
 
 int3 FullyConnected::GetGridSize() const {
   return int3(dst_[0]->Slices(), 1, 1);
 }
 
-absl::Status CreateFullyConnected(const CreationContext& creation_context,
-                                  const OperationDef& definition,
-                                  const FullyConnectedAttributes& attr,
-                                  FullyConnected* result) {
-  *result = FullyConnected(definition);
-  RETURN_IF_ERROR(
-      result->UploadWeights(attr.weights, creation_context.context));
+FullyConnected CreateFullyConnected(const DeviceInfo& device_info,
+                                    const OperationDef& definition,
+                                    const FullyConnectedAttributes& attr) {
+  FullyConnected result(definition, device_info);
+  result.UploadWeights(attr.weights, UseBufferForWeights(device_info));
 
   TensorLinearDescriptor desc;
   desc.storage_type = LinearStorageType::TEXTURE_2D;
   desc.element_type = definition.GetDataType();
+  desc.UploadLinearData(attr.bias);
+  result.args_.AddObject(
+      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
 
-  LinearStorage lt;
-  RETURN_IF_ERROR(
-      CreateLinearStorage(desc, attr.bias, creation_context.context, &lt));
-  result->args_.AddObject("biases", AccessType::READ,
-                          absl::make_unique<LinearStorage>(std::move(lt)),
-                          absl::make_unique<TensorLinearDescriptor>(desc));
-
-  return absl::OkStatus();
+  return result;
 }
 
 }  // namespace cl

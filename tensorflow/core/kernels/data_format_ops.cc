@@ -37,14 +37,15 @@ class DataFormatDimMapOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("src_format", &src_format));
     string dst_format;
     OP_REQUIRES_OK(context, context->GetAttr("dst_format", &dst_format));
-    OP_REQUIRES(context, src_format.size() == 4,
+    OP_REQUIRES(context, src_format.size() == 4 || src_format.size() == 5,
                 errors::InvalidArgument(strings::StrCat(
-                    "Source format must of length 4, received src_format = ",
+                    "Source format must of length 4 or 5, received "
+                    "src_format = ",
                     src_format)));
     OP_REQUIRES(
-        context, dst_format.size() == 4,
+        context, dst_format.size() == 4 || dst_format.size() == 5,
         errors::InvalidArgument(strings::StrCat(
-            "Destination format must of length 4, received dst_format = ",
+            "Destination format must of length 4 or 5, received dst_format = ",
             dst_format)));
     dst_idx_ = Tensor(DT_INT32, {static_cast<int64>(src_format.size())});
     for (int i = 0; i < src_format.size(); ++i) {
@@ -90,9 +91,11 @@ class DataFormatVecPermuteOp : public OpKernel {
                     "input must be a vector or 2D tensor, but got shape ",
                     input.shape().DebugString()));
     if (input.dims() == 1) {
-      OP_REQUIRES(context, input.NumElements() == 2 || input.NumElements() == 4,
+      OP_REQUIRES(context,
+                  input.NumElements() == 2 || input.NumElements() == 4 ||
+                      input.NumElements() == 5,
                   errors::InvalidArgument(
-                      "1D input must be of size 2 or 4, but got shape ",
+                      "1D input must be of size 2, 4 or 5, but got shape ",
                       input.shape().DebugString()));
     } else if (input.dims() == 2) {
       OP_REQUIRES(context, input.dim_size(0) == 2 || input.dim_size(0) == 4,

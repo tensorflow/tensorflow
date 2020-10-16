@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/hashtable/hashtable_ops.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/register_ref.h"
+#include "tensorflow/lite/kernels/test_delegate_providers.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/join.h"
 #include "tensorflow/lite/testing/split.h"
@@ -346,6 +347,12 @@ bool TfLiteDriver::DataExpectation::Check(bool verbose,
   }
 }
 
+/* static */
+bool TfLiteDriver::InitTestDelegateProviders(int* argc, const char** argv) {
+  return tflite::KernelTestDelegateProviders::Get()->InitFromCmdlineArgs(argc,
+                                                                         argv);
+}
+
 TfLiteDriver::TfLiteDriver(DelegateType delegate_type, bool reference_kernel)
     : delegate_(nullptr, nullptr),
       relative_threshold_(kRelativeThreshold),
@@ -354,7 +361,10 @@ TfLiteDriver::TfLiteDriver(DelegateType delegate_type, bool reference_kernel)
   if (reference_kernel) {
     resolver_.reset(new ops::builtin::BuiltinRefOpResolver);
   } else {
-    resolver_.reset(new ops::builtin::BuiltinOpResolver);
+    // TODO(b/168278077): change back to use BuiltinOpResolver after zip tests
+    // are fully validated against TfLite delegates.
+    resolver_.reset(
+        new ops::builtin::BuiltinOpResolverWithoutDefaultDelegates());
     ops::builtin::BuiltinOpResolver* buildinop_resolver_ =
         reinterpret_cast<ops::builtin::BuiltinOpResolver*>(resolver_.get());
     buildinop_resolver_->AddCustom("RFFT2D",
@@ -413,6 +423,16 @@ void TfLiteDriver::LoadModel(const string& bin_file_path) {
     if (interpreter_->ModifyGraphWithDelegate(delegate_.get()) != kTfLiteOk) {
       Invalidate("Unable to the build graph using the delegate");
       return;
+    }
+  } else {
+    auto* delegate_providers = tflite::KernelTestDelegateProviders::Get();
+    for (auto& one : delegate_providers->CreateAllDelegates()) {
+      if (interpreter_->ModifyGraphWithDelegate(std::move(one)) != kTfLiteOk) {
+        Invalidate(
+            "Unable to the build graph using the delegate initialized from "
+            "tflite::KernelTestDelegateProviders");
+        return;
+      }
     }
   }
 

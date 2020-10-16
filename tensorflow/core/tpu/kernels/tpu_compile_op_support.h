@@ -139,17 +139,6 @@ se::port::Status CreateHloModules(
     const absl::optional<xla::DeviceAssignment>& device_assignment,
     std::vector<std::unique_ptr<xla::HloModule>>* hlo_modules);
 
-se::port::StatusOr<TpuAotCompilationRequestProto>
-CreateTpuAotCompilationRequest(
-    const xla::HloModuleGroup& module_group,
-    const XlaCompiler::CompilationResult& compilation_result,
-    const TPUCompileMetadataProto& metadata,
-    const std::vector<std::vector<xla::Shape>>& per_core_arg_shapes,
-    const std::vector<std::vector<xla::Shape>>& per_core_output_shapes,
-    const std::vector<std::vector<std::pair<int, bool>>>&
-        per_core_variable_indices,
-    const absl::optional<xla::DeviceAssignment>& device_assignment);
-
 se::port::StatusOr<TpuCompilationRequestProto> CreateTpuCompilationRequest(
     const absl::variant<MlirToHloArgs, FunctionToHloArgs>& computation,
     const TPUCompileMetadataProto& metadata,
@@ -159,6 +148,14 @@ se::port::Status CompileOpMetadataFromContext(OpKernelConstruction* ctx,
                                               TPUCompileMetadataProto* metadata,
                                               NameAttrList* function_name,
                                               std::string* mlir_module);
+
+// Computes shapes for each argument. Uses both the static shape from the
+// metadata, and the dynamic shapes where the static shape is not
+// defined. There must be one dynamic_shape for each argument with a
+// partially defined shape, in index order.
+Status ComputeArgumentShapes(const TPUCompileMetadataProto& metadata,
+                             const std::vector<TensorShape>& dynamic_shapes,
+                             std::vector<TensorShape>* arg_shapes);
 }  // namespace tpu
 }  // namespace tensorflow
 

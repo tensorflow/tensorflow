@@ -44,7 +44,7 @@ TEST(AddTest, TwoInputTensorsOfTheSameShape) {
   output.ref = 2;
   output.shape = BHWC(1, 2, 2, 1);
 
-  AddAttributes attr;
+  ElementwiseAttributes attr;
   SingleOpModel model({ToString(OperationType::ADD), std::move(attr)},
                       {augend, addend}, {output});
   ASSERT_TRUE(model.PopulateTensor(0, {-2.0, 0.2, 0.7, 0.8}));
@@ -55,7 +55,7 @@ TEST(AddTest, TwoInputTensorsOfTheSameShape) {
 }
 
 TEST(AddTest, InputTensorAndScalar) {
-  AddAttributes attr;
+  ElementwiseAttributes attr;
   attr.param = 0.1f;
   TensorRef<BHWC> input, output;
   input.type = DataType::FLOAT32;
@@ -80,7 +80,7 @@ TEST(AddTest, InputTensorWithConstantBroadcast) {
   input.ref = 0;
   input.shape = BHWC(1, 2, 2, 2);
 
-  AddAttributes attr;
+  ElementwiseAttributes attr;
   Tensor<Linear, DataType::FLOAT32> tensor;
   tensor.shape.v = 2;
   tensor.id = 1;
@@ -114,7 +114,7 @@ TEST(AddTest, InputTensorWithRuntimeBroadcast) {
   input2.ref = 1;
   input2.shape = BHWC(1, 1, 1, 2);
 
-  AddAttributes attr;
+  ElementwiseAttributes attr;
 
   TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;

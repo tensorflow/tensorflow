@@ -22,7 +22,7 @@ from __future__ import print_function
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import metrics as metrics_module
-from tensorflow.python.keras import optimizers
+from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras.engine import functional
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training
@@ -206,6 +206,8 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
   ancillary_layers = [
       layer for layer in created_layers.values() if layer not in model.layers
   ]
+  # TODO(b/162887610): This may need to adjust the inbound node index if the
+  # created layers had already been used to define other models.
   if ancillary_layers:
     new_nodes = nest.flatten([
         layer.inbound_nodes[1:]
@@ -680,8 +682,8 @@ def clone_and_build_model(
         clone._set_inputs(input_tensors)
 
   if compile_clone:
-    if isinstance(orig_optimizer, optimizers.TFOptimizer):
-      optimizer = optimizers.TFOptimizer(
+    if isinstance(orig_optimizer, optimizer_v1.TFOptimizer):
+      optimizer = optimizer_v1.TFOptimizer(
           orig_optimizer.optimizer, optimizer_iterations)
       K.track_tf_optimizer(optimizer)
     else:

@@ -783,9 +783,18 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 
 /* static */ Shape ShapeUtil::ChangeElementType(const Shape& original,
                                                 PrimitiveType type) {
-  Shape new_shape = original;
-  new_shape.set_element_type(type);
-  return new_shape;
+  if (original.IsTuple()) {
+    std::vector<Shape> new_operands;
+    new_operands.reserve(original.tuple_shapes_size());
+    for (const Shape& operand : original.tuple_shapes()) {
+      new_operands.push_back(ChangeElementType(operand, type));
+    }
+    return MakeTupleShape(new_operands);
+  } else {
+    Shape new_shape = original;
+    new_shape.set_element_type(type);
+    return new_shape;
+  }
 }
 
 /* static */ bool ShapeUtil::IndexIsValid(const Shape& shape,
@@ -1612,6 +1621,16 @@ static Shape MergeDimensions(absl::Span<const size_t> segs,
   }
 
   return absl::nullopt;
+}
+
+Shape ShapeUtil::DeviceShapeToHostShape(Shape s) {
+  ForEachMutableSubshape(&s, [](Shape* subshape, const ShapeIndex& index) {
+    if (subshape->IsArray()) {
+      subshape->mutable_layout()->clear_tiles();
+      subshape->mutable_layout()->set_memory_space(Layout::kDefaultMemorySpace);
+    }
+  });
+  return s;
 }
 
 }  // namespace xla

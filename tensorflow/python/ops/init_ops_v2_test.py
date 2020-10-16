@@ -162,8 +162,7 @@ class RandomUniformInitializerTest(InitializersTest):
 
   @test_util.run_in_graph_and_eager_modes
   def testRangeInitializer(self):
-    self.skipTest("b/161580897")
-    shape = (9, 6, 7)
+    shape = (20, 6, 7)
     self._range_test(
         init_ops_v2.RandomUniform(minval=-1, maxval=1, seed=124),
         shape,

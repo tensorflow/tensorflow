@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_TRIANGULAR_SOLVE_EXPANDER_H_
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/service/op_expander_pass.h"
 
 namespace xla {
@@ -34,6 +35,14 @@ class TriangularSolveExpander : public OpExpanderPass {
 
   StatusOr<HloInstruction*> ExpandInstruction(
       HloInstruction* instruction) override;
+
+  virtual XlaOp InvertDiagonalBlocks(XlaOp diag_blocks, bool lower_triangular,
+                                     PrecisionConfig::Precision precision);
+
+  XlaOp BuildTriangularSolve(XlaOp a, XlaOp b, bool left_side, bool lower,
+                             bool transpose_a, bool conjugate_a,
+                             bool unit_diagonal, int64 block_size,
+                             PrecisionConfig::Precision precision);
 
  private:
   // Block size for BuildTriangularSolve

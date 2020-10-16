@@ -60,14 +60,16 @@ GpuExecutable::GpuExecutable(
     std::shared_ptr<HloModule> hlo_module,
     std::shared_ptr<const BufferAssignment> assignment,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
-    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
+    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
+    std::vector<ConstantInfo> globals)
     : Executable(std::move(hlo_module), std::move(hlo_profile_printer_data),
                  std::move(hlo_profile_index_map)),
       text_(text),
       binary_(binary),
       gpu_version_(gpu_version),
       thunk_schedule_(std::move(thunk_schedule)),
-      assignment_(std::move(assignment)) {
+      assignment_(std::move(assignment)),
+      constants_(std::move(globals)) {
   CHECK(has_module() && assignment_);
   GpuDebugInfoManager::Get()->RegisterModule(module().name(), shared_module(),
                                              assignment_);
@@ -280,28 +282,23 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
   se::ModuleHandle module_handle;
   TF_RETURN_IF_ERROR(executor->LoadModule(module_spec, &module_handle));
 
-  for (BufferAllocation::Index i = 0; i < assignment_->Allocations().size();
-       ++i) {
-    const BufferAllocation& allocation = assignment_->GetAllocation(i);
-    if (allocation.is_constant()) {
-      TF_ASSIGN_OR_RETURN(
-          se::DeviceMemoryBase global,
-          executor->GetUntypedSymbol(
-              llvm_ir::ConstantBufferAllocationToGlobalName(allocation),
-              module_handle));
-      VLOG(3) << "Resolved global "
-              << llvm_ir::ConstantBufferAllocationToGlobalName(allocation)
-              << " to " << global.opaque();
-      InsertOrDie(&globals, i, global);
+  for (const auto& info : constants_) {
+    const Literal& literal = info.content;
 
-      const Literal& literal =
-          llvm_ir::LiteralForConstantAllocation(allocation);
-      CHECK(literal.shape().IsArray());
-      if (!ShouldEmitLiteralInLlvmIr(literal)) {
-        VLOG(3) << "H2D memcpy for constant with shape "
-                << ShapeUtil::HumanString(literal.shape());
-        stream->ThenMemcpy(&global, literal.untyped_data(), allocation.size());
-      }
+    TF_ASSIGN_OR_RETURN(auto global, executor->GetUntypedSymbol(
+                                         info.symbol_name, module_handle));
+    VLOG(3) << "Resolved global " << info.symbol_name << " to "
+            << global.opaque();
+
+    CHECK(literal.shape().IsArray());
+    if (!ShouldEmitLiteralInLlvmIr(literal)) {
+      VLOG(3) << "H2D memcpy for constant with shape "
+              << ShapeUtil::HumanString(literal.shape());
+      stream->ThenMemcpy(&global, literal.untyped_data(), literal.size_bytes());
+    }
+
+    if (info.allocation_index != -1) {
+      InsertOrDie(&globals, info.allocation_index, global);
     }
   }
 
@@ -334,7 +331,11 @@ StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
     }
     return registered_buffer;
   } else if (allocation.is_constant()) {
-    return FindOrDie(*globals, arg_idx);
+    auto it = globals->find(arg_idx);
+    if (it == globals->end()) {
+      return se::DeviceMemoryBase();
+    }
+    return it->second;
   } else {
     // Allocate each allocation that might escape, or is the temp buffer.
     CHECK(allocation.maybe_live_out() || allocation.IsPreallocatedTempBuffer());
@@ -449,8 +450,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
   HloInstruction* root = hlo_module_->entry_computation()->root_instruction();
   const Shape& root_shape = root->shape();
   auto device_ordinal = executor->device_ordinal();
-  ExecutionOutput result(/*on_host_shape=*/root->shape(),
-                         /*on_device_shape=*/root->shape(), memory_allocator,
+  ExecutionOutput result(/*on_device_shape=*/root->shape(), memory_allocator,
                          device_ordinal);
 
   TF_ASSIGN_OR_RETURN(BufferAllocations buffer_allocations,
@@ -480,6 +480,12 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
       ExecutionInput& input = arguments[alias->parameter_number];
       MaybeOwningDeviceMemory* maybe_owning_memory =
           input.MutableBuffer(alias->parameter_index);
+      if (alias->must_alias() && !maybe_owning_memory->HasOwnership()) {
+        return InvalidArgument(
+            "An input was configured to be must-alias at "
+            "compile time but not donated at runtime: %s",
+            alias->ToString());
+      }
       if (absl::optional<se::OwningDeviceMemory> owning =
               maybe_owning_memory->Release()) {
         // If the caller passes the ownership of the device memory, reuse it

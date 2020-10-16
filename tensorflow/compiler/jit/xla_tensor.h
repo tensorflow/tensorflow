@@ -71,18 +71,6 @@ class XlaTensor {
     shaped_buffer_ = std::move(shaped_buffer);
   }
 
-  // Some tensors on the device may have known values on the host. We use these
-  // in on-demand mode to avoid re-copying values from the device if we know the
-  // host value already.
-
-  // Return true if this XlaTensor contains a host tensor.
-  bool has_host_tensor() const { return host_tensor_.has_value(); }
-  // Return the contained host tensor.
-  // REQUIRES: has_host_tensor()
-  const Tensor& host_tensor() const { return *host_tensor_; }
-  // Sets the contained host tensor.
-  void set_host_tensor(const Tensor& tensor) { host_tensor_.emplace(tensor); }
-
   // Adds synchronization events to 'stream' that wait for this tensor to be
   // defined on 'stream'. Does nothing if the tensor is already defined on that
   // stream.

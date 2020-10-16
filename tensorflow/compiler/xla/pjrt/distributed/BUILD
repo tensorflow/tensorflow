@@ -1,4 +1,5 @@
-load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library_cc")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
@@ -6,7 +7,7 @@ licenses(["notice"])
 
 package(default_visibility = ["//tensorflow:internal"])
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "protocol_proto",
     srcs = ["protocol.proto"],
     has_services = 1,
@@ -52,6 +53,9 @@ cc_library(
 tf_cc_test(
     name = "service_test",
     srcs = ["service_test.cc"],
+    tags = [
+        "nomsan",  # b/163629207
+    ],
     deps = [
         ":protocol_proto_cc",
         ":service",
@@ -106,6 +110,9 @@ cc_library(
 tf_cc_test(
     name = "client_server_test",
     srcs = ["client_server_test.cc"],
+    tags = [
+        "nomsan",  # b/163629207
+    ],
     deps = [
         ":client",
         ":protocol_proto_cc",

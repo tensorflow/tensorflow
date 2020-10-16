@@ -86,7 +86,7 @@ def _cluster_spec_to_device_list(cluster_spec, num_gpus_per_worker):
   for task_type in ("chief", "worker"):
     for task_id in range(len(cluster_spec.as_dict().get(task_type, []))):
       if num_gpus_per_worker == 0:
-        devices.append("/job:%s/task:%d" % (task_type, task_id))
+        devices.append("/job:%s/task:%d/device:CPU:0" % (task_type, task_id))
       else:
         devices.extend([
             "/job:%s/task:%d/device:GPU:%i" % (task_type, task_id, gpu_id)
@@ -319,6 +319,9 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     if ops.executing_eagerly_outside_functions():
       self.experimental_enable_get_next_as_optional = True
 
+    # Flag to turn on VariablePolicy.
+    self._use_var_policy = False
+
   def _initialize_strategy(self, devices):
     # The _initialize_strategy method is intended to be used by distribute
     # coordinator as well.
@@ -337,7 +340,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     self._input_workers_devices = (
         (device_util.canonicalize("/device:CPU:0", devices[0]), devices),)
     self._inferred_cross_device_ops = None if self._cross_device_ops else (
-        cross_device_ops_lib.choose_the_best(devices))
+        cross_device_ops_lib.select_cross_device_ops(devices))
     self._host_input_device = numpy_dataset.SingleDevice(
         self._input_workers_devices[0][0])
     self._is_multi_worker_training = False
@@ -375,14 +378,16 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     self._is_multi_worker_training = True
 
     if len(workers) > 1:
-      if not isinstance(self._cross_device_ops,
-                        cross_device_ops_lib.MultiWorkerAllReduce):
+      # Grandfather usage in the legacy tests if they're configured properly.
+      if (not isinstance(self._cross_device_ops,
+                         cross_device_ops_lib.ReductionToOneDevice) or
+          self._cross_device_ops._num_between_graph_workers > 1):  # pylint: disable=protected-access
         raise ValueError(
             "In-graph multi-worker training with `MirroredStrategy` is not "
             "supported.")
       self._inferred_cross_device_ops = self._cross_device_ops
     else:
-      # TODO(yuefengz): make `choose_the_best` work with device strings
+      # TODO(yuefengz): make `select_cross_device_ops` work with device strings
       # containing job names.
       self._inferred_cross_device_ops = cross_device_ops_lib.NcclAllReduce()
 
@@ -462,7 +467,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
 
     return distribute_utils.create_mirrored_variable(
         self._container_strategy(), _real_mirrored_creator,
-        values.MirroredVariable, values.SyncOnReadVariable, **kwargs)
+        distribute_utils.VARIABLE_CLASS_MAPPING,
+        distribute_utils.VARIABLE_POLICY_MAPPING, **kwargs)
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
     distribute_utils.validate_colocate_distributed_variable(
@@ -473,7 +479,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
         dataset,
         self._input_workers,
         self._container_strategy(),
-        split_batch_by=self._num_replicas_in_sync)
+        num_replicas_in_sync=self._num_replicas_in_sync)
 
   def _make_input_fn_iterator(
       self,
@@ -495,14 +501,13 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
         dataset,
         self._input_workers_with_options(options),
         self._container_strategy(),
-        split_batch_by=self._num_replicas_in_sync)
+        num_replicas_in_sync=self._num_replicas_in_sync)
 
   def _experimental_make_numpy_dataset(self, numpy_input, session):
     return numpy_dataset.one_host_numpy_dataset(
         numpy_input, self._host_input_device, session)
 
-  def _experimental_distribute_datasets_from_function(self, dataset_fn,
-                                                      options):
+  def _distribute_datasets_from_function(self, dataset_fn, options):
     input_contexts = []
     input_workers = self._input_workers_with_options(options)
     num_workers = input_workers.num_workers
@@ -627,11 +632,22 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     del value  # Unused.
     return self._cross_device_ops or self._inferred_cross_device_ops
 
+  def _gather_to_implementation(self, value, destinations, axis,
+                                experimental_hints):
+    if not isinstance(value, values.DistributedValues):
+      # ReductionToOneDevice._gather accepts DistributedValues only.
+      return value
+    return self._get_cross_device_ops(value)._gather(  # pylint: disable=protected-access
+        value,
+        destinations=destinations,
+        axis=axis,
+        experimental_hints=experimental_hints)
+
   def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
-    if (isinstance(value, values.Mirrored) and
+    if (distribute_utils.is_mirrored(value) and
         reduce_op == reduce_util.ReduceOp.MEAN):
       return value
-    assert not isinstance(value, values.Mirrored)
+    assert not distribute_utils.is_mirrored(value)
     if not isinstance(value, values.DistributedValues):
       # This function handles reducing values that are not PerReplica or
       # Mirrored values. For example, the same value could be present on all
@@ -686,10 +702,12 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
 
   def read_var(self, replica_local_var):
     """Read the aggregate value of a replica-local variable."""
-    if isinstance(replica_local_var, values.SyncOnReadVariable):
-      return replica_local_var._get_cross_replica()  # pylint: disable=protected-access
-    assert isinstance(replica_local_var, values.Mirrored)
-    return array_ops.identity(replica_local_var._get())  # pylint: disable=protected-access
+    # pylint: disable=protected-access
+    if distribute_utils.is_sync_on_read(replica_local_var):
+      return replica_local_var._get_cross_replica()
+    assert distribute_utils.is_mirrored(replica_local_var)
+    return array_ops.identity(replica_local_var._get())
+    # pylint: enable=protected-access
 
   def _local_results(self, val):
     if isinstance(val, values.DistributedValues):
@@ -751,3 +769,9 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
   def _in_multi_worker_mode(self):
     """Whether this strategy indicates working in multi-worker settings."""
     return False
+
+  def _get_local_replica_id(self, replica_id_in_sync_group):
+    return replica_id_in_sync_group
+
+  def _get_replica_id_in_sync_group(self, replica_id):
+    return replica_id

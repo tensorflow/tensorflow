@@ -47,6 +47,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+static constexpr const char* const kOutputsOnOpDevice = "_OutputsOnOpDevice";
+
 class ProcessFunctionLibraryRuntime;
 class FunctionLibraryRuntime;
 
@@ -82,6 +84,8 @@ class EagerKernelArgs : public FunctionArgsInterface {
   gtl::InlinedVector<TensorValue, 4> tensor_args_;
 };
 
+typedef absl::variant<Tensor, TensorShape> EagerKernelRet;
+
 // KernelAndDevice encapsulates the logic needed to run a computation eagerly.
 // The computation can be a single instantiated kernel (implemented by
 // KernelAndDeviceOp below) or a multi-device function (implemented by
@@ -95,6 +99,7 @@ class KernelAndDevice : public core::RefCounted {
  public:
   struct Context {
     bool log_device_placement = false;
+    bool eager_lazy_copy = false;
   };
 
   // Populates this with a kernel appropriate for 'ndef'.
@@ -124,10 +129,13 @@ class KernelAndDevice : public core::RefCounted {
 
   virtual bool IsFunction() { return false; }
 
+  virtual bool IsCrossProcess() { return false; }
+
   // TODO(ashankar): Handle list-valued inputs.
   virtual Status Run(
       ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
-      std::vector<Tensor>* outputs, CancellationManager* cancellation_manager,
+      std::vector<EagerKernelRet>* outputs,
+      CancellationManager* cancellation_manager,
       const absl::optional<EagerRemoteFunctionParams>& remote_func_params) = 0;
 
   // Execute kernel asynchronously when applicable. Different from `Run` which
@@ -140,7 +148,8 @@ class KernelAndDevice : public core::RefCounted {
   // from sync execution.
   virtual void RunAsync(
       ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
-      std::vector<Tensor>* outputs, CancellationManager* cancellation_manager,
+      std::vector<EagerKernelRet>* outputs,
+      CancellationManager* cancellation_manager,
       const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
       StatusCallback done) = 0;
 
@@ -203,14 +212,15 @@ class KernelAndDeviceOp final : public KernelAndDevice {
               GraphCollector* graph_collector) override;
 
   Status Run(ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
-             std::vector<Tensor>* outputs,
+             std::vector<EagerKernelRet>* outputs,
              CancellationManager* cancellation_manager,
              const absl::optional<EagerRemoteFunctionParams>&
                  remote_func_params) override;
 
   void RunAsync(
       ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
-      std::vector<Tensor>* outputs, CancellationManager* cancellation_manager,
+      std::vector<EagerKernelRet>* outputs,
+      CancellationManager* cancellation_manager,
       const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
       StatusCallback done) override {
     // Trivial async implementation on top of the sync version
@@ -262,12 +272,14 @@ class KernelAndDeviceFunc : public KernelAndDevice {
       std::function<void(std::function<void()>)>* runner,
       std::unique_ptr<CollectiveExecutor::Handle> collective_executor,
       Device* host_cpu_device, const string& name,
+      const bool outputs_on_op_device,
       std::function<Rendezvous*(const int64)> rendezvous_creator,
       std::function<int64()> get_op_id)
       : KernelAndDevice(flr, runner, std::move(collective_executor),
                         host_cpu_device),
         pflr_(pflr),
         handle_(kInvalidHandle),
+        outputs_on_op_device_(outputs_on_op_device),
         input_devices_(std::move(input_devices)),
         composite_devices_(std::move(composite_devices)),
         input_resource_dtypes_and_shapes_(
@@ -288,6 +300,8 @@ class KernelAndDeviceFunc : public KernelAndDevice {
 
   bool IsFunction() override { return true; };
 
+  bool IsCrossProcess() override { return is_cross_process_; }
+
   Status InstantiateFunc(const Context& ctx, const NodeDef& ndef,
                          GraphCollector* graph_collector);
 
@@ -295,14 +309,15 @@ class KernelAndDeviceFunc : public KernelAndDevice {
               GraphCollector* graph_collector) override;
 
   Status Run(ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
-             std::vector<Tensor>* outputs,
+             std::vector<EagerKernelRet>* outputs,
              CancellationManager* cancellation_manager,
              const absl::optional<EagerRemoteFunctionParams>&
                  remote_func_params) override;
 
   void RunAsync(
       ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
-      std::vector<Tensor>* outputs, CancellationManager* cancellation_manager,
+      std::vector<EagerKernelRet>* outputs,
+      CancellationManager* cancellation_manager,
       const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
       StatusCallback done) override;
 
@@ -325,6 +340,11 @@ class KernelAndDeviceFunc : public KernelAndDevice {
   FunctionLibraryRuntime::Handle handle_;
   // Indicates whether the function needs to execute cross process.
   bool is_cross_process_;
+
+  // If true, function outputs are explicitly assigned to the default device;
+  // if false, the output devices are inferred by pflr_.
+  bool outputs_on_op_device_;
+
   // CPU devices are null. Resource handles' devices are actual backing
   // devices.
   std::vector<Device*> output_devices_;

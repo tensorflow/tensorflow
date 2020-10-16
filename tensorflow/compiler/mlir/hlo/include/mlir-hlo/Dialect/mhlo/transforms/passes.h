@@ -23,19 +23,29 @@ limitations under the License.
 namespace mlir {
 
 class FuncOp;
+class FunctionPass;
 class ModuleOp;
 class Operation;
 template <typename T>
 class OperationPass;
 class Pass;
 
+// Transforms unranked HLO operations to ranked ones where possible.
+std::unique_ptr<FunctionPass> createTransformUnrankedHloPass();
+
 namespace mhlo {
 
 /// Lowers HLO control flow ops to the Standard dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeControlFlowPass();
 
+/// Lowers MHLO control flow ops to the SCF dialect.
+std::unique_ptr<OperationPass<FuncOp>> createControlFlowToScfPass();
+
 /// Lowers from HLO dialect to Standard dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeToStdPass();
+
+/// Lowers from the CHLO dialect to the HLO dialect.
+std::unique_ptr<FunctionPass> createChloLegalizeToHloPass();
 
 /// Lowers from HLO dialect to LHLO dialect allocating/deallocating temporary
 /// buffers if necessary. If `results_escape_functions` is set to true,
@@ -48,9 +58,6 @@ std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass(
 // Lowers from HLO dialect to Linalg dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeHloToLinalgPass();
 
-// Transforms unranked HLO operations to ranked ones where possible.
-std::unique_ptr<OperationPass<FuncOp>> createTransformUnrankedHloPass();
-
 // Sinks constants implicitly captured in control flow regions. This is
 // necessary to export to XLA.
 std::unique_ptr<OperationPass<FuncOp>> createSinkConstantsToControlFlowPass();
@@ -58,18 +65,28 @@ std::unique_ptr<OperationPass<FuncOp>> createSinkConstantsToControlFlowPass();
 // fuse mhlo ops to kLoop/kInput fusion patterns
 std::unique_ptr<OperationPass<FuncOp>> createMhloFusionPass();
 
+/// Lowers trigonometric operations from the standard dialect to approximations
+/// that do not use intrinsics.
+std::unique_ptr<OperationPass<FuncOp>>
+createLegalizeTrigonometricToApproximationPass();
+
+std::unique_ptr<FunctionPass> createOptimizeMhloPass();
+std::unique_ptr<FunctionPass> createLowerComplexPass();
+std::unique_ptr<::mlir::Pass> createLegalizeGeneralDotPass();
+std::unique_ptr<FunctionPass> createLegalizeGatherToTorchIndexSelectPass();
+
 }  // namespace mhlo
 
 namespace lmhlo {
 
 // Lowers from LHLO dialect to Affine dialect.
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeToAffinePass();
+std::unique_ptr<OperationPass<FuncOp>> createLhloLegalizeToAffinePass();
 
 // Lowers from LHLO dialect to Linalg dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeLhloToLinalgPass();
 
 // Lowers from LHLO dialect to GPU dialect.
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeToGpuPass();
+std::unique_ptr<FunctionPass> createLegalizeToGpuPass();
 
 // Fuses linalg ops obtained after LHLO lowering. To enable fusion,
 // operations are first tiled.
@@ -80,26 +97,14 @@ std::unique_ptr<OperationPass<FuncOp>> createLegalizeToGpuPass();
 // 'tile_sizes' provides the tile sizes to use for tiling. If the linalg
 // operation has more dimensions than tile sizes provided, 1 is used as
 // default.
-std::unique_ptr<OperationPass<FuncOp>> createLhloFuseLinalg(
+std::unique_ptr<FunctionPass> createLhloFuseLinalgPass(
     bool use_parallel_loops = false, llvm::ArrayRef<unsigned> tile_sizes = {});
-
-// Removes unnecessary LHLO copies which copy from the allocated buffers to the
-// block arguments. The block arguments are used instead of all uses of these
-// buffers. The buffers are freed. This pass only works in regions that contain
-// a single block.
-std::unique_ptr<Pass> createLhloCopyRemovalPass();
 
 // Lowers from LHLO dialect to parallel loops.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeLhloToParallelLoopsPass();
 
 }  // namespace lmhlo
 
-namespace hlo {
-
-/// Lowers the standard TanhOp to an approximation that does not use intrinsics.
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeTanhToApproximationPass();
-
-}  // namespace hlo
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_PASSES_H_

@@ -61,7 +61,7 @@ class BufferDonationTest : public HloTestBase {
                    absl::Span<Literal const> argument_literals,
                    absl::Span<bool const> donate_arguments,
                    absl::Span<bool const> expected_runtime_aliasing,
-                   const Literal& expected) {
+                   const Literal& expected, std::string expected_failure = "") {
     // Create a copy of the output shape because the HLO module is std::moved
     // into the compiler and may be deallocated.
     const Shape output_shape = hlo_module->result_shape();
@@ -119,14 +119,22 @@ class BufferDonationTest : public HloTestBase {
             }
           });
 
-      args.emplace_back(
-          ExecutionInput(std::move(owned_buffers), argument_literal.shape()));
+      args.emplace_back(ExecutionInput(std::move(owned_buffers)));
     }
 
-    TF_ASSERT_OK_AND_ASSIGN(
-        ExecutionOutput output,
+    StatusOr<ExecutionOutput> output_status =
         executable->ExecuteAsyncOnStream(&service_run_options, std::move(args),
-                                         /*hlo_execution_profile=*/nullptr));
+                                         /*hlo_execution_profile=*/nullptr);
+    if (!expected_failure.empty()) {
+      ASSERT_FALSE(output_status.ok());
+      ASSERT_TRUE(absl::StrContains(output_status.status().error_message(),
+                                    expected_failure))
+          << "got: \n"
+          << output_status.status().error_message() << " \nvs want\n"
+          << expected_failure;
+      return;
+    }
+    ExecutionOutput output = output_status.ConsumeValueOrDie();
 
     se::DeviceMemoryBase result_root_buffer = output.Result().root_buffer();
     LOG(INFO) << "result allocation = " << result_root_buffer.opaque()
@@ -300,6 +308,38 @@ ENTRY entry {
 #ifdef XLA_TEST_BACKEND_GPU
   RunAndCheck(std::move(*module), args, /*donate_arguments=*/{false, false},
               /*expected_runtime_aliasing=*/{true, true}, expected);
+#endif
+}
+
+TEST_F(BufferDonationTest, TestMustAliasNotDonated) {
+  HloModuleConfig config;
+
+  StatusOr<std::unique_ptr<VerifiedHloModule>> module =
+      ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+ENTRY entry {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT out = (f32[], f32[]) tuple(a, b)
+}
+  )",
+                                   config);
+
+  TF_ASSERT_OK(module->get()->input_output_alias_config().SetUpAlias(
+      {0}, 0, {}, HloInputOutputAliasConfig::kMustAlias));
+
+  std::vector<Literal> args;
+  args.push_back(LiteralUtil::CreateR0<float>(0.1));
+  args.push_back(LiteralUtil::CreateR0<float>(0.2));
+  Literal expected = LiteralUtil::MakeTupleFromSlices(
+      {LiteralUtil::CreateR0<float>(0.1), LiteralUtil::CreateR0<float>(0.2)});
+
+#ifndef XLA_TEST_BACKEND_INTERPRETER
+  RunAndCheck(std::move(*module), args,
+              /*donate_arguments=*/{false, false}, {true, false}, expected,
+              "An input was configured to be must-alias at "
+              "compile time but not donated at runtime:");
 #endif
 }
 

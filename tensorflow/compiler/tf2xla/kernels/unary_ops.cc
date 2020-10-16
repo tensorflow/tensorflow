@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 
 namespace tensorflow {
@@ -76,6 +77,8 @@ XLAJIT_MAKE_UNARY(Log1p, xla::Log1p(x));
 
 XLAJIT_MAKE_UNARY(Invert, xla::Not(x));
 XLAJIT_MAKE_UNARY(LogicalNot, xla::Not(x));
+XLAJIT_MAKE_UNARY(PopulationCount,
+                  xla::ConvertElementType(xla::PopulationCount(x), xla::U8));
 XLAJIT_MAKE_UNARY(Neg, -x);
 
 XLAJIT_MAKE_UNARY(Rint, xla::RoundToEven(x));

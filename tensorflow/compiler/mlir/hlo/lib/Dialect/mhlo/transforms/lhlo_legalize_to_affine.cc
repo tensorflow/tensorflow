@@ -15,17 +15,16 @@ limitations under the License.
 
 // This file implements logic for lowering LHLO dialect to Affine dialect.
 
-#include "absl/memory/memory.h"
-#include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/map_lmhlo_to_scalar_op.h"
+#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/map_lmhlo_to_scalar_op.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/StandardTypes.h"
+#include "mlir/Pass/Pass.h"
 
 namespace mlir {
 namespace lmhlo {
@@ -57,6 +56,20 @@ struct DotOpConverter : public OpRewritePattern<DotOp> {
     ArrayRef<int64_t> shape_rhs = rhs_type.getShape();
 
     if ((lhs_type.getRank() != 2) || (rhs_type.getRank() != 2)) {
+      return failure();
+    }
+
+    // We don't currently support batching dimensions, or multiple contraction
+    // dimensions.
+    mhlo::DotDimensionNumbers dot_dimension_numbers =
+        op.dot_dimension_numbers();
+    if (dot_dimension_numbers.lhs_batching_dimensions().size() > 0 ||
+        dot_dimension_numbers.rhs_batching_dimensions().size() > 0)
+      return failure();
+    if (dot_dimension_numbers.lhs_contracting_dimensions().size() != 1 ||
+        *dot_dimension_numbers.lhs_contracting_dimensions().begin() != 1 ||
+        dot_dimension_numbers.rhs_contracting_dimensions().size() != 1 ||
+        *dot_dimension_numbers.rhs_contracting_dimensions().begin() != 0) {
       return failure();
     }
 
@@ -138,8 +151,11 @@ void populateLHLOToAffineConversionPattern(MLIRContext* context,
   // clang-format on
 }
 
-struct LhloLegalizeToAffine
-    : public PassWrapper<LhloLegalizeToAffine, FunctionPass> {
+struct LhloLegalizeToAffinePass
+    : public PassWrapper<LhloLegalizeToAffinePass, FunctionPass> {
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<AffineDialect>();
+  }
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     auto func = getFunction();
@@ -150,12 +166,9 @@ struct LhloLegalizeToAffine
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeToAffinePass() {
-  return absl::make_unique<LhloLegalizeToAffine>();
+std::unique_ptr<OperationPass<FuncOp>> createLhloLegalizeToAffinePass() {
+  return std::make_unique<LhloLegalizeToAffinePass>();
 }
-
-static PassRegistration<LhloLegalizeToAffine> legalize_pass(
-    "lhlo-legalize-to-affine", "Legalize from LHLO dialect to affine dialect");
 
 }  // namespace lmhlo
 }  // namespace mlir

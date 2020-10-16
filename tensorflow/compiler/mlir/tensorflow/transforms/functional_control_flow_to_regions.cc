@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 
 #define DEBUG_TYPE "tf-functional-cf-to-region"
 
@@ -46,19 +48,18 @@ struct FunctionalControlFlowToRegions
   void runOnOperation() override;
 };
 
-// Creates a call to function `callee` in region `caller_region`. Use `args` as
+// Creates a call to function `func` in region `caller_region`. Use `args` as
 // the call arguments, and terminate the region with a yield. The arguments are
 // cast to the required type before the call. `use_region_args` control whether
 // the input arguments are used as is (for IfOp) or block arguments of the same
 // type as the input arguments are created and then used as call arguments (for
 // While).
-void CreateCall(Operation* op, StringRef callee, Region& caller_region,
-                ValueRange args, bool use_region_args) {
+YieldOp CreateCall(Operation* op, FuncOp func, Region& caller_region,
+                   ValueRange args, bool use_region_args) {
   assert(caller_region.empty() &&
          "Expected empty region for newly created ops");
   OpBuilder builder(caller_region);
   Block* entry = builder.createBlock(&caller_region);
-  auto func = op->getParentOfType<ModuleOp>().lookupSymbol<FuncOp>(callee);
 
   if (use_region_args) {
     entry->addArguments(args.getType());
@@ -76,19 +77,31 @@ void CreateCall(Operation* op, StringRef callee, Region& caller_region,
     casted_args.push_back(arg);
   }
   auto call = builder.create<CallOp>(op->getLoc(), func, casted_args);
-  builder.create<YieldOp>(op->getLoc(), call.getResults());
+  return builder.create<YieldOp>(op->getLoc(), call.getResults());
+}
+
+// Converts the condition for an IfOp/WhileOp to a boolean value.
+Value ConvertConditionToBoolean(Operation* op, Value cond) {
+  if (auto ranked_type = cond.getType().dyn_cast<RankedTensorType>())
+    if (ranked_type.getRank() == 0 &&
+        ranked_type.getElementType().isSignlessInteger(1))
+      return cond;
+
+  OpBuilder builder(op);
+  return builder.create<TF::ToBoolOp>(op->getLoc(), cond);
 }
 
 // Transform a functional IfOp to a region based IfRegionOp.
 LogicalResult ConvertIfOp(IfOp if_op) {
+  Value cond = ConvertConditionToBoolean(if_op, if_op.cond());
   auto if_region = OpBuilder(if_op).create<TF::IfRegionOp>(
-      if_op.getLoc(), if_op.getResultTypes(), if_op.cond(),
-      if_op.is_stateless());
+      if_op.getLoc(), if_op.getResultTypes(), cond, if_op.is_stateless());
+  CopyDeviceAndUnderscoredAttributes(if_op, if_region);
 
-  CreateCall(if_op, /*callee=*/if_op.then_branch(),
+  CreateCall(if_op, if_op.then_function(),
              /*caller_region=*/if_region.then_branch(), if_op.input(),
              /*use_region_args=*/false);
-  CreateCall(if_op, /*callee=*/if_op.else_branch(),
+  CreateCall(if_op, if_op.else_function(),
              /*caller_region=*/if_region.else_branch(), if_op.input(),
              /*use_region_args=*/false);
   if_op.replaceAllUsesWith(if_region.getResults());
@@ -100,10 +113,18 @@ LogicalResult ConvertWhileOp(WhileOp while_op) {
   auto while_region = OpBuilder(while_op).create<TF::WhileRegionOp>(
       while_op.getLoc(), while_op.getResultTypes(), while_op.input(),
       while_op.is_stateless(), while_op.parallel_iterations());
+  CopyDeviceAndUnderscoredAttributes(while_op, while_region);
 
-  CreateCall(while_op, while_op.cond(), while_region.cond(), while_op.input(),
-             /*use_region_args=*/true);
-  CreateCall(while_op, while_op.body(), while_region.body(), while_op.input(),
+  YieldOp cond_yield =
+      CreateCall(while_op, while_op.cond_function(),
+                 /*caller_region=*/while_region.cond(), while_op.input(),
+                 /*use_region_args=*/true);
+  Value i1_cond =
+      ConvertConditionToBoolean(cond_yield, cond_yield.getOperand(0));
+  cond_yield.setOperand(0, i1_cond);
+
+  CreateCall(while_op, while_op.body_function(),
+             /*caller_region=*/while_region.body(), while_op.input(),
              /*use_region_args=*/true);
   while_op.replaceAllUsesWith(while_region.getResults());
   while_op.erase();

@@ -56,6 +56,9 @@ monitoring::CounterCell* GetTFDataElementsCounter(const string& name);
 // Records the number of bytes fetched from tf.data.Dataset iterator.
 void RecordTFDataBytesFetched(int64 num_bytes);
 
+// Records the number of times tf.data experiment is applied to input pipelines.
+void RecordTFDataExperiment(const string& name);
+
 // Records the time spent in ItertatorResource::GetNext() in microseconds.
 void RecordTFDataGetNextDuration(uint64 duration_us);
 
@@ -92,6 +95,7 @@ void RecordGraphInputTensors(const size_t size);
 void RecordGraphOutputTensors(const size_t size);
 
 void UpdateGraphExecTime(const uint64 running_time_usecs);
+void UpdateGraphPendingQueueLength(uint64 len);
 
 // Records that one output of an op of type `op_name` was unused.
 void RecordUnusedOutput(const string& op_name);
@@ -119,6 +123,9 @@ void UpdateGrapplerPassTime(const string& pass_name,
 
 // Updates the metrics stored about time XLA spents compiling graphs.
 void UpdateXlaCompilationTime(const uint64 compilation_time_usecs);
+
+// Updates the metrics stored about time BFC allocator spents during delay.
+void UpdateBfcAllocatorDelayTime(const uint64 delay_usecs);
 
 // Increment the number of jobs that failed during import to mlir.
 void IncrementMLIRImportFailureCount();

@@ -42,6 +42,8 @@ public final class InterpreterTest {
       "tensorflow/lite/java/src/testdata/add_unknown_dimensions.bin";
   private static final String DYNAMIC_SHAPES_MODEL_PATH =
       "tensorflow/lite/testdata/dynamic_shapes.bin";
+  private static final String BOOL_MODEL =
+      "tensorflow/lite/java/src/testdata/tile_with_bool_input.bin";
 
   private static final ByteBuffer MODEL_BUFFER = TestUtils.getTestFileAsBuffer(MODEL_PATH);
   private static final ByteBuffer MULTIPLE_INPUTS_MODEL_BUFFER =
@@ -52,6 +54,7 @@ public final class InterpreterTest {
       TestUtils.getTestFileAsBuffer(UNKNOWN_DIMS_MODEL_PATH);
   private static final ByteBuffer DYNAMIC_SHAPES_MODEL_BUFFER =
       TestUtils.getTestFileAsBuffer(DYNAMIC_SHAPES_MODEL_PATH);
+  private static final ByteBuffer BOOL_MODEL_BUFFER = TestUtils.getTestFileAsBuffer(BOOL_MODEL);
 
   @Test
   public void testInterpreter() throws Exception {
@@ -391,6 +394,7 @@ public final class InterpreterTest {
   }
 
   @Test
+  // setAllowFp16PrecisionForFp32 is deprecated, suppress the warning to allow testing.
   @SuppressWarnings("deprecation")
   public void testTurnOnNNAPI() throws Exception {
     Interpreter interpreter =
@@ -608,6 +612,68 @@ public final class InterpreterTest {
       interpreter.resetVariableTensors();
       interpreter.resetVariableTensors();
       interpreter.run(inputs, parsedOutputs);
+    }
+  }
+
+  @Test
+  public void testBoolModel() throws Exception {
+    boolean[][][] inputs = {{{true, false}, {false, true}}, {{true, true}, {false, true}}};
+    int[] multipliers = {1, 1, 2};
+    boolean[][][] parsedOutputs = new boolean[2][2][4];
+
+    try (Interpreter interpreter = new Interpreter(BOOL_MODEL_BUFFER)) {
+      assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.BOOL);
+      Object[] inputsArray = {inputs, multipliers};
+      Map<Integer, Object> outputsMap = new HashMap<>();
+      outputsMap.put(0, parsedOutputs);
+      interpreter.runForMultipleInputsOutputs(inputsArray, outputsMap);
+
+      boolean[][][] expectedOutputs = {
+        {{true, false, true, false}, {false, true, false, true}},
+        {{true, true, true, true}, {false, true, false, true}}
+      };
+      assertThat(parsedOutputs).isEqualTo(expectedOutputs);
+    }
+  }
+
+  @Test
+  public void testCancelInference() throws Exception {
+    float[][][][] inputs = new float[2][8][8][3];
+    float[][][][] parsedOutputs = new float[2][8][8][3];
+    Interpreter interpreter = new Interpreter(
+        MODEL_BUFFER, new Interpreter.Options().setCancellable(true));
+
+    // Part 1: Should be interrupted when flag is set to true.
+    try {
+      interpreter.setCancelled(true);
+      interpreter.run(inputs, parsedOutputs);
+      fail();
+    } catch (IllegalArgumentException e) {
+    // TODO(b/168266570): Return InterruptedException.
+      assertThat(e)
+          .hasMessageThat()
+          .contains(
+              "Internal error: Failed to run on the given Interpreter: Client requested cancel"
+                  + " during Invoke()");
+    }
+
+    // Part 2: Should be resumed when flag is set to false.
+    interpreter.setCancelled(false);
+    interpreter.run(inputs, parsedOutputs);
+  }
+
+  @Test
+  public void testCancelInferenceOnNoncancellableInterpreter() throws Exception {
+    Interpreter interpreter = new Interpreter(MODEL_BUFFER);
+
+    try {
+      interpreter.setCancelled(true);
+      fail();
+    } catch (IllegalStateException e) {
+      assertThat(e)
+          .hasMessageThat()
+          .contains(
+              "Cannot cancel the inference. Have you called Interpreter.Options.setCancellable?");
     }
   }
 

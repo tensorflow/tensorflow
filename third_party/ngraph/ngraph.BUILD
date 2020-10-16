@@ -117,7 +117,8 @@ cc_library(
     deps = [
         ":ngraph_headers",
         "@eigen_archive//:eigen",
-        "@mkl_dnn",
+        "@mkl_dnn_v1//:mkl_dnn",
+        "@mkl_dnn_v1//:mkl_dnn_aarch64",
         "@nlohmann_json_lib",
         "@tbb",
     ],

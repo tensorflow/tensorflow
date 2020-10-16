@@ -680,11 +680,11 @@ class BidirectionalRNNOpModel : public SingleOpModel {
     fw_weights_ = AddInput(tensor_type);
     fw_recurrent_weights_ = AddInput(tensor_type);
     fw_bias_ = AddInput(TensorType_FLOAT32);
-    fw_hidden_state_ = AddInput(TensorType_FLOAT32, true);
+    fw_hidden_state_ = AddVariableInput(TensorType_FLOAT32);
     bw_weights_ = AddInput(tensor_type);
     bw_recurrent_weights_ = AddInput(tensor_type);
     bw_bias_ = AddInput(TensorType_FLOAT32);
-    bw_hidden_state_ = AddInput(TensorType_FLOAT32, true);
+    bw_hidden_state_ = AddVariableInput(TensorType_FLOAT32);
 
     const auto input_shape =
         (time_major) ? std::vector<int>({sequence_len_, batches_, input_size_})

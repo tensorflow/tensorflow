@@ -21,8 +21,11 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/kernels/data/parallel_map_dataset_op.h"
 #include "tensorflow/core/kernels/data/stats_utils.h"
+#include "tensorflow/core/kernels/ragged_tensor_variant.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/stringprintf.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/util/example_proto_fast_parsing.h"
 
 namespace tensorflow {
@@ -268,6 +271,12 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
 
     int64 Cardinality() const override { return input_->Cardinality(); }
 
+    Status InputDatasets(
+        std::vector<const DatasetBase*>* inputs) const override {
+      inputs->push_back(input_);
+      return Status::OK();
+    }
+
     Status CheckExternalState() const override {
       return input_->CheckExternalState();
     }
@@ -399,6 +408,10 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
         RecordStop(ctx);
         result->notification.WaitForNotification();
         RecordStart(ctx);
+        profiler::TraceMe traceme([&] {
+          return profiler::TraceMeEncode("ParseExampleConsume",
+                                         {{"element_id", result->id}});
+        });
         return ProcessResult(ctx, result, out_tensors, end_of_sequence);
       }
 
@@ -514,10 +527,14 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
 
      private:
       struct InvocationResult {
+        InvocationResult() = default;
+        explicit InvocationResult(int64 id) : id(id) {}
+
         Notification notification;
         Status status;
         std::vector<Tensor> return_values;
-        bool end_of_input;
+        bool end_of_input = false;
+        int64 id = -1;
       };
 
       void CancelThreads(bool wait) TF_LOCKS_EXCLUDED(mu_) {
@@ -558,6 +575,10 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       void CallFunction(const std::shared_ptr<IteratorContext>& ctx,
                         const std::shared_ptr<InvocationResult>& result)
           TF_LOCKS_EXCLUDED(*mu_) {
+        profiler::TraceMe traceme([&] {
+          return profiler::TraceMeEncode("ParseExampleProduce",
+                                         {{"element_id", result->id}});
+        });
         // Get the next input element.
         std::vector<Tensor> input_element;
         result->status = input_impl_->GetNext(ctx.get(), &input_element,
@@ -658,12 +679,9 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
         for (int d = 0; d < dataset()->ragged_keys_.size(); ++d) {
           int output_index =
               dataset()->key_to_output_index_.at(dataset()->ragged_keys_[d]);
-          (*output)[output_index] = Tensor(ctx->allocator({}), DT_VARIANT, {});
-          Tensor serialized_ragged =
-              Tensor(ctx->allocator({}), DT_VARIANT, {2});
-          auto serialized_ragged_t = serialized_ragged.vec<Variant>();
-          serialized_ragged_t(0) = example_result.ragged_splits[d];
-          serialized_ragged_t(1) = example_result.ragged_values[d];
+          RaggedTensorVariant serialized_ragged;
+          serialized_ragged.append_splits(example_result.ragged_splits[d]);
+          serialized_ragged.set_values(example_result.ragged_values[d]);
           (*output)[output_index] = Tensor(ctx->allocator({}), DT_VARIANT, {});
           Tensor& ragged_wrapper = (*output)[output_index];
           ragged_wrapper.scalar<Variant>()() = serialized_ragged;
@@ -732,6 +750,8 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
           return num_calls_ >= num_parallel_calls ||
                  invocation_results_.size() >= num_parallel_calls;
         };
+        // Counts the total number of calls to use as an id of InvocationResult.
+        int64 num_total_calls = 0;
         while (true) {
           {
             mutex_lock l(*mu_);
@@ -745,7 +765,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
             }
             while (!busy()) {
               invocation_results_.push_back(
-                  std::make_shared<InvocationResult>());
+                  std::make_shared<InvocationResult>(num_total_calls++));
               new_calls.push_back(invocation_results_.back());
               num_calls_++;
             }

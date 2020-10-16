@@ -19,6 +19,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include "absl/types/optional.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
@@ -54,6 +55,13 @@ class HloFunctionImporter {
   static Status ImportAsRegion(const xla::HloComputation& computation,
                                mlir::Region* region, mlir::Builder* builder);
 
+  // Imports the given computation to the given place specified by `builder`.
+  // `arguments` contains values for all parameters.
+  static StatusOr<mlir::Value> ImportInstructions(
+      const xla::HloComputation& computation,
+      const llvm::SmallVectorImpl<mlir::Value>& arguments,
+      mlir::OpBuilder* builder);
+
  private:
   HloFunctionImporter(mlir::ModuleOp module,
                       std::unordered_map<const xla::HloComputation*,
@@ -62,7 +70,10 @@ class HloFunctionImporter {
       : context_(module.getContext()),
         module_(module),
         builder_(builder),
-        function_map_(function_map) {}
+        function_map_(function_map) {
+    context_->loadDialect<mlir::StandardOpsDialect>();
+    context_->loadDialect<mlir::mhlo::MhloDialect>();
+  }
 
   // Imports the given computation as a new function, if it hasn't been already
   // imported.
@@ -76,10 +87,16 @@ class HloFunctionImporter {
   // Assumes that the block already has correct arguments populated.
   tensorflow::Status ImportInstructions(const HloComputation& computation,
                                         mlir::Block* block);
+  StatusOr<mlir::Value> ImportInstructionsImpl(
+      const xla::HloComputation& computation,
+      const llvm::SmallVectorImpl<mlir::Value>& arguments,
+      mlir::OpBuilder* builder);
 
   // Imports an instruction.
   StatusOr<mlir::Operation*> ImportInstruction(xla::HloInstruction* instruction,
                                                mlir::OpBuilder* func_builder);
+  StatusOr<mlir::Operation*> ImportInstructionImpl(
+      HloInstruction* instruction, mlir::OpBuilder* func_builder);
 
   // Gets the MLIR operand values from an HLO Instruction.
   StatusOr<llvm::SmallVector<mlir::Value, 4>> GetOperands(

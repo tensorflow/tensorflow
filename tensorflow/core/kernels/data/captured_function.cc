@@ -216,7 +216,7 @@ Status CreateShortCircuitInfo(OpKernelConstruction* ctx,
       last_use[indices[i]] = i;
     }
     can_move.resize(indices.size());
-    for (int i = 0, iter_limit = indices.size(); i < iter_limit; ++i) {
+    for (int i = 0, end = indices.size(); i < end; ++i) {
       can_move[i] = last_use[indices[i]] == i;
     }
   }
@@ -465,9 +465,16 @@ Status MakeIteratorFromInputElement(
       GetDatasetFromVariantTensor(return_values[0], &returned_dataset));
 
   // Create an iterator for the dataset that was returned by `f`.
-  return returned_dataset->MakeIterator(
-      ctx, parent, strings::StrCat(prefix, "[", thread_index, "]"),
-      out_iterator);
+  std::string iterator_prefix = strings::StrCat(prefix, "[", thread_index, "]");
+  if (ctx->split_provider() == nullptr) {
+    return returned_dataset->MakeIterator(ctx, parent, iterator_prefix,
+                                          out_iterator);
+  }
+  // Strip out the split provider so that it doesn't apply to sub-iterators.
+  IteratorContext::Params params(ctx);
+  params.split_provider = nullptr;
+  return returned_dataset->MakeIterator(IteratorContext(std::move(params)),
+                                        parent, iterator_prefix, out_iterator);
 }
 
 /* static */
@@ -517,13 +524,6 @@ Status FunctionMetadata::Create(
     if (!validate_arg(arg)) {
       (*out_metadata)->use_multi_device_function_ = false;
       return Status::OK();
-    }
-  }
-  for (const auto& node : fdef->node_def()) {
-    if (node.op() == kDataServiceDataset) {
-      return errors::InvalidArgument(
-          "The `.distribute(...)` dataset transformation is not supported "
-          "within tf.data functions.");
     }
   }
   return Status::OK();
@@ -663,8 +663,7 @@ Status CapturedFunction::Instantiate(
       inst_opts.composite_devices[it.first] = &it.second;
     }
 
-    for (int i = 0, iter_limit = fdef->signature().output_arg_size();
-         i < iter_limit; ++i) {
+    for (int i = 0, end = fdef->signature().output_arg_size(); i < end; ++i) {
       inst_opts.output_devices.push_back(inst_opts.target);
     }
 

@@ -108,16 +108,12 @@ class ResNet50Test(tf.test.TestCase):
   def test_apply(self):
     self._apply(defun=False)
 
-  @test_util.disable_tfrt(
-      'TFE_ContextGetExecutorForThread not implemented b/156188669')
   def test_apply_async(self):
     self._apply(defun=False, execution_mode=context.ASYNC)
 
-  @test_util.disable_tfrt('Graph is not supported yet. b/156187905')
   def test_apply_with_defun(self):
     self._apply(defun=True)
 
-  @test_util.disable_tfrt('Graph is not supported yet. b/156187905')
   def test_apply_with_defun_async(self):
     self._apply(defun=True, execution_mode=context.ASYNC)
 
@@ -340,7 +336,6 @@ class ResNet50Benchmarks(tf.test.Benchmark):
         defun=False,
         execution_mode=context.ASYNC)
 
-  @test_util.disable_tfrt('Graph is not supported yet. b/156187905')
   def benchmark_eager_apply_with_defun(self):
     self._benchmark_eager_apply(
         'eager_apply_with_defun',
@@ -420,7 +415,6 @@ class ResNet50Benchmarks(tf.test.Benchmark):
         resnet50_test_util.device_and_data_format(),
         defun=False)
 
-  @test_util.disable_tfrt('Graph is not supported yet. b/156187905')
   def benchmark_eager_train_datasets_with_defun(self):
 
     def make_iterator(tensors):

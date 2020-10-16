@@ -7,8 +7,9 @@ func @main(tensor<3x2xi32>) -> tensor<3x2xi32>
 // CHECK: {
 // CHECK-NEXT:   version: 3,
 // CHECK-NEXT:   operator_codes: [ {
-// CHECK-NEXT:     builtin_code: SUB,
-// CHECK-NEXT:     version: 1
+// CHECK-NEXT:     deprecated_builtin_code: 41,
+// CHECK-NEXT:     version: 1,
+// CHECK-NEXT:     builtin_code: SUB
 // CHECK-NEXT:   }, {
 // CHECK-NEXT:     version: 1
 // CHECK-NEXT:   } ],
@@ -104,6 +105,7 @@ func @main(tensor<3x2xi32>) -> tensor<3x2xi32>
 // CHECK-NEXT:   name: "min_runtime_version",
 // CHECK-NEXT:   buffer: 6
 // CHECK-NEXT:   } ]
+// CHECK-NEXT:   signature_defs: [ ]
 // CHECK-NEXT: }
 
   %0 = "tfl.pseudo_const" () {value = dense<[[1, 2], [3, 4], [5, 6]]> : tensor<3x2xi32>} : () -> tensor<3x2xi32> loc("Const")

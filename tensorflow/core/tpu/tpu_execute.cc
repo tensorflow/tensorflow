@@ -23,7 +23,6 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/memory/memory.h"
-#include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
@@ -418,10 +417,6 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
   VLOG(1) << "TPUExecute on device " << node_context->device_ordinal();
 
   xla::Backend* backend = node_context->backend();
-
-  XlaDevice* device =
-      tensorflow::down_cast<XlaDevice*>(ctx->device()->UnderlyingDevice());
-  TF_RET_CHECK(device);
 
   // Create a HostTransferManager to handle Send/Recv operations from the TPU.
   std::shared_ptr<HostTransferManager> host_transfer_manager =

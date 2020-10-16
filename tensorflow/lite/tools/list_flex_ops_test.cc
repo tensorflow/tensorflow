@@ -87,7 +87,7 @@ class FlexOpModel : public SingleOpModel {
 
 TEST_F(FlexOpsListTest, TestModelsNoFlex) {
   ReadOps("tensorflow/lite/testdata/test_model.bin");
-  EXPECT_EQ(output_text_, "[]");
+  EXPECT_EQ(output_text_, "[]\n");
 }
 
 TEST_F(FlexOpsListTest, TestBrokenModel) {
@@ -97,29 +97,29 @@ TEST_F(FlexOpsListTest, TestBrokenModel) {
 
 TEST_F(FlexOpsListTest, TestZeroSubgraphs) {
   ReadOps("tensorflow/lite/testdata/0_subgraphs.bin");
-  EXPECT_EQ(output_text_, "[]");
+  EXPECT_EQ(output_text_, "[]\n");
 }
 
 TEST_F(FlexOpsListTest, TestFlexAdd) {
   ReadOps("tensorflow/lite/testdata/multi_add_flex.bin");
   EXPECT_EQ(output_text_,
-            "[[\"Add\", \"BinaryOp<CPUDevice, functor::add<float>>\"]]");
+            "[[\"AddV2\",\"BinaryOp<CPUDevice, functor::add<float>>\"]]\n");
 }
 
 TEST_F(FlexOpsListTest, TestTwoModel) {
   ReadOps("tensorflow/lite/testdata/multi_add_flex.bin");
   ReadOps("tensorflow/lite/testdata/softplus_flex.bin");
   EXPECT_EQ(output_text_,
-            "[[\"Add\", \"BinaryOp<CPUDevice, "
-            "functor::add<float>>\"],\n[\"Softplus\", \"SoftplusOp<CPUDevice, "
-            "float>\"]]");
+            "[[\"AddV2\",\"BinaryOp<CPUDevice, "
+            "functor::add<float>>\"],[\"Softplus\",\"SoftplusOp<CPUDevice, "
+            "float>\"]]\n");
 }
 
 TEST_F(FlexOpsListTest, TestDuplicatedOp) {
   ReadOps("tensorflow/lite/testdata/multi_add_flex.bin");
   ReadOps("tensorflow/lite/testdata/multi_add_flex.bin");
   EXPECT_EQ(output_text_,
-            "[[\"Add\", \"BinaryOp<CPUDevice, functor::add<float>>\"]]");
+            "[[\"AddV2\",\"BinaryOp<CPUDevice, functor::add<float>>\"]]\n");
 }
 
 TEST_F(FlexOpsListTest, TestInvalidCustomOptions) {
@@ -192,7 +192,7 @@ TEST_F(FlexOpsListTest, TestFlexAddWithSingleOpModel) {
                         CreateFlexCustomOptions(nodedef_raw_str));
   ReadOps(tflite::GetModel(max_model.GetModelBuffer()));
   EXPECT_EQ(output_text_,
-            "[[\"Add\", \"BinaryOp<CPUDevice, functor::add<float>>\"]]");
+            "[[\"Add\",\"BinaryOp<CPUDevice, functor::add<float>>\"]]\n");
 }
 }  // namespace flex
 }  // namespace tflite

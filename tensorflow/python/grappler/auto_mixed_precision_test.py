@@ -46,6 +46,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.losses import losses
+from tensorflow.python.platform import sysconfig
 from tensorflow.python.platform import test
 from tensorflow.python.training import adam
 from tensorflow.python.training import gradient_descent
@@ -136,6 +137,11 @@ def _conv_pool(x):
   h_conv2 = nn.relu(nn.bias_add(_conv2d(h_pool1, w_conv2), b_conv2))
   h_pool2 = _max_pool_2x2(h_conv2)
   return h_pool2
+
+
+def _depthwise_conv2d(x, w):
+  """Returns a 2d depthwise convolution layer with full stride."""
+  return nn.depthwise_conv2d(x, w, strides=[1, 1, 1, 1], padding='SAME')
 
 
 def _simple_loop(x, functor):
@@ -506,9 +512,7 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
     tol = 5e-2 if mode == 'mkl' else 1e-3
     self.assertAllClose(output_val_ref, output_val, atol=tol, rtol=tol)
 
-  # TODO(reedwm): Fix and enable this test with MKL. Currently this crashes with
-  # MKL
-  @parameterized.parameters(['cuda'])
+  @parameterized.parameters(['cuda', 'mkl'])
   @test_util.run_deprecated_v1
   @test_util.disable_xla('This test does not pass with XLA')
   def test_conv_bn_dropout(self, mode):
@@ -539,6 +543,7 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
     # The default tolerance (1e-3) results in a tiny fraction (<1%) of
     # miscompares on ROCm platform, and hence the tolerance bump
     tol = 2e-3 if test.is_built_with_rocm else 1e-3
+    tol = 5e-2 if mode == 'mkl' else tol
     self.assertAllClose(output_val_ref, output_val, atol=tol, rtol=tol)
 
   # TODO(reedwm): Fix and enable this test with MKL. Currently this crashes with
@@ -564,6 +569,42 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(num_to_f16, 4)
     self.assertEqual(num_to_fp32, 1)
     tol = 5e-3 if mode == 'mkl' else 1e-3
+    self.assertAllClose(output_val_ref, output_val, atol=tol, rtol=tol)
+
+  # TODO(benbarsdell): This test has not been tried with MKL.
+  @parameterized.parameters(['cuda'])
+  @test_util.run_deprecated_v1
+  @test_util.disable_xla('This test does not pass with XLA')
+  def test_depthwise_conv2d(self, mode):
+    """Test grad ops with depthwise convolution2d graph."""
+    self._maybe_skip(mode)
+    cudnn_version_str = sysconfig.get_build_info().get('cudnn_version', '0.0')
+    cudnn_version = tuple([int(x) for x in cudnn_version_str.split('.')])
+    if cudnn_version < (8,):
+      # Depthwise conv2d ops are only enabled in auto_mixed_precision as of
+      # cuDNN v8.
+      self.skipTest('cuDNN version >= 8 required')
+    random_seed.set_random_seed(0)
+    x = _input([2, 8, 8, 1])
+    f = _weight([3, 3, 1, 4])
+    y = _depthwise_conv2d(x, f)
+    y = array_ops.identity(y)
+    optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.01)
+    g = optimizer.compute_gradients(y, [x, f])
+    output = (y, g)
+
+    output_val_ref, output_val, cost_graph = self._run(mode, output)
+    node_map = _build_node_map(cost_graph.node)
+    self._assert_output_f16(mode, node_map, 'depthwise')
+    self._assert_output_f16(
+        mode, node_map,
+        'gradients/depthwise_grad/DepthwiseConv2dNativeBackpropInput')
+    self._assert_output_f16(
+        mode, node_map,
+        'gradients/depthwise_grad/DepthwiseConv2dNativeBackpropFilter')
+
+    output_val_ref, output_val, cost_graph = self._run(mode, output)
+    tol = 2e-3
     self.assertAllClose(output_val_ref, output_val, atol=tol, rtol=tol)
 
   @parameterized.parameters(['cuda', 'mkl'])

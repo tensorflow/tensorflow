@@ -426,32 +426,36 @@ RngOutput PhiloxRngBit64(XlaOp op_key, XlaOp initial_state,
 XlaOp ConvertRandomBitsToUniformFloatingPoint(XlaOp bits, XlaOp minval,
                                               XlaOp maxval) {
   XlaBuilder* builder = bits.builder();
-  PrimitiveType value_type =
-      builder->GetShape(minval).ConsumeValueOrDie().element_type();
-  PrimitiveType bit_type =
-      builder->GetShape(bits).ConsumeValueOrDie().element_type();
-  CHECK((value_type == F32 && bit_type == U32) ||
-        (value_type == F64 && bit_type == U64));
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape* minval_shape,
+                        builder->GetShapePtr(minval));
+    TF_ASSIGN_OR_RETURN(const Shape* bits_shape, builder->GetShapePtr(bits));
+    PrimitiveType value_type = minval_shape->element_type();
+    PrimitiveType bit_type = bits_shape->element_type();
+    CHECK((value_type == F32 && bit_type == U32) ||
+          (value_type == F64 && bit_type == U64));
 
-  // Form random mantissa bits for float/double, with a leading 1 bit.
-  int num_float_bits = primitive_util::BitWidth(value_type);
-  // Subtract one as SignificandWidth includes the leading 1 bit.
-  int num_mantissa_bits = primitive_util::SignificandWidth(value_type) - 1;
+    // Form random mantissa bits for float/double, with a leading 1 bit.
+    int num_float_bits = primitive_util::BitWidth(value_type);
+    // Subtract one as SignificandWidth includes the leading 1 bit.
+    int num_mantissa_bits = primitive_util::SignificandWidth(value_type) - 1;
 
-  // Ignore the exponent bits and convert the mantissa bits to the floating
-  // point type.
-  bits = ShiftRightLogical(
-      bits, ScalarLike(bits, num_float_bits - num_mantissa_bits));
+    // Ignore the exponent bits and convert the mantissa bits to the floating
+    // point type.
+    bits = ShiftRightLogical(
+        bits, ScalarLike(bits, num_float_bits - num_mantissa_bits));
 
-  // We have an integer-valued floating point number in the range
-  // [0, 2**{num_mantissa_bits}).
-  XlaOp values = ConvertElementType(bits, value_type);
+    // We have an integer-valued floating point number in the range
+    // [0, 2**{num_mantissa_bits}).
+    XlaOp values = ConvertElementType(bits, value_type);
 
-  // Divide by 2**{-num_mantissa_bits} to get a number in the range [0.0, 1.0).
-  values = values * ScalarLike(values, std::ldexp(1., -num_mantissa_bits));
+    // Divide by 2**{-num_mantissa_bits} to get a number in the range
+    // [0.0, 1.0).
+    values = values * ScalarLike(values, std::ldexp(1., -num_mantissa_bits));
 
-  // Multiply and add to shift to the range [minval, maxval).
-  return values * (maxval - minval) + minval;
+    // Multiply and add to shift to the range [minval, maxval).
+    return values * (maxval - minval) + minval;
+  });
 }
 
 XlaOp ConvertRandomBitsToUniformInt(XlaOp bits, XlaOp minval, XlaOp maxval,
@@ -482,6 +486,10 @@ std::pair<XlaOp, XlaOp> BoxMullerTransform(XlaOp x0, XlaOp x1) {
 }
 
 }  // namespace
+
+XlaOp PhiloxIncreaseCounter(XlaOp counter, XlaOp delta) {
+  return Uint128ToOp(Uint128AddUint64(Uint128FromOp(counter), delta));
+}
 
 RngOutput ThreeFryBitGenerator(XlaOp key, XlaOp initial_state,
                                const Shape& shape) {

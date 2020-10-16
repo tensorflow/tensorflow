@@ -19,6 +19,7 @@ limitations under the License.
 // Useful functions for writing tests.
 
 #include <cstdint>
+#include <limits>
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
@@ -49,7 +50,7 @@ class SimpleStatefulOp {
   static constexpr int kMedianTensor = 0;
   static constexpr int kInvokeCount = 1;
   struct OpData {
-    int invoke_count = 0;
+    int* invoke_count = nullptr;
     int sorting_buffer = kBufferNotAllocated;
   };
 
@@ -88,10 +89,22 @@ const Model* GetComplexMockModel();
 const Model* GetSimpleModelWithBranch();
 
 // Returns a simple flatbuffer model with offline planned tensors
+// @param[in]       num_tensors           Number of tensors in the model.
+// @param[in]       metadata_buffer       Metadata for offline planner.
+// @param[in]       node_con              List of connections, i.e. operators
+//                                        in the model.
+// @param[in]       num_conns             Number of connections.
+// @param[in]       num_subgraph_inputs   How many of the input tensors are in
+//                                        the subgraph inputs. The default value
+//                                        of 0 means all of the input tensors
+//                                        are in the subgraph input list. There
+//                                        must be at least 1 input tensor in the
+//                                        subgraph input list.
 const Model* GetModelWithOfflinePlanning(int num_tensors,
                                          const int32_t* metadata_buffer,
                                          NodeConnection* node_conn,
-                                         int num_conns);
+                                         int num_conns,
+                                         int num_subgraph_inputs = 0);
 
 // Returns a flatbuffer model with `simple_stateful_op`
 const Model* GetSimpleStatefulModel();
@@ -179,6 +192,21 @@ TfLiteTensor CreateSymmetricPerChannelQuantizedTensor(
 
 // Returns the number of tensors in the default subgraph for a tflite::Model.
 size_t GetModelTensorCount(const Model* model);
+
+// Derives the quantization scaling factor from a min and max range.
+template <typename T>
+inline float ScaleFromMinMax(const float min, const float max) {
+  return (max - min) /
+         static_cast<float>((std::numeric_limits<T>::max() * 1.0) -
+                            std::numeric_limits<T>::min());
+}
+
+// Derives the quantization zero point from a min and max range.
+template <typename T>
+inline int ZeroPointFromMinMax(const float min, const float max) {
+  return static_cast<int>(std::numeric_limits<T>::min()) +
+         static_cast<int>(-min / ScaleFromMinMax<T>(min, max) + 0.5f);
+}
 
 }  // namespace testing
 }  // namespace tflite

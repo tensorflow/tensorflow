@@ -21,15 +21,16 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 namespace profiler {
 
 // Special op types.
-ABSL_CONST_INIT extern const absl::string_view kUnknownOp;
-ABSL_CONST_INIT extern const absl::string_view kDatasetOp;
-ABSL_CONST_INIT extern const absl::string_view kMemcpyHToDOp;
-ABSL_CONST_INIT extern const absl::string_view kMemcpyDToHOp;
+TF_CONST_INIT extern const absl::string_view kUnknownOp;
+TF_CONST_INIT extern const absl::string_view kDatasetOp;
+TF_CONST_INIT extern const absl::string_view kMemcpyHToDOp;
+TF_CONST_INIT extern const absl::string_view kMemcpyDToHOp;
 
 enum class Category {
   kTensorFlow,
@@ -56,14 +57,33 @@ std::vector<absl::string_view> ParseTfNameScopes(const TfOp& tf_op);
 std::string TfOpEventName(const TfOp& tf_op);
 std::string TfOpEventName(absl::string_view tf_op_fullname);
 
+// Trace event name for dataset ops.
+std::string DatasetOpEventName(absl::string_view full_name);
+
+// Returns the iterator name without prefix and parent iterator names.
+std::string IteratorName(absl::string_view full_name);
+
 // Returns true if the given name is a TensorFlow Dataset Op.
 inline bool IsDatasetOp(absl::string_view tf_op_type) {
   return tf_op_type == kDatasetOp;
+}
+inline bool IsDatasetOp(const TfOp& tf_op) {
+  return tf_op.category == Category::kTfData;
 }
 
 // Returns true if the given name is a TensorFlow Infeed Enqueue Op.
 inline bool IsInfeedEnqueueOp(absl::string_view tf_op_type) {
   return tf_op_type == "InfeedEnqueue" || tf_op_type == "InfeedEnqueueTuple";
+}
+
+// Returns true if the given op is for outside compilation.
+inline bool IsOutsideCompilationOp(absl::string_view tf_op_fullname,
+                                   absl::string_view hlo_expression) {
+  if (absl::EndsWith(tf_op_fullname, ":XlaSendToHost")) return true;
+  if (absl::StrContains(hlo_expression, "send-done") &&
+      absl::StrContains(hlo_expression, "is_host_transfer=true"))
+    return true;
+  return false;
 }
 
 // Returns true if the given name is a TensorFlow embedding op.
@@ -95,8 +115,8 @@ bool IsTfOpType(absl::string_view op_type);
 // Returns true if the given string matches JAX pattern.
 bool IsJaxOpType(absl::string_view op_type);
 
-// Returns true if the given string matches tf.data iterator pattern.
-bool IsIteratorEventName(absl::string_view event_name);
+// Returns true if the given strings match JAX pattern.
+bool IsJaxOpNameAndType(absl::string_view op_name, absl::string_view op_type);
 
 }  // namespace profiler
 }  // namespace tensorflow

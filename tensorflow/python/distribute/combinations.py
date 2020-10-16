@@ -40,12 +40,12 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import combinations as framework_combinations
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_combinations as combinations_lib
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
-
-FLAGS = flags.FLAGS
+from tensorflow.python.util.tf_export import tf_export
 
 
 # TODO(rchao): Rename `distribution` parameter to `strategy` or
@@ -58,11 +58,17 @@ class DistributionParameter(combinations_lib.ParameterModifier):
   """
 
   def modified_arguments(self, kwargs, requested_parameters):
-    del requested_parameters
+    # Get the parameter that indicates if we need to set the `_use_policy` flag
+    # on the strategy object. This is a temporary flag for testing the variable
+    # policy rollout.
+    use_var_policy = kwargs.get("use_var_policy", None)
     distribution_arguments = {}
     for k, v in kwargs.items():
       if isinstance(v, NamedDistribution):
-        distribution_arguments[k] = v.strategy
+        strategy = v.strategy
+        if use_var_policy:
+          strategy.extended._use_var_policy = use_var_policy
+        distribution_arguments[k] = strategy
     return distribution_arguments
 
 
@@ -81,19 +87,62 @@ class ClusterParameters(combinations_lib.ParameterModifier):
           raise ValueError("Only support one NamedDistribution for multi worker"
                            "tests.")
         strategy = v
+
+    if strategy:
+      has_chief = strategy.has_chief
+      num_workers = strategy.num_workers
+      runner = strategy.runner
+      if "has_chief" in kwargs and kwargs["has_chief"] != has_chief:
+        raise ValueError(
+            "both has_chief and strategy specified but are not compatible")
+      if "num_workers" in kwargs and kwargs["num_workers"] != num_workers:
+        raise ValueError(
+            "both num_workers and strategy specified but are not compatible")
+    else:
+      has_chief = kwargs.get("has_chief", False)
+      num_workers = kwargs.get("num_workers", 1)
+      runner = None
+
     # Always set cluster parameters if they're requested. So that generate()
     # works when there's no startegy in the combinations.
     update = {}
     if "has_chief" in requested_parameters:
-      update["has_chief"] = strategy.has_chief if strategy else False
+      update["has_chief"] = has_chief
     if "num_workers" in requested_parameters:
-      update["num_workers"] = strategy.num_workers if strategy else 1
+      update["num_workers"] = num_workers
     if "runner" in requested_parameters:
-      update["runner"] = strategy.runner if strategy else None
+      update["runner"] = runner
     return update
 
 
-class NamedGPUCombination(combinations_lib.TestCombination):
+class DistributionCombination(combinations_lib.TestCombination):
+  """Sets up distribution strategy for tests."""
+
+  def should_execute_combination(self, kwargs):
+    distributions = [
+        v for v in kwargs.values() if isinstance(v, NamedDistribution)
+    ]
+    if test_util.is_xla_enabled() and any(d.no_xla for d in distributions):
+      return (
+          False,
+          "n/a: skipping strategy combination with no_xla=True in XLA tests")
+    return (True, None)
+
+  def parameter_modifiers(self):
+    return [
+        DistributionParameter(),
+        combinations_lib.OptionalParameter("use_var_policy"),
+    ]
+
+
+class ClusterCombination(combinations_lib.TestCombination):
+  """Sets up multi worker tests."""
+
+  def parameter_modifiers(self):
+    return [ClusterParameters()]
+
+
+class GPUCombination(combinations_lib.TestCombination):
   """Enable tests to request GPU hardware and skip non-GPU combinations.
 
   This class expects test_combinations to be generated with `NamedDistribution`
@@ -135,17 +184,7 @@ class NamedGPUCombination(combinations_lib.TestCombination):
     return [combinations_lib.OptionalParameter("required_gpus")]
 
 
-class GPUCombination(NamedGPUCombination):
-  """NamedGPUCombination that passes `tf.distribute.Strategy` to the tests."""
-
-  def parameter_modifiers(self):
-    return [
-        ClusterParameters(),
-        DistributionParameter(),
-    ] + NamedGPUCombination.parameter_modifiers(self)
-
-
-class NamedTPUCombination(combinations_lib.TestCombination):
+class TPUCombination(combinations_lib.TestCombination):
   """Allow to request TPU hardware and skip non-TPU combinations.
 
   This class expects test_combinations to be generated with `NamedDistribution`
@@ -187,7 +226,7 @@ class NamedTPUCombination(combinations_lib.TestCombination):
                                   [d.required_tpu or 0 for d in distributions])
     use_cloud_tpu = any([kwargs.get("use_cloud_tpu")] +
                         [d.use_cloud_tpu for d in distributions])
-    tpu = hasattr(FLAGS, "tpu") and FLAGS.tpu or ""
+    tpu = hasattr(flags.FLAGS, "tpu") and flags.FLAGS.tpu or ""
 
     if not number_of_required_tpus and TPUCombination.TPU_TEST:
       return (False, "Test that doesn't require TPUs.")
@@ -207,16 +246,6 @@ class NamedTPUCombination(combinations_lib.TestCombination):
     ]
 
 
-class TPUCombination(NamedTPUCombination):
-  """NamedTPUCombination that passes `tf.distribute.Strategy` to the tests."""
-
-  def parameter_modifiers(self):
-    return [
-        ClusterParameters(),
-        DistributionParameter(),
-    ] + NamedTPUCombination.parameter_modifiers(self)
-
-
 class NamedDistribution(object):
   """Wraps a `tf.distribute.Strategy` and adds a name for test titles."""
 
@@ -228,7 +257,8 @@ class NamedDistribution(object):
                use_cloud_tpu=False,
                has_chief=False,
                num_workers=1,
-               use_pool_runner=True):
+               use_pool_runner=False,
+               no_xla=False):
     """Initialize NamedDistribution.
 
     Args:
@@ -241,6 +271,7 @@ class NamedDistribution(object):
       num_workers: The number of workers that the strategy requires.
       use_pool_runner: Whether to use a pool runner so that workers are re-used
         each time.
+      no_xla: Whether to skip in XLA tests.
     """
     object.__init__(self)
     self._name = name
@@ -250,22 +281,24 @@ class NamedDistribution(object):
     self.use_cloud_tpu = use_cloud_tpu
     self.has_chief = has_chief
     self.num_workers = num_workers
+    self.use_pool_runner = use_pool_runner
+    self.no_xla = no_xla
     self._runner = None
-
-    if _num_total_workers(self.has_chief, self.num_workers) > 1:
-      cluster_spec = multi_worker_test_base.create_cluster_spec(
-          has_chief=has_chief,
-          num_workers=num_workers,
-          num_ps=0,
-          has_eval=False)
-      if use_pool_runner:
-        # Need to create the strategy in the initializer so that collectives are
-        # configured before eager context initialization.
-        self._runner = multi_process_runner.MultiProcessPoolRunner(
-            cluster_spec, initializer=self._distribution_fn)
 
   @property
   def runner(self):
+    if not self._runner:
+      if (_num_total_workers(self.has_chief, self.num_workers) > 1 and
+          self.use_pool_runner):
+        # Need to create the strategy in the initializer so that collectives are
+        # configured before eager context initialization.
+        cluster_spec = multi_worker_test_base.create_cluster_spec(
+            has_chief=self.has_chief,
+            num_workers=self.num_workers,
+            num_ps=0,
+            has_eval=False)
+        self._runner = multi_process_runner.MultiProcessPoolRunner(
+            cluster_spec, initializer=self._distribution_fn)
     return self._runner
 
   @property
@@ -284,20 +317,23 @@ def concat(*combined):
   return result
 
 
+@tf_export("__internal__.distribute.combinations.generate", v1=[])
 def generate(combinations, test_combinations=()):
   # pylint: disable=g-doc-args,g-doc-return-or-yield
-  """Distributed adapter of `framework.combinations_lib.generate`.
+  """Distributed adapter of `tf.__internal__.test.combinations.generate`.
 
   All tests with distributed strategy should use this one instead of
-  `framework.test_combinations.generate`. This function has support of strategy
-  combinations, GPU/TPU and multi worker support.
+  `tf.__internal__.test.combinations.generate`. This function has support of
+  strategy combinations, GPU/TPU and multi worker support.
 
-  See `framework.test_combinations_lib.generate` for usage.
+  See `tf.__internal__.test.combinations.generate` for usage.
   """
   # pylint: enable=g-doc-args,g-doc-return-or-yield
   default_combinations = (
       framework_combinations.EagerGraphCombination(),
       framework_combinations.TFVersionCombination(),
+      ClusterCombination(),
+      DistributionCombination(),
       GPUCombination(),
       TPUCombination(),
   )
@@ -326,11 +362,6 @@ def generate(combinations, test_combinations=()):
 combine = combinations_lib.combine
 times = combinations_lib.times
 NamedObject = combinations_lib.NamedObject
-
-
-def main():
-  """Tests must call this main()."""
-  return multi_process_runner.test_main()
 
 
 # Identifies whether we're in the main process or worker processes.

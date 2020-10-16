@@ -30,15 +30,12 @@ REGISTER_OP("TPUExecute")
       shape_inference::ShapeHandle key;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(c->num_inputs() - 1), 1, &key));
       shape_inference::DimensionHandle unused;
-      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(key, 0), 2, &unused));
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(key, 0), 3, &unused));
       for (int i = 0; i < c->num_outputs(); ++i) {
         c->set_output(i, c->UnknownShape());
       }
       return Status::OK();
-    })
-    .Doc(R"(
-Op that loads and executes a TPU program on a TPU device.
-For the internal use of the distributed TPU compiler.)");
+    });
 
 REGISTER_OP("TPUExecuteAndUpdateVariables")
     .Input("args: Targs")
@@ -53,19 +50,11 @@ REGISTER_OP("TPUExecuteAndUpdateVariables")
       shape_inference::ShapeHandle key;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(c->num_inputs() - 1), 1, &key));
       shape_inference::DimensionHandle unused;
-      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(key, 0), 2, &unused));
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(key, 0), 3, &unused));
       for (int i = 0; i < c->num_outputs(); ++i) {
         c->set_output(i, c->UnknownShape());
       }
       return Status::OK();
-    })
-    .Doc(R"(Op that executes a program with optional in-place variable updates.
-It (optionally) reads device variables, loads and executes a TPU program on a
-TPU device, and then (optionally) in-place updates variables using the program
-outputs, as specified in attributes device_var_reads_indices (program input
-indices from directly reading variables) and device_var_updates_indices (program
-output indices used to update variables, -1 means no-update/read-only). Such
-program outputs are consumed by these variables will not appear in the op
-output. For the internal use of the distributed TPU compiler.)");
+    });
 
 }  // namespace tensorflow

@@ -14,133 +14,113 @@ limitations under the License.
 
 ==============================================================================*/
 
-#include "absl/memory/memory.h"
-#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir/Dialect/Shape/IR/Shape.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/IR/Function.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/StandardTypes.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
-namespace mhlo {
 namespace {
 
-// TODO(frgossen): Make it variadic.
+// TODO(herhut): Generate these out of op definitions.
+#define MAP_XLA_OPERATION_CWISE_UNARY(fn, sep)                                 \
+  fn(AbsOp) sep fn(CeilOp) sep fn(ClzOp) sep fn(CosOp) sep fn(ExpOp)           \
+      sep fn(Expm1Op) sep fn(FloorOp) sep fn(ImagOp) sep fn(IsFiniteOp)        \
+          sep fn(LogOp) sep fn(Log1pOp) sep fn(LogisticOp) sep fn(NotOp)       \
+              sep fn(NegOp) sep fn(PopulationCountOp) sep fn(RealOp)           \
+                  sep fn(RoundOp) sep fn(RsqrtOp) sep fn(SignOp) sep fn(SinOp) \
+                      sep fn(SqrtOp) sep fn(TanhOp)
+
+// TODO(herhut): Generate these out of op definitions.
+#define MAP_XLA_OPERATION_CWISE_BINARY(fn, sep)                           \
+  fn(AddOp) sep fn(Atan2Op) sep fn(ComplexOp) sep fn(DivOp) sep fn(MaxOp) \
+      sep fn(MinOp) sep fn(MulOp) sep fn(PowOp) sep fn(RemOp)             \
+          sep fn(ShiftLeftOp) sep fn(ShiftRightArithmeticOp)              \
+              sep fn(ShiftRightLogicalOp) sep fn(SubOp)
+
+// TODO(herhut): Generate these out of op definitions.
+#define MAP_CHLO_OPERATION_CWISE_UNARY(fn, sep) \
+  fn(AcosOp) sep fn(AtanOp) sep fn(SinhOp) sep fn(TanOp)
+
 template <typename OpTy>
 inline void AddLegalOpOnRankedTensor(ConversionTarget *target) {
   target->addDynamicallyLegalOp<OpTy>([](OpTy op) {
-    return llvm::all_of((op.getOperation())->getOperandTypes(),
+    return llvm::all_of(op.getOperation()->getOperandTypes(),
                         [&](Type t) { return t.isa<RankedTensorType>(); });
   });
 }
 
-/// Unary element-wise operations on unranked tensors can be applied to the
-/// flattened tensor with the same effect.
-/// This pattern rewrites every such operation to
+/// Element-wise operations on unranked tensors can be applied to the flattened
+/// tensor operands with the same effect.  This pattern rewrites every such
+/// operation to
 ///   (i)   flatten the input tensor,
-///   (ii)  apply the unary operation, and
+///   (ii)  apply the operation, and
 ///   (iii) restore the original shape.
 template <typename OpTy>
-struct UnaryElementwiseOpConversion : public OpRewritePattern<OpTy> {
-  explicit UnaryElementwiseOpConversion(MLIRContext *context)
+struct ElementwiseOpConversion : public OpRewritePattern<OpTy> {
+  explicit ElementwiseOpConversion(MLIRContext *context)
       : OpRewritePattern<OpTy>(context) {}
 
   LogicalResult matchAndRewrite(OpTy op,
                                 PatternRewriter &rewriter) const override {
-    // Don't apply conversion to ops with statically shaped operands.
-    Value operand = op.getOperand();
-    auto operandTy = operand.getType().dyn_cast<TensorType>();
-    if (operandTy.hasRank()) return failure();
-
-    // Generate IR to flatten the operand.
-    auto loc = op.getLoc();
-    Value shape = rewriter.create<shape::ShapeOfOp>(loc, operand);
-    Value numElements = rewriter.create<shape::NumElementsOp>(
-        loc, rewriter.getType<shape::SizeType>(), shape);
-    Value numElementsAsIndex = rewriter.create<shape::SizeToIndexOp>(
-        loc, rewriter.getIndexType(), numElements);
-    Value flatShapeAsDimTensor =
-        rewriter.create<TensorFromElementsOp>(loc, numElementsAsIndex);
-    auto flatTensorTy = RankedTensorType::get({ShapedType::kDynamicSize},
-                                              operandTy.getElementType());
-    Value flatOperand = rewriter.create<mhlo::DynamicReshapeOp>(
-        loc, flatTensorTy, operand, flatShapeAsDimTensor);
-
-    // Generate IR for the actual operation.
-    Value flatResult = rewriter.create<OpTy>(loc, flatTensorTy, flatOperand);
-
-    // Generate IR to restore the original shape.
-    auto extentTensorTy = RankedTensorType::get({ShapedType::kDynamicSize},
-                                                rewriter.getIndexType());
-    Value shapeAsExtentTensor =
-        rewriter.create<shape::ToExtentTensorOp>(loc, extentTensorTy, shape);
-    Value result = rewriter.create<mhlo::DynamicReshapeOp>(
-        loc, operandTy, flatResult, shapeAsExtentTensor);
-    rewriter.replaceOp(op, result);
-
-    return success();
-  }
-};
-
-/// Binary element-wise operation on unranked tensors can be applied to the
-/// flattened operand tensors with the same effect.
-/// This pattern rewrites every such operation to
-///   (i)   flatten the operand tensors,
-///   (ii)  apply the binary operation, and
-//    (iii) restore the original shape.
-template <typename OpTy>
-struct BinaryElementwiseOpConversion : public OpRewritePattern<OpTy> {
-  explicit BinaryElementwiseOpConversion(MLIRContext *context)
-      : OpRewritePattern<OpTy>(context) {}
-
-  LogicalResult matchAndRewrite(OpTy op,
-                                PatternRewriter &rewriter) const override {
-    // Don't apply conversion unless both operands are unranked.
-    if (op.lhs().getType().template isa<RankedTensorType>() ||
-        op.rhs().getType().template isa<RankedTensorType>()) {
+    // Don't apply conversion unless all operands are unranked.
+    if (!llvm::all_of(op.getOperation()->getOperands(), [&](Value operand) {
+          return operand.getType().isa<UnrankedTensorType>();
+        })) {
       return failure();
     }
 
-    // Flatten operands.
-    Type shapeTy = shape::ShapeType::get(rewriter.getContext());
+    // Get operands' shape.
     auto loc = op.getLoc();
-    Value shapeLhs = rewriter.create<shape::ShapeOfOp>(loc, op.lhs());
-    Value shapeRhs = rewriter.create<shape::ShapeOfOp>(loc, op.rhs());
-    Value shape = rewriter.create<shape::AnyOp>(loc, shapeTy,
-                                                ValueRange{shapeLhs, shapeRhs});
-    Value numElements = rewriter.create<shape::NumElementsOp>(loc, shape);
-    Value numElementsAsIndex =
-        rewriter.create<shape::SizeToIndexOp>(loc, numElements);
-    Value flatShape =
-        rewriter.create<TensorFromElementsOp>(loc, numElementsAsIndex);
-    TensorType lhsTy = op.lhs().getType().template cast<TensorType>();
-    Type flatLhsTy = RankedTensorType::get({ShapedType::kDynamicSize},
-                                           lhsTy.getElementType());
-    Value flatLhs =
-        rewriter.create<DynamicReshapeOp>(loc, flatLhsTy, op.lhs(), flatShape);
-    TensorType rhsTy = op.rhs().getType().template cast<TensorType>();
-    Type flatRhsTy = RankedTensorType::get({ShapedType::kDynamicSize},
-                                           rhsTy.getElementType());
-    Value flatRhs =
-        rewriter.create<DynamicReshapeOp>(loc, flatRhsTy, op.rhs(), flatShape);
+    Type extentTensorTy = shape::getExtentTensorType(rewriter.getContext());
+    SmallVector<Value, 3> operandShapes;
+    for (Value operand : op.getOperation()->getOperands()) {
+      Value shape =
+          rewriter.create<shape::ShapeOfOp>(loc, extentTensorTy, operand);
+      operandShapes.push_back(shape);
+    }
+    Value shape =
+        operandShapes.size() == 1
+            ? operandShapes.front()
+            : rewriter.create<shape::AnyOp>(loc, extentTensorTy, operandShapes);
 
-    // Apply actual operation to flattened operands.
-    Value flatResult = rewriter.create<OpTy>(loc, flatLhs, flatRhs);
+    // Derive flat shape.
+    Type indexTy = rewriter.getIndexType();
+    Value numElements =
+        rewriter.create<shape::NumElementsOp>(loc, indexTy, shape);
+    Value flatShape = rewriter.create<TensorFromElementsOp>(loc, numElements);
+
+    // Flatten operands.
+    SmallVector<Value, 3> flatOperands;
+    for (Value operand : op.getOperation()->getOperands()) {
+      Type operandElementTy =
+          operand.getType().template cast<ShapedType>().getElementType();
+      Type flatTy =
+          RankedTensorType::get({ShapedType::kDynamicSize}, operandElementTy);
+      Value flat = rewriter.create<mhlo::DynamicReshapeOp>(loc, flatTy, operand,
+                                                           flatShape);
+      flatOperands.push_back(flat);
+    }
+
+    // Apply operation to flattened operands.
+    Type resultElementTy =
+        op.getType().template cast<ShapedType>().getElementType();
+    Type flatResultTy =
+        RankedTensorType::get({ShapedType::kDynamicSize}, resultElementTy);
+    Value flatResult =
+        rewriter.create<OpTy>(loc, flatResultTy, flatOperands, op.getAttrs());
 
     // Restore original shape.
-    auto extentTensorTy = RankedTensorType::get({ShapedType::kDynamicSize},
-                                                rewriter.getIndexType());
-    Value shapeAsExtentTensor =
-        rewriter.create<shape::ToExtentTensorOp>(loc, extentTensorTy, shape);
-    Value result = rewriter.create<DynamicReshapeOp>(
-        loc, op.getType(), flatResult, shapeAsExtentTensor);
-    rewriter.replaceOp(op, result);
+    rewriter.replaceOpWithNewOp<mhlo::DynamicReshapeOp>(op, op.getType(),
+                                                        flatResult, shape);
 
     return success();
   }
@@ -148,22 +128,33 @@ struct BinaryElementwiseOpConversion : public OpRewritePattern<OpTy> {
 
 struct TransformUnrankedHloPass
     : public PassWrapper<TransformUnrankedHloPass, FunctionPass> {
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<shape::ShapeDialect, mhlo::MhloDialect>();
+  }
+
   void runOnFunction() override {
     // Setup conversion target.
     MLIRContext &ctx = getContext();
     ConversionTarget target(ctx);
-    target.addLegalDialect<MhloDialect, StandardOpsDialect,
+    target.addLegalDialect<mhlo::MhloDialect, StandardOpsDialect,
                            shape::ShapeDialect>();
     target.addLegalOp<FuncOp>();
-    AddLegalOpOnRankedTensor<SqrtOp>(&target);
-    AddLegalOpOnRankedTensor<AddOp>(&target);
+#define ADD_LEGAL_MHLO(op) AddLegalOpOnRankedTensor<mhlo::op>(&target)
+#define ADD_LEGAL_CHLO(op) AddLegalOpOnRankedTensor<chlo::op>(&target)
+    MAP_XLA_OPERATION_CWISE_UNARY(ADD_LEGAL_MHLO, ;);
+    MAP_XLA_OPERATION_CWISE_BINARY(ADD_LEGAL_MHLO, ;);
+    MAP_CHLO_OPERATION_CWISE_UNARY(ADD_LEGAL_CHLO, ;);
+#undef ADD_LEGAL_MHLO
+#undef ADD_LEGAL_CHLO
+    AddLegalOpOnRankedTensor<mhlo::CompareOp>(&target);
+    AddLegalOpOnRankedTensor<mhlo::SelectOp>(&target);
 
     // Populate rewrite patterns.
     OwningRewritePatternList patterns;
     PopulateTransformUnrankedHloPatterns(&ctx, &patterns);
 
     // Apply transformation.
-    if (failed(applyFullConversion(getFunction(), target, patterns)))
+    if (failed(applyPartialConversion(getFunction(), target, patterns)))
       return signalPassFailure();
   }
 };
@@ -172,17 +163,26 @@ struct TransformUnrankedHloPass
 
 void PopulateTransformUnrankedHloPatterns(MLIRContext *context,
                                           OwningRewritePatternList *patterns) {
-  // TODO(frgossen): Populate all unary and binary operations.
+#define MAP_UNARY(op) ElementwiseOpConversion<mhlo::op>
+#define MAP_BINARY(op) ElementwiseOpConversion<mhlo::op>
+#define MAP_CHLO_UNARY(op) ElementwiseOpConversion<chlo::op>
+#define COMMA ,
   // clang-format off
   patterns->insert<
-      BinaryElementwiseOpConversion<AddOp>,
-      UnaryElementwiseOpConversion<SqrtOp>>(context);
+      MAP_XLA_OPERATION_CWISE_UNARY(MAP_UNARY, COMMA),
+      MAP_XLA_OPERATION_CWISE_BINARY(MAP_BINARY, COMMA),
+      MAP_CHLO_OPERATION_CWISE_UNARY(MAP_CHLO_UNARY, COMMA),
+      ElementwiseOpConversion<mhlo::CompareOp>,
+      ElementwiseOpConversion<mhlo::SelectOp>>(context);
   // clang-format on
+#undef MAP_UNARY
+#undef MAP_BINARY
+#undef MAP_CHLO_UNARY
+#undef COMMA
 }
 
-static PassRegistration<TransformUnrankedHloPass> transform_unranked_hlo_pass(
-    "transform-unranked-hlo",
-    "Realize element-wise operations on ranked tensors where possible");
+std::unique_ptr<FunctionPass> createTransformUnrankedHloPass() {
+  return std::make_unique<TransformUnrankedHloPass>();
+}
 
-}  // namespace mhlo
 }  // namespace mlir

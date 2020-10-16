@@ -18,16 +18,18 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
+import threading
 import types
 
 from tensorflow.python.eager import context
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import base_layer_utils
-from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.keras.utils import control_flow_util
+from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.keras.utils import tf_contextlib
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils.generic_utils import LazyLoader
-from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.util import tf_decorator
-from tensorflow.python.util import tf_inspect
 
 
 # pylint:disable=g-inconsistent-quotes
@@ -118,7 +120,7 @@ def list_all_layers(obj):
     return obj.layers
   else:
     return list(
-        trackable_layer_utils.filter_empty_layer_containers(obj._layers))  # pylint: disable=protected-access
+        layer_utils.filter_empty_layer_containers(obj._layers))  # pylint: disable=protected-access
 
 
 def list_all_layers_and_sublayers(obj):
@@ -164,9 +166,8 @@ def maybe_add_training_arg(
       set_training_arg(training, training_arg_index, args, kwargs)
       return wrapped_call(*args, **kwargs)
 
-    return tf_utils.smart_cond(
-        training,
-        lambda: replace_training_and_call(True),
+    return control_flow_util.smart_cond(
+        training, lambda: replace_training_and_call(True),
         lambda: replace_training_and_call(False))
 
   # Create arg spec for decorated function. If 'training' is not defined in the
@@ -246,3 +247,21 @@ def remove_training_arg(index, args, kwargs):
     args.pop(index)
   else:
     kwargs.pop('training', None)
+
+
+_thread_local_data = threading.local()
+_thread_local_data.save_traces = True
+
+
+@tf_contextlib.contextmanager
+def keras_option_scope(save_traces):
+  previous_value = _thread_local_data.save_traces
+  try:
+    _thread_local_data.save_traces = save_traces
+    yield
+  finally:
+    _thread_local_data.save_traces = previous_value
+
+
+def should_save_traces():
+  return _thread_local_data.save_traces

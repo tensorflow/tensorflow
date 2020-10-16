@@ -110,5 +110,37 @@ TEST(SegmentSumOpModelTest, Float32Test_ThreeDimensions) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 2, 1}));
 }
 
+TEST(SegmentSumOpModelTest, TestFailIfSegmentsAreNotSorted) {
+  SegmentSumOpModel<int32_t> model({TensorType_INT32, {3, 2}},
+                                   {TensorType_INT32, {3}});
+  model.PopulateTensor<int32_t>(model.data(), {1, 2, 3, 4, 5, 6});
+  model.PopulateTensor<int32_t>(model.segment_ids(), {0, 3, 1});
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteError);
+}
+
+TEST(SegmentSumOpModelTest, TestFailIfSegmentsAreNotConsecutive) {
+  SegmentSumOpModel<int32_t> model({TensorType_INT32, {3, 2}},
+                                   {TensorType_INT32, {3}});
+  model.PopulateTensor<int32_t>(model.data(), {1, 2, 3, 4, 5, 6});
+  model.PopulateTensor<int32_t>(model.segment_ids(), {0, 3, 5});
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteError);
+}
+
+TEST(SegmentSumOpModelTest, TestFailIfSegmentsAreNegative) {
+  SegmentSumOpModel<int32_t> model({TensorType_INT32, {3, 2}},
+                                   {TensorType_INT32, {3}});
+  model.PopulateTensor<int32_t>(model.data(), {1, 2, 3, 4, 5, 6});
+  model.PopulateTensor<int32_t>(model.segment_ids(), {-1, 0, 1});
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteError);
+}
+
+TEST(SegmentSumOpModelTest, TestFailIfSegmentsAreNotTheRightCardinality) {
+  SegmentSumOpModel<int32_t> model({TensorType_INT32, {3, 2}},
+                                   {TensorType_INT32, {2}});
+  model.PopulateTensor<int32_t>(model.data(), {1, 2, 3, 4, 5, 6});
+  model.PopulateTensor<int32_t>(model.segment_ids(), {0, 1});
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteError);
+}
+
 }  // namespace
 }  // namespace tflite

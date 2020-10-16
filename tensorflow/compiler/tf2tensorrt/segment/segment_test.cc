@@ -108,8 +108,9 @@ class SegmentTest : public ::testing::Test {
     segment_options_.allow_dynamic_non_batch_dim = true;
   }
 
-  void EnableImplicitBatchModeForStaticEngine() {
+  void EnableImplicitBatchModeForStaticEngine(int maximum_batch_size = 1000) {
     segment_options_.use_implicit_batch = true;
+    segment_options_.maximum_batch_size = maximum_batch_size;
     segment_options_.allow_dynamic_non_batch_dim = false;
   }
 
@@ -487,7 +488,11 @@ TEST_F(SegmentTest, TwoChainsDiffBatchSizes) {
   const std::set<string> all_nodes = {"const-scalar", "output-0", "output-1"};
   EnableImplicitBatchModeForStaticEngine();
   RunTest(&g, &static_graph_properties, all_nodes, all_nodes, all_nodes,
-          {{"output-0", "const-scalar"}});
+          /*expected_segments=*/{{"output-0", "const-scalar"}});
+
+  EnableImplicitBatchModeForStaticEngine(1);
+  RunTest(&g, &static_graph_properties, all_nodes, all_nodes, all_nodes,
+          /*expected_segments=*/{});
 }
 
 TEST_F(SegmentTest, SameRankImplicitBroadcastingStaticBatchSize) {

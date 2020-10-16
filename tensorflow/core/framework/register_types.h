@@ -153,24 +153,25 @@ limitations under the License.
 #endif  // defined(IS_MOBILE_PLATFORM)  - end of TF_CALL_type defines
 
 // Defines for sets of types.
-#define TF_CALL_INTEGRAL_TYPES(m)                                       \
-  TF_CALL_uint64(m) TF_CALL_int64(m) TF_CALL_uint32(m) TF_CALL_int32(m) \
-      TF_CALL_uint16(m) TF_CALL_int16(m) TF_CALL_uint8(m) TF_CALL_int8(m)
+#define TF_CALL_INTEGRAL_TYPES_NO_INT32(m)                               \
+  TF_CALL_uint64(m) TF_CALL_int64(m) TF_CALL_uint32(m) TF_CALL_uint16(m) \
+      TF_CALL_int16(m) TF_CALL_uint8(m) TF_CALL_int8(m)
+
+#define TF_CALL_INTEGRAL_TYPES(m) \
+  TF_CALL_INTEGRAL_TYPES_NO_INT32(m) TF_CALL_int32(m)
 
 #define TF_CALL_FLOAT_TYPES(m) \
   TF_CALL_half(m) TF_CALL_bfloat16(m) TF_CALL_float(m) TF_CALL_double(m)
 
 #define TF_CALL_REAL_NUMBER_TYPES(m) \
-  TF_CALL_INTEGRAL_TYPES(m)          \
-  TF_CALL_FLOAT_TYPES(m)
+  TF_CALL_INTEGRAL_TYPES(m) TF_CALL_FLOAT_TYPES(m)
 
 #define TF_CALL_REAL_NUMBER_TYPES_NO_BFLOAT16(m) \
   TF_CALL_INTEGRAL_TYPES(m) TF_CALL_half(m) TF_CALL_float(m) TF_CALL_double(m)
 
-#define TF_CALL_REAL_NUMBER_TYPES_NO_INT32(m)                                \
-  TF_CALL_half(m) TF_CALL_bfloat16(m) TF_CALL_float(m) TF_CALL_double(m)     \
-      TF_CALL_uint64(m) TF_CALL_int64(m) TF_CALL_uint32(m) TF_CALL_uint16(m) \
-          TF_CALL_int16(m) TF_CALL_uint8(m) TF_CALL_int8(m)
+#define TF_CALL_REAL_NUMBER_TYPES_NO_INT32(m)                            \
+  TF_CALL_half(m) TF_CALL_bfloat16(m) TF_CALL_float(m) TF_CALL_double(m) \
+      TF_CALL_INTEGRAL_TYPES_NO_INT32(m)
 
 #define TF_CALL_COMPLEX_TYPES(m) TF_CALL_complex64(m) TF_CALL_complex128(m)
 
@@ -210,17 +211,5 @@ limitations under the License.
   TF_CALL_REAL_NUMBER_TYPES_NO_BFLOAT16(m) \
   TF_CALL_COMPLEX_TYPES(m)                 \
   TF_CALL_QUANTIZED_TYPES(m) TF_CALL_bool(m) TF_CALL_tstring(m)
-
-#ifdef TENSORFLOW_SYCL_NO_DOUBLE
-#define TF_CALL_SYCL_double(m)
-#else  // TENSORFLOW_SYCL_NO_DOUBLE
-#define TF_CALL_SYCL_double(m) TF_CALL_double(m)
-#endif  // TENSORFLOW_SYCL_NO_DOUBLE
-
-#ifdef __ANDROID_TYPES_SLIM__
-#define TF_CALL_SYCL_NUMBER_TYPES(m) TF_CALL_float(m)
-#else  // __ANDROID_TYPES_SLIM__
-#define TF_CALL_SYCL_NUMBER_TYPES(m) TF_CALL_float(m) TF_CALL_SYCL_double(m)
-#endif  // __ANDROID_TYPES_SLIM__
 
 #endif  // TENSORFLOW_CORE_FRAMEWORK_REGISTER_TYPES_H_

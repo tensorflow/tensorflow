@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-
 namespace mlir {
 namespace TF {
 
@@ -74,12 +72,17 @@ struct FuncAttrStorage : public AttributeStorage {
 // Get or create a shape attribute.
 ShapeAttr ShapeAttr::get(mlir::MLIRContext* context,
                          llvm::Optional<ArrayRef<int64_t>> shape) {
-  if (shape)
-    return Base::get(context, AttrKind::SHAPE, *shape,
-                     /*unranked=*/false);
+  if (shape) return Base::get(context, *shape, /*unranked=*/false);
 
-  return Base::get(context, AttrKind::SHAPE, ArrayRef<int64_t>(),
-                   /*unranked=*/true);
+  return Base::get(context, ArrayRef<int64_t>(), /*unranked=*/true);
+}
+
+// Get or create a shape attribute.
+ShapeAttr ShapeAttr::get(mlir::MLIRContext* context, ShapedType shaped_type) {
+  if (shaped_type.hasRank())
+    return Base::get(context, shaped_type.getShape(), /*unranked=*/false);
+
+  return Base::get(context, ArrayRef<int64_t>(), /*unranked=*/true);
 }
 
 llvm::Optional<ArrayRef<int64_t>> ShapeAttr::getValue() const {
@@ -112,12 +115,12 @@ bool ShapeAttr::hasStaticShape() const {
 FuncAttr FuncAttr::get(mlir::MLIRContext* context, llvm::StringRef name,
                        DictionaryAttr attr) {
   auto symbol = SymbolRefAttr::get(name, context);
-  return Base::get(context, AttrKind::FUNC, symbol, attr);
+  return Base::get(context, symbol, attr);
 }
 
 FuncAttr FuncAttr::get(mlir::MLIRContext* context, SymbolRefAttr symbol,
                        DictionaryAttr attr) {
-  return Base::get(context, AttrKind::FUNC, symbol, attr);
+  return Base::get(context, symbol, attr);
 }
 
 SymbolRefAttr FuncAttr::GetName() const {

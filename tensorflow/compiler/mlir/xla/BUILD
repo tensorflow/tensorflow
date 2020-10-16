@@ -1,5 +1,7 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//third_party/mlir:tblgen.bzl", "gentbl")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_native_cc_binary")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 package(
     default_visibility = [":friends"],
@@ -15,6 +17,7 @@ package_group(
         "//learning/brain/experimental/mlir/...",
         "//learning/brain/google/xla/kernels/...",
         "//learning/brain/google/xla/mlir/...",
+        "//learning/deepmind/partir/...",
         "//learning/pathways/data_parallel/tf2xla/...",
         "//platforms/xla/...",
         "//tensorflow/compiler/mlir/...",
@@ -27,6 +30,7 @@ package_group(
 
 gentbl(
     name = "xla_legalize_tf_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         ("-gen-rewriters", "transforms/generated_legalize_tf.inc"),
     ],
@@ -48,24 +52,29 @@ cc_library(
     srcs = [
         "transforms/generated_legalize_tf.inc",
         "transforms/legalize_tf.cc",
+        "transforms/legalize_tf_communication.cc",
         "transforms/legalize_tf_control_flow.cc",
     ],
     hdrs = [
         "transforms/passes.h",
     ],
     deps = [
+        ":attribute_importer",
+        ":type_to_shape",
+        ":xla_legalize_tf_with_tf2xla",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:chlo_legalize_to_hlo",
         "//tensorflow/compiler/mlir/hlo:convert_op_folder",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:padding",
         "//tensorflow/compiler/xla/client:sharding_builder",
         "//tensorflow/compiler/xla/client/lib:conv_grad_size_util",
         "//tensorflow/core:framework",
         "//tensorflow/core/kernels:conv_grad_shape_utils",
-        "//tensorflow/core/lib/bfloat16",
+        "//tensorflow/core/platform:bfloat16",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:Dialect",
@@ -91,8 +100,13 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:convert_type",
         "//tensorflow/compiler/mlir/tensorflow:export_tf_dialect_op",
         "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:translate_utils",
-        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_compilation_device",
+        "//tensorflow/compiler/tf2xla:xla_context",
+        "//tensorflow/compiler/tf2xla:xla_expression",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
@@ -122,18 +136,22 @@ cc_library(
         ":hlo_module_importer",
         ":hlo_utils",
         ":mlir_hlo_to_hlo",
+        ":translate_cl_options",
         "//tensorflow/compiler/mlir/hlo",
-        "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",
         "//tensorflow/compiler/mlir/hlo:lhlo",
+        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service:backend",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_casting_utils",
+        "//tensorflow/compiler/xla/service:hlo_parser",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Translation",
     ],
     alwayslink = 1,
 )
@@ -203,6 +221,7 @@ tf_cc_test(
     name = "type_to_shape_test",
     srcs = ["type_to_shape_test.cc"],
     deps = [
+        ":hlo_utils",
         ":type_to_shape",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
@@ -223,12 +242,12 @@ cc_library(
     hdrs = ["mlir_hlo_to_hlo.h"],
     deps = [
         ":type_to_shape",
+        "//tensorflow/compiler/mlir:name_utils",
         "//tensorflow/compiler/mlir/hlo",
-        "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",
         "//tensorflow/compiler/mlir/tensorflow:convert_type",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/tf2xla:common",
-        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -310,12 +329,27 @@ cc_library(
 )
 
 cc_library(
+    name = "translate_cl_options",
+    srcs = ["xla_mlir_translate_cl.cc"],
+    hdrs = ["xla_mlir_translate_cl.h"],
+    deps = [
+        "@llvm-project//llvm:Support",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "xla_mlir_translate",
     srcs = ["xla_mlir_translate.cc"],
     hdrs = ["xla_mlir_translate.h"],
     deps = [
         ":hlo_to_mlir_hlo",
+        ":mhlo_to_lhlo_with_xla",
         ":mlir_hlo_to_hlo",
+        ":translate_cl_options",
+        "//tensorflow/compiler/jit:xla_cpu_jit",
+        "//tensorflow/compiler/jit:xla_gpu_jit",
+        "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
@@ -324,6 +358,7 @@ cc_library(
         "//tensorflow/core:lib",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Translation",
     ],
     alwayslink = 1,
@@ -342,6 +377,7 @@ tf_native_cc_binary(
 
 gentbl(
     name = "operator_writer_inc",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [("", "operator_writers.inc")],
     tblgen = ":operator_writer_gen",
     td_file = "//tensorflow/compiler/mlir/hlo:include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td",
@@ -370,14 +406,12 @@ cc_library(
         ":xla_legalize_tf_with_tf2xla",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:chlo_legalize_to_hlo",
-        "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",
         "//tensorflow/compiler/mlir/hlo:hlo_legalize_to_lhlo",
         "//tensorflow/compiler/mlir/hlo:legalize_control_flow",
-        "//tensorflow/compiler/mlir/hlo:legalize_tanh_to_approximation",
         "//tensorflow/compiler/mlir/hlo:legalize_to_linalg",
         "//tensorflow/compiler/mlir/hlo:legalize_to_standard",
+        "//tensorflow/compiler/mlir/hlo:legalize_trigonometric_to_approximation",
         "//tensorflow/compiler/mlir/hlo:lhlo",
-        "//tensorflow/compiler/mlir/hlo:lhlo_copy_removal",
         "//tensorflow/compiler/mlir/hlo:lhlo_fuse_linalg",
         "//tensorflow/compiler/mlir/hlo:lhlo_legalize_to_affine",
         "//tensorflow/compiler/mlir/hlo:lhlo_legalize_to_gpu",

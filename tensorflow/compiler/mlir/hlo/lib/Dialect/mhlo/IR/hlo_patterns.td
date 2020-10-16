@@ -16,14 +16,17 @@ limitations under the License.
 // Canonicalization patterns for the MHLO dialect.
 
 include "mlir/Dialect/Shape/IR/ShapeOps.td"
-include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
+include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
 
 def EqualBinaryOperands : Constraint<CPred<"$0 == $1">>;
 
 // Canonicalization patterns.
 
-def DynamicBroadcastToOwnShape : Pat<
-  (HLO_DynamicBroadcastInDimOp:$op $arg0,
-      (Shape_ToExtentTensorOp (Shape_ShapeOfOp $arg1)), $attr),
+def DynamicBroadcastToOwnShape_1 : Pat<
+   (HLO_DynamicBroadcastInDimOp:$op $arg0,
+       (Shape_ToExtentTensorOp (Shape_ShapeOfOp $arg1)), $attr),
+  (replaceWithValue $arg0), [(EqualBinaryOperands $arg0, $arg1)]>;
+def DynamicBroadcastToOwnShape_2 : Pat<
+  (HLO_DynamicBroadcastInDimOp:$op $arg0, (Shape_ShapeOfOp $arg1), $attr),
   (replaceWithValue $arg0), [(EqualBinaryOperands $arg0, $arg1)]>;
 

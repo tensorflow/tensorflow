@@ -44,7 +44,10 @@ from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import gen_list_ops
 from tensorflow.python.ops import gen_nn_ops
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients as gradient_ops
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import list_ops
@@ -132,6 +135,27 @@ class PForTest(PForTestCase):
     result = pfor_control_flow_ops.vectorized_map(compute, x)
     self.run_and_assert_equal(result, array_ops.ones((10, 1, 3)))
 
+  def test_vectorized_map_broadcasts_unit_dimensions(self):
+    convert_with_static_shape = ops.convert_to_tensor
+    convert_with_dynamic_shape = (
+        lambda x: array_ops.placeholder_with_default(x, shape=None))
+
+    for convert in (convert_with_static_shape, convert_with_dynamic_shape):
+      a = convert([3.1])
+      b = convert([-2., 6., 9.])
+
+      # One elem with leading unit dimension.
+      a_plus_1 = pfor_control_flow_ops.vectorized_map(lambda a: a + 1, a)
+      self.assertAllEqual(*self.evaluate((a_plus_1, a + 1)))
+
+      # Two elems, both with leading unit dimension.
+      a_plus_a = pfor_control_flow_ops.vectorized_map(sum, (a, a))
+      self.assertAllEqual(*self.evaluate((a_plus_a, a + a)))
+
+      # Elem w/ unit dimension broadcast against elem with batch dim.
+      a_plus_b = pfor_control_flow_ops.vectorized_map(sum, (a, b))
+      self.assertAllEqual(*self.evaluate((a_plus_b, a + b)))
+
   def test_vectorized_map_example_1(self):
 
     def outer_product(a):
@@ -150,6 +174,7 @@ class PForTest(PForTestCase):
                         pfor_control_flow_ops.vectorized_map(
                             lambda x: x * x, math_ops.range(4)))
     self.assertTrue(def_function.functions_run_eagerly())
+    def_function.run_functions_eagerly(False)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -889,6 +914,7 @@ class TensorArrayTest(PForTestCase):
       self.assertAllClose(actual_grad, computed_grad)
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class TensorListTest(PForTestCase):
 
   def test_create_outside_and_write(self):
@@ -988,6 +1014,38 @@ class TensorListTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 2)
 
+  def test_create_inside_and_concat(self):
+
+    def loop_fn(i):
+      handle = list_ops.tensor_list_reserve([2], 2, dtypes.int32)
+      handle = list_ops.tensor_list_scatter([[i, 2]], [0], input_handle=handle)
+      handle = list_ops.tensor_list_scatter([[1, 2]], [1], input_handle=handle)
+      return gen_list_ops.tensor_list_concat_v2(
+          handle,
+          element_dtype=dtypes.int32,
+          element_shape=[2],
+          leading_dims=[])
+
+    output = pfor_control_flow_ops.pfor(loop_fn, 2)
+    self.assertAllClose([[0, 2, 1, 2], [1, 2, 1, 2]], output[0])
+    self.assertAllClose([[2, 2], [2, 2]], output[1])
+
+  def test_create_outside_and_concat(self):
+    h = list_ops.tensor_list_reserve([2], 2, dtypes.int32)
+
+    def loop_fn(i):
+      handle = list_ops.tensor_list_scatter([[i, 2]], [0], input_handle=h)
+      handle = list_ops.tensor_list_scatter([[1, 2]], [1], input_handle=handle)
+      return gen_list_ops.tensor_list_concat_v2(
+          handle,
+          element_dtype=dtypes.int32,
+          element_shape=[2],
+          leading_dims=[])
+
+    output = pfor_control_flow_ops.pfor(loop_fn, 2)
+    self.assertAllClose([[0, 2, 1, 2], [1, 2, 1, 2]], output[0])
+    self.assertAllClose([[2, 2], [2, 2]], output[1])
+
   def test_tensor_list_from_tensor(self):
     t = random_ops.random_uniform([2, 3, 4])
 
@@ -1017,6 +1075,29 @@ class TensorListTest(PForTestCase):
     self._test_loop_fn(loop_fn, 2)
     if not v2_enabled:
       control_flow_v2_toggles.disable_control_flow_v2()
+
+  def test_tensor_list_addn_already_stacked(self):
+
+    def loop_fn(i):
+      l1 = list_ops.tensor_list_reserve([], 2, dtypes.int32)
+      l1 = list_ops.tensor_list_set_item(l1, 0, i)
+      l2 = list_ops.tensor_list_reserve([], 2, dtypes.int32)
+      l2 = list_ops.tensor_list_set_item(l2, 1, i)
+      return list_ops.tensor_list_stack(math_ops.add_n([l1, l2]), dtypes.int32)
+
+    self._test_loop_fn(loop_fn, 2)
+
+  def test_tensor_list_addn_stacking_required(self):
+    l1 = list_ops.tensor_list_reserve([], 2, dtypes.int32)
+    l1 = list_ops.tensor_list_set_item(l1, 1, 1)
+
+    def loop_fn(i):
+      l2 = list_ops.tensor_list_reserve([], 2, dtypes.int32)
+      l2 = list_ops.tensor_list_set_item(l2, 1, i)
+      return list_ops.tensor_list_stack(
+          math_ops.add_n([l1, l2]), dtypes.int32)
+
+    self._test_loop_fn(loop_fn, 2)
 
 
 class StackTest(PForTestCase):
@@ -1486,6 +1567,23 @@ class WhileV2Test(PForTestCase):
     x = constant_op.constant(np.random.uniform(size=(1, 3)))
     y = constant_op.constant(np.random.uniform(size=(3, 3)))
     self.assertAllClose(_f(x, y, True), _f(x, y, False))
+
+  def test_scan(self):
+    np.random.seed(seed=42)
+    data = np.random.randn(3).astype(np.float32)
+
+    def log_prob(x):
+      return math_ops.reduce_sum(functional_ops.scan_v2(
+          lambda _, yi: (x - yi)**2,
+          elems=data,
+          initializer=constant_op.constant(0.)))
+
+    x = variables.Variable(array_ops.ones([2]))
+    self.evaluate(x.initializer)
+    v_log_prob = lambda x: pfor_control_flow_ops.vectorized_map(log_prob, x)
+    theoretical, numerical = gradient_checker_v2.compute_gradient(
+        v_log_prob, (x,), delta=1e-3)
+    self.assertAllClose(theoretical, numerical, rtol=1e-2)
 
 
 @test_util.run_all_in_graph_and_eager_modes

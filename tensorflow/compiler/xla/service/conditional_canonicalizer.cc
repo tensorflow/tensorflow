@@ -31,11 +31,14 @@ Status CanonicalizeNonTupleConditional(HloInstruction* conditional) {
         branch->AddInstruction(HloInstruction::CreateTuple({root}));
     branch->set_root_instruction(tuple, /*accept_different_shape=*/true);
   }
+  auto parent = conditional->parent();
   auto root_shape = conditional->shape();
-  *conditional->mutable_shape() = ShapeUtil::MakeTupleShape({root_shape});
-  auto gte = conditional->parent()->AddInstruction(
-      HloInstruction::CreateGetTupleElement(root_shape, conditional, 0));
-  TF_RETURN_IF_ERROR(conditional->ReplaceAllUsesWithDifferentShape(gte));
+  auto new_shape = ShapeUtil::MakeTupleShape({root_shape});
+  auto new_conditional =
+      parent->AddInstruction(conditional->CloneWithNewShape(new_shape));
+  auto gte = parent->AddInstruction(
+      HloInstruction::CreateGetTupleElement(root_shape, new_conditional, 0));
+  TF_RETURN_IF_ERROR(parent->ReplaceInstruction(conditional, gte));
   return Status::OK();
 }
 }  // namespace

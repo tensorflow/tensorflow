@@ -1,7 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "if_not_windows", "tf_cc_test")
-load("//tensorflow/lite:build_def.bzl", "if_tflite_experimental_runtime", "tflite_cc_shared_object", "tflite_copts", "tflite_experimental_runtime_linkopts")
-load("//tensorflow/lite/micro:build_def.bzl", "cc_library")
+load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -15,13 +15,6 @@ exports_files(glob([
     "testdata/*.csv",
     "models/testdata/*",
 ]))
-
-config_setting(
-    name = "enable_default_profiler",
-    values = {
-        "copt": "-DTFLITE_ENABLE_DEFAULT_PROFILER",
-    },
-)
 
 config_setting(
     name = "gemmlowp_profiling",
@@ -45,15 +38,11 @@ config_setting(
 )
 
 config_setting(
-    name = "tflite_experimental_runtime_eager",
-    values = {"define": "tflite_experimental_runtime=eager"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "tflite_experimental_runtime_non_eager",
-    values = {"define": "tflite_experimental_runtime=non-eager"},
-    visibility = ["//visibility:public"],
+    name = "tf_lite_static_memory",
+    values = {
+        "copt": "-DTF_LITE_STATIC_MEMORY",
+        "cpu": "k8",
+    },
 )
 
 TFLITE_DEFAULT_COPTS = if_not_windows([
@@ -83,7 +72,7 @@ FRAMEWORK_LIB_HDRS = [
 cc_library(
     name = "version",
     hdrs = ["version.h"],
-    build_for_embedded = True,
+    compatible_with = get_compatible_with_portable(),
     copts = TFLITE_DEFAULT_COPTS,
     # Note that we only use the header defines from :version_lib.
     deps = ["//tensorflow/core:version_lib"],
@@ -101,6 +90,7 @@ cc_library(
     name = "arena_planner",
     srcs = ["arena_planner.cc"],
     hdrs = ["arena_planner.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = TFLITE_DEFAULT_COPTS,
     deps = [
         ":graph_info",
@@ -131,6 +121,7 @@ cc_test(
 cc_library(
     name = "context",
     hdrs = ["context.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = TFLITE_DEFAULT_COPTS,
     deps = ["//tensorflow/lite/c:common"],
 )
@@ -139,7 +130,7 @@ cc_library(
     name = "external_cpu_backend_context",
     srcs = ["external_cpu_backend_context.cc"],
     hdrs = ["external_cpu_backend_context.h"],
-    build_for_embedded = True,
+    compatible_with = get_compatible_with_portable(),
     copts = TFLITE_DEFAULT_COPTS,
     deps = [
         "//tensorflow/lite/c:common",
@@ -149,6 +140,7 @@ cc_library(
 cc_library(
     name = "graph_info",
     hdrs = ["graph_info.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = TFLITE_DEFAULT_COPTS,
     deps = ["//tensorflow/lite/c:common"],
 )
@@ -156,6 +148,7 @@ cc_library(
 cc_library(
     name = "memory_planner",
     hdrs = ["memory_planner.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = TFLITE_DEFAULT_COPTS,
     deps = ["//tensorflow/lite/c:common"],
 )
@@ -164,6 +157,7 @@ cc_library(
     name = "simple_memory_arena",
     srcs = ["simple_memory_arena.cc"],
     hdrs = ["simple_memory_arena.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = TFLITE_DEFAULT_COPTS,
     deps = ["//tensorflow/lite/c:common"],
 )
@@ -183,7 +177,14 @@ cc_library(
         "builtin_ops.h",
         "context_util.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     deps = ["//tensorflow/lite/c:common"],
+)
+
+cc_library(
+    name = "builtin_ops",
+    hdrs = ["builtin_ops.h"],
+    compatible_with = get_compatible_with_portable(),
 )
 
 exports_files(["builtin_ops.h"])
@@ -193,7 +194,7 @@ cc_library(
     hdrs = [
         "string_type.h",
     ],
-    build_for_embedded = True,
+    compatible_with = get_compatible_with_portable(),
     copts = TFLITE_DEFAULT_COPTS,
 )
 
@@ -215,6 +216,7 @@ cc_library(
     hdrs = [
         "allocation.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = TFLITE_DEFAULT_COPTS,
     deps = [
         ":string",
@@ -231,11 +233,10 @@ cc_library(
         "interpreter.cc",
         "interpreter_builder.cc",
         "model_builder.cc",
-        "mutable_op_resolver.cc",
         "optional_debug_tools.cc",
-        "stderr_reporter.cc",
     ],
     hdrs = FRAMEWORK_LIB_HDRS,
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
     visibility = [
         "//tensorflow/lite:__subpackages__",
@@ -245,29 +246,29 @@ cc_library(
         ":arena_planner",
         ":external_cpu_backend_context",
         ":graph_info",
+        ":kernel_api",
         ":memory_planner",
         ":minimal_logging",
+        ":mutable_op_resolver",
         ":shared_library",
         ":simple_memory_arena",
+        ":stderr_reporter",
         ":string",
-        ":tflite_with_xnnpack_optional",
         ":type_to_tflitetype",
         ":util",
         ":version",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/delegates:status",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/nnapi:nnapi_implementation",
+        "//tensorflow/lite/profiling:platform_profiler",
         "//tensorflow/lite/schema:schema_fbs",
-    ] + select({
-        ":enable_default_profiler": [
-            "//tensorflow/lite/profiling:platform_profiler",
-        ],
-        "//conditions:default": [],
-    }),
+        "//tensorflow/lite/schema:schema_utils",
+    ],
     alwayslink = 1,
 )
 
@@ -277,17 +278,13 @@ cc_library(
     srcs = [
     ],
     hdrs = FRAMEWORK_LIB_HDRS,
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
-    defines = if_tflite_experimental_runtime(
-        if_eager = ["TFLITE_EXPERIMENTAL_RUNTIME_EAGER"],
-        if_non_eager = ["TFLITE_EXPERIMENTAL_RUNTIME_NON_EAGER"],
-        if_none = [],
-    ),
     deps = [
-        ":framework_lib",
         ":allocation",
         ":arena_planner",
         ":external_cpu_backend_context",
+        ":framework_lib",
         ":graph_info",
         ":memory_planner",
         ":minimal_logging",
@@ -298,18 +295,79 @@ cc_library(
         ":version",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/schema:schema_fbs",
-    ] + tflite_experimental_runtime_linkopts(),
+    ],
+)
+
+cc_library(
+    name = "error_reporter",
+    hdrs = ["error_reporter.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
+    visibility = [
+        "//visibility:public",
+    ],
+    deps = [
+        "//tensorflow/lite:stderr_reporter",
+        "//tensorflow/lite/core/api:error_reporter",
+    ],
+)
+
+cc_library(
+    name = "stderr_reporter",
+    srcs = ["stderr_reporter.cc"],
+    hdrs = ["stderr_reporter.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
+    visibility = [
+        "//visibility:public",
+    ],
+    deps = [
+        ":minimal_logging",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/api:error_reporter",
+    ],
+)
+
+cc_library(
+    name = "op_resolver",
+    hdrs = ["op_resolver.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
+    visibility = [
+        "//visibility:public",
+    ],
+    deps = [
+        "//tensorflow/lite:mutable_op_resolver",
+        "//tensorflow/lite/core/api:op_resolver",
+    ],
+)
+
+cc_library(
+    name = "mutable_op_resolver",
+    srcs = ["mutable_op_resolver.cc"],
+    hdrs = ["mutable_op_resolver.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
+    visibility = [
+        "//visibility:public",
+    ],
+    deps = [
+        ":util",
+        "//tensorflow/lite/core/api:op_resolver",
+        "//tensorflow/lite/schema:schema_fbs",
+    ],
 )
 
 cc_library(
     name = "string_util",
     srcs = ["string_util.cc"],
     hdrs = ["string_util.h"],
-    build_for_embedded = True,
+    compatible_with = get_compatible_with_portable(),
     copts = TFLITE_DEFAULT_COPTS,
     deps = [
         ":string",
@@ -354,6 +412,7 @@ cc_library(
 
 cc_library(
     name = "tflite_with_xnnpack_default",
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:private"],
     # TODO(b/151246885): put ":tflite_with_xnnpack_enabled" to macos/windows
     # once we have a good testing coverage on these two platforms.
@@ -371,6 +430,7 @@ cc_library(
         "core/macros.h",
         "tflite_with_xnnpack_optional.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
     deps = [
         "//tensorflow/lite/c:common",
@@ -417,9 +477,11 @@ cc_test(
         "tflite_smoke_test",
     ],
     deps = [
+        ":builtin_op_data",
         ":external_cpu_backend_context",
         ":framework",
         ":string_util",
+        ":util",
         ":version",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:builtin_ops",
@@ -474,8 +536,10 @@ cc_test(
     data = [
         "testdata/0_subgraphs.bin",
         "testdata/2_subgraphs.bin",
+        "testdata/add_shared_tensors.bin",
         "testdata/empty_model.bin",
         "testdata/multi_add_flex.bin",
+        "testdata/segment_sum_invalid_buffer.bin",
         "testdata/sparse_tensor.bin",
         "testdata/test_min_runtime.bin",
         "testdata/test_model.bin",
@@ -560,10 +624,20 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "stderr_reporter_test",
+    srcs = ["stderr_reporter_test.cc"],
+    deps = [
+        ":stderr_reporter",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "util",
     srcs = ["util.cc"],
     hdrs = ["util.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = TFLITE_DEFAULT_COPTS + tflite_copts(),
     deps = [
         ":kernel_api",
@@ -607,6 +681,7 @@ cc_library(
         ],
     }),
     hdrs = ["minimal_logging.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = TFLITE_DEFAULT_COPTS + tflite_copts(),
     linkopts = select({
         "//tensorflow:android": ["-llog"],
@@ -619,8 +694,15 @@ cc_library(
 
 cc_library(
     name = "type_to_tflitetype",
-    hdrs = ["type_to_tflitetype.h"],
-    build_for_embedded = True,
+    hdrs = [
+        "portable_type_to_tflitetype.h",
+    ] + select({
+        ":tf_lite_static_memory": [],
+        "//conditions:default": [
+            "type_to_tflitetype.h",
+        ],
+    }),
+    compatible_with = get_compatible_with_portable(),
     deps = ["//tensorflow/lite/c:common"],
 )
 
@@ -650,12 +732,20 @@ cc_test(
 cc_library(
     name = "shared_library",
     hdrs = ["shared_library.h"],
+    compatible_with = get_compatible_with_portable(),
     linkopts = if_not_windows(["-ldl"]),
 )
 
 cc_library(
     name = "macros",
     hdrs = ["core/macros.h"],
+)
+
+cc_library(
+    name = "stateful_error_reporter",
+    hdrs = ["stateful_error_reporter.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = ["//tensorflow/lite/core/api"],
 )
 
 # Shared lib target for convenience, pulls in the core runtime and builtin ops.

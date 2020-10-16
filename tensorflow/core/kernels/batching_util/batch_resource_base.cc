@@ -20,6 +20,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/batching_util/concat_split_util.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/monitoring/percentile_sampler.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/util/incremental_barrier.h"
 
 namespace tensorflow {
@@ -88,7 +90,8 @@ using TensorMatrix = std::vector<std::vector<Tensor>>;
 Status BatchResourceBase::RegisterInput(
     int64 guid, OpKernelContext* context, const string& batcher_queue_name,
     AsyncOpKernel::DoneCallback done_callback) {
-  auto batch_components = absl::make_unique<BatchResourceBase::BatchTask>();
+  std::unique_ptr<BatchTask> batch_components;
+  TF_RETURN_IF_ERROR(CreateBatchTask(context, &batch_components));
   batch_components->start_time = EnvTime::NowNanos();
   batch_components->guid = guid;
   batch_components->propagated_context = Context(ContextKind::kThread);
@@ -136,7 +139,7 @@ BatchResourceBase::GetBatcherQueueOptions(
     int32 max_enqueued_batches, const std::vector<int32>& allowed_batch_sizes,
     bool enable_large_batch_splitting) {
   BatcherT::QueueOptions batcher_queue_options;
-  batcher_queue_options.max_batch_size = max_batch_size;
+  batcher_queue_options.input_batch_size_limit = max_batch_size;
   batcher_queue_options.max_enqueued_batches = max_enqueued_batches;
   batcher_queue_options.batch_timeout_micros = batch_timeout_micros;
   // Support for splitting large batch is still in progress.
@@ -201,6 +204,11 @@ Status BatchResourceBase::ConcatInputTensors(
 
   const int padded_batch_size = RoundToLowestAllowedBatchSize(batch.size());
   const int padding_amount = padded_batch_size - batch.size();
+  profiler::TraceMe trace_me([padded_batch_size, padding_amount]() {
+    return profiler::TraceMeEncode(
+        "ConcatInputTensors", {{"batch_size_after_padding", padded_batch_size},
+                               {"padding_amount", padding_amount}});
+  });
   RecordPaddingSize(padding_amount, GetModelName(context), padded_batch_size);
   RecordProcessedBatchSize(padded_batch_size, GetModelName(context));
 
@@ -270,8 +278,6 @@ Status BatchResourceBase::ConcatInputTensors(
           // In this context, Concat can be further optimized to get rid of
           // some (probably all) memcpy when input tensors are slices of
           // another copy.
-          // TODO(b/154140947):
-          // Add a custom implementation of Split and then optimize Concat.
           std::vector<Tensor> to_concatenate;
           to_concatenate.reserve(output->size());
           for (int j = 0; j < output->size(); ++j) {
@@ -443,8 +449,8 @@ void BatchResourceBase::ProcessFuncBatch(std::unique_ptr<BatchT> batch) const {
   // which are running this Session, of which this BatchOp is a part.
   WithContext wc(batch->task(batch->num_tasks() - 1).propagated_context);
 
-  OpKernelContext* last_task_context =
-      batch->task(batch->num_tasks() - 1).context;
+  auto& last_task = batch->task(batch->num_tasks() - 1);
+  OpKernelContext* last_task_context = last_task.context;
 
   // Regardless of the outcome, we need to propagate the status to the
   // individual tasks and signal that they are done. We use MakeCleanup() to
@@ -497,25 +503,24 @@ void BatchResourceBase::ProcessFuncBatch(std::unique_ptr<BatchT> batch) const {
   // Releases the cleanup method here, because the callback of the function
   // library runtime will handle it now.
   finally.release();
-  ProcessFuncBatchImpl(last_task_context, args, &combined_outputs,
-                       [&](const Status& run_status) {
-                         Status final_status;
-                         auto run_finally = gtl::MakeCleanup([&]() {
-                           // We do the cleanup here as an optimization, so that
-                           // it runs in the underlying TF inter-op threadpool.
-                           // Running it in the threadpool, let's the ensuing
-                           // ops be scheduled faster, because the executor will
-                           // add them to the front of the threadpool's task
-                           // queue rather than the end.
-                           cleanup_fn(final_status);
-                         });
-                         final_status = run_status;
-                         if (!final_status.ok()) {
-                           return;
-                         }
-                         final_status =
-                             SplitOutputTensors(combined_outputs, batch.get());
-                       });
+  ProcessFuncBatchImpl(
+      last_task, args, &combined_outputs, [&](const Status& run_status) {
+        Status final_status;
+        auto run_finally = gtl::MakeCleanup([&]() {
+          // We do the cleanup here as an optimization, so that
+          // it runs in the underlying TF inter-op threadpool.
+          // Running it in the threadpool, let's the ensuing
+          // ops be scheduled faster, because the executor will
+          // add them to the front of the threadpool's task
+          // queue rather than the end.
+          cleanup_fn(final_status);
+        });
+        final_status = run_status;
+        if (!final_status.ok()) {
+          return;
+        }
+        final_status = SplitOutputTensors(combined_outputs, batch.get());
+      });
 }
 
 // Processes a batch of one or more BatchTask entries.
@@ -631,6 +636,13 @@ Status BatchResourceBase::LookupOrCreateBatcherQueue(const string& queue_name,
                                         process_batch_callback, &new_queue));
   *queue = new_queue.get();
   batcher_queues_[queue_name] = std::move(new_queue);
+  return Status::OK();
+}
+
+Status BatchResourceBase::CreateBatchTask(
+    OpKernelContext* context,
+    std::unique_ptr<BatchResourceBase::BatchTask>* output) const {
+  *output = absl::make_unique<BatchResourceBase::BatchTask>();
   return Status::OK();
 }
 

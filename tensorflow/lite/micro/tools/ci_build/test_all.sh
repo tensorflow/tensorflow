@@ -34,8 +34,11 @@ make -f tensorflow/lite/micro/tools/make/Makefile \
 
 echo "Starting to run micro tests at `date`"
 
+echo "Running x86 tests at `date`"
+tensorflow/lite/micro/tools/ci_build/test_x86.sh PRESUBMIT
+
 echo "Running bluepill tests at `date`"
-tensorflow/lite/micro/tools/ci_build/test_bluepill.sh
+tensorflow/lite/micro/tools/ci_build/test_bluepill.sh PRESUBMIT
 
 echo "Running mbed tests at `date`"
 tensorflow/lite/micro/tools/ci_build/test_mbed.sh PRESUBMIT
@@ -43,16 +46,13 @@ tensorflow/lite/micro/tools/ci_build/test_mbed.sh PRESUBMIT
 echo "Running Sparkfun tests at `date`"
 tensorflow/lite/micro/tools/ci_build/test_sparkfun.sh
 
-echo "Running x86 tests at `date`"
-tensorflow/lite/micro/tools/ci_build/test_x86.sh
-
 echo "Running stm32f4 tests at `date`"
-tensorflow/lite/micro/tools/ci_build/test_stm32f4.sh
+tensorflow/lite/micro/tools/ci_build/test_stm32f4.sh PRESUBMIT
 
-# TODO(b/158607483): Disabling Arduino because it is slow (~20mins) and has also
-# become very flaky from the download of cifar-10-binary.tar.gz which is 160 MB
-# and has started failing a lot.
-# echo "Running Arduino tests at `date`"
-# tensorflow/lite/micro/tools/ci_build/test_arduino.sh
+echo "Running Arduino tests at `date`"
+tensorflow/lite/micro/tools/ci_build/test_arduino.sh
+
+echo "Running cortex_m_gcc_generic tests at `date`"
+tensorflow/lite/micro/tools/ci_build/test_cortex_m_gcc_generic.sh
 
 echo "Finished all micro tests at `date`"

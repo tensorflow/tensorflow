@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/micro_utils.h"
 
 namespace tflite {
@@ -44,7 +45,9 @@ TfLiteStatus HardSwishPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  TF_LITE_ENSURE(context, input != nullptr);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TF_LITE_ENSURE(context, output != nullptr);
 
   if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8) {
     HardSwishParams* params = static_cast<HardSwishParams*>(node->user_data);
@@ -82,25 +85,33 @@ TfLiteStatus HardSwishPrepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus HardSwishEval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteEvalTensor* input =
+      tflite::micro::GetEvalInput(context, node, kInputTensor);
+  TfLiteEvalTensor* output =
+      tflite::micro::GetEvalOutput(context, node, kOutputTensor);
   HardSwishParams* params = static_cast<HardSwishParams*>(node->user_data);
 
   switch (input->type) {
     case kTfLiteFloat32: {
       tflite::reference_ops::HardSwish<float>(
-          GetTensorShape(input), GetTensorData<float>(input),
-          GetTensorShape(output), GetTensorData<float>(output));
+          tflite::micro::GetTensorShape(input),
+          tflite::micro::GetTensorData<float>(input),
+          tflite::micro::GetTensorShape(output),
+          tflite::micro::GetTensorData<float>(output));
     } break;
     case kTfLiteUInt8: {
       tflite::reference_ops::HardSwish<uint8_t>(
-          *params, GetTensorShape(input), GetTensorData<uint8_t>(input),
-          GetTensorShape(output), GetTensorData<uint8_t>(output));
+          *params, tflite::micro::GetTensorShape(input),
+          tflite::micro::GetTensorData<uint8_t>(input),
+          tflite::micro::GetTensorShape(output),
+          tflite::micro::GetTensorData<uint8_t>(output));
     } break;
     case kTfLiteInt8: {
       tflite::reference_ops::HardSwish<int8_t>(
-          *params, GetTensorShape(input), GetTensorData<int8_t>(input),
-          GetTensorShape(output), GetTensorData<int8_t>(output));
+          *params, tflite::micro::GetTensorShape(input),
+          tflite::micro::GetTensorData<int8_t>(input),
+          tflite::micro::GetTensorShape(output),
+          tflite::micro::GetTensorData<int8_t>(output));
     } break;
     default: {
       TF_LITE_KERNEL_LOG(

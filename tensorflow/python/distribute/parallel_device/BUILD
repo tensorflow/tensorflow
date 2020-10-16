@@ -1,5 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_library", "tf_gen_op_wrapper_py")
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -17,9 +16,10 @@ py_library(
     srcs = ["parallel_device.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":parallel_device_ops",
         ":saving",
         "//tensorflow/python:_pywrap_parallel_device",
+        "//tensorflow/python/distribute:device_util",
+        "//tensorflow/python/tpu:tpu_ops",
     ],
 )
 
@@ -30,26 +30,7 @@ py_library(
     deps = ["//tensorflow/python:framework_ops"],
 )
 
-tf_gen_op_wrapper_py(
-    name = "parallel_device_ops_py",
-    out = "gen_parallel_device_ops.py",
-    deps = ["//tensorflow/c/eager/parallel_device:parallel_device_ops"],
-)
-
-tf_custom_op_library(
-    name = "_parallel_device_ops.so",
-    srcs = ["//tensorflow/c/eager/parallel_device:parallel_device_ops_srcs"],
-)
-
-tf_custom_op_py_library(
-    name = "parallel_device_ops",
-    dso = [":_parallel_device_ops.so"],
-    kernels = ["//tensorflow/c/eager/parallel_device:parallel_device_ops"],
-    visibility = ["//tensorflow:internal"],
-    deps = [":parallel_device_ops_py"],
-)
-
-py_test(
+distribute_py_test(
     name = "parallel_device_test",
     srcs = ["parallel_device_test.py"],
     python_version = "PY3",

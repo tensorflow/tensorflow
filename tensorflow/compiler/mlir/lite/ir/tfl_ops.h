@@ -26,14 +26,15 @@ limitations under the License.
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Interfaces/DerivedAttributeOpInterface.h"  // from @llvm-project
+#include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Interfaces/LoopLikeInterface.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/ir/tfl_structs.h.inc"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace mlir {
-#include "tensorflow/compiler/mlir/lite/ir/tfl_structs.h.inc"
 namespace TFL {
 
 class TensorFlowLiteDialect : public Dialect {
@@ -49,10 +50,11 @@ class TensorFlowLiteDialect : public Dialect {
 };
 
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops_interface.h.inc"
-#define GET_OP_CLASSES
-#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h.inc"
 
 }  // end namespace TFL
 }  // end namespace mlir
+
+#define GET_OP_CLASSES
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h.inc"
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_IR_TFL_OPS_H_

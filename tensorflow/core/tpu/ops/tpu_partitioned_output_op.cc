@@ -23,7 +23,6 @@ namespace tensorflow {
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
-
 REGISTER_OP("TPUPartitionedOutput")
     .Input("inputs:  T")
     .Output("output: num_splits * T")
@@ -53,14 +52,6 @@ REGISTER_OP("TPUPartitionedOutput")
         c->set_output(i, newoutput0);
       }
       return Status::OK();
-    })
-    .Doc(R"doc(
-An op that demultiplexes a tensor to be sharded by XLA to a list of partitioned
-outputs outside the XLA computation.
-
-inputs: A tensor which represents the full shape of partitioned tensors.
-output: A list of partitioned inputs which must have the same shape.
-partition_dim: An integer describles which dimension is partitioned.
-)doc");
+    });
 
 }  // namespace tensorflow

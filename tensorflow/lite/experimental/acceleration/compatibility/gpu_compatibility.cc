@@ -98,5 +98,17 @@ TfLiteGpuDelegateOptionsV2 GPUCompatibilityList::GetBestOptionsFor(
   return TfLiteGpuDelegateOptionsV2Default();
 }
 
+bool GPUCompatibilityList::IsDatabaseLoaded() const {
+  return database_ != nullptr;
+}
+
+// static
+bool GPUCompatibilityList::IsValidFlatbuffer(const unsigned char* data,
+                                             int len) {
+  // Verify opensource db.
+  flatbuffers::Verifier verifier(reinterpret_cast<const uint8_t*>(data), len);
+  return tflite::acceleration::VerifyDeviceDatabaseBuffer(verifier);
+}
+
 }  // namespace acceleration
 }  // namespace tflite

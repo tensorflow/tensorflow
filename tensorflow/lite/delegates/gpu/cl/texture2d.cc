@@ -21,43 +21,40 @@ namespace cl {
 namespace {
 
 // Creates new 4-channel 2D texture with cl_channel_type elements
-absl::Status CreateTexture2D(int width, int height, cl_channel_type type,
-                             void* data, CLContext* context,
-                             Texture2D* result) {
-  cl_image_desc desc;
-  desc.image_type = CL_MEM_OBJECT_IMAGE2D;
-  desc.image_width = width;
-  desc.image_height = height;
-  desc.image_depth = 0;
-  desc.image_row_pitch = 0;
-  desc.image_slice_pitch = 0;
-  desc.num_mip_levels = 0;
-  desc.num_samples = 0;
-  desc.buffer = nullptr;
-
-  cl_image_format format;
-  format.image_channel_order = CL_RGBA;
-  format.image_channel_data_type = type;
-
-  cl_mem_flags flags = CL_MEM_READ_WRITE;
-  if (data != nullptr) {
-    flags |= CL_MEM_COPY_HOST_PTR;
-  }
-
-  cl_int error_code;
-  cl_mem texture = CreateImage2DLegacy(context->context(), flags, &format,
-                                       &desc, data, &error_code);
-  if (error_code != CL_SUCCESS) {
-    return absl::UnknownError(
-        absl::StrCat("Failed to create 2D texture (clCreateImage): ",
-                     CLErrorCodeToString(error_code)));
-  }
-
-  *result = Texture2D(texture, width, height, type);
+absl::Status CreateTexture2D(int width, int height, DataType type, void* data,
+                             CLContext* context, Texture2D* result) {
+  cl_mem texture;
+  cl_channel_type channel_type = DataTypeToChannelType(type);
+  RETURN_IF_ERROR(CreateRGBAImage2D(context->context(), width, height,
+                                    channel_type, data, &texture));
+  *result = Texture2D(texture, width, height, channel_type);
 
   return absl::OkStatus();
 }
 }  // namespace
+
+Texture2DDescriptor::Texture2DDescriptor(Texture2DDescriptor&& desc)
+    : GPUObjectDescriptor(std::move(desc)),
+      element_type(desc.element_type),
+      normalized(desc.normalized),
+      normalized_type(desc.normalized_type),
+      size(desc.size),
+      data(std::move(desc.data)) {}
+
+Texture2DDescriptor& Texture2DDescriptor::operator=(
+    Texture2DDescriptor&& desc) {
+  if (this != &desc) {
+    std::swap(element_type, desc.element_type);
+    std::swap(normalized, desc.normalized);
+    std::swap(normalized_type, desc.normalized_type);
+    std::swap(size, desc.size);
+    data = std::move(desc.data);
+    GPUObjectDescriptor::operator=(std::move(desc));
+  }
+  return *this;
+}
+
+void Texture2DDescriptor::Release() { data.clear(); }
 
 GPUResources Texture2DDescriptor::GetGPUResources() const {
   GPUResources resources;
@@ -75,7 +72,7 @@ absl::Status Texture2DDescriptor::PerformSelector(
     return PerformReadSelector(args, result);
   } else {
     return absl::NotFoundError(absl::StrCat(
-        "TensorLinearDescriptor don't have selector with name - ", selector));
+        "Texture2DDescriptor don't have selector with name - ", selector));
   }
 }
 
@@ -86,10 +83,48 @@ absl::Status Texture2DDescriptor::PerformReadSelector(
         absl::StrCat("Texture2DDescriptor Read require two arguments, but ",
                      args.size(), " was passed"));
   }
-  const std::string read =
-      element_type == DataType::FLOAT16 ? "read_imageh" : "read_imagef";
+  std::string read;
+  switch (element_type) {
+    case DataType::FLOAT32:
+      read = "read_imagef";
+      break;
+    case DataType::FLOAT16:
+      read = "read_imageh";
+      break;
+    case DataType::INT8:
+    case DataType::INT16:
+    case DataType::INT32:
+      if (normalized) {
+        read = normalized_type == DataType::FLOAT16 ? "read_imageh"
+                                                    : "read_imagef";
+      } else {
+        read = "read_imagei";
+      }
+      break;
+    case DataType::UINT8:
+    case DataType::UINT16:
+    case DataType::UINT32:
+      if (normalized) {
+        read = normalized_type == DataType::FLOAT16 ? "read_imageh"
+                                                    : "read_imagef";
+      } else {
+        read = "read_imageui";
+      }
+      break;
+    default:
+      read = "unknown_type";
+      break;
+  }
   *result = absl::StrCat(read, "(tex2d, smp_none, (int2)(", args[0],
                          ", " + args[1] + "))");
+  return absl::OkStatus();
+}
+
+absl::Status Texture2DDescriptor::CreateGPUObject(CLContext* context,
+                                                  GPUObjectPtr* result) const {
+  Texture2D gpu_texture;
+  RETURN_IF_ERROR(gpu_texture.CreateFromTexture2DDescriptor(*this, context));
+  *result = absl::make_unique<Texture2D>(std::move(gpu_texture));
   return absl::OkStatus();
 }
 
@@ -118,8 +153,6 @@ Texture2D& Texture2D::operator=(Texture2D&& texture) {
   return *this;
 }
 
-Texture2D::~Texture2D() { Release(); }
-
 void Texture2D::Release() {
   if (texture_) {
     clReleaseMemObject(texture_);
@@ -141,37 +174,41 @@ absl::Status Texture2D::GetGPUResources(
   return absl::OkStatus();
 }
 
+absl::Status Texture2D::CreateFromTexture2DDescriptor(
+    const Texture2DDescriptor& desc, CLContext* context) {
+  width_ = desc.size.x;
+  height_ = desc.size.y;
+  channel_type_ = DataTypeToChannelType(desc.element_type, desc.normalized);
+  uint8_t* data_ptr = desc.data.empty()
+                          ? nullptr
+                          : const_cast<unsigned char*>(desc.data.data());
+  return CreateRGBAImage2D(context->context(), desc.size.x, desc.size.y,
+                           channel_type_, data_ptr, &texture_);
+}
+
 // Creates new 4-channel 2D texture with f32 elements
 absl::Status CreateTexture2DRGBA32F(int width, int height, CLContext* context,
                                     Texture2D* result) {
-  return CreateTexture2D(width, height, CL_FLOAT, nullptr, context, result);
+  return CreateTexture2D(width, height, DataType::FLOAT32, nullptr, context,
+                         result);
 }
 
 // Creates new 4-channel 2D texture with f16 elements
 absl::Status CreateTexture2DRGBA16F(int width, int height, CLContext* context,
                                     Texture2D* result) {
-  return CreateTexture2D(width, height, CL_HALF_FLOAT, nullptr, context,
+  return CreateTexture2D(width, height, DataType::FLOAT16, nullptr, context,
                          result);
 }
 
 absl::Status CreateTexture2DRGBA(DataType type, int width, int height,
                                  CLContext* context, Texture2D* result) {
-  if (type == DataType::FLOAT32) {
-    return CreateTexture2D(width, height, CL_FLOAT, nullptr, context, result);
-  } else {
-    return CreateTexture2D(width, height, CL_HALF_FLOAT, nullptr, context,
-                           result);
-  }
+  return CreateTexture2D(width, height, type, nullptr, context, result);
 }
 
 absl::Status CreateTexture2DRGBA(DataType type, int width, int height,
                                  void* data, CLContext* context,
                                  Texture2D* result) {
-  if (type == DataType::FLOAT32) {
-    return CreateTexture2D(width, height, CL_FLOAT, data, context, result);
-  } else {
-    return CreateTexture2D(width, height, CL_HALF_FLOAT, data, context, result);
-  }
+  return CreateTexture2D(width, height, type, data, context, result);
 }
 
 }  // namespace cl

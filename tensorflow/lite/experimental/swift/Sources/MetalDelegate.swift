@@ -33,7 +33,7 @@ public final class MetalDelegate: Delegate {
   public init(options: Options = Options()) {
     self.options = options
     var delegateOptions = TFLGpuDelegateOptions()
-    delegateOptions.allow_precision_loss = options.allowsPrecisionLoss
+    delegateOptions.allow_precision_loss = options.isPrecisionLossAllowed
     delegateOptions.wait_type = options.waitType.cWaitType
     delegateOptions.enable_quantization = options.isQuantizationEnabled
     cDelegate = TFLGpuDelegateCreate(&delegateOptions)
@@ -49,7 +49,13 @@ extension MetalDelegate {
   public struct Options: Equatable, Hashable {
     /// Indicates whether the GPU delegate allows precision loss, such as allowing `Float16`
     /// precision for a `Float32` computation. The default is `false`.
-    public var allowsPrecisionLoss = false
+    public var isPrecisionLossAllowed = false
+
+    @available(*, deprecated: 2.4, renamed: "isPrecisionLossAllowed")
+    public var allowsPrecisionLoss: Bool {
+      get { return isPrecisionLossAllowed }
+      set(value) { isPrecisionLossAllowed = value }
+    }
 
     /// A type indicating how the current thread should wait for work on the GPU to complete. The
     /// default is `passive`.

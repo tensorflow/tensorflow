@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_kernel.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
@@ -28,26 +29,9 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-class ConcatZ : public GPUOperation {
- public:
-  ConcatZ(const OperationDef& definition, const std::vector<int>& channels)
-      : GPUOperation(definition), channels_(channels) {}
-  absl::Status Compile(const CreationContext& creation_context) override;
-  absl::Status BindArguments() override;
-  int3 GetGridSize() const override;
-
-  // Move only
-  ConcatZ(ConcatZ&& kernel);
-  ConcatZ& operator=(ConcatZ&& kernel);
-  ConcatZ(const ConcatZ&) = delete;
-  ConcatZ& operator=(const ConcatZ&) = delete;
-
- private:
-  std::vector<int> channels_;
-};
-
-ConcatZ CreateConcatZ(const OperationDef& definition,
-                      const std::vector<int>& channels);
+GPUOperation CreateConcatZ(const OperationDef& definition,
+                           const std::vector<int>& channels,
+                           const DeviceInfo& device_info);
 
 }  // namespace cl
 }  // namespace gpu

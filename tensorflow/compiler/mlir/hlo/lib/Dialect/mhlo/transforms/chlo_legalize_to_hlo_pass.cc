@@ -13,34 +13,40 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
-#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir/Dialect/SCF/SCF.h"
+#include "mlir/Dialect/Shape/IR/Shape.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Pass/Pass.h"
 
 namespace mlir {
-namespace chlo {
+namespace mhlo {
 
 namespace {
 
-struct TestChloLegalizeToHloPass
-    : public PassWrapper<TestChloLegalizeToHloPass, FunctionPass> {
+struct ChloLegalizeToHloPass
+    : public PassWrapper<ChloLegalizeToHloPass, FunctionPass> {
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<mhlo::MhloDialect, shape::ShapeDialect, scf::SCFDialect>();
+  }
+
   void runOnFunction() override {
     ConversionTarget conversionTarget(getContext());
     OwningRewritePatternList conversionPatterns;
+    conversionTarget.addIllegalDialect<chlo::HloClientDialect>();
 
-    conversionTarget.addIllegalDialect<HloClientDialect>();
     // Consider the mhlo dialect legal for tests.
     conversionTarget.addLegalDialect<mhlo::MhloDialect>();
-    // The conversion uses helpers from the Standard dialect.
+
+    // The conversion uses helpers from the standard dialect.
     conversionTarget.addLegalDialect<mlir::StandardOpsDialect>();
     conversionTarget.addLegalDialect<mlir::shape::ShapeDialect>();
     conversionTarget.addLegalDialect<mlir::scf::SCFDialect>();
 
-    PopulateLegalizeChloToHloPatterns(&getContext(), &conversionPatterns);
+    chlo::PopulateLegalizeChloToHloPatterns(&getContext(), &conversionPatterns);
 
     if (failed(applyPartialConversion(getFunction(), conversionTarget,
                                       conversionPatterns))) {
@@ -51,9 +57,10 @@ struct TestChloLegalizeToHloPass
 
 }  // namespace
 
-}  // namespace chlo
+std::unique_ptr<FunctionPass> createChloLegalizeToHloPass() {
+  return std::make_unique<ChloLegalizeToHloPass>();
+}
+
+}  // namespace mhlo
 }  // namespace mlir
 
-static mlir::PassRegistration<mlir::chlo::TestChloLegalizeToHloPass> pass(
-    "mhlo-test-chlo-legalize-to-hlo",
-    "Test pass for applying chlo -> hlo legalization patterns");

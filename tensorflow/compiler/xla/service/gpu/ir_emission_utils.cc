@@ -433,7 +433,7 @@ llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
       builder->CreateZExt(
           builder->CreateBitCast(value, builder->getIntNTy(bit_width)),
           builder->getIntNTy(32 * num_segments)),
-      llvm::VectorType::get(builder->getInt32Ty(), num_segments));
+      llvm::VectorType::get(builder->getInt32Ty(), num_segments, false));
   for (int i = 0; i < num_segments; ++i) {
     llvm::Value* insert_val;
     if (target_triple.isNVPTX()) {
@@ -470,39 +470,6 @@ StatusOr<CudnnConvKind> GetCudnnConvKind(
     return CudnnConvKind::kForwardActivation;
   }
   return InternalError("Unexpected call target: %s", target);
-}
-
-StatusOr<se::dnn::ConvolutionKind> GetDnnConvolutionKind(
-    const HloCustomCallInstruction* instr) {
-  absl::string_view target = instr->custom_call_target();
-  if (target == kCudnnConvForwardCallTarget) {
-    return se::dnn::ConvolutionKind::FORWARD;
-  }
-  if (target == kCudnnConvBackwardInputCallTarget) {
-    return se::dnn::ConvolutionKind::BACKWARD_DATA;
-  }
-  if (target == kCudnnConvBackwardFilterCallTarget) {
-    return se::dnn::ConvolutionKind::BACKWARD_FILTER;
-  }
-  return InternalError("Unexpected call target: %s", target);
-}
-
-StatusOr<se::dnn::DataType> GetDnnDataType(
-    const HloCustomCallInstruction* conv) {
-  PrimitiveType output_primitive_type =
-      conv->shape().tuple_shapes(0).element_type();
-  switch (output_primitive_type) {
-    case F16:
-      return se::dnn::ToDataType<Eigen::half>::value;
-    case F32:
-      return se::dnn::ToDataType<float>::value;
-    case F64:
-      return se::dnn::ToDataType<double>::value;
-    default:
-      break;
-  }
-  return InternalError("Unsupported convolution datatype : %s",
-                       conv->ToString());
 }
 
 string CudnnConvKindToString(CudnnConvKind kind) {

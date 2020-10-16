@@ -28,6 +28,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.util import event_pb2
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import reduce_util
@@ -340,7 +341,7 @@ class DistributionTestBase(test.TestCase):
       self, strategy, input_fn, expected_values, ignore_order=False):
     assert_same = self.assertCountEqual if ignore_order else self.assertEqual
 
-    iterable = strategy.experimental_distribute_datasets_from_function(input_fn)
+    iterable = strategy.distribute_datasets_from_function(input_fn)
     if context.executing_eagerly():
       iterator = iter(iterable)
 
@@ -428,7 +429,9 @@ class DistributionTestBase(test.TestCase):
       global_step_values = self.evaluate(global_step_tensors)
       self.assertEqual((1,) * len(global_step_tensors), global_step_values)
 
-  def _test_numpy_dataset(self, strategy, session=None):
+  def _test_numpy_dataset(self, strategy, session=None, run_in_function=False):
+    if not isinstance(strategy, distribute_lib.StrategyV1):
+      self.skipTest("n/a: V1 only")
     cached_session = session or self.cached_session()
     with strategy.scope(), cached_session as sess:
       x = np.asarray([[1, 2], [6, 12], [2, 4], [5, 10], [3, 6], [4, 8]])
@@ -449,7 +452,8 @@ class DistributionTestBase(test.TestCase):
       self.evaluate(i.initializer)
 
       def run_and_concatenate(strategy, i):
-        x, y = strategy.experimental_run(lambda z: z, i)
+        x, y = strategy.experimental_run(
+            _maybe_run_in_function(lambda z: z, run_in_function), i)
         x, y = self.evaluate((strategy.experimental_local_results(x),
                               strategy.experimental_local_results(y)))
         return np.concatenate(x), np.concatenate(y)

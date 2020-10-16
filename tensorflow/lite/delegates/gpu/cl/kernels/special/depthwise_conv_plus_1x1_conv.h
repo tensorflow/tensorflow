@@ -33,46 +33,15 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-class DepthwiseConvPlus1x1Conv : public GPUOperation {
- public:
-  DepthwiseConvPlus1x1Conv() = default;
-  absl::Status BindArguments() override;
-  int3 GetGridSize() const override;
-  absl::Status Compile(const CreationContext& creation_context) override;
-
-  // Move only
-  DepthwiseConvPlus1x1Conv(DepthwiseConvPlus1x1Conv&& operation);
-  DepthwiseConvPlus1x1Conv& operator=(DepthwiseConvPlus1x1Conv&& operation);
-  DepthwiseConvPlus1x1Conv(const DepthwiseConvPlus1x1Conv&) = delete;
-  DepthwiseConvPlus1x1Conv& operator=(const DepthwiseConvPlus1x1Conv&) = delete;
-
- private:
-  friend absl::Status CreateDepthwiseConvPlus1x1Conv(
-      const CreationContext& creation_context, const OperationDef& definition,
-      const DepthwiseConvolution2DAttributes& dw_attr,
-      const Convolution2DAttributes& conv_attr,
-      DepthwiseConvPlus1x1Conv* result);
-  DepthwiseConvPlus1x1Conv(const OperationDef& definition,
-                           const DepthwiseConvolution2DAttributes& dw_attr,
-                           const Convolution2DAttributes& conv_attr);
-
-  absl::Status UploadWeights(const DepthwiseConvolution2DAttributes& dw_attr,
-                             const Convolution2DAttributes& conv_attr,
-                             CLContext* context);
-
-  DepthwiseConvolution2DAttributes dw_attr_;
-  int result_depth_;
-};
-
 bool IsDepthwiseConvPlus1x1ConvSupported(
-    const CLDevice& device, const OperationDef& definition,
+    const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& dw_attr,
     const Convolution2DAttributes& conv_attr);
 
-absl::Status CreateDepthwiseConvPlus1x1Conv(
-    const CreationContext& creation_context, const OperationDef& definition,
+GPUOperation CreateDepthwiseConvPlus1x1Conv(
+    const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& dw_attr,
-    const Convolution2DAttributes& conv_attr, DepthwiseConvPlus1x1Conv* result);
+    const Convolution2DAttributes& conv_attr);
 
 }  // namespace cl
 }  // namespace gpu

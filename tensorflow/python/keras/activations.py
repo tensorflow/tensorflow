@@ -71,16 +71,20 @@ def softmax(x, axis=-1):
   Raises:
       ValueError: In case `dim(x) == 1`.
   """
-  ndim = K.ndim(x)
-  if ndim == 2:
-    return nn.softmax(x)
-  elif ndim > 2:
+  rank = x.shape.rank
+  if rank == 2:
+    output = nn.softmax(x)
+  elif rank > 2:
     e = math_ops.exp(x - math_ops.reduce_max(x, axis=axis, keepdims=True))
     s = math_ops.reduce_sum(e, axis=axis, keepdims=True)
-    return e / s
+    output = e / s
   else:
     raise ValueError('Cannot apply softmax to a tensor that is 1D. '
                      'Received input: %s' % (x,))
+
+  # Cache the logits to use for crossentropy loss.
+  output._keras_logits = x  # pylint: disable=protected-access
+  return output
 
 
 @keras_export('keras.activations.elu')
@@ -302,6 +306,46 @@ def relu(x, alpha=0., max_value=None, threshold=0):
   return K.relu(x, alpha=alpha, max_value=max_value, threshold=threshold)
 
 
+@keras_export('keras.activations.gelu', v1=[])
+@dispatch.add_dispatch_support
+def gelu(x, approximate=False):
+  """Applies the Gaussian error linear unit (GELU) activation function.
+
+  Gaussian error linear unit (GELU) computes
+  `x * P(X <= x)`, where `P(X) ~ N(0, 1)`.
+  The (GELU) nonlinearity weights inputs by their value, rather than gates
+  inputs by their sign as in ReLU.
+
+  For example:
+
+  >>> x = tf.constant([-3.0, -1.0, 0.0, 1.0, 3.0], dtype=tf.float32)
+  >>> y = tf.keras.activations.gelu(x)
+  >>> y.numpy()
+  array([-0.00404951, -0.15865529,  0.        ,  0.8413447 ,  2.9959507 ],
+      dtype=float32)
+  >>> y = tf.keras.activations.gelu(x, approximate=True)
+  >>> y.numpy()
+  array([-0.00363752, -0.15880796,  0.        ,  0.841192  ,  2.9963627 ],
+      dtype=float32)
+
+  Arguments:
+      x: Input tensor.
+      approximate: A `bool`, whether to enable approximation.
+
+  Returns:
+      The gaussian error linear activation:
+      `0.5 * x * (1 + tanh(sqrt(2 / pi) * (x + 0.044715 * x^3)))`
+      if `approximate` is `True` or
+      `x * P(X <= x) = 0.5 * x * (1 + erf(x / sqrt(2)))`,
+      where `P(X) ~ N(0, 1)`,
+      if `approximate` is `False`.
+
+  Reference:
+    - [Gaussian Error Linear Units (GELUs)](https://arxiv.org/abs/1606.08415)
+  """
+  return nn.gelu(x, approximate)
+
+
 @keras_export('keras.activations.tanh')
 @dispatch.add_dispatch_support
 def tanh(x):
@@ -351,7 +395,10 @@ def sigmoid(x):
   Returns:
       Tensor with the sigmoid activation: `1 / (1 + exp(-x))`.
   """
-  return nn.sigmoid(x)
+  output = nn.sigmoid(x)
+  # Cache the logits to use for crossentropy loss.
+  output._keras_logits = x  # pylint: disable=protected-access
+  return output
 
 
 @keras_export('keras.activations.exponential')
@@ -459,8 +506,10 @@ def serialize(activation):
 def deserialize(name, custom_objects=None):
   """Returns activation function given a string identifier.
 
-  Arguments:
-      x : String identifier.
+  Args:
+    name: The name of the activation function.
+    custom_objects: Optional `{function_name: function_obj}`
+      dictionary listing user-provided activation functions.
 
   Returns:
       Corresponding activation function.
@@ -475,11 +524,6 @@ def deserialize(name, custom_objects=None):
   Traceback (most recent call last):
   ...
   ValueError: Unknown activation function:abcd
-
-  Args:
-    name: The name of the activation function.
-    custom_objects: Optional `{function_name: function_obj}`
-      dictionary listing user-provided activation functions.
 
   Raises:
       ValueError: `Unknown activation function` if the input string does not

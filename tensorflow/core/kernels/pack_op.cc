@@ -34,9 +34,6 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 typedef Eigen::GpuDevice GPUDevice;
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#ifdef TENSORFLOW_USE_SYCL
-typedef Eigen::SyclDevice SYCLDevice;
-#endif  // TENSORFLOW_USE_SYCL
 
 // --------------------------------------------------------------------------
 template <typename Device, typename T>
@@ -115,12 +112,6 @@ class PackOp : public OpKernel {
         return;
       }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#ifdef TENSORFLOW_USE_SYCL
-      if (std::is_same<Device, SYCLDevice>::value) {
-        ConcatSYCL<T>(c->eigen_sycl_device(), inputs_flat, &output_flat);
-        return;
-      }
-#endif  // TENSORFLOW_USE_SYCL
       ConcatCPU<T>(c->device(), inputs_flat, &output_flat);
     }
   }
@@ -170,19 +161,4 @@ REGISTER_KERNEL_BUILDER(Name("Pack")
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL(type)                                       \
-  REGISTER_KERNEL_BUILDER(                                        \
-      Name("Pack").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
-      PackOp<SYCLDevice, type>)
-
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL);
-REGISTER_KERNEL_BUILDER(Name("Pack")
-                            .Device(DEVICE_SYCL)
-                            .HostMemory("values")
-                            .HostMemory("output")
-                            .TypeConstraint<int32>("T"),
-                        PackOp<CPUDevice, int32>);
-#undef REGISTER_SYCL
-#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

@@ -24,7 +24,7 @@ limitations under the License.
 namespace xla {
 
 namespace conditional_opt {
-// At the conceptural level, a boundary can be thought of as representing a
+// At the conceptual level, a boundary can be thought of as representing a
 // single virtual operation, except this virtual operation is conditionally
 // instantiated into different concrete operations at each conditional branch.
 // So a boundary is mapped to a single concrete operation if it is outside of
@@ -36,10 +36,11 @@ namespace conditional_opt {
 // inside branches.
 class Boundary {
  public:
-  enum class Position { kInsideBranch, kOutsideBranch };
+  enum class Position { kInsideBranch, kOutsideBranch, kUndefined };
+  Boundary() : position_(Position::kUndefined) {}
   explicit Boundary(Position p) : position_(p) {}
-  std::vector<HloInstruction*>& Operands() { return operands_; }
-  const std::vector<HloInstruction*>& Operands() const { return operands_; }
+  std::vector<HloInstruction*>& mutable_operands() { return operands_; }
+  const std::vector<HloInstruction*>& operands() const { return operands_; }
   bool IsInsideBranch() const { return position_ == Position::kInsideBranch; }
   bool IsOutsideBranch() const { return position_ == Position::kOutsideBranch; }
   Position GetPosition() const { return position_; }
@@ -51,10 +52,13 @@ class Boundary {
     }
     return res;
   }
+  bool operator==(const Boundary& that) {
+    return ContainersEqual(operands_, that.operands_);
+  }
 
  private:
   // Boundary instructions in the conditional branches, one from each branch
-  // of the conditional.
+  // of the conditional; or a single operand from outside the conditional.
   std::vector<HloInstruction*> operands_;
   Position position_;
 };
@@ -77,13 +81,30 @@ class ConditionalCodeMotion : public HloModulePass {
   StatusOr<bool> Run(HloModule* module) override;
 
   // Optimization decision for each boundary of the conditional instruction.
-  enum class Decision { kMoveOutOfBranch, kMoveIntoBranch, kNoChange };
+  class Decision {
+   public:
+    enum class Direction : uint8 {
+      kMoveOutOfBranch,
+      kMoveIntoBranch,
+      kNoChange
+    };
+
+   public:
+    Decision(Direction direction, int benefit)
+        : direction_(direction), benefit_(benefit) {}
+    Direction GetDirection() const { return direction_; }
+    int GetBenefit() const { return benefit_; }
+
+   private:
+    Direction direction_;
+    int benefit_;
+  };
   // If the optimization decision is NO_CHANGE, new_boundary is set to nullptr;
   // otherwise, it is set to the new boundary after proposed optimization.
-  virtual Decision ConsiderCodeMotion(HloInstruction* conditional,
-                                      const Boundary& cur_boundary,
-                                      std::vector<Boundary>& to_move,
-                                      std::vector<Boundary>& new_boundaries);
+  virtual Decision ConsiderCodeMotion(
+      HloInstruction* conditional, const Boundary& cur_boundary,
+      std::vector<Boundary>& to_move, std::vector<Boundary>& new_boundaries,
+      absl::flat_hash_map<HloInstruction*, int>& visited_count);
 
  private:
   const bool is_layout_sensitive_;

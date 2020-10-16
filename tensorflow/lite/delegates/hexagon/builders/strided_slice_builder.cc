@@ -67,14 +67,7 @@ TfLiteStatus StridedSliceOpBuilder::PopulateSubGraph(
   AddInput(TensorID(shrink_axis_mask_const->GetID(), 0));
 
   // Input min/max
-  TF_LITE_ENSURE_STATUS(
-      ComputeMinAndMaxQuantValues(input_tensor, &input_min_, &input_max_));
-  auto* input_min_const = graph_builder_->AddConstNodeWithData(
-      kScalarShape, reinterpret_cast<char*>(&input_min_), sizeof(input_min_));
-  auto* input_max_const = graph_builder_->AddConstNodeWithData(
-      kScalarShape, reinterpret_cast<char*>(&input_max_), sizeof(input_max_));
-  AddInput(TensorID(input_min_const->GetID(), 0));
-  AddInput(TensorID(input_max_const->GetID(), 0));
+  TF_LITE_ENSURE_STATUS(ComputeAndAddMinAndMax(context, input_tensor));
 
   // Slice outputs.
   int output_batch_size, output_height_size, output_width_size,

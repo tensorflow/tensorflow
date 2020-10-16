@@ -18,10 +18,10 @@ limitations under the License.
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/map_hlo_to_lhlo_op.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/map_hlo_to_lhlo_op.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
 
 namespace mlir {
 namespace lmhlo {
@@ -146,6 +146,15 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::AndOp>(Location loc,
                                                   ArrayRef<Value> args,
                                                   OpBuilder* b) {
   return MapLhloOpToStdScalarOpImpl<IntegerType, ::mlir::AndOp>{}(
+      loc, result_types, args, b);
+}
+
+template <>
+inline Value MapLhloOpToStdScalarOp<lmhlo::Atan2Op>(Location loc,
+                                                    ArrayRef<Type> result_types,
+                                                    ArrayRef<Value> args,
+                                                    OpBuilder* b) {
+  return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::Atan2Op>{}(
       loc, result_types, args, b);
 }
 
@@ -336,6 +345,31 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::SinOp>(Location loc,
       loc, result_types, args, b);
 }
 
+template <>
+inline Value MapLhloOpToStdScalarOp<lmhlo::FloorOp>(Location loc,
+                                                    ArrayRef<Type> result_types,
+                                                    ArrayRef<Value> args,
+                                                    OpBuilder* b) {
+  return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::FloorFOp>{}(
+      loc, result_types, args, b);
+}
+
+template <>
+inline Value MapLhloOpToStdScalarOp<lmhlo::IsFiniteOp>(
+    Location loc, ArrayRef<Type> result_types, ArrayRef<Value> args,
+    OpBuilder* b) {
+  if (args[0].getType().isa<FloatType>()) {
+    auto pos_inf = APFloat::getInf(
+        args[0].getType().cast<FloatType>().getFloatSemantics());
+    auto const_pos_inf =
+        b->create<ConstantOp>(loc, b->getFloatAttr(args[0].getType(), pos_inf));
+    Value abs_x = b->create<::mlir::AbsFOp>(loc, args[0]);
+    return b->create<::mlir::CmpFOp>(loc, CmpFPredicate::ONE, abs_x,
+                                     const_pos_inf);
+  }
+  return nullptr;
+}
+
 /// Implements the conversion of HLO op to scalar op (to use within region of a
 /// linalg.generic op) for compare-select style operations like min/max.
 template <typename... Args>
@@ -423,6 +457,21 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::NegOp>(Location loc,
 }
 
 template <>
+inline Value MapLhloOpToStdScalarOp<lmhlo::NotOp>(Location loc,
+                                                  ArrayRef<Type> result_types,
+                                                  ArrayRef<Value> args,
+                                                  OpBuilder* b) {
+  Type element_type = args.front().getType();
+  if (auto integer_type = element_type.dyn_cast<IntegerType>()) {
+    // lmhlo.not(x) -> x ^ -1
+    auto all_ones =
+        b->create<::mlir::ConstantIntOp>(loc, -1, integer_type.getWidth());
+    return b->create<::mlir::XOrOp>(loc, all_ones, args[0]);
+  }
+  return nullptr;
+}
+
+template <>
 inline Value MapLhloOpToStdScalarOp<lmhlo::RsqrtOp>(Location loc,
                                                     ArrayRef<Type> result_types,
                                                     ArrayRef<Value> args,
@@ -445,11 +494,27 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::SignOp>(Location loc,
                                                    ArrayRef<Value> args,
                                                    OpBuilder* b) {
   Type element_type = args.front().getType();
-  if (element_type.isa<FloatType>()) {
-    FloatType float_type = element_type.cast<FloatType>();
-    APFloat const_value = float_type.isF32() ? APFloat(1.0f) : APFloat(1.0);
-    Value one = b->create<mlir::ConstantFloatOp>(loc, const_value, float_type);
+  if (auto float_type = element_type.dyn_cast<FloatType>()) {
+    bool ignored;
+    APFloat one_apfloat(1.0f);
+    one_apfloat.convert(float_type.getFloatSemantics(),
+                        APFloat::rmNearestTiesToEven, &ignored);
+    Value one = b->create<mlir::ConstantFloatOp>(loc, one_apfloat, float_type);
     return b->create<::mlir::CopySignOp>(loc, result_types, one, args[0]);
+  } else if (auto integer_type = element_type.dyn_cast<IntegerType>()) {
+    // sign(x) = x == 0 ? 0 : ((x s>> 31) | 1)
+    Value zero =
+        b->create<::mlir::ConstantIntOp>(loc, 0, integer_type.getWidth());
+    Value cmp =
+        b->create<::mlir::CmpIOp>(loc, CmpIPredicate::eq, args[0], zero);
+    Value bitwidth_minus_one = b->create<::mlir::ConstantIntOp>(
+        loc, integer_type.getWidth() - 1, integer_type.getWidth());
+    Value ashr =
+        b->create<::mlir::SignedShiftRightOp>(loc, args[0], bitwidth_minus_one);
+    Value one =
+        b->create<::mlir::ConstantIntOp>(loc, 1, integer_type.getWidth());
+    Value or_op = b->create<::mlir::OrOp>(loc, ashr, one);
+    return b->create<::mlir::SelectOp>(loc, cmp, zero, or_op);
   }
   return nullptr;
 }

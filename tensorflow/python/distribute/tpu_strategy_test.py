@@ -132,6 +132,28 @@ class TPUTest(test.TestCase):
       result = bar() + 1
       self.assertAllEqual(result, 2)
 
+  def test_tpu_output_device(self):
+
+    def foo():
+      return 1 + 1
+
+    func1 = function.defun_with_attributes(
+        foo, attributes={"_XlaMustCompile": False})
+    func2 = function.defun_with_attributes(
+        foo, attributes={
+            "_OutputsOnOpDevice": True,
+            "_XlaMustCompile": False
+        })
+
+    with ops.device("/device:TPU:0"):
+      ret1 = func1()
+      ret2 = func2()
+
+    self.assertAllEqual(ret1.backing_device,
+                        "/job:localhost/replica:0/task:0/device:CPU:0")
+    self.assertAllEqual(ret2.backing_device,
+                        "/job:localhost/replica:0/task:0/device:TPU:0")
+
   def test_on_demand_op_with_dynamic_output(self):
     with ops.device("/device:TPU:0"):
       where_output = array_ops.where([True, False, True])
@@ -454,8 +476,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(expected_result, run(input_iterator))
     self.assertAllEqual((0.,), w.read_value())
 
-  # TODO(b/140633529): Re-enable the test.
-  def disable_test_experimental_run_output_on_device(self, enable_packed_var):
+  def test_experimental_run_output_on_device(self, enable_packed_var):
     strategy = get_tpu_strategy(enable_packed_var)
 
     def computation(x):
@@ -510,10 +531,9 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
       return dataset.map(make_sparse)
 
     dataset = iter(
-        strategy.experimental_distribute_datasets_from_function(
+        strategy.distribute_datasets_from_function(
             dataset_fn,
-            distribute_lib.InputOptions(
-                experimental_prefetch_to_device=False)))
+            distribute_lib.InputOptions(experimental_prefetch_to_device=False)))
 
     sparse, result = sparse_lookup(dataset)
 
@@ -561,10 +581,9 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
       return dataset.map(make_sparse)
 
     dataset = iter(
-        strategy.experimental_distribute_datasets_from_function(
+        strategy.distribute_datasets_from_function(
             dataset_fn,
-            distribute_lib.InputOptions(
-                experimental_prefetch_to_device=False)))
+            distribute_lib.InputOptions(experimental_prefetch_to_device=False)))
 
     output = sparse_lookup(dataset)
 
@@ -617,7 +636,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
       return dataset.map(make_sparse)
 
     dataset = iter(
-        strategy.experimental_distribute_datasets_from_function(
+        strategy.distribute_datasets_from_function(
             dataset_fn,
             options=distribute_lib.InputOptions(
                 experimental_prefetch_to_device=False)))
@@ -731,7 +750,7 @@ class TPUStrategyDataPrefetchTest(test.TestCase):
       return dataset.batch(strategy.num_replicas_in_sync)
 
     with self.assertRaisesRegex(ValueError, "TPUStrategy does not support"):
-      iter(strategy.experimental_distribute_datasets_from_function(dataset_fn))
+      iter(strategy.distribute_datasets_from_function(dataset_fn))
 
   def test_prefetch_to_device_ragged_dataset_fn(self):
     strategy = get_tpu_strategy()
@@ -746,7 +765,7 @@ class TPUStrategyDataPrefetchTest(test.TestCase):
       return dataset.batch(strategy.num_replicas_in_sync)
 
     with self.assertRaisesRegex(ValueError, "TPUStrategy does not support"):
-      iter(strategy.experimental_distribute_datasets_from_function(dataset_fn))
+      iter(strategy.distribute_datasets_from_function(dataset_fn))
 
 
 class TPUStrategyDistributionTest(
@@ -771,11 +790,6 @@ class TPUStrategyDistributionTest(
 
     # Verify isolate_session_state
     self.assertTrue(new_config.isolate_session_state)
-
-  # TODO(b/158110684): enable this test.
-  def disable_test_numpy_dataset(self):
-    strategy = get_tpu_strategy()
-    self._test_numpy_dataset(strategy)
 
   def test_make_input_fn_iterable(self):
     dataset_fn = lambda: dataset_ops.Dataset.range(10)
@@ -803,9 +817,29 @@ class TPUStrategyDistributionTest(
         distribution.extended.worker_devices,
         expected_values)
 
+  def test_num_replicas_in_sync(self):
+    strategy = get_tpu_strategy()
+    self.assertEqual(2, strategy.num_replicas_in_sync)
+
+  def test_call_and_merge_exceptions(self):
+    strategy = get_tpu_strategy()
+    self._test_call_and_merge_exceptions(strategy)
+
+  def test_numpy_dataset(self):
+    strategy = get_tpu_strategy()
+    self._test_numpy_dataset(strategy, run_in_function=True)
+
+  def test_global_step_update(self):
+    strategy = get_tpu_strategy()
+    self._test_global_step_update(strategy)
+
   def test_run(self):
     strategy = get_tpu_strategy()
     self._test_run(strategy, run_in_function=True)
+
+  def test_summary_for_replica_zero_only(self):
+    strategy = get_tpu_strategy()
+    self._test_summary_for_replica_zero_only(strategy)
 
   def test_all_reduce_sum(self):
     strategy = get_tpu_strategy()

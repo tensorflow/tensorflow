@@ -21,7 +21,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
+#include "tensorflow/lite/delegates/gpu/cl/serialization_generated.h"
 #include "tensorflow/lite/delegates/gpu/common/access_type.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -119,9 +121,21 @@ struct GPUResourcesWithValue {
   std::vector<std::pair<std::string, cl_mem>> custom_memories;
 };
 
+class GPUObject;
+
 class GPUObjectDescriptor {
  public:
   GPUObjectDescriptor() = default;
+  GPUObjectDescriptor(const GPUObjectDescriptor&) = default;
+  GPUObjectDescriptor& operator=(const GPUObjectDescriptor&) = default;
+  GPUObjectDescriptor(GPUObjectDescriptor&& obj_desc)
+      : state_vars_(std::move(obj_desc.state_vars_)) {}
+  GPUObjectDescriptor& operator=(GPUObjectDescriptor&& obj_desc) {
+    if (this != &obj_desc) {
+      state_vars_ = std::move(obj_desc.state_vars_);
+    }
+    return *this;
+  }
   virtual ~GPUObjectDescriptor() = default;
 
   void SetStateVar(const std::string& key, const std::string& value) const {
@@ -141,10 +155,20 @@ class GPUObjectDescriptor {
   }
   virtual GPUResources GetGPUResources() const { return GPUResources(); }
 
+  virtual absl::Status CreateGPUObject(
+      CLContext* context, std::unique_ptr<GPUObject>* result) const {
+    return absl::OkStatus();
+  }
+  virtual void Release() {}
+
   void SetAccess(AccessType access_type) { access_type_ = access_type; }
   AccessType GetAccess() const { return access_type_; }
 
  protected:
+  friend flatbuffers::Offset<data::GPUObjectDescriptor> Encode(
+      const GPUObjectDescriptor& desc, flatbuffers::FlatBufferBuilder* builder);
+  friend void Decode(const data::GPUObjectDescriptor* fb_obj,
+                     GPUObjectDescriptor* obj);
   mutable std::map<std::string, std::string> state_vars_;
   AccessType access_type_;
 };

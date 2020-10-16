@@ -89,7 +89,7 @@ def _get_attrs_items(obj):
     A list of (attr_name, attr_value) pairs, sorted by attr_name.
   """
   attrs = getattr(obj.__class__, "__attrs_attrs__")
-  attr_names = [a.name for a in attrs]
+  attr_names = (a.name for a in attrs)
   return [(attr_name, getattr(obj, attr_name)) for attr_name in attr_names]
 
 
@@ -335,6 +335,9 @@ def flatten(structure, expand_composites=False):
   Raises:
     TypeError: The nest is or contains a dict with non-sortable keys.
   """
+  if structure is None:
+    return [None]
+  expand_composites = bool(expand_composites)
   return _pywrap_utils.Flatten(structure, expand_composites)
 
 
@@ -392,6 +395,10 @@ def assert_same_structure(nest1, nest2, check_types=True,
     TypeError: If the two structures differ in the type of sequence in any of
       their substructures. Only possible if `check_types` is `True`.
   """
+  # Convert to bool explicitly as otherwise pybind will not be able# to handle
+  # type mismatch message correctly. See GitHub issue 42329 for details.
+  check_types = bool(check_types)
+  expand_composites = bool(expand_composites)
   try:
     _pywrap_utils.AssertSameStructure(nest1, nest2, check_types,
                                       expand_composites)
@@ -580,6 +587,21 @@ def map_structure(func, *structure, **kwargs):
   `structure[i]`.  All structures in `structure` must have the same arity,
   and the return value will contain results with the same structure layout.
 
+  Examples:
+
+  1. A single Python dict:
+
+  >>> a = {"hello": 24, "world": 76}
+  >>> tf.nest.map_structure(lambda p: p * 2, a)
+  {'hello': 48, 'world': 152}
+
+  2. Multiple Python dictionaries:
+
+  >>> d1 = {"hello": 24, "world": 76}
+  >>> d2 = {"hello": 36, "world": 14}
+  >>> tf.nest.map_structure(lambda p1, p2: p1 + p2, d1, d2)
+  {'hello': 60, 'world': 90}
+
   Args:
     func: A callable that accepts as many arguments as there are structures.
     *structure: scalar, or tuple or dict or list of constructed scalars and/or
@@ -630,7 +652,7 @@ def map_structure(func, *structure, **kwargs):
     assert_same_structure(structure[0], other, check_types=check_types,
                           expand_composites=expand_composites)
 
-  flat_structure = [flatten(s, expand_composites) for s in structure]
+  flat_structure = (flatten(s, expand_composites) for s in structure)
   entries = zip(*flat_structure)
 
   return pack_sequence_as(
@@ -953,7 +975,7 @@ def flatten_up_to(shallow_tree, input_tree, check_types=True,
                            check_types=check_types,
                            expand_composites=expand_composites)
   # Discard paths returned by _yield_flat_up_to.
-  return list(v for _, v in _yield_flat_up_to(shallow_tree, input_tree, is_seq))
+  return [v for _, v in _yield_flat_up_to(shallow_tree, input_tree, is_seq)]
 
 
 def flatten_with_tuple_paths_up_to(shallow_tree,
@@ -1224,17 +1246,17 @@ def map_structure_with_tuple_paths_up_to(shallow_tree, func, *inputs, **kwargs):
 
   # Flatten each input separately, apply the function to corresponding elements,
   # then repack based on the structure of the first input.
-  flat_value_lists = [
+  flat_value_gen = (
       flatten_up_to(  # pylint: disable=g-complex-comprehension
           shallow_tree,
           input_tree,
           check_types,
-          expand_composites=expand_composites) for input_tree in inputs
+          expand_composites=expand_composites) for input_tree in inputs)
+  flat_path_gen = (
+      path for path, _ in _yield_flat_up_to(shallow_tree, inputs[0], is_seq))
+  results = [
+      func(*args, **kwargs) for args in zip(flat_path_gen, *flat_value_gen)
   ]
-  flat_path_list = [path for path, _
-                    in _yield_flat_up_to(shallow_tree, inputs[0], is_seq)]
-  results = [func(*args, **kwargs) for args in zip(flat_path_list,
-                                                   *flat_value_lists)]
   return pack_sequence_as(structure=shallow_tree, flat_sequence=results,
                           expand_composites=expand_composites)
 
@@ -1373,7 +1395,8 @@ def flatten_with_joined_string_paths(structure, separator="/",
   flat_paths = yield_flat_paths(structure, expand_composites=expand_composites)
   def stringify_and_join(path_elements):
     return separator.join(str(path_element) for path_element in path_elements)
-  flat_string_paths = [stringify_and_join(path) for path in flat_paths]
+
+  flat_string_paths = (stringify_and_join(path) for path in flat_paths)
   return list(zip(flat_string_paths,
                   flatten(structure, expand_composites=expand_composites)))
 

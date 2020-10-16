@@ -138,6 +138,16 @@ public final class Interpreter implements AutoCloseable {
     }
 
     /**
+     * Advanced: Set if the interpreter is able to be cancelled.
+     *
+     * @see {@link Interpreter#setCancelled(boolean)}.
+     */
+    public Options setCancellable(boolean allow) {
+      this.allowCancellation = allow;
+      return this;
+    }
+
+    /**
      * Experimental: Enable an optimized set of floating point CPU kernels (provided by XNNPACK).
      *
      * <p>Enabling this flag will enable use of a new, highly optimized set of CPU kernels provided
@@ -152,7 +162,7 @@ public final class Interpreter implements AutoCloseable {
      * <ul>
      *   <li>Startup time and resize time may increase.
      *   <li>Baseline memory consumption may increase.
-     *   <li>Compatibility with other delegates (e.g., GPU) has not been fully validated.
+     *   <li>May be ignored if another delegate (eg NNAPI) have been applied.
      *   <li>Quantized models will not see any benefit.
      * </ul>
      *
@@ -167,6 +177,7 @@ public final class Interpreter implements AutoCloseable {
     Boolean useNNAPI;
     Boolean allowFp16PrecisionForFp32;
     Boolean allowBufferHandleOutput;
+    Boolean allowCancellation;
     Boolean useXNNPACK;
     final List<Delegate> delegates = new ArrayList<>();
   }
@@ -281,6 +292,8 @@ public final class Interpreter implements AutoCloseable {
    *   <li>{@link LongBuffer} - compatible with int64 Tensors.
    * </ul>
    *
+   * Note that boolean types are only supported as arrays, not {@link Buffer}s, or as scalar inputs.
+   *
    * @param input an array or multidimensional array, or a {@link Buffer} of primitive types
    *     including int, float, long, and byte. {@link Buffer} is the preferred way to pass large
    *     input data for primitive types, whereas string types require using the (multi-dimensional)
@@ -296,6 +309,8 @@ public final class Interpreter implements AutoCloseable {
    *     bound to the output {@link Tensor}. See {@link Options#setAllowBufferHandleOutput()}.
    * @throws IllegalArgumentException if {@code input} or {@code output} is null or empty, or if
    *     error occurs when running the inference.
+   * @throws IllegalArgumentException (EXPERIMENTAL, subject to change) if the inference is
+   *     interrupted by {@code setCancelled(true)}.
    */
   public void run(Object input, Object output) {
     Object[] inputs = {input};
@@ -318,6 +333,8 @@ public final class Interpreter implements AutoCloseable {
    *   <li>{@link IntBuffer} - compatible with int32 Tensors.
    *   <li>{@link LongBuffer} - compatible with int64 Tensors.
    * </ul>
+   *
+   * Note that boolean types are only supported as arrays, not {@link Buffer}s, or as scalar inputs.
    *
    * <p>Note: {@code null} values for invididual elements of {@code inputs} and {@code outputs} is
    * allowed only if the caller is using a {@link Delegate} that allows buffer handle interop, and
@@ -469,18 +486,6 @@ public final class Interpreter implements AutoCloseable {
   }
 
   /**
-   * Turns on/off Android NNAPI for hardware acceleration when it is available.
-   *
-   * @deprecated Prefer using {@link Options#setUseNNAPI(boolean)} directly for enabling NN API.
-   *     This method will be removed in a future release.
-   */
-  @Deprecated
-  public void setUseNNAPI(boolean useNNAPI) {
-    checkNotClosed();
-    wrapper.setUseNNAPI(useNNAPI);
-  }
-
-  /**
    * Sets the number of threads to be used for ops that support multi-threading.
    *
    * @deprecated Prefer using {@link Options#setNumThreads(int)} directly for controlling thread
@@ -518,6 +523,27 @@ public final class Interpreter implements AutoCloseable {
   public void resetVariableTensors() {
     checkNotClosed();
     wrapper.resetVariableTensors();
+  }
+
+   /**
+   * Advanced: Interrupts inference in the middle of a call to {@link Interpreter#run}.
+   *
+   * <p>A cancellation flag will be set to true when this function gets called. The interpreter will
+   * check the flag between Op invocations, and if it's {@code true}, the interpreter will stop
+   * execution. The interpreter will remain a cancelled state until explicitly "uncancelled" by
+   * {@code setCancelled(false)}.
+   *
+   * <p>WARNING: This is an experimental API and subject to change.
+   *
+   * @param cancelled {@code true} to cancel inference in a best-effort way; {@code false} to
+   * resume.
+   * @throws IllegalStateException if the interpreter is not initialized with the cancellable
+   * option, which is by default off.
+   *
+   * @see {@link Interpreter.Options#setCancellable(boolean)}.
+   */
+  public void setCancelled(boolean cancelled) {
+    wrapper.setCancelled(cancelled);
   }
 
   int getExecutionPlanLength() {

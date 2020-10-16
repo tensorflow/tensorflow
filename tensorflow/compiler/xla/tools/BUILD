@@ -1,5 +1,7 @@
 # Tools and utilities that aid in XLA development and usage.
 
+load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_cuda_or_rocm",
@@ -264,7 +266,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/core:lib",
-        "//tensorflow/core:regexp_internal",
+        "//tensorflow/core/platform:regexp",
         "@com_google_absl//absl/strings",
         "@com_google_protobuf//:protobuf_headers",
     ],
@@ -308,17 +310,18 @@ cc_library(
         ":prepare_reference_module",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:error_spec",
+        "//tensorflow/compiler/xla:literal_comparison",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client/lib:testing",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_runner",
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/service:platform_util",
-        "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:status",
-        "//tensorflow/core/platform:test",
         "//tensorflow/stream_executor:platform",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -339,6 +342,7 @@ tf_cc_binary(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:platform_port",
+        "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:test",
     ] + if_cuda_or_rocm([

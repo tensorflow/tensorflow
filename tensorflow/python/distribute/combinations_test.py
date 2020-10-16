@@ -25,12 +25,13 @@ import unittest
 from absl.testing import parameterized
 
 from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute.cluster_resolver import tfconfig_cluster_resolver
 from tensorflow.python.framework import combinations as framework_combinations
 from tensorflow.python.platform import test
 
 
-class ClusterParametersTest(test.TestCase, parameterized.TestCase):
+class ClusterCombinationTest(test.TestCase, parameterized.TestCase):
   # For this test we need to use `framework.test_combinations` because our
   # `generate` eats the cluster parameters.
   #
@@ -42,7 +43,7 @@ class ClusterParametersTest(test.TestCase, parameterized.TestCase):
           combinations.NamedDistribution(
               "HasClusterParams", lambda: None, has_chief=True, num_workers=2),
       ]),
-      test_combinations=(combinations.GPUCombination(),))
+      test_combinations=(combinations.ClusterCombination(),))
   def testClusterParams(self, distribution, has_chief, num_workers):
     self.assertTrue(has_chief)
     self.assertEqual(num_workers, 2)
@@ -51,14 +52,14 @@ class ClusterParametersTest(test.TestCase, parameterized.TestCase):
       framework_combinations.combine(distribution=[
           combinations.NamedDistribution("NoClusterParams", lambda: None),
       ]),
-      test_combinations=(combinations.GPUCombination(),))
+      test_combinations=(combinations.ClusterCombination(),))
   def testClusterParamsHasDefault(self, distribution, has_chief, num_workers):
     self.assertFalse(has_chief)
     self.assertEqual(num_workers, 1)
 
   @framework_combinations.generate(
       framework_combinations.combine(v=1),
-      test_combinations=(combinations.GPUCombination(),))
+      test_combinations=(combinations.ClusterCombination(),))
   def testClusterParamsNoStrategy(self, v, has_chief, num_workers):
     self.assertFalse(has_chief)
     self.assertEqual(num_workers, 1)
@@ -69,7 +70,7 @@ class ClusterParametersTest(test.TestCase, parameterized.TestCase):
               "WithClusterParams", lambda: None, has_chief=True, num_workers=2),
           combinations.NamedDistribution("WithoutClusterParams", lambda: None),
       ]),
-      test_combinations=(combinations.GPUCombination(),))
+      test_combinations=(combinations.ClusterCombination(),))
   def testClusterParamsAreOptional(self, distribution):
     # If combinations library doesn't raise an exception, the test is passed.
     pass
@@ -83,10 +84,24 @@ class ClusterParametersTest(test.TestCase, parameterized.TestCase):
           ds3=combinations.NamedDistribution(
               "Strategy3", lambda: None, has_chief=True, num_workers=0),
       ),
-      test_combinations=(combinations.GPUCombination(),))
+      test_combinations=(combinations.ClusterCombination(),))
   def testMultipleDistributionSingleWorker(self, ds1, ds2, ds3):
     # If combinations library doesn't raise an exception, the test is passed.
     pass
+
+  @combinations.generate(combinations.combine(num_workers=2,))
+  def testUseWithoutStrategy(self):
+    # There's no perfect way to check if the test runs in a subprocess. We
+    # approximate by checking the presence of TF_CONFIG, which is normally not
+    # set to the main process.
+    self.assertNotEqual(os.getenv("TF_CONFIG"), "")
+
+  def test_runner_creation(self):
+    cmb = combinations.NamedDistribution(
+        "Strategy1", lambda: None, has_chief=True, num_workers=2,
+        use_pool_runner=True)
+    self.assertIsNone(cmb._runner)
+    self.assertIsNotNone(cmb.runner)
 
 
 # unittest.expectedFailure doesn't work with parameterized test methods, so we
@@ -101,18 +116,10 @@ class ClusterParametersShouldFailTest(test.TestCase, parameterized.TestCase):
           ds2=combinations.NamedDistribution(
               "Strategy2", lambda: None, has_chief=True, num_workers=2),
       ),
-      test_combinations=(combinations.GPUCombination(),))
+      test_combinations=(combinations.ClusterCombination(),))
   def testMultipleDistributionMultiWorker(self, ds1, ds2):
     # combinations library should raise an exception.
     pass
-
-  @combinations.generate(combinations.combine(num_workers=2,))
-  def testUseWithoutStrategy(self):
-    # There's no perfect way to check if the test runs in a subprocess. We
-    # approximate by checking the presence of TF_CONFIG, which is normally not
-    # set to the main process.
-    self.assertNotEqual(os.getenv("TF_CONFIG"), "")
-    raise ValueError("actually run")
 
 
 # Tests that we *actually* run the test method in multiple workers instead of
@@ -157,4 +164,4 @@ class CombinationsOnClassMultiWorkerExpectedFailureTest(test.TestCase,
 
 
 if __name__ == "__main__":
-  combinations.main()
+  test_util.main()

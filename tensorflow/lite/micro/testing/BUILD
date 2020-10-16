@@ -1,3 +1,4 @@
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load(
     "//tensorflow/lite/micro/testing:micro_test.bzl",
     "tflite_micro_cc_test",
@@ -19,12 +20,8 @@ exports_files(["test_linux_binary.sh"])
 
 cc_library(
     name = "micro_test",
-    srcs = [
-        "test_utils.cc",
-    ],
     hdrs = [
         "micro_test.h",
-        "test_utils.h",
     ],
     visibility = [
         ":micro",
@@ -77,4 +74,11 @@ py_binary(
         "//third_party/py/numpy",
         "@absl_py//absl:app",
     ],
+)
+
+bzl_library(
+    name = "micro_test_bzl",
+    srcs = ["micro_test.bzl"],
+    visibility = ["//visibility:private"],
+    deps = ["//tensorflow/lite/micro:build_def_bzl"],
 )

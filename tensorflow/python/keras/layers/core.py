@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import copy
 import functools
 import operator
@@ -31,6 +30,7 @@ import numpy as np
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -44,8 +44,10 @@ from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.layers.ops import core as core_ops
+from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
@@ -57,10 +59,16 @@ from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
-from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import get_canonical_name_for_symbol
 from tensorflow.python.util.tf_export import get_symbol_from_name
 from tensorflow.python.util.tf_export import keras_export
+
+# TODO(b/168039935): track dropout rate to decide whether/how to make a
+# dropout rate fastpath.
+keras_temporary_dropout_rate = monitoring.BoolGauge(
+    '/tensorflow/api/keras/dropout/temp_rate_is_zero',
+    'Temporarily record if Keras dropout layer was created w/'
+    'constant rate = 0')
 
 
 # pylint: disable=g-classes-have-attributes
@@ -186,6 +194,10 @@ class Dropout(Layer):
   def __init__(self, rate, noise_shape=None, seed=None, **kwargs):
     super(Dropout, self).__init__(**kwargs)
     self.rate = rate
+    if isinstance(rate, (int, float)) and not rate:
+      keras_temporary_dropout_rate.get_cell().set(True)
+    else:
+      keras_temporary_dropout_rate.get_cell().set(False)
     self.noise_shape = noise_shape
     self.seed = seed
     self.supports_masking = True
@@ -201,7 +213,7 @@ class Dropout(Layer):
     noise_shape = []
     for i, value in enumerate(self.noise_shape):
       noise_shape.append(concrete_inputs_shape[i] if value is None else value)
-    return ops.convert_to_tensor_v2(noise_shape)
+    return ops.convert_to_tensor_v2_with_dispatch(noise_shape)
 
   def call(self, inputs, training=None):
     if training is None:
@@ -214,9 +226,8 @@ class Dropout(Layer):
           seed=self.seed,
           rate=self.rate)
 
-    output = tf_utils.smart_cond(training,
-                                 dropped_inputs,
-                                 lambda: array_ops.identity(inputs))
+    output = control_flow_util.smart_cond(training, dropped_inputs,
+                                          lambda: array_ops.identity(inputs))
     return output
 
   def compute_output_shape(self, input_shape):
@@ -754,9 +765,10 @@ class Lambda(Layer):
 
   The main reason to subclass `tf.keras.layers.Layer` instead of using a
   `Lambda` layer is saving and inspecting a Model. `Lambda` layers
-  are saved by serializing the Python bytecode, whereas subclassed
-  Layers can be saved via overriding their `get_config` method. Overriding
-  `get_config` improves the portability of Models. Models that rely on
+  are saved by serializing the Python bytecode, which is fundamentally
+  non-portable. They should only be loaded in the same environment where
+  they were saved. Subclassed layers can be saved in a more portable way
+  by overriding their `get_config` method. Models that rely on
   subclassed Layers are also often easier to visualize and reason about.
 
   Examples:
@@ -1293,8 +1305,20 @@ class TFOpLambda(Layer):
                                       api_name='keras',
                                       add_prefix_to_v1_names=True))
     if 'name' not in kwargs:
+      # Generate a name.
+      # TFOpLambda layers avoid already-observed names,
+      # because users cannot easily control the generated names.
+      # Without this avoidance, users would be more likely to run
+      # into unavoidable duplicate layer name collisions.
+      # (For standard layers users could just set `name` when creating the
+      # layer to work around a collision, but they can't do that for
+      # auto-generated layers)
+      if self.symbol:
+        name = 'tf.' + self.symbol
+      else:
+        name = self.function.__name__
       kwargs['name'] = K.unique_object_name(
-          'tf.' + self.symbol, zero_based=True)
+          name, zero_based=True, avoid_observed_names=True)
     kwargs['autocast'] = False
 
     # Decorate the function to produce this layer's call method
@@ -1428,18 +1452,16 @@ class KerasOpDispatcher(dispatch.GlobalOpDispatcher):
 
 KerasOpDispatcher().register()
 
-SliceTuple = collections.namedtuple('SliceTuple', ['start', 'stop', 'step'])
 
-
-def _slice_to_named_tuple(x):
+def _slice_to_dict(x):
   if isinstance(x, slice):
-    return SliceTuple(x.start, x.stop, x.step)
+    return {'start': x.start, 'stop': x.stop, 'step': x.step}
   return x
 
 
-def _named_tuple_to_slice(x):
-  if type(x).__name__ == 'SliceTuple':
-    return slice(x[0], x[1], x[2])
+def _dict_to_slice(x):
+  if isinstance(x, dict):
+    return slice(x['start'], x['stop'], x['step'])
   return x
 
 
@@ -1466,32 +1488,32 @@ class SlicingOpLambda(TFOpLambda):
     original_call = self.call
     # Decorate the function to produce this layer's call method
     def _call_wrapper(*args, **kwargs):
-      # Turn any slice nametuples in the args back into `slice` objects.
+      # Turn any slice dicts in the args back into `slice` objects.
       # This conversion cannot use nest.flatten/map_structure,
-      # because namedtuples are flattened by nest while slices aren't.
+      # because dicts are flattened by nest while slices aren't.
       # So, map_structure would only see the individual elements in the
-      # namedtuple.
+      # dict.
       # This can't use map_structure_up_to either because the 'shallowness' of
       # the shallow tree would have to vary depending on if only one dim or
       # multiple are being sliced.
       new_args = []
       for arg in args:
-        arg = _named_tuple_to_slice(arg)
+        arg = _dict_to_slice(arg)
         if isinstance(arg, (list, tuple)):
           new_arg = []
           for sub_arg in arg:
-            new_arg.append(_named_tuple_to_slice(sub_arg))
+            new_arg.append(_dict_to_slice(sub_arg))
           arg = new_arg
         new_args.append(arg)
 
       # Handle the kwargs too.
       new_kwargs = {}
       for key, value in kwargs.items():
-        value = _named_tuple_to_slice(value)
+        value = _dict_to_slice(value)
         if isinstance(value, (list, tuple)):
           new_value = []
           for v in value:
-            new_value.append(_named_tuple_to_slice(v))
+            new_value.append(_dict_to_slice(v))
           value = new_value
         new_kwargs[key] = value
 
@@ -1507,8 +1529,8 @@ class TFSlicingOpDispatcher(dispatch.OpDispatcher):
 
   def handle(self, args, kwargs):
     """Handle the specified operation with the specified arguments."""
-    args = nest.map_structure(_slice_to_named_tuple, args)
-    kwargs = nest.map_structure(_slice_to_named_tuple, kwargs)
+    args = nest.map_structure(_slice_to_dict, args)
+    kwargs = nest.map_structure(_slice_to_dict, kwargs)
     if any(
         isinstance(x, keras_tensor.KerasTensor)
         for x in nest.flatten([args, kwargs])):

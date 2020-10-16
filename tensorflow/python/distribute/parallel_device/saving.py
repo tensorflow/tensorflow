@@ -20,97 +20,105 @@ from __future__ import print_function
 
 import contextlib
 import functools
+import six
+import wrapt
 
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables
 from tensorflow.python.training.saving import saveable_object
 
 
-def _read_component(handle, dtype, replica_id, parallel_device):
-  """Read one component of a parallel variable and discard the rest."""
-  with ops.device(handle.device):
-    read = gen_resource_variable_ops.read_variable_op(
-        resource=handle, dtype=dtype)
-  all_components = parallel_device.unpack(read)
-  # We're pretending that parallel variables have a first axis with length
-  # num_components, so we need to add a dummy first axis to the shape that gets
-  # saved.
-  return all_components[replica_id][None, ...]
+class _ParallelComponentSaveable(saveable_object.SaveableObject):
+  """Saves and restores one component of a parallel variable."""
 
-
-class _ParallelDeviceSaveable(saveable_object.SaveableObject):
-  """Saves and restores a parallel variable."""
-
-  def __init__(self, name, handle, dtype, component_shape, parallel_device):
-    # Each component device gets one spec with a tensor to save.
-    specs = []
-    for replica_id, device_name in enumerate(parallel_device.components):
-      # TODO(b/151773535): SaveableObjects with SaveSpecs on different devices
-      # will cause extra copying at the moment. We should fix that before doing
-      # anything serious with this code.
-      specs.append(
-          saveable_object.SaveSpec(
-              tensor=functools.partial(
-                  _read_component,
-                  handle=handle,
-                  dtype=dtype,
-                  replica_id=replica_id,
-                  parallel_device=parallel_device),
-              slice_spec=variables.Variable.SaveSliceInfo(
-                  full_shape=([len(parallel_device.components)] +
-                              component_shape),
-                  var_offset=[replica_id] + [0] * len(component_shape),
-                  var_shape=[1] + component_shape).spec,
-              device=device_name,
-              dtype=dtype,
-              name=name))
+  def __init__(self, name, handle, dtype, shape):
+    specs = [saveable_object.SaveSpec(
+        tensor=functools.partial(gen_resource_variable_ops.read_variable_op,
+                                 resource=handle, dtype=dtype),
+        slice_spec="",
+        device=handle.device,
+        dtype=dtype,
+        name=name)]
     self._handle = handle
-    self._parallel_device = parallel_device
-    self._component_shape = component_shape
-    super(_ParallelDeviceSaveable, self).__init__(None, specs, name)
+    super(_ParallelComponentSaveable, self).__init__(handle, specs, name)
 
   def restore(self, tensors, restored_shapes=None):
-    with ops.device(self._handle.device):
-      # Combine the restored tensors into one parallel tensor to assign.
-      bundled = self._parallel_device.pack(tensors)
-      gen_resource_variable_ops.assign_variable_op(
-          resource=self._handle,
-          # Squeeze out the dummy first axis we added when saving.
-          value=array_ops.squeeze(bundled, axis=0))
+    restored_tensor, = tensors
+    gen_resource_variable_ops.assign_variable_op(
+        resource=self._handle, value=restored_tensor)
 
 
-class VariableWithFixedCheckpointing(resource_variable_ops.ResourceVariable):
-  """Overrides checkpointing behavior to save like a partitioned variable."""
+_wrapt_type = type(wrapt.ObjectProxy)
+_variable_type = type(resource_variable_ops.BaseResourceVariable)
+if issubclass(_variable_type, _wrapt_type):
+  # Some wrapt versions do not have a meta-class, which would create an invalid
+  # MRO.
+  VariableProxyMetaClass = _variable_type
+else:
+  class VariableProxyMetaClass(_wrapt_type, _variable_type):  # pylint: disable=duplicate-bases
+    """A combined MetaClasses for ParallelVariable.
 
-  def __init__(self, parallel_device, **kwargs):
-    self._parallel_device = parallel_device
-    kwargs = {k: v for k, v in kwargs.items()
-              if k not in ["use_resource", "expected_shape"]}
-    super(VariableWithFixedCheckpointing, self).__init__(**kwargs)
+    Satisfies the requirement "the metaclass of a derived class must be a
+    (non-strict) subclass of the metaclasses of all its bases." At the time of
+    writing these two MetaClasses are compatible (overriding different methods,
+    both relatively trivial).
+    """
+    pass
 
+
+class ParallelVariable(
+    six.with_metaclass(VariableProxyMetaClass, wrapt.ObjectProxy,
+                       resource_variable_ops.BaseResourceVariable)):
+  """Overrides variable checkpointing, saving each component."""
+
+  def __init__(self, parallel_device, wrapped_variable):
+    self._self_parallel_device = parallel_device
+    super(ParallelVariable, self).__init__(wrapped_variable)
+
+  # TODO(allenl): Consider either adding a boolean argument for
+  # save-primary-only or looking at synchronization/aggregation properties.
   def _gather_saveables_for_checkpoint(self):
-    # Note VARIABLE_VALUE is the usual attribute name for variables. Using
-    # something different means (a) the checkpointing infrastructure won't try
-    # doing restore-on-create (which has shape issues), and (b) the saved
-    # variables won't be compatible with regular variables. Both of those are
-    # good in this case.
-    return dict(
-        PARALLEL_VARIABLE_VALUE=functools.partial(
-            _ParallelDeviceSaveable,
-            handle=self.handle,
-            dtype=self.dtype,
-            component_shape=self.shape,
-            parallel_device=self._parallel_device))
+    """Generate SaveableObjects for each component device."""
+    component_saveables = {}
+    # Create one SaveableObject per device, each one of which looks like a
+    # regular ResourceVariable saveable.
+    for index, handle in enumerate(
+        self._self_parallel_device.unpack(self.handle)):
+      if index == 0:
+        # This is the name regular tf.Variables use to save. Using it for the
+        # component on the first device means non-parallel tf.Variable objects
+        # will use this value when pointed at a parallel checkpoint.
+        attribute = "VARIABLE_VALUE"
+      else:
+        attribute = "parallel_component_{}".format(index)
+      component_saveables[attribute] = (
+          functools.partial(
+              _ParallelComponentSaveable,
+              handle=handle,
+              dtype=self.dtype,
+              shape=self.shape))
+    return component_saveables
 
 
 def _variable_creator(next_creator, parallel_device, **kwargs):
-  del next_creator
-  return VariableWithFixedCheckpointing(
-      parallel_device=parallel_device, **kwargs)
+  """Wraps intercepted variables to add parallel saving."""
+  # Depending on the context (SavedModel loading, tf.function, etc.) we may get
+  # one of several different variable types. For variables placed on the
+  # parallel device we only want to affect saving and otherwise preserve
+  # behavior. This wrapping to override behavior is similar to tf.distribute's
+  # DistributedVariable, but much more limited.
+  variable = next_creator(**kwargs)
+  if variable.device == parallel_device._name:  # Friend access; pylint: disable=protected-access
+    return ParallelVariable(
+        parallel_device=parallel_device, wrapped_variable=variable)
+  else:
+    # Variables not placed on the handler (because of a device scope) don't
+    # need wrapping.
+    #
+    # TODO(allenl): Device scopes should merge with parallel devices rather
+    # than overriding them like this.
+    return variable
 
 
 @contextlib.contextmanager

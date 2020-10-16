@@ -184,6 +184,7 @@ REGISTER_OP("PrefetchDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("slack_period: int = 0")
     .Attr("legacy_autotune: bool = true")
+    .Attr("buffer_size_min: int = 0")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
       // buffer_size should be a scalar.
@@ -837,6 +838,17 @@ REGISTER_OP("OptimizeDataset")
     .Attr("optimization_configs: list(string) = []")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("OptimizeDatasetV2")
+    .Input("input_dataset: variant")
+    .Input("optimizations_enabled: string")
+    .Input("optimizations_disabled: string")
+    .Input("optimizations_default: string")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .Attr("optimization_configs: list(string) = []")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("OptionalFromValue")
     .Input("components: Toutput_types")
     .Output("optional: variant")
@@ -871,6 +883,7 @@ REGISTER_OP("ModelDataset")
     .Output("handle: variant")
     .Attr("algorithm: int = 0")
     .Attr("cpu_budget: int = 0")
+    .Attr("ram_budget: int = 0")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);

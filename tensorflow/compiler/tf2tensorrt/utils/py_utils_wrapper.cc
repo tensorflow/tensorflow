@@ -16,18 +16,15 @@ limitations under the License.
 #include <tuple>
 
 #include "pybind11/pybind11.h"
+#include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/py_utils.h"
 
 std::tuple<int, int, int> get_linked_tensorrt_version() {
-  int major, minor, patch;
-  tensorflow::tensorrt::GetLinkedTensorRTVersion(&major, &minor, &patch);
-  return std::tuple<int, int, int>{major, minor, patch};
+  return tensorflow::tensorrt::GetLinkedTensorRTVersion();
 }
 
 std::tuple<int, int, int> get_loaded_tensorrt_version() {
-  int major, minor, patch;
-  tensorflow::tensorrt::GetLoadedTensorRTVersion(&major, &minor, &patch);
-  return std::tuple<int, int, int>{major, minor, patch};
+  return tensorflow::tensorrt::GetLoadedTensorRTVersion();
 }
 
 PYBIND11_MODULE(_pywrap_py_utils, m) {

@@ -27,7 +27,8 @@ inline int64 CeilDiv(int64 dividend, int64 divisor) {
   return (dividend - 1 + divisor) / divisor;
 }
 
-constexpr const char* const kDatasetType = "Rebatch";
+constexpr const char* const kDatasetTypeV1 = "Rebatch";
+constexpr const char* const kDatasetTypeV2 = "RebatchV2";
 
 class RebatchDatasetOp : public UnaryDatasetOpKernel {
  public:
@@ -73,7 +74,7 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
         const string& prefix) const override {
       name_utils::IteratorPrefixParams params;
       return absl::make_unique<Iterator>(Iterator::Params{
-          this, name_utils::IteratorPrefix(kDatasetType, prefix, params)});
+          this, name_utils::IteratorPrefix(kDatasetTypeV1, prefix, params)});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -87,7 +88,7 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
     string DebugString() const override {
       name_utils::DatasetDebugStringParams params;
       params.set_args(num_replicas_);
-      return name_utils::DatasetDebugString(kDatasetType, params);
+      return name_utils::DatasetDebugString(kDatasetTypeV1, params);
     }
 
     Status CheckExternalState() const override {
@@ -330,7 +331,7 @@ class RebatchDatasetV2Op : public UnaryDatasetOpKernel {
         const string& prefix) const override {
       name_utils::IteratorPrefixParams params;
       return absl::make_unique<Iterator>(Iterator::Params{
-          this, name_utils::IteratorPrefix(kDatasetType, prefix, params)});
+          this, name_utils::IteratorPrefix(kDatasetTypeV2, prefix, params)});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -342,7 +343,7 @@ class RebatchDatasetV2Op : public UnaryDatasetOpKernel {
     }
 
     string DebugString() const override {
-      return name_utils::DatasetDebugString(kDatasetType);
+      return name_utils::DatasetDebugString(kDatasetTypeV2);
     }
 
     Status CheckExternalState() const override {
@@ -416,7 +417,6 @@ class RebatchDatasetV2Op : public UnaryDatasetOpKernel {
           std::vector<Tensor> slices;
           slices.reserve(tensors_.size());
           for (const auto& tensor : tensors_) {
-            Tensor slice = tensor.Slice(offset_, slice_end);
             slices.push_back(tensor.Slice(offset_, slice_end));
           }
           slices_to_concatenate.push_back(std::move(slices));
@@ -451,8 +451,28 @@ class RebatchDatasetV2Op : public UnaryDatasetOpKernel {
         if (desired_batch_size == 0) {
           DCHECK_EQ(batch_size, 0);
           DCHECK_EQ(slices_to_concatenate.size(), 0);
-          for (const auto& dtype : dataset()->output_dtypes()) {
-            out_tensors->push_back(Tensor(dtype));
+          for (int i = 0; i < dataset()->output_dtypes().size(); ++i) {
+            if (dataset()->output_shapes()[i].unknown_rank()) {
+              // For unknown rank tensors, we just create a empty Tensor since
+              // it doesn't matter what shape it is.
+              out_tensors->push_back(Tensor(dataset()->output_dtypes()[i]));
+            } else {
+              auto dim_sizes = dataset()->output_shapes()[i].dim_sizes();
+
+              // The output batch size is always zero since the desired batch
+              // size is zero.
+              dim_sizes[0] = 0;
+
+              // Handle unknown dimensions by setting any unknown dimensions to
+              // zero since there isn't any data anyway.
+              for (int j = 1; j < dim_sizes.size(); ++j) {
+                if (dim_sizes[j] == -1) dim_sizes[j] = 0;
+              }
+
+              TensorShape tensor_shape(dim_sizes);
+              out_tensors->push_back(
+                  Tensor(dataset()->output_dtypes()[i], tensor_shape));
+            }
           }
           return Status::OK();
         }

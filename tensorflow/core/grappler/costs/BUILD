@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -337,6 +339,7 @@ cc_library(
 tf_cc_test(
     name = "op_level_cost_estimator_test",
     srcs = ["op_level_cost_estimator_test.cc"],
+    tags = ["no_oss"],  # b/163222310
     deps = [
         ":op_level_cost_estimator",
         "//tensorflow/core:framework",

@@ -146,7 +146,7 @@ class AutoTuneMap {
   }
 
  private:
-  AutoTuneMap(const string& name) : name_(name) {
+  AutoTuneMap(const std::string& name) : name_(name) {
     min_score_threshold_ = 1;
     int min_warmup_iterations = 10;
     const char* threshold_str = getenv("TF_AUTOTUNE_THRESHOLD");
@@ -174,8 +174,8 @@ class AutoTuneMap {
     }
   };
 
-  string GetActionSummary(StringPiece action, const Parameters& params,
-                          const Config& config) {
+  std::string GetActionSummary(StringPiece action, const Parameters& params,
+                               const Config& config) {
     return strings::Printf("autotune_map %s %s: %s -> (%s)", name_.c_str(),
                            string(action).c_str(), params.ToString().c_str(),
                            config.ToString().c_str());
@@ -189,7 +189,7 @@ class AutoTuneMap {
   };
   std::unordered_map<Parameters, ValueType, Hasher> params_config_map_
       TF_GUARDED_BY(mu_);
-  string name_;
+  std::string name_;
   int32 min_score_threshold_;
   int32 max_autotune_count_;
   int32 max_autotune_global_count_;
@@ -243,6 +243,37 @@ void LogFusedConvForwardAutotuneResults(
 Status BestCudnnConvAlgorithm(absl::Span<const AutotuneResult> results,
                               se::dnn::AlgorithmConfig* algo);
 
+namespace gpu_utils {
+// Get a workspace limit from the environment variable, which is in MB.
+// Return the workspace memory limit in bytes. If no value is set, return the
+// default value.
+int64 GetWorkspaceLimit(const string& envvar_in_mb,
+                        int64 default_value_in_bytes);
+}  // namespace gpu_utils
+
+// A class to provide scratch-space allocator for Stream-Executor callbacks in
+// CUDA libraries (CUDNN etc.).
+// TensorFlow is responsible for releasing the temporary buffers after
+// the kernel finishes.
+class GpuScratchAllocator : public se::ScratchAllocator {
+ public:
+  virtual ~GpuScratchAllocator() {}
+
+  GpuScratchAllocator(int64 memory_limit, OpKernelContext* context);
+
+  int64 GetMemoryLimitInBytes() override { return memory_limit_; }
+
+  se::port::StatusOr<se::DeviceMemory<uint8>> AllocateBytes(
+      int64 byte_size) override;
+
+  int64 TotalByteSize() { return total_byte_size_; }
+
+ private:
+  int64 memory_limit_;
+  int64 total_byte_size_;
+  OpKernelContext* context_;
+  std::vector<Tensor> allocated_tensors_;
+};
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

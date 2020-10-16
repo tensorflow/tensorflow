@@ -20,9 +20,10 @@ from __future__ import print_function
 from absl.testing import parameterized
 
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import array_ops
+from tensorflow.python.framework import tfrt_utils
 from tensorflow.python.platform import test
 
 
@@ -37,11 +38,13 @@ class DefFunctionCpuOnlyTest(test.TestCase, parameterized.TestCase):
     if test.is_built_with_rocm() or test_util.is_xla_enabled():
       return
 
-    with self.assertRaisesRegexp(ValueError, 'XLA support is not'):
+    with self.assertRaisesRegex((errors.UnknownError if tfrt_utils.enabled()
+                                 else errors.UnimplementedError),
+                                'check target linkage'):
 
       @def_function.function(experimental_compile=True)
       def fn(x):
-        return array_ops.unique(x).y
+        return x + x
 
       fn([1, 1, 2, 3])
 

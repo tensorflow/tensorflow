@@ -52,8 +52,6 @@ static_assert(sizeof(TfLiteFloat16) == sizeof(uint16_t),
 
 namespace tflite {
 
-namespace impl {
-
 namespace {
 
 // Gets the current TfLiteQuantization from the legacy TfLiteQuantizationParams.
@@ -86,9 +84,8 @@ TfLiteQuantization GetQuantizationFromLegacy(
 }  // namespace
 
 Interpreter::Interpreter(ErrorReporter* error_reporter)
-    : error_reporter_(error_reporter ? error_reporter : DefaultErrorReporter()),
-      lazy_delegate_provider_(
-          TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {})) {
+    : error_reporter_(error_reporter ? error_reporter
+                                     : DefaultErrorReporter()) {
   // TODO(b/128420794): Include the TFLite runtime version in the log.
   // Prod logging is useful for mobile platforms where scraping console logs is
   // critical for debugging.
@@ -113,7 +110,7 @@ Interpreter::Interpreter(ErrorReporter* error_reporter)
   external_contexts_[kTfLiteCpuBackendContext] =
       own_external_cpu_backend_context_.get();
 
-  UseNNAPI(false);
+  primary_subgraph().UseNNAPI(false);
 }
 
 Interpreter::~Interpreter() {
@@ -163,6 +160,12 @@ void Interpreter::SetExternalContext(TfLiteExternalContextType type,
   primary_subgraph().SetExternalContext(type, ctx);
 }
 
+TfLiteStatus Interpreter::SetCustomAllocationForTensor(
+    int tensor_index, const TfLiteCustomAllocation& allocation) {
+  return primary_subgraph().SetCustomAllocationForTensor(tensor_index,
+                                                         allocation);
+}
+
 TfLiteStatus Interpreter::SetInputs(std::vector<int> inputs) {
   return primary_subgraph().SetInputs(std::move(inputs));
 }
@@ -178,12 +181,53 @@ TfLiteStatus Interpreter::SetVariables(std::vector<int> variables) {
 TfLiteStatus Interpreter::AllocateTensors() {
   // Apply the default delegate that TFLite will enable at this point to allow
   // other user-level delegates to be applied first.
-  if (lazy_delegate_provider_) {
-    // The execution will fall back to default implementation if the XNNPACK
-    // delegate fails to be applied. Therefore, we ignore the return status
-    // here and let it fall through the rest of the code.
-    ModifyGraphWithDelegate(std::move(lazy_delegate_provider_));
-    lazy_delegate_provider_.reset();
+  if (!lazy_delegate_providers_.empty()) {
+    TFLITE_LOG(TFLITE_LOG_INFO,
+               "Applying %zu TensorFlow Lite delegate(s) lazily.",
+               lazy_delegate_providers_.size());
+    // At the momement, XNNPACK delegate is the only one that might be applied
+    // by default, in which case, the execution will fall back to default
+    // implementation if the XNNPACK delegate fails to be applied. Therefore, we
+    // ignore the return status here and let it fall through the rest of the
+    // code.
+    for (size_t i = 0; i < lazy_delegate_providers_.size(); ++i) {
+      auto status =
+          ModifyGraphWithDelegate(std::move(lazy_delegate_providers_[i]));
+      switch (status) {
+        case kTfLiteOk:
+          TFLITE_LOG(TFLITE_LOG_INFO,
+                     "Successfully applied the default TensorFlow Lite "
+                     "delegate indexed at %zu.",
+                     i);
+          break;
+        case kTfLiteError:
+          TF_LITE_REPORT_ERROR(error_reporter_,
+                               "Failed to apply the default TensorFlow Lite "
+                               "delegate indexed at %zu.",
+                               i);
+          return kTfLiteError;
+        case kTfLiteDelegateError:
+          TF_LITE_REPORT_ERROR(
+              error_reporter_,
+              "Error in applying the default TensorFlow Lite delegate indexed "
+              "at %zu, and all previously applied delegates are reverted.",
+              i);
+          break;
+        case kTfLiteApplicationError:
+          TF_LITE_REPORT_ERROR(error_reporter_,
+                               "Ignoring failed application of the default "
+                               "TensorFlow Lite delegate indexed at %zu.",
+                               i);
+          break;
+        default:
+          TF_LITE_REPORT_ERROR(error_reporter_,
+                               "Unknown status (%d) after applying the default "
+                               "TensorFlow Lite delegate indexed at %zu.",
+                               status, i);
+          return kTfLiteError;
+      }
+    }
+    lazy_delegate_providers_.clear();
   }
 
   return primary_subgraph().AllocateTensors();
@@ -300,7 +344,12 @@ TfLiteStatus Interpreter::SetExecutionPlan(const std::vector<int>& new_plan) {
   return primary_subgraph().SetExecutionPlan(new_plan);
 }
 
-void Interpreter::UseNNAPI(bool enable) { primary_subgraph().UseNNAPI(enable); }
+void Interpreter::UseNNAPI(bool enable) {
+  TFLITE_LOG_PROD_ONCE(TFLITE_LOG_INFO,
+                       "Interpreter::UseNNAPI() is deprecated. Use "
+                       "tflite::NnApiDelegate() directly instead.");
+  primary_subgraph().UseNNAPI(enable);
+}
 
 TfLiteStatus Interpreter::SetNumThreads(int num_threads) {
   if (num_threads < -1) {
@@ -354,13 +403,6 @@ TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
     TF_LITE_ENSURE_STATUS(RemoveAllDelegates());
   }
   return status;
-}
-
-TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegatePtr delegate) {
-  // Note that we retain ownership of the delegate even if graph modification
-  // fails, as delegate use will be in an indeterminate state at that point.
-  owned_delegates_.push_back(std::move(delegate));
-  return ModifyGraphWithDelegate(owned_delegates_.back().get());
 }
 
 TfLiteStatus Interpreter::RemoveAllDelegates() {
@@ -430,7 +472,5 @@ void Interpreter::SetSubgraphProfiler() {
 Profiler* Interpreter::GetProfiler() {
   return primary_subgraph().GetProfiler();
 }
-
-}  // namespace impl
 
 }  // namespace tflite

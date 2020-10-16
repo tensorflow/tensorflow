@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <regex>  // NOLINT
+
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api_internal.h"
@@ -119,25 +121,6 @@ string AddVariablesFunction() {
   return def.SerializeAsString();
 }
 
-void VarIsInitialized(TFE_Context* ctx, TFE_TensorHandle* var_handle) {
-  TF_Status* status = TF_NewStatus();
-  TFE_Op* op = TFE_NewOp(ctx, "VarIsInitializedOp", status);
-  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
-  TFE_OpAddInput(op, var_handle, status);
-  TFE_TensorHandle* is_initialized[1] = {nullptr};
-  int num_retvals = 1;
-  TFE_Execute(op, &is_initialized[0], &num_retvals, status);
-  CHECK_EQ(1, num_retvals);
-  TF_Tensor* t = TFE_TensorHandleResolve(is_initialized[0], status);
-  bool initialized = false;
-  memcpy(&initialized, TF_TensorData(t), TF_TensorByteSize(t));
-  EXPECT_EQ(initialized, true);
-  TF_DeleteTensor(t);
-  TFE_DeleteTensorHandle(is_initialized[0]);
-  TFE_DeleteOp(op);
-  delete status;
-}
-
 void TestFunctionWithPackedInput(const bool remote) {
   tensorflow::ServerDef server_def = GetServerDef(3);
 
@@ -180,9 +163,8 @@ void TestFunctionWithPackedInput(const bool remote) {
 
   // Add a sync point in order to make sure that variables have been initialized
   // before the function execution starts.
-  // TODO(b/155789951): Remove once b/155789951 is fixed.
-  VarIsInitialized(ctx, h1);
-  VarIsInitialized(ctx, h2);
+  TFE_ContextAsyncWait(ctx, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   // Pack 3 variable handles into one TFE_TensorHandle.
   // When remote is false, function device is placed on task0. Handle types are
@@ -262,61 +244,64 @@ TEST(CAPI, TestRemoteFunctionWithPackedInput) {
   TestFunctionWithPackedInput(/*remote=*/true);
 }
 
+string VariableAddFunctionSignature() {
+  return "    signature {"
+         "      name: 'VariableAddFunction'"
+         "      input_arg {"
+         "        name: 'var0'"
+         "        type: DT_RESOURCE"
+         "      }"
+         "      output_arg {"
+         "        name: 'var0_value'"
+         "        type: DT_FLOAT"
+         "      }"
+         "    }"
+         "    node_def {"
+         "      name: 'read0'"
+         "      op: 'ReadVariableOp'"
+         "      input: 'var0'"
+         "      attr {"
+         "        key: 'dtype'"
+         "        value {"
+         "          type: DT_FLOAT"
+         "        }"
+         "      }"
+         "    }"
+         "    node_def {"
+         "      name: 'add'"
+         "      op: 'Add'"
+         "      input: 'read0:value:0'"
+         "      input: 'read0:value:0'"
+         "      device: '/job:localhost/task:1/device:CPU:0'"
+         "      attr {"
+         "        key: 'T'"
+         "        value {"
+         "          type: DT_FLOAT"
+         "        }"
+         "      }"
+         "    }"
+         "    node_def {"
+         "      name: 'identity'"
+         "      op: 'Identity'"
+         "      input: 'add:z:0'"
+         "      device: '/job:localhost/task:0/device:CPU:0'"
+         "      attr {"
+         "        key: 'T'"
+         "        value {"
+         "          type: DT_FLOAT"
+         "        }"
+         "      }"
+         "    }"
+         "    ret {"
+         "      key: 'var0_value'"
+         "      value: 'identity:output:0'"
+         "    }";
+}
+
 string VariableAddFunction() {
   tensorflow::FunctionDef def;
   CHECK(tensorflow::protobuf::TextFormat::ParseFromString(
-      "    signature {"
-      "      name: 'VariableAddFunction'"
-      "      input_arg {"
-      "        name: 'var0'"
-      "        type: DT_RESOURCE"
-      "      }"
-      "      output_arg {"
-      "        name: 'var0_value'"
-      "        type: DT_FLOAT"
-      "      }"
-      "    }"
-      "    node_def {"
-      "      name: 'read0'"
-      "      op: 'ReadVariableOp'"
-      "      input: 'var0'"
-      "      attr {"
-      "        key: 'dtype'"
-      "        value {"
-      "          type: DT_FLOAT"
-      "        }"
-      "      }"
-      "    }"
-      "    node_def {"
-      "      name: 'add'"
-      "      op: 'Add'"
-      "      input: 'read0:value:0'"
-      "      input: 'read0:value:0'"
-      "      device: '/job:localhost/task:1/device:CPU:0'"
-      "      attr {"
-      "        key: 'T'"
-      "        value {"
-      "          type: DT_FLOAT"
-      "        }"
-      "      }"
-      "    }"
-      "    node_def {"
-      "      name: 'identity'"
-      "      op: 'Identity'"
-      "      input: 'add:z:0'"
-      "      device: '/job:localhost/task:0/device:CPU:0'"
-      "      attr {"
-      "        key: 'T'"
-      "        value {"
-      "          type: DT_FLOAT"
-      "        }"
-      "      }"
-      "    }"
-      "    ret {"
-      "      key: 'var0_value'"
-      "      value: 'identity:output:0'"
-      "    }",
-      &def));
+      VariableAddFunctionSignature(), &def));
   return def.SerializeAsString();
 }
 
@@ -391,6 +376,8 @@ TEST(CAPI, DistributedFunctionGraphPassOnlyOnce) {
 
   TFE_TensorHandle* var_handle = TestVariable(ctx, 2.0, dev2_name);
   EXPECT_NE(var_handle, nullptr);
+  TFE_ContextAsyncWait(ctx, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   const string function_def = VariableAddFunction();
   TFE_ContextAddFunctionDef(ctx, function_def.data(), function_def.size(),
@@ -426,6 +413,17 @@ TEST(CAPI, DistributedFunctionGraphPassOnlyOnce) {
 
   // Disable the test graph pass so it does not affect other test cases.
   GraphErrorInjectionPass::enabled_ = false;
+}
+
+string VariableAddFunctionWithGraphError() {
+  string signature = VariableAddFunctionSignature();
+  // Replace the node 'read0' with 'read0_maybe_with_graph_error', so that the
+  // error injecting pass can identify and introduce graph pass errors.
+  signature = std::regex_replace(signature, std::regex("read0"),
+                                 "read0_maybe_with_graph_error");
+  tensorflow::FunctionDef def;
+  CHECK(tensorflow::protobuf::TextFormat::ParseFromString(signature, &def));
+  return def.SerializeAsString();
 }
 
 class FunctionErrorInjectionPass : public tensorflow::FunctionOptimizationPass {
@@ -474,16 +472,19 @@ void TestDistributedFunctionCancellation(bool inject_error) {
   const char dev2_name[] = "/job:localhost/replica:0/task:2/device:CPU:0";
 
   if (inject_error) {
-    // Inject a function optimization pass failure when it sees the 'read0' op
-    // having a requested device `dev2_name`. During execution:
-    //   * task:0 processes the main function `VariableAddFunction` and places
-    //     the read0 op on task:2
-    //   * task:0 partitions the main function with a subgraph containing read0
-    //     sent to task:2
-    //   * task:2 graph pass reports an error when it sees read0 with dev2_name
+    // Inject a function optimization pass failure when it sees the
+    // 'read0_maybe_with_graph_error' op having a requested device `dev2_name`.
+    // During execution:
+    //   * task:0 processes main function `VariableAddFunctionWithGraphError`
+    //     and places the 'read0_maybe_with_graph_error' op on task:2
+    //   * task:0 partitions the main function with a subgraph containing
+    //     'read0_maybe_with_graph_error' sent to task:2
+    //   * task:2 graph pass reports an error when it sees
+    //     'read0_maybe_with_graph_error' with dev2_name
     tensorflow::function_optimization_registration::
         FunctionOptimizationPassRegistration register_test_pass(
-            std::make_unique<FunctionErrorInjectionPass>("read0", dev2_name));
+            std::make_unique<FunctionErrorInjectionPass>(
+                "read0_maybe_with_graph_error", dev2_name));
   }
 
   TF_Status* status = TF_NewStatus();
@@ -498,8 +499,11 @@ void TestDistributedFunctionCancellation(bool inject_error) {
 
   TFE_TensorHandle* var_handle = TestVariable(ctx, 2.0, dev2_name);
   EXPECT_NE(var_handle, nullptr);
+  TFE_ContextAsyncWait(ctx, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
-  const string function_def = VariableAddFunction();
+  const string function_def = inject_error ? VariableAddFunctionWithGraphError()
+                                           : VariableAddFunction();
   TFE_ContextAddFunctionDef(ctx, function_def.data(), function_def.size(),
                             status);
   ASSERT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
@@ -541,7 +545,9 @@ TEST(CAPI, DistributedFunctionNoError) {
   TestDistributedFunctionCancellation(false);
 }
 
-TEST(CAPI, DistributedFunctionCancelledOnError) {
+// TODO(b/170399182): Update test once an alternative to using the function
+// optimization hook is in place.
+TEST(CAPI, DISABLED_DistributedFunctionCancelledOnError) {
   TestDistributedFunctionCancellation(true);
 }
 

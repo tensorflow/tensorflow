@@ -27,12 +27,14 @@ import numpy as np
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import type_spec
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
@@ -43,10 +45,9 @@ from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training as training_lib
-from tensorflow.python.keras.mixed_precision.experimental import policy
+from tensorflow.python.keras.legacy_tf_layers import core as legacy_core
 from tensorflow.python.keras.optimizer_v2 import rmsprop
-from tensorflow.python.keras.utils import tf_utils
-from tensorflow.python.layers import core as legacy_core
+from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
@@ -56,7 +57,6 @@ from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
-from tensorflow.python.platform import tf_logging
 from tensorflow.python.summary import summary_iterator
 from tensorflow.python.util import nest
 
@@ -84,6 +84,13 @@ class InvalidLayer(base_layer.Layer):
 
 
 class BaseLayerTest(keras_parameterized.TestCase):
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_layer_instrumentation(self):
+    layer = layers.Add()
+    self.assertTrue(layer._instrumented_keras_api)
+    self.assertTrue(layer._instrumented_keras_layer_class)
+    self.assertFalse(layer._instrumented_keras_model_class)
 
   @combinations.generate(combinations.times(
       combinations.keras_model_type_combinations(),
@@ -376,9 +383,9 @@ class BaseLayerTest(keras_parameterized.TestCase):
       def call(self, inputs, training=None):
         if training is None:
           training = backend.learning_phase()
-        return tf_utils.smart_cond(training,
-                                   lambda: array_ops.ones_like(inputs),
-                                   lambda: array_ops.zeros_like(inputs))
+        return control_flow_util.smart_cond(
+            training, lambda: array_ops.ones_like(inputs),
+            lambda: array_ops.zeros_like(inputs))
 
     return TrainingLayer()
 
@@ -435,6 +442,49 @@ class BaseLayerTest(keras_parameterized.TestCase):
     # Checks that variables get initialized.
     model.fit(x, y, batch_size=2, epochs=2)
 
+  @combinations.generate(combinations.combine(mode=['eager']))
+  def test_composite_variable_assignment(self):
+
+    class Spec(type_spec.TypeSpec):
+
+      value_type = property(lambda self: CompositeVariable)
+
+      def _component_specs(self):
+        pass
+
+      def _serialize(self):
+        pass
+
+      def _to_components(self, value):
+        return value._variables
+
+      def _from_components(self, variable_list):
+        return CompositeVariable(variable_list)
+
+    class CompositeVariable(composite_tensor.CompositeTensor):
+
+      def __init__(self, variable_list):
+        self._variables = variable_list
+
+      @property
+      def _type_spec(self):
+        return Spec()
+
+    class CompositeVariableLayer(base_layer.Layer):
+
+      def __init__(self):
+        super().__init__()
+        self.composite_var = CompositeVariable(
+            [variables.Variable(1.),
+             variables.Variable(2.)])
+
+    layer = CompositeVariableLayer()
+    self.assertLen(layer.weights, 2)
+    self.assertIsInstance(layer.weights[0], variables.Variable)
+    self.assertIsInstance(layer.weights[1], variables.Variable)
+    self.assertEqual(self.evaluate(layer.weights[0]), 1.)
+    self.assertEqual(self.evaluate(layer.weights[1]), 2.)
+
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_layer_names(self):
     with testing_utils.use_keras_tensors_scope(False):
@@ -468,6 +518,32 @@ class BaseLayerTest(keras_parameterized.TestCase):
         expected_names = [
             'input_1', 'tf.__operators__.add', 'add', 'tf.__operators__.add_1',
             'add_1'
+        ]
+        self.assertAllEqual(actual_names, expected_names)
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_layer_names_after_loading(self):
+    if context.executing_eagerly():
+      backend.clear_session()
+      with testing_utils.use_keras_tensors_scope(True):
+        # Mimic loading a model that already contained add layers with
+        # name = 'add_1' and 'tf.__operators__.add'
+        layers.Add(name='add_1')
+        layers.Add(name='tf.__operators__.add')
+
+        inputs = input_layer.Input(shape=[2])
+        add1 = inputs + inputs
+        add2 = layers.Add()([inputs, inputs])
+        add3 = inputs + inputs
+        add4 = layers.Add()([inputs, inputs])
+        model = training_lib.Model(
+            inputs=[inputs], outputs=[add1, add2, add3, add4])
+        actual_names = [l.name for l in model.layers]
+        # The generated op layer names should have avoided layer names seen in
+        # the loaded model. (This avoiance should not apply to non-op-layers)
+        expected_names = [
+            'input_1', 'tf.__operators__.add_1',
+            'add', 'tf.__operators__.add_2', 'add_1'
         ]
         self.assertAllEqual(actual_names, expected_names)
 
@@ -791,7 +867,6 @@ class SymbolicSupportTest(keras_parameterized.TestCase):
     with ops.Graph().as_default():
       x1 = array_ops.ones((3, 3))
     x2 = array_ops.ones((3, 3))
-    self.assertIsInstance(x2, ops.EagerTensor)
     with self.assertRaisesRegex(TypeError, 'Graph tensors'):
       math_ops.matmul(x1, x2)
 
@@ -1135,7 +1210,7 @@ class NameScopingTest(keras_parameterized.TestCase):
     self.assertEqual(sublayer.active_name_scope, 'MyName2/Sublayer')
 
   def test_name_scope_tf_tensor(self):
-    x = ops.convert_to_tensor_v2(np.ones((10, 10)))
+    x = ops.convert_to_tensor_v2_with_dispatch(np.ones((10, 10)))
     layer = layers.Dense(
         10, activation=layers.ReLU(name='MyAct'), name='MyName3')
     layer(x)
@@ -1544,44 +1619,6 @@ class DTypeTest(keras_parameterized.TestCase):
 
     layer = IdentityLayerWithoutAutocast(dtype='float64')
     self.assertEqual(layer(self._const('float32')).dtype, 'float32')
-
-  @testing_utils.enable_v2_dtype_behavior
-  def test_dtype_warnings(self):
-    # Test a layer warns when it casts inputs.
-    layer = IdentityLayer()
-    with test.mock.patch.object(tf_logging, 'warn') as mock_warn:
-      layer(self._const('float64'))
-      self.assertRegex(
-          str(mock_warn.call_args),
-          ".*from dtype float64 to the layer's dtype of float32.*"
-          "The layer has dtype float32 because.*")
-
-    # Test a layer does not warn a second time
-    with test.mock.patch.object(tf_logging, 'warn') as mock_warn:
-      layer(self._const('float64'))
-      mock_warn.assert_not_called()
-
-    # Test a new layer can warn even if a different layer already warned
-    layer = IdentityLayer()
-    with test.mock.patch.object(tf_logging, 'warn') as mock_warn:
-      layer(self._const('float64'))
-      self.assertRegex(
-          str(mock_warn.call_args),
-          ".*from dtype float64 to the layer's dtype of float32.*"
-          "The layer has dtype float32 because.*")
-
-    # Test a layer does not warn if a dtype is passed
-    layer = IdentityLayer(dtype='float32')
-    with test.mock.patch.object(tf_logging, 'warn') as mock_warn:
-      layer(self._const('float64'))
-      mock_warn.assert_not_called()
-
-    # Test a layer does not warn if a Policy is set:
-    with policy.policy_scope('float32'):
-      layer = IdentityLayer()
-      with test.mock.patch.object(tf_logging, 'warn') as mock_warn:
-        layer(self._const('float64'))
-        mock_warn.assert_not_called()
 
   @testing_utils.enable_v2_dtype_behavior
   def test_compute_output_signature(self):

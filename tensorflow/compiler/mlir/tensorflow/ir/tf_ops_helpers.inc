@@ -18,17 +18,6 @@ limitations under the License.
 // tf_verifiers or tf_ops.
 // TODO(jpienaar): Remove this file post refactoring.
 
-// Propagates underscore and device attributes from src to dst.
-// TODO(b/158769932): This should be a general feature instead post some policy
-// discussion.
-static void PropagateDeviceAndInternalAttrs(Operation *src, Operation *dst) {
-  auto device = mlir::Identifier::get("device", src->getContext());
-  for (auto named_attr : src->getAttrs()) {
-    if (*named_attr.first.begin() == '_' || named_attr.first == device)
-      dst->setAttr(named_attr.first, named_attr.second);
-  }
-}
-
 //===----------------------------------------------------------------------===//
 // TF op helper functions
 //===----------------------------------------------------------------------===//
@@ -554,27 +543,27 @@ static LogicalResult VerifyReductionInputAndDims(Value input, Value dims,
   return success();
 }
 
-LogicalResult VerifyRegionResults(Operation *op, Region &region,
-                                  StringRef region_name) {
-  auto op_name = op->getName().getStringRef();
-  // verify that op outputs match yield inputs
-  YieldOp yield = cast<YieldOp>(region.front().getTerminator());
-  unsigned expected_num_results = op->getNumResults();
-  if (yield.getNumOperands() != expected_num_results)
-    return op->emitOpError()
-           << region_name + " should have same number (" << expected_num_results
-           << ") of results as " << op_name << " but has "
-           << yield.getNumOperands() << " results";
+// A type range with description (in singular form) attached to it.
+using TypeRangeWithDesc = std::pair<TypeRange, StringRef>;
 
-  for (int idx : llvm::seq<int>(0, expected_num_results)) {
-    auto op_result_type = op->getResult(idx).getType().cast<TensorType>();
-    auto region_result_type =
-        yield.getOperand(idx).getType().cast<TensorType>();
-    if (!AreCastCompatible({region_result_type, op_result_type}))
-      return op->emitError(llvm::formatv(
-          "{0} result type {1} is incompatible with {2} "
-          "result type {3} at index {4}",
-          region_name, region_result_type, op_name, op_result_type, idx));
+LogicalResult VerifyTypeRangesAreCompatible(Operation *op,
+                                            TypeRangeWithDesc range0,
+                                            TypeRangeWithDesc range1) {
+  if (range0.first.size() != range1.first.size()) {
+    return op->emitOpError()
+           << range0.second << "s (size = " << range0.first.size() << ")"
+           << " should have the same number of values as " << range1.second
+           << "s (size = " << range1.first.size() << ")";
+  }
+
+  for (auto it : llvm::enumerate(llvm::zip(range0.first, range1.first))) {
+    int index = it.index();
+    Type type0 = std::get<0>(it.value());
+    Type type1 = std::get<1>(it.value());
+    if (!AreCastCompatible({type0, type1}))
+      return op->emitOpError(llvm::formatv(
+          "{0} type {1} is incompatible with {2} type {3} at index {4}",
+          range0.second, type0, range1.second, type1, index));
   }
   return success();
 }

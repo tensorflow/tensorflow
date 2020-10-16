@@ -17,7 +17,6 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape as tape_lib
@@ -25,6 +24,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import handle_data_util
 from tensorflow.python.ops import op_selector
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
@@ -42,47 +42,8 @@ VAR_OP_TYPES = [
 ]
 
 
-def copy_handle_data(source_t, target_t):
-  """Copies HandleData for variant and resource type tensors if available.
-
-  The CppShapeInferenceResult::HandleData proto contains information about the
-  shapes and types of the element tensors of resource/variant type tensors.
-  We need to copy this across function boundaries, i.e., when capturing a
-  placeholder or when returning a function tensor as output. If we don't do this
-  the element tensors will have unknown shapes, e.g., if a TensorList variant
-  tensor is captured as a placeholder, elements popped from that list would have
-  unknown shape.
-
-  Args:
-    source_t: The tensor to copy HandleData from.
-    target_t: The tensor to copy HandleData to.
-  """
-  if (target_t.dtype == dtypes.resource or
-      target_t.dtype == dtypes.variant):
-    if isinstance(source_t, ops.EagerTensor):
-      handle_data = source_t._handle_data  # pylint: disable=protected-access
-    else:
-      handle_data = resource_variable_ops.get_resource_handle_data(source_t)
-    if (handle_data is not None
-        and handle_data.is_set
-        and handle_data.shape_and_type):
-      # pylint: disable=protected-access
-      pywrap_tf_session.SetHandleShapeAndType(target_t.graph._c_graph,
-                                              target_t._as_tf_output(),
-                                              handle_data.SerializeToString())
-      # pylint: enable=protected-access
-      # Ensure that shapes and dtypes are propagated.
-      shapes, types = zip(*[(pair.shape, pair.dtype)
-                            for pair in handle_data.shape_and_type])
-      ranks = [len(s.dim) if not s.unknown_rank else -1 for s in shapes]
-      shapes = [[d.size for d in s.dim]  # pylint: disable=g-complex-comprehension
-                if not s.unknown_rank else None for s in shapes]
-      pywrap_tf_session.TF_GraphSetOutputHandleShapesAndTypes_wrapper(
-          target_t._op._graph._c_graph,  # pylint: disable=protected-access
-          target_t._as_tf_output(),  # pylint: disable=protected-access
-          shapes,
-          ranks,
-          types)
+# TODO(allenl): Remove this alias and migrate callers.
+copy_handle_data = handle_data_util.copy_handle_data
 
 
 @tf_export("custom_gradient")
@@ -124,6 +85,42 @@ def custom_gradient(f=None):
 
   With this definition, the gradient at x=100 will be correctly evaluated as
   1.0.
+
+  The variable `dy` is defined as the upstream gradient. i.e. the gradient from
+  all the layers or functions originating from this layer.
+
+  By chain rule we know that
+  `dy/dx = dy/x_0 * dx_0/dx_1 * ... * dx_i/dx_i+1 * ... * dx_n/dx`
+
+  In this case the gradient of our current function defined as 
+  `dx_i/dx_i+1 = (1 - 1 / (1 + e))`. The upstream gradient `dy` would be
+  `dx_i+1/dx_i+2 * dx_i+2/dx_i+3 * ... * dx_n/dx`. The upstream gradient 
+  multiplied by the current gradient is then passed downstream.
+
+  In case the function takes multiple variables as input, the `grad` 
+  function must also return  the same number of variables.
+  We take the function `z = x * y` as an example.
+
+  >>> @tf.custom_gradient
+  ... def bar(x, y):
+  ...   def grad(upstream):
+  ...     dz_dx = y
+  ...     dz_dy = x
+  ...     return upstream * dz_dx, upstream * dz_dy
+  ...   z = x * y
+  ...   return z, grad
+  >>> x = tf.constant(2.0, dtype=tf.float32)
+  >>> y = tf.constant(3.0, dtype=tf.float32)
+  >>> with tf.GradientTape(persistent=True) as tape:
+  ...   tape.watch(x)
+  ...   tape.watch(y)
+  ...   z = bar(x, y)
+  >>> z
+  <tf.Tensor: shape=(), dtype=float32, numpy=6.0>
+  >>> tape.gradient(z, x)
+  <tf.Tensor: shape=(), dtype=float32, numpy=3.0>
+  >>> tape.gradient(z, y)
+  <tf.Tensor: shape=(), dtype=float32, numpy=2.0>
 
   Nesting custom gradients can lead to unintuitive results. The default
   behavior does not correspond to n-th order derivatives. For example

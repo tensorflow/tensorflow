@@ -35,6 +35,7 @@ class RegisterDatasetOp : public OpKernel {
   static constexpr const char* const kProtocol = "protocol";
   static constexpr const char* const kExternalStatePolicy =
       "external_state_policy";
+  static constexpr const char* const kTimeoutMs = "timeout_ms";
 
   explicit RegisterDatasetOp(OpKernelConstruction* ctx);
 

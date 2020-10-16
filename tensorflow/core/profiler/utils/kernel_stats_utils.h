@@ -50,7 +50,9 @@ struct KernelReportEqualToComparator {
 };
 
 // Sorts kernel reorts by total duration descendingly.
-void SortKernelsByTotalDurationDesc(KernelStatsDb* kernel_stats_db);
+// Keeps only the top kernel reports with long kernel duration in the given
+// KernelStatsDb. Kernel reports with shorter kernel duration are dropped.
+void SortAndKeepTopKDurationKernelReportsInDb(KernelStatsDb* kernel_stats_db);
 
 struct KernelReportValue {
   uint64 total_duration_ns = 0;
@@ -95,8 +97,10 @@ using KernelReportMap =
     absl::flat_hash_map<KernelReport, KernelReportValue, KernelHash,
                         KernelReportEqualToComparator>;
 
-// Copies reports into the given KernelStatsDb.
-void CopyKernelReportsToDb(const KernelReportMap& reports, KernelStatsDb* dst);
+// Copies the top kernel reports with long kernel duration into the given
+// KernelStatsDb.
+void CopyTopKDurationKernelReportsToDb(const KernelReportMap& reports,
+                                       KernelStatsDb* dst);
 
 // Inserts or aggregates KernelReports into the given KernelReportMap.
 void InsertOrUpdateKernelReport(const KernelReport& kernel,
@@ -106,9 +110,24 @@ void InsertOrUpdateKernelReport(const KernelReport& kernel,
 // Aggregates values from one KernelReportMap into another.
 void MergeKernelReports(const KernelReportMap& reports, KernelReportMap* dst);
 
+// Kernel stats aggregated at TF operation level.
+struct OpLevelKernelStats {
+  // Whether op is eligible to use TensorCore.
+  bool is_op_tensor_core_eligible = false;
+  // The accumulated duration of all the kernels launched in this op.
+  uint64 total_duration_ns = 0;
+  // The accumulated duration of all the kernels using TensorCore in this op.
+  // If this value is not 0, at least one of the kernels launched by this op
+  // is using TensorCore.
+  uint64 tensor_core_duration_ns = 0;
+};
+
+using KernelStatsByOpName =
+    absl::flat_hash_map<absl::string_view, OpLevelKernelStats>;
+
 // Groups KernelReport in <kernel_stats_db> by tensorflow operation name.
-absl::flat_hash_map<absl::string_view, std::vector<const KernelReport*>>
-GroupKernelReportsByOpName(const KernelStatsDb& kernel_stats_db);
+KernelStatsByOpName GroupKernelReportsByOpName(
+    const KernelStatsDb& kernel_stats_db);
 
 }  // namespace profiler
 }  // namespace tensorflow

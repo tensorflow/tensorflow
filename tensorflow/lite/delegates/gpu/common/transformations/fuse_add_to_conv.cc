@@ -15,14 +15,26 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/transformations/fuse_add_to_conv.h"
 
+#include <any>
+#include <memory>
+#include <string>
+#include <variant>
+#include <vector>
+
+#include "absl/strings/string_view.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
+#include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 namespace tflite {
 namespace gpu {
 namespace {
 
-void FuseBiasWithAddAttributes(const AddAttributes& add_attr,
+void FuseBiasWithAddAttributes(const ElementwiseAttributes& add_attr,
                                const int channels,
                                Tensor<Linear, DataType::FLOAT32>* bias) {
   auto add = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&add_attr.param);
@@ -42,12 +54,16 @@ class MergeConvolutionWithAdd : public SequenceTransformation {
   TransformResult ApplyToNodesSequence(const std::vector<Node*>& sequence,
                                        GraphFloat32* graph) final {
     auto& conv_node = *sequence[0];
+    if (graph->FindInputs(conv_node.id).size() != 1) {
+      return {TransformStatus::DECLINED,
+              "This fusion is only applicable to ops with one runtime input."};
+    }
     auto& add_node = *sequence[1];
     if (add_node.operation.type != ToString(OperationType::ADD)) {
       return {TransformStatus::SKIPPED, ""};
     }
-    AddAttributes add_attr =
-        absl::any_cast<AddAttributes>(add_node.operation.attributes);
+    ElementwiseAttributes add_attr =
+        absl::any_cast<ElementwiseAttributes>(add_node.operation.attributes);
     if (!absl::holds_alternative<Tensor<Linear, DataType::FLOAT32>>(
             add_attr.param) &&
         !absl::holds_alternative<float>(add_attr.param)) {
@@ -98,23 +114,23 @@ std::unique_ptr<SequenceTransformation> NewMergeConvolutionWithAdd() {
   return absl::make_unique<MergeConvolutionWithAdd>();
 }
 
-void FuseConvolution2DWithAdd(const AddAttributes& add_attr,
+void FuseConvolution2DWithAdd(const ElementwiseAttributes& add_attr,
                               Convolution2DAttributes* attr) {
   FuseBiasWithAddAttributes(add_attr, attr->weights.shape.o, &attr->bias);
 }
 
-void FuseDepthwiseConvolution2DWithAdd(const AddAttributes& add_attr,
+void FuseDepthwiseConvolution2DWithAdd(const ElementwiseAttributes& add_attr,
                                        DepthwiseConvolution2DAttributes* attr) {
   FuseBiasWithAddAttributes(
       add_attr, attr->weights.shape.o * attr->weights.shape.i, &attr->bias);
 }
 
-void FuseConvolutionTransposedWithAdd(const AddAttributes& add_attr,
+void FuseConvolutionTransposedWithAdd(const ElementwiseAttributes& add_attr,
                                       ConvolutionTransposedAttributes* attr) {
   FuseBiasWithAddAttributes(add_attr, attr->weights.shape.o, &attr->bias);
 }
 
-void FuseFullyConnectedWithAdd(const AddAttributes& add_attr,
+void FuseFullyConnectedWithAdd(const ElementwiseAttributes& add_attr,
                                FullyConnectedAttributes* attr) {
   FuseBiasWithAddAttributes(add_attr, attr->weights.shape.o, &attr->bias);
 }

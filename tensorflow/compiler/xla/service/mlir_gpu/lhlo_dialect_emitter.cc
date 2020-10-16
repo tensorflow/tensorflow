@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "llvm/IR/DataLayout.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -203,9 +204,13 @@ LhloDialectEmitter::LhloDialectEmitter(
       builder_(mlir_module_.getContext()),
       buffer_assignment_(assignment),
       platform_(platform) {
-  LLVMDialect* llvmDialect =
-      mlir_module.getContext()->getRegisteredDialect<LLVMDialect>();
-  pointer_size_ = llvmDialect->getLLVMModule().getDataLayout().getPointerSize();
+  llvm::DataLayout data_layout("");
+  if (auto data_layout_attr = mlir_module.getAttrOfType<mlir::StringAttr>(
+          mlir::LLVM::LLVMDialect::getDataLayoutAttrName())) {
+    data_layout.reset(data_layout_attr.getValue());
+  }
+
+  pointer_size_ = data_layout.getPointerSize();
 }
 
 void LhloDialectEmitter::AddThunkToThunkSequence(std::unique_ptr<Thunk> thunk) {

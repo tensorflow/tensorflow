@@ -126,7 +126,8 @@ bool IsReshapeOpSupported(const TfLiteRegistration* registration,
   }
 
   const int kShapeTensor = 1;
-  const auto* shape = GetInput(context, node, kShapeTensor);
+  const TfLiteTensor* shape;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kShapeTensor, &shape));
   if (shape->allocation_type != kTfLiteMmapRo) {
     TF_LITE_KERNEL_LOG(context, "Reshape has non-const shape.");
     return false;

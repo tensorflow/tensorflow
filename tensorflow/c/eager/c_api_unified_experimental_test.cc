@@ -22,19 +22,30 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
+#include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_tensor.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 
+using tensorflow::Status;
 using tensorflow::string;
+using tensorflow::TF_StatusPtr;
 
 namespace tensorflow {
 namespace {
 
+// The tests are parameterized on:
+// - a string representing the tracing implementation: "mlir" or "graphdef".
+// - a boolean that when true enables TFRT as the execution engine.
 class UnifiedCAPI
     : public ::testing::TestWithParam<std::tuple<const char*, bool>> {
  protected:
   void SetUp() override {
-    TF_SetTracingImplementation(std::get<0>(GetParam()));
+    TF_StatusPtr status(TF_NewStatus());
+    TF_SetTracingImplementation(std::get<0>(GetParam()), status.get());
+    Status s = StatusFromTF_Status(status.get());
+    CHECK_EQ(errors::OK, s.code()) << s.error_message();
   }
 };
 
@@ -554,7 +565,7 @@ TEST_P(UnifiedCAPI, TestMultiOutputGraph) {
     auto* add_op = TF_NewAbstractOp(graph_ctx);
     TF_AbstractOpSetOpType(add_op, "Add", s);
     ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-    TF_AbstractOpSetOpName(add_op, "my_add1", s);
+    TF_AbstractOpSetOpName(add_op, "my_add", s);
     ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
     TF_AbstractTensor* inputs[2] = {arg0, arg1};
     TF_OutputList* add_outputs = TF_NewOutputList();
@@ -576,7 +587,7 @@ TEST_P(UnifiedCAPI, TestMultiOutputGraph) {
     auto* add_op = TF_NewAbstractOp(graph_ctx);
     TF_AbstractOpSetOpType(add_op, "Add", s);
     ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-    TF_AbstractOpSetOpName(add_op, "my_add2", s);
+    TF_AbstractOpSetOpName(add_op, "my_add", s);
     ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
     TF_AbstractTensor* inputs[2] = {arg1, arg1};
     TF_OutputList* add_outputs = TF_NewOutputList();
@@ -983,6 +994,10 @@ TEST_P(UnifiedCAPI, TF_ExecutionContextGetTFEContextFromFunctionContextRaises) {
 
   TF_DeleteExecutionContext(graph_ctx);
 }
+
+// The above tests are run for a combination of:
+// - graphdef and MLIR tracing engine
+// - Using TFRT as an execution runtime (true == enable TFRT)
 #ifdef PLATFORM_GOOGLE
 INSTANTIATE_TEST_SUITE_P(Tracing, UnifiedCAPI,
                          ::testing::Combine(::testing::Values("graphdef",

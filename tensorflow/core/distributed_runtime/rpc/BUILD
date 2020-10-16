@@ -1,6 +1,7 @@
 # Description:
 #   RPC communication interfaces and implementations for TensorFlow.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_windows",
@@ -12,11 +13,13 @@ load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")  # buildifier: disable=sa
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")  # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_grpc_dependency")  # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")  # buildifier: disable=same-origin-load
 
 # For platform specific build config
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_kernel_tests_linkstatic",
+    "tf_protos_profiler_service",
 )
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
@@ -27,8 +30,6 @@ package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
 )
-
-exports_files(["LICENSE"])
 
 filegroup(
     name = "c_srcs",
@@ -93,10 +94,10 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:worker_proto_cc",
         "//tensorflow/core/distributed_runtime:tensor_coding",
         "//tensorflow/core/distributed_runtime:worker_cache_logger",
         "//tensorflow/core/distributed_runtime:worker_interface",
+        "//tensorflow/core/protobuf:worker_proto_cc",
         tf_grpc_cc_dependency(),
     ],
 )
@@ -126,7 +127,7 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:worker_proto_cc",
+        "//tensorflow/core/protobuf:worker_proto_cc",
         "@com_google_absl//absl/flags:flag",
         tf_grpc_cc_dependency(),
     ],
@@ -215,13 +216,13 @@ tf_cuda_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:worker_proto_cc",
         "//tensorflow/core/distributed_runtime:graph_mgr",
         "//tensorflow/core/distributed_runtime:rendezvous_mgr_interface",
         "//tensorflow/core/distributed_runtime:worker",
         "//tensorflow/core/distributed_runtime:worker_cache",
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/distributed_runtime:worker_session",
+        "//tensorflow/core/protobuf:worker_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         tf_grpc_cc_dependency(),
     ],
@@ -233,8 +234,8 @@ cc_library(
     hdrs = ["grpc_worker_service_impl.h"],
     deps = [
         ":grpc_util",
-        "//tensorflow/core:worker_proto_cc",
         "//tensorflow/core/distributed_runtime:tensor_coding",
+        "//tensorflow/core/protobuf:worker_proto_cc",
         tf_grpc_cc_dependency(),
     ],
 )
@@ -248,10 +249,10 @@ cc_library(
         ":grpc_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:master_proto_cc",
         "//tensorflow/core/distributed_runtime:call_options",
         "//tensorflow/core/distributed_runtime:master_interface",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/protobuf:master_proto_cc",
         "@com_google_absl//absl/time",
     ],
     alwayslink = 1,
@@ -268,9 +269,9 @@ cc_library(
         ":grpc_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:master_proto_cc",
         "//tensorflow/core/distributed_runtime:master",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/protobuf:master_proto_cc",
         tf_grpc_cc_dependency(),
     ],
     alwayslink = 1,
@@ -281,7 +282,7 @@ cc_library(
     srcs = ["grpc_master_service_impl.cc"],
     hdrs = ["grpc_master_service_impl.h"],
     deps = [
-        "//tensorflow/core:master_proto_cc",
+        "//tensorflow/core/protobuf:master_proto_cc",
         tf_grpc_cc_dependency(),
     ],
 )
@@ -315,6 +316,7 @@ cc_library(
         ":grpc_worker_cache",
         ":grpc_worker_service",
         ":rpc_rendezvous_mgr",
+        "//tensorflow/core/nccl:collective_communicator",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -335,9 +337,10 @@ cc_library(
         "//tensorflow/core/distributed_runtime:worker_cache_wrapper",
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_service_impl",
+        "//tensorflow/core/profiler/rpc:profiler_service_impl",
         tf_grpc_dependency(),
         tf_grpc_cc_dependency(),
-    ],
+    ] + tf_protos_profiler_service(),
     alwayslink = 1,
 )
 
@@ -442,13 +445,13 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:master_proto_cc",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/distributed_runtime:call_options",
         "//tensorflow/core/distributed_runtime:local_master",
         "//tensorflow/core/distributed_runtime:master_interface",
         "//tensorflow/core/distributed_runtime:message_wrappers",
         "//tensorflow/core/distributed_runtime:request_id",
+        "//tensorflow/core/protobuf:master_proto_cc",
     ],
     alwayslink = 1,
 )
@@ -476,7 +479,6 @@ tf_cuda_cc_tests(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:master_proto_cc",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -484,6 +486,7 @@ tf_cuda_cc_tests(
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/distributed_runtime:test_utils",
         "//tensorflow/core/platform:blocking_counter",
+        "//tensorflow/core/protobuf:master_proto_cc",
     ],
 )
 
@@ -505,7 +508,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core:worker_proto_cc",
+        "//tensorflow/core/protobuf:worker_proto_cc",
         tf_grpc_cc_dependency(),
     ],
 )
@@ -518,7 +521,7 @@ tf_cc_test(
         ":grpc_util",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:worker_proto_cc",
+        "//tensorflow/core/protobuf:worker_proto_cc",
         tf_grpc_dependency(),
         tf_grpc_cc_dependency(),
     ],
@@ -541,7 +544,6 @@ tf_cuda_cc_test(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:master_proto_cc",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:state_ops_op_lib",
         "//tensorflow/core:test",
@@ -552,6 +554,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:dense_update_ops",
         "//tensorflow/core/kernels:matmul_op",
         "//tensorflow/core/kernels:variable_ops",
+        "//tensorflow/core/protobuf:master_proto_cc",
     ],
 )
 

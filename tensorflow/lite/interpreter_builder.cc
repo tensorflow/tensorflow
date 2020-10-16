@@ -27,15 +27,12 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/profiling/platform_profiler.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/shared_library.h"
-#include "tensorflow/lite/tflite_with_xnnpack_optional.h"
 #include "tensorflow/lite/util.h"
 #include "tensorflow/lite/version.h"
-
-#if defined(TFLITE_ENABLE_DEFAULT_PROFILER)
-#include "tensorflow/lite/profiling/platform_profiler.h"
-#endif
 
 // aligned_alloc is available (via cstdlib/stdlib.h) with C++17/C11.
 #if __cplusplus >= 201703L || __STDC_VERSION__ >= 201112L
@@ -141,8 +138,6 @@ TFLITE_ATTRIBUTE_WEAK Interpreter::TfLiteDelegatePtr AcquireFlexDelegate() {
   return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
 }
 
-namespace impl {
-
 InterpreterBuilder::InterpreterBuilder(const FlatBufferModel& model,
                                        const OpResolver& op_resolver)
     : model_(model.GetModel()),
@@ -171,7 +166,7 @@ TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
   }
   int num_custom_ops = 0;
   for (const OperatorCode* opcode : *opcodes) {
-    if (opcode->builtin_code() == BuiltinOperator_CUSTOM) {
+    if (GetBuiltinCode(opcode) == BuiltinOperator_CUSTOM) {
       num_custom_ops++;
     }
   }
@@ -181,7 +176,7 @@ TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
     status = GetRegistrationFromOpCode(opcode, op_resolver_, error_reporter_,
                                        &registration);
     if (status != kTfLiteOk) {
-      if (opcode->builtin_code() != BuiltinOperator_CUSTOM) {
+      if (GetBuiltinCode(opcode) != BuiltinOperator_CUSTOM) {
         return status;
       }
       // If it's an unresolved custom op, allow it for now. It might be resolved
@@ -616,7 +611,12 @@ TfLiteStatus InterpreterBuilder::operator()(
   auto* buffers = model_->buffers();
 
   if (subgraphs->size() == 0) {
-    error_reporter_->Report("No subgraph in the model.\n");
+    TF_LITE_REPORT_ERROR(error_reporter_, "No subgraph in the model.\n");
+    return cleanup_and_error();
+  }
+
+  if (!buffers) {
+    TF_LITE_REPORT_ERROR(error_reporter_, "No buffers in the model.\n");
     return cleanup_and_error();
   }
 
@@ -626,9 +626,7 @@ TfLiteStatus InterpreterBuilder::operator()(
     (*interpreter)->AddSubgraphs(subgraphs->size() - 1);
   }
 
-#if defined(TFLITE_ENABLE_DEFAULT_PROFILER)
-  (*interpreter)->SetProfiler(tflite::profiling::CreatePlatformProfiler());
-#endif
+  (*interpreter)->SetProfiler(tflite::profiling::MaybeCreatePlatformProfiler());
 
   for (int subgraph_index = 0; subgraph_index < subgraphs->size();
        ++subgraph_index) {
@@ -637,10 +635,10 @@ TfLiteStatus InterpreterBuilder::operator()(
         (*interpreter)->subgraph(subgraph_index);
     auto operators = subgraph->operators();
     auto tensors = subgraph->tensors();
-    if (!operators || !tensors || !buffers) {
-      error_reporter_->Report(
-          "Did not get operators, tensors, or buffers in subgraph %d.\n",
-          subgraph_index);
+    if (!operators || !tensors) {
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                           "Did not get operators or tensors in subgraph %d.\n",
+                           subgraph_index);
       return cleanup_and_error();
     }
     if (modified_subgraph->AddTensors(tensors->size()) != kTfLiteOk) {
@@ -670,8 +668,8 @@ TfLiteStatus InterpreterBuilder::operator()(
   }
 
   if (num_fp32_tensors_ > 0) {
-    (*interpreter)->lazy_delegate_provider_ =
-        MaybeCreateXNNPACKDelegate(num_threads);
+    (*interpreter)->lazy_delegate_providers_ =
+        op_resolver_.GetDelegates(num_threads);
   }
 
   if (ApplyDelegates(interpreter->get(), num_threads) != kTfLiteOk)
@@ -679,7 +677,5 @@ TfLiteStatus InterpreterBuilder::operator()(
 
   return kTfLiteOk;
 }
-
-}  // namespace impl
 
 }  // namespace tflite

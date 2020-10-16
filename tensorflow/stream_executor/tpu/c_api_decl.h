@@ -31,6 +31,13 @@ enum TpuCoreTypeEnum {
   kEmbeddingV2,
 };
 
+enum TpuVersionEnum {
+  kUnknownTpuVersion,
+  kTpuV2,
+  kTpuV3,
+  kTpuV4,
+};
+
 typedef struct SE_Status SE_Status;
 
 typedef struct SE_Platform SE_Platform;
@@ -145,6 +152,11 @@ typedef struct SE_ExecutableRunOptions {
   SE_DeviceMemoryAllocator allocator;
   int device_ordinal;
   SE_Stream* stream;
+  SE_Stream* host_to_device_stream;
+  TpuSerializedProto device_assignment;
+  int rng_seed;
+  int64_t run_id;
+  int launch_id;
 } SE_ExecutableRunOptions;
 
 typedef struct SE_MaybeOwningDeviceMemory {
@@ -165,7 +177,6 @@ typedef struct XLA_Shape {
 
 // Represents a leaf node for a XLA shaped buffer.
 typedef struct XLA_ShapedBuffer {
-  XLA_Shape on_host_shape;
   XLA_Shape on_device_shape;
   int device_ordinal;
 
@@ -196,7 +207,6 @@ typedef struct SE_ExecutionInput {
   XLA_ShapeIndex* unowned_indices;
   int unowned_indices_size;
   XLA_Shape dynamic_shape;
-  XLA_Shape host_shape;
 } SE_ExecutionInput;
 
 typedef struct SE_ExecutionOutput {
@@ -248,6 +258,10 @@ typedef struct XLA_ComputationPlacer XLA_ComputationPlacer;
 
 typedef void (*XLA_CallbackFn)(void*);
 typedef void (*XLA_StatusCallbackFn)(void*, SE_Status*);
+
+typedef struct SE_TpuTopology SE_TpuTopology;
+typedef struct SE_TpuTopology_Core SE_TpuTopology_Core;
+typedef struct SE_TpuTopology_Core SE_TpuTopology_Host;
 }
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_TPU_C_API_DECL_H_

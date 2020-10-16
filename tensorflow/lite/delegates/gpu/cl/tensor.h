@@ -68,17 +68,6 @@ class Tensor : public GPUObject {
   int Slices() const { return DivideRoundUp(shape_.c, 4); }
   int Batch() const { return shape_.b; }
 
-  // returns int4(width * batch, height, slices, batch)
-  int4 GetWBatchedHSB() const {
-    return int4(shape_.w * shape_.b, shape_.h, Slices(), shape_.b);
-  }
-  int4 GetWBatchedHDS() const {
-    return int4(shape_.w * shape_.b, shape_.h, shape_.d, Slices());
-  }
-
-  int4 GetWHSB() const { return int4(shape_.w, shape_.h, Slices(), shape_.b); }
-  int4 GetWHDS() const { return int4(shape_.w, shape_.h, shape_.d, Slices()); }
-
   TensorDescriptor GetDescriptor() const { return descriptor_; }
   DataType GetDataType() const { return descriptor_.data_type; }
   TensorStorageType GetStorageType() const { return descriptor_.storage_type; }
@@ -103,6 +92,9 @@ class Tensor : public GPUObject {
   absl::Status ReadData(CLCommandQueue* queue, TensorFloat32* dst) const;
   absl::Status ReadData(CLCommandQueue* queue, Tensor5DFloat32* dst) const;
 
+  absl::Status CreateFromDescriptor(const TensorDescriptor& desc,
+                                    CLContext* context);
+
  private:
   absl::Status IsValid(const BHWC& shape) const;
   absl::Status IsValid(const BHWDC& shape) const;
@@ -114,37 +106,6 @@ class Tensor : public GPUObject {
                               CLCommandQueue* queue);
   absl::Status ReadDataBHWDC(absl::Span<float> out,
                              CLCommandQueue* queue) const;
-
-  template <typename T>
-  void DataFromBHWDC(absl::Span<const float> src, absl::Span<T> dst) const;
-  template <typename T>
-  void DataToBHWDC(absl::Span<const T> src, absl::Span<float> dst) const;
-
-  // TODO(sorokin) might be bad performance
-  int GetLinearIndex(int b, int x, int y, int d, int s, int sub_c) const {
-    switch (descriptor_.storage_type) {
-      case TensorStorageType::BUFFER:
-      case TensorStorageType::IMAGE_BUFFER:
-      case TensorStorageType::TEXTURE_ARRAY:
-      case TensorStorageType::TEXTURE_3D:
-        return ((((d * Slices() + s) * shape_.h + y) * shape_.w + x) *
-                    shape_.b +
-                b) *
-                   4 +
-               sub_c;  // DSHWBC4
-      case TensorStorageType::TEXTURE_2D:
-        return ((((y * Slices() + s) * shape_.w + x) * shape_.b + b) *
-                    shape_.d +
-                d) *
-                   4 +
-               sub_c;  // HSWBDC4
-      case TensorStorageType::SINGLE_TEXTURE_2D:
-        return (((y * shape_.w + x) * shape_.b + b) * shape_.d + d) * shape_.c +
-               sub_c;  // HWBDC
-      case TensorStorageType::UNKNOWN:
-        return -1;
-    }
-  }
 
   int3 GetFullTensorRegion() const;
   void Release();
@@ -158,22 +119,18 @@ class Tensor : public GPUObject {
 
 using TensorPtr = std::shared_ptr<Tensor>;
 
-absl::Status AllocateTensorMemory(const CLContext& context,
-                                  const CLDevice& device, const BHWC& shape,
+absl::Status AllocateTensorMemory(const CLContext& context, const BHWC& shape,
                                   const TensorDescriptor& descriptor,
                                   CLMemory* result);
 
-absl::Status AllocateTensorMemory(const CLContext& context,
-                                  const CLDevice& device, const BHWDC& shape,
+absl::Status AllocateTensorMemory(const CLContext& context, const BHWDC& shape,
                                   const TensorDescriptor& descriptor,
                                   CLMemory* result);
 
-absl::Status CreateTensor(const CLContext& context, const CLDevice& device,
-                          const BHWC& shape, const TensorDescriptor& descriptor,
-                          Tensor* result);
+absl::Status CreateTensor(const CLContext& context, const BHWC& shape,
+                          const TensorDescriptor& descriptor, Tensor* result);
 
-absl::Status CreateTensor(const CLContext& context, const CLDevice& device,
-                          const BHWDC& shape,
+absl::Status CreateTensor(const CLContext& context, const BHWDC& shape,
                           const TensorDescriptor& descriptor, Tensor* result);
 
 absl::Status CreateSharedTensor(const CLContext& context, cl_mem memory,

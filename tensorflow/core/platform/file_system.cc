@@ -70,9 +70,9 @@ string FileSystem::TranslateName(const string& name) const {
   return this->CleanPath(path);
 }
 
-Status FileSystem::IsDirectory(
-    const string& name /*, TransactionToken *token */) {
+Status FileSystem::IsDirectory(const string& name, TransactionToken* token) {
   // Check if path exists.
+  // TODO(sami):Forward token to other methods once migration is complete.
   TF_RETURN_IF_ERROR(FileExists(name));
   FileStatistics stat;
   TF_RETURN_IF_ERROR(Stat(name, &stat));
@@ -87,11 +87,11 @@ Status FileSystem::HasAtomicMove(const string& path, bool* has_atomic_move) {
   return Status::OK();
 }
 
-void FileSystem::FlushCaches(/* TransactionToken *token */) {}
+void FileSystem::FlushCaches(TransactionToken* token) {}
 
-bool FileSystem::FilesExist(
-    const std::vector<string>& files,
-    std::vector<Status>* status /*, TransactionToken *token */) {
+bool FileSystem::FilesExist(const std::vector<string>& files,
+                            TransactionToken* token,
+                            std::vector<Status>* status) {
   bool result = true;
   for (const auto& file : files) {
     Status s = FileExists(file);
@@ -106,9 +106,10 @@ bool FileSystem::FilesExist(
   return result;
 }
 
-Status FileSystem::DeleteRecursively(
-    const string& dirname, int64* undeleted_files,
-    int64* undeleted_dirs /*, TransactionToken *token */) {
+Status FileSystem::DeleteRecursively(const string& dirname,
+                                     TransactionToken* token,
+                                     int64* undeleted_files,
+                                     int64* undeleted_dirs) {
   CHECK_NOTNULL(undeleted_files);
   CHECK_NOTNULL(undeleted_dirs);
 
@@ -178,8 +179,8 @@ Status FileSystem::DeleteRecursively(
   return ret;
 }
 
-Status FileSystem::RecursivelyCreateDir(
-    const string& dirname /*, TransactionToken *token */) {
+Status FileSystem::RecursivelyCreateDir(const string& dirname,
+                                        TransactionToken* token) {
   StringPiece scheme, host, remaining_dir;
   this->ParseURI(dirname, &scheme, &host, &remaining_dir);
   std::vector<StringPiece> sub_dirs;
@@ -224,8 +225,8 @@ Status FileSystem::RecursivelyCreateDir(
   return Status::OK();
 }
 
-Status FileSystem::CopyFile(
-    const string& src, const string& target /*, TransactionToken *token */) {
+Status FileSystem::CopyFile(const string& src, const string& target,
+                            TransactionToken* token) {
   return FileSystemCopyFile(this, src, this, target);
 }
 

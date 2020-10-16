@@ -41,7 +41,9 @@ from tensorflow.python.util import tf_decorator
 # asynchronously to avoid deadlock.
 ASYNC_STATEFUL_OPS = [
     "CollectiveGather",
+    "CollectiveGatherV2",
     "CollectiveReduce",
+    "CollectiveReduceV2",
     "CollectiveBcastSend",
     "CollectiveBcastRecv",
     "NcclAllReduce",

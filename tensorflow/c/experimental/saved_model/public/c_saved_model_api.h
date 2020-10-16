@@ -21,7 +21,11 @@ limitations under the License.
 #include "tensorflow/c/experimental/saved_model/public/concrete_function_list.h"
 #include "tensorflow/c/experimental/saved_model/public/function_metadata.h"
 #include "tensorflow/c/experimental/saved_model/public/saved_model_api.h"
-#include "tensorflow/c/experimental/saved_model/public/tensorhandle_list.h"
+#include "tensorflow/c/experimental/saved_model/public/signature_def_function.h"
+#include "tensorflow/c/experimental/saved_model/public/signature_def_function_metadata.h"
+#include "tensorflow/c/experimental/saved_model/public/signature_def_param.h"
+#include "tensorflow/c/experimental/saved_model/public/signature_def_param_list.h"
+#include "tensorflow/c/experimental/saved_model/public/tensor_spec.h"
 // IWYU pragma: end_exports
 
 #endif  // TENSORFLOW_C_EXPERIMENTAL_SAVED_MODEL_PUBLIC_C_SAVED_MODEL_API_H_

@@ -28,6 +28,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras.engine import base_preprocessing_layer
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
@@ -153,7 +154,7 @@ class Hashing(base_preprocessing_layer.PreprocessingLayer):
 
   def _preprocess_single_input(self, inp):
     if isinstance(inp, (list, tuple, np.ndarray)):
-      inp = ops.convert_to_tensor(inp)
+      inp = ops.convert_to_tensor_v2_with_dispatch(inp)
     return inp
 
   def _preprocess_inputs(self, inputs):
@@ -183,7 +184,7 @@ class Hashing(base_preprocessing_layer.PreprocessingLayer):
       else:
         inputs = string_ops.as_string(inputs)
     str_to_hash_bucket = self._get_string_to_hash_bucket_fn()
-    if ragged_tensor.is_ragged(inputs):
+    if tf_utils.is_ragged(inputs):
       return ragged_functional_ops.map_flat_values(
           str_to_hash_bucket, inputs, num_buckets=self.num_bins, name='hash')
     elif isinstance(inputs, sparse_tensor.SparseTensor):

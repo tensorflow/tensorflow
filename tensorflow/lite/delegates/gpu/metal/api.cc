@@ -190,7 +190,8 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
     case OperationType::ADD: {
       if (inputs.size() == 1) {
         if (node->operation.attributes.has_value()) {
-          auto attr = absl::any_cast<AddAttributes>(node->operation.attributes);
+          auto attr =
+              absl::any_cast<ElementwiseAttributes>(node->operation.attributes);
           *tasks = ElementwiseWithOneInputAndConstantArguent(
               node_id, inputs[0], outputs[0], options, op_type, attr.param);
         } else {
@@ -266,6 +267,11 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
           device_info, options);
       break;
     case OperationType::DEPTHWISE_CONVOLUTION:
+      if (graph.FindInputs(node->id).size() != 1) {
+        return absl::UnimplementedError(
+            "DepthWise Convolution does not support more than 1 runtime "
+            "tensor");
+      }
       *tasks =
           SelectDepthWiseConv(node_id, inputs[0], outputs[0],
                               absl::any_cast<DepthwiseConvolution2DAttributes>(
@@ -291,7 +297,7 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
       if (inputs.size() == 1) {
         if (node->operation.attributes.has_value()) {
           auto attr =
-              absl::any_cast<MultiplyAttributes>(node->operation.attributes);
+              absl::any_cast<ElementwiseAttributes>(node->operation.attributes);
           *tasks = ElementwiseWithOneInputAndConstantArguent(
               node_id, inputs[0], outputs[0], options, op_type, attr.param);
         } else {
@@ -370,6 +376,7 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
     case OperationType::EXP:
     case OperationType::HARD_SWISH:
     case OperationType::LOG:
+    case OperationType::NEG:
     case OperationType::RSQRT:
     case OperationType::SIGMOID:
     case OperationType::SIN:
@@ -403,8 +410,22 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
     } break;
     case OperationType::BATCH_NORMALIZATION:
     case OperationType::BATCH_TO_SPACE:
+    case OperationType::BATCHED_MATMUL:
     case OperationType::CONST:
     case OperationType::LSTM:
+    // TODO(b/162763635): implement MeanStddevNormalization for Metal.
+    case OperationType::MEAN_STDDEV_NORMALIZATION:
+    case OperationType::REDUCE_MAXIMUM:
+    case OperationType::REDUCE_MINIMUM:
+    case OperationType::REDUCE_PRODUCT:
+    case OperationType::REDUCE_SUM:
+    // comparison operations
+    case OperationType::LESS:
+    case OperationType::LESS_EQUAL:
+    case OperationType::EQUAL:
+    case OperationType::NOT_EQUAL:
+    case OperationType::GREATER:
+    case OperationType::GREATER_EQUAL:
     case OperationType::SPACE_TO_BATCH:
     case OperationType::TRANSPOSE:
     case OperationType::UNKNOWN:

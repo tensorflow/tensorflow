@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
@@ -216,6 +217,11 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     params.op_version = op_version_;
     return name_utils::DatasetDebugString(
         ParallelInterleaveDatasetOp::kDatasetType, params);
+  }
+
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    inputs->push_back(input_);
+    return Status::OK();
   }
 
   Status CheckExternalState() const override {
@@ -1342,12 +1348,10 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         IteratorContext* ctx, IteratorStateReader* reader, int64 size,
         const string& name, std::vector<std::shared_ptr<Element>>* elements) {
       elements->resize(size);
-      std::unique_ptr<thread::ThreadPool> threadpool =
-          ctx->CreateThreadPool(absl::StrCat("read_", name), size);
       Status s = Status::OK();
       BlockingCounter counter(size);
       for (int idx = 0; idx < size; ++idx) {
-        threadpool->Schedule(
+        thread_pool_->Schedule(
             [this, ctx, reader, idx, name, &s, &counter, elements] {
               RecordStart(ctx);
               auto cleanup = gtl::MakeCleanup([this, ctx, &counter]() {
@@ -1357,6 +1361,11 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
               std::shared_ptr<Element> elem;
               Status ret_status = ReadElement(ctx, reader, idx, name, &elem);
               mutex_lock l(*mu_);
+              if (cancelled_) {
+                s.Update(
+                    errors::Cancelled("Cancelled in ReadElementsParallel"));
+                return;
+              }
               if (!ret_status.ok()) {
                 s.Update(ret_status);
                 return;

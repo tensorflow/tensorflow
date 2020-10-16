@@ -145,6 +145,33 @@ std::string GetImageModifier(AccessType access) {
   }
 }
 
+std::string GetDefaultSamplers(const DeviceInfo& device_info) {
+  std::string result;
+  result +=
+      "__constant sampler_t smp_none = CLK_NORMALIZED_COORDS_FALSE | "
+      "CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;\n";
+  if (device_info.IsAdreno3xx()) {
+    // Unfortunately, CLK_ADDRESS_CLAMP is very slow on Adreno3xx and
+    // we can observe huge register overhead when compared to other modes.
+
+    // While using CLK_ADDRESS_NONE with out-of-range image coordinates is
+    // undefined in the OpenCL specification, we have observed that
+    // CLK_ADDRESS_NONE works like CLK_ADDRESS_CLAMP for out-of-range image
+    // coordinates for RGBA F16/F32 textures on Adreno3xx devices. Using
+    // CLK_ADDRESS_NONE is significantly faster than CLK_ADDRESS_CLAMP on Adreno
+    // 3xx.
+    result +=
+        "__constant sampler_t smp_zero = CLK_NORMALIZED_COORDS_FALSE | "
+        "CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;\n";
+  } else {
+    result +=
+        "__constant sampler_t smp_zero = CLK_NORMALIZED_COORDS_FALSE | "
+        "CLK_ADDRESS_CLAMP | CLK_FILTER_NEAREST;\n";
+  }
+
+  return result;
+}
+
 }  // namespace
 
 // Static
@@ -229,11 +256,10 @@ void Arguments::AddObjectRef(const std::string& name, AccessType access_type,
   object_refs_[name] = {std::move(descriptor_ptr)};
 }
 
-void Arguments::AddObject(const std::string& name, AccessType access_type,
-                          GPUObjectPtr&& object,
+void Arguments::AddObject(const std::string& name,
                           GPUObjectDescriptorPtr&& descriptor_ptr) {
-  descriptor_ptr->SetAccess(access_type);
-  objects_[name] = {std::move(object), std::move(descriptor_ptr)};
+  descriptor_ptr->SetAccess(AccessType::READ);
+  objects_[name] = {nullptr, std::move(descriptor_ptr)};
 }
 
 void Arguments::AddGPUResources(const std::string& name,
@@ -483,6 +509,7 @@ absl::Status Arguments::TransformToCLCode(
   RETURN_IF_ERROR(ResolveSelectorsPass(linkables, code));
   ResolveArgsPass(device_info, code);
   *code = absl::Substitute(*code, GetListOfArgs());
+  *code = GetDefaultSamplers(device_info) + *code;
   return absl::OkStatus();
 }
 
@@ -632,56 +659,64 @@ absl::Status Arguments::Bind(cl_kernel kernel, int offset) {
 
 std::string Arguments::AddActiveArgument(const std::string& arg_name,
                                          bool use_f32_for_halfs) {
-  if (auto it = int_values_.find(arg_name); it != int_values_.end()) {
-    int int_index;
-    if (it->second.active) {
-      int_index = it->second.offset;
-    } else {
-      it->second.active = true;
-      it->second.offset = shared_int4s_data_.size();
-      int_index = it->second.offset;
-      shared_int4s_data_.push_back(it->second.value);
-    }
-    std::string index = std::to_string(int_index / 4);
-    std::string postfixes[4] = {"x", "y", "z", "w"};
-    return "shared_int4_" + index + "." + postfixes[int_index % 4];
-  }
-  if (auto it = float_values_.find(arg_name); it != float_values_.end()) {
-    int float_index;
-    if (it->second.active) {
-      float_index = it->second.offset;
-    } else {
-      it->second.active = true;
-      it->second.offset = shared_float4s_data_.size();
-      float_index = it->second.offset;
-      shared_float4s_data_.push_back(it->second.value);
-    }
-    std::string index = std::to_string(float_index / 4);
-    std::string postfixes[4] = {"x", "y", "z", "w"};
-    return "shared_float4_" + index + "." + postfixes[float_index % 4];
-  }
-  if (auto it = half_values_.find(arg_name); it != half_values_.end()) {
-    int half_index;
-    if (it->second.active) {
-      half_index = it->second.offset;
-    } else {
-      it->second.active = true;
-      if (use_f32_for_halfs) {
-        it->second.store_as_f32 = true;
-        it->second.offset = shared_float4s_data_.size();
-        shared_float4s_data_.push_back(it->second.value);
+  {
+    auto it = int_values_.find(arg_name);
+    if (it != int_values_.end()) {
+      int int_index;
+      if (it->second.active) {
+        int_index = it->second.offset;
       } else {
-        it->second.offset = shared_half4s_data_.size();
-        shared_half4s_data_.push_back(it->second.value);
+        it->second.active = true;
+        it->second.offset = shared_int4s_data_.size();
+        int_index = it->second.offset;
+        shared_int4s_data_.push_back(it->second.value);
       }
-      half_index = it->second.offset;
+      std::string index = std::to_string(int_index / 4);
+      std::string postfixes[4] = {"x", "y", "z", "w"};
+      return "shared_int4_" + index + "." + postfixes[int_index % 4];
     }
-    std::string index = std::to_string(half_index / 4);
-    std::string postfixes[4] = {"x", "y", "z", "w"};
-    if (it->second.store_as_f32) {
-      return "(half)(shared_float4_" + index + "." + postfixes[half_index % 4] +
-             ")";
-    } else {
+  }
+  {
+    auto it = float_values_.find(arg_name);
+    if (it != float_values_.end()) {
+      int float_index;
+      if (it->second.active) {
+        float_index = it->second.offset;
+      } else {
+        it->second.active = true;
+        it->second.offset = shared_float4s_data_.size();
+        float_index = it->second.offset;
+        shared_float4s_data_.push_back(it->second.value);
+      }
+      std::string index = std::to_string(float_index / 4);
+      std::string postfixes[4] = {"x", "y", "z", "w"};
+      return "shared_float4_" + index + "." + postfixes[float_index % 4];
+    }
+  }
+  {
+    auto it = half_values_.find(arg_name);
+    if (it != half_values_.end()) {
+      int half_index;
+      if (it->second.active) {
+        half_index = it->second.offset;
+      } else {
+        it->second.active = true;
+        if (use_f32_for_halfs) {
+          it->second.store_as_f32 = true;
+          it->second.offset = shared_float4s_data_.size();
+          shared_float4s_data_.push_back(it->second.value);
+        } else {
+          it->second.offset = shared_half4s_data_.size();
+          shared_half4s_data_.push_back(it->second.value);
+        }
+        half_index = it->second.offset;
+      }
+      std::string index = std::to_string(half_index / 4);
+      std::string postfixes[4] = {"x", "y", "z", "w"};
+      if (it->second.store_as_f32) {
+        return "(half)(shared_float4_" + index + "." +
+               postfixes[half_index % 4] + ")";
+      }
       return "shared_half4_" + index + "." + postfixes[half_index % 4];
     }
   }
@@ -690,7 +725,7 @@ std::string Arguments::AddActiveArgument(const std::string& arg_name,
 
 void Arguments::ResolveArgsPass(const DeviceInfo& device_info,
                                 std::string* code) {
-  bool use_f32_for_half_arguments = device_info.vendor == Vendor::POWERVR;
+  bool use_f32_for_half_arguments = device_info.IsPowerVR();
   size_t position = 0;
   size_t next_position = code->find(kArgsPrefix);
   while (next_position != std::string::npos) {
@@ -721,24 +756,38 @@ void Arguments::ResolveObjectNames(const std::string& object_name,
   }
 }
 
+GPUObjectDescriptor* Arguments::GetObjectDescriptor(
+    const std::string& object_name) const {
+  {
+    auto it = object_refs_.find(object_name);
+    if (it != object_refs_.end()) {
+      return it->second.descriptor.get();
+    }
+  }
+  {
+    auto it = objects_.find(object_name);
+    if (it != objects_.end()) {
+      return it->second.descriptor.get();
+    }
+  }
+  return nullptr;
+}
+
 absl::Status Arguments::ResolveSelector(
     const std::map<std::string, std::string>& linkables,
     const std::string& object_name, const std::string& selector,
     const std::vector<std::string>& args,
     const std::vector<std::string>& template_args, std::string* result) {
-  const GPUObjectDescriptor* desc_ptr;
-  if (auto it = object_refs_.find(object_name); it != object_refs_.end()) {
-    desc_ptr = it->second.descriptor.get();
-  } else if (auto it = objects_.find(object_name); it != objects_.end()) {
-    desc_ptr = it->second.descriptor.get();
-  } else {
+  const GPUObjectDescriptor* desc_ptr = GetObjectDescriptor(object_name);
+  if (!desc_ptr) {
     return absl::NotFoundError(
         absl::StrCat("No object with name - ", object_name));
   }
   auto names = desc_ptr->GetGPUResources().GetNames();
   const auto* tensor_desc = dynamic_cast<const TensorDescriptor*>(desc_ptr);
   if (tensor_desc && selector == "Write") {
-    if (auto it = linkables.find(object_name); it != linkables.end()) {
+    auto it = linkables.find(object_name);
+    if (it != linkables.end()) {
       if (desc_ptr->GetAccess() != AccessType::WRITE &&
           desc_ptr->GetAccess() != AccessType::READ_WRITE) {
         return absl::FailedPreconditionError(absl::StrCat(
@@ -810,6 +859,20 @@ absl::Status Arguments::ResolveSelectorsPass(
     next_position = code->find(kArgsPrefix, position);
   }
   return absl::OkStatus();
+}
+
+absl::Status Arguments::AllocateObjects(CLContext* context) {
+  for (auto& t : objects_) {
+    RETURN_IF_ERROR(
+        t.second.descriptor->CreateGPUObject(context, &t.second.obj_ptr));
+  }
+  return absl::OkStatus();
+}
+
+void Arguments::ReleaseCPURepresentation() {
+  for (auto& t : objects_) {
+    t.second.descriptor->Release();
+  }
 }
 
 absl::Status Arguments::AddObjectArgs() {

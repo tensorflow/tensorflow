@@ -64,6 +64,7 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/loader_util.h"
 #include "tensorflow/compiler/jit/shape_inference_helpers.h"
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
+#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -72,8 +73,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/upgrade_graph.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/convert_attr.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
@@ -119,7 +123,6 @@ static inline absl::string_view StringRefToView(llvm::StringRef ref) {
 namespace tensorflow {
 using mlir::NamedAttrList;
 using mlir::TensorType;
-using mlir::TF::VarHandleOp;
 using mlir::tf_saved_model::AssetOp;
 using mlir::tf_saved_model::GlobalTensorOp;
 using mlir::tf_saved_model::SessionInitializerOp;
@@ -128,12 +131,6 @@ using stream_executor::port::StatusOr;
 namespace {
 
 constexpr char kTpuReplicateAttr[] = "_tpu_replicate";
-
-bool IsDisableCallShapeInferenceAttribute(const AttrValue& attr_value,
-                                          llvm::StringRef attr_name) {
-  return attr_name.compare("_disable_call_shape_inference") == 0 &&
-         attr_value.value_case() == AttrValue::kB;
-}
 
 bool IsOutputShapesAttribute(const AttrValue& attr_value,
                              llvm::StringRef attr_name) {
@@ -146,6 +143,13 @@ bool IsResourceOutputShapesAttribute(const AttrValue& attr_value,
   if (attr_name == "_handle_dtypes" || attr_name == "_handle_shapes")
     return attr_value.value_case() == AttrValue::kList;
   return false;
+}
+
+void LoadImporterDialects(mlir::MLIRContext& context) {
+  // Load dialects involved in the conversion
+  mlir::DialectRegistry registry;
+  mlir::RegisterAllTensorFlowDialects(registry);
+  registry.loadAll(&context);
 }
 
 // This class is used to generate new MLIR function name strings that are both
@@ -178,13 +182,16 @@ class NameUniquifier : public OpOrArgNameMapper {
 
 Status UpgradeLegacyGraph(Graph* graph, FunctionLibraryDefinition* flib_def,
                           bool restrict_functionalization_to_tpu_nodes) {
+  TF_RETURN_IF_ERROR(GenerateResourceSharedNameIfEmpty(*graph, *flib_def));
+
   // If `restrict_functionalization_to_tpu_nodes` is true let filter function
   // return true for `_tpu_replicate` nodes, otherwise don't set filter.
   NodeFilter node_filter =
       restrict_functionalization_to_tpu_nodes
           ? [](const Node* n) { return n->attrs().Find(kTpuReplicateAttr); }
           : NodeFilter{};
-  return FunctionalizeControlFlow(graph, flib_def, node_filter);
+  return FunctionalizeControlFlow(graph, flib_def, node_filter,
+                                  /*include_functions=*/true);
 }
 
 // Stateful helper class to import a TensorFlow model into an MLIR Module.
@@ -304,21 +311,6 @@ class ImporterBase {
     return ::tensorflow::ConvertTensorProto(value, &builder_);
   }
 
-  // Converts the tensor shape proto into an MLIR shape attribute.
-  StatusOr<mlir::TF::ShapeAttr> ConvertTensorShapeProto(
-      const TensorShapeProto& shape) {
-    if (shape.unknown_rank())
-      return mlir::TF::ShapeAttr::get(builder_.getContext(), llvm::None);
-
-    llvm::SmallVector<int64_t, 4> dims;
-    dims.reserve(shape.dim().size());
-    for (const auto& dim : shape.dim()) {
-      dims.push_back(dim.size());
-    }
-    return mlir::TF::ShapeAttr::get(builder_.getContext(),
-                                    llvm::makeArrayRef(dims));
-  }
-
   // Converts func name in graphdef to mlir::SymbolRefAttribute.
   StatusOr<mlir::FlatSymbolRefAttr> ConvertFunctionCallName(
       const std::string& func_name);
@@ -336,14 +328,11 @@ class ImporterBase {
                                       NamedAttrList* attributes);
 
   // Helper to create either a tf_executor operation or a TF operation wrapped
-  // in an island. When convert_to_legacy_call is true, converts the operation
-  // representing a call to a library function with a name represented in
-  // node_type_name to LegacyCallOp.
+  // in an island.
   mlir::Operation* CreateOperation(
       const Node& node, llvm::StringRef node_type_name,
       const mlir::OperationState& result,
-      const llvm::SmallVectorImpl<mlir::Value>& control_operands,
-      bool convert_to_legacy_call = false);
+      const llvm::SmallVectorImpl<mlir::Value>& control_operands);
 
   // Converts one NodeDef from the input GraphDef into an Operation and
   // inserts it into the MLIR module using builder_.
@@ -1139,74 +1128,36 @@ StatusOr<mlir::FlatSymbolRefAttr> ImporterBase::ConvertFunctionCallName(
 StatusOr<mlir::Attribute> ImporterBase::ConvertAttributeValue(
     const AttrValue& value) {
   switch (value.value_case()) {
-    case AttrValue::kI:
-      return builder_.getI64IntegerAttr(value.i());
-    case AttrValue::kS:
-      return builder_.getStringAttr(value.s());
-    case AttrValue::kF:
-      return builder_.getFloatAttr(builder_.getF32Type(), value.f());
-    case AttrValue::kB:
-      return builder_.getBoolAttr(value.b());
-    case AttrValue::kType: {
-      mlir::Type type;
-      TF_RETURN_IF_ERROR(ConvertDataType(value.type(), builder_, &type));
-      return mlir::TypeAttr::get(type);
-    }
-    case AttrValue::kShape:
-      return ConvertTensorShapeProto(value.shape());
-    case AttrValue::kTensor:
-      return ConvertTensorProto(value.tensor());
-    case AttrValue::kList: {
-      absl::InlinedVector<mlir::Attribute, 8> attrs;
-      for (const auto& item : value.list().i())
-        attrs.push_back(builder_.getI64IntegerAttr(item));
-      for (const auto& item : value.list().s())
-        attrs.push_back(builder_.getStringAttr(item));
-      for (const auto& item : value.list().f())
-        attrs.push_back(builder_.getFloatAttr(builder_.getF32Type(), item));
-      for (const auto& item : value.list().b())
-        attrs.push_back(builder_.getBoolAttr(item));
-      for (const auto& item : value.list().type()) {
-        mlir::Type type;
-        TF_RETURN_IF_ERROR(ConvertDataType(DataType(item), builder_, &type));
-        attrs.push_back(mlir::TypeAttr::get(type));
-      }
-      for (const auto& item : value.list().shape()) {
-        TF_ASSIGN_OR_RETURN(auto attr, ConvertTensorShapeProto(item));
-        attrs.push_back(attr);
-      }
-      for (const auto& item : value.list().tensor()) {
-        TF_ASSIGN_OR_RETURN(auto attr, ConvertTensorProto(item));
-        attrs.push_back(attr);
-      }
-      for (const auto& item : value.list().func()) {
-        TF_ASSIGN_OR_RETURN(auto attr, ConvertFunctionCallName(item.name()));
-        if (item.attr_size() != 0)
-          return errors::Unimplemented(
-              "func attributes with non-zero attr.size()");
-        attrs.push_back(attr);
-      }
-      return builder_.getArrayAttr(
-          llvm::makeArrayRef(attrs.begin(), attrs.end()));
-    }
     case AttrValue::kFunc: {
       // TODO(b/156546237): Unify kFunc/NameAttrList attribute representation.
       // Currently kFunc/NameAttrList attributes in a kList/repeated AttrValue
       // will not use this representation.
       NamedAttrList attrs;
       for (const auto& func_attr : value.func().attr()) {
-        TF_ASSIGN_OR_RETURN(auto attr, ConvertAttributeValue(func_attr.second));
+        TF_ASSIGN_OR_RETURN(
+            auto attr, ImporterBase::ConvertAttributeValue(func_attr.second));
         attrs.push_back(builder_.getNamedAttr(func_attr.first, attr));
       }
       auto func_attrs = builder_.getDictionaryAttr(attrs);
       return mlir::TF::FuncAttr::get(context_, value.func().name(), func_attrs);
     }
-    case AttrValue::VALUE_NOT_SET:
-      return builder_.getUnitAttr();
-    // kPlaceholder is not implemented.
+    case AttrValue::kList: {
+      if (!value.list().func().empty()) {
+        absl::InlinedVector<mlir::Attribute, 8> attrs;
+        for (const auto& item : value.list().func()) {
+          TF_ASSIGN_OR_RETURN(auto attr, ConvertFunctionCallName(item.name()));
+          if (item.attr_size() != 0)
+            return errors::Unimplemented(
+                "func attributes with non-zero attr.size()");
+          attrs.push_back(attr);
+        }
+        return builder_.getArrayAttr(
+            llvm::makeArrayRef(attrs.begin(), attrs.end()));
+      }
+      return ConvertNonFuncAttributeValue(value, &builder_);
+    }
     default:
-      return errors::Unimplemented(
-          absl::StrCat("Attribute ", value.DebugString()));
+      return ConvertNonFuncAttributeValue(value, &builder_);
   }
 }
 
@@ -1680,8 +1631,7 @@ Status ImporterBase::EmitErrorWithLocationStr(const Node& node,
 mlir::Operation* ImporterBase::CreateOperation(
     const Node& node, llvm::StringRef node_type_name,
     const mlir::OperationState& result,
-    const llvm::SmallVectorImpl<mlir::Value>& control_operands,
-    bool convert_to_legacy_call) {
+    const llvm::SmallVectorImpl<mlir::Value>& control_operands) {
   // For the tf.executor specific operations (not wrapped in an island), we
   // have an extra returned value for the control result, and we concatenate
   // control and non-control operands.
@@ -1744,25 +1694,7 @@ mlir::Operation* ImporterBase::CreateOperation(
       mlir::OpBuilder::atBlockEnd(&island.GetBody());
 
   // Create the operation inside the island now.
-  mlir::Operation* inner_op;
-  if (convert_to_legacy_call) {
-    bool disable_call_shape_inference = false;
-    for (const auto& name_and_value : node.attrs()) {
-      const auto& attr_name = name_and_value.first;
-      const AttrValue& attr_value = name_and_value.second;
-      if (IsDisableCallShapeInferenceAttribute(attr_value, attr_name)) {
-        disable_call_shape_inference = attr_value.b();
-      }
-    }
-
-    mlir::BoolAttr attribute =
-        builder_.getBoolAttr(disable_call_shape_inference);
-    inner_op = island_builder.create<mlir::TF::LegacyCallOp>(
-        result.location, result.types, result.operands,
-        island_builder.getSymbolRefAttr(node_type_name), attribute);
-  } else {
-    inner_op = island_builder.createOperation(result);
-  }
+  mlir::Operation* inner_op = island_builder.createOperation(result);
 
   // Sets operand_segment_sizes or result_segment_sizes attribute to the op.
   const auto set_segment_sizes_attr =
@@ -1927,13 +1859,6 @@ Status ImporterBase::ConvertNode(const Node& node) {
     // Remove _output_shapes attribute that will be added by the exporter.
     if (IsOutputShapesAttribute(attr_value, attr_name)) continue;
 
-    // We represent the _diable_call_shape_inference attribute and remove
-    // the _output_shapes attribute for LegacyCall. If a call has other
-    // attributes, we can't convert it to LegacyCall.
-    if (convert_to_legacy_call &&
-        !IsDisableCallShapeInferenceAttribute(attr_value, attr_name)) {
-      convert_to_legacy_call = false;
-    }
     if (attr_value.value_case() == AttrValue::kFunc) {
       // Attribute iteration order is not defined for protocol buffer Map.
       // Process function attributes separately in the lexicographical order to
@@ -1957,26 +1882,35 @@ Status ImporterBase::ConvertNode(const Node& node) {
   result.attributes.push_back(builder_.getNamedAttr(
       "device", builder_.getStringAttr(std::string(node_def.device()))));
 
-  // Map If and StatelessIf op in TensorFlow to the common If op in MLIR and add
-  // the differentiating attribute.
-  if (node.IsIfNode()) {
-    result.name = mlir::OperationName(get_full_op_name("If"), context_);
-    mlir::BoolAttr val = builder_.getBoolAttr(node_type_name == "StatelessIf");
-    result.attributes.push_back(builder_.getNamedAttr("is_stateless", val));
+  // Map user function calls to LegacyCall ops and add the user function name
+  // as an attribute.
+  if (convert_to_legacy_call) {
+    result.name = mlir::OperationName(get_full_op_name("LegacyCall"), context_);
+    mlir::SymbolRefAttr val = builder_.getSymbolRefAttr(node_type_name);
+    result.addAttribute("f", val);
+
+    if (!result.attributes.get("_disable_call_shape_inference")) {
+      result.addAttribute("_disable_call_shape_inference",
+                          builder_.getBoolAttr(false));
+    }
   }
 
-  // Map While and StatelessWhile op in TensorFlow to the common While op in
-  // MLIR and add the differentiating attribute.
-  if (node.IsWhileNode()) {
-    result.name = mlir::OperationName(get_full_op_name("While"), context_);
-    mlir::BoolAttr val =
-        builder_.getBoolAttr(node_type_name == "StatelessWhile");
+  auto composite_control_flow_op = [&](const std::string& name) {
+    result.name = mlir::OperationName(get_full_op_name(name), context_);
+    bool stateless = absl::StartsWith(node_type_name, "Stateless");
+    mlir::BoolAttr val = builder_.getBoolAttr(stateless);
     result.attributes.push_back(builder_.getNamedAttr("is_stateless", val));
-  }
+  };
+
+  // Map Case/If/While and StatelessCase/If/While op in TensorFlow to the common
+  // Case/If/While op in MLIR and add the differentiating attribute.
+  if (node.IsCaseNode()) composite_control_flow_op("Case");
+  if (node.IsIfNode()) composite_control_flow_op("If");
+  if (node.IsWhileNode()) composite_control_flow_op("While");
 
   // Register the mapping between the TF node and the newly created operation.
-  node_values_[node.id()] = CreateOperation(
-      node, node_type_name, result, control_operands, convert_to_legacy_call);
+  node_values_[node.id()] =
+      CreateOperation(node, node_type_name, result, control_operands);
   return Status::OK();
 }
 
@@ -2162,6 +2096,7 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
     mlir::MLIRContext* context, const Graph& graph,
     const GraphDebugInfo& debug_info, const FunctionLibraryDefinition& flib_def,
     const GraphImportConfig& specs, llvm::StringRef func_name) {
+  LoadImporterDialects(*context);
   mlir::OwningModuleRef module =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
   std::unordered_map<std::string, std::string> tf_name_to_mlir_name;
@@ -2387,7 +2322,8 @@ GraphDefImporter::GetArgsRetsAndTypesFromFunctionGraph(
                                      "' is missing attribute 'index'");
 
     auto index = attr->i();
-    if (nodes->size() < index + 1) nodes->resize(index + 1);
+    const int num_nodes = nodes->size();
+    if (num_nodes < index + 1) nodes->resize(index + 1);
 
     if ((*nodes)[index].node != nullptr)
       return errors::InvalidArgument(node->type_string(), " node '",
@@ -2895,7 +2831,7 @@ void AdjustBoundInputArgTypes(mlir::ModuleOp module) {
     mlir::OpBuilder builder(func.getBody());
     llvm::SmallVector<mlir::Type, 4> new_input_types;
     for (int i = 0, e = func.getNumArguments(); i < e; i++) {
-      auto arg = func.front().getArgument(i);
+      auto arg = func.getArgument(i);
       auto global_tensor = mlir::tf_saved_model::LookupBoundInputOfType<
           mlir::tf_saved_model::GlobalTensorOp>(func, i, symbol_table);
       if (global_tensor) {
@@ -3108,7 +3044,8 @@ Status CreateSavedModelIR(
       TF_ASSIGN_OR_RETURN(auto input_index_paths,
                           input_linearizer.GetLeafIndexPaths(
                               error_context + "in input signature: "));
-      if (bound_input_base != input_index_paths.size()) {
+      const int input_index_paths_size = input_index_paths.size();
+      if (bound_input_base != input_index_paths_size) {
         return errors::InvalidArgument(
             error_context,
             "Argument mismatch between concrete function input signature "
@@ -3216,6 +3153,7 @@ Status CreateSavedModelIR(
 StatusOr<mlir::OwningModuleRef> SavedModelObjectGraphImporter::Convert(
     SavedModelV2Bundle* saved_model, absl::Span<std::string> exported_names,
     mlir::MLIRContext* context, bool add_default_attributes) {
+  LoadImporterDialects(*context);
   GraphDebugInfo dummy_debug_info;
   const GraphDebugInfo& debug_info =
       saved_model->debug_info() ? *saved_model->debug_info() : dummy_debug_info;
@@ -3295,6 +3233,7 @@ class SavedModelSignatureDefImporter {
   static StatusOr<mlir::OwningModuleRef> Convert(
       const SavedModelBundle& bundle, absl::Span<std::string> exported_names,
       mlir::MLIRContext* context, bool upgrade_legacy) {
+    LoadImporterDialects(*context);
     SavedModelSignatureDefImporter importer(bundle, exported_names, context);
     TF_RETURN_IF_ERROR(importer.InitializeGraph(upgrade_legacy));
     return importer.ConvertSignatures();
@@ -3389,12 +3328,13 @@ SavedModelSignatureDefImporter::ConvertAssets() {
   results.reserve(asset_file_defs.size());
 
   mlir::OpBuilder builder(module_->getBodyRegion());
+  unsigned i = 0;  // Use to generate unique sym_name(s) for duplicate assets.
   for (const auto& asset : asset_file_defs) {
     auto asset_op = builder.create<mlir::tf_saved_model::AssetOp>(
         module_->getLoc(),
         /*sym_name=*/
         builder.getStringAttr(
-            absl::StrCat("__tf_saved_model_asset_", asset.filename())),
+            absl::StrCat("__tf_saved_model_asset", i++, "_", asset.filename())),
         /*filename=*/
         builder.getStringAttr(
             io::JoinPath(kSavedModelAssetsDirectory, asset.filename())));
@@ -3580,6 +3520,7 @@ Status SavedModelSignatureDefImporter::LiftVariables() {
   mlir::StatusScopedDiagnosticHandler diag_handler(module_->getContext());
 
   mlir::PassManager pm(module_->getContext());
+  SetCrashReproducer(pm);
   pm.addPass(mlir::tf_executor::CreateTFExecutorGraphPruningPass());
   pm.addPass(mlir::CreateExecutorDialectToFunctionalConversionPass());
   pm.addPass(
@@ -3590,6 +3531,7 @@ Status SavedModelSignatureDefImporter::LiftVariables() {
   pm.addPass(mlir::TF::CreatePromoteVarHandlesToArgsPass());
   pm.addPass(
       mlir::tf_saved_model::CreateLiftVariablesPass(bundle_.GetSession()));
+  pm.addPass(mlir::tf_saved_model::CreateDedupBoundInputBindingPass());
   if (mlir::failed(pm.run(*module_)))
     return diag_handler.Combine(errors::Internal("Failed to lift variables."));
 
@@ -3665,6 +3607,8 @@ stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertFunctionToMlir(
   tensorflow::GraphDebugInfo dummy_debug_info;
   tensorflow::GraphImportConfig specs;
   specs.graph_as_function = true;
+  for (const auto* control_ret_node : fbody->control_ret_nodes)
+    specs.control_outputs.push_back(control_ret_node->name());
   return GraphDefImporter::Convert(context, *fbody->graph, dummy_debug_info,
                                    flib_def, specs, name);
 }

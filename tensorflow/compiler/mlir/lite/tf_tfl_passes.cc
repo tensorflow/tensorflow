@@ -38,6 +38,10 @@ CreateTFExecutorToControlDialectConversion();
 }  // namespace mlir
 
 namespace tensorflow {
+namespace {
+// Data layout supported by TFLite.
+const char kTFLiteDataLayout[] = "NHWC";
+}  // namespace
 
 void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
                            mlir::OpPassManager* pass_manager) {
@@ -166,6 +170,16 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
   // The below passes only make sense if Builtin TFLite ops are enabled
   // for emission.
   if (pass_config.emit_builtin_tflite_ops) {
+    // Run shape inference after variables are converted to constants.
+    if (pass_config.shape_inference) {
+      pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
+    }
+    // Force layout supported by TFLite, this will transpose the data
+    // to match 'kTFLiteDataLayout'
+    mlir::TF::LayoutOptimizationPipelineOptions layout_optimization_options;
+    layout_optimization_options.force_data_format = kTFLiteDataLayout;
+    mlir::TF::CreateLayoutOptimizationPipeline(*pass_manager,
+                                               layout_optimization_options);
     // Prepare for TFLite dialect, rerun canonicalization, and then legalize to
     // the TFLite dialect.
     pass_manager->addPass(
@@ -173,6 +187,9 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
     if (pass_config.shape_inference) {
       // Add a shape inference pass to optimize away the unnecessary casts.
+      // This also fixes the unranked shapes due to TF ops constant folding.
+      // TODO(fengliuai): remove this pass if TableGen patterns have a better
+      // to control the shapes for the intermediate results.
       pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
     }
 

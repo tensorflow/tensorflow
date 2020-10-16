@@ -85,18 +85,25 @@ static void BuildOperator(const Operator& op, raw_ostream& os) {
 
     // Emit an argument for an operand.
     if (auto* operand_cst = arg.dyn_cast<NamedTypeConstraint*>()) {
+      std::string xla_arg = "xla_arg_" + std::to_string(index);
       // Handle a non-variadic operand.
       if (!operand_cst->isVariableLength()) {
-        os << "  auto xla_arg_" << index << " = value_map[*op.getODSOperands("
-           << operand_number++ << ").begin()];\n";
+        os << "  xla::XlaOp " << xla_arg << ";\n";
+        os << "  if (failed(GetXlaOp(*op.getODSOperands(" << operand_number++
+           << ").begin(), value_map, &" << xla_arg << ", op)))\n";
+        os << "    return mlir::failure();\n";
         continue;
       }
 
       // Otherwise, this is a varidiac operand list.
-      os << "  std::vector<xla::XlaOp> xla_arg_" << index << ";\n"
+      os << "  std::vector<xla::XlaOp> " << xla_arg << ";\n"
          << "  for (auto operand : op.getODSOperands(" << operand_number++
-         << "))\n      xla_arg_" << index
-         << ".push_back(value_map[operand]);\n";
+         << ")) {\n";
+      os << "    xla::XlaOp result;\n";
+      os << "    if (failed(GetXlaOp(operand, value_map, &result, op)))\n";
+      os << "      return mlir::failure();\n";
+      os << "    " << xla_arg << ".push_back(result);\n";
+      os << "  }\n";
       continue;
     }
 
@@ -157,6 +164,11 @@ static bool OperatorWritersMain(raw_ostream& os, RecordKeeper& records) {
   os << "  xla::XlaScopedFrontendAttributesAssignment "
         "frontend_attributes(lowering_context.builder, "
         "CreateOpFrontendAttributesFromAttribute(op));\n\n";
+
+  // Create a scoped object to assign op metadata to generated XLA ops.
+  os << "  xla::XlaScopedOpMetadataAssignment "
+        "op_metadata(lowering_context.builder, "
+        "CreateOpMetadataFromLocation(op));\n\n";
 
   // Retrieve all the definitions derived from HLO_Op and sort by record name.
   for (const auto* def : records.getAllDerivedDefinitions("HLO_Op")) {

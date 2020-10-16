@@ -34,16 +34,17 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.eager import context
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework.ops import composite_tensor
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils import data_utils
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -51,6 +52,9 @@ from tensorflow.python.ops import script_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
+
+keras_data_adapter_gauge = monitoring.BoolGauge(
+    "/tensorflow/api/keras/data_adapters", "keras data adapter usage", "method")
 
 try:
   from scipy import sparse as scipy_sparse  # pylint: disable=g-import-not-at-top
@@ -60,13 +64,6 @@ try:
   import pandas as pd  # pylint: disable=g-import-not-at-top
 except ImportError:
   pd = None
-
-try:
-  # In Python2 unicode is a scalar type
-  scalar_types = (float, int, str, unicode)
-except NameError:
-  # In Python3 unicode is not present, it always uses string
-  scalar_types = (float, int, str)
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -423,8 +420,8 @@ class TensorLikeDataAdapter(DataAdapter):
 class GenericArrayLikeDataAdapter(TensorLikeDataAdapter):
   """Adapter that handles array-like data without forcing it into memory.
 
-  As an example, this adapter handles `keras.utils.HDF5Matrix` which holds
-  datasets that may be too big to fully fit into memory.
+  This adapter handles array-like datasets that may be too big to fully
+  fit into memory.
 
   Specifically, this adapter handles any Python class which implements:
   `__get_item__`, `__len__`, `shape`, and `dtype` with the same meanings
@@ -527,7 +524,7 @@ class CompositeTensorDataAdapter(DataAdapter):
 
     def _is_composite(v):
       # Dataset inherits from CompositeTensor but shouldn't be handled here.
-      if (isinstance(v, composite_tensor.CompositeTensor) and
+      if (tf_utils.is_extension_type(v) and
           not isinstance(v, dataset_ops.DatasetV2)):
         return True
       # Support Scipy sparse tensors if scipy is installed
@@ -617,7 +614,7 @@ class ListsOfScalarsDataAdapter(DataAdapter):
 
   @staticmethod
   def _is_list_of_scalars(inp):
-    if isinstance(inp, scalar_types):
+    if isinstance(inp, (float, int, str, bytes, bytearray)):
       return True
     if isinstance(inp, (list, tuple)):
       return ListsOfScalarsDataAdapter._is_list_of_scalars(inp[0])
@@ -968,6 +965,8 @@ def select_data_adapter(x, y):
         "handling inputs. Found multiple adapters {} to handle "
         "input: {}, {}".format(
             adapter_cls, _type_name(x), _type_name(y)))
+  # Instrument the data adapter usage before returning it
+  keras_data_adapter_gauge.get_cell(adapter_cls[0].__name__).set(True)
   return adapter_cls[0]
 
 
@@ -1006,7 +1005,7 @@ def _process_tensorlike(inputs):
       dtype = None
       if issubclass(x.dtype.type, np.floating):
         dtype = backend.floatx()
-      return ops.convert_to_tensor(x, dtype=dtype)
+      return ops.convert_to_tensor_v2_with_dispatch(x, dtype=dtype)
     elif scipy_sparse and scipy_sparse.issparse(x):
       return _scipy_sparse_to_sparse_tensor(x)
     return x
@@ -1238,18 +1237,6 @@ class DataHandler(object):
     if adapter_steps is not None:
       return adapter_steps
 
-    if (ds_context.get_strategy().extended._in_multi_worker_mode() and  # pylint: disable=protected-access
-        (dataset.options().experimental_distribute.auto_shard_policy !=
-         distribute_options.AutoShardPolicy.OFF)):
-      # If the dataset would be auto-sharded, we should not infer a local
-      # steps_per_epoch due to the possible inbalanced sharding between workers.
-      raise ValueError("When dataset is sharded across workers, please "
-                       "specify a reasonable `steps_per_epoch` such that all "
-                       "workers will train the same number of steps and each "
-                       "step can get data from dataset without EOF. This is "
-                       "required for allreduce to succeed. We will handle the "
-                       "last partial batch in the future.")
-
     size = cardinality.cardinality(dataset)
     if size == cardinality.INFINITE and steps is None:
       raise ValueError("When passing an infinitely repeating dataset, you "
@@ -1293,7 +1280,7 @@ def _make_class_weight_map_fn(class_weight):
         "than the number of classes, found {}").format(class_weight)
     raise ValueError(error_msg)
 
-  class_weight_tensor = ops.convert_to_tensor_v2(
+  class_weight_tensor = ops.convert_to_tensor_v2_with_dispatch(
       [class_weight[int(c)] for c in class_ids])
 
   def _class_weights_map_fn(*data):

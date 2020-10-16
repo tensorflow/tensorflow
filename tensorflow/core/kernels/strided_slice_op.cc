@@ -306,8 +306,15 @@ class StridedSliceAssignOp : public OpKernel {
     if (isTensor) {
       const Tensor& input = context->input(0);
 
-      OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
-                                  {0}, 0, input.shape(), &old_lhs));
+      int forwarded_input;
+      OP_REQUIRES_OK(context,
+                     context->forward_input_or_allocate_output(
+                         {0}, 0, input.shape(), &old_lhs, &forwarded_input));
+      if (forwarded_input < 0) {
+        OP_REQUIRES_OK(context,
+                       tensorflow::functor::DoCopy(
+                           context->eigen_device<Device>(), input, old_lhs));
+      }
     } else {
       if (context->input_dtype(0) == DT_RESOURCE) {
         core::RefCountPtr<Var> v;
@@ -522,90 +529,4 @@ REGISTER_KERNEL_BUILDER(Name("TensorStridedSliceUpdate")
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL(type)                                              \
-  REGISTER_KERNEL_BUILDER(Name("StridedSlice")                           \
-                              .Device(DEVICE_SYCL)                       \
-                              .TypeConstraint<type>("T")                 \
-                              .HostMemory("begin")                       \
-                              .HostMemory("end")                         \
-                              .HostMemory("strides"),                    \
-                          StridedSliceOp<SYCLDevice, type>)              \
-  REGISTER_KERNEL_BUILDER(Name("StridedSliceGrad")                       \
-                              .Device(DEVICE_SYCL)                       \
-                              .TypeConstraint<type>("T")                 \
-                              .HostMemory("shape")                       \
-                              .HostMemory("begin")                       \
-                              .HostMemory("end")                         \
-                              .HostMemory("strides"),                    \
-                          StridedSliceGradOp<SYCLDevice, type>)          \
-  REGISTER_KERNEL_BUILDER(Name("StridedSliceAssign")                     \
-                              .Device(DEVICE_SYCL)                       \
-                              .TypeConstraint<type>("T")                 \
-                              .HostMemory("begin")                       \
-                              .HostMemory("end")                         \
-                              .HostMemory("strides"),                    \
-                          StridedSliceAssignOp<SYCLDevice, type, false>) \
-  REGISTER_KERNEL_BUILDER(Name("ResourceStridedSliceAssign")             \
-                              .Device(DEVICE_SYCL)                       \
-                              .TypeConstraint<type>("T")                 \
-                              .HostMemory("ref")                         \
-                              .HostMemory("begin")                       \
-                              .HostMemory("end")                         \
-                              .HostMemory("strides"),                    \
-                          StridedSliceAssignOp<SYCLDevice, type, false>) \
-  REGISTER_KERNEL_BUILDER(Name("TensorStridedSliceUpdate")               \
-                              .Device(DEVICE_SYCL)                       \
-                              .TypeConstraint<type>("T")                 \
-                              .HostMemory("begin")                       \
-                              .HostMemory("end")                         \
-                              .HostMemory("strides"),                    \
-                          StridedSliceAssignOp<SYCLDevice, type, true>)
-
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL);
-
-REGISTER_KERNEL_BUILDER(Name("StridedSlice")
-                            .Device(DEVICE_SYCL)
-                            .TypeConstraint<int32>("T")
-                            .HostMemory("input")
-                            .HostMemory("begin")
-                            .HostMemory("end")
-                            .HostMemory("strides")
-                            .HostMemory("output"),
-                        StridedSliceOp<CPUDevice, int32>);
-REGISTER_KERNEL_BUILDER(Name("StridedSliceGrad")
-                            .Device(DEVICE_SYCL)
-                            .TypeConstraint<int32>("T")
-                            .HostMemory("shape")
-                            .HostMemory("begin")
-                            .HostMemory("end")
-                            .HostMemory("strides")
-                            .HostMemory("dy")
-                            .HostMemory("output"),
-                        StridedSliceGradOp<CPUDevice, int32>);
-REGISTER_KERNEL_BUILDER(Name("StridedSliceAssign")
-                            .Device(DEVICE_SYCL)
-                            .TypeConstraint<int32>("T")
-                            .HostMemory("ref")
-                            .HostMemory("begin")
-                            .HostMemory("end")
-                            .HostMemory("strides"),
-                        StridedSliceAssignOp<CPUDevice, int32, false>);
-REGISTER_KERNEL_BUILDER(Name("ResourceStridedSliceAssign")
-                            .Device(DEVICE_SYCL)
-                            .TypeConstraint<int32>("T")
-                            .HostMemory("ref")
-                            .HostMemory("begin")
-                            .HostMemory("end")
-                            .HostMemory("strides"),
-                        StridedSliceAssignOp<CPUDevice, int32, false>);
-REGISTER_KERNEL_BUILDER(Name("TensorStridedSliceUpdate")
-                            .Device(DEVICE_SYCL)
-                            .TypeConstraint<int32>("T")
-                            .HostMemory("begin")
-                            .HostMemory("end")
-                            .HostMemory("strides"),
-                        StridedSliceAssignOp<CPUDevice, int32, true>)
-#undef REGISTER_SYCL
-#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

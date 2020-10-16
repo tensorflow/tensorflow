@@ -714,7 +714,7 @@ struct ConvertTensorListStack
     RankedTensorType shape_type =
         RankedTensorType::get({-1}, rewriter.getIntegerType(32));
     auto new_shape = rewriter.create<TF::ShapeOp>(loc, shape_type, input);
-    SmallVector<int64_t, 8> output_shape = {op.num_elements().getSExtValue()};
+    SmallVector<int64_t, 8> output_shape(/*Size=*/1, op.num_elements());
     for (const auto &dim : dense_elem_attr.getIntValues())
       output_shape.push_back(dim.getSExtValue());
     RankedTensorType result_type =
@@ -749,11 +749,7 @@ Type VariantToUnrankedTensorType(Type type, Value value) {
 // Changes the function type of `cond_func` and `body_func` for the given While
 // op.
 LogicalResult UpdateFunctionTypes(TF::WhileOp op) {
-  auto module = op.getParentOfType<ModuleOp>();
-  auto *context = module.getContext();
-
-  for (StringRef func_name : {op.cond(), op.body()}) {
-    FuncOp func = module.lookupSymbol<FuncOp>(func_name);
+  for (FuncOp func : {op.cond_function(), op.body_function()}) {
     if (!func) continue;
 
     FunctionType func_type = func.getType();
@@ -781,7 +777,7 @@ LogicalResult UpdateFunctionTypes(TF::WhileOp op) {
     // return types contain a `DT_VARIANT`, change it to the unranked type
     // derived from the corresponding argument.
     func.setType(FunctionType::get(updated_argument_types, updated_result_types,
-                                   context));
+                                   op.getContext()));
 
     // Change the argument type for the first block.
     llvm::for_each(func.getArguments(), [&](BlockArgument &arg) {
@@ -896,7 +892,7 @@ LogicalResult LowerStaticTensorListPass::RewriteFunction(
   target.addLegalOp<TFL::BidirectionalSequenceLSTMOp>();
 
   OwningRewritePatternList patterns;
-  populateWithGenerated(context, &patterns);
+  populateWithGenerated(context, patterns);
   patterns.insert<ConvertConst, ConvertEmptyTensorList, ConvertIdentity,
                   ConvertTensorListGetItem, ConvertTensorListLength,
                   ConvertTensorListPushBack, ConvertTensorListReserve,

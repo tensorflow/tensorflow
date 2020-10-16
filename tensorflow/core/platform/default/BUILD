@@ -1,10 +1,8 @@
 # Tensorflow default + linux implementations of tensorflow/core/platform libraries.
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("//tensorflow:tensorflow.bzl", "filegroup")
 load("//tensorflow:tensorflow.bzl", "if_not_windows", "tf_copts")
-load(
-    "//tensorflow/core/platform:rules_cc.bzl",
-    "cc_library",
-)
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = [
@@ -49,6 +47,7 @@ cc_library(
     name = "cuda_libdevice_path",
     srcs = ["cuda_libdevice_path.cc"],
     hdrs = ["//tensorflow/core/platform:cuda_libdevice_path.h"],
+    compatible_with = [],
     tags = [
         "manual",
         "no_oss",
@@ -75,7 +74,6 @@ cc_library(
 cc_library(
     name = "env",
     srcs = [
-        "env.cc",
         "posix_file_system.cc",
         "posix_file_system.h",
         "//tensorflow/core/platform:env.cc",
@@ -127,6 +125,21 @@ cc_library(
         "//third_party/eigen3",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "env_impl",
+    srcs = [
+        "env.cc",
+    ],
+    tags = [
+        "manual",
+        "no_oss",
+        "nobuilder",
+    ],
+    deps = [
+        ":env",
     ],
 )
 
@@ -268,6 +281,7 @@ cc_library(
         "//tensorflow/core/platform:init_main.h",
         "//tensorflow/core/platform:mem.h",
         "//tensorflow/core/platform:numa.h",
+        "//tensorflow/core/platform:profile_utils/cpu_utils.h",
         "//tensorflow/core/platform:snappy.h",
     ],
     copts = tf_copts(),
@@ -286,6 +300,8 @@ cc_library(
         "//tensorflow/core/platform:byte_order",
         "//tensorflow/core/platform:dynamic_annotations",
         "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:profile_utils_cpu_utils",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/platform",
         "@snappy",
@@ -334,6 +350,7 @@ cc_library(
     name = "rocm_rocdl_path",
     srcs = ["rocm_rocdl_path.cc"],
     hdrs = ["//tensorflow/core/platform:rocm_rocdl_path.h"],
+    compatible_with = [],
     tags = [
         "manual",
         "no_oss",
@@ -521,6 +538,8 @@ filegroup(
         "resource.cc",
         "stacktrace.h",
         "tracing_impl.h",
+        "//tensorflow/core/platform:profile_utils/cpu_utils.h",
+        "//tensorflow/core/platform:profile_utils/i_cpu_utils_helper.h",
     ],
     visibility = ["//tensorflow/core/platform:__pkg__"],
 )

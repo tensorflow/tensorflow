@@ -34,7 +34,8 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
                                                        "DispatchGrpcDataServer")
       .def("start", &tensorflow::data::DispatchGrpcDataServer::Start)
       .def("stop", &tensorflow::data::DispatchGrpcDataServer::Stop)
-      .def("join", &tensorflow::data::DispatchGrpcDataServer::Join)
+      .def("join", &tensorflow::data::DispatchGrpcDataServer::Join,
+           py::call_guard<py::gil_scoped_release>())
       .def("bound_port", &tensorflow::data::DispatchGrpcDataServer::BoundPort)
       .def("num_workers",
            [](tensorflow::data::DispatchGrpcDataServer* server) -> int {
@@ -47,8 +48,16 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
   py::class_<tensorflow::data::WorkerGrpcDataServer>(m, "WorkerGrpcDataServer")
       .def("start", &tensorflow::data::WorkerGrpcDataServer::Start)
       .def("stop", &tensorflow::data::WorkerGrpcDataServer::Stop)
-      .def("join", &tensorflow::data::WorkerGrpcDataServer::Join)
-      .def("bound_port", &tensorflow::data::WorkerGrpcDataServer::BoundPort);
+      .def("join", &tensorflow::data::WorkerGrpcDataServer::Join,
+           py::call_guard<py::gil_scoped_release>())
+      .def("bound_port", &tensorflow::data::WorkerGrpcDataServer::BoundPort)
+      .def("num_tasks",
+           [](tensorflow::data::WorkerGrpcDataServer* server) -> int {
+             int num_tasks;
+             tensorflow::Status status = server->NumTasks(&num_tasks);
+             tensorflow::MaybeRaiseFromStatus(status);
+             return num_tasks;
+           });
 
   m.def(
       "TF_DATA_NewDispatchServer",
@@ -61,7 +70,7 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
         }
         std::unique_ptr<tensorflow::data::DispatchGrpcDataServer> server;
         tensorflow::Status status =
-            tensorflow::data::NewDispatchServer(config, &server);
+            tensorflow::data::NewDispatchServer(config, server);
         tensorflow::MaybeRaiseFromStatus(status);
         return server;
       },
@@ -69,12 +78,16 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
 
   m.def(
       "TF_DATA_NewWorkerServer",
-      [](int port, std::string protocol, std::string dispatcher_address,
-         std::string worker_address)
+      [](std::string serialized_worker_config)
           -> std::unique_ptr<tensorflow::data::WorkerGrpcDataServer> {
+        tensorflow::data::experimental::WorkerConfig config;
+        if (!config.ParseFromString(serialized_worker_config)) {
+          tensorflow::MaybeRaiseFromStatus(tensorflow::errors::InvalidArgument(
+              "Failed to deserialize worker config."));
+        }
         std::unique_ptr<tensorflow::data::WorkerGrpcDataServer> server;
-        tensorflow::Status status = tensorflow::data::NewWorkerServer(
-            port, protocol, dispatcher_address, worker_address, &server);
+        tensorflow::Status status =
+            tensorflow::data::NewWorkerServer(config, server);
         tensorflow::MaybeRaiseFromStatus(status);
         return server;
       },

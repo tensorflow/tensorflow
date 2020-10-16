@@ -334,23 +334,27 @@ def snapshot(path, compression="AUTO", reader_func=None, shard_func=None):
 
   def _apply_fn(dataset):
     """Actual dataset transformation."""
+    project_func = None
     if shard_func is None:
       dataset = dataset.enumerate()
-      dataset = _SnapshotDataset(
-          input_dataset=dataset,
-          path=path,
-          compression=compression,
-          reader_func=reader_func,
-          # This will not do the right thing where the graph is built on a
-          # different machine than the executor (e.g. Cloud TPUs).
-          shard_func=lambda index, _: index % multiprocessing.cpu_count())
-      return dataset.map(lambda _, elem: elem)
+      # This sets the amount of parallelism based on the number of CPU cores on
+      # the machine where this Python code is executed, which may differ from
+      # the number of CPU cores where the input pipeline graph is actually
+      # executed (e.g. remote Cloud TPU workers).
+      local_shard_func = lambda index, _: index % multiprocessing.cpu_count()
+      project_func = lambda _, elem: elem
     else:
-      return _SnapshotDataset(
-          input_dataset=dataset,
-          path=path,
-          compression=compression,
-          reader_func=reader_func,
-          shard_func=shard_func)
+      local_shard_func = shard_func
+    dataset = _SnapshotDataset(
+        input_dataset=dataset,
+        path=path,
+        compression=compression,
+        reader_func=reader_func,
+        # This will not do the right thing where the graph is built on a
+        # different machine than the executor (e.g. Cloud TPUs).
+        shard_func=local_shard_func)
+    if project_func is not None:
+      dataset = dataset.map(project_func)
+    return dataset
 
   return _apply_fn

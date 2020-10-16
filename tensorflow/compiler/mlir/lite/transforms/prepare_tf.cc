@@ -40,6 +40,7 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "mlir/Analysis/LoopAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/UniformSupport.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -57,6 +58,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/dilated_conv.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/constant_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/einsum.h"
@@ -78,13 +80,23 @@ namespace {
 // Prepare TF operations in functions for subsequent legalization.
 class PrepareTFPass : public PassWrapper<PrepareTFPass, FunctionPass> {
  public:
-  explicit PrepareTFPass() : unfold_batch_matmul_(true) {}
-  explicit PrepareTFPass(bool unfold_batch_matmul)
-      : unfold_batch_matmul_(unfold_batch_matmul) {}
+  PrepareTFPass() = default;
+  PrepareTFPass(const PrepareTFPass &) {}
+  explicit PrepareTFPass(bool unfold_batch_matmul) {
+    unfold_batch_matmul_ = unfold_batch_matmul;
+  }
   void runOnFunction() override;
 
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<mhlo::MhloDialect, quant::QuantizationDialect,
+                    TFL::TensorFlowLiteDialect>();
+  }
+
  private:
-  bool unfold_batch_matmul_;
+  Option<bool> unfold_batch_matmul_{
+      *this, "tfl-unfold-batch-matmul",
+      llvm::cl::desc("Unfold BatchMatMul into individual MatMul ops."),
+      llvm::cl::init(true)};
 };
 
 template <class TFFakeQuantOp>
@@ -203,9 +215,8 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
     }
     // Use the min/max from the operands and the num_bits and narrow_range
     // attribute to create the quantization parameter for the new quantize op.
-    rewriter.setInsertionPointAfter(tf_op);
-    IntegerAttr num_bits =
-        rewriter.getI64IntegerAttr(tf_op.num_bits().getSExtValue());
+    rewriter.setInsertionPointAfter(tf_op.getOperation());
+    IntegerAttr num_bits = rewriter.getI64IntegerAttr(tf_op.num_bits());
     BoolAttr narrow_range = rewriter.getBoolAttr(tf_op.narrow_range());
     Type res_type = tf_op.getType();
     TypeAttr qtype = quant::GetQuantizedTypeAttr(
@@ -499,7 +510,8 @@ struct ConvertTFStridedSlice : public RewritePattern {
         original_input_type.getShape();
     SmallVector<int64_t, 4> new_shape;
     int index = 0;
-    while (index < original_input_shape.size() || new_axis_mask) {
+    const int original_input_rank = original_input_shape.size();
+    while (index < original_input_rank || new_axis_mask) {
       if (new_axis_mask & 1) {
         new_shape.emplace_back(1);
       } else {
@@ -525,8 +537,8 @@ struct ConvertTFStridedSlice : public RewritePattern {
         loc, new_output_type, original_input, shape);
 
     // Replace the original strided_slice.
-    llvm::APInt new_begin_mask = strided_slice_op.begin_mask();
-    llvm::APInt new_end_mask = strided_slice_op.end_mask();
+    uint64_t new_begin_mask = strided_slice_op.begin_mask();
+    uint64_t new_end_mask = strided_slice_op.end_mask();
     // Since we expand the dims, we need to apply them to the begin_mask &
     // end_mask.
     new_begin_mask |= strided_slice_op.new_axis_mask();
@@ -589,8 +601,8 @@ struct ConvertTFStridedSlice : public RewritePattern {
 
     const int ellipsis_filled_dim_size = input_size - begin_shape[0] + 1;
 
-    int64_t begin_mask = strided_slice_op.begin_mask().getSExtValue();
-    int64_t end_mask = strided_slice_op.end_mask().getSExtValue();
+    int64_t begin_mask = strided_slice_op.begin_mask();
+    int64_t end_mask = strided_slice_op.end_mask();
     int64_t new_begin_mask = 0;
     int64_t new_end_mask = 0;
 
@@ -626,13 +638,16 @@ struct ConvertTFStridedSlice : public RewritePattern {
     ++index;
 
     // After the ellipsis.
-    for (; index < begin_shape[0]; ++index) {
+    for (; index < begin_shape[0];) {
       padded_begin.push_back(begin_dense_elem_attr.getValue<int32_t>(index));
       padded_end.push_back(end_dense_elem_attr.getValue<int32_t>(index));
       padded_stride.push_back(stride_dense_elem_attr.getValue<int32_t>(index));
 
       if ((begin_mask >> index) & 1) new_begin_mask |= (1 << new_index);
       if ((end_mask >> index) & 1) new_end_mask |= (1 << new_index);
+
+      ++index;
+      ++new_index;
     }
 
     auto attribute_type = rewriter.getIntegerType(64);
@@ -668,21 +683,333 @@ struct ConvertTFStridedSlice : public RewritePattern {
 
     // TODO(renjieliu): Consider expand the transformation for shrink mask as
     // well.
-    if (strided_slice_op.shrink_axis_mask().getZExtValue()) return failure();
+    if (strided_slice_op.shrink_axis_mask()) return failure();
 
     // Handle new axis mask.
-    uint64_t new_axis_mask = strided_slice_op.new_axis_mask().getZExtValue();
+    uint64_t new_axis_mask = strided_slice_op.new_axis_mask();
     if (new_axis_mask != 0) {
       return RewriteNewAxisMask(strided_slice_op, new_axis_mask, rewriter);
     }
 
     // Handle ellipsis mask.
-    uint64_t ellipsis_mask = strided_slice_op.ellipsis_mask().getZExtValue();
+    uint64_t ellipsis_mask = strided_slice_op.ellipsis_mask();
     if (ellipsis_mask != 0) {
       return RewriteEllipsisMask(strided_slice_op, ellipsis_mask, rewriter);
     }
     return failure();
   }
+};
+
+struct ConvertTFBroadcastTo : public RewritePattern {
+  explicit ConvertTFBroadcastTo(MLIRContext *context)
+      : RewritePattern(TF::BroadcastToOp::getOperationName(), 1, context) {}
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    auto tf_broadcast_to_op = cast<TF::BroadcastToOp>(op);
+    auto input_type = tf_broadcast_to_op.input().getType().cast<ShapedType>();
+    auto output_type = tf_broadcast_to_op.output().getType().cast<ShapedType>();
+    auto shape_type = tf_broadcast_to_op.shape().getType().cast<ShapedType>();
+    Type element_type = input_type.getElementType();
+
+    // Allow lowering when low dimension inputs are given and its type is F32 or
+    // I32.
+    if (!((output_type.hasRank() && output_type.getRank() <= 5) ||
+          (shape_type.hasStaticShape() && shape_type.getRank() == 1 &&
+           shape_type.getDimSize(0) <= 5)))
+      return failure();
+
+    if (!(element_type.isa<BFloat16Type, Float32Type>() ||
+          element_type.isInteger(32)))
+      return failure();
+
+    auto status_or_const_op =
+        CreateConstOpWithSingleValue(&rewriter, op->getLoc(), input_type, 1);
+    if (!status_or_const_op.ok()) {
+      return failure();
+    }
+
+    auto tf_fill_op = rewriter.create<TF::FillOp>(
+        op->getLoc(), output_type, tf_broadcast_to_op.shape(),
+        status_or_const_op.ValueOrDie());
+
+    auto mul_op = rewriter.create<TF::MulOp>(
+        op->getLoc(), output_type, tf_broadcast_to_op.input(), tf_fill_op);
+    rewriter.replaceOp(op, mul_op.getResult());
+    return success();
+  }
+};
+
+// The below pattern is equivalent to the DRR rule below
+// The checks are dependent on generated values, so we can't add
+// the checks on intermediate values, ideally we should find equivalent
+// checks that guarantees the resultant ops are valid.
+// The extra conditions are the broadcasting conditions.
+//
+// The pattern lower FusedBatchNormV3 to arithmetic ops.
+// Specifically, performs the following calculation:
+//
+//   (x - mean) * scale / sqrt(variance + epsilon) + offset
+//
+// Let multiplier = scale / sqrt(variance + epsilon),
+// to compute
+//   (x - mean) * scale / sqrt(variance + epsilon) + offset,
+// is then to compute
+//   (x * multiplier) + (offset - mean * multiplier).
+//
+// def : Pattern<
+//     (TF_FusedBatchNormV3Op:$root
+//         $x, $scale, $offset, $mean, $variance,
+//         F32Attr:$epsilon, $exponential_avg_factor,
+//         $data_format, FalseBoolAttr:$is_training),
+//     [(TF_AddOp
+//         (TF_MulOp
+//             $x,
+//             (TF_MulOp:$multiplier
+//                 $scale,
+//                 (TF_RsqrtOp
+//                     (TF_AddOp $variance,
+//                               (TF_ConstOp $epsilon))))),
+//         (TF_SubOp $offset, (TF_MulOp $mean, $multiplier))),
+//    // We already guaranteed that the last five results have no use so it does
+//    // not matter what value we provide here for replacement.
+//      /*batch_mean=*/(replaceWithValue $x),
+//      /*batch_variance=*/(replaceWithValue $x),
+//      /*reserve_space_1=*/(replaceWithValue $x),
+//      /*reserve_space_2=*/(replaceWithValue $x),
+//      /*reserve_space_3=*/(replaceWithValue $x)],
+//     [(HasNoUseOf:$root__1), (HasNoUseOf:$root__2),
+//      (HasNoUseOf:$root__3), (HasNoUseOf:$root__4),
+//      (HasNoUseOf:$root__5), (AreBroadcastableTypes $multiplier, $x)]>;
+
+struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
+  explicit FusedBatchNormV3Pat(::mlir::MLIRContext *context)
+      : ::mlir::RewritePattern(
+            "tf.FusedBatchNormV3",
+            {"tf.Add", "tf.Const", "tf.Mul", "tf.Rsqrt", "tf.Sub"}, 1,
+            context) {}
+
+  ::mlir::LogicalResult matchAndRewrite(
+      ::mlir::Operation *fused_batch_norm,
+      ::mlir::PatternRewriter &rewriter) const override {
+    // Variables for capturing values and attributes used for creating ops
+    Operation::operand_range mean(fused_batch_norm->getOperands());
+    ::mlir::FloatAttr exponential_avg_factor;
+    ::mlir::StringAttr data_format;
+    ::mlir::TF::FusedBatchNormV3Op root;
+    Operation::operand_range offset(fused_batch_norm->getOperands());
+    Operation::operand_range x(fused_batch_norm->getOperands());
+    Operation::operand_range scale(fused_batch_norm->getOperands());
+    Operation::operand_range variance(fused_batch_norm->getOperands());
+    ::mlir::FloatAttr epsilon;
+    ::mlir::BoolAttr is_training;
+
+    // Match
+    auto fused_batch_norm_op =
+        dyn_cast_or_null<::mlir::TF::FusedBatchNormV3Op>(fused_batch_norm);
+    root = fused_batch_norm_op;
+    x = fused_batch_norm_op.getODSOperands(0);
+    scale = fused_batch_norm_op.getODSOperands(1);
+    offset = fused_batch_norm_op.getODSOperands(2);
+    mean = fused_batch_norm_op.getODSOperands(3);
+    variance = fused_batch_norm_op.getODSOperands(4);
+    {
+      epsilon = fused_batch_norm_op.getAttrOfType<::mlir::FloatAttr>("epsilon");
+      if (!epsilon)
+        epsilon = rewriter.getFloatAttr(rewriter.getF32Type(), 0.0001f);
+
+      if (!(((epsilon.isa<::mlir::FloatAttr>())) &&
+            ((epsilon.cast<::mlir::FloatAttr>().getType().isF32())))) {
+        return rewriter.notifyMatchFailure(
+            fused_batch_norm_op, [&](::mlir::Diagnostic &diag) {
+              diag << "op 'tf.FusedBatchNormV3' attribute 'epsilon' failed to "
+                      "satisfy constraint: 32-bit float attribute";
+            });
+      }
+    }
+    {
+      exponential_avg_factor =
+          fused_batch_norm_op.getAttrOfType<::mlir::FloatAttr>(
+              "exponential_avg_factor");
+      if (!exponential_avg_factor)
+        exponential_avg_factor =
+            rewriter.getFloatAttr(rewriter.getF32Type(), 1.0f);
+    }
+    {
+      data_format =
+          fused_batch_norm_op.getAttrOfType<::mlir::StringAttr>("data_format");
+      if (!data_format) data_format = rewriter.getStringAttr("NHWC");
+    }
+    {
+      is_training =
+          fused_batch_norm_op.getAttrOfType<::mlir::BoolAttr>("is_training");
+      if (!is_training) is_training = rewriter.getBoolAttr(true);
+
+      if (!((!is_training.getValue()))) {
+        return rewriter.notifyMatchFailure(
+            fused_batch_norm_op, [&](::mlir::Diagnostic &diag) {
+              diag << "op 'tf.FusedBatchNormV3' attribute 'is_training' failed "
+                      "to "
+                      "satisfy constraint: FalseBoolAttr";
+            });
+      }
+    }
+
+    if (!(((*root.getODSResults(1).begin()).use_empty()))) {
+      return rewriter.notifyMatchFailure(
+          fused_batch_norm_op, [&](::mlir::Diagnostic &diag) {
+            diag << "entities '' failed to satisfy constraint: has no use";
+          });
+    }
+
+    if (!(((*root.getODSResults(2).begin()).use_empty()))) {
+      return rewriter.notifyMatchFailure(
+          fused_batch_norm_op, [&](::mlir::Diagnostic &diag) {
+            diag << "entities '' failed to satisfy constraint: has no use";
+          });
+    }
+
+    if (!(((*root.getODSResults(3).begin()).use_empty()))) {
+      return rewriter.notifyMatchFailure(
+          fused_batch_norm_op, [&](::mlir::Diagnostic &diag) {
+            diag << "entities '' failed to satisfy constraint: has no use";
+          });
+    }
+
+    if (!(((*root.getODSResults(4).begin()).use_empty()))) {
+      return rewriter.notifyMatchFailure(
+          fused_batch_norm_op, [&](::mlir::Diagnostic &diag) {
+            diag << "entities '' failed to satisfy constraint: has no use";
+          });
+    }
+
+    if (!(((*root.getODSResults(5).begin()).use_empty()))) {
+      return rewriter.notifyMatchFailure(
+          fused_batch_norm_op, [&](::mlir::Diagnostic &diag) {
+            diag << "entities '' failed to satisfy constraint: has no use";
+          });
+    }
+    // Rewrite
+    auto odsLoc = rewriter.getFusedLoc({fused_batch_norm->getLoc()});
+    ::llvm::SmallVector<::mlir::Value, 4> replace_values;
+    ::mlir::TF::ConstOp epsilon_const_op;
+    {
+      epsilon_const_op =
+          rewriter.create<::mlir::TF::ConstOp>(odsLoc,
+                                               /*value=*/epsilon);
+    }
+    ::mlir::TF::AddOp add_op_1;
+    {
+      ::mlir::Value tblgen_value_0 = (*variance.begin());
+      ::mlir::Value tblgen_value_1 =
+          (*epsilon_const_op.getODSResults(0).begin());
+      add_op_1 = rewriter.create<::mlir::TF::AddOp>(odsLoc,
+                                                    /*x=*/tblgen_value_0,
+                                                    /*y=*/tblgen_value_1);
+      // We need to make sure the Add operands are broadcastable.
+      if (mlir::OpTrait::impl::verifyCompatibleOperandBroadcast(add_op_1)
+              .value == LogicalResult::Failure) {
+        return failure();
+      }
+    }
+    ::mlir::TF::RsqrtOp rsqrt_op;
+    {
+      ::mlir::SmallVector<::mlir::Value, 4> tblgen_values;
+      ::mlir::SmallVector<::mlir::NamedAttribute, 4> tblgen_attrs;
+      tblgen_values.push_back((*add_op_1.getODSResults(0).begin()));
+      rsqrt_op = rewriter.create<::mlir::TF::RsqrtOp>(odsLoc, tblgen_values,
+                                                      tblgen_attrs);
+    }
+    ::mlir::TF::MulOp multiplier;
+    {
+      ::mlir::Value tblgen_value_0 = (*scale.begin());
+      ::mlir::Value tblgen_value_1 = (*rsqrt_op.getODSResults(0).begin());
+      // We need to make sure the Add operands are broadcastable.
+      multiplier = rewriter.create<::mlir::TF::MulOp>(odsLoc,
+                                                      /*x=*/tblgen_value_0,
+                                                      /*y=*/tblgen_value_1);
+      if (mlir::OpTrait::impl::verifyCompatibleOperandBroadcast(multiplier)
+              .value == LogicalResult::Failure) {
+        return failure();
+      }
+    }
+    ::mlir::TF::MulOp mul_op_1;
+    {
+      ::mlir::Value tblgen_value_0 = (*x.begin());
+      ::mlir::Value tblgen_value_1 = (*multiplier.getODSResults(0).begin());
+      mul_op_1 = rewriter.create<::mlir::TF::MulOp>(odsLoc,
+                                                    /*x=*/tblgen_value_0,
+                                                    /*y=*/tblgen_value_1);
+      // We need to make sure the Mul operands are broadcastable.
+      if (mlir::OpTrait::impl::verifyCompatibleOperandBroadcast(mul_op_1)
+              .value == LogicalResult::Failure) {
+        return failure();
+      }
+    }
+    ::mlir::TF::MulOp mul_op_2;
+    {
+      ::mlir::Value tblgen_value_0 = (*mean.begin());
+      ::mlir::Value tblgen_value_1 = (*multiplier.getODSResults(0).begin());
+      mul_op_2 = rewriter.create<::mlir::TF::MulOp>(odsLoc,
+                                                    /*x=*/tblgen_value_0,
+                                                    /*y=*/tblgen_value_1);
+      if (mlir::OpTrait::impl::verifyCompatibleOperandBroadcast(mul_op_2)
+              .value == LogicalResult::Failure) {
+        return failure();
+      }
+    }
+    ::mlir::TF::SubOp sub_op;
+    {
+      ::mlir::Value tblgen_value_0 = (*offset.begin());
+      ::mlir::Value tblgen_value_1 = (*mul_op_2.getODSResults(0).begin());
+      sub_op = rewriter.create<::mlir::TF::SubOp>(odsLoc,
+                                                  /*x=*/tblgen_value_0,
+                                                  /*y=*/tblgen_value_1);
+      if (mlir::OpTrait::impl::verifyCompatibleOperandBroadcast(sub_op).value ==
+          LogicalResult::Failure) {
+        return failure();
+      }
+    }
+    ::mlir::TF::AddOp add_op_2;
+    {
+      ::mlir::SmallVector<::mlir::Value, 4> tblgen_values;
+      ::mlir::SmallVector<::mlir::NamedAttribute, 4> tblgen_attrs;
+      tblgen_values.push_back((*mul_op_1.getODSResults(0).begin()));
+      tblgen_values.push_back((*sub_op.getODSResults(0).begin()));
+      ::mlir::SmallVector<::mlir::Type, 4> tblgen_types;
+      for (auto v : fused_batch_norm_op.getODSResults(0)) {
+        tblgen_types.push_back(v.getType());
+      }
+      add_op_2 = rewriter.create<::mlir::TF::AddOp>(
+          odsLoc, tblgen_types, tblgen_values, tblgen_attrs);
+      // We need to make sure the Add operands are broadcastable.
+      if (mlir::OpTrait::impl::verifyCompatibleOperandBroadcast(add_op_2)
+              .value == LogicalResult::Failure) {
+        return failure();
+      }
+    }
+    for (auto v :
+         ::llvm::SmallVector<::mlir::Value, 4>{add_op_2.getODSResults(0)}) {
+      replace_values.push_back(v);
+    }
+    for (auto v : ::llvm::SmallVector<::mlir::Value, 4>{x}) {
+      replace_values.push_back(v);
+    }
+    for (auto v : ::llvm::SmallVector<::mlir::Value, 4>{x}) {
+      replace_values.push_back(v);
+    }
+    for (auto v : ::llvm::SmallVector<::mlir::Value, 4>{x}) {
+      replace_values.push_back(v);
+    }
+    for (auto v : ::llvm::SmallVector<::mlir::Value, 4>{x}) {
+      replace_values.push_back(v);
+    }
+    for (auto v : ::llvm::SmallVector<::mlir::Value, 4>{x}) {
+      replace_values.push_back(v);
+    }
+    rewriter.replaceOp(fused_batch_norm, replace_values);
+    return success();
+  };
 };
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_prepare_tf.inc"
@@ -710,13 +1037,112 @@ LogicalResult ConvertTf2XlaOps(FuncOp func, MLIRContext *context) {
   target.addLegalOp<ModuleOp>();
   target.addLegalOp<FuncOp>();
   target.addIllegalOp<TF::XlaConvOp>();
+  target.addIllegalOp<TF::XlaGatherOp>();
 
   OwningRewritePatternList patterns;
   mhlo::PopulateLegalizeTfWithTf2XlaPatterns("XLA_CPU_JIT", patterns);
+  mhlo::PopulateLegalizeTfPatterns(context, &patterns);
   TF::PopulateLegalizeHloToTfPatterns(&patterns, context);
+  mhlo::GatherOp::getCanonicalizationPatterns(patterns, context);
 
   return applyPartialConversion(func, target, patterns);
 }
+
+// Convert rfft to rfft2d.
+// The transformation pattern looks like below:
+//
+//    input     fft_len
+//     \      /
+//     rfft
+//
+//     ||
+//     \/
+//
+//   input       fft_len
+//    \            /
+//   expand_dim    concat with [1] at the front
+//      \         /
+//     rfft_2d
+//       |
+//     squeeze
+struct ConvertRfftToRfft2d : public RewritePattern {
+  explicit ConvertRfftToRfft2d(MLIRContext *context)
+      : RewritePattern(TF::RFFTOp::getOperationName(), 1, context) {}
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    auto rfft_op = dyn_cast<TF::RFFTOp>(op);
+
+    auto input = rfft_op.input();
+    auto input_type = input.getType().dyn_cast_or_null<RankedTensorType>();
+    if (!input_type) return failure();
+    auto fft_len = rfft_op.fft_length();
+    auto fft_len_type = fft_len.getType().dyn_cast_or_null<ShapedType>();
+    if (!fft_len_type) return failure();
+
+    auto output_type =
+        rfft_op.getResult().getType().dyn_cast_or_null<RankedTensorType>();
+    if (!output_type) return failure();
+
+    // Expanded inputs.
+    // Insert at -2 location.
+    auto one_ele_type =
+        mlir::RankedTensorType::get({1}, rewriter.getIntegerType(32));
+    auto minus_two = CreateConstOpWithSingleValue(&rewriter, rfft_op.getLoc(),
+                                                  one_ele_type, -2);
+
+    SmallVector<int64_t, 4> expanded_input_shape;
+    SmallVector<int64_t, 4> expanded_output_shape;
+    int expanded_rank = input_type.getRank() + 1;
+    int r = 0;
+    for (int i = 0; i < expanded_rank; ++i) {
+      if (i == expanded_rank - 2) {
+        expanded_input_shape.push_back(1);
+        expanded_output_shape.push_back(1);
+      } else {
+        expanded_input_shape.push_back(input_type.getDimSize(r));
+        expanded_output_shape.push_back(output_type.getDimSize(r));
+        r++;
+      }
+    }
+
+    auto expaned_input_type = mlir::RankedTensorType::get(
+        expanded_input_shape, input_type.getElementType());
+    TF::ExpandDimsOp expanded_input = rewriter.create<TF::ExpandDimsOp>(
+        rfft_op.getLoc(), expaned_input_type, input, minus_two->getResult());
+
+    // Expanded fft_len.
+    auto one_attr = mlir::DenseIntElementsAttr::get(one_ele_type, {1});
+
+    auto one = rewriter.create<TF::ConstOp>(rfft_op.getLoc(), one_attr);
+
+    auto zero = CreateConstOpWithSingleValue(&rewriter, rfft_op.getLoc(),
+                                             one_ele_type, 0);
+
+    auto expanded_fft_len_type =
+        mlir::RankedTensorType::get({2}, fft_len_type.getElementType());
+
+    TF::ConcatV2Op expanded_fft_len = rewriter.create<TF::ConcatV2Op>(
+        rfft_op.getLoc(), expanded_fft_len_type,
+        SmallVector<Value, 2>({one.getResult(), fft_len}), zero->getResult());
+
+    // Insert the rfft_2d.
+    auto rfft2d_out_type = mlir::RankedTensorType::get(
+        expanded_output_shape, output_type.getElementType());
+    TF::RFFT2DOp rfft2d = rewriter.create<TF::RFFT2DOp>(
+        rfft_op.getLoc(), rfft2d_out_type, expanded_input.getResult(),
+        expanded_fft_len.getResult());
+
+    // Insert the squeeze op.
+    auto squeeze_dim = rewriter.getI64ArrayAttr({-2});
+    TF::SqueezeOp squeeze = rewriter.create<TF::SqueezeOp>(
+        rfft_op.getLoc(), output_type, rfft2d.getResult(), squeeze_dim);
+
+    rewriter.replaceOp(op, squeeze.getResult());
+
+    return success();
+  }
+};
 
 void PrepareTFPass::runOnFunction() {
   OwningRewritePatternList patterns;
@@ -748,9 +1174,10 @@ void PrepareTFPass::runOnFunction() {
   // This pattern will try to identify and optimize for dilated convolution.
   // e.g. Patterns like "SpaceToBatchND -> Conv2D -> BatchToSpaceND" will be
   // replaced with a single Conv op with dilation parameter.
-  patterns.insert<ConvertTFDilatedConvOp<TF::Conv2DOp>,
+  patterns.insert<ConvertTFDilatedConvOp<TF::Conv2DOp>, FusedBatchNormV3Pat,
                   ConvertTFDilatedConvOp<TF::DepthwiseConv2dNativeOp>>(ctx);
-  TFL::populateWithGenerated(ctx, &patterns);
+
+  TFL::populateWithGenerated(ctx, patterns);
   // TODO(karimnosseir): Split to separate pass probably after
   // deciding on long term plan for this optimization.
   // This will allow optimizing any TF_Mul->TF_Conv in the graph
@@ -761,13 +1188,14 @@ void PrepareTFPass::runOnFunction() {
   // Load the generated pattern again, so new quantization pass-through
   // will be applied.
   patterns.clear();
-  TFL::populateWithGenerated(ctx, &patterns);
+  TFL::populateWithGenerated(ctx, patterns);
   if (unfold_batch_matmul_) {
     patterns.insert<TF::ConvertTFBatchMatMulOp<TF::BatchMatMulOp>,
                     TF::ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>>(ctx);
   }
-  patterns.insert<TF::ConvertTFEinsumOp, ConvertTFConv2D,
-                  ConvertTFDepthwiseConv2dNative, ConvertTFStridedSlice>(ctx);
+  patterns.insert<TF::ConvertTFEinsumOp, ConvertTFBroadcastTo, ConvertTFConv2D,
+                  ConvertTFDepthwiseConv2dNative, ConvertTFStridedSlice,
+                  ConvertRfftToRfft2d>(ctx);
   applyPatternsAndFoldGreedily(func, patterns);
 }
 

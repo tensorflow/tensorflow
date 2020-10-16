@@ -40,7 +40,7 @@ limitations under the License.
 // The advantages of using gmock matchers instead of self defined matchers are
 // better error messages, more maintainable tests and more test coverage.
 #if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID)
-#include "testing/base/public/gmock.h"
+#include "testing/base/public/gmock.h"  // IWYU pragma: export
 #else
 #include <gmock/gmock-generated-matchers.h>
 #include <gmock/gmock-matchers.h>
@@ -53,7 +53,7 @@ namespace testing {
 // Return a temporary directory suitable for temporary testing files.
 //
 // Where possible, consider using Env::LocalTempFilename over this function.
-string TmpDir();
+std::string TmpDir();
 
 // Returns the path to TensorFlow in the directory containing data
 // dependencies.
@@ -62,7 +62,7 @@ string TmpDir();
 // tensorflow/core/platform/resource_loader.h:GetDataDependencyFilepath. That
 // function should do the right thing both within and outside of tests allowing
 // avoiding test specific APIs.
-string TensorFlowSrcRoot();
+std::string TensorFlowSrcRoot();
 
 // Return a random number generator seed to use in randomized tests.
 // Returns the same value for the lifetime of the process.

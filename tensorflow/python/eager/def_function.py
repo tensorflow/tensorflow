@@ -27,16 +27,18 @@ import six
 from google.protobuf import text_format as _text_format
 from google.protobuf.message import DecodeError
 from tensorflow.core.framework import attr_value_pb2
-from tensorflow.python import pywrap_tfe
+from tensorflow.python.distribute.parallel_device import parallel_device
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as function_lib
 from tensorflow.python.eager import lift_to_graph
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
@@ -118,7 +120,7 @@ class _FrequentTracingDetector(object):
             "experimental_relax_shapes=True option that relaxes argument "
             "shapes that can avoid unnecessary retracing. For (3), please "
             "refer to "
-            "https://www.tensorflow.org/tutorials/customization/performance#python_or_tensor_args"
+            "https://www.tensorflow.org/guide/function#controlling_retracing"
             " and https://www.tensorflow.org/api_docs/python/tf/function for "
             " more details.".format(counter.get_tracing_count(),
                                     counter.call_count, function_name))
@@ -218,17 +220,18 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
     if constraint is not None and not callable(constraint):
       raise ValueError("The `constraint` argument must be a callable.")
 
-    if isinstance(initial_value, trackable.CheckpointInitialValue):
-      self._maybe_initialize_trackable()
-      self._update_uid = initial_value.checkpoint_position.restore_uid
-      initial_value = initial_value.wrapped_value
-
     with ops.name_scope(name, "Variable", []
                         if init_from_fn else [initial_value]) as scope_name:
       with ops.name_scope("Initializer"):
-        initial_value = ops.convert_to_tensor(
-            initial_value() if init_from_fn else initial_value,
-            name="initial_value", dtype=dtype)
+        if init_from_fn:
+          initial_value = initial_value()
+        if isinstance(initial_value, trackable.CheckpointInitialValue):
+          self._maybe_initialize_trackable()
+          self._update_uid = initial_value.checkpoint_position.restore_uid
+          initial_value = initial_value.wrapped_value
+
+        initial_value = ops.convert_to_tensor(initial_value,
+                                              name="initial_value", dtype=dtype)
       assert initial_value is not None
 
       # Don't use `shape or initial_value.shape` since TensorShape has
@@ -322,37 +325,7 @@ def experimental_run_functions_eagerly(run_eagerly):
   invocations of `tf.function` run eagerly instead of running as a traced graph
   function.
 
-  This can be useful for debugging or profiling. For example, let's say you
-  implemented a simple iterative sqrt function, and you want to collect the
-  intermediate values and plot the convergence.  Appending the values to a list
-  in `@tf.function` normally wouldn't work since it will just record the Tensors
-  being traced, not the values.  Instead, you can do the following.
-
-  >>> ys = []
-  >>>
-  >>> @tf.function
-  ... def sqrt(x):
-  ...   y = x / 2
-  ...   d = y
-  ...   for _ in range(10):
-  ...     d /= 2
-  ...     if y * y < x:
-  ...       y += d
-  ...     else:
-  ...       y -= d
-  ...     ys.append(y.numpy())
-  ...   return y
-  >>>
-  >>> tf.config.experimental_run_functions_eagerly(True)
-  >>> sqrt(tf.constant(2.))
-  <tf.Tensor: shape=(), dtype=float32, numpy=1.4150391>
-  >>> ys
-  [1.5, 1.25, 1.375, 1.4375, 1.40625, 1.421875, 1.4140625, 1.4179688, 1.4160156,
-  1.4150391]
-  >>> tf.config.experimental_run_functions_eagerly(False)
-
-  Calling `tf.config.experimental_run_functions_eagerly(False)` will undo this
-  behavior.
+  See `tf.config.run_functions_eagerly` for an example.
 
   Note: This flag has no effect on functions passed into tf.data transformations
   as arguments. tf.data functions are never executed eagerly and are always
@@ -372,37 +345,31 @@ def run_functions_eagerly(run_eagerly):
   invocations of `tf.function` run eagerly instead of running as a traced graph
   function.
 
-  This can be useful for debugging or profiling. For example, let's say you
-  implemented a simple iterative sqrt function, and you want to collect the
-  intermediate values and plot the convergence.  Appending the values to a list
-  in `@tf.function` normally wouldn't work since it will just record the Tensors
-  being traced, not the values.  Instead, you can do the following.
+  This can be useful for debugging.
 
-  >>> ys = []
-  >>>
-  >>> @tf.function
-  ... def sqrt(x):
-  ...   y = x / 2
-  ...   d = y
-  ...   for _ in range(10):
-  ...     d /= 2
-  ...     if y * y < x:
-  ...       y += d
-  ...     else:
-  ...       y -= d
-  ...     ys.append(y.numpy())
-  ...   return y
-  >>>
+  >>> def my_func(a):
+  ...  print("Python side effect")
+  ...  return a + a
+  >>> a_fn = tf.function(my_func)
+
+  >>> # A side effect the first time the function is traced
+  >>> a_fn(tf.constant(1))
+  Python side effect
+  <tf.Tensor: shape=(), dtype=int32, numpy=2>
+
+  >>> # No further side effect, as the traced function is called
+  >>> a_fn(tf.constant(2))
+  <tf.Tensor: shape=(), dtype=int32, numpy=4>
+
+  >>> # Now, switch to eager running
   >>> tf.config.run_functions_eagerly(True)
-  >>> sqrt(tf.constant(2.))
-  <tf.Tensor: shape=(), dtype=float32, numpy=1.4150391>
-  >>> ys
-  [1.5, 1.25, 1.375, 1.4375, 1.40625, 1.421875, 1.4140625, 1.4179688, 1.4160156,
-  1.4150391]
-  >>> tf.config.run_functions_eagerly(False)
+  >>> # Side effect, as the function is called directly
+  >>> a_fn(tf.constant(2))
+  Python side effect
+  <tf.Tensor: shape=(), dtype=int32, numpy=4>
 
-  Calling `tf.config.run_functions_eagerly(False)` will undo this
-  behavior.
+  >>> # Turn this back off
+  >>> tf.config.run_functions_eagerly(False)
 
   Note: This flag has no effect on functions passed into tf.data transformations
   as arguments. tf.data functions are never executed eagerly and are always
@@ -428,6 +395,45 @@ def experimental_functions_run_eagerly():
 def functions_run_eagerly():
   """Returns the value of the `run_functions_eagerly` setting."""
   return RUN_FUNCTIONS_EAGERLY
+
+
+def _evaluate_var_is_initialized(variables):
+  """Compute booleans indicating whether each variable is initialized."""
+  with ops.init_scope():
+    var_is_initialized = []
+    for v in variables:
+      var_is_initialized.append(
+          resource_variable_ops.var_is_initialized_op(v.handle))
+    try:
+      # Stack all the var_is_initialized values into one tensor and interpret
+      # the numpy value. This will reduce the number of RPCs between client and
+      # worker in the remote case.
+      return array_ops.stack(var_is_initialized).numpy()
+    except errors.UnimplementedError:
+      # Some devices do not support implicit copy-off to host. Fall back to
+      # variable-by-variable processing.
+      for index, v in enumerate(variables):
+        try:
+          numpy_value = var_is_initialized[index].numpy()
+        except errors.UnimplementedError:
+          # This is a variable on a parallel device; we'll extract its value on
+          # each replica and assert that they're identical.
+          components = parallel_device.unpack(var_is_initialized[index])
+          with ops.device(None):
+            components = array_ops.stack(components)
+            all_initialized = math_ops.reduce_all(components).numpy()
+            any_initialized = math_ops.reduce_any(components).numpy()
+          if all_initialized != any_initialized:
+            raise NotImplementedError(
+                ("Some but not all components of a parallel variable {} were "
+                 "initialized between their creation in a tf.function and "
+                 "the function's trace having completed. This is not yet "
+                 "supported; consider initializing either all or none of the "
+                 "components, or moving initialization out of the function."
+                ).format(repr(v)))
+          numpy_value = all_initialized
+        var_is_initialized[index] = numpy_value
+  return var_is_initialized
 
 
 class FunctionDeleter(object):
@@ -530,7 +536,9 @@ class Function(object):
     self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
         python_function,
         input_signature,
-        experimental_follow_type_hints=experimental_follow_type_hints)
+        experimental_compile=experimental_compile,
+        experimental_follow_type_hints=experimental_follow_type_hints,
+    )
     self._implements = experimental_implements
     # If `True`, the function uses the rendezvous of the parent. This is only
     # needed to support code where raw send/recv operations are inserted and
@@ -594,6 +602,8 @@ class Function(object):
     """Creates a defun wrapped inside a variable creator scope."""
 
     weak_wrapped_fn = None
+    compile_with_xla = self._experimental_compile
+
     def wrapped_fn(*args, **kwds):
       """Wraps `self._python_function` in a variable creator scope."""
       # We register a variable creator with reduced priority. If an outer
@@ -608,10 +618,22 @@ class Function(object):
       # and so variable initializers can't depend on function arguments. This is
       # better than the alternative, tracing the initialization graph but giving
       # the user a variable type they didn't want.
-      with ops.get_default_graph()._variable_creator_scope(scope, priority=50):  # pylint: disable=protected-access
+      default_graph = ops.get_default_graph()
+      with default_graph._variable_creator_scope(scope, priority=50):  # pylint: disable=protected-access
         # __wrapped__ allows AutoGraph to swap in a converted function. We give
         # the function a weak reference to itself to avoid a reference cycle.
-        return weak_wrapped_fn().__wrapped__(*args, **kwds)
+        if compile_with_xla and \
+            not control_flow_util.GraphOrParentsInXlaContext(default_graph):
+          xla_context = control_flow_ops.XLAControlFlowContext()
+          try:
+            xla_context.Enter()
+            out = weak_wrapped_fn().__wrapped__(*args, **kwds)
+          finally:
+            xla_context.Exit()
+        else:
+          out = weak_wrapped_fn().__wrapped__(*args, **kwds)
+        return out
+
     weak_wrapped_fn = weakref.ref(wrapped_fn)
 
     return self._defun(tf_decorator.make_decorator(
@@ -655,14 +677,6 @@ class Function(object):
       attributes.update(_XlaMustCompile=bool(self._experimental_compile))
       if self._experimental_compile:
         attributes.update(_noinline=True)
-        # TODO(b/149755889): Until XLA is always linked, we have to do a runtime
-        # check.
-        if not pywrap_tfe.TF_IsXlaEnabled():
-          raise ValueError(
-              "Attempting to use experimental_compile, "
-              "but XLA support is not linked in. "
-              "Is the dependency to tensorflow/compiler/jit:xla_gpu_jit "
-              "(or xla_cpu_jit) present?")
     if not attributes:
       attributes = None
     return function_lib.defun_with_attributes(
@@ -765,7 +779,40 @@ class Function(object):
     self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
         self._python_function, self.input_signature)
 
+  # TODO: Remove this private method after updating all its uses
+  # A good moment to do this could be when the experimental label is removed
   def _get_tracing_count(self):
+    return self.experimental_get_tracing_count()
+
+  def experimental_get_tracing_count(self):
+    """Returns the number of times the function has been traced.
+
+    For more information on when a function is traced and when it is
+    traced multiple times see https://www.tensorflow.org/guide/function.
+    Example:
+
+    >>> @tf.function
+    ... def double(a):
+    ...   return a + a
+    >>> double(tf.constant(1))
+    >>> double(tf.constant(2))
+    >>> double.experimental_get_tracing_count()
+    1
+    >>> double(tf.constant("a"))
+    >>> double.experimental_get_tracing_count()
+    2
+
+
+    The first time experimental_get_tracing_count is called
+    it returns 1, as the function is traced the first
+    time it is called, and the second time the same graph is used
+    since we're calling it with a parameter of the same type.
+
+    The second time experimental_get_tracing_count is called
+    it returns 2, as we called double with a
+    different argument type, and so it was traced again.
+
+    """
     result = self._stateless_fn.tracing_count if self._stateless_fn else 0
     result += self._stateful_fn.tracing_count if self._stateful_fn else 0
     return result
@@ -776,26 +823,11 @@ class Function(object):
       with trace.Trace(self._name, tf_function_call="eager"):
         return self._python_function(*args, **kwds)
 
-    tracing_count = self._get_tracing_count()
+    tracing_count = self.experimental_get_tracing_count()
     with trace.Trace(self._name) as tm:
-      if self._experimental_compile and (
-          not control_flow_util.GraphOrParentsInXlaContext(
-              ops.get_default_graph())):
-        # V2 control flow relies on XLAControlFlowContext to generate a
-        # XLA-compatible function graph. If the function is already called
-        # inside an XLA context, we don't create nested XLA context.
-        compiler = "xla"
-        xla_context = control_flow_ops.XLAControlFlowContext()
-        try:
-          xla_context.Enter()
-          result = self._call(*args, **kwds)
-        finally:
-          xla_context.Exit()
-      else:
-        compiler = "nonXla"
-        result = self._call(*args, **kwds)
-
-      new_tracing_count = self._get_tracing_count()
+      result = self._call(*args, **kwds)
+      compiler = "xla" if self._experimental_compile else "nonXla"
+      new_tracing_count = self.experimental_get_tracing_count()
       without_tracing = (tracing_count == new_tracing_count)
       execution_mode = "notTraced" if without_tracing else "traced"
       tm.set_metadata(tf_function_call=execution_mode + "-" + compiler,
@@ -855,13 +887,14 @@ class Function(object):
         # stateless function.
         return self._stateless_fn(*args, **kwds)
     else:
-      canon_args, canon_kwds = \
+      _, _, _, filtered_flat_args = \
           self._stateful_fn._function_spec.canonicalize_function_inputs(  # pylint: disable=protected-access
               *args, **kwds)
       # If we did not create any variables the trace we have is good enough.
-      return self._concrete_stateful_fn._filtered_call(canon_args, canon_kwds)  # pylint: disable=protected-access
+      return self._concrete_stateful_fn._call_flat(
+          filtered_flat_args, self._concrete_stateful_fn.captured_inputs)  # pylint: disable=protected-access
 
-    def fn_with_cond(*inner_args, **inner_kwds):
+    def fn_with_cond(inner_args, inner_kwds, inner_filtered_flat_args):
       """Conditionally runs initialization if it's needed."""
       condition = True
       for wr in self._created_variables:
@@ -909,15 +942,104 @@ class Function(object):
       return control_flow_ops.cond(
           condition,
           lambda: self._stateless_fn(*inner_args, **inner_kwds),
-          functools.partial(self._concrete_stateful_fn._filtered_call,  # pylint: disable=protected-access
-                            inner_args, inner_kwds))
+          functools.partial(
+              self._concrete_stateful_fn._call_flat,  # pylint: disable=protected-access
+              inner_filtered_flat_args,
+              captured_inputs=self._concrete_stateful_fn.captured_inputs))
 
     # We've created variables and are unable to lift the initialization graphs,
     # so we fall back to initializing with conds while running the function.
-    canon_args, canon_kwds = \
+    canon_args, canon_kwds, _, filtered_flat_args = \
         self._stateful_fn._function_spec.canonicalize_function_inputs(  # pylint: disable=protected-access
             *args, **kwds)
-    return function_lib.defun(fn_with_cond)(*canon_args, **canon_kwds)
+    return function_lib.defun(fn_with_cond)(canon_args, canon_kwds,
+                                            filtered_flat_args)
+
+  def experimental_get_compiler_ir(self, *args, **kwargs):
+    """Returns compiler IR for the compiled function.
+
+    This API is intended *only* for debugging as there are no guarantees on
+    backwards compatibility of returned IR or the allowed values of `stage`.
+
+    Args:
+      *args: Arguments used for compilation; same arguments as used for calling
+        the function. Need to be eager tensors.
+      **kwargs: Keyword arguments used for compilation.
+
+    Returns:
+      Function callable with the stage at which the compiler IR should be
+      serialized. Allowed values for the `stage` are:
+       - `hlo`: HLO output after conversion from TF
+         (https://www.tensorflow.org/xla/operation_semantics).
+       - `optimized_hlo`: HLO after compiler optimizations.
+       - `optimized_hlo_dot`: optimized HLO in DOT format suitable for
+         Graphviz.
+
+      For example, for
+
+      ```python
+      @tf.function(experimental_compile=True)
+      def f(x):
+        return x + 1
+
+      f.experimental_get_compiler_ir(tf.random.normal([10, 10])(stage='hlo')
+      ```
+
+      the output is:
+
+      ```
+      HloModule a_inference_f_13__.9
+
+      ENTRY %a_inference_f_13__.9 (arg0.1: f32[10,10]) -> f32[10,10] {
+        %arg0.1 = f32[10,10]{1,0} parameter(0), parameter_replication={false}
+        %reshape.2 = f32[10,10]{1,0} reshape(f32[10,10]{1,0} %arg0.1)
+        %constant.3 = f32[] constant(1)
+        %broadcast.4 = f32[10,10]{1,0} broadcast(f32[] %constant.3)
+        %add.5 = f32[10,10]{1,0} add(f32[10,10]{1,0} %reshape.2,
+                                     f32[10,10]{1,0} %broadcast.4)
+        %reshape.6 = f32[10,10]{1,0} reshape(f32[10,10]{1,0} %add.5)
+        %tuple.7 = (f32[10,10]{1,0}) tuple(f32[10,10]{1,0} %reshape.6)
+        ROOT %get-tuple-element.8 = f32[10,10]{1,0}
+          get-tuple-element((f32[10,10]{1,0}) %tuple.7), index=0
+      }
+      ```
+
+    Raises:
+      ValueError: If an invalid `stage` is selected or if applied to a function
+        which is not compiled (`experimental_compile=True` is not set).
+      TypeError: When called with input in graph mode.
+    """
+    context.ensure_initialized()
+    if not self._experimental_compile:
+      raise ValueError(
+          "Compiler IR can only be returned for functions marked with "
+          "experimental_compile=True")
+
+    concrete_fn = self.get_concrete_function(*args, **kwargs)
+    fn_name = concrete_fn.name
+
+    # pylint: disable=protected-access
+    _, _, _, filtered_flat_args = \
+        concrete_fn._function_spec.canonicalize_function_inputs(
+            *args, **kwargs)
+
+    def compiler_ir_generator(stage='hlo'):
+      """Returns compiler IR for the given `stage`.
+
+      Args:
+        stage: Stage at which to return the IR. Allowed values are 'hlo' and
+        'optimized_hlo'.
+      """
+      # TODO(cheshire): This is a hack to get the current "preferred" device,
+      # there is no current API to get it otherwise.
+      device = random_ops.random_normal([]).device
+      return context.context().get_compiler_ir(
+          device_name=device,
+          stage=stage,
+          function_name=fn_name,
+          args=list(filtered_flat_args) + concrete_fn.captured_inputs)
+
+    return compiler_ir_generator
 
   @property
   def python_function(self):
@@ -945,21 +1067,15 @@ class Function(object):
     if not initializers:
       return
 
+    var_is_initialized = _evaluate_var_is_initialized(
+        [v for v, _ in initializers])
+
     # Note: using defun here avoids an infinite recursion.
     # Most of the code in this function runs eagerly with init_scope, where
     # autograph is not necessary.
     @function_lib.defun(autograph=False)
     def initialize_variables():
       op_map = object_identity.ObjectIdentityDictionary()
-      # Stack all the var_is_initialized values into one tensor and interpret
-      # the numpy value. This will reduce the number of RPCs between client and
-      # worker in the remote case.
-      with ops.init_scope():
-        var_is_initialized = []
-        for v, _ in initializers:
-          var_is_initialized.append(
-              resource_variable_ops.var_is_initialized_op(v.handle))
-        var_is_initialized = array_ops.stack(var_is_initialized).numpy()
 
       inits = []
       for (v, init), is_initialized in zip(initializers, var_is_initialized):

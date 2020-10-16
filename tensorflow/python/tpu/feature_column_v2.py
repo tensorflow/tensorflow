@@ -427,7 +427,9 @@ class _TPUEmbeddingColumnV2(_TPUBaseEmbeddingColumn, fc_lib.EmbeddingColumn):
               initializer=None,
               max_sequence_length=0,
               learning_rate_fn=None,
-              use_safe_embedding_lookup=True):
+              use_safe_embedding_lookup=True,
+              bypass_scope_validation=False):
+    del bypass_scope_validation
     return fc_lib.EmbeddingColumn.__new__(
         cls,
         categorical_column,
@@ -455,13 +457,18 @@ class _TPUEmbeddingColumnV2(_TPUBaseEmbeddingColumn, fc_lib.EmbeddingColumn):
                initializer=None,
                max_sequence_length=0,
                learning_rate_fn=None,
-               use_safe_embedding_lookup=True):
+               use_safe_embedding_lookup=True,
+               bypass_scope_validation=False):
     _TPUBaseEmbeddingColumn.__init__(
         self,
         categorical_column,
         max_sequence_length=max_sequence_length,
         learning_rate_fn=learning_rate_fn)
     self._key = None
+    # If true, scope validation is skipped to allow the same column to be used
+    # in multiple variable scopes. By default, this is False, and we expect a
+    # 1:1 mapping between feature columns and scopes.
+    self._bypass_scope_validation = bypass_scope_validation
 
   def get_combiner(self):
     return self.combiner
@@ -515,8 +522,10 @@ class _TPUEmbeddingColumnV2(_TPUBaseEmbeddingColumn, fc_lib.EmbeddingColumn):
     tensor = inputs.get(self.get_feature_key_name())
 
     # Add to collection for _create_tpu_embedding_variables_and_ops
-    _record_variable_scope_and_name(self.get_embedding_var_name(),
-                                    'embedding_weights')
+    _record_variable_scope_and_name(
+        self.get_embedding_var_name(),
+        'embedding_weights',
+        bypass_scope_validation=self._bypass_scope_validation)
 
     return tensor
 
@@ -528,8 +537,10 @@ class _TPUEmbeddingColumnV2(_TPUBaseEmbeddingColumn, fc_lib.EmbeddingColumn):
     # Create state is called for the EmbeddingColumn to create its embedding
     # variables under feature column V2, if we are on TPU so record the scope
     # here.
-    _record_variable_scope_and_name(self.get_embedding_var_name(),
-                                    'embedding_weights')
+    _record_variable_scope_and_name(
+        self.get_embedding_var_name(),
+        'embedding_weights',
+        bypass_scope_validation=self._bypass_scope_validation)
 
   def get_dense_tensor(self, transformation_cache, state_manager):
     if tpu.under_tpu_inference_context():
@@ -569,8 +580,10 @@ class _TPUEmbeddingColumnV2(_TPUBaseEmbeddingColumn, fc_lib.EmbeddingColumn):
     tensor_lengths = array_ops.squeeze(tensor_lengths, -1)
 
     # Add to collection for _create_tpu_embedding_variables_and_ops
-    _record_variable_scope_and_name(self.get_embedding_var_name(),
-                                    'embedding_weights')
+    _record_variable_scope_and_name(
+        self.get_embedding_var_name(),
+        'embedding_weights',
+        bypass_scope_validation=self._bypass_scope_validation)
 
     return fc_lib.SequenceDenseColumn.TensorSequenceLengthPair(
         dense_tensor=tensor, sequence_length=tensor_lengths)

@@ -29,9 +29,6 @@ namespace concat_split_util {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
-#ifdef TENSORFLOW_USE_SYCL
-typedef Eigen::SyclDevice SYCLDevice;
-#endif  // TENSORFLOW_USE_SYCL
 
 // Concatenates 'inputs' into a single tensor along the zeroth dimension.
 // Requires that all elements of 'inputs' have element type T. Writes to
@@ -174,8 +171,11 @@ Status SplitCPU(OpKernelContext* context, const Tensor& input,
         context->allocate_temp(input.dtype(), output_shape, &output));
     auto output_shaped = output.shaped<T, 2>({size, suffix_dim_size});
 
-    Eigen::DSizes<Eigen::DenseIndex, 2> slice_indices{position, 0};
-    Eigen::DSizes<Eigen::DenseIndex, 2> slice_sizes{size, suffix_dim_size};
+    Eigen::DSizes<Eigen::DenseIndex, 2> slice_indices{
+        static_cast<Eigen::DenseIndex>(position), 0};
+    Eigen::DSizes<Eigen::DenseIndex, 2> slice_sizes{
+        static_cast<Eigen::DenseIndex>(size),
+        static_cast<Eigen::DenseIndex>(suffix_dim_size)};
     functor::Split<CPUDevice, T, 2>()(context->eigen_device<CPUDevice>(),
                                       output_shaped, input_reshaped,
                                       slice_indices, slice_sizes);

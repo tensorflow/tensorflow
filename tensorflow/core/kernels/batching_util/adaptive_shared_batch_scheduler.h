@@ -134,6 +134,17 @@ class AdaptiveSharedBatchScheduler
     // A non-zero value can improve performance by limiting the scheduling of
     // nearly empty batches.
     int64 batch_timeout_micros = 0;
+    // If non nullptr, split_input_task_func should split input_task into
+    // multiple tasks, the first of which has size first_size and the remaining
+    // not exceeding max_size. This function may acquire ownership of input_task
+    // and should return a status indicating if the split was successful. Upon
+    // success, the caller can assume that all output_tasks will be scheduled.
+    // Including this option allows the scheduler to pack batches better and
+    // should usually improve overall throughput.
+    std::function<Status(std::unique_ptr<TaskType>* input_task, int first_size,
+                         int max_size,
+                         std::vector<std::unique_ptr<TaskType>>* output_tasks)>
+        split_input_task_func;
   };
 
   using BatchProcessor = std::function<void(std::unique_ptr<Batch<TaskType>>)>;
@@ -149,7 +160,7 @@ class AdaptiveSharedBatchScheduler
   }
 
  private:
-  // access to AddBatch, RemoveQueue, GetEnv.
+  // access to AddBatch, MaybeScheduleClosedBatches, RemoveQueue, GetEnv.
   friend class internal::ASBSQueue<TaskType>;
 
   explicit AdaptiveSharedBatchScheduler(const Options& options);
@@ -161,16 +172,17 @@ class AdaptiveSharedBatchScheduler
   // Schedules batch if in_flight_batches_limit_ is not met.
   void MaybeScheduleNextBatch() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  // Schedules the earliest closed batch in batches_
-  // if batch_thread_pool_ has an idle thead.
+  // Schedules all closed batches in batches_ for which an idle thread is
+  // available in batch_thread_pool_.
   // Batches scheduled this way are called express batches.
   // Express batches are not limited by in_flight_batches_limit_, and
   // their latencies will not affect in_flight_batches_limit_.
-  void MaybeScheduleClosedBatch() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void MaybeScheduleClosedBatches();
+
+  void MaybeScheduleClosedBatchesLocked() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Notifies scheduler of non-empty batch which is eligible for processing.
-  void AddBatch(const internal::ASBSBatch<TaskType>* batch,
-                bool also_schedule_closed_batch);
+  void AddBatch(const internal::ASBSBatch<TaskType>* batch);
 
   // Removes queue from scheduler.
   void RemoveQueue(const internal::ASBSQueue<TaskType>* queue);
@@ -262,6 +274,9 @@ class ASBSQueue : public BatchScheduler<TaskType> {
   size_t max_task_size() const override { return options_.max_batch_size; }
 
  private:
+  // Number of size 1 tasks which could currently be scheduled without failing.
+  size_t SchedulingCapacityLocked() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
   std::shared_ptr<AdaptiveSharedBatchScheduler<TaskType>> scheduler_;
   const QueueOptions options_;
   // Owned by scheduler_.
@@ -392,19 +407,24 @@ Status AdaptiveSharedBatchScheduler<TaskType>::AddQueue(
 
 template <typename TaskType>
 void AdaptiveSharedBatchScheduler<TaskType>::AddBatch(
-    const internal::ASBSBatch<TaskType>* batch,
-    bool also_schedule_closed_batch) {
+    const internal::ASBSBatch<TaskType>* batch) {
   mutex_lock l(mu_);
   batches_.push_back(batch);
-  // Maybe schedule this batch once it becomes schedulable.
+  int64 delay_micros = batch->schedulable_time_micros() - GetEnv()->NowMicros();
+  if (delay_micros <= 0) {
+    MaybeScheduleNextBatch();
+    return;
+  }
+  // Try to schedule batch once it becomes schedulable. Although scheduler waits
+  // for all batches to finish processing before allowing itself to be deleted,
+  // MaybeScheduleNextBatch() is called in other places, and therefore it's
+  // possible the scheduler could be deleted by the time this closure runs.
+  // Grab a shared_ptr reference to prevent this from happening.
   GetEnv()->SchedClosureAfter(
-      batch->schedulable_time_micros() - batch->creation_time_micros(), [this] {
+      delay_micros, [this, lifetime_preserver = this->shared_from_this()] {
         mutex_lock l(mu_);
         MaybeScheduleNextBatch();
       });
-  if (also_schedule_closed_batch) {
-    MaybeScheduleClosedBatch();
-  }
 }
 
 template <typename TaskType>
@@ -425,7 +445,7 @@ void AdaptiveSharedBatchScheduler<TaskType>::MaybeScheduleNextBatch() {
     return;
   }
   auto best_it = batches_.end();
-  double best_score;
+  double best_score = (std::numeric_limits<double>::max)();
   int64 now_micros = GetEnv()->NowMicros();
   for (auto it = batches_.begin(); it != batches_.end(); it++) {
     if ((*it)->schedulable_time_micros() > now_micros) continue;
@@ -451,21 +471,31 @@ void AdaptiveSharedBatchScheduler<TaskType>::MaybeScheduleNextBatch() {
 }
 
 template <typename TaskType>
-void AdaptiveSharedBatchScheduler<TaskType>::MaybeScheduleClosedBatch() {
-  if (in_flight_batches_ + in_flight_express_batches_ >=
-      options_.num_batch_threads) {
-    return;
-  }
-  for (auto it = batches_.begin(); it != batches_.end(); it++) {
+void AdaptiveSharedBatchScheduler<TaskType>::MaybeScheduleClosedBatches() {
+  mutex_lock l(mu_);
+  MaybeScheduleClosedBatchesLocked();
+}
+
+template <typename TaskType>
+void AdaptiveSharedBatchScheduler<
+    TaskType>::MaybeScheduleClosedBatchesLocked() {
+  // Only schedule closed batches if we have spare capacity.
+  int available_threads =
+      static_cast<int>(options_.num_batch_threads - in_flight_batches_ -
+                       in_flight_express_batches_);
+  for (auto it = batches_.begin();
+       it != batches_.end() && available_threads > 0;) {
     if ((*it)->IsClosed()) {
       const internal::ASBSBatch<TaskType>* batch = *it;
-      batches_.erase(it);
+      it = batches_.erase(it);
       batch->queue()->ReleaseBatch(batch);
       batch_thread_pool_->Schedule(
           std::bind(&AdaptiveSharedBatchScheduler<TaskType>::CallbackWrapper,
                     this, batch, queues_and_callbacks_[batch->queue()], true));
       in_flight_express_batches_++;
-      return;
+      available_threads--;
+    } else {
+      ++it;
     }
   }
 }
@@ -482,7 +512,7 @@ void AdaptiveSharedBatchScheduler<TaskType>::CallbackWrapper(
   mutex_lock l(mu_);
   if (is_express) {
     in_flight_express_batches_--;
-    MaybeScheduleClosedBatch();
+    MaybeScheduleClosedBatchesLocked();
     return;
   }
   in_flight_batches_--;
@@ -554,38 +584,71 @@ ASBSQueue<TaskType>::~ASBSQueue() {
 
 template <typename TaskType>
 Status ASBSQueue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
-  ASBSBatch<TaskType>* new_batch = nullptr;
   size_t size = (*task)->size();
-  if (size > options_.max_batch_size) {
+  if (options_.split_input_task_func == nullptr &&
+      size > options_.max_batch_size) {
     return errors::InvalidArgument("Task size ", size,
                                    " is larger than maximum batch size ",
                                    options_.max_batch_size);
   }
-  bool is_old_batch_closed = false;
+  std::vector<std::unique_ptr<TaskType>> tasks_to_schedule;
+  std::vector<ASBSBatch<TaskType>*> new_batches;
+  bool closed_batch = false;
   {
     mutex_lock l(mu_);
-    // Current batch is full, create another if allowed.
-    if (current_batch_ &&
-        current_batch_->size() + size > options_.max_batch_size) {
-      if (num_enqueued_batches_ >= options_.max_enqueued_batches) {
-        return errors::Unavailable("The batch scheduling queue is full");
+    if (size > SchedulingCapacityLocked()) {
+      return errors::Unavailable("The batch scheduling queue is full");
+    }
+    int remaining_batch_size =
+        current_batch_ == nullptr
+            ? options_.max_batch_size
+            : options_.max_batch_size - current_batch_->size();
+    if (options_.split_input_task_func == nullptr ||
+        size <= remaining_batch_size) {
+      // Either we don't allow task splitting or task fits within the current
+      // batch.
+      tasks_to_schedule.push_back(std::move(*task));
+    } else {
+      // Split task in order to completely fill the current batch.
+      // Beyond this point Schedule should not fail, as the caller has been
+      // promised that all of the split tasks will be scheduled.
+      TF_RETURN_IF_ERROR(options_.split_input_task_func(
+          task, remaining_batch_size, options_.max_batch_size,
+          &tasks_to_schedule));
+    }
+    for (auto& task : tasks_to_schedule) {
+      // Can't fit within current batch, close it off and try to create another.
+      if (current_batch_ &&
+          current_batch_->size() + task->size() > options_.max_batch_size) {
+        current_batch_->Close();
+        closed_batch = true;
+        current_batch_ = nullptr;
       }
-      current_batch_->Close();
-      is_old_batch_closed = true;
-      current_batch_ = nullptr;
+      if (!current_batch_) {
+        num_enqueued_batches_++;
+        current_batch_ =
+            new ASBSBatch<TaskType>(this, scheduler_->GetEnv()->NowMicros(),
+                                    options_.batch_timeout_micros);
+        new_batches.push_back(current_batch_);
+      }
+      current_batch_->AddTask(std::move(task));
+      num_enqueued_tasks_++;
+      // If current_batch_ is now full, allow it to be processed immediately.
+      if (current_batch_->size() == options_.max_batch_size) {
+        current_batch_->Close();
+        closed_batch = true;
+        current_batch_ = nullptr;
+      }
     }
-    if (!current_batch_) {
-      num_enqueued_batches_++;
-      current_batch_ = new_batch =
-          new ASBSBatch<TaskType>(this, scheduler_->GetEnv()->NowMicros(),
-                                  options_.batch_timeout_micros);
-    }
-    current_batch_->AddTask(std::move(*task));
-    num_enqueued_tasks_++;
   }
-  // AddBatch must be called outside of lock, since it may call ReleaseBatch.
-  if (new_batch != nullptr)
-    scheduler_->AddBatch(new_batch, is_old_batch_closed);
+  // Scheduler functions must be called outside of lock, since they may call
+  // ReleaseBatch.
+  for (auto* batch : new_batches) {
+    scheduler_->AddBatch(batch);
+  }
+  if (closed_batch) {
+    scheduler_->MaybeScheduleClosedBatches();
+  }
   return Status::OK();
 }
 
@@ -609,6 +672,11 @@ size_t ASBSQueue<TaskType>::NumEnqueuedTasks() const {
 template <typename TaskType>
 size_t ASBSQueue<TaskType>::SchedulingCapacity() const {
   mutex_lock l(mu_);
+  return SchedulingCapacityLocked();
+}
+
+template <typename TaskType>
+size_t ASBSQueue<TaskType>::SchedulingCapacityLocked() const {
   const int current_batch_capacity =
       current_batch_ ? options_.max_batch_size - current_batch_->size() : 0;
   const int spare_batches =

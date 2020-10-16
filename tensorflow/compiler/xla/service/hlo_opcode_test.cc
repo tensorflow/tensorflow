@@ -58,6 +58,7 @@ TEST(HloOpcodeTest, OpcodeProperties) {
       case HloOpcode::kCustomCall:
       case HloOpcode::kDynamicSlice:
       case HloOpcode::kDynamicUpdateSlice:
+      case HloOpcode::kDynamicReshape:
       case HloOpcode::kFusion:
       case HloOpcode::kMap:
       case HloOpcode::kReduce:

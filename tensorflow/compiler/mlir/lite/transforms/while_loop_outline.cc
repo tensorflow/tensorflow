@@ -80,7 +80,7 @@ void WhileOutlinePass::OutlineWhile(WhileOp while_op) {
   // The basic block arguments correspond to values that are loop carried, while
   // all those post are loop independent. Initialize extern_values with while_op
   // not loop carried operands.
-  auto num_loop_carried = while_op.cond().front().getNumArguments();
+  auto num_loop_carried = while_op.cond().getNumArguments();
   auto not_carried_operands =
       while_op.getOperands().drop_front(num_loop_carried);
   extern_values.insert(not_carried_operands.begin(),
@@ -124,8 +124,7 @@ void WhileOutlinePass::OutlineWhile(WhileOp while_op) {
   // Collect new types.
   SmallVector<Type, 4> types;
   types.reserve(extra_operands.size() + while_op.getNumOperands());
-  for (BlockArgument ba : while_op.cond().front().getArguments())
-    types.push_back(ba.getType());
+  for (Type type : while_op.cond().getArgumentTypes()) types.push_back(type);
   for (Value operand : extern_values) types.push_back(operand.getType());
 
   // Create outline function from region. Optional pass extra arguments through

@@ -94,7 +94,7 @@ Status ParseInputArrayInfo(const std::vector<string>& node_names,
   }
 
   // StringMap doesn't support reserve else reserve input map size here.
-  for (int i = 0; i < node_names.size(); i++) {
+  for (int i = 0, end = node_names.size(); i < end; i++) {
     auto& name = node_names[i];
     if (name.empty()) continue;
 
