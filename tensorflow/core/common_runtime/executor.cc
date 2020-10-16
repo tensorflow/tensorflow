@@ -1119,15 +1119,11 @@ bool ExecutorState<PropagatorStateType>::NodeDone(
       if (rendezvous_) {
         rendezvous_->StartAbort(s);
       }
+      if (collective_executor_) {
+        collective_executor_->StartAbort(s);
+      }
       if (cancellation_manager_) {
         cancellation_manager_->StartCancel();
-      } else {
-        // If there's cancellation_manager_, collective ops aborts
-        // collective_executor_ upon cancellation; otherwise we need to abort
-        // here.
-        if (collective_executor_) {
-          collective_executor_->StartAbort(s);
-        }
       }
     }
 
@@ -1271,15 +1267,11 @@ void ExecutorState<PropagatorStateType>::Finish() {
       if (rendezvous_) {
         rendezvous_->StartAbort(status);
       }
+      if (collective_executor_) {
+        collective_executor_->StartAbort(status);
+      }
       if (cancellation_manager_) {
         cancellation_manager_->StartCancel();
-      } else {
-        // If there's cancellation_manager_, collective ops aborts
-        // collective_executor_ upon cancellation; otherwise we need to abort
-        // here.
-        if (collective_executor_) {
-          collective_executor_->StartAbort(status);
-        }
       }
     }
     delete this;

@@ -51,54 +51,7 @@ static std::unique_ptr<OpKernel> BuildOpKernel(OpKernelConstruction* c,
 
 class CollectiveOpKernel : public AsyncOpKernel {
  public:
-  explicit CollectiveOpKernel(OpKernelConstruction* c)
-      : AsyncOpKernel(c), name_(name()) {}
-
-  void ComputeAsync(OpKernelContext* c, DoneCallback done) override {
-    CollectiveExecutor* col_exec = c->collective_executor();
-    OP_REQUIRES_ASYNC(
-        c, col_exec,
-        errors::Internal(
-            "Failed to get CollectiveExecutor from OpKernelContext for Op ",
-            name_),
-        done);
-    CancellationToken token =
-        c->cancellation_manager()->get_cancellation_token();
-    bool cancel_registered =
-        c->cancellation_manager()->RegisterCallback(token, [col_exec]() {
-          // StartAbort invokes done callback which contains DeregisterCallback,
-          // so we cannot block on that.
-          col_exec->RunClosure([col_exec]() {
-            col_exec->StartAbort(errors::Cancelled("op cancelled"));
-          });
-        });
-    OP_REQUIRES_ASYNC(c, cancel_registered,
-                      errors::Cancelled("op cancelled ", name_), done);
-
-    auto deregister_and_done = [c, col_exec, token, done = std::move(done)]() {
-      c->cancellation_manager()->DeregisterCallback(token);
-      // Abort CollectiveExecutor so that this error can propagate to other
-      // workers.
-      if (!c->status().ok()) {
-        col_exec->StartAbort(c->status());
-      }
-      done();
-    };
-    ComputeAsyncImpl(c, col_exec, std::move(deregister_and_done));
-  }
-
- protected:
-  virtual void ComputeAsyncImpl(OpKernelContext* c,
-                                CollectiveExecutor* col_exec,
-                                DoneCallback done) = 0;
-
-  string name_;
-};
-
-class CollectiveOpV1Kernel : public CollectiveOpKernel {
- public:
-  explicit CollectiveOpV1Kernel(OpKernelConstruction* c)
-      : CollectiveOpKernel(c) {}
+  explicit CollectiveOpKernel(OpKernelConstruction* c) : AsyncOpKernel(c) {}
 
   // A string encoding instance, frame and iter to be handed off to
   // the implementation for use in generating RecvBuf keys.
@@ -137,15 +90,14 @@ class CollectiveOpV1Kernel : public CollectiveOpKernel {
     return true;
   }
 
- protected:
   CollectiveParams col_params_;
   std::vector<int32> dependencies_;
 };
 
-class CollectiveGatherOpKernel : public CollectiveOpV1Kernel {
+class CollectiveGatherOpKernel : public CollectiveOpKernel {
  public:
   explicit CollectiveGatherOpKernel(OpKernelConstruction* c)
-      : CollectiveOpV1Kernel(c) {
+      : CollectiveOpKernel(c) {
     col_params_.instance.type = GATHER_COLLECTIVE;
     OP_REQUIRES_OK(c, c->GetAttr("group_size", &col_params_.group.group_size));
     OP_REQUIRES(
@@ -167,9 +119,15 @@ class CollectiveGatherOpKernel : public CollectiveOpV1Kernel {
     col_params_.group.device_type = c->device_type();
   }
 
- protected:
-  void ComputeAsyncImpl(OpKernelContext* c, CollectiveExecutor* col_exec,
-                        DoneCallback done) override {
+  void ComputeAsync(OpKernelContext* c, DoneCallback done) override {
+    CollectiveExecutor* col_exec = c->collective_executor();
+    OP_REQUIRES_ASYNC(
+        c, col_exec,
+        errors::Internal(
+            "Failed to get CollectiveExecutor from OpKernelContext for Op ",
+            col_params_.name),
+        done);
+
     auto output_shape = c->input(0).shape();
     output_shape.set_dim(
         0, output_shape.dim_size(0) * col_params_.group.group_size);
@@ -213,10 +171,10 @@ REGISTER_KERNEL_BUILDER(Name("CollectiveGather").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("CollectiveGather").Device(DEVICE_GPU),
                         CollectiveGatherOpKernel);
 
-class CollectiveReduceOpKernel : public CollectiveOpV1Kernel {
+class CollectiveReduceOpKernel : public CollectiveOpKernel {
  public:
   explicit CollectiveReduceOpKernel(OpKernelConstruction* c)
-      : CollectiveOpV1Kernel(c) {
+      : CollectiveOpKernel(c) {
     col_params_.instance.type = REDUCTION_COLLECTIVE;
     OP_REQUIRES_OK(c, c->GetAttr("group_size", &col_params_.group.group_size));
     OP_REQUIRES(
@@ -273,9 +231,14 @@ class CollectiveReduceOpKernel : public CollectiveOpV1Kernel {
     col_params_.final_op = BuildOpKernel(c, final_op_name, &sub_node);
   }
 
- protected:
-  void ComputeAsyncImpl(OpKernelContext* c, CollectiveExecutor* col_exec,
-                        DoneCallback done) override {
+  void ComputeAsync(OpKernelContext* c, DoneCallback done) override {
+    CollectiveExecutor* col_exec = c->collective_executor();
+    OP_REQUIRES_ASYNC(
+        c, col_exec,
+        errors::Internal(
+            "Failed to get CollectiveExecutor from OpKernelContext for Op ",
+            col_params_.name),
+        done);
     // Allocate output on the first pass through this function.  This must be
     // done immediately, while we're still in the executor thread.  Otherwise
     // the memory is not guaranteed to be unused by any concurrently executing
@@ -317,10 +280,10 @@ REGISTER_KERNEL_BUILDER(Name("CollectiveReduce").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("CollectiveReduce").Device(DEVICE_GPU),
                         CollectiveReduceOpKernel);
 
-class CollectiveBcastSendOpKernel : public CollectiveOpV1Kernel {
+class CollectiveBcastSendOpKernel : public CollectiveOpKernel {
  public:
   explicit CollectiveBcastSendOpKernel(OpKernelConstruction* c)
-      : CollectiveOpV1Kernel(c) {
+      : CollectiveOpKernel(c) {
     col_params_.instance.type = BROADCAST_COLLECTIVE;
     OP_REQUIRES_OK(c, c->GetAttr("group_size", &col_params_.group.group_size));
     OP_REQUIRES(
@@ -346,9 +309,14 @@ class CollectiveBcastSendOpKernel : public CollectiveOpV1Kernel {
     col_params_.group.device_type = c->device_type();
   }
 
- protected:
-  void ComputeAsyncImpl(OpKernelContext* c, CollectiveExecutor* col_exec,
-                        DoneCallback done) override {
+  void ComputeAsync(OpKernelContext* c, DoneCallback done) override {
+    CollectiveExecutor* col_exec = c->collective_executor();
+    OP_REQUIRES_ASYNC(
+        c, col_exec,
+        errors::Internal(
+            "Failed to get CollectiveExecutor from OpKernelContext for Op ",
+            col_params_.name),
+        done);
     // Allocate output on the first pass through this function.  This must be
     // done immediately, while we're still in the executor thread.  Otherwise
     // the memory is not guaranteed to be unused by any concurrently executing
@@ -394,10 +362,10 @@ REGISTER_KERNEL_BUILDER(Name("CollectiveBcastSend").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("CollectiveBcastSend").Device(DEVICE_GPU),
                         CollectiveBcastSendOpKernel);
 
-class CollectiveBcastRecvOpKernel : public CollectiveOpV1Kernel {
+class CollectiveBcastRecvOpKernel : public CollectiveOpKernel {
  public:
   explicit CollectiveBcastRecvOpKernel(OpKernelConstruction* c)
-      : CollectiveOpV1Kernel(c) {
+      : CollectiveOpKernel(c) {
     col_params_.instance.type = BROADCAST_COLLECTIVE;
     OP_REQUIRES_OK(c, c->GetAttr("group_size", &col_params_.group.group_size));
     OP_REQUIRES(
@@ -423,9 +391,14 @@ class CollectiveBcastRecvOpKernel : public CollectiveOpV1Kernel {
     col_params_.group.device_type = c->device_type();
   }
 
- protected:
-  void ComputeAsyncImpl(OpKernelContext* c, CollectiveExecutor* col_exec,
-                        DoneCallback done) override {
+  void ComputeAsync(OpKernelContext* c, DoneCallback done) override {
+    CollectiveExecutor* col_exec = c->collective_executor();
+    OP_REQUIRES_ASYNC(
+        c, col_exec,
+        errors::Internal(
+            "Failed to get CollectiveExecutor from OpKernelContext for Op ",
+            col_params_.name),
+        done);
     // Allocate output on the first pass through this function.  This must be
     // done immediately, while we're still in the executor thread.  Otherwise
     // the memory is not guaranteed to be unused by any concurrently executing
@@ -464,10 +437,10 @@ REGISTER_KERNEL_BUILDER(Name("CollectiveBcastRecv").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("CollectiveBcastRecv").Device(DEVICE_GPU),
                         CollectiveBcastRecvOpKernel);
 
-class CollectiveReduceV2OpKernel : public CollectiveOpKernel {
+class CollectiveReduceV2OpKernel : public AsyncOpKernel {
  public:
   explicit CollectiveReduceV2OpKernel(OpKernelConstruction* c)
-      : CollectiveOpKernel(c) {
+      : AsyncOpKernel(c) {
     col_params_ = std::make_shared<CollectiveParams>();
     OP_REQUIRES_OK(c, c->GetAttr("T", &col_params_->instance.data_type));
     string merge_op_name;
@@ -508,9 +481,14 @@ class CollectiveReduceV2OpKernel : public CollectiveOpKernel {
             << col_params_->instance.impl_details.communication_hint;
   }
 
- protected:
-  void ComputeAsyncImpl(OpKernelContext* c, CollectiveExecutor* col_exec,
-                        DoneCallback done) override {
+  void ComputeAsync(OpKernelContext* c, DoneCallback done) override {
+    CollectiveExecutor* col_exec = c->collective_executor();
+    OP_REQUIRES_ASYNC(
+        c, col_exec,
+        errors::Internal(
+            "Failed to get CollectiveExecutor from OpKernelContext for Op ",
+            col_params_->name),
+        done);
     const Tensor& input = c->input(0);
     const Tensor& group_size = c->input(1);
     const Tensor& group_key = c->input(2);
@@ -612,10 +590,10 @@ REGISTER_KERNEL_BUILDER(Name("CollectiveReduceV2")
                             .HostMemory("instance_key"),
                         CollectiveReduceV2OpKernel);
 
-class CollectiveGatherV2OpKernel : public CollectiveOpKernel {
+class CollectiveGatherV2OpKernel : public AsyncOpKernel {
  public:
   explicit CollectiveGatherV2OpKernel(OpKernelConstruction* c)
-      : CollectiveOpKernel(c), device_type_(DEVICE_DEFAULT) {
+      : AsyncOpKernel(c), device_type_(DEVICE_DEFAULT) {
     OP_REQUIRES_OK(c, c->GetAttr("T", &data_type_));
     OP_REQUIRES_OK(c, c->GetAttr("communication_hint", &communication_hint_));
     OP_REQUIRES_OK(c, c->GetAttr("timeout_seconds", &timeout_seconds_));
@@ -625,9 +603,14 @@ class CollectiveGatherV2OpKernel : public CollectiveOpKernel {
             << " communication_hint " << communication_hint_;
   }
 
- protected:
-  void ComputeAsyncImpl(OpKernelContext* c, CollectiveExecutor* col_exec,
-                        DoneCallback done) override {
+  void ComputeAsync(OpKernelContext* c, DoneCallback done) override {
+    CollectiveExecutor* col_exec = c->collective_executor();
+    OP_REQUIRES_ASYNC(
+        c, col_exec,
+        errors::Internal(
+            "Failed to get CollectiveExecutor from OpKernelContext for Op ",
+            name_),
+        done);
     const Tensor& input = c->input(0);
     const Tensor& group_size = c->input(1);
     const Tensor& group_key = c->input(2);
@@ -729,6 +712,7 @@ class CollectiveGatherV2OpKernel : public CollectiveOpKernel {
   string communication_hint_;
   float timeout_seconds_;
   DeviceType device_type_;
+  string name_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("CollectiveGatherV2").Device(DEVICE_CPU),

@@ -298,8 +298,6 @@ cuda_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python/compat:v2_compat",
-        "//tensorflow/python/data/experimental/ops:testing",
-        "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:test_util",
         "//tensorflow/python/eager:context",
