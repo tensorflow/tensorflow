@@ -20,12 +20,15 @@ Required parameters:
 For Cortex-M55, ARM Compiler 6.14 or later is required.
 
 Some examples:
+```
 make -f tensorflow/lite/micro/tools/make/Makefile TOOLCHAIN=armclang TARGET=cortex_m_generic TARGET_ARCH=cortex-m55 microlite
 make -f tensorflow/lite/micro/tools/make/Makefile TAGS=cmsis-nn TOOLCHAIN=armclang TARGET=cortex_m_generic TARGET_ARCH=cortex-m55 microlite
 make -f tensorflow/lite/micro/tools/make/Makefile TAGS=cmsis-nn TOOLCHAIN=armclang TARGET=cortex_m_generic TARGET_ARCH=cortex-m55+nofp microlite
 make -f tensorflow/lite/micro/tools/make/Makefile TOOLCHAIN=armclang TARGET=cortex_m_generic TARGET_ARCH=cortex-m7 microlite
 make -f tensorflow/lite/micro/tools/make/Makefile TOOLCHAIN=armgcc TARGET=cortex_m_generic TARGET_ARCH=cortex-m7 microlite
 make -f tensorflow/lite/micro/tools/make/Makefile TOOLCHAIN=armgcc TARGET=cortex_m_generic TARGET_ARCH=cortex-m4 microlite
-
+```
 Example of using own CMSIS-NN, instead of the default downloaded one:
+```
 make -f tensorflow/lite/micro/tools/make/Makefile TAGS=cmsis-nn CMSIS_PATH=/path/to/own/cmsis TOOLCHAIN=armgcc TARGET=cortex_m_generic TARGET_ARCH=cortex-m4 microlite
+```

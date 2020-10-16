@@ -27,7 +27,7 @@ source tensorflow/lite/micro/tools/ci_build/helper_functions.sh
 TARGET=cortex_m_generic
 
 # TODO(b/143715361): downloading first to allow for parallel builds.
-readable_run make -f tensorflow/lite/micro/tools/make/Makefile TOOLCHAIN=armgcc TAGS=cmsis-nn TARGET=${TARGET} TARGET_ARCH=cortex-m4 microlite
+readable_run make -f tensorflow/lite/micro/tools/make/Makefile TOOLCHAIN=armgcc TAGS="cmsis-nn armgcc" TARGET=${TARGET} TARGET_ARCH=cortex-m4 third_party_downloads
 
 # Build for Cortex-M4 (no FPU) without CMSIS
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
