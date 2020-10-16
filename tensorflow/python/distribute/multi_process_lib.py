@@ -26,6 +26,10 @@ from absl import app
 from tensorflow.python.eager import test
 
 
+def _is_enabled():
+  return sys.platform != 'win32'
+
+
 class _AbslProcess:
   """A process that runs using absl.app.run."""
 
@@ -39,7 +43,7 @@ class _AbslProcess:
     app.run(lambda _: self._run_impl())
 
 
-if sys.platform != 'win32':
+if _is_enabled():
 
   class AbslForkServerProcess(_AbslProcess,
                               multiprocessing.context.ForkServerProcess):
@@ -142,7 +146,7 @@ def test_main():
 
   os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 
-  if sys.platform != 'win32':
+  if _is_enabled():
     _set_spawn_exe_path()
     _if_spawn_run_and_exit()
 
