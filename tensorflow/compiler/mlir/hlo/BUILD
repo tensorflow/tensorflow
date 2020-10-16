@@ -649,6 +649,7 @@ cc_library(
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:ViewLikeInterface",
     ],
     alwayslink = 1,
 )
