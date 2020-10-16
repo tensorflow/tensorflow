@@ -197,7 +197,7 @@ def get_file(fname=None,
   Arguments:
       fname: Name of the file. If an absolute path `/path/to/file.txt` is
           specified the file will be saved at that location. If None, the
-          basename of `origin` will be used.
+          `origin` path basename will be used.
       origin: Original URL of the file.
       untar: Deprecated in favor of `extract` argument.
           boolean, whether the file should be decompressed
