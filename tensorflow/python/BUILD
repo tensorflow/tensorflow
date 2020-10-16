@@ -1066,7 +1066,7 @@ cc_library(
         "-parse_headers",
     ],
     visibility = tf_external_workspace_visible(visibility + [
-        "//learning/deepmind/courier:__subpackages__",
+        "//tensorflow:ndarray_tensor_allow_list",
     ]),
     deps = [
         ":numpy_lib",

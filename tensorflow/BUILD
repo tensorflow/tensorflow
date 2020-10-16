@@ -574,10 +574,7 @@ package_group(
     ],
 )
 
-package_group(
-    name = "ndarray_tensor_allow_list",
-    packages = ["//learning/pathways/..."],
-)
+package_group(name = "ndarray_tensor_allow_list")
 
 # Packages that use private types symbols, until they are exported.
 # TODO(b/154650521) Remove.
