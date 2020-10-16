@@ -499,28 +499,19 @@ cc_library(
 
 cc_library(
     name = "device",
-    srcs = ["device.cc"],
     hdrs = ["device.h"],
     copts = tf_copts(),
     deps = [
         "//tensorflow/core:framework_internal",
-        "//tensorflow/core:graph",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
     ],
 )
 
 cc_library(
     name = "device_factory",
-    srcs = ["device_factory.cc"],
     hdrs = ["device_factory.h"],
     copts = tf_copts(),
     deps = [
-        ":device",
-        ":session_options",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:framework_internal",
     ],
 )
 
