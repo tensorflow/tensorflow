@@ -1930,6 +1930,19 @@ bool StridedSliceGradOp::GetSlicedShapeAndBoundRanges(
 }
 
 //===----------------------------------------------------------------------===//
+// SummaryWriterOp
+//===----------------------------------------------------------------------===//
+
+ResourceHandleValueAndId SummaryWriterOp::GetResourceHandleValueAndId(
+    llvm::SmallDenseMap<ResourceHandle, int64_t> &resource_handle_id_map,
+    int64_t &next_id) {
+  llvm::StringRef device = GetDeviceOrEmpty(getOperation());
+  return GetResourceHandleValueAndIdBase(container(), shared_name(), device,
+                                         writer(), resource_handle_id_map,
+                                         next_id);
+}
+
+//===----------------------------------------------------------------------===//
 // TensorListReserveOp
 //===----------------------------------------------------------------------===//
 
@@ -2445,18 +2458,10 @@ static LogicalResult VerifyUnsortedSegmentReduction(Op op) {
 ResourceHandleValueAndId VarHandleOp::GetResourceHandleValueAndId(
     llvm::SmallDenseMap<ResourceHandle, int64_t> &resource_handle_id_map,
     int64_t &next_id) {
-  // Always create a new ID for anonymous handle.
-  if (IsResourceHandleAnonymous(shared_name())) return {resource(), next_id++};
-
-  llvm::StringRef device;
-  if (auto device_attr = getAttrOfType<StringAttr>("device"))
-    device = device_attr.getValue();
-
-  ResourceHandle handle(container(), shared_name(), device, /*op=*/nullptr);
-  auto emplace_res = resource_handle_id_map.try_emplace(handle, next_id);
-  // New ID created, increment next_id.
-  if (emplace_res.second) ++next_id;
-  return {resource(), emplace_res.first->second};
+  llvm::StringRef device = GetDeviceOrEmpty(getOperation());
+  return GetResourceHandleValueAndIdBase(container(), shared_name(), device,
+                                         resource(), resource_handle_id_map,
+                                         next_id);
 }
 
 //===----------------------------------------------------------------------===//
