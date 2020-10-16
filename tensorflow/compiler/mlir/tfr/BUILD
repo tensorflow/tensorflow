@@ -1,5 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
+load("//tensorflow/compiler/mlir/tfr:build_defs.bzl", "gen_op_libraries")
 load(
     "//third_party/mlir:tblgen.bzl",
     "gentbl",
@@ -346,4 +347,18 @@ py_test(
         "//tensorflow/compiler/mlir/python/mlir_wrapper:filecheck_wrapper",
         "//tensorflow/python:client_testlib",
     ],
+)
+
+py_library(
+    name = "test_utils",
+    srcs = ["python/test_utils.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+gen_op_libraries(
+    name = "one_op",
+    src = "define_op_template.py",
 )

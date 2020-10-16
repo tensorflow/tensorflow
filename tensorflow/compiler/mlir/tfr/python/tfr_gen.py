@@ -45,6 +45,7 @@ from tensorflow.python.autograph.pyct.static_analysis import reaching_fndefs
 from tensorflow.python.autograph.pyct.static_analysis import type_inference
 from tensorflow.python.framework import load_library
 from tensorflow.python.framework import op_def_registry
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_inspect
 
 
@@ -1339,20 +1340,33 @@ def tfr_gen(func, op_defs):
 
 
 def tfr_gen_from_module(source, method_prefix=None, op_libraries=None):
-  """Parse a python code and emit the TFR functions from a target class."""
+  """Parse the input source module and emit the TFR functions."""
   op_defs = OpDefCache()
 
+  # Load the op library so the op is added to the op registry. This is
+  # required when the op cc_library couldn't be statically linked in open
+  # source.
+  # This is a no op if the op shared library couldn't be found in the same
+  # directory of the op Python API.
+  # TODO(fengliuai): make the .so file path configurable.
   if op_libraries:
+    prefix_len = len('gen_')
     for m in op_libraries:
       lib_dir = os.path.dirname(m.__file__)
-      prefix_len = len('gen_')
       lib_name = os.path.basename(m.__file__)[prefix_len:].replace('.py', '.so')
-      # Load the op library so the op is added to the op registry. This is
-      # required when the op cc_library couldn't be statically linked in open
-      # source.
-      # This is a no op if the op shared library couldn't be found in the same
-      # directory of the op Python API.
-      load_library.load_op_library(os.path.join(lib_dir, lib_name))
+      lib_path = os.path.join(lib_dir, lib_name)
+      if os.path.exists(lib_path):
+        logging.info('load file: ' + lib_path)
+        load_library.load_op_library(lib_path)
+  else:
+    # The op library is generated from the source module, then we load all the
+    # .so file in the directory
+    lib_dir = os.path.dirname(source.__file__)
+    for lib_name in os.listdir(lib_dir):
+      if lib_name.endswith('.so'):
+        lib_path = os.path.join(lib_dir, lib_name)
+        logging.info('load file: ' + lib_path)
+        load_library.load_op_library(lib_path)
 
   mlir_funcs = [
       tfr_gen(func, op_defs)

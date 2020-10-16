@@ -1,12 +1,12 @@
 """BUILD extension for TF composition project."""
 
-load("//tensorflow:tensorflow.bzl", "py_binary", "tf_gen_op_wrapper_py")
-load("//tensorflow:tensorflow.google.bzl", "pytype_library")
+load("//tensorflow:tensorflow.bzl", "py_binary", "tf_custom_op_library", "tf_gen_op_wrapper_py")
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
 def gen_op_libraries(
         name,
         src,
-        deps,
+        deps = [],
         tags = [],
         test = False):
     """gen_op_libraries() generates all cc and py libraries for composite op source.
@@ -21,36 +21,33 @@ def gen_op_libraries(
     if not src.endswith(".py") or name == src[:-3]:
         fail("'src' %s conflicts with op Python wrapper. Rename it to be different from 'name'." % src)
 
-    gen_op_lib_exec = src[:-3]
+    gen_op_lib_exec = src[:-3]  # Strip off the .py
     py_binary(
         name = gen_op_lib_exec,
         srcs = [src],
         srcs_version = "PY2AND3",
         python_version = "PY3",
         deps = [
-            "//tensorflow/python:platform",
+            "//tensorflow/compiler/mlir/tfr:op_reg_gen",
+            "//tensorflow/compiler/mlir/tfr:tfr_gen",
+            "//tensorflow/compiler/mlir/tfr:composite",
         ] + deps,
     )
 
-    register_op = "register_" + name
+    registed_op = "registed_" + name
     native.genrule(
-        name = register_op,
+        name = registed_op,
         srcs = [],
         outs = [name + ".inc.cc"],
         cmd = "$(location %s) --output=$@ --gen_register_op=true" % gen_op_lib_exec,
         exec_tools = [":" + gen_op_lib_exec],
-        local = 1,
         tags = tags,
     )
 
     native.cc_library(
         name = name + "_cc",
         testonly = test,
-        srcs = [":" + register_op],
-        copts = [
-            "-Wno-unused-result",
-            "-Wno-unused-variable",
-        ],
+        srcs = [":" + registed_op],
         deps = [
             "//tensorflow/core:framework",
             "//tensorflow/core:lib",
@@ -59,43 +56,31 @@ def gen_op_libraries(
         alwayslink = 1,
     )
 
+    tf_custom_op_library(
+        name = name + ".so",
+        srcs = [":" + registed_op],
+    )
+
     tf_gen_op_wrapper_py(
+        name = "gen_" + name,
+        out = "gen_" + name + ".py",
+        deps = [
+            ":%s_cc" % name,
+        ],
+    )
+
+    tf_custom_op_py_library(
         name = name,
-        out = name + ".py",
-        deps = [
-            ":%s_cc" % name,
-        ],
-    )
-
-    pytype_library(
-        name = name + "_grads",
-        srcs = [
-            src,
-        ],
+        dso = [":%s.so" % name],
+        kernels = [":%s_cc" % name],
         srcs_version = "PY2AND3",
         deps = [
-            "//third_party/py/numpy",
-            "//third_party/py/tensorflow",
-        ] + deps,
-    )
-
-    pytype_library(
-        name = name + "_lib",
-        srcs = [
-            name + ".py",
+            ":gen_%s" % name,
         ],
-        srcs_version = "PY2AND3",
-        deps = [
-            ":%s" % name,
-            ":%s_cc" % name,
-            ":%s_grads" % name,
-            "//third_party/py/numpy",
-            "//third_party/py/tensorflow",
-        ] + deps,
     )
 
     # Link the register op and rebuild the binary
-    gen_tfr_lib_exec = gen_op_lib_exec + "_registered"
+    gen_tfr_lib_exec = gen_op_lib_exec + "_with_op_library"
     py_binary(
         name = gen_tfr_lib_exec,
         main = src,
@@ -103,18 +88,29 @@ def gen_op_libraries(
         srcs_version = "PY2AND3",
         python_version = "PY3",
         deps = [
-            "//tensorflow/python:platform",
-            ":%s" % name + "_cc",
+            "//tensorflow/compiler/mlir/tfr:op_reg_gen",
+            "//tensorflow/compiler/mlir/tfr:tfr_gen",
+            "//tensorflow/compiler/mlir/tfr:composite",
+            ":%s" % name,
         ] + deps,
     )
 
-    op_tfr = "composite_" + name
     native.genrule(
-        name = op_tfr,
+        name = name + "_mlir",
         srcs = [],
         outs = [name + ".mlir"],
         cmd = "$(location %s) --output=$@ --gen_register_op=false" % gen_tfr_lib_exec,
         exec_tools = [":" + gen_tfr_lib_exec],
-        local = 1,
         tags = tags,
+    )
+
+    native.py_library(
+        name = name + "_py",
+        srcs = [src],
+        srcs_version = "PY2AND3",
+        deps = [
+            "//tensorflow/compiler/mlir/tfr:op_reg_gen",
+            "//tensorflow/compiler/mlir/tfr:tfr_gen",
+            "//tensorflow/compiler/mlir/tfr:composite",
+        ] + deps,
     )
