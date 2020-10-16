@@ -26,7 +26,15 @@ from absl import app
 from tensorflow.python.eager import test
 
 
+def is_oss():
+  """Returns whether the test is run under OSS."""
+  return len(sys.argv) >= 1 and 'bazel' in sys.argv[0]
+
+
 def _is_enabled():
+  tpu_args = [arg for arg in sys.argv if arg.startswith('--tpu')]
+  if is_oss() and tpu_args:
+    return False
   return sys.platform != 'win32'
 
 
