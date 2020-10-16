@@ -394,7 +394,6 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   @parameterized.named_parameters(
       ('Tensor', lambda: constant_op.constant(1.3+1j)),
       ('Variable', lambda: resource_variable_ops.ResourceVariable(1.3+1j)))
-  @test_util.disable_tfrt('cannot create complex tensor in TFRT.')
   def testCastToPrimitiveTypesFrom(self, value_fn):
     x = value_fn()
     self.assertIsInstance(int(x), int)

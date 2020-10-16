@@ -153,7 +153,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     init_fn()
     self.assertEqual(state[0].numpy(), 2.0)
 
-  @test_util.disable_tfrt('Error in native condition op.')
   def testVariableInitializerNotConstant(self):
 
     state = []
@@ -385,7 +384,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
                                 'defined in another function or code block'):
       f(array_ops.zeros(shape=(8, 42, 3)))
 
-  @test_util.disable_tfrt('b/169375363: error code support')
   def testRuntimeErrorNotSticky(self):
 
     @def_function.function
