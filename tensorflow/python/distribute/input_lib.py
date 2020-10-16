@@ -1461,15 +1461,15 @@ class _SingleWorkerDatasetIteratorBase(object):
     raise NotImplementedError("must be implemented in descendants")
 
   def _format_data_list_with_options(self, data_list):
-    """Change the data list to tuple type if required
-    The OwnedMultiDeviceIterator returns the tuple data type,
+    """Change the data in to a list type if required
+    The OwnedMultiDeviceIterator returns the list data type,
     while the PER_REPLICA iterator (when used with prefetch disabled)
-    returns without the enclosed tuple. This is to fix the inconsistency.
+    returns without the enclosed list. This is to fix the inconsistency.
     """
     if (self._options
         and self._options.experimental_replication_mode == InputReplicationMode.PER_REPLICA
             and not self._options.experimental_prefetch_to_device):
-      return tuple((data_list,))
+      return [data_list]
     else:
       return data_list
 
