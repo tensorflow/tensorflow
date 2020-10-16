@@ -63,7 +63,7 @@ DeviceCapabilities GetDeviceCapFromXPlane(const XPlane& device_plane) {
         cap.set_num_cores(stat.IntValue());
         break;
       case kDevCapMemoryBandwidth:
-        cap.set_memory_bandwidth(stat.IntValue());  // bytes/s
+        cap.set_memory_bandwidth(stat.UintValue());  // bytes/s
         break;
       case kDevCapMemorySize:
         cap.set_memory_size_in_bytes(stat.UintValue());
