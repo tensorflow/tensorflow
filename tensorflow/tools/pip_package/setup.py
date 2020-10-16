@@ -108,7 +108,10 @@ if 'tf_nightly' in project_name:
     if 'tensorboard' in pkg:
       REQUIRED_PACKAGES[i] = 'tb-nightly ~= 2.4'
     elif 'tensorflow_estimator' in pkg:
-      REQUIRED_PACKAGES[i] = 'tf-estimator-nightly ~= 2.4.0'
+      # Note the .* part! TF Estimator nightly packages are not named in a way
+      # that makes `~=` syntax work so we use `==` and `.*` to pick the latest
+      # released nightly.
+      REQUIRED_PACKAGES[i] = 'tf-estimator-nightly == 2.4.0.*'
 
 
 # grpcio does not build correctly on big-endian machines due to lack of
