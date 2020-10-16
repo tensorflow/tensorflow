@@ -422,7 +422,7 @@ void TFLogSinks::Send(const TFLogEntry& entry) {
 #endif // NO_DEFAULT_LOGGER
 } // TFLogSinks::Send
 
-std::vector<std::unique_ptr<TFLogSink>>::iterator FindSink(TFLogSink* sink) {
+std::vector<std::unique_ptr<TFLogSink>>::iterator TFLogSinks::FindSink(TFLogSink* sink) {
   return std::find_if(sinks_.begin(), sinks_.end(), [sink] (const std::unique_ptr<TFLogSink>& s) -> bool {
     return sink == s.get();
   });
