@@ -31,8 +31,6 @@ mv /tmp/mobilenet_v1_1.0_224/labels.txt /tmp/
 
 ## Run the sample
 
-Note: Instead use `python` if you're using Python 2.x.
-
 ```sh
 python3 label_image.py \
   --model_file /tmp/mobilenet_v1_1.0_224.tflite \
