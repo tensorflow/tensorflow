@@ -38,8 +38,11 @@ tf_py_test(
     size = "small",
     srcs = ["client_test.py"],
     python_version = "PY3",
-    shard_count = 20,
-    tags = ["no_oss"],  # TODO(b/162119374)
+    shard_count = 50,
+    tags = [
+        "no_oss",  # TODO(b/162119374)
+        "notsan",  # TODO(b/171040359): Flaky timeout, even if maximum shards
+    ],
     deps = [
         ":client",
         "//tensorflow/python:check_ops",
