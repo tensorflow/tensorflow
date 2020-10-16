@@ -8,7 +8,7 @@ ifneq ($(filter cmsis-nn,$(ALL_TAGS)),)
     THIRD_PARTY_DOWNLOADS += \
       $(eval $(call add_third_party_download,$(CMSIS_URL),$(CMSIS_MD5),cmsis,patch_cmsis))
 
-    CMSIS_PATH = $(MAKEFILE_DIR)/downloads/cmsis/
+    CMSIS_PATH := $(MAKEFILE_DIR)/downloads/cmsis/
 
     # List of files generated with:
     # find tensorflow/lite/micro/tools/make/downloads/cmsis/CMSIS/NN/Source/ -iname "*.c"
@@ -92,23 +92,15 @@ ifneq ($(filter cmsis-nn,$(ALL_TAGS)),)
     # optimized kernels. We don't include all the possible CMSIS headers because
     # of their large number. See the RFC document for more details:
     # https://docs.google.com/document/d/14GRxeVEgSKgKBKAijO7oxnI49nLoTYBFQmPok-rG0cw
+    # Note: If you add a .h here, you must update patch_cmsis() in download_and_extract.sh as well.
     THIRD_PARTY_CC_HDRS += \
-      $(CMSIS_PATH)CMSIS/NN/Include/arm_nnfunctions.h \
-      $(CMSIS_PATH)CMSIS/NN/Include/arm_nnsupportfunctions.h \
-      $(CMSIS_PATH)CMSIS/NN/Include/arm_nn_tables.h \
-      $(CMSIS_PATH)CMSIS/NN/Include/arm_nn_types.h \
-      $(CMSIS_PATH)CMSIS/DSP/Include/arm_math.h \
+      $(CMSIS_PATH)CMSIS/Core/Include/cmsis_compiler.h \
       $(CMSIS_PATH)CMSIS/DSP/Include/arm_common_tables.h \
-      $(CMSIS_PATH)CMSIS/DSP/Include/arm_math_types.h \
+      $(CMSIS_PATH)CMSIS/DSP/Include/arm_helium_utils.h \
+      $(CMSIS_PATH)CMSIS/DSP/Include/arm_math.h \
       $(CMSIS_PATH)CMSIS/DSP/Include/arm_math_memory.h \
-      $(CMSIS_PATH)CMSIS/DSP/Include/dsp/none.h \
-      $(CMSIS_PATH)CMSIS/DSP/Include/dsp/utils.h \
+      $(CMSIS_PATH)CMSIS/DSP/Include/arm_math_types.h \
       $(CMSIS_PATH)CMSIS/DSP/Include/dsp/basic_math_functions.h \
-      $(CMSIS_PATH)CMSIS/DSP/Include/dsp/statistics_functions.h \
-      $(CMSIS_PATH)CMSIS/DSP/Include/dsp/svm_defines.h \
-      $(CMSIS_PATH)CMSIS/DSP/Include/dsp/svm_functions.h \
-      $(CMSIS_PATH)CMSIS/DSP/Include/dsp/support_functions.h \
-      $(CMSIS_PATH)CMSIS/DSP/Include/dsp/transform_functions.h \
       $(CMSIS_PATH)CMSIS/DSP/Include/dsp/bayes_functions.h \
       $(CMSIS_PATH)CMSIS/DSP/Include/dsp/complex_math_functions.h \
       $(CMSIS_PATH)CMSIS/DSP/Include/dsp/controller_functions.h \
@@ -117,8 +109,17 @@ ifneq ($(filter cmsis-nn,$(ALL_TAGS)),)
       $(CMSIS_PATH)CMSIS/DSP/Include/dsp/filtering_functions.h \
       $(CMSIS_PATH)CMSIS/DSP/Include/dsp/interpolation_functions.h \
       $(CMSIS_PATH)CMSIS/DSP/Include/dsp/matrix_functions.h \
-      $(CMSIS_PATH)CMSIS/Core/Include/cmsis_compiler.h
-
+      $(CMSIS_PATH)CMSIS/DSP/Include/dsp/none.h \
+      $(CMSIS_PATH)CMSIS/DSP/Include/dsp/statistics_functions.h \
+      $(CMSIS_PATH)CMSIS/DSP/Include/dsp/support_functions.h \
+      $(CMSIS_PATH)CMSIS/DSP/Include/dsp/svm_defines.h \
+      $(CMSIS_PATH)CMSIS/DSP/Include/dsp/svm_functions.h \
+      $(CMSIS_PATH)CMSIS/DSP/Include/dsp/transform_functions.h \
+      $(CMSIS_PATH)CMSIS/DSP/Include/dsp/utils.h \
+      $(CMSIS_PATH)CMSIS/NN/Include/arm_nn_tables.h \
+      $(CMSIS_PATH)CMSIS/NN/Include/arm_nn_types.h \
+      $(CMSIS_PATH)CMSIS/NN/Include/arm_nnfunctions.h \
+      $(CMSIS_PATH)CMSIS/NN/Include/arm_nnsupportfunctions.h
 
     # Need to add the CMSIS Core includes path.
     # All other CMSIS header files are included with their relative path
