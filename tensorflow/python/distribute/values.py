@@ -874,6 +874,7 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
     Returns:
       Updated variable or `tf.Operation`.
     """
+    values_util.mark_as_unsaveable()
     return self.distribute_strategy.extended.update(
         self, update_fn, args=(value,), kwargs=kwargs, group=True)
 
@@ -960,6 +961,30 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
       resource_map[self._packed_var.packed_handle] = resource_map[
           self._primary.handle]
     return obj_map, resource_map
+
+  def _write_object_proto(self, proto, options):
+    """Update a SavedObject proto for the caller.
+
+    If a DistributedVariable object supports this method, it will be called when
+    saving with a pre-built `SavedObject` proto representing the object, plus an
+    instance of `SaveOptions`. This method is then free to modify that proto
+    instance.
+
+    `DistributedVariable` with `AUTO` or `ON_WRITE` synchronization optionally
+    write out information about their components to the
+    `experimental_distributed_variable_components` field of a
+    `SavedVariable` (depending on the `SaveOptions` variable policy).
+
+    Args:
+      proto: A pre-built `SavedObject` proto for this object. It is assumed this
+        will be a `SavedVariable` instance.
+      options: A `SaveOptions` instance.
+    """
+    if self._policy:
+      if self._policy._is_mirrored():  # pylint: disable=protected-access
+        self._policy._write_object_proto(self, proto, options)  # pylint: disable=protected-access
+    else:
+      self._write_object_proto(proto, options)
 
 
 # We extend from `saveable_object.SaveableObject` instead of
@@ -1062,14 +1087,16 @@ class MirroredVariable(DistributedVariable, Mirrored):
     return {trackable.VARIABLE_VALUE_KEY: _saveable_factory}
 
   def _write_object_proto(self, proto, options):
-    """Update a SavedObject proto for this object.
+    """Update a SavedObject proto for the caller.
 
-    If an object defines this method, it will be called when saving with a
-    pre-built `SavedObject` proto representing the object, plus an instance of
-    `SaveOptions`. This method is then free to modify that proto instance.
+    If a DistributedVariable object supports this method, it will be called when
+    saving with a pre-built `SavedObject` proto representing the object, plus an
+    instance of `SaveOptions`. This method is then free to modify that proto
+    instance.
 
-    `MirroredVariables` optionally write out information about their components
-    to the `experimental_distributed_variable_components` field of a
+    `DistributedVariable` with `AUTO` or `ON_WRITE` synchronization optionally
+    write out information about their components to the
+    `experimental_distributed_variable_components` field of a
     `SavedVariable` (depending on the `SaveOptions` variable policy).
 
     Args:
@@ -1077,13 +1104,7 @@ class MirroredVariable(DistributedVariable, Mirrored):
         will be a `SavedVariable` instance.
       options: A `SaveOptions` instance.
     """
-    if options.experimental_variable_policy._expand_distributed_variables(  # pylint: disable=protected-access
-    ):
-      for var in self.values:
-        var_proto = (
-            proto.variable.experimental_distributed_variable_components.add())
-        var_proto.name = var.name.split(":")[0]
-        var_proto.device = var.device
+    values_util.write_object_proto(self, proto, options)
 
   def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
     """Converts a variable to a tensor."""
@@ -1135,6 +1156,7 @@ class SyncOnReadVariable(DistributedVariable):
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
       if (ds_context.in_cross_replica_context() and
           not values_util.in_replica_update_context()):
+        values_util.mark_as_unsaveable()
         return values_util.on_read_assign_sub_cross_replica(
             self, value, read_value=read_value)
       else:
@@ -1147,6 +1169,7 @@ class SyncOnReadVariable(DistributedVariable):
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
       if (ds_context.in_cross_replica_context() and
           not values_util.in_replica_update_context()):
+        values_util.mark_as_unsaveable()
         return values_util.on_read_assign_add_cross_replica(
             self, value, read_value=read_value)
       else:
@@ -1159,6 +1182,7 @@ class SyncOnReadVariable(DistributedVariable):
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
       if (ds_context.in_cross_replica_context() and
           not values_util.in_replica_update_context()):
+        values_util.mark_as_unsaveable()
         return values_util.on_read_assign_cross_replica(
             self, value, read_value=read_value)
       else:
@@ -1223,7 +1247,8 @@ class SyncOnReadVariable(DistributedVariable):
       # Consider returning a tensor value here to make the return value of
       # _get_cross_replica consistent.
       return self._get_replica(0)
-
+    if self._aggregation == vs.VariableAggregation.SUM:
+      values_util.mark_as_unsaveable()
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
       return self._distribute_strategy.reduce(
           reduce_util.ReduceOp.from_variable_aggregation(self._aggregation),
@@ -1253,6 +1278,26 @@ class SyncOnReadVariable(DistributedVariable):
       return _SyncOnReadSaveable(self, name)
 
     return {trackable.VARIABLE_VALUE_KEY: _saveable_factory}
+
+  def _write_object_proto(self, proto, options):
+    """Update a SavedObject proto for the caller.
+
+    If a DistributedVariable object supports this method, it will be called when
+    saving with a pre-built `SavedObject` proto representing the object, plus an
+    instance of `SaveOptions`. This method is then free to modify that proto
+    instance.
+
+    `DistributedVariable` with `AUTO` or `ON_WRITE` synchronization optionally
+    write out information about their components to the
+    `experimental_distributed_variable_components` field of a
+    `SavedVariable` (depending on the `SaveOptions` variable policy).
+
+    Args:
+      proto: A pre-built `SavedObject` proto for this object. It is assumed this
+        will be a `SavedVariable` instance.
+      options: A `SaveOptions` instance.
+    """
+    pass
 
 
 # Register a conversion functions which reads the value of the variable,
@@ -1360,9 +1405,10 @@ class OnReadPolicy(VariablePolicy):
   def _get_cross_replica(self, var):
     if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
       return var._get_replica(0)  # pylint: disable=protected-access
-
+    if self._aggregation == vs.VariableAggregation.SUM:
+      values_util.mark_as_unsaveable()
     with ds_context.enter_or_assert_strategy(var.distribute_strategy):
-      return  var.distribute_strategy.reduce(
+      return var.distribute_strategy.reduce(
           reduce_util.ReduceOp.from_variable_aggregation(self._aggregation),
           var,
           axis=None)
@@ -1381,6 +1427,7 @@ class OnReadPolicy(VariablePolicy):
     with ds_context.enter_or_assert_strategy(var.distribute_strategy):
       if (ds_context.in_cross_replica_context() and
           not values_util.in_replica_update_context()):
+        values_util.mark_as_unsaveable()
         return values_util.on_read_assign_sub_cross_replica(
             var, value, read_value=read_value)
       else:
@@ -1394,6 +1441,7 @@ class OnReadPolicy(VariablePolicy):
     with ds_context.enter_or_assert_strategy(var.distribute_strategy):
       if (ds_context.in_cross_replica_context() and
           not values_util.in_replica_update_context()):
+        values_util.mark_as_unsaveable()
         return values_util.on_read_assign_add_cross_replica(
             var, value, read_value=read_value)
       else:
@@ -1405,6 +1453,7 @@ class OnReadPolicy(VariablePolicy):
     with ds_context.enter_or_assert_strategy(var.distribute_strategy):
       if (ds_context.in_cross_replica_context() and
           not values_util.in_replica_update_context()):
+        values_util.mark_as_unsaveable()
         return values_util.on_read_assign_cross_replica(var, value,
                                                         read_value=read_value)
       else:
@@ -1537,6 +1586,27 @@ class AutoPolicy(VariablePolicy):
 
   def get_restore_ops(self, var, tensor):
     return values_util.get_on_write_restore_ops(var, tensor)
+
+  def _write_object_proto(self, var, proto, options):
+    """Update a SavedObject proto for the caller.
+
+    If a DistributedVariable object supports this method, it will be called when
+    saving with a pre-built `SavedObject` proto representing the object, plus an
+    instance of `SaveOptions`. This method is then free to modify that proto
+    instance.
+
+    `DistributedVariable` with `AUTO` or `ON_WRITE` synchronization optionally
+    write out information about their components to the
+    `experimental_distributed_variable_components` field of a
+    `SavedVariable` (depending on the `SaveOptions` variable policy).
+
+    Args:
+      var : A DistributedVariable object
+      proto: A pre-built `SavedObject` proto for this object. It is assumed this
+        will be a `SavedVariable` instance.
+      options: A `SaveOptions` instance.
+    """
+    values_util.write_object_proto(var, proto, options)
 
 
 class OnWritePolicy(AutoPolicy):

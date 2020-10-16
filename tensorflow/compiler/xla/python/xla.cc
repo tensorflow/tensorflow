@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/interpreter_device.h"
 #include "tensorflow/compiler/xla/pjrt/nvidia_gpu_device.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/tpu_client.h"
 #include "tensorflow/compiler/xla/python/bfloat16.h"
 #include "tensorflow/compiler/xla/python/dlpack.h"
 #include "tensorflow/compiler/xla/python/jax_jit.h"
@@ -205,6 +206,23 @@ bool IsOptimizedBuild() {
 #endif  // NDEBUG
 }
 
+// Safe version of ShapeUtil::MakeShapeWithLayout that fails gracefully on
+// invalid input.
+StatusOr<Shape> MakeShapeWithLayout(
+    PrimitiveType element_type, absl::Span<const int64> dims,
+    absl::optional<absl::Span<const int64>> minor_to_major) {
+  TF_ASSIGN_OR_RETURN(Shape shape,
+                      ShapeUtil::MakeValidatedShape(element_type, dims));
+  if (minor_to_major) {
+    *shape.mutable_layout() = LayoutUtil::MakeLayout(*minor_to_major);
+    TF_RETURN_IF_ERROR(
+        LayoutUtil::ValidateLayoutForShape(shape.layout(), shape));
+  } else {
+    shape.clear_layout();
+  }
+  return shape;
+}
+
 }  // namespace
 
 PYBIND11_MODULE(xla_extension, m) {
@@ -261,15 +279,13 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_static(
           "array_shape",
           [](PrimitiveType type, py::object dims_seq,
-             absl::optional<py::object> layout_seq) -> Shape {
+             absl::optional<py::object> layout_seq) -> StatusOr<Shape> {
             std::vector<int64> dims = IntSequenceToVector(dims_seq);
             if (layout_seq) {
               std::vector<int64> layout = IntSequenceToVector(*layout_seq);
-              return ShapeUtil::MakeShapeWithLayout(type, dims, layout);
+              return MakeShapeWithLayout(type, dims, layout);
             } else {
-              Shape shape = ShapeUtil::MakeShape(type, dims);
-              shape.clear_layout();
-              return shape;
+              return MakeShapeWithLayout(type, dims, absl::nullopt);
             }
           },
           "Constructs an array shape.", py::arg("type"), py::arg("dims"),
@@ -277,16 +293,14 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_static(
           "array_shape",
           [](py::dtype dtype, py::object dims_seq,
-             absl::optional<py::object> layout_seq) -> Shape {
+             absl::optional<py::object> layout_seq) -> StatusOr<Shape> {
             PrimitiveType type = ValueOrThrow(DtypeToPrimitiveType(dtype));
             std::vector<int64> dims = IntSequenceToVector(dims_seq);
             if (layout_seq) {
               std::vector<int64> layout = IntSequenceToVector(*layout_seq);
-              return ShapeUtil::MakeShapeWithLayout(type, dims, layout);
+              return MakeShapeWithLayout(type, dims, layout);
             } else {
-              Shape shape = ShapeUtil::MakeShape(type, dims);
-              shape.clear_layout();
-              return shape;
+              return MakeShapeWithLayout(type, dims, absl::nullopt);
             }
           },
           "Constructs an array shape.", py::arg("type"), py::arg("dims"),
@@ -556,13 +570,13 @@ PYBIND11_MODULE(xla_extension, m) {
   m.def(
       "get_cpu_client",
       [](bool asynchronous) -> StatusOr<std::shared_ptr<PyClient>> {
-        TF_ASSIGN_OR_RETURN(std::shared_ptr<PjRtClient> client,
+        TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                             GetCpuClient(asynchronous));
         return std::make_shared<PyClient>(std::move(client));
       },
       py::arg("asynchronous") = true);
   m.def("get_interpreter_client", []() -> StatusOr<std::shared_ptr<PyClient>> {
-    TF_ASSIGN_OR_RETURN(std::shared_ptr<PjRtClient> client,
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                         GetInterpreterClient());
     return std::make_shared<PyClient>(std::move(client));
   });
@@ -572,7 +586,7 @@ PYBIND11_MODULE(xla_extension, m) {
          std::shared_ptr<DistributedRuntimeClient> distributed_client,
          int node_id) -> StatusOr<std::shared_ptr<PyClient>> {
         TF_ASSIGN_OR_RETURN(
-            std::shared_ptr<PjRtClient> client,
+            std::unique_ptr<PjRtClient> client,
             GetNvidiaGpuClient(asynchronous, allocator_config,
                                std::move(distributed_client), node_id));
         return std::make_shared<PyClient>(std::move(client));
@@ -580,6 +594,14 @@ PYBIND11_MODULE(xla_extension, m) {
       py::arg("asynchronous") = true,
       py::arg("allocator_config") = GpuAllocatorConfig(),
       py::arg("distributed_client") = nullptr, py::arg("node_id") = 0);
+  m.def(
+      "get_tpu_client",
+      [](bool asynchronous) -> StatusOr<std::shared_ptr<PyClient>> {
+        TF_ASSIGN_OR_RETURN(std::shared_ptr<PjRtClient> client,
+                            GetTpuClient(asynchronous));
+        return std::make_shared<PyClient>(std::move(client));
+      },
+      py::arg("asynchronous") = true);
 
   py::class_<Traceback::Frame>(m, "Frame")
       .def_readonly("file_name", &Traceback::Frame::file_name)

@@ -37,6 +37,7 @@ namespace DsoLoader {
 port::StatusOr<void*> GetCudaDriverDsoHandle();
 port::StatusOr<void*> GetCudaRuntimeDsoHandle();
 port::StatusOr<void*> GetCublasDsoHandle();
+port::StatusOr<void*> GetCublasLtDsoHandle();
 port::StatusOr<void*> GetCufftDsoHandle();
 port::StatusOr<void*> GetCurandDsoHandle();
 port::StatusOr<void*> GetCusolverDsoHandle();
@@ -72,6 +73,7 @@ namespace CachedDsoLoader {
 port::StatusOr<void*> GetCudaDriverDsoHandle();
 port::StatusOr<void*> GetCudaRuntimeDsoHandle();
 port::StatusOr<void*> GetCublasDsoHandle();
+port::StatusOr<void*> GetCublasLtDsoHandle();
 port::StatusOr<void*> GetCufftDsoHandle();
 port::StatusOr<void*> GetCurandDsoHandle();
 port::StatusOr<void*> GetCusolverDsoHandle();

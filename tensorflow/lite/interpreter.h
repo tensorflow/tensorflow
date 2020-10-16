@@ -368,7 +368,7 @@ class Interpreter {
   /// WARNING: NNAPI cannot be disabled after the graph has been prepared
   /// (via `AllocateTensors`) with NNAPI enabled.
   ///
-  /// NOTE: This API is deprecated, prefer using the NNAPI delegate directly.
+  /// WARNING: This API is deprecated, prefer using the NNAPI delegate directly.
   /// This method will be removed in a future release.
   void UseNNAPI(bool enable);
 
@@ -380,8 +380,12 @@ class Interpreter {
   TfLiteStatus SetNumThreads(int num_threads);
 
   /// Allow float16 precision for FP32 calculation when possible.
-  /// default: not allow.
-  /// WARNING: This is an experimental API and subject to change.
+  /// Default: not allow.
+  ///
+  /// WARNING: This API is deprecated: prefer controlling this via delegate
+  /// options, e.g. `tflite::StatefulNnApiDelegate::Options::allow_fp16' or
+  /// `TfLiteGpuDelegateOptionsV2::is_precision_loss_allowed`.
+  /// This method will be removed in a future release.
   void SetAllowFp16PrecisionForFp32(bool allow);
 
   /// Get the half precision flag.

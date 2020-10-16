@@ -304,6 +304,20 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   # not available to the restoration code).
   _must_restore_from_config = False
 
+  def _instrument_layer_creation(self):
+    self._instrumented_keras_api = False
+    self._instrumented_keras_layer_class = False
+    self._instrumented_keras_model_class = False
+    if not getattr(self, '_disable_keras_instrumentation', False):
+      keras_api_gauge.get_cell('layer').set(True)
+      self._instrumented_keras_api = True
+      if getattr(self, '_is_model_for_instrumentation', False):
+        keras_models_gauge.get_cell(self.__class__.__name__).set(True)
+        self._instrumented_keras_model_class = True
+      else:
+        keras_layers_gauge.get_cell(self.__class__.__name__).set(True)
+        self._instrumented_keras_layer_class = True
+
   @trackable.no_automatic_dependency_tracking
   def __init__(self,
                trainable=True,
@@ -311,11 +325,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
                dtype=None,
                dynamic=False,
                **kwargs):
-    keras_api_gauge.get_cell('layer').set(True)
-    if getattr(self, '_is_model_for_instrumentation', False):
-      keras_models_gauge.get_cell(self.__class__.__name__).set(True)
-    else:
-      keras_layers_gauge.get_cell(self.__class__.__name__).set(True)
+    self._instrument_layer_creation()
+
     # These properties should be set by the user via keyword arguments.
     # note that 'dtype', 'input_shape' and 'batch_input_shape'
     # are only applicable to input layers: do not pass these keywords
@@ -2438,6 +2449,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           generic_utils.to_snake_case(self.__class__.__name__),
           zero_based=zero_based)
     else:
+      backend.observe_object_name(name)
       self._name = name
 
   def _get_existing_metric(self, name=None):
@@ -2830,7 +2842,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # Append value to list of trainable / non-trainable weights if relevant
     # TODO(b/125122625): This won't pick up on any variables added to a
     # list/dict after creation.
-    for val in nest.flatten(value):
+    for val in nest.flatten(value, expand_composites=True):
       # TODO(b/126450014): Remove `_UnreadVariable` check here when assign ops
       # no longer return True for isinstance Variable checks.
       if not isinstance(val, tf_variables.Variable):

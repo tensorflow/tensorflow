@@ -379,13 +379,12 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
     with ops.device(self._device), _OneDeviceReplicaContext(strategy):
       return fn(*args, **kwargs)
 
-  def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
-    del reduce_op, destinations, experimental_hints
+  def _reduce_to(self, reduce_op, value, destinations, options):
+    del reduce_op, destinations, options
     return value
 
-  def _gather_to_implementation(self, value, destinations, axis,
-                                experimental_hints):
-    del destinations, axis, experimental_hints
+  def _gather_to_implementation(self, value, destinations, axis, options):
+    del destinations, axis, options
     return value
 
   def _update(self, var, fn, args, kwargs, group):
@@ -457,6 +456,9 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
   @property
   def _support_per_replica_values(self):
     return False
+
+  def _get_local_replica_id(self, replica_id_in_sync_group):
+    return replica_id_in_sync_group
 
 
 class _OneDeviceReplicaContext(distribute_lib.ReplicaContext):

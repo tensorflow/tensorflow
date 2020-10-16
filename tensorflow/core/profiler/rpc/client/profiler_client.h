@@ -82,7 +82,7 @@ class RemoteProfilerSession {
   absl::Time deadline_;
   ::grpc::ClientContext grpc_context_;
   std::unique_ptr<::grpc::ClientAsyncResponseReader<ProfileResponse>> rpc_;
-  ::grpc::Status grpc_status_;
+  ::grpc::Status grpc_status_ = ::grpc::Status::OK;
 
   // Asynchronous completion queue states.
   ::grpc::CompletionQueue cq_;

@@ -48,6 +48,7 @@ PodStatsSequence ConvertOpStatsToPodStatsSequence(const OpStats& op_stats,
 
 PodViewerDatabase ConvertOpStatsToPodViewer(const OpStats& op_stats) {
   PodViewerDatabase database;
+  database.set_device_type(op_stats.run_environment().device_type());
   PodStatsDatabase pod_stats = ConvertOpStatsToPodStats(op_stats);
   database.mutable_step_breakdown_events()->Swap(
       pod_stats.mutable_step_breakdown_events());

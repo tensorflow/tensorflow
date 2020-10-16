@@ -28,7 +28,7 @@ namespace {
 // computation wait for the inputs to be produced before executing.
 TEST(GpuMultiStream, Basics) {
   TF_ASSERT_OK_AND_ASSIGN(
-      std::shared_ptr<PjRtClient> client,
+      std::unique_ptr<PjRtClient> client,
       GetNvidiaGpuClient(/*asynchronous=*/true, GpuAllocatorConfig(),
                          /*distributed_client=*/nullptr, /*node_id=*/0));
 

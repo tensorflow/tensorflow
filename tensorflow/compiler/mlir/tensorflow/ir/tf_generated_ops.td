@@ -224,7 +224,7 @@ retained with length 1.
   let verifier = [{ return Verify(*this); }];
 }
 
-def TF_AllToAllOp : TF_Op<"AllToAll", [NoSideEffect]> {
+def TF_AllToAllOp : TF_Op<"AllToAll", [NoSideEffect, TF_NoConstantFold]> {
   let summary = "An Op to exchange data across TPU replicas.";
 
   let description = [{
@@ -2154,7 +2154,7 @@ of corresponding 3-element vectors is cross-multiplied independently.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_CrossReplicaSumOp : TF_Op<"CrossReplicaSum", [NoSideEffect, TF_AllTypesMatch<["input", "output"]>]> {
+def TF_CrossReplicaSumOp : TF_Op<"CrossReplicaSum", [NoSideEffect, TF_AllTypesMatch<["input", "output"]>, TF_NoConstantFold]> {
   let summary = "An Op to sum inputs across replicated TPU instances.";
 
   let description = [{
@@ -2794,6 +2794,23 @@ Converts the given variant tensor to an iterator and stores it in the given reso
   let arguments = (ins
     Arg<TF_ResourceTensor, "", [TF_DatasetIteratorWrite]>:$resource_handle,
     TF_VariantTensor:$serialized
+  );
+
+  let results = (outs);
+}
+
+def TF_DestroyResourceOp : TF_Op<"DestroyResourceOp", []> {
+  let summary = "Deletes the resource specified by the handle.";
+
+  let description = [{
+All subsequent operations using the resource will result in a NotFound
+error status.
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$resource,
+
+    DefaultValuedAttr<BoolAttr, "true">:$ignore_lookup_error
   );
 
   let results = (outs);
@@ -3924,6 +3941,8 @@ The size of 1D Tensors matches the dimension C of the 4D Tensors.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasCanonicalizer = 1;
 
   let verifier = [{
     return Verify(*this);

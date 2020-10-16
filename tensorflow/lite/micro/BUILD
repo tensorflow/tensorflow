@@ -109,6 +109,7 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/lite/micro/kernels:fully_connected",
         "//tensorflow/lite/micro/kernels:micro_ops",
         "//tensorflow/lite/schema:schema_fbs",
     ],
@@ -328,6 +329,7 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":micro_framework",
+        "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )

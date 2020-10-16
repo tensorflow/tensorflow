@@ -1264,6 +1264,14 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::CopyToDevice(
         "CopyToDevice cannot accept the same source and destination devices");
   }
 
+  // Copying across PjRtClients involves a copy through the host.
+  if (dst_device->client() != client_) {
+    TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal, ToLiteral());
+    return FromHostBuffer(literal->untyped_data(), literal->shape(),
+                          HostBufferSemantics::kZeroCopy, nullptr,
+                          dst_device->client(), dst_device);
+  }
+
   TF_ASSIGN_OR_RETURN(LocalDeviceState * dst_local_device,
                       dst_device->GetLocalDeviceState());
   LocalDeviceState* transfer_local_device =

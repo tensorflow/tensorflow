@@ -9,7 +9,6 @@ package(
 distribute_py_test(
     name = "saved_model_test",
     srcs = ["saved_model_test.py"],
-    disable_mlir_bridge = False,
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:lookup_ops",
@@ -34,6 +33,7 @@ cuda_py_test(
     shard_count = 2,
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # TODO(b/170838851): UnavailableError:  Connection reset by peer
     ],
     deps = [
         "//tensorflow:tensorflow_py",

@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -200,8 +200,8 @@ class MicroInterpreter {
   // TODO(b/16157777): Drop this reference:
   internal::ContextHelper context_helper_;
 
-  // TODO(b/160894903): Clean these pointers up when all APIs are updated to new
-  // TfLiteEvalTensor buffers.
+  // TODO(b/162311891): Clean these pointers up when this class supports buffers
+  // from TfLiteEvalTensor.
   TfLiteTensor* input_tensor_;
   TfLiteTensor* output_tensor_;
 };

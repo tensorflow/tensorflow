@@ -568,7 +568,10 @@ selects.config_setting_group(
 # If you need functionality that is not exposed, we will work with you to expand our public APIs.
 package_group(
     name = "internal",
-    packages = ["//tensorflow/..."],
+    packages = [
+        "//learning/lib/ami/simple_ml/...",
+        "//tensorflow/...",
+    ],
 )
 
 package_group(
@@ -707,7 +710,7 @@ tf_cc_shared_object(
     deps = [
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
         "//tensorflow/cc/saved_model:loader_lite_impl",
-        "//tensorflow/core:core_cpu_impl",
+        "//tensorflow/core/common_runtime:core_cpu_impl",
         "//tensorflow/core:framework_internal_impl",
         "//tensorflow/core/common_runtime/gpu:gpu_runtime_impl",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry_impl",

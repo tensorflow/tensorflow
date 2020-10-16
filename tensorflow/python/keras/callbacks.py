@@ -264,7 +264,7 @@ class CallbackList(object):
 
     if self._progbar is None and add_progbar:
       self._progbar = ProgbarLogger(count_mode='steps')
-      self.callbacks.append(self._progbar)
+      self.callbacks.insert(0, self._progbar)
 
     if self._history is None and add_history:
       self._history = History()

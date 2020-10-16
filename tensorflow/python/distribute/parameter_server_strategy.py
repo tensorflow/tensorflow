@@ -503,25 +503,31 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
             "Cannot reduce to another worker: %r, current worker is %r" %
             (d, self._worker_device))
 
-  def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
+  def _gather_to_implementation(self, value, destinations, axis,
+                                options):
+    self._verify_destinations_not_different_worker(destinations)
+    if not isinstance(value, values.DistributedValues):
+      return value
+    return self._cross_device_ops._gather(  # pylint: disable=protected-access
+        value,
+        destinations=destinations,
+        axis=axis,
+        options=options)
+
+  def _reduce_to(self, reduce_op, value, destinations, options):
     self._verify_destinations_not_different_worker(destinations)
     if not isinstance(value, values.DistributedValues):
       # pylint: disable=protected-access
       return cross_device_ops_lib.reduce_non_distributed_value(
           reduce_op, value, destinations, self._num_replicas_in_sync)
     return self._cross_device_ops.reduce(
-        reduce_op,
-        value,
-        destinations=destinations,
-        experimental_hints=experimental_hints)
+        reduce_op, value, destinations=destinations, options=options)
 
-  def _batch_reduce_to(self, reduce_op, value_destination_pairs,
-                       experimental_hints):
+  def _batch_reduce_to(self, reduce_op, value_destination_pairs, options):
     for _, destinations in value_destination_pairs:
       self._verify_destinations_not_different_worker(destinations)
     return self._cross_device_ops.batch_reduce(reduce_op,
-                                               value_destination_pairs,
-                                               experimental_hints)
+                                               value_destination_pairs, options)
 
   def _select_single_value(self, structured):
     """Select any single value in `structured`."""
@@ -693,3 +699,9 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
       Boolean.
     """
     return True
+
+  def _get_local_replica_id(self, replica_id_in_sync_group):
+    return replica_id_in_sync_group
+
+  def _get_replica_id_in_sync_group(self, replica_id):
+    return replica_id

@@ -210,6 +210,9 @@ class Layer(base_layer.Layer):
     if 'autocast' not in kwargs:
       kwargs['autocast'] = False
 
+    # Mark that legacy layers should not be instrumented as Keras usage
+    self._disable_keras_instrumentation = True
+
     super(Layer, self).__init__(trainable=trainable, name=name, dtype=dtype,
                                 **kwargs)
 

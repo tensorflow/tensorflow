@@ -38,33 +38,24 @@ tf_py_test(
     size = "small",
     srcs = ["client_test.py"],
     python_version = "PY3",
-    shard_count = 12,
-    tfrt_enabled = True,
-    deps = [
-        ":client",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:training_lib",
-        "//tensorflow/python:util",
-        "//tensorflow/python/eager:def_function",
+    shard_count = 50,
+    tags = [
+        "no_oss",  # TODO(b/162119374)
+        "notsan",  # TODO(b/171040359): Flaky timeout, even if maximum shards
     ],
-)
-
-tf_py_test(
-    name = "parameter_server_client_test",
-    srcs = ["parameter_server_client_test.py"],
-    python_version = "PY3",
-    shard_count = 14,
-    tags = ["no_oss"],  # TODO(b/162119374)
     deps = [
         ":client",
         "//tensorflow/python:check_ops",
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:training_lib",
         "//tensorflow/python:training_server_lib",
+        "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:multi_worker_test_base",

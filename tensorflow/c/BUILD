@@ -217,6 +217,8 @@ tf_cuda_library(
             "//tensorflow/core:lib_internal",
             "//tensorflow/core/distributed_runtime:server_lib",
             "//tensorflow/core/kernels:logging_ops",
+            "//tensorflow/compiler/mlir/tfr:node_expansion_pass",
+            "//tensorflow/compiler/mlir/tfr:graph_decompose_pass",
         ],
     }),
     alwayslink = 1,

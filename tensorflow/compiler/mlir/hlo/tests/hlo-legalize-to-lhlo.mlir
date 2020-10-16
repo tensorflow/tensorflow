@@ -511,7 +511,13 @@ func @dot(%arg0: tensor<1024x1024xf32>) -> tensor<1024x1024xf32> {
 //  PRE-SAME: (%[[ARG0:.*]]: [[TYPE:.*]], %[[RESULT:.*]]: [[TYPE]])
 //  ESC-SAME: (%[[ARG0:.*]]: [[TYPE:.*]]) -> [[TYPE]]
 // BOTH-NEXT: %[[ALLOC:.*]] = alloc
-//      BOTH: "lmhlo.dot"(%[[ARG0]], %[[ARG0]], %[[ALLOC]]) : ([[TYPE]], [[TYPE]], [[TYPE]]) -> ()
+//      BOTH: "lmhlo.dot"(%[[ARG0]], %[[ARG0]], %[[ALLOC]]) {
+//        dot_dimension_numbers = {
+//          lhs_batching_dimensions = dense<> : tensor<0xi64>,
+//          lhs_contracting_dimensions = dense<1> : tensor<1xi64>,
+//          rhs_batching_dimensions = dense<> : tensor<0xi64>,
+//          rhs_contracting_dimensions = dense<0> : tensor<1xi64>}}
+//        : ([[TYPE]], [[TYPE]], [[TYPE]]) -> ()
   %dot = "mhlo.dot"(%arg0, %arg0)
           : (tensor<1024x1024xf32>, tensor<1024x1024xf32>) -> tensor<1024x1024xf32>
 // PRE: "lmhlo.copy"(%[[ALLOC]], %[[RESULT]])
@@ -611,4 +617,25 @@ func @isfinite(%arg0: memref<2x2xf32>, %result: memref<2x2xi1>) {
   %result_tensor = "mhlo.is_finite"(%arg0_tensor) : (tensor<2x2xf32>) -> tensor<2x2xi1>
   tensor_store %result_tensor, %result: memref<2x2xi1>
   return
+}
+
+// -----
+
+// Test that assuming ops propagate memref types.
+// BOTH-LABEL: func @shape_assuming_memref
+func @shape_assuming_memref(%arg0: tensor<?xf16>) -> tensor<?xf16> {
+  %0 = mhlo.constant dense<0.000000e+00> : tensor<f16>
+  %1 = shape.const_witness true
+  // BOTH: shape.assuming %{{.*}} -> (memref<?xf16>)
+  %2 = shape.assuming %1 -> (tensor<?xf16>) {
+    %3 = shape.shape_of %arg0 : tensor<?xf16> -> tensor<?xindex>
+    %4 = tensor_cast %3 : tensor<?xindex> to tensor<1xindex>
+    %5 = "mhlo.dynamic_broadcast_in_dim"(%0, %4) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f16>, tensor<1xindex>) -> tensor<?xf16>
+    %6 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %4) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<?xf16>, tensor<1xindex>) -> tensor<?xf16>
+    // BOTH: "lmhlo.maximum"(%6, %9, %20) : (memref<?xf16>, memref<?xf16>, memref<?xf16>) -> ()
+    %7 = mhlo.maximum %5, %6 : tensor<?xf16>
+    // BOTH: shape.assuming_yield %{{.*}} : memref<?xf16>
+    shape.assuming_yield %7 : tensor<?xf16>
+  }
+  return %2 : tensor<?xf16>
 }

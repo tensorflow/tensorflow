@@ -93,10 +93,13 @@ HloComputation::HloComputation(
 }
 
 HloInstruction* HloComputation::AddInstruction(
-    std::unique_ptr<HloInstruction> instruction) {
+    std::unique_ptr<HloInstruction> instruction, const std::string& new_name) {
   CHECK(instruction->opcode() != HloOpcode::kParameter)
       << "Parameter instructions cannot be added to a computation after "
       << "it has been built";
+  if (!new_name.empty()) {
+    instruction->SetAndSanitizeName(new_name);
+  }
   return AddInstructionInternal(std::move(instruction));
 }
 
@@ -315,6 +318,8 @@ Status HloComputation::RemoveInstructionImpl(HloInstruction* instruction,
   (*inst_it->second)->set_parent(nullptr);
   to_be_deleted_.emplace_back(inst_it->second->release());
   to_be_deleted_.back()->DetachFromOperandsAndUsers();
+  // Clear all operands to avoid Null operands.
+  to_be_deleted_.back()->RemoveAllOperands();
   to_be_deleted_.back()->MarkAsDead();
   instructions_.erase(inst_it->second);
   instruction_iterators_.erase(inst_it);

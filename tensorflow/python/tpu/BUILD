@@ -509,6 +509,7 @@ pytype_library(
     srcs = ["tpu_embedding_v2_utils.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/python:init_ops_v2",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/distribute:device_util",
         "//tensorflow/python/distribute:sharded_variable",

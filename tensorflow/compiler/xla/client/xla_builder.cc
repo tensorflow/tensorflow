@@ -691,8 +691,10 @@ XlaOp XlaBuilder::BinaryOpNoBroadcast(HloOpcode binop, const Shape& shape,
 
 StatusOr<XlaOp> XlaBuilder::Compare(const Shape& shape, XlaOp lhs, XlaOp rhs,
                                     ComparisonDirection direction) {
-  return Compare(shape, lhs, rhs, direction,
-                 Comparison::DefaultComparisonType(shape.element_type()));
+  TF_ASSIGN_OR_RETURN(auto operand_shape, GetShape(lhs));
+  return Compare(
+      shape, lhs, rhs, direction,
+      Comparison::DefaultComparisonType(operand_shape.element_type()));
 }
 
 StatusOr<XlaOp> XlaBuilder::Compare(const Shape& shape, XlaOp lhs, XlaOp rhs,

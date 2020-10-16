@@ -627,8 +627,28 @@ std::unique_ptr<Graph> XlaCompiler::GetGraph(const FunctionBody* fbody) {
   graph_optimizer_options.inline_with_single_device_body_placer = true;
   graph_optimizer_options.ignore_noinline = is_inside_mustcompile;
 
-  optimizer.Optimize(flib_runtime_, flib_runtime_->env(),
-                     /*device=*/nullptr, &graph, graph_optimizer_options);
+  {
+    GraphShapeInfo shape_info;
+    InferShapes(graph.get(), /*arg_shapes=*/{},
+                flib_runtime_->GetFunctionLibraryDefinition(), &shape_info)
+        .IgnoreError();
+    auto node_name_index = graph->BuildNodeNameIndex();
+    std::unordered_map<string, std::vector<PartialTensorShape>> shape_map;
+    for (const auto& node_shape_info : shape_info) {
+      const string& node_name = node_shape_info.first;
+      const std::vector<InferredShape>& output_shapes = node_shape_info.second;
+      const auto& node_iter = node_name_index.find(node_name);
+      if (node_iter != node_name_index.end()) {
+        auto& partial_shapes = shape_map[node_name];
+        for (const auto& inferred_shape : output_shapes) {
+          partial_shapes.push_back(inferred_shape.shape);
+        }
+      }
+    }
+    graph_optimizer_options.shape_map = &shape_map;
+    optimizer.Optimize(flib_runtime_, flib_runtime_->env(),
+                       /*device=*/nullptr, &graph, graph_optimizer_options);
+  }
 
   // Run shape inference on the graph and optimize the graph again.
   GraphShapeInfo shape_info;
@@ -734,18 +754,24 @@ Status XlaCompiler::CompileFunction(
 
   VLOG(1) << "====================================================";
 #ifdef LIBTPU_ON_GCE
-  if (GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge) {
+  if (GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge ==
+      ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED) {
     VLOG(1) << "MLIR is not supported in this environment.";
   }
   TF_RETURN_IF_ERROR(
       CompileGraph(options, function_id, std::move(graph), args, result));
 #else
-  if (GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge) {
+  if (GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge ==
+      ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED) {
     VLOG(1) << "Using MLIR bridge";
     GraphDebugInfo debug_info;
+    std::vector<std::string> control_rets;
+    for (const auto* control_ret_node : fbody->control_ret_nodes) {
+      control_rets.push_back(control_ret_node->name());
+    }
     TF_RETURN_IF_ERROR(CompileGraphToXlaHlo(
         std::move(*graph), mlir::SpanToArrayRef<XlaCompiler::Argument>(args),
-        options_.device_type.type_string(), options.use_tuple_arg,
+        control_rets, options_.device_type.type_string(), options.use_tuple_arg,
         *options_.flib_def, debug_info, options_.shape_representation_fn,
         result));
   } else {

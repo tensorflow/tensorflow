@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <tuple>
 
+#include "tensorflow/lite/delegates/gpu/metal/metal_arguments.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -70,11 +71,15 @@ struct UniformBuffer {
   uint3 _groupsCount;
   DispatchParamsFunction _resizeFunction;
   std::string _description;
+  tflite::gpu::metal::MetalArguments _metal_args;
 }
 
 - (absl::Status)compileWithDevice:(id<MTLDevice>)device
                    taskDescriptor:(ComputeTaskDescriptorPtr)desc
                    runtimeOptions:(const RuntimeOptions&)options {
+  size_t offset = desc->input_buffers.size() + desc->uniform_buffers.size()
+                  + desc->immutable_buffers.size() + 1;
+  RETURN_IF_ERROR(_metal_args.Init(offset, &desc->args, &desc->shader_source));
   NSString* barrier;
   // simdgroup_barrier is supported on macOS 10.13+ and Metal shading language version 2.0
   if (@available(macOS 10.13, iOS 10.0, tvOS 10.0, *)) {
@@ -251,6 +256,7 @@ struct UniformBuffer {
     [encoder setBytes:uniform.data.data() length:uniform.data.size() atIndex:bindIndex];
     bindIndex++;
   }
+  _metal_args.Encode(encoder, bindIndex);
 
   MTLSize groupsCount = MTLSizeMake(_groupsCount.x, _groupsCount.y, _groupsCount.z);
   MTLSize groupsSize = MTLSizeMake(_groupsSize.x, _groupsSize.y, _groupsSize.z);

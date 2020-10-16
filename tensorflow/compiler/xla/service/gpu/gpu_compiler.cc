@@ -59,6 +59,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_sanitize_constant_names.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_scatter_expander.h"
+#include "tensorflow/compiler/xla/service/gpu/horizontal_input_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/horizontal_loop_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
@@ -92,6 +93,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/logistic_expander.h"
 #include "tensorflow/compiler/xla/service/qr_expander.h"
+#include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/rng_bit_generator_expander.h"
 #include "tensorflow/compiler/xla/service/rng_expander.h"
 #include "tensorflow/compiler/xla/service/slice_sinker.h"
@@ -229,6 +231,7 @@ Status GpuCompiler::OptimizeHloModule(
       // pass.AddPass<SliceSinker>();
 
       pass.AddPass<HloDCE>();
+      pass.AddPass<ReshapeMover>();
       pass.AddPass<HloConstantFolding>();
       pass.AddPass<ConditionalSimplifier>();
     }
@@ -304,6 +307,7 @@ Status GpuCompiler::OptimizeHloModule(
 
     HloPassPipeline horizontal_fusion("horizontal_fusion");
     horizontal_fusion.AddPass<GpuHorizontalLoopFusion>();
+    horizontal_fusion.AddPass<GpuHorizontalInputFusion>();
     horizontal_fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
                                       /*only_fusion_computations=*/true);
     horizontal_fusion.AddPass<HloDCE>();

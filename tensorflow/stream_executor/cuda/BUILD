@@ -106,6 +106,10 @@ cc_library(
 # an intermediate target.
 cc_library(name = "ptxas_wrapper")
 
+# Buildozer can not remove dependencies inside select guards, so we have to use
+# an intermediate target.
+cc_library(name = "fatbinary_wrapper")
+
 cc_library(
     name = "cuda_driver",
     srcs = if_cuda_is_configured(["cuda_driver.cc"]),
@@ -248,12 +252,38 @@ alias(
 )
 
 cc_library(
+    name = "cublas_lt_stub",
+    srcs = if_cuda_is_configured(["cublasLt_stub.cc"]),
+    textual_hdrs = glob(["cublasLt_*.inc"]),
+    deps = if_cuda_is_configured([
+        # LINT.IfChange
+        "@local_config_cuda//cuda:cublas_headers",
+        # LINT.ThenChange(//tensorflow/copy.bara.sky:cublasLt_headers)
+        "@local_config_cuda//cuda:cuda_headers",
+        "//tensorflow/stream_executor/lib",
+        "//tensorflow/stream_executor/platform:dso_loader",
+    ]),
+)
+
+cc_library(name = "empty_lib")
+
+alias(
+    name = "cublas_lt_lib",
+    actual = select({
+        "//tensorflow:oss": ":cublas_lt_stub",
+        "//conditions:default": ":empty_lib",
+    }),
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "cublas_plugin",
     srcs = if_cuda_is_configured(["cuda_blas.cc"]),
     hdrs = if_cuda_is_configured(["cuda_blas.h"]),
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
         ":cublas_lib",
+        ":cublas_lt_lib",
         ":cuda_activation",
         ":cuda_gpu_executor",
         ":cuda_platform_id",
@@ -632,9 +662,9 @@ tf_cuda_cc_test(
     deps = [
         ":cuda_activation",
         ":cuda_gpu_executor",
-        "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
         "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor:event",

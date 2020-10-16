@@ -2300,8 +2300,6 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
     std::vector<int64> input_index(operand_shape.dimensions_size());
     std::vector<int64> update_index(updates_shape.dimensions_size());
-    std::vector<int64> input_scatter_index_clamped(
-        operand_shape.dimensions_size());
 
     UpdateScatterIndexToInputIndex update_scatter_index_to_input_index(
         &scatter->scatter_dimension_numbers(), /*input_shape=*/operand_shape,

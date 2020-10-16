@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -450,7 +450,7 @@ void* GetFlatbufferTensorBuffer(
   // and if there is update the runtime structure to point to its location in
   // memory.
   // First see if there's any buffer information in the serialized tensor.
-  // TODO(b/160894903): Add better unit tests that validate flatbuffer values.
+  // TODO(b/170379532): Add better unit tests to validate flatbuffer values.
   void* out_buffer = nullptr;
   if (auto* buffer = (*buffers)[flatbuffer_tensor.buffer()]) {
     // If we've found a buffer, does it have any data?
@@ -760,7 +760,7 @@ TfLiteStatus MicroAllocator::FinishPrepareNodeAllocations(int node_id) {
 
   // Ensure that the head is re-adjusted to allow for another at-most
   // kMaxScratchBuffersPerOp scratch buffer requests in the next operator:
-  TF_LITE_ENSURE_STATUS(memory_allocator_->SetHeadSize(
+  TF_LITE_ENSURE_STATUS(memory_allocator_->SetHeadBufferSize(
       sizeof(internal::ScratchBufferRequest) *
           (scratch_buffer_request_count_ + kMaxScratchBuffersPerOp),
       alignof(internal::ScratchBufferRequest)));
@@ -1019,9 +1019,9 @@ TfLiteTensor* MicroAllocator::AllocatePersistentTfLiteTensorInternal(
 TfLiteStatus MicroAllocator::PopulateTfLiteTensorFromFlatbuffer(
     const Model* model, const SubGraph* subgraph, TfLiteTensor* tensor,
     int tensor_index, bool allocate_temp) {
-  // TODO(b/160894903): This method serves as a stub to ensure quantized
-  // allocations in the tail can be recorded. Once all kernels have been ported
-  // to the new API this can be dropped.
+  // TODO(b/162311891): This method serves as a stub to ensure quantized
+  // allocations in the tail can be recorded. Once the interpreter has APIs for
+  // accessing buffers on TfLiteEvalTensor this method can be dropped.
   return internal::InitializeTfLiteTensorFromFlatbuffer(
       memory_allocator_, allocate_temp, *subgraph->tensors()->Get(tensor_index),
       model->buffers(), error_reporter_, tensor);
@@ -1116,7 +1116,7 @@ TfLiteStatus MicroAllocator::CommitStaticMemoryPlan(
   }
   // Commit the plan.
   TF_LITE_ENSURE_STATUS(CommitPlan(error_reporter_, &planner,
-                                   memory_allocator_->GetBufferHead(),
+                                   memory_allocator_->GetHeadBuffer(),
                                    allocation_info, allocation_info_count));
   head_usage = planner.GetMaximumMemorySize();
 
@@ -1132,8 +1132,8 @@ TfLiteStatus MicroAllocator::CommitStaticMemoryPlan(
   // The head is used for storing scratch buffer allocations before finalizing a
   // memory plan in this function. Ensure that the head is set to the largest
   // memory plan sent through the allocator:
-  TF_LITE_ENSURE_STATUS(
-      memory_allocator_->SetHeadSize(max_head_buffer_usage_, kBufferAlignment));
+  TF_LITE_ENSURE_STATUS(memory_allocator_->SetHeadBufferSize(
+      max_head_buffer_usage_, kBufferAlignment));
   return kTfLiteOk;
 }
 
@@ -1164,7 +1164,7 @@ TfLiteStatus MicroAllocator::InitScratchBufferData() {
   // All requests will be stored in the head section. Each kernel is allowed at
   // most kMaxScratchBuffersPerOp requests. Adjust the head to reserve at most
   // that many requests to begin:
-  TF_LITE_ENSURE_STATUS(memory_allocator_->SetHeadSize(
+  TF_LITE_ENSURE_STATUS(memory_allocator_->SetHeadBufferSize(
       sizeof(internal::ScratchBufferRequest) * kMaxScratchBuffersPerOp,
       alignof(internal::ScratchBufferRequest)));
 
@@ -1173,7 +1173,7 @@ TfLiteStatus MicroAllocator::InitScratchBufferData() {
 
 internal::ScratchBufferRequest* MicroAllocator::GetScratchBufferRequests() {
   return reinterpret_cast<internal::ScratchBufferRequest*>(
-      AlignPointerUp(memory_allocator_->GetBufferHead(),
+      AlignPointerUp(memory_allocator_->GetHeadBuffer(),
                      alignof(internal::ScratchBufferRequest)));
 }
 

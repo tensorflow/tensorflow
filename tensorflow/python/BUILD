@@ -222,6 +222,7 @@ py_library(
         "//tensorflow/python/distribute:combinations",  # For tf.__internal__ API.
         "//tensorflow/python/distribute:distribute_config",
         "//tensorflow/python/distribute:estimator_training",
+        "//tensorflow/python/distribute:strategy_combinations",  # For tf.__internal__,
         "//tensorflow/python/dlpack",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:monitoring",
@@ -263,6 +264,8 @@ py_library(
     ],
     deps = [
         ":no_contrib",
+        "//tensorflow/python/distribute:multi_process_runner",
+        "//tensorflow/python/distribute:multi_worker_test_base",
     ],
 )
 
@@ -707,7 +710,6 @@ tf_python_pybind_extension(
         "@pybind11",
         "//third_party/python_runtime:headers",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/c/experimental/saved_model/core:pywrap_required_hdrs",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
@@ -2200,9 +2202,16 @@ py_library(
 
 # Including this as a dependency will result in tests to use TFRT.
 # TODO(b/170139514): Add a curated list of TFRT native ops.
+# TODO(kkb): Deprecated by `tfrt_utils`, remove.
 py_library(
     name = "is_tfrt_test_true",
     srcs = ["framework/is_tfrt_test_true.py"],
+    srcs_version = "PY2AND3",
+)
+
+py_library(
+    name = "tfrt_utils",
+    srcs = ["framework/tfrt_utils.py"],
     srcs_version = "PY2AND3",
 )
 
@@ -3623,7 +3632,6 @@ py_library(
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
-        "//tensorflow/python/keras/engine:base_layer_utils",
     ],
 )
 
@@ -3716,6 +3724,7 @@ py_library(
         ":gradients",
         ":gradients_util",
         ":graph_to_function_def",
+        ":handle_data_util",
         ":pywrap_tensorflow",
         ":util",
         "//tensorflow/python/compat",
@@ -3851,6 +3860,21 @@ py_library(
 )
 
 py_library(
+    name = "handle_data_util",
+    srcs = [
+        "ops/handle_data_util.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dtypes",
+        ":framework_ops",
+        ":protos_all_py",
+        ":pywrap_tf_session",
+        ":util",
+    ],
+)
+
+py_library(
     name = "gradients",
     srcs = [
         "ops/custom_gradient.py",
@@ -3860,6 +3884,7 @@ py_library(
     deps = [
         ":gradients_impl",
         ":gradients_util",
+        ":handle_data_util",
         ":pywrap_tf_session",
         ":unconnected_gradients",
         "//tensorflow/python/eager:forwardprop",
@@ -4254,6 +4279,7 @@ py_library(
         ":auto_control_deps_utils",
         ":dtypes",
         ":framework_ops",
+        ":handle_data_util",
         ":pywrap_tf_session",
         ":resource_variable_ops_gen",
         ":tensor_shape",
@@ -4287,6 +4313,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
+        ":handle_data_util",
         ":list_ops_gen",
     ],
 )
@@ -4435,6 +4462,7 @@ py_library(
         ":math_ops",
         ":random_ops_gen",
         ":random_seed",
+        ":stateless_random_ops",
     ],
 )
 
@@ -4476,10 +4504,10 @@ py_library(
     srcs = ["ops/stateless_random_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":array_ops",
         ":dtypes",
         ":framework_ops",
         ":math_ops",
-        ":random_ops",
         ":stateless_random_ops_gen",
         ":stateless_random_ops_v2_gen",
     ],
@@ -5659,6 +5687,7 @@ py_library(
         "//third_party/py/numpy",
         "@six_archive//:six",
         "@wrapt",
+        "//tensorflow/tools/docs:doc_controls",
         "//tensorflow/tools/compatibility:all_renames_v2",
     ],
 )
@@ -5947,8 +5976,8 @@ cc_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:replay_log_proto_cc",
         "//tensorflow/core/protobuf:master_proto_cc",
+        "//tensorflow/core/protobuf:replay_log_proto_cc",
     ],
 )
 
@@ -6127,7 +6156,6 @@ filegroup(
         "//tensorflow/core/grappler/utils:topological_sort",  # tf_item
         "//tensorflow/core/platform:tensor_float_32_utils",  # tensor_float_32
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
-        "//tensorflow/core/profiler/internal/cpu:annotation_stack_impl",  # profiler
         "//tensorflow/core/profiler/internal/cpu:traceme_recorder_impl",  # profiler
         "//tensorflow/core/profiler/lib:profiler_session_impl",  # profiler
         "//tensorflow/core/profiler/rpc:profiler_server_impl",  # profiler
@@ -7585,6 +7613,9 @@ tf_python_pybind_extension(
         "//tensorflow/python/eager:pywrap_required_hdrs",
     ],
     module_name = "_pywrap_tfe",
+    # Only include TensorFlow header-only targets here.
+    # If a cc_library needs to depend on TensorFlow .cc files through srcs or
+    # deps, then you can use cc_header_only_library to keep only headers.
     deps = [
         ":safe_pyobject_ptr",
         ":pybind11_lib",
@@ -7595,14 +7626,14 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
         "//tensorflow/c:pywrap_required_hdrs",
         "@pybind11",
         "//third_party/python_runtime:headers",
-        "//tensorflow/c/experimental/saved_model/core:pywrap_required_hdrs",
         "//tensorflow/compiler/jit:flags_headers_only",
         "//tensorflow/compiler/jit:get_compiler_ir_hdrs_only",
-        "//tensorflow/c/eager:tfe_tensorhandle_internal",
+        "//tensorflow/c/eager:tfe_tensorhandle_internal_hdrs_only",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",

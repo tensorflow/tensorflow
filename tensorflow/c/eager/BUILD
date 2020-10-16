@@ -11,6 +11,9 @@ load(
 )
 
 # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")
 
 # buildifier: disable=same-origin-load
@@ -635,6 +638,19 @@ cc_library(
     deps = [
         ":immediate_execution_tensor_handle",
         "//tensorflow/c:conversion_macros",
+    ],
+)
+
+cc_header_only_library(
+    name = "tfe_tensorhandle_internal_hdrs_only",
+    extra_deps = [
+        "@com_google_absl//absl/strings",
+    ],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        ":tfe_tensorhandle_internal",
     ],
 )
 

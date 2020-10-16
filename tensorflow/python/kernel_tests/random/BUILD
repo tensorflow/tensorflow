@@ -1,7 +1,7 @@
 # Tests of TensorFlow kernels written using the Python API.
 
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -43,6 +43,9 @@ tf_py_test(
     name = "random_shuffle_queue_test",
     size = "small",
     srcs = ["random_shuffle_queue_test.py"],
+    tags = [
+        "no_cuda_on_cpu_tap",  # TODO(b/171060960) flakyly broken assertions
+    ],
     tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
