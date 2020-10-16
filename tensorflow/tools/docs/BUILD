@@ -134,18 +134,6 @@ py_library(
 )
 
 py_test(
-    name = "doc_controls_test",
-    size = "small",
-    srcs = ["doc_controls_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY2AND3",
-    deps = [
-        ":doc_controls",
-        "//tensorflow/python:platform_test",
-    ],
-)
-
-py_test(
     name = "generate2_test",
     size = "medium",
     srcs = ["generate2_test.py"],
