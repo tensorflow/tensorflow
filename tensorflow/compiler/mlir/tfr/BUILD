@@ -305,10 +305,6 @@ py_library(
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/compiler/mlir/tfr:tfr_wrapper",
-        "//tensorflow/python:op_def_registry",
-        "//tensorflow/python/autograph/pyct",
-        "//tensorflow/python/autograph/pyct/static_analysis",
-        "@gast_archive//:gast",
     ],
 )
 
@@ -335,9 +331,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:op_def_registry",
-        "//tensorflow/python/autograph/pyct",
-        "@gast_archive//:gast",
     ],
 )
 
