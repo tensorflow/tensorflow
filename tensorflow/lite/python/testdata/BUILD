@@ -43,11 +43,22 @@ DEPRECATED_tf_to_tflite(
     ],
 )
 
+DEPRECATED_tf_to_tflite(
+    name = "gather_string_0d",
+    src = "gather_0d.pbtxt",
+    out = "gather_string_0d.tflite",
+    options = [
+        "--input_arrays=input,indices",
+        "--output_arrays=output",
+    ],
+)
+
 filegroup(
     name = "interpreter_test_data",
     srcs = [
         "pc_conv.bin",
         ":gather_string",
+        ":gather_string_0d",
         ":permute_float",
         ":permute_uint8",
     ],
