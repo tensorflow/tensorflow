@@ -232,9 +232,6 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedPower) {
 }
 
 
-#if !defined(TENSORFLOW_USE_ROCM)
-// TODO(rocm) : fixme
-// https://github.com/ROCmSoftwarePlatform/tensorflow-internal/issues/82
 TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedAtan2) {
   HloModuleConfig config;
   auto debug_options = HloTestBase::GetDebugOptionsForTest();
@@ -251,15 +248,22 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedAtan2) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kUnfusedAddModule, config).ValueOrDie();
 
-  CompileAndVerifyIr(std::move(hlo_module),
-                     R"(
+  // Note: On ROCm side, we do bare minimal to make the test pass.
+  // "atan2" function is in different code generation path from nvptx: on
+  // ROCm platform, it get pulled in from ROCm-Device-Libs, whereas in
+  // Cuda, generated llvm IR is compiled PTX.
+  auto expected_ir = is_built_with_rocm_ ? R"(
+; CHECK: tail call float @llvm.fmuladd.f32(float %{{.*}}, float 0x3F65A54B00000000, float 0xBF8F4B2180000000)
+)"
+                                         : R"(
 ; CHECK: load float
 ; CHECK-NOT: load float
 }
-      )",
+)";
+
+  CompileAndVerifyIr(std::move(hlo_module), expected_ir,
                      /*match_optimized_ir=*/true);
 }
-#endif
 
 TEST_F(GpuUnrollingTest, UnrollMultiOutputFusion) {
   HloModuleConfig config;
