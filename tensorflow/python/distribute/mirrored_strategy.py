@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import copy
 
+from tensorflow.python.distribute import collective_util
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
@@ -313,6 +314,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     assert devices, ("Got an empty `devices` list and unable to recognize "
                      "any local devices.")
     self._cross_device_ops = cross_device_ops
+    self._communication_options = collective_util.Options()
     self._initialize_strategy(devices)
 
     # TODO(b/128995245): Enable last partial batch support in graph mode.
@@ -632,8 +634,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     del value  # Unused.
     return self._cross_device_ops or self._inferred_cross_device_ops
 
-  def _gather_to_implementation(self, value, destinations, axis,
-                                experimental_hints):
+  def _gather_to_implementation(self, value, destinations, axis, options):
     if not isinstance(value, values.DistributedValues):
       # ReductionToOneDevice._gather accepts DistributedValues only.
       return value
@@ -641,9 +642,9 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
         value,
         destinations=destinations,
         axis=axis,
-        experimental_hints=experimental_hints)
+        options=self._communication_options.merge(options))
 
-  def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
+  def _reduce_to(self, reduce_op, value, destinations, options):
     if (distribute_utils.is_mirrored(value) and
         reduce_op == reduce_util.ReduceOp.MEAN):
       return value
@@ -659,10 +660,9 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
         reduce_op,
         value,
         destinations=destinations,
-        experimental_hints=experimental_hints)
+        options=self._communication_options.merge(options))
 
-  def _batch_reduce_to(self, reduce_op, value_destination_pairs,
-                       experimental_hints):
+  def _batch_reduce_to(self, reduce_op, value_destination_pairs, options):
     cross_device_ops = None
     for value, _ in value_destination_pairs:
       if cross_device_ops is None:
@@ -670,8 +670,10 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       elif cross_device_ops is not self._get_cross_device_ops(value):
         raise ValueError("inputs to batch_reduce_to must be either all on the "
                          "the host or all on the compute devices")
-    return cross_device_ops.batch_reduce(reduce_op, value_destination_pairs,
-                                         experimental_hints)
+    return cross_device_ops.batch_reduce(
+        reduce_op,
+        value_destination_pairs,
+        options=self._communication_options.merge(options))
 
   def _update(self, var, fn, args, kwargs, group):
     # TODO(josh11b): In eager mode, use one thread per device.

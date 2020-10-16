@@ -54,6 +54,13 @@
   tf.grad_pass_through(tf.quantization.quantize_and_dequantize_v2)(...).
 * `tf.distribute.Strategy.experimental_make_numpy_dataset` is removed. Please
   use `tf.data.Dataset.from_tensor_slices` instead.
+* `experimental_hints` in `tf.distribute.StrategyExtended.reduce_to`,
+  `tf.distribute.StrategyExtended.batch_reduce_to`,
+  `tf.distribute.ReplicaContext.all_reduce` are renamed to `options`.
+  `tf.distribute.experimental.CollectiveHints` is renamed
+  `tf.distribute.experimental.CommunicationOptions`.
+  `tf.distribute.experimental.CollectiveCommunication` is renamed
+  `tf.distribute.experimental.CommunicationImplementation`.
 
 ## Known Caveats
 

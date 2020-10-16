@@ -337,6 +337,7 @@ py_library(
     name = "mirrored_strategy",
     srcs = ["mirrored_strategy.py"],
     deps = [
+        ":collective_util",
         ":cross_device_ops",
         ":device_util",
         ":distribute_lib",
@@ -425,6 +426,7 @@ py_library(
     srcs = ["collective_all_reduce_strategy.py"],
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":collective_util",
         ":cross_device_ops",
         ":cross_device_utils",
         ":input_lib",
@@ -669,9 +671,19 @@ py_library(
 py_library(
     name = "collective_util",
     srcs = ["collective_util.py"],
+    srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
+    ],
+)
+
+tf_py_test(
+    name = "collective_util_test",
+    srcs = ["collective_util_test.py"],
+    deps = [
+        ":collective_util",
+        "//tensorflow/python/eager:test",
     ],
 )
 

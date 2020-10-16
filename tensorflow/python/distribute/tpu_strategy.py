@@ -1022,8 +1022,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         distribute_utils.TPU_VARIABLE_CLASS_MAPPING,
         distribute_utils.TPU_VARIABLE_POLICY_MAPPING, **kwargs)
 
-  def _gather_to_implementation(self, value, destinations, axis,
-                                experimental_hints):
+  def _gather_to_implementation(self, value, destinations, axis, options):
     if not isinstance(value, values.DistributedValues):
       return value
 
@@ -1070,7 +1069,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
     return output
 
-  def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
+  def _reduce_to(self, reduce_op, value, destinations, options):
     if (isinstance(value, values.DistributedValues) or
         tensor_util.is_tensor(value)
        ) and tpu_values.enclosing_tpu_context() is not None:
@@ -1412,8 +1411,8 @@ class _TPUReplicaContext(distribute_lib.ReplicaContext):
     return self.strategy.extended.experimental_logical_device(logical_device_id)
 
   # TODO(wxinyi): Investigate whether to use cross_replica_sum to optimize it.
-  def _all_gather(self, value, axis, experimental_hints=None):
-    del experimental_hints
+  def _all_gather(self, value, axis, options=None):
+    del options
     for v in nest.flatten(value):
       if isinstance(v, ops.IndexedSlices):
         raise NotImplementedError("gather/all_gather does not support "
