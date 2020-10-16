@@ -8,6 +8,9 @@ load("//tensorflow:tensorflow.bzl", "if_libtpu", "tf_copts")
 load("//tensorflow/stream_executor:build_defs.bzl", "if_cuda_or_rocm")
 
 # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")
 
 # buildifier: disable=same-origin-load
@@ -292,7 +295,7 @@ cc_library(
 # Header-only version of "flags" library, for linking from the shared object
 # without ODR violations.
 cc_library(
-    name = "flags_headers_only",
+    name = "flags_headers",
     hdrs = ["flags.h"],
     visibility = [":friends"],
     deps = [
@@ -301,6 +304,11 @@ cc_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
     ],
+)
+
+cc_header_only_library(
+    name = "flags_headers_only",
+    deps = [":flags_headers"],
 )
 
 cc_library(
@@ -448,8 +456,8 @@ cc_library(
 # Header-only version of "flags" library, for linking from the shared object
 # without ODR violations.
 cc_library(
-    name = "get_compiler_ir_hdrs_only",
-    hdrs = ["get_compiler_ir.h"],
+    name = "get_compiler_ir_hdrs",
+    textual_hdrs = ["get_compiler_ir.h"],
     visibility = [
         ":internal",
         "//learning/brain/contrib/tpu_modeling/exp/tpu_inference_converter:__pkg__",
@@ -461,6 +469,23 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_header_only_library(
+    name = "get_compiler_ir_hdrs_only",
+    deps = [":get_compiler_ir_hdrs"],
+)
+
+# This target can be used by XLA device plugins to prevent circular dependencies, and provides access to all of the required headers for building a device library.
+cc_header_only_library(
+    name = "xla_jit_headers_lib",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":xla_cpu_device",
+        ":xla_cpu_jit",
+        ":xla_gpu_device",
+        ":xla_gpu_jit",
     ],
 )
 
@@ -1075,16 +1100,4 @@ cc_library(
         "@com_google_absl//absl/memory",
     ],
     alwayslink = 1,
-)
-
-# This target can be used by XLA device plugins to prevent circular dependencies, and provides access to all of the required headers for building a device library.
-cc_header_only_library(
-    name = "xla_jit_headers_lib",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":xla_cpu_device",
-        ":xla_cpu_jit",
-        ":xla_gpu_device",
-        ":xla_gpu_jit",
-    ],
 )
