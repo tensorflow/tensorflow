@@ -5688,6 +5688,7 @@ py_library(
         "//third_party/py/numpy",
         "@six_archive//:six",
         "@wrapt",
+        "//tensorflow/tools/docs:doc_controls",
         "//tensorflow/tools/compatibility:all_renames_v2",
     ],
 )
