@@ -116,7 +116,8 @@ ifneq ($(filter cmsis-nn,$(ALL_TAGS)),)
       $(CMSIS_PATH)CMSIS/DSP/Include/dsp/fast_math_functions.h \
       $(CMSIS_PATH)CMSIS/DSP/Include/dsp/filtering_functions.h \
       $(CMSIS_PATH)CMSIS/DSP/Include/dsp/interpolation_functions.h \
-      $(CMSIS_PATH)CMSIS/DSP/Include/dsp/matrix_functions.h
+      $(CMSIS_PATH)CMSIS/DSP/Include/dsp/matrix_functions.h \
+      $(CMSIS_PATH)CMSIS/Core/Include/cmsis_compiler.h
 
 
     # Need to add the CMSIS Core includes path.
