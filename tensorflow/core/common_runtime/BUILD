@@ -2226,14 +2226,10 @@ tf_cc_test(
 
 tf_cuda_cc_test(
     name = "direct_session_test",
-    size = "small",
+    size = "medium",
     srcs = ["direct_session_test.cc"],
     args = [] + if_cuda(["--heap_check=local"]),  # The GPU tracer leaks memory
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = [
-        "noasan",  # b/168317266
-        "notsan",  # b/168317266
-    ],
     deps = [
         ":core_cpu",
         ":core_cpu_internal",
