@@ -333,6 +333,12 @@
         didn't have the keys sorted, the keys and values were not being printed
         in accordance with their correct mapping.
 
+*    `TensorRT`
+
+    *   We now issue a warning when the `session_config` parameter for the TF1
+        converter is used or the `rewrite_config_template` field in the TF2
+        converter parameter object is used.
+
 *   Other:
 
     *   We have replaced uses of "whitelist" and "blacklist" with "allowlist"
