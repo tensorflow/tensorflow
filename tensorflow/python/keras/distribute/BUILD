@@ -170,6 +170,7 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "nomsan",  # TODO(b/162894966)
+        "notsan",  # TODO(b/171040408): data race
     ],
     # b/155301154 broken with XLA:GPU
     xla_enable_strict_auto_jit = True,
