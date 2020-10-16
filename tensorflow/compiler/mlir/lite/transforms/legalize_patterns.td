@@ -220,8 +220,8 @@ def LegalizeTransposeInt64 : Pat<
   (TF_TransposeOp $arg, (ConstantOp Int64ElementsAttr:$perm)),
   (TFL_TransposeOp $arg, (CreateCastToInt32 $perm))>;
 
-def LegalizeTranspose : Pat<(TF_TransposeOp $arg, $perm),
-                            (TFL_TransposeOp $arg, $perm)>;
+def LegalizeTransposeInt32 : Pat<(TF_TransposeOp $arg, TF_Int32Tensor:$perm),
+                                 (TFL_TransposeOp $arg, $perm)>;
 
 def LegalizeWhere : Pat<(TF_WhereOp $arg), (TFL_WhereOp $arg)>;
 def LegalizeZerosLike : Pat<(TF_ZerosLikeOp $arg), (TFL_ZerosLikeOp $arg)>;
