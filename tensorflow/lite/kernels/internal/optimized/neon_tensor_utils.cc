@@ -372,10 +372,10 @@ static void DotprodMatrixBatchFourVectorMultiplyAccumulate(
 
       asm volatile(
           // Zero out the accumulator registers.
-          "dup v0.4s, wzr\n"
-          "dup v1.4s, wzr\n"
-          "dup v2.4s, wzr\n"
-          "dup v3.4s, wzr\n"
+          "movi v0.4s, #0\n"
+          "movi v1.4s, #0\n"
+          "movi v2.4s, #0\n"
+          "movi v3.4s, #0\n"
 
           "1:\n"  // batch_cols_loop
 
@@ -501,16 +501,16 @@ static void DotprodMatrixBatchFourVectorMultiplyAccumulate(
       const int32_t is_channel_scale_nullptr = per_channel_scale == nullptr;
       const int32_t is_row_sums_nullptr = row_sums_ptr == nullptr;
       asm volatile(
-          "dup v0.4s, wzr\n"
-          "dup v1.4s, wzr\n"
-          "dup v2.4s, wzr\n"
-          "dup v3.4s, wzr\n"
+          "movi v0.4s, #0\n"
+          "movi v1.4s, #0\n"
+          "movi v2.4s, #0\n"
+          "movi v3.4s, #0\n"
           // Load zero points.
           "ld1 {v7.4s}, [%[batch_offsets_ptr]]\n"
           "ld1 {v4.4s}, [%[scaling_factors_ptr]]\n"
           // Zero out zero point accumulators.
-          "dup v14.4s, wzr\n"
-          "dup v15.4s, wzr\n"
+          "movi v14.4s, #0\n"
+          "movi v15.4s, #0\n"
 
           // Load per channel scales if not null.
           "cmp %w[is_channel_scale_nullptr], #0\n"
@@ -746,9 +746,9 @@ static void DotprodSparseMatrixBatchVectorMultiplyAccumulate(
 
       if (ledger_ptr != ledger_end) {
         asm volatile(
-            "dup v0.4s, wzr\n"
-            "dup v1.4s, wzr\n"
-            "dup v8.4s, wzr\n"
+            "movi v0.4s, #0\n"
+            "movi v1.4s, #0\n"
+            "movi v8.4s, #0\n"
             "mov x7, 0\n"
 
             "1:\n"  // chunks_loop
