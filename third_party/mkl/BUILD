@@ -42,7 +42,7 @@ filegroup(
     name = "LICENSE",
     srcs = ["MKL_LICENSE"] + select({
         "@org_tensorflow//tensorflow:linux_x86_64": [
-            "@mkl_linux//:LICENSE",
+            "@llvm_openmp//:LICENSE.txt",
         ],
         "@org_tensorflow//tensorflow:macos": [
             "@mkl_darwin//:LICENSE",
@@ -55,13 +55,23 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
+# TODO(Intel-tf) Remove the following call to cc_library and replace all uses
+# of mkl_libs_linux with @llvm_openmp//:libiomp5.so directly.
+
+cc_library(
+    name = "mkl_libs_linux",
+    srcs = [
+        "@llvm_openmp//:libiomp5.so",
+    ],
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "intel_binary_blob",
     visibility = ["//visibility:public"],
     deps = select({
         "@org_tensorflow//tensorflow:linux_x86_64": [
-            "@mkl_linux//:mkl_headers",
-            "@mkl_linux//:mkl_libs_linux",
+            ":mkl_libs_linux",
         ],
         "@org_tensorflow//tensorflow:macos": [
             "@mkl_darwin//:mkl_headers",
