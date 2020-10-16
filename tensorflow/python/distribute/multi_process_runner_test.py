@@ -319,6 +319,9 @@ class MultiProcessRunnerTest(test.TestCase):
 
   def test_seg_fault_raises_error(self):
 
+    if multi_process_runner.is_oss():
+      self.skipTest('TODO(b/171004637): Failing in OSS')
+
     def fn_expected_to_seg_fault():
       ctypes.string_at(0)  # Intentionally made seg fault.
 
@@ -335,6 +338,9 @@ class MultiProcessRunnerTest(test.TestCase):
         any('Segmentation fault' in line for line in list_to_assert))
 
   def test_seg_fault_in_chief_raises_error(self):
+
+    if multi_process_runner.is_oss():
+      self.skipTest('TODO(b/171004637): Failing in OSS')
 
     def fn_expected_to_seg_fault():
       if multi_worker_test_base.get_task_type() == 'worker':
@@ -515,6 +521,9 @@ class MultiProcessRunnerTest(test.TestCase):
       time.sleep(1)
 
   def test_timeout_none(self):
+
+    if multi_process_runner.is_oss():
+      self.skipTest('Intentionally skipping longer test in OSS.')
 
     def fn():
       time.sleep(250)
