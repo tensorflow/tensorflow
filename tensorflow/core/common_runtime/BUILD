@@ -1549,6 +1549,7 @@ cc_library(
         ":local_device",
         ":scoped_allocator",
         ":session_options",
+        "@com_google_absl//absl/base",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
