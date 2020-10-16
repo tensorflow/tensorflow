@@ -34,6 +34,7 @@ from tensorflow.python.distribute import ps_values
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import tpu_values
 from tensorflow.python.distribute import values as value_lib
+from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import executor as executor_lib
@@ -1063,6 +1064,7 @@ class CollectiveAllReduce(CrossDeviceOps):
 
   def reduce_implementation(self, reduce_op, per_replica_value, destinations,
                             experimental_hints):
+    values_util.mark_as_unsaveable()
     all_reduced = self._batch_all_reduce(reduce_op, [per_replica_value],
                                          experimental_hints)[0]
     devices = get_devices_from(destinations)
@@ -1094,6 +1096,7 @@ class CollectiveAllReduce(CrossDeviceOps):
 
   def batch_reduce_implementation(self, reduce_op, value_destination_pairs,
                                   experimental_hints):
+    values_util.mark_as_unsaveable()
     all_devices_match = _all_devices_match(value_destination_pairs)
     if all_devices_match:
       return self._batch_all_reduce(reduce_op,
@@ -1223,6 +1226,7 @@ class CollectiveAllReduce(CrossDeviceOps):
 
   def _gather_implementation(self, per_replica_value, destinations, axis,
                              experimental_hints):
+    values_util.mark_as_unsaveable()
     all_gathered = self._batch_all_gather([per_replica_value], axis,
                                           experimental_hints)[0]
     devices = get_devices_from(destinations)

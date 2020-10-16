@@ -589,7 +589,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
             experimental_variable_policy=save_options.VariablePolicy.NONE)):
       func_d = func.get_concrete_function(constant_op.constant(2.))
 
-    self.assertIs(func_a, func_c)
+    self.assertIsNot(func_a, func_c)
     self.assertIsNot(func_a, func_d)
 
   def testInitializationInNestedCall(self):
