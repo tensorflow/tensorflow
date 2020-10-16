@@ -2125,7 +2125,6 @@ XLA_BINOP_PATTERN(ShiftRightLogical)
 XLA_TERNOP_PATTERN(Clamp);
 XLA_TERNOP_PATTERN(Scatter);
 XLA_TERNOP_PATTERN(Select);
-XLA_TERNOP_PATTERN(SelectAndScatter);
 #undef XLA_TERNOP_PATTERN
 
 namespace detail {
