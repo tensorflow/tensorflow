@@ -58,8 +58,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* axis = GetInput(context, node, kAxisTensor);
 
-  TF_LITE_ENSURE(context,
-                 input->type == kTfLiteInt32 || input->type == kTfLiteFloat32);
+  TF_LITE_ENSURE(context, input->type == kTfLiteInt32 ||
+                              input->type == kTfLiteFloat32 ||
+                              input->type == kTfLiteInt64);
   TF_LITE_ENSURE_EQ(context, axis->type, kTfLiteInt32);
 
   TF_LITE_ENSURE_EQ(context, NumElements(axis), 1);
@@ -93,6 +94,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       optimized_ops::CumSum(GetTensorData<int>(input), GetTensorShape(input),
                             axis, params->exclusive, params->reverse,
                             GetTensorData<int>(output));
+      break;
+    }
+    case kTfLiteInt64: {
+      optimized_ops::CumSum(GetTensorData<int64_t>(input),
+                            GetTensorShape(input), axis, params->exclusive,
+                            params->reverse, GetTensorData<int64_t>(output));
       break;
     }
     case kTfLiteFloat32: {

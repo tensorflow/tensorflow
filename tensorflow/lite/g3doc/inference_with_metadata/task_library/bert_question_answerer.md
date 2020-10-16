@@ -61,11 +61,39 @@ BertQuestionAnswerer answerer = BertQuestionAnswerer.createFromFile(androidConte
 
 // Run inference
 List<QaAnswer> answers = answerer.answer(contextOfTheQuestion, questionToAsk);
-);
 ```
 
 See the
 [source code](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/java/src/java/org/tensorflow/lite/task/text/qa/BertQuestionAnswerer.java)
+for more details.
+
+## Run inference in Swift
+
+### Step 1: Import CocoaPods
+
+Add the TensorFlowLiteTaskText pod in Podfile
+
+```
+target 'MySwiftAppWithTaskAPI' do
+  use_frameworks!
+  pod 'TensorFlowLiteTaskText', '~> 0.0.1-nightly'
+end
+```
+
+### Step 2: Run inference using the API
+
+```swift
+// Initialization
+let mobileBertAnswerer = TFLBertQuestionAnswerer.questionAnswerer(
+      modelPath: mobileBertModelPath)
+
+// Run inference
+let answers = mobileBertAnswerer.answer(
+      context: context, question: question)
+```
+
+See the
+[source code](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/ios/task/text/qa/Sources/TFLBertQuestionAnswerer.h)
 for more details.
 
 ## Run inference in C++

@@ -233,6 +233,10 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_all_ops.cc.inc"
       >();
+  addOperations<
+#define GET_OP_LIST
+#include "tensorflow/compiler/mlir/tensorflow/ir/tfrt_ops.cc.inc"
+      >();
   addTypes<
 #define HANDLE_TF_TYPE(tftype, enumerant, name) tftype##Type,
 #define HANDLE_LAST_TF_TYPE(tftype, enumerant, name) tftype##Type

@@ -183,6 +183,8 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
 
     def proc_model_checkpoint_works_with_same_file_path(test_obj,
                                                         saving_filepath):
+      if multi_process_runner.is_oss():
+        test_obj.skipTest('TODO(b/170838633): Failing in OSS')
       model, _, train_ds, steps = _model_setup(test_obj, file_format='')
       num_epoch = 4
 
@@ -204,8 +206,8 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
         if 'Interrupting!' not in str(e):
           raise
 
-      multi_process_runner.barrier().wait()
-      backup_filepath = os.path.join(bar_dir, 'checkpoint')
+      multi_process_runner.get_barrier().wait()
+      backup_filepath = os.path.join(bar_dir, 'chief', 'checkpoint')
       test_obj.assertTrue(file_io.file_exists_v2(backup_filepath))
       test_obj.assertTrue(file_io.file_exists_v2(saving_filepath))
 
@@ -218,7 +220,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
               callbacks.BackupAndRestore(backup_dir=bar_dir),
               AssertCallback()
           ])
-      multi_process_runner.barrier().wait()
+      multi_process_runner.get_barrier().wait()
       test_obj.assertFalse(file_io.file_exists_v2(backup_filepath))
       test_obj.assertTrue(file_io.file_exists_v2(saving_filepath))
 
@@ -306,7 +308,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
       # The saving_filepath shouldn't exist at the beginning (as it's unique).
       test_obj.assertFalse(file_io.file_exists_v2(saving_filepath))
 
-      multi_process_runner.barrier().wait()
+      multi_process_runner.get_barrier().wait()
 
       model.fit(
           x=train_ds,
@@ -314,7 +316,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
           steps_per_epoch=steps,
           callbacks=[callbacks.TensorBoard(log_dir=saving_filepath)])
 
-      multi_process_runner.barrier().wait()
+      multi_process_runner.get_barrier().wait()
 
       test_obj.assertTrue(file_io.list_directory_v2(saving_filepath))
 

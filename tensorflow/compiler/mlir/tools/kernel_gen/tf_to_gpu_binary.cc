@@ -35,16 +35,9 @@ namespace kernel_gen {
 namespace {
 
 xla::Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
-                int32_t architecture, llvm::ArrayRef<uint32_t> tile_sizes,
+                std::string architecture, llvm::ArrayRef<uint32_t> tile_sizes,
                 llvm::ArrayRef<uint32_t> same_shape,
                 llvm::ArrayRef<uint32_t> unroll_factors) {
-#if TENSORFLOW_USE_ROCM
-  std::pair<int32_t, int32_t> compute_capability(architecture, 0);
-#else
-  std::pair<int32_t, int32_t> compute_capability(architecture / 10,
-                                                 architecture % 10);
-#endif
-
   // Read TF code.
   std::string tf_code;
   TF_RETURN_IF_ERROR(
@@ -54,8 +47,8 @@ xla::Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
   TF_ASSIGN_OR_RETURN(
       mlir::OwningModuleRef module,
       GenerateKernelForTfCode(context, tf_code, /*gpu_binary_only=*/true,
-                              compute_capability, tile_sizes, same_shape,
-                              unroll_factors));
+                              architecture, tile_sizes, same_shape,
+                              unroll_factors, /*generate_fatbin=*/false));
   // Extract gpu_binary.
   TF_ASSIGN_OR_RETURN(std::string gpu_binary, ExtractGpuBinary(*module));
 
@@ -76,9 +69,9 @@ int main(int argc, char** argv) {
   llvm::cl::opt<std::string> output_file(
       "output", llvm::cl::desc("output file"), llvm::cl::value_desc("filename"),
       llvm::cl::init("foo.bin"));
-  llvm::cl::opt<int32_t> architecture(
-      "arch", llvm::cl::desc("target architecture (e.g. 50 for sm_50)"),
-      llvm::cl::init(50));
+  llvm::cl::opt<std::string> architecture(
+      "arch", llvm::cl::desc("target architecture (e.g. sm_50)"),
+      llvm::cl::init("sm_50"));
   llvm::cl::list<uint32_t> tile_sizes(
       "tile_sizes", llvm::cl::desc("tile sizes to use"), llvm::cl::ZeroOrMore,
       llvm::cl::CommaSeparated);

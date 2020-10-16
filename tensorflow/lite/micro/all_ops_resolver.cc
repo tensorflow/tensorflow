@@ -63,12 +63,14 @@ AllOpsResolver::AllOpsResolver() {
   AddPadV2();
   AddPrelu();
   AddQuantize();
+  AddReduceMax();
   AddRelu();
   AddRelu6();
   AddReshape();
   AddResizeNearestNeighbor();
   AddRound();
   AddRsqrt();
+  AddShape();
   AddSin();
   AddSoftmax();
   AddSplit();

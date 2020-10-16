@@ -542,7 +542,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
     for dtype in self.float_types:
 
       def quantize_and_dequantize_v2(x):
-        return array_ops.quantize_and_dequantize_v2(
+        return array_ops.quantize_and_dequantize(
             x, -127, 127, signed_input=True, num_bits=8)
 
       self._assertOpOutputMatchesExpected(
@@ -551,7 +551,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
           expected=np.array([-1., -0.5, 0., 0.296875], dtype=dtype))
 
       def quantize_and_dequantize_v2_round_half_up(x):
-        return array_ops.quantize_and_dequantize_v2(
+        return array_ops.quantize_and_dequantize(
             x,
             -1,
             1.0,
@@ -575,7 +575,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
                             dtype=dtype))
 
       def quantize_and_dequantize_v2_round_half_to_even(x):
-        return array_ops.quantize_and_dequantize_v2(
+        return array_ops.quantize_and_dequantize(
             x,
             -1.0,
             1.0,

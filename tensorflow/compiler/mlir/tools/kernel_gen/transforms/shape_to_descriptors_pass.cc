@@ -23,7 +23,6 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 
@@ -50,6 +49,10 @@ struct ShapeToDescriptorsPass
     target.addIllegalDialect<shape::ShapeDialect>();
     target.addLegalDialect<scf::SCFDialect>();
     target.addLegalDialect<StandardOpsDialect>();
+    // Don't mark the primary Cstr/Assuming ops as illegal, so they can be
+    // lowered at a later time to assertions.
+    target.addLegalOp<shape::AssumingOp, shape::AssumingYieldOp,
+                      shape::CstrRequireOp>();
 
     // Setup conversion patterns.
     OwningRewritePatternList patterns;

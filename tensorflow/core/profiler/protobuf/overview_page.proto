@@ -87,6 +87,12 @@ message GenericRecommendation {
   // A statement that recommends if the user should try using lower precision.
   // Shows this statement to users only if it is not empty.
   string precision_statement = 5;
+  // Indicates if device collectives are a performance bottleneck. Possible
+  // values: "no", "moderate", "high".
+  string device_collectives_bottleneck = 6;
+  // A statement that recommends if we need to further investigate
+  // device-collectives performance.
+  string device_collectives_statement = 7;
 }
 
 // Overview result for the recommendation section.

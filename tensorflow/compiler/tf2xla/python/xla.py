@@ -206,6 +206,8 @@ igamma = _broadcasting_binary_op(math_ops.igamma)
 igamma_grad_a = _broadcasting_binary_op(gen_math_ops.igamma_grad_a)
 random_gamma_grad = _broadcasting_binary_op(gen_random_ops.random_gamma_grad)
 igammac = _broadcasting_binary_op(math_ops.igammac)
+polygamma = _broadcasting_binary_op(math_ops.polygamma)
+zeta = _broadcasting_binary_op(math_ops.zeta)
 
 
 def _binary_op(fn):
@@ -338,6 +340,7 @@ def random_uniform(minval, maxval, dims, name=None):
 
 recv = gen_xla_ops.xla_recv
 reduce = gen_xla_ops.xla_reduce
+variadic_reduce = gen_xla_ops.xla_variadic_reduce
 
 
 def reduce_window(operand,

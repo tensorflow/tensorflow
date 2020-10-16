@@ -266,8 +266,6 @@ class TTReportHandle(object):
     report.config.num_cores = tt_config.num_replicas
     report.config.num_hosts = tt_config.num_hosts
     report.config.num_cores_per_host = tt_config.num_replicas_per_host
-    for core in tt_parameters.included_cores:
-      report.config.included_cores.append(core)
     report.config.submode = tt_parameters.submode
     report.config.trace_mode = tt_parameters.trace_mode
 
@@ -351,12 +349,8 @@ class TTReportHandle(object):
                                   tt_parameters.trace_mode))
     self._write_report('%s %s\n'%(_FIELD_NAME_SUBMODE,
                                   tt_parameters.submode))
-    if tt_parameters.included_cores:
-      self._write_report('%s %s\n'%(_FIELD_NAME_NUM_REPLICAS,
-                                    len(tt_parameters.included_cores)))
-    else:
-      self._write_report('%s %s\n'%(_FIELD_NAME_NUM_REPLICAS,
-                                    tt_config.num_replicas))
+    self._write_report('%s %s\n'%(_FIELD_NAME_NUM_REPLICAS,
+                                  tt_config.num_replicas))
     self._write_report('%s %s\n'%(_FIELD_NAME_NUM_REPLICAS_PER_HOST,
                                   tt_config.num_replicas_per_host))
     self._write_report('%s %s\n'%(_FIELD_NAME_NUM_HOSTS, tt_config.num_hosts))

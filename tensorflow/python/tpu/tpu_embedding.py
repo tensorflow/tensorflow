@@ -23,6 +23,8 @@ import copy
 import math
 import re
 
+from typing import Optional
+
 import six
 
 from tensorflow.core.protobuf.tpu import optimization_parameters_pb2
@@ -314,6 +316,12 @@ AdamSlotVariableNames = collections.namedtuple(
 AdagradSlotVariableName = collections.namedtuple(
     'AdagradSlotVariableName', ['accumulator'])
 
+MomentumSlotVariableName = collections.namedtuple('MomentumSlotVariableName',
+                                                  ['momenta'])
+
+RMSPropSlotVariableNames = collections.namedtuple('RMSPropSlotVariableNames',
+                                                  ['ms', 'mom'])
+
 ProximalAdagradSlotVariableName = collections.namedtuple(
     'ProximalAdagradSlotVariableName', ['accumulator'])
 
@@ -325,6 +333,12 @@ ProximalYogiSlotVariableNames = collections.namedtuple(
 
 AdamSlotVariables = collections.namedtuple(
     'AdamSlotVariables', ['m', 'v'])
+
+MomentumSlotVariable = collections.namedtuple('MomentumSlotVariable',
+                                              ['momenta'])
+
+RMSPropSlotVariables = collections.namedtuple('RMSPropSlotVariables',
+                                              ['ms', 'mom'])
 
 AdagradSlotVariable = collections.namedtuple(
     'AdagradSlotVariable', ['accumulator'])
@@ -348,9 +362,15 @@ VariablesAndOps = collections.namedtuple(
 class _OptimizationParameters(object):
   """Parameters common to all optimizations."""
 
-  def __init__(self, learning_rate, use_gradient_accumulation, clip_weight_min,
-               clip_weight_max, weight_decay_factor,
-               multiply_weight_decay_factor_by_learning_rate):
+  def __init__(
+      self,
+      learning_rate: float,
+      use_gradient_accumulation: bool,
+      clip_weight_min: Optional[float],
+      clip_weight_max: Optional[float],
+      weight_decay_factor: Optional[float],
+      multiply_weight_decay_factor_by_learning_rate: Optional[bool],
+  ):
     self.learning_rate = learning_rate
     self.use_gradient_accumulation = use_gradient_accumulation
     self.clip_weight_min = clip_weight_min
@@ -380,14 +400,16 @@ class AdagradParameters(_OptimizationParameters):
 
   """
 
-  def __init__(self,
-               learning_rate,
-               initial_accumulator=0.1,
-               use_gradient_accumulation=True,
-               clip_weight_min=None,
-               clip_weight_max=None,
-               weight_decay_factor=None,
-               multiply_weight_decay_factor_by_learning_rate=None):
+  def __init__(
+      self,
+      learning_rate: float,
+      initial_accumulator: float = 0.1,
+      use_gradient_accumulation: bool = True,
+      clip_weight_min: Optional[float] = None,
+      clip_weight_max: Optional[float] = None,
+      weight_decay_factor: Optional[float] = None,
+      multiply_weight_decay_factor_by_learning_rate: Optional[bool] = None,
+  ):
     """Optimization parameters for Adagrad.
 
     Args:
@@ -422,16 +444,18 @@ class ProximalAdagradParameters(_OptimizationParameters):
   for more details.
   """
 
-  def __init__(self,
-               learning_rate,
-               initial_accumulator=0.1,
-               l1_regularization_strength=0.0,
-               l2_regularization_strength=0.0,
-               use_gradient_accumulation=True,
-               clip_weight_min=None,
-               clip_weight_max=None,
-               weight_decay_factor=None,
-               multiply_weight_decay_factor_by_learning_rate=None):
+  def __init__(
+      self,
+      learning_rate: float,
+      initial_accumulator: float = 0.1,
+      l1_regularization_strength: float = 0.0,
+      l2_regularization_strength: float = 0.0,
+      use_gradient_accumulation: bool = True,
+      clip_weight_min: Optional[float] = None,
+      clip_weight_max: Optional[float] = None,
+      weight_decay_factor: Optional[float] = None,
+      multiply_weight_decay_factor_by_learning_rate: Optional[bool] = None,
+  ):
     """Optimization parameters for Adagrad.
 
     Args:
@@ -490,18 +514,20 @@ class AdamParameters(_OptimizationParameters):
 
   """
 
-  def __init__(self,
-               learning_rate,
-               beta1=0.9,
-               beta2=0.999,
-               epsilon=1e-08,
-               lazy_adam=True,
-               sum_inside_sqrt=True,
-               use_gradient_accumulation=True,
-               clip_weight_min=None,
-               clip_weight_max=None,
-               weight_decay_factor=None,
-               multiply_weight_decay_factor_by_learning_rate=None):
+  def __init__(
+      self,
+      learning_rate: float,
+      beta1: float = 0.9,
+      beta2: float = 0.999,
+      epsilon: float = 1e-08,
+      lazy_adam: bool = True,
+      sum_inside_sqrt: bool = True,
+      use_gradient_accumulation: bool = True,
+      clip_weight_min: Optional[float] = None,
+      clip_weight_max: Optional[float] = None,
+      weight_decay_factor: Optional[float] = None,
+      multiply_weight_decay_factor_by_learning_rate: Optional[bool] = None,
+  ):
     """Optimization parameters for Adam.
 
     Args:
@@ -567,20 +593,22 @@ class FtrlParameters(_OptimizationParameters):
 
   """
 
-  def __init__(self,
-               learning_rate,
-               learning_rate_power=-0.5,
-               initial_accumulator_value=0.1,
-               l1_regularization_strength=0.0,
-               l2_regularization_strength=0.0,
-               use_gradient_accumulation=True,
-               clip_weight_min=None,
-               clip_weight_max=None,
-               weight_decay_factor=None,
-               multiply_weight_decay_factor_by_learning_rate=None,
-               multiply_linear_by_learning_rate=False,
-               beta=0,
-               allow_zero_accumulator=False):
+  def __init__(
+      self,
+      learning_rate: float,
+      learning_rate_power: float = -0.5,
+      initial_accumulator_value: float = 0.1,
+      l1_regularization_strength: float = 0.0,
+      l2_regularization_strength: float = 0.0,
+      use_gradient_accumulation: bool = True,
+      clip_weight_min: Optional[float] = None,
+      clip_weight_max: Optional[float] = None,
+      weight_decay_factor: Optional[float] = None,
+      multiply_weight_decay_factor_by_learning_rate: Optional[bool] = None,
+      multiply_linear_by_learning_rate: bool = False,
+      beta: float = 0,
+      allow_zero_accumulator: bool = False,
+  ):
     """Optimization parameters for Ftrl.
 
     Implements FTRL as described in the following [paper](
@@ -661,19 +689,21 @@ class ProximalYogiParameters(_OptimizationParameters):
   """
   # pylint: enable=line-too-long
 
-  def __init__(self,
-               learning_rate=0.01,
-               beta1=0.9,
-               beta2=0.999,
-               epsilon=1e-3,
-               l1_regularization_strength=0.0,
-               l2_regularization_strength=0.0,
-               initial_accumulator_value=1e-6,
-               use_gradient_accumulation=True,
-               clip_weight_min=None,
-               clip_weight_max=None,
-               weight_decay_factor=None,
-               multiply_weight_decay_factor_by_learning_rate=None):
+  def __init__(
+      self,
+      learning_rate: float = 0.01,
+      beta1: float = 0.9,
+      beta2: float = 0.999,
+      epsilon: float = 1e-3,
+      l1_regularization_strength: float = 0.0,
+      l2_regularization_strength: float = 0.0,
+      initial_accumulator_value: float = 1e-6,
+      use_gradient_accumulation: bool = True,
+      clip_weight_min: Optional[float] = None,
+      clip_weight_max: Optional[float] = None,
+      weight_decay_factor: Optional[float] = None,
+      multiply_weight_decay_factor_by_learning_rate: Optional[bool] = None,
+  ):
     """Optimization parameters for Proximal Yogi.
 
     Args:
@@ -724,6 +754,135 @@ class ProximalYogiParameters(_OptimizationParameters):
     self.initial_accumulator_value = initial_accumulator_value
 
 
+class MomentumParameters(_OptimizationParameters):
+  """Optimization parameters for Momentum with TPU embeddings.
+
+  Pass this to `tf.estimator.tpu.experimental.EmbeddingConfigSpec` via the
+  `optimization_parameters` argument to set the optimizer and its parameters.
+  See the documentation for `tf.estimator.tpu.experimental.EmbeddingConfigSpec`
+  for more details.
+
+  ```
+  estimator = tf.estimator.tpu.TPUEstimator(
+      ...
+      embedding_spec=tf.estimator.tpu.experimental.EmbeddingConfigSpec(
+          ...
+          optimization_parameters=tf.tpu.experimental.MomentumParameters(0.1),
+          ...))
+  ```
+
+  """
+
+  def __init__(
+      self,
+      learning_rate: float,
+      momentum: float,
+      use_nesterov: bool = False,
+      use_gradient_accumulation: bool = True,
+      clip_weight_min: Optional[float] = None,
+      clip_weight_max: Optional[float] = None,
+      weight_decay_factor: Optional[float] = None,
+      multiply_weight_decay_factor_by_learning_rate: Optional[bool] = None,
+  ):
+    """Optimization parameters for momentum.
+
+    Args:
+      learning_rate: a floating point value. The learning rate.
+      momentum: A `Tensor` or a floating point value.  The momentum.
+      use_nesterov: If `True` use Nesterov Momentum. See (Sutskever et al.,
+        2013). This implementation always computes gradients at the value of the
+        variable(s) passed to the optimizer. Using Nesterov Momentum makes the
+        variable(s) track the values called `theta_t + mu*v_t` in the paper.
+        This implementation is an approximation of the original formula, valid
+        for high values of momentum. It will compute the "adjusted gradient" in
+        NAG by assuming that the new gradient will be estimated by the current
+        average gradient plus the product of momentum and the change in the
+        average gradient.
+      use_gradient_accumulation: setting this to `False` makes embedding
+        gradients calculation less accurate but faster. Please see
+        `optimization_parameters.proto` for details.
+      clip_weight_min: the minimum value to clip by; None means -infinity.
+      clip_weight_max: the maximum value to clip by; None means +infinity.
+      weight_decay_factor: amount of weight decay to apply; None means that the
+        weights are not decayed.
+      multiply_weight_decay_factor_by_learning_rate: if true,
+        `weight_decay_factor` is multiplied by the current learning rate.
+    """
+    super(MomentumParameters, self).__init__(
+        learning_rate=learning_rate,
+        use_gradient_accumulation=use_gradient_accumulation,
+        clip_weight_min=clip_weight_min,
+        clip_weight_max=clip_weight_max,
+        weight_decay_factor=weight_decay_factor,
+        multiply_weight_decay_factor_by_learning_rate=(
+            multiply_weight_decay_factor_by_learning_rate),
+    )
+    self.momentum = momentum
+    self.use_nesterov = use_nesterov
+
+
+class RMSPropParameters(_OptimizationParameters):
+  """Optimization parameters for RMSProp with TPU embeddings.
+
+  Pass this to `tf.estimator.tpu.experimental.EmbeddingConfigSpec` via the
+  `optimization_parameters` argument to set the optimizer and its parameters.
+  See the documentation for `tf.estimator.tpu.experimental.EmbeddingConfigSpec`
+  for more details.
+
+  ```
+  estimator = tf.estimator.tpu.TPUEstimator(
+      ...
+      embedding_spec=tf.estimator.tpu.experimental.EmbeddingConfigSpec(
+          ...
+          optimization_parameters=tf.tpu.experimental.MomentumParameters(0.1),
+          ...))
+  ```
+
+  """
+
+  def __init__(
+      self,
+      learning_rate: float,
+      rho: float,
+      momentum: float,
+      epsilon: float,
+      use_gradient_accumulation: bool = True,
+      clip_weight_min: Optional[float] = None,
+      clip_weight_max: Optional[float] = None,
+      weight_decay_factor: Optional[float] = None,
+      multiply_weight_decay_factor_by_learning_rate: Optional[bool] = None,
+  ):
+    """Optimization parameters for RMS prop.
+
+    Args:
+      learning_rate: a floating point value. The learning rate.
+      rho: Discounting factor for the history/coming gradient
+      momentum: A scalar tensor.
+      epsilon: Small value to avoid zero denominator.
+      use_gradient_accumulation: setting this to `False` makes embedding
+        gradients calculation less accurate but faster. Please see
+        `optimization_parameters.proto` for details. for details.
+      clip_weight_min: the minimum value to clip by; None means -infinity.
+      clip_weight_max: the maximum value to clip by; None means +infinity.
+      weight_decay_factor: amount of weight decay to apply; None means that the
+        weights are not decayed.
+      multiply_weight_decay_factor_by_learning_rate: if true,
+        `weight_decay_factor` is multiplied by the current learning rate.
+    """
+    super(RMSPropParameters, self).__init__(
+        learning_rate=learning_rate,
+        use_gradient_accumulation=use_gradient_accumulation,
+        clip_weight_min=clip_weight_min,
+        clip_weight_max=clip_weight_max,
+        weight_decay_factor=weight_decay_factor,
+        multiply_weight_decay_factor_by_learning_rate=(
+            multiply_weight_decay_factor_by_learning_rate),
+    )
+    self.rho = rho
+    self.momentum = momentum
+    self.epsilon = epsilon
+
+
 @tf_export(v1=['tpu.experimental.StochasticGradientDescentParameters'])
 class StochasticGradientDescentParameters(_OptimizationParameters):
   """Optimization parameters for stochastic gradient descent for TPU embeddings.
@@ -744,12 +903,14 @@ class StochasticGradientDescentParameters(_OptimizationParameters):
 
   """
 
-  def __init__(self,
-               learning_rate,
-               clip_weight_min=None,
-               clip_weight_max=None,
-               weight_decay_factor=None,
-               multiply_weight_decay_factor_by_learning_rate=None):
+  def __init__(
+      self,
+      learning_rate: float,
+      clip_weight_min: Optional[float] = None,
+      clip_weight_max: Optional[float] = None,
+      weight_decay_factor: Optional[float] = None,
+      multiply_weight_decay_factor_by_learning_rate: Optional[bool] = None,
+  ):
     """Optimization parameters for stochastic gradient descent.
 
     Args:
@@ -1636,7 +1797,7 @@ def _validate_optimization_parameters(optimization_parameters,
   else:
     # Missing global optimization_parameters.
     if tbl_optimizer_missing:
-      ValueError('`optimization_parameters` is missing.')
+      raise ValueError('`optimization_parameters` is missing.')
 
 
 class _OptimizerHandler(object):
@@ -2099,6 +2260,173 @@ class _ProximalYogiHandler(_OptimizerHandler):
     return slot_variables, load_ops_fn, retrieve_ops_fn
 
 
+class _MomentumHandler(_OptimizerHandler):
+  """Handles Momentum specific logic."""
+
+  def set_optimization_parameters(self, table_descriptor):
+    (table_descriptor.optimization_parameters.momentum.SetInParent())
+    table_descriptor.optimization_parameters.momentum.momentum = (
+        self._optimization_parameters.momentum)
+    table_descriptor.optimization_parameters.momentum.use_nesterov = (
+        self._optimization_parameters.use_nesterov)
+
+  def get_default_slot_variable_names(self, table):
+    return MomentumSlotVariableName('{}/{}'.format(table, 'Momentum'))
+
+  def create_variables_and_ops(self, table, slot_variable_names, num_hosts,
+                               table_config, table_variables, config_proto):
+
+    momenta_initializer = init_ops.zeros_initializer()
+    momenta_variables = _create_partitioned_variables(
+        name=slot_variable_names.momenta,
+        num_hosts=num_hosts,
+        vocabulary_size=table_config.vocabulary_size,
+        embedding_dimension=table_config.dimension,
+        collections=[ops.GraphKeys.GLOBAL_VARIABLES],
+        initializer=momenta_initializer)
+    slot_variables = MomentumSlotVariable(momenta_variables)
+
+    def load_ops_fn():
+      """Returns the retrieve ops for Momentum embedding tables.
+
+      Returns:
+        A list of ops to load embedding and slot variables from CPU to TPU.
+      """
+      load_op_list = []
+      config = config_proto
+      for host_id, table_variable, momenta_variable in (zip(
+          range(num_hosts), table_variables, momenta_variables)):
+        with ops.colocate_with(table_variable):
+          load_parameters_op = tpu_ops.load_tpu_embedding_momentum_parameters(
+              parameters=table_variable,
+              momenta=momenta_variable,
+              table_name=table,
+              num_shards=num_hosts,
+              shard_id=host_id,
+              config=config,
+          )
+        config = None
+        load_op_list.append(load_parameters_op)
+      return load_op_list
+
+    def retrieve_ops_fn():
+      """Returns the retrieve ops for Momentum embedding tables.
+
+      Returns:
+        A list of ops to retrieve embedding and slot variables from TPU to CPU.
+      """
+      retrieve_op_list = []
+      config = config_proto
+      for host_id, table_variable, momenta_variable in (zip(
+          range(num_hosts), table_variables, momenta_variables)):
+        with ops.colocate_with(table_variable):
+          retrieved_table, retrieved_momenta = (
+              tpu_ops.retrieve_tpu_embedding_momentum_parameters(
+                  table_name=table,
+                  num_shards=num_hosts,
+                  shard_id=host_id,
+                  config=config,
+              ))
+          retrieve_parameters_op = control_flow_ops.group(
+              state_ops.assign(table_variable, retrieved_table),
+              state_ops.assign(momenta_variable, retrieved_momenta))
+        config = None
+        retrieve_op_list.append(retrieve_parameters_op)
+      return retrieve_op_list
+
+    return slot_variables, load_ops_fn, retrieve_ops_fn
+
+
+class _RMSPropHandler(_OptimizerHandler):
+  """Handles RMS prop specific logic."""
+
+  def set_optimization_parameters(self, table_descriptor):
+    (table_descriptor.optimization_parameters.rms_prop.SetInParent())
+    table_descriptor.optimization_parameters.rms_prop.rho = (
+        self._optimization_parameters.rho)
+    table_descriptor.optimization_parameters.rms_prop.epsilon = (
+        self._optimization_parameters.epsilon)
+    table_descriptor.optimization_parameters.rms_prop.momentum = (
+        self._optimization_parameters.momentum)
+
+  def get_default_slot_variable_names(self, table):
+    return RMSPropSlotVariableNames('{}/{}/ms'.format(table, 'RMSProp'),
+                                    '{}/{}/mom'.format(table, 'RMSProp'))
+
+  def create_variables_and_ops(self, table, slot_variable_names, num_hosts,
+                               table_config, table_variables, config_proto):
+
+    ms_variables = _create_partitioned_variables(
+        name=slot_variable_names.ms,
+        num_hosts=num_hosts,
+        vocabulary_size=table_config.vocabulary_size,
+        embedding_dimension=table_config.dimension,
+        collections=[ops.GraphKeys.GLOBAL_VARIABLES],
+        initializer=init_ops.zeros_initializer(),
+    )
+    mom_variables = _create_partitioned_variables(
+        name=slot_variable_names.mom,
+        num_hosts=num_hosts,
+        vocabulary_size=table_config.vocabulary_size,
+        embedding_dimension=table_config.dimension,
+        collections=[ops.GraphKeys.GLOBAL_VARIABLES],
+        initializer=init_ops.zeros_initializer(),
+    )
+    slot_variables = RMSPropSlotVariables(ms_variables, mom_variables)
+
+    def load_ops_fn():
+      """Returns the retrieve ops for RMS Prop embedding tables.
+
+      Returns:
+        A list of ops to load embedding and slot variables from CPU to TPU.
+      """
+      load_op_list = []
+      config = config_proto
+      for host_id, table_variable, ms_variable, mom_variable in (zip(
+          range(num_hosts), table_variables, ms_variables, mom_variables)):
+        with ops.colocate_with(table_variable):
+          load_parameters_op = tpu_ops.load_tpu_embedding_rms_prop_parameters(
+              parameters=table_variable,
+              ms=ms_variable,
+              mom=mom_variable,
+              table_name=table,
+              num_shards=num_hosts,
+              shard_id=host_id,
+              config=config,
+          )
+        config = None
+        load_op_list.append(load_parameters_op)
+      return load_op_list
+
+    def retrieve_ops_fn():
+      """Returns the retrieve ops for RMS Prop embedding tables.
+
+      Returns:
+        A list of ops to retrieve embedding and slot variables from TPU to CPU.
+      """
+      retrieve_op_list = []
+      config = config_proto
+      for host_id, table_variable, ms_variable, mom_variable in (zip(
+          range(num_hosts), table_variables, ms_variables, mom_variables)):
+        with ops.colocate_with(table_variable):
+          retrieved_table, retrieved_ms, retrieved_mom = (
+              tpu_ops.retrieve_tpu_embedding_rms_prop_parameters(
+                  table_name=table,
+                  num_shards=num_hosts,
+                  shard_id=host_id,
+                  config=config,
+              ))
+          retrieve_parameters_op = control_flow_ops.group(
+              state_ops.assign(table_variable, retrieved_table),
+              state_ops.assign(ms_variable, retrieved_ms),
+              state_ops.assign(mom_variable, retrieved_mom))
+        config = None
+        retrieve_op_list.append(retrieve_parameters_op)
+      return retrieve_op_list
+
+    return slot_variables, load_ops_fn, retrieve_ops_fn
+
+
 class _StochasticGradientDescentHandler(_OptimizerHandler):
   """Handles stochastic gradient descent specific logic."""
 
@@ -2176,6 +2504,10 @@ def _get_optimization_handler(optimization_parameters):
     return _ProximalYogiHandler(optimization_parameters)
   elif isinstance(optimization_parameters, StochasticGradientDescentParameters):
     return _StochasticGradientDescentHandler(optimization_parameters)
+  elif isinstance(optimization_parameters, MomentumParameters):
+    return _MomentumHandler(optimization_parameters)
+  elif isinstance(optimization_parameters, RMSPropParameters):
+    return _RMSPropHandler(optimization_parameters)
   return NotImplementedError()
 
 
@@ -2234,7 +2566,7 @@ def _create_device_fn(hosts):
     if part_match:
       idx = int(part_match.group(1))
     else:
-      idx = int(dummy_match.group(1))
+      idx = int(dummy_match.group(1))  # pytype: disable=attribute-error
 
     device = hosts[idx]
     logging.debug('assigning {} to {}.', op, device)

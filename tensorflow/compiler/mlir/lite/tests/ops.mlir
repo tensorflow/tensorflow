@@ -1700,6 +1700,15 @@ func @testRelu6WithQuantizedTypes(%arg0 : tensor<10x!quant.uniform<u8:f32, 1.0>>
 
 // -----
 
+func @testReluWithDifferentScales(%arg0 : tensor<10x!quant.uniform<u8:f32, 1.0>>) -> tensor<10x!quant.uniform<u8:f32, 4.0>> {
+  %0 = "tfl.relu"(%arg0) : (tensor<10x!quant.uniform<u8:f32, 1.0>>) -> tensor<10x!quant.uniform<u8:f32, 2.0>>
+  %1 = "tfl.relu_n1_to_1"(%0) : (tensor<10x!quant.uniform<u8:f32, 2.0>>) -> tensor<10x!quant.uniform<u8:f32, 3.0>>
+  %2 = "tfl.relu6"(%1) : (tensor<10x!quant.uniform<u8:f32, 3.0>>) -> tensor<10x!quant.uniform<u8:f32, 4.0>>
+  return %2 : tensor<10x!quant.uniform<u8:f32, 4.0>>
+}
+
+// -----
+
 func @testEmbeddingLookup(%arg0 : tensor<?xi32>, %arg1 : tensor<?x?xf32>) -> tensor<?xf32> {
   %0 = "tfl.embedding_lookup"(%arg0, %arg1) : (tensor<?xi32>,tensor<?x?xf32>) -> tensor<?xf32>
   return %0 : tensor<?xf32>

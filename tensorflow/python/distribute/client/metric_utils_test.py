@@ -36,6 +36,7 @@ class MetricUtilsTest(test.TestCase):
     return 'grpc'
 
   def testClientMetrics(self):
+
     metric_utils.enable_metrics = True
 
     cluster_def = multi_worker_test_base.create_in_process_cluster(

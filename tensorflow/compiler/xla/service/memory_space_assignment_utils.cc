@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/memory_space_assignment_utils.h"
 
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
+
 namespace xla {
 
 bool MemorySpaceAssignmentUtils::IsValueAllowedInAlternateMemory(
@@ -85,6 +88,17 @@ bool MemorySpaceAssignmentUtils::IsValueAllowedInAlternateMemory(
         VLOG(4) << "Keeping value " << value->ToShortString()
                 << " in default mem because it is a collective-permute buffer.";
         return false;
+      }
+    }
+    if (auto* custom_call =
+            DynCast<HloCustomCallInstruction>(position.instruction)) {
+      for (const auto& pair : custom_call->output_to_operand_aliasing()) {
+        if (position.index == pair.first) {
+          VLOG(4) << "Keeping value " << value->ToShortString()
+                  << " in default mem because it is a custom-call output that "
+                     "aliases an operand buffer.";
+          return false;
+        }
       }
     }
   }

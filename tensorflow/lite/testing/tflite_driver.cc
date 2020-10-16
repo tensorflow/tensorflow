@@ -361,7 +361,10 @@ TfLiteDriver::TfLiteDriver(DelegateType delegate_type, bool reference_kernel)
   if (reference_kernel) {
     resolver_.reset(new ops::builtin::BuiltinRefOpResolver);
   } else {
-    resolver_.reset(new ops::builtin::BuiltinOpResolver);
+    // TODO(b/168278077): change back to use BuiltinOpResolver after zip tests
+    // are fully validated against TfLite delegates.
+    resolver_.reset(
+        new ops::builtin::BuiltinOpResolverWithoutDefaultDelegates());
     ops::builtin::BuiltinOpResolver* buildinop_resolver_ =
         reinterpret_cast<ops::builtin::BuiltinOpResolver*>(resolver_.get());
     buildinop_resolver_->AddCustom("RFFT2D",

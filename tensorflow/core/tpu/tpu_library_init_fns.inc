@@ -41,7 +41,6 @@ tensorflow::Status SetTpuMeshStateStructFns(void* library_handle) {
 tensorflow::Status SetCompileStructFn(void* library_handle) {
   auto* compile_fn = tensorflow::tpu::CompileApiFn();
 
-  TFTPU_SET_FN(compile_fn, TpuCompile_CompileAheadOfTime);
   TFTPU_SET_FN(compile_fn, TpuCompile_CompileAndBuild);
 
   return tensorflow::Status::OK();
@@ -78,7 +77,6 @@ tensorflow::Status SetTpuProgramStructFn(void* library_handle) {
   TFTPU_SET_FN(tpu_program_fn, TpuProgram_GetTpuProgram);
   TFTPU_SET_FN(tpu_program_fn, TpuProgram_SerializeTpuExecutable);
   TFTPU_SET_FN(tpu_program_fn, TpuProgram_SerializeCompilerMetadata);
-  TFTPU_SET_FN(tpu_program_fn, TpuProgram_SerializeHostComputeMetadata);
   TFTPU_SET_FN(tpu_program_fn,
                TpuProgram_DeserializeFromGetTpuProgramResponseProto);
 

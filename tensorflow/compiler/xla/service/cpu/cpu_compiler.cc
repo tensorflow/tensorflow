@@ -103,6 +103,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/logistic_expander.h"
 #include "tensorflow/compiler/xla/service/map_inliner.h"
+#include "tensorflow/compiler/xla/service/qr_expander.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/rng_bit_generator_expander.h"
 #include "tensorflow/compiler/xla/service/rng_expander.h"
@@ -281,6 +282,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 
   pipeline.AddPass<ComparisonExpander>();
   pipeline.AddPass<CholeskyExpander>();
+  pipeline.AddPass<QrExpander>();
   pipeline.AddPass<TriangularSolveExpander>();
 
   // Inline computations with a single call site.
@@ -560,9 +562,11 @@ StatusOr<
     std::tuple<std::unique_ptr<HloModule>, std::unique_ptr<BufferAssignment>>>
 CpuCompiler::RunHloPassesAndBufferAssignement(
     std::unique_ptr<HloModule> module, se::StreamExecutor* executor,
-    se::DeviceMemoryAllocator* device_allocator) {
-  TF_ASSIGN_OR_RETURN(
-      module, RunHloPasses(std::move(module), executor, device_allocator));
+    se::DeviceMemoryAllocator* device_allocator, bool optimize) {
+  if (optimize) {
+    TF_ASSIGN_OR_RETURN(
+        module, RunHloPasses(std::move(module), executor, device_allocator));
+  }
 
   // Select an order for emitting the HLO instructions for each computation.
   // Using this sequence enables tighter buffer liveness analysis and reduced

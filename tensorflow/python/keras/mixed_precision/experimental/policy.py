@@ -32,11 +32,6 @@ from tensorflow.python.training.experimental import mixed_precision_global_state
 from tensorflow.python.util.tf_export import keras_export
 
 
-# Default value of certain arguments, indicating the default behavior for
-# that argument should be used.
-USE_DEFAULT = 'USE_DEFAULT'
-
-
 @keras_export('keras.mixed_precision.experimental.Policy', v1=[])
 class Policy(object):
   """A dtype policy for a Keras layer.
@@ -293,7 +288,7 @@ class Policy(object):
   layer would only work if the inputs were float32.
   """
 
-  def __init__(self, name, loss_scale=USE_DEFAULT):
+  def __init__(self, name, loss_scale='auto'):
     """Constructs the policy.
 
     The `name` argument determines the compute and variable dtype, the default
@@ -310,9 +305,10 @@ class Policy(object):
           a dynamic loss scale is used. These policies are used for mixed
           precision training.
       loss_scale: A `tf.mixed_precision.experimental.LossScale`, an int (which
-        uses a `FixedLossScale`), or the string "dynamic" (which uses a
-        `DynamicLossScale`). Defaults to using no loss scaling unless `name` is
-        "mixed_float16", in which case this defaults to "dynamic". Only
+        uses a `FixedLossScale`), the string "dynamic" (which uses a
+        `DynamicLossScale`), or None (which uses no loss scale). Defaults to
+        `"auto"`. In the `"auto"` case: 1) if `name` is `"mixed_float16"`, then
+        use `loss_scale="dynamic"`. 2) otherwise, do not use a loss scale. Only
         `tf.keras.Model`s, not layers, use the loss scale, and it is only used
         during `Model.fit`, `Model.train_on_batch`, and other similar methods.
     """
@@ -324,7 +320,7 @@ class Policy(object):
     self._name = name
     self._compute_dtype, self._variable_dtype = self._parse_name(name)
 
-    if loss_scale == USE_DEFAULT:
+    if loss_scale == 'auto':
       loss_scale = 'dynamic' if name == 'mixed_float16' else None
       self._using_default_loss_scale = True
     else:
@@ -512,11 +508,6 @@ def global_policy():
     else:
       return Policy('_infer')
   return _global_policy
-
-
-def policy_defaults_to_floatx():
-  """Returns True if `global_policy()` will use the current value of floatx."""
-  return _global_policy is None and base_layer_utils.v2_dtype_behavior_enabled()
 
 
 def _check_if_mixed_precision_graph_rewrite_is_enabled(policy):

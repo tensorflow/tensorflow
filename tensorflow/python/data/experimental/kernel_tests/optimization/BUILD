@@ -1,5 +1,5 @@
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -7,6 +7,24 @@ package(
 )
 
 exports_files(["LICENSE"])
+
+tf_py_test(
+    name = "autotune_buffer_sizes_test",
+    size = "small",
+    srcs = ["autotune_buffer_sizes_test.py"],
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python/data/experimental/ops:testing",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
 
 tf_py_test(
     name = "choose_fastest_dataset_test",
@@ -124,24 +142,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "inject_prefetch_test",
-    size = "small",
-    srcs = ["inject_prefetch_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
-        "//tensorflow/python/data/experimental/ops:testing",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-    ],
-)
-
-tf_py_test(
     name = "latency_all_edges_test",
     size = "small",
     srcs = ["latency_all_edges_test.py"],
@@ -255,6 +255,7 @@ tf_py_test(
         "no_oss",
         "no_pip",
         "no_windows",
+        "noasan",  # TODO(b/337374867) fails with -fsanitize=null
     ],
     deps = [
         "//tensorflow/core:protos_all_py",

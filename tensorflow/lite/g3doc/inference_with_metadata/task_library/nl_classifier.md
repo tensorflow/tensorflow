@@ -29,6 +29,10 @@ API.
 
 ## Run inference in Java
 
+See the
+[Text Classification reference app](https://github.com/tensorflow/examples/blob/master/lite/examples/text_classification/android/lib_task_api/src/main/java/org/tensorflow/lite/examples/textclassification/client/TextClassificationClient.java)
+for an example of how to use `NLClassifier` in an Android app.
+
 ### Step 1: Import Gradle dependency and other settings
 
 Copy the `.tflite` model file to the assets directory of the Android module
@@ -68,6 +72,38 @@ List<Category> results = classifier.classify(input);
 See the
 [source code](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/java/src/java/org/tensorflow/lite/task/text/nlclassifier/NLClassifier.java)
 for more options to configure `NLClassifier`.
+
+## Run inference in Swift
+
+### Step 1: Import CocoaPods
+
+Add the TensorFlowLiteTaskText pod in Podfile
+
+```
+target 'MySwiftAppWithTaskAPI' do
+  use_frameworks!
+  pod 'TensorFlowLiteTaskText', '~> 0.0.1-nightly'
+end
+```
+
+### Step 2: Run inference using the API
+
+```swift
+// Initialization
+var modelOptions:TFLNLClassifierOptions = TFLNLClassifierOptions()
+modelOptions.inputTensorName = inputTensorName
+modelOptions.outputScoreTensorName = outputScoreTensorName
+let nlClassifier = TFLNLClassifier.nlClassifier(
+      modelPath: modelPath,
+      options: modelOptions)
+
+// Run inference
+let categories = nlClassifier.classify(text: input)
+```
+
+See the
+[source code](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/ios/task/text/nlclassifier/Sources/TFLNLClassifier.h)
+for more details.
 
 ## Run inference in C++
 

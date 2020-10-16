@@ -438,7 +438,6 @@ StatusOr<std::unique_ptr<gpu::KernelThunk>> TransformKernelToXlaThunk(
 
   // Finally, create the thunk and set the launch dimensions.
   gpu::Thunk::ThunkInfo info;
-  info.hlo_instruction = instr;
   auto thunk = absl::make_unique<gpu::KernelThunk>(info, buffers,
                                                    kernel.getName().str());
 
@@ -580,7 +579,7 @@ StatusOr<std::unique_ptr<Executable>> MlirCompilerImpl::RunBackend(
   return {absl::make_unique<GpuExecutable>(
       ptx, cubin, GetGpuVersion(stream_exec), std::move(thunk_schedule),
       emission_context.releaseHloModule(), std::move(buffer_assignment),
-      nullptr, nullptr)};
+      nullptr, nullptr, std::vector<GpuExecutable::ConstantInfo>())};
 }
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> MlirCompilerImpl::Compile(

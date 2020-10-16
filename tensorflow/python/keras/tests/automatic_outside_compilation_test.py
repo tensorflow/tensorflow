@@ -246,33 +246,42 @@ class AutoOutsideCompilationWithKerasTest(test.TestCase):
   def testSummaryWithCustomTrainingLoop(self):
     strategy = get_tpu_strategy()
 
+    writer = summary_ops_v2.create_file_writer_v2(self.summary_dir)
     with strategy.scope():
       model = distribute_strategy_test.get_model()
       model.compile('sgd', 'mse')
-      writer = summary_ops_v2.create_file_writer_v2(self.summary_dir)
 
-      @def_function.function
-      def custom_function(dataset):
+    @def_function.function
+    def custom_function(dataset):
 
-        def _custom_step(features, labels):
-          del labels
-          logits = model(features)
-          with summary_ops_v2.always_record_summaries(), writer.as_default():
-            scalar_summary_v2.scalar(
-                'logits',
-                math_ops.reduce_sum(logits),
-                step=model.optimizer.iterations)
-          return logits
+      def _custom_step(features, labels):
+        del labels
+        logits = model(features)
+        with summary_ops_v2.always_record_summaries(), writer.as_default():
+          scalar_summary_v2.scalar(
+              'logits',
+              math_ops.reduce_sum(logits),
+              step=model.optimizer.iterations)
+        return logits
 
-        iterator = iter(dataset)
-        output = strategy.unwrap(
-            strategy.run(_custom_step, args=(next(iterator))))
-        return output
+      iterator = iter(dataset)
+      output = strategy.unwrap(
+          strategy.run(_custom_step, args=(next(iterator))))
+      return output
 
-      dataset = strategy.experimental_distribute_dataset(
-          distribute_strategy_test.get_dataset(strategy))
+    dataset = strategy.experimental_distribute_dataset(
+        distribute_strategy_test.get_dataset(strategy))
 
-      custom_function(dataset)
+    custom_function(dataset)
+    writer.close()
+
+    event_files = file_io.get_matching_files_v2(
+        os.path.join(self.summary_dir, 'event*'))
+    events_count_dictionary = {
+        ('logits'): 0,
+    }
+    self.validate_recorded_sumary_file(event_files, events_count_dictionary,
+                                       1)
 
 
 if __name__ == '__main__':

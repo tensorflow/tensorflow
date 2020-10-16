@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/constant_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -114,6 +115,17 @@ bool HasSameStaticShapes(Operation* op) {
     ++index;
   }
   return true;
+}
+
+// Util that casts 'val' to Int32 by adding a cast Op.
+Value CreateCastToInt32(Attribute val, Location loc,
+                        PatternRewriter& rewriter) {
+  auto shape = val.getType().dyn_cast<RankedTensorType>().getShape();
+  IntegerType new_ele_type = rewriter.getIntegerType(32);
+  ShapedType new_type = RankedTensorType::get(shape, new_ele_type);
+  return rewriter.create<TF::CastOp>(loc, new_type,
+                                     rewriter.create<TF::ConstOp>(loc, val),
+                                     rewriter.getBoolAttr(false));
 }
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_legalize_tf.inc"
@@ -653,7 +665,7 @@ void LegalizeTF::runOnFunction() {
   auto func = getFunction();
 
   // Add the generated patterns to the list.
-  populateWithGenerated(context, &patterns);
+  populateWithGenerated(context, patterns);
   patterns
       .insert<ConvertTFConcatV2Op, ConvertTFMatMulOp, ConvertTFMatrixDiagV2Op,
               ConvertTFMatrixDiagV3Op, ConvertTFPackOp, ConvertTFReshapeOp,

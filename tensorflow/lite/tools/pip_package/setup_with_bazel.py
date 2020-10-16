@@ -63,7 +63,7 @@ setup(
     ],
     packages=find_packages(exclude=[]),
     package_dir={'': '.'},
-    package_data={'': ['*.so']},
+    package_data={'': ['*.so', '*.pyd']},
     install_requires=[
         'numpy >= 1.16.0',
         'pybind11 >= 2.4.3',

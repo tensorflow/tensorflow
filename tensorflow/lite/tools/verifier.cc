@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/version.h"
 
@@ -478,6 +479,7 @@ bool VerifySubGraphConsistency(const Model& model, const SubGraph& subgraph,
         return false;
       }
       const auto& opcode = model.operator_codes()->Get(op->opcode_index());
+      auto builtin_code = GetBuiltinCode(opcode);
       // Check for invalid inputs by ensuring all exist in produced_tensors.
       for (const int input_idx : *op->inputs()) {
         if (input_idx == kTfLiteOptionalTensor) continue;
@@ -488,8 +490,7 @@ bool VerifySubGraphConsistency(const Model& model, const SubGraph& subgraph,
             output_tensors.find(input_idx) == output_tensors.end()) {
           ReportError(error_reporter,
                       "Input tensor %d to op %d (%s) is not produced",
-                      input_idx, op_idx,
-                      EnumNameBuiltinOperator(opcode->builtin_code()));
+                      input_idx, op_idx, EnumNameBuiltinOperator(builtin_code));
           return false;
         }
       }
@@ -497,31 +498,29 @@ bool VerifySubGraphConsistency(const Model& model, const SubGraph& subgraph,
       // produced_tensors.
       for (const int output_idx : *op->outputs()) {
         if (constant_tensors.find(output_idx) != constant_tensors.end()) {
-          ReportError(error_reporter,
-                      "Output tensor %d to op %d (%s) is a constant",
-                      output_idx, op_idx,
-                      EnumNameBuiltinOperator(opcode->builtin_code()));
+          ReportError(
+              error_reporter, "Output tensor %d to op %d (%s) is a constant",
+              output_idx, op_idx, EnumNameBuiltinOperator(builtin_code));
           return false;
         } else if (variable_tensors.find(output_idx) !=
                    variable_tensors.end()) {
-          ReportError(error_reporter,
-                      "Output tensor %d to op %d (%s) is a variable",
-                      output_idx, op_idx,
-                      EnumNameBuiltinOperator(opcode->builtin_code()));
+          ReportError(
+              error_reporter, "Output tensor %d to op %d (%s) is a variable",
+              output_idx, op_idx, EnumNameBuiltinOperator(builtin_code));
           return false;
         } else if (subgraph_input_tensors.find(output_idx) !=
                    subgraph_input_tensors.end()) {
           ReportError(error_reporter,
                       "Output tensor %d to op %d (%s) is a subgraph input",
                       output_idx, op_idx,
-                      EnumNameBuiltinOperator(opcode->builtin_code()));
+                      EnumNameBuiltinOperator(builtin_code));
           return false;
         } else if (output_tensors.find(output_idx) != output_tensors.end()) {
           ReportError(error_reporter,
                       "Output tensor %d to op %d (%s) is an output from "
                       "another op. There is a cycle in the graph",
                       output_idx, op_idx,
-                      EnumNameBuiltinOperator(opcode->builtin_code()));
+                      EnumNameBuiltinOperator(builtin_code));
           return false;
         }
         // This can be an input to a subsequent op.
@@ -608,14 +607,15 @@ bool VerifyOps(const Model& model, const OpResolver& resolver,
     return true;
   }
   for (const auto& opcode : *model.operator_codes()) {
-    if (opcode->builtin_code() < BuiltinOperator_MIN ||
-        opcode->builtin_code() > BuiltinOperator_MAX) {
+    auto builtin_code = GetBuiltinCode(opcode);
+    if (builtin_code < BuiltinOperator_MIN ||
+        builtin_code > BuiltinOperator_MAX) {
       ReportError(error_reporter, "Operator id '%d' is out of range.",
-                  opcode->builtin_code());
+                  builtin_code);
       return false;
     }
 
-    if (opcode->builtin_code() == BuiltinOperator_CUSTOM) {
+    if (builtin_code == BuiltinOperator_CUSTOM) {
       if (IsNullOrEmptyString(opcode->custom_code())) {
         ReportError(error_reporter,
                     "Invalid custom op name, cannot be null/empty.");
@@ -627,10 +627,9 @@ bool VerifyOps(const Model& model, const OpResolver& resolver,
         return false;
       }
     } else {
-      if (!resolver.FindOp(opcode->builtin_code(), opcode->version())) {
+      if (!resolver.FindOp(builtin_code, opcode->version())) {
         ReportError(error_reporter, "Unsupported builtin op: %s, version: %d",
-                    EnumNameBuiltinOperator(opcode->builtin_code()),
-                    opcode->version());
+                    EnumNameBuiltinOperator(builtin_code), opcode->version());
         return false;
       }
     }

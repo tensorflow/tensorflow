@@ -101,6 +101,9 @@ class CollectiveAllReduceStrategy(distribute_lib.Strategy):
   # TODO(anjalisridhar): Update our guides with examples showing how we can use
   # the cluster_resolver argument.
 
+  # The starting number for collective keys. This should only be set in tests.
+  _collective_key_base = 0
+
   def __init__(
       self,
       communication=cross_device_ops_lib.CollectiveCommunication.AUTO,
@@ -184,7 +187,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
   # Whether to perdically check the health of the cluster. If any worker is not
   # reachable, collectives are aborted and the user program should get a
   # tf.errors.UnavailableError. It's required to restart in order to recover.
-  _enable_check_health = False
+  _enable_check_health = True
   # Check health interval in seconds.
   _check_health_interval = 30
   # Timeout in seconds for the first check health. The first check health needs
@@ -247,7 +250,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._worker_device = device_util.canonicalize("/device:CPU:0")
     self._host_input_device = numpy_dataset.SingleDevice(self._worker_device)
 
-    self._collective_keys = cross_device_utils.CollectiveKeys()
+    self._collective_keys = cross_device_utils.CollectiveKeys(
+        group_key_start=1 + CollectiveAllReduceStrategy._collective_key_base)  # pylint: disable=protected-access
     self._cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
         devices=local_devices,
         group_size=len(local_devices),
@@ -362,7 +366,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     else:
       local_devices = (self._worker_device,)
 
-    self._collective_keys = cross_device_utils.CollectiveKeys()
+    self._collective_keys = cross_device_utils.CollectiveKeys(
+        group_key_start=1 + CollectiveAllReduceStrategy._collective_key_base)  # pylint: disable=protected-access
     self._cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
         devices=local_devices,
         group_size=len(local_devices) * self._num_workers,
@@ -387,7 +392,6 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._rpc_layer = cluster_resolver.rpc_layer
     self._warn_nccl_no_gpu()
 
-    # TODO(b/151232436): Enable check health thread by default.
     if self._enable_check_health:
       self._start_check_health_thread()
 
@@ -399,8 +403,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         self._communication)
 
   def __del__(self):
-    if self._enable_check_health:
-      self._stop_check_health_thread()
+    self._stop_check_health_thread()
 
   def _input_workers_with_options(self, options=None):
     host_device = device_util.get_host_for_device(self._worker_device)
@@ -430,7 +433,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         group_key = self._collective_keys.get_group_key([device])
         group_size = self._num_workers
         collective_instance_key = (
-            self._collective_keys.get_variable_instance_key())
+            self._collective_keys.get_instance_key(group_key, device))
 
         with ops.device(device):
           initial_value = kwargs["initial_value"]
@@ -478,11 +481,10 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         dataset,
         self._input_workers_with_options(options),
         self._container_strategy(),
-        split_batch_by=self._num_replicas_in_sync,
+        num_replicas_in_sync=self._num_replicas_in_sync,
         input_context=input_context)
 
-  def _experimental_distribute_datasets_from_function(self, dataset_fn,
-                                                      options):
+  def _distribute_datasets_from_function(self, dataset_fn, options):
     input_context = self._make_input_context()
     return input_lib.get_distributed_datasets_from_function(
         dataset_fn=dataset_fn,
@@ -508,7 +510,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         dataset,
         self._input_workers,
         self._container_strategy(),
-        split_batch_by=self._num_replicas_in_sync,
+        num_replicas_in_sync=self._num_replicas_in_sync,
         input_context=input_context)
 
   def _make_input_fn_iterator(
@@ -608,6 +610,14 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     else:
       return self._host_cross_device_ops
 
+  def _gather_to_implementation(self, value, destinations, axis,
+                                experimental_hints):
+    return self._get_cross_device_ops(value)._gather(  # pylint: disable=protected-access
+        value,
+        destinations=destinations,
+        axis=axis,
+        experimental_hints=experimental_hints)
+
   def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
     if (isinstance(value, values.Mirrored) and
         reduce_op == reduce_util.ReduceOp.MEAN):
@@ -675,11 +685,18 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       time.sleep(self._check_health_interval)
 
   def _start_check_health_thread(self):
+    if not context.executing_eagerly():
+      logging.info("Check health is only supported in eager.")
+      return
     # Use a dummy all-reduce as a barrier to wait for all workers to be up,
     # otherwise the check health may fail immediately.
+
+    # Use array_ops.identity to create the dummy tensor so that we have a new
+    # Tensor. If we use constant it may be a cached from on a /job:localhost
+    # device, which will cause some code that relies on tensor.device to error.
     #
     # TODO(b/151232436): change to an explicit barrier if we have it.
-    dummy_value = ops.convert_to_tensor([])
+    dummy_value = array_ops.identity([])
     logging.info("Waiting for the cluster, timeout = %s",
                  self._check_health_initial_timeout or "inf")
     try:
@@ -695,6 +712,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       raise RuntimeError(
           "Timeout waiting for the cluster, timeout is %d seconds" %
           self._check_health_initial_timeout)
+    logging.info("Cluster is ready.")
     self._check_health_thread_should_stop = threading.Event()
     # Start the thread as daemon to avoid it blocking the program from exiting.
     # We try best to shutdown the thread but __del__ is not guaranteed to be
@@ -705,9 +723,12 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._check_health_thread.start()
 
   def _stop_check_health_thread(self):
-    self._check_health_thread_should_stop.set()
-    self._check_health_thread.join()
-    self._check_health_thread = None
+    if getattr(self, "_check_health_thread", None):
+      logging.info("stopping check health thread")
+      self._check_health_thread_should_stop.set()
+      self._check_health_thread.join()
+      self._check_health_thread = None
+      logging.info("check health thread stopped")
 
   def _warn_nccl_no_gpu(self):
     if ((self._communication ==
@@ -751,3 +772,10 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       Boolean.
     """
     return True
+
+  def _get_replica_id_in_sync_group(self, replica_id):
+    return self._id_in_cluster * len(self.worker_devices) + replica_id
+
+  def _get_local_replica_id(self, replica_id_in_sync_group):
+    return (replica_id_in_sync_group -
+            self._id_in_cluster * len(self.worker_devices))

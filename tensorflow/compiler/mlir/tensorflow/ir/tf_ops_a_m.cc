@@ -546,8 +546,7 @@ LogicalResult FoldConstantCaseOp::matchAndRewrite(
   if (!matchPattern(op.branch_index(), m_Constant(&branch))) return failure();
 
   int index = *branch.getValues<int>().begin();
-  if (index < 0 || index >= op.branches().size())
-    index = op.branches().size() - 1;
+  if (index < 0 || index >= op.num_branches()) index = op.num_branches() - 1;
 
   auto func = op.branches()[index].cast<SymbolRefAttr>();
   auto empty = rewriter.getStringAttr("");
@@ -658,6 +657,75 @@ static LogicalResult Verify(CaseRegionOp op) {
   }
 
   return success();
+}
+
+namespace {
+// Eliminate values that pass through the CaseRegionOp or IfRegionOp branches.
+template <class CaseOrIfRegionOp>
+class CaseOrIfRegionEliminatePassThrough
+    : public OpRewritePattern<CaseOrIfRegionOp> {
+  using OpRewritePattern<CaseOrIfRegionOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(CaseOrIfRegionOp op,
+                                PatternRewriter &rewriter) const override {
+    RegionRange branches = op.getRegions();
+    SmallVector<Type, 4> new_result_types;
+    // Maps pass through results to extern values.
+    llvm::SmallDenseMap<Value, Value, 4> result_to_extern_value;
+
+    for (auto result : op.getResults()) {
+      unsigned index = result.getResultNumber();
+      Region *first_branch = *branches.begin();
+      Operation *first_terminator = first_branch->front().getTerminator();
+      Value returned_val = first_terminator->getOperand(index);
+
+      // Pass through values would be defined outside the branch region. Keep
+      // the type of non pass through results to create a new op later, if
+      // required.
+      if (returned_val.getParentBlock() == &first_branch->front()) {
+        new_result_types.push_back(result.getType());
+        continue;
+      }
+      // Check if the same extern value is returned in each branch.
+      for (Region *region : branches.drop_front()) {
+        Operation *terminator = region->front().getTerminator();
+        if (terminator->getOperand(index) != returned_val) return failure();
+      }
+      result_to_extern_value[result] = returned_val;
+    }
+
+    // If no pass through values are found, no change is required.
+    if (result_to_extern_value.empty()) return failure();
+
+    // Create new case/if region op.
+    auto new_op = rewriter.create<CaseOrIfRegionOp>(
+        op.getLoc(), new_result_types, op.getOperand(), op.getAttrs(),
+        op.getNumRegions());
+
+    int next_index = 0;
+    for (auto result : op.getResults()) {
+      if (!result_to_extern_value.count(result)) {
+        result.replaceAllUsesWith(new_op.getResult(next_index++));
+        continue;
+      }
+      result.replaceAllUsesWith(result_to_extern_value[result]);
+      for (Region *branch : branches)
+        branch->front().getTerminator()->eraseOperand(next_index);
+    }
+
+    // Move region bodies to the new op.
+    for (auto region_index : llvm::seq<int>(0, branches.size()))
+      new_op.getRegion(region_index).takeBody(op.getRegion(region_index));
+
+    op.erase();
+    return success();
+  }
+};
+}  // namespace
+
+void CaseRegionOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<CaseOrIfRegionEliminatePassThrough<TF::CaseRegionOp>>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2113,7 +2181,8 @@ LogicalResult FoldConstantIfRegionOp::matchAndRewrite(
 
 void IfRegionOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                              MLIRContext *context) {
-  results.insert<FoldConstantIfRegionOp>(context);
+  results.insert<FoldConstantIfRegionOp,
+                 CaseOrIfRegionEliminatePassThrough<TF::IfRegionOp>>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2162,6 +2231,15 @@ OpFoldResult LeakyReluOp::fold(ArrayRef<Attribute> operands) {
       return DenseElementsAttr::get(arg.getType(), calculate(elementAttr));
   }
   return {};
+}
+
+Optional<ContractionFusion> LeakyReluOp::GetContractionFusion() {
+  // Only f32 is supported for fusion.
+  if (!T().isF32()) return None;
+
+  NamedAttribute alpha(Identifier::get("alpha", getContext()), alphaAttr());
+  return ContractionFusion("LeakyRelu", /*additional_arguments=*/{},
+                           /*additional_attributes=*/{alpha});
 }
 
 //===----------------------------------------------------------------------===//
@@ -2285,12 +2363,12 @@ OpFoldResult MulOp::fold(ArrayRef<Attribute> operands) {
   return IdentityArithmeticOpFolder<MulOp>(*this, operands);
 }
 
+}  // namespace TF
+}  // namespace mlir
+
 //===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
 
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.cc.inc"
-
-}  // namespace TF
-}  // namespace mlir

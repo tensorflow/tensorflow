@@ -29,6 +29,7 @@ from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import backend
@@ -36,7 +37,7 @@ from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import layers
 from tensorflow.python.keras import models
-from tensorflow.python.keras import optimizers
+from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
@@ -52,6 +53,7 @@ from tensorflow.python.keras.saving import save
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import flags
 from tensorflow.python.platform import test
 from tensorflow.python.training.experimental import loss_scale as loss_scale_module
 from tensorflow.python.training.tracking import util as trackable_utils
@@ -98,7 +100,7 @@ default_strategy_fn = distribution_strategy_context.get_strategy
 
 def create_mirrored_strategy():
   """Create a MirroredStrategy, using a GPU if it is available."""
-  if context.num_gpus() >= 1:
+  if tf_config.list_logical_devices('GPU'):
     return mirrored_strategy.MirroredStrategy(['cpu:0', 'gpu:0'])
   else:
     return mirrored_strategy.MirroredStrategy(['cpu:0'])
@@ -106,7 +108,8 @@ def create_mirrored_strategy():
 
 def create_central_storage_strategy():
   """Create a CentralStorageStrategy, using a GPU if it is available."""
-  compute_devices = ['cpu:0', 'gpu:0'] if context.num_gpus() >= 1 else ['cpu:0']
+  compute_devices = ['cpu:0', 'gpu:0'] if (
+      tf_config.list_logical_devices('GPU')) else ['cpu:0']
   return central_storage_strategy.CentralStorageStrategy(
       compute_devices, parameter_device='cpu:0')
 
@@ -126,10 +129,11 @@ class KerasLayerTest(keras_parameterized.TestCase):
 
   @parameterized.named_parameters(*TESTCASES)
   def test_mixed_policies_(self, strategy_fn):
+    strategy = strategy_fn()
     for dtype in 'float16', 'bfloat16':
       x = constant_op.constant([1.])
       policy_name = 'mixed_' + dtype
-      with strategy_fn().scope(), policy.policy_scope(policy_name):
+      with strategy.scope(), policy.policy_scope(policy_name):
         layer = mp_test_util.MultiplyLayer(assert_type=dtype)
         self.assertEqual(layer.dtype, dtypes.float32)
         self.assertEqual(get_layer_policy.get_layer_policy(layer).name,
@@ -852,7 +856,7 @@ class KerasModelTest(keras_parameterized.TestCase):
       else:
         error_msg = 'optimizer" must be an instance of '
       with self.assertRaisesRegex(ValueError, error_msg):
-        model.compile(optimizers.SGD(1.), 'mse')
+        model.compile(optimizer_v1.SGD(1.), 'mse')
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_functional_model_loss_dtype(self):
@@ -1004,8 +1008,12 @@ class KerasModelTest(keras_parameterized.TestCase):
 
     # The checkpoint and expected values were obtained from the program in
     # testdata/BUILD.
-    ckpt_dir = test.test_src_dir_path(
-        'python/keras/mixed_precision/experimental/testdata/lso_ckpt_tf2.2')
+    ckpt_dir = os.path.join(
+        flags.FLAGS['test_srcdir'].value,
+        'org_tensorflow/tensorflow/python/keras',
+        'mixed_precision/experimental/testdata/lso_ckpt_tf2.2')
+    # ckpt_dir = test.test_src_dir_path(
+    #     'python/keras/mixed_precision/experimental/testdata/lso_ckpt_tf2.2')
     model.load_weights(os.path.join(ckpt_dir, 'ckpt'))
     model.compile(opt, 'mse', run_eagerly=testing_utils.should_run_eagerly())
     model(np.zeros((2, 2)))  # Create model weights
@@ -1035,9 +1043,13 @@ class KerasModelTest(keras_parameterized.TestCase):
     self.assertEqual(self.evaluate(opt.loss_scale._num_good_steps), 1)
 
   def test_restore_old_saved_model(self):
-    saved_model_dir = test.test_src_dir_path(
-        'python/keras/mixed_precision/experimental/testdata/'
-        'lso_savedmodel_tf2.2')
+    saved_model_dir = os.path.join(
+        flags.FLAGS['test_srcdir'].value,
+        'org_tensorflow/tensorflow/python/keras',
+        'mixed_precision/experimental/testdata/lso_savedmodel_tf2.2')
+    # saved_model_dir = test.test_src_dir_path(
+    #     'python/keras/mixed_precision/experimental/testdata/'
+    #     'lso_savedmodel_tf2.2')
     model = save.load_model(saved_model_dir)
     expected_kernel = np.array([[9.229685, 10.901115], [10.370763, 9.757362]])
     self.assertAllClose(backend.eval(model.weights[0]), expected_kernel)

@@ -19,15 +19,6 @@ namespace tensorflow {
 REGISTER5(UnaryOp, CPU, "Cosh", functor::cosh, float, double, bfloat16,
           complex64, complex128);
 
-#if TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNEL(TYPE)                                \
-  REGISTER_KERNEL_BUILDER(                                        \
-      Name("Cosh").Device(DEVICE_SYCL).TypeConstraint<TYPE>("T"), \
-      UnaryOp<SYCLDevice, functor::cosh<TYPE>>);
-REGISTER_SYCL_KERNEL(float);
-REGISTER_SYCL_KERNEL(double);
-#undef REGISTER_SYCL_KERNEL
-#endif  // TENSORFLOW_USE_SYCL
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER2(UnaryOp, GPU, "Cosh", functor::cosh, float, double);

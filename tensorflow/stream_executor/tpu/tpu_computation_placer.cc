@@ -72,8 +72,8 @@ static std::unique_ptr<xla::ComputationPlacer> CreateTpuComputationPlacer() {
 }
 
 static bool InitModule() {
-  xla::ComputationPlacer::RegisterComputationPlacer(
-      tensorflow::TpuPlatform::kId, CreateTpuComputationPlacer);
+  xla::ComputationPlacer::RegisterComputationPlacer(TpuPlatform::kId,
+                                                    CreateTpuComputationPlacer);
   return true;
 }
 static bool module_initialized = InitModule();

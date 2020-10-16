@@ -105,11 +105,6 @@ TFTPU_CAPI_EXPORT void TpuProgram_SerializeCompilerMetadata(
     const XLA_TpuProgram* tpu_program,
     CompilerMetadataSerializedProto* compiler_metadata, SE_Status* status);
 
-// Gets host transfer metadata proto from a `tpu_program`.
-TFTPU_CAPI_EXPORT void TpuProgram_SerializeHostComputeMetadata(
-    const XLA_TpuProgram* tpu_program,
-    HostComputeMetadataSerializedProto* host_compute_metadata,
-    SE_Status* status);
 
 // Deserializes the `GetTpuProgramResponse` proto into an `XLA_TpuProgram`.
 TFTPU_CAPI_EXPORT void TpuProgram_DeserializeFromGetTpuProgramResponseProto(
@@ -132,7 +127,6 @@ struct TfTpu_TpuProgramApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuProgram_GetTpuProgram);
   TFTPU_ADD_FN_IN_STRUCT(TpuProgram_SerializeTpuExecutable);
   TFTPU_ADD_FN_IN_STRUCT(TpuProgram_SerializeCompilerMetadata);
-  TFTPU_ADD_FN_IN_STRUCT(TpuProgram_SerializeHostComputeMetadata);
   TFTPU_ADD_FN_IN_STRUCT(TpuProgram_DeserializeFromGetTpuProgramResponseProto);
 };
 

@@ -513,7 +513,7 @@ static bool RuntimeVerifierWriterMain(raw_ostream &os, RecordKeeper &records) {
         continue;
       }
       if (trait.getDef().getValueAsString("trait") !=
-          "OpTrait::TFLRuntimeOpTrait") {
+          "::mlir::OpTrait::TFLRuntimeOpTrait") {
         continue;
       }
 

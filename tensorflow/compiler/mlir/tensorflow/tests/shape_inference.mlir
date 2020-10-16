@@ -575,4 +575,15 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   func @pcall_resource_result_func(%arg0: tensor<*x!tf.resource<tensor<f32>>>) -> tensor<*x!tf.resource<tensor<f32>>> {
     return %arg0 : tensor<*x!tf.resource<tensor<f32>>>
   }
+
+  // Check that the fold for tf.Size does not crash with unranked output type.
+  // CHECK-LABEL: func @unranked_tf_size
+  func @unranked_tf_size() -> tensor<*xi32> {
+    %0 = "tf.Const"() {value = dense<[-1, 26]> : tensor<2xi32>} : () -> tensor<2xi32>
+    %add = "tf.AddV2"(%0, %0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<*xi32>
+    // CHECK: "tf.Size"
+    // CHECK-SAME: (tensor<2xi32>) -> tensor<i32>
+    %size = "tf.Size"(%add) {device = ""} : (tensor<*xi32>) -> tensor<*xi32>
+    return %size : tensor<*xi32>
+  }
 }

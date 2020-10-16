@@ -39,7 +39,7 @@ class DispatcherConfig(
     port: Specifies the port to bind to. A value of 0 indicates that the server
       may bind to any available port.
     protocol: The protocol to use for communicating with the tf.data service.
-      Acceptable values include `"grpc" and "grpc+local"`.
+      Defaults to `"grpc"`.
     work_dir: A directory to store dispatcher state in. This
       argument is required for the dispatcher to be able to recover from
       restarts.
@@ -122,10 +122,10 @@ class DispatchServer(object):
 
     Args:
       config: (Optional.) A `tf.data.experimental.service.DispatcherConfig`
-        configration. If `None`, the dispatcher will be use default
+        configration. If `None`, the dispatcher will use default
         configuration values.
       start: (Optional.) Boolean, indicating whether to start the server after
-        creating it.
+        creating it. Defaults to True.
     """
     config = config or DispatcherConfig()
     if config.fault_tolerant_mode and not config.work_dir:
@@ -228,8 +228,8 @@ class WorkerConfig(
       connect to this worker.
     port: Specifies the port to bind to. A value of 0 indicates that the worker
       can bind to any available port.
-    protocol: Specifies the protocol to be used by the server.
-      Acceptable values include `"grpc" and "grpc+local"`.
+    protocol: (Optional.) Specifies the protocol to be used by the server.
+      Defaults to `"grpc"`.
     heartbeat_interval_ms: How often the worker should heartbeat to the
       dispatcher, in milliseconds. If not set, the runtime will select a
       reasonable default. A higher value will reduce the load on the dispatcher,
@@ -289,10 +289,11 @@ class WorkerServer(object):
     Args:
       config: A `tf.data.experimental.service.WorkerConfig` configration.
       start: (Optional.) Boolean, indicating whether to start the server after
-        creating it.
+        creating it. Defaults to True.
     """
     if config.dispatcher_address is None:
       raise ValueError("must specify a dispatcher_address")
+    self._config = config
     config_proto = service_config_pb2.WorkerConfig(
         dispatcher_address=config.dispatcher_address,
         worker_address=config.worker_address,

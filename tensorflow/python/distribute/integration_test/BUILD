@@ -9,13 +9,17 @@ package(
 distribute_py_test(
     name = "saved_model_test",
     srcs = ["saved_model_test.py"],
-    disable_mlir_bridge = False,
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:lookup_ops",
         "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:multi_process_runner",
         "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute:parameter_server_strategy_v2",
+        "//tensorflow/python/distribute:sharded_variable",
         "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/distribute:test_util",
+        "//tensorflow/python/distribute:values",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -29,6 +33,7 @@ cuda_py_test(
     shard_count = 2,
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # TODO(b/170838851): UnavailableError:  Connection reset by peer
     ],
     deps = [
         "//tensorflow:tensorflow_py",
@@ -36,6 +41,7 @@ cuda_py_test(
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:multi_process_runner",
         "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute:test_util",
         "//tensorflow/python/eager:test",
     ],
 )
