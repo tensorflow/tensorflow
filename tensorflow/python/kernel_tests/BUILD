@@ -283,17 +283,26 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "collective_ops_test",
     size = "medium",
     srcs = ["collective_ops_test.py"],
+    tags = [
+        "multi_and_single_gpu",
+    ],
     tfrt_enabled = False,
     deps = [
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:collective_ops_gen",
-        "//tensorflow/python:framework_combinations",
+        "//tensorflow/python:collective_ops",
+        "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:test_util",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
