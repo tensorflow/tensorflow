@@ -13,22 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if !defined(__GNUC__) || defined(__CC_ARM) || defined(__clang__)
-// TODO: remove this once this PR is merged and part of tensorflow downloads:
-// https://github.com/google/flatbuffers/pull/6132
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdouble-promotion"
 #include "flatbuffers/flexbuffers.h"
-#pragma clang diagnostic pop
-#else
-#include "flatbuffers/flexbuffers.h"
-#endif
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/kernels/kernel_runner.h"
-
 #include "tensorflow/lite/micro/testing/micro_test.h"
-#include "tensorflow/lite/micro/testing/test_utils.h"
+#include "tensorflow/lite/micro/test_helpers.h"
 
 // See: tensorflow/lite/micro/kernels/detection_postprocess_test/readme
 #include "tensorflow/lite/micro/kernels/detection_postprocess_test/flexbuffers_generated_data.h"
@@ -482,22 +472,6 @@ TF_LITE_MICRO_TEST(
       input_data_quantized2, input_data_quantized3,
       /* input1 min/max*/ -1.0, 1.0, /* input2 min/max */ 0.0, 1.0,
       /* input3 min/max */ 0.0, 100.5);
-}
-
-TF_LITE_MICRO_TEST(DetectionPostprocessFloatFastNMSUndefinedOutputDimensions) {
-  float output_data1[12];
-  float output_data2[3];
-  float output_data3[3];
-  float output_data4[1];
-
-  tflite::testing::TestDetectionPostprocess(
-      tflite::testing::kInputShape1, tflite::testing::kInputData1,
-      tflite::testing::kInputShape2, tflite::testing::kInputData2,
-      tflite::testing::kInputShape3, tflite::testing::kInputData3, nullptr,
-      output_data1, nullptr, output_data2, nullptr, output_data3, nullptr,
-      output_data4, tflite::testing::kGolden1, tflite::testing::kGolden2,
-      tflite::testing::kGolden3, tflite::testing::kGolden4,
-      /* tolerance */ 0, /* Use regular NMS: */ false);
 }
 
 TF_LITE_MICRO_TESTS_END
