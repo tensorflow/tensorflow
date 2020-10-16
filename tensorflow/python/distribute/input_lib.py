@@ -609,7 +609,7 @@ class DistributedIteratorBase(DistributedIteratorInterface):
 
   # pylint: disable=super-init-not-called
   def __init__(self, input_workers, iterators, strategy,
-               enable_get_next_as_optional, options=None):
+               enable_get_next_as_optional):
     assert isinstance(input_workers, InputWorkers)
     if not input_workers.worker_devices:
       raise ValueError("Should have at least one worker for input iterator.")
@@ -618,7 +618,6 @@ class DistributedIteratorBase(DistributedIteratorInterface):
     self._input_workers = input_workers
     self._strategy = strategy
     self._enable_get_next_as_optional = enable_get_next_as_optional
-    self._options=options
 
   def next(self):
     return self.__next__()
@@ -657,10 +656,6 @@ class DistributedIteratorBase(DistributedIteratorInterface):
           # Make `replicas` a flat list of values across all replicas.
           replicas.extend(
               self._iterators[i].get_next_as_list_static_shapes(new_name))
-      if (self._options
-          and self._options.experimental_replication_mode == InputReplicationMode.PER_REPLICA
-              and not self._options.experimental_prefetch_to_device):
-        replicas = tuple((p,) for p in replicas)
       return distribute_utils.regroup(replicas)
 
     out_of_range_replicas = []
@@ -868,8 +863,7 @@ class DistributedIterator(DistributedIteratorBase,
                strategy=None,
                components=None,
                element_spec=None,
-               enable_get_next_as_optional=False,
-               options=None):
+               enable_get_next_as_optional=False):
     if input_workers is None:
       raise ValueError("`input_workers` should be "
                        "provided.")
@@ -886,17 +880,13 @@ class DistributedIterator(DistributedIteratorBase,
       self._iterators = components
       self._strategy = strategy
       self._enable_get_next_as_optional = enable_get_next_as_optional
-      self._options = options
     else:
       if (components is not None and element_spec is not None):
         raise ValueError(error_message)
 
       super(DistributedIterator,
-            self).__init__(input_workers=input_workers,
-                           iterators=iterators,
-                           strategy=strategy,
-                           enable_get_next_as_optional=enable_get_next_as_optional,
-                           options=options)
+            self).__init__(input_workers, iterators, strategy,
+                           enable_get_next_as_optional)
 
   @property
   def element_spec(self):
@@ -1214,8 +1204,7 @@ class DistributedDatasetsFromFunction(_IterableInput):
         iterator = DistributedIterator(input_workers=self._input_workers,
                                        iterators=iterators,
                                        strategy=self._strategy,
-                                       enable_get_next_as_optional=self._enable_get_next_as_optional,
-                                       options=self._options)
+                                       enable_get_next_as_optional=self._enable_get_next_as_optional)
       iterator._element_spec = self._element_spec  # pylint: disable=protected-access
 
       # When async eager is enabled, sometimes the iterator may not finish
@@ -1450,7 +1439,7 @@ def _recover_shape_fn(data, value_structure):
 class _SingleWorkerDatasetIteratorBase(object):
   """Iterator for a single `tf.data.Dataset`."""
 
-  def __init__(self, dataset, worker, devices):
+  def __init__(self, dataset, worker, devices, options=None):
     """Create iterator for the `dataset` to fetch data to worker's `devices` .
 
     A `MultiDeviceIterator`  or `OwnedMultiDeviceIterator` is used to prefetch
@@ -1465,10 +1454,20 @@ class _SingleWorkerDatasetIteratorBase(object):
     self._worker = worker
     self._devices = devices
     self._element_spec = dataset.element_spec
+    self._options=options
     self._make_iterator()
 
   def _make_iterator(self):
     raise NotImplementedError("must be implemented in descendants")
+
+  def _format_data_list_with_options(self, data_list):
+    """change the data list to tuple type if required"""
+    if (self._options
+        and self._options.experimental_replication_mode == InputReplicationMode.PER_REPLICA
+            and not self._options.experimental_prefetch_to_device):
+      return tuple((data_list,))
+    else:
+      return data_list
 
   def get_next(self, device, name=None):
     """Get next element for the given device."""
@@ -1491,7 +1490,8 @@ class _SingleWorkerDatasetIteratorBase(object):
     """
     del name
     with ops.device(self._worker):
-      return self._iterator.get_next()
+      return self._format_data_list_with_options(
+          self._iterator.get_next())
 
   def get_next_as_list(self, name=None):
     """Get next element from underlying iterator.
@@ -1511,7 +1511,8 @@ class _SingleWorkerDatasetIteratorBase(object):
     """
     del name
     with ops.device(self._worker):
-      data_list = self._iterator.get_next_as_optional()
+      data_list = self._format_data_list_with_options(
+        self._iterator.get_next_as_optional())
       result = []
       for i, data in enumerate(data_list):
         # Place the condition op in the same device as the data so the data
@@ -1629,7 +1630,7 @@ class _SingleWorkerOwnedDatasetIterator(_SingleWorkerDatasetIteratorBase,
       if (components is not None or element_spec is not None):
         raise ValueError(error_message)
       super(_SingleWorkerOwnedDatasetIterator, self).__init__(dataset, worker,
-                                                              devices)
+                                                              devices, options)
 
   def _make_iterator(self):
     """Make appropriate iterator on the dataset."""
