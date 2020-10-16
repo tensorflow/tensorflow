@@ -1939,14 +1939,31 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
            include_optimizer=True,
            save_format=None,
            signatures=None,
-           options=None,
-           save_traces=True):
-    # pylint: disable=line-too-long
+           options=None):
     """Saves the model to Tensorflow SavedModel or a single HDF5 file.
 
-    Please see `tf.keras.models.save_model` or the
-    [Serialization and Saving guide](https://keras.io/guides/serialization_and_saving/)
-    for details.
+    The savefile includes:
+
+    - The model architecture, allowing to re-instantiate the model.
+    - The model weights.
+    - The state of the optimizer, allowing to resume training
+        exactly where you left off.
+
+    This allows you to save the entirety of the state of a model
+    in a single file.
+
+    Saved models can be re-instantiated via `keras.models.load_model`.
+    The model returned by `load_model` is a compiled model ready to be used
+    (unless the saved model was never compiled in the first place).
+
+    Models built with the Sequential and Functional API can be saved to both the
+    HDF5 and SavedModel formats. Subclassed models can only be saved with the
+    SavedModel format.
+
+    Note that the model weights may have different scoped names after being
+    loaded. Scoped names include the model/layer names, such as
+    `"dense_1/kernel:0"`. It is recommended that you use the layer properties to
+     access specific variables, e.g. `model.get_layer("dense_1").kernel`.
 
     Arguments:
         filepath: String, PathLike, path to SavedModel or H5 file to save the
@@ -1960,15 +1977,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         signatures: Signatures to save with the SavedModel. Applicable to the
             'tf' format only. Please see the `signatures` argument in
             `tf.saved_model.save` for details.
-        options: (only applies to SavedModel format)
-            `tf.saved_model.SaveOptions` object that specifies options for
-            saving to SavedModel.
-        save_traces: (only applies to SavedModel format) When enabled, the
-            SavedModel will store the function traces for each layer. This
-            can be disabled, so that only the configs of each layer are stored.
-            Defaults to `True`. Disabling this will decrease serialization time
-            and reduce file size, but it requires that all custom layers/models
-            implement a `get_config()` method.
+        options: Optional `tf.saved_model.SaveOptions` object that specifies
+            options for saving to SavedModel.
 
     Example:
 
@@ -1983,9 +1993,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     model = load_model('my_model.h5')
     ```
     """
-    # pylint: enable=line-too-long
     save.save_model(self, filepath, overwrite, include_optimizer, save_format,
-                    signatures, options, save_traces)
+                    signatures, options)
 
   def save_weights(self,
                    filepath,
