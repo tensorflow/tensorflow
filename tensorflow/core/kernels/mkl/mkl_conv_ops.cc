@@ -941,21 +941,18 @@ class MklConvOp : public OpKernel {
       const Tensor& add_tensor = MklGetInput(context, kInputIndex_Add);
       MklDnnShape add_mkl_shape;
       GetMklShape(context, kInputIndex_Add, &add_mkl_shape, native_format);
-      if (native_format) {
-        // Forward the summand tensor to the output only if it has no other
-        // references, otherwise make a copy of it.
-        if (context->forward_input_to_output_with_shape(
-                kInputIndex_Add, kOutputIndex_Dst, output_tf_shape,
-                output_tensor)) {
-          return;
-        }
+      // Forward the summand tensor to the output only if it has no other
+      // references, otherwise make a copy of it.
+      if (native_format && context->forward_input_to_output_with_shape(
+                               kInputIndex_Add, kOutputIndex_Dst,
+                               output_tf_shape, output_tensor)) {
+        return;
       }
       // Check if reorder is needed
-      if (add_mkl_shape == *output_mkl_shape &&
+      if (!native_format && add_mkl_shape == *output_mkl_shape &&
           ForwardMklTensorInToOutWithMklShape(context, kInputIndex_Add,
                                               kOutputIndex_Dst, output_tensor,
-                                              add_mkl_shape, false) &&
-          !native_format) {
+                                              add_mkl_shape, false)) {
         return;
       } else {
         AllocateOutputSetMklShape(context, kOutputIndex_Dst, output_tensor,
