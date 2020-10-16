@@ -381,7 +381,7 @@ add_library(tensorflow::tensorflowlite ALIAS tensorflow-lite)
 # Benchmark Tool
 populate_source_vars("${TFLITE_SOURCE_DIR}/tools/benchmark"
   TFLITE_BENCHMARK_SRCS
-  FILTER "(_test|_plus_flex_main|_performance_options_main)\\.cc$"
+  FILTER "(_test|_plus_flex_main|_performance_options.*)\\.cc$"
 )
 list(APPEND TFLITE_BENCHMARK_SRCS
   ${TF_SOURCE_DIR}/core/util/stats_calculator.cc
@@ -401,6 +401,13 @@ list(APPEND TFLITE_BENCHMARK_LIBS
   tensorflow-lite
   ${CMAKE_DL_LIBS}
 )
+
+# TODO(b/171007016): Enable performance options on Windows.
+if(NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Windows")
+  list(APPEND TFLITE_BENCHMARK_SRCS
+    ${TFLITE_SOURCE_DIR}/tools/benchmark/benchmark_performance_options.cc
+  )
+endif()
 
 if(TFLITE_ENABLE_XNNPACK)
   list(APPEND TFLITE_BENCHMARK_SRCS
