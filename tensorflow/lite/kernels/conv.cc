@@ -757,84 +757,29 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
     }
     case kCblasOptimized:
     case kGenericOptimized: {
-      // optimized_ops::Conv(op_params, GetTensorShape(input),
-      //                     GetTensorData<float>(input), GetTensorShape(filter),
-      //                     GetTensorData<float>(filter), GetTensorShape(bias),
-      //                     GetTensorData<float>(bias), GetTensorShape(output),
-      //                     GetTensorData<float>(output), GetTensorShape(im2col),
-      //                     GetTensorData<float>(im2col),
-      //                     CpuBackendContext::GetFromContext(context));
-      // break;
-      RuntimeShape filter_shape = GetTensorShape(filter);
-      // if (op_params.stride_width ==1 && filter_shape.Dims(0) %8 ==0){
-      //   filter_shape.SetDim(0, 7*filter_shape.Dims(0)/8);
-      // }
-      RuntimeShape input_shape = GetTensorShape(input);
-      // TFLITE_LOG(INFO) << "pad" << data->padding.width << data->padding.height;
       if(params->dilation_height_factor != 1) {
         // TFLITE_LOG(INFO) << GetTensorShape(input).Dims(3) << "point dilate filt shape/bypass" << filter_shape.Dims(1) << " conv height " << params->dilation_height_factor;
         // TFLITE_LOG(INFO) << "pad " << data->padding.height << " " << data->padding.width;
+        RuntimeShape filter_shape = GetTensorShape(filter);
         filter_shape.SetDim(0, filter_shape.Dims(0) - params->dilation_height_factor);
-      }
-      // if(params->dilation_width_factor != 1) {
-      //   // TFLITE_LOG(INFO) << "filt shape/bypass" << filter_shape.Dims(0) << " conv width " << params->dilation_width_factor;        TFLITE_LOG(INFO) << "pad " << data->padding.height << " " << data->padding.width;
-      //   // TFLITE_LOG(INFO) << "pad " << data->padding.height << " " << data->padding.width;
-      //   filter_shape.SetDim(0, filter_shape.Dims(0) - params->dilation_height_factor);
-        
-      // }
-      // filter_shape.SetDim(0, filter_shape.Dims(0)/4);
-
-      // flexiblnet_v2
-      // if (filter_shape.Dims(1) == 1){
-      //   if (filter_shape.Dims(0) == 128 || filter_shape.Dims(0) == 40 || filter_shape.Dims(0) == 8){
-      //     filter_shape.SetDim(0, filter_shape.Dims(0)/2);
-      //   }
-      //   else if (filter_shape.Dims(0) == 224){
-      //     if (input_shape.Dims(3) == 640) filter_shape.SetDim(0, 112);
-      //   }
-      //   else if (filter_shape.Dims(0) == 64){
-      //     if (input_shape.Dims(3) == 128) filter_shape.SetDim(0, 16);
-      //     }  
-      //   }
-      //   else if (filter_shape.Dims(0) == 48){
-      //     if (input_shape.Dims(3) == 48) filter_shape.SetDim(0, 24);
-      //   }
-      //   else if (filter_shape.Dims(0) == 32){
-      //     if (input_shape.Dims(3) == 80) filter_shape.SetDim(0, 16);
-      //   }
-      // }
-
-      // flexiblenet_v3
-      // if (filter_shape.Dims(0) == 128 || filter_shape.Dims(0) == 40 || filter_shape.Dims(0) == 32 || filter_shape.Dims(0) == 8){
-      //   filter_shape.SetDim(0, filter_shape.Dims(0)/4);
-      // }
-      // else if (filter_shape.Dims(0)==224){
-      //   if (input_shape.Dims(1) == 7) filter_shape.SetDim(0, filter_shape.Dims(0)/4);
-      // }
-      // else if (filter_shape.Dims(0)==48){
-      //   if (input_shape.Dims(1) == 56) filter_shape.SetDim(0, filter_shape.Dims(0)/4);
-      // }
-      // else if (filter_shape.Dims(0)==64){
-      //   if (input_shape.Dims(1) == 14) filter_shape.SetDim(0, filter_shape.Dims(0)/4);
-      // }
-      
-      // flexiblenet_v4
-      // if (filter_shape.Dims(0)==128 || filter_shape.Dims(0)==224 || filter_shape.Dims(0)==48 || filter_shape.Dims(0)==112) {
-      //   if (input_shape.Dims(3) == filter_shape.Dims(0)) filter_shape.SetDim(0, filter_shape.Dims(0)/4);
-      // }
-      // else if (filter_shape.Dims(0) == 8 || filter_shape.Dims(0) == 64){
-      //   filter_shape.SetDim(0, filter_shape.Dims(0)/4);
-      // }
-      
-
-      // output->dims->data[3] = std::max(filter_shape.Dims(0), std::min(input->dims->data[3], output->dims->data[3]));
-      optimized_ops::SpecialConv(op_params, input_shape,
+        optimized_ops::SpecialConv(op_params, GetTensorShape(input),
                           GetTensorData<float>(input), filter_shape,
                           GetTensorData<float>(filter), GetTensorShape(bias),
                           GetTensorData<float>(bias), GetTensorShape(output),
                           GetTensorData<float>(output), GetTensorShape(im2col),
                           GetTensorData<float>(im2col),
                           CpuBackendContext::GetFromContext(context));
+      }
+      // output->dims->data[3] = std::max(filter_shape.Dims(0), std::min(input->dims->data[3], output->dims->data[3]));
+      else{
+        optimized_ops::Conv(op_params, GetTensorShape(input),
+                                  GetTensorData<float>(input), GetTensorShape(filter),
+                                  GetTensorData<float>(filter), GetTensorShape(bias),
+                                  GetTensorData<float>(bias), GetTensorShape(output),
+                                  GetTensorData<float>(output), GetTensorShape(im2col),
+                                  GetTensorData<float>(im2col),
+                                  CpuBackendContext::GetFromContext(context));
+      }
       break;
     }
     case kMultithreadOptimized: {

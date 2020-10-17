@@ -18,6 +18,7 @@ limitations under the License.
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/types.h"
+#include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 
 #include "tensorflow/lite/tools/logging.h"
 
@@ -100,7 +101,6 @@ struct FloatDepthwiseConvKernel<false, 2, 1> {
     const float32x2_t filters = vld1_f32(filter_ptr);
     const float32x4_t filters_dup2 = vcombine_f32(filters, filters);
     int outp = 0;
-    // TFLITE_LOG(INFO) << "NUM OUTPUT PIXELS " << num_output_pixels;
     // Handle 8 output pixels at a time.
     for (; outp <= num_output_pixels - 8; outp += 8) {
       // Load the inputs
@@ -788,7 +788,6 @@ void FloatDepthwiseConvAccumRow(int stride, int dilation_factor,
   // TFLITE_DCHECK_EQ(output_depth, input_depth * depth_multiplier);
   int old_input_depth = output_depth/depth_multiplier;
   int filter_depth = input_depth*depth_multiplier;
-  // TFLITE_LOG(INFO) << "old input depth " << old_input_depth;
   const int input_ptr_increment = stride * old_input_depth;
   const float* filter_base_ptr = filter_data;
   for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
@@ -1019,7 +1018,6 @@ inline void DepthwiseConvImpl(
   const int input_height_stride = input_shape.Dims(3) * input_shape.Dims(2);
   const int input_batch_stride = input_height_stride * input_shape.Dims(1);
   const int filter_height_stride = output_shape.Dims(3) * filter_shape.Dims(2); //TODO: change to filter_shape.Dims(3)
-
   // Now that we have determined row_accum_func, we can start work.
   int batch_start = 0;
   int batch_end = batches;
@@ -1046,6 +1044,48 @@ inline void DepthwiseConvImpl(
       output_ptr_offset = row_start * output_width * output_depth;
       break;
   }
+  
+  const float* copy_input_data = input_data;
+  int copy_height_stride = input_height_stride;
+  int copy_batch_stride = input_batch_stride;
+  // Average Pooling for Concatenation
+  // if (filter_depth != output_depth && (stride_width != 1 || stride_height != 1)){
+  //   // TFLITE_LOG(INFO) << "CONCAT AVG POOL";
+  //   copy_height_stride = input_shape.Dims(3) * output_shape.Dims(2);
+  //   copy_batch_stride = copy_height_stride * output_shape.Dims(1);
+  //   // TFLITE_LOG(INFO) << "copy stride " << copy_height_stride << input_height_stride;
+  //   PoolParams params;
+  //   params.stride_height = stride_height;
+  //   params.stride_width = stride_width;
+  //   params.filter_height = stride_height;
+  //   params.filter_width = stride_width;
+  //   params.float_activation_min =
+  //       static_cast<float>(std::numeric_limits<float>::lowest());
+  //   params.float_activation_max =
+  //       static_cast<float>(std::numeric_limits<float>::max());
+  //   auto compute_padding = [](int stride, int in_size, int filter_size,
+  //                             int out_size) {
+  //     int padding = ((out_size - 1) * stride + filter_size - in_size) / 2;
+  //     return padding > 0 ? padding : 0;
+  //   };
+  //   params.padding_values.width =
+  //       compute_padding(stride_width, input_width, filter_width, output_width);
+  //   params.padding_values.height = compute_padding(stride_height, input_height,
+  //                                               filter_height, output_height);
+  //   // TFLITE_LOG(INFO) << "PAD " << params.padding_values.height;
+  //   auto pool_output_shape =
+  //     RuntimeShape({batches, output_height, output_width, old_input_depth});
+  //   // std::vector<float> optimized_maxpool_output(pool_output_shape.FlatSize());
+  //   float* optimized_maxpool_output = new float[pool_output_shape.FlatSize()];
+  //   optimized_ops::AveragePool(params, input_shape, input_data, pool_output_shape,
+  //                                optimized_maxpool_output);
+  //   copy_input_data = optimized_maxpool_output;
+  //   // TFLITE_LOG(INFO) << input_shape.FlatSize() << " TOTAL LENGTH = " << pool_output_shape.FlatSize();
+  //   // TFLITE_LOG(INFO) << "INPUT " << input_height << input_width << input_depth;
+  //   // TFLITE_LOG(INFO) << "OUTPUT " << output_height << output_width << output_depth;
+  //   // TFLITE_LOG(INFO) << "input data " << input_data[0] << " " << input_data[4] << " " << input_data[16] << " " << input_data[20];
+  //   // TFLITE_LOG(INFO) << "copy input data " << copy_input_data[0];
+  // } 
 
   float* output_ptr = output_data + output_ptr_offset;
   int batch_step =
@@ -1064,7 +1104,6 @@ inline void DepthwiseConvImpl(
           std::min(filter_height,
                    (input_height - in_y_origin + dilation_height_factor - 1) /
                        dilation_height_factor);
-      // TFLITE_LOG(INFO) << "output pixels acc buffer " << kOutputPixelsInAccBuffer;
       for (int out_x_buffer_start = 0; out_x_buffer_start < output_width;
            out_x_buffer_start += kOutputPixelsInAccBuffer) {
         const int out_x_buffer_end = std::min(
@@ -1110,7 +1149,11 @@ inline void DepthwiseConvImpl(
         int i = 0;
         int a = 0;
         int remainder = 0;
-        const float* input_start = &input_data[b*input_batch_stride + out_y*input_height_stride];
+        // TFLITE_LOG(INFO) << "OUT IND " << batches << out_y << row_end;
+        // TFLITE_LOG(INFO) << input_height_stride << "STEP SIZE " << b*input_batch_stride + out_y*input_height_stride;
+        // TFLITE_LOG(INFO) << copy_height_stride << "STEP SIZE " << b*copy_batch_stride + out_y*copy_height_stride;
+        const float* input_start = &copy_input_data[b*copy_batch_stride + out_y*copy_height_stride];
+        // TFLITE_LOG(INFO) << "INPUT START  " << input_start[0] << input_start[1];
 // TODO(benoitjacob) optimized code goes here
 // #ifdef USE_NEON
 //         // Handle 16 values at a time
@@ -1159,7 +1202,9 @@ inline void DepthwiseConvImpl(
         //   output_ptr += 16;
         // }
         // // Handle 4 values at a time
-
+        // for(int j=0; j<16; j++){
+        //   TFLITE_LOG(INFO) << "XXXcopy input data/outputt buffer " << j << ": "  << copy_input_data[j] << " " << output_data[j];
+        // }
         for (; i <= num_output_values - 4; i += 4) {
           if(remainder <= filter_depth-4){ 
             float32x4_t acc = vld1q_f32(acc_buffer + a);
@@ -1188,7 +1233,6 @@ inline void DepthwiseConvImpl(
             output_ptr += num_input_copy-4;
             i += num_input_copy-4;
             remainder = 0;
-
             // for(int j=0; j<4; j++){
             //   output_ptr[j] = input_start[i+j]; 
             // } //replace with memcpy
@@ -1234,7 +1278,14 @@ inline void DepthwiseConvImpl(
     //     }
    
   }
+  //deallocate memory used to store Average Pooling
+  // if (filter_depth != output_depth && (stride_width != 1 || stride_height != 1)){
+  //   // TFLITE_LOG(INFO) << copy_input_data[0] << " " << copy_input_data[1];
+  //   delete[] copy_input_data;
+  //   // TFLITE_LOG(INFO) << copy_input_data[0] << " " << copy_input_data[1];
+  // }
 }
+  
 
 
 }  // namespace optimized_ops
