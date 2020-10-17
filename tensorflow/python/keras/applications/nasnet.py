@@ -70,7 +70,7 @@ def NASNet(
     skip_reduction=True,
     filter_multiplier=2,
     include_top=True,
-    weights=None,
+    weights='imagenet',
     input_tensor=None,
     pooling=None,
     classes=1000,
