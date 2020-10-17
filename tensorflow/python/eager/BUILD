@@ -612,7 +612,6 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/ops/numpy_ops:numpy",
         "//tensorflow/python/saved_model:save_context",
-        "//tensorflow/python/saved_model:save_options",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -1120,6 +1119,7 @@ cuda_py_test(
     size = "small",
     srcs = ["device_placement_test.py"],
     python_version = "PY3",
+    shard_count = 5,
     deps = [
         ":context",
         ":def_function",

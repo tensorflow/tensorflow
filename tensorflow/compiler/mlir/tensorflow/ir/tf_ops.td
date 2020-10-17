@@ -1635,7 +1635,7 @@ event: A string containing a binary-encoded tf.Event proto.
   let results = (outs);
 }
 
-def TF_SummaryWriterOp : TF_Op<"SummaryWriter", []> {
+def TF_SummaryWriterOp : TF_Op<"SummaryWriter", [TF_ResourceHandleAllocatorInterface]> {
   let summary = "Returns a handle to be used to access a summary writer.";
 
   let description = [{
@@ -1653,6 +1653,13 @@ writer: the summary writer resource. Scalar handle.
   let results = (outs
     Res<TF_ResourceTensor, "", [TF_SummaryAlloc]>:$writer
   );
+
+  let extraClassDeclaration = [{
+    // TF_ResourceHandleAllocatorInterface:
+    ResourceHandleValueAndId GetResourceHandleValueAndId(
+      llvm::SmallDenseMap<ResourceHandle, int64_t> &resource_handle_id_map,
+      int64_t &next_id);
+  }];
 }
 
 def TF_WriteAudioSummaryOp : TF_Op<"WriteAudioSummary", []> {

@@ -299,6 +299,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TFLITE_DCHECK(node->user_data != nullptr);
   const OpData& data = *(static_cast<const OpData*>(node->user_data));
 
+  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+  TF_LITE_ENSURE_MSG(context, input->type == filter->type,
+                     "Hybrid models are not supported on TFLite Micro.");
+
   switch (input->type) {  // Already know in/out types are same.
     case kTfLiteFloat32:
       EvalFloat(context, node, params, data, input, filter, bias, nullptr,

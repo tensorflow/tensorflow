@@ -21,13 +21,14 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
+namespace tfr {
 
 Status CompositeOpExpansion::Run(EagerOperation* orig_op,
                                  std::unique_ptr<EagerOperation>* out_op) {
   if (!IsEnabled()) return Status::OK();
   if (orig_op->Device() != kVariantDeviceNull) return Status::OK();
 
-  VLOG(1) << "Run Node Expansion Passes";
+  LOG_FIRST_N(INFO, 1) << "Run Node Expansion Passes";
 
   // Get the FunctionDef and insert that into the context
   const NodeDef& ndef = orig_op->MutableAttrs()->BuildNodeDef();
@@ -40,7 +41,7 @@ Status CompositeOpExpansion::Run(EagerOperation* orig_op,
   std::string fname =
       absl::StrCat("_expanded_", ndef.name(), "_", std::to_string(x));
   if (!ctx.FindFunctionByName(fname)) {
-    TF_ASSIGN_OR_RETURN(auto func, TFRDecomposeContext::Expand(ndef, fname));
+    TF_ASSIGN_OR_RETURN(auto func, ExpandNode(ndef, fname));
     TF_RETURN_IF_ERROR(ctx.AddFunctionDef(func));
   }
 
@@ -55,11 +56,14 @@ Status CompositeOpExpansion::Run(EagerOperation* orig_op,
   new_op->MutableAttrs()->CopyAttributes(orig_op->Attrs());
   out_op->reset(new_op);
 
-  VLOG(1) << "Rewrite the op to call function: " << fname;
+  LOG_FIRST_N(INFO, 1)
+      << "Finish Node Expansion Passes. Rewrite the op to call function: "
+      << fname;
 
   return Status::OK();
 }
 
 REGISTER_REWRITE(EagerOpRewriteRegistry::POST_PLACEMENT, CompositeOpExpansion);
 
+}  // namespace tfr
 }  // namespace tensorflow

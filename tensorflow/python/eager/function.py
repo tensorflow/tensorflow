@@ -67,7 +67,6 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
 from tensorflow.python.saved_model import save_context
-from tensorflow.python.saved_model import save_options
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import lazy_loader
@@ -3177,10 +3176,7 @@ class Function(object):
       variable_policy = (
           save_context.get_save_options().experimental_variable_policy)
     else:
-      # With EXPAND_DISTRIBUTED_VARIABLES the variables have the same behavior
-      # in and out of saving. We use EXPAND_DISTRIBUTED_VARIABLES so that if the
-      # user saves with it, there's no need to retrace the functions.
-      variable_policy = save_options.VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES
+      variable_policy = None
 
     return (parent_graph, device_functions, colocation_stack,
             in_cross_replica_context, variable_policy, xla_context_id)

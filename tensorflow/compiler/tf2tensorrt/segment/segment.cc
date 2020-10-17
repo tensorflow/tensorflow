@@ -646,10 +646,12 @@ ClusterBatchSize GetClusterBatchSizeForNode(
     return cluster_batch_size;
   }
 
+  // As shape inference cannot provide any useful information about the batch
+  // size, we keep it as missing.
   if (!graph_properties ||
       !graph_properties->HasInputProperties(node->name())) {
     VLOG(3) << "doesn't have input property";
-    return cluster_batch_size.SetBatchSize(-1);
+    return cluster_batch_size;
   }
 
   const std::vector<OpInfo::TensorProperties>& input_properties =
@@ -660,6 +662,7 @@ ClusterBatchSize GetClusterBatchSizeForNode(
   const TensorShapeProto* leading_shape = optional_leading_shape.value();
 
   DCHECK(!leading_shape->unknown_rank() && leading_shape->dim_size() >= 2);
+  VLOG(3) << "has batch size " << leading_shape->dim(0).size();
   return cluster_batch_size.SetBatchSize(leading_shape->dim(0).size());
 }
 
@@ -681,10 +684,11 @@ bool OpBatchSizeExceedMaximumBatchSize(
     bool use_implicit_batch, absl::optional<int> maximum_batch_size) {
   ClusterBatchSize cluster_batch_size =
       GetClusterBatchSizeForNode(graph_properties, node, use_implicit_batch);
-  if (cluster_batch_size.HasStaticBatchSize() &&
-      maximum_batch_size.has_value() &&
-      cluster_batch_size.GetStaticBatchSize() > maximum_batch_size.value()) {
-    VLOG(2) << "OP batch size " << cluster_batch_size.GetStaticBatchSize()
+  // If the batch size is dynamic, then the negative dynamic batch size
+  // identifier shall never be larger than the positive max batch size.
+  if (cluster_batch_size.HasBatchSize() && maximum_batch_size.has_value() &&
+      cluster_batch_size.GetBatchSize() > maximum_batch_size.value()) {
+    VLOG(2) << "OP batch size " << cluster_batch_size.GetBatchSize()
             << "  max_batch_size " << maximum_batch_size.value();
     return true;
   }

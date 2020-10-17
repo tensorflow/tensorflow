@@ -203,8 +203,6 @@ class InitializersTest(test.TestCase):
             run_metadata=run_metadata)
 
   @test_util.run_gpu_only
-  @test_util.disable_tfrt('b/165614506: Incorrect device name set in '
-                          'tfrt::TensorHandle.')
   def test_eager_orthogonal_gpu(self):
     with context.eager_mode():
       v = variable_scope.get_variable(

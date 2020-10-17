@@ -150,6 +150,7 @@ Build Type                                                                      
 *   [Intro to TensorFlow for Deep Learning from Udacity](https://www.udacity.com/course/intro-to-tensorflow-for-deep-learning--ud187)
 *   [Introduction to TensorFlow Lite from Udacity](https://www.udacity.com/course/intro-to-tensorflow-lite--ud190)
 *   [Machine Learning with TensorFlow on GCP](https://www.coursera.org/specializations/machine-learning-tensorflow-gcp)
+*   [TensorFlow Codelabs](https://codelabs.developers.google.com/?cat=TensorFlow)
 *   [TensorFlow Chat Room on StackOverflow (not actively monitored by the
     TensorFlow team)](https://chat.stackoverflow.com/rooms/216694/tensorflow)
 *   [TensorFlow Blog](https://blog.tensorflow.org)

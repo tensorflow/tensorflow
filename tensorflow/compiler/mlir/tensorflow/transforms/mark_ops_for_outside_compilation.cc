@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/core/lib/monitoring/gauge.h"
 
 namespace mlir {
 namespace TFDevice {
@@ -36,6 +37,11 @@ namespace {
 
 constexpr char kXlaOutsideCompilationAttr[] = "_xla_outside_compilation";
 constexpr char kAllowSoftPlacementAttr[] = "allow_soft_placement";
+
+auto* auto_outside_compilation_gauge =
+    tensorflow::monitoring::Gauge<bool, 0>::New(
+        "/tensorflow/core/use_auto_outside_compilation",
+        "Tracks if auto outside compilation is enabled");
 
 // This pass marks unsupported ops in a device cluster with
 // `_xla_outside_compilation` attribute so the operations will run on the host
@@ -200,6 +206,9 @@ LogicalResult MarkUncompilableOps(
       outside_compiled_cluster_counter++;
     }
   });
+  if (outside_compiled_cluster_counter > 0) {
+    auto_outside_compilation_gauge->GetCell()->Set(true);
+  }
   return success();
 }
 

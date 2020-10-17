@@ -5518,7 +5518,7 @@ class SobelEdgesTest(test_util.TensorFlowTestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class DecodeImageTest(test_util.TensorFlowTestCase):
+class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   _FORWARD_COMPATIBILITY_HORIZONS = [
       (2020, 1, 1),
@@ -5698,7 +5698,7 @@ class DecodeImageTest(test_util.TensorFlowTestCase):
           first_frame = array_ops.gather(animation, 0)
           image1 = image_ops.convert_image_dtype(first_frame, dtypes.float32)
           image0, image1 = self.evaluate([image0, image1])
-          self.assertEqual(len(image0.shape), 3)
+          self.assertLen(image0.shape, 3)
           self.assertAllEqual(list(image0.shape), [40, 20, 3])
           self.assertAllEqual(image0, image1)
 
@@ -5706,9 +5706,55 @@ class DecodeImageTest(test_util.TensorFlowTestCase):
           image2 = image_ops.decode_image(gif0, dtype=dtypes.float32)
           image3 = image_ops.convert_image_dtype(animation, dtypes.float32)
           image2, image3 = self.evaluate([image2, image3])
-          self.assertEqual(len(image2.shape), 4)
+          self.assertLen(image2.shape, 4)
           self.assertAllEqual(list(image2.shape), [12, 40, 20, 3])
           self.assertAllEqual(image2, image3)
+
+  @parameterized.named_parameters(
+      ("_jpeg", "JPEG", "jpeg_merge_test1.jpg"),
+      ("_png", "PNG", "lena_rgba.png"),
+      ("_gif", "GIF", "scan.gif"),
+  )
+  def testWrongOpBmp(self, img_format, filename):
+    base_folder = "tensorflow/core/lib"
+    base_path = os.path.join(base_folder, img_format.lower(), "testdata")
+    err_msg = "Trying to decode " + img_format + " format using DecodeBmp op"
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError), err_msg):
+      img_bytes = io_ops.read_file(os.path.join(base_path, filename))
+      img = image_ops.decode_bmp(img_bytes)
+      self.evaluate(img)
+
+  @parameterized.named_parameters(
+      ("_jpeg", image_ops.decode_jpeg, "DecodeJpeg"),
+      ("_png", image_ops.decode_png, "DecodePng"),
+      ("_gif", image_ops.decode_gif, "DecodeGif"),
+  )
+  def testWrongOp(self, decode_op, op_used):
+    base = "tensorflow/core/lib/bmp/testdata"
+    bmp0 = io_ops.read_file(os.path.join(base, "rgba_small.bmp"))
+    err_msg = ("Trying to decode BMP format using a wrong op. Use `decode_bmp` "
+               "or `decode_image` instead. Op used: ") + op_used
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError), err_msg):
+      img = decode_op(bmp0)
+      self.evaluate(img)
+
+  @parameterized.named_parameters(
+      ("_png", "PNG", "lena_rgba.png"),
+      ("_gif", "GIF", "scan.gif"),
+      ("_bmp", "BMP", "rgba_small.bmp"),
+  )
+  def testWrongOpJpeg(self, img_format, filename):
+    base_folder = "tensorflow/core/lib"
+    base_path = os.path.join(base_folder, img_format.lower(), "testdata")
+    err_msg = ("DecodeAndCropJpeg operation can run on JPEG only, but "
+               "detected ") + img_format
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError), err_msg):
+      img_bytes = io_ops.read_file(os.path.join(base_path, filename))
+      img = image_ops.decode_and_crop_jpeg(img_bytes, [1, 1, 2, 2])
+      self.evaluate(img)
 
 
 if __name__ == "__main__":

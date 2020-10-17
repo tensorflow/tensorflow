@@ -126,16 +126,6 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     mkl_repository(
-        name = "mkl_linux",
-        build_file = clean_dep("//third_party/mkl:mkl.BUILD"),
-        sha256 = "a936d6b277a33d2a027a024ea8e65df62bd2e162c7ca52c48486ed9d5dc27160",
-        strip_prefix = "mklml_lnx_2019.0.5.20190502",
-        urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/intel/mkl-dnn/releases/download/v0.21/mklml_lnx_2019.0.5.20190502.tgz",
-            "https://github.com/intel/mkl-dnn/releases/download/v0.21/mklml_lnx_2019.0.5.20190502.tgz",
-        ],
-    )
-    mkl_repository(
         name = "mkl_windows",
         build_file = clean_dep("//third_party/mkl:mkl.BUILD"),
         sha256 = "33cc27652df3b71d7cb84b26718b5a2e8965e2c864a502347db02746d0430d57",
@@ -235,11 +225,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
         patch_file = clean_dep("//third_party/eigen3:gpu_packet_math.patch"),
-        sha256 = "00ff67c15f8e8faf14495482e7396cc1d99cdfaaa2151f4aafef92bc754e634d",  # SHARED_EIGEN_SHA
-        strip_prefix = "eigen-22c971a225dbb567cd1a45f6006d16c4aa618551",
+        sha256 = "e807a6a6f3a0e8ab10adeb59bb5a9bbb113e8e1684f9b4b32f73f58fd758b4cf",  # SHARED_EIGEN_SHA
+        strip_prefix = "eigen-011e0db31d1bed8b7f73662be6d57d9f30fa457a",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/22c971a225dbb567cd1a45f6006d16c4aa618551/eigen-22c971a225dbb567cd1a45f6006d16c4aa618551.tar.gz",
-            "https://gitlab.com/libeigen/eigen/-/archive/22c971a225dbb567cd1a45f6006d16c4aa618551/eigen-22c971a225dbb567cd1a45f6006d16c4aa618551.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/011e0db31d1bed8b7f73662be6d57d9f30fa457a/eigen-011e0db31d1bed8b7f73662be6d57d9f30fa457a.tar.gz",
+            "https://gitlab.com/libeigen/eigen/-/archive/011e0db31d1bed8b7f73662be6d57d9f30fa457a/eigen-011e0db31d1bed8b7f73662be6d57d9f30fa457a.tar.gz",
         ],
     )
 
@@ -712,8 +702,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "89657b3a3b5772558ac084dc03591de5dab3f1f1"
-    LLVM_SHA256 = "8b0835cd130c20d34c4884dd776c1fb6b322d30c3668374f2366b4f397092fe3"
+    LLVM_COMMIT = "51ff04567b2f8d06b2062bd3ed72eab2e93e4466"
+    LLVM_SHA256 = "04be63368fea3b904b8467d5636a22ef38daacf299c807dc7a8f881800a1ee35"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
@@ -728,6 +718,18 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
             "//third_party/mlir:BUILD": "mlir/BUILD",
             "//third_party/mlir:test.BUILD": "mlir/test/BUILD",
         },
+    )
+
+    # Intel openMP that is part of LLVM sources.
+    tf_http_archive(
+        name = "llvm_openmp",
+        build_file = clean_dep("//third_party/llvm_openmp:BUILD"),
+        sha256 = "d19f728c8e04fb1e94566c8d76aef50ec926cd2f95ef3bf1e0a5de4909b28b44",
+        strip_prefix = "openmp-10.0.1.src",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/releases/download/llvmorg-10.0.1/openmp-10.0.1.src.tar.xz",
+            "https://github.com/llvm/llvm-project/releases/download/llvmorg-10.0.1/openmp-10.0.1.src.tar.xz",
+        ],
     )
 
     tf_http_archive(

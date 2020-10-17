@@ -170,6 +170,7 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "nomsan",  # TODO(b/162894966)
+        "notsan",  # TODO(b/171040408): data race
     ],
     # b/155301154 broken with XLA:GPU
     xla_enable_strict_auto_jit = True,
@@ -250,10 +251,11 @@ distribute_py_test(
     main = "custom_training_loop_models_test.py",
     tags = [
         "multi_and_single_gpu",
+        "notsan",  # TODO(b/170954243)
     ],
     tpu_tags = [
         "no_oss",  # b/153615544.
-        "no_tsan",  # TODO(b/170869466)
+        "notsan",  # TODO(b/170869466)
     ],
     deps = [
         "//tensorflow/python:math_ops",
@@ -432,6 +434,7 @@ distribute_py_test(
     main = "keras_embedding_model_correctness_test.py",
     shard_count = 8,
     tags = [
+        "broken",  # b/170975619
         "multi_and_single_gpu",
         "no_windows_gpu",
         "notsan",
@@ -453,6 +456,7 @@ distribute_py_test(
         "multi_and_single_gpu",
         "no_rocm",  # times out on ROCm
         "no_windows_gpu",
+        "noasan",  # TODO(b/337374867) fails with -fsanitize=null
         "notsan",
     ],
     xla_enable_strict_auto_jit = False,  # Tensorflow also fails.
@@ -511,6 +515,7 @@ distribute_py_test(
         "no_cuda11",
         "no_oss",
         "no_windows_gpu",
+        "noasan",  # TODO(b/337374867) fails with -fsanitize=null
         "notpu",  # TODO(b/153672562)
         "notsan",
     ],

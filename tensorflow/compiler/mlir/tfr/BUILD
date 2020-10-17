@@ -1,5 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
+load("//tensorflow/compiler/mlir/tfr:build_defs.bzl", "gen_op_libraries")
 load(
     "//third_party/mlir:tblgen.bzl",
     "gentbl",
@@ -232,9 +233,9 @@ tf_py_test(
     data = ["//tensorflow/compiler/mlir/tfr/resources:decomposition_lib"],
     python_version = "PY3",
     tags = [
+        "no_pip",
         "no_windows",  # TODO(b/170752141)
         "nomac",  # TODO(b/170752141)
-        "notsan",  # TODO(b/170752141)
     ],
     deps = [
         "//tensorflow/compiler/mlir/tfr/resources:composite_ops",
@@ -263,9 +264,9 @@ tf_py_test(
     data = ["//tensorflow/compiler/mlir/tfr/resources:decomposition_lib"],
     python_version = "PY3",
     tags = [
+        "no_pip",
         "no_windows",  # TODO(b/170752141)
         "nomac",  # TODO(b/170752141)
-        "notsan",  # TODO(b/170862433)
     ],
     deps = [
         "//tensorflow/compiler/mlir/tfr/resources:composite_ops",
@@ -305,10 +306,6 @@ py_library(
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/compiler/mlir/tfr:tfr_wrapper",
-        "//tensorflow/python:op_def_registry",
-        "//tensorflow/python/autograph/pyct",
-        "//tensorflow/python/autograph/pyct/static_analysis",
-        "@gast_archive//:gast",
     ],
 )
 
@@ -335,9 +332,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:op_def_registry",
-        "//tensorflow/python/autograph/pyct",
-        "@gast_archive//:gast",
     ],
 )
 
@@ -353,4 +347,18 @@ py_test(
         "//tensorflow/compiler/mlir/python/mlir_wrapper:filecheck_wrapper",
         "//tensorflow/python:client_testlib",
     ],
+)
+
+py_library(
+    name = "test_utils",
+    srcs = ["python/test_utils.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+gen_op_libraries(
+    name = "one_op",
+    src = "define_op_template.py",
 )

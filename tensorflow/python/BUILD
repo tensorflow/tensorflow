@@ -710,7 +710,6 @@ tf_python_pybind_extension(
         "@pybind11",
         "//third_party/python_runtime:headers",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/c/experimental/saved_model/core:pywrap_required_hdrs",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
@@ -1067,7 +1066,7 @@ cc_library(
         "-parse_headers",
     ],
     visibility = tf_external_workspace_visible(visibility + [
-        "//learning/deepmind/courier:__subpackages__",
+        "//tensorflow:ndarray_tensor_allow_list",
     ]),
     deps = [
         ":numpy_lib",
@@ -5688,6 +5687,7 @@ py_library(
         "//third_party/py/numpy",
         "@six_archive//:six",
         "@wrapt",
+        "//tensorflow/tools/docs:doc_controls",
         "//tensorflow/tools/compatibility:all_renames_v2",
     ],
 )
@@ -6053,7 +6053,10 @@ pywrap_tensorflow_macro(
         ":tf_session_helper",
         "//third_party/python_runtime:headers",
         "//tensorflow/c:c_api",
+        "//tensorflow/c:kernels",
+        "//tensorflow/c:ops",
         "//tensorflow/c:c_api_experimental",
+        "//tensorflow/c/experimental/stream_executor:stream_executor",
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/c:python_api",
         "//tensorflow/c:tf_status_helper",
@@ -6125,8 +6128,6 @@ filegroup(
         "//tensorflow/compiler/jit:get_compiler_ir",  #tfe
         "//tensorflow/compiler/jit:flags",  #tfe
         "//tensorflow/compiler/mlir/python:mlir",  # mlir
-        "//tensorflow/core/common_runtime:device",  # device_lib, tfe, tf_session
-        "//tensorflow/core/common_runtime:device_factory",  # device_lib, tfe, tf_session
         "//tensorflow/core/common_runtime:graph_constructor",  # tf_session
         "//tensorflow/core/common_runtime:quantize_training",  # quantize_training
         "//tensorflow/core/common_runtime:session_options",  # device_lib, tfe, tf_session
@@ -7613,6 +7614,9 @@ tf_python_pybind_extension(
         "//tensorflow/python/eager:pywrap_required_hdrs",
     ],
     module_name = "_pywrap_tfe",
+    # Only include TensorFlow header-only targets here.
+    # If a cc_library needs to depend on TensorFlow .cc files through srcs or
+    # deps, then you can use cc_header_only_library to keep only headers.
     deps = [
         ":safe_pyobject_ptr",
         ":pybind11_lib",
@@ -7623,14 +7627,14 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
         "//tensorflow/c:pywrap_required_hdrs",
         "@pybind11",
         "//third_party/python_runtime:headers",
-        "//tensorflow/c/experimental/saved_model/core:pywrap_required_hdrs",
         "//tensorflow/compiler/jit:flags_headers_only",
         "//tensorflow/compiler/jit:get_compiler_ir_hdrs_only",
-        "//tensorflow/c/eager:tfe_tensorhandle_internal",
+        "//tensorflow/c/eager:tfe_tensorhandle_internal_hdrs_only",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",

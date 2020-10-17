@@ -140,6 +140,7 @@ func @main(tensor<4xf32>) -> tensor<4xf32> {
   // CHECK-NEXT:   name: "min_runtime_version",
   // CHECK-NEXT:   buffer: 8
   // CHECK-NEXT:   } ]
+  // CHECK-NEXT:   signature_defs: [ ]
   // CHECK-NEXT: }
 
   %0 = "tfl.pseudo_const" () {value = dense<1.0> : tensor<4xf32>} : () -> tensor<4xf32> loc("Const")

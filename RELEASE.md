@@ -54,6 +54,13 @@
   tf.grad_pass_through(tf.quantization.quantize_and_dequantize_v2)(...).
 * `tf.distribute.Strategy.experimental_make_numpy_dataset` is removed. Please
   use `tf.data.Dataset.from_tensor_slices` instead.
+* `experimental_hints` in `tf.distribute.StrategyExtended.reduce_to`,
+  `tf.distribute.StrategyExtended.batch_reduce_to`,
+  `tf.distribute.ReplicaContext.all_reduce` are renamed to `options`.
+  `tf.distribute.experimental.CollectiveHints` is renamed
+  `tf.distribute.experimental.CommunicationOptions`.
+  `tf.distribute.experimental.CollectiveCommunication` is renamed
+  `tf.distribute.experimental.CommunicationImplementation`.
 
 ## Known Caveats
 
@@ -281,7 +288,7 @@
 
 *   Math and Linear Algebra:
 
-    *   <ADD RELEASE NOTES HERE>
+    * Add `tf.math.erfcinv`, the inverse to `tf.math.erfc`.
 
 *   TPU Enhancements:
 
@@ -326,6 +333,12 @@
     *   Bug fix in `tf.print()` with `OrderedDict` where if an `OrderedDict`
         didn't have the keys sorted, the keys and values were not being printed
         in accordance with their correct mapping.
+
+*    `TensorRT`
+
+    *   We now issue a warning when the `session_config` parameter for the TF1
+        converter is used or the `rewrite_config_template` field in the TF2
+        converter parameter object is used.
 
 *   Other:
 

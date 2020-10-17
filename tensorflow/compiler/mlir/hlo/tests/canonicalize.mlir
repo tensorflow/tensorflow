@@ -1167,3 +1167,265 @@ func @not_fold_sqrt_neg_constants() -> tensor<4xf32> {
   // CHECK: mhlo.sqrt
   return %1 : tensor<4xf32>
 }
+
+// CHECK-LABEL: @tensor_flow_scatter_v1_update
+func @tensor_flow_scatter_v1_update() -> tensor<3x3xi32> {
+  %0 = constant dense<[[1, 2, 3], [4, 5, 6], [7, 8, 9]]> : tensor<3x3xi32>
+  %1 = constant dense<[0, 2]> : tensor<2xi32>
+  %2 = constant dense<[[10, 20, 30], [70, 80, 90]]> : tensor<2x3xi32>
+  %3 = "mhlo.scatter"(%0, %1, %2) ( {
+    ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>):
+      "mhlo.return"(%arg1) : (tensor<i32>) -> ()
+    }) {indices_are_sorted = false,
+        scatter_dimension_numbers = {
+          index_vector_dim = 1 : i64,
+          inserted_window_dims = dense<0> : tensor<1xi64>,
+          scatter_dims_to_operand_dims = dense<0> : tensor<1xi64>,
+          update_window_dims = dense<[1]> : tensor<1xi64>
+        },
+        unique_indices = false
+    } : (tensor<3x3xi32>, tensor<2xi32>, tensor<2x3xi32>) -> tensor<3x3xi32>
+  return %3 : tensor<3x3xi32>
+  // CHECK: mhlo.constant dense<[
+  // CHECK-SAME: [10, 20, 30], [4, 5, 6], [70, 80, 90]
+  // CHECK-SAME: ]> : tensor<3x3xi32>
+}
+
+// CHECK-LABEL: @tensor_flow_scatter_v2_update
+func @tensor_flow_scatter_v2_update() -> tensor<3x3xi32> {
+  %0 = constant dense<[[1, 2, 3], [4, 5, 6], [7, 8, 9]]> : tensor<3x3xi32>
+  %1 = constant dense<[0, 2]> : tensor<2xi32>
+  %2 = constant dense<[[10, 30], [40, 60], [70, 90]]> : tensor<3x2xi32>
+  %3 = "mhlo.scatter"(%0, %1, %2) ( {
+    ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>):
+      "mhlo.return"(%arg1) : (tensor<i32>) -> ()
+    }) {indices_are_sorted = false,
+        scatter_dimension_numbers = {
+          index_vector_dim = 1 : i64,
+          inserted_window_dims = dense<1> : tensor<1xi64>,
+          scatter_dims_to_operand_dims = dense<1> : tensor<1xi64>,
+          update_window_dims = dense<[0]> : tensor<1xi64>
+        },
+        unique_indices = false
+    } : (tensor<3x3xi32>, tensor<2xi32>, tensor<3x2xi32>) -> tensor<3x3xi32>
+  return %3 : tensor<3x3xi32>
+  // CHECK: mhlo.constant dense<[
+  // CHECK-SAME: [10, 2, 30], [40, 5, 60], [70, 8, 90]
+  // CHECK-SAME: ]> : tensor<3x3xi32>
+}
+
+// CHECK-LABEL: @tensor_flow_scatter_add
+func @tensor_flow_scatter_add() -> tensor<3x3xi32> {
+  %0 = constant dense<[[1, 2, 3], [4, 5, 6], [7, 8, 9]]> : tensor<3x3xi32>
+  %1 = constant dense<[0, 2]> : tensor<2xi32>
+  %2 = constant dense<[[10, 20, 30], [70, 80, 90]]> : tensor<2x3xi32>
+  %3 = "mhlo.scatter"(%0, %1, %2) ( {
+    ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>):
+      %4 = "mhlo.add"(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> (tensor<i32>)
+      "mhlo.return"(%4) : (tensor<i32>) -> ()
+    }) {indices_are_sorted = false,
+        scatter_dimension_numbers = {
+          index_vector_dim = 1 : i64,
+          inserted_window_dims = dense<0> : tensor<1xi64>,
+          scatter_dims_to_operand_dims = dense<0> : tensor<1xi64>,
+          update_window_dims = dense<[1]> : tensor<1xi64>
+        },
+        unique_indices = false
+    } : (tensor<3x3xi32>, tensor<2xi32>, tensor<2x3xi32>) -> tensor<3x3xi32>
+  return %3 : tensor<3x3xi32>
+  // CHECK: mhlo.constant dense<[
+  // CHECK-SAME: [11, 22, 33], [4, 5, 6], [77, 88, 99]
+  // CHECK-SAME: ]> : tensor<3x3xi32>
+}
+
+// CHECK-LABEL: @tensor_flow_scatter_repeated
+func @tensor_flow_scatter_repeated() -> tensor<3x3xi32> {
+  %0 = constant dense<[[1, 2, 3], [4, 5, 6], [7, 8, 9]]> : tensor<3x3xi32>
+  %1 = constant dense<[1, 1]> : tensor<2xi32>
+  %2 = constant dense<[[10, 20, 30], [70, 80, 90]]> : tensor<2x3xi32>
+  %3 = "mhlo.scatter"(%0, %1, %2) ( {
+    ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>):
+      %4 = "mhlo.add"(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> (tensor<i32>)
+      "mhlo.return"(%4) : (tensor<i32>) -> ()
+    }) {indices_are_sorted = false,
+        scatter_dimension_numbers = {
+          index_vector_dim = 1 : i64,
+          inserted_window_dims = dense<0> : tensor<1xi64>,
+          scatter_dims_to_operand_dims = dense<0> : tensor<1xi64>,
+          update_window_dims = dense<[1]> : tensor<1xi64>
+        },
+        unique_indices = false
+    } : (tensor<3x3xi32>, tensor<2xi32>, tensor<2x3xi32>) -> tensor<3x3xi32>
+  return %3 : tensor<3x3xi32>
+  // CHECK: mhlo.constant dense<[
+  // CHECK-SAME: [1, 2, 3], [84, 105, 126], [7, 8, 9]
+  // CHECK-SAME: ]> : tensor<3x3xi32>
+}
+
+// CHECK-LABEL: @tensor_flow_scatter_multiple_batch
+func @tensor_flow_scatter_multiple_batch() -> tensor<3x3xi32> {
+  %0 = constant dense<[[1, 2, 3], [4, 5, 6], [7, 8, 9]]> : tensor<3x3xi32>
+  %1 = constant dense<[[0, 2], [2, 1]]> : tensor<2x2xi32>
+  %2 = constant dense<[[[10, 30], [40, 60], [70, 90]], [[5, 5], [5, 5], [5, 5]]]> : tensor<2x3x2xi32>
+  %3 = "mhlo.scatter"(%0, %1, %2) ( {
+    ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>):
+      %4 = "mhlo.add"(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> (tensor<i32>)
+      "mhlo.return"(%4) : (tensor<i32>) -> ()
+    }) {indices_are_sorted = false,
+        scatter_dimension_numbers = {
+          index_vector_dim = 2 : i64,
+          inserted_window_dims = dense<1> : tensor<1xi64>,
+          scatter_dims_to_operand_dims = dense<1> : tensor<1xi64>,
+          update_window_dims = dense<[1]> : tensor<1xi64>
+        },
+        unique_indices = false
+    } : (tensor<3x3xi32>, tensor<2x2xi32>, tensor<2x3x2xi32>) -> tensor<3x3xi32>
+  return %3 : tensor<3x3xi32>
+  // CHECK: mhlo.constant dense<[
+  // CHECK-SAME: [11, 7, 38], [44, 10, 71], [77, 13, 104]
+  // CHECK-SAME: ]> : tensor<3x3xi32>
+}
+
+// CHECK-LABEL: @tensor_flow_scatter_nd
+func @tensor_flow_scatter_nd() -> tensor<3x3x2xi32> {
+  %0 = constant dense<[[[-1, 1], [-2, 2], [-3, 3]], [[-4, 4], [-5, 5], [-6, 6]], [[-7, 7], [-8, 8], [-9, 9]]]> : tensor<3x3x2xi32>
+  %1 = constant dense<[[0, 0], [1, 0]]> : tensor<2x2xi32>
+  %2 = constant dense<[[-10, 10], [-40, 40]]> : tensor<2x2xi32>
+  %3 = "mhlo.scatter"(%0, %1, %2) ( {
+    ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>):
+      "mhlo.return"(%arg1) : (tensor<i32>) -> ()
+    }) {indices_are_sorted = false,
+        scatter_dimension_numbers = {
+          index_vector_dim = 1 : i64,
+          inserted_window_dims = dense<[0, 1]> : tensor<2xi64>,
+          scatter_dims_to_operand_dims = dense<[0, 1]> : tensor<2xi64>,
+          update_window_dims = dense<[1]> : tensor<1xi64>
+        },
+        unique_indices = false
+    } : (tensor<3x3x2xi32>, tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<3x3x2xi32>
+  return %3 : tensor<3x3x2xi32>
+  // CHECK: mhlo.constant dense<[
+  // CHECK-SAME: [-10, 10], [-2, 2], [-3, 3]
+  // CHECK-SAME: [-40, 40], [-5, 5], [-6, 6]
+  // CHECK-SAME: [-7, 7], [-8, 8], [-9, 9]
+  // CHECK-SAME: ]> : tensor<3x3x2xi32>
+}
+
+// CHECK-LABEL: @tensor_flow_scatter_nd_index_vector
+func @tensor_flow_scatter_nd_index_vector() -> tensor<3x3x2xi32> {
+  %0 = constant dense<[[[-1, 1], [-2, 2], [-3, 3]], [[-4, 4], [-5, 5], [-6, 6]], [[-7, 7], [-8, 8], [-9, 9]]]> : tensor<3x3x2xi32>
+  %1 = constant dense<[[0, 0], [1, 0]]> : tensor<2x2xi32>
+  %2 = constant dense<[[-10, 10], [-20, 20]]> : tensor<2x2xi32>
+  %3 = "mhlo.scatter"(%0, %1, %2) ( {
+    ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>):
+      "mhlo.return"(%arg1) : (tensor<i32>) -> ()
+    }) {indices_are_sorted = false,
+        scatter_dimension_numbers = {
+          index_vector_dim = 0 : i64,
+          inserted_window_dims = dense<[0, 1]> : tensor<2xi64>,
+          scatter_dims_to_operand_dims = dense<[0, 1]> : tensor<2xi64>,
+          update_window_dims = dense<[1]> : tensor<1xi64>
+        },
+        unique_indices = false
+    } : (tensor<3x3x2xi32>, tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<3x3x2xi32>
+  return %3 : tensor<3x3x2xi32>
+  // CHECK: mhlo.constant dense<[
+  // CHECK-SAME: [-20, 20], [-10, 10], [-3, 3]
+  // CHECK-SAME: [-4, 4], [-5, 5], [-6, 6]
+  // CHECK-SAME: [-7, 7], [-8, 8], [-9, 9]
+  // CHECK-SAME: ]> : tensor<3x3x2xi32>
+}
+
+// CHECK-LABEL: @scatter_batch_dus
+func @scatter_batch_dus() -> tensor<3x3xi32> {
+  %0 = constant dense<[[1, 2, 3], [4, 5, 6], [7, 8, 9]]> : tensor<3x3xi32>
+  %1 = constant dense<[[2, 1], [1, 1]]> : tensor<2x2xi32>
+  %2 = constant dense<[[[10]], [[20]]]> : tensor<2x1x1xi32>
+  %3 = "mhlo.scatter"(%0, %1, %2) ( {
+    ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>):
+      "mhlo.return"(%arg1) : (tensor<i32>) -> ()
+    }) {indices_are_sorted = false,
+        scatter_dimension_numbers = {
+          index_vector_dim = 0 : i64,
+          inserted_window_dims = dense<> : tensor<0xi64>,
+          scatter_dims_to_operand_dims = dense<[0, 1]> : tensor<2xi64>,
+          update_window_dims = dense<[1, 2]> : tensor<2xi64>
+        },
+        unique_indices = false
+    } : (tensor<3x3xi32>, tensor<2x2xi32>, tensor<2x1x1xi32>) -> tensor<3x3xi32>
+  return %3 : tensor<3x3xi32>
+  // CHECK: mhlo.constant dense<[
+  // CHECK-SAME: [1, 2, 3], [4, 20, 6], [7, 10, 9]
+  // CHECK-SAME: ]> : tensor<3x3xi32>
+}
+
+// CHECK-LABEL: @scatter_no_update_window_dim
+func @scatter_no_update_window_dim() -> tensor<3xi32> {
+  %0 = constant dense<[0, 1, 2]> : tensor<3xi32>
+  %1 = constant dense<[[[0], [1]], [[2], [1]]]> : tensor<2x2x1xi32>
+  %2 = constant dense<[[10, 20], [30, 40]]> : tensor<2x2xi32>
+  %3 = "mhlo.scatter"(%0, %1, %2) ( {
+    ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>):
+      %4 = "mhlo.add"(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> (tensor<i32>)
+      "mhlo.return"(%4) : (tensor<i32>) -> ()
+    }) {indices_are_sorted = false,
+        scatter_dimension_numbers = {
+          index_vector_dim = 2 : i64,
+          inserted_window_dims = dense<0> : tensor<1xi64>,
+          scatter_dims_to_operand_dims = dense<0> : tensor<1xi64>,
+          update_window_dims = dense<> : tensor<0xi64>
+        },
+        unique_indices = false
+    } : (tensor<3xi32>, tensor<2x2x1xi32>, tensor<2x2xi32>) -> tensor<3xi32>
+  return %3 : tensor<3xi32>
+  // CHECK: mhlo.constant dense<[10, 61, 32]> : tensor<3xi32>
+}
+
+// CHECK-LABEL: @scatter_negative_index
+func @scatter_negative_index() -> tensor<3x3xi32> {
+  %0 = constant dense<[[1, 2, 3], [4, 5, 6], [7, 8, 9]]> : tensor<3x3xi32>
+  %1 = constant dense<[0, -1]> : tensor<2xi32>
+  %2 = constant dense<[[10, 20, 30], [70, 80, 90]]> : tensor<2x3xi32>
+  %3 = "mhlo.scatter"(%0, %1, %2) ( {
+    ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>):
+      "mhlo.return"(%arg1) : (tensor<i32>) -> ()
+    }) {indices_are_sorted = false,
+        scatter_dimension_numbers = {
+          index_vector_dim = 1 : i64,
+          inserted_window_dims = dense<0> : tensor<1xi64>,
+          scatter_dims_to_operand_dims = dense<0> : tensor<1xi64>,
+          update_window_dims = dense<[1]> : tensor<1xi64>
+        },
+        unique_indices = false
+    } : (tensor<3x3xi32>, tensor<2xi32>, tensor<2x3xi32>) -> tensor<3x3xi32>
+  return %3 : tensor<3x3xi32>
+  // CHECK: constant dense<[
+  // CHECK-SAME: [1, 2, 3], [4, 5, 6], [7, 8, 9]
+  // CHECK-SAME: ]> : tensor<3x3xi32>
+  // CHECK: "mhlo.scatter"
+}
+
+// CHECK-LABEL: @scatter_out_of_bound
+func @scatter_out_of_bound() -> tensor<3x3xi32> {
+  %0 = constant dense<[[1, 2, 3], [4, 5, 6], [7, 8, 9]]> : tensor<3x3xi32>
+  %1 = constant dense<[1, 5]> : tensor<2xi32>
+  %2 = constant dense<[[10, 20, 30], [70, 80, 90]]> : tensor<2x3xi32>
+  %3 = "mhlo.scatter"(%0, %1, %2) ( {
+    ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>):
+      "mhlo.return"(%arg1) : (tensor<i32>) -> ()
+    }) {indices_are_sorted = false,
+        scatter_dimension_numbers = {
+          index_vector_dim = 1 : i64,
+          inserted_window_dims = dense<0> : tensor<1xi64>,
+          scatter_dims_to_operand_dims = dense<0> : tensor<1xi64>,
+          update_window_dims = dense<[1]> : tensor<1xi64>
+        },
+        unique_indices = false
+    } : (tensor<3x3xi32>, tensor<2xi32>, tensor<2x3xi32>) -> tensor<3x3xi32>
+  return %3 : tensor<3x3xi32>
+  // CHECK: constant dense<[
+  // CHECK-SAME: [1, 2, 3], [4, 5, 6], [7, 8, 9]
+  // CHECK-SAME: ]> : tensor<3x3xi32>
+  // CHECK: "mhlo.scatter"
+}
+

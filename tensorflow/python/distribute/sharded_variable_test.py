@@ -27,8 +27,11 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import embedding_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import loader
@@ -37,6 +40,7 @@ from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util
+from tensorflow.python.util import nest
 
 
 def _load_and_run(
@@ -285,6 +289,145 @@ class ShardedVariableTest(test.TestCase):
           variables_lib.Variable.SaveSliceInfo(
               full_name='s', full_shape=[2], var_offset=[0], var_shape=[1]))
       sharded_variable.ShardedVariable([v])
+
+  def test_as_function_input(self):
+    variables1 = [
+        variables_lib.Variable([1]),
+        variables_lib.Variable([1]),
+    ]
+    s = sharded_variable.ShardedVariable(variables1)
+    variables2 = [
+        variables_lib.Variable([2]),
+        variables_lib.Variable([2]),
+    ]
+    s2 = sharded_variable.ShardedVariable(variables2)
+
+    trace_count = [0]
+
+    @def_function.function
+    def func(sharded_var):
+      trace_count[0] = trace_count[0] + 1
+      sharded_var.assign([0, 0])
+
+    func(s)
+    self.assertAllEqual(ops.convert_to_tensor(s), [0, 0])
+    self.assertEqual(trace_count[0], 1)
+    func(s2)
+    self.assertAllEqual(ops.convert_to_tensor(s2), [0, 0])
+    self.assertEqual(trace_count[0], 1)
+
+  def test_flatten(self):
+    variables = [
+        variables_lib.Variable([0]),
+        variables_lib.Variable([1]),
+    ]
+    s = sharded_variable.ShardedVariable(variables)
+
+    got = nest.flatten(s)
+    self.assertEqual(s, got[0])
+
+    got = nest.flatten(s, expand_composites=True)
+    self.assertAllEqual(variables, got)
+
+  def test_tf_module(self):
+    self.skipTest('integration with tf.module is not added yet.')
+
+    class Model(module.Module):
+
+      def __init__(self):
+        super().__init__()
+        variables = [
+            variables_lib.Variable([0]),
+            variables_lib.Variable([1]),
+        ]
+        self.w = sharded_variable.ShardedVariable(variables)
+
+    model = Model()
+
+    self.assertLen(model.variables, 2)
+    self.assertEqual(model.variables[0], [0])
+    self.assertEqual(model.variables[1], [1])
+    self.assertAllEqual(model.variables, model.trainable_variables)
+
+    self.assertLen(model._checkpoint_dependencies, 1)
+    self.assertEqual(model._checkpoint_dependencies[0].ref, model.w)
+
+  def test_keras_layer_setattr(self):
+
+    class Layer(base_layer.Layer):
+
+      def __init__(self):
+        super().__init__()
+        variables1 = [
+            variables_lib.Variable([0]),
+            variables_lib.Variable([1]),
+        ]
+        variables2 = [
+            variables_lib.Variable([2], trainable=False),
+            variables_lib.Variable([3], trainable=False),
+        ]
+        self.w = sharded_variable.ShardedVariable(variables1)
+        self.b = sharded_variable.ShardedVariable(variables2)
+
+    layer = Layer()
+
+    self.assertLen(layer.trainable_weights, 2)
+    self.assertEqual(layer.trainable_weights[0], [0])
+    self.assertEqual(layer.trainable_weights[1], [1])
+    self.assertLen(layer.non_trainable_weights, 2)
+    self.assertEqual(layer.non_trainable_weights[0], [2])
+    self.assertEqual(layer.non_trainable_weights[1], [3])
+    self.assertAllEqual(layer.weights,
+                        layer.trainable_weights + layer.non_trainable_weights)
+    self.assertAllEqual(layer.trainable_weights, layer.trainable_variables)
+    self.assertAllEqual(layer.weights, layer.variables)
+
+    checkpoint_deps = set(dep.ref for dep in layer._checkpoint_dependencies)
+    self.assertEqual(checkpoint_deps, set([layer.w, layer.b]))
+
+  def test_keras_layer_add_weight(self):
+
+    class Layer(base_layer.Layer):
+
+      def __init__(self):
+        super().__init__()
+        self.w = self.add_weight(
+            shape=(2,), initializer=lambda shape, dtype: [0, 1], trainable=True)
+        self.b = self.add_weight(
+            shape=(2,),
+            initializer=lambda shape, dtype: [2, 3],
+            trainable=False)
+
+    def sharded_variable_creator(next_creator, **kwargs):
+      v1_value = kwargs['initial_value']()[0:1]
+      v2_value = kwargs['initial_value']()[1:]
+
+      kwargs['initial_value'] = v1_value
+      kwargs['shape'] = (1,)
+      v1 = next_creator(**kwargs)
+
+      kwargs['initial_value'] = v2_value
+      kwargs['shape'] = (1,)
+      v2 = next_creator(**kwargs)
+
+      return sharded_variable.ShardedVariable([v1, v2])
+
+    with variable_scope.variable_creator_scope(sharded_variable_creator):
+      layer = Layer()
+
+    self.assertLen(layer.trainable_weights, 2)
+    self.assertEqual(layer.trainable_weights[0], [0])
+    self.assertEqual(layer.trainable_weights[1], [1])
+    self.assertLen(layer.non_trainable_weights, 2)
+    self.assertEqual(layer.non_trainable_weights[0], [2])
+    self.assertEqual(layer.non_trainable_weights[1], [3])
+    self.assertAllEqual(layer.weights,
+                        layer.trainable_weights + layer.non_trainable_weights)
+    self.assertAllEqual(layer.trainable_weights, layer.trainable_variables)
+    self.assertAllEqual(layer.weights, layer.variables)
+
+    checkpoint_deps = set(dep.ref for dep in layer._checkpoint_dependencies)
+    self.assertEqual(checkpoint_deps, set([layer.w, layer.b]))
 
 
 if __name__ == '__main__':

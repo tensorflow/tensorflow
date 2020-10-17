@@ -592,6 +592,7 @@ def LHLO_DotOp: LHLO_Op<"dot", []>, BASE_HLO_DotOp {
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$lhs,
     Arg<LHLO_Buffer, "", [MemRead]>:$rhs,
+    DotDimensionNumbers:$dot_dimension_numbers,
     HLO_PrecisionConfigAttr:$precision_config,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output
   );
@@ -623,7 +624,7 @@ def LHLO_ScatterOp: LHLO_Op<"scatter", []>, BASE_HLO_ScatterOp {
     Arg<LHLO_Buffer, "", [MemRead]>:$scatter_indices,
     Arg<LHLO_Buffer, "", [MemRead]>:$updates,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output,
-    ScatterDimensionNumbers<LHLO_Dialect>:$scatter_dimension_numbers,
+    ScatterDimensionNumbers:$scatter_dimension_numbers,
     DefaultValuedAttr<BoolAttr, "false">:$indices_are_sorted,
     DefaultValuedAttr<BoolAttr, "false">:$unique_indices
   );
@@ -699,7 +700,7 @@ def LHLO_AllReduceOp : LHLO_Op<"all_reduce", [SameTypeOperands]>,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output,
     I64ElementsAttr:$replica_groups,
     DefaultValuedAttr<BoolAttr, "false">:$constrain_layout,
-    OptionalAttr<ChannelHandle<LHLO_Dialect>>:$channel_id,
+    OptionalAttr<ChannelHandle>:$channel_id,
     DefaultValuedAttr<BoolAttr, "false">:$use_global_device_ids
   );
   let regions = (region SizedRegion<1>:$computation);
@@ -712,7 +713,7 @@ def LHLO_CollectivePermuteOp: LHLO_Op<"collective_permute", [SameTypeOperands]>,
     Arg<LHLO_Buffer, "", [MemRead]>:$operand,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output,
     I64ElementsAttr:$source_target_pairs,
-    OptionalAttr<ChannelHandle<LHLO_Dialect>>:$channel_id
+    OptionalAttr<ChannelHandle>:$channel_id
   );
 }
 

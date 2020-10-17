@@ -18,6 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+_DEPRECATED = "_tf_docs_deprecated"
+
+
+def set_deprecated(obj):
+  """Explicitly tag an object as deprecated for the doc generator."""
+  setattr(obj, _DEPRECATED, None)
+  return obj
+
+
 _DO_NOT_DOC = "_tf_docs_do_not_document"
 
 
@@ -241,82 +250,3 @@ def for_subclass_implementers(obj):
 
 
 do_not_doc_in_subclasses = for_subclass_implementers
-
-
-def should_skip(obj):
-  """Returns true if docs generation should be skipped for this object.
-
-  checks for the `do_not_generate_docs` or `do_not_doc_inheritable` decorators.
-
-  Args:
-    obj: The object to document, or skip.
-
-  Returns:
-    True if the object should be skipped
-  """
-  # Unwrap fget if the object is a property
-  if isinstance(obj, property):
-    obj = obj.fget
-
-  return hasattr(obj, _DO_NOT_DOC) or hasattr(obj, _DO_NOT_DOC_INHERITABLE)
-
-
-def should_skip_class_attr(cls, name):
-  """Returns true if docs should be skipped for this class attribute.
-
-  Args:
-    cls: The class the attribute belongs to.
-    name: The name of the attribute.
-
-  Returns:
-    True if the attribute should be skipped.
-  """
-  # Get the object with standard lookup, from the nearest
-  # defining parent.
-  try:
-    obj = getattr(cls, name)
-  except AttributeError:
-    # Avoid error caused by enum metaclasses in python3
-    if name in ("name", "value"):
-      return True
-    raise
-
-  # Unwrap fget if the object is a property
-  if isinstance(obj, property):
-    obj = obj.fget
-
-  # Skip if the object is decorated with `do_not_generate_docs` or
-  # `do_not_doc_inheritable`
-  if should_skip(obj):
-    return True
-
-  # Use __dict__ lookup to get the version defined in *this* class.
-  obj = cls.__dict__.get(name, None)
-  if isinstance(obj, property):
-    obj = obj.fget
-  if obj is not None:
-    # If not none, the object is defined in *this* class.
-    # Do not skip if decorated with `for_subclass_implementers`.
-    if hasattr(obj, _FOR_SUBCLASS_IMPLEMENTERS):
-      return False
-
-  # for each parent class
-  for parent in cls.__mro__[1:]:
-    obj = getattr(parent, name, None)
-
-    if obj is None:
-      continue
-
-    if isinstance(obj, property):
-      obj = obj.fget
-
-    # Skip if the parent's definition is decorated with `do_not_doc_inheritable`
-    # or `for_subclass_implementers`
-    if hasattr(obj, _DO_NOT_DOC_INHERITABLE):
-      return True
-
-    if hasattr(obj, _FOR_SUBCLASS_IMPLEMENTERS):
-      return True
-
-  # No blockng decorators --> don't skip
-  return False

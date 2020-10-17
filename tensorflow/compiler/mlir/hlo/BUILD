@@ -45,6 +45,7 @@ filegroup(
         "include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.td",
         "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td",
         "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td",
+        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.td",
         "include/mlir-hlo/Dialect/mhlo/IR/hlo_utils.td",
         "include/mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.td",
         "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.td",
@@ -122,8 +123,6 @@ gentbl(
     tbl_outs = [
         ("-gen-op-decls", "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h.inc"),
         ("-gen-op-defs", "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.cc.inc"),
-        ("-gen-struct-attr-decls", "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_structs.h.inc"),
-        ("-gen-struct-attr-defs", "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_structs.cc.inc"),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td",
@@ -150,6 +149,24 @@ gentbl(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td",
+    td_relative_includes = [
+        "include",
+    ],
+    td_srcs = [":hlo_ops_td_files"],
+)
+
+gentbl(
+    name = "hlo_ops_base_structs_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        ("-gen-struct-attr-decls", "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h.inc"),
+        ("-gen-struct-attr-defs", "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.cc.inc"),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td",
+    td_relative_includes = [
+        "include",
+    ],
     td_srcs = [":hlo_ops_td_files"],
 )
 
@@ -195,21 +212,60 @@ gentbl(
 )
 
 gentbl(
+    name = "lhlo_gpu_ops_structs_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    strip_include_prefix = "include",
+    tbl_outs = [
+        ("-gen-struct-attr-decls", "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_structs.h.inc"),
+        ("-gen-struct-attr-defs", "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_structs.cc.inc"),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_structs.td",
+    td_relative_includes = [
+        "include",
+    ],
+    td_srcs = [
+        ":hlo_ops_td_files",
+        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_base.td",
+    ],
+)
+
+cc_library(
+    name = "lhlo_gpu_ops_structs",
+    srcs = [
+        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_structs.cc.inc",
+        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_structs.h.inc",
+        "lib/Dialect/mhlo/IR/lhlo_gpu_ops_structs.cc",
+    ],
+    hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_structs.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":lhlo_gpu_ops_structs_inc_gen",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+gentbl(
     name = "lhlo_gpu_ops_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     strip_include_prefix = "include",
     tbl_outs = [
         ("-gen-op-decls", "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h.inc"),
         ("-gen-op-defs", "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.cc.inc"),
-        ("-gen-struct-attr-decls", "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_structs.h.inc"),
-        ("-gen-struct-attr-defs", "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_structs.cc.inc"),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.td",
     td_relative_includes = [
         "include",
     ],
-    td_srcs = [":hlo_ops_td_files"],
+    td_srcs = [
+        ":hlo_ops_td_files",
+        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_base.td",
+        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_structs.td",
+    ],
 )
 
 #TODO(aminim): revisit the naming and grouping of these rules post-move.
@@ -270,6 +326,23 @@ cc_library(
 )
 
 cc_library(
+    name = "hlo_ops_base_structs",
+    srcs = [
+        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h.inc",
+        "lib/Dialect/mhlo/IR/hlo_ops_base_structs.cc",
+    ],
+    hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":hlo_ops_base_structs_inc_gen",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
     name = "convert_op_folder",
     srcs = ["lib/utils/convert_op_folder.cc"],
     hdrs = ["include/mlir-hlo/utils/convert_op_folder.h"],
@@ -302,6 +375,7 @@ cc_library(
         ":chlo_ops_inc_gen",
         ":convert_op_folder",
         ":hlo_ops_base_inc_gen",
+        ":hlo_ops_base_structs",
         ":hlo_ops_inc_gen",
         ":infer_fusibility_op_interface",
         "@llvm-project//llvm:Support",
@@ -332,6 +406,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":hlo_ops_base_inc_gen",
+        ":hlo_ops_base_structs",
         ":lhlo_ops_inc_gen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
@@ -360,12 +435,16 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
-        ":hlo_ops_base_inc_gen",
+        ":hlo",
+        ":hlo_ops_base_structs",
+        ":infer_fusibility_op_interface",
         ":lhlo_gpu_ops_inc_gen",
+        ":lhlo_gpu_ops_structs",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:CopyOpInterface",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SideEffects",
         "@llvm-project//mlir:StandardOps",
@@ -433,6 +512,7 @@ cc_library(
         ":lhlo",
         ":map_hlo_to_lhlo_op",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:StandardOps",
     ],
 )
@@ -570,6 +650,7 @@ cc_library(
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:ViewLikeInterface",
     ],
     alwayslink = 1,
 )

@@ -68,6 +68,19 @@ except ImportError:
 
 class TrainingTest(keras_parameterized.TestCase):
 
+  @keras_parameterized.run_all_keras_modes
+  @keras_parameterized.run_with_all_model_types
+  def test_model_instrumentation(self):
+    layers = [
+        layers_module.Dense(10, dtype=np.float64),
+        layers_module.Dense(10, dtype=np.float64)
+    ]
+    model = testing_utils.get_model_from_layers(layers, input_shape=(1,))
+
+    self.assertTrue(model._instrumented_keras_api)
+    self.assertTrue(model._instrumented_keras_model_class)
+    self.assertFalse(model._instrumented_keras_layer_class)
+
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   def test_fit_training_arg(self):

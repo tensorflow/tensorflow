@@ -371,3 +371,23 @@ def is_saving_non_distributed():
   options = save_context.get_save_options()
   return (options.experimental_variable_policy !=
           save_options.VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES)
+
+
+def mark_as_unsaveable():
+  """Marks the function as unsaveable if not inside save context."""
+  if ops.inside_function() and not save_context.in_save_context():
+    ops.get_default_graph().mark_as_unsaveable("""
+ConcreteFunction that uses distributed variables in certain way cannot be saved.
+If you're saving with
+
+tf.saved_model.save(..., signatures=f.get_concrete_function())
+
+do
+
+@tf.function(input_signature=...)
+def f_with_input_signature():
+  ...
+
+tf.saved_model.save(..., signatures=f_with_input_signature)`
+
+instead.""")

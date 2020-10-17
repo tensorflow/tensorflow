@@ -1881,11 +1881,27 @@ class ConvertFusedBatchNormGradBase
     }
 
     x_backprop = rewriter.create<ConvertOp>(loc, x_backprop, act_ele_type);
-    // It doesn't matter what values we provide for the last 2 results.
-    rewriter.replaceOp(op,
-                       {/*x_backprop=*/x_backprop,
-                        /*scale_backprop=*/scale_backprop,
-                        /*offset_backprop=*/offset_backprop, op.x(), op.x()});
+    Value last_val[2];
+    if (op.getResult(3).use_empty() && op.getResult(4).use_empty()) {
+      // It doesn't matter what values we provide for the last 2 results.
+      last_val[0] = last_val[1] = op.x();
+    } else {
+      auto const_val = rewriter.create<ConstOp>(
+          op.getLoc(),
+          DenseElementsAttr::get<float>(
+              RankedTensorType::get({0}, getElementTypeOrSelf(op.getResult(3))),
+              0.0));
+      auto maybe_cast = [&](Value val, Type t) -> Value {
+        if (val.getType() == t) return val;
+        return rewriter.create<TensorCastOp>(op.getLoc(), t, val);
+      };
+      last_val[0] = maybe_cast(const_val, op.getResult(3).getType());
+      last_val[1] = maybe_cast(const_val, op.getResult(4).getType());
+    }
+    rewriter.replaceOp(
+        op, {/*x_backprop=*/x_backprop,
+             /*scale_backprop=*/scale_backprop,
+             /*offset_backprop=*/offset_backprop, last_val[0], last_val[1]});
     return success();
   }
 };

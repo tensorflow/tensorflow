@@ -50,6 +50,7 @@ from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import saver
 from tensorflow.python.training.tracking import tracking
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
@@ -426,6 +427,8 @@ class TrtGraphConverter(object):
   ```
   """
 
+  @deprecation.deprecated_args(None, "Remove the use of this argument",
+                               "session_config")
   def __init__(self,
                input_saved_model_dir=None,
                input_saved_model_tags=None,
@@ -994,6 +997,9 @@ class TrtGraphConverterV2(object):
     assert context.executing_eagerly()
     if conversion_params is None:
       conversion_params = TrtConversionParams()
+    elif conversion_params.rewriter_config_template is not None:
+      tf_logging.warn("the rewrite_config_template field will be deprecated.")
+
     _check_trt_version_compatibility()
     _check_conversion_params(conversion_params, is_v2=True)
 

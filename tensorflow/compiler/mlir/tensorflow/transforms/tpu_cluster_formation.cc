@@ -172,6 +172,7 @@ bool ShouldMoveOpAfterCluster(
     const llvm::SmallSetVector<Operation*, 8>& preceding_users,
     const TF::ResourceAliasAnalysis::Info& resource_alias_analysis,
     const llvm::SmallDenseSet<int64_t>& observed_resource_ids) {
+  const bool is_replicate = llvm::isa<tf_device::ReplicateOp>(op);
   auto result = op->walk([&](Operation* inner_op) {
     for (Value operand : inner_op->getOperands()) {
       Operation* def = operand.getDefiningOp();
@@ -185,6 +186,11 @@ bool ShouldMoveOpAfterCluster(
         return WalkResult::interrupt();
       }
     }
+
+    // Don't visit replicate op inner op operands as new resource
+    // values/arguments may have been created but are not known in
+    // `resource_alias_analysis`.
+    if (is_replicate && inner_op != op) return WalkResult::advance();
 
     // Check for uses of any resource in or after cluster.
     for (Value operand : TF::filter_resources(inner_op->getOperands())) {
@@ -424,20 +430,24 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas) {
   for (auto result_and_idx : llvm::enumerate(cluster.getResults())) {
     Value result = result_and_idx.value();
     int idx = result_and_idx.index();
-    for (auto& use : result.getUses()) {
-      Operation* def = use.getOwner();
-      if (!def || !llvm::isa<TF::TPUReplicatedOutputOp>(def))
-        return cluster.emitError()
-               << "requires output of " << cluster.getOperationName()
-               << " to lead to a 'tf.TPUReplicatedOutput' op";
+    auto replicate_outputs = llvm::make_range(
+        std::next(replicate_op.result_begin(), idx * num_replicas),
+        std::next(replicate_op.result_begin(), (idx + 1) * num_replicas));
 
-      const int def_NumResults = def->getNumResults();
-      if (def_NumResults != num_replicas)
+    for (auto& use : llvm::make_early_inc_range(result.getUses())) {
+      Operation* def = use.getOwner();
+      if (!llvm::isa<TF::TPUReplicatedOutputOp>(def)) {
+        // If user is not a `tf.TPUReplicatedOutput`, simply forward the first
+        // replica output. Certain Graphs under V1 create `tf.Identity` users of
+        // replicated ops to pin the TPU computation for execution.
+        use.set(*replicate_outputs.begin());
+        continue;
+      }
+
+      const int def_num_results = def->getNumResults();
+      if (def_num_results != num_replicas)
         return def->emitOpError() << "requires " << num_replicas << " results";
 
-      auto replicate_outputs = llvm::make_range(
-          std::next(replicate_op.result_begin(), idx * num_replicas),
-          std::next(replicate_op.result_begin(), (idx + 1) * num_replicas));
       def->replaceAllUsesWith(replicate_outputs);
     }
   }

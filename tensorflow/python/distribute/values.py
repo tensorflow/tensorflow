@@ -874,6 +874,7 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
     Returns:
       Updated variable or `tf.Operation`.
     """
+    values_util.mark_as_unsaveable()
     return self.distribute_strategy.extended.update(
         self, update_fn, args=(value,), kwargs=kwargs, group=True)
 
@@ -1155,6 +1156,7 @@ class SyncOnReadVariable(DistributedVariable):
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
       if (ds_context.in_cross_replica_context() and
           not values_util.in_replica_update_context()):
+        values_util.mark_as_unsaveable()
         return values_util.on_read_assign_sub_cross_replica(
             self, value, read_value=read_value)
       else:
@@ -1167,6 +1169,7 @@ class SyncOnReadVariable(DistributedVariable):
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
       if (ds_context.in_cross_replica_context() and
           not values_util.in_replica_update_context()):
+        values_util.mark_as_unsaveable()
         return values_util.on_read_assign_add_cross_replica(
             self, value, read_value=read_value)
       else:
@@ -1179,6 +1182,7 @@ class SyncOnReadVariable(DistributedVariable):
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
       if (ds_context.in_cross_replica_context() and
           not values_util.in_replica_update_context()):
+        values_util.mark_as_unsaveable()
         return values_util.on_read_assign_cross_replica(
             self, value, read_value=read_value)
       else:
@@ -1243,7 +1247,8 @@ class SyncOnReadVariable(DistributedVariable):
       # Consider returning a tensor value here to make the return value of
       # _get_cross_replica consistent.
       return self._get_replica(0)
-
+    if self._aggregation == vs.VariableAggregation.SUM:
+      values_util.mark_as_unsaveable()
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
       return self._distribute_strategy.reduce(
           reduce_util.ReduceOp.from_variable_aggregation(self._aggregation),
@@ -1400,9 +1405,10 @@ class OnReadPolicy(VariablePolicy):
   def _get_cross_replica(self, var):
     if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
       return var._get_replica(0)  # pylint: disable=protected-access
-
+    if self._aggregation == vs.VariableAggregation.SUM:
+      values_util.mark_as_unsaveable()
     with ds_context.enter_or_assert_strategy(var.distribute_strategy):
-      return  var.distribute_strategy.reduce(
+      return var.distribute_strategy.reduce(
           reduce_util.ReduceOp.from_variable_aggregation(self._aggregation),
           var,
           axis=None)
@@ -1421,6 +1427,7 @@ class OnReadPolicy(VariablePolicy):
     with ds_context.enter_or_assert_strategy(var.distribute_strategy):
       if (ds_context.in_cross_replica_context() and
           not values_util.in_replica_update_context()):
+        values_util.mark_as_unsaveable()
         return values_util.on_read_assign_sub_cross_replica(
             var, value, read_value=read_value)
       else:
@@ -1434,6 +1441,7 @@ class OnReadPolicy(VariablePolicy):
     with ds_context.enter_or_assert_strategy(var.distribute_strategy):
       if (ds_context.in_cross_replica_context() and
           not values_util.in_replica_update_context()):
+        values_util.mark_as_unsaveable()
         return values_util.on_read_assign_add_cross_replica(
             var, value, read_value=read_value)
       else:
@@ -1445,6 +1453,7 @@ class OnReadPolicy(VariablePolicy):
     with ds_context.enter_or_assert_strategy(var.distribute_strategy):
       if (ds_context.in_cross_replica_context() and
           not values_util.in_replica_update_context()):
+        values_util.mark_as_unsaveable()
         return values_util.on_read_assign_cross_replica(var, value,
                                                         read_value=read_value)
       else:

@@ -85,6 +85,10 @@ port::StatusOr<void*> GetCublasDsoHandle() {
   return GetDsoHandle("cublas", GetCublasVersion());
 }
 
+port::StatusOr<void*> GetCublasLtDsoHandle() {
+  return GetDsoHandle("cublasLt", GetCublasVersion());
+}
+
 port::StatusOr<void*> GetCufftDsoHandle() {
   return GetDsoHandle("cufft", GetCufftVersion());
 }
@@ -158,6 +162,11 @@ port::StatusOr<void*> GetCudaRuntimeDsoHandle() {
 
 port::StatusOr<void*> GetCublasDsoHandle() {
   static auto result = new auto(DsoLoader::GetCublasDsoHandle());
+  return *result;
+}
+
+port::StatusOr<void*> GetCublasLtDsoHandle() {
+  static auto result = new auto(DsoLoader::GetCublasLtDsoHandle());
   return *result;
 }
 

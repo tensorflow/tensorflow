@@ -833,13 +833,19 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       output_signature = nest.map_structure_up_to(output_types,
                                                   tensor_spec.TensorSpec,
                                                   output_shapes, output_types)
+    if all([
+        isinstance(x, tensor_spec.TensorSpec)
+        for x in nest.flatten(output_signature)
+    ]):
+      output_types = nest.pack_sequence_as(
+          output_signature, [x.dtype for x in nest.flatten(output_signature)])
+      output_shapes = nest.pack_sequence_as(
+          output_signature, [x.shape for x in nest.flatten(output_signature)])
 
     if args is None:
       args = ()
     else:
       args = tuple(ops.convert_n_to_tensor(args, name="args"))
-
-    flat_output_types = structure.get_flat_tensor_types(output_signature)
 
     generator_state = DatasetV2._GeneratorState(generator)
 
@@ -872,38 +878,112 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       Returns:
         The next element to generate from the iterator.
       """
+      if output_types and output_shapes:
+        flattened_types = [
+            dtypes.as_dtype(dt) for dt in nest.flatten(output_types)
+        ]
+        flattened_shapes = nest.flatten(output_shapes)
 
-      def generator_py_func(iterator_id):
-        """A `py_func` that will be called to invoke the iterator."""
-        # `next()` raises `StopIteration` when there are no more
-        # elements remaining to be generated.
-        values = next(generator_state.get_iterator(iterator_id.numpy()))
+        def generator_py_func(iterator_id):
+          """A `py_func` that will be called to invoke the iterator."""
+          # `next()` raises `StopIteration` when there are no more
+          # elements remaining to be generated.
+          values = next(generator_state.get_iterator(iterator_id))
 
-        try:
-          values = structure.normalize_element(values, output_signature)
-        except (TypeError, ValueError):
-          six.reraise(
-              TypeError,
-              TypeError(
-                  "`generator` yielded an element that did not match the "
-                  "expected structure. The expected structure was %s, but the "
-                  "yielded element was %s." % (output_signature, values)),
-              sys.exc_info()[2])
+          # Use the same _convert function from the py_func() implementation to
+          # convert the returned values to arrays early, so that we can inspect
+          # their values.
+          try:
+            flattened_values = nest.flatten_up_to(output_types, values)
+          except (TypeError, ValueError):
+            six.reraise(
+                TypeError,
+                TypeError(
+                    "`generator` yielded an element that did not match the "
+                    "expected structure. The expected structure was %s, but "
+                    "the yielded element was %s." % (output_types, values)),
+                sys.exc_info()[2])
+          ret_arrays = []
+          for ret, dtype in zip(flattened_values, flattened_types):
+            try:
+              ret_arrays.append(
+                  script_ops.FuncRegistry._convert(  # pylint: disable=protected-access
+                      ret,
+                      dtype=dtype.as_numpy_dtype))
+            except (TypeError, ValueError):
+              six.reraise(
+                  TypeError,
+                  TypeError(
+                      "`generator` yielded an element that could not be "
+                      "converted to the expected type. The expected type was "
+                      "%s, but the yielded element was %s." %
+                      (dtype.name, ret)),
+                  sys.exc_info()[2])
 
-        values_spec = structure.type_spec_from_value(values)
+          # Additional type and shape checking to ensure that the components of
+          # the generated element match the `output_types` and `output_shapes`
+          # arguments.
+          for (ret_array, expected_dtype,
+               expected_shape) in zip(ret_arrays, flattened_types,
+                                      flattened_shapes):
+            if ret_array.dtype != expected_dtype.as_numpy_dtype:
+              raise TypeError(
+                  "`generator` yielded an element of type %s where an element "
+                  "of type %s was expected." %
+                  (ret_array.dtype, expected_dtype.as_numpy_dtype))
+            if not expected_shape.is_compatible_with(ret_array.shape):
+              raise ValueError(
+                  "`generator` yielded an element of shape %s where an element "
+                  "of shape %s was expected." %
+                  (ret_array.shape, expected_shape))
 
-        if not structure.are_compatible(values_spec, output_signature):
-          raise TypeError(
-              "`generator` yielded an element of %s where an element "
-              "of %s was expected." % (values_spec, output_signature))
+          return ret_arrays
 
-        return structure.to_tensor_list(output_signature, values)
+        flat_values = script_ops.numpy_function(generator_py_func,
+                                                [iterator_id_t],
+                                                flattened_types)
 
-      return script_ops._eager_py_func(  # pylint: disable=protected-access
-          generator_py_func,
-          inp=[iterator_id_t],
-          Tout=flat_output_types,
-          use_tape_cache=False)
+        # The `py_func()` op drops the inferred shapes, so we add them back in
+        # here.
+        if output_shapes is not None:
+          for ret_t, shape in zip(flat_values, flattened_shapes):
+            ret_t.set_shape(shape)
+
+        return nest.pack_sequence_as(output_types, flat_values)
+      else:
+        flat_output_types = structure.get_flat_tensor_types(output_signature)
+
+        def generator_py_func(iterator_id):
+          """A `py_func` that will be called to invoke the iterator."""
+          # `next()` raises `StopIteration` when there are no more
+          # elements remaining to be generated.
+          values = next(generator_state.get_iterator(iterator_id.numpy()))
+
+          try:
+            values = structure.normalize_element(values, output_signature)
+          except (TypeError, ValueError):
+            six.reraise(
+                TypeError,
+                TypeError(
+                    "`generator` yielded an element that did not match the "
+                    "expected structure. The expected structure was %s, but "
+                    "the yielded element was %s." % (output_signature, values)),
+                sys.exc_info()[2])
+
+          values_spec = structure.type_spec_from_value(values)
+
+          if not structure.are_compatible(values_spec, output_signature):
+            raise TypeError(
+                "`generator` yielded an element of %s where an element "
+                "of %s was expected." % (values_spec, output_signature))
+
+          return structure.to_tensor_list(output_signature, values)
+
+        return script_ops._eager_py_func(  # pylint: disable=protected-access
+            generator_py_func,
+            inp=[iterator_id_t],
+            Tout=flat_output_types,
+            use_tape_cache=False)
 
     def finalize_fn(iterator_id_t):
       """Releases host-side state for the iterator with ID `iterator_id_t`."""

@@ -590,6 +590,10 @@ tf_py_test(
     size = "small",
     srcs = ["normalization_test.py"],
     python_version = "PY3",
+    tags = [
+        "broken",  # b/170974360
+        "noasan",  # TODO(b/337374867) fails with -fsanitize=null
+    ],
     deps = [
         ":normalization",
         ":preprocessing_test_utils",

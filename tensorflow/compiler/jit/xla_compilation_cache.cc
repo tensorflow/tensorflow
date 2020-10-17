@@ -289,8 +289,10 @@ Status XlaCompilationCache::CompileSingleOp(
           return arg.kind == XlaCompiler::Argument::kTensorList;
         });
     const ConfigProto* config = ctx->function_library()->config_proto();
+    // TODO(b/171039585): Support tf.VarIsInitializedOp using MLIR.
     bool use_mlir = config && config->experimental().enable_mlir_bridge() &&
-                    !has_tensor_list_arg;
+                    !has_tensor_list_arg &&
+                    node_def.op() != "VarIsInitializedOp";
 #ifdef LIBTPU_ON_GCE
     if (use_mlir) {
       LOG(WARNING) << "MLIR is not supported in this environment.";

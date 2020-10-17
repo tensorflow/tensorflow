@@ -90,6 +90,9 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
     pm.addPass(mlir::mhlo::createChloLegalizeToHloPass());
     pm.addPass(mlir::createTransformUnrankedHloPass());
     pm.addPass(mlir::kernel_gen::transforms::CreateShapeToDescriptorsPass());
+    // Clean up the IR created above. In particular, operations on descriptors
+    // are simplified here.
+    pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(mlir::kernel_gen::transforms::CreateBufferizePass());
     pm.addPass(mlir::kernel_gen::transforms::CreateParallelLoopsToSequential());
   }

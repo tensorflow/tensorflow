@@ -22,7 +22,7 @@ MKL_SHORT_DEPS = [
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
-    "//tensorflow/core/kernels:bounds_check",
+    "//tensorflow/core/framework:bounds_check",
     "//tensorflow/core/kernels:ops_util",
 ] + mkl_deps()
 
