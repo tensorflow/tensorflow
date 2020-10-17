@@ -353,7 +353,12 @@ def tf_copts(
     )
 
 def tf_openmp_copts():
-    return (if_mkl_lnx_x64(["-fopenmp"]) + if_mkldnn_threadpool(["-fno-openmp"]))
+    # We assume when compiling on Linux gcc/clang will be used and MSVC on Windows
+    return select({
+        "@org_tensorflow//third_party/mkl:build_with_mkl_lnx_openmp": ["-fopenmp"],
+        "@org_tensorflow//third_party/mkl:build_with_mkl_windows_openmp": ["/openmp"],
+        "//conditions:default": [],
+    })
 
 def tf_opts_nortti():
     return [
@@ -1563,7 +1568,7 @@ def tf_mkl_kernel_library(
         hdrs = hdrs,
         deps = deps,
         alwayslink = alwayslink,
-        copts = copts,
+        copts = copts + if_override_eigen_strong_inline(["/DEIGEN_STRONG_INLINE=inline"]),
         features = disable_header_modules,
     )
 
