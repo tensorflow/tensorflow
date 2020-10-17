@@ -103,15 +103,13 @@ REQUIRED_PACKAGES = [
 # tensorflow_estimator, we depend on their nightly equivalent.
 # When updating these, make sure to also update the release versions above.
 # NOTE: the nightly versions are one version ahead of the release ones!
+# NOTE: the nightly versions specify alpha/dev!
 if 'tf_nightly' in project_name:
   for i, pkg in enumerate(REQUIRED_PACKAGES):
     if 'tensorboard' in pkg:
-      REQUIRED_PACKAGES[i] = 'tb-nightly ~= 2.4'
+      REQUIRED_PACKAGES[i] = 'tb-nightly ~= 2.4.0.a'
     elif 'tensorflow_estimator' in pkg:
-      # Note the .* part! TF Estimator nightly packages are not named in a way
-      # that makes `~=` syntax work so we use `==` and `.*` to pick the latest
-      # released nightly.
-      REQUIRED_PACKAGES[i] = 'tf-estimator-nightly == 2.4.0.*'
+      REQUIRED_PACKAGES[i] = 'tf-estimator-nightly ~= 2.4.0.dev'
 
 
 # grpcio does not build correctly on big-endian machines due to lack of
