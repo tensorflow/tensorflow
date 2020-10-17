@@ -1207,6 +1207,7 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
     bool repacked = false;
     for (int retry_number = 0; retry_number < options_.max_retries;
          retry_number++) {
+      AddRequiredAssignmentsForColocatedIntervals(colocated_intervals);
       bool final_retry = (retry_number == options_.max_retries - 1);
       options_.prefetch_interval_picker->SetRetryNumber(retry_number);
       Result result =
@@ -1217,7 +1218,8 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
           (!final_retry && result_failed_because_of_async_copy(result))) {
         UncommitPendingChunks(absl::MakeSpan(allocation_values));
         VLOG(2) << "Couldn't allocate. Retry number " << retry_number;
-      } else if (result_is(result, Result::kFailOutOfMemory) &&
+      } else if ((result_is(result, Result::kFailOutOfMemory) ||
+                  options_.repack_after_every_allocation) &&
                  num_repacks_ < options_.max_repacks && !repacked) {
         UncommitPendingChunks(absl::MakeSpan(allocation_values));
         ++num_repacks_;
@@ -1251,10 +1253,9 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
   return result_;
 }
 
-void AlternateMemoryBestFitHeap::CreateAllocationValuesFromColocatedIntervals(
+void AlternateMemoryBestFitHeap::AddRequiredAssignmentsForColocatedIntervals(
     absl::Span<const AlternateMemoryBestFitHeap::BufferInterval* const>
-        colocated_intervals,
-    std::vector<MemorySpaceAssignment::AllocationValue>& allocation_values) {
+        colocated_intervals) {
   // TODO(berkin): For now, place the phi values due to conditionals in
   // default memory.
   for (const BufferInterval* colocated_interval : colocated_intervals) {
@@ -1273,7 +1274,12 @@ void AlternateMemoryBestFitHeap::CreateAllocationValuesFromColocatedIntervals(
       }
     }
   }
+}
 
+void AlternateMemoryBestFitHeap::CreateAllocationValuesFromColocatedIntervals(
+    absl::Span<const AlternateMemoryBestFitHeap::BufferInterval* const>
+        colocated_intervals,
+    std::vector<MemorySpaceAssignment::AllocationValue>& allocation_values) {
   // Create AllocationValues for all the colocated intervals.
   for (const auto& colocated_interval : colocated_intervals) {
     CreateAllocationValues(*colocated_interval, allocation_values);
