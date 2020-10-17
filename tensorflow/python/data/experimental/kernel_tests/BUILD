@@ -787,9 +787,6 @@ tf_py_test(
     timeout = "long",
     srcs = ["snapshot_test.py"],
     shard_count = 10,
-    tags = [
-        "no_windows",  # TODO(b/171088212): Investigate why broken
-    ],
     deps = [
         ":reader_dataset_ops_test_base",
         "//tensorflow/python:client_testlib",
