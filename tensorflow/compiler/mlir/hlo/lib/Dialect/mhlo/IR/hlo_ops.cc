@@ -1053,6 +1053,9 @@ LogicalResult ConcatenateOp::inferReturnTypes(
     return success();
   }
 
+  if (first_type.getRank() == 0)
+    return emitOptionalError(location, "rank-0 values cannot be concatenated");
+
   auto out_shape = llvm::to_vector<6>(first_type.getShape());
 
   // Determine what the non-concatenate dimensions should be.
