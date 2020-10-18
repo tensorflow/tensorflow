@@ -501,7 +501,7 @@ def _features(cpu, compiler, ctx):
                             flag_group(flags = ["-Wl,-no-as-needed"])
                         ] if cpu == "local" else []) + ([
                             flag_group(flags = ["-B" + ctx.attr.linker_bin_path])
-                        ] if ctx.attr.linker_bin_path" else []) + [
+                        ] if ctx.attr.linker_bin_path else []) + [
                             flag_group(
                                 flags = ["@%{linker_param_file}"],
                                 expand_if_available = "linker_param_file",
