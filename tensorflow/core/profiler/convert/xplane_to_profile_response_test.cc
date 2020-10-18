@@ -39,16 +39,16 @@ void CreateXSpace(XSpace* space) {
       thread1.AddEvent(*host_plane.GetOrCreateEventMetadata("event1"));
   event1.SetTimestampNs(150000);
   event1.SetDurationNs(10000);
-  event1.ParseAndAddStatValue(*host_plane.GetOrCreateStatMetadata("tf_op"),
-                              "Relu");
+  event1.AddStatValue(*host_plane.GetOrCreateStatMetadata("tf_op"),
+                      *host_plane.GetOrCreateStatMetadata("Relu"));
   XLineBuilder thread2 = host_plane.GetOrCreateLine(20);
   thread2.SetName("thread2");
   XEventBuilder event2 =
       thread2.AddEvent(*host_plane.GetOrCreateEventMetadata("event2"));
   event2.SetTimestampNs(160000);
   event2.SetDurationNs(10000);
-  event2.ParseAndAddStatValue(*host_plane.GetOrCreateStatMetadata("tf_op"),
-                              "Conv2D");
+  event2.AddStatValue(*host_plane.GetOrCreateStatMetadata("tf_op"),
+                      *host_plane.GetOrCreateStatMetadata("Conv2D"));
 
   device_plane.SetName("gpu:0");
   device_plane.SetId(1);
@@ -58,8 +58,8 @@ void CreateXSpace(XSpace* space) {
       stream1.AddEvent(*device_plane.GetOrCreateEventMetadata("kernel1"));
   event3.SetTimestampNs(180000);
   event3.SetDurationNs(10000);
-  event3.ParseAndAddStatValue(
-      *device_plane.GetOrCreateStatMetadata("correlation id"), "55");
+  event3.AddStatValue(*device_plane.GetOrCreateStatMetadata("correlation id"),
+                      55);
 }
 
 TEST(ConvertXPlaneToProfileResponse, TraceViewer) {
