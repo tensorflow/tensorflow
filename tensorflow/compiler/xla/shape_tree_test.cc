@@ -485,6 +485,30 @@ TEST_F(ShapeTreeTest, ReverseIterateOrder) {
                }));
 }
 
+// Ensures that we can find an element at an index that we know ahead of time to
+// be occupied in a 'ShapeTree' via the 'find' API.
+TEST_F(ShapeTreeTest, Find) {
+  ShapeTree<int> t(nested_tuple_shape_, 42);
+  auto found = t.find({1, 0});
+  EXPECT_NE(found, t.end());
+  // The found key must be the same key we searched for.
+  EXPECT_EQ(found->first, ShapeIndex({1, 0}));
+  // The 'ShapeTree' has 42 at every position.
+  EXPECT_EQ(found->second, 42);
+}
+
+// Ensures that we can find an element at an index that we know ahead of time to
+// be occupied in a 'const ShapeTree' via the 'find' API.
+TEST_F(ShapeTreeTest, ConstFind) {
+  const ShapeTree<int> t(nested_tuple_shape_, 42);
+  auto found = t.find({1, 0});
+  EXPECT_NE(found, t.end());
+  // The found key must be the same key we searched for.
+  EXPECT_EQ(found->first, ShapeIndex({1, 0}));
+  // The 'ShapeTree' has 42 at every position.
+  EXPECT_EQ(found->second, 42);
+}
+
 TEST_F(ShapeTreeTest, IterateOrderLeaves) {
   ShapeTree<int> t(nested_tuple_shape_, 42);
   std::vector<ShapeIndex> v;

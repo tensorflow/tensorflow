@@ -25,7 +25,9 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import bincount_ops
+from tensorflow.python.ops import gen_count_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -832,6 +834,122 @@ class TestSparseCountFailureModes(test.TestCase):
     with self.assertRaisesRegex(errors.InvalidArgumentError,
                                 "must have the same row splits"):
       self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
+
+
+@test_util.run_all_in_graph_and_eager_modes
+@test_util.disable_tfrt
+class RawOpsTest(test.TestCase, parameterized.TestCase):
+
+  def testSparseCountSparseOutputBadIndicesShape(self):
+    indices = [[[0], [0]], [[0], [1]], [[1], [0]], [[1], [2]]]
+    values = [1, 1, 1, 10]
+    weights = [1, 2, 4, 6]
+    dense_shape = [2, 3]
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "Input indices must be a 2-dimensional tensor"):
+      self.evaluate(
+          gen_count_ops.SparseCountSparseOutput(
+              indices=indices,
+              values=values,
+              dense_shape=dense_shape,
+              weights=weights,
+              binary_output=False))
+
+  def testSparseCountSparseOutputBadWeightsShape(self):
+    indices = [[0, 0], [0, 1], [1, 0], [1, 2]]
+    values = [1, 1, 1, 10]
+    weights = [1, 2, 4]
+    dense_shape = [2, 3]
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "Weights and values must have the same shape"):
+      self.evaluate(
+          gen_count_ops.SparseCountSparseOutput(
+              indices=indices,
+              values=values,
+              dense_shape=dense_shape,
+              weights=weights,
+              binary_output=False))
+
+  def testSparseCountSparseOutputBadNumberOfValues(self):
+    indices = [[0, 0], [0, 1], [1, 0]]
+    values = [1, 1, 1, 10]
+    weights = [1, 2, 4, 6]
+    dense_shape = [2, 3]
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "Number of values must match first dimension of indices"):
+      self.evaluate(
+          gen_count_ops.SparseCountSparseOutput(
+              indices=indices,
+              values=values,
+              dense_shape=dense_shape,
+              weights=weights,
+              binary_output=False))
+
+  def testRaggedCountSparseOutput(self):
+    splits = [0, 4, 7]
+    values = [1, 1, 2, 1, 2, 10, 5]
+    weights = [1, 2, 3, 4, 5, 6, 7]
+    output_indices, output_values, output_shape = self.evaluate(
+        gen_count_ops.RaggedCountSparseOutput(
+            splits=splits, values=values, weights=weights, binary_output=False))
+    self.assertAllEqual([[0, 1], [0, 2], [1, 2], [1, 5], [1, 10]],
+                        output_indices)
+    self.assertAllEqual([7, 3, 5, 7, 6], output_values)
+    self.assertAllEqual([2, 11], output_shape)
+
+  def testRaggedCountSparseOutputBadWeightsShape(self):
+    splits = [0, 4, 7]
+    values = [1, 1, 2, 1, 2, 10, 5]
+    weights = [1, 2, 3, 4, 5, 6]
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "Weights and values must have the same shape"):
+      self.evaluate(
+          gen_count_ops.RaggedCountSparseOutput(
+              splits=splits,
+              values=values,
+              weights=weights,
+              binary_output=False))
+
+  def testRaggedCountSparseOutputEmptySplits(self):
+    splits = []
+    values = [1, 1, 2, 1, 2, 10, 5]
+    weights = [1, 2, 3, 4, 5, 6, 7]
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "Must provide at least 2 elements for the splits argument"):
+      self.evaluate(
+          gen_count_ops.RaggedCountSparseOutput(
+              splits=splits,
+              values=values,
+              weights=weights,
+              binary_output=False))
+
+  def testRaggedCountSparseOutputBadSplitsStart(self):
+    splits = [1, 7]
+    values = [1, 1, 2, 1, 2, 10, 5]
+    weights = [1, 2, 3, 4, 5, 6, 7]
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "Splits must start with 0"):
+      self.evaluate(
+          gen_count_ops.RaggedCountSparseOutput(
+              splits=splits,
+              values=values,
+              weights=weights,
+              binary_output=False))
+
+  def testRaggedCountSparseOutputBadSplitsEnd(self):
+    splits = [0, 5]
+    values = [1, 1, 2, 1, 2, 10, 5]
+    weights = [1, 2, 3, 4, 5, 6, 7]
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "Splits must end with the number of values"):
+      self.evaluate(
+          gen_count_ops.RaggedCountSparseOutput(
+              splits=splits,
+              values=values,
+              weights=weights,
+              binary_output=False))
 
 
 if __name__ == "__main__":

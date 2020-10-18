@@ -25,6 +25,10 @@ tf_module {
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "enable_tensor_float_32_execution"
+    argspec: "args=[\'enabled\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "get_device_details"
     argspec: "args=[\'device\'], varargs=None, keywords=None, defaults=None"
   }
@@ -34,6 +38,10 @@ tf_module {
   }
   member_method {
     name: "get_memory_growth"
+    argspec: "args=[\'device\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_memory_usage"
     argspec: "args=[\'device\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
@@ -75,5 +83,9 @@ tf_module {
   member_method {
     name: "set_visible_devices"
     argspec: "args=[\'devices\', \'device_type\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "tensor_float_32_execution_enabled"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
 }

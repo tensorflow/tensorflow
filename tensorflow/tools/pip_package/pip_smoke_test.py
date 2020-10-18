@@ -74,6 +74,7 @@ PYTHON_TARGETS, PY_TEST_QUERY_EXPRESSION = BuildPyTestDependencies()
 # List of dependencies that should not included in the pip package.
 DEPENDENCY_DENYLIST = [
     "//tensorflow/python:extra_py_tests_deps",
+    "//tensorflow/cc/saved_model:saved_model_test_files",
     "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     "//tensorflow:no_tensorflow_py_deps",
     "//tensorflow/tools/pip_package:win_pip_package_marker",
@@ -81,7 +82,7 @@ DEPENDENCY_DENYLIST = [
     "//tensorflow/python:tf_optimizer",
     "//tensorflow/python:compare_test_proto_py",
     "//tensorflow/core:image_testdata",
-    "//tensorflow/core:lmdb_testdata",
+    "//tensorflow/core/lib/lmdb/testdata:lmdb_testdata",
     "//tensorflow/core/kernels/cloud:bigquery_reader_ops",
     "//tensorflow/python/debug:grpc_tensorflow_server.par",
     "//tensorflow/python/feature_column:vocabulary_testdata",

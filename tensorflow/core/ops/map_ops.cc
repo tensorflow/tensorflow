@@ -63,16 +63,25 @@ REGISTER_OP("TensorMapErase")
     .Attr("key_dtype: type")
     .Attr("value_dtype: type")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
-      c->set_output(0, c->Scalar());        // output map
+      c->set_output(0, c->Scalar());  // output map
       return Status::OK();
     });
 
 REGISTER_OP("TensorMapHasKey")
     .Input("input_handle: variant")
-    .Input("key: element_dtype")
+    .Input("key: key_dtype")
     .Output("has_key: bool")
-    .Attr("element_dtype: type")
+    .Attr("key_dtype: type")
     .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("TensorMapStackKeys")
+    .Input("input_handle: variant")
+    .Output("keys: key_dtype")
+    .Attr("key_dtype: type")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->UnknownShape());  // output keys
+      return Status::OK();
+    });
 
 }  // namespace
 }  // namespace tensorflow

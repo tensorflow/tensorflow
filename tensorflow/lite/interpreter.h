@@ -36,10 +36,6 @@ limitations under the License.
 #include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/type_to_tflitetype.h"
 
-#if TFLITE_EXPERIMENTAL_RUNTIME_EAGER
-#include "tensorflow/lite/experimental/tf_runtime/public/eager_interpreter.h"
-#endif
-
 namespace tflite {
 
 class InterpreterTest;
@@ -47,8 +43,6 @@ class TestDelegate;
 namespace delegates {
 class InterpreterUtils;  // Class for friend declarations.
 }  // namespace delegates
-
-namespace impl {
 
 /// An interpreter for a graph of nodes that input and output from tensors.
 /// Each node of the graph processes a set of input tensors and produces a
@@ -374,7 +368,7 @@ class Interpreter {
   /// WARNING: NNAPI cannot be disabled after the graph has been prepared
   /// (via `AllocateTensors`) with NNAPI enabled.
   ///
-  /// NOTE: This API is deprecated, prefer using the NNAPI delegate directly.
+  /// WARNING: This API is deprecated, prefer using the NNAPI delegate directly.
   /// This method will be removed in a future release.
   void UseNNAPI(bool enable);
 
@@ -386,8 +380,12 @@ class Interpreter {
   TfLiteStatus SetNumThreads(int num_threads);
 
   /// Allow float16 precision for FP32 calculation when possible.
-  /// default: not allow.
-  /// WARNING: This is an experimental API and subject to change.
+  /// Default: not allow.
+  ///
+  /// WARNING: This API is deprecated: prefer controlling this via delegate
+  /// options, e.g. `tflite::StatefulNnApiDelegate::Options::allow_fp16' or
+  /// `TfLiteGpuDelegateOptionsV2::is_precision_loss_allowed`.
+  /// This method will be removed in a future release.
   void SetAllowFp16PrecisionForFp32(bool allow);
 
   /// Get the half precision flag.
@@ -538,8 +536,8 @@ class Interpreter {
   // for the tensor, it can no longer be reset to the TFLite arena memory.
   //
   // Parameters should satisfy the following conditions:
-  // 1. tensor->allocation_type == kTfLiteArenaRw
-  //    In general, this is true for all non-constants such as I/O tensors.
+  // 1. tensor->allocation_type == kTfLiteArenaRw or kTfLiteArenaRwPersistent
+  //    In general, this is true for I/O tensors & variable tensors.
   // 2. allocation->data has the appropriate permissions for runtime access
   //    (Read-only for inputs, Read-Write for others), and outlives Interpreter.
   // 3. allocation->bytes >= tensor->bytes.
@@ -582,6 +580,11 @@ class Interpreter {
   const Subgraph& primary_subgraph() const {
     return *subgraphs_.front();  // Safe as subgraphs_ always has 1 entry.
   }
+
+  /// WARNING: Experimental interface, subject to change
+  // Get the error reporter associated with this interpreter.
+  ErrorReporter* error_reporter() const { return error_reporter_; }
+
 #endif  // DOXYGEN_SKIP
 
  private:
@@ -607,9 +610,6 @@ class Interpreter {
 
   // Returns true if cancellation function returns true.
   bool IsCancelled();
-
-  // Get the error reporter associated with this interpreter.
-  ErrorReporter* error_reporter() { return error_reporter_; }
 
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive
@@ -658,14 +658,6 @@ class Interpreter {
   // delegates have been applied and doesn't need to be applied again.
   std::vector<TfLiteDelegatePtr> lazy_delegate_providers_;
 };
-
-}  // namespace impl
-
-#if TFLITE_EXPERIMENTAL_RUNTIME_EAGER
-using Interpreter = tflrt::EagerInterpreter;
-#else
-using Interpreter = impl::Interpreter;
-#endif
 
 }  // namespace tflite
 #endif  // TENSORFLOW_LITE_INTERPRETER_H_

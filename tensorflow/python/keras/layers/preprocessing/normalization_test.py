@@ -25,12 +25,14 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.layers.preprocessing import normalization
 from tensorflow.python.keras.layers.preprocessing import normalization_v1
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
 from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -216,7 +218,7 @@ class NormalizationTest(keras_parameterized.TestCase,
   @parameterized.named_parameters(*_get_layer_computation_test_cases())
   def test_layer_computation(self, adapt_data, axis, test_data, use_dataset,
                              expected):
-    input_shape = tuple([None for _ in range(test_data.ndim - 1)])
+    input_shape = tuple([test_data.shape[i] for i in range(1, test_data.ndim)])
     if use_dataset:
       # Keras APIs expect batched datasets
       adapt_data = dataset_ops.Dataset.from_tensor_slices(adapt_data).batch(
@@ -234,6 +236,45 @@ class NormalizationTest(keras_parameterized.TestCase,
     model._run_eagerly = testing_utils.should_run_eagerly()
     output_data = model.predict(test_data)
     self.assertAllClose(expected, output_data)
+
+    weights = layer.get_weights()
+    mean = weights[0]
+    var = weights[1]
+
+    direct_set_layer = cls(axis=axis, mean=mean, variance=var)
+    input_data = keras.Input(shape=input_shape)
+    output = direct_set_layer(input_data)
+    model = keras.Model(input_data, output)
+    model._run_eagerly = testing_utils.should_run_eagerly()
+    output_data = model.predict(test_data)
+    self.assertAllClose(expected, output_data)
+
+  def test_broadcasting_during_direct_setting(self):
+    cls = get_layer_class()
+    layer = cls(axis=-1, mean=[1.0], variance=[2.0])
+    layer.build((None, 2))
+    weights = layer.get_weights()
+    self.assertAllClose([1.0, 1.0], weights[0])
+    self.assertAllClose([2.0, 2.0], weights[1])
+
+  def test_broadcasting_during_direct_setting_with_tensors(self):
+    cls = get_layer_class()
+    layer = cls(
+        axis=-1,
+        mean=constant_op.constant([1.0]),
+        variance=constant_op.constant([2.0]))
+    layer.build((None, 2))
+    weights = layer.get_weights()
+    self.assertAllClose([1.0, 1.0], weights[0])
+    self.assertAllClose([2.0, 2.0], weights[1])
+
+  def test_broadcasting_during_direct_setting_with_variables_fails(self):
+    cls = get_layer_class()
+    with self.assertRaisesRegex(ValueError, "passing a Variable"):
+      _ = cls(
+          axis=-1,
+          mean=variables.Variable([1.0]),
+          variance=variables.Variable([2.0]))
 
   def test_mean_setting_continued_adapt_failure(self):
 

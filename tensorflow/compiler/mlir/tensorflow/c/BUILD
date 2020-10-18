@@ -1,8 +1,8 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_copts",
     "tf_cuda_library",
-    "tfe_xla_copts",
 )
 
 package(
@@ -20,7 +20,7 @@ tf_cuda_library(
     srcs = [
         "c_api_unified_experimental_mlir.cc",
     ],
-    copts = tf_copts() + tfe_xla_copts(),
+    copts = tf_copts(),
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/c:tensor_interface",
@@ -35,6 +35,7 @@ tf_cuda_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:convert_type",
+        "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/core:framework",

@@ -155,8 +155,8 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
                                                   [out_tensor])
-    converter.inference_input_type = lite_constants.QUANTIZED_UINT8
-    converter.inference_type = lite_constants.FLOAT
+    converter.inference_input_type = dtypes.uint8
+    converter.inference_type = dtypes.float32
     converter.quantized_input_stats = {'Placeholder': (0., 1.)}  # mean, std_dev
     tflite_model = converter.convert()
     self.assertIsNotNone(tflite_model)
@@ -788,8 +788,8 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     quantized_converter = lite.TFLiteConverter.from_session(
         sess, [inp], [output])
     quantized_converter.experimental_new_converter = enable_mlir_converter
-    quantized_converter.inference_input_type = lite_constants.INT8
-    quantized_converter.inference_output_type = lite_constants.INT8
+    quantized_converter.inference_input_type = dtypes.int8
+    quantized_converter.inference_output_type = dtypes.int8
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
     quantized_converter.representative_dataset = calibration_gen
     quantized_tflite_model = quantized_converter.convert()
@@ -832,7 +832,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     quantized_converter.experimental_new_converter = enable_mlir_converter
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
     # Restricting to int8 type only
-    quantized_converter.target_spec.supported_types = [lite.constants.INT8]
+    quantized_converter.target_spec.supported_types = [dtypes.int8]
     # A representative dataset is required for full fixed point quantization.
     with self.assertRaises(ValueError) as error:
       quantized_converter.convert()
@@ -857,7 +857,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     converter = lite.TFLiteConverter.from_session(sess,
                                                   [in_tensor_1, in_tensor_2],
                                                   [out_tensor])
-    converter.inference_type = lite_constants.QUANTIZED_UINT8
+    converter.inference_type = dtypes.uint8
     converter.quantized_input_stats = {
         'inputA': (0., 1.),
         'inputB': (0., 1.)
@@ -898,7 +898,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
                                                   [out_tensor])
-    converter.inference_type = lite_constants.QUANTIZED_UINT8
+    converter.inference_type = dtypes.uint8
     converter.quantized_input_stats = {'Placeholder': (0., 1.)}  # mean, std_dev
     converter.default_ranges_stats = (0, 6)  # min, max
     tflite_model = converter.convert()
@@ -954,16 +954,15 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     interpreter.allocate_tensors()
     self.assertEqual(interpreter.get_tensor_details()[idx]['name'], node_name)
     self.assertEqual(interpreter.get_tensor_details()[idx]['dtype'],
-                     lite.constants.FLOAT)
+                     dtypes.float32)
     # Convert model to quantized version
     quantized_converter = lite.TFLiteConverter.from_session(
         sess, [inp], [output])
     quantized_converter.experimental_new_converter = enable_mlir_converter
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
-    quantized_converter.target_spec.supported_types = [lite.constants.FLOAT16]
+    quantized_converter.target_spec.supported_types = [dtypes.float16]
     if include_int8:
-      quantized_converter.target_spec.supported_types.append(
-          lite.constants.INT8)
+      quantized_converter.target_spec.supported_types.append(dtypes.int8)
     if use_rep_data:
       quantized_converter.representative_dataset = calibration_gen
 
@@ -984,11 +983,11 @@ class FromSessionTest(TestModels, parameterized.TestCase):
       if is_float16_quantized:
         # Verify that bias constant is float16 type.
         self.assertEqual(interpreter.get_tensor_details()[idx]['dtype'],
-                         lite.constants.FLOAT16)
+                         dtypes.float16)
       elif is_post_training_quantized:
         # Verify that bias constants is int32 type.
         self.assertEqual(interpreter.get_tensor_details()[idx]['dtype'],
-                         lite.constants.INT32)
+                         dtypes.int32)
       else:
         raise ValueError('Invalid test options.')
 
@@ -1005,7 +1004,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
         sess, [inp], [output])
     quantized_converter.experimental_new_converter = enable_mlir_converter
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
-    quantized_converter.target_spec.supported_types = [lite.constants.FLOAT16]
+    quantized_converter.target_spec.supported_types = [dtypes.float16]
     # Specify only int8 builtin ops
     quantized_converter.target_spec.supported_ops = [
         lite.OpsSet.TFLITE_BUILTINS_INT8
@@ -1017,8 +1016,8 @@ class FromSessionTest(TestModels, parameterized.TestCase):
         str(error.exception))
 
   @parameterized.named_parameters(
-      ('InferenceType_INT8', lite_constants.INT8),
-      ('InferenceType_UINT8', lite_constants.QUANTIZED_UINT8))
+      ('InferenceType_INT8', dtypes.int8),
+      ('InferenceType_UINT8', dtypes.uint8))
   def testInvalidQuantizeQATModelRequiresInputStats(self, quantized_type):
     with ops.Graph().as_default():
       in_tensor = array_ops.placeholder(
@@ -1039,7 +1038,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
         'flag is set to tf.uint8 or tf.int8.', str(error.exception))
 
     with self.assertRaises(ValueError) as error:
-      quantized_converter.inference_type = lite_constants.FLOAT
+      quantized_converter.inference_type = dtypes.float32
       quantized_converter.inference_input_type = quantized_type
       quantized_converter.convert()
     self.assertEqual(
@@ -1070,7 +1069,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     converter = lite.TFLiteConverter.from_session(sess,
                                                   [in_tensor_1, in_tensor_2],
                                                   [out_tensor])
-    converter.inference_type = lite_constants.QUANTIZED_UINT8
+    converter.inference_type = dtypes.uint8
     converter.quantized_input_stats = {'inputA': (0., 1.)}  # mean, std_dev
     with self.assertRaises(ValueError) as error:
       converter.convert()
@@ -1091,9 +1090,9 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     converter = lite.TFLiteConverter.from_session(sess, [inp], [output])
 
     # extra flags to trigger training time quantization conversion
-    converter.inference_type = lite_constants.INT8
-    converter.inference_input_type = lite_constants.FLOAT
-    converter.inference_output_type = lite_constants.FLOAT
+    converter.inference_type = dtypes.int8
+    converter.inference_input_type = dtypes.float32
+    converter.inference_output_type = dtypes.float32
     input_arrays = converter.get_input_arrays()
     converter.quantized_input_stats = {
         input_arrays[0]: (0., 1.)
@@ -1255,7 +1254,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
                                                   [out_tensor])
-    converter.inference_type = lite_constants.QUANTIZED_UINT8
+    converter.inference_type = dtypes.uint8
     converter.quantized_input_stats = {'Placeholder': (0., 1.)}  # mean, std_dev
     tflite_model = converter.convert()
     self.assertIsNotNone(tflite_model)
@@ -2334,7 +2333,7 @@ class DefaultConverterAttrsTest(LiteTest):
     self.assertEqual(converter.output_format, lite_constants.TFLITE)
 
     # Assert the default inference type is float.
-    self.assertEqual(converter.inference_type, lite_constants.FLOAT)
+    self.assertEqual(converter.inference_type, dtypes.float32)
 
     # Assert the default inference type overrides are None.
     self.assertIsNone(converter.inference_input_type)

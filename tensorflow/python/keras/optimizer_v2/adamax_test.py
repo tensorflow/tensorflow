@@ -350,14 +350,14 @@ class AdamaxOptimizerTest(test.TestCase, parameterized.TestCase):
           self.assertAllCloseAccordingToType(var0_np, var0)
           self.assertAllCloseAccordingToType(var1_np, var1)
 
+  @combinations.generate(combinations.combine(mode=["eager"]))
   def testSlotsUniqueEager(self):
-    with context.eager_mode():
-      v1 = variables.Variable(1.)
-      v2 = variables.Variable(1.)
-      opt = adamax.Adamax(1.)
-      opt.minimize(lambda: v1 + v2, var_list=[v1, v2])
-      # There should be iteration, and two unique slot variables for v1 and v2.
-      self.assertEqual(5, len({id(v) for v in opt.variables()}))
+    v1 = variables.Variable(1.)
+    v2 = variables.Variable(1.)
+    opt = adamax.Adamax(1.)
+    opt.minimize(lambda: v1 + v2, var_list=[v1, v2])
+    # There should be iteration, and two unique slot variables for v1 and v2.
+    self.assertLen({id(v) for v in opt.variables()}, 5)
 
   def testConstructAdamaxWithLR(self):
     opt = adamax.Adamax(lr=1.0)

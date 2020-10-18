@@ -25,6 +25,7 @@ import unittest
 from absl.testing import parameterized
 
 from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute.cluster_resolver import tfconfig_cluster_resolver
 from tensorflow.python.framework import combinations as framework_combinations
 from tensorflow.python.platform import test
@@ -88,6 +89,20 @@ class ClusterCombinationTest(test.TestCase, parameterized.TestCase):
     # If combinations library doesn't raise an exception, the test is passed.
     pass
 
+  @combinations.generate(combinations.combine(num_workers=2,))
+  def testUseWithoutStrategy(self):
+    # There's no perfect way to check if the test runs in a subprocess. We
+    # approximate by checking the presence of TF_CONFIG, which is normally not
+    # set to the main process.
+    self.assertNotEqual(os.getenv("TF_CONFIG"), "")
+
+  def test_runner_creation(self):
+    cmb = combinations.NamedDistribution(
+        "Strategy1", lambda: None, has_chief=True, num_workers=2,
+        use_pool_runner=True)
+    self.assertIsNone(cmb._runner)
+    self.assertIsNotNone(cmb.runner)
+
 
 # unittest.expectedFailure doesn't work with parameterized test methods, so we
 # have to decorate the class instead.
@@ -105,14 +120,6 @@ class ClusterParametersShouldFailTest(test.TestCase, parameterized.TestCase):
   def testMultipleDistributionMultiWorker(self, ds1, ds2):
     # combinations library should raise an exception.
     pass
-
-  @combinations.generate(combinations.combine(num_workers=2,))
-  def testUseWithoutStrategy(self):
-    # There's no perfect way to check if the test runs in a subprocess. We
-    # approximate by checking the presence of TF_CONFIG, which is normally not
-    # set to the main process.
-    self.assertNotEqual(os.getenv("TF_CONFIG"), "")
-    raise ValueError("actually run")
 
 
 # Tests that we *actually* run the test method in multiple workers instead of
@@ -157,4 +164,4 @@ class CombinationsOnClassMultiWorkerExpectedFailureTest(test.TestCase,
 
 
 if __name__ == "__main__":
-  combinations.main()
+  test_util.main()

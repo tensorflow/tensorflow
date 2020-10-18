@@ -56,6 +56,14 @@ static DenseIntElementsAttr GetI64ElementsAttrForSeq(int start, int end,
   return DenseIntElementsAttr::get(ty, vals);
 }
 
+static APFloat ConvertToAPFloat(double val, Type type) {
+  if (type.getIntOrFloatBitWidth() == 32) {
+    return APFloat(static_cast<float>(val));
+  }
+
+  return APFloat(val);
+}
+
 // Returns int, float, or complex DenseElementsAttr with scalar shape with the
 // given element type and the integer value.
 static DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value) {
@@ -121,6 +129,17 @@ Type InferExpandDimsType(Type ty, int64_t axis, Builder *builder) {
   return RankedTensorType::get(shape, ranked_ty.getElementType());
 }
 
+// Converts individual Values to a tensor of rank 1. Each input Value has rank 1
+// and size 1.
+Value ValuesToRank1(PatternRewriter &rewriter, Location loc, Type dtype,
+                    ArrayRef<Value> vals) {
+  int64_t length = vals.size();
+  auto type = RankedTensorType::get({length}, dtype);
+  auto axis = rewriter.create<TF::ConstOp>(
+      loc, GetScalarOfType(rewriter.getIntegerType(64), 0));
+  return rewriter.create<TF::ConcatV2Op>(loc, type, ValueRange(vals), axis);
+}
+
 // Lowers AddN op to a sequence of AddV2 ops to accumulate operands.
 //
 // Note that to improve the parallelism, AddN op uses tree-based reduction.
@@ -160,34 +179,37 @@ Type InferExpandDimsType(Type ty, int64_t axis, Builder *builder) {
 //   %sum2 = "tf.AddV2"(%sum0, %sum1)
 //   %result = "tf.AddV2"(%sum2, %4)
 //
-class LowerAddNOp : public OpRewritePattern<TF::AddNOp> {
+class LowerAddNOp : public RewritePattern {
  public:
   explicit LowerAddNOp(MLIRContext *context)
-      : OpRewritePattern<TF::AddNOp>(context) {}
+      : RewritePattern(TF::AddNOp::getOperationName(),
+                       {TF::AddV2Op::getOperationName()}, 1, context) {}
 
-  LogicalResult matchAndRewrite(TF::AddNOp op,
+  LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
+    auto addn_op = cast<TF::AddNOp>(op);
+
     // TODO(hinsu): Support variant with TensorList type. tf.AddV2 doesn't
     // support variant type so variant types require special handling.
-    if (getElementTypeOrSelf(op.getType()).isa<VariantType>()) return failure();
-
-    llvm::SmallVector<Value, 4> operands(op.inputs().begin(),
-                                         op.inputs().end());
+    if (getElementTypeOrSelf(addn_op.getType()).isa<VariantType>())
+      return failure();
+    llvm::SmallVector<Value, 4> operands(addn_op.inputs().begin(),
+                                         addn_op.inputs().end());
 
     int64_t n = operands.size();
     // Keep doing tree-based reduction when there are more than one operand.
     while (n > 1) {
       for (int64_t i = 0; i < n; i += 2) {
         // Add two adjacent operands if applicable.
-        operands[i / 2] = (i + 1 < n)
-                              ? rewriter.create<TF::AddV2Op>(
-                                    op.getLoc(), operands[i], operands[i + 1])
-                              : operands[i];
+        operands[i / 2] =
+            (i + 1 < n) ? rewriter.create<TF::AddV2Op>(
+                              addn_op.getLoc(), operands[i], operands[i + 1])
+                        : operands[i];
       }
       n = (n + 1) / 2;
     }
 
-    rewriter.replaceOp(op, operands[0]);
+    rewriter.replaceOp(addn_op, operands[0]);
     return success();
   }
 };
@@ -273,7 +295,7 @@ class LowerDynamicStitchOp : public OpRewritePattern<TF::DynamicStitchOp> {
           reshaped_data.getType().cast<RankedTensorType>().getShape()[0];
       auto items = rewriter.create<UnpackOp>(
           loc, SmallVector<Type, 4>(num_items, item_ty), reshaped_data,
-          /*axis=*/APInt(64, 0));
+          /*axis=*/0);
       for (auto index_item : llvm::zip(index_attr, items.getResults())) {
         int64_t output_index = std::get<0>(index_item).getSExtValue();
         Value item = std::get<1>(index_item);
@@ -283,6 +305,114 @@ class LowerDynamicStitchOp : public OpRewritePattern<TF::DynamicStitchOp> {
 
     auto axis = rewriter.create<ConstOp>(loc, rewriter.getI64IntegerAttr(0));
     rewriter.replaceOpWithNewOp<ConcatV2Op>(op, op.getType(), values, axis);
+    return success();
+  }
+};
+
+// This pass performs a manual conversion with FakeQuant, converting between
+// floating point and quantized space. It is designed to reproduce TF's
+// implementation, mirroring the previous XLA implementation.
+//
+// 1. Computing proper quantized bounds. This involves nudging the input bounds.
+// 2. Converting the input bounds to quantized space, rounding values.
+// 3. Convert back into floating point space.
+class ConvertFakeQuantWithMinMaxVarsOp
+    : public OpRewritePattern<TF::FakeQuantWithMinMaxVarsOp> {
+  using OpRewritePattern<TF::FakeQuantWithMinMaxVarsOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::FakeQuantWithMinMaxVarsOp op,
+                                PatternRewriter &rewriter) const override {
+    auto input = op.inputs();
+    auto input_ty = input.getType().cast<ShapedType>();
+    auto element_ty = input_ty.getElementType();
+    auto scalar_ty = RankedTensorType::get({}, element_ty);
+
+    auto num_bits = op.num_bits();
+    auto narrow_range = op.narrow_range();
+    const double bits_min = narrow_range ? 1 : 0;
+    const double bits_max = (1 << num_bits) - 1;
+
+    auto float_min = op.min();
+    auto float_max = op.max();
+
+    auto float_diff =
+        rewriter.create<TF::SubOp>(op.getLoc(), float_max, float_min);
+
+    // Compute the range when quantized.
+    auto quant_min = rewriter.create<TF::ConstOp>(
+        op.getLoc(), DenseElementsAttr::get(
+                         scalar_ty, ConvertToAPFloat(bits_min, element_ty)));
+
+    auto quant_max = rewriter.create<TF::ConstOp>(
+        op.getLoc(), DenseElementsAttr::get(
+                         scalar_ty, ConvertToAPFloat(bits_max, element_ty)));
+
+    auto quant_diff = rewriter.create<TF::ConstOp>(
+        op.getLoc(),
+        DenseElementsAttr::get(
+            scalar_ty, ConvertToAPFloat(bits_max - bits_min, element_ty)));
+
+    auto quant_to_float =
+        rewriter.create<TF::DivOp>(op.getLoc(), float_diff, quant_diff);
+
+    auto float_to_quant =
+        rewriter.create<TF::DivOp>(op.getLoc(), quant_diff, float_diff);
+
+    // During quantization, the quantized min/max values may not line up
+    // perfectly with the specified min/max. Nudge them into the right range.
+    auto min_scaled =
+        rewriter.create<TF::DivOp>(op.getLoc(), float_min, quant_to_float);
+    auto min_scaled_sub =
+        rewriter.create<TF::SubOp>(op.getLoc(), quant_min, min_scaled);
+
+    auto mid_rounded =
+        rewriter.create<TF::RoundOp>(op.getLoc(), scalar_ty, min_scaled_sub);
+
+    auto nudged_zero_point_val = rewriter.create<TF::ClipByValueOp>(
+        op.getLoc(), scalar_ty, mid_rounded, quant_min, quant_max);
+
+    auto quant_min_sub = rewriter.create<TF::SubOp>(op.getLoc(), quant_min,
+                                                    nudged_zero_point_val);
+    auto quant_max_sub = rewriter.create<TF::SubOp>(op.getLoc(), quant_max,
+                                                    nudged_zero_point_val);
+
+    auto nudged_float_min =
+        rewriter.create<TF::MulOp>(op.getLoc(), quant_min_sub, quant_to_float);
+
+    auto nudged_float_max =
+        rewriter.create<TF::MulOp>(op.getLoc(), quant_max_sub, quant_to_float);
+
+    // Now quantize the input value with the approximated min/max values.
+
+    // Move the input value into quantized space
+    Value quantized_input = rewriter.create<TF::ClipByValueOp>(
+        op.getLoc(), input_ty, input, nudged_float_min, nudged_float_max);
+
+    quantized_input = rewriter.create<TF::SubOp>(
+        op.getLoc(), input_ty, quantized_input, nudged_float_min);
+
+    quantized_input = rewriter.create<TF::MulOp>(
+        op.getLoc(), input_ty, quantized_input, float_to_quant);
+
+    // Round the quantized input always to the positive direction.
+    auto half_val = rewriter.create<TF::ConstOp>(
+        op.getLoc(),
+        DenseElementsAttr::get(scalar_ty, ConvertToAPFloat(0.5, element_ty)));
+
+    quantized_input = rewriter.create<TF::AddOp>(op.getLoc(), input_ty,
+                                                 quantized_input, half_val);
+
+    quantized_input =
+        rewriter.create<TF::FloorOp>(op.getLoc(), quantized_input);
+
+    // Convert back into floating point spae.
+    Value output = rewriter.create<TF::MulOp>(op.getLoc(), input_ty,
+                                              quantized_input, quant_to_float);
+
+    output = rewriter.create<TF::AddOp>(op.getLoc(), input_ty, output,
+                                        nudged_float_min);
+
+    rewriter.replaceOp(op, {output});
     return success();
   }
 };
@@ -347,6 +477,210 @@ class LowerInvertPermutationOp
   }
 };
 
+// Approximates lgamma using Lanczos' approximation from
+// "A Precision Approximation of the Gamma Function". SIAM Journal on Numerical
+// Analysis series B. Vol. 1:
+// lgamma(z + 1) = (log(2) + log(pi)) / 2 + (z + 1/2) * log(t(z)) - t(z) + A(z)
+// t(z) = z + kLanczosGamma + 1/2
+// A(z) = kBaseLanczosCoeff
+//       + sigma(k = 1, n, kLanczosCoefficients[i] / (z +  k))
+//
+// Coefficients for the Lanczos approximation of the gamma function. The
+// coefficients are uniquely determined by the choice of g and n
+// (kLanczosGamma and kLanczosCoefficients.size() + 1). The coefficients below
+// correspond to [7, 9]. [5, 7], [7, 9], [9, 10], and [607/128.0, 15] were
+// evaluated and [7, 9] seemed to be the least sensitive to the quality of the
+// log function. In particular, [5, 7] is the only choice where -1.5e-5 <=
+// lgamma(2) <= 1.5e-5 for a particularly inaccurate log function.
+static constexpr double kLanczosGamma = 7;  // aka g
+static constexpr double kBaseLanczosCoeff = 0.99999999999980993227684700473478;
+static constexpr std::array<double, 8> kLanczosCoefficients = {
+    676.520368121885098567009190444019, -1259.13921672240287047156078755283,
+    771.3234287776530788486528258894,   -176.61502916214059906584551354,
+    12.507343278686904814458936853,     -0.13857109526572011689554707,
+    9.984369578019570859563e-6,         1.50563273514931155834e-7};
+
+class LowerLgammaOp : public OpRewritePattern<TF::LgammaOp> {
+ public:
+  using OpRewritePattern<TF::LgammaOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::LgammaOp op,
+                                PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    Value input = op.x();
+    TensorType original_tensor_type = op.x().getType().cast<TensorType>();
+
+    // The approximation is not precise enough for float16. Do the computation
+    // in float32 for that case.
+    TensorType tensor_type = original_tensor_type;
+    FloatType float_type = tensor_type.getElementType().cast<FloatType>();
+    bool needs_cast = float_type.getWidth() < 32;
+    if (needs_cast) {
+      MLIRContext *context = rewriter.getContext();
+      float_type = FloatType::getF32(context);
+      if (original_tensor_type.hasRank()) {
+        tensor_type =
+            RankedTensorType::get(original_tensor_type.getShape(), float_type);
+      } else {
+        tensor_type = UnrankedTensorType::get(float_type);
+      }
+      input = rewriter.create<TF::CastOp>(loc, tensor_type, input);
+    }
+
+    // Helper lambda function for creating a ConstOp for a tensor filled with
+    // the given constant float value.
+    auto create_const_op = [&rewriter, loc, tensor_type,
+                            float_type](double value) {
+      return rewriter.create<TF::ConstOp>(
+          loc, DenseElementsAttr::get(tensor_type,
+                                      FloatAttr::get(float_type, value)));
+    };
+
+    Value one_half = create_const_op(0.5);
+    Value one = create_const_op(1.0);
+    Value infinity = create_const_op(std::numeric_limits<double>::infinity());
+    Value pi = create_const_op(M_PI);
+    Value log_pi = create_const_op(std::log(M_PI));
+    Value log_sqrt_two_pi = create_const_op((std::log(2) + std::log(M_PI)) / 2);
+    Value lanczos_gamma_plus_one_half = create_const_op(kLanczosGamma + 0.5);
+    Value log_lanczos_gamma_plus_one_half =
+        create_const_op(std::log(kLanczosGamma + 0.5));
+    Value base_lanczos_coeff = create_const_op(kBaseLanczosCoeff);
+
+    Value minus_input = rewriter.create<TF::NegOp>(loc, input);
+    Value input_minus_one = rewriter.create<TF::SubOp>(loc, input, one);
+
+    // If the input is less than 0.5 use Euler's reflection formula:
+    // gamma(x) = pi / (sin(pi * x) * gamma(1 - x))
+    Value need_to_reflect = rewriter.create<TF::LessOp>(loc, input, one_half);
+    Type tensor_bool_type = need_to_reflect.getType();
+    Value z = rewriter.create<TF::SelectV2Op>(loc, need_to_reflect, minus_input,
+                                              input_minus_one);
+
+    Value x = base_lanczos_coeff;
+    for (int i = 0, end = kLanczosCoefficients.size(); i < end; ++i) {
+      Value lanczos_coefficient = create_const_op(kLanczosCoefficients[i]);
+      Value index = create_const_op(static_cast<double>(i));
+      Value z_plus_index = rewriter.create<TF::AddV2Op>(loc, z, index);
+      Value z_plus_index_plus_one =
+          rewriter.create<TF::AddV2Op>(loc, z_plus_index, one);
+      Value incr = rewriter.create<TF::DivOp>(loc, lanczos_coefficient,
+                                              z_plus_index_plus_one);
+      x = rewriter.create<TF::AddV2Op>(loc, x, incr);
+    }
+
+    // To improve accuracy on platforms with less-precise log implementations,
+    // compute log(lanczos_gamma_plus_one_half) at compile time and use log1p on
+    // the device.
+    // log(t) = log(kLanczosGamma + 0.5 + z)
+    //        = log(kLanczosGamma + 0.5) + log1p(z / (kLanczosGamma + 0.5))
+    Value t = rewriter.create<TF::AddV2Op>(loc, lanczos_gamma_plus_one_half, z);
+    Value z_div_lanczos_gamma_plus_one_half =
+        rewriter.create<TF::DivOp>(loc, z, lanczos_gamma_plus_one_half);
+    Value log1p_z_div_lanczos_gamma_plus_one_half =
+        rewriter.create<TF::Log1pOp>(loc, z_div_lanczos_gamma_plus_one_half);
+    Value log_t =
+        rewriter.create<TF::AddV2Op>(loc, log_lanczos_gamma_plus_one_half,
+                                     log1p_z_div_lanczos_gamma_plus_one_half);
+
+    // Compute the final result (modulo reflection).  t(z) may be large, and we
+    // need to be careful not to overflow to infinity in the first term of
+    //
+    //   (z + 1/2) * log(t(z)) - t(z).
+    //
+    // Therefore we compute this as
+    //
+    //   (z + 1/2 - t(z) / log(t(z))) * log(t(z)).
+    //
+    // log_y = log_sqrt_two_pi + (z + one_half - t / log_t) * log_t + Log(x);
+    Value t_div_log_t = rewriter.create<TF::DivOp>(loc, t, log_t);
+    Value one_half_minus_t_div_log_t =
+        rewriter.create<TF::SubOp>(loc, one_half, t_div_log_t);
+    Value z_plus_one_half_minus_t_div_log_t =
+        rewriter.create<TF::AddV2Op>(loc, z, one_half_minus_t_div_log_t);
+    Value z_plus_one_half_minus_t_div_log_t_mul_log_t =
+        rewriter.create<TF::MulOp>(loc, z_plus_one_half_minus_t_div_log_t,
+                                   log_t);
+    Value log_x = rewriter.create<TF::LogOp>(loc, x);
+    Value log_y_rhs = rewriter.create<TF::AddV2Op>(
+        loc, z_plus_one_half_minus_t_div_log_t_mul_log_t, log_x);
+    Value log_y = rewriter.create<TF::AddV2Op>(loc, log_sqrt_two_pi, log_y_rhs);
+
+    // Compute the reflected value, used when x < 0.5:
+    //
+    //   lgamma(x) = log(pi) - lgamma(1-x) - log(abs(sin(pi * x))).
+    //
+    // (The abs is because lgamma is the log of the absolute value of the gamma
+    // function.)
+    //
+    // We have to be careful when computing the final term above. gamma(x) goes
+    // to +/-inf at every integer x < 0, and this is controlled by the
+    // sin(pi * x) term.  The slope is large, so precision is particularly
+    // important.
+    //
+    // Because abs(sin(pi * x)) has period 1, we can equivalently use
+    // abs(sin(pi * frac(x))), where frac(x) is the fractional part of x.  This
+    // is more numerically accurate: It doesn't overflow to inf like pi * x can,
+    // and if x is an integer, it evaluates to 0 exactly, which is significant
+    // because we then take the log of this value, and log(0) is inf.
+    //
+    // We don't have a frac(x) primitive in XLA and computing it is tricky, but
+    // because abs(sin(pi * x)) = abs(sin(pi * abs(x))), it's good enough for
+    // our purposes to use abs(frac(x)) = abs(x) - floor(abs(x)).
+    //
+    // Furthermore, pi * abs(frac(x)) loses precision when abs(frac(x)) is close
+    // to 1.  To remedy this, we can use the fact that sin(pi * x) in the domain
+    // [0, 1] is symmetric across the line Y=0.5.
+    Value abs_input = rewriter.create<TF::AbsOp>(loc, input);
+    Value abs_input_floor = rewriter.create<TF::FloorOp>(loc, abs_input);
+    Value abs_frac_input =
+        rewriter.create<TF::SubOp>(loc, abs_input, abs_input_floor);
+
+    // Convert values of abs_frac_input > 0.5 to (1 - frac_input) to improve
+    // precision of pi * abs_frac_input for values of abs_frac_input close to 1.
+    Value one_minus_abs_frac_input =
+        rewriter.create<TF::SubOp>(loc, one, abs_frac_input);
+    Value abs_frac_input_gt_one_half =
+        rewriter.create<TF::GreaterOp>(loc, abs_frac_input, one_half);
+    Value reduced_frac_input = rewriter.create<TF::SelectV2Op>(
+        loc, abs_frac_input_gt_one_half, one_minus_abs_frac_input,
+        abs_frac_input);
+    Value pi_mul_reduced_frac_input =
+        rewriter.create<TF::MulOp>(loc, pi, reduced_frac_input);
+    Value sin_pi_mul_reduced_frac_input =
+        rewriter.create<TF::SinOp>(loc, pi_mul_reduced_frac_input);
+    Value reflection_denom =
+        rewriter.create<TF::LogOp>(loc, sin_pi_mul_reduced_frac_input);
+
+    // Avoid computing -inf - inf, which is nan.  If reflection_denom is +/-inf,
+    // then it "wins" and the result is +/-inf.
+    Value is_finite = rewriter.create<TF::IsFiniteOp>(loc, tensor_bool_type,
+                                                      reflection_denom);
+    Value neg_reflection_denom =
+        rewriter.create<TF::NegOp>(loc, reflection_denom);
+    Value log_pi_minus_reflection_denom =
+        rewriter.create<TF::SubOp>(loc, log_pi, reflection_denom);
+    Value reflection_if_finite =
+        rewriter.create<TF::SubOp>(loc, log_pi_minus_reflection_denom, log_y);
+    Value reflection = rewriter.create<TF::SelectV2Op>(
+        loc, is_finite, reflection_if_finite, neg_reflection_denom);
+
+    Value result = rewriter.create<TF::SelectV2Op>(loc, need_to_reflect,
+                                                   reflection, log_y);
+
+    // lgamma(+/-inf) = +inf.
+    Value is_inf = rewriter.create<TF::IsInfOp>(loc, tensor_bool_type, input);
+    result = rewriter.create<SelectV2Op>(loc, is_inf, infinity, result);
+
+    if (needs_cast) {
+      result = rewriter.create<TF::CastOp>(loc, original_tensor_type, result);
+    }
+
+    rewriter.replaceOp(op, result);
+    return success();
+  }
+};
+
 // Lowers Pack op to ConcatV2 op after changing shape of the inputs with
 // ExpandDims op.
 //
@@ -369,7 +703,7 @@ class LowerPackOp : public OpRewritePattern<TF::PackOp> {
         loc,
         DenseElementsAttr::get(
             RankedTensorType::get({}, rewriter.getIntegerType(64)), op.axis()));
-    int64_t axis = op.axis().getSExtValue();
+    int64_t axis = op.axis();
 
     Type prev_input_ty, inferred_ty;
     SmallVector<Value, 4> expanded_inputs;
@@ -389,6 +723,187 @@ class LowerPackOp : public OpRewritePattern<TF::PackOp> {
 
     rewriter.replaceOpWithNewOp<TF::ConcatV2Op>(op, op.getType(),
                                                 expanded_inputs, axis_value);
+    return success();
+  }
+};
+
+// Lowers SpaceToBatchND by reducing to reshape(transpose(reshape(pad(input)))).
+//
+// Before rewrite:
+//   output = SpaceToBatchND(input, block_shape, paddings)
+// Let:
+//   [batch] + spatial_shape + remaining_shape = input.shape
+//   M = spatial_shape.rank
+// After rewrite:
+//   padded = zero-pad input with paddings
+//     The spatial_shape component of input.shape pads with paddings[*, 0]
+//     before each dimension, and paddings[*, 1] after each dimension.
+//   reshaped = reshape padded to:
+//     [batch]
+//     + [padded.shape[1]/block_shape[0], block_shape[0], ...,
+//        padded.shape[M]/block_shape[M-1], block_shape[M-1]]
+//     + remaining_shape
+//   permuted = transpose reshaped to:
+//     block_shape
+//     + [batch]
+//     + [padded.shape[1]/block_shape[0], ..., padded.shape[M]/block_shape[M-1]]
+//     + remaining_shape
+//   result = reshape permuted to:
+//     [batch * product(block_shape)]
+//     + [padded.shape[1]/block_shape[0], ..., padded.shape[M]/block_shape[M-1]]
+//     + remaining_shape
+class LowerSpaceToBatchNDOp : public OpRewritePattern<TF::SpaceToBatchNDOp> {
+ public:
+  using OpRewritePattern<TF::SpaceToBatchNDOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::SpaceToBatchNDOp op,
+                                PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    auto input_type = op.input().getType().cast<TensorType>();
+    if (!input_type.hasStaticShape()) {
+      return failure();
+    }
+    ArrayRef<int64_t> input_shape = input_type.getShape();
+    auto block_shape_type = op.block_shape().getType().cast<TensorType>();
+    if (!block_shape_type.hasStaticShape()) {
+      return failure();
+    }
+    auto paddings_type = op.paddings().getType().cast<ShapedType>();
+
+    int64_t input_rank = input_type.getRank();
+    int64_t block_rank = block_shape_type.getNumElements();
+    int64_t remaining_rank = input_rank - 1 - block_rank;
+    if (remaining_rank < 0) {
+      // TODO(b/157475606): Move this check to ::Verify
+      return failure();
+    }
+
+    auto block_shape_i64_type = RankedTensorType::get(
+        block_shape_type.getShape(), rewriter.getIntegerType(64));
+    auto block_shape_i64 = rewriter.create<TF::CastOp>(
+        loc, block_shape_i64_type, op.block_shape());
+
+    auto paddings_i64_type = RankedTensorType::get(paddings_type.getShape(),
+                                                   rewriter.getIntegerType(64));
+    auto paddings_i64 =
+        rewriter.create<TF::CastOp>(loc, paddings_i64_type, op.paddings());
+
+    auto pad00 = rewriter.create<TF::ConstOp>(
+        loc, DenseElementsAttr::get<int64_t>(
+                 RankedTensorType::get({1, 2}, rewriter.getIntegerType(64)),
+                 {0, 0}));
+    SmallVector<Value, 4> full_paddings_list{pad00, paddings_i64};
+    full_paddings_list.append(remaining_rank, pad00);
+    auto full_paddings_type =
+        RankedTensorType::get({input_rank, 2}, rewriter.getIntegerType(64));
+    auto zero_i64 = rewriter.create<TF::ConstOp>(
+        loc, GetScalarOfType(rewriter.getIntegerType(64), 0));
+    // Extends paddings to all dimensions of input by adding 0s to non-block
+    // dimensions.
+    auto full_paddings = rewriter.create<TF::ConcatV2Op>(
+        loc, full_paddings_type, full_paddings_list, zero_i64);
+
+    SmallVector<int64_t, 4> padded_shape(input_rank, ShapedType::kDynamicSize);
+    auto padded_type =
+        RankedTensorType::get(padded_shape, rewriter.getF32Type());
+    // padded = pad(input, full_paddings)
+    auto padded =
+        rewriter.create<TF::PadOp>(loc, padded_type, op.input(), full_paddings);
+
+    auto paddings_sum_type =
+        RankedTensorType::get({input_rank}, rewriter.getIntegerType(64));
+    auto one_i64 = rewriter.create<TF::ConstOp>(
+        loc, GetScalarOfType(rewriter.getIntegerType(64), 1));
+    // paddings_sum = paddings[*,0] + paddings[*,1]
+    auto paddings_sum = rewriter.create<TF::SumOp>(loc, paddings_sum_type,
+                                                   full_paddings, one_i64);
+
+    // input_shape_tensor = input.shape
+    auto input_shape_tensor = rewriter.create<TF::ConstOp>(
+        loc,
+        DenseElementsAttr::get(
+            RankedTensorType::get({input_rank}, rewriter.getIntegerType(64)),
+            input_shape));
+
+    // padded_shape_tensor is the shape of padded.
+    auto padded_shape_tensor =
+        rewriter.create<TF::AddOp>(loc, paddings_sum, input_shape_tensor);
+
+    auto zero_i32 = rewriter.create<TF::ConstOp>(
+        loc, GetScalarOfType(rewriter.getIntegerType(32), 0));
+    SmallVector<Type, 4> padded_shape_splits_types(
+        input_rank, RankedTensorType::get({1}, rewriter.getIntegerType(64)));
+    SmallVector<Value, 4> padded_shape_splits(
+        rewriter
+            .create<TF::SplitOp>(loc, padded_shape_splits_types, zero_i32,
+                                 padded_shape_tensor)
+            .output());
+
+    SmallVector<Type, 4> block_shape_splits_types(
+        block_rank, RankedTensorType::get({1}, rewriter.getIntegerType(64)));
+    SmallVector<Value, 4> block_shape_splits(
+        rewriter
+            .create<TF::SplitOp>(loc, block_shape_splits_types, zero_i32,
+                                 block_shape_i64)
+            .output());
+
+    SmallVector<Value, 4> outer_shape_vals;
+    for (int64_t i = 0; i < block_rank; ++i) {
+      // TODO(b/157475606): Insert tf.Assert that the following division has
+      // remainder 0.
+      outer_shape_vals.push_back(rewriter.create<TF::DivOp>(
+          loc, padded_shape_splits[1 + i], block_shape_splits[i]));
+    }
+
+    SmallVector<Value, 6> reshaped_shape_vals{padded_shape_splits[0]};
+    for (int64_t i = 0; i < block_rank; ++i) {
+      reshaped_shape_vals.push_back(outer_shape_vals[i]);
+      reshaped_shape_vals.push_back(block_shape_splits[i]);
+    }
+    for (int64_t i = 1 + block_rank; i < input_rank; ++i) {
+      reshaped_shape_vals.push_back(padded_shape_splits[i]);
+    }
+    auto reshaped_shape = ValuesToRank1(
+        rewriter, loc, rewriter.getIntegerType(64), reshaped_shape_vals);
+
+    SmallVector<int64_t, 6> permutation_vals;
+    for (int64_t i = 0; i < block_rank; ++i) {
+      permutation_vals.push_back(2 + 2 * i);
+    }
+    permutation_vals.push_back(0);
+    for (int64_t i = 0; i < block_rank; ++i) {
+      permutation_vals.push_back(1 + 2 * i);
+    }
+    for (int64_t i = 1 + block_rank; i < input_rank; ++i) {
+      permutation_vals.push_back(block_rank + i);
+    }
+    auto permutation = rewriter.create<TF::ConstOp>(
+        loc, GetI64ElementsAttr(permutation_vals, &rewriter));
+
+    auto output_batch = padded_shape_splits[0];
+    for (int64_t i = 0; i < block_rank; ++i) {
+      output_batch =
+          rewriter.create<TF::MulOp>(loc, output_batch, block_shape_splits[i]);
+    }
+    SmallVector<Value, 4> output_shape_vals{output_batch};
+    for (int64_t i = 0; i < block_rank; ++i) {
+      output_shape_vals.push_back(outer_shape_vals[i]);
+    }
+    for (int64_t i = 1 + block_rank; i < input_rank; ++i) {
+      output_shape_vals.push_back(padded_shape_splits[i]);
+    }
+    auto output_shape = ValuesToRank1(
+        rewriter, loc, rewriter.getIntegerType(64), output_shape_vals);
+    auto reshaped = rewriter.create<TF::ReshapeOp>(loc, padded, reshaped_shape);
+    auto permuted =
+        rewriter.create<TF::TransposeOp>(loc, reshaped, permutation);
+
+    // Sometimes the result type is more specific than what the reshape builder
+    // can infer.
+    auto result_type = op.getResult().getType();
+    rewriter.replaceOpWithNewOp<TF::ReshapeOp>(op, result_type, permuted,
+                                               output_shape);
+
     return success();
   }
 };
@@ -447,8 +962,7 @@ class Lower_UnaryOpsComposition
   LogicalResult matchAndRewrite(TF::_UnaryOpsCompositionOp op,
                                 PatternRewriter &rewriter) const override {
     Value result = op.x();
-    for (StringRef op_name :
-         op.op_names().getAsRange<StringAttr, StringRef>()) {
+    for (StringRef op_name : op.op_names().getAsValueRange<StringAttr>()) {
       std::string full_name = "tf." + op_name.str();
       // All ops in the sequences have the same result type as the original
       // result type.
@@ -466,10 +980,11 @@ class Lower_UnaryOpsComposition
 
 void PopulateLoweringTFPatterns(MLIRContext *context,
                                 OwningRewritePatternList *patterns) {
-  patterns->insert<LowerAddNOp, LowerDynamicStitchOp, LowerInvertPermutationOp,
-                   LowerPackOp, LowerSparseMatMulOp, Lower_UnaryOpsComposition>(
-      context);
-  populateWithGenerated(context, patterns);
+  patterns->insert<LowerAddNOp, ConvertFakeQuantWithMinMaxVarsOp,
+                   LowerDynamicStitchOp, LowerInvertPermutationOp,
+                   LowerLgammaOp, LowerPackOp, LowerSpaceToBatchNDOp,
+                   LowerSparseMatMulOp, Lower_UnaryOpsComposition>(context);
+  populateWithGenerated(context, *patterns);
 }
 
 }  // namespace TF

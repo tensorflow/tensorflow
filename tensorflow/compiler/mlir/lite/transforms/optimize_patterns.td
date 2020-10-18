@@ -21,8 +21,13 @@ include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/lite/utils/utils.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
+// Checks if the param passed is a F32 ElementsAttr.
 def F32ElementsAttr : ElementsAttrBase<
-  CPred<"$_self.cast<ElementsAttr>().getType().getElementType().isF32()">, "float constant tensor">;
+  CPred<"$_self.isa<ElementsAttr>() && $_self.cast<ElementsAttr>().getType().getElementType().isF32()">,
+        "float constant tensor">;
+
+// Checks if the param passed is of NoneType.
+def IsNoneType : Constraint<CPred<"$0.getType().isa<NoneType>()">>;
 
 def ExtractSingleElementAsFloat : NativeCodeCall<
     "ExtractSingleElementAsFloat($_self.cast<ElementsAttr>())">;
@@ -52,15 +57,31 @@ multiclass FuseActFnIntoConvOpPat<dag ActFnOp, dag ActFnAttr> {
     [(HasOneUse $conv_out)]>;
 }
 
+multiclass FuseActFnIntoPoolOpPat<dag ActFnOp, dag ActFnAttr> {
+  def FuseActivationFuncWithAvgPool#ActFnOp#ActFnAttr : Pat<
+    (ActFnOp (TFL_AveragePool2DOp:$pool_out $input, $filter_height,
+                  $filter_width, $padding, $stride_h, $stride_w, TFL_AF_None)),
+    (TFL_AveragePool2DOp $input, $filter_height, $filter_width, $padding,
+        $stride_h, $stride_w, ActFnAttr),
+    [(HasOneUse $pool_out)]>;
+  def FuseActivationFuncWithMaxPool#ActFnOp#ActFnAttr : Pat<
+    (ActFnOp (TFL_MaxPool2DOp:$pool_out $input, $padding, $stride_w, $stride_h,
+                  $filter_width, $filter_height, TFL_AF_None)),
+    (TFL_MaxPool2DOp $input, $padding, $stride_w, $stride_h,
+        $filter_width, $filter_height, ActFnAttr),
+    [(HasOneUse $pool_out)]>;
+}
+
 // TODO(hinsu): Also fuse ops corresponding to SIGN_BIT fused
 // activation functions.
 // Currently we're not fusing tanh, sigmoid, hard_swish and other activations
 // those cannot be simply translated into clamping.
 foreach actFnPair = [[TFL_ReluOp, TFL_AF_Relu],
                      [TFL_Relu6Op, TFL_AF_Relu6],
-                     [TFL_Relu1Op, TFL_AF_Relu1]] in
+                     [TFL_Relu1Op, TFL_AF_Relu1]] in {
   defm : FuseActFnIntoConvOpPat<actFnPair[0], actFnPair[1]>;
-
+  defm : FuseActFnIntoPoolOpPat<actFnPair[0], actFnPair[1]>;
+}
 
 class CanFuseConvOrDepthwiseConv<string is_depthwise> : Constraint<
   CPred<"TFL::CanFuseConvOrDepthwiseConv($0, $1, " # is_depthwise # ")">>;
@@ -92,6 +113,29 @@ multiclass FuseBinaryOpToPrecedingAffine<dag binaryOp> {
       $h_factor, $w_factor, $act_fn, $padding, $stride_h, $stride_w,
       $multiplier),
     [(CanFuseConvOrDepthwiseConv<"true"> $filter, $value),
+     (HasOneUse $output)]>;
+   def FuseBinaryOpWithTransposeConv#binaryOp : Pat<
+    (binaryOp (TFL_TransposeConvOp:$output $output_shape, $weights, $inputs,
+                (ConstantOp F32ElementsAttr:$bias), $padding,
+                $stride_h, $stride_w),
+              (ConstantOp F32ElementsAttr:$value), TFL_AF_None),
+    (TFL_TransposeConvOp $output_shape, $weights, $inputs,
+      (binaryOp (ConstantOp $bias),
+         (ConstantOp $value), TFL_AF_None),
+      $padding, $stride_h, $stride_w),
+    [(CanFuseConvOrDepthwiseConv<"false"> $weights, $value),
+     (HasOneUse $output)]>;
+  // Fuse for TransposeConv with no bias
+  def FuseBinaryOpWithTransposeConvNoneBias#binaryOp : Pat<
+    (binaryOp (TFL_TransposeConvOp:$output $output_shape, $weights, $inputs,
+                (ConstantOp $bias), $padding,
+                $stride_h, $stride_w),
+              (ConstantOp F32ElementsAttr:$value), TFL_AF_None),
+    (TFL_TransposeConvOp $output_shape, $weights, $inputs,
+      (ConstantOp $value),
+      $padding, $stride_h, $stride_w),
+    [(CanFuseConvOrDepthwiseConv<"false"> $weights, $value),
+     (IsNoneType $bias),
      (HasOneUse $output)]>;
 }
 foreach binaryOp = [TFL_AddOp, TFL_SubOp] in
@@ -146,6 +190,39 @@ multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<dag BinaryOp> {
       $h_factor, $w_factor, $act_fn, $padding, $stride_h, $stride_w),
     [(CanFuseConvOrDepthwiseConv<"false"> $filter, $value),
      (HasOneUse $conv_output)]>;
+  def FuseMulOrDivWithTransposeConv#BinaryOp : Pat<
+    (BinaryOp (TFL_TransposeConvOp:$output $output_shape,
+                (ConstantOp F32ElementsAttr:$weights), $input,
+                (ConstantOp F32ElementsAttr:$bias),
+                $padding, $stride_h, $stride_w),
+              (ConstantOp $value), TFL_AF_None),
+    (TFL_TransposeConvOp $output_shape,
+      (BinaryOp (ConstantOp $weights),
+        (ConstantOp (ExpandTo4DForConv $value)),
+        TFL_AF_None),
+      $input,
+      (BinaryOp (ConstantOp $bias),
+        (ConstantOp $value),
+        TFL_AF_None),
+      $padding, $stride_h, $stride_w),
+    [(CanFuseConvOrDepthwiseConv<"false"> $weights, $value),
+     (HasOneUse $output)]>;
+  def FuseMulOrDivWithTransposeConvWithNoneBias#BinaryOp : Pat<
+    (BinaryOp (TFL_TransposeConvOp:$output $output_shape,
+                (ConstantOp F32ElementsAttr:$weights), $input,
+                (ConstantOp $bias),
+                $padding, $stride_h, $stride_w),
+              (ConstantOp $value), TFL_AF_None),
+    (TFL_TransposeConvOp $output_shape,
+      (BinaryOp (ConstantOp $weights),
+        (ConstantOp (ExpandTo4DForConv $value)),
+        TFL_AF_None),
+      $input,
+      (ConstantOp $bias),
+      $padding, $stride_h, $stride_w),
+    [(CanFuseConvOrDepthwiseConv<"false"> $weights, $value),
+     (IsNoneType $bias),
+     (HasOneUse $output)]>;
 }
 
 foreach BinaryOp = [TFL_DivOp, TFL_MulOp] in
@@ -420,9 +497,9 @@ def ConvertExpandDimsToReshape : Pat<
   [(AnyStaticShapeTensor $expand_dims_op)]>;
 
 class FloatValueEquals<string val> : Constraint<CPred<
-  "$0.cast<DenseElementsAttr>().getNumElements() == 1 &&"
-  "$0.isa<DenseFPElementsAttr>() &&"
-  "*$0.cast<DenseElementsAttr>().getValues<float>().begin() == " # val>>;
+  "$0.isa<DenseFPElementsAttr>() && "
+  "llvm::all_of($0.cast<DenseElementsAttr>().getFloatValues(), "
+  "[](const APFloat& f) { return f.isExactlyValue(" # val # "); })">>;
 
 // ReLU patterns
 def MatchReluPattern : Pat<
@@ -552,3 +629,37 @@ foreach ReduceOp = [TFL_ReduceMaxOp, TFL_ReduceMinOp, TFL_ReduceProdOp,
      (HasOneUse $reduce)]>;
 }
 
+
+def IsSame : Constraint<CPred<"$0 == $1">>;
+def HasTwoUse : Constraint<CPred<
+  "std::distance($0.use_begin(), $0.use_end()) == 2">>;
+def AxesIsLastDimension : Constraint<CPred<
+  "$0.cast<DenseIntElementsAttr>().getNumElements() == 1 && "
+  "$0.cast<DenseIntElementsAttr>().getValue<APInt>({0}) == "
+  "$1.getType().cast<ShapedType>().getRank() - 1">>;
+
+// Convert exp(x)/sum(exp(x)) into softmax.
+def OptimizeToSoftmax : Pat<
+  (TFL_DivOp (TFL_ExpOp:$exp $input),
+             (TFL_SumOp:$sum $sum_input, (ConstantOp I32ElementsAttr: $axes),
+                             ConstBoolAttrTrue), TFL_AF_None),
+  (TFL_SoftmaxOp $input, ConstF32Attr<"1.0">),
+  [(IsSame $exp, $sum_input),
+   (AxesIsLastDimension $axes, $sum_input),
+   (HasTwoUse $exp),
+   (HasOneUse $sum)]>;
+
+// Convert softmax(x-max(x)) into softmax(x) as the softmax op already deals
+// with the max normalization.
+def FoldNormalizationIntoSoftmax : Pat<
+  (TFL_SoftmaxOp
+    (TFL_SubOp:$sub $input,
+      (TFL_ReduceMaxOp:$max $max_input, (ConstantOp I32ElementsAttr: $axes),
+                            ConstBoolAttrTrue),
+    TFL_AF_None),
+    $beta),
+  (TFL_SoftmaxOp $input, $beta),
+  [(IsSame $input, $max_input),
+   (AxesIsLastDimension $axes, $max_input),
+   (HasOneUse $sub),
+   (HasOneUse $max)]>;

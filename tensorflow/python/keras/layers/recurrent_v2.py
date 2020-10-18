@@ -20,9 +20,9 @@ from __future__ import print_function
 
 import uuid
 
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device
 from tensorflow.python.framework import dtypes
@@ -64,6 +64,45 @@ _CUDNN_NOT_AVAILABLE_MSG = ('Layer %s will not use cuDNN kernel since it '
                             'doesn\'t meet the cuDNN kernel criteria. It will '
                             'use generic GPU kernel as fallback when running '
                             'on GPU')
+
+
+def _use_new_code():
+  return True
+
+
+# TODO(b/169707691): The wrapper can be removed if TFLite doesn't need to rely
+# on supportive attributes from LSTM/GRU.
+class _DefunWrapper(object):
+  """A wrapper with no deep copy of the Defun in LSTM/GRU layer."""
+
+  def __init__(self, time_major, go_backwards, layer_name):
+    self.time_major = time_major
+    self.go_backwards = go_backwards
+    self.layer_name = layer_name
+    if self.layer_name not in ['lstm', 'gru']:
+      raise ValueError('Defun wrapper only applies to LSTM and GRU layer, '
+                       'but given {}'.format(self.layer_name))
+    # The first two attributes are added to support TFLite use case.
+    supportive_attributes = {
+        'time_major': self.time_major,
+        'go_backwards': self.go_backwards,
+        _FUNCTION_API_NAME_ATTRIBUTE: self.layer_name + '_' + str(uuid.uuid4())
+    }
+    if self.layer_name == 'lstm':
+      layer_func = lstm_with_backend_selection
+    else:
+      layer_func = gru_with_backend_selection
+
+    self.defun_layer = function.defun_with_attributes(
+        layer_func,
+        attributes=supportive_attributes,
+        autograph=False)
+
+  def __deepcopy__(self, memo):
+    new_wrapper = type(self)(
+        self.time_major, self.go_backwards, self.layer_name)
+    memo[id(self)] = new_wrapper
+    return new_wrapper
 
 
 @keras_export('keras.layers.GRUCell', v1=[])
@@ -125,12 +164,6 @@ class GRUCell(recurrent.GRUCell):
       linear transformation of the inputs. Default: 0.
     recurrent_dropout: Float between 0 and 1. Fraction of the units to drop for
       the linear transformation of the recurrent state. Default: 0.
-    implementation: Implementation mode, either 1 or 2.
-      Mode 1 will structure its operations as a larger number of
-      smaller dot products and additions, whereas mode 2 (default) will
-      batch them into fewer, larger operations. These modes will
-      have different performance profiles on different hardware and
-      for different applications. Default: 2.
     reset_after: GRU convention (whether to apply reset gate after or
       before matrix multiplication). False = "before",
       True = "after" (default and CuDNN compatible).
@@ -161,7 +194,6 @@ class GRUCell(recurrent.GRUCell):
                bias_constraint=None,
                dropout=0.,
                recurrent_dropout=0.,
-               implementation=2,
                reset_after=True,
                **kwargs):
     super(GRUCell, self).__init__(
@@ -180,7 +212,7 @@ class GRUCell(recurrent.GRUCell):
         bias_constraint=bias_constraint,
         dropout=dropout,
         recurrent_dropout=recurrent_dropout,
-        implementation=implementation,
+        implementation=kwargs.pop('implementation', 2),
         reset_after=reset_after,
         **kwargs)
 
@@ -270,12 +302,6 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
       transformation of the inputs. Default: 0.
     recurrent_dropout: Float between 0 and 1. Fraction of the units to drop for
       the linear transformation of the recurrent state. Default: 0.
-    implementation: Implementation mode, either 1 or 2.
-      Mode 1 will structure its operations as a larger number of
-      smaller dot products and additions, whereas mode 2 will
-      batch them into fewer, larger operations. These modes will
-      have different performance profiles on different hardware and
-      for different applications. Default: 2.
     return_sequences: Boolean. Whether to return the last output
       in the output sequence, or the full sequence. Default: `False`.
     return_state: Boolean. Whether to return the last state in addition to the
@@ -334,7 +360,6 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
                bias_constraint=None,
                dropout=0.,
                recurrent_dropout=0.,
-               implementation=2,
                return_sequences=False,
                return_state=False,
                go_backwards=False,
@@ -364,7 +389,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
         bias_constraint=bias_constraint,
         dropout=dropout,
         recurrent_dropout=recurrent_dropout,
-        implementation=implementation,
+        implementation=kwargs.pop('implementation', 2),
         return_sequences=return_sequences,
         return_state=return_state,
         go_backwards=go_backwards,
@@ -379,7 +404,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
         self.recurrent_activation in (activations.sigmoid, nn.sigmoid) and
         recurrent_dropout == 0 and not unroll and use_bias and
         reset_after and ops.executing_eagerly_outside_functions())
-    if context.num_gpus() > 0:
+    if config.list_logical_devices('GPU'):
       # Only show the message when there is GPU available, user will not care
       # about the cuDNN if there isn't any GPU.
       if self._could_use_gpu_kernel:
@@ -387,19 +412,8 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
       else:
         logging.warn(_CUDNN_NOT_AVAILABLE_MSG % self.name)
 
-    # TODO(b/162616551): Remove all compat statements after 08/20/2020.
-    # This follows b/161915509 and is mainly to test the stateless Case op.
-    if compat.forward_compatible(2020, 8, 27):
-      # The first two attributes are added to support TFLite use case.
-      supportive_attributes = {
-          'time_major': time_major,
-          'go_backwards': go_backwards,
-          _FUNCTION_API_NAME_ATTRIBUTE: 'gru_' + str(uuid.uuid4())
-      }
-      self.defun_gru_with_backend_selection = function.defun_with_attributes(
-          gru_with_backend_selection,
-          attributes=supportive_attributes,
-          autograph=False)
+    if _use_new_code():
+      self._defun_wrapper = _DefunWrapper(time_major, go_backwards, 'gru')
 
   def build(self, input_shape):
     super(GRU, self).build(input_shape)
@@ -483,7 +497,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
     if dropout_mask is not None:
       inputs = inputs * dropout_mask[0]
 
-    if compat.forward_compatible(2020, 8, 27):
+    if _use_new_code():
       gru_kwargs = {
           'inputs': inputs,
           'init_h': _read_variable_value(initial_state[0]),
@@ -497,7 +511,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
           'zero_output_for_mask': self.zero_output_for_mask
       }
       (last_output, outputs, new_h,
-       runtime) = self.defun_gru_with_backend_selection(**gru_kwargs)
+       runtime) = self._defun_wrapper.defun_layer(**gru_kwargs)
     else:
       gpu_gru_kwargs = {
           'inputs': inputs,
@@ -520,7 +534,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
         can_use_gpu = (
             # Either user specified GPU or unspecified but GPU is available.
             (device_type == _GPU_DEVICE_NAME or
-             (device_type is None and context.num_gpus() > 0)) and
+             (device_type is None and config.list_logical_devices('GPU'))) and
             (mask is None or is_cudnn_supported_inputs(mask, self.time_major)))
         # Under eager context, check the device placement and prefer the
         if can_use_gpu:
@@ -797,7 +811,7 @@ def gru_with_backend_selection(inputs, init_h, kernel, recurrent_kernel, bias,
         true_fn=cudnn_gru_fn,
         false_fn=standard_gru_fn)
 
-  if compat.forward_compatible(2020, 8, 27):
+  if _use_new_code():
     # Chooses the implementation dynamicly based on the running device.
     (last_output, outputs, new_h,
      runtime) = control_flow_ops.execute_fn_for_device(
@@ -894,11 +908,6 @@ class LSTMCell(recurrent.LSTMCell):
       transformation of the inputs. Default: 0.
     recurrent_dropout: Float between 0 and 1. Fraction of the units to drop for
       the linear transformation of the recurrent state. Default: 0.
-    implementation: Implementation mode, either 1 or 2.
-      Mode 1 will structure its operations as a larger number of smaller dot
-      products and additions, whereas mode 2 (default) will batch them into
-      fewer, larger operations. These modes will have different performance
-      profiles on different hardware and for different applications. Default: 2.
 
   Call arguments:
     inputs: A 2D tensor, with shape of `[batch, feature]`.
@@ -929,7 +938,6 @@ class LSTMCell(recurrent.LSTMCell):
                bias_constraint=None,
                dropout=0.,
                recurrent_dropout=0.,
-               implementation=2,
                **kwargs):
     super(LSTMCell, self).__init__(
         units,
@@ -948,7 +956,7 @@ class LSTMCell(recurrent.LSTMCell):
         bias_constraint=bias_constraint,
         dropout=dropout,
         recurrent_dropout=recurrent_dropout,
-        implementation=implementation,
+        implementation=kwargs.pop('implementation', 2),
         **kwargs)
 
 
@@ -1028,11 +1036,6 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
       transformation of the inputs. Default: 0.
     recurrent_dropout: Float between 0 and 1. Fraction of the units to drop for
       the linear transformation of the recurrent state. Default: 0.
-    implementation: Implementation mode, either 1 or 2. Mode 1 will structure
-      its operations as a larger number of smaller dot products and additions,
-      whereas mode 2 will batch them into fewer, larger operations. These modes
-      will have different performance profiles on different hardware and for
-      different applications. Default: 2.
     return_sequences: Boolean. Whether to return the last output. in the output
       sequence, or the full sequence. Default: `False`.
     return_state: Boolean. Whether to return the last state in addition to the
@@ -1086,7 +1089,6 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
                bias_constraint=None,
                dropout=0.,
                recurrent_dropout=0.,
-               implementation=2,
                return_sequences=False,
                return_state=False,
                go_backwards=False,
@@ -1116,7 +1118,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
         bias_constraint=bias_constraint,
         dropout=dropout,
         recurrent_dropout=recurrent_dropout,
-        implementation=implementation,
+        implementation=kwargs.pop('implementation', 2),
         return_sequences=return_sequences,
         return_state=return_state,
         go_backwards=go_backwards,
@@ -1133,7 +1135,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
         self.recurrent_activation in (activations.sigmoid, nn.sigmoid) and
         recurrent_dropout == 0 and not unroll and use_bias and
         ops.executing_eagerly_outside_functions())
-    if context.num_gpus() > 0:
+    if config.list_logical_devices('GPU'):
       # Only show the message when there is GPU available, user will not care
       # about the cuDNN if there isn't any GPU.
       if self._could_use_gpu_kernel:
@@ -1141,18 +1143,8 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
       else:
         logging.warn(_CUDNN_NOT_AVAILABLE_MSG % self.name)
 
-    if compat.forward_compatible(2020, 8, 27):
-      # The first two attributes are added to support TFLite use case.
-      supportive_attributes = {
-          'time_major': time_major,
-          'go_backwards': go_backwards,
-          _FUNCTION_API_NAME_ATTRIBUTE: 'lstm_' + str(uuid.uuid4())
-      }
-
-      self.defun_lstm_with_backend_selection = function.defun_with_attributes(
-          lstm_with_backend_selection,
-          attributes=supportive_attributes,
-          autograph=False)
+    if _use_new_code():
+      self._defun_wrapper = _DefunWrapper(time_major, go_backwards, 'lstm')
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
     # The input should be dense, padded with zeros. If a ragged input is fed
@@ -1202,7 +1194,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
       dropout_mask = self.get_dropout_mask_for_cell(inputs, training, count=4)
       if dropout_mask is not None:
         inputs = inputs * dropout_mask[0]
-      if compat.forward_compatible(2020, 8, 27):
+      if _use_new_code():
         lstm_kwargs = {
             'inputs':
                 inputs,
@@ -1228,7 +1220,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
                 self.zero_output_for_mask,
         }
         (last_output, outputs, new_h, new_c,
-         runtime) = self.defun_lstm_with_backend_selection(**lstm_kwargs)
+         runtime) = self._defun_wrapper.defun_layer(**lstm_kwargs)
       else:
         gpu_lstm_kwargs = {
             'inputs':
@@ -1262,7 +1254,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
           can_use_gpu = (
               # Either user specified GPU or unspecified but GPU is available.
               (device_type == _GPU_DEVICE_NAME or
-               (device_type is None and context.num_gpus() > 0)) and
+               (device_type is None and config.list_logical_devices('GPU'))) and
               (mask is None or
                is_cudnn_supported_inputs(mask, self.time_major)))
           # Under eager context, check the device placement and prefer the
@@ -1633,7 +1625,7 @@ def lstm_with_backend_selection(inputs, init_h, init_c, kernel,
         true_fn=cudnn_lstm_fn,
         false_fn=stardard_lstm_fn)
 
-  if compat.forward_compatible(2020, 8, 27):
+  if _use_new_code():
     # Chooses the implementation dynamicly based on the running device.
     (last_output, outputs, new_h, new_c,
      runtime) = control_flow_ops.execute_fn_for_device(

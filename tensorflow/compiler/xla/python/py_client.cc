@@ -30,6 +30,8 @@ namespace xla {
 namespace py = pybind11;
 namespace pprof = tensorflow::tfprof::pprof;
 
+PyClient::PyClient(std::unique_ptr<PjRtClient> pjrt_client)
+    : pjrt_client_(std::move(pjrt_client)) {}
 PyClient::PyClient(std::shared_ptr<PjRtClient> pjrt_client)
     : pjrt_client_(std::move(pjrt_client)) {}
 

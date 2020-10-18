@@ -33,8 +33,8 @@ std::unique_ptr<GPUOperation> SelectDWConvolutionAdreno(
     return absl::make_unique<DepthwiseConv3x3>(
         CreateDepthwiseConv3x3(device_info, op_def, attr));
   } else {
-    return absl::make_unique<DepthwiseConvolution>(
-        CreateDepthwiseConvolution(device_info, op_def, attr));
+    return absl::make_unique<GPUOperation>(
+        CreateDepthwiseConvolution2D(device_info, op_def, attr));
   }
 }
 
@@ -45,8 +45,8 @@ std::unique_ptr<GPUOperation> SelectDWConvolutionPowerVR(
     return absl::make_unique<DepthwiseConv3x3>(
         CreateDepthwiseConv3x3(device_info, op_def, attr));
   } else {
-    return absl::make_unique<DepthwiseConvolution>(
-        CreateDepthwiseConvolution(device_info, op_def, attr));
+    return absl::make_unique<GPUOperation>(
+        CreateDepthwiseConvolution2D(device_info, op_def, attr));
   }
 }
 
@@ -62,8 +62,8 @@ std::unique_ptr<GPUOperation> SelectDWConvolutionMali(
     return absl::make_unique<DepthwiseConv3x3>(
         CreateDepthwiseConv3x3(device_info, op_def, attr));
   } else {
-    return absl::make_unique<DepthwiseConvolution>(
-        CreateDepthwiseConvolution(device_info, op_def, attr));
+    return absl::make_unique<GPUOperation>(
+        CreateDepthwiseConvolution2D(device_info, op_def, attr));
   }
 }
 }  // namespace

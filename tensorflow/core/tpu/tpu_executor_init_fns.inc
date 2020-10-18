@@ -54,6 +54,8 @@ tensorflow::Status SetExecutorStructFn(void* library_handle) {
   TFTPU_SET_FN(executor_fn, TpuStream_Stream);
   TFTPU_SET_FN(executor_fn, TpuStream_Status);
   TFTPU_SET_FN(executor_fn, TpuStream_IsSameSharedMemoryLocation);
+  TFTPU_SET_FN(executor_fn, TpuStream_EnqueueTransferHostToDevice);
+  TFTPU_SET_FN(executor_fn, TpuStream_EnqueueTransferDeviceToHost);
   TFTPU_SET_FN(executor_fn, TpuStream_TpuEnqueueOnDeviceSendRecvLocal);
 
   TFTPU_SET_FN(executor_fn, TpuEvent_New);
@@ -91,6 +93,9 @@ tensorflow::Status SetExecutorStructFn(void* library_handle) {
   TFTPU_SET_FN(executor_fn, TpuTransferManager_TransferLiteralToDeviceAsync);
   TFTPU_SET_FN(executor_fn, TpuTransferManager_TransferLiteralFromDevice);
   TFTPU_SET_FN(executor_fn, TpuTransferManager_GetByteSizeRequirement);
+  TFTPU_SET_FN(executor_fn, TpuTransferManager_ChooseCompactLayoutForShape);
+  TFTPU_SET_FN(executor_fn, TpuTransferManager_CanShapedBufferBeAccessedNow);
+  TFTPU_SET_FN(executor_fn, TpuTransferManager_CanBufferBeAccessedNow);
   TFTPU_SET_FN(executor_fn, TpuTransferManager_WriteSingleTupleIndexTable);
   TFTPU_SET_FN(executor_fn, TpuTransferManager_GetInfeedLayout);
   TFTPU_SET_FN(executor_fn, TpuTransferManager_LinearizeToBuffers);
@@ -103,9 +108,12 @@ tensorflow::Status SetExecutorStructFn(void* library_handle) {
   TFTPU_SET_FN(executor_fn, TpuComputationPlacer_New);
   TFTPU_SET_FN(executor_fn, TpuComputationPlacer_Free);
   TFTPU_SET_FN(executor_fn, TpuComputationPlacer_AssignDevices);
+  TFTPU_SET_FN(executor_fn, TpuComputationPlacer_AssignLocalDevices);
 
   TFTPU_SET_FN(executor_fn, TpuTopology_LogicalDevicesPerHost);
   TFTPU_SET_FN(executor_fn, TpuTopology_LogicalDevicesPerChip);
+  TFTPU_SET_FN(executor_fn, TpuTopology_HostCount);
+  TFTPU_SET_FN(executor_fn, TpuTopology_ChipsPerHost);
   TFTPU_SET_FN(executor_fn, TpuTopology_ChipBounds_X);
   TFTPU_SET_FN(executor_fn, TpuTopology_ChipBounds_Y);
   TFTPU_SET_FN(executor_fn, TpuTopology_ChipBounds_Z);
@@ -122,6 +130,8 @@ tensorflow::Status SetExecutorStructFn(void* library_handle) {
   TFTPU_SET_FN(executor_fn, TpuCoreLocation_Id);
 
   TFTPU_SET_FN(executor_fn, TpuHostLocation_Id);
+  TFTPU_SET_FN(executor_fn, TpuHostLocation_NumCores);
+  TFTPU_SET_FN(executor_fn, TpuHostLocation_Cores);
 
   TFTPU_SET_FN(executor_fn, TpuCompiler_New);
   TFTPU_SET_FN(executor_fn, TpuCompiler_Free);
@@ -131,6 +141,8 @@ tensorflow::Status SetExecutorStructFn(void* library_handle) {
   TFTPU_SET_FN(executor_fn, TpuCompiler_Compile);
   TFTPU_SET_FN(executor_fn, TpuCompiler_ShapeSize);
   TFTPU_SET_FN(executor_fn, TpuExecutable_ExecuteAsyncOnStream);
+  TFTPU_SET_FN(executor_fn, TpuExecutable_Fingerprint);
+  TFTPU_SET_FN(executor_fn, TpuExecutable_HloModule);
   TFTPU_SET_FN(executor_fn, TpuExecutable_Free);
 
   TFTPU_SET_FN(executor_fn, XlaShapeToTpuShapeRepresentation);

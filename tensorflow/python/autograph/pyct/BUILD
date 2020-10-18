@@ -4,8 +4,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 filegroup(
     name = "all_files",
     srcs = glob(
@@ -31,7 +29,6 @@ py_library(
         "gast_util.py",
         "inspect_utils.py",
         "loader.py",
-        "loader_deprecated_py2.py",
         "naming.py",
         "origin_info.py",
         "parser.py",

@@ -12,6 +12,7 @@ tf_py_test(
     name = "identity_op_py_test",
     size = "small",
     srcs = ["identity_op_py_test.py"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:array_ops_gen",
@@ -23,6 +24,7 @@ cuda_py_test(
     name = "scatter_nd_ops_test",
     size = "small",
     srcs = ["scatter_nd_ops_test.py"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:state_ops",
@@ -35,6 +37,7 @@ cuda_py_test(
     name = "session_ops_test",
     size = "small",
     srcs = ["session_ops_test.py"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",

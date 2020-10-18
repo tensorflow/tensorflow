@@ -200,6 +200,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       for (auto& worker_thread : worker_threads_) {
         worker_thread.reset();
       }
+
+      VLOG(1) << "Destroyed data service dataset iterator for job id "
+              << job_client_id_;
     }
 
     void CancelThreads() TF_LOCKS_EXCLUDED(mu_) {
@@ -225,17 +228,23 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             [&]() {
               return dispatcher_->CreateJob(dataset()->dataset_id_,
                                             dataset()->processing_mode_,
-                                            &job_client_id_);
+                                            job_client_id_);
             },
-            "create job", deadline_micros));
+            /*description=*/
+            strings::StrCat("create job with dispatcher at ",
+                            dataset()->address_),
+            deadline_micros));
       } else {
         TF_RETURN_IF_ERROR(grpc_util::Retry(
             [&]() {
               return dispatcher_->GetOrCreateJob(
                   dataset()->dataset_id_, dataset()->processing_mode_,
-                  dataset()->job_name_, iterator_index_, &job_client_id_);
+                  dataset()->job_name_, iterator_index_, job_client_id_);
             },
-            "get or create job", deadline_micros));
+            /*description=*/
+            strings::StrCat("get or create job with dispatcher at ",
+                            dataset()->address_),
+            deadline_micros));
       }
       initialized_ = true;
       VLOG(1) << "Created data service job with id " << job_client_id_;
@@ -347,7 +356,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       VLOG(3) << "Updating tasks";
       std::vector<TaskInfo> tasks;
       bool job_finished;
-      Status s = dispatcher_->GetTasks(job_client_id_, &tasks, &job_finished);
+      Status s = dispatcher_->GetTasks(job_client_id_, tasks, job_finished);
       if (!s.ok()) {
         LOG(WARNING) << "Failed to get task info for job client id "
                      << job_client_id_ << ": " << s;
@@ -382,7 +391,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         TaskInfo& task_info = new_task_entry.second;
         std::unique_ptr<DataServiceWorkerClient> worker;
         Status s = CreateDataServiceWorkerClient(task_info.worker_address(),
-                                                 dataset()->protocol_, &worker);
+                                                 dataset()->protocol_, worker);
         if (!s.ok()) {
           status_ = s;
           get_next_cv_.notify_all();
@@ -466,8 +475,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         Status s = GetElement(task_to_process.get(), deadline_micros);
         if (!s.ok()) {
           mutex_lock l(mu_);
-          VLOG(1) << "Failed to get element for task "
-                  << task_to_process->task_id << ": " << s;
+          VLOG(1) << "Failed to get element from worker "
+                  << task_to_process->address << ": " << s;
           task_to_process->in_use = false;
           status_ = s;
           get_next_cv_.notify_all();
@@ -489,8 +498,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       CompressedElement compressed;
       bool end_of_sequence;
       for (int num_retries = 0;; ++num_retries) {
-        Status s = task->worker->GetElement(task->task_id, &compressed,
-                                            &end_of_sequence);
+        Status s = task->worker->GetElement(task->task_id, compressed,
+                                            end_of_sequence);
         if (s.ok()) {
           break;
         }
@@ -520,6 +529,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             (deadline_micros > deadline_with_backoff_micros)
                 ? deadline_with_backoff_micros
                 : deadline_micros;
+        VLOG(1) << "Failed to get an element from worker " << task->address
+                << ": " << s << ". Will retry in "
+                << (backoff_until - now_micros) << " microseconds";
         Env::Default()->SleepForMicroseconds(backoff_until - now_micros);
       }
 
@@ -629,7 +641,7 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
       ctx, ParseScalarArgument(ctx, kProcessingMode, &processing_mode_str));
   ProcessingMode processing_mode;
   OP_REQUIRES_OK(ctx,
-                 ParseProcessingMode(processing_mode_str, &processing_mode));
+                 ParseProcessingMode(processing_mode_str, processing_mode));
 
   tstring address;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kAddress, &address));

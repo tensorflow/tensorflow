@@ -121,25 +121,6 @@ string AddVariablesFunction() {
   return def.SerializeAsString();
 }
 
-void VarIsInitialized(TFE_Context* ctx, TFE_TensorHandle* var_handle) {
-  TF_Status* status = TF_NewStatus();
-  TFE_Op* op = TFE_NewOp(ctx, "VarIsInitializedOp", status);
-  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
-  TFE_OpAddInput(op, var_handle, status);
-  TFE_TensorHandle* is_initialized[1] = {nullptr};
-  int num_retvals = 1;
-  TFE_Execute(op, &is_initialized[0], &num_retvals, status);
-  CHECK_EQ(1, num_retvals);
-  TF_Tensor* t = TFE_TensorHandleResolve(is_initialized[0], status);
-  bool initialized = false;
-  memcpy(&initialized, TF_TensorData(t), TF_TensorByteSize(t));
-  EXPECT_EQ(initialized, true);
-  TF_DeleteTensor(t);
-  TFE_DeleteTensorHandle(is_initialized[0]);
-  TFE_DeleteOp(op);
-  delete status;
-}
-
 void TestFunctionWithPackedInput(const bool remote) {
   tensorflow::ServerDef server_def = GetServerDef(3);
 
@@ -182,9 +163,8 @@ void TestFunctionWithPackedInput(const bool remote) {
 
   // Add a sync point in order to make sure that variables have been initialized
   // before the function execution starts.
-  // TODO(b/155789951): Remove once b/155789951 is fixed.
-  VarIsInitialized(ctx, h1);
-  VarIsInitialized(ctx, h2);
+  TFE_ContextAsyncWait(ctx, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   // Pack 3 variable handles into one TFE_TensorHandle.
   // When remote is false, function device is placed on task0. Handle types are
@@ -396,6 +376,8 @@ TEST(CAPI, DistributedFunctionGraphPassOnlyOnce) {
 
   TFE_TensorHandle* var_handle = TestVariable(ctx, 2.0, dev2_name);
   EXPECT_NE(var_handle, nullptr);
+  TFE_ContextAsyncWait(ctx, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   const string function_def = VariableAddFunction();
   TFE_ContextAddFunctionDef(ctx, function_def.data(), function_def.size(),
@@ -517,6 +499,8 @@ void TestDistributedFunctionCancellation(bool inject_error) {
 
   TFE_TensorHandle* var_handle = TestVariable(ctx, 2.0, dev2_name);
   EXPECT_NE(var_handle, nullptr);
+  TFE_ContextAsyncWait(ctx, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   const string function_def = inject_error ? VariableAddFunctionWithGraphError()
                                            : VariableAddFunction();
@@ -561,7 +545,9 @@ TEST(CAPI, DistributedFunctionNoError) {
   TestDistributedFunctionCancellation(false);
 }
 
-TEST(CAPI, DistributedFunctionCancelledOnError) {
+// TODO(b/170399182): Update test once an alternative to using the function
+// optimization hook is in place.
+TEST(CAPI, DISABLED_DistributedFunctionCancelledOnError) {
   TestDistributedFunctionCancellation(true);
 }
 

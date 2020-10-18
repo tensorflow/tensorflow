@@ -29,6 +29,10 @@ namespace {
 class TestLhloToLLVMPass
     : public ::mlir::PassWrapper<TestLhloToLLVMPass,
                                  ::mlir::OperationPass<::mlir::ModuleOp>> {
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<LLVM::LLVMDialect>();
+  }
+
  public:
   void runOnOperation() override {
     ModuleOp m = getOperation();

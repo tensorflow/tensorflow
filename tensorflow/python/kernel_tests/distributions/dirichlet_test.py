@@ -197,9 +197,11 @@ class DirichletTest(test.TestCase):
 
     self.assertAllClose(sample_mean_, analytic_mean, atol=0.04, rtol=0.)
     self.assertAllClose(sample_cov_, analytic_cov, atol=0.06, rtol=0.)
-    self.assertAllClose(sample_var_, analytic_var, atol=0.03, rtol=0.)
+    self.assertAllClose(sample_var_, analytic_var, atol=0.04, rtol=0.)
     self.assertAllClose(sample_stddev_, analytic_stddev, atol=0.02, rtol=0.)
 
+  @test_util.run_without_tensor_float_32(
+      "Calls Dirichlet.covariance, which calls matmul")
   def testVariance(self):
     alpha = [1., 2, 3]
     denominator = np.sum(alpha)**2 * (np.sum(alpha) + 1)

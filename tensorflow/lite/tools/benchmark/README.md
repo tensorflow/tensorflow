@@ -36,11 +36,6 @@ and the following optional parameters:
     mean use no delay.
 *   `enable_op_profiling`: `bool` (default=false) \
     Whether to enable per-operator profiling measurement.
-*   `enable_platform_tracing`: `bool` (default=false) \
-    Whether to enable platform-wide tracing. Needs to be combined with
-    'enable_op_profiling'. Note, the platform-wide tracing might not work if the
-    tool runs as a commandline native binary. For example, on Android, the
-    ATrace-based tracing only works when the tool is launched as an APK.
 *   `profiling_output_csv_file`: `str` (default="") \
     File path to export profile data to as CSV. The results are printed to
     `stdout` if option is not set. Requires `enable_op_profiling` to be `true`
@@ -73,7 +68,9 @@ where applicable. For details about each parameter, please refer to
 *   `use_nnapi`: `bool` (default=false) \
     Note some Android P devices will fail to use NNAPI for models in
     `/data/local/tmp/` and this benchmark tool will not correctly use NNAPI.
-*   `nnapi_execution_preference`: `str` (default="")
+*   `nnapi_execution_preference`: `str` (default="") \
+    Should be one of: `fast_single_answer`, `sustained_speed`, `low_power`,
+    `undefined`.
 *   `nnapi_execution_priority`: `str` (default="") \
     Note this requires Android 11+.
 *   `nnapi_accelerator_name`: `str` (default="") \

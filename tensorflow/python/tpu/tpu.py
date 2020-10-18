@@ -21,6 +21,8 @@ from __future__ import print_function
 
 import collections
 import enum
+import typing
+from typing import Any
 
 from absl import logging
 import numpy as np
@@ -286,6 +288,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     self._outer_device_function_stack = None
     self._oc_dev_fn_stack = None
     self._outside_compilation_cluster = None
+    self._outside_compilation_v2_context = None
     self._outside_compilation_counter = 0
     self._in_gradient_colocation = None
     self._gradient_colocation_stack = []
@@ -377,6 +380,21 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
 
   def EnterGradientColocation(self, op, gradient_uid):
     if op is not None:
+      if ops.get_default_graph()._control_flow_context is None:  # pylint: disable=protected-access
+        # If we are in TF 2 functions (control flow V2 functions, or
+        # tf.function()), we need to attach _xla_outside_compilation attribute
+        # directly because we are not in TPUReplicateContext.
+        try:
+          outside_attr = op.get_attr(_OUTSIDE_COMPILATION_ATTR).decode("ascii")
+        except ValueError:
+          # The attr was not present: do nothing.
+          return
+        parts = outside_attr.split(".")
+        cluster = parts[0] + "." + gradient_uid
+        self._outside_compilation_v2_context = OutsideCompilationV2Context(
+            cluster)
+        self._outside_compilation_v2_context.Enter()
+        return
       self._gradient_colocation_stack.append(op)
       if not self._outside_compilation_cluster:
         try:
@@ -416,6 +434,17 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
 
   def ExitGradientColocation(self, op, gradient_uid):
     if op is not None:
+      if ops.get_default_graph()._control_flow_context is None:  # pylint: disable=protected-access
+        # Inside a TF2 tf.function or control flow graph and `op` was not
+        # marked to be outside compiled.
+        assert self._outside_compilation_v2_context is None
+        return
+      if self._outside_compilation_v2_context is not None:
+        # Inside a TF2 tf.function or control flow graph and `op` was
+        # marked to be outside compiled.
+        self._outside_compilation_v2_context.Exit()
+        self._outside_compilation_v2_context = None
+        return
       if not self._gradient_colocation_stack:
         raise errors.InternalError(
             op.node_def, op,
@@ -604,6 +633,9 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
 
   def AddValue(self, val):
     """Add `val` to the current context and its outer context recursively."""
+    if not self._outer_context:
+      return val
+
     if val.name in self._values:
       # Use the real value if it comes from outer context.
       result = self._external_values.get(val.name)
@@ -1419,9 +1451,12 @@ def split_compile_and_replicate(computation,
 
     # tensor_tracer imports tpu.py. Local import to tensor_tracer to avoid
     # import-cycle
-    # pylint: disable=g-import-not-at-top
-    from tensorflow.python.tpu import tensor_tracer
-    # pylint: enable=g-import-not-at-top
+    if typing.TYPE_CHECKING:
+      tensor_tracer = Any
+    else:
+      # pylint: disable=g-import-not-at-top
+      from tensorflow.python.tpu import tensor_tracer
+      # pylint: enable=g-import-not-at-top
     if tensor_tracer.TensorTracer.is_enabled():
       tt = tensor_tracer.TensorTracer()
       output_tensors = tt.trace_tpu(ops.get_default_graph(),

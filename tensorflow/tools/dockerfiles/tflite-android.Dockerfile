@@ -19,7 +19,7 @@ RUN cd ${ANDROID_DEV_HOME} && \
     bash -c "ln -s ${ANDROID_DEV_HOME}/android-sdk-* ${ANDROID_SDK_HOME}"
 
 # Install Android NDK.
-ENV ANDROID_NDK_FILENAME android-ndk-r17c-linux-x86_64.zip
+ENV ANDROID_NDK_FILENAME android-ndk-r18b-linux-x86_64.zip
 ENV ANDROID_NDK_URL https://dl.google.com/android/repository/${ANDROID_NDK_FILENAME}
 ENV ANDROID_NDK_HOME ${ANDROID_DEV_HOME}/ndk
 ENV PATH ${PATH}:${ANDROID_NDK_HOME}

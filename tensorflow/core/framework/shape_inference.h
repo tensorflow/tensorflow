@@ -133,9 +133,14 @@ struct DimensionOrConstant {
 struct ShapeAndType {
   ShapeAndType() {}
   ShapeAndType(ShapeHandle s, DataType t) : shape(s), dtype(t) {}
+  ShapeAndType(ShapeHandle s, DataType t, SpecializedType specialized_t)
+      : shape(s), dtype(t), specialized_type(specialized_t) {}
 
   ShapeHandle shape;
   DataType dtype = DT_INVALID;
+  // The type of a variant-dtype tensor sometimes affects graph building
+  // (e.g. for vectorization), and needs to be know statically in such cases.
+  SpecializedType specialized_type = ST_INVALID;
 };
 
 // Shape inference functions registered on ops in REGISTER_OP implement

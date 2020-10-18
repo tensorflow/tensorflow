@@ -85,6 +85,17 @@ py_binary(
 )
 
 py_binary(
+    name = "reverse_xxd_dump_from_cc",
+    srcs = ["reverse_xxd_dump_from_cc.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":flatbuffer_utils",
+        "//tensorflow/python:platform",
+    ],
+)
+
+py_binary(
     name = "randomize_weights",
     srcs = ["randomize_weights.py"],
     python_version = "PY3",
@@ -149,6 +160,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string",
+        "//tensorflow/lite/schema:schema_utils",
         "@com_googlesource_code_re2//:re2",
     ],
 )
@@ -183,7 +195,10 @@ cc_library(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/api:error_reporter",
+        "//tensorflow/lite/core/api:op_resolver",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_utils",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
@@ -206,6 +221,7 @@ cc_test(
         "//tensorflow/lite:util",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_utils",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -267,6 +283,7 @@ cc_library(
         "//tensorflow/core:tensorflow",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/schema:schema_utils",
         "@flatbuffers",
         "@jsoncpp_git//:jsoncpp",
     ],

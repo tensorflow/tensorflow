@@ -15,11 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 
-namespace mlir {
-
-// NOLINTNEXTLINE
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.cc.inc"
 
+namespace mlir {
 namespace TF {
 
 void RuntimeDevices::AddDevice(const ParsedName& device) {

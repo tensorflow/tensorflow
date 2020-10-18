@@ -244,8 +244,9 @@ def _is_tpu_strategy(strategy):
 
 def _register_keras_layer_context_function(func):
   global _KERAS_LAYER_CONTEXT_FUNCTION
-  if _KERAS_LAYER_CONTEXT_FUNCTION is None:
-    _KERAS_LAYER_CONTEXT_FUNCTION = func
+  # TODO(scottzhu): Disable duplicated inject once keras is moved to
+  # third_party/py/keras.
+  _KERAS_LAYER_CONTEXT_FUNCTION = func
 
 
 def _is_building_keras_layer():

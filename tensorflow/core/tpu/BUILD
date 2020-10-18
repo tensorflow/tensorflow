@@ -1,5 +1,6 @@
 # Description: Utilities for TPU Operations
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_windows",
@@ -26,6 +27,9 @@ cc_library(
     hdrs = ["tpu_embedding_optimization_parameters_utils.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
@@ -41,7 +45,6 @@ cc_library(
     hdrs = ["tpu_embedding_output_layout_utils.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
@@ -155,8 +158,10 @@ cc_library(
     deps = [
         ":libtftpu_header",
         ":tpu_api",
+        ":tpu_api_dlsym_set_fn",
         ":tpu_compilation_device",
         ":tpu_config_c_api",
+        ":tpu_executor_init_fns",
         ":tpu_library_init_fns",
         ":tpu_node_device",
         ":tpu_system_device",
@@ -172,10 +177,34 @@ cc_library(
     ],
 )
 
+# This is an alternative to "tpu_api_dlsym_initializer" that only initializes
+# methods needed for the base TPU executor APIs (and thus has fewer deps). Do
+# not link in both this and "tpu_api_dlsym_initializer".
+cc_library(
+    name = "tpu_executor_dlsym_initializer",
+    srcs = ["tpu_executor_dlsym_initializer.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":tpu_api_dlsym_set_fn",
+        ":tpu_executor_init_fns",
+        "//tensorflow/core:lib",
+        "//tensorflow/stream_executor/tpu:tpu_computation_placer",
+        "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "tpu_api_dlsym_set_fn",
+    hdrs = ["tpu_api_dlsym_set_fn.h"],
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "tpu_library_init_fns",
     hdrs = ["tpu_library_init_fns.inc"],
     visibility = ["//visibility:public"],
+    deps = [":tpu_executor_init_fns"],
 )
 
 cc_library(
@@ -282,8 +311,10 @@ cc_library(
 cc_library(
     name = "tpu_on_demand_compiler",
     srcs = ["tpu_on_demand_compiler.cc"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:executable",
@@ -293,8 +324,10 @@ cc_library(
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor/tpu:c_api_conversions",
+        "//tensorflow/stream_executor/tpu:c_api_decl",
         "//tensorflow/stream_executor/tpu:proto_helper",
         "//tensorflow/stream_executor/tpu:status_helper",
+        "//tensorflow/stream_executor/tpu:tpu_executable_interface",
         "//tensorflow/stream_executor/tpu:tpu_executor",
         "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
         "@com_google_absl//absl/types:span",

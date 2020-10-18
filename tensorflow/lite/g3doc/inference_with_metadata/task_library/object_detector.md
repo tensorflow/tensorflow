@@ -32,7 +32,7 @@ The following models are guaranteed to be compatible with the `ObjectDetector`
 API.
 
 *   The
-    [pretrained object detection models on TensorFlow Hub](https://tfhub.dev/s?deployment-format=lite&module-type=image-object-detection&publisher=google,tensorflow).
+    [pretrained object detection models on TensorFlow Hub](https://tfhub.dev/tensorflow/collections/lite/task-library/object-detector/1).
 
 *   Models created by
     [AutoML Vision Edge Object Detection](https://cloud.google.com/vision/automl/object-detection/docs).
@@ -41,6 +41,10 @@ API.
     [model compatibility requirements](#model-compatibility-requirements).
 
 ## Run inference in Java
+
+See the
+[Object Detection reference app](https://github.com/tensorflow/examples/tree/master/lite/examples/object_detection/android/)
+for an example of how to use `ObjectDetector` in an Android app.
 
 ### Step 1: Import Gradle dependency and other settings
 

@@ -22,7 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/synchronization/mutex.h"
-#include "tensorflow/core/tpu/kernels/tpu_compilation_cache.pb.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_common.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_grpc.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_lookup.h"
@@ -35,6 +35,8 @@ namespace tpu {
 // Class for looking up and caching TPU program via RPC.
 class TpuCompilationCacheRpcLookup : public TpuCompilationCacheLookup {
  public:
+  using StubType = tpu::grpc::TpuCompilationCacheService::Stub;
+
   TpuCompilationCacheRpcLookup(const string& server_address,
                                int64 max_cache_size);
   ~TpuCompilationCacheRpcLookup() override = default;
@@ -69,7 +71,7 @@ class TpuCompilationCacheRpcLookup : public TpuCompilationCacheLookup {
   // evicted.
   const int64 max_cache_size_;
 
-  std::unique_ptr<tpu::grpc::TpuCompilationCacheService::Stub> stub_;
+  std::unique_ptr<StubType> stub_;
 
   // Protect concurrent access to member variables below.
   mutable absl::Mutex mu_;

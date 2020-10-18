@@ -101,6 +101,7 @@ tensorflow::data::GrpcDataServerBase::Start
 tensorflow::data::GrpcDataServerBase::Stop
 tensorflow::data::GrpcDataServerBase::BoundPort
 tensorflow::data::DispatchGrpcDataServer::NumWorkers
+tensorflow::data::WorkerGrpcDataServer::NumTasks
 tensorflow::data::NewDispatchServer
 tensorflow::data::NewWorkerServer
 
@@ -122,6 +123,7 @@ toco::TocoConvert
 toco::TocoGetPotentiallySupportedOps
 toco::MlirQuantizeModel
 toco::MlirSparsifyModel
+toco::RegisterCustomOpdefs
 
 [transform_graph_lib] # transform_graph
 tensorflow::graph_transforms::TransformGraph
@@ -204,6 +206,9 @@ TFE_Py_TensorShapeOnDevice
 TFE_Py_EncodeArg
 TFE_Py_EnableInteractivePythonLogging
 TFE_Py_SetEagerContext
+tensorflow::MakeEagerContextThreadLocalData
+tensorflow::GetEagerContextThreadLocalData
+tensorflow::DestroyEagerContextThreadLocalData
 
 [eager_executor] # tfe
 tensorflow::EagerExecutor::~EagerExecutor
@@ -220,6 +225,7 @@ tensorflow::ExperimentalRunPassPipeline
 tensorflow::ExperimentalConvertSavedModelV1ToMlir
 tensorflow::ExperimentalConvertSavedModelToMlir
 tensorflow::ImportGraphDef
+tensorflow::ImportFunction
 
 [op_gen_lib] # tf_session
 tensorflow::ApiDefMap::~ApiDefMap
@@ -326,24 +332,24 @@ tensorflow::grappler::GetNumAvailableLogicalCPUCores
 [traceme_recorder_impl] # profiler
 tensorflow::profiler::TraceMeRecorder::Record
 
-[annotation_stack_impl] # profiler
-tensorflow::profiler::AnnotationStack::ThreadAnnotationStack
-
 [profiler_session_impl] # profiler
 tensorflow::ProfilerSession::Create
 tensorflow::ProfilerSession::CollectData
-tensorflow::ProfilerSession::SerializeToString
 tensorflow::ProfilerSession::Status
 tensorflow::ProfilerSession::~ProfilerSession
 
 [profiler_server_impl] # profiler
-tensorflow::ProfilerServer::StartProfilerServer
-tensorflow::ProfilerServer::~ProfilerServer
+tensorflow::profiler::ProfilerServer::StartProfilerServer
+tensorflow::profiler::ProfilerServer::~ProfilerServer
 
 [profiler_client_impl] # profiler
 tensorflow::profiler::ProfileGrpc
 tensorflow::profiler::NewSessionGrpc
 tensorflow::profiler::MonitorGrpc
+tensorflow::profiler::RemoteProfilerSession::Create
+tensorflow::profiler::RemoteProfilerSession::GetServiceAddress
+tensorflow::profiler::RemoteProfilerSession::WaitForCompletion
+tensorflow::profiler::RemoteProfilerSession::~RemoteProfilerSession
 
 [status_macros] # tfcompile
 xla::status_macros::MakeErrorStream::Impl::Impl
@@ -381,6 +387,14 @@ tensorflow::IsXlaEnabled
 tensorflow::GetMlirCommonFlags
 tensorflow::GetXlaDeviceFlags
 
-[tf32_utils] # tf32
-tensorflow::allow_tf32_execution
-tensorflow::tf32_execution_allowed
+[tensor_float_32_utils] # tensor_float_32
+tensorflow::enable_tensor_float_32_execution
+tensorflow::tensor_float_32_execution_enabled
+
+[get_compiler_ir] # tfe
+tensorflow::GetCompilerIr
+stream_executor::port::internal_statusor::Helper::Crash
+
+[tensor_handle] # tfe
+tensorflow::TensorHandle::Tensor
+

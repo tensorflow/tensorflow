@@ -1,4 +1,4 @@
-# Bert natural language classifier
+# Integrate BERT natural language classifier
 
 The Task Library `BertNLClassifier` API is very similar to the `NLClassifier`
 that classifies input text into different categories, except that this API is
@@ -65,6 +65,34 @@ List<Category> results = classifier.classify(input);
 
 See the
 [source code](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/java/src/java/org/tensorflow/lite/task/text/nlclassifier/BertNLClassifier.java)
+for more details.
+
+## Run inference in Swift
+
+### Step 1: Import CocoaPods
+
+Add the TensorFlowLiteTaskText pod in Podfile
+
+```
+target 'MySwiftAppWithTaskAPI' do
+  use_frameworks!
+  pod 'TensorFlowLiteTaskText', '~> 0.0.1-nightly'
+end
+```
+
+### Step 2: Run inference using the API
+
+```swift
+// Initialization
+let bertNLClassifier = TFLBertNLClassifier.bertNLClassifier(
+      modelPath: bertModelPath)
+
+// Run inference
+let categories = bertNLClassifier.classify(text: input)
+```
+
+See the
+[source code](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/ios/task/text/nlclassifier/Sources/TFLBertNLClassifier.h)
 for more details.
 
 ## Run inference in C++

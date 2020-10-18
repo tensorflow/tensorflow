@@ -8,8 +8,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 exports_files(["data/grace_hopper.jpg"])
 
 tf_cc_binary(

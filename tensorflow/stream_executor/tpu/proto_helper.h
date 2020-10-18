@@ -32,12 +32,13 @@ namespace tpu {
 
 using SerializedProto = TpuSerializedProto;
 
-// Serializes a proto and put the result in the given SerializedProto* argument.
+// Serializes a `proto` and put the result in the given `SerializedProtoType*`
+// argument.
 //
 // Users should call SerializedProto_Free on `serialized_proto` afterwards.
-template <class Proto>
-inline void SerializeProto(const Proto& proto,
-                           SerializedProto* serialized_proto) {
+template <class ProtoType, class SerializedProtoType>
+inline void SerializeProto(const ProtoType& proto,
+                           SerializedProtoType* serialized_proto) {
   auto size = proto.ByteSizeLong();
   auto bytes = new char[size];
   CHECK(proto.SerializeToArray(bytes, size));
@@ -48,8 +49,8 @@ inline void SerializeProto(const Proto& proto,
 // Serializes a proto and return the result as a SerializedProto value.
 //
 // Users should call SerializedProto_Free on the return value afterwards.
-template <class Proto>
-inline SerializedProto SerializeProto(const Proto& proto) {
+template <class ProtoType>
+inline SerializedProto SerializeProto(const ProtoType& proto) {
   SerializedProto serialized_proto;
   SerializeProto(proto, &serialized_proto);
   return serialized_proto;
@@ -57,9 +58,9 @@ inline SerializedProto SerializeProto(const Proto& proto) {
 
 // Deserializes a buffer and return the corresponding proto. If the buffer is
 // empty, return an empty proto.
-template <class Proto>
-inline Proto DeserializeProto(const SerializedProto& serialized_proto) {
-  Proto proto;
+template <class ProtoType, class SerializedProtoType>
+inline ProtoType DeserializeProto(const SerializedProtoType& serialized_proto) {
+  ProtoType proto;
   if (serialized_proto.bytes != nullptr) {
     CHECK_GT(serialized_proto.size, 0);
     CHECK(proto.ParseFromArray(serialized_proto.bytes, serialized_proto.size))
@@ -69,7 +70,8 @@ inline Proto DeserializeProto(const SerializedProto& serialized_proto) {
 }
 
 // Releases the memory allocated for serialized protos.
-inline void SerializedProto_Free(const SerializedProto& serialized_proto) {
+template <class SerializedProtoType>
+inline void SerializedProto_Free(const SerializedProtoType& serialized_proto) {
   CHECK_NE(serialized_proto.bytes, nullptr);
   CHECK_GT(serialized_proto.size, 0);
   delete[] serialized_proto.bytes;

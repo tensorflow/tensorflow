@@ -20,9 +20,9 @@ limitations under the License.
 #include "absl/base/call_once.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/xla_activity.pb.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -46,6 +46,11 @@ limitations under the License.
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/dump_graph.h"
+
+#if !defined(LIBTPU_ON_GCE)
+#include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
+#include "tensorflow/compiler/mlir/utils/array_container_utils.h"
+#endif
 
 namespace tensorflow {
 
@@ -278,23 +283,39 @@ Status XlaCompilationCache::CompileSingleOp(
     const NodeDef& node_def = ctx->op_kernel().def();
     TF_ASSIGN_OR_RETURN(auto graph, CreateGraph(node_def, args, result_dtypes));
 
+    // TODO(b/155596779): Support TensorList args.
     bool has_tensor_list_arg =
         absl::c_any_of(args, [](const XlaCompiler::Argument arg) {
           return arg.kind == XlaCompiler::Argument::kTensorList;
         });
     const ConfigProto* config = ctx->function_library()->config_proto();
-    bool use_mlir = config && config->experimental().enable_mlir_bridge();
-    // TODO(b/155596779): Support TensorList args.
-    if (!use_mlir || !has_tensor_list_arg) {
+    // TODO(b/171039585): Support tf.VarIsInitializedOp using MLIR.
+    bool use_mlir = config && config->experimental().enable_mlir_bridge() &&
+                    !has_tensor_list_arg &&
+                    node_def.op() != "VarIsInitializedOp";
+#ifdef LIBTPU_ON_GCE
+    if (use_mlir) {
+      LOG(WARNING) << "MLIR is not supported in this environment.";
+    }
+    return compiler->CompileGraph(compile_options, node_def.name(),
+                                  std::move(graph), args, result);
+#else
+    if (!use_mlir) {
       return compiler->CompileGraph(compile_options, node_def.name(),
                                     std::move(graph), args, result);
     }
 
+    VLOG(1) << "Using MLIR bridge";
     GraphDebugInfo debug_info;
+    std::vector<std::string> control_rets;
+    if (result_dtypes.empty()) {
+      control_rets.push_back(node_def.name());
+    }
     return CompileGraphToXlaHlo(
-        *graph, {args.data(), args.size()}, options.device_type.type_string(),
-        compile_options.use_tuple_arg, *options.flib_def, debug_info,
-        options.shape_representation_fn, result);
+        *graph, mlir::SpanToArrayRef<XlaCompiler::Argument>(args), control_rets,
+        options.device_type.type_string(), compile_options.use_tuple_arg,
+        *options.flib_def, debug_info, options.shape_representation_fn, result);
+#endif
   };
   return CompileImpl(options, name, args, compile_op,
                      /*compile_threshold=*/absl::nullopt,
@@ -323,6 +344,10 @@ Status XlaCompilationCache::CompileImpl(
     absl::optional<int64> compile_threshold,
     const XlaCompiler::CompilationResult** out_compilation_result,
     xla::LocalExecutable** out_executable) {
+  if (FailOnXlaCompilation()) {
+    return errors::Internal("XLA compilation disabled");
+  }
+
   DCHECK_NE(out_executable, nullptr);
   VLOG(2) << "XlaCompilationCache::Compile " << DebugString();
 

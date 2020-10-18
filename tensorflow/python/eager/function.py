@@ -41,6 +41,7 @@ from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import forwardprop_util
+from tensorflow.python.eager import monitoring
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
 from tensorflow.python.framework import c_api_util
@@ -66,7 +67,6 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
 from tensorflow.python.saved_model import save_context
-from tensorflow.python.saved_model import save_options
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import lazy_loader
@@ -91,6 +91,10 @@ FORWARD_FUNCTION_ATTRIBUTE_NAME = "forward_function_name"
 BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
 IMPLEMENTS_ATTRIBUTE_NAME = "_implements"
 SHARED_RENDEZVOUS_ATTRIBUTE_NAME = "shared_rendezvous"
+
+_graph_building_time_counter = monitoring.Counter(
+    "/tensorflow/core/tf_function/graph_building_time_usecs",
+    "Time for tf.function to build a graph (us).")
 
 
 def _make_input_signature_hashable(elem):
@@ -584,6 +588,8 @@ class _EagerDefinedFunction(object):
                 config=config,
                 executor_type=executor_type)
 
+    for i, func_graph_output in enumerate(self._func_graph_outputs):
+      custom_gradient.copy_handle_data(func_graph_output, outputs[i])
     if executing_eagerly:
       return outputs
     else:
@@ -592,8 +598,6 @@ class _EagerDefinedFunction(object):
       # once that's done.
       for i, shape in enumerate(self._output_shapes):
         outputs[i].set_shape(shape)
-      for i, func_graph_output in enumerate(self._func_graph_outputs):
-        custom_gradient.copy_handle_data(func_graph_output, outputs[i])
       return outputs
 
 
@@ -895,8 +899,9 @@ class _TapeGradientFunctions(object):
       for output in trainable_outputs:
         gradient_shape, gradient_dtype = default_gradient.shape_and_dtype(
             output)
-        gradients_wrt_outputs.append(
-            graph_placeholder(gradient_dtype, gradient_shape))
+        gradient_placeholder = graph_placeholder(gradient_dtype, gradient_shape)
+        custom_gradient.copy_handle_data(output, gradient_placeholder)
+        gradients_wrt_outputs.append(gradient_placeholder)
       with ops.device(None):
         gradients_wrt_inputs = gradients_util._GradientsHelper(  # pylint: disable=protected-access
             trainable_outputs,
@@ -904,6 +909,13 @@ class _TapeGradientFunctions(object):
             grad_ys=gradients_wrt_outputs,
             src_graph=self._func_graph)
 
+      if input_tangents:
+        # Convert IndexedSlices to dense tensors (as we do elsewhere for
+        # function gradients). Our C++ bindings don't know how to handle them
+        # currently.
+        gradients_wrt_inputs = nest.map_structure(
+            lambda x: ops.convert_to_tensor(x) if x is not None else None,
+            gradients_wrt_inputs)
       captures_from_forward = [
           c for c in backwards_graph.external_captures
           if not isinstance(c, ops.EagerTensor) and c.graph is self._func_graph
@@ -1199,9 +1211,10 @@ class _TapeGradientFunctions(object):
     """Create a backward function given `outputs` from the forward function."""
     capture_mapping = dict(
         zip((ops.tensor_id(t) for t in forward_graph.outputs), outputs))
+    captured_inputs = backward.captured_inputs
     remapped_captures = [
         capture_mapping.get(ops.tensor_id(capture), capture)
-        for capture in backward.captured_inputs
+        for capture in captured_inputs
     ]
     if any(t.graph is forward_graph for t in remapped_captures
            if not isinstance(t, ops.EagerTensor)):
@@ -1215,8 +1228,7 @@ class _TapeGradientFunctions(object):
     # unconnected gradients. We do that in advance so we don't have to hold on
     # to the outputs themselves, which may not be needed otherwise.
     variant_zeros_like = {}
-    backward_function_inputs = (
-        len(backward.inputs) - len(backward.captured_inputs))
+    backward_function_inputs = (len(backward.inputs) - len(captured_inputs))
     recorded_outputs = []
     trainable_recorded_outputs = 0
     skip_positions = []
@@ -1585,9 +1597,9 @@ class ConcreteFunction(object):
     function_spec = self._pre_initialized_function_spec
     args = function_spec.fullargspec.args
     arg_specs, kwarg_specs = self.structured_input_signature
+    vararg_indices = range(len(function_spec.arg_names), len(arg_specs))
     fullargspec = tf_inspect.FullArgSpec(
-        args=list(args) +
-        ["<arg{}>".format(i + 1) for i in range(len(args), len(arg_specs))],
+        args=list(args) + ["<arg{}>".format(i + 1) for i in vararg_indices],
         varargs=None,
         varkw=None,
         defaults=[_BOUND_VALUE] * len(arg_specs),
@@ -2146,7 +2158,7 @@ class ConcreteFunction(object):
     Returns:
       The actual call output.
     """
-    # TODO(jlchu): implement in C++.
+    # TODO(jlchu): call C++ version in function.cc when speed is improved
     if self._func_graph.structured_outputs is None:
       return result
 
@@ -2162,6 +2174,7 @@ class ConcreteFunction(object):
     j = 0
     for i, o in enumerate(outputs_list):
       if o is not None:
+        custom_gradient.copy_handle_data(self.outputs[j], result[j])
         outputs_list[i] = result[j]
         j += 1
     ret = nest.pack_sequence_as(self._func_graph.structured_outputs,
@@ -2267,10 +2280,16 @@ class ConcreteFunction(object):
       lines.append("  Args:")
       lines.extend(arg_details)
     lines.append("  Returns:")
+
+    def spec_from_value(value):
+      # For loaded function, structured_outputs are already specs.
+      if isinstance(value, type_spec.TypeSpec):
+        return value
+      return type_spec.type_spec_from_value(value)
+
     lines.append("    {}".format(
         pretty_print_spec(
-            nest.map_structure(type_spec.type_spec_from_value,
-                               self.structured_outputs))))
+            nest.map_structure(spec_from_value, self.structured_outputs))))
 
     return "\n".join(lines)
 
@@ -2307,7 +2326,8 @@ class FunctionSpec(object):
   def from_function_and_signature(python_function,
                                   input_signature,
                                   is_pure=False,
-                                  experimental_follow_type_hints=False):
+                                  experimental_follow_type_hints=False,
+                                  experimental_compile=None):
     """Create a FunctionSpec instance given a python function and signature.
 
     Args:
@@ -2316,6 +2336,7 @@ class FunctionSpec(object):
       is_pure: if True all input arguments (including variables and constants)
       will be converted to tensors and no variable changes allowed.
       experimental_follow_type_hints: see `tf.function`
+      experimental_compile: see `tf.function`
 
     Returns:
       instance of FunctionSpec
@@ -2397,6 +2418,7 @@ class FunctionSpec(object):
         is_method,
         input_signature,
         is_pure=is_pure,
+        experimental_compile=experimental_compile,
         experimental_follow_type_hints=experimental_follow_type_hints,
         name=name)
 
@@ -2406,7 +2428,8 @@ class FunctionSpec(object):
                input_signature,
                is_pure=False,
                experimental_follow_type_hints=False,
-               name=None):
+               name=None,
+               experimental_compile=None):
     """Constructs a FunctionSpec describing a python function.
 
     Args:
@@ -2417,10 +2440,12 @@ class FunctionSpec(object):
         will be converted to tensors and no variable changes allowed.
       experimental_follow_type_hints: see `tf.function`.
       name: Name of the function
+      experimental_compile: see `tf.function`.
     """
     self._fullargspec = fullargspec
     self._is_method = is_method
     self._is_pure = is_pure
+    self._experimental_compile = experimental_compile
     self._experimental_follow_type_hints = experimental_follow_type_hints
 
     # TODO(edloper): Include name when serializing for SavedModel?
@@ -2489,6 +2514,10 @@ class FunctionSpec(object):
   @property
   def is_pure(self):
     return self._is_pure
+
+  @property
+  def experimental_compile(self):
+    return self._experimental_compile
 
   @property
   def arg_names(self):
@@ -2911,10 +2940,6 @@ class Function(object):
     self._experimental_compile = experimental_compile
     self._experimental_follow_type_hints = experimental_follow_type_hints
 
-    # A boolean indicating whether the function has been traced with
-    # distribution strategy.
-    self._traced_with_distribution_strategy = False
-
   def __call__(self, *args, **kwargs):
     """Calls a graph function specialized to the inputs."""
     with self._lock:
@@ -3068,7 +3093,11 @@ class Function(object):
     # Return the cached `Function` for the instance
     return self._descriptor_cache[instance]
 
-  def _cache_key(self, args, kwargs, include_tensor_ranks_only=False):
+  def _cache_key(self,
+                 args,
+                 kwargs,
+                 cache_key_context,
+                 include_tensor_ranks_only=False):
     """Computes the cache key given inputs and execution context."""
     if self.input_signature is None:
       inputs = (args, kwargs) if kwargs else args
@@ -3080,6 +3109,15 @@ class Function(object):
       assert not include_tensor_ranks_only
       hashable_input_signature = self._hashable_input_signature
 
+    (parent_graph, device_functions, colocation_stack, in_cross_replica_context,
+     variable_policy, xla_context_id) = cache_key_context
+
+    return CacheKey(hashable_input_signature, parent_graph, device_functions,
+                    colocation_stack, in_cross_replica_context, variable_policy,
+                    xla_context_id)
+
+  def _cache_key_context(self):
+    """Returns execution context."""
     ctx = context.context()
 
     # Don't need to open an init_scope if the _cache_key call is in eager mode
@@ -3134,23 +3172,14 @@ class Function(object):
     except (AttributeError, IndexError):
       pass
 
-    # If the function has been traced with a distribution strategy, it might
-    # need to be retraced at saving time as DistributedVariable created under
-    # distribution strategy may want different tracing behavior at training and
-    # saving, e.g, it wants to resolve to the primary component at saving time,
-    # but wants resolve to the component residing in the current device at
-    # training time. We achieve this by adding variable_policy to the function
-    # cache key.
-    if save_context.in_save_context(
-    ) and self._traced_with_distribution_strategy:
+    if save_context.in_save_context():
       variable_policy = (
           save_context.get_save_options().experimental_variable_policy)
     else:
-      variable_policy = save_options.VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES
+      variable_policy = None
 
-    return CacheKey(hashable_input_signature, parent_graph, device_functions,
-                    colocation_stack, in_cross_replica_context, variable_policy,
-                    xla_context_id)
+    return (parent_graph, device_functions, colocation_stack,
+            in_cross_replica_context, variable_policy, xla_context_id)
 
   def _create_graph_function(self, args, kwargs, override_flat_arg_shapes=None):
     """Create a `ConcreteFunction` from `args` and `kwargs`."""
@@ -3191,7 +3220,8 @@ class Function(object):
     return graph_function
 
   def _define_function_with_shape_relaxation(self, args, kwargs, flat_args,
-                                             filtered_flat_args):
+                                             filtered_flat_args,
+                                             cache_key_context):
     """Define a function, relaxing arg shapes to avoid unnecessary retracing."""
     flat_no_comp = nest.flatten((args, kwargs), expand_composites=False)
 
@@ -3202,14 +3232,17 @@ class Function(object):
     # not information about the size of each dimension).
     if not any_composite_args:
       rank_only_cache_key = self._cache_key(
-          args, kwargs, include_tensor_ranks_only=True)
+          args, kwargs, cache_key_context, include_tensor_ranks_only=True)
     else:
       # For the rank-only cache key, replace any composite tensors with
       # shape-relaxed TypeSpecs.
       (cache_key_args, cache_key_kwargs) = nest.map_structure(
           _shape_relaxed_type_for_composite_tensor, (args, kwargs))
       rank_only_cache_key = self._cache_key(
-          cache_key_args, cache_key_kwargs, include_tensor_ranks_only=True)
+          cache_key_args,
+          cache_key_kwargs,
+          cache_key_context,
+          include_tensor_ranks_only=True)
 
     arg_specs = [_type_spec_for(x) for x in flat_no_comp]
     relaxed_arg_specs = self._function_cache.arg_relaxed_specs.get(
@@ -3288,7 +3321,8 @@ class Function(object):
     else:
       flat_args, filtered_flat_args = [None], []
 
-    cache_key = self._cache_key(args, kwargs)
+    cache_key_context = self._cache_key_context()
+    cache_key = self._cache_key(args, kwargs, cache_key_context)
 
     try:
       hash(cache_key)
@@ -3301,41 +3335,39 @@ class Function(object):
     if graph_function is not None:
       return graph_function, filtered_flat_args
 
-    logging.vlog(1,
-                 "Creating new FuncGraph for Python function %r (key: %r)",
-                 self._python_function, cache_key)
-    logging.vlog(2,
-                 "Python function signature [args: %s] [kwargs: %s]",
-                 args,
-                 kwargs)
+    with monitoring.MonitoredTimer(_graph_building_time_counter.get_cell()):
+      with trace.Trace("tf.function-graph_building"):
+        logging.vlog(1,
+                     "Creating new FuncGraph for Python function %r (key: %r)",
+                     self._python_function, cache_key)
+        logging.vlog(2, "Python function signature [args: %s] [kwargs: %s]",
+                     args, kwargs)
 
-    # pylint: disable=protected-access
-    call_context_key = cache_key._replace(input_signature=None)
-    # pylint: disable=protected-access
+        # pylint: disable=protected-access
+        call_context_key = cache_key._replace(input_signature=None)
+        # pylint: disable=protected-access
 
-    ag_status = (
-        ag_ctx.Status.ENABLED if self._autograph else ag_ctx.Status.DISABLED)
-    with ag_ctx.ControlStatusCtx(
-        status=ag_status, options=self._autograph_options):
+        ag_status = (
+            ag_ctx.Status.ENABLED
+            if self._autograph else ag_ctx.Status.DISABLED)
+        with ag_ctx.ControlStatusCtx(
+            status=ag_status, options=self._autograph_options):
 
-      # Build a function with shape relaxation retracing if:
-      # 1. shape relaxation is explicitly enabled
-      # and 2. there's no provided input signature
-      # and 3. there's been a cache miss for this calling context
-      if (self._experimental_relax_shapes
-          and self.input_signature is None
-          and call_context_key in self._function_cache.missed):
-        return self._define_function_with_shape_relaxation(
-            args, kwargs, flat_args, filtered_flat_args)
+          # Build a function with shape relaxation retracing if:
+          # 1. shape relaxation is explicitly enabled
+          # and 2. there's no provided input signature
+          # and 3. there's been a cache miss for this calling context
+          if (self._experimental_relax_shapes and
+              self.input_signature is None and
+              call_context_key in self._function_cache.missed):
+            return self._define_function_with_shape_relaxation(
+                args, kwargs, flat_args, filtered_flat_args, cache_key_context)
 
-      self._function_cache.missed.add(call_context_key)
-      graph_function = self._create_graph_function(args, kwargs)
-      self._function_cache.primary[cache_key] = graph_function
+          self._function_cache.missed.add(call_context_key)
+          graph_function = self._create_graph_function(args, kwargs)
+          self._function_cache.primary[cache_key] = graph_function
 
-      if ops.get_default_graph()._distribution_strategy_stack:
-        self._traced_with_distribution_strategy = True
-
-      return graph_function, filtered_flat_args
+          return graph_function, filtered_flat_args
 
 
 def register(func, *args, **kwargs):

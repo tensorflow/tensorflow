@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"
 #if !defined(IS_MOBILE_PLATFORM)
-#include "tensorflow/core/profiler/internal/traceme_recorder.h"
+#include "tensorflow/core/profiler/internal/cpu/traceme_recorder.h"
 #endif
 #include "tensorflow/core/profiler/lib/traceme_encode.h"  // IWYU pragma: export
 
@@ -123,8 +123,11 @@ class TraceMe {
   // name_generator is templated, rather than a std::function to avoid
   // allocations std::function might make even if never called.
   // Example Usage:
+  //   TraceMe trace_me([&]() {
+  //     return StrCat("my_trace", id);
+  //   }
   //   TraceMe op_trace_me([&]() {
-  //     return StrCat(op_name, ":", op_type);
+  //     return TraceMeOp(op_name, op_type);
   //   }
   //   TraceMe trace_me_with_metadata([&value1]() {
   //     return TraceMeEncode("my_trace", {{"key1", value1}, {"key2", 42}});
@@ -191,6 +194,23 @@ class TraceMe {
 
   // Record the start time of an activity.
   // Returns the activity ID, which is used to stop the activity.
+  // Calls `name_generator` to get the name for activity.
+  template <typename NameGeneratorT>
+  static uint64 ActivityStart(NameGeneratorT name_generator, int level = 1) {
+#if !defined(IS_MOBILE_PLATFORM)
+    if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
+      uint64 activity_id = TraceMeRecorder::NewActivityId();
+      TraceMeRecorder::Record({activity_id, name_generator(),
+                               /*start_time=*/EnvTime::NowNanos(),
+                               /*end_time=*/0});
+      return activity_id;
+    }
+#endif
+    return kUntracedActivity;
+  }
+
+  // Record the start time of an activity.
+  // Returns the activity ID, which is used to stop the activity.
   static uint64 ActivityStart(absl::string_view name, int level = 1) {
 #if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
@@ -202,6 +222,16 @@ class TraceMe {
     }
 #endif
     return kUntracedActivity;
+  }
+
+  // Same as ActivityStart above, an overload for "const std::string&"
+  static uint64 ActivityStart(const std::string& name, int level = 1) {
+    return ActivityStart(absl::string_view(name), level);
+  }
+
+  // Same as ActivityStart above, an overload for "const char*"
+  static uint64 ActivityStart(const char* name, int level = 1) {
+    return ActivityStart(absl::string_view(name), level);
   }
 
   // Record the end time of an activity started by ActivityStart().

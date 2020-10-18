@@ -427,7 +427,7 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
     strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
 
     input_fn = self._create_dense_input_fn(strategy)
-    dist = strategy.experimental_distribute_datasets_from_function(
+    dist = strategy.distribute_datasets_from_function(
         input_fn,
         options=distribute_lib.InputOptions(
             experimental_prefetch_to_device=False))

@@ -23,6 +23,7 @@ import types
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as defun
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import regularizers
@@ -43,7 +44,6 @@ from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking.tracking import delete_tracking
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
-from tensorflow.python.util import object_identity
 
 # To avoid circular dependencies between keras/engine and keras/saving,
 # code in keras/saving must delay imports.
@@ -179,8 +179,6 @@ class KerasObjectLoader(tf_load.Loader):
     # records all nodes that were generated directly/indirectly from the config,
     # so that they do not get recreated multiple times.
     self._nodes_recreated_from_config = {}
-    self._all_nodes_recreated_from_config = (
-        object_identity.ObjectIdentityWeakSet())
     # Store all node ids that have already been traversed when tracking nodes
     # that were recreated from the config.
     self._traversed_nodes_from_config = []
@@ -293,7 +291,6 @@ class KerasObjectLoader(tf_load.Loader):
                      'Object: {}'.format(obj_child))
       self._nodes_recreated_from_config[child_id] = (
           obj_child, self._config_node_setter(setter))
-      self._all_nodes_recreated_from_config.add(obj_child)
       self._add_children_recreated_from_config(
           obj_child, child_proto, child_id)
 
@@ -363,7 +360,6 @@ class KerasObjectLoader(tf_load.Loader):
 
     setter = self._config_node_setter(_revive_setter)
     self._nodes_recreated_from_config[node_id] = obj, setter
-    self._all_nodes_recreated_from_config.add(obj)
     self._add_children_recreated_from_config(
         obj, self._proto.nodes[node_id], node_id)
     return obj, setter
@@ -980,8 +976,11 @@ def infer_inputs_from_restored_call_function(fn):
     TensorSpec of call function inputs.
   """
   def common_spec(x, y):
-    return tensor_spec.TensorSpec(defun.common_shape(x.shape, y.shape),
-                                  x.dtype, x.name)
+    common_shape = defun.common_shape(x.shape, y.shape)
+    if isinstance(x, sparse_tensor.SparseTensorSpec):
+      return sparse_tensor.SparseTensorSpec(common_shape, x.dtype)
+    return tensor_spec.TensorSpec(common_shape, x.dtype, x.name)
+
   spec = fn.concrete_functions[0].structured_input_signature[0][0]
   for concrete in fn.concrete_functions[1:]:
     spec2 = concrete.structured_input_signature[0][0]

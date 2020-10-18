@@ -90,7 +90,7 @@ Benchmark::Benchmark(const string& device, Graph* g,
   pflr_ = std::unique_ptr<ProcessFunctionLibraryRuntime>(
       new ProcessFunctionLibraryRuntime(
           device_mgr_.get(), Env::Default(), nullptr, graph_def_version,
-          flib_def_.get(), OptimizerOptions(), pool_, nullptr, nullptr, nullptr,
+          flib_def_.get(), OptimizerOptions(), pool_, nullptr, nullptr,
           Rendezvous::Factory()));
 
   flr_ = pflr_->GetFLR(device_->name());

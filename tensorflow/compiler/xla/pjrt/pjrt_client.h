@@ -195,6 +195,9 @@ class PjRtClient {
     return absl::optional<std::string>();
   }
 
+  // Returns a backend-specific HLO cost analysis visitor.
+  virtual std::unique_ptr<HloCostAnalysis> GetHloCostAnalysis();
+
  protected:
   friend class PjRtBuffer;
   virtual void EnqueueCrossHostReceive(
@@ -560,8 +563,10 @@ class PjRtBuffer {
     return GetBufferWithHold(ScopedHold::kExternalReference);
   }
 
-  // Copies the buffer to device `dst_device`. Returns an error if the buffer is
-  // already on dst_device.
+  // Copies the buffer to device `dst_device`, performing a d2d transfer when
+  // `dst_device` is sharing the same Client, and performing a d2h and h2d copy
+  // if `dst_device` lives on a different Client.
+  // Returns an error if the buffer is already on dst_device.
   StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(PjRtDevice* dst_device);
 
   // Copies the buffer to the remote device encoded in serialized_descriptor.
@@ -695,7 +700,7 @@ struct ExecuteOptions {
   int32 launch_id = 0;
   // If non-null, an opaque context passed to an execution that may be used to
   // supply additional arguments to a derived class of PjRtExecutable.
-  ExecuteContext* context = nullptr;
+  const ExecuteContext* context = nullptr;
 };
 
 // Represents a compiled computation that can be executed given handles to

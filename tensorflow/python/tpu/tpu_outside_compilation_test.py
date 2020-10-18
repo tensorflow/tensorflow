@@ -24,6 +24,8 @@ import tempfile
 from absl.testing import parameterized
 import numpy as np
 
+from tensorboard.plugins.histogram import summary_v2 as histogram_summary_v2
+from tensorboard.plugins.scalar import summary_v2 as scalar_summary_v2
 from tensorflow.core.util import event_pb2
 from tensorflow.python.distribute import tpu_strategy as tpu_lib
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
@@ -32,6 +34,8 @@ from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import tf_record
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -41,7 +45,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import summary_ops_v2 as summary
-from tensorflow.python.ops import variables
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import gfile
 from tensorflow.python.tpu import tpu
@@ -90,30 +93,9 @@ def _events_from_logdir(test_case, logdir):
 
 class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
 
-  def testResourceVariableAssignOnHost(self):
-    strategy = get_tpu_strategy()
-    with strategy.scope():
-      v = variables.Variable(
-          0.0, aggregation=variables.VariableAggregation.MEAN)
-    v2 = variables.Variable(0.0, aggregation=variables.VariableAggregation.MEAN)
-
-    def assign_fn():
-      v2.assign_add(4.0)
-
-    @def_function.function
-    def train_step():
-
-      def assign_add():
-        v.assign_add(2.0)
-        tpu.outside_compilation(assign_fn)
-        v.assign_add(3.0)
-
-      strategy.run(assign_add)
-      return
-
-    train_step()
-    self.assertAllEqual(4.0 * strategy.num_replicas_in_sync, v2.numpy())
-    self.assertAllEqual(5.0, v.numpy())
+  def setUp(self):
+    super(TpuOutsideCompilationTest, self).setUp()
+    config.set_soft_device_placement(False)
 
   def testHostNoInput(self):
     strategy = get_tpu_strategy()
@@ -312,7 +294,7 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
     strategy = get_tpu_strategy()
 
     def host_computation(x):
-      summary.scalar("x", x, step=0)
+      scalar_summary_v2.scalar("x", x, step=0)
       return x * 2.0
 
     @def_function.function
@@ -338,7 +320,7 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
     strategy = get_tpu_strategy()
 
     def host_computation(x):
-      summary.scalar("x", x, step=0)
+      scalar_summary_v2.scalar("x", x, step=0)
       return x * 2.0
 
     @def_function.function
@@ -373,7 +355,7 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
     strategy = get_tpu_strategy()
 
     def host_computation(x):
-      summary.scalar("x", x, step=0)
+      scalar_summary_v2.scalar("x", x, step=0)
       return x * 2.0
 
     @def_function.function
@@ -469,6 +451,36 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
         strategy.experimental_local_results(train_step()),
         constant_op.constant(2916., shape=(strategy.num_replicas_in_sync)))
 
+  def testColocateGradientWithOutsideCompiledOp(self):
+    strategy = get_tpu_strategy()
+
+    @def_function.function
+    def train_step():
+
+      @def_function.function
+      def tpu_fn(x):
+        x1 = tpu.outside_compilation(math_ops.sqrt, x)
+        grad = gradients_impl.gradients([x1], [x],
+                                        colocate_gradients_with_ops=True)[0]
+        sqrt = [
+            op for op in ops.get_default_graph().get_operations()
+            if op.type == "Sqrt"
+        ][0]
+        sqrt_grad = [
+            op for op in ops.get_default_graph().get_operations()
+            if op.type == "SqrtGrad"
+        ][0]
+        assert sqrt.get_attr(tpu._OUTSIDE_COMPILATION_ATTR) == b"0"
+        assert (sqrt_grad.get_attr(
+            tpu._OUTSIDE_COMPILATION_ATTR) == b"0.gradients/uid")
+        return grad
+
+      return strategy.run(tpu_fn, args=(25.0,))
+
+    self.assertAllEqual(
+        strategy.experimental_local_results(train_step()),
+        constant_op.constant(.1, shape=(strategy.num_replicas_in_sync)))
+
 
 class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
                                             parameterized.TestCase):
@@ -511,7 +523,7 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
     strategy = get_tpu_strategy()
 
     def host_computation(x):
-      summary.scalar("x", x, step=0)
+      scalar_summary_v2.scalar("x", x, step=0)
       return x * 2.0
 
     @def_function.function
@@ -535,7 +547,35 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
     # written by host.
     self.assertLen(events, 2)
     self.assertEqual(events[1].summary.value[0].tag, "x")
-    self.assertEqual(events[1].summary.value[0].simple_value, 3.0)
+
+  def testHistogramSummaryWithAutoOutsideCompilation(self):
+    strategy = get_tpu_strategy()
+
+    def host_computation(x):
+      histogram_summary_v2.histogram("x", x, step=0)
+      return x * 2.0
+
+    @def_function.function
+    def step():
+
+      def computation(x):
+        x = x + 1.0
+        y = host_computation(x)
+        return y + 1.0
+
+      return strategy.run(computation, args=(2.0,))
+
+    logdir = tempfile.mkdtemp()
+    summary_writer = summary.create_file_writer(logdir, flush_millis=10000)
+    with summary_writer.as_default(), summary.always_record_summaries():
+      self.assertAllEqual(
+          strategy.experimental_local_results(step()),
+          constant_op.constant(7., shape=(strategy.num_replicas_in_sync)))
+    events = _events_from_logdir(self, logdir)
+    # There will be 2 entries: 1 summary file header entry, and 1 entry
+    # written by host.
+    self.assertLen(events, 2)
+    self.assertEqual(events[1].summary.value[0].tag, "x")
 
   @parameterized.parameters((True), (False))
   def testSummaryControlFlowIfWithAutoOutsideCompilation(
@@ -548,7 +588,7 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
       def computation(x):
         x = x + 1.0
         if x < 5:
-          summary.scalar("x", x, step=0)
+          scalar_summary_v2.scalar("x", x, step=0)
           x = x * 2.0
         return x + 1.0
 
@@ -574,8 +614,10 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
       #
       self.assertLen(events, 2)
       self.assertEqual(events[1].summary.value[0].tag, "cond/x")
-      self.assertEqual(events[1].summary.value[0].simple_value, 3.0)
 
+  @test_util.disable_mlir_bridge(
+      "TODO(b/168493455): Reenable this test once deadlock resolved."
+  )
   def testAutoOutsideCompilationWithFunctionalNodes(self):
     strategy = get_tpu_strategy()
 

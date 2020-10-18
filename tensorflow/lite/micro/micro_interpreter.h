@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -54,18 +54,18 @@ class ContextHelper {
   static TfLiteEvalTensor* GetEvalTensor(const struct TfLiteContext* context,
                                          int tensor_idx);
 
-  // Sets the current node index to assist with scratch buffer allocations:
-  void SetNodeIndex(int idx);
-
   // Sets the pointer to a list of TfLiteEvalTensor instances.
   void SetTfLiteEvalTensors(TfLiteEvalTensor* eval_tensors);
 
+  // Sets the pointer to a list of ScratchBufferHandle instances.
+  void SetScratchBufferHandles(ScratchBufferHandle* scratch_buffer_handles);
+
  private:
-  MicroAllocator* allocator_;
-  ErrorReporter* error_reporter_;
-  const Model* model_;
-  TfLiteEvalTensor* eval_tensors_;
-  int current_node_idx_ = -1;
+  MicroAllocator* allocator_ = nullptr;
+  ErrorReporter* error_reporter_ = nullptr;
+  const Model* model_ = nullptr;
+  TfLiteEvalTensor* eval_tensors_ = nullptr;
+  ScratchBufferHandle* scratch_buffer_handles_ = nullptr;
 };
 
 }  // namespace internal
@@ -193,12 +193,15 @@ class MicroInterpreter {
 
   TfLiteStatus initialization_status_;
 
-  const SubGraph* subgraph_;
-  TfLiteEvalTensor* eval_tensors_;
+  const SubGraph* subgraph_ = nullptr;
+  TfLiteEvalTensor* eval_tensors_ = nullptr;
+  ScratchBufferHandle* scratch_buffer_handles_ = nullptr;
+
+  // TODO(b/16157777): Drop this reference:
   internal::ContextHelper context_helper_;
 
-  // TODO(b/160894903): Clean these pointers up when all APIs are updated to new
-  // TfLiteEvalTensor buffers.
+  // TODO(b/162311891): Clean these pointers up when this class supports buffers
+  // from TfLiteEvalTensor.
   TfLiteTensor* input_tensor_;
   TfLiteTensor* output_tensor_;
 };

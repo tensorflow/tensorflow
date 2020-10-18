@@ -311,7 +311,8 @@ def update_confusion_matrix_variables(variables_to_update,
 
   y_true = math_ops.cast(y_true, dtype=variable_dtype)
   y_pred = math_ops.cast(y_pred, dtype=variable_dtype)
-  thresholds = ops.convert_to_tensor_v2(thresholds, dtype=variable_dtype)
+  thresholds = ops.convert_to_tensor_v2_with_dispatch(
+      thresholds, dtype=variable_dtype)
   num_thresholds = thresholds.shape[0]
   if multi_label:
     one_thresh = math_ops.equal(

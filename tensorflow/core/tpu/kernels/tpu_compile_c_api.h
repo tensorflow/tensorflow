@@ -15,24 +15,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILE_C_API_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILE_C_API_H_
 
+#include <stddef.h>
+
 #include "tensorflow/core/tpu/kernels/tpu_mesh_state_c_api.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_c_api.h"
-#include "tensorflow/core/tpu/kernels/tpu_util_c_api.h"
 #include "tensorflow/core/tpu/libtftpu.h"
-#include "tensorflow/stream_executor/tpu/proto_helper.h"
+#include "tensorflow/stream_executor/tpu/c_api_decl.h"
 
 extern "C" {
-
-// Compiles HLO IR and returns `count` number of TPU programs ready for
-// execution.
-// The API allocates the `XLA_TpuProgram*[]` array `tpu_programs` and creates
-// `XLA_TpuProgram` object(s) using the `TpuProgram_New` API. The caller is
-// responsible to deallocate both the `XLA_TpuProgram*[]` array and the
-// `XLA_TpuProgram` object(s) using `TpuProgram_FreeArray` and `TpuProgram_Free`
-// API respectively.
-TFTPU_CAPI_EXPORT void TpuCompile_CompileAheadOfTime(
-    TpuSerializedProto aot_compilation_request, XLA_TpuProgram** tpu_programs[],
-    size_t* count, SE_Status* status);
 
 // Compiles Mlir or TF function computation by lowering into HLO IR and returns
 // `count` number of TPU programs ready for execution.
@@ -46,7 +36,6 @@ TFTPU_CAPI_EXPORT void TpuCompile_CompileAndBuild(
     XLA_TpuProgram** tpu_programs[], size_t* count, SE_Status* status);
 
 struct TfTpu_CompileApiFn {
-  TFTPU_ADD_FN_IN_STRUCT(TpuCompile_CompileAheadOfTime);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_CompileAndBuild);
 };
 

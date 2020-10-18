@@ -19,6 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import threading
+import time
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -27,6 +29,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.platform import test
 
@@ -300,6 +303,65 @@ class CollectiveOpGPUTest(test.TestCase):
         collective_ops.all_reduce(
             [1.], group_size=1, group_key=0, instance_key=0, merge_op='Add',
             final_op='Id', communication_hint='NCCL')
+
+  @test_util.run_v2_only
+  def testAbortNccl(self):
+    self._setup_context(num_gpus=2)
+
+    group_size = 2
+    group_key = 100
+    instance_key = 100
+    in_tensor = constant_op.constant(1.)
+
+    # First perform a normal collective to finish resolution.
+    def collective_fn():
+      for device in ['GPU:0', 'GPU:1']:
+        with ops.device(device):
+          collective_ops.all_reduce(
+              in_tensor,
+              group_size,
+              group_key,
+              instance_key,
+              'Add',
+              'Id',
+              communication_hint='nccl')
+
+    def_function.function(collective_fn)()
+
+    # Launch a collective that hangs, and abort the collective executor after
+    # the launch.
+    def abort_fn():
+      time.sleep(2)
+      context.context().abort_collective_ops(errors.UNAVAILABLE, 'peer down')
+
+    t = threading.Thread(target=abort_fn)
+    t.start()
+
+    with self.assertRaisesRegex(errors.UnavailableError, 'peer down'):
+      collective_ops.all_reduce(
+          in_tensor,
+          group_size,
+          group_key,
+          instance_key,
+          'Add',
+          'Id',
+          communication_hint='nccl')
+
+    # After abortion, subsequent collectives should fail immediately.
+    with self.assertRaisesRegex(errors.UnavailableError, 'peer down'):
+      collective_ops.all_reduce(
+          in_tensor,
+          group_size,
+          group_key,
+          instance_key,
+          'Add',
+          'Id',
+          communication_hint='nccl')
+
+    t.join()
+    # Reset the context in order to reset the collective executor.
+    context._reset_context()  # pylint: disable=protected-access
+    def_function.function(collective_fn)()
 
 
 if __name__ == '__main__':

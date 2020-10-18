@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/tools/optimize/quantize_weights.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -25,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/tools/optimize/quantize_weights.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/tools/optimize/test_util.h"
 
 namespace {
@@ -120,7 +122,7 @@ class QuantizeWeightsTest : public testing::Test {
       for (size_t i = 0; i < op->outputs()->size(); ++i) {
         if (op->outputs()->Get(i) == tensor_idx) {
           const uint32_t op_code_idx = op->opcode_index();
-          *op_code = model->operator_codes()->Get(op_code_idx)->builtin_code();
+          *op_code = GetBuiltinCode(model->operator_codes()->Get(op_code_idx));
           return true;
         }
       }
@@ -195,7 +197,7 @@ TEST_F(QuantizeWeightsTest, HybridConv) {
     ASSERT_EQ(quantized_graph->operators()->size(), 1);
     const auto op = quantized_graph->operators()->Get(0);
     const uint32_t op_code_idx = op->opcode_index();
-    ASSERT_EQ(output_model->operator_codes()->Get(op_code_idx)->builtin_code(),
+    ASSERT_EQ(GetBuiltinCode(output_model->operator_codes()->Get(op_code_idx)),
               BuiltinOperator_CONV_2D);
     for (size_t i = 0; i < quantized_graph->tensors()->size(); i++) {
       const auto quant_tensor = quantized_graph->tensors()->Get(i);
@@ -254,7 +256,7 @@ TEST_F(QuantizeWeightsTest, DequantizeConv) {
     for (size_t i = 0; i < quantized_graph->operators()->size(); ++i) {
       const auto op = quantized_graph->operators()->Get(i);
       const uint32_t op_code_idx = op->opcode_index();
-      if (output_model->operator_codes()->Get(op_code_idx)->builtin_code() ==
+      if (GetBuiltinCode(output_model->operator_codes()->Get(op_code_idx)) ==
           BuiltinOperator_DEQUANTIZE) {
         dequant_input_idx = op->inputs()->Get(0);
         dequant_output_idx = op->outputs()->Get(0);
@@ -313,7 +315,7 @@ TEST_F(QuantizeWeightsTest, DequantizeConvFloat16) {
     for (size_t i = 0; i < quantized_graph->operators()->size(); ++i) {
       const auto op = quantized_graph->operators()->Get(i);
       const uint32_t op_code_idx = op->opcode_index();
-      if (output_model->operator_codes()->Get(op_code_idx)->builtin_code() ==
+      if (GetBuiltinCode(output_model->operator_codes()->Get(op_code_idx)) ==
           BuiltinOperator_DEQUANTIZE) {
         dequant_input_idx = op->inputs()->Get(0);
         dequant_output_idx = op->outputs()->Get(0);
@@ -365,7 +367,7 @@ TEST_F(QuantizeWeightsTest, SharedWeights_Hybrid) {
       const auto op = quantized_graph->operators()->Get(i);
       const uint32_t op_code_idx = op->opcode_index();
       const auto op_code =
-          output_model->operator_codes()->Get(op_code_idx)->builtin_code();
+          GetBuiltinCode(output_model->operator_codes()->Get(op_code_idx));
       if (op_code == BuiltinOperator_CONV_2D) {
         num_conv_ops++;
         // Ensure that each convolution's weights tensor is now INT8.
@@ -399,7 +401,7 @@ TEST_F(QuantizeWeightsTest, SharedWeights_Dequantize) {
       const auto op = quantized_graph->operators()->Get(i);
       const uint32_t op_code_idx = op->opcode_index();
       const auto op_code =
-          output_model->operator_codes()->Get(op_code_idx)->builtin_code();
+          GetBuiltinCode(output_model->operator_codes()->Get(op_code_idx));
       if (op_code == BuiltinOperator_CONV_2D) {
         num_conv_ops++;
         // Ensure that each convolution's weights tensor is still FLOAT
@@ -439,7 +441,7 @@ TEST_F(QuantizeWeightsTest, VerifyGatherQuantization) {
       const auto op = quantized_graph->operators()->Get(i);
       const uint32_t op_code_idx = op->opcode_index();
       const auto op_code =
-          output_model->operator_codes()->Get(op_code_idx)->builtin_code();
+          GetBuiltinCode(output_model->operator_codes()->Get(op_code_idx));
       if (op_code == BuiltinOperator_GATHER) {
         uint32_t input_tensor_index = op->inputs()->Get(0);
         const auto weights_tensor =
@@ -479,7 +481,7 @@ TEST_F(QuantizeWeightsTest, VerifyCustomOpQuantizationDequantize) {
     const auto op = quantized_graph->operators()->Get(i);
     const uint32_t op_code_idx = op->opcode_index();
     const auto op_code =
-        output_model->operator_codes()->Get(op_code_idx)->builtin_code();
+        GetBuiltinCode(output_model->operator_codes()->Get(op_code_idx));
     if (op_code == BuiltinOperator_CUSTOM) {
       uint32_t weights_tensor_index = op->inputs()->Get(1);
       const auto weights_tensor =
@@ -525,7 +527,7 @@ TEST_F(QuantizeWeightsTest, VerifyCustomOpQuantizationHybrid) {
     const auto op = quantized_graph->operators()->Get(i);
     const uint32_t op_code_idx = op->opcode_index();
     const auto op_code =
-        output_model->operator_codes()->Get(op_code_idx)->builtin_code();
+        GetBuiltinCode(output_model->operator_codes()->Get(op_code_idx));
     if (op_code == BuiltinOperator_CUSTOM) {
       uint32_t weights_tensor_index = op->inputs()->Get(1);
       const auto weights_tensor =
@@ -560,7 +562,7 @@ TEST_F(QuantizeWeightsTest, VerifyUpdatedHybridSchemeFalseQuantizationHybrid) {
     ASSERT_EQ(quantized_graph->operators()->size(), 1);
     const auto op = quantized_graph->operators()->Get(0);
     const uint32_t op_code_idx = op->opcode_index();
-    ASSERT_EQ(output_model->operator_codes()->Get(op_code_idx)->builtin_code(),
+    ASSERT_EQ(GetBuiltinCode(output_model->operator_codes()->Get(op_code_idx)),
               BuiltinOperator_CONV_2D);
     for (size_t i = 0; i < quantized_graph->tensors()->size(); i++) {
       const auto quant_tensor = quantized_graph->tensors()->Get(i);

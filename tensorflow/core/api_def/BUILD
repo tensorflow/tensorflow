@@ -6,6 +6,8 @@
 #   :python_api_def
 #   :java_api_def
 
+load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_binary",
@@ -37,9 +39,9 @@ filegroup(
     visibility = ["//tensorflow:internal"],
 )
 
-filegroup(
+alias(
     name = "java_api_def",
-    srcs = glob(["java_api/*"]),
+    actual = "//tensorflow/core/api_def/java_api:java_api_def",
     visibility = ["//tensorflow:internal"],
 )
 

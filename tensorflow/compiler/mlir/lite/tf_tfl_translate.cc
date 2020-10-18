@@ -143,6 +143,7 @@ int main(int argc, char **argv) {
   mlir::SourceMgrDiagnosticHandler sourceMgrHandler(source_mgr, &context);
 
   StatusOr<mlir::OwningModuleRef> module;
+  std::unordered_set<std::string> tags;
 
   tensorflow::GraphImportConfig specs;
   specs.upgrade_legacy = upgrade_legacy;
@@ -161,8 +162,7 @@ int main(int argc, char **argv) {
       module = tensorflow::errors::InvalidArgument(
           "Importing saved model should not have input_mlir set");
 
-    std::unordered_set<std::string> tags =
-        absl::StrSplit(saved_model_tags, ',');
+    tags = absl::StrSplit(saved_model_tags, ',');
     std::vector<std::string> exported_names_vector =
         absl::StrSplit(saved_model_exported_names, ',', absl::SkipEmpty());
     absl::Span<std::string> exported_names(exported_names_vector);
@@ -171,10 +171,11 @@ int main(int argc, char **argv) {
       llvm::errs() << "There should be only one exported name";
       return kTrFailure;
     }
-
-    module =
-        tensorflow::ImportSavedModel(input_file_name, saved_model_version, tags,
-                                     exported_names, specs, &context);
+    std::vector<std::string> extra_opdefs(custom_opdefs.begin(),
+                                          custom_opdefs.end());
+    module = tensorflow::ImportSavedModel(input_file_name, saved_model_version,
+                                          tags, extra_opdefs, exported_names,
+                                          specs, &context);
   } else {
     module = tensorflow::LoadFromGraphdefOrMlirSource(
         input_file_name, input_mlir, use_splatted_constant, custom_opdefs,
@@ -240,7 +241,7 @@ int main(int argc, char **argv) {
   std::string result;
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(
       module.ValueOrDie().get(), output_mlir, emit_builtin_tflite_ops,
-      emit_select_tf_ops, emit_custom_ops, quant_specs, &result, &pm);
+      emit_select_tf_ops, emit_custom_ops, quant_specs, tags, &result, &pm);
   if (!status.ok()) return kTrFailure;
 
   std::string error_msg;

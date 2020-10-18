@@ -1,3 +1,4 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_py_test_deps")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
@@ -6,7 +7,10 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
 
 package(
-    default_visibility = ["//tensorflow:internal"],
+    default_visibility = [
+        "//learning/pathways/data_parallel/jax:__subpackages__",
+        "//tensorflow:internal",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -22,6 +26,18 @@ pyx_library(
     name = "custom_call_for_test",
     testonly = True,
     srcs = ["custom_call_for_test.pyx"],
+)
+
+py_test(
+    name = "xla_client_backend_independent_test",
+    srcs = ["xla_client_backend_independent_test.py"],
+    python_version = "PY3",
+    tags = ["no_oss"],  # TODO(phawkins): This test passes, but requires --config=monolithic.
+    deps = [
+        ":xla_client",
+        ":xla_extension",
+        "@absl_py//absl/testing:absltest",
+    ] + xla_py_test_deps(),
 )
 
 py_library(
@@ -264,6 +280,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@pybind11",
     ],
@@ -284,6 +301,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/client/lib:comparators",
+        "//tensorflow/compiler/xla/client/lib:lu_decomposition",
         "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/compiler/xla/client/lib:qr",
         "//tensorflow/compiler/xla/client/lib:self_adjoint_eig",
@@ -428,6 +446,7 @@ pybind_extension(
         "//tensorflow/compiler/xla/pjrt:interpreter_device",
         "//tensorflow/compiler/xla/pjrt:nvidia_gpu_device",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:tpu_client",
         "//tensorflow/compiler/xla/pjrt:tracked_device_buffer",
         "//tensorflow/compiler/xla/pjrt/distributed",
         "//tensorflow/compiler/xla/pjrt/distributed:client",

@@ -1120,9 +1120,26 @@ Status AvgPoolShape(shape_inference::InferenceContext* c) {
   return Status::OK();
 }
 
+Status AvgPoolGradShape(shape_inference::InferenceContext* c) {
+  ShapeHandle s;
+  TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
+  TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
+  c->set_output(0, s);
+  return Status::OK();
+}
+
 Status FusedBatchNormShape(shape_inference::InferenceContext* c) {
+  string data_format_str;
+  TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format_str));
+  TensorFormat data_format;
+  if (!FormatFromString(data_format_str, &data_format)) {
+    return errors::InvalidArgument("Invalid data format string: ",
+                                   data_format_str);
+  }
+  const int rank =
+      (data_format_str == "NDHWC" or data_format_str == "NCDHW") ? 5 : 4;
   ShapeHandle x;
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &x));
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), rank, &x));
 
   bool is_training;
   TF_RETURN_IF_ERROR(c->GetAttr("is_training", &is_training));
@@ -1131,14 +1148,8 @@ Status FusedBatchNormShape(shape_inference::InferenceContext* c) {
     exponential_avg_factor = 1.0f;  // default value
   }
   int number_inputs = (is_training && exponential_avg_factor == 1.0f) ? 3 : 5;
-  string data_format_str;
-  TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format_str));
-  TensorFormat data_format;
-  if (!FormatFromString(data_format_str, &data_format)) {
-    return errors::InvalidArgument("Invalid data format string: ",
-                                   data_format_str);
-  }
-  int channel_dim_index = GetTensorFeatureDimIndex(4, data_format);
+
+  int channel_dim_index = GetTensorFeatureDimIndex(rank, data_format);
   DimensionHandle channel_dim = c->Dim(x, channel_dim_index);
 
   // covers scale, offset, and if is_training is false, mean, variance
@@ -1191,13 +1202,6 @@ Status FusedBatchNormExShape(shape_inference::InferenceContext* c) {
 }
 
 Status FusedBatchNormGradShape(shape_inference::InferenceContext* c) {
-  ShapeHandle y_backprop;
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &y_backprop));
-  ShapeHandle x;
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 4, &x));
-
-  bool is_training;
-  TF_RETURN_IF_ERROR(c->GetAttr("is_training", &is_training));
   string data_format_str;
   TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format_str));
   TensorFormat data_format;
@@ -1205,7 +1209,17 @@ Status FusedBatchNormGradShape(shape_inference::InferenceContext* c) {
     return errors::InvalidArgument("Invalid data format string: ",
                                    data_format_str);
   }
-  int channel_dim_index = GetTensorFeatureDimIndex(4, data_format);
+  const int rank =
+      (data_format_str == "NDHWC" or data_format_str == "NCDHW") ? 5 : 4;
+  ShapeHandle y_backprop;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), rank, &y_backprop));
+  ShapeHandle x;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), rank, &x));
+
+  bool is_training;
+  TF_RETURN_IF_ERROR(c->GetAttr("is_training", &is_training));
+
+  int channel_dim_index = GetTensorFeatureDimIndex(rank, data_format);
   DimensionHandle channel_dim = c->Dim(y_backprop, channel_dim_index);
   TF_RETURN_IF_ERROR(
       c->Merge(channel_dim, c->Dim(x, channel_dim_index), &channel_dim));
@@ -1477,7 +1491,8 @@ Status MatrixSetDiagV2Shape(shape_inference::InferenceContext* c) {
   return Status::OK();
 }
 
-Status MaxPoolShape(shape_inference::InferenceContext* c) {
+Status MaxPoolShapeImpl(shape_inference::InferenceContext* c,
+                        bool supports_explicit_padding) {
   string data_format_str;
   TensorFormat data_format;
   Status s = c->GetAttr("data_format", &data_format_str);
@@ -1530,14 +1545,39 @@ Status MaxPoolShape(shape_inference::InferenceContext* c) {
   Padding padding;
   TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
 
+  std::vector<int64> explicit_paddings;
+  if (supports_explicit_padding) {
+    Status status = c->GetAttr("explicit_paddings", &explicit_paddings);
+    // Use the default value, which is an empty list, if the attribute is not
+    // found. Otherwise return the error to the caller.
+    if (!status.ok() && !errors::IsNotFound(status)) {
+      return status;
+    }
+    TF_RETURN_IF_ERROR(CheckValidPadding(padding, explicit_paddings,
+                                         /*num_dims=*/4, data_format));
+  } else {
+    DCHECK(padding != Padding::EXPLICIT);
+  }
+
   ShapeHandle output_shape;
   DimensionHandle output_rows, output_cols, output_depth;
-  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(
-      c, in_rows_dim, kernel_rows, stride_rows, padding, &output_rows));
-  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(
-      c, in_cols_dim, kernel_cols, stride_cols, padding, &output_cols));
-  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(
-      c, in_depth_dim, kernel_depth, stride_depth, padding, &output_depth));
+  int64 pad_rows_before = -1, pad_rows_after = -1;
+  int64 pad_cols_before = -1, pad_cols_after = -1;
+  if (padding == Padding::EXPLICIT) {
+    GetExplicitPaddingForDim(explicit_paddings, data_format, 'H',
+                             &pad_rows_before, &pad_rows_after);
+    GetExplicitPaddingForDim(explicit_paddings, data_format, 'W',
+                             &pad_cols_before, &pad_cols_after);
+  }
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDimsV2(
+      c, in_rows_dim, kernel_rows, /*dilation_rate=*/1, stride_rows, padding,
+      pad_rows_before, pad_rows_after, &output_rows));
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDimsV2(
+      c, in_cols_dim, kernel_cols, /*dilation_rate=*/1, stride_cols, padding,
+      pad_cols_before, pad_cols_after, &output_cols));
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDimsV2(
+      c, in_depth_dim, kernel_depth, /*dilation_rate=*/1, stride_depth, padding,
+      /*pad_before*/ 0, /*pad_after*/ 0, &output_depth));
 
   TF_RETURN_IF_ERROR(MakeShapeFromFormat(data_format, batch_size_dim,
                                          {output_rows, output_cols},
@@ -1545,6 +1585,18 @@ Status MaxPoolShape(shape_inference::InferenceContext* c) {
 
   c->set_output(0, output_shape);
   return Status::OK();
+}
+
+Status MaxPoolShape(shape_inference::InferenceContext* c) {
+  return MaxPoolShapeImpl(c, /*supports_explicit_padding=*/false);
+}
+
+Status MaxPoolGradShape(shape_inference::InferenceContext* c) {
+  return UnchangedShapeWithRank(c, 4);
+}
+
+Status MaxPoolShapeWithExplicitPadding(shape_inference::InferenceContext* c) {
+  return MaxPoolShapeImpl(c, /*supports_explicit_padding=*/true);
 }
 
 Status MaxPoolV2Shape(shape_inference::InferenceContext* c, int num_inputs) {
@@ -1728,6 +1780,18 @@ Status Pool3DShape(shape_inference::InferenceContext* c) {
   }
 
   c->set_output(0, output_shape);
+  return Status::OK();
+}
+
+Status MaxPool3DGradShape(shape_inference::InferenceContext* c) {
+  return UnchangedShapeWithRank(c, 5);
+}
+
+Status AvgPool3DGradShape(shape_inference::InferenceContext* c) {
+  ShapeHandle s;
+  TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
+  TF_RETURN_IF_ERROR(c->WithRank(s, 5, &s));
+  c->set_output(0, s);
   return Status::OK();
 }
 

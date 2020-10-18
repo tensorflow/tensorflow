@@ -1,5 +1,12 @@
 # EmbARC MLI Library Based Optimizations of TensorFlow Lite Micro Kernels for ARC Platforms.
 
+## Maintainers
+
+*   [dzakhar](https://github.com/dzakhar)
+*   [JaccovG](https://github.com/JaccovG)
+
+## Introduction
+
 This folder contains kernel implementations which use optimized
 [embARC MLI Library](https://github.com/foss-for-synopsys-dwc-arc-processors/embarc_mli).
 It allows acceleration of inference operations which use int8 (asymmetric

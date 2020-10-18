@@ -328,6 +328,7 @@ string GetTempFilename(const string& extension) {
     }
   }
   LOG(FATAL) << "No temp directory found.";
+  std::abort();
 #endif
 }
 

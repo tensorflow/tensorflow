@@ -103,14 +103,14 @@ TEST_F(FlexOpsListTest, TestZeroSubgraphs) {
 TEST_F(FlexOpsListTest, TestFlexAdd) {
   ReadOps("tensorflow/lite/testdata/multi_add_flex.bin");
   EXPECT_EQ(output_text_,
-            "[[\"Add\",\"BinaryOp<CPUDevice, functor::add<float>>\"]]\n");
+            "[[\"AddV2\",\"BinaryOp<CPUDevice, functor::add<float>>\"]]\n");
 }
 
 TEST_F(FlexOpsListTest, TestTwoModel) {
   ReadOps("tensorflow/lite/testdata/multi_add_flex.bin");
   ReadOps("tensorflow/lite/testdata/softplus_flex.bin");
   EXPECT_EQ(output_text_,
-            "[[\"Add\",\"BinaryOp<CPUDevice, "
+            "[[\"AddV2\",\"BinaryOp<CPUDevice, "
             "functor::add<float>>\"],[\"Softplus\",\"SoftplusOp<CPUDevice, "
             "float>\"]]\n");
 }
@@ -119,7 +119,7 @@ TEST_F(FlexOpsListTest, TestDuplicatedOp) {
   ReadOps("tensorflow/lite/testdata/multi_add_flex.bin");
   ReadOps("tensorflow/lite/testdata/multi_add_flex.bin");
   EXPECT_EQ(output_text_,
-            "[[\"Add\",\"BinaryOp<CPUDevice, functor::add<float>>\"]]\n");
+            "[[\"AddV2\",\"BinaryOp<CPUDevice, functor::add<float>>\"]]\n");
 }
 
 TEST_F(FlexOpsListTest, TestInvalidCustomOptions) {

@@ -65,8 +65,10 @@ constexpr char kRecv[] = "_Recv";
 constexpr char kSend[] = "_Send";
 constexpr char kBatchMatMul[] = "BatchMatMul";
 constexpr char kBatchMatMulV2[] = "BatchMatMulV2";
+constexpr char kOneHot[] = "OneHot";
 constexpr char kPack[] = "Pack";
 constexpr char kRank[] = "Rank";
+constexpr char kRange[] = "Range";
 constexpr char kShape[] = "Shape";
 constexpr char kShapeN[] = "ShapeN";
 constexpr char kSize[] = "Size";
@@ -86,6 +88,7 @@ constexpr char kSlice[] = "Slice";
 constexpr char kStridedSlice[] = "StridedSlice";
 constexpr char kSpaceToDepth[] = "SpaceToDepth";
 constexpr char kTranspose[] = "Transpose";
+constexpr char kTile[] = "Tile";
 constexpr char kMaxPool[] = "MaxPool";
 constexpr char kMaxPoolGrad[] = "MaxPoolGrad";
 constexpr char kAvgPool[] = "AvgPool";
@@ -471,7 +474,11 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
                             wrap(&OpLevelCostEstimator::PredictPureMemoryOp));
   device_cost_impl_.emplace(kFill,
                             wrap(&OpLevelCostEstimator::PredictPureMemoryOp));
+  device_cost_impl_.emplace(kOneHot,
+                            wrap(&OpLevelCostEstimator::PredictPureMemoryOp));
   device_cost_impl_.emplace(kPack,
+                            wrap(&OpLevelCostEstimator::PredictPureMemoryOp));
+  device_cost_impl_.emplace(kRange,
                             wrap(&OpLevelCostEstimator::PredictPureMemoryOp));
   device_cost_impl_.emplace(kSpaceToDepth,
                             wrap(&OpLevelCostEstimator::PredictPureMemoryOp));
@@ -480,6 +487,8 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
   device_cost_impl_.emplace(kSqueeze,
                             wrap(&OpLevelCostEstimator::PredictPureMemoryOp));
   device_cost_impl_.emplace(kTranspose,
+                            wrap(&OpLevelCostEstimator::PredictPureMemoryOp));
+  device_cost_impl_.emplace(kTile,
                             wrap(&OpLevelCostEstimator::PredictPureMemoryOp));
   device_cost_impl_.emplace(kUnpack,
                             wrap(&OpLevelCostEstimator::PredictPureMemoryOp));
@@ -806,7 +815,7 @@ Costs OpLevelCostEstimator::PredictOpCountBasedCost(
           << " Intermediate Memory Time (ns):"
           << intermediate_memory_cost.count();
 
-  Costs costs;
+  Costs costs = Costs::ZeroCosts();
   costs.compute_time = compute_cost;
   costs.memory_time = memory_cost;
   costs.intermediate_memory_time = intermediate_memory_cost;
@@ -2355,11 +2364,16 @@ Costs OpLevelCostEstimator::PredictResizeBilinear(
     const OpContext& op_context) const {
   bool found_unknown_shapes = false;
 
+  if (op_context.op_info.outputs().empty() ||
+      op_context.op_info.inputs().empty()) {
+    return Costs::ZeroCosts(/*inaccurate=*/true);
+  }
+
   const int64 input_size =
       CalculateTensorSize(op_context.op_info.inputs(0), &found_unknown_shapes);
   const int64 output_size =
       CalculateTensorSize(op_context.op_info.outputs(0), &found_unknown_shapes);
-  const int output_elements = CalculateTensorElementCount(
+  const int64 output_elements = CalculateTensorElementCount(
       op_context.op_info.outputs(0), &found_unknown_shapes);
 
   const auto half_pixel_centers =
@@ -2373,7 +2387,7 @@ Costs OpLevelCostEstimator::PredictResizeBilinear(
   }
 
   // Compose cost of bilinear interpolation.
-  auto ops = 0;
+  int64 ops = 0;
 
 #define EIGEN_COST(X) Eigen::internal::functor_traits<Eigen::internal::X>::Cost
   const auto sub_cost_float = EIGEN_COST(scalar_difference_op<float>);

@@ -27,20 +27,24 @@ namespace stream_executor {
 
 // Plugin initialization function that a device plugin
 // must define.
-typedef void (*SEPluginInitFn)(SE_PlatformRegistrationParams* const,
+typedef void (*SEInitPluginFn)(SE_PlatformRegistrationParams* const,
                                TF_Status* const);
 
-// Loads dso and registers StreamExecutor-based pluggable device.
-port::Status RegisterDevicePlugin(const std::string& dso_path);
+// Registers StreamExecutor platform.
+port::Status InitStreamExecutorPlugin(void* dso_handle);
 
-// Allow registering a plugin using a function (used for testing).
-port::Status RegisterDevicePlugin(SEPluginInitFn init_fn);
+// Allow registering a StreamExecutor plugin using a function (used for
+// testing).
+port::Status InitStreamExecutorPlugin(SEInitPluginFn init_fn);
 
 class CPlatform : public Platform {
  public:
   explicit CPlatform(SP_Platform platform,
                      void (*destroy_platform)(SP_Platform*),
-                     SP_StreamExecutor stream_executor, SP_TimerFns timer_fns);
+                     SP_PlatformFns platform_fns,
+                     void (*destroy_platform_fns)(SP_PlatformFns*),
+                     SP_DeviceFns device_fns, SP_StreamExecutor stream_executor,
+                     SP_TimerFns timer_fns);
   ~CPlatform() override;
 
   Id id() const override { return const_cast<int*>(&plugin_id_value_); }
@@ -69,6 +73,9 @@ class CPlatform : public Platform {
  private:
   SP_Platform platform_;
   void (*destroy_platform_)(SP_Platform*);
+  SP_PlatformFns platform_fns_;
+  void (*destroy_platform_fns_)(SP_PlatformFns*);
+  SP_DeviceFns device_fns_;
   SP_StreamExecutor stream_executor_;
   SP_TimerFns timer_fns_;
   const std::string name_;
