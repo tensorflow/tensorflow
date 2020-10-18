@@ -34,6 +34,7 @@ to
 See all the [mailing lists](https://www.tensorflow.org/community/forums).
 
 ## Install
+**pip python install**
 
 See the [TensorFlow install guide](https://www.tensorflow.org/install) for the
 [pip package](https://www.tensorflow.org/install/pip), to
@@ -49,7 +50,7 @@ Windows)*:
 $ pip install tensorflow
 ```
 
-A smaller CPU-only package is also available:
+**A smaller CPU-only package is also available:**
 
 ```
 $ pip install tensorflow-cpu
