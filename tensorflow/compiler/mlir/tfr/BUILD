@@ -321,7 +321,6 @@ tf_py_test(
         "//tensorflow/compiler/mlir/python/mlir_wrapper:filecheck_wrapper",
         "//tensorflow/compiler/mlir/tfr/resources:test_ops",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python:math_ops",
     ],
 )
@@ -345,7 +344,6 @@ py_test(
         ":composite",
         ":op_reg_gen",
         "//tensorflow/compiler/mlir/python/mlir_wrapper:filecheck_wrapper",
-        "//tensorflow/python:client_testlib",
     ],
 )
 
@@ -354,7 +352,7 @@ py_library(
     srcs = ["python/test_utils.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python:client_testlib",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
