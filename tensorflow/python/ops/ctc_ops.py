@@ -293,6 +293,26 @@ def ctc_greedy_decoder(inputs,
                        blank_index=None):
   """Performs greedy decoding on the logits given in input (best path).
 
+  Given a tensor as `logits`, the blank_index parameter defines the class
+  index of the blank symbol.
+
+  For example:
+
+  If blank_index is equal to 1:
+
+  >>> inf = float("inf")
+  >>> logits = tf.constant([[[   0., -inf, -inf],
+  ...                        [ -2.3, -inf, -0.1]],
+  ...                       [[ -inf, -0.5, -inf],
+  ...                        [ -inf, -inf, -0.1]],
+  ...                       [[ -inf, -inf, -inf],
+  ...                        [ -0.1, -inf, -2.3]]])
+  >>> seq_lens = tf.constant([2, 3])
+  >>> outputs = tf.nn.ctc_greedy_decoder(
+  ...     logits,
+  ...     seq_lens,
+  ...     blank_index=1)
+
   Notes:
 
   - Regardless of the value of merge_repeated, if an index of a
