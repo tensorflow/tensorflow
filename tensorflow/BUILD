@@ -239,6 +239,12 @@ config_setting(
 )
 
 config_setting(
+    name = "linux_mips64",
+    values = {"cpu": "mips64"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "debug",
     values = {
         "compilation_mode": "dbg",
@@ -568,13 +574,13 @@ selects.config_setting_group(
 # If you need functionality that is not exposed, we will work with you to expand our public APIs.
 package_group(
     name = "internal",
-    packages = ["//tensorflow/..."],
+    packages = [
+        "//learning/lib/ami/simple_ml/...",
+        "//tensorflow/...",
+    ],
 )
 
-package_group(
-    name = "ndarray_tensor_allow_list",
-    packages = ["//learning/pathways/..."],
-)
+package_group(name = "ndarray_tensor_allow_list")
 
 # Packages that use private types symbols, until they are exported.
 # TODO(b/154650521) Remove.
@@ -706,8 +712,11 @@ tf_cc_shared_object(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
+        "//tensorflow/c/experimental/stream_executor:stream_executor_hdrs",
+        "//tensorflow/c:kernels_hdrs",
+        "//tensorflow/c:ops_hdrs",
         "//tensorflow/cc/saved_model:loader_lite_impl",
-        "//tensorflow/core:core_cpu_impl",
+        "//tensorflow/core/common_runtime:core_cpu_impl",
         "//tensorflow/core:framework_internal_impl",
         "//tensorflow/core/common_runtime/gpu:gpu_runtime_impl",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry_impl",

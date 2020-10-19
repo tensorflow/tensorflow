@@ -375,6 +375,7 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "no_windows",  #TODO(b/139745667)
+        "notsan",  #TODO(b/139745667)
     ],
     deps = [
         ":backprop",
@@ -611,7 +612,6 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/ops/numpy_ops:numpy",
         "//tensorflow/python/saved_model:save_context",
-        "//tensorflow/python/saved_model:save_options",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -1071,6 +1071,7 @@ cuda_py_test(
     shard_count = 8,
     tags = [
         "no_oss",  # This test launches local server
+        "notsan",  # TODO(b/170783249)
     ],
     deps = [
         "//tensorflow/python:array_ops",
@@ -1118,6 +1119,7 @@ cuda_py_test(
     size = "small",
     srcs = ["device_placement_test.py"],
     python_version = "PY3",
+    shard_count = 5,
     deps = [
         ":context",
         ":def_function",

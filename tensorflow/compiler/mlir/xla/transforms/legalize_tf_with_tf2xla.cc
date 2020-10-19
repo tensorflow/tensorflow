@@ -161,7 +161,6 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::LeftShiftOp>(),
     TypeID::get<TF::LessEqualOp>(),
     TypeID::get<TF::LessOp>(),
-    TypeID::get<TF::LgammaOp>(),
     TypeID::get<TF::ListDiffOp>(),
     TypeID::get<TF::LogicalAndOp>(),
     TypeID::get<TF::LogicalNotOp>(),

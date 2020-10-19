@@ -231,7 +231,8 @@ class Policy(object):
   >>> layer = MyLayer(dtype=policy)
   >>> layer.build((2, 2))
   >>> layer.x
-  <AutoCastVariable 'x:0' shape=() dtype=float32 true_dtype=float32, numpy=...>
+  <AutoCastVariable 'x:0' shape=() dtype=float32 dtype_to_cast_to=float32,
+   numpy=...>
   >>> layer.y
   <tf.Variable 'y:0' shape=() dtype=float32, numpy=...>
 

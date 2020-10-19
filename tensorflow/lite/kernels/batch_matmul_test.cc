@@ -483,7 +483,12 @@ class QuantizedBatchMatMulOpModel : public SingleOpModel {
     input_size_ = total_input_size / batches_;
 
     lhs_id_ = AddInput(lhs);
-    rhs_id_ = AddInput({lhs.type, {input_size_, units_}, lhs.min, lhs.max});
+    rhs_id_ = AddInput({lhs.type,
+                        {input_size_, units_},
+                        0,
+                        0,
+                        GetScale(lhs_id_),
+                        GetZeroPoint(lhs_id_)});
 
     output_id_ = AddOutput(output);
 
@@ -551,6 +556,35 @@ TEST_P(QuantizedBatchMatMulOpTest, SimpleTestQuantizedInt8) {
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
               ElementsAreArray(ArrayFloatNear({23, 23, 23, 57, 57, 57})));
   EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAre(22, 22, 22, 56, 56, 56));
+}
+
+TEST_P(QuantizedBatchMatMulOpTest, SimpleTestQuantizedInt16) {
+  const float inputs_scale = 10.0 / std::numeric_limits<int16_t>::max();
+  const float output_scale = 1.0;
+  const int32_t zero_point = 0;
+
+  QuantizedBatchMatMulOpModel m(
+      /*units=*/3, /*batches*/ 2,
+      /*lhs=*/
+      {TensorType_INT16, {2, 10}, 0, 0, inputs_scale, zero_point},
+      /*output=*/
+      {TensorType_INT16, {}, 0, 0, output_scale, zero_point});
+
+  m.SetWeights<int16_t>({
+      1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5,  5,  5,
+      6, 6, 6, 7, 7, 7, 8, 8, 8, 9, 9, 9, 10, 10, 10,
+  });
+
+  m.SetInput<int16_t>({
+      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
+      1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
+  });
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear({23, 23, 23, 57, 57, 57})));
+  EXPECT_THAT(m.GetOutput<int16_t>(), ElementsAre(23, 23, 23, 57, 57, 57));
 }
 
 INSTANTIATE_TEST_SUITE_P(

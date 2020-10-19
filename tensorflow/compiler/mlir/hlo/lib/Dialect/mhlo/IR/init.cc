@@ -15,13 +15,15 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/register.h"
 
 void mlir::mhlo::registerAllMhloDialects(mlir::DialectRegistry &registry) {
   // clang-format off
   registry.insert<mlir::chlo::HloClientDialect,
+                  mlir::mhlo::MhloDialect,
                   mlir::lmhlo::LmhloDialect,
-                  mlir::mhlo::MhloDialect>();
+                  mlir::lmhlo_gpu::LmhloGpuDialect>();
   // clang-format on
 }

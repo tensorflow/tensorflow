@@ -33,6 +33,7 @@ cuda_py_test(
     shard_count = 2,
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # TODO(b/170838851): UnavailableError:  Connection reset by peer
     ],
     deps = [
         "//tensorflow:tensorflow_py",

@@ -172,7 +172,7 @@ class ServerLibTest(test.TestCase):
     # return UnavailableError with no trace events collected string.
     with self.assertRaises(errors.UnavailableError) as error:
       profiler_client.trace(worker._address, tempfile.mkdtemp(), duration_ms=10)
-    self.assertEqual("No trace event is collected", str(error.exception))
+    self.assertStartsWith(str(error.exception), "No trace event was collected")
 
 
 if __name__ == "__main__":

@@ -30,6 +30,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+void WarnIfBadDriverJITVersion();
+
 // NVPTXCompiler generates efficient GPU executables for NVPTX target.
 class NVPTXCompiler : public GpuCompiler {
  public:

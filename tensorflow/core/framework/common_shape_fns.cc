@@ -1591,6 +1591,10 @@ Status MaxPoolShape(shape_inference::InferenceContext* c) {
   return MaxPoolShapeImpl(c, /*supports_explicit_padding=*/false);
 }
 
+Status MaxPoolGradShape(shape_inference::InferenceContext* c) {
+  return UnchangedShapeWithRank(c, 4);
+}
+
 Status MaxPoolShapeWithExplicitPadding(shape_inference::InferenceContext* c) {
   return MaxPoolShapeImpl(c, /*supports_explicit_padding=*/true);
 }
@@ -1777,6 +1781,10 @@ Status Pool3DShape(shape_inference::InferenceContext* c) {
 
   c->set_output(0, output_shape);
   return Status::OK();
+}
+
+Status MaxPool3DGradShape(shape_inference::InferenceContext* c) {
+  return UnchangedShapeWithRank(c, 5);
 }
 
 Status AvgPool3DGradShape(shape_inference::InferenceContext* c) {

@@ -20,6 +20,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include <cmath>
+#include <string>
 #include <vector>
 #include <string>
 
@@ -35,6 +36,18 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
+<<<<<<< HEAD
+=======
+#if GOOGLE_CUDA
+// Required for sorting Eigen::half
+namespace cub {
+template <>
+struct NumericTraits<Eigen::half>
+    : BaseTraits<FLOATING_POINT, true, false, uint16_t, Eigen::half> {};
+}  // namespace cub
+#endif  // GOOGLE_CUDA
+
+>>>>>>> google_upstream/master
 namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
@@ -99,7 +112,7 @@ struct StridedData {
 
   Entry* const data;
 };
-#endif
+#endif  // GOOGLE_CUDA
 
 // A heap of Entry<T> that can either work as a min-heap or as a max-heap.
 template <HeapType heapType, PreferIndices preferIndices,
@@ -332,6 +345,7 @@ __device__ void mergeShards(int num_shards, int k,
 
 #if GOOGLE_CUDA
 extern __shared__ char shared_memory[];
+<<<<<<< HEAD
 #endif
 
 template <typename T>
@@ -342,6 +356,20 @@ __global__ void TopKKernel(const T* __restrict__ input, int length, int k,
 #if TENSORFLOW_USE_ROCM
   HIP_DYNAMIC_SHARED(char, shared_memory);
 #endif
+=======
+#endif  // GOOGLE_CUDA
+
+template <typename T>
+#if TENSORFLOW_USE_ROCM
+__attribute__((amdgpu_flat_work_group_size(1, 256)))
+#endif  // TENSORFLOW_USE_ROCM
+__global__ void
+TopKKernel(const T* __restrict__ input, int length, int k, bool sorted,
+           T* __restrict__ output, int* __restrict__ indices) {
+#if TENSORFLOW_USE_ROCM
+  HIP_DYNAMIC_SHARED(char, shared_memory);
+#endif  // TENSORFLOW_USE_ROCM
+>>>>>>> google_upstream/master
 
   const int batch_index = blockIdx.x;
   const T* batch_input = input + batch_index * length;
@@ -395,6 +423,7 @@ cudaError LaunchTopKKernel(const gpuStream_t& stream, int num_shards,
     }
     if (num_shards <= 0) {
       num_shards = 1;
+<<<<<<< HEAD
 #if GOOGLE_CUDA      
     } else if (num_shards > 1024) {
       num_shards = 1024;
@@ -406,6 +435,19 @@ cudaError LaunchTopKKernel(const gpuStream_t& stream, int num_shards,
       num_shards = 256;
     }
 #endif    
+=======
+#if GOOGLE_CUDA
+    } else if (num_shards > 1024) {
+      num_shards = 1024;
+    }
+#elif TENSORFLOW_USE_ROCM
+      // ROCm can't execute with 1024 and requires an explicit
+      // amdgpu_flat_work_group_size attribute with >256
+    } else if (num_shards > 256) {
+      num_shards = 256;
+    }
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+>>>>>>> google_upstream/master
   }
   // We are limited by the amount of shared memory we have per block.
   auto shared_memory_size = (num_shards + 1) * k * sizeof(Entry<T>);

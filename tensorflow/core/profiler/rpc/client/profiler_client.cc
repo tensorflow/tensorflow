@@ -99,10 +99,11 @@ RemoteProfilerSession::RemoteProfilerSession(std::string service_address,
       service_address_(std::move(service_address)),
       stub_(CreateStub<grpc::ProfilerService>(service_address_)),
       deadline_(deadline),
-      profile_request_(std::move(profile_request)) {}
+      profile_request_(std::move(profile_request)) {
+  response_->set_empty_trace(true);
+}
 
 RemoteProfilerSession::~RemoteProfilerSession() {
-  LOG(INFO) << "Waiting for completion.";
   Status dummy;
   WaitForCompletion(dummy);
   grpc_context_.TryCancel();
@@ -113,6 +114,8 @@ void RemoteProfilerSession::ProfileAsync() {
   grpc_context_.set_deadline(absl::ToChronoTime(deadline_));
   VLOG(1) << "Deadline set to " << deadline_;
   rpc_ = stub_->AsyncProfile(&grpc_context_, profile_request_, &cq_);
+  // Connection failure will create lame channel whereby grpc_status_ will be an
+  // error.
   rpc_->Finish(response_.get(), &grpc_status_,
                static_cast<void*>(&status_on_completion_));
   VLOG(2) << "Asynchronous gRPC Profile() issued." << absl::Now();
@@ -125,6 +128,7 @@ std::unique_ptr<ProfileResponse> RemoteProfilerSession::WaitForCompletion(
         "WaitForCompletion must only be called once.");
     return nullptr;
   }
+  LOG(INFO) << "Waiting for completion.";
 
   void* got_tag = nullptr;
   bool ok = false;

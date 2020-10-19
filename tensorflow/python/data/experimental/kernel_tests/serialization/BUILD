@@ -361,6 +361,7 @@ tf_py_test(
         "no_oss",
         "no_pip",
         "no_windows",
+        "noasan",  # TODO(b/337374867) fails with -fsanitize=null
     ],
     tfrt_enabled = True,
     deps = [

@@ -333,16 +333,5 @@ Status TpuProgramGroup::SerializeCompilerMetadata(
       tpu_programs_[index], compiler_metadata, status.c_status);
   return status.status();
 }
-
-Status TpuProgramGroup::SerializeHostComputeMetadata(
-    int index,
-    HostComputeMetadataSerializedProto* host_compute_metadata) const {
-  CHECK_GE(index, 0);
-  CHECK_LT(index, tpu_programs_.size());
-  StatusHelper status;
-  TpuProgramApiFn()->TpuProgram_SerializeHostComputeMetadataFn(
-      tpu_programs_[index], host_compute_metadata, status.c_status);
-  return status.status();
-}
 }  // namespace tpu
 }  // namespace tensorflow

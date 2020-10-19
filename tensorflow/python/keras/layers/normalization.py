@@ -80,8 +80,8 @@ class BatchNormalizationBase(Layer):
   inference data*.
 
   Arguments:
-    axis: Integer, the axis that should be normalized (typically the features
-      axis). For instance, after a `Conv2D` layer with
+    axis: Integer or a list of integers, the axis that should be normalized
+    (typically the features axis). For instance, after a `Conv2D` layer with
       `data_format="channels_first"`, set `axis=1` in `BatchNormalization`.
     momentum: Momentum for the moving average.
     epsilon: Small float added to variance to avoid dividing by zero.

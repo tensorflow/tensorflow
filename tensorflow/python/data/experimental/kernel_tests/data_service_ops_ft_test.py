@@ -219,6 +219,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testChangeProcessingModeAfterRestart(self):
+    self.skipTest("b/170910141")
     cluster = self.create_cluster(num_workers=1)
     num_elements = 100
     range_dataset = dataset_ops.Dataset.range(num_elements)

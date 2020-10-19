@@ -25,11 +25,6 @@ include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_utils.td"
 include "mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.td"
 
-def HLO_Dialect : Dialect {
-  let name = "mhlo";
-  let cppNamespace = "::mlir::mhlo";
-}
-
 class HLO_Op<string mnemonic, list<OpTrait> traits> :
     Op<HLO_Dialect, mnemonic, traits> {
   // Whether this operation has a custom conversion to HLO or not.
@@ -136,8 +131,8 @@ class HLO_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
       }
       LogicalResult reifyReturnTypeShapes(
           OpBuilder& builder, SmallVectorImpl<Value>& reifiedReturnShapes) {
-        return deriveShapeFromFirstOperand(&builder, getOperation(),
-                                           &reifiedReturnShapes);
+        return ::mlir::mhlo::deriveShapeFromFirstOperand(&builder, getOperation(),
+                                                         &reifiedReturnShapes);
       }
       bool inferInputOutputShapeEquality(int input, int output) {
         return true;
@@ -153,7 +148,7 @@ def HLO_AbsOp: HLO_UnaryElementwiseOp<"abs",
     [NoSideEffect, SameOperandsAndResultShape],
      TensorOf<[HLO_SInt, AnyFloat, HLO_Complex]>>, BASE_HLO_AbsOp {
   let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, Value operand"
+    "Value operand"
   >];
 }
 
@@ -168,8 +163,7 @@ def HLO_ConvertOp : HLO_UnaryElementwiseOp<
     BASE_HLO_ConvertOp {
 
   let builders = [OpBuilder<
-    "OpBuilder &, OperationState &tblgen_state, Value operand, "
-    "Type result_element_ty"
+    "Value operand, Type result_element_ty"
   >];
 
   let hasFolder = 1;
@@ -247,7 +241,9 @@ def HLO_RealOp: HLO_UnaryElementwiseOp<"real",
 }
 
 def HLO_RoundOp: HLO_UnaryElementwiseOp<"round_nearest_afz",
-    [NoSideEffect, SameOperandsAndResultType], HLO_FpTensor>, BASE_HLO_RoundOp;
+    [NoSideEffect, SameOperandsAndResultType], HLO_FpTensor>, BASE_HLO_RoundOp {
+  let hasFolder = 1;
+}
 
 def HLO_RsqrtOp: HLO_UnaryElementwiseOp<"rsqrt",
     [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor>,
@@ -293,8 +289,8 @@ class HLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
     }
     LogicalResult reifyReturnTypeShapes(
         OpBuilder& builder, SmallVectorImpl<Value>& reifiedReturnShapes) {
-      return deriveShapeFromFirstOperand(&builder, getOperation(),
-                                         &reifiedReturnShapes);
+      return ::mlir::mhlo::deriveShapeFromFirstOperand(&builder, getOperation(),
+                                                       &reifiedReturnShapes);
     }
     bool inferInputsShapeEquality(int lhs, int rhs) {
       return true;
@@ -458,7 +454,7 @@ def HLO_SendOp : HLO_Op<"send", []> {
   let arguments = (ins
     HLO_TensorOrTuple:$operand,
     HLO_Token:$token,
-    ChannelHandle<HLO_Dialect>:$channel_id,
+    ChannelHandle:$channel_id,
     DefaultValuedAttr<BoolAttr, "false">:$is_host_transfer
   );
 
@@ -483,7 +479,7 @@ def HLO_RecvOp : HLO_Op<"recv", []> {
 
   let arguments = (ins
     HLO_Token:$token,
-    ChannelHandle<HLO_Dialect>:$channel_id,
+    ChannelHandle:$channel_id,
     DefaultValuedAttr<BoolAttr, "false">:$is_host_transfer
   );
 
@@ -587,7 +583,7 @@ def HLO_AllReduceOp : HLO_Op<"all_reduce",
   let arguments = (ins
     HLO_Tensor:$operand,
     I64ElementsAttr:$replica_groups,
-    OptionalAttr<ChannelHandle<HLO_Dialect>>:$channel_id
+    OptionalAttr<ChannelHandle>:$channel_id
   );
   let regions = (region SizedRegion<1>:$computation);
   let results = (outs HLO_Tensor);
@@ -959,15 +955,6 @@ def HLO_DotOp: HLO_Op<"dot", [NoSideEffect]>, BASE_HLO_DotOp {
   let results = (outs HLO_Tensor);
 }
 
-def DotDimensionNumbers : StructAttr<"DotDimensionNumbers", HLO_Dialect, [
-                StructFieldAttr<"lhs_batching_dimensions",   I64ElementsAttr>,
-                StructFieldAttr<"rhs_batching_dimensions",   I64ElementsAttr>,
-                StructFieldAttr<"lhs_contracting_dimensions", I64ElementsAttr>,
-                StructFieldAttr<"rhs_contracting_dimensions", I64ElementsAttr>
-  ]> {
-  let description = "Structure of dimension information for dot product";
-}
-
 def HLO_DotGeneralOp: HLO_Op<"dot_general", [NoSideEffect]>, BASE_HLO_DotGeneralOp {
   let arguments = (ins
     HLO_Tensor:$lhs,
@@ -1027,14 +1014,6 @@ def HLO_FftOp: HLO_Op<"fft", [NoSideEffect]>, BASE_HLO_FftOp {
   );
 
   let results = (outs HLO_Tensor);
-}
-
-def GatherDimensionNumbers : StructAttr<"GatherDimensionNumbers", HLO_Dialect,
-      [StructFieldAttr<"offset_dims", I64ElementsAttr>,
-      StructFieldAttr<"collapsed_slice_dims", I64ElementsAttr>,
-      StructFieldAttr<"start_index_map", I64ElementsAttr>,
-      StructFieldAttr<"index_vector_dim", I64Attr>]> {
-  let description = "Structure of dimension information for gather";
 }
 
 def HLO_GatherOp: HLO_Op<"gather", [NoSideEffect]>, BASE_HLO_GatherOp {
@@ -1114,7 +1093,7 @@ def HLO_ScatterOp: HLO_Op<"scatter", [RecursiveSideEffects]>,
     HLO_Tensor:$operand,
     HLO_Tensor:$scatter_indices,
     HLO_Tensor:$updates,
-    ScatterDimensionNumbers<HLO_Dialect>:$scatter_dimension_numbers,
+    ScatterDimensionNumbers:$scatter_dimension_numbers,
     DefaultValuedAttr<BoolAttr, "false">:$indices_are_sorted,
     DefaultValuedAttr<BoolAttr, "false">:$unique_indices
   );
@@ -1124,6 +1103,8 @@ def HLO_ScatterOp: HLO_Op<"scatter", [RecursiveSideEffects]>,
   let results = (outs HLO_Tensor);
 
   let hasCustomHLOConverter = 1;
+
+  let hasFolder = 1;
 }
 
 // TODO(jpienaar): Add broadcastable trait.
@@ -1220,6 +1201,8 @@ def HLO_PadOp: HLO_Op<"pad",
 
   // TODO(b/129422361): PadOp has a custom constructor for HLO.
   let hasCustomHLOConverter = 1;
+
+  let hasFolder = 1;
 }
 
 def HLO_TraceOp: HLO_Op<"trace", []>, BASE_HLO_TraceOp {

@@ -147,8 +147,8 @@ TfLiteStatus CalculateOpData(TfLiteContext* context,
   double real_multiplier = 0.0;
   TF_LITE_ENSURE_STATUS(GetQuantizedConvolutionMultipler(
       context, input, filter, bias, output, &real_multiplier));
-  QuantizeMultiplier(real_multiplier, &data->output_multiplier,
-                     &data->output_shift);
+  QuantizeMultiplierForInt24(real_multiplier, &data->output_multiplier,
+                             &data->output_shift);
   return CalculateActivationRangeQuantized(context, activation, output,
                                            &data->output_activation_min,
                                            &data->output_activation_max);

@@ -284,20 +284,30 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "collective_ops_test",
     size = "medium",
     srcs = ["collective_ops_test.py"],
     tags = [
+<<<<<<< HEAD
         "no_rocm",
+=======
+        "multi_and_single_gpu",
+>>>>>>> google_upstream/master
     ],
     tfrt_enabled = False,
     deps = [
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:collective_ops_gen",
-        "//tensorflow/python:framework_combinations",
+        "//tensorflow/python:collective_ops",
+        "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:test_util",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -821,6 +831,9 @@ cuda_py_test(
     name = "matrix_solve_ls_op_test",
     size = "medium",
     srcs = ["matrix_solve_ls_op_test.py"],
+    tags = [
+        "noasan",  # TODO(b/337374867) fails with -fsanitize=null
+    ],
     tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
@@ -1635,7 +1648,7 @@ tf_py_test(
     name = "reader_ops_test",
     size = "small",
     srcs = ["reader_ops_test.py"],
-    data = ["//tensorflow/core:lmdb_testdata"],
+    data = ["//tensorflow/core/lib/lmdb:lmdb_testdata"],
     tfrt_enabled = True,
     deps = [
         "//tensorflow/core:protos_all_py",
@@ -3433,6 +3446,7 @@ cuda_py_test(
     size = "large",
     srcs = ["conv_ops_3d_test.py"],
     shard_count = 30,
+    tags = ["no_cuda11"],
     tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",

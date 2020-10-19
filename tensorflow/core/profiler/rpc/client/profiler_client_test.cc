@@ -52,8 +52,10 @@ TEST(RemoteProfilerSession, Simple) {
   absl::Duration elapsed = absl::Now() - approx_start;
   // At end of session this evaluates to true still.
   EXPECT_TRUE(status.ok());
-  EXPECT_FALSE(response->empty_trace());
-  EXPECT_GT(response->tool_data_size(), 0);
+  // True because there was no workload traced and subsequently no XEvents.
+  EXPECT_TRUE(response->empty_trace());
+  // XSpaces are serialized and not returned as tools in ProfileResponse.
+  EXPECT_EQ(response->tool_data_size(), 0);
   EXPECT_THAT(elapsed, DurationApproxLess(max_duration));
 }
 
@@ -86,8 +88,9 @@ TEST(RemoteProfilerSession, Timeout) {
   auto response = remote_session->WaitForCompletion(status);
   // At end of session we will have a timeout error.
   EXPECT_TRUE(errors::IsDeadlineExceeded(status));
-
-  EXPECT_FALSE(response->empty_trace());  // This defaults to false.
+  // True because there was no workload traced and subsequently no XEvents.
+  EXPECT_TRUE(response->empty_trace());
+  // XSpaces are serialized and not returned as tools in ProfileResponse.
   EXPECT_EQ(response->tool_data_size(), 0);
 }
 
@@ -109,8 +112,10 @@ TEST(RemoteProfilerSession, LongDeadline) {
   absl::Duration elapsed = absl::Now() - approx_start;
   // At end of session this evaluates to true still.
   EXPECT_TRUE(status.ok());
-  EXPECT_FALSE(response->empty_trace());
-  EXPECT_GT(response->tool_data_size(), 0);
+  // True because there was no workload traced and subsequently no XEvents.
+  EXPECT_TRUE(response->empty_trace());
+  // XSpaces are serialized and not returned as tools in ProfileResponse.
+  EXPECT_EQ(response->tool_data_size(), 0);
   // Elapsed time is near profiling duration despite long grace period.
   EXPECT_THAT(elapsed, DurationNear(duration));
 }
@@ -134,8 +139,10 @@ TEST(RemoteProfilerSession, LongDuration) {
   absl::Duration elapsed = absl::Now() - approx_start;
   // At end of session this evaluates to true still.
   EXPECT_TRUE(status.ok());
-  EXPECT_FALSE(response->empty_trace());
-  EXPECT_GT(response->tool_data_size(), 0);
+  // True because there was no workload traced and subsequently no XEvents.
+  EXPECT_TRUE(response->empty_trace());
+  // XSpaces are serialized and not returned as tools in ProfileResponse.
+  EXPECT_EQ(response->tool_data_size(), 0);
   // Elapsed time takes longer to complete for larger traces.
   EXPECT_THAT(elapsed, DurationApproxLess(max_duration));
 }

@@ -511,7 +511,13 @@ func @dot(%arg0: tensor<1024x1024xf32>) -> tensor<1024x1024xf32> {
 //  PRE-SAME: (%[[ARG0:.*]]: [[TYPE:.*]], %[[RESULT:.*]]: [[TYPE]])
 //  ESC-SAME: (%[[ARG0:.*]]: [[TYPE:.*]]) -> [[TYPE]]
 // BOTH-NEXT: %[[ALLOC:.*]] = alloc
-//      BOTH: "lmhlo.dot"(%[[ARG0]], %[[ARG0]], %[[ALLOC]]) : ([[TYPE]], [[TYPE]], [[TYPE]]) -> ()
+//      BOTH: "lmhlo.dot"(%[[ARG0]], %[[ARG0]], %[[ALLOC]]) {
+//        dot_dimension_numbers = {
+//          lhs_batching_dimensions = dense<> : tensor<0xi64>,
+//          lhs_contracting_dimensions = dense<1> : tensor<1xi64>,
+//          rhs_batching_dimensions = dense<> : tensor<0xi64>,
+//          rhs_contracting_dimensions = dense<0> : tensor<1xi64>}}
+//        : ([[TYPE]], [[TYPE]], [[TYPE]]) -> ()
   %dot = "mhlo.dot"(%arg0, %arg0)
           : (tensor<1024x1024xf32>, tensor<1024x1024xf32>) -> tensor<1024x1024xf32>
 // PRE: "lmhlo.copy"(%[[ALLOC]], %[[RESULT]])

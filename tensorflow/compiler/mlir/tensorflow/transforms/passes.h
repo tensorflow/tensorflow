@@ -84,6 +84,10 @@ std::unique_ptr<OperationPass<FuncOp>> CreateGpuOpFusionPass();
 std::unique_ptr<OperationPass<mlir::FuncOp>>
 CreateTensorDeviceCopyConversionPass();
 
+// Returns a pass that folds tf.BroadcastTo nodes with subsequent nodes if they
+// have built in broadcasting support.
+std::unique_ptr<OperationPass<FuncOp>> CreateBroadcastFoldPass();
+
 struct LayoutOptimizationPipelineOptions
     : public PassPipelineOptions<LayoutOptimizationPipelineOptions> {
   Option<std::string> force_data_format{

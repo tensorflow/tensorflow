@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the Python extension-based XLA client."""
+"""Backend-dependent tests for the Python XLA client."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -36,12 +35,6 @@ try:
   from tensorflow.compiler.xla.python import custom_call_for_test
 except ImportError:
   custom_call_for_test = None
-
-try:
-  import portpicker
-except ImportError:
-  portpicker = None
-# pylint: enable=g-import-not-at-top
 
 bfloat16 = xla_client.bfloat16
 ops = xla_client.ops
@@ -142,27 +135,6 @@ def TestFactory(xla_backend, cloud_tpu=False):
       ops.Add(x, x)
       return builder.build()
 
-    def testComputationToHloText(self):
-      computation = self.ExampleComputation()
-      hlo_text = computation.as_hlo_text()
-      self.assertTrue(hlo_text.startswith("HloModule acomputation"))
-
-    def testComputationToHloGraph(self):
-      computation = self.ExampleComputation()
-      hlo_dot_graph = computation.as_hlo_dot_graph()
-      self.assertTrue(hlo_dot_graph.startswith("digraph "))
-
-    def testHloModuleToHloText(self):
-      computation = self.ExampleComputation()
-      hlo_text = computation.as_hlo_module().to_string()
-      self.assertTrue(hlo_text.startswith("HloModule acomputation"))
-
-    def testHloModuleToHloGraph(self):
-      computation = self.ExampleComputation()
-      hlo_dot_graph = xla_client._xla.hlo_module_to_dot_graph(
-          computation.as_hlo_module())
-      self.assertTrue(hlo_dot_graph.startswith("digraph "))
-
     @unittest.skipIf(cloud_tpu, "not implemented")
     def testCompiledHloModuleToHloText(self):
       computation = self.ExampleComputation()
@@ -181,29 +153,6 @@ def TestFactory(xla_backend, cloud_tpu=False):
       self.assertEqual(properties["flops"], 8.0)
 
   tests.append(ComputationPrinting)
-
-  class ComputationHashTest(absltest.TestCase):
-
-    def testHash(self):
-      builder0 = xla_client.XlaBuilder("computation0")
-      p0 = ops.Parameter(builder0, 0,
-                         xla_client.shape_from_pyval(np.float32(0)))
-      p1 = ops.Parameter(
-          builder0, 1, xla_client.shape_from_pyval(np.zeros((4,), np.float32)))
-      ops.Mul(p0, p1)
-      computation0 = builder0.build()
-
-      builder1 = xla_client.XlaBuilder("computation1")
-      p0 = ops.Parameter(builder1, 0,
-                         xla_client.shape_from_pyval(np.float32(0)))
-      p1 = ops.Parameter(
-          builder1, 1, xla_client.shape_from_pyval(np.zeros((4,), np.float32)))
-      ops.Mul(p0, p1)
-      computation1 = builder1.build()
-
-      self.assertEqual(computation0.hash(), computation1.hash())
-
-  tests.append(ComputationHashTest)
 
   class ComputationsWithConstantsTest(ComputationTest):
     """Tests focusing on Constant ops."""
@@ -1901,24 +1850,6 @@ def TestFactory(xla_backend, cloud_tpu=False):
 
   tests.append(SetShardingTest)
 
-  class AliasTest(ComputationTest):
-
-    def testSetUpAlias(self):
-      c = self._NewComputation()
-      p1 = ops.Parameter(
-          c, 0,
-          xla_client.shape_from_pyval(
-              NumpyArrayF32(1.0)).with_major_to_minor_layout_if_absent())
-      p2 = ops.Parameter(
-          c, 1,
-          xla_client.shape_from_pyval(
-              NumpyArrayF32(1.0)).with_major_to_minor_layout_if_absent())
-      out = ops.Add(p1, p2)
-      c.setup_alias([], 0, [])
-      c = c.build(out)
-
-  tests.append(AliasTest)
-
   testcase_shapes = [
       (),
       (1,),
@@ -2021,28 +1952,6 @@ def TestFactory(xla_backend, cloud_tpu=False):
       self.assertEqual(y.__array_interface__["data"][0], buffer_ptr)
 
   tests.append(BufferProtocolTest)
-
-  class ProfilerTest(absltest.TestCase):
-
-    def testTraceMe(self):
-      # TODO(phawkins): These tests just check that the TraceMe context manager
-      # acts like a context manager and doesn't explode. Ideally we'd check that
-      # the profiler saw the traceme too.
-      with xla_client.profiler.TraceMe("test1"):
-        pass
-      with xla_client.profiler.TraceMe("test2", foo=123):
-        pass
-      with self.assertRaises(ValueError):
-        with xla_client.profiler.TraceMe("test3"):
-          raise ValueError("test")
-
-    @unittest.skipIf(portpicker is None, "Test requires portpicker")
-    def testStartServer(self):
-      port = portpicker.pick_unused_port()
-      server = xla_client.profiler.start_server(port)
-      del server
-
-  tests.append(ProfilerTest)
 
   class TracebackTest(absltest.TestCase):
 

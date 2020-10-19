@@ -139,7 +139,7 @@ cc_library(
     deps = [
         ":schema_fbs",
         "//tensorflow/lite/kernels/internal:compatibility",
-        "@flatbuffers",
+        "@flatbuffers//:runtime_cc",
     ],
 )
 

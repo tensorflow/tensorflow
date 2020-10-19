@@ -1091,3 +1091,129 @@ func @type_refinement_use_refined_type() -> tensor<4xi32> {
   return %1 : tensor<4xi32>
 }
 
+// -----
+
+!tf_res = type tensor<*x!tf.resource<tensor<f32>>>
+
+// Test all tf.VarIsInitializedOp's are set to true.
+// CHECK-LABEL: func @tpu_computation
+func @tpu_computation(%arg0: !tf_res, %arg1: tensor<i1>, %arg2: tensor<i32>) {
+  %0 = "tf_device.cluster"() ( {
+    %1 = "tf.Case"(%arg2, %arg0) {branches = [@case_branch], is_stateless = false} : (tensor<i32>, !tf_res) -> tensor<i1>
+
+    // CHECK: "tf.CaseRegion"
+    %2 = "tf.CaseRegion"(%arg2) ( {
+      // CHECK-NEXT: [[CASE_REGION_BRANCH:%.+]] = "tf.Const"
+      // CHECK-SAME: value = dense<true> : tensor<i1>
+      %3 = "tf.VarIsInitializedOp"(%arg0) : (!tf_res) -> tensor<i1>
+      // CHECK-NEXT: "tf.Yield"([[CASE_REGION_BRANCH]])
+      "tf.Yield"(%3) : (tensor<i1>) -> ()
+    }) {is_stateless = false} : (tensor<i32>) -> tensor<i1>
+
+    %4 = "tf.If"(%arg1, %arg0) {then_branch = @if_then, else_branch = @if_else, is_stateless = false} : (tensor<i1>, !tf_res) -> tensor<i1>
+
+    // CHECK: "tf.IfRegion"
+    %5 = "tf.IfRegion"(%arg1) ( {
+      // CHECK-NEXT: [[IF_REGION_THEN:%.+]] = "tf.Const"
+      // CHECK-SAME: value = dense<true> : tensor<i1>
+      %6 = "tf.VarIsInitializedOp"(%arg0) : (!tf_res) -> tensor<i1>
+      // CHECK-NEXT: "tf.Yield"([[IF_REGION_THEN]])
+      "tf.Yield"(%6) : (tensor<i1>) -> ()
+    // CHECK-NEXT: }, {
+    }, {
+      // CHECK-NEXT: [[IF_REGION_ELSE:%.+]] = "tf.Const"
+      // CHECK-SAME: value = dense<true> : tensor<i1>
+      %7 = "tf.VarIsInitializedOp"(%arg0) : (!tf_res) -> tensor<i1>
+      // CHECK-NEXT: "tf.Yield"([[IF_REGION_ELSE]])
+      "tf.Yield"(%7) : (tensor<i1>) -> ()
+    }) {is_stateless = false} : (tensor<i1>) -> tensor<i1>
+
+    %8:2 = "tf.While"(%arg0, %arg1) {body = @while_body, cond = @while_cond, is_stateless = false} : (!tf_res, tensor<i1>) -> (!tf_res, tensor<i1>)
+
+    // CHECK: "tf.WhileRegion"
+    %9 = "tf.WhileRegion"(%arg1) ( {
+    // CHECK-NEXT: ^{{.+}}({{.+}}: tensor<i1>):
+    ^cond(%carg0: tensor<i1>):
+      // CHECK-NEXT: [[WHILE_REGION_COND:%.+]] = "tf.Const"
+      // CHECK-SAME: value = dense<true> : tensor<i1>
+      %10 = "tf.VarIsInitializedOp"(%arg0) : (!tf_res) -> tensor<i1>
+      // CHECK-NEXT: "tf.Yield"([[WHILE_REGION_COND]])
+      "tf.Yield"(%10) : (tensor<i1>) -> ()
+    // CHECK-NEXT: }, {
+    }, {
+    // CHECK-NEXT: ^{{.+}}({{.+}}: tensor<i1>):
+    ^body(%barg0: tensor<i1>):
+      // CHECK-NEXT: [[WHILE_REGION_BODY:%.+]] = "tf.Const"
+      // CHECK-SAME: value = dense<true> : tensor<i1>
+      %11 = "tf.VarIsInitializedOp"(%arg0) : (!tf_res) -> tensor<i1>
+      // CHECK-NEXT: "tf.Yield"([[WHILE_REGION_BODY]])
+      "tf.Yield"(%11) : (tensor<i1>) -> ()
+    }) {is_stateless = false} : (tensor<i1>) -> tensor<i1>
+
+    %12 = "tf.StatefulPartitionedCall"(%arg0) {f = @callee, config = "", config_proto = "", executor_type = ""} : (!tf_res) -> tensor<i1>
+
+    // CHECK: [[TRUE:%.+]] = "tf.Const"
+    // CHECK-SAME: value = dense<true> : tensor<i1>
+    %13 = "tf.VarIsInitializedOp"(%arg0) : (!tf_res) -> tensor<i1>
+
+    // CHECK: tf_device.return [[TRUE]] :
+    tf_device.return %13 : tensor<i1>
+  }) : () -> tensor<i1>
+  return
+}
+
+// CHECK-LABEL: func @case_branch
+func @case_branch(%arg0: !tf_res) -> tensor<i1> {
+  // CHECK: [[TRUE:%.+]] = "tf.Const"
+  // CHECK-SAME: value = dense<true> : tensor<i1>
+  %0 = "tf.VarIsInitializedOp"(%arg0) : (!tf_res) -> tensor<i1>
+  // CHECK-NEXT: return [[TRUE]] :
+  return %0 : tensor<i1>
+}
+
+// CHECK-LABEL: func @if_then
+func @if_then(%arg0: !tf_res) -> tensor<i1> {
+  // CHECK: [[TRUE:%.+]] = "tf.Const"
+  // CHECK-SAME: value = dense<true> : tensor<i1>
+  %0 = "tf.VarIsInitializedOp"(%arg0) : (!tf_res) -> tensor<i1>
+  // CHECK-NEXT: return [[TRUE]] :
+  return %0 : tensor<i1>
+}
+
+// CHECK-LABEL: func @if_else
+func @if_else(%arg0: !tf_res) -> tensor<i1> {
+  // CHECK: [[TRUE:%.+]] = "tf.Const"
+  // CHECK-SAME: value = dense<true> : tensor<i1>
+  %0 = "tf.VarIsInitializedOp"(%arg0) : (!tf_res) -> tensor<i1>
+  // CHECK-NEXT: return [[TRUE]] :
+  return %0 : tensor<i1>
+}
+
+// CHECK-LABEL: func @while_cond
+// CHECK-SAME: ({{.+}}: tensor<i1>)
+func @while_cond(%arg0: !tf_res, %arg1: tensor<i1>) -> tensor<i1> {
+  // CHECK: [[TRUE:%.+]] = "tf.Const"
+  // CHECK-SAME: value = dense<true> : tensor<i1>
+  %0 = "tf.VarIsInitializedOp"(%arg0) : (!tf_res) -> tensor<i1>
+  // CHECK-NEXT: return [[TRUE]] :
+  return %0 : tensor<i1>
+}
+
+// CHECK-LABEL: func @while_body
+// CHECK-SAME: ({{.+}}: tensor<i1>)
+func @while_body(%arg0: !tf_res, %arg1: tensor<i1>) -> (!tf_res, tensor<i1>) {
+  // CHECK: [[TRUE:%.+]] = "tf.Const"
+  // CHECK-SAME: value = dense<true> : tensor<i1>
+  %0 = "tf.VarIsInitializedOp"(%arg0) : (!tf_res) -> tensor<i1>
+  // CHECK-NEXT: return [[TRUE]] :
+  return %arg0, %0 : !tf_res, tensor<i1>
+}
+
+// CHECK-LABEL: func @callee
+func @callee(%arg0: !tf_res) -> tensor<i1> {
+  // CHECK: [[TRUE:%.+]] = "tf.Const"
+  // CHECK-SAME: value = dense<true> : tensor<i1>
+  %0 = "tf.VarIsInitializedOp"(%arg0) : (!tf_res) -> tensor<i1>
+  // CHECK-NEXT: return [[TRUE]] :
+  return %0 : tensor<i1>
+}

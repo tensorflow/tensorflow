@@ -583,7 +583,11 @@ class CollectiveReduceV2OpKernel : public AsyncOpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("CollectiveReduceV2").Device(DEVICE_CPU),
                         CollectiveReduceV2OpKernel);
-REGISTER_KERNEL_BUILDER(Name("CollectiveReduceV2").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("CollectiveReduceV2")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("group_size")
+                            .HostMemory("group_key")
+                            .HostMemory("instance_key"),
                         CollectiveReduceV2OpKernel);
 
 class CollectiveGatherV2OpKernel : public AsyncOpKernel {
@@ -713,7 +717,11 @@ class CollectiveGatherV2OpKernel : public AsyncOpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("CollectiveGatherV2").Device(DEVICE_CPU),
                         CollectiveGatherV2OpKernel);
-REGISTER_KERNEL_BUILDER(Name("CollectiveGatherV2").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("CollectiveGatherV2")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("group_size")
+                            .HostMemory("group_key")
+                            .HostMemory("instance_key"),
                         CollectiveGatherV2OpKernel);
 
 }  // namespace

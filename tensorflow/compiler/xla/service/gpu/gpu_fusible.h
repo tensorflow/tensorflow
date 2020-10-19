@@ -71,6 +71,11 @@ bool FusionWouldBeTooLarge(const HloInstruction& instr1,
 bool CreatesNestedLoop(const HloInstruction& producer,
                        const HloInstruction& consumer);
 
+// Returns the instruction that determines the emitter used for lowering,
+// sometimes referred to as "the real hero".
+const HloInstruction* GetRealHeroForMultiOutputFusion(
+    const HloInstruction& instr);
+
 // Whether instruction shapes are compatible for multi-output fusion, i.e.
 // whether the emitters support lowering the resulting fusion.
 // This function works for both, sibling and producer-consumer multi-output
@@ -99,6 +104,10 @@ bool IsFusibleAsMultiOutputFusionRoot(const HloInstruction& instr);
 // Determines the fusion kind to be used when fusing `producer` and `consumer`.
 HloInstruction::FusionKind ChooseFusionKind(const HloInstruction& producer,
                                             const HloInstruction& consumer);
+
+// Returns whether `consumer` is the only non-root user of `instr`.
+bool IsConsumerTheOnlyNonRootUser(const HloInstruction& instr,
+                                  const HloInstruction& consumer);
 
 }  // namespace gpu
 }  // namespace xla

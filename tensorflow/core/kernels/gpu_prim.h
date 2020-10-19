@@ -42,13 +42,19 @@ struct NumericTraits<Eigen::half>
 #elif TENSORFLOW_USE_ROCM
 #include "rocm/include/hipcub/hipcub.hpp"
 namespace gpuprim = ::hipcub;
+<<<<<<< HEAD
+=======
+
+// Required for sorting Eigen::half
+>>>>>>> google_upstream/master
 namespace rocprim {
 namespace detail {
 template <>
 struct radix_key_codec_base<Eigen::half>
-    : radix_key_codec_floating<Eigen::half, unsigned short> {};
+    : radix_key_codec_floating<Eigen::half, uint16_t> {};
 };  // namespace detail
 };  // namespace rocprim
-#endif  // GOOGLE_CUDA
+
+#endif  // TENSORFLOW_USE_ROCM
 
 #endif  // TENSORFLOW_CORE_KERNELS_GPU_PRIM_H_

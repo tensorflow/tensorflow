@@ -2,6 +2,9 @@
 #   Doc generator
 
 load("//tensorflow:tensorflow.bzl", "py_test")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
@@ -129,20 +132,9 @@ py_test(
 py_library(
     name = "doc_controls",
     srcs = ["doc_controls.py"],
+    compatible_with = get_compatible_with_portable(),
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-)
-
-py_test(
-    name = "doc_controls_test",
-    size = "small",
-    srcs = ["doc_controls_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY2AND3",
-    deps = [
-        ":doc_controls",
-        "//tensorflow/python:platform_test",
-    ],
 )
 
 py_test(

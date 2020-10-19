@@ -192,7 +192,7 @@ struct ConvToLinalgConverter : public OpConversionPattern<lmhlo::ConvOp> {
       lmhlo::ConvOp op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
     // Check validity of dimension information.
-    if (const lmhlo::ConvDimensionNumbers& dimensionNumbers =
+    if (const mhlo::ConvDimensionNumbers& dimensionNumbers =
             op.dimension_numbers()) {
       const int inputSpatialRank =
           llvm::size(dimensionNumbers.input_spatial_dimensions());

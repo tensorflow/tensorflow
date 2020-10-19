@@ -218,7 +218,7 @@ mirrored_strategy_with_cpu_1_and_2.__doc__ = (
     """)
 central_storage_strategy_with_two_gpus = combinations.NamedDistribution(
     "CentralStorage2GPUs",
-    lambda: CentralStorageStrategy._from_num_gpus(2),  # pylint: disable=protected-access
+    lambda: CentralStorageStrategy(["/gpu:0", "/gpu:1"]),
     required_gpus=2)
 central_storage_strategy_with_gpu_and_cpu = combinations.NamedDistribution(
     "CentralStorageCPUAndGPU",

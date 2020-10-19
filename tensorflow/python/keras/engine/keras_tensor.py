@@ -170,7 +170,8 @@ class KerasTensor(object):
       name = getattr(tensor, 'name', None)
       type_spec = type_spec_module.type_spec_from_value(tensor)
       inferred_value = None
-      if (type_spec.dtype == dtypes.int32 and type_spec.shape.rank < 2):
+      if (type_spec.dtype == dtypes.int32 and type_spec.shape.rank is not None
+          and type_spec.shape.rank < 2):
         # If this tensor might be representing shape information,
         # (dtype=int32, rank of 0 or 1, not too large to represent a shape)
         # we attempt to capture any value information tensorflow's

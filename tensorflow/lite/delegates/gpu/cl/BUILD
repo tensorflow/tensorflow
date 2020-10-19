@@ -55,6 +55,7 @@ cc_library(
         ":cl_device",
         ":gpu_object",
         ":opencl_wrapper",
+        ":serialization_cc_fbs",
         ":tensor_type",
         ":util",
         "//tensorflow/lite/delegates/gpu/common:access_type",
@@ -358,6 +359,7 @@ cc_library(
     deps = [
         ":cl_context",
         ":opencl_wrapper",
+        ":serialization_cc_fbs",
         "//tensorflow/lite/delegates/gpu/common:access_type",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:status",
@@ -366,19 +368,30 @@ cc_library(
 
 cc_library(
     name = "inference_context",
-    srcs = ["inference_context.cc"],
-    hdrs = ["inference_context.h"],
+    srcs = [
+        "inference_context.cc",
+        "serialization.cc",
+    ],
+    hdrs = [
+        "inference_context.h",
+        "serialization.h",
+    ],
     deps = [
+        ":arguments",
         ":buffer",
         ":cl_command_queue",
+        ":cl_context",
         ":cl_device",
         ":environment",
         ":gpu_object",
+        ":linear_storage",
         ":model_hints",
         ":opencl_wrapper",
         ":precision",
+        ":serialization_cc_fbs",
         ":storage_type_util",
         ":tensor_type",
+        ":texture2d",
         "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
         "//tensorflow/lite/delegates/gpu/cl/selectors:operation_selector",
         "//tensorflow/lite/delegates/gpu/cl/selectors:special_selector",
@@ -396,6 +409,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/transformations:merge_padding_with",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -464,6 +478,14 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@farmhash_archive//:farmhash",
         "@flatbuffers",
+    ],
+)
+
+flatbuffer_cc_library(
+    name = "serialization_cc_fbs",
+    srcs = ["serialization.fbs"],
+    flatc_args = [
+        "--scoped-enums",
     ],
 )
 

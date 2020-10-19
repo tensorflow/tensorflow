@@ -102,9 +102,16 @@ class TopKTest(test.TestCase):
     self._validateTopK(inputs, 2, [[0.4, 0.3], [0.4, 0.3]], [[3, 1], [2, 1]])
 
   def testTop3(self):
+<<<<<<< HEAD
     for k in range(3,11,2):
       for dim in range(512, 12288, 512):
         inputs = np.random.permutation(np.linspace(0, 100, dim, dtype=np.float64))
+=======
+    for k in range(3, 11, 2):
+      for dim in range(512, 12288, 512):
+        inputs = np.random.permutation(
+            np.linspace(0, 100, dim, dtype=np.float64))
+>>>>>>> google_upstream/master
         indices = np.argsort(-inputs)[:k]
         values = -np.sort(-inputs)[:k]
         self._validateTopK(inputs, k, values, indices)
