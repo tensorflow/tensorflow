@@ -372,10 +372,10 @@ static void DotprodMatrixBatchFourVectorMultiplyAccumulate(
 
       asm volatile(
           // Zero out the accumulator registers.
-          "dup v0.4s, wzr\n"
-          "dup v1.4s, wzr\n"
-          "dup v2.4s, wzr\n"
-          "dup v3.4s, wzr\n"
+          "movi v0.4s, #0\n"
+          "movi v1.4s, #0\n"
+          "movi v2.4s, #0\n"
+          "movi v3.4s, #0\n"
 
           "1:\n"  // batch_cols_loop
 
@@ -463,12 +463,12 @@ static void DotprodMatrixBatchFourVectorMultiplyAccumulate(
           "st2 {v9.s, v10.s}[1], [%[result_ptr]], %[wide_rows]\n"
           "st2 {v9.s, v10.s}[2], [%[result_ptr]], %[wide_rows]\n"
           "st2 {v9.s, v10.s}[3], [%[result_ptr]], %[wide_rows]\n"
-          : [ mat_ptr0 ] "+r"(mat_ptr0), [ mat_ptr1 ] "+r"(mat_ptr1),
-            [ vec_ptr ] "+r"(vec_ptr), [ result_ptr ] "+r"(result_ptr),
-            [ mat_ptr2 ] "+r"(mat_ptr2), [ mat_ptr3 ] "+r"(mat_ptr3)
-          : [ mat_ptr0_end ] "r"(mat_ptr0_end),
-            [ scaling_factors_ptr ] "r"(scaling_factors_ptr),
-            [ wide_rows ] "r"(wide_rows)
+          : [mat_ptr0] "+r"(mat_ptr0), [mat_ptr1] "+r"(mat_ptr1),
+            [vec_ptr] "+r"(vec_ptr), [result_ptr] "+r"(result_ptr),
+            [mat_ptr2] "+r"(mat_ptr2), [mat_ptr3] "+r"(mat_ptr3)
+          : [mat_ptr0_end] "r"(mat_ptr0_end),
+            [scaling_factors_ptr] "r"(scaling_factors_ptr),
+            [wide_rows] "r"(wide_rows)
           : "x0", "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9",
             "v10", "v11", "v12", "v13", "cc", "memory");
     }
@@ -501,16 +501,16 @@ static void DotprodMatrixBatchFourVectorMultiplyAccumulate(
       const int32_t is_channel_scale_nullptr = per_channel_scale == nullptr;
       const int32_t is_row_sums_nullptr = row_sums_ptr == nullptr;
       asm volatile(
-          "dup v0.4s, wzr\n"
-          "dup v1.4s, wzr\n"
-          "dup v2.4s, wzr\n"
-          "dup v3.4s, wzr\n"
+          "movi v0.4s, #0\n"
+          "movi v1.4s, #0\n"
+          "movi v2.4s, #0\n"
+          "movi v3.4s, #0\n"
           // Load zero points.
           "ld1 {v7.4s}, [%[batch_offsets_ptr]]\n"
           "ld1 {v4.4s}, [%[scaling_factors_ptr]]\n"
           // Zero out zero point accumulators.
-          "dup v14.4s, wzr\n"
-          "dup v15.4s, wzr\n"
+          "movi v14.4s, #0\n"
+          "movi v15.4s, #0\n"
 
           // Load per channel scales if not null.
           "cmp %w[is_channel_scale_nullptr], #0\n"
@@ -587,16 +587,16 @@ static void DotprodMatrixBatchFourVectorMultiplyAccumulate(
           "st2 {v9.s, v10.s}[1], [%[result_ptr]], %[wide_rows]\n"
           "st2 {v9.s, v10.s}[2], [%[result_ptr]], %[wide_rows]\n"
           "st2 {v9.s, v10.s}[3], [%[result_ptr]], %[wide_rows]\n"
-          : [ mat_ptr0 ] "+r"(mat_ptr0), [ mat_ptr1 ] "+r"(mat_ptr1),
-            [ vec_ptr ] "+r"(vec_ptr), [ result_ptr ] "+r"(result_ptr),
-            [ row_sums_ptr ] "+r"(row_sums_ptr)
-          : [ mat_ptr0_end ] "r"(mat_ptr0_end),
-            [ scaling_factors_ptr ] "r"(scaling_factors_ptr),
-            [ wide_rows ] "r"(wide_rows),
-            [ channel_scales_ptr ] "r"(channel_scales_ptr),
-            [ batch_offsets_ptr ] "r"(batch_offsets_ptr),
-            [ is_channel_scale_nullptr ] "r"(is_channel_scale_nullptr),
-            [ is_row_sums_nullptr ] "r"(is_row_sums_nullptr)
+          : [mat_ptr0] "+r"(mat_ptr0), [mat_ptr1] "+r"(mat_ptr1),
+            [vec_ptr] "+r"(vec_ptr), [result_ptr] "+r"(result_ptr),
+            [row_sums_ptr] "+r"(row_sums_ptr)
+          : [mat_ptr0_end] "r"(mat_ptr0_end),
+            [scaling_factors_ptr] "r"(scaling_factors_ptr),
+            [wide_rows] "r"(wide_rows),
+            [channel_scales_ptr] "r"(channel_scales_ptr),
+            [batch_offsets_ptr] "r"(batch_offsets_ptr),
+            [is_channel_scale_nullptr] "r"(is_channel_scale_nullptr),
+            [is_row_sums_nullptr] "r"(is_row_sums_nullptr)
           : "x0", "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9",
             "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17", "w0", "w1",
             "cc", "memory");
@@ -746,9 +746,9 @@ static void DotprodSparseMatrixBatchVectorMultiplyAccumulate(
 
       if (ledger_ptr != ledger_end) {
         asm volatile(
-            "dup v0.4s, wzr\n"
-            "dup v1.4s, wzr\n"
-            "dup v8.4s, wzr\n"
+            "movi v0.4s, #0\n"
+            "movi v1.4s, #0\n"
+            "movi v8.4s, #0\n"
             "mov x7, 0\n"
 
             "1:\n"  // chunks_loop
@@ -775,9 +775,9 @@ static void DotprodSparseMatrixBatchVectorMultiplyAccumulate(
             // We have to be careful to cast this value to 32 bits in order
             // to interpret the sign bit properly.
             "mov %[row_sum], v1.d[0]\n"
-            : [ row_sum ] "=r"(row_sum), [ ledger_ptr ] "+r"(ledger_ptr),
-              [ mat_ptr ] "+r"(mat_ptr), [ vec_ptr ] "+r"(vec_ptr)
-            : [ ledger_end ] "r"(ledger_end)
+            : [row_sum] "=r"(row_sum), [ledger_ptr] "+r"(ledger_ptr),
+              [mat_ptr] "+r"(mat_ptr), [vec_ptr] "+r"(vec_ptr)
+            : [ledger_end] "r"(ledger_end)
             : "x0", "x1", "x7", "x8", "v0", "v1", "v8", "v9", "cc", "memory");
       }
       result[batch * m_rows + row] +=
