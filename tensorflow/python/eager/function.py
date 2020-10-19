@@ -1418,13 +1418,6 @@ class _HigherOrderTapeGradientFunctions(_TapeGradientFunctions):
             num_output_tangents)
 
 
-# Represents the output of TFE_Py_TapeSetPossibleGradientTypes. Real enums are
-# unfortunately too slow to use here.
-_POSSIBLE_GRADIENT_TYPES_NONE = 0
-_POSSIBLE_GRADIENT_TYPES_FIRST_ORDER = 1
-_POSSIBLE_GRADIENT_TYPES_HIGHER_ORDER = 2
-
-
 class _ForwardBackwardCall(object):
   """Holds the state of a function call between execution and recording."""
 
@@ -1918,9 +1911,8 @@ class ConcreteFunction(object):
                          "on invocation of %s, the %d-th input (%s) was not a "
                          "Tensor." % (self._func_graph.name, i, str(arg)))
     args = tensor_inputs + captured_inputs
-    possible_gradient_type = (
-        pywrap_tfe.TFE_Py_TapeSetPossibleGradientTypes(args))
-    if (possible_gradient_type == _POSSIBLE_GRADIENT_TYPES_NONE
+    possible_gradient_type = gradients_util.PossibleTapeGradientTypes(args)
+    if (possible_gradient_type == gradients_util.POSSIBLE_GRADIENT_TYPES_NONE
         and executing_eagerly):
       # No tape is watching; skip to running the function.
       return self._build_call_outputs(self._inference_function.call(
@@ -2080,7 +2072,7 @@ class ConcreteFunction(object):
     Args:
       args: A flat list of Tensors with all of the inputs to the forward
         function (including user-specified and captured inputs).
-      possible_gradient_type: One of _POSSIBLE_GRADIENT_TYPES_*.
+      possible_gradient_type: One of gradients_util.POSSIBLE_GRADIENT_TYPES_*.
       executing_eagerly: Boolean, the value of context.executing_eagerly().
 
     Returns:
@@ -2098,7 +2090,8 @@ class ConcreteFunction(object):
     # Allows re-use of forward and backward function pairs depending on the
     # tapes and forward accumulators watching its inputs.
     cache_key = (need_gradients_for_jvps, input_tangents.indices)
-    if possible_gradient_type == _POSSIBLE_GRADIENT_TYPES_FIRST_ORDER:
+    if (possible_gradient_type
+        == gradients_util.POSSIBLE_GRADIENT_TYPES_FIRST_ORDER):
       if input_tangents.indices or executing_eagerly:
         # There is a single non-persistent tape active, so the user can only
         # request first-order gradients from a tape. We can spend less time
@@ -2129,7 +2122,8 @@ class ConcreteFunction(object):
         return _ForwardBackwardCall(
             self._delayed_rewrite_functions, args, input_tangents.tangents,
             tape_watching=True)
-    elif possible_gradient_type == _POSSIBLE_GRADIENT_TYPES_HIGHER_ORDER:
+    elif (possible_gradient_type
+          == gradients_util.POSSIBLE_GRADIENT_TYPES_HIGHER_ORDER):
       # Either there's a persistent tape watching, or there are multiple nested
       # tapes. Either way, the user may request higher-order gradients. We'll
       # spend a bit more time and make sure higher-order gradients are correct.
@@ -2144,7 +2138,7 @@ class ConcreteFunction(object):
         self._higher_order_tape_functions[cache_key] = functions
       return _ForwardBackwardCall(functions, args, input_tangents.tangents,
                                   tape_watching=True)
-    # else possible_gradient_type == _POSSIBLE_GRADIENT_TYPES_NONE, meaning no
+    # else possible_gradient_type == POSSIBLE_GRADIENT_TYPES_NONE, meaning no
     # tape is recording.
     return _ForwardBackwardCall(
         self._delayed_rewrite_functions, args, input_tangents.tangents,

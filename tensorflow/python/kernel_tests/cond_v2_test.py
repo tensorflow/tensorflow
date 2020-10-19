@@ -960,6 +960,42 @@ class CondV2Test(test.TestCase):
 
       self.assertAllEqual(fn_with_cond(), 12.0)
 
+  def _CheckIteratedCosGradients(self, func):
+
+    def _grad(f):
+      def _grad_function(primal):
+        with backprop.GradientTape() as tape:
+          tape.watch(primal)
+          primal_out = f(primal)
+        return tape.gradient(primal_out, primal)
+      return _grad_function
+
+    f = func
+    one = constant_op.constant(1.)
+    for expected in [math_ops.cos,
+                     lambda x: -math_ops.sin(x),
+                     lambda x: -math_ops.cos(x),
+                     math_ops.sin,
+                     math_ops.cos]:
+      self.assertAllClose(expected(one), def_function.function(f)(one))
+      f = _grad(f)
+
+  def testIteratedGradientsCond(self):
+    def _func(x):
+      return cond_v2.cond_v2(
+          constant_op.constant(True),
+          lambda: math_ops.cos(array_ops.identity(x)),
+          lambda: math_ops.sin(array_ops.identity(x)))
+    self._CheckIteratedCosGradients(_func)
+
+  def testIteratedGradientsCase(self):
+    def _func(x):
+      return cond_v2.indexed_case(
+          constant_op.constant(1),
+          [lambda: math_ops.sin(array_ops.identity(x)),
+           lambda: math_ops.cos(array_ops.identity(x))])
+    self._CheckIteratedCosGradients(_func)
+
   def testLowering(self):
     with ops.Graph().as_default() as g:
       with self.session(graph=g) as sess:
