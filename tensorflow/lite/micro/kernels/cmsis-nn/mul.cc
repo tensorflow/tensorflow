@@ -13,9 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "arm_nnfunctions.h"
 #include "tensorflow/lite/kernels/internal/reference/mul.h"
-
-#include "cmsis/CMSIS/NN/Include/arm_nnfunctions.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/mul.h"
 #include "tensorflow/lite/kernels/internal/reference/process_broadcast_shapes.h"

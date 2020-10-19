@@ -13,9 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "arm_nnfunctions.h"
 #include "tensorflow/lite/kernels/internal/reference/softmax.h"
-
-#include "cmsis/CMSIS/NN/Include/arm_nnfunctions.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"

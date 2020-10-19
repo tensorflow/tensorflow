@@ -362,6 +362,9 @@ $(eval $(call add_third_party_download,$(RUY_URL),$(RUY_MD5),ruy,))
 $(eval $(call add_third_party_download,$(PERSON_MODEL_URL),$(PERSON_MODEL_MD5),person_model_grayscale,))
 $(eval $(call add_third_party_download,$(PERSON_MODEL_INT8_URL),$(PERSON_MODEL_INT8_MD5),person_model_int8,))
 
+TARGETS_USING_QUALIFIED_CMSIS_NN_INCLUDE_PATH := \
+arduino
+
 # The target-specific makefile must have a name that is exactly
 # TARGET_makefile.inc and is only needed for cross-compilation (i.e. when TARGET
 # is different from the HOST_OS).
