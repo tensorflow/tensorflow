@@ -35,14 +35,12 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
-#if GOOGLE_CUDA
 // Required for sorting Eigen::half
 namespace cub {
 template <>
 struct NumericTraits<Eigen::half>
     : BaseTraits<FLOATING_POINT, true, false, uint16_t, Eigen::half> {};
 }  // namespace cub
-#endif  // GOOGLE_CUDA
 
 namespace tensorflow {
 
@@ -94,7 +92,6 @@ struct IndirectLinearData {
   Entry* const backing_data;
 };
 
-#if GOOGLE_CUDA
 template <typename T>
 struct StridedData {
   typedef impl::Entry<T> Entry;
@@ -108,7 +105,6 @@ struct StridedData {
 
   Entry* const data;
 };
-#endif  // GOOGLE_CUDA
 
 // A heap of Entry<T> that can either work as a min-heap or as a max-heap.
 template <HeapType heapType, PreferIndices preferIndices,
@@ -458,8 +454,8 @@ Status LaunchSortKernel(OpKernelContext* ctx, const T* input, int num_rows,
   const auto& cu_stream = GetGpuStream(ctx);
   size_t temp_storage_bytes = -1;
 
-  // TODO(ebrevdo): Once cub supports iterators for ValueT replace that tensor
-  // with an iterator that directly returns the correct value.
+  // TODO(ebrevdo): Once gpuprim supports iterators for ValueT replace that
+  // tensor with an iterator that directly returns the correct value.
   Tensor input_indices;
   TF_RETURN_IF_ERROR(ctx->allocate_temp(
       DT_INT32, TensorShape({num_rows, num_cols}), &input_indices));
@@ -467,9 +463,9 @@ Status LaunchSortKernel(OpKernelContext* ctx, const T* input, int num_rows,
   input_indices_t.device(d) =
       input_indices_t.generate(ColumnIndexCreator(num_cols));
 
-  cub::CountingInputIterator<int> counting_iter(0);
-  cub::TransformInputIterator<int, SegmentOffsetCreator,
-                              cub::CountingInputIterator<int>>
+  gpuprim::CountingInputIterator<int> counting_iter(0);
+  gpuprim::TransformInputIterator<int, SegmentOffsetCreator,
+                                  gpuprim::CountingInputIterator<int>>
       segment_offsets_t(counting_iter, SegmentOffsetCreator(num_cols));
 
   Tensor temp_values;
@@ -491,7 +487,7 @@ Status LaunchSortKernel(OpKernelContext* ctx, const T* input, int num_rows,
     sorted_values_ptr = temp_values.flat<T>().data();
   }
 
-  auto err = cub::DeviceSegmentedRadixSort::SortPairsDescending(
+  auto err = gpuprim::DeviceSegmentedRadixSort::SortPairsDescending(
       /* d_temp_storage */ nullptr,
       /* temp_storage_bytes */ temp_storage_bytes,
       /* d_keys_in */ input,
@@ -508,7 +504,7 @@ Status LaunchSortKernel(OpKernelContext* ctx, const T* input, int num_rows,
   if (err != cudaSuccess) {
     return errors::Internal(
         "TopKOp: Could not launch "
-        "cub::DeviceSegmentedRadixSort::SortPairsDescending to calculate "
+        "gpuprim::DeviceSegmentedRadixSort::SortPairsDescending to calculate "
         "temp_storage_bytes, status: ",
         cudaGetErrorString(err));
   }
@@ -516,7 +512,7 @@ Status LaunchSortKernel(OpKernelContext* ctx, const T* input, int num_rows,
   TF_RETURN_IF_ERROR(ctx->allocate_temp(
       DT_INT8, TensorShape({static_cast<int64>(temp_storage_bytes)}),
       &temp_storage));
-  err = cub::DeviceSegmentedRadixSort::SortPairsDescending(
+  err = gpuprim::DeviceSegmentedRadixSort::SortPairsDescending(
       /* d_temp_storage */ temp_storage.flat<int8>().data(),
       /* temp_storage_bytes */ temp_storage_bytes,
       /* d_keys_in */ input,
@@ -533,7 +529,7 @@ Status LaunchSortKernel(OpKernelContext* ctx, const T* input, int num_rows,
   if (err != cudaSuccess) {
     return errors::Internal(
         "TopKOp: Could not launch "
-        "cub::DeviceSegmentedRadixSort::SortPairsDescending to sort input, "
+        "gpuprim::DeviceSegmentedRadixSort::SortPairsDescending to sort input, "
         "temp_storage_bytes: ",
         temp_storage_bytes, ", status: ", cudaGetErrorString(err));
   }
@@ -562,8 +558,8 @@ struct TopKFunctor<GPUDevice, T> {
           const int64 num_cols, typename TTypes<T, 2>::Tensor values,
           typename TTypes<int, 2>::Tensor indices) {
     // For small k, use the heap implementation.  For larger k, use
-    // the in-place cub sort.  For k == num_cols, always use the
-    // in-place cub sort.  The thresholds for n and k were determined
+    // the in-place gpuprim sort.  For k == num_cols, always use the
+    // in-place gpuprim sort.  The thresholds for n and k were determined
     // empirically.
     if (num_cols <= 1000 || k == num_cols || k >= 100) {
       return impl::LaunchSortKernel(context, input.data(), num_rows, num_cols,
