@@ -3039,7 +3039,8 @@ def _caching_device(rnn_cell):
                  'consider updating your code to remove tf.while_loop if '
                  'possible.')
     return None
-  if rnn_cell._dtype_policy.should_cast_variables:
+  if (rnn_cell._dtype_policy.compute_dtype !=
+      rnn_cell._dtype_policy.variable_dtype):
     logging.warn('Variable read device caching has been disabled since it '
                  'doesn\'t work with the mixed precision API. This is '
                  'likely to cause a slowdown for RNN training due to '

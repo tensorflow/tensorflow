@@ -608,8 +608,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
                          ' for layer %s' % (name, dtype.base_dtype, self.name))
 
     getter = kwargs.pop('getter', base_layer_utils.make_variable)
-    if (autocast and self._dtype_policy.should_cast_variables and
-        dtype.is_floating):
+    if (autocast and
+        self._dtype_policy.compute_dtype != self._dtype_policy.variable_dtype
+        and dtype.is_floating):
       old_getter = getter
       # Wrap variable constructor to return an AutoCastVariable.
       def getter(*args, **kwargs):  # pylint: disable=function-redefined

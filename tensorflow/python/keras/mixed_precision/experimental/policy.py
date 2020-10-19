@@ -406,17 +406,6 @@ class Policy(object):
     return self._compute_dtype
 
   @property
-  def should_cast_variables(self):
-    """Returns True if variables should be casted.
-
-    This is true if the variable dtype is not the same as the compute dtype.
-
-    Returns:
-      True, if variables should be casted.
-    """
-    return self.variable_dtype != self.compute_dtype
-
-  @property
   def name(self):
     """Returns the name of this policy."""
     return self._name
@@ -607,7 +596,8 @@ def set_policy(policy):
                      '"tf.compat.v1.keras.layers.enable_v2_dtype_behavior()"')
   if policy is not None and not isinstance(policy, Policy):
     policy = Policy(policy)
-  is_mixed_policy = policy is not None and policy.should_cast_variables
+  is_mixed_policy = (policy is not None and
+                     policy.compute_dtype != policy.variable_dtype)
   if is_mixed_policy:
     _check_if_mixed_precision_graph_rewrite_is_enabled(policy)
   if (policy is not None and policy.compute_dtype is not None and
