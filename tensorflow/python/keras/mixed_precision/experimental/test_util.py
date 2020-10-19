@@ -159,7 +159,6 @@ class MultiplyLayer(AssertTypeLayer):
 
   def call(self, inputs):
     self.assert_input_types(inputs)
-    assert inputs.dtype == self.v.dtype
     return self._multiply(inputs, self.v)
 
   def _multiply(self, x, y):
