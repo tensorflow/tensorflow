@@ -6,6 +6,14 @@
 
 * <DOCUMENT BREAKING CHANGES HERE>
 * <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+* Certain float32 ops run in lower precsion on Ampere based GPUs, including 
+  matmuls and convolutions, due to the use of
+  [TensorFloat-32](https://blogs.nvidia.com/blog/2020/05/14/tensorfloat-32-precision-format/).
+  Specifically, inputs to such ops are rounded from 23 bits of precision to 10
+  bits of precision. This is unlikely to cause issues in practice for deep
+  learning models. TensorFloat-32 can be disabled by running
+  `config.experimental.enable_tensor_float_32_execution(False)`. The "Major
+  Features and Improvements" section has more details.
 * The byte layout for string tensors across the C-API has been updated to match
   TF Core/C++; i.e., a contiguous array of `tensorflow::tstring`/`TF_TString`s.
 * C-API functions `TF_StringDecode`, `TF_StringEncode`, and
@@ -72,6 +80,15 @@
 * <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
 * A new module named `tf.experimental.numpy` is added, which is a NumPy-compatible API for writing TF programs. This module provides class `ndarray`, which mimics the `ndarray` class in NumPy, and wraps an immutable `tf.Tensor` under the hood. A subset of NumPy functions (e.g. `numpy.add`) are provided. Their inter-operation with TF facilities is seamless in most cases. See [tensorflow/python/ops/numpy_ops/README.md](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/ops/numpy_ops/README.md) for details of what operations are supported and what are the differences from NumPy.
 * A major refactoring of the internals of the Keras Functional API has been completed, that should improve the reliability, stability, and performance of constructing Functional models.
+* Support for
+  [TensorFloat-32](https://blogs.nvidia.com/blog/2020/05/14/tensorfloat-32-precision-format/)
+  on Ampere based GPUs has been added. TensorFloat-32, or TF32 for short, is a
+  math mode for NVIDIA Ampere GPUs which causes certain float32 ops, such as
+  matrix multiplications and convolutions, to run much faster on Ampere GPUs but
+  with reduced precision. This reduced precision has not been found to effect
+  convergence quality of deep learning models in practice. TensorFloat-32 is
+  enabled by default, but can be disabled with
+  `tf.config.experimental.enable_tensor_float_32_execution`.
 
 * `tf.distribute`:
   * Deprecated `experimental_distribute_datasets_from_function` method and renamed it to `distribute_datasets_from_function` as it is no longer experimental.
