@@ -185,8 +185,8 @@ ATTR_TEST_REGISTER_OP(Type, type);
   do {                                                                        \
     auto m = TF_OpKernelConstruction_GetAttrMetadata(ctx, attr_name, status); \
     EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);               \
-    const unsigned char e = expected_list_size >= 0 ? 1 : 0;                  \
-    EXPECT_EQ(e, m.is_list);                                                  \
+    const unsigned char should_be_list = expected_list_size >= 0 ? 1 : 0;     \
+    EXPECT_EQ(should_be_list, m.is_list);                                     \
     EXPECT_EQ(expected_list_size, m.list_size);                               \
     EXPECT_EQ(expected_type, m.type);                                         \
     EXPECT_EQ(expected_total_size, m.total_size);                             \
@@ -238,8 +238,10 @@ TEST_F(TestKernelAttr, String) {
 
     std::unique_ptr<char[]> val(new char[5]);
     TF_Status* status = TF_NewStatus();
-    EXPECT_TF_META("Attr", -1, TF_ATTR_STRING, 5);
-    TF_OpKernelConstruction_GetAttrString(ctx, "Attr", val.get(), 5, status);
+    EXPECT_TF_META(/*attr_name*/ "Attr", /*expected_list_size*/ -1,
+                   /*expected_type*/ TF_ATTR_STRING, /*expected_total_size*/ 5);
+    TF_OpKernelConstruction_GetAttrString(ctx, "Attr", val.get(),
+                                          /*max_length*/ 5, status);
 
     EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
     EXPECT_EQ("bunny", string(static_cast<const char*>(val.get()), 5));
@@ -268,7 +270,9 @@ TEST_F(TestKernelAttr, StringList) {
     std::unique_ptr<void*[]> values(new void*[list.size()]);
     std::unique_ptr<size_t[]> lens(new size_t[list.size()]);
     std::unique_ptr<char[]> storage(new char[list_total_size]);
-    EXPECT_TF_META("Attr", list.size(), TF_ATTR_STRING, list_total_size);
+    EXPECT_TF_META(/*attr_name*/ "Attr", /*expected_list_size*/ list.size(),
+                   /*expected_type*/ TF_ATTR_STRING,
+                   /*expected_total_size*/ list_total_size);
     TF_OpKernelConstruction_GetAttrStringList(
         ctx, "Attr", values.get(), lens.get(), list.size(), storage.get(),
         list_total_size, status);
@@ -297,7 +301,8 @@ TEST_F(TestKernelAttr, Int) {
 
     int64_t val;
     TF_Status* status = TF_NewStatus();
-    EXPECT_TF_META("Attr", -1, TF_ATTR_INT, -1);
+    EXPECT_TF_META(/*attr_name*/ "Attr", /*expected_list_size*/ -1,
+                   /*expected_type*/ TF_ATTR_INT, /*expected_total_size*/ -1);
     TF_OpKernelConstruction_GetAttrInt64(ctx, "Attr", &val, status);
     EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
     EXPECT_EQ(1234, val);
@@ -321,7 +326,8 @@ TEST_F(TestKernelAttr, IntList) {
     int64_t values[list_size];
 
     TF_Status* status = TF_NewStatus();
-    EXPECT_TF_META("Attr", list_size, TF_ATTR_INT, -1);
+    EXPECT_TF_META(/*attr_name*/ "Attr", /*expected_list_size*/ list_size,
+                   /*expected_type*/ TF_ATTR_INT, /*expected_total_size*/ -1);
     TF_OpKernelConstruction_GetAttrInt64List(ctx, "Attr", values, list_size,
                                              status);
     EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
@@ -345,7 +351,8 @@ TEST_F(TestKernelAttr, Float) {
 
     float val;
     TF_Status* status = TF_NewStatus();
-    EXPECT_TF_META("Attr", -1, TF_ATTR_FLOAT, -1);
+    EXPECT_TF_META(/*attr_name*/ "Attr", /*expected_list_size*/ -1,
+                   /*expected_type*/ TF_ATTR_FLOAT, /*expected_total_size*/ -1);
     TF_OpKernelConstruction_GetAttrFloat(ctx, "Attr", &val, status);
     EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
     EXPECT_FLOAT_EQ(2.718, val);
@@ -369,7 +376,8 @@ TEST_F(TestKernelAttr, FloatList) {
     float values[list_size];
 
     TF_Status* status = TF_NewStatus();
-    EXPECT_TF_META("Attr", list_size, TF_ATTR_FLOAT, -1);
+    EXPECT_TF_META(/*attr_name*/ "Attr", /*expected_list_size*/ list_size,
+                   /*expected_type*/ TF_ATTR_FLOAT, /*expected_total_size*/ -1);
     TF_OpKernelConstruction_GetAttrFloatList(ctx, "Attr", values, list_size,
                                              status);
     EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
@@ -393,7 +401,8 @@ TEST_F(TestKernelAttr, Bool) {
 
     unsigned char val;
     TF_Status* status = TF_NewStatus();
-    EXPECT_TF_META("Attr", -1, TF_ATTR_BOOL, -1);
+    EXPECT_TF_META(/*attr_name*/ "Attr", /*expected_list_size*/ -1,
+                   /*expected_type*/ TF_ATTR_BOOL, /*expected_total_size*/ -1);
     TF_OpKernelConstruction_GetAttrBool(ctx, "Attr", &val, status);
     EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
     EXPECT_EQ(1, val);
@@ -417,7 +426,8 @@ TEST_F(TestKernelAttr, BoolList) {
     unsigned char values[list_size];
 
     TF_Status* status = TF_NewStatus();
-    EXPECT_TF_META("Attr", list_size, TF_ATTR_BOOL, -1);
+    EXPECT_TF_META(/*attr_name*/ "Attr", /*expected_list_size*/ list_size,
+                   /*expected_type*/ TF_ATTR_BOOL, /*expected_total_size*/ -1);
     TF_OpKernelConstruction_GetAttrBoolList(ctx, "Attr", values, list_size,
                                             status);
     EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
@@ -441,7 +451,8 @@ TEST_F(TestKernelAttr, Type) {
 
     TF_DataType val;
     TF_Status* status = TF_NewStatus();
-    EXPECT_TF_META("Attr", -1, TF_ATTR_TYPE, -1);
+    EXPECT_TF_META(/*attr_name*/ "Attr", /*expected_list_size*/ -1,
+                   /*expected_type*/ TF_ATTR_TYPE, /*expected_total_size*/ -1);
     TF_OpKernelConstruction_GetAttrType(ctx, "Attr", &val, status);
     EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
     EXPECT_EQ(TF_FLOAT, val);
@@ -465,7 +476,8 @@ TEST_F(TestKernelAttr, TypeList) {
     TF_DataType values[list_size];
 
     TF_Status* status = TF_NewStatus();
-    EXPECT_TF_META("Attr", list_size, TF_ATTR_TYPE, -1);
+    EXPECT_TF_META(/*attr_name*/ "Attr", /*expected_list_size*/ list_size,
+                   /*expected_type*/ TF_ATTR_TYPE, /*expected_total_size*/ -1);
     TF_OpKernelConstruction_GetAttrTypeList(ctx, "Attr", values, list_size,
                                             status);
     EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
