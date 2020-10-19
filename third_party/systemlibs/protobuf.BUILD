@@ -38,7 +38,7 @@ genrule(
       for i in $(OUTS); do
         f=$${i#$(@D)/}
         mkdir -p $(@D)/$${f%/*}
-        ln -sf $(INCLUDEDIR)/$$f $(@D)/$$f
+        ln -sf $(PROTOBUF_INCLUDE_PATH)/$$f $(@D)/$$f
       done
     """,
 )
