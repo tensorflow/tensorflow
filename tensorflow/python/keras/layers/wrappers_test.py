@@ -974,10 +974,10 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       self.assertLen(y, 5)
       self.assertAllClose(y[0], np.concatenate([y[1], y[3]], axis=1))
 
+  @parameterized.parameters([keras.layers.LSTM, keras.layers.GRU])
   @test.disable_for_rocm(skip_message='Skipping the test as ROCm '
                                       'MIOpen does not support '
                                       'padded input yet.')
-  @parameterized.parameters([keras.layers.LSTM, keras.layers.GRU])
   def test_Bidirectional_sequence_output_with_masking(self, rnn):
     samples = 2
     dim = 5
@@ -1179,9 +1179,9 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
         epochs=1,
         batch_size=10)
 
+  @parameterized.parameters(['ave', 'concat', 'mul'])
   @test.disable_for_rocm(skip_message='Skipping the test as ROCm RNN does not '
                                       'support ragged tensors yet.')
-  @parameterized.parameters(['ave', 'concat', 'mul'])
   def test_Bidirectional_ragged_input(self, merge_mode):
     np.random.seed(100)
     rnn = keras.layers.LSTM

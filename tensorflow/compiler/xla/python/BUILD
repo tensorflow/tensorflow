@@ -75,6 +75,7 @@ py_test(
         "no_oss",
         "no_rocm",
         "requires-gpu-nvidia",
+        "gpu",
     ],  # TODO(phawkins): This test passes, but requires --config=monolithic.
     deps = [
         ":xla_client",

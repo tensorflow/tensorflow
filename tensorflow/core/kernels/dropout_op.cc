@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/random_op.h"
 #include "tensorflow/core/platform/random.h"
-#include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/guarded_philox_random.h"
 #include "tensorflow/core/util/tensor_format.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
