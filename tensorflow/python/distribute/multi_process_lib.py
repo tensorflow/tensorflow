@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 import multiprocessing
 import os
+import platform
 import sys
 import unittest
 from absl import app
@@ -37,6 +38,8 @@ def _is_enabled():
   tpu_args = [arg for arg in sys.argv if arg.startswith('--tpu')]
   if is_oss() and tpu_args:
     return False
+  if sys.version_info == (3, 8) and platform.system() == 'Linux':
+    return False  # TODO(b/171242147)
   return sys.platform != 'win32'
 
 
