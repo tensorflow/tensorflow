@@ -15,11 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_TOPK_OP_GPU_H_
 #define TENSORFLOW_CORE_KERNELS_TOPK_OP_GPU_H_
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
 #include <cmath>
+#include <string>
 #include <vector>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -39,7 +40,7 @@ limitations under the License.
 namespace cub {
 template <>
 struct NumericTraits<Eigen::half>
-    : BaseTraits<FLOATING_POINT, true, false, unsigned short, Eigen::half> {};
+    : BaseTraits<FLOATING_POINT, true, false, uint16_t, Eigen::half> {};
 }  // namespace cub
 #endif  // GOOGLE_CUDA
 
@@ -107,7 +108,7 @@ struct StridedData {
 
   Entry* const data;
 };
-#endif
+#endif  // GOOGLE_CUDA
 
 // A heap of Entry<T> that can either work as a min-heap or as a max-heap.
 template <HeapType heapType, PreferIndices preferIndices,
@@ -115,6 +116,7 @@ template <HeapType heapType, PreferIndices preferIndices,
 struct IndexedHeap {
   typedef typename Data<T>::Entry Entry;
   const Data<T> data;
+  __device__ IndexedHeap(const Data<T>& d) : data(d) {}
 
   __device__ bool is_above(int left, int right) {
     T left_value = data.get_value(left);
@@ -337,12 +339,21 @@ __device__ void mergeShards(int num_shards, int k,
   }
 }
 
+#if GOOGLE_CUDA
 extern __shared__ char shared_memory[];
+#endif  // GOOGLE_CUDA
 
 template <typename T>
-__global__ void TopKKernel(const T* __restrict__ input, int length, int k,
-                           bool sorted, T* __restrict__ output,
-                           int* __restrict__ indices) {
+#if TENSORFLOW_USE_ROCM
+__attribute__((amdgpu_flat_work_group_size(1, 256)))
+#endif  // TENSORFLOW_USE_ROCM
+__global__ void
+TopKKernel(const T* __restrict__ input, int length, int k, bool sorted,
+           T* __restrict__ output, int* __restrict__ indices) {
+#if TENSORFLOW_USE_ROCM
+  HIP_DYNAMIC_SHARED(char, shared_memory);
+#endif  // TENSORFLOW_USE_ROCM
+
   const int batch_index = blockIdx.x;
   const T* batch_input = input + batch_index * length;
 
@@ -370,7 +381,7 @@ __global__ void TopKKernel(const T* __restrict__ input, int length, int k,
 }
 
 template <typename T>
-cudaError LaunchTopKKernel(const cudaStream_t& stream, int num_shards,
+cudaError LaunchTopKKernel(const gpuStream_t& stream, int num_shards,
                            const T* input, int batch_size, int length, int k,
                            bool sorted, T* output, int* indices) {
   // This code assumes that k is small enough that the computation
@@ -395,9 +406,17 @@ cudaError LaunchTopKKernel(const cudaStream_t& stream, int num_shards,
     }
     if (num_shards <= 0) {
       num_shards = 1;
+#if GOOGLE_CUDA
     } else if (num_shards > 1024) {
       num_shards = 1024;
     }
+#elif TENSORFLOW_USE_ROCM
+      // ROCm can't execute with 1024 and requires an explicit
+      // amdgpu_flat_work_group_size attribute with >256
+    } else if (num_shards > 256) {
+      num_shards = 256;
+    }
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   }
   // We are limited by the amount of shared memory we have per block.
   auto shared_memory_size = (num_shards + 1) * k * sizeof(Entry<T>);
@@ -567,6 +586,6 @@ struct TopKFunctor<GPUDevice, T> {
 }  // end namespace functor
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #endif  // TENSORFLOW_CORE_KERNELS_TOPK_OP_GPU_H_
