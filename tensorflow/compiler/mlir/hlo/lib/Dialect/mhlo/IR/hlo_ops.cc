@@ -1787,6 +1787,61 @@ static LogicalResult Verify(PadOp op) {
   return success();
 }
 
+OpFoldResult PadOp::fold(ArrayRef<Attribute> operands) {
+  // If all padding is zero then it is an identity pad.
+  auto is_zero = [](const APInt& i) { return i == 0; };
+  if (llvm::all_of(edge_padding_low().getIntValues(), is_zero) &&
+      llvm::all_of(edge_padding_high().getIntValues(), is_zero) &&
+      llvm::all_of(interior_padding().getIntValues(), is_zero))
+    return operand();
+
+  // If any padding is negative then it isn't supported by the folder (yet).
+  auto is_negative = [](const APInt& i) { return i.slt(0); };
+  if (llvm::all_of(edge_padding_low().getIntValues(), is_negative) &&
+      llvm::all_of(edge_padding_high().getIntValues(), is_negative) &&
+      llvm::all_of(interior_padding().getIntValues(), is_negative))
+    return {};
+
+  DenseElementsAttr input = operands[0].dyn_cast_or_null<DenseElementsAttr>();
+  DenseElementsAttr padding = operands[1].dyn_cast_or_null<DenseElementsAttr>();
+  RankedTensorType return_type = getType().dyn_cast_or_null<RankedTensorType>();
+  if (!input || !input.getType().hasRank() || !padding || !return_type ||
+      !return_type.hasStaticShape())
+    return {};
+
+  // Fill the full result tensor with the padding value.
+  llvm::SmallVector<Attribute, 4> result(return_type.getNumElements(),
+                                         padding.getValue({}));
+
+  auto next_index = [](llvm::SmallVector<uint64_t, 8>& index,
+                       llvm::ArrayRef<int64_t> shape) {
+    for (int64_t i = index.size() - 1; i >= 0; --i) {
+      ++index[i];
+      if (index[i] < shape[i]) return true;
+      index[i] = 0;
+    }
+    return false;
+  };
+
+  // Iterate over all elements of the input tensor and copy it to the correct
+  // location in the output tensor.
+  llvm::SmallVector<uint64_t, 8> index(input.getType().getRank(), 0);
+  do {
+    uint64_t linear_index = 0;
+    uint64_t linear_index_multiplyer = 1;
+    for (int64_t i = index.size() - 1; i >= 0; --i) {
+      linear_index +=
+          (edge_padding_low().getValue<int64_t>({uint64_t(i)}) +
+           index[i] *
+               (interior_padding().getValue<int64_t>({uint64_t(i)}) + 1)) *
+          linear_index_multiplyer;
+      linear_index_multiplyer *= return_type.getShape()[i];
+    }
+    result[linear_index] = input.getValue(index);
+  } while (next_index(index, input.getType().getShape()));
+  return DenseElementsAttr::get(return_type, result);
+}
+
 //===----------------------------------------------------------------------===//
 // ReshapeOp
 //===----------------------------------------------------------------------===//

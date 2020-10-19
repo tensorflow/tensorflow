@@ -1201,6 +1201,8 @@ def HLO_PadOp: HLO_Op<"pad",
 
   // TODO(b/129422361): PadOp has a custom constructor for HLO.
   let hasCustomHLOConverter = 1;
+
+  let hasFolder = 1;
 }
 
 def HLO_TraceOp: HLO_Op<"trace", []>, BASE_HLO_TraceOp {
