@@ -439,8 +439,12 @@ class InputReplicationMode(enum.Enum):
     Replicas will dequeue from the local Dataset on their worker.
     `tf.distribute.Strategy` doesn't manage any state sharing between such
     separate input pipelines.
+  * `PER_REPLICA`: The input function will be called on each replica seperately.
+    `tf.distribute.Strategy` doesn't manage any state sharing between such
+    separate input pipelines.
   """
   PER_WORKER = "PER_WORKER"
+  PER_REPLICA = "PER_REPLICA"
 
 
 @tf_export("distribute.InputContext")
@@ -616,6 +620,8 @@ class RunOptions(
 class InputOptions(
     collections.namedtuple("InputOptions", [
         "experimental_prefetch_to_device",
+        "experimental_replication_mode",
+        "experimental_place_dataset_on_device",
     ])):
   """Run options for `experimental_distribute_dataset(s_from_function)`.
 
@@ -633,19 +639,36 @@ class InputOptions(
       strategy.experimental_distribute_dataset(
           dataset,
           tf.distribute.InputOptions(
-              experimental_prefetch_to_device=False)))
+              experimental_replication_mode=
+              experimental_replication_mode.PER_WORKER,
+              experimental_place_dataset_on_device=False)))
   ```
 
   Attributes:
     experimental_prefetch_to_device: Boolean. Defaults to True. If True, dataset
       elements will be prefetched to accelerator device memory. When False,
       dataset elements are prefetched to host device memory. Must be False when
-      using TPUEmbedding API.
+      using TPUEmbedding API. experimental_prefetch_to_device can only be used
+      with experimental_replication_mode=PER_WORKER
+    experimental_replication_mode: Replication mode for the input function.
+      Currently, the InputReplicationMode.PER_REPLICA is only supported with
+      tf.distribute.MirroredStrategy.
+      experimental_distribute_datasets_from_function.
+      The default value is InputReplicationMode.PER_WORKER.
+    experimental_place_dataset_on_device: Boolean. Default to False. When True,
+      dataset will be placed on the device, otherwise it will remain on the
+      host. experimental_place_dataset_on_device=True can only be used with
+      experimental_replication_mode=PER_REPLICA
   """
 
-  def __new__(cls, experimental_prefetch_to_device=True):
-    return super(InputOptions, cls).__new__(cls,
-                                            experimental_prefetch_to_device)
+  def __new__(cls,
+              experimental_prefetch_to_device=True,
+              experimental_replication_mode=InputReplicationMode.PER_WORKER,
+              experimental_place_dataset_on_device=False):
+    return super(InputOptions,
+                 cls).__new__(cls, experimental_prefetch_to_device,
+                              experimental_replication_mode,
+                              experimental_place_dataset_on_device)
 
 # ------------------------------------------------------------------------------
 # Base classes for all distribution strategies.
