@@ -1,6 +1,18 @@
 path: "tensorflow.mixed_precision"
 tf_module {
   member {
+    name: "DynamicLossScale"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "FixedLossScale"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "LossScale"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "experimental"
     mtype: "<type \'module\'>"
   }

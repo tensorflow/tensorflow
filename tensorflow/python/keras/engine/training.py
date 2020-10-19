@@ -52,6 +52,7 @@ from tensorflow.python.keras.engine import compile_utils
 from tensorflow.python.keras.engine import data_adapter
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer as lso
+from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.saving import hdf5_format
 from tensorflow.python.keras.saving import save
 from tensorflow.python.keras.saving.saved_model import json_utils
@@ -549,12 +550,25 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
 
   def _get_optimizer(self, optimizer):
     """Wraps `optimizer` in `LossScaleOptimizer` if necessary."""
+    # The deprecated PolicyV1 has a loss_scale, which we use for backwards
+    # compatibility to match TF 2.3 behavior. The new Policy does not have a
+    # loss_scale, so we use dynamic loss scaling if the mixed_float16 policy is
+    # used.
+    if isinstance(self._dtype_policy, policy.PolicyV1):
+      loss_scale = self._dtype_policy.loss_scale
+    elif self._dtype_policy.name == 'mixed_float16':
+      loss_scale = 'dynamic'
+    else:
+      loss_scale = None
 
     def _get_single_optimizer(opt):
       opt = optimizers.get(opt)
-      if (self._dtype_policy.loss_scale is not None and
+      if (loss_scale is not None and
           not isinstance(opt, lso.LossScaleOptimizer)):
-        opt = lso.LossScaleOptimizer(opt, self._dtype_policy.loss_scale)
+        if loss_scale == 'dynamic':
+          opt = lso.LossScaleOptimizer(opt)
+        else:
+          opt = lso.LossScaleOptimizerV1(opt, loss_scale)
       return opt
 
     return nest.map_structure(_get_single_optimizer, optimizer)

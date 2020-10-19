@@ -741,9 +741,9 @@ def enable_v2_dtype_behavior():
   autocasting part of the V2 behavior for that layer, but not the defaulting to
   floatx part of the V2 behavior.
 
-  When a global `tf.keras.mixed_precision.experimental.Policy` is set, a Keras
-  layer's dtype will default to the global policy instead of floatx. Layers
-  will automatically cast inputs to the policy's compute_dtype.
+  When a global `tf.keras.mixed_precision.Policy` is set, a Keras layer's dtype
+  will default to the global policy instead of floatx. Layers will automatically
+  cast inputs to the policy's compute_dtype.
   """
   global V2_DTYPE_BEHAVIOR
   V2_DTYPE_BEHAVIOR = True

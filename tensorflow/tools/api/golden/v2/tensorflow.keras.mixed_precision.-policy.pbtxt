@@ -1,14 +1,9 @@
-path: "tensorflow.keras.mixed_precision.experimental.Policy"
+path: "tensorflow.keras.mixed_precision.Policy"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras.mixed_precision.experimental.policy.PolicyV1\'>"
   is_instance: "<class \'tensorflow.python.keras.mixed_precision.experimental.policy.Policy\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "compute_dtype"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "loss_scale"
     mtype: "<type \'property\'>"
   }
   member {
@@ -25,7 +20,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'name\', \'loss_scale\'], varargs=None, keywords=None, defaults=[\'auto\'], "
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "from_config"

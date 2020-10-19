@@ -137,9 +137,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   Attributes:
     name: The name of the layer (string).
     dtype: The dtype of the layer's computations and weights. If mixed
-      precision is used with a `tf.keras.mixed_precision.experimental.Policy`,
-      this is instead just the dtype of the layer's weights, as the computations
-      are done in a different dtype.
+      precision is used with a `tf.keras.mixed_precision.Policy`, this is
+      instead just the dtype of the layer's weights, as the computations are
+      done in a different dtype.
     trainable_weights: List of variables to be included in backprop.
     non_trainable_weights: List of variables that should not be
       included in backprop.
@@ -279,8 +279,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   if no dtype is passed. `floatx()` itself defaults to "float32". Additionally,
   layers will cast their inputs to the layer's dtype in TensorFlow 2. When mixed
   precision is used, layers may have different computation and variable dtypes.
-  See `tf.keras.mixed_precision.experimental.Policy` for details on layer
-  dtypes.
+  See `tf.keras.mixed_precision.Policy` for details on layer dtypes.
   """
 
   # See tf.Module for the usage of this property.
@@ -388,9 +387,11 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     self._metrics_lock = threading.Lock()
 
     # Both graph and subclassed networks have a dtype policy. For graph
-    # networks, the policy's compute and variable dtypes are ignored, but other
-    # fields, like the loss scale, are used by Models. For subclassed networks,
-    # the compute and variable dtypes are used as like any ordinary layer.
+    # networks, the policy's compute and variable dtypes are ignored. Such
+    # networks only use the policy if it is a PolicyV1, in which case it uses
+    # the PolicyV1's loss_scale (Policy does not have a loss_scale). For
+    # subclassed networks, the compute and variable dtypes are used as like any
+    # ordinary layer.
     self._set_dtype_policy(dtype)
     # Boolean indicating whether the layer automatically casts its inputs to the
     # layer's compute_dtype.

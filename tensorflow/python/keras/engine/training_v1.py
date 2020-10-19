@@ -53,6 +53,7 @@ from tensorflow.python.keras.engine import training_generator_v1
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.engine import training_utils_v1
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
+from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.saving.saved_model import model_serialization
 from tensorflow.python.keras.utils import data_utils
@@ -1342,7 +1343,14 @@ class Model(training_lib.Model):
     else:
       self.optimizer = optimizers.get(optimizer)
 
-    if (self._dtype_policy.loss_scale is not None and
+    if isinstance(self._dtype_policy, policy.PolicyV1):
+      loss_scale = self._dtype_policy.loss_scale
+    elif self._dtype_policy.name == 'mixed_float16':
+      loss_scale = 'dynamic'
+    else:
+      loss_scale = None
+
+    if (loss_scale is not None and
         not isinstance(self.optimizer,
                        loss_scale_optimizer.LossScaleOptimizer)):
       if isinstance(self.optimizer, list):
@@ -1356,18 +1364,11 @@ class Model(training_lib.Model):
                          'with a loss scale  used, but got: %s. Using policy: '
                          '%s' %
                          (self.optimizer, self._dtype_policy))
-      self.optimizer = loss_scale_optimizer.LossScaleOptimizer(
-          self.optimizer, self._dtype_policy.loss_scale)
-    if (isinstance(self.optimizer, loss_scale_optimizer.LossScaleOptimizer) and
-        self._dtype_policy.loss_scale and
-        self.optimizer.loss_scale != self._dtype_policy.loss_scale):
-      logging.warning('LossScale of LossScaleOptimizer passed to compile (%s) '
-                      'is not the same as the dtype policy\'s loss scale (%s). '
-                      'Because the dtype policy has a loss scale, you should '
-                      'pass an optimizer that is not wrapped with a '
-                      'LossScaleOptimizer,'
-                      % (self.optimizer.loss_scale,
-                         self._dtype_policy.loss_scale))
+      if loss_scale == 'dynamic':
+        self.optimizer = loss_scale_optimizer.LossScaleOptimizer(self.optimizer)
+      else:
+        self.optimizer = loss_scale_optimizer.LossScaleOptimizerV1(
+            self.optimizer, loss_scale)
 
   def _prepare_validation_data(self, validation_data, batch_size,
                                validation_steps):
