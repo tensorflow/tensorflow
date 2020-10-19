@@ -494,6 +494,7 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
+        "no_rocm",
         "no_windows",
     ],
     deps = [
@@ -1061,6 +1062,7 @@ py_test(
     srcs = ["ragged_dispatch_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = ["no_rocm"],
     deps = [
         ":ragged",  # fixdeps: keep
         ":ragged_dispatch",
@@ -1104,6 +1106,7 @@ py_test(
     srcs = ["ragged_map_fn_op_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = ["no_rocm"],
     deps = [
         ":ragged",  # fixdeps: keep
         ":ragged_factory_ops",
@@ -1290,6 +1293,7 @@ py_test(
     srcs = ["ragged_print_op_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = ["no_rocm"],
     deps = [
         ":ragged",  # fixdeps: keep
         ":ragged_factory_ops",
