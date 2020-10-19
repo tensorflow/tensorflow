@@ -557,7 +557,7 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
 
     iterator = iter(dist_dataset)
     for i, element in enumerate(iterator):
-      self.assertEqual(i, element.numpy())
+      self.assertAllEqual(distribution.experimental_local_results(element), [i])
 
   @combinations.generate(
       combinations.combine(
