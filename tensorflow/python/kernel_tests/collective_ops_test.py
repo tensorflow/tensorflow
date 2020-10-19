@@ -491,8 +491,6 @@ class TimeoutTest(test.TestCase, parameterized.TestCase):
     super().setUp()
 
   def testTimeout(self, collective_op, device, communication):
-    if device == 'GPU':
-      self.skipTest('b/170980122')
     timeout = 1.5
 
     @def_function.function
@@ -527,8 +525,6 @@ class TimeoutTest(test.TestCase, parameterized.TestCase):
 
   def testParamResolutionAfterTimeout(self, collective_op, device,
                                       communication):
-    if device == 'GPU':
-      self.skipTest('b/170980122')
     dev0 = '/device:%s:0' % device
     dev1 = '/device:%s:1' % device
     timeout = 1.5
@@ -564,8 +560,6 @@ class TimeoutTest(test.TestCase, parameterized.TestCase):
             communication_hint=communication)
 
   def testExecutionAfterTimeout(self, collective_op, device, communication):
-    if device == 'GPU':
-      self.skipTest('b/170980122')
     dev0 = '/device:%s:0' % device
     dev1 = '/device:%s:1' % device
     timeout = 1.5
