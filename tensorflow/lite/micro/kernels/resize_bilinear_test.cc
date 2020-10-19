@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/kernels/kernel_runner.h"
+#include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
-#include "tensorflow/lite/micro/testing/test_utils.h"
 
 namespace tflite {
 namespace testing {
@@ -46,8 +46,7 @@ TfLiteStatus ValidateGoldens(TfLiteTensor* tensors, int tensors_size,
   int outputs_array_data[] = {1, 2};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  const TfLiteRegistration registration =
-      tflite::ops::micro::Register_RESIZE_BILINEAR();
+  const TfLiteRegistration registration = Register_RESIZE_BILINEAR();
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
                              outputs_array, params, micro_test::reporter);
 

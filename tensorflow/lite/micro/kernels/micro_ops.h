@@ -34,6 +34,7 @@ namespace tflite {
 TfLiteRegistration Register_CONV_2D();
 TfLiteRegistration Register_DEPTHWISE_CONV_2D();
 TfLiteRegistration Register_QUANTIZE();
+TfLiteRegistration Register_RESIZE_BILINEAR();
 TfLiteRegistration Register_SHAPE();
 TfLiteRegistration Register_SOFTMAX();
 TfLiteRegistration Register_SVDF();
@@ -79,7 +80,6 @@ TfLiteRegistration Register_REDUCE_MAX();
 TfLiteRegistration Register_RELU();
 TfLiteRegistration Register_RELU6();
 TfLiteRegistration Register_RESHAPE();
-TfLiteRegistration Register_RESIZE_BILINEAR();
 TfLiteRegistration Register_RESIZE_NEAREST_NEIGHBOR();
 TfLiteRegistration Register_ROUND();
 TfLiteRegistration Register_RSQRT();
