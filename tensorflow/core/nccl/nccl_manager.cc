@@ -304,7 +304,7 @@ Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
     // Launching of kernels must be serialized so that, given collectives A and
     // B, and an order of them (e.g., A before B), then for each comm_stream
     // involved, the kernel for A is launched before the kernel for B. This is
-    // guaranteed currently be a global mutex controlling additions of the
+    // guaranteed currently by a global mutex controlling additions of the
     // kernels to per-stream launch queues.  The launch queues are processed by
     // LoopKernelLaunches.
     for (auto& comm : communicators_) {
