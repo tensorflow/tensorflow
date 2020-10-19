@@ -250,9 +250,9 @@ def conv(lhs,
          feature_group_count=1,
          precision_config=None,
          name=None):
-  """Wraps the XLA ConvGeneralDilated operator.
+  """Wraps the XLA Conv operator.
 
-  ConvGeneralDilated is the most general form of XLA convolution and is
+  Conv is the most general form of XLA convolution and is
   documented at
   https://www.tensorflow.org/performance/xla/operation_semantics#conv_convolution
 
