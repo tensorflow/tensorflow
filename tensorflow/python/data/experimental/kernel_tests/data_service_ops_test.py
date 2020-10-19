@@ -380,7 +380,6 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDistributeDistributedEpochTensorSlices(self):
-    self.skipTest("b/170910141")
     cluster = self.create_cluster(num_workers=2)
     vals = [5, 1, 2, 4]
     ds = dataset_ops.Dataset.from_tensor_slices(vals)
@@ -390,7 +389,6 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDistributeDistributedEpochInterleave(self):
-    self.skipTest("b/170910141")
     cluster = self.create_cluster(num_workers=2)
     elements = [1, 5, 0]
     ds = dataset_ops.Dataset.from_tensor_slices(elements)
@@ -401,7 +399,6 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDistributeDistributedEpochParallelInterleave(self):
-    self.skipTest("b/170910141")
     cluster = self.create_cluster(num_workers=2)
     elements = [1, 5, 0]
     ds = dataset_ops.Dataset.from_tensor_slices(elements)
@@ -414,7 +411,6 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDistributeDistributedEpochFlatMap(self):
-    self.skipTest("b/170910141")
     cluster = self.create_cluster(num_workers=2)
     elements = [1, 5, 0]
     ds = dataset_ops.Dataset.from_tensor_slices(elements)
@@ -425,7 +421,6 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDistributeDistributedEpochRepeat(self):
-    self.skipTest("b/170910141")
     cluster = self.create_cluster(num_workers=2)
     num_repeats = 5
     num_elements = 20
@@ -437,7 +432,6 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDistributeDistributedEpochShuffleAndRepeat(self):
-    self.skipTest("b/170910141")
     cluster = self.create_cluster(num_workers=2)
     num_repeats = 5
     num_elements = 20
@@ -462,7 +456,6 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDistributeDistributedEpoch(self):
-    self.skipTest("b/170910141")
     cluster = self.create_cluster(num_workers=2)
     num_elements = 100
     ds = dataset_ops.Dataset.range(num_elements)
