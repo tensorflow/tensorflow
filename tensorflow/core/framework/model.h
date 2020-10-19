@@ -517,6 +517,12 @@ class Node {
       absl::flat_hash_map<string, double>* total_bytes) const
       TF_SHARED_LOCKS_REQUIRED(mu_);
 
+  // Compute and return the maximum buffered bytes on the node itself. By
+  // default non-tunable nodes are assumed not to buffer any bytes, so the
+  // tunable nodes as subclasses are expected to override this method to ensure
+  // that the optimization algorithm respects the memory budget.
+  virtual double MaximumBufferedBytes() const TF_SHARED_LOCKS_REQUIRED(mu_);
+
   // Stores the time passed to the last call to `Node::record_start()` on the
   // current thread.
   //

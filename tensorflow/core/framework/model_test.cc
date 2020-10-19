@@ -131,7 +131,9 @@ TEST_P(AsyncKnownRatioTest, Model) {
   async_known_many->record_buffer_event(110, 10);
   EXPECT_EQ(async_known_many->TotalBufferedBytes(), 110);
   EXPECT_EQ(async_known_many->TotalMaximumBufferedBytes(),
-            110 * parallelism / 10);
+            num_inputs_per_output == 0
+                ? 110.0 * parallelism / 10
+                : 110.0 * parallelism / 10 / num_inputs_per_output);
   source1->add_processing_time(100);
   EXPECT_EQ(async_known_many->TotalProcessingTime(/*processing_times=*/nullptr),
             0);
@@ -385,41 +387,12 @@ TEST(UnknownTest, Model) {
   EXPECT_EQ(unknown->OutputTime(&input_times, nullptr), 100);
 }
 
-class TestNode : public model::Node {
- public:
-  using model::Node::Node;
-
-  virtual ~TestNode() {}
-
- protected:
-  std::shared_ptr<Node> Clone(std::shared_ptr<Node> output) const override
-      TF_SHARED_LOCKS_REQUIRED(mu_) {
-    return nullptr;
-  }
-
-  void InputTimeLocked(absl::flat_hash_map<string, double>* input_times)
-      const override TF_SHARED_LOCKS_REQUIRED(mu_) {}
-
-  void OutputTimeLocked(
-      const absl::flat_hash_map<string, double>& input_times,
-      absl::flat_hash_map<string, double>* gradients,
-      absl::flat_hash_map<string, double>* output_times,
-      absl::flat_hash_map<string, double>* output_time_gradients) const override
-      TF_SHARED_LOCKS_REQUIRED(mu_) {
-    (*output_times)[long_name()] = 0;
-  }
-
-  void TotalProcessingTimeLocked(
-      absl::flat_hash_map<string, double>* processing_times,
-      absl::flat_hash_map<string, double>* total_processing_times) override
-      TF_SHARED_LOCKS_REQUIRED(mu_) {
-    (*total_processing_times)[long_name()] = 0;
-  }
-};
-
 TEST(SetterGetterTest, Node) {
-  std::shared_ptr<TestNode> node =
-      std::make_shared<TestNode>(model::Node::Args{-1, "TestNode", nullptr});
+  std::shared_ptr<Node> node = model::MakeAsyncInterleaveManyNode(
+      {-1, "TestNode", nullptr},
+      {model::MakeParameter("parallelism",
+                            std::make_shared<SharedState>(3, nullptr, nullptr),
+                            1, 7)});
   EXPECT_EQ(node->id(), -1);
   EXPECT_EQ(node->name(), "TestNode");
   EXPECT_EQ(node->output(), nullptr);
@@ -428,16 +401,46 @@ TEST(SetterGetterTest, Node) {
   EXPECT_EQ(node->buffered_elements(), 0);
   EXPECT_EQ(node->TotalBufferedBytes(), 0);
   EXPECT_EQ(node->TotalMaximumBufferedBytes(), 0);
-  node->record_buffer_event(42, 0);
-  EXPECT_EQ(node->buffered_bytes(), 42);
-  EXPECT_EQ(node->TotalBufferedBytes(), 0);
-  EXPECT_EQ(node->TotalMaximumBufferedBytes(), 0);
-  EXPECT_EQ(node->buffered_elements(), 0);
-  node->record_buffer_event(0, 11);
-  EXPECT_EQ(node->buffered_bytes(), 42);
-  EXPECT_EQ(node->TotalBufferedBytes(), 0);
-  EXPECT_EQ(node->TotalMaximumBufferedBytes(), 0);
-  EXPECT_EQ(node->buffered_elements(), 11);
+
+  node->record_buffer_event(20, 1);
+  EXPECT_EQ(node->buffered_bytes(), 20);
+  EXPECT_EQ(node->buffered_elements(), 1);
+  EXPECT_EQ(node->TotalBufferedBytes(), 20);
+  EXPECT_EQ(node->TotalMaximumBufferedBytes(), 60);
+
+  node->record_buffer_event(10, 1);
+  EXPECT_EQ(node->buffered_bytes(), 30);
+  EXPECT_EQ(node->buffered_elements(), 2);
+  EXPECT_EQ(node->TotalBufferedBytes(), 30);
+  EXPECT_EQ(node->TotalMaximumBufferedBytes(), 45);
+
+  node->record_buffer_event(18, 1);
+  EXPECT_EQ(node->buffered_bytes(), 48);
+  EXPECT_EQ(node->buffered_elements(), 3);
+  EXPECT_EQ(node->bytes_produced(), 0);
+  EXPECT_EQ(node->num_elements(), 0);
+  EXPECT_EQ(node->TotalBufferedBytes(), 48);
+  EXPECT_EQ(node->TotalMaximumBufferedBytes(), 48);
+
+  node->record_buffer_event(-20, -1);
+  node->record_element();
+  node->record_bytes_produced(20);
+  EXPECT_EQ(node->buffered_bytes(), 28);
+  EXPECT_EQ(node->buffered_elements(), 2);
+  EXPECT_EQ(node->bytes_produced(), 20);
+  EXPECT_EQ(node->num_elements(), 1);
+  EXPECT_EQ(node->TotalBufferedBytes(), 28);
+  EXPECT_EQ(node->TotalMaximumBufferedBytes(), 51);
+
+  node->record_buffer_event(-10, -1);
+  node->record_element();
+  node->record_bytes_produced(10);
+  EXPECT_EQ(node->buffered_bytes(), 18);
+  EXPECT_EQ(node->buffered_elements(), 1);
+  EXPECT_EQ(node->bytes_produced(), 30);
+  EXPECT_EQ(node->num_elements(), 2);
+  EXPECT_EQ(node->TotalBufferedBytes(), 18);
+  EXPECT_EQ(node->TotalMaximumBufferedBytes(), 49.5);
 
   EXPECT_EQ(node->processing_time(), 0);
   node->record_start(1);
@@ -447,22 +450,32 @@ TEST(SetterGetterTest, Node) {
   node->add_processing_time(2);
   EXPECT_EQ(node->processing_time(), 42);
 
-  std::shared_ptr<TestNode> input =
-      std::make_shared<TestNode>(model::Node::Args{-1, "TestInput", node});
+  std::shared_ptr<Node> input = model::MakeAsyncKnownRatioNode(
+      {0, "TestInput", node}, 2,
+      {model::MakeParameter("parallelism",
+                            std::make_shared<SharedState>(5, nullptr, nullptr),
+                            0, 6)});
   EXPECT_EQ(input->output(), node.get());
   EXPECT_EQ(node->inputs().size(), 0);
   node->add_input(input);
   EXPECT_EQ(node->inputs().size(), 1);
   EXPECT_EQ(node->inputs().front(), input);
-  input->record_buffer_event(13, 0);
-  EXPECT_EQ(node->TotalBufferedBytes(), 0);
-  EXPECT_EQ(node->TotalMaximumBufferedBytes(), 0);
+
+  input->record_buffer_event(28, 1);
+  EXPECT_EQ(node->bytes_consumed(), 0);
+  EXPECT_EQ(node->TotalBufferedBytes(), 46);
+  EXPECT_EQ(node->TotalMaximumBufferedBytes(), 119.5);
+
+  input->record_buffer_event(-28, -1);
+  input->record_element();
+  input->record_bytes_produced(28);
+  node->record_bytes_consumed(28);
+  EXPECT_EQ(node->bytes_consumed(), 28);
+  EXPECT_EQ(node->TotalBufferedBytes(), 18);
+  EXPECT_EQ(node->TotalMaximumBufferedBytes(), 119.5);
+
   node->remove_input(input);
   EXPECT_EQ(node->inputs().size(), 0);
-
-  EXPECT_EQ(node->num_elements(), 0);
-  node->record_element();
-  EXPECT_EQ(node->num_elements(), 1);
 }
 
 // Returns a weighted sum of a prior and the actual processing time.
