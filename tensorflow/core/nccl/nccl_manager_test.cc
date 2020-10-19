@@ -859,13 +859,10 @@ TYPED_TEST(NcclManagerTest, BroadcastInconsistentSource) {
 }
 
 #if !TENSORFLOW_USE_ROCM
-<<<<<<< HEAD
-=======
 // ROCm platform currently does not support simulating a mutli-node
 // environment, on a single node with multiple GPUS. So tests that rely
 // upon such simulation need to be skipped on the ROCm platform
 
->>>>>>> google_upstream/master
 TYPED_TEST(NcclManagerTest, Abort) {
   using NodeState = typename TestFixture::NodeState;
   using TestCase = typename TestFixture::TestCase;

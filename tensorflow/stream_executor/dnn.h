@@ -30,11 +30,7 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
-<<<<<<< HEAD
-#include "tensorflow/core/lib/bfloat16/bfloat16.h"
-=======
 #include "tensorflow/stream_executor/data_type.h"
->>>>>>> google_upstream/master
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/dnn.pb.h"
 #include "tensorflow/stream_executor/lib/array_slice.h"
@@ -115,37 +111,6 @@ enum class QuantizedActivationMode {
   k32Bit = 4,
 };
 
-<<<<<<< HEAD
-// A helper class to convert C/C++ types to the proper enums.
-template <typename T>
-struct ToDataType;
-template <>
-struct ToDataType<float> {
-  static constexpr DataType value = DataType::kFloat;
-};
-template <>
-struct ToDataType<double> {
-  static constexpr DataType value = DataType::kDouble;
-};
-template <>
-struct ToDataType<Eigen::half> {
-  static constexpr DataType value = DataType::kHalf;
-};
-template <>
-struct ToDataType<int8> {
-  static constexpr DataType value = DataType::kInt8;
-};
-template <>
-struct ToDataType<int32> {
-  static constexpr DataType value = DataType::kInt32;
-};
-template <>
-struct ToDataType<tensorflow::bfloat16> {
-  static constexpr DataType value = DataType::kBFloat16;
-};
-
-=======
->>>>>>> google_upstream/master
 // Specifies the types of a RNN model.
 enum class RnnMode {
   kRnnRelu = 0,

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <complex>
 
+#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/stream_executor/dnn.pb.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
@@ -58,6 +59,10 @@ struct ToDataType<std::complex<float>> {
 template <>
 struct ToDataType<std::complex<double>> {
   static constexpr DataType value = DataType::kComplexDouble;
+};
+template <>
+struct ToDataType<tensorflow::bfloat16> {
+  static constexpr DataType value = DataType::kBFloat16;
 };
 
 }  // namespace dnn

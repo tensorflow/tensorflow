@@ -486,13 +486,8 @@ template <typename Scalar>
 struct LaunchBatchMatMul<GPUDevice, Scalar> {
   static void Launch(OpKernelContext* context, const Tensor& in_x,
                      const Tensor& in_y, bool adj_x, bool adj_y, bool trans_x,
-<<<<<<< HEAD
-                     bool trans_y, const MatMulBCast& bcast, Tensor* out,
-                     float alpha = 1.0, float beta = 0.0) {
-=======
                      bool trans_y, const MatMulBCast& bcast, bool use_autotune,
-                     Tensor* out) {
->>>>>>> google_upstream/master
+                     Tensor* out, float alpha = 1.0, float beta = 0.0) {
     se::blas::Transpose trans[] = {se::blas::Transpose::kNoTranspose,
                                    se::blas::Transpose::kTranspose,
                                    se::blas::Transpose::kConjugateTranspose};
@@ -687,80 +682,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
         c_ptrs.push_back(&c_device_memory.back());
       }
 
-<<<<<<< HEAD
-    // Blas does
-    // C = A x B
-    // where A, B and C are assumed to be in column major.
-    // We want the output to be in row-major, so we can compute
-    // C' = B' x A', where ' stands for transpose (not adjoint).
-    // TODO(yangzihao): Choose the best of the three strategies using autotune.
-    if (batch_size == 1) {
-      // This is a regular matrix*matrix or matrix*vector multiply. Avoid the
-      // overhead of the scratch allocator and the batch interface.
-      if (n == 1 &&
-          blas_transpose_b != se::blas::Transpose::kConjugateTranspose &&
-          blas_transpose_a != se::blas::Transpose::kConjugateTranspose) {
-        // This is a matrix*vector multiply so use GEMV to compute A * b.
-        // Here we are multiplying in the natural order, so we have to flip
-        // the transposition flag to compensate for the tensor being stored
-        // row-major. Since GEMV doesn't provide a way to just conjugate an
-        // argument, we have to defer those cases to GEMM below.
-        auto gemv_trans_a = blas_transpose_a == se::blas::Transpose::kTranspose
-                                ? se::blas::Transpose::kNoTranspose
-                                : se::blas::Transpose::kTranspose;
-        bool blas_launch_status =
-            stream
-                ->ThenBlasGemv(gemv_trans_a, adj_x || trans_x ? m : k,
-                               adj_x || trans_x ? k : m,
-                               static_cast<Coefficient>(alpha), *(a_ptrs[0]),
-                               adj_x || trans_x ? m : k, *(b_ptrs[0]), 1,
-                               static_cast<Coefficient>(beta), c_ptrs[0], 1)
-                .ok();
-        if (!blas_launch_status) {
-          context->SetStatus(errors::Internal(
-              "Blas xGEMV launch failed : a.shape=", in_x.shape().DebugString(),
-              ", b.shape=", in_y.shape().DebugString(), ", m=", m, ", n=", n,
-              ", k=", k));
-        }
-      } else {
-        bool blas_launch_status =
-            stream
-                ->ThenBlasGemm(blas_transpose_b, blas_transpose_a, n, m, k,
-                               static_cast<Coefficient>(alpha), *(b_ptrs[0]),
-                               adj_y || trans_y ? k : n, *(a_ptrs[0]),
-                               adj_x || trans_x ? m : k,
-                               static_cast<Coefficient>(beta), c_ptrs[0], n)
-                .ok();
-        if (!blas_launch_status) {
-          context->SetStatus(errors::Internal(
-              "Blas xGEMM launch failed : a.shape=", in_x.shape().DebugString(),
-              ", b.shape=", in_y.shape().DebugString(), ", m=", m, ", n=", n,
-              ", k=", k));
-        }
-      }
-    } else if (use_strided_batched) {
-      bool blas_launch_status =
-          stream
-              ->ThenBlasGemmStridedBatched(
-                  blas_transpose_b, blas_transpose_a, n, m, k,
-                  static_cast<Coefficient>(alpha), *b_ptrs[0],
-                  adj_y || trans_y ? k : n, b_stride, *a_ptrs[0],
-                  adj_x || trans_x ? m : k, a_stride,
-                  static_cast<Coefficient>(beta), c_ptrs[0], n, c_stride,
-                  batch_size)
-              .ok();
-      if (!blas_launch_status) {
-        context->SetStatus(errors::Internal(
-            "Blas xGEMMStridedBatched launch failed : a.shape=",
-            in_x.shape().DebugString(),
-            ", b.shape=", in_y.shape().DebugString(), ", m=", m, ", n=", n,
-            ", k=", k, ", batch_size=", batch_size));
-      }
-    } else {
-      BlasScratchAllocator scratch_allocator(context);
-=======
       BlasScratchAllocator scratch_allocator(max_scratch_size, context);
->>>>>>> google_upstream/master
       bool blas_launch_status =
           stream
               ->ThenBlasGemmBatchedWithScratch(
@@ -778,55 +700,8 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
             ", k=", k, ", batch_size=", batch_size));
       }
     }
-<<<<<<< HEAD
-  }
-};
-
-template <>
-struct LaunchBatchMatMul<GPUDevice, Eigen::half> {
-  static void Launch(OpKernelContext* context, const Tensor& in_x,
-                     const Tensor& in_y, bool adj_x, bool adj_y, bool trans_x,
-                     bool trans_y, const MatMulBCast& bcast, Tensor* out,
-                     float alpha = 1.0, float beta = 0.0) {
-    typedef Eigen::half Scalar;
-    se::blas::Transpose trans[] = {se::blas::Transpose::kNoTranspose,
-                                   se::blas::Transpose::kTranspose,
-                                   se::blas::Transpose::kConjugateTranspose};
-    const uint64 m = in_x.dim_size(adj_x || trans_x ? 2 : 1);
-    const uint64 k = in_x.dim_size(adj_x || trans_x ? 1 : 2);
-    const uint64 n = in_y.dim_size(adj_y || trans_y ? 1 : 2);
-    const uint64 batch_size = bcast.output_batch_size();
-    auto blas_transpose_a = trans[adj_x ? 2 : (trans_x ? 1 : 0)];
-    auto blas_transpose_b = trans[adj_y ? 2 : (trans_y ? 1 : 0)];
-
-    auto* stream = context->op_device_context()->stream();
-    OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
-
-    typedef perftools::gputools::DeviceMemory<Scalar> DeviceMemoryType;
-    std::vector<DeviceMemoryType> a_device_memory;
-    std::vector<DeviceMemoryType> b_device_memory;
-    std::vector<DeviceMemoryType> c_device_memory;
-    std::vector<DeviceMemoryType*> a_ptrs;
-    std::vector<DeviceMemoryType*> b_ptrs;
-    std::vector<DeviceMemoryType*> c_ptrs;
-    a_device_memory.reserve(bcast.x_batch_size());
-    b_device_memory.reserve(bcast.y_batch_size());
-    c_device_memory.reserve(batch_size);
-    a_ptrs.reserve(batch_size);
-    b_ptrs.reserve(batch_size);
-    c_ptrs.reserve(batch_size);
-    auto* a_base_ptr = in_x.template flat<Scalar>().data();
-    auto* b_base_ptr = in_y.template flat<Scalar>().data();
-    auto* c_base_ptr = out->template flat<Scalar>().data();
-
-    uint64 a_stride;
-    uint64 b_stride;
-    uint64 c_stride;
-
-=======
     return;
 #else  // if not GOOGLE_CUDA or CUDA_VERSION < 11000
->>>>>>> google_upstream/master
     bool is_full_broadcast =
         std::min(bcast.x_batch_size(), bcast.y_batch_size()) == 1;
     bool use_strided_batched =
@@ -877,22 +752,6 @@ struct LaunchBatchMatMul<GPUDevice, Eigen::half> {
     if (batch_size == 1) {
       // This is a regular matrix*matrix or matrix*vector multiply. Avoid the
       // overhead of the scratch allocator and the batch interface.
-<<<<<<< HEAD
-      // TODO(benbarsdell): Use fp16 Gemv if it becomes supported by CUBLAS
-      bool blas_launch_status =
-          stream
-              ->ThenBlasGemm(blas_transpose_b, blas_transpose_a, n, m, k,
-                             static_cast<Coefficient>(alpha), *(b_ptrs[0]),
-                             adj_y || trans_y ? k : n, *(a_ptrs[0]),
-                             adj_x || trans_x ? m : k,
-                             static_cast<Coefficient>(beta), c_ptrs[0], n)
-              .ok();
-      if (!blas_launch_status) {
-        context->SetStatus(errors::Internal(
-            "Blas xGEMM launch failed : a.shape=", in_x.shape().DebugString(),
-            ", b.shape=", in_y.shape().DebugString(), ", m=", m, ", n=", n,
-            ", k=", k));
-=======
       // Note that the GEMV call here does not support Eigen::half, so we do not
       // use this path in that case. A workaround is applied to the pointers
       // passed to the call itself to avoid compilation errors.
@@ -917,9 +776,9 @@ struct LaunchBatchMatMul<GPUDevice, Eigen::half> {
             stream
                 ->ThenBlasGemv(gemv_trans_a, adj_x || trans_x ? m : k,
                                adj_x || trans_x ? k : m,
-                               static_cast<Coefficient>(1.0), a_ptr,
+                               static_cast<Coefficient>(alpha), a_ptr,
                                adj_x || trans_x ? m : k, b_ptr, 1,
-                               static_cast<Coefficient>(0.0), &c_ptr, 1)
+                               static_cast<Coefficient>(beta), &c_ptr, 1)
                 .ok();
         if (!blas_launch_status) {
           context->SetStatus(errors::Internal(
@@ -931,10 +790,10 @@ struct LaunchBatchMatMul<GPUDevice, Eigen::half> {
         bool blas_launch_status =
             stream
                 ->ThenBlasGemm(blas_transpose_b, blas_transpose_a, n, m, k,
-                               static_cast<Coefficient>(1.0), *(b_ptrs[0]),
+                               static_cast<Coefficient>(alpha), *(b_ptrs[0]),
                                adj_y || trans_y ? k : n, *(a_ptrs[0]),
                                adj_x || trans_x ? m : k,
-                               static_cast<Coefficient>(0.0), c_ptrs[0], n)
+                               static_cast<Coefficient>(beta), c_ptrs[0], n)
                 .ok();
         if (!blas_launch_status) {
           context->SetStatus(errors::Internal(
@@ -942,7 +801,6 @@ struct LaunchBatchMatMul<GPUDevice, Eigen::half> {
               ", b.shape=", in_y.shape().DebugString(), ", m=", m, ", n=", n,
               ", k=", k));
         }
->>>>>>> google_upstream/master
       }
     } else if (use_strided_batched) {
       bool blas_launch_status =

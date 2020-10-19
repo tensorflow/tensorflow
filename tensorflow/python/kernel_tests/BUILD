@@ -289,11 +289,8 @@ cuda_py_test(
     size = "medium",
     srcs = ["collective_ops_test.py"],
     tags = [
-<<<<<<< HEAD
-        "no_rocm",
-=======
         "multi_and_single_gpu",
->>>>>>> google_upstream/master
+        "no_rocm",
     ],
     tfrt_enabled = False,
     deps = [

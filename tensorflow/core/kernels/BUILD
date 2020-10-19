@@ -7380,7 +7380,6 @@ tf_kernel_library(
     name = "gpu_fusion_ops",
     prefix = "gpu_fusion_ops",
     deps = [
-        ":bounds_check",
         ":conv_2d",
         ":conv_ops_gpu_hdrs",
         ":fill_functor",
@@ -7391,6 +7390,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:nn_ops_op_lib",
+        "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/util:image_resizer_state",
         "//third_party/eigen3",
     ],
