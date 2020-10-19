@@ -67,30 +67,23 @@ IOS_FILES = [
     'tensorflow/lite/experimental/swift/TensorFlowLiteSwift.podspec',
 ]
 
-
 class UserInputError(Exception):
   pass
-
 
 def is_windows():
   return platform.system() == 'Windows'
 
-
 def is_linux():
   return platform.system() == 'Linux'
-
 
 def is_macos():
   return platform.system() == 'Darwin'
 
-
 def is_ppc64le():
   return platform.machine() == 'ppc64le'
 
-
 def is_cygwin():
   return platform.system().startswith('CYGWIN_NT')
-
 
 def get_input(question):
   try:
@@ -101,7 +94,6 @@ def get_input(question):
   except EOFError:
     answer = ''
   return answer
-
 
 def symlink_force(target, link_name):
   """Force symlink, equivalent of 'ln -sf'.
@@ -119,7 +111,6 @@ def symlink_force(target, link_name):
     else:
       raise e
 
-
 def sed_in_place(filename, old, new):
   """Replace old string with new string in file.
 
@@ -134,15 +125,11 @@ def sed_in_place(filename, old, new):
   with open(filename, 'w') as f:
     f.write(newdata)
 
-
 def write_to_bazelrc(line):
   with open(_TF_BAZELRC, 'a') as f:
     f.write(line + '\n')
-
-
 def write_action_env_to_bazelrc(var_name, var):
   write_to_bazelrc('build --action_env {}="{}"'.format(var_name, str(var)))
-
 
 def run_shell(cmd, allow_non_zero=False, stderr=None):
   if stderr is None:
@@ -156,11 +143,9 @@ def run_shell(cmd, allow_non_zero=False, stderr=None):
     output = subprocess.check_output(cmd, stderr=stderr)
   return output.decode('UTF-8').strip()
 
-
 def cygpath(path):
   """Convert path from posix to windows."""
   return os.path.abspath(path).replace('\\', '/')
-
 
 def get_python_path(environ_cp, python_bin_path):
   """Get the python site package paths."""
@@ -191,11 +176,9 @@ def get_python_path(environ_cp, python_bin_path):
       paths.append(path)
   return paths
 
-
 def get_python_major_version(python_bin_path):
   """Get the python major version."""
   return run_shell([python_bin_path, '-c', 'import sys; print(sys.version[0])'])
-
 
 def setup_python(environ_cp):
   """Setup python related env variables."""
@@ -284,7 +267,6 @@ def cleanup_makefile():
       for f in filenames:
         if f.endswith('BUILD'):
           os.remove(os.path.join(root, f))
-
 
 def get_var(environ_cp,
             var_name,
