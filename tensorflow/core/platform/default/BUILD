@@ -201,6 +201,7 @@ cc_library(
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:env_time",
         "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:types",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",

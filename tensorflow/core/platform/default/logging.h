@@ -483,15 +483,15 @@ class TFLogEntry {
   TFLogEntry(int severity, absl::string_view fname, int line, absl::string_view message)
       : severity_(AsAbslLogSeverity(severity)), fname_(fname), line_(line), message_(message) {}
 
-  absl::LogSeverity Severity() const { return severity_; }
+  absl::LogSeverity log_severity() const { return severity_; }
   const std::string& FName() const { return fname_; }
   int Line() const { return line_; }
-  const std::string& Message() const { return message_; }
+  const std::string& ToString() const { return message_; }
 
  private:
   const absl::LogSeverity severity_;
   const std::string fname_;
-  int line_ = 0;
+  int line_ = -1;
   const std::string message_;
 };
 

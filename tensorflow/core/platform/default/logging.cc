@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/base/internal/sysinfo.h"
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
 
 #if defined(PLATFORM_POSIX_ANDROID)
 #include <android/log.h>
@@ -32,7 +33,6 @@ limitations under the License.
 #include <time.h>
 
 #include <algorithm>
-#include <mutex>
 #include <queue>
 #include <unordered_map>
 #include <vector>
@@ -40,12 +40,36 @@ limitations under the License.
 namespace tensorflow {
 namespace internal {
 
+// This is an internal singleton class that manages the log sinks. It allows 
+// adding and removing the log sinks, as well as handling sending log messages 
+// to all the registered log sinks.
 class TFLogSinks {
   public:
+    // Gets the TFLogSinks instance. This is the entry point for using this class.
     static TFLogSinks& Instance();
 
+    // Adds a log sink. The sink argument must not be a nullptr. TFLogSinks
+    // takes ownership of the pointer, the user must not free the pointer.
+    // The pointer will remain valid until the application terminates or
+    // until TFLogSinks::Remove is called for the same pointer value.
     void Add(TFLogSink* sink);
+
+    // Removes a log sink. This will also erase the sink object. The pointer
+    // to the sink becomes invalid after this call.
     void Remove(TFLogSink* sink);
+
+    // Sends a log message to all registered log sinks. 
+    //
+    // If there are no log sinks are registered:
+    // 
+    // NO_DEFAULT_LOGGER is defined:
+    // Up to 128 messages will be queued until a log sink is added. 
+    // The queue will then be logged to the first added log sink.
+    // 
+    // NO_DEFAULT_LOGGER is not defined defined:
+    // The messages will be logged using the default logger. The default logger
+    // will log to stdout on all platforms except for Android. On Androit the
+    // default Android logger will be used.
     void Send(const TFLogEntry& entry);
 
   private:
@@ -56,13 +80,11 @@ class TFLogSinks {
 #ifndef NO_DEFAULT_LOGGER
     TFDefaultLogSink default_;
 #else
-    std::queue<TFLogEntry> queue_;
-    static const size_t MAX_QUEUE = 128;
+    std::queue<TFLogEntry> log_entry_queue_;
+    static const size_t KMaxLogEntryQueueSize = 128;
 #endif // NO_DEFAULT_LOGGER
 
-    static std::mutex instanceMutex_;
-    static std::atomic<TFLogSinks*> instance_;
-    std::mutex mutex_;
+    tensorflow::mutex mutex_;
     std::vector<std::unique_ptr<TFLogSink>> sinks_;
 }; // class TFLogSinks
   
@@ -345,28 +367,16 @@ bool LogEveryNSecState::ShouldLog(double seconds) {
   return true;
 }
 
-std::mutex TFLogSinks::instanceMutex_;
-std::atomic<TFLogSinks*> TFLogSinks::instance_ = ATOMIC_VAR_INIT(nullptr);
-
 TFLogSinks& TFLogSinks::Instance() {
-  auto instance = instance_.load(std::memory_order_acquire);
-  if(!instance) {
-    std::lock_guard<std::mutex> lock(instanceMutex_);
-    instance = instance_.load(std::memory_order_relaxed);
-    if(!instance) {
-      instance = new TFLogSinks;
-      instance_.store(instance, std::memory_order_release);
-    }
-  }
-
-  return *instance;
+  static TFLogSinks instance;
+  return instance;
 }
 
 void TFLogSinks::Add(TFLogSink* sink) {
   if(sink == nullptr) {
     return;
   }
-  std::lock_guard<std::mutex> lock(mutex_);
+  tensorflow::mutex_lock<tensorflow::mutex> lock(mutex_);
   auto it = FindSink(sink);
   if(it == sinks_.end()) {
     sinks_.emplace_back(sink);
@@ -377,7 +387,7 @@ void TFLogSinks::Remove(TFLogSink* sink) {
   if(sink == nullptr) {
     return;
   }
-  std::lock_guard<std::mutex> lock(mutex_);
+  tensorflow::mutex_lock<tensorflow::mutex> lock(mutex_);
   auto it = FindSink(sink);
   if(it != sinks_.end()) {
     sinks_.erase(it);
@@ -385,7 +395,7 @@ void TFLogSinks::Remove(TFLogSink* sink) {
 }
 
 void TFLogSinks::Send(const TFLogEntry& entry) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  tensorflow::mutex_lock<tensorflow::mutex> lock(mutex_);
 #ifndef NO_DEFAULT_LOGGER
   // If we don't have any sinks registered, just dump everything to stderr
   if(sinks_.empty()) {
@@ -400,19 +410,19 @@ void TFLogSinks::Send(const TFLogEntry& entry) {
   // If we don't have any sinks registered, queue them up
   if(sinks_.empty()) {
     // If we've exceeded the maximum queue size, drop the oldest entries
-    while(queue_.size() >= MAX_QUEUE) {
-      queue_.pop();
+    while(log_entry_queue_.size() >= KMaxLogEntryQueueSize) {
+      log_entry_queue_.pop();
     }
-    queue_.push(entry);
+    log_entry_queue_.push(entry);
     return;
   }
   
   // If we have items in the queue, push them out first
-  while(!queue_.empty()) {
+  while(!log_entry_queue_.empty()) {
     for(const auto& sink : sinks_) {
-      SendToSink(*sink, queue_.front());
+      SendToSink(*sink, log_entry_queue_.front());
     }
-    queue_.pop();
+    log_entry_queue_.pop();
   }
 
   // ... and now we can log the current log entry
@@ -446,7 +456,7 @@ void TFRemoveLogSink(TFLogSink* sink) {
 void TFDefaultLogSink::Send(const TFLogEntry& entry) {
 #ifdef PLATFORM_POSIX_ANDROID
   int android_log_level;
-  switch (entry.Severity()) {
+  switch (entry.log_severity()) {
     case absl::LogSeverity::kInfo:
       android_log_level = ANDROID_LOG_INFO;
       break;
@@ -472,7 +482,7 @@ void TFDefaultLogSink::Send(const TFLogEntry& entry) {
   const auto& fname = entry.FName();
   auto pos = fname.find("/");
   ss << (pos != std::npos ? fname.substr(pos+1) : fname) << ":" << entry.Line()
-     << " " << entry.Message();
+     << " " << entry.ToString();
   __android_log_write(android_log_level, "native", ss.str().c_str());
 
   // Also log to stderr (for standalone Android apps).
@@ -500,7 +510,7 @@ void TFDefaultLogSink::Send(const TFLogEntry& entry) {
   }
 
   char sev;
-  switch(entry.Severity()) {
+  switch(entry.log_severity()) {
     case absl::LogSeverity::kWarning:
       sev = 'W';
       break;
@@ -514,12 +524,14 @@ void TFDefaultLogSink::Send(const TFLogEntry& entry) {
         break;
 
     default:
-      sev =  'I';
+      assert(false && "Unknown logging severity");
+      sev = '?';
+      break;
   }
 
   // TODO(jeff,sanjay): Replace this with something that logs through the env.
   fprintf(stderr, "%s.%06d: %c%s %s:%d] %s\n", time_buffer, micros_remainder,
-          sev, tid_buffer, entry.FName().c_str(), entry.Line(), entry.Message().c_str());
+          sev, tid_buffer, entry.FName().c_str(), entry.Line(), entry.ToString().c_str());
 #endif // PLATFORM_POSIX_ANDROID
 } // TFDefaultLogSink::Send
 
