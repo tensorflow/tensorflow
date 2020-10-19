@@ -1800,23 +1800,9 @@ Status UnaryGradTransposer::TransposeNode(TransposeContext* context,
   const auto* output_shape_attr = node->GetAttr(kAttrOutputShape);
   const auto& shape = output_shape_attr->list().shape(0);
   const int rank = shape.dim_size();
-  std::string src_format = context->src_format;
-  std::string dst_format = context->dst_format;
-  // Update the format from 4D to 5D layout if necessary.
-  bool allow_5d = rank == 5 && (src_format == "NHWC" || src_format == "NCHW");
-  if (allow_5d) {
-    std::string src_format_3d = src_format == "NHWC" ? "NDHWC" : "NCDHW";
-    std::string dst_format_3d = dst_format == "NHWC" ? "NDHWC" : "NCDHW";
-    context->AssignDeviceAndDataFormats(context->target_device, src_format_3d,
-                                        dst_format_3d);
-  }
+  ScopedDataFormatUpgrader data_format_upgrader(context, rank);
   if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, rank) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
-    // Change back to the original layout due to early exit.
-    if (allow_5d) {
-      context->AssignDeviceAndDataFormats(context->target_device, src_format,
-                                          dst_format);
-    }
     return Status::OK();
   }
   VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
@@ -1825,11 +1811,6 @@ Status UnaryGradTransposer::TransposeNode(TransposeContext* context,
   TF_RETURN_IF_ERROR(
       UpdateFaninEdgesWithOp(context, {0, 1}, node, kOpTranspose));
   TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
-  // Change back the format from 5D to 4D layout.
-  if (allow_5d) {
-    context->AssignDeviceAndDataFormats(context->target_device, src_format,
-                                        dst_format);
-  }
   return context->graph_view->GetMutationBuilder()->Apply();
 }
 
