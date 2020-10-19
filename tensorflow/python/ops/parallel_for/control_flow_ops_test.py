@@ -971,6 +971,27 @@ class TensorListTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 2)
 
+  def test_create_outside_and_push_back(self):
+    h = list_ops.tensor_list_reserve([2], 2, dtypes.int32)
+
+    def loop_fn(i):
+      handle = list_ops.tensor_list_push_back(h, [i, 2])
+      handle = list_ops.tensor_list_push_back(handle, [1, 2])
+      handle = list_ops.tensor_list_push_back(handle, [1, 2])
+      return list_ops.tensor_list_stack(handle, dtypes.int32)
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_create_inside_and_push_back(self):
+
+    def loop_fn(i):
+      handle = list_ops.tensor_list_reserve([2], 2, dtypes.int32)
+      handle = list_ops.tensor_list_push_back(handle, [i, 2])
+      handle = list_ops.tensor_list_push_back(handle, [1, 2])
+      return list_ops.tensor_list_stack(handle, dtypes.int32)
+
+    self._test_loop_fn(loop_fn, 3)
+
   def test_create_outside_and_scatter(self):
     h = list_ops.tensor_list_reserve([2], 2, dtypes.int32)
 
