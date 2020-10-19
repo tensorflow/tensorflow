@@ -1933,6 +1933,14 @@ static Attribute UnaryFolder(Op* op, ArrayRef<Attribute> attrs) {
   return DenseElementsAttr::get(type, values);
 }
 
+struct round {
+  APFloat operator()(const APFloat& f) {
+    APFloat r = f;
+    r.roundToIntegral(llvm::RoundingMode::NearestTiesToAway);
+    return r;
+  }
+};
+
 #define UNARY_FOLDER(Op, Func)                                                \
   OpFoldResult Op::fold(ArrayRef<Attribute> attrs) {                          \
     if (getElementTypeOrSelf(getType()).isa<FloatType>())                     \
@@ -1942,7 +1950,15 @@ static Attribute UnaryFolder(Op* op, ArrayRef<Attribute> attrs) {
     return {};                                                                \
   }
 
+#define UNARY_FOLDER_FLOAT(Op, Func)                                 \
+  OpFoldResult Op::fold(ArrayRef<Attribute> attrs) {                 \
+    if (getElementTypeOrSelf(getType()).isa<FloatType>())            \
+      return UnaryFolder<Op, FloatType, APFloat, Func>(this, attrs); \
+    return {};                                                       \
+  }
+
 UNARY_FOLDER(NegOp, std::negate);
+UNARY_FOLDER_FLOAT(RoundOp, round);
 
 //===----------------------------------------------------------------------===//
 // BinaryOps

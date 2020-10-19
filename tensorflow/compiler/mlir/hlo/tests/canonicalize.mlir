@@ -81,6 +81,14 @@ func @remainder_fold_float() -> tensor<4xf32> {
   return %2 : tensor<4xf32>
 }
 
+// CHECK-LABEL: round_fold
+func @round_fold() -> tensor<4xf32> {
+  %0 = mhlo.constant dense<[-1.5, -0.1, 1.1, 2.5]> : tensor<4xf32>
+  %1 = "mhlo.round_nearest_afz"(%0) : (tensor<4xf32>) -> tensor<4xf32>
+  return %1 : tensor<4xf32>
+  // CHECK: mhlo.constant dense<[-2.000000e+00, -0.000000e+00, 1.000000e+00, 3.000000e+00]>
+}
+
 // CHECK-LABEL: max_scalar_fold
 func @max_scalar_fold() -> tensor<4xi64> {
   %0 = mhlo.constant dense<7> : tensor<4xi64>

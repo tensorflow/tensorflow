@@ -241,7 +241,9 @@ def HLO_RealOp: HLO_UnaryElementwiseOp<"real",
 }
 
 def HLO_RoundOp: HLO_UnaryElementwiseOp<"round_nearest_afz",
-    [NoSideEffect, SameOperandsAndResultType], HLO_FpTensor>, BASE_HLO_RoundOp;
+    [NoSideEffect, SameOperandsAndResultType], HLO_FpTensor>, BASE_HLO_RoundOp {
+  let hasFolder = 1;
+}
 
 def HLO_RsqrtOp: HLO_UnaryElementwiseOp<"rsqrt",
     [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor>,
