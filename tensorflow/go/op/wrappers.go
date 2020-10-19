@@ -16067,6 +16067,12 @@ func DecodeImageExpandAnimations(value bool) DecodeImageAttr {
 // False, in which case the op will return 3-dimensional tensors and will truncate
 // animated GIF files to the first frame.
 //
+// *NOTE*: If the first frame of an animated GIF does not occupy the entire
+// canvas (maximum frame width x maximum frame height), then it fills the
+// unoccupied areas (in the first frame) with zeros (black). For frames after the
+// first frame that does not occupy the entire canvas, it uses the previous
+// frame to fill the unoccupied areas.
+//
 // Arguments:
 //	contents: 0-D. The encoded image bytes.
 //
