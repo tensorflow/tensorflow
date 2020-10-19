@@ -28,4 +28,8 @@ tf_module {
     name: "function_executor_type"
     argspec: "args=[\'executor_type\'], varargs=None, keywords=None, defaults=None"
   }
+  member_method {
+    name: "register_filesystem_plugin"
+    argspec: "args=[\'plugin_location\'], varargs=None, keywords=None, defaults=None"
+  }
 }

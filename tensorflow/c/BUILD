@@ -202,6 +202,7 @@ tf_cuda_library(
             ":tf_status",
             ":tf_tensor",
             "@com_google_absl//absl/strings",
+            "//tensorflow/c/experimental/filesystem:modular_filesystem",
             "//tensorflow/cc/saved_model:loader_lite",
             "//tensorflow/cc:gradients",
             "//tensorflow/cc:ops",

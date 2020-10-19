@@ -348,6 +348,8 @@
         context.
     *   Add `tf.config.experimental.mlir_bridge_rollout` which will help us
         rollout the new MLIR TPU bridge.
+    *   Added `tf.experimental.register_filesystem_plugin` to load modular
+        filesystem plugins from Python
     *   <ADD RELEASE NOTES HERE>
 
 ## Thanks to our Contributors
