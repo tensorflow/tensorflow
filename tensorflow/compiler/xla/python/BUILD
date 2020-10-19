@@ -32,7 +32,10 @@ py_test(
     name = "xla_client_backend_independent_test",
     srcs = ["xla_client_backend_independent_test.py"],
     python_version = "PY3",
-    tags = ["no_oss"],  # TODO(phawkins): This test passes, but requires --config=monolithic.
+    tags = [
+         "no_oss",  # TODO(phawkins): This test passes, but requires --config=monolithic.
+         "no_rocm",
+    ],
     deps = [
         ":xla_client",
         ":xla_extension",
