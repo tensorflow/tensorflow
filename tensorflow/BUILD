@@ -239,6 +239,12 @@ config_setting(
 )
 
 config_setting(
+    name = "linux_mips64",
+    values = {"cpu": "mips64"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "debug",
     values = {
         "compilation_mode": "dbg",
