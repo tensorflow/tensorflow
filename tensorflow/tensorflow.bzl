@@ -115,11 +115,6 @@ def tf_android_core_proto_headers(core_proto_sources_relative):
         for p in core_proto_sources_relative
     ])
 
-# Wrapper for portable protos which currently just creates an empty rule.
-def tf_portable_proto_library(name, proto_deps, deps = [], **kwargs):
-    _ignore = [kwargs]
-    cc_library(name = name, deps = deps + [dep + "_cc" for dep in proto_deps])
-
 def tf_portable_full_lite_protos(full, lite):
     return select({
         "//tensorflow:mobile_lite_protos": lite,
