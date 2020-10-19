@@ -1526,7 +1526,7 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
       ReportError(
           "Attempting to use a delegate that only supports static-sized "
           "tensors with a graph that has dynamic-sized tensors.");
-      return kTfLiteError;
+      return kTfLiteApplicationError;
     }
   }
 
