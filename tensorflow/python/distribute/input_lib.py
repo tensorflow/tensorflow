@@ -558,7 +558,7 @@ def _get_next_as_optional(iterator, strategy, return_per_replica=False):
     flattened_data = []
     for per_worker_data in replicas:
       flattened_data.extend(per_worker_data)
-    replicas = _create_per_replica(flattened_data, strategy)
+    replicas = distribute_utils.regroup(flattened_data)
 
   # Run an all-reduce to see whether any worker has values.
   # TODO(b/131423105): we should be able to short-cut the all-reduce in some
@@ -658,7 +658,7 @@ class DistributedIteratorBase(DistributedIteratorInterface):
           # Make `replicas` a flat list of values across all replicas.
           replicas.extend(
               self._iterators[i].get_next_as_list_static_shapes(new_name))
-      return _create_per_replica(replicas, self._strategy)
+      return distribute_utils.regroup(replicas)
 
     out_of_range_replicas = []
     def out_of_range_fn(worker_index, device):
@@ -692,7 +692,7 @@ class DistributedIteratorBase(DistributedIteratorInterface):
             results.append(result)
     replicas = results
 
-    return _create_per_replica(replicas, self._strategy)
+    return distribute_utils.regroup(replicas)
 
 
 class DistributedIteratorV1(DistributedIteratorBase):
@@ -1011,20 +1011,10 @@ class DistributedDataset(_IterableInput):
 
     self._input_workers = input_workers
     self._strategy = strategy
-    element_spec = self._cloned_datasets[0].element_spec
     self._enable_get_next_as_optional = _enable_get_next_as_optional(
-        self._strategy, element_spec)
-    # When partial batch handling is enabled, always set the batch dimension to
-    # None, otherwise we just follow element_spec of the underlying dataset
-    # (whose batch dimension may also be None). This is because with partial
-    # batching handling we could always produce empty batches.
-    #
-    # TODO(b/163362689): avoid this once we have more elegent way to handle
-    # retracing and collectives.
-    if strategy.extended._in_multi_worker_mode():  # pylint: disable=protected-access
-      element_spec = nest.map_structure(_rebatch_as_dynamic, element_spec)
+        self._strategy, dataset.element_spec)
     self._element_spec = _create_distributed_tensor_spec(
-        self._strategy, element_spec)
+        self._strategy, self._cloned_datasets[0].element_spec)
 
   def _make_rebatch_fn(self, dataset, num_workers, num_replicas_in_sync):
     """Returns a callable that rebatches the input dataset.
@@ -1244,15 +1234,6 @@ class DistributedDatasetsFromFunction(_IterableInput):
             self._input_contexts, self._input_workers, dataset_fn))
     self._enable_get_next_as_optional = _enable_get_next_as_optional(
         self._strategy, element_spec)
-    # When partial batch handling is enabled, always set the batch dimension to
-    # None, otherwise we just follow element_spec of the underlying dataset
-    # (whose batch dimension may also be None). This is because with partial
-    # batching handling we could always produce empty batches.
-    #
-    # TODO(b/163362689): avoid this once we have more elegent way to handle
-    # retracing and collectives.
-    if strategy.extended._in_multi_worker_mode():  # pylint: disable=protected-access
-      element_spec = nest.map_structure(_rebatch_as_dynamic, element_spec)
     self._element_spec = _create_distributed_tensor_spec(
         self._strategy, element_spec)
 
@@ -1394,7 +1375,6 @@ class InputFunctionIterator(DistributedIteratorV1):
 
     super(InputFunctionIterator, self).__init__(
         input_workers, iterators, strategy, enable_get_next_as_optional=False)
-    self._enable_get_next_as_optional = False
 
 
 # TODO(anjalisridhar): This class will soon be removed and users should move
@@ -2079,14 +2059,13 @@ def _create_distributed_tensor_spec(strategy, tensor_spec):
   """
   num_replicas = len(strategy.extended.worker_devices)
 
-  # For one device strategy that is not MultiWorkerMirroredStrategy,  return the
-  # tensor_spec as is, since we don't wrap the output with PerReplica in this
-  # case.
-  # TODO(b/166464552): remove after we always wrap for all strategies.
-  if not _always_wrap(strategy):
+  # If the number of devices used in the strategy is just 1 then we return
+  # the tensor_spec as is.
+  if num_replicas == 1:
     return tensor_spec
 
-  # For other cases we assume the input to tf.function is a per replica type.
+  # If the number of devices is greater than 1 then we assume the input to
+  # tf.function is a per replica type.
   def _get_value_per_replica(tensor_spec_per_input):
     value_specs = [tensor_spec_per_input for _ in range(num_replicas)]
     return values.PerReplicaSpec(*value_specs)
@@ -2116,63 +2095,3 @@ def _enable_get_next_as_optional(strategy, element_spec):
     return False
   return not _is_statically_shaped(
       element_spec) or strategy.extended._in_multi_worker_mode()  # pylint: disable=protected-access
-
-
-def _create_per_replica(value_list, strategy):
-  """Creates a PerReplica.
-
-  For strategies other than OneDeviceStrategy, it creates a PerReplica whose
-  type spec is set to the element spec of the dataset. This helps avoid
-  retracing for partial batches. Retracing is problematic for multi client when
-  different client retraces different time, since retracing changes the
-  collective keys in the tf.function, and causes mismatches among clients.
-
-  For single client strategies, this simply calls distribute_utils.regroup().
-
-  Args:
-    value_list: a list of values, one for each replica.
-    strategy: the `tf.distribute.Strategy`.
-
-  Returns:
-    a structure of PerReplica.
-
-  """
-  # TODO(b/166464552): always wrap for all one device strategies as well.
-  always_wrap = _always_wrap(strategy)
-  per_replicas = distribute_utils.regroup(value_list, always_wrap=always_wrap)
-
-  # When partial batch handling is enabled, always set the batch dimension to
-  # None, otherwise we just follow element_spec of the underlying dataset
-  # (whose batch dimension may also be None). This is because with partial
-  # batching handling we could always produce empty batches.
-  #
-  # TODO(b/163362689): avoid this once we have more elegent way to handle
-  # retracing and collectives.
-  if strategy.extended._in_multi_worker_mode():  # pylint: disable=protected-access
-    # Use expand_composites=False since we don't want to expand PerReplica,
-    # which is a CompositeTensor.
-    flat_per_replicas = nest.flatten(per_replicas, expand_composites=False)
-    flat_spec = [type_spec.type_spec_from_value(v) for v in flat_per_replicas]
-    for per_replica, spec in zip(flat_per_replicas, flat_spec):
-      # pylint: disable=protected-access
-      per_replica._type_spec_override = values.PerReplicaSpec(
-          *nest.map_structure(_rebatch_as_dynamic, spec._value_specs))
-      # pylint: enable=protected-access
-    per_replicas = nest.pack_sequence_as(per_replicas, flat_per_replicas)
-
-  return per_replicas
-
-
-def _always_wrap(strategy):
-  """Returns whether to always wrap the values in a DistributedValues."""
-  return strategy.extended._in_multi_worker_mode() or len(  # pylint: disable=protected-access
-      strategy.extended.worker_devices) > 1
-
-
-def _rebatch_as_dynamic(spec):
-  """Rebatch the spec to have a dynamic batch dimension."""
-  # pylint: disable=protected-access
-  if isinstance(spec, type_spec.BatchableTypeSpec) and spec._shape.ndims > 0:
-    return spec._unbatch()._batch(None)
-  # pylint: enable=protected-access
-  return spec
