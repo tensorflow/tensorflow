@@ -376,7 +376,7 @@ void TFLogSinks::Add(TFLogSink* sink) {
   if(sink == nullptr) {
     return;
   }
-  tensorflow::mutex_lock<tensorflow::mutex> lock(mutex_);
+  tensorflow::mutex_lock lock(mutex_);
   auto it = FindSink(sink);
   if(it == sinks_.end()) {
     sinks_.emplace_back(sink);
@@ -387,7 +387,7 @@ void TFLogSinks::Remove(TFLogSink* sink) {
   if(sink == nullptr) {
     return;
   }
-  tensorflow::mutex_lock<tensorflow::mutex> lock(mutex_);
+  tensorflow::mutex_lock lock(mutex_);
   auto it = FindSink(sink);
   if(it != sinks_.end()) {
     sinks_.erase(it);
@@ -395,7 +395,7 @@ void TFLogSinks::Remove(TFLogSink* sink) {
 }
 
 void TFLogSinks::Send(const TFLogEntry& entry) {
-  tensorflow::mutex_lock<tensorflow::mutex> lock(mutex_);
+  tensorflow::mutex_lock lock(mutex_);
 #ifndef NO_DEFAULT_LOGGER
   // If we don't have any sinks registered, just dump everything to stderr
   if(sinks_.empty()) {
