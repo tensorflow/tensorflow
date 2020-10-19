@@ -339,7 +339,7 @@ py_test(
     size = "small",
     srcs = ["python/op_reg_gen_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
     deps = [
         ":composite",
         ":op_reg_gen",
