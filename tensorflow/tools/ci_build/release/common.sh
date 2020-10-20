@@ -103,50 +103,6 @@ function update_bazel_linux {
 # LINT.ThenChange(
 #   //tensorflow_estimator/google/kokoro/common.sh)
 
-function install_pip2 {
-  curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
-  sudo python2 get-pip.py
-}
-
-function install_pip_deps {
-  SUDO_CMD=""
-  PIP_CMD="pip"
-
-  while true; do
-    if [[ -z "${1}" ]]; then
-      break
-    fi
-    if [[ "$1" == "sudo" ]]; then
-      SUDO_CMD="sudo "
-    elif [[ "$1" == "pip"* ]]; then
-      PIP_CMD="$1"
-    fi
-    shift
-  done
-
-  # LINT.IfChange(ubuntu_pip_installations)
-  # TODO(aselle): Change all these to be --user instead of sudo.
-  ${SUDO_CMD} ${PIP_CMD} install astunparse==1.6.3
-  ${SUDO_CMD} ${PIP_CMD} install keras_preprocessing==1.1.0 --no-deps
-  "${PIP_CMD}" install numpy==1.16.0 --user
-  "${PIP_CMD}" install PyYAML==3.13 --user
-  ${SUDO_CMD} ${PIP_CMD} install gast==0.3.3
-  ${SUDO_CMD} ${PIP_CMD} install h5py==2.10.0
-  ${SUDO_CMD} ${PIP_CMD} install six==1.12.0
-  ${SUDO_CMD} ${PIP_CMD} install grpcio
-  ${SUDO_CMD} ${PIP_CMD} install portpicker
-  ${SUDO_CMD} ${PIP_CMD} install scipy
-  ${SUDO_CMD} ${PIP_CMD} install scikit-learn
-  ${SUDO_CMD} ${PIP_CMD} install typing_extensions
-  ${SUDO_CMD} ${PIP_CMD} install --upgrade tb-nightly
-  ${PIP_CMD} install --user --upgrade flatbuffers
-  ${PIP_CMD} install --user --upgrade attrs
-  ${PIP_CMD} install --user --upgrade tf-estimator-nightly
-  ${PIP_CMD} install --user --upgrade "future>=0.17.1"
-  ${PIP_CMD} install --user --upgrade wrapt
-  # LINT.ThenChange(:ubuntu_16_pip_installations)
-}
-
 function install_ubuntu_16_pip_deps {
   PIP_CMD="pip"
 
@@ -160,30 +116,42 @@ function install_ubuntu_16_pip_deps {
     shift
   done
 
-  # LINT.IfChange(ubuntu_16_pip_installations)
-  "${PIP_CMD}" install astunparse==1.6.3 --user
-  "${PIP_CMD}" install --user --upgrade attrs
-  "${PIP_CMD}" install --user --upgrade flatbuffers
-  "${PIP_CMD}" install keras_preprocessing==1.1.0 --no-deps --user
-  "${PIP_CMD}" install numpy==1.16.0 --user
-  "${PIP_CMD}" install --user --upgrade "future>=0.17.1"
-  "${PIP_CMD}" install gast==0.3.3 --user
-  "${PIP_CMD}" install h5py==2.10.0 --user
-  "${PIP_CMD}" install six==1.12.0 --user
-  "${PIP_CMD}" install grpcio --user
-  "${PIP_CMD}" install portpicker --user
-  "${PIP_CMD}" install scipy --user
-  "${PIP_CMD}" install scikit-learn --user
-  "${PIP_CMD}" install typing_extensions --user
-  "${PIP_CMD}" install PyYAML==3.13 --user
-  # b/156523241
-  "${PIP_CMD}" install --force-reinstall --user --upgrade tf-estimator-nightly
-  "${PIP_CMD}" install --user --upgrade tb-nightly
-  "${PIP_CMD}" install --user --upgrade wrapt
-  # LINT.ThenChange(:ubuntu_pip_installations)
+  # LINT.IfChange(linux_pip_installations)
+  # To have reproducible builds, these dependencies should be pinned always.
+  # Prefer pinning to the same version as in setup.py
+  # First, upgrade pypi wheels
+  "${PIP_CMD}" install --user --upgrade setuptools pip wheel
+  # Now, install the deps, as listed in setup.py
+  "${PIP_CMD}" install --user 'absl-py ~= 0.10'
+  "${PIP_CMD}" install --user 'astunparse ~= 1.6.3'
+  "${PIP_CMD}" install --user 'flatbuffers ~= 1.12.0'
+  "${PIP_CMD}" install --user 'google_pasta ~= 0.2'
+  "${PIP_CMD}" install --user 'h5py ~= 2.10.0'
+  "${PIP_CMD}" install --user 'keras_preprocessing ~= 1.1.2'
+  "${PIP_CMD}" install --user 'numpy ~= 1.19.2'
+  "${PIP_CMD}" install --user 'opt_einsum ~= 3.3.0'
+  "${PIP_CMD}" install --user 'protobuf ~= 3.13.0'
+  "${PIP_CMD}" install --user 'six ~= 1.15.0'
+  "${PIP_CMD}" install --user 'termcolor ~= 1.1.0'
+  "${PIP_CMD}" install --user 'typing_extensions ~= 3.7.4'
+  "${PIP_CMD}" install --user 'wheel ~= 0.35'
+  "${PIP_CMD}" install --user 'wrapt ~= 1.12.1'
+  # We need to pin gast dependency exactly
+  "${PIP_CMD}" install --user 'gast == 0.3.3'
+  # Finally, install tensorboard and estimator
+  # Note that here we want the latest version that matches (b/156523241)
+  "${PIP_CMD}" install --user --upgrade --force-reinstall 'tb-nightly ~= 2.4.0.a'
+  "${PIP_CMD}" install --user --upgrade --force-reinstall 'tensorflow_estimator ~= 2.3.0'
+  # Test dependencies
+  "${PIP_CMD}" install --user 'grpcio ~= 1.32.0'
+  "${PIP_CMD}" install --user 'portpicker ~= 1.3.1'
+  "${PIP_CMD}" install --user 'scipy ~= 1.5.2'
+  # LINT.ThenChange(:mac_pip_installations)
 }
 
 function install_macos_pip_deps {
+  # TODO(mihaimaruseac): Remove need for sudo, then this can be merged with
+  # above (probably needs to convert to venv too).
   SUDO_CMD=""
   PIP_CMD="pip"
 
@@ -202,30 +170,37 @@ function install_macos_pip_deps {
     shift
   done
 
-   # High Sierra pip for Python2.7 installs don't work as expected.
-   if [[ "${PIP_CMD}" == "pip" ]]; then
-    PIP_CMD="python -m pip"
-    SUDO_CMD="sudo -H "
-   fi
-
-  # TODO(aselle): Change all these to be --user instead of sudo.
-  ${SUDO_CMD} ${PIP_CMD} install --upgrade setuptools==39.1.0
-  ${SUDO_CMD} ${PIP_CMD} install keras_preprocessing==1.1.0 --no-deps
-  ${SUDO_CMD} ${PIP_CMD} install --upgrade mock portpicker scipy grpcio
-  ${SUDO_CMD} ${PIP_CMD} install six==1.12.0
-  ${SUDO_CMD} ${PIP_CMD} install scikit-learn
-  ${SUDO_CMD} ${PIP_CMD} install numpy==1.16.0
-  ${SUDO_CMD} ${PIP_CMD} install gast==0.3.3
-  ${SUDO_CMD} ${PIP_CMD} install h5py==2.10.0
-  ${SUDO_CMD} ${PIP_CMD} install typing_extensions
-  ${SUDO_CMD} ${PIP_CMD} install --upgrade grpcio
-  ${SUDO_CMD} ${PIP_CMD} install --upgrade tb-nightly
-  ${PIP_CMD} install --user --upgrade flatbuffers
-  ${PIP_CMD} install --user --upgrade attrs
-  # b/156523241
-  ${PIP_CMD} install --force-reinstall --user --upgrade tf-estimator-nightly
-  ${PIP_CMD} install --user --upgrade wrapt
-  ${PIP_CMD} install --user --upgrade "future>=0.17.1"
+  # LINT.IfChange(mac_pip_installations)
+  # To have reproducible builds, these dependencies should be pinned always.
+  # Prefer pinning to the same version as in setup.py
+  # First, upgrade pypi wheels
+  "${PIP_CMD}" install --user --upgrade setuptools pip wheel
+  # Now, install the deps, as listed in setup.py
+  "${PIP_CMD}" install --user 'absl-py ~= 0.10'
+  "${PIP_CMD}" install --user 'astunparse ~= 1.6.3'
+  "${PIP_CMD}" install --user 'flatbuffers ~= 1.12.0'
+  "${PIP_CMD}" install --user 'google_pasta ~= 0.2'
+  "${PIP_CMD}" install --user 'h5py ~= 2.10.0'
+  "${PIP_CMD}" install --user 'keras_preprocessing ~= 1.1.2'
+  "${PIP_CMD}" install --user 'numpy ~= 1.19.2'
+  "${PIP_CMD}" install --user 'opt_einsum ~= 3.3.0'
+  "${PIP_CMD}" install --user 'protobuf ~= 3.13.0'
+  "${PIP_CMD}" install --user 'six ~= 1.15.0'
+  "${PIP_CMD}" install --user 'termcolor ~= 1.1.0'
+  "${PIP_CMD}" install --user 'typing_extensions ~= 3.7.4'
+  "${PIP_CMD}" install --user 'wheel ~= 0.35'
+  "${PIP_CMD}" install --user 'wrapt ~= 1.12.1'
+  # We need to pin gast dependency exactly
+  "${PIP_CMD}" install --user 'gast == 0.3.3'
+  # Finally, install tensorboard and estimator
+  # Note that here we want the latest version that matches (b/156523241)
+  "${PIP_CMD}" install --user --upgrade --force-reinstall 'tb-nightly ~= 2.4.0.a'
+  "${PIP_CMD}" install --user --upgrade --force-reinstall 'tensorflow_estimator ~= 2.3.0'
+  # Test dependencies
+  "${PIP_CMD}" install --user 'grpcio ~= 1.32.0'
+  "${PIP_CMD}" install --user 'portpicker ~= 1.3.1'
+  "${PIP_CMD}" install --user 'scipy ~= 1.5.2'
+  # LINT.ThenChange(:linux_pip_installations)
 }
 
 function maybe_skip_v1 {
