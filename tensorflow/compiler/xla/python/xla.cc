@@ -899,7 +899,8 @@ PYBIND11_MODULE(xla_extension, m) {
                  ShapeIndex(param_index.begin(), param_index.end()));
            });
 
-  m.def("buffer_to_dlpack_managed_tensor", BufferToDLPackManagedTensor);
+  m.def("buffer_to_dlpack_managed_tensor", BufferToDLPackManagedTensor,
+        py::arg("buffer"), py::arg("take_ownership") = true);
   m.def("dlpack_managed_tensor_to_buffer", DLPackManagedTensorToBuffer);
 
   py::enum_<PrecisionConfig::Precision>(m, "PrecisionConfig_Precision")

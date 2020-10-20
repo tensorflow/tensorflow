@@ -505,6 +505,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
       self._ExecuteAndCompareExact(
           c, expected=[np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], dtype=dtype)])
 
+    # pyformat: disable
     @parameterized.named_parameters({
         "testcase_name": "_{}_{}".format(src_dtype.__name__,
                                          dst_dtype.__name__),
@@ -512,6 +513,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
         "dst_dtype": dst_dtype,
     } for src_dtype, dst_dtype in itertools.permutations(
         [np.bool, np.int32, np.int64, np.float32, np.float64], 2))
+    # pyformat: enable
     def testConvertElementType(self, src_dtype, dst_dtype):
       if ((src_dtype in [np.int64, np.float64] or
            dst_dtype in [np.int64, np.float64]) and
@@ -531,6 +533,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
       self.assertEqual(result[0].dtype, expected.dtype)
       np.testing.assert_equal(result[0], expected)
 
+    # pyformat: disable
     @parameterized.named_parameters(
         {
             "testcase_name": "_{}_{}".format(src_dtype.__name__,
@@ -540,6 +543,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
         }
         for dtypes in [[np.int32, np.float32], [np.int64, np.float64]]
         for src_dtype, dst_dtype in itertools.permutations(dtypes, 2))
+    # pyformat: enable
     def testBitcastConvertType(self, src_dtype, dst_dtype):
       if (np.float64 in (src_dtype, dst_dtype) and
           self.backend.platform == "tpu"):
@@ -1875,34 +1879,66 @@ def TestFactory(xla_backend, cloud_tpu=False):
         self.skipTest("DLPack requires CPU or GPU")
 
     # pylint: disable=g-complex-comprehension
+    # pyformat: disable
     @parameterized.named_parameters({
-        "testcase_name": FormatShapeAndDtype(shape, dtype),
+        "testcase_name": "{}_own={}".format(FormatShapeAndDtype(shape, dtype),
+                                            take_ownership),
         "dtype": dtype,
-        "shape": shape
-    } for dtype in dlpack_dtypes for shape in testcase_shapes)
-    def testRoundTrip(self, dtype, shape):
+        "shape": shape,
+        "take_ownership": take_ownership
+    } for dtype in dlpack_dtypes for shape in testcase_shapes
+                                    for take_ownership in [False, True])
+    # pyformat: enable
+    def testRoundTrip(self, dtype, shape, take_ownership):
       x = np.array(np.random.rand(*shape) * 100, dtype=dtype)
       buffer = self.backend.buffer_from_pyval(x)
-      dlt = xla_client._xla.buffer_to_dlpack_managed_tensor(buffer)
+      dlt = xla_client._xla.buffer_to_dlpack_managed_tensor(
+          buffer, take_ownership=take_ownership)
       del buffer  # Free "buffer" to make sure dlt retains ownership.
       self.assertEqual(type(dlt).__name__, "PyCapsule")
-      y = xla_client._xla.dlpack_managed_tensor_to_buffer(
-          dlt, self.backend)
+      y = xla_client._xla.dlpack_managed_tensor_to_buffer(dlt, self.backend)
       np.testing.assert_array_equal(x, y.to_py())
 
     def testTensorsCanBeConsumedOnceOnly(self):
       x = np.array(np.random.rand(3, 4, 5, 6), dtype=np.float32)
       buffer = self.backend.buffer_from_pyval(x)
-      dlt = xla_client._xla.buffer_to_dlpack_managed_tensor(buffer)
+      dlt = xla_client._xla.buffer_to_dlpack_managed_tensor(
+          buffer, take_ownership=True)
 
       def ConsumeDLPackTensor():
-        _ = xla_client._xla.dlpack_managed_tensor_to_buffer(
-            dlt, self.backend)
+        _ = xla_client._xla.dlpack_managed_tensor_to_buffer(dlt, self.backend)
 
       ConsumeDLPackTensor()
       self.assertRaisesRegex(
           RuntimeError, ".*a DLPack tensor may be consumed at most once.*",
           ConsumeDLPackTensor)
+
+    def testTensorsCanBeOwnedOnceOnly(self):
+      x = np.array(np.random.rand(3, 4, 5, 6), dtype=np.float32)
+      buffer = self.backend.buffer_from_pyval(x)
+      _ = xla_client._xla.buffer_to_dlpack_managed_tensor(
+          buffer, take_ownership=True)
+      self.assertTrue(buffer.is_deleted())
+      with self.assertRaisesRegex(
+          RuntimeError,
+          "Cannot convert deleted/invalid buffer to DLPack tensor.*"):
+        _ = xla_client._xla.buffer_to_dlpack_managed_tensor(
+            buffer, take_ownership=True)
+
+    def testNonOwnedDlpackCanBeViewedTwice(self):
+      x = np.array(np.random.rand(3, 4, 5, 6), dtype=np.float32)
+      buffer = self.backend.buffer_from_pyval(x)
+      d1 = xla_client._xla.buffer_to_dlpack_managed_tensor(
+          buffer, take_ownership=False)
+      d2 = xla_client._xla.buffer_to_dlpack_managed_tensor(
+          buffer, take_ownership=False)
+
+      y = xla_client._xla.dlpack_managed_tensor_to_buffer(d1, self.backend)
+      z = xla_client._xla.dlpack_managed_tensor_to_buffer(d2, self.backend)
+      del d1, d2
+      np.testing.assert_array_equal(x, buffer.to_py())
+      np.testing.assert_array_equal(x, y.to_py())
+      np.testing.assert_array_equal(x, z.to_py())
 
   tests.append(DLPackTest)
 

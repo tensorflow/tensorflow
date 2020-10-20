@@ -239,6 +239,7 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":py_client",
+        ":python_ref_manager",
         ":traceback",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
