@@ -188,22 +188,20 @@ Type GetSumAccumulationType(Type input_type) {
   return input_type;
 }
 
-// Returns axis in HLO format from TF elements attr with exactly one element
-// containing axis in the TensorFlow format. TensorFlow format supports negative
-// indexing unlike HLO.
-static IntegerAttr GetHLOAxisFromTFAxis(ElementsAttr attr, int64_t rank,
+// Returns axis in HLO format from TF elements attr with exactly one element or
+// is an IntegerAttr, containing axis in the TensorFlow format. TensorFlow
+// format supports negative indexing unlike HLO.
+static IntegerAttr GetHLOAxisFromTFAxis(Attribute attr, int64_t rank,
                                         Builder *b) {
-  SmallVector<uint64_t, 1> index(attr.getType().getRank(), 0);
-  int64_t axis = attr.getValue<IntegerAttr>(index).getInt();
-  if (axis < 0) {
-    axis += rank;
+  IntegerAttr intAttr = attr.dyn_cast_or_null<IntegerAttr>();
+  if (auto elementAttr = attr.dyn_cast_or_null<ElementsAttr>()) {
+    SmallVector<uint64_t, 1> index(elementAttr.getType().getRank(), 0);
+    intAttr = elementAttr.getValue<IntegerAttr>(index);
   }
-  return b->getI64IntegerAttr(axis);
-}
 
-static IntegerAttr GetHLOAxisFromTFAxis(IntegerAttr attr, int64_t rank,
-                                        Builder *b) {
-  int64_t axis = attr.getInt();
+  assert(intAttr && "Invalid attribute passed to GetHLOAxisFromTFAxis");
+
+  int64_t axis = intAttr.getInt();
   if (axis < 0) {
     axis += rank;
   }
