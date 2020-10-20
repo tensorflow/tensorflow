@@ -297,6 +297,7 @@
                 `TfLiteGpuDelegateOptionsV2::is_precision_loss_allowed`.
     *   `DynamicBuffer::AddJoinedString()` will now add a separator if the first
         string to be joined is empty.
+    *  Added support for cumulative sum (cumsum), both as builtin op and MLIR conversion.
     *   <ADD RELEASE NOTES HERE>
 
 *   `tf.random`:
