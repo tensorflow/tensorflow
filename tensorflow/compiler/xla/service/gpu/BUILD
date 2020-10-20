@@ -1642,7 +1642,6 @@ tf_cc_test(
     tags = [
         "gpu",
         "no_oss",
-        "no_rocm",
         "noasan",
         "nomsan",
         "requires-gpu-sm70",
