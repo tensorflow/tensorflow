@@ -2007,7 +2007,8 @@ class CentralCropTest(test_util.TensorFlowTestCase):
           self.assertTrue(y.op.name.startswith("central_crop"))
 
 
-class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
+class PadToBoundingBoxTest(test_util.TensorFlowTestCase,
+                           parameterized.TestCase):
 
   def _PadToBoundingBox(self, x, offset_height, offset_width, target_height,
                         target_width, use_tensor_inputs):
@@ -2172,7 +2173,10 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
           "inner 3 dims of \\'image.shape\\' must be > 0",
           use_tensor_inputs_options=[True])
 
-  def testBadParams(self):
+  def testBadParamsScalarInputs(self):
+    # In this test, inputs do not get converted to tensors before calling the
+    # tf.function. The error message here is raised in python
+    # since the python function has direct access to the scalars.
     x_shape = [3, 3, 1]
     x = np.zeros(x_shape)
 
@@ -2187,9 +2191,49 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
          "height must be <= target - offset"),
         (0, 2, 4, 4,
          "width must be <= target - offset"))
-
     for config_item in test_config:
-      self._assertRaises(x, x_shape, *config_item)
+      self._assertRaises(
+          x, x_shape, *config_item, use_tensor_inputs_options=[False])
+
+  def testBadParamsTensorInputsEager(self):
+    # In this test inputs get converted to EagerTensors before calling the
+    # tf.function. The error message here is raised in python
+    # since the python function has direct access to the tensor's values.
+    with context.eager_mode():
+      x_shape = [3, 3, 1]
+      x = np.zeros(x_shape)
+
+      # Each line is a test configuration:
+      #   offset_height, offset_width, target_height, target_width, err_msg
+      test_config = (
+          (-1, 0, 4, 4,
+           "offset_height must be >= 0"),
+          (0, -1, 4, 4,
+           "offset_width must be >= 0"),
+          (2, 0, 4, 4,
+           "height must be <= target - offset"),
+          (0, 2, 4, 4,
+           "width must be <= target - offset"))
+      for config_item in test_config:
+        self._assertRaises(
+            x, x_shape, *config_item, use_tensor_inputs_options=[True])
+
+  @parameterized.named_parameters([("OffsetHeight", (-1, 0, 4, 4)),
+                                   ("OffsetWidth", (0, -1, 4, 4)),
+                                   ("Height", (2, 0, 4, 4)),
+                                   ("Width", (0, 2, 4, 4))])
+  def testBadParamsTensorInputsGraph(self, config):
+    # In this test inputs get converted to tensors before calling the
+    # tf.function. The error message here is raised during shape inference.
+    with context.graph_mode():
+      x_shape = [3, 3, 1]
+      x = np.zeros(x_shape)
+      self._assertRaises(
+          x,
+          x_shape,
+          *config,
+          "Paddings must be non-negative",
+          use_tensor_inputs_options=[True])
 
   def testNameScope(self):
     # Testing name scope requires a graph.

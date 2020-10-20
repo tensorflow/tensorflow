@@ -162,7 +162,8 @@
         stateful ops.
     *   Added `tf.config.experimental.get_memory_usage` to return total memory
         usage of the device.
-    * Added gradients for `RaggedTensorToVariant` and `RaggedTensorFromVariant`.
+    *   Added gradients for `RaggedTensorToVariant` and `RaggedTensorFromVariant`.
+    *   Improve shape inference of nested function calls by supporting constant folding across Arg nodes which makes more static values available to shape inference functions.
 *   `tf.data`:
     *   tf.data service:
     *   Added new `tf.data.experimental.service.register_dataset` and
