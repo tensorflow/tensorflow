@@ -48,7 +48,7 @@ namespace {
 using ::tensorflow::RemoteProfilerSessionManagerOptions;
 
 // Profiler gives grace after profiling duration to terminate.
-constexpr absl::Duration kSessionGraceTime = absl::Seconds(5);
+constexpr absl::Duration kSessionGraceTime = absl::Seconds(10);
 
 tensorflow::Status ValidateHostPortPair(absl::string_view host_port) {
   tensorflow::uint32 port;
