@@ -456,7 +456,7 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
     self.assertIn('minimize', dir_result)  # Attribute
     self.assertIn('loss_scale', dir_result)  # Attribute
     self.assertNotIn('nesterov', dir_result)  # Attribute on inner optimizer
-    self.assertIn('nesterov', dir(lso._optimizer))
+    self.assertIn('nesterov', dir(lso.inner_optimizer))
 
   def testApplyGradientsGetsUnwrappedTensors(self):
     # Tests that gradients passed to apply_gradients are not wrapped in a
@@ -776,7 +776,7 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
 
     # Test attributes on the optimizer
     self.assertEqual(self.evaluate(opt.lr), 2.)
-    self.assertEqual(self.evaluate(opt._optimizer.lr), 2.)
+    self.assertEqual(self.evaluate(opt.inner_optimizer.lr), 2.)
     self.assertEqual(self.evaluate(opt.momentum), 0.5)
     self.assertEqual(self.evaluate(opt.loss_scale), 2.)
     self.assertEqual(opt.initial_scale, 2.)
@@ -843,7 +843,7 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
 
     # Test attributes on the optimizer
     self.assertEqual(self.evaluate(opt.lr), 2.)
-    self.assertEqual(self.evaluate(opt._optimizer.lr), 2.)
+    self.assertEqual(self.evaluate(opt.inner_optimizer.lr), 2.)
     self.assertEqual(self.evaluate(opt.momentum), 0.5)
     self.assertEqual(self.evaluate(opt.loss_scale), 2.)
     self.assertEqual(opt.initial_scale, 2.)
@@ -912,7 +912,7 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
     self.evaluate(variables.global_variables_initializer())
 
     self.assertEqual(self.evaluate(opt.lr), 2.)
-    self.assertEqual(self.evaluate(opt._optimizer.momentum), 0.5)
+    self.assertEqual(self.evaluate(opt.inner_optimizer.momentum), 0.5)
     self.assertEqual(self.evaluate(opt.loss_scale), 2.)
     self.assertEqual(opt.dynamic_growth_steps, 3.)
     self.assertTrue(opt.dynamic, 4.)
@@ -947,10 +947,10 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
     self.evaluate(variables.global_variables_initializer())
 
     self.assertEqual(self.evaluate(opt.lr), 2.)
-    self.assertEqual(self.evaluate(opt._optimizer.momentum), 0.5)
+    self.assertEqual(self.evaluate(opt.inner_optimizer.momentum), 0.5)
     self.assertEqual(self.evaluate(opt.loss_scale), 2.)
     self.assertEqual(opt.dynamic_growth_steps, 3.)
-    self.assertEqual(opt._optimizer.my_attribute, 123)
+    self.assertEqual(opt.inner_optimizer.my_attribute, 123)
 
   def testUnsupportedStrategy(self):
     strategy = central_storage_strategy.CentralStorageStrategy()

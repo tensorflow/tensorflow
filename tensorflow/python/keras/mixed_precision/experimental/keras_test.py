@@ -141,7 +141,11 @@ class KerasLayerTest(keras_parameterized.TestCase):
         y = layer(x)
         self.assertEqual(layer.v.dtype, dtypes.float32)
         self.assertEqual(y.dtype, dtype)
+        self.assertEqual(layer.dtype_policy.name, policy_name)
+        self.assertIsInstance(layer.dtype_policy, policy.Policy)
+        self.assertEqual(layer.compute_dtype, dtype)
         self.assertEqual(layer.dtype, dtypes.float32)
+        self.assertEqual(layer.variable_dtype, dtypes.float32)
         self.assertEqual(get_layer_policy.get_layer_policy(layer).name,
                          policy_name)
         self.evaluate(variables.global_variables_initializer())
@@ -226,7 +230,11 @@ class KerasLayerTest(keras_parameterized.TestCase):
         # Passing a Policy to dtype overrides the global Policy
         layer = mp_test_util.MultiplyLayer(
             assert_type=dtypes.float64, dtype=policy.Policy('float64'))
-        self.assertEqual(layer.dtype, 'float64')
+        self.assertEqual(layer.dtype_policy.name, 'float64')
+        self.assertIsInstance(layer.dtype_policy, policy.Policy)
+        self.assertEqual(layer.compute_dtype, dtypes.float64)
+        self.assertEqual(layer.dtype, dtypes.float64)
+        self.assertEqual(layer.variable_dtype, dtypes.float64)
         self.assertEqual(layer(x).dtype, dtypes.float64)
         self.assertEqual(layer.v.dtype, dtypes.float64)
 
@@ -379,7 +387,7 @@ class KerasLayerTest(keras_parameterized.TestCase):
       self.assertEqual(layer.v.dtype, 'float32')
       # Restoring a PolicyV1 silently converts it to a Policy and drops the loss
       # scale.
-      self.assertEqual(type(layer._dtype_policy), policy.Policy)
+      self.assertEqual(type(layer.dtype_policy), policy.Policy)
       config = layer.get_config()
       # The loss_scale is silently dropped
       self.assertEqual(config['dtype'],
@@ -399,7 +407,7 @@ class KerasLayerTest(keras_parameterized.TestCase):
       self.assertEqual(layer.dtype, 'float64')
       self.assertEqual(layer(x).dtype, 'float64')
       self.assertEqual(layer.v.dtype, 'float64')
-      self.assertEqual(type(layer._dtype_policy), policy.Policy)
+      self.assertEqual(type(layer.dtype_policy), policy.Policy)
       config = layer.get_config()
       self.assertEqual(config['dtype'], 'float64')
 
@@ -416,7 +424,7 @@ class KerasLayerTest(keras_parameterized.TestCase):
       self.assertEqual(layer.dtype, None)
       self.assertEqual(layer(x).dtype, 'float16')
       self.assertEqual(layer.v.dtype, 'float16')
-      self.assertEqual(type(layer._dtype_policy), policy.Policy)
+      self.assertEqual(type(layer.dtype_policy), policy.Policy)
       config = layer.get_config()
       self.assertEqual(config['dtype'], 'float16')
 
@@ -631,7 +639,7 @@ class KerasModelTest(keras_parameterized.TestCase):
 
     # Loading a model always loads with a v2 Policy, even if saved with a
     # PolicyV1.
-    self.assertEqual(type(model._dtype_policy), policy.Policy)
+    self.assertEqual(type(model.dtype_policy), policy.Policy)
     self.assertEqual(layer.get_config()['dtype'],
                      {'class_name': 'Policy', 'config': {
                          'name': 'mixed_float16'}})

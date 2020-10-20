@@ -526,7 +526,8 @@ class PolicyV1(Policy):
 _global_policy = None
 
 
-@keras_export('keras.mixed_precision.experimental.global_policy', v1=[])
+@keras_export('keras.mixed_precision.global_policy',
+              'keras.mixed_precision.experimental.global_policy', v1=[])
 def global_policy():
   """Returns the global Policy.
 
@@ -570,7 +571,8 @@ def _check_if_mixed_precision_graph_rewrite_is_enabled(policy):
         'customizable.'.format(policy=policy))
 
 
-@keras_export('keras.mixed_precision.experimental.set_policy', v1=[])
+@keras_export('keras.mixed_precision.set_global_policy',
+              'keras.mixed_precision.experimental.set_policy', v1=[])
 def set_policy(policy):
   """Sets the global Policy.
 

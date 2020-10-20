@@ -124,9 +124,11 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   Arguments:
     trainable: Boolean, whether the layer's variables should be trainable.
     name: String name of the layer.
-    dtype: The dtype of the layer's computations and weights (default of
-      `None` means use `tf.keras.backend.floatx` in TensorFlow 2, or the type
-      of the first input in TensorFlow 1).
+    dtype: The dtype of the layer's computations and weights. Can also be a
+      `tf.keras.mixed_precision.Policy`, which allows the computation and weight
+      dtype to differ. Default of `None` means to use
+      `tf.keras.mixed_precision.global_policy()`, which is a float32 policy
+      unless set to different value.
     dynamic: Set this to `True` if your layer should only be run eagerly, and
       should not be used to generate a static computation graph.
       This would be the case for a Tree-RNN or a recursive network,
@@ -269,17 +271,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   For more information about creating layers, see the guide
   [Writing custom layers and models with Keras](
     https://www.tensorflow.org/guide/keras/custom_layers_and_models)
-
-  About the layer's `dtype` attribute:
-
-  Each layer has a dtype, which is typically the dtype of the layer's
-  computations and variables. A layer's dtype can be queried via the
-  `Layer.dtype` property. The dtype is specified with the `dtype` constructor
-  argument. In TensorFlow 2, the dtype defaults to `tf.keras.backend.floatx()`
-  if no dtype is passed. `floatx()` itself defaults to "float32". Additionally,
-  layers will cast their inputs to the layer's dtype in TensorFlow 2. When mixed
-  precision is used, layers may have different computation and variable dtypes.
-  See `tf.keras.mixed_precision.Policy` for details on layer dtypes.
   """
 
   # See tf.Module for the usage of this property.
@@ -1245,7 +1236,12 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
   @property
   def dtype(self):
-    """Dtype used by the weights of the layer, set in the constructor."""
+    """The dtype of the layer weights.
+
+    This is equivalent to `Layer.dtype_policy.variable_dtype`. Unless
+    mixed precision is used, this is the same as `Layer.compute_dtype`, the
+    dtype of the layer's computations.
+    """
     return self._dtype_policy.variable_dtype
 
   @property
@@ -2361,19 +2357,40 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     else:
       self._compute_dtype_object = None
 
-  # TODO(reedwm): Expose this property?
   @property
-  def _compute_dtype(self):
-    """The layer's compute dtype.
+  def dtype_policy(self):
+    """The dtype policy associated with this layer.
 
-    Unless mixed-precision is used, this is the same as `Layer.dtype`.
+    This is an instance of a `tf.keras.mixed_precision.Policy`.
+    """
+    return self._dtype_policy
 
-    If self._autocast is True, layer's will cast floating-point inputs to this.
+  @property
+  def compute_dtype(self):
+    """The dtype of the layer's computations.
+
+    This is equivalent to `Layer.dtype_policy.compute_dtype`. Unless
+    mixed precision is used, this is the same as `Layer.dtype`, the dtype of
+    the weights.
+
+    Layers often perform certain internal computations in higher precision when
+    `compute_dtype` is float16 or bfloat16 for numeric stability. The output
+    will still typically be float16 or bfloat16 in such cases.
 
     Returns:
       The layer's compute dtype.
     """
     return self._dtype_policy.compute_dtype
+
+  @property
+  def _compute_dtype(self):
+    """Deprecated alias of `compute_dtype`."""
+    return self._dtype_policy.compute_dtype
+
+  @property
+  def variable_dtype(self):
+    """Alias of `Layer.dtype`, the dtype of the weights."""
+    return self.dtype
 
   def _maybe_cast_inputs(self, inputs, input_list=None):
     """Maybe casts the inputs to the compute dtype.

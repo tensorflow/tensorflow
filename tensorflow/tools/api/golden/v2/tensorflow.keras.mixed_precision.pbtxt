@@ -12,4 +12,12 @@ tf_module {
     name: "experimental"
     mtype: "<type \'module\'>"
   }
+  member_method {
+    name: "global_policy"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "set_global_policy"
+    argspec: "args=[\'policy\'], varargs=None, keywords=None, defaults=None"
+  }
 }

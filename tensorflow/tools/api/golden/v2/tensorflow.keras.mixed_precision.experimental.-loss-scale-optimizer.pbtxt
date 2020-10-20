@@ -35,6 +35,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "inner_optimizer"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "iterations"
     mtype: "<type \'property\'>"
   }
