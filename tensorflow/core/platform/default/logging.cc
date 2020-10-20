@@ -373,9 +373,8 @@ TFLogSinks& TFLogSinks::Instance() {
 }
 
 void TFLogSinks::Add(TFLogSink* sink) {
-  if(sink == nullptr) {
-    return;
-  }
+  assert(sink != nullptr && "The sink must not be a nullptr");
+
   tensorflow::mutex_lock lock(mutex_);
   auto it = FindSink(sink);
   if(it == sinks_.end()) {
@@ -384,9 +383,8 @@ void TFLogSinks::Add(TFLogSink* sink) {
 }
 
 void TFLogSinks::Remove(TFLogSink* sink) {
-  if(sink == nullptr) {
-    return;
-  }
+  assert(sink != nullptr && "The sink must not be a nullptr");
+
   tensorflow::mutex_lock lock(mutex_);
   auto it = FindSink(sink);
   if(it != sinks_.end()) {
