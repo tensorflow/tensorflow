@@ -37,82 +37,400 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.tf_export import tf_export
 
 
-# pylint: disable=protected-access
+@tf_export("distribute.experimental.ParameterServerStrategy", v1=[])
 class ParameterServerStrategyV2(distribute_lib.Strategy):
-  """An asynchronous multi-worker parameter server tf.distribute strategy.
+  """An multi-worker tf.distribute strategy with parameter servers.
 
-  Currently, `ParameterServerStrategyV2` is not supported to be used as a
-  standalone tf.distribute strategy. It should be used in conjunction with
-  `Client`. Please see `Client` for more information.
+  Parameter server training refers to the distributed training architecture that
+  requires two types of tasks in the cluster: workers (referred to as "worker"
+  task) and parameter servers (referred to as "ps" task). The variables and
+  updates to those variables are placed on ps, and most computation intensive
+  operations are placed on workers.
 
-  This is currently under development, and the API as well as implementation
-  is subject to changes.
+  In TF2, parameter server training makes use of one coordinator, with some
+  number of workers, and (usually fewer) ps. The coordinator uses a
+  `tf.distribute.experimental.coordinator.ClusterCoordinator` to coordinate the
+  cluster, and a `tf.distribute.experimental.ParameterServerStrategy` for
+  variable distribution. The coordinator does not perform the actual training.
+  Each of the workers and ps runs a `tf.distribute.Server`, which the
+  coordinator connects to through the use of aforementioned two APIs.
+
+  For the training to work, the coordinator sends requests to workers for the
+  `tf.function`s to be executed on remote workers. Upon receiving requests from
+  the coordinator, a worker executes the `tf.function` by reading the variables
+  from parameter servers, executing the ops, and updating the variables on the
+  parameter servers. Each of the worker only processes the requests from the
+  coordinator, and communicates with parameter servers, without direct
+  interactions with any of the other workers in the cluster.
+
+  As a result, failures of some workers do not prevent the cluster from
+  continuing the work, and this allows the cluster to train with instances that
+  can be occasionally unavailable (e.g. preemptible or spot instances). The
+  coordinator and parameter servers though, must be available at all times for
+  the cluster to make progress.
+
+  Note that the coordinator is not one of the training worker. Instead, its
+  responsibility includes placing variables on ps, remotely executing
+  `tf.function`s on workers, and saving checkpoints. Parameter server training
+  thus consists of a server cluster with worker and ps, and a coordinator which
+  connects to them to coordinate. Optionally, an evaluator can be run on the
+  side that periodically reads the checkpoints saved by the coordinator, and
+  saves summaries for example.
+
+  `tf.distribute.experimental.ParameterServerStrategy` works closely with the
+  associated `tf.distribute.experimental.coordinator.ClusterCoordinator` object,
+  and should be used in conjunction with it. Standalone usage of
+  `tf.distribute.experimental.ParameterServerStrategy` without a
+  `tf.distribute.experimental.coordinator.ClusterCoordinator` indicates
+  a parameter server training scheme without a centralized coordinator, which is
+  not supported at this time.
+
+  __Example code for coordinator__
+
+  Here's an example usage of the API, with a custom training loop to train a
+  model. This code snippet is intended to be run on (the only) one machine that
+  is designated as the coordinator. Note that `cluster_resolver`,
+  `variable_partitioner`, and `dataset_fn` arguments are explained in the
+  following "Cluster setup", "Variable partitioning", and "Dataset preparation"
+  sections.
+
+  Currently, environment variable `GRPC_FAIL_FAST` needs to be set in all tasks
+  to work around a known hanging issue as the following code illustrates:
+
+  ```python
+  # Set the environment variable to allow reporting worker and ps failure to the
+  # coordinator.
+  os.environ["GRPC_FAIL_FAST"] = "use_caller"
+
+  # Prepare a strategy to use with the cluster and variable partitioning info.
+  strategy = tf.distribute.experimental.ParameterServerStrategy(
+      cluster_resolver=...,
+      variable_partitioner=...)
+  coordinator = tf.distribute.experimental.coordinator.ClusterCoordinator(
+      strategy=strategy)
+
+  # Prepare a distribute dataset that will place datasets on the workers.
+  distributed_dataset = coordinator.create_per_worker_dataset(dataset_fn=...)
+
+  with strategy.scope():
+    model = ...  # Variables created can possibly be container of variables
+    optimizer, metrics = ...  # Keras optimizer/metrics are great choices
+    checkpoint = tf.train.Checkpoint(model=model, optimizer=optimizer)
+    checkpoint_manager = tf.train.CheckpointManager(
+        checkpoint, checkpoint_dir, max_to_keep=2)
+    # `load_checkpoint` infers initial epoch from `optimizer.iterations`.
+    initial_epoch = load_checkpoint(checkpoint_manager) or 0
+
+  @tf.function
+  def worker_fn(iterator):
+
+    def replica_fn(inputs):
+      batch_data, labels = inputs
+      # calculate gradient, applying gradient, metrics update etc.
+
+    strategy.run(replica_fn, args=(next(iterator),))
+
+  for epoch in range(initial_epoch, num_epoch):
+    distributed_iterator = iter(distributed_dataset)  # Reset iterator state.
+    for step in range(steps_per_epoch):
+
+      # Asynchronously schedule the `worker_fn` to be executed on an arbitrary
+      # worker. This call returns immediately.
+      coordinator.schedule(worker_fn, args=(distributed_iterator,))
+
+    # `join` blocks until all scheduled `worker_fn`s finish execution. Once it
+    # returns, we can read the metrics and save checkpoints as needed.
+    coordinator.join()
+    logging.info('Metric result: %r', metrics.result())
+    train_accuracy.reset_states()
+    checkpoint_manager.save()
+  ```
+
+  __Example code for worker and parameter servers__
+
+  In addition to the coordinator, there should be multiple machines designated
+  as "worker" or "ps". They should run the following code to start a TensorFlow
+  server, waiting for coordinator's request to execute functions or place
+  variables:
+
+  ```python
+  # Set the environment variable to allow reporting worker and ps failure to the
+  # coordinator.
+  os.environ["GRPC_FAIL_FAST"] = "use_caller"
+
+  # Provide a `tf.distribute.cluster_resolver.ClusterResolver` that serves
+  # the cluster information. See below "Cluster setup" section.
+  cluster_resolver = ...
+
+  server = tf.distribute.Server(
+      cluster_resolver.cluster_spec().as_cluster_def(),
+      job_name=cluster_resolver.task_type,
+      task_index=cluster_resolver.task_id,
+      protocol=protocol)
+
+  # Blocking the process that starts a server from exiting.
+  server.join()
+  ```
+
+  __Cluster setup__
+
+  In order for the tasks in the cluster to know other tasks' addresses,
+  a `tf.distribute.cluster_resolver.ClusterResolver` is required to be used
+  in coordinator, worker, and ps. The
+  `tf.distribute.cluster_resolver.ClusterResolver` is responsible for providing
+  the cluster information, as well as the task type and id of the current task.
+  See `tf.distribute.cluster_resolver.ClusterResolver` for more information.
+
+  If `TF_CONFIG` environment variable is used for the processes to know the
+  cluster information, a
+  `tf.distribute.cluster_resolver.TFConfigClusterResolver` should be used. Note
+  that for legacy reason, "chief" should be used as the task type for the
+  coordinator, as the following example demonstrates. Here we set `TF_CONFIG`
+  in environment variable, intended to be run by the process of the machine
+  designated as the parameter server (task type "ps") and index 1 (the second),
+  in a cluster with 1 chief, 2 parameter servers, and 3 workers. Note that the
+  it needs to be set before the use of
+  `tf.distribute.cluster_resolver.TFConfigClusterResolver`.
+
+  Example code for cluster setup:
+  ```python
+  os.environ['TF_CONFIG'] = '''
+  {
+    "cluster": {
+      "chief": ["chief.example.com:2222"],
+      "ps": ["ps0.example.com:2222", "ps1.example.com:2222"],
+      "worker": ["worker0.example.com:2222", "worker1.example.com:2222",
+                 "worker2.example.com:2222"]
+    },
+    "task": {
+      "type": "ps",
+      "index": 1
+    }
+  }
+  '''
+  os.environ["GRPC_FAIL_FAST"] = "use_caller"
+  cluster_resolver = tf.distribute.cluster_resolver.TFConfigClusterResolver()
+
+  # If coordinator ("chief" task type), create a strategy
+  if cluster_resolver.task_type == 'chief':
+    strategy = tf.distribute.experimental.ParameterServerStrategy(
+        cluster_resolver)
+    ...
+
+  # If worker/ps, create a server
+  elif cluster_resolver.task_type in ("worker", "ps"):
+    server = tf.distribute.Server(...)
+    ...
+  ```
+
+  __Variable creation with `strategy.scope()`__
+
+  `tf.distribute.experimental.ParameterServerStrategy` follows the
+  `tf.distribute` API contract where variable creation is expected to be inside
+  the context manager returned by `strategy.scope()`, in order to be correctly
+  placed on parameter servers in a round-robin manner:
+
+  ```python
+  # In this example, we're assuming having 3 ps.
+  strategy = tf.distribute.experimental.ParameterServerStrategy(
+      cluster_resolver=...)
+  coordinator = tf.distribute.experimental.coordinator.ClusterCoordinator(
+      strategy=strategy)
+
+  # Variables should be created inside scope to be placed on parameter servers.
+  # If created outside scope such as `v1` here, it would be placed on
+  coordinator.
+  v1 = tf.Variable(initial_value=0.0)
+
+  with strategy.scope():
+    v2 = tf.Variable(initial_value=1.0)
+    v3 = tf.Variable(initial_value=2.0)
+    v4 = tf.Variable(initial_value=3.0)
+    v5 = tf.Variable(initial_value=4.0)
+
+  # v2 through v5 are created in scope and are distributed on parameter servers.
+  # Default placement is round-robin but the order should not be relied on.
+  assert v2.device == "/job:ps/replica:0/task:0/device:CPU:0"
+  assert v3.device == "/job:ps/replica:0/task:1/device:CPU:0"
+  assert v4.device == "/job:ps/replica:0/task:2/device:CPU:0"
+  assert v5.device == "/job:ps/replica:0/task:0/device:CPU:0"
+  ```
+
+  See `distribute.Strategy.scope` for more information.
+
+  __Variable partitioning__
+
+  Having dedicated servers to store variables means being able to divide up, or
+  "shard" the variables across the ps. Large embeddings that would otherwise
+  exceed memory limit of a single machine can be used in a cluster with enough
+  number of ps.
+
+  With `tf.distribute.experimental.ParameterServerStrategy`, if a
+  `variable_partitioner` is provided to `__init__` and certain conditions are
+  satisfied, the resulting variables created in scope are sharded across the
+  parameter servers, in a round-robin fashion. The variable reference returned
+  from `tf.Variable` becomes a type that serves as the container of the sharded
+  variables. Access `variables` attribute of this container for the actual
+  variable components. See arguments section of
+  `tf.distribute.experimental.ParameterServerStrategy.__init__` for more
+  information.
+
+  To initialize the sharded variables in a more memory-efficient way, use an
+  initializer whose `__call__` accepts a `shard_info` argument, and use
+  `shard_info.offset` and `shard_info.shape` to create and return a
+  partition-aware `tf.Tensor` to initialize the variable components.
+
+  ```python
+  class PartitionAwareIdentity(object):
+
+    def __call__(self, shape, dtype, shard_info):
+      value = tf.eye(*shape, dtype=dtype)
+      if shard_info is not None:
+        value = tf.slice(value, shard_info.offset, shard_info.shape)
+      return value
+
+  cluster_resolver = ...
+  strategy = tf.distribute.experimental.ParameterServerStrategy(
+      cluster_resolver, tf.fixed_size_partitioner(2))
+  with strategy.scope():
+    initializer = PartitionAwareIdentity()
+    initial_value = functools.partial(initializer, shape=(4, 4), dtype=tf.int64)
+    v = tf.Variable(
+        initial_value=initial_value, shape=(4, 4), dtype=tf.int64)
+
+  # `v.variables` gives the actual variable components.
+  assert len(v.variables) == 2
+  assert v.variables[0].device == "/job:ps/replica:0/task:0/device:CPU:0"
+  assert v.variables[1].device == "/job:ps/replica:0/task:1/device:CPU:0"
+  assert np.array_equal(v.variables[0].numpy(), [[1, 0, 0, 0], [0, 1, 0, 0]])
+  assert np.array_equal(v.variables[1].numpy(), [[0, 0, 1, 0], [0, 0, 0, 1]])
+  ```
+
+  __Dataset preparation__
+
+  With `tf.distribute.experimental.ParameterServerStrategy`, a dataset is
+  created in each of the workers to be used for training. This is done by
+  creating a `dataset_fn` that takes no argument and returns a
+  `tf.data.Dataset`, and passing the `dataset_fn` into
+  `tf.distribute.experimental.coordinator.
+  ClusterCoordinator.create_per_worker_dataset`. We recommend the dataset to be
+  shuffled and repeated to have the examples run through the training as evenly
+  as possible.
+
+  ```python
+  def dataset_fn():
+    filenames = ...
+    dataset = tf.data.Dataset.from_tensor_slices(filenames)
+
+    # Dataset is recommended to be shuffled, and repeated.
+    return dataset.shuffle(buffer_size=...).repeat().batch(batch_size=...)
+
+  coordinator =
+      tf.distribute.experimental.coordinator.ClusterCoordinator(strategy=...)
+  distributed_dataset = coordinator.create_per_worker_dataset(dataset_fn)
+
+  ```
+
+  __Limitations__
+
+  * `tf.distribute.experimental.ParameterServerStrategy` in TF2 is experimental,
+  and the API is subject to further changes.
+
+  * `tf.distribute.experimental.ParameterServerStrategy` does not yet support
+  training with GPU(s). This is a feature request being developed.
+
+  * `tf.distribute.experimental.ParameterServerStrategy` only supports
+  [custom training loop
+  API](https://www.tensorflow.org/tutorials/distribute/custom_training)
+  currently in TF2. Usage of it with Keras `compile`/`fit` API is being
+  developed.
+
+  * `tf.distribute.experimental.ParameterServerStrategy` must be used with
+  `tf.distribute.experimental.coordinator.ClusterCoordinator`.
+
+  * This strategy is not intended for TPU. Use
+  `tf.distribute.experimental.TPUStrategy` instead.
   """
 
+  # pyformat: disable
   def __init__(self, cluster_resolver, variable_partitioner=None):
-    """Initializes the V2 parameter server strategy.
+    """Initializes the TF2 parameter server strategy.
 
-    This also connects to the remote server cluster.
+    This initializes the `tf.distribute.experimental.ParameterServerStrategy`
+    object to be ready for use with
+    `tf.distribute.experimental.coordinator.ClusterCoordinator`.
 
     Args:
       cluster_resolver: a `tf.distribute.cluster_resolver.ClusterResolver`
         object.
-      variable_partitioner: a callable with the signature `num_partitions =
-        fn(shape, dtype)`, where `num_partitions` is a list/tuple representing
-        the number of partitions on each axis, and `shape` and `dtype` are of
-        types `tf.TensorShape` and `tf.dtypes.Dtype`. If None, variables will
-        not be partitioned. * `variable_partitioner` will be called for all
-        variables created under strategy `scope` to instruct how the variables
-        should be partitioned. Variables will be partitioned if there are more
-        than one partitions along the partitioning axis, otherwise it falls back
-        to normal `tf.Variable`. * Only the first / outermost axis partitioning
-        is supported, namely, elements in `num_partitions` must be 1 other than
-        the first element. * Partitioner like `min_max_variable_partitioner`,
-        `variable_axis_size_partitioner` and `fixed_size_partitioner` are also
-        supported since they conform to the required signature. * Div partition
+      variable_partitioner:
+        a callable with the signature `num_partitions = fn(shape, dtype)`, where
+        `num_partitions` is a list/tuple representing the number of partitions
+        on each axis, and `shape` and `dtype` are of types `tf.TensorShape` and
+        `tf.dtypes.Dtype`. If `None`, variables will not be partitioned.
+
+        * `variable_partitioner` will be called for all variables created under
+        strategy `scope` to instruct how the variables should be partitioned.
+        Variables will be created in multiple partitions if there are more than
+        one partition along the partitioning axis, otherwise it falls back to
+        normal `tf.Variable`.
+
+        * Only the first / outermost axis partitioning is supported, namely,
+        elements in `num_partitions` must be 1 other than the first element.
+
+        * Partitioner like `tf.compat.v1.min_max_variable_partitioner`,
+        `tf.compat.v1.variable_axis_size_partitioner` and
+        `tf.compat.v1.fixed_size_partitioner` are also supported since they
+        conform to the required signature.
+
+        * Div partition
         strategy is used to partition variables. Assuming we assign consecutive
         integer ids along the first axis of a variable, then ids are assigned to
         shards in a contiguous manner, while attempting to keep each shard size
         identical. If the ids do not evenly divide the number of shards, each of
         the first several shards will be assigned one more id. For instance, a
-        variable whose first dimension is
-        13 has 13 ids, and they are split across 5 shards as: `[[0, 1, 2], [3,
-          4, 5], [6, 7, 8], [9, 10], [11, 12]]`. * Variables created under
-          `strategy.extended.colocate_vars_with` will not be partitioned, e.g,
-          optimizer's slot variables.
+        variable whose first dimension is 13 has 13 ids, and they are split
+        across 5 shards as:
+        `[[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10], [11, 12]]`.
+
+        * Variables created under `strategy.extended.colocate_vars_with` will
+        not be partitioned, e.g, optimizer's slot variables.
     """
+    # pyformat: enable
     self._cluster_resolver = cluster_resolver
     self._extended = ParameterServerStrategyV2Extended(self, cluster_resolver,
                                                        variable_partitioner)
     self._verify_args_and_config(cluster_resolver)
     logging.info(
-        "ParameterServerStrategyV2 is initialized with cluster_spec: "
-        "%s", cluster_resolver.cluster_spec())
+        "`tf.distribute.experimental.ParameterServerStrategy` is initialized "
+        "with cluster_spec: %s", cluster_resolver.cluster_spec())
 
-    # TODO(b/167894802): Make chief, worker, and ps names customizable.
-    self._connect_to_cluster(client_name="chief")
+    # TODO(b/167894802): Make coordinator, worker, and ps names customizable.
+    self._connect_to_cluster(coordinator_name="chief")
     super(ParameterServerStrategyV2, self).__init__(self._extended)
     distribute_lib.distribution_strategy_gauge.get_cell("V2").set(
         "ParameterServerStrategy")
 
-  def _connect_to_cluster(self, client_name):
-    if client_name in ["worker", "ps"]:
-      raise ValueError("Client name should not be 'worker' or 'ps'.")
+  def _connect_to_cluster(self, coordinator_name):
+    if coordinator_name in ["worker", "ps"]:
+      raise ValueError("coordinator name should not be 'worker' or 'ps'.")
     cluster_spec = self._cluster_resolver.cluster_spec()
     self._num_workers = len(cluster_spec.as_dict().get("worker", ()))
     self._num_ps = len(cluster_spec.as_dict().get("ps", ()))
 
     device_filters = server_lib.ClusterDeviceFilters()
-    # For any worker, only the devices on PS and chief nodes are visible
+    # For any worker, only the devices on ps and coordinator nodes are visible
     for i in range(self._num_workers):
       device_filters.set_device_filters(
-          "worker", i, ["/job:ps", "/job:%s" % client_name])
-    # Similarly for any ps, only the devices on workers and chief are visible
+          "worker", i, ["/job:ps", "/job:%s" % coordinator_name])
+    # Similarly for any ps, only the devices on workers and coordinator are
+    # visible
     for i in range(self._num_ps):
       device_filters.set_device_filters(
-          "ps", i, ["/job:worker", "/job:%s" % client_name])
+          "ps", i, ["/job:worker", "/job:%s" % coordinator_name])
 
     # Allow at most one outstanding RPC for each worker at a certain time. This
     # is to simplify worker failure handling in the runtime
@@ -122,7 +440,7 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
                  self.__class__.__name__, cluster_spec)
     remote.connect_to_cluster(
         cluster_spec,
-        job_name=client_name,
+        job_name=coordinator_name,
         protocol=self._cluster_resolver.rpc_layer,
         cluster_device_filters=device_filters)
 
@@ -134,7 +452,7 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
   def _verify_args_and_config(self, cluster_resolver):
     if not cluster_resolver.cluster_spec():
       raise ValueError("Cluster spec must be non-empty in `cluster_resolver`.")
-    if self.extended._num_gpus_per_worker > 1:
+    if self.extended._num_gpus_per_worker > 1:  # pylint: disable=protected-access
       raise NotImplementedError("Multi-gpu is not supported yet.")
 
 
@@ -205,8 +523,8 @@ class ParameterServerStrategyV2Extended(
       init_from_fn = False
       initial_value = initial_value()
     if not init_from_fn:
-      # The initial_value is created on client, it will need to be sent to
-      # PS for variable initialization, which can be inefficient and can
+      # The initial_value is created on coordinator, it will need to be sent to
+      # ps for variable initialization, which can be inefficient and can
       # potentially hit the 2GB limit on protobuf serialization.
       initial_value = ops.convert_to_tensor(initial_value, dtype=dtype)
       dtype = initial_value.dtype

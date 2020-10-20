@@ -36,4 +36,8 @@ tf_module {
     name: "ValueContext"
     mtype: "<type \'type\'>"
   }
+  member {
+    name: "coordinator"
+    mtype: "<type \'module\'>"
+  }
 }

@@ -153,8 +153,9 @@ py_library(
         ":multi_process_runner",
         ":multi_worker_test_base",
         ":one_device_strategy",
+        ":parameter_server_strategy_v2",
         ":sharded_variable",
-        "//tensorflow/python/distribute/client",
+        "//tensorflow/python/distribute/coordinator:cluster_coordinator",
         "//tensorflow/python/distribute/experimental",
     ],
 )
@@ -1880,6 +1881,7 @@ tf_py_test(
         ":multi_worker_test_base",
         ":parameter_server_strategy_v2",
         ":sharded_variable",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:extra_py_tests_deps",

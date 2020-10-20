@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for ParameterServerClient and Keras models."""
+"""Tests for ClusterCoordinator and Keras models."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -27,8 +27,8 @@ from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2
-from tensorflow.python.distribute.client import client as client_lib
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
+from tensorflow.python.distribute.coordinator import cluster_coordinator as coordinator_lib
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -44,7 +44,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.training.server_lib import ClusterSpec
 
 
-def make_client(num_workers, num_ps):
+def make_coordinator(num_workers, num_ps):
   cluster_def = multi_worker_test_base.create_in_process_cluster(
       num_workers=num_workers, num_ps=num_ps, rpc_layer="grpc")
   cluster_def["chief"] = [
@@ -52,7 +52,7 @@ def make_client(num_workers, num_ps):
   ]
   cluster_resolver = SimpleClusterResolver(
       ClusterSpec(cluster_def), rpc_layer="grpc")
-  return client_lib.Client(
+  return coordinator_lib.ClusterCoordinator(
       parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver))
 
 
@@ -61,7 +61,7 @@ class KPLTest(test.TestCase):
   @classmethod
   def setUpClass(cls):
     super(KPLTest, cls).setUpClass()
-    cls.client = make_client(num_workers=3, num_ps=2)
+    cls.coordinator = make_coordinator(num_workers=3, num_ps=2)
 
   def testTrainAndServe(self):
     # These vocabularies usually come from TFT or a Beam pipeline.
@@ -71,10 +71,10 @@ class KPLTest(test.TestCase):
     ]
     label_vocab = ["yes", "no"]
 
-    with self.client.strategy.scope():
+    with self.coordinator.strategy.scope():
 
       # Define KPLs under strategy's scope. Right now, if they have look up
-      # tables, they will be created on the client. Their variables will be
+      # tables, they will be created on the coordinator. Their variables will be
       # created on PS. Ideally they should be cached on each worker since they
       # will not be changed in a training step.
       feature_lookup_layer = string_lookup.StringLookup()
@@ -113,7 +113,7 @@ class KPLTest(test.TestCase):
             label = "yes" if "avenger" in features else "no"
             yield {"features": features, "label": label}
 
-        # The dataset will be created on the client?
+        # The dataset will be created on the coordinator?
         raw_dataset = dataset_ops.Dataset.from_generator(
             feature_and_label_gen,
             output_types={
@@ -131,7 +131,8 @@ class KPLTest(test.TestCase):
             }, [x["label"]]))
         return train_dataset
 
-      distributed_dataset = self.client.create_per_worker_dataset(dataset_fn)
+      distributed_dataset = self.coordinator.create_per_worker_dataset(
+          dataset_fn)
 
       model_input = keras.layers.Input(
           shape=(3,), dtype=dtypes.int64, name="model_input")
@@ -163,12 +164,12 @@ class KPLTest(test.TestCase):
           actual_pred = math_ops.cast(math_ops.greater(pred, 0.5), dtypes.int64)
           accuracy.update_state(labels, actual_pred)
 
-        self.client._strategy.run(train_step, args=(iterator,))
+        self.coordinator._strategy.run(train_step, args=(iterator,))
 
     distributed_iterator = iter(distributed_dataset)
     for _ in range(10):
-      self.client.schedule(worker_fn, args=(distributed_iterator,))
-    self.client.join()
+      self.coordinator.schedule(worker_fn, args=(distributed_iterator,))
+    self.coordinator.join()
     self.assertGreater(accuracy.result().numpy(), 0.0)
 
     # Create a saved model.

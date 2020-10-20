@@ -13,21 +13,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Multi-process runner tests for `Client` with `ParameterServerStrategyV2`."""
+"""Multi-process runner tests for `ClusterCoordinator` with PSv2."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import time
-
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2
-from tensorflow.python.distribute.client import client as client_lib
-from tensorflow.python.distribute.client import utils
 from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
+from tensorflow.python.distribute.coordinator import cluster_coordinator as coordinator_lib
+from tensorflow.python.distribute.coordinator import utils
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import dtypes
@@ -38,7 +37,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 
 
-class ClientMprTest(test.TestCase):
+class ClusterCoordinatorMprTest(test.TestCase):
 
   def testScheduleTranslatePSFailureError(self):
     self._test_translate_ps_failure_error(test_schedule=True)
@@ -56,7 +55,7 @@ class ClientMprTest(test.TestCase):
         utils.start_server(cluster_resolver, "grpc")
       strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
           cluster_resolver)
-      ps_client = client_lib.Client(strategy)
+      ps_coordinator = coordinator_lib.ClusterCoordinator(strategy)
 
       with strategy.scope():
         v = variables.Variable(initial_value=0, dtype=dtypes.int32)
@@ -68,19 +67,19 @@ class ClientMprTest(test.TestCase):
           v.assign_add(1)
 
       # Keep the two workers occupied.
-      ps_client.schedule(worker_fn)
-      ps_client.schedule(worker_fn)
+      ps_coordinator.schedule(worker_fn)
+      ps_coordinator.schedule(worker_fn)
       # Now the main process can terminate.
       functions_scheduled_event.set()
 
       # Verified that join and schedule indeed raise UnavailableError.
       try:
         if test_join:
-          ps_client.join()
+          ps_coordinator.join()
         if test_schedule:
-          while ps_client.cluster._closure_queue._error is None:
+          while ps_coordinator.cluster._closure_queue._error is None:
             time.sleep(1)
-          ps_client.schedule(worker_fn)
+          ps_coordinator.schedule(worker_fn)
       except errors.UnavailableError:
         # The following verifies that after PS fails, continue executing
         # functions on workers should fail and indicate it's PS failure.
@@ -91,7 +90,7 @@ class ClientMprTest(test.TestCase):
               # failure.
               worker_fn()
             except Exception as e:  # pylint: disable=broad-except
-              if client_lib._is_ps_failure(e):
+              if coordinator_lib._is_ps_failure(e):
                 if worker_id < 2:
                   continue
                 logging.info("_test_translate_ps_failure_error ends properly.")

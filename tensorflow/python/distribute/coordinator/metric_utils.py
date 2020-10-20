@@ -31,15 +31,15 @@ enable_metrics = False
 _time_buckets = monitoring.ExponentialBuckets(0.001, 10, 6)
 
 _function_tracing_sampler = monitoring.Sampler(
-    '/tensorflow/api/ps_strategy/client/function_tracing', _time_buckets,
+    '/tensorflow/api/ps_strategy/coordinator/function_tracing', _time_buckets,
     'Sampler to track the time (in seconds) for tracing functions.')
 
 _closure_execution_sampler = monitoring.Sampler(
-    '/tensorflow/api/ps_strategy/client/closure_execution', _time_buckets,
+    '/tensorflow/api/ps_strategy/coordinator/closure_execution', _time_buckets,
     'Sampler to track the time (in seconds) for executing closures.')
 
 _remote_value_fetch_sampler = monitoring.Sampler(
-    '/tensorflow/api/ps_strategy/client/remote_value_fetch', _time_buckets,
+    '/tensorflow/api/ps_strategy/coordinator/remote_value_fetch', _time_buckets,
     'Sampler to track the time (in seconds) for fetching remote_value.')
 
 _METRICS_MAPPING = {

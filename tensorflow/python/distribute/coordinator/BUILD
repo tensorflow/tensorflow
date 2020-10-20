@@ -8,8 +8,8 @@ package(
 exports_files(["LICENSE"])
 
 py_library(
-    name = "client",
-    srcs = ["client.py"],
+    name = "cluster_coordinator",
+    srcs = ["cluster_coordinator.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":metric_utils",
@@ -34,9 +34,9 @@ py_library(
 )
 
 tf_py_test(
-    name = "client_test",
+    name = "cluster_coordinator_test",
     size = "small",
-    srcs = ["client_test.py"],
+    srcs = ["cluster_coordinator_test.py"],
     python_version = "PY3",
     shard_count = 50,
     tags = [
@@ -44,7 +44,7 @@ tf_py_test(
         "notsan",  # TODO(b/171040359): Flaky timeout, even if maximum shards
     ],
     deps = [
-        ":client",
+        ":cluster_coordinator",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -66,12 +66,13 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "client_mpr_test",
-    srcs = ["client_mpr_test.py"],
+    name = "cluster_coordinator_mpr_test",
+    srcs = ["cluster_coordinator_mpr_test.py"],
     python_version = "PY3",
     shard_count = 2,
     tags = ["no_oss"],  # TODO(b/162119374)
     deps = [
+        ":cluster_coordinator",
         ":remote_eager_lib",
         ":utils",
         "//tensorflow/python:dtypes",
@@ -81,7 +82,6 @@ tf_py_test(
         "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/distribute:parameter_server_strategy_v2",
         "//tensorflow/python/distribute:sharded_variable",
-        "//tensorflow/python/distribute/client",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
@@ -102,7 +102,7 @@ tf_py_test(
     srcs = ["metric_utils_test.py"],
     python_version = "PY3",
     deps = [
-        ":client",
+        ":cluster_coordinator",
         ":metric_utils",
         "//tensorflow/python:training_server_lib",
         "//tensorflow/python/distribute:multi_worker_test_base",

@@ -48,7 +48,7 @@ _LOCAL_CPU = "/device:CPU:0"
 
 
 # TODO(yuefengz): maybe cache variables on local CPU.
-@tf_export("distribute.experimental.ParameterServerStrategy", v1=[])
+# TODO(b/171250971): Remove this and change all symbol usage of this to V1.
 class ParameterServerStrategy(distribute_lib.Strategy):
   """An asynchronous multi-worker parameter server tf.distribute strategy.
 
@@ -154,8 +154,9 @@ class ParameterServerStrategy(distribute_lib.Strategy):
 
   def _raise_pss_error_if_eager(self):
     if context.executing_eagerly():
-      raise NotImplementedError("ParameterServerStrategy currently only works "
-                                "with the tf.Estimator API")
+      raise NotImplementedError(
+          "`tf.compat.v1.distribute.experimental.ParameterServerStrategy` "
+          "currently only works with the tf.Estimator API")
 
 
 @tf_export(v1=["distribute.experimental.ParameterServerStrategy"])  # pylint: disable=missing-docstring

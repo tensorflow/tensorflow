@@ -208,7 +208,16 @@
         how many times the function is called, and independent of global seed
         settings.
 *   `tf.distribute`:
-    *   <ADD RELEASE NOTES HERE>
+    *   (Experimental) Parameter server training:
+        *   Replaced the existing
+            `tf.distribute.experimental.ParameterServerStrategy` symbol with
+            a new class that is for parameter server training in TF2. Usage with
+            the old symbol, usually with Estimator, should be replaced with
+            `tf.compat.v1.distribute.experimental.ParameterServerStrategy`.
+        *   Added `tf.distribute.experimental.coordinator.*` namespace,
+            including the main API `ClusterCoordinator` for coordinating the
+            training cluster, the related data structure `RemoteValue`
+            and `PerWorkerValue`.
 *   `tf.keras`:
     *   Improvements from the functional API refactoring:
         *   Functional model construction does not need to maintain a global

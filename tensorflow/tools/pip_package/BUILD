@@ -154,9 +154,9 @@ COMMON_PIP_DEPS = [
     "//tensorflow/tools/common:test_module1",
     "//tensorflow/tools/common:traverse",
     "//tensorflow/python/distribute:parameter_server_strategy_v2",
-    "//tensorflow/python/distribute/client:client",
-    "//tensorflow/python/distribute/client:remote_eager_lib",
-    "//tensorflow/python/distribute/client:metric_utils",
+    "//tensorflow/python/distribute/coordinator:cluster_coordinator",
+    "//tensorflow/python/distribute/coordinator:remote_eager_lib",
+    "//tensorflow/python/distribute/coordinator:metric_utils",
 ]
 
 # On Windows, python binary is a zip file of runfiles tree.

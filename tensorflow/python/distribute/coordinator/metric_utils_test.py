@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for metrics collecting in client."""
+"""Tests for metrics collecting in coordinator."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -22,9 +22,9 @@ from __future__ import print_function
 import time
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2
-from tensorflow.python.distribute.client import client
-from tensorflow.python.distribute.client import metric_utils
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
+from tensorflow.python.distribute.coordinator import cluster_coordinator as coordinator_lib
+from tensorflow.python.distribute.coordinator import metric_utils
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.training.server_lib import ClusterSpec
@@ -35,7 +35,7 @@ class MetricUtilsTest(test.TestCase):
   def get_rpc_layer(self):
     return 'grpc'
 
-  def testClientMetrics(self):
+  def testClusterCoordinatorMetrics(self):
 
     metric_utils.enable_metrics = True
 
@@ -48,7 +48,7 @@ class MetricUtilsTest(test.TestCase):
         ClusterSpec(cluster_def), rpc_layer=self.get_rpc_layer())
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
         cluster_resolver)
-    cluster = client.Cluster(strategy)
+    cluster = coordinator_lib.Cluster(strategy)
 
     @def_function.function
     def func():

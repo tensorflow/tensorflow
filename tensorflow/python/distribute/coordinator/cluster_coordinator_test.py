@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for client.py."""
+"""Tests for coordinator.py."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -29,8 +29,8 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2
-from tensorflow.python.distribute.client import client as client_lib
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
+from tensorflow.python.distribute.coordinator import cluster_coordinator as coordinator_lib
 from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
@@ -52,7 +52,7 @@ from tensorflow.python.util import nest
 class CoordinatedClosureQueueTest(test.TestCase):
 
   def testBasic(self):
-    queue = client_lib._CoordinatedClosureQueue()
+    queue = coordinator_lib._CoordinatedClosureQueue()
     closure1 = self._create_closure(queue._cancellation_mgr)
     queue.put(closure1)
     self.assertIs(closure1, queue.get())
@@ -64,7 +64,7 @@ class CoordinatedClosureQueueTest(test.TestCase):
     queue.wait()
 
   def testProcessAtLeaseOnce(self):
-    closure_queue = client_lib._CoordinatedClosureQueue()
+    closure_queue = coordinator_lib._CoordinatedClosureQueue()
     labels = ['A', 'B', 'C', 'D', 'E']
     processed_count = collections.defaultdict(int)
 
@@ -94,7 +94,7 @@ class CoordinatedClosureQueueTest(test.TestCase):
 
     cm = cancellation.CancellationManager()
     for label in labels:
-      closure_queue.put(client_lib.Closure(get_func(label), cm))
+      closure_queue.put(coordinator_lib.Closure(get_func(label), cm))
     t1 = threading.Thread(target=process_queue, daemon=True)
     t1.start()
     t2 = threading.Thread(target=process_queue, daemon=True)
@@ -111,7 +111,7 @@ class CoordinatedClosureQueueTest(test.TestCase):
     coord.join([t1, t2])
 
   def testNotifyBeforeWait(self):
-    closure_queue = client_lib._CoordinatedClosureQueue()
+    closure_queue = coordinator_lib._CoordinatedClosureQueue()
 
     def func():
       logging.info('func running')
@@ -123,7 +123,8 @@ class CoordinatedClosureQueueTest(test.TestCase):
         closure_queue.get()
         closure_queue.mark_finished()
 
-    closure_queue.put(client_lib.Closure(func, closure_queue._cancellation_mgr))
+    closure_queue.put(
+        coordinator_lib.Closure(func, closure_queue._cancellation_mgr))
     t = threading.Thread(target=process_queue)
     t.start()
     coord.join([t])
@@ -159,7 +160,7 @@ class CoordinatedClosureQueueTest(test.TestCase):
       # TODO(b/165013260): Fix this
       self.skipTest('Test is currently broken on Windows with Python 3.8')
 
-    closure_queue = client_lib._CoordinatedClosureQueue()
+    closure_queue = coordinator_lib._CoordinatedClosureQueue()
     closure_queue.put(self._create_closure(closure_queue._cancellation_mgr))
     closure = closure_queue.get()
 
@@ -189,10 +190,10 @@ class CoordinatedClosureQueueTest(test.TestCase):
     def some_function():
       return 1.0
 
-    return client_lib.Closure(some_function, cancellation_mgr)
+    return coordinator_lib.Closure(some_function, cancellation_mgr)
 
   def _put_two_closures_and_get_one(self):
-    closure_queue = client_lib._CoordinatedClosureQueue()
+    closure_queue = coordinator_lib._CoordinatedClosureQueue()
     closure1 = self._create_closure(closure_queue._cancellation_mgr)
     closure_queue.put(closure1)
 
@@ -330,7 +331,7 @@ class CoordinatedClosureQueueTest(test.TestCase):
 
     # Closure2 was an inflight closure when it got cancelled.
     self.assertEqual(closure2._output_remote_values._status,
-                     client_lib._RemoteValueStatus.READY)
+                     coordinator_lib._RemoteValueStatus.READY)
     with self.assertRaisesRegex(ValueError, 'Fake cancellation error.'):
       closure2._fetch_output_remote_values()
 
@@ -361,7 +362,7 @@ class CoordinatedClosureQueueTest(test.TestCase):
 
   def testThreadSafey(self):
     thread_count = 10
-    queue = client_lib._CoordinatedClosureQueue()
+    queue = coordinator_lib._CoordinatedClosureQueue()
 
     # Each thread performs 20 queue actions: 10 are `put_back` and 10 are
     # `mark_finished`.
@@ -427,7 +428,7 @@ class TestCaseWithErrorReportingThread(test.TestCase):
       raise ErrorReportingThread.error  # pylint: disable=raising-bad-type
 
 
-def make_client(num_workers, num_ps):
+def make_coordinator(num_workers, num_ps):
   # TODO(rchao): Test the internal rpc_layer version.
   cluster_def = multi_worker_test_base.create_in_process_cluster(
       num_workers=num_workers, num_ps=num_ps, rpc_layer='grpc')
@@ -438,16 +439,16 @@ def make_client(num_workers, num_ps):
       ClusterSpec(cluster_def), rpc_layer='grpc')
   strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
       cluster_resolver)
-  return client_lib.Client(strategy)
+  return coordinator_lib.ClusterCoordinator(strategy)
 
 
-class ClientTest(TestCaseWithErrorReportingThread):
+class ClusterCoordinatorTest(TestCaseWithErrorReportingThread):
 
   @classmethod
   def setUpClass(cls):
-    super(ClientTest, cls).setUpClass()
-    cls.client = make_client(num_workers=3, num_ps=2)
-    cls.strategy = cls.client.strategy
+    super(ClusterCoordinatorTest, cls).setUpClass()
+    cls.coordinator = make_coordinator(num_workers=3, num_ps=2)
+    cls.strategy = cls.coordinator.strategy
 
   def testFnReturnNestedValues(self):
     x = constant_op.constant(1)
@@ -456,9 +457,9 @@ class ClientTest(TestCaseWithErrorReportingThread):
     def f():
       return x + 1, (x + 2, x + 3), [x + 4], {'v': x}
 
-    got = self.client.schedule(f)
+    got = self.coordinator.schedule(f)
     want = 2, (3, 4), [5], {'v': 1}
-    self.assertEqual(self.client.fetch(got), want)
+    self.assertEqual(self.coordinator.fetch(got), want)
 
   def testInputFunction(self):
 
@@ -474,12 +475,14 @@ class ClientTest(TestCaseWithErrorReportingThread):
       v.assign_add(x)
       return x
 
-    distributed_dataset = self.client.create_per_worker_dataset(input_fn)
-    result = self.client.schedule(worker_fn, args=(iter(distributed_dataset),))
-    result = self.client.fetch(result)
+    distributed_dataset = self.coordinator.create_per_worker_dataset(input_fn)
+    result = self.coordinator.schedule(
+        worker_fn, args=(iter(distributed_dataset),))
+    result = self.coordinator.fetch(result)
     self.assertEqual(result, (1,))
-    result = self.client.schedule(worker_fn, args=(iter(distributed_dataset),))
-    result = self.client.fetch(result)
+    result = self.coordinator.schedule(
+        worker_fn, args=(iter(distributed_dataset),))
+    result = self.coordinator.fetch(result)
     self.assertEqual(result, (1,))
 
     self.assertAlmostEqual(v.read_value().numpy(), 2, delta=1e-6)
@@ -499,30 +502,30 @@ class ClientTest(TestCaseWithErrorReportingThread):
       x = next(iterator)
       v.assign_add(x)
 
-    distributed_dataset = self.client.create_per_worker_dataset(input_fn)
+    distributed_dataset = self.coordinator.create_per_worker_dataset(input_fn)
 
     iterator = iter(distributed_dataset)
 
     # Verifying joining without any scheduling doesn't hang.
-    self.client.join()
+    self.coordinator.join()
     self.assertEqual(v.read_value().numpy(), 0)
 
     for _ in range(5):
-      self.client.schedule(worker_fn, args=(iterator,))
-    self.client.join()
+      self.coordinator.schedule(worker_fn, args=(iterator,))
+    self.coordinator.join()
 
     # With 5 addition it should be 2*5 = 10.
     self.assertEqual(v.read_value().numpy(), 10)
 
     for _ in range(5):
-      self.client.schedule(worker_fn, args=(iterator,))
+      self.coordinator.schedule(worker_fn, args=(iterator,))
 
     # Verifying multiple join is fine.
-    self.client.join()
-    self.client.join()
-    self.client.join()
+    self.coordinator.join()
+    self.coordinator.join()
+    self.coordinator.join()
 
-    self.assertTrue(self.client.done())
+    self.assertTrue(self.coordinator.done())
 
     # Likewise, it's now 20.
     self.assertEqual(v.read_value().numpy(), 20)
@@ -542,8 +545,9 @@ class ClientTest(TestCaseWithErrorReportingThread):
     def worker_fn(iterator):
       return next(iterator)
 
-    distributed_dataset = self.client.create_per_worker_dataset(input_fn)
-    result = self.client.schedule(worker_fn, args=(iter(distributed_dataset),))
+    distributed_dataset = self.coordinator.create_per_worker_dataset(input_fn)
+    result = self.coordinator.schedule(
+        worker_fn, args=(iter(distributed_dataset),))
     self.assertEqual(result.fetch(), (10,))
     self.assertEqual(self._map_fn_tracing_count, 1)
 
@@ -554,28 +558,28 @@ class ClientTest(TestCaseWithErrorReportingThread):
       return v.read_value()
 
     with self.assertRaises(ValueError):
-      self.client.create_per_worker_dataset(input_fn)
+      self.coordinator.create_per_worker_dataset(input_fn)
 
   def testDatasetsShuffledDifferently(self):
     # This test requires at least two workers in the cluster.
-    self.assertGreaterEqual(len(self.client.cluster.workers), 2)
+    self.assertGreaterEqual(len(self.coordinator.cluster.workers), 2)
 
     random_seed.set_random_seed(None)
 
     def input_fn():
       return dataset_ops.DatasetV2.range(0, 100).shuffle(100)
 
-    distributed_dataset = self.client.create_per_worker_dataset(input_fn)
+    distributed_dataset = self.coordinator.create_per_worker_dataset(input_fn)
     distributed_iterator = iter(distributed_dataset)
 
     # Get elements from the first two iterators.
     iterator_1 = distributed_iterator._values[0]
-    iterator_1._rebuild_on(self.client.cluster.workers[0])
+    iterator_1._rebuild_on(self.coordinator.cluster.workers[0])
     iterator_1 = iterator_1.fetch()
     elements_in_iterator_1 = [e.numpy() for e in iterator_1]
 
     iterator_2 = distributed_iterator._values[1]
-    iterator_2._rebuild_on(self.client.cluster.workers[1])
+    iterator_2._rebuild_on(self.coordinator.cluster.workers[1])
     iterator_2 = iterator_2.fetch()
     elements_in_iterator_2 = [e.numpy() for e in iterator_2]
 
@@ -592,12 +596,12 @@ class ClientTest(TestCaseWithErrorReportingThread):
       self.assertIn('worker', var.device)
       return var
 
-    worker_local_var = self.client._create_per_worker_resources(create_var)
+    worker_local_var = self.coordinator._create_per_worker_resources(create_var)
 
     # The following is a workaround to allow `worker_local_var` to be passed in
-    # as args to the `client.schedule` method which requires tensor specs to
-    # trace tf.function but _create_worker_resources' return values don't have
-    # tensor specs. We can get rid of this workaround once
+    # as args to the `coordinator.schedule` method which requires tensor specs
+    # to trace tf.function but _create_worker_resources' return values don't
+    # have tensor specs. We can get rid of this workaround once
     # _create_worker_resources is able to infer the tensor spec of the return
     # value of the function passed in. See b/154675763.
     for var in worker_local_var._values:
@@ -609,10 +613,10 @@ class ClientTest(TestCaseWithErrorReportingThread):
     for _ in range(10):
       # Which slice of `worker_local_var` will be used will depend on which
       # worker the `worker_fn` gets scheduled on.
-      self.client.schedule(worker_fn, args=(worker_local_var,))
-    self.client.join()
+      self.coordinator.schedule(worker_fn, args=(worker_local_var,))
+    self.coordinator.join()
 
-    var_sum = sum(self.client.fetch(worker_local_var._values))
+    var_sum = sum(self.coordinator.fetch(worker_local_var._values))
     self.assertEqual(var_sum, 10.0)
 
   def testDisallowRemoteValueAsInput(self):
@@ -625,28 +629,28 @@ class ClientTest(TestCaseWithErrorReportingThread):
     def func_1(x):
       return x + 1.0
 
-    remote_v = self.client.schedule(func_0)
+    remote_v = self.coordinator.schedule(func_0)
     with self.assertRaises(ValueError):
-      self.client.schedule(func_1, args=(remote_v,))
+      self.coordinator.schedule(func_1, args=(remote_v,))
 
 
-class LimitedClosureQueueSizeBasicTest(ClientTest):
+class LimitedClosureQueueSizeBasicTest(ClusterCoordinatorTest):
   """Test basic functionality works with explicit maximum closure queue size.
 
-  Execute the same set of test cases as in `ClientTest`, with an
+  Execute the same set of test cases as in `ClusterCoordinatorTest`, with an
   explicit size limit for the closure queue. Note that even when the queue size
   is set to infinite, there is still a maximum practical size (depends on host
   memory limit) that might cause the queue.put operations to be blocking when
   scheduling a large number of closures on a big cluster. These tests make sure
-  that the client does not run into deadlocks in such scenario.
+  that the coordinator does not run into deadlocks in such scenario.
   """
 
   @classmethod
   def setUpClass(cls):
     super(LimitedClosureQueueSizeBasicTest, cls).setUpClass()
-    client_lib._CLOSURE_QUEUE_MAX_SIZE = 2
-    cls.client = make_client(num_workers=3, num_ps=2)
-    cls.strategy = cls.client.strategy
+    coordinator_lib._CLOSURE_QUEUE_MAX_SIZE = 2
+    cls.coordinator = make_coordinator(num_workers=3, num_ps=2)
+    cls.strategy = cls.coordinator.strategy
 
 
 class ErrorReportingTest(TestCaseWithErrorReportingThread):
@@ -654,8 +658,8 @@ class ErrorReportingTest(TestCaseWithErrorReportingThread):
   @classmethod
   def setUpClass(cls):
     super(ErrorReportingTest, cls).setUpClass()
-    cls.client = make_client(num_workers=3, num_ps=2)
-    cls.strategy = cls.client.strategy
+    cls.coordinator = make_coordinator(num_workers=3, num_ps=2)
+    cls.strategy = cls.coordinator.strategy
 
     with cls.strategy.scope():
       cls.iteration = variables.Variable(initial_value=0.0)
@@ -686,80 +690,80 @@ class ErrorReportingTest(TestCaseWithErrorReportingThread):
 
   def testJoinRaiseError(self):
     for _ in range(3):
-      self.client.schedule(self._normal_function)
-    self.client.schedule(self._error_function)
+      self.coordinator.schedule(self._normal_function)
+    self.coordinator.schedule(self._error_function)
     with self.assertRaises(errors.InvalidArgumentError):
-      self.client.join()
+      self.coordinator.join()
 
   def testScheduleRaiseError(self):
     for _ in range(3):
-      self.client.schedule(self._normal_function)
-    self.client.schedule(self._error_function)
+      self.coordinator.schedule(self._normal_function)
+    self.coordinator.schedule(self._error_function)
     with self.assertRaises(errors.InvalidArgumentError):
       while True:
-        self.client.schedule(self._normal_function)
+        self.coordinator.schedule(self._normal_function)
 
   def testScheduleRaiseErrorWithMultipleFailure(self):
     for _ in range(3):
-      self.client.schedule(self._normal_function)
-    self.client.schedule(self._error_function)
+      self.coordinator.schedule(self._normal_function)
+    self.coordinator.schedule(self._error_function)
     with self.assertRaises(errors.InvalidArgumentError):
       while True:
-        self.client.schedule(self._error_function)
-    self.client.join()
+        self.coordinator.schedule(self._error_function)
+    self.coordinator.join()
 
   def testErrorWillbeCleared(self):
-    self.client.schedule(self._error_function)
+    self.coordinator.schedule(self._error_function)
     with self.assertRaises(errors.InvalidArgumentError):
-      self.client.join()
+      self.coordinator.join()
 
     for _ in range(3):
-      self.client.schedule(self._normal_function)
-    self.client.schedule(self._error_function)
+      self.coordinator.schedule(self._normal_function)
+    self.coordinator.schedule(self._error_function)
     with self.assertRaises(errors.InvalidArgumentError):
-      self.client.join()
+      self.coordinator.join()
 
   def testRemoteValueReturnError(self):
-    result = self.client.schedule(self._error_function)
+    result = self.coordinator.schedule(self._error_function)
 
     with self.assertRaises(errors.InvalidArgumentError):
       result.fetch()
 
     # Clear the error.
     with self.assertRaises(errors.InvalidArgumentError):
-      self.client.join()
+      self.coordinator.join()
 
   def testInputError(self):
 
-    worker_local_val = self.client._create_per_worker_resources(
+    worker_local_val = self.coordinator._create_per_worker_resources(
         self._error_function)
 
     @def_function.function
     def func(x):
       return x + 1
 
-    result = self.client.schedule(func, args=(worker_local_val,))
-    with self.assertRaises(client_lib.InputError):
-      self.client.join()
+    result = self.coordinator.schedule(func, args=(worker_local_val,))
+    with self.assertRaises(coordinator_lib.InputError):
+      self.coordinator.join()
 
-    with self.assertRaises(client_lib.InputError):
+    with self.assertRaises(coordinator_lib.InputError):
       result.fetch()
 
   def testCancellation(self):
     for _ in range(3):
-      self.client.schedule(self._normal_function)
-    long_function = self.client.schedule(self._long_function)
-    self.client.schedule(self._error_function)
+      self.coordinator.schedule(self._normal_function)
+    long_function = self.coordinator.schedule(self._long_function)
+    self.coordinator.schedule(self._error_function)
 
     with self.assertRaises(errors.InvalidArgumentError):
-      self.client.join()
+      self.coordinator.join()
 
     with self.assertRaises(errors.CancelledError):
       long_function.fetch()
 
     for _ in range(3):
-      self.client.schedule(self._normal_function)
-    self.client.join()
+      self.coordinator.schedule(self._normal_function)
+    self.coordinator.join()
 
 
 class LimitedClosureQueueErrorTest(ErrorReportingTest):
@@ -772,11 +776,11 @@ class LimitedClosureQueueErrorTest(ErrorReportingTest):
   @classmethod
   def setUpClass(cls):
     super(LimitedClosureQueueErrorTest, cls).setUpClass()
-    client_lib._CLOSURE_QUEUE_MAX_SIZE = 2
-    cls.client = make_client(num_workers=3, num_ps=2)
-    cls.strategy = cls.client.strategy
+    coordinator_lib._CLOSURE_QUEUE_MAX_SIZE = 2
+    cls.coordinator = make_coordinator(num_workers=3, num_ps=2)
+    cls.strategy = cls.coordinator.strategy
 
-    with cls.client.strategy.scope():
+    with cls.coordinator.strategy.scope():
       cls.iteration = variables.Variable(initial_value=0.0)
 
 
@@ -785,8 +789,8 @@ class StrategyIntegrationTest(test.TestCase):
   @classmethod
   def setUpClass(cls):
     super(StrategyIntegrationTest, cls).setUpClass()
-    cls.client = make_client(num_workers=1, num_ps=1)
-    cls.strategy = cls.client.strategy
+    cls.coordinator = make_coordinator(num_workers=1, num_ps=1)
+    cls.strategy = cls.coordinator.strategy
 
   def testBasicVariableAssignment(self):
     self.strategy.extended._variable_count = 0
@@ -801,9 +805,9 @@ class StrategyIntegrationTest(test.TestCase):
       v2.assign_sub(0.2)
       return v1.read_value() / v2.read_value()
 
-    results = self.client.schedule(worker_fn)
+    results = self.coordinator.schedule(worker_fn)
     logging.info('Results of experimental_run_v2: %f',
-                 self.client.fetch(results))
+                 self.coordinator.fetch(results))
 
     self.assertAlmostEqual(v1.read_value().numpy(), 0.1, delta=1e-6)
     self.assertAlmostEqual(v2.read_value().numpy(), 0.8, delta=1e-6)
@@ -826,12 +830,14 @@ class StrategyIntegrationTest(test.TestCase):
         return self.strategy.run(replica_fn, args=(input_tensor,))
 
       # Asserting scheduling in scope has the expected behavior.
-      result = self.client.schedule(worker_fn, args=(constant_op.constant(3),))
-      self.assertIsInstance(result, client_lib.RemoteValue)
+      result = self.coordinator.schedule(
+          worker_fn, args=(constant_op.constant(3),))
+      self.assertIsInstance(result, coordinator_lib.RemoteValue)
       self.assertEqual(result.fetch(), 4)
 
     # Asserting scheduling out of scope has the expected behavior.
-    result = self.client.schedule(worker_fn, args=(constant_op.constant(3),))
+    result = self.coordinator.schedule(
+        worker_fn, args=(constant_op.constant(3),))
     self.assertEqual(result.fetch(), 4)
 
 
