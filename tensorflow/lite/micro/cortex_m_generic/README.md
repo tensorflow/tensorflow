@@ -28,6 +28,7 @@ Optional parameters:
 Some examples:
 
 Building with arm-gcc
+
 ```
 make -f tensorflow/lite/micro/tools/make/Makefile TARGET=cortex_m_generic TARGET_ARCH=cortex-m7 microlite
 make -f tensorflow/lite/micro/tools/make/Makefile TARGET=cortex_m_generic TARGET_ARCH=cortex-m7 TAGS=cmsis-nn microlite
