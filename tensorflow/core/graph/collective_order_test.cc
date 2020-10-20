@@ -79,19 +79,20 @@ void VerifyAttrs(
 Node* CollectiveReduceNode(GraphDefBuilder* builder, Node* input,
                            const string& name, const string& device,
                            int instance_key) {
-  Node* collective_node =
-      ops::UnaryOp("CollectiveReduce", input,
-                   builder->opts()
-                       .WithName(name)
-                       .WithDevice(device)
-                       .WithAttr("T", DT_FLOAT)
-                       .WithAttr("group_size", 2)
-                       .WithAttr("group_key", 1)
-                       .WithAttr("instance_key", instance_key)
-                       .WithAttr("merge_op", "Add")
-                       .WithAttr("final_op", "Id")
-                       .WithAttr("subdiv_offsets", {1}));
-  return collective_node;
+  auto opts = builder->opts()
+                  .WithName(name)
+                  .WithDevice(device)
+                  .WithAttr("T", DT_FLOAT)
+                  .WithAttr("group_size", 2)
+                  .WithAttr("group_key", 1)
+                  .WithAttr("instance_key", instance_key)
+                  .WithAttr("merge_op", "Add")
+                  .WithAttr("final_op", "Id")
+                  .WithAttr("subdiv_offsets", {1});
+  NodeBuilder node_builder(opts.GetNameForOp("CollectiveReduce"),
+                           "CollectiveReduce", opts.op_registry());
+  node_builder.Input(input).Input(std::vector<NodeBuilder::NodeOut>());
+  return opts.FinalizeBuilder(&node_builder);
 }
 
 // Initialize the following graph:

@@ -381,6 +381,7 @@ class RingReducerTest : public ::testing::Test {
             .Attr("instance_key", params.instance.instance_key)
             .Attr("subdiv_offsets", params.instance.impl_details.subdiv_offsets)
             .Input(FakeInput(params.instance.data_type))
+            .Input(std::vector<NodeDefBuilder::NodeOut>())
             .Finalize(&node_def));
     return GetKernel(node_def, device_type, device);
   }
