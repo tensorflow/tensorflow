@@ -33,10 +33,10 @@ from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.training.tracking import base as tracking
+from tensorflow.python.util import keras_deps
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 
@@ -417,7 +417,7 @@ def call_context():
   return call_ctx
 
 
-control_flow_util_v2._register_keras_layer_context_function(call_context)  # pylint: disable=protected-access
+keras_deps.register_call_context_function(call_context)
 
 
 class CallContext(object):
