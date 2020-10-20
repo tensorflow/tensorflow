@@ -92,6 +92,8 @@ struct EngineInfo {
   EngineInfo()
       : engine_type(EngineType::TRTStatic),
         max_workspace_size_bytes(0),
+        max_batch_size(absl::nullopt),
+        maximum_cached_engines(0),
         precision_mode(TrtPrecisionMode::FP32),
         use_calibration(true),
         allow_build_at_runtime(true) {}
@@ -108,6 +110,7 @@ struct EngineInfo {
   enum class EngineType { TRTStatic = 0, TRTDynamic = 1 };
   EngineType engine_type;
   int64 max_workspace_size_bytes;
+  absl::optional<int> max_batch_size;
   int maximum_cached_engines;
   TrtPrecisionMode precision_mode;
   bool use_calibration;

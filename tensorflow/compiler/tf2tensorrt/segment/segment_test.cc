@@ -65,7 +65,7 @@ class SegmentTest : public ::testing::Test {
                const std::set<string>& input_candidates,
                const std::set<string>& output_candidates,
                const std::vector<std::set<string>>& expected_segments) {
-    SegmentNodesVector segments;
+    SegmentVector segments;
     TF_EXPECT_OK(SegmentGraph(graph, graph_properties,
                               MakeCandidateFn(candidates),
                               MakeInputEdgeCandidateFn(input_candidates),
@@ -82,12 +82,12 @@ class SegmentTest : public ::testing::Test {
             expected_segments);
   }
 
-  void ValidateSegment(const SegmentNodesVector& segments,
+  void ValidateSegment(const SegmentVector& segments,
                        const std::vector<std::set<string>>& expected_segments) {
     EXPECT_EQ(expected_segments.size(), segments.size());
     for (int i = 0; i < segments.size(); ++i) {
       std::set<string> segment_node_names;
-      for (const Node* node : segments[i]) {
+      for (const Node* node : segments[i].nodes) {
         segment_node_names.insert(node->name());
       }
       const auto& expected = expected_segments[i];
@@ -490,9 +490,10 @@ TEST_F(SegmentTest, TwoChainsDiffBatchSizes) {
   RunTest(&g, &static_graph_properties, all_nodes, all_nodes, all_nodes,
           /*expected_segments=*/{{"output-0", "const-scalar"}});
 
+  // Converter will create engines based on the static batch size
   EnableImplicitBatchModeForStaticEngine(1);
   RunTest(&g, &static_graph_properties, all_nodes, all_nodes, all_nodes,
-          /*expected_segments=*/{});
+          /*expected_segments=*/{{"output-0", "const-scalar"}});
 }
 
 TEST_F(SegmentTest, SameRankImplicitBroadcastingStaticBatchSize) {
