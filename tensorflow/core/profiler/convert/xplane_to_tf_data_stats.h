@@ -27,11 +27,23 @@ namespace profiler {
 
 TF_CONST_INIT extern const int64 kSlowCallThresholdPs;
 
+enum class BottleneckType {
+  kSlowSource,
+  kSlowRemoteSource,
+  kSlowTransformationWithParallelVersion,
+  kSlowTransformationWithoutParallelVersion,
+  kOther,
+};
+
+BottleneckType GetBottleneckType(absl::string_view bottleneck_iterator_name);
+
 class CombinedTfDataStatsBuilder {
  public:
   explicit CombinedTfDataStatsBuilder(
-      CombinedTfDataStats* combined_tf_data_stats)
-      : combined_tf_data_stats_(combined_tf_data_stats) {}
+      CombinedTfDataStats* combined_tf_data_stats,
+      bool generate_suggestion = true)
+      : combined_tf_data_stats_(combined_tf_data_stats),
+        generate_suggestion_(generate_suggestion) {}
 
   void Add(absl::string_view host_name, XPlane* host_plane);
 
@@ -40,6 +52,7 @@ class CombinedTfDataStatsBuilder {
 
  private:
   CombinedTfDataStats* combined_tf_data_stats_;
+  bool generate_suggestion_;
 };
 
 }  // namespace profiler

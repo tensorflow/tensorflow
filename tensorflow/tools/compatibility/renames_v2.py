@@ -770,6 +770,12 @@ renames = {
         'tf.linalg.matrix_transpose',
     'tf.matrix_triangular_solve':
         'tf.linalg.triangular_solve',
+    'tf.mixed_precision.DynamicLossScale':
+        'tf.compat.v1.mixed_precision.DynamicLossScale',
+    'tf.mixed_precision.FixedLossScale':
+        'tf.compat.v1.mixed_precision.FixedLossScale',
+    'tf.mixed_precision.LossScale':
+        'tf.compat.v1.mixed_precision.LossScale',
     'tf.metrics.accuracy':
         'tf.compat.v1.metrics.accuracy',
     'tf.metrics.auc':

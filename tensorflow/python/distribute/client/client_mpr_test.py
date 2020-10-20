@@ -31,6 +31,7 @@ from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolve
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
@@ -72,8 +73,7 @@ class ClientMprTest(test.TestCase):
       # Now the main process can terminate.
       functions_scheduled_event.set()
 
-      # Verified that join and schedule indeed raise
-      # ParameterServerFailureError.
+      # Verified that join and schedule indeed raise UnavailableError.
       try:
         if test_join:
           ps_client.join()
@@ -81,7 +81,7 @@ class ClientMprTest(test.TestCase):
           while ps_client.cluster._closure_queue._error is None:
             time.sleep(1)
           ps_client.schedule(worker_fn)
-      except client_lib.ParameterServerFailureError:
+      except errors.UnavailableError:
         # The following verifies that after PS fails, continue executing
         # functions on workers should fail and indicate it's PS failure.
         for worker_id in range(3):
@@ -101,7 +101,7 @@ class ClientMprTest(test.TestCase):
             raise RuntimeError("Executing a function after PS fails, should "
                                "result in a PS failure.")
 
-      raise RuntimeError("ParameterServerFailureError supposed to be raised.")
+      raise RuntimeError("UnavailableError supposed to be raised.")
 
     manager = multi_process_runner.manager()
     functions_scheduled_event = manager.Event()

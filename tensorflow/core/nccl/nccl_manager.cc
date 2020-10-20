@@ -115,7 +115,7 @@ struct NcclManager::Communicator {
       : num_devices(members.size()), members(std::move(members)), key(key) {}
 
   const int num_devices;
-  const std::vector<CommunicatorMember> members;
+  std::vector<CommunicatorMember> members;
   const string key;
 };
 
@@ -304,7 +304,7 @@ Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
     // Launching of kernels must be serialized so that, given collectives A and
     // B, and an order of them (e.g., A before B), then for each comm_stream
     // involved, the kernel for A is launched before the kernel for B. This is
-    // guaranteed currently be a global mutex controlling additions of the
+    // guaranteed currently by a global mutex controlling additions of the
     // kernels to per-stream launch queues.  The launch queues are processed by
     // LoopKernelLaunches.
     for (auto& comm : communicators_) {
@@ -851,8 +851,7 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
 void NcclManager::StartAbort(const Status& s) {
   VLOG(1) << "NcclManager StartAbort";
   absl::flat_hash_map<string, Collective*> collectives;
-  // After status_ is set to a non-OK one, there should be no further
-  // modifications to collectives_.
+  std::vector<std::unique_ptr<Communicator>> communicators;
   {
     mutex_lock l(mu_);
     if (!status_.ok()) {
@@ -863,6 +862,7 @@ void NcclManager::StartAbort(const Status& s) {
     }
     status_ = s;
     collectives.swap(collectives_);
+    communicators.swap(communicators_);
   }
   // collectives_ contains pending launches that haven't been dispatched to
   // kernel launch threads, so we can simply invoke the done callbacks of them.
@@ -879,14 +879,15 @@ void NcclManager::StartAbort(const Status& s) {
   // there's only one active NcclManager at a time.
   UnboundedWorkQueue queue(Env::Default(), "nccl_abort");
   int num_comms = 0;
-  for (std::unique_ptr<Communicator>& communicator : communicators_) {
+  for (std::unique_ptr<Communicator>& communicator : communicators) {
     num_comms += communicator->members.size();
   }
   BlockingCounter pending(num_comms);
-  for (std::unique_ptr<Communicator>& communicator : communicators_) {
-    for (const CommunicatorMember& member : communicator->members) {
+  for (std::unique_ptr<Communicator>& communicator : communicators) {
+    for (CommunicatorMember& member : communicator->members) {
       queue.Schedule([&member, &pending]() {
         ncclCommAbort(member.nccl_comm);
+        member.nccl_comm = nullptr;
         pending.DecrementCount();
       });
     }

@@ -1155,6 +1155,13 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
     return "TensorHandle";
   });
 
+  m.def("TF_RegisterFilesystemPlugin", [](const char* plugin_filename) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    TF_RegisterFilesystemPlugin(plugin_filename, status.get());
+    tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+  });
+
   py::enum_<TF_DataType>(m, "TF_DataType")
       .value("TF_FLOAT", TF_FLOAT)
       .value("TF_DOUBLE", TF_DOUBLE)

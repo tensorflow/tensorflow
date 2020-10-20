@@ -740,7 +740,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       atexit.register(async_wait)
 
     # Flag to turn on VariablePolicy
-    self._use_var_policy = True
+    self._use_var_policy = False
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
     distribute_utils. validate_colocate(colocate_with_variable, self)
@@ -803,6 +803,13 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
             "distribution function.".format(path, type(spec)))
 
   def _experimental_distribute_dataset(self, dataset, options):
+    if (options and options.experimental_replication_mode ==
+        distribute_lib.InputReplicationMode.PER_REPLICA):
+      raise NotImplementedError(
+          "InputReplicationMode.PER_REPLICA "
+          "is only supported in "
+          "`experimental_distribute_datasets_from_function`."
+      )
     if options is None or options.experimental_prefetch_to_device:
       self._check_spec(dataset.element_spec)
 
@@ -813,6 +820,13 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         num_replicas_in_sync=self._num_replicas_in_sync)
 
   def _distribute_datasets_from_function(self, dataset_fn, options):
+    if (options and options.experimental_replication_mode ==
+        distribute_lib.InputReplicationMode.PER_REPLICA):
+      raise NotImplementedError(
+          "InputReplicationMode.PER_REPLICA "
+          "is only supported in "
+          " `experimental_distribute_datasets_from_function` "
+          "of tf.distribute.MirroredStrategy")
     input_workers = self._get_input_workers(options)
     input_contexts = []
     num_workers = input_workers.num_workers
@@ -1411,12 +1425,11 @@ class _TPUReplicaContext(distribute_lib.ReplicaContext):
     return self.strategy.extended.experimental_logical_device(logical_device_id)
 
   # TODO(wxinyi): Investigate whether to use cross_replica_sum to optimize it.
-  def _all_gather(self, value, axis, options=None):
-    del options
+  def all_gather(self, value, axis, experimental_hints=None):
+    del experimental_hints
     for v in nest.flatten(value):
       if isinstance(v, ops.IndexedSlices):
-        raise NotImplementedError("gather/all_gather does not support "
-                                  "IndexedSlices")
+        raise NotImplementedError("all_gather does not support IndexedSlices")
 
     def _all_to_all(value, axis):
       # The underlying AllToAllOp first do a split of the input value and then
@@ -1470,7 +1483,7 @@ class _TPUReplicaContext(distribute_lib.ReplicaContext):
     @custom_gradient.custom_gradient
     def grad_wrapper(*xs):
       ys = [_all_to_all(t, axis=axis) for t in xs]
-      return ys, lambda *dy_s: self._all_gather(dy_s, axis)
+      return ys, lambda *dy_s: self.all_gather(dy_s, axis)
 
     return nest.pack_sequence_as(value, grad_wrapper(*nest.flatten(value)))
 

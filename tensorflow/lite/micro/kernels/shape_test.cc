@@ -55,8 +55,8 @@ void TestShape(const int* input_dims_data, const float* input_data,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims),
-      CreateInt32Tensor(output_data, output_dims, true),
+      CreateTensor(input_data, input_dims),
+      CreateTensor(output_data, output_dims, true),
   };
 
   ValidateShape(tensors, tensors_size, output_data, expected_output_data,

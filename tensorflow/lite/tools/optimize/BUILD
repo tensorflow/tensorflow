@@ -312,6 +312,8 @@ tf_cc_test(
         "//tensorflow/lite/tools/optimize:testdata/svdf_calibrated.bin",
         "//tensorflow/lite/tools/optimize:testdata/svdf_quantized.bin",
         "//tensorflow/lite/tools/optimize:testdata/transpose.bin",
+        "//tensorflow/lite/tools/optimize:testdata/unidirectional_sequence_lstm_calibrated.bin",
+        "//tensorflow/lite/tools/optimize:testdata/unidirectional_sequence_lstm_quantized.bin",
         "//tensorflow/lite/tools/optimize:testdata/unpack.bin",
     ],
     tags = [

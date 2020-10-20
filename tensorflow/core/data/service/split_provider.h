@@ -28,8 +28,12 @@ namespace data {
 class DataServiceSplitProvider : public SplitProvider {
  public:
   DataServiceSplitProvider(const std::string& address,
-                           const std::string& protocol, int64 job_id)
-      : address_(address), protocol_(protocol), job_id_(job_id) {}
+                           const std::string& protocol, int64 job_id,
+                           int64 timeout_ms)
+      : address_(address),
+        protocol_(protocol),
+        job_id_(job_id),
+        timeout_ms_(timeout_ms) {}
 
   Status GetNext(Tensor* split, bool* end_of_splits) override;
   Status Reset() override;
@@ -42,6 +46,7 @@ class DataServiceSplitProvider : public SplitProvider {
   const std::string address_;
   const std::string protocol_;
   const int64 job_id_;
+  const int64 timeout_ms_;
 
   mutex mu_;
   int64 repetition_ = 0;

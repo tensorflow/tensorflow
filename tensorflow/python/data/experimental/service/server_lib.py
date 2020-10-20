@@ -217,7 +217,7 @@ class DispatchServer(object):
 class WorkerConfig(
     collections.namedtuple("WorkerConfig", [
         "dispatcher_address", "worker_address", "port", "protocol",
-        "heartbeat_interval_ms"
+        "heartbeat_interval_ms", "dispatcher_timeout_ms"
     ])):
   """Configuration class for tf.data service dispatchers.
 
@@ -235,6 +235,8 @@ class WorkerConfig(
       reasonable default. A higher value will reduce the load on the dispatcher,
       while a lower value will reduce the time it takes to reclaim resources
       from finished jobs.
+    dispatcher_timeout_ms: How long, in milliseconds, to retry requests to the
+      dispatcher before giving up and reporting an error. Defaults to 1 hour.
   """
 
   def __new__(cls,
@@ -242,15 +244,19 @@ class WorkerConfig(
               worker_address=None,
               port=0,
               protocol="grpc",
-              heartbeat_interval_ms=None):
+              heartbeat_interval_ms=None,
+              dispatcher_timeout_ms=None):
     if worker_address is None:
       worker_address = "localhost:%port%"
     if heartbeat_interval_ms is None:
       heartbeat_interval_ms = 30 * 1000  # 30 seconds
+    if dispatcher_timeout_ms is None:
+      dispatcher_timeout_ms = 60 * 60 * 1000  # 1 hour
 
     return super(WorkerConfig,
                  cls).__new__(cls, dispatcher_address, worker_address, port,
-                              protocol, heartbeat_interval_ms)
+                              protocol, heartbeat_interval_ms,
+                              dispatcher_timeout_ms)
 
 
 @tf_export("data.experimental.service.WorkerServer", v1=[])
@@ -299,7 +305,8 @@ class WorkerServer(object):
         worker_address=config.worker_address,
         port=config.port,
         protocol=config.protocol,
-        heartbeat_interval_ms=config.heartbeat_interval_ms)
+        heartbeat_interval_ms=config.heartbeat_interval_ms,
+        dispatcher_timeout_ms=config.dispatcher_timeout_ms)
     self._server = _pywrap_server_lib.TF_DATA_NewWorkerServer(
         config_proto.SerializeToString())
     if start:

@@ -118,7 +118,7 @@ def load(path, compile=True, options=None):  # pylint: disable=redefined-builtin
   # TODO(kathywu): Add code to load from objects that contain all endpoints
 
   model = tf_load.load_internal(
-      path, options=options, loader_cls=KerasObjectLoader)
+      path, options=options, loader_cls=KerasObjectLoader)['root']
 
   # pylint: disable=protected-access
   if isinstance(model, training_lib.Model) and compile:

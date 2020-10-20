@@ -81,6 +81,7 @@ cc_library(
     deps = [
         ":micro_utils",
         ":op_resolvers",
+        "//tensorflow/lite:type_to_tflitetype",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:kernel_util",

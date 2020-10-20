@@ -2007,7 +2007,8 @@ class CentralCropTest(test_util.TensorFlowTestCase):
           self.assertTrue(y.op.name.startswith("central_crop"))
 
 
-class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
+class PadToBoundingBoxTest(test_util.TensorFlowTestCase,
+                           parameterized.TestCase):
 
   def _PadToBoundingBox(self, x, offset_height, offset_width, target_height,
                         target_width, use_tensor_inputs):
@@ -2172,7 +2173,10 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
           "inner 3 dims of \\'image.shape\\' must be > 0",
           use_tensor_inputs_options=[True])
 
-  def testBadParams(self):
+  def testBadParamsScalarInputs(self):
+    # In this test, inputs do not get converted to tensors before calling the
+    # tf.function. The error message here is raised in python
+    # since the python function has direct access to the scalars.
     x_shape = [3, 3, 1]
     x = np.zeros(x_shape)
 
@@ -2187,9 +2191,49 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
          "height must be <= target - offset"),
         (0, 2, 4, 4,
          "width must be <= target - offset"))
-
     for config_item in test_config:
-      self._assertRaises(x, x_shape, *config_item)
+      self._assertRaises(
+          x, x_shape, *config_item, use_tensor_inputs_options=[False])
+
+  def testBadParamsTensorInputsEager(self):
+    # In this test inputs get converted to EagerTensors before calling the
+    # tf.function. The error message here is raised in python
+    # since the python function has direct access to the tensor's values.
+    with context.eager_mode():
+      x_shape = [3, 3, 1]
+      x = np.zeros(x_shape)
+
+      # Each line is a test configuration:
+      #   offset_height, offset_width, target_height, target_width, err_msg
+      test_config = (
+          (-1, 0, 4, 4,
+           "offset_height must be >= 0"),
+          (0, -1, 4, 4,
+           "offset_width must be >= 0"),
+          (2, 0, 4, 4,
+           "height must be <= target - offset"),
+          (0, 2, 4, 4,
+           "width must be <= target - offset"))
+      for config_item in test_config:
+        self._assertRaises(
+            x, x_shape, *config_item, use_tensor_inputs_options=[True])
+
+  @parameterized.named_parameters([("OffsetHeight", (-1, 0, 4, 4)),
+                                   ("OffsetWidth", (0, -1, 4, 4)),
+                                   ("Height", (2, 0, 4, 4)),
+                                   ("Width", (0, 2, 4, 4))])
+  def testBadParamsTensorInputsGraph(self, config):
+    # In this test inputs get converted to tensors before calling the
+    # tf.function. The error message here is raised during shape inference.
+    with context.graph_mode():
+      x_shape = [3, 3, 1]
+      x = np.zeros(x_shape)
+      self._assertRaises(
+          x,
+          x_shape,
+          *config,
+          "Paddings must be non-negative",
+          use_tensor_inputs_options=[True])
 
   def testNameScope(self):
     # Testing name scope requires a graph.
@@ -5710,6 +5754,25 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           self.assertAllEqual(list(image2.shape), [12, 40, 20, 3])
           self.assertAllEqual(image2, image3)
 
+  def testImageCropAndResize(self):
+    if test_util.is_gpu_available():
+      op = image_ops_impl.crop_and_resize_v2(
+          image=array_ops.zeros((2, 1, 1, 1)),
+          boxes=[[1.0e+40, 0, 0, 0]],
+          box_indices=[1],
+          crop_size=[1, 1])
+      self.evaluate(op)
+    else:
+      message = "Boxes contains at least one element that is not finite"
+      with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
+                                  message):
+        op = image_ops_impl.crop_and_resize_v2(
+            image=array_ops.zeros((2, 1, 1, 1)),
+            boxes=[[1.0e+40, 0, 0, 0]],
+            box_indices=[1],
+            crop_size=[1, 1])
+        self.evaluate(op)
+
   @parameterized.named_parameters(
       ("_jpeg", "JPEG", "jpeg_merge_test1.jpg"),
       ("_png", "PNG", "lena_rgba.png"),
@@ -5755,6 +5818,34 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       img_bytes = io_ops.read_file(os.path.join(base_path, filename))
       img = image_ops.decode_and_crop_jpeg(img_bytes, [1, 1, 2, 2])
       self.evaluate(img)
+
+  def testGifFramesWithDiffSize(self):
+    """Test decoding an animated GIF.
+
+    This test verifies that `decode_image` op can decode animated GIFs whose
+    first frame does not fill the canvas. The unoccupied areas should be filled
+    with zeros (black).
+
+    `squares.gif` is animated with two images of different sizes. It
+    alternates between a smaller image of size 10 x 10 and a larger image of
+    size 16 x 16. Because it starts animating with the smaller image, the first
+    frame does not fill the canvas. (Canvas size is equal to max frame width x
+    max frame height.)
+
+    `red_black.gif` has just a single image in a GIF format. It is the same
+    image as the smaller image (size 10 x 10) of the two images in
+    `squares.gif`. The only difference is that its background (canvas - smaller
+    image) is pre-filled with zeros (black); it is the groundtruth.
+    """
+    base = "tensorflow/core/lib/gif/testdata"
+    gif_bytes0 = io_ops.read_file(os.path.join(base, "squares.gif"))
+    image0 = image_ops.decode_image(gif_bytes0, dtype=dtypes.float32,
+                                    expand_animations=False)
+    gif_bytes1 = io_ops.read_file(os.path.join(base, "red_black.gif"))
+    image1 = image_ops.decode_image(gif_bytes1, dtype=dtypes.float32)
+    image1_0 = array_ops.gather(image1, 0)
+    image0, image1_0 = self.evaluate([image0, image1_0])
+    self.assertAllEqual(image0, image1_0)
 
 
 if __name__ == "__main__":

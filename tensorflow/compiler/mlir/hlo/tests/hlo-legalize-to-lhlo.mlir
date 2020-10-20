@@ -287,6 +287,28 @@ func @imag(%operand: memref<2x2xcomplex<f32>>, %result: memref<2x2xf32>) {
 
 // -----
 
+// BOTH-LABEL: func @gather
+func @gather(%operand: memref<13x7xf32>, %idxs: memref<5xi32>, %result: memref<5x7xf32>) {
+  %tensor_operand = tensor_load %operand : memref<13x7xf32>
+  %tensor_idxs = tensor_load %idxs : memref<5xi32>
+  %tensor_result =
+    "mhlo.gather"(%tensor_operand, %tensor_idxs)
+      { dimension_numbers =
+        { collapsed_slice_dims = dense<0> : tensor<1xi64>
+        , index_vector_dim = 1 : i64
+        , offset_dims = dense<1> : tensor<1xi64>
+        , start_index_map = dense<0> : tensor<1xi64> }
+      , indices_are_sorted = false
+      , name = "gather.71"
+      , slice_sizes = dense<[1, 7]> : tensor<2xi64> }
+      : (tensor<13x7xf32>, tensor<5xi32>) -> tensor<5x7xf32>
+  // BOTH: "lmhlo.gather"(%{{.*}}, %{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<5x7xf32>
+  return
+}
+
+// -----
+
 // BOTH-LABEL: func @imag_dyn
 func @imag_dyn(%operand: memref<?xcomplex<f32>>, %result: memref<?xf32>) {
   %tensor_operand = tensor_load %operand : memref<?xcomplex<f32>>

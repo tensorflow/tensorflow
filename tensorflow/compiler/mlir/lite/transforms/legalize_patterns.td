@@ -444,3 +444,7 @@ def LegalizeMatrixSetDiag : Pat<
 def LegalizeScatterNd : Pat<
   (TF_ScatterNdOp I32Tensor:$indices, $updates, $shape),
   (TFL_ScatterNdOp I32Tensor:$indices, $updates, $shape)>;
+
+def LegalizeCumsum : Pat<
+  (TF_CumsumOp $input, $axis, $exclusive, $reverse),
+  (TFL_CumsumOp $input, $axis, $exclusive, $reverse)>;

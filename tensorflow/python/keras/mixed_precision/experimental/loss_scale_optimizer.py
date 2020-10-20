@@ -21,8 +21,10 @@ from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import one_device_strategy
+from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
@@ -32,8 +34,13 @@ from tensorflow.python.keras.mixed_precision.experimental import loss_scale as k
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import tf_logging
+from tensorflow.python.training.experimental import loss_scale as loss_scale_module
 from tensorflow.python.training.experimental import mixed_precision
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -173,7 +180,220 @@ class _DelegatingTrackableMixin(object):
   # pylint: enable=protected-access
 
 
-@keras_export('keras.mixed_precision.experimental.LossScaleOptimizer')
+def _is_all_finite(grads):
+  """Returns a scalar boolean tensor indicating if all gradients are finite."""
+  is_finite_per_grad = [
+      math_ops.reduce_all(math_ops.is_finite(g)) for g in grads if g is not None
+  ]
+  return math_ops.reduce_all(is_finite_per_grad)
+
+
+def _op_in_graph_mode(tensor):
+  """Returns the tensor's op in graph mode, or the tensor in eager mode.
+
+  This is useful because sometimes an op is needed in graph mode instead of a
+  tensor. In eager mode, there are no ops.
+
+  Args:
+    tensor: A tensor.
+
+  Returns:
+    The tensor's op in graph mode. The tensor in eager mode.
+  """
+  if context.executing_eagerly():
+    return tensor
+  return tensor.op
+
+
+def _assign_if_finite(var, value):
+  """Assigns a value to a variable if the value is finite."""
+  return control_flow_ops.cond(
+      math_ops.is_finite(value), lambda: _op_in_graph_mode(var.assign(value)),
+      control_flow_ops.no_op)
+
+
+class _DynamicLossScaleState(trackable.Trackable):
+  """The state of a dynamic loss scale."""
+
+  def __init__(self,
+               initial_loss_scale,
+               growth_steps,
+               multiplier):
+    """Creates the dynamic loss scale."""
+    super(_DynamicLossScaleState, self).__init__()
+    self._initial_loss_scale = float(initial_loss_scale)
+    self._growth_steps = int(growth_steps)
+    self._multiplier = float(multiplier)
+
+    self._weights = {}
+    self._current_loss_scale = self._add_weight(
+        name='current_loss_scale',
+        dtype=dtypes.float32,
+        initial_value=self._initial_loss_scale)
+    # The number of consecutive steps with finite gradients since the last
+    # nonfinite gradient or change in loss scale. The name is 'good_steps' for
+    # backwards compatibility with older checkpoints.
+    self._counter = self._add_weight(
+        name='good_steps', dtype=dtypes.int64, initial_value=0)
+
+  def _add_weight(self, name, initial_value, dtype=None):
+    """Adds a weight to this loss scale.
+
+    Args:
+      name: Variable name.
+      initial_value: The variable's initial value.
+      dtype: The type of the variable.
+
+    Returns:
+      A variable.
+
+    Raises:
+      RuntimeError: If a weight with `name` has already been added.
+    """
+    variable = variable_scope.variable(
+        initial_value=initial_value,
+        name=name,
+        dtype=dtype,
+        trainable=False,
+        use_resource=True,
+        synchronization=variables.VariableSynchronization.AUTO,
+        # Set aggregation to NONE, as loss scaling variables should never be
+        # aggregated.
+        aggregation=variables.VariableAggregation.NONE)
+    if context.executing_eagerly():
+      graph_key = None
+    else:
+      graph = ops.get_default_graph()
+      graph_key = graph._graph_key  # pylint: disable=protected-access
+
+    key = (name, graph_key)
+    self._weights[key] = variable
+    self._handle_deferred_dependencies(name=name, trackable=variable)
+    backend.track_variable(variable)
+    return variable
+
+  @property
+  def _checkpoint_dependencies(self):
+    """From Trackable. Gather graph-specific weights to save."""
+    if context.executing_eagerly():
+      graph_key = None
+    else:
+      graph = ops.get_default_graph()
+      graph_key = graph._graph_key  # pylint: disable=protected-access
+    weights = []
+    for (name, g), v in sorted(self._weights.items(), key=lambda i: i[0][0]):
+      if g == graph_key:
+        weights.append(trackable.TrackableReference(name=name, ref=v))
+    return (super(_DynamicLossScaleState, self)._checkpoint_dependencies +
+            weights)
+
+  def _lookup_dependency(self, name):
+    """From Trackable. Find a weight in the current graph."""
+    unconditional = super(_DynamicLossScaleState, self)._lookup_dependency(name)
+    if unconditional is not None:
+      return unconditional
+    if context.executing_eagerly():
+      graph_key = None
+    else:
+      graph = ops.get_default_graph()
+      graph_key = graph._graph_key  # pylint: disable=protected-access
+    return self._weights.get((name, graph_key), None)
+
+  @property
+  def initial_loss_scale(self):
+    return self._initial_loss_scale
+
+  @property
+  def growth_steps(self):
+    return self._growth_steps
+
+  @property
+  def multiplier(self):
+    return self._multiplier
+
+  @property
+  def current_loss_scale(self):
+    """Returns the current loss scale as a float32 `tf.Variable`."""
+    return self._current_loss_scale
+
+  @property
+  def counter(self):
+    """Returns the counter as a float32 `tf.Variable`."""
+    return self._counter
+
+  def __call__(self):
+    """Returns the current loss scale as a scalar `float32` tensor."""
+    return ops.convert_to_tensor(self._current_loss_scale)
+
+  def update(self, grads):
+    """Updates the value of the loss scale.
+
+    Args:
+      grads: A nested structure of unscaled gradients, each which is the
+        gradient of the loss with respect to a weight.
+
+    Returns:
+      update_op: In eager mode, None. In graph mode, an op to update the loss
+        scale.
+      should_apply_gradients: Either a bool or a scalar boolean tensor. If
+        False, the caller should skip applying `grads` to the variables this
+        step.
+    """
+    grads = nest.flatten(grads)
+    if distribution_strategy_context.has_strategy():
+      distribution = distribution_strategy_context.get_strategy()
+
+      def get_is_finite(grads):
+        is_finite = _is_all_finite(grads)
+        # We cast to float, because we cannot reduce booleans with
+        # DistributionStrategy.
+        return math_ops.cast(is_finite, dtypes.float32)
+
+      is_finite_float = distribution.extended.call_for_each_replica(
+          get_is_finite, args=(grads,))
+      reduced_is_finite_float = distribution.reduce(reduce_util.ReduceOp.SUM,
+                                                    is_finite_float, axis=None)
+      is_finite = math_ops.equal(reduced_is_finite_float,
+                                 distribution.num_replicas_in_sync)
+    else:
+      is_finite = _is_all_finite(grads)
+
+    def update_if_finite_grads():
+      """Update assuming the gradients are finite."""
+
+      def incr_loss_scale():
+        new_loss_scale = self.current_loss_scale * self.multiplier
+        return control_flow_ops.group(
+            _assign_if_finite(self.current_loss_scale, new_loss_scale),
+            self.counter.assign(0))
+
+      return control_flow_ops.cond(
+          self.counter + 1 >= self.growth_steps,
+          incr_loss_scale,
+          lambda: _op_in_graph_mode(self.counter.assign_add(1)))
+
+    def update_if_not_finite_grads():
+      """Update assuming the gradients are nonfinite."""
+
+      new_loss_scale = math_ops.maximum(
+          self.current_loss_scale / self.multiplier, 1)
+      return control_flow_ops.group(
+          self.counter.assign(0),
+          self.current_loss_scale.assign(new_loss_scale))
+
+    update_op = control_flow_ops.cond(is_finite, update_if_finite_grads,
+                                      update_if_not_finite_grads)
+    should_apply_gradients = is_finite
+    return update_op, should_apply_gradients
+
+
+# See LossScaleOptimizer docstring for why this is so big
+_DEFAULT_INITIAL_SCALE = 2 ** 15
+_DEFAULT_GROWTH_STEPS = 2000
+
+
+# pylint: disable=g-classes-have-attributes
+@keras_export('keras.mixed_precision.LossScaleOptimizer')
 class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
   """An optimizer that applies loss scaling.
 
@@ -194,19 +414,21 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
   applied.
 
   The loss scale can either be a fixed constant, chosen by the user, or be
-  dynamically determined. Dynamically determining the loss scale is convenient
-  as a loss scale does not have to be explicitly chosen. However it reduces
-  performance.
+  dynamically determined. Using a dynamic loss scale is highly recommend and is
+  the default behavior, as choosing a specific fixed loss scale is difficult.
+  Every step, the dynamic loss scale is potentially updated to a new value.
+  Dynamic loss scaling sometimes causes the loss scale to be too high and cause
+  the gradients to overflow, in which case gradients are not applied to
+  variables that step.
 
-  This optimizer wraps another optimizer and applies loss scaling to it via a
-  `LossScale`. Loss scaling is applied whenever gradients are
-  computed, either through `minimize()` or `get_gradients()`. The loss scale is
-  updated via `LossScale.update()` whenever gradients are applied, either
-  through `minimize()` or `apply_gradients()`. For example:
+  `LossScaleOptimizer` wraps another optimizer and applies loss scaling to it.
+  Loss scaling is applied whenever gradients are computed, either through
+  `minimize()` or `get_gradients()`. If dynamic, the loss scale is updated
+  whenever gradients are applied, either through `minimize()` or
+  `apply_gradients()`. For example:
 
   >>> opt = tf.keras.optimizers.SGD(0.25)
-  >>> opt = tf.keras.mixed_precision.experimental.LossScaleOptimizer(opt,
-  ...                                                                "dynamic")
+  >>> opt = tf.keras.mixed_precision.LossScaleOptimizer(opt)
   >>> var = tf.Variable(1.)
   >>> loss_fn = lambda: var ** 2
   >>> # 'minimize' applies loss scaling to the loss and updates the loss sale.
@@ -230,12 +452,43 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
   >>> var.numpy()
   0.25
 
+  Args:
+    inner_optimizer: The Optimizer instance to wrap.
+    dynamic: Bool indicating whether dynamic loss scaling is used. Defaults to
+      True. If True, the loss scale will be dynamically updated over time using
+      an algorithm that keeps the loss scale at approximately its optimal value.
+      If False, a single fixed loss scale is used and `initial_scale` must be
+      specified, which is used as the loss scale. Recommended to keep as True,
+      as choosing a fixed loss scale can be tricky. Currently, there is a small
+      performance overhead to dynamic loss scaling compared to fixed loss
+      scaling.
+    initial_scale: The initial loss scale. If `dynamic` is True, this defaults
+      to 2 ** 15. If `dynamic` is False, this must be specified and acts as the
+      sole loss scale, as the loss scale does not change over time. When dynamic
+      loss scaling is used, is better for this to be a very high number, because
+      a loss scale that is too high gets lowered far more quickly than a loss
+      scale that is too low gets raised.
+    dynamic_growth_steps: With dynamic loss scaling, every
+      `dynamic_growth_steps` steps with finite gradients, the loss scale is
+      doubled. Defaults to 2000. If a nonfinite gradient is encountered, the
+      count is reset back to zero, gradients are skipped that step, and the loss
+      scale is halved. The count can be queried with
+      `LossScaleOptimizer.dynamic_counter`. This argument can only be specified
+      if `dynamic` is True.
+
+  To use a fixed loss scale instead of dynamic loss scale, pass `dynamic=False`
+  and pass the loss scale to `initial_scale`. For example:
+
+  >>> opt = tf.keras.mixed_precision.LossScaleOptimizer(
+  ...     tf.keras.optimizers.SGD(), dynamic=False, initial_scale=1024)
+  >>> opt.loss_scale.numpy()
+  1024.
+
   Hyperparameters can be accessed and set on the LossScaleOptimizer, which will
   be delegated to the wrapped optimizer.
 
   >>> opt = tf.keras.optimizers.Adam(beta_1=0.8, epsilon=1e-5)
-  >>> lso = tf.keras.mixed_precision.experimental.LossScaleOptimizer(opt,
-  ...                                                                "dynamic")
+  >>> lso = tf.keras.mixed_precision.LossScaleOptimizer(opt)
   >>> opt.beta_1
   0.8
   >>> lso.beta_1  # Equivalent to `opt.beta_1`
@@ -268,49 +521,103 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
 
   _HAS_AGGREGATE_GRAD = True
 
-  def __init__(self, optimizer, loss_scale):
-    """Initializes this loss scale optimizer.
-
-    Args:
-      optimizer: The Optimizer instance to wrap.
-      loss_scale: The loss scale to scale the loss and gradients. This can
-        either be an int/float to use a fixed loss scale, the string "dynamic"
-        to use dynamic loss scaling, or an instance of a LossScale. The string
-        "dynamic" equivalent to passing `DynamicLossScale()`, and passing an
-        int/float is equivalent to passing a FixedLossScale with the given loss
-        scale.
-    """
-    if not isinstance(optimizer, optimizer_v2.OptimizerV2):
-      raise ValueError('"optimizer" must be an instance of OptimizerV2, but '
-                       'got: %s' % optimizer)
+  def __init__(self, inner_optimizer, dynamic=True, initial_scale=None,
+               dynamic_growth_steps=None):
+    if not isinstance(inner_optimizer, optimizer_v2.OptimizerV2):
+      raise TypeError('"inner_optimizer" must be an instance of OptimizerV2, '
+                      'but got: %s' % inner_optimizer)
+    if not isinstance(dynamic, bool):
+      # Catch errors if a user incorrectly passes a string or float to the
+      # second argument argument, as this is commonly done for
+      # LossScaleOptimizerV1.
+      raise TypeError('"dynamic" argument to LossScaleOptimizer.__init__ must '
+                      'be a bool, but got: %r' % (dynamic,))
     self._raise_if_strategy_unsupported()
-
-    self._optimizer = optimizer
-    self._loss_scale = keras_loss_scale_module.get(loss_scale)
-    if self._loss_scale is None:
-      raise ValueError('loss_scale cannot be None.')
+    self._optimizer = inner_optimizer
 
     # We don't call super().__init__, since we do not want to call OptimizerV2's
     # constructor.
     _DelegatingTrackableMixin.__init__(self, self._optimizer)
 
-    for weight in self._loss_scale._weights.values():  # pylint: disable=protected-access
-      # We cannot call `track_variable` in the LossScale class itself, because a
-      # file outside of Keras cannot depend on a Keras file. Calling it here
-      # instead is OK, because a variable only needs to be tracked if used with
-      # a Keras class, and the only way to use LossScale with a Keras class is
-      # through the LossScaleOptimizer.
-      backend.track_variable(weight)
-    self._track_trackable(self._loss_scale, 'loss_scale')
+    if dynamic:
+      if initial_scale is None:
+        initial_scale = _DEFAULT_INITIAL_SCALE
+      if dynamic_growth_steps is None:
+        dynamic_growth_steps = _DEFAULT_GROWTH_STEPS
+      self._loss_scale = _DynamicLossScaleState(
+          initial_scale, dynamic_growth_steps, multiplier=2)
+      self._track_trackable(self._loss_scale, 'loss_scale')
+    else:
+      if initial_scale is None:
+        raise ValueError('"initial_scale" must be specified if "dynamic" is '
+                         'False')
+      self._loss_scale = float(initial_scale)
+      if dynamic_growth_steps is not None:
+        raise ValueError('"dynamic_growth_steps" must be None if "dynamic" '
+                         'is False, but got: %s' % (dynamic_growth_steps,))
 
     # To support restoring TensorFlow 2.2 checkpoints.
     self._track_trackable(FakeOptimizerForRestoration(self._optimizer),
                           'base_optimizer')
 
   @property
+  def dynamic(self):
+    return isinstance(self._loss_scale, _DynamicLossScaleState)
+
+  @property
   def loss_scale(self):
-    """The `LossScale` instance associated with this optimizer."""
-    return self._loss_scale
+    """The current loss scale as a float32 scalar tensor."""
+    if isinstance(self._loss_scale, _DynamicLossScaleState):
+      return ops.convert_to_tensor(self._loss_scale.current_loss_scale)
+    else:
+      return ops.convert_to_tensor(self._loss_scale)
+
+  @property
+  def dynamic_counter(self):
+    """The number of steps since the loss scale was last increased or decreased.
+
+    This is None if `LossScaleOptimizer.dynamic` is False.
+
+    The counter is incremented every step. Once it reaches
+    `LossScaleOptimizer.dynamic_growth_steps`, the loss scale will be doubled
+    and the counter will be reset back to zero. If nonfinite gradients are
+    encountered, the loss scale will be halved and the counter will be reset
+    back to zero.
+    """
+    if isinstance(self._loss_scale, _DynamicLossScaleState):
+      return self._loss_scale.counter
+    else:
+      return None
+
+  @property
+  def initial_scale(self):
+    """The initial loss scale.
+
+    This is None if `LossScaleOptimizer.dynamic` is False.
+    """
+    if isinstance(self._loss_scale, _DynamicLossScaleState):
+      return self._loss_scale.initial_loss_scale
+    else:
+      return self._loss_scale
+
+  @property
+  def dynamic_growth_steps(self):
+    """The number of steps it takes to increase the loss scale.
+
+    This is None if `LossScaleOptimizer.dynamic` is False.
+
+    Every `dynamic_growth_steps` consecutive steps with finite gradients, the
+    loss scale is increased.
+    """
+    if isinstance(self._loss_scale, _DynamicLossScaleState):
+      return self._loss_scale.growth_steps
+    else:
+      return None
+
+  @property
+  def inner_optimizer(self):
+    """The optimizer that this LossScaleOptimizer is wrapping."""
+    return self._optimizer
 
   def get_scaled_loss(self, loss):
     """Scales the loss by the loss scale.
@@ -322,7 +629,7 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
     scaling is automatically applied and this method is unneeded.
 
     If this method is called, `get_unscaled_gradients` should also be called.
-    See the `tf.keras.mixed_precision.experimental.LossScaleOptimizer` doc for
+    See the `tf.keras.mixed_precision.LossScaleOptimizer` doc for
     an example.
 
     Args:
@@ -330,16 +637,15 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
         a tensor or a callable returning a tensor.
 
     Returns:
-      `loss` multiplied by `LossScaleOptimizer.loss_scale()`.
+      `loss` multiplied by `LossScaleOptimizer.loss_scale`.
     """
-    loss_scale = self._loss_scale()
     if callable(loss):
       def new_loss():
         loss_val = loss()
-        return loss_val * math_ops.cast(loss_scale, loss_val.dtype)
+        return loss_val * math_ops.cast(self.loss_scale, loss_val.dtype)
       return new_loss
     else:
-      return loss * math_ops.cast(loss_scale, loss.dtype)
+      return loss * math_ops.cast(self.loss_scale, loss.dtype)
 
   def get_unscaled_gradients(self, grads):
     """Unscales the gradients by the loss scale.
@@ -351,7 +657,7 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
     scaling is automatically applied and this method is unneeded.
 
     If this method is called, `get_scaled_loss` should also be called. See
-    the `tf.keras.mixed_precision.experimental.LossScaleOptimizer` doc for an
+    the `tf.keras.mixed_precision.LossScaleOptimizer` doc for an
     example.
 
     Args:
@@ -360,10 +666,9 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
 
     Returns:
       A new list the same size as `grads`, where every non-None value in `grads`
-      is divided by `LossScaleOptimizer.loss_scale()`.
+      is divided by `LossScaleOptimizer.loss_scale`.
     """
-    loss_scale = self._loss_scale()
-    loss_scale_reciprocal = 1. / loss_scale
+    loss_scale_reciprocal = 1. / self.loss_scale
     return [
         _multiply_gradient(g, loss_scale_reciprocal) if g is not None else None
         for g in grads
@@ -379,9 +684,9 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
         grad_loss,
         tape=tape)
     grads = [g for g, _ in grads_and_vars]
-    variables = [v for _, v in grads_and_vars]
+    weights = [v for _, v in grads_and_vars]
     unscaled_grads = self.get_unscaled_gradients(grads)
-    return list(zip(unscaled_grads, variables))
+    return list(zip(unscaled_grads, weights))
 
   def get_gradients(self, loss, params):
     loss = self.get_scaled_loss(loss)
@@ -409,7 +714,11 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
   def _apply_gradients_cross_replica(self, distribution, grads_and_vars, name,
                                      experimental_aggregate_gradients):
     grads = [g for g, _ in grads_and_vars]
-    loss_scale_update_op, should_apply_grads = self._loss_scale.update(grads)
+    if isinstance(self._loss_scale, _DynamicLossScaleState):
+      loss_scale_update_op, should_apply_grads = self._loss_scale.update(grads)
+    else:
+      loss_scale_update_op = control_flow_ops.no_op()
+      should_apply_grads = True
 
     def apply_fn():
       # We do not want DistributionStrategy to unwrap any MirroredVariables in
@@ -447,19 +756,41 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
 
   def get_config(self):
     serialized_optimizer = optimizers.serialize(self._optimizer)
-    serialized_loss_scale = keras_loss_scale_module.serialize(self._loss_scale)
     return {
-        'optimizer': serialized_optimizer,
-        'loss_scale': serialized_loss_scale,
+        'inner_optimizer': serialized_optimizer,
+        'dynamic': self.dynamic,
+        'initial_scale': self.initial_scale,
+        'dynamic_growth_steps': self.dynamic_growth_steps,
     }
 
   @classmethod
   def from_config(cls, config, custom_objects=None):
     config = config.copy()  # Make a copy, since we mutate config
-    config['optimizer'] = optimizers.deserialize(
-        config['optimizer'], custom_objects=custom_objects)
-    config['loss_scale'] = keras_loss_scale_module.deserialize(
-        config['loss_scale'], custom_objects=custom_objects)
+    if 'loss_scale' in config:
+      # If loss_scale is in config, we assume we are deserializing a
+      # LossScaleOptimizer from TF 2.3 or below. We convert the config so it
+      # can be deserialized in the current LossScaleOptimizer.
+      loss_scale = keras_loss_scale_module.deserialize(
+          config.pop('loss_scale'))
+      if isinstance(loss_scale, loss_scale_module.FixedLossScale):
+        config['dynamic'] = False
+        config['initial_scale'] = loss_scale._loss_scale_value  # pylint: disable=protected-access
+      elif isinstance(loss_scale, loss_scale_module.DynamicLossScale):
+        config['dynamic'] = True
+        config['initial_scale'] = loss_scale.initial_loss_scale
+        config['dynamic_growth_steps'] = loss_scale.increment_period
+        if loss_scale.multiplier != 2:
+          raise ValueError('Cannot deserialize LossScaleOptimizer with a '
+                           'DynamicLossScale whose multiplier is not 2. Got '
+                           'DynamicLossScale: %s' % (loss_scale,))
+      else:
+        raise ValueError(
+            'Serialized LossScaleOptimizers with a LossScale that is neither a '
+            'FixedLossScale nor a DynamicLossScale can no longer be '
+            'deserialized')
+      config['inner_optimizer'] = config.pop('optimizer')
+    config['inner_optimizer'] = optimizers.deserialize(
+        config['inner_optimizer'], custom_objects=custom_objects)
     return cls(**config)
 
   def _raise_if_strategy_unsupported(self):
@@ -601,15 +932,164 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
   #   both self._compute_gradients() and self.apply_gradients(), and both need
   #   to have the LossScaleOptimizer version called.
 
-  # TODO(reedwm): Maybe merge this class's functionality into OptimizerV2.
-
   # TODO(reedwm): Maybe throw an error if mixed precision is used without this
   # optimizer being used.
 
-  # Trackable delegations: Delegate all Trackable methods to the wrapped
-  # optimizer. This is so the checkpoint format for a LossScaleOptimizer is
-  # identical to the checkpoint format for a normal optimizer, except the loss
-  # scale is stored in the checkpoint.
+
+@keras_export('keras.mixed_precision.experimental.LossScaleOptimizer')
+class LossScaleOptimizerV1(LossScaleOptimizer):
+  """An deprecated optimizer that applies loss scaling.
+
+  Warning: This class is deprecated and will be removed in TensorFlow 2.5.
+  Please use the non-experimental class
+  `tf.keras.mixed_precision.LossScaleOptimizer` instead.
+
+  This class is identical to the non-experimental
+  `keras.mixed_precision.LossScaleOptimizer` except its constructor takes
+  different arguments. For this class (the experimental version), the
+  constructor takes a `loss_scale` argument.  For the non-experimental class,
+  the constructor encodes the loss scaling information in multiple arguments.
+  Note that unlike this class, the non-experimental class does not accept a
+  `tf.compat.v1.mixed_precision.LossScale`, which is deprecated.
+
+  If you currently use this class, you should switch to the non-experimental
+  `tf.keras.mixed_precision.LossScaleOptimizer` instead. We show several
+  examples of converting the use of the experimental class to the equivalent
+  non-experimental class.
+
+  >>> # In all of the the examples below, `opt1` and `opt2` are identical
+  >>> opt1 = tf.keras.mixed_precision.experimental.LossScaleOptimizer(
+  ...     tf.keras.optimizers.SGD(), loss_scale='dynamic')
+  >>> opt2 = tf.keras.mixed_precision.LossScaleOptimizer(
+  ...     tf.keras.optimizers.SGD())
+  >>> assert opt1.get_config() == opt2.get_config()
+
+  >>> opt1 = tf.keras.mixed_precision.experimental.LossScaleOptimizer(
+  ...     tf.keras.optimizers.SGD(), loss_scale=123)
+  >>> # dynamic=False indicates to use fixed loss scaling. initial_scale=123
+  >>> # refers to the initial loss scale, which is the single fixed loss scale
+  >>> # when dynamic=False.
+  >>> opt2 = tf.keras.mixed_precision.LossScaleOptimizer(
+  ...     tf.keras.optimizers.SGD(), dynamic=False, initial_scale=123)
+  >>> assert opt1.get_config() == opt2.get_config()
+
+  >>> loss_scale = tf.compat.v1.mixed_precision.experimental.DynamicLossScale(
+  ...     initial_loss_scale=2048, increment_period=500)
+  >>> opt1 = tf.keras.mixed_precision.experimental.LossScaleOptimizer(
+  ...     tf.keras.optimizers.SGD(), loss_scale=loss_scale)
+  >>> opt2 = tf.keras.mixed_precision.LossScaleOptimizer(
+  ...     tf.keras.optimizers.SGD(), initial_scale=2048,
+  ...     dynamic_growth_steps=500)
+  >>> assert opt1.get_config() == opt2.get_config()
+
+  Args:
+    optimizer: The Optimizer instance to wrap.
+    loss_scale: The loss scale to scale the loss and gradients. This can
+      either be an int/float to use a fixed loss scale, the string "dynamic"
+      to use dynamic loss scaling, or an instance of a LossScale. The string
+      "dynamic" equivalent to passing `DynamicLossScale()`, and passing an
+      int/float is equivalent to passing a FixedLossScale with the given loss
+      scale. If a DynamicLossScale is passed, DynamicLossScale.multiplier must
+      be 2 (the default).
+  """
+
+  def __init__(self, optimizer, loss_scale):
+    warn_msg_prefix = (
+        'tf.keras.mixed_precision.experimental.LossScaleOptimizer is '
+        'deprecated. Please use tf.keras.mixed_precision.LossScaleOptimizer '
+        'instead. ')
+
+    if isinstance(loss_scale, dict):
+      loss_scale = keras_loss_scale_module.deserialize(loss_scale)
+
+    if isinstance(loss_scale, (int, float)):
+      tf_logging.warn(
+          warn_msg_prefix + 'For example\n'
+          '  opt = tf.keras.mixed_precision.experimental.LossScaleOptimizer('
+          'opt, dynamic=False, initial_scale={})'.format(loss_scale))
+      super(LossScaleOptimizerV1, self).__init__(optimizer, dynamic=False,
+                                                 initial_scale=loss_scale)
+    elif isinstance(loss_scale, loss_scale_module.FixedLossScale):
+      ls_val = loss_scale._loss_scale_value  # pylint: disable=protected-access
+      tf_logging.warn(
+          warn_msg_prefix + 'For example\n'
+          '  opt = tf.keras.mixed_precision.experimental.LossScaleOptimizer('
+          'opt, dynamic=False, initial_scale={})'.format(ls_val))
+      super(LossScaleOptimizerV1, self).__init__(optimizer, dynamic=False,
+                                                 initial_scale=ls_val)
+    elif loss_scale == 'dynamic':
+      tf_logging.warn(
+          warn_msg_prefix + 'For example\n'
+          '  opt = tf.keras.mixed_precision.experimental.LossScaleOptimizer('
+          'opt)')
+      super(LossScaleOptimizerV1, self).__init__(optimizer)
+    elif isinstance(loss_scale, loss_scale_module.DynamicLossScale):
+      kwargs = {}
+      extra_arguments = ''
+      if loss_scale.initial_loss_scale != _DEFAULT_INITIAL_SCALE:
+        kwargs['initial_scale'] = loss_scale.initial_loss_scale
+        extra_arguments += (', initial_scale=%s' %
+                            loss_scale.initial_loss_scale)
+      if loss_scale.increment_period != _DEFAULT_GROWTH_STEPS:
+        kwargs['dynamic_growth_steps'] = loss_scale.increment_period
+        extra_arguments += (', dynamic_growth_steps=%s' %
+                            loss_scale.increment_period)
+      if loss_scale.multiplier != 2:
+        raise ValueError('When passing a DynamicLossScale to "loss_scale", '
+                         'DynamicLossScale.multiplier must be 2. Got: %s'
+                         % (loss_scale,))
+      tf_logging.warn(
+          warn_msg_prefix +
+          'Note that the non-experimental LossScaleOptimizer does not take a '
+          'DynamicLossScale but instead takes the dynamic configuration '
+          'directly in the constructor. For example:\n'
+          '  opt = tf.keras.mixed_precision.experimental.LossScaleOptimizer('
+          'opt{})\n'.format(extra_arguments))
+      super(LossScaleOptimizerV1, self).__init__(optimizer, **kwargs)
+    elif isinstance(loss_scale, loss_scale_module.LossScale):
+      raise TypeError('Passing a LossScale that is not a FixedLossScale or a '
+                      'DynamicLossScale is no longer supported. Got: {}'
+                      .format(loss_scale))
+    else:
+      raise ValueError('Invalid value passed to loss_scale. loss_scale '
+                       'must be the string "dynamic" (recommended), an int, '
+                       'a float, a FixedLossScale, or a DynamicLossScale. Got '
+                       'value: {}'.format(loss_scale))
+
+  @classmethod
+  def from_config(cls, config, custom_objects=None):
+    config = config.copy()  # Make a copy, since we mutate config
+
+    # If loss_scale is in config, we assume we are deserializing a
+    # LossScaleOptimizer from TF 2.3 or below. Otherwise, we assume we are
+    # deserializing a LossScaleOptimizer from TF 2.4 or above.
+    if 'loss_scale' in config:
+      config['loss_scale'] = keras_loss_scale_module.deserialize(
+          config['loss_scale'])
+      if (isinstance(config['loss_scale'], loss_scale_module.DynamicLossScale)
+          and config['loss_scale'].multiplier != 2):
+        raise ValueError('Cannot deserialize LossScaleOptimizer with a '
+                         'DynamicLossScale whose multiplier is not 2. Got '
+                         'DynamicLossScale: %s' % (config['loss_scale'],))
+      config['optimizer'] = optimizers.deserialize(
+          config['optimizer'], custom_objects=custom_objects)
+      return cls(**config)
+
+    # We convert the config, as generated by LossScaleOptimizer.get_config, to a
+    # version that can be passed to LossScaleOptimizerV1.__init__
+    if config['dynamic']:
+      config['loss_scale'] = loss_scale_module.DynamicLossScale(
+          config['initial_scale'], config['dynamic_growth_steps'], multiplier=2)
+    else:
+      config['loss_scale'] = loss_scale_module.FixedLossScale(
+          config['initial_scale'])
+
+    del config['dynamic']
+    del config['initial_scale']
+    del config['dynamic_growth_steps']
+    config['optimizer'] = optimizers.deserialize(
+        config.pop('inner_optimizer'), custom_objects=custom_objects)
+    return cls(**config)
 
 
 class FakeOptimizerForRestoration(trackable.Trackable):
@@ -654,7 +1134,7 @@ class FakeOptimizerForRestoration(trackable.Trackable):
 
 # pylint: disable=protected-access
 mixed_precision._register_wrapper_optimizer_cls(optimizer_v2.OptimizerV2,
-                                                LossScaleOptimizer)
+                                                LossScaleOptimizerV1)
 
 
 def _multiply_gradient(gradient, scale):

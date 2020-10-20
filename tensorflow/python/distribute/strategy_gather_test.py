@@ -74,7 +74,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
         lambda _: array_ops.identity(value_on_replica))
 
     def run():
-      return strategy._gather(distributed_values, axis=axis)
+      return strategy.gather(distributed_values, axis=axis)
 
     if not pure_eager:
       run = def_function.function(run)
@@ -133,7 +133,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     axis = 0
 
     def run():
-      return strategy._gather(distributed_values, axis=axis)
+      return strategy.gather(distributed_values, axis=axis)
 
     if not pure_eager:
       run = def_function.function(run)
@@ -155,7 +155,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     axis = 1
 
     def run():
-      return strategy._gather(distributed_values, axis=axis)
+      return strategy.gather(distributed_values, axis=axis)
 
     if not pure_eager:
       run = def_function.function(run)
@@ -183,7 +183,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     axis = 0
 
     def run():
-      return strategy._gather(distributed_values, axis=axis)
+      return strategy.gather(distributed_values, axis=axis)
 
     if not pure_eager:
       run = def_function.function(run)
@@ -210,11 +210,11 @@ class GatherTest(test.TestCase, parameterized.TestCase):
         values=[[1., 2.]], indices=[2], dense_shape=dense_shape)
 
     def run(value):
-      return strategy._gather(value, axis=0)
+      return strategy.gather(value, axis=0)
 
     with self.assertRaisesRegex(
         NotImplementedError,
-        r'gather/all_gather does not support IndexedSlices'):
+        r'gather does not support IndexedSlices'):
       if pure_eager:
         run(t0)
       else:
@@ -235,7 +235,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     axis = 0
 
     def run():
-      return strategy._gather(distributed_values, axis=axis)
+      return strategy.gather(distributed_values, axis=axis)
 
     if not pure_eager:
       run = def_function.function(run)
@@ -271,7 +271,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     def replica_fn(per_replica_value):
       ctx = ds_context.get_replica_context()
       local_value = array_ops.identity(per_replica_value)
-      return ctx._all_gather(local_value, axis=axis)
+      return ctx.all_gather(local_value, axis=axis)
 
     if not pure_eager:
       replica_fn = def_function.function(replica_fn)
@@ -342,7 +342,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     @def_function.function
     def replica_fn(per_replica_value):
       ctx = ds_context.get_replica_context()
-      return ctx._all_gather(array_ops.identity(per_replica_value), axis=axis)
+      return ctx.all_gather(array_ops.identity(per_replica_value), axis=axis)
 
     result = strategy.experimental_local_results(
         strategy.run(replica_fn, args=(next(input_iterator),)))
@@ -369,7 +369,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     def run(value):
       value_identity = array_ops.identity(value)
       ctx = ds_context.get_replica_context()
-      return ctx._all_gather(value_identity, axis=0)
+      return ctx.all_gather(value_identity, axis=0)
 
     if not pure_eager:
       run = def_function.function(run)
@@ -397,7 +397,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     def run(value):
       value_identity = array_ops.identity(value)
       ctx = ds_context.get_replica_context()
-      return ctx._all_gather(value_identity, axis=1)
+      return ctx.all_gather(value_identity, axis=1)
 
     if not pure_eager:
       run = def_function.function(run)
@@ -436,7 +436,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
       value_1 = array_ops.identity(value)
       value_3 = array_ops.identity(value_2)
       ctx = ds_context.get_replica_context()
-      return ctx._all_gather([value_1, value_3], axis=axis)
+      return ctx.all_gather([value_1, value_3], axis=axis)
 
     if not pure_eager:
       run = def_function.function(run)
@@ -455,7 +455,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     def run():
       value_identity = array_ops.identity(single_value)
       ctx = ds_context.get_replica_context()
-      return ctx._all_gather([value_identity, value_identity], axis=axis)
+      return ctx.all_gather([value_identity, value_identity], axis=axis)
 
     if not pure_eager:
       run = def_function.function(run)
@@ -491,7 +491,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     def run(value):
       value_identity = array_ops.identity(value)
       ctx = ds_context.get_replica_context()
-      return ctx._all_gather(value_identity, axis=0)
+      return ctx.all_gather(value_identity, axis=0)
 
     if not pure_eager:
       run = def_function.function(run)
@@ -519,11 +519,11 @@ class GatherTest(test.TestCase, parameterized.TestCase):
 
     def replica_fn(value):
       ctx = ds_context.get_replica_context()
-      return ctx._all_gather(value, axis=0)
+      return ctx.all_gather(value, axis=0)
 
     with self.assertRaisesRegex(
         NotImplementedError,
-        r'gather/all_gather does not support IndexedSlices'):
+        r'all_gather does not support IndexedSlices'):
       if not pure_eager:
         strategy.run(def_function.function(replica_fn), args=(t0,))
       else:
@@ -548,7 +548,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     def run(value):
       value_identity = array_ops.identity(value)
       ctx = ds_context.get_replica_context()
-      return ctx._all_gather(value_identity, axis=0)
+      return ctx.all_gather(value_identity, axis=0)
 
     if not pure_eager:
       run = def_function.function(run)

@@ -1760,7 +1760,7 @@ distribute_py_test(
     srcs = ["strategy_gather_test.py"],
     disable_mlir_bridge = False,
     python_version = "PY3",
-    shard_count = 2,
+    shard_count = 4,
     tags = [
         "multi_and_single_gpu",
         "notsan",  # TODO(b/160006974)

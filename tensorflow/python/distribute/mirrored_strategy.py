@@ -341,6 +341,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     self._devices = tuple(device_util.canonicalize(d) for d in devices)
     self._input_workers_devices = (
         (device_util.canonicalize("/device:CPU:0", devices[0]), devices),)
+
     self._inferred_cross_device_ops = None if self._cross_device_ops else (
         cross_device_ops_lib.select_cross_device_ops(devices))
     self._host_input_device = numpy_dataset.SingleDevice(
@@ -396,12 +397,27 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     logging.info("Using MirroredStrategy with remote devices %r", devices)
 
   def _input_workers_with_options(self, options=None):
-    if not options or options.experimental_prefetch_to_device:
+    if not options:
+      return input_lib.InputWorkers(self._input_workers_devices)
+    if (options.experimental_replication_mode ==
+        distribute_lib.InputReplicationMode.PER_REPLICA):
+      if options.experimental_place_dataset_on_device:
+        self._input_workers_devices = (
+            tuple(
+                (device_util.canonicalize(d, d), (d,)) for d in self._devices))
+      else:
+        self._input_workers_devices = (
+            tuple((device_util.canonicalize("/device:CPU:0", d), (d,))
+                  for d in self._devices))
       return input_lib.InputWorkers(self._input_workers_devices)
     else:
-      return input_lib.InputWorkers(
-          [(host_device, (host_device,) * len(compute_devices)) for
-           host_device, compute_devices in self._input_workers_devices])
+      if not options.experimental_prefetch_to_device:
+        return input_lib.InputWorkers([
+            (host_device, (host_device,) * len(compute_devices))
+            for host_device, compute_devices in self._input_workers_devices
+        ])
+      else:
+        return input_lib.InputWorkers(self._input_workers_devices)
 
   @property
   def _input_workers(self):
@@ -499,6 +515,13 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
                                            self._container_strategy())
 
   def _experimental_distribute_dataset(self, dataset, options):
+    if (options and options.experimental_replication_mode ==
+        distribute_lib.InputReplicationMode.PER_REPLICA):
+      raise NotImplementedError(
+          "InputReplicationMode.PER_REPLICA "
+          "is only supported in "
+          "`experimental_distribute_datasets_from_function`."
+      )
     return input_lib.get_distributed_dataset(
         dataset,
         self._input_workers_with_options(options),
@@ -510,8 +533,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
         numpy_input, self._host_input_device, session)
 
   def _distribute_datasets_from_function(self, dataset_fn, options):
-    input_contexts = []
     input_workers = self._input_workers_with_options(options)
+    input_contexts = []
     num_workers = input_workers.num_workers
     for i in range(num_workers):
       input_contexts.append(distribute_lib.InputContext(
@@ -520,10 +543,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
           num_replicas_in_sync=self._num_replicas_in_sync))
 
     return input_lib.get_distributed_datasets_from_function(
-        dataset_fn,
-        input_workers,
-        input_contexts,
-        self._container_strategy())
+        dataset_fn, input_workers, input_contexts, self._container_strategy(),
+        options)
 
   def _experimental_distribute_values_from_function(self, value_fn):
     per_replica_values = []

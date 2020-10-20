@@ -227,31 +227,27 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
                                           const CollectiveParams& col_params,
                                           const string& exec_key,
                                           StatusCallback done) {
+  // See CompleteParamsAsync() how done() and the timeout callback interacts.
   const auto is_callback_called = std::make_shared<std::atomic<bool>>(false);
-
-  StatusCallback done_safe = [done = std::move(done),
-                              is_callback_called](const Status& s) {
+  auto done_safe = [done, is_callback_called](const Status& s) {
     bool called = is_callback_called->exchange(true);
-    CHECK(!called) << "done callback is called twice in "  // Crash OK
-                      "BaseCollectiveExecutor::ExecuteAsync. Please file a "
-                      "issue on https://github.com/tensorflow/tensorflow.";
-    done(s);
+    if (!called) {
+      done(s);
+    }
   };
-
   auto timeout_microseconds = static_cast<int64>(
       col_params.instance.impl_details.timeout_seconds * 1'000'000);
   if (timeout_microseconds > 0) {
-    // Ensure this BaseCollectiveExecutor is alive when StartAbort() is called.
-    Ref();
     // TODO(xldrx): Share the timeout watchdog thread among collectives.
     SchedNonBlockingClosureAfter(
-        timeout_microseconds, [this, is_callback_called] {
-          if (!is_callback_called->load()) {
+        timeout_microseconds, [this, is_callback_called, done] {
+          bool called = is_callback_called->exchange(true);
+          if (!called) {
             Status status(error::DEADLINE_EXCEEDED,
                           "Collective has timed out during execution.");
             StartAbort(status);
+            done(status);
           }
-          Unref();
         });
   }
 
@@ -306,30 +302,34 @@ void BaseCollectiveExecutor::CompleteParamsAsync(
     const DeviceAttributes& device, CollectiveParams* cp,
     CancellationManager* cancel_mgr, StatusCallback done) {
   cp->group.gpu_ring_order = *gpu_ring_order_;
+  // We need to make sure that when the timeout callback executes,
+  // CollectiveExecutor and CollectiveExecutorMgr are both alive. After done()
+  // is called, CollectiveExecutorMgr may be destructed and we don't have a way
+  // to keep it without making the ownerships more complicated. Therefore if the
+  // timeout callback executes, done_safe will become a no-op and the timeout
+  // callback is responsible for invoking done() at the end.
   const auto is_callback_called = std::make_shared<std::atomic<bool>>(false);
-  auto done_safe = [is_callback_called,
-                    done = std::move(done)](const Status& s) {
+  auto done_safe = [done, is_callback_called](const Status& s) {
     bool called = is_callback_called->exchange(true);
-    CHECK(!called) << "done callback is called twice in "  // Crash OK
-                      "BaseCollectiveExecutor::ExecuteAsync. Please file a "
-                      "issue on https://github.com/tensorflow/tensorflow.";
-    done(s);
+    if (!called) {
+      done(s);
+    }
   };
   auto timeout_microseconds =
       static_cast<int64>(cp->instance.impl_details.timeout_seconds * 1'000'000);
   if (timeout_microseconds > 0) {
-    // Ensure this BaseCollectiveExecutor is alive when StartAbort() is called.
-    Ref();
     // TODO(xldrx): Share the timeout watchdog thread among collectives.
-    SchedNonBlockingClosureAfter(timeout_microseconds, [this,
-                                                        is_callback_called]() {
-      if (!is_callback_called->load()) {
-        Status status(error::DEADLINE_EXCEEDED,
-                      "Collective has timed out waiting for other workers.");
-        StartAbort(status);
-      }
-      Unref();
-    });
+    SchedNonBlockingClosureAfter(
+        timeout_microseconds, [this, is_callback_called, done]() {
+          bool called = is_callback_called->exchange(true);
+          if (!called) {
+            Status status(
+                error::DEADLINE_EXCEEDED,
+                "Collective has timed out waiting for other workers.");
+            StartAbort(status);
+            done(status);
+          }
+        });
   }
   cem_->GetParamResolver()->CompleteParamsAsync(device, cp, cancel_mgr,
                                                 done_safe);
