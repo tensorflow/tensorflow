@@ -319,6 +319,7 @@ cc_library(
     hdrs = ["list_flex_ops.h"],
     deps = [
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/schema:schema_utils",
         "@jsoncpp_git//:jsoncpp",
     ],
 )
