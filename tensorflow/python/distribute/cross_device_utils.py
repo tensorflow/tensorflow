@@ -412,7 +412,8 @@ class CollectiveReplicaLauncher(object):
         self._group_key, self._device)
     instance_key_shape = self._collective_keys.get_instance_key(
         self._group_key, self._device)
-    with ops.device(self._device):
+    with ops.device(self._device), \
+         ops.control_dependencies([array_ops.identity(input_tensor)]):
       # 1. Transpose
       # E.g. Given an input_tensor with shape [2,2,5,1] and axis to gather is 3,
       # we use perm_pre=[3 0 1 2] to reshape it to [1,2,2,5], which
