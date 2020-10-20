@@ -80,8 +80,8 @@ class FilteredPassManager : public llvm::legacy::PassManager {
 };
 }  // anonymous namespace
 
-llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> CompilerFunctor::operator()(
-    llvm::Module& module) {
+std::unique_ptr<llvm::MemoryBuffer> CompilerFunctor::operator()(
+    llvm::Module& module) const {
   FilteredPassManager module_passes(disable_expensive_passes_);
   llvm::legacy::FunctionPassManager function_passes(&module);
 
@@ -155,7 +155,7 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> CompilerFunctor::operator()(
     }
   }
 
-  return std::move(memory_buffer);
+  return memory_buffer;
 }
 
 static std::vector<llvm::VecDesc> VectorFunctionsForTargetLibraryInfoImpl() {
