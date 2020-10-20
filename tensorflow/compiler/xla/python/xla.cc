@@ -479,10 +479,7 @@ PYBIND11_MODULE(xla_extension, m) {
            [](const PjRtDevice& device, const LiteralSlice& literal) {
              GlobalPyRefManager()->CollectGarbage();
              py::gil_scoped_release gil_release;
-             TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                                 device.GetLocalDeviceState());
-             return local_device->client()->TransferToInfeedLocal(
-                 literal, local_device->device_ordinal());
+             return device.TransferToInfeed(literal);
            })
       .def("transfer_from_outfeed",
            [](const PjRtDevice& device,
@@ -491,8 +488,6 @@ PYBIND11_MODULE(xla_extension, m) {
              std::shared_ptr<Literal> literal_shared;
              {
                py::gil_scoped_release gil_release;
-               TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                                   device.GetLocalDeviceState());
                Shape shape_with_layout = shape;
                ShapeUtil::ForEachMutableSubshape(
                    &shape_with_layout, [](Shape* subshape, const ShapeIndex&) {
@@ -500,10 +495,8 @@ PYBIND11_MODULE(xla_extension, m) {
                        LayoutUtil::SetToDefaultLayout(subshape);
                      }
                    });
-               TF_ASSIGN_OR_RETURN(
-                   Literal literal,
-                   local_device->client()->TransferFromOutfeedLocal(
-                       shape_with_layout, local_device->device_ordinal()));
+               TF_ASSIGN_OR_RETURN(Literal literal, device.TransferFromOutfeed(
+                                                        shape_with_layout));
 
                literal_shared = std::make_shared<Literal>(std::move(literal));
              }

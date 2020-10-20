@@ -94,6 +94,13 @@ class PjRtDevice {
 
   PjRtClient* client() const { return client_; }
 
+  // Transfer the given literal to the infeed queue of the given localdevice.
+  virtual Status TransferToInfeed(const LiteralSlice& literal) const;
+
+  // Transfer and return a value of the given shape from the outfeed of the
+  // given device.
+  virtual StatusOr<Literal> TransferFromOutfeed(const Shape& shape) const;
+
  private:
   friend class PjRtClient;
 
