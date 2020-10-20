@@ -1429,13 +1429,13 @@ class PFor(object):
     return [wrap(output, False) for output in nest.flatten(outputs)]
 
   def _convert_helper(self, op_or_tensor):
-    stack = [op_or_tensor]
+    stack = collections.deque([op_or_tensor])
     while stack:
       y = stack[0]
       if y in self._conversion_map:
         assert isinstance(self._conversion_map[y],
                           (WrappedTensor, ops.Operation))
-        stack.pop(0)
+        stack.popleft()
         continue
       if isinstance(y, ops.Operation):
         assert not y.outputs, (
@@ -1472,7 +1472,7 @@ class PFor(object):
 
       def _add_to_stack(x):
         if x not in self._conversion_map:
-          stack.insert(0, x)
+          stack.appendleft(x)
           return True
         else:
           return False
@@ -1630,7 +1630,7 @@ class PFor(object):
               else:
                 new_output.t.set_shape(output_shape)
             self._add_conversion(old_output, new_output)
-        stack.pop(0)
+        stack.popleft()
 
     return self._conversion_map[op_or_tensor]
 
