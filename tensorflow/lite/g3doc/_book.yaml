@@ -139,7 +139,6 @@ upper_tabs:
         path: /lite/performance/measurement
       - title: "Delegates"
         path: /lite/performance/delegates
-        status: experimental
       - title: "GPU delegate"
         path: /lite/performance/gpu
       - title: "Advanced GPU"
@@ -151,6 +150,9 @@ upper_tabs:
         status: experimental
       - title: "Core ML delegate"
         path: /lite/performance/coreml_delegate
+        status: experimental
+      - title: "Implementing a delegate"
+        path: /lite/performance/implementing_delegate
         status: experimental
 
       - heading: "Optimize a model"
