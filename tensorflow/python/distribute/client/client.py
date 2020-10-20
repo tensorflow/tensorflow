@@ -1180,14 +1180,8 @@ def _is_worker_failure(error):
       # remote_handle" part.
       return True
 
-  # TODO(b/162541228): The following 3 types of errors are very rare and only
+  # TODO(b/162541228): The following 2 types of errors are very rare and only
   # observed in large-scale testing. The types of errors should be reduced.
-  # This error could show up when copying function inputs from remote tasks.
-  if isinstance(error, errors.InternalError):
-    if ("Failed copying input tensor" in str(error) or
-        "Unable to find a context_id" in str(error)):
-      return True
-
   # This could happen when the function registration fails. In the observed
   # cases this only happens to the dataset related functions.
   if isinstance(error, errors.NotFoundError):
