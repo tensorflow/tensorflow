@@ -1021,6 +1021,13 @@ func @identity(%arg0: tensor<1xi32>) -> tensor<1xi32> {
   return %0: tensor<1xi32>
 }
 
+// CHECK-LABEL: func @identityN
+func @identityN(%arg0: tensor<1xi32>, %arg1: tensor<1xf32>) -> (tensor<1xi32>, tensor<1xf32>) {
+  // CHECK-NEXT:  return %arg0, %arg1 : tensor<1xi32>, tensor<1xf32>
+  %0:2 = "tf.IdentityN"(%arg0, %arg1) : (tensor<1xi32>, tensor<1xf32>) -> (tensor<1xi32>, tensor<1xf32>)
+  return %0#0, %0#1: tensor<1xi32>, tensor<1xf32>
+}
+
 // CHECK-LABEL: func @stopgradient
 func @stopgradient(%arg0: tensor<1xi32>) -> tensor<1xi32> {
   // CHECK-NEXT:  return %arg0 : tensor<1xi32>

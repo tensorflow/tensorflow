@@ -1705,6 +1705,17 @@ class ConvertEinsumOp : public OpRewritePattern<TF::EinsumOp> {
   }
 };
 
+// Bypasses IdentityN op.
+class ConvertIdentityNOp : public OpRewritePattern<TF::IdentityNOp> {
+ public:
+  using OpRewritePattern<TF::IdentityNOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(TF::IdentityNOp op,
+                                PatternRewriter &rewriter) const override {
+    rewriter.replaceOp(op, op.getOperands());
+    return success();
+  }
+};
+
 template <typename OpTy>
 class ConvertFFTOp : public OpRewritePattern<OpTy> {
  public:
@@ -6131,13 +6142,14 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
       ConvertFusedBatchNormGradOp, ConvertFusedBatchNormGradV2Op,
       ConvertFusedBatchNormGradV3Op, ConvertFusedBatchNormV2Op,
       ConvertFusedBatchNormV3Op, ConvertInfeedDequeueTupleOp,
-      ConvertInplaceUpdateOp, ConvertLinSpaceOp, ConvertMaxOp, ConvertMinOp,
-      ConvertAvgPool2DOp, ConvertAvgPool3DOp, ConvertAvgPool2DGradOp,
-      ConvertAvgPool3DGradOp, ConvertMaxPool2DOp, ConvertMaxPool3DOp,
-      ConvertMaxPool2DGradOp, ConvertMaxPool3DGradOp, ConvertMeanOp,
-      ConvertOneHotOp, ConvertOutfeedEnqueueTupleOp, ConvertProdOp, ConvertQrOp,
-      ConvertDynamicRangeOp, ConvertMatrixDiagPartV3Op, ConvertRangeOp,
-      ConvertSelectV2Op, ConvertSigmoidOp, ConvertShapeOp, ConvertSizeOp,
+      ConvertIdentityNOp, ConvertInplaceUpdateOp, ConvertLinSpaceOp,
+      ConvertMaxOp, ConvertMinOp, ConvertAvgPool2DOp, ConvertAvgPool3DOp,
+      ConvertAvgPool2DGradOp, ConvertAvgPool3DGradOp, ConvertMaxPool2DOp,
+      ConvertMaxPool3DOp, ConvertMaxPool2DGradOp, ConvertMaxPool3DGradOp,
+      ConvertMeanOp, ConvertOneHotOp, ConvertOutfeedEnqueueTupleOp,
+      ConvertProdOp, ConvertQrOp, ConvertDynamicRangeOp,
+      ConvertMatrixDiagPartV3Op, ConvertRangeOp, ConvertSelectV2Op,
+      ConvertSigmoidOp, ConvertShapeOp, ConvertSizeOp,
       ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
       ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
       ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertSumOp,
