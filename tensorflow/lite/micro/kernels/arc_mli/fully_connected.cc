@@ -29,9 +29,6 @@ limitations under the License.
 #include "tensorflow/lite/micro/kernels/arc_mli/scratch_buffers.h"
 
 namespace tflite {
-namespace ops {
-namespace micro {
-namespace fully_connected {
 namespace {
 
 struct OpData {
@@ -127,10 +124,10 @@ TfLiteStatus EvalMliQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
   mli_tensor mli_bias = {};
   mli_tensor mli_out = {};
 
-  ConvertToMliTensor<int8_t>(input, &mli_in);
-  ConvertToMliTensor<int8_t>(filter, &mli_weights);
-  ConvertToMliTensor<int32_t>(bias, &mli_bias);
-  ConvertToMliTensor<int8_t>(output, &mli_out);
+  ops::micro::ConvertToMliTensor<int8_t>(input, &mli_in);
+  ops::micro::ConvertToMliTensor<int8_t>(filter, &mli_weights);
+  ops::micro::ConvertToMliTensor<int32_t>(bias, &mli_bias);
+  ops::micro::ConvertToMliTensor<int8_t>(output, &mli_out);
 
   /* The input tensor can have more than 2 dimensions. for the compute this
      doesn't make any difference because all the inputs or a batch entry will
@@ -156,9 +153,10 @@ TfLiteStatus EvalMliQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
   int slice_size = mli_weights.shape[weight_out_dimension];
 
   /* allocate the local buffers, and compute the slice size */
-  TF_LITE_ENSURE_STATUS(get_arc_scratch_buffer_for_fully_connect_tensors(
-      context, &in_local, &weights_local, &bias_local, &out_local));
-  TF_LITE_ENSURE_STATUS(arc_scratch_buffer_calc_slice_size_weights(
+  TF_LITE_ENSURE_STATUS(
+      ops::micro::get_arc_scratch_buffer_for_fully_connect_tensors(
+          context, &in_local, &weights_local, &bias_local, &out_local));
+  TF_LITE_ENSURE_STATUS(ops::micro::arc_scratch_buffer_calc_slice_size_weights(
       &weights_local, &bias_local, weight_out_dimension, &slice_size));
   int max_out_slice_size =
       out_local.capacity / mli_hlp_tensor_element_size(&out_local);
@@ -172,10 +170,11 @@ TfLiteStatus EvalMliQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
   const bool w_is_local = weights_local.data == mli_weights.data;
   const bool b_is_local = bias_local.data == mli_bias.data;
 
-  TensorSlicer w_slice(&mli_weights, weight_out_dimension, slice_size);
-  TensorSlicer b_slice(&mli_bias, weight_out_dimension, slice_size);
-  TensorSlicer out_ch_slice(&mli_out, out_tensor_dimension, slice_size, 0, 0, 0,
-                            true);
+  ops::micro::TensorSlicer w_slice(&mli_weights, weight_out_dimension,
+                                   slice_size);
+  ops::micro::TensorSlicer b_slice(&mli_bias, weight_out_dimension, slice_size);
+  ops::micro::TensorSlicer out_ch_slice(&mli_out, out_tensor_dimension,
+                                        slice_size, 0, 0, 0, true);
 
   mli_tensor* w_ptr = w_is_local ? w_slice.Sub() : &weights_local;
   mli_tensor* b_ptr = b_is_local ? b_slice.Sub() : &bias_local;
@@ -188,15 +187,15 @@ TfLiteStatus EvalMliQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
 
     // Slice the input over the batches (one at a time with the size of a
     // complete input)
-    TensorSlicer in_slice(&mli_in, input_size_dimension,
-                          mli_in.shape[input_size_dimension]);
+    ops::micro::TensorSlicer in_slice(&mli_in, input_size_dimension,
+                                      mli_in.shape[input_size_dimension]);
 
     /* output tensor is alreade sliced in the output size dimension.
     out_ch_slice.Sub() is the tensor for the amount of output size of this
     itteration of the weight slice loop. This tensor needs to be further
     sliced over the batch */
-    TensorSlicer out_slice(out_ch_slice.Sub(), out_tensor_dimension,
-                           slice_size);
+    ops::micro::TensorSlicer out_slice(out_ch_slice.Sub(), out_tensor_dimension,
+                                       slice_size);
 
     /* setup the pointers to the local or remote tensor to make the code
      * inside the loop easier. */
@@ -359,19 +358,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-}  // namespace fully_connected
-
 TfLiteRegistration Register_FULLY_CONNECTED() {
-  return {/*init=*/fully_connected::Init,
+  return {/*init=*/Init,
           /*free=*/nullptr,
-          /*prepare=*/fully_connected::Prepare,
-          /*invoke=*/fully_connected::Eval,
+          /*prepare=*/Prepare,
+          /*invoke=*/Eval,
           /*profiling_string=*/nullptr,
           /*builtin_code=*/0,
           /*custom_name=*/nullptr,
           /*version=*/0};
 }
 
-}  // namespace micro
-}  // namespace ops
 }  // namespace tflite
