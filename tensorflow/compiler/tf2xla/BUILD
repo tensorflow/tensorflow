@@ -196,7 +196,7 @@ filegroup(
     srcs = [
         "xla_compiled_cpu_function.h",
         "//tensorflow/compiler/xla:cpu_runtime_hdrs",
-        "//tensorflow/compiler/xla/service/cpu:single_threaded_runtime_hdrs",
+        "//tensorflow/compiler/xla/service/cpu:runtime_hdrs",
         "//tensorflow/core/kernels:xla_cpu_runtime_hdrs",
         "//tensorflow/core/platform:xla_cpu_runtime_srcs",
     ],
@@ -208,7 +208,7 @@ filegroup(
     srcs = [
         "xla_compiled_cpu_function.cc",
         "//tensorflow/compiler/xla:cpu_runtime_srcs",
-        "//tensorflow/compiler/xla/service/cpu:single_threaded_runtime_srcs",
+        "//tensorflow/compiler/xla/service/cpu:runtime_srcs",
         "//tensorflow/core/kernels:xla_cpu_runtime_srcs",
         "//tensorflow/core/platform:xla_cpu_runtime_srcs",
     ],
@@ -249,6 +249,11 @@ cc_library(
         "//third_party/eigen3",
         "//tensorflow/core/framework:numeric_types",
         "//tensorflow/core/platform:bfloat16",
+    ] + [
+        # Extra dependencies required for multithreaded runtime objects.
+        "//tensorflow/core/platform:blocking_counter",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:mutex",
     ] + tf_additional_tensor_coding_deps(),
     alwayslink = 1,
 )
