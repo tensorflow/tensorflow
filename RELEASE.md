@@ -141,6 +141,10 @@
         ([CVE-2020-15212](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-15212),
         [CVE-2020-15213](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-15213),
         [CVE-2020-15214](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-15214))
+    *   Fixes a segfault in `tf.quantization.quantize_and_dequantize`
+        ([CVE-2020-15265](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-15265))
+    *   Fixes an undefined behavior float cast causing a crash
+        ([CVE-2020-15266](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-15266))
 *   TF Core:
     *   `tf.types.experimental.TensorLike` is a new `Union` type that can be
         used as type annotation for variables representing a Tensor or a value
