@@ -844,6 +844,12 @@ renames = {
         'tf.compat.v1.metrics.true_positives_at_thresholds',
     'tf.min_max_variable_partitioner':
         'tf.compat.v1.min_max_variable_partitioner',
+    'tf.mixed_precision.MixedPrecisionLossScaleOptimizer':
+        'tf.compat.v1.mixed_precision.MixedPrecisionLossScaleOptimizer',
+    'tf.mixed_precision.disable_mixed_precision_graph_rewrite':
+        'tf.compat.v1.mixed_precision.disable_mixed_precision_graph_rewrite',
+    'tf.mixed_precision.enable_mixed_precision_graph_rewrite':
+        'tf.compat.v1.mixed_precision.enable_mixed_precision_graph_rewrite',
     'tf.mod':
         'tf.math.floormod',
     'tf.model_variables':
