@@ -23,25 +23,25 @@ config_setting(
 
 config_setting(
     name = "build_with_mkl_lnx_openmp",
+    constraint_values = [
+        "@platforms//os:linux",
+    ],
     define_values = {
         "build_with_mkl": "true",
         "build_with_openmp": "true",
     },
-    constraint_values = [
-          "@platforms//os:linux"
-    ],
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "build_with_mkl_windows_openmp",
+    constraint_values = [
+        "@platforms//os:windows",
+    ],
     define_values = {
         "build_with_mkl": "true",
         "build_with_openmp": "true",
     },
-    constraint_values = [
-        "@platforms//os:windows"
-    ],
     visibility = ["//visibility:public"],
 )
 
@@ -64,7 +64,10 @@ config_setting(
 
 filegroup(
     name = "LICENSE",
-    srcs = ["MKL_LICENSE"] + ["@llvm_openmp//:LICENSE.txt"],
+    srcs = [
+        "MKL_LICENSE",
+        "@llvm_openmp//:LICENSE.txt",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -104,10 +107,10 @@ cc_library(
             ":mkl_libs_linux",
         ],
         "@org_tensorflow//tensorflow:macos": [
-           ":mkl_libs_darwin",
+            ":mkl_libs_darwin",
         ],
         "@org_tensorflow//tensorflow:windows": [
-           ":mkl_libs_windows",
+            ":mkl_libs_windows",
         ],
         "//conditions:default": [],
     }),

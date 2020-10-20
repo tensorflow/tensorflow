@@ -1,7 +1,5 @@
 # Build file for OpenMP library that is part of llvm
 
-exports_files(["LICENSE.txt"])
-
 load(
     "@org_tensorflow//third_party/llvm:llvm.bzl",
     "cmake_var_string",
@@ -15,6 +13,8 @@ load(
     "@org_tensorflow//third_party/llvm_openmp:openmp.bzl",
     "dict_add",
 )
+
+exports_files(["LICENSE.txt"])
 
 genrule(
     name = "kmp_i18n_id",
@@ -164,12 +164,12 @@ common_includes = [
 
 cc_binary(
     name = "libiomp5.so",
-    srcs = glob(cppsources + [
+    srcs = cppsources + [
         #linux specific files
         "runtime/src/z_Linux_util.cpp",
         "runtime/src/kmp_gsupport.cpp",
         "runtime/src/z_Linux_asm.S",
-    ]) + srcdeps,
+    ] + srcdeps,
     copts = ["-Domp_EXPORTS -D_GNU_SOURCE -D_REENTRANT"],
     includes = common_includes,
     linkopts = ["-lpthread -ldl -Wl,--version-script=$(location :ldscript)"],
@@ -179,11 +179,11 @@ cc_binary(
 
 cc_binary(
     name = "libiomp5md.dll",
-    srcs = glob(cppsources + [
+    srcs = cppsources + [
         #window specific files
         "runtime/src/z_Windows_NT_util.cpp",
         "runtime/src/z_Windows_NT-586_util.cpp",
-    ]) + srcdeps + [":openmp_asm"],
+    ] + srcdeps + [":openmp_asm"],
     copts = ["/Domp_EXPORTS /D_M_AMD64 /DOMPT_SUPPORT=0 /D_WINDOWS /D_WINNT /D_USRDLL"],
     includes = common_includes,
     linkopts = ["/MACHINE:X64"],
@@ -192,15 +192,15 @@ cc_binary(
 )
 
 # MacOS build has not been tested, however since the MacOS build of openmp
-# uses the same configuration as Lunix, the following should work.
+# uses the same configuration as Linux, the following should work.
 cc_binary(
     name = "libiomp5.dylib",
-    srcs = glob(cppsources + [
+    srcs = cppsources + [
         #linux/MacOS specific files
         "runtime/src/z_Linux_util.cpp",
         "runtime/src/kmp_gsupport.cpp",
         "runtime/src/z_Linux_asm.S",
-    ]) + srcdeps,
+    ] + srcdeps,
     copts = ["-Domp_EXPORTS -D_GNU_SOURCE -D_REENTRANT"],
     includes = common_includes,
     linkopts = ["-lpthread -ldl -Wl,--version-script=$(location :ldscript)"],

@@ -1,5 +1,6 @@
 # This file contains BUILD extensions for building llvm_openmp.
 
+# TODO(Intel-tf), delete this and re-use a similar function in third_party/llvm.
 def dict_add(*dictionaries):
     """Returns a new `dict` that has all the entries of the given dictionaries.
 
