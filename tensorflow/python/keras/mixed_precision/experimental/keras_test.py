@@ -549,15 +549,19 @@ class KerasModelTest(keras_parameterized.TestCase):
                  use_v1_policy=False):
     self._skip_if_strategy_unsupported(strategy_fn)
     self._skip_if_save_format_unsupported(save_format)
-    regularizer = (mp_test_util.IdentityRegularizer() if use_regularizer
-                   else None)
+    if use_regularizer:
+      weight_regularizer = mp_test_util.IdentityRegularizer()
+      activity_regularizer = mp_test_util.ReduceSumRegularizer()
+    else:
+      weight_regularizer = activity_regularizer = None
     with strategy_fn().scope():
       cls = policy.PolicyV1 if use_v1_policy else policy.Policy
       with policy.policy_scope(cls(policy_name)):
         layer = mp_test_util.MultiplyLayer(
             assert_type=dtypes.float16,
             use_operator=use_operator,
-            regularizer=regularizer,
+            regularizer=weight_regularizer,
+            activity_regularizer=activity_regularizer,
             input_shape=(1,))
         if use_input_spec:
           layer.input_spec = input_spec.InputSpec(shape=(None, 1))
@@ -596,8 +600,9 @@ class KerasModelTest(keras_parameterized.TestCase):
     # from it.
     expected = 1 - 2**-14
     if use_regularizer:
-      # Regularizer adds another 2 ** -14 to the gradient.
-      expected -= 2**-14
+      # Weight and activity regularizer each add another 2 ** -14 to the
+      # gradient.
+      expected -= 2 * 2**-14
     self.assertEqual(backend.eval(layer.v), expected)
 
     if save_format:
@@ -614,14 +619,14 @@ class KerasModelTest(keras_parameterized.TestCase):
                 if 'MultiplyLayer' in layer.__class__.__name__)
     expected = 1 - 2**-14
     if use_regularizer:
-      expected -= 2**-14
+      expected -= 2 * 2**-14
     self.assertEqual(backend.eval(layer.v), expected)
 
     # Continue training, and assert variable is correct value
     model.fit(dataset)
     new_expected = expected - 2 ** -14
     if use_regularizer:
-      new_expected -= 2 ** -14
+      new_expected -= 2 * 2 ** -14
     self.assertEqual(backend.eval(layer.v), new_expected)
 
     # Load saved model again, and assert variable is previous value
