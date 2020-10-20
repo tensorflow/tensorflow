@@ -186,4 +186,19 @@ TfLiteRegistration Register_QUANTIZE() {
           /*version=*/0};
 }
 
+namespace ops {
+namespace micro {
+TfLiteRegistration Register_QUANTIZE() {
+  return {/*init=*/Init,
+          /*free=*/nullptr,
+          /*prepare=*/Prepare,
+          /*invoke=*/Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
+}
+}
+}
+
 }  // namespace tflite

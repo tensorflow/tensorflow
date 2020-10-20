@@ -389,4 +389,20 @@ TfLiteRegistration Register_FULLY_CONNECTED_INT8() {
   return fully_connected_registration;
 }
 
+namespace ops {
+namespace micro {
+TfLiteRegistration Register_FULLY_CONNECTED() {
+  fully_connected_registration.init = Init;
+  fully_connected_registration.free = nullptr;
+  fully_connected_registration.prepare = Prepare;
+  fully_connected_registration.invoke = Eval;
+  fully_connected_registration.profiling_string = nullptr;
+  fully_connected_registration.builtin_code = 0;
+  fully_connected_registration.custom_name = nullptr;
+  fully_connected_registration.version = 0;
+  return fully_connected_registration;
+}
+}
+}
+
 }  // namespace tflite

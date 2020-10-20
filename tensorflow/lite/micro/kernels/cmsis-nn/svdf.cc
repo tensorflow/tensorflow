@@ -473,4 +473,19 @@ TfLiteRegistration Register_SVDF() {
           /*version=*/0};
 }
 
+namespace ops {
+namespace micro {
+TfLiteRegistration Register_SVDF() {
+  return {/*init=*/Init,
+          /*free=*/nullptr,
+          /*prepare=*/Prepare,
+          /*invoke=*/Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
+}
+}
+}
+
 }  // namespace tflite

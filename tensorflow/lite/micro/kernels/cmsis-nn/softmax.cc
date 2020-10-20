@@ -165,4 +165,19 @@ TfLiteRegistration Register_SOFTMAX() {
           /*version=*/0};
 }
 
+namespace ops {
+namespace micro {
+TfLiteRegistration Register_SOFTMAX() {
+  return {/*init=*/SoftmaxInit,
+          /*free=*/nullptr,
+          /*prepare=*/SoftmaxPrepare,
+          /*invoke=*/SoftmaxEval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
+}
+}
+}
+
 }  // namespace tflite
