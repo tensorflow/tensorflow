@@ -825,6 +825,9 @@ TfLiteStatus QuantizeIntemediateTensors(ModelT* model,
           if (input.second.number_of_bits == 8 &&
               input.second.symmetric == false) {
             TensorT* tensor = subgraph->tensors[index_global].get();
+            if (tensor->quantization == nullptr) {
+              continue;
+            }
             if (utils::HasMinMax(tensor)) {
               utils::QuantizeActivation(tensor, activations_type,
                                         error_reporter);
