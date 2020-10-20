@@ -1,6 +1,7 @@
 path: "tensorflow.distribute.ReplicaContext"
 tf_class {
-  is_instance: "<class \'tensorflow.python.distribute.distribute_lib.ReplicaContext\'>"
+  is_instance: "<class \'tensorflow.python.distribute.distribute_lib.ReplicaContextV1\'>"
+  is_instance: "<class \'tensorflow.python.distribute.distribute_lib.ReplicaContextBase\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "devices"

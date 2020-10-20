@@ -1425,12 +1425,11 @@ class _TPUReplicaContext(distribute_lib.ReplicaContext):
     return self.strategy.extended.experimental_logical_device(logical_device_id)
 
   # TODO(wxinyi): Investigate whether to use cross_replica_sum to optimize it.
-  def _all_gather(self, value, axis, options=None):
-    del options
+  def all_gather(self, value, axis, experimental_hints=None):
+    del experimental_hints
     for v in nest.flatten(value):
       if isinstance(v, ops.IndexedSlices):
-        raise NotImplementedError("gather/all_gather does not support "
-                                  "IndexedSlices")
+        raise NotImplementedError("all_gather does not support IndexedSlices")
 
     def _all_to_all(value, axis):
       # The underlying AllToAllOp first do a split of the input value and then
@@ -1484,7 +1483,7 @@ class _TPUReplicaContext(distribute_lib.ReplicaContext):
     @custom_gradient.custom_gradient
     def grad_wrapper(*xs):
       ys = [_all_to_all(t, axis=axis) for t in xs]
-      return ys, lambda *dy_s: self._all_gather(dy_s, axis)
+      return ys, lambda *dy_s: self.all_gather(dy_s, axis)
 
     return nest.pack_sequence_as(value, grad_wrapper(*nest.flatten(value)))
 
