@@ -357,7 +357,6 @@ class RingGathererTest : public ::testing::Test {
                     .Attr("instance_key", params.instance.instance_key)
                     .Attr("shape", params.instance.shape)
                     .Input(FakeInput(params.instance.data_type))
-                    .Input(std::vector<NodeDefBuilder::NodeOut>())
                     .Finalize(&node_def));
     return GetKernel(node_def, device_type, device);
   }
