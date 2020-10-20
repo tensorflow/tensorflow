@@ -5351,7 +5351,6 @@ cuda_py_test(
     python_version = "PY3",
     shard_count = 24,
     tfrt_enabled = True,
-    tags = ["no_rocm"],
     deps = [
         ":array_ops",
         ":client_testlib",
