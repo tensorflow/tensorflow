@@ -210,6 +210,14 @@ class DefaultLayoutSensitiveOpTransposer : public LayoutSensitiveOpTransposer {
                        utils::MutableNodeView* node) override;
 };
 
+class BiasAddTransposer : public LayoutSensitiveOpTransposer {
+ public:
+  explicit BiasAddTransposer () : LayoutSensitiveOpTransposer() {}
+
+  Status TransposeNode(TransposeContext* context,
+                       utils::MutableNodeView* node) override;
+};
+
 class AvgPoolGradTransposer : public LayoutSensitiveOpTransposer {
  public:
   explicit AvgPoolGradTransposer() : LayoutSensitiveOpTransposer() {}
@@ -319,7 +327,7 @@ class LayoutAgnosticOpTransposer : public Transposer {
   bool IsAfterDstToSrcTransform(const TransposeContext& context,
                                 const utils::MutableNodeView& node) const;
 
-  std::vector<int> GetVariadic4DFaninPorts(
+  std::vector<int> GetVariadic4DOr5DFaninPorts(
       const TransposeContext& context,
       const utils::MutableNodeView& node) const;
 };
