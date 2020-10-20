@@ -439,7 +439,9 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
     if (fc_op.fused_activation_function() != "NONE") return failure();
 
     // Only fuse multiplier if all dimensions other than the depth dimension
-    // are equal to 1.
+    // are equal to 1 since otherwise
+    // `matmul(x, filter) * cst != matmul(x, filter * cst)`
+    // even if `filter` and `cst` are be broadcastable.
     auto shape = cst.getType().getShape();
     if (!IsDimensionsDegenerateExceptLastOne(shape)) return failure();
 
