@@ -268,6 +268,7 @@ class CollectiveRemoteAccess {
                             Tensor* to_tensor,
                             const DeviceLocality& client_locality,
                             int dev_to_dev_stream_index,
+                            CancellationManager* cancellation_manager,
                             const StatusCallback& done) = 0;
 
   virtual void PostToPeer(const string& peer_device, const string& peer_task,
@@ -276,6 +277,7 @@ class CollectiveRemoteAccess {
                           const AllocatorAttributes& from_alloc_attr,
                           const Tensor* from_tensor,
                           const DeviceLocality& client_locality,
+                          CancellationManager* cancellation_manager,
                           const StatusCallback& done) = 0;
 
   // Checks the health of a collective peer. It probes the peer to see if it is
