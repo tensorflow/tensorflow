@@ -156,7 +156,7 @@ stream_executor::DeviceMemoryBase FromC(const SE_DeviceMemoryBase& se_base) {
 // types that require a static_cast.
 template <typename Src, typename Dst, typename DstList>
 static void CopyVectorBase(const absl::Span<Src> src, DstList* dst) {
-  static_assert(sizeof(Src) == sizeof(Dst));
+  static_assert(sizeof(Src) == sizeof(Dst), "Mismatched types");
   dst->size = src.size();
   if (dst->size > TPU_C_API_MAX_INLINED) {
     dst->heap = new Dst[dst->size];
@@ -196,7 +196,7 @@ static void CopyVector(const absl::Span<const xla::Tile> src, TileList* dst) {
 // types that require a static_cast.
 template <typename Dst, typename Src, typename SrcList>
 static absl::Span<const Dst> MakeSpanBase(const SrcList& src_list) {
-  static_assert(sizeof(Src) == sizeof(Dst));
+  static_assert(sizeof(Src) == sizeof(Dst), "Mismatched types");
   const Src* src = src_list.size > TPU_C_API_MAX_INLINED ? src_list.heap
                                                          : &src_list.inlined[0];
   return absl::Span<const Dst>(reinterpret_cast<const Dst*>(src),
