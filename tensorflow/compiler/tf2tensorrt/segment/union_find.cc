@@ -29,9 +29,6 @@ namespace {
 template <typename T>
 inline bool CheckIfCompatible(const absl::optional<T>& a,
                               const absl::optional<T>& b) {
-  if (!a.has_value() && !b.has_value()) {
-    return true;
-  }
   if (a.has_value() && b.has_value()) {
     return *a == *b;
   }
@@ -52,55 +49,50 @@ template <typename T>
 inline absl::optional<T> MergeCompatible(const absl::optional<T>& a,
                                          const absl::optional<T>& b) {
   DCHECK(CheckIfCompatible(a, b));
-  return b;
+  return a.has_value() ? a : b;
 }
 
 }  // namespace
 
-ClusterBatchSize::ClusterBatchSize()
-    : has_dynamic_batch_size_(false), static_batch_size_(absl::nullopt) {}
+ClusterBatchSize::ClusterBatchSize() : batch_size_(absl::nullopt) {}
 
 bool ClusterBatchSize::operator==(const ClusterBatchSize& other) {
-  return has_dynamic_batch_size_ == other.has_dynamic_batch_size_ &&
-         static_batch_size_ == other.static_batch_size_;
+  return batch_size_ == other.batch_size_;
 }
 
-int ClusterBatchSize::GetStaticBatchSize() const {
-  DCHECK(HasStaticBatchSize());
-  return static_batch_size_.value();
-}
-
-// Sets the batch size assuming that the object doesn't have a batch size yet:
-//   a non-negative input value representing a static batch size.
-//   a negative input value representing a dynamic batch size.
 ClusterBatchSize& ClusterBatchSize::SetBatchSize(int batch_size) {
-  if (batch_size < 0) {
-    has_dynamic_batch_size_ = true;
-    return *this;
-  }
-  static_batch_size_ = MergeCompatible<int>(static_batch_size_, batch_size);
+  SetBatchSize(static_cast<absl::optional<int>>(batch_size));
   return *this;
 }
 
+ClusterBatchSize& ClusterBatchSize::SetBatchSize(
+    const absl::optional<int>& batch_size) {
+  batch_size_ = MergeCompatible<int>(batch_size_, batch_size);
+  return *this;
+}
+
+bool ClusterBatchSize::HasBatchSize() const { return batch_size_.has_value(); }
+
+int ClusterBatchSize::GetBatchSize() const {
+  DCHECK(HasBatchSize());
+  return batch_size_.value();
+}
+
 bool ClusterBatchSize::MergeIfCompatible(const ClusterBatchSize& other) {
-  if (!CheckIfCompatible(static_batch_size_, other.static_batch_size_)) {
+  if (!CheckIfCompatible(batch_size_, other.batch_size_)) {
     return false;
   }
-  if (other.HasStaticBatchSize()) {
-    static_batch_size_ = other.GetStaticBatchSize();
-  }
-  if (other.HasDynamicBatchSize()) {
-    has_dynamic_batch_size_ = true;
-  }
+  SetBatchSize(other.batch_size_);
   return true;
 }
 
 string ClusterBatchSize::ToString() const {
   string s;
-  absl::StrAppendFormat(&s, "batch_size=(%d,%d", HasDynamicBatchSize(),
-                        HasStaticBatchSize());
-  if (HasStaticBatchSize()) {
-    absl::StrAppendFormat(&s, ",%d", GetStaticBatchSize());
+  absl::StrAppendFormat(&s, "batch_size=(");
+  if (HasBatchSize()) {
+    absl::StrAppendFormat(&s, "%d", GetBatchSize());
+  } else {
+    absl::StrAppendFormat(&s, "?");
   }
   absl::StrAppend(&s, ")");
   return s;

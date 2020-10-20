@@ -193,7 +193,10 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
   UpdateOpVersion(buffer_pointer);
 
   if (!resolver_) {
-    auto resolver = new ops::builtin::BuiltinOpResolver();
+    MutableOpResolver* resolver =
+        apply_delegate
+            ? new ops::builtin::BuiltinOpResolver()
+            : new ops::builtin::BuiltinOpResolverWithoutDefaultDelegates();
     for (const auto& reg : custom_registrations_) {
       resolver->AddCustom(reg.first.data(), reg.second());
     }

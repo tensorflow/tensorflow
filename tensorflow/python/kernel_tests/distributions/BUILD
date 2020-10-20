@@ -114,6 +114,10 @@ cuda_py_test(
     name = "dirichlet_test",
     size = "small",
     srcs = ["dirichlet_test.py"],
+    tags = [
+        # b/170982175
+        "no_oss",
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",

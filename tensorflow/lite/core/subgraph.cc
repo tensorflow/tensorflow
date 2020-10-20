@@ -86,6 +86,7 @@ template <typename TensorIntArray>
 bool HasDynamicTensorImpl(const TfLiteContext& context,
                           const TensorIntArray& int_array) {
   for (int i : int_array) {
+    if (i == kTfLiteOptionalTensor) continue;
     const TfLiteTensor& tensor = context.tensors[i];
     if (tensor.allocation_type == kTfLiteDynamic) {
       return true;
@@ -1525,7 +1526,7 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
       ReportError(
           "Attempting to use a delegate that only supports static-sized "
           "tensors with a graph that has dynamic-sized tensors.");
-      return kTfLiteError;
+      return kTfLiteApplicationError;
     }
   }
 

@@ -497,26 +497,37 @@ Status TpuCompileOpKernelCommon::OptimizeGraph(
   opts.set_do_function_inlining(true);
   opts.set_do_constant_folding(!flags->tf_xla_disable_constant_folding);
   GraphOptimizer optimizer(opts);
-  // Performs a first function inlining pass before shape inference, since
-  // otherwise shape inference can't see inside functions and a comprehensive
-  // shape_map, including function ops, is needed to constant-propagate Shape
-  // Ops below.
-  GraphOptimizer::Options optimizer_opts;
-  optimizer_opts.inline_multi_device_functions = true;
-  optimizer_opts.inline_impl_selection_group_functions = true;
-  optimizer_opts.inline_with_single_device_body_placer = true;
-  optimizer.Optimize(flr, flr->env(), flr->device(), graph, optimizer_opts);
+  {
+    // Performs a first function inlining pass before shape inference, since
+    // otherwise shape inference can't see inside functions and a comprehensive
+    // shape_map, including function ops, is needed to constant-propagate Shape
+    // Ops below.
+    GraphOptimizer::Options optimizer_opts;
+    optimizer_opts.inline_multi_device_functions = true;
+    optimizer_opts.inline_impl_selection_group_functions = true;
+    optimizer_opts.inline_with_single_device_body_placer = true;
+    // Infer shapes for each node in the computation. Shape inference can help
+    // skip constant folding of large shapes.
+    GraphShapeInfo shape_info;
+    TF_RETURN_IF_ERROR(RunShapeInferenceOnComputation(
+        metadata, arg_shapes, graph->get(), flr, &shape_info));
+    // Converts the GraphShapeInfo into the form needed by the constant-folding
+    // pass of the optimizer.
+    std::unordered_map<string, std::vector<PartialTensorShape>> shape_map;
+    ConvertGraphShapeInfoToShapeMap(**graph, shape_info, &shape_map);
+    optimizer_opts.shape_map = &shape_map;
+    optimizer.Optimize(flr, flr->env(), flr->device(), graph, optimizer_opts);
+  }
 
-  // Infer shapes for each node in the computation.
-  GraphShapeInfo shape_info;
-  TF_RETURN_IF_ERROR(RunShapeInferenceOnComputation(
-      metadata, arg_shapes, graph->get(), flr, &shape_info));
-
-  // Converts the GraphShapeInfo into the form needed by the constant-folding
-  // pass of the optimizer.
-  std::unordered_map<string, std::vector<PartialTensorShape>> shape_map;
-  ConvertGraphShapeInfoToShapeMap(**graph, shape_info, &shape_map);
-  optimizer.Optimize(flr, flr->env(), flr->device(), graph, &shape_map);
+  {
+    // Infer shapes for each node in the computation.
+    GraphShapeInfo shape_info;
+    TF_RETURN_IF_ERROR(RunShapeInferenceOnComputation(
+        metadata, arg_shapes, graph->get(), flr, &shape_info));
+    std::unordered_map<string, std::vector<PartialTensorShape>> shape_map;
+    ConvertGraphShapeInfoToShapeMap(**graph, shape_info, &shape_map);
+    optimizer.Optimize(flr, flr->env(), flr->device(), graph, &shape_map);
+  }
 
   TF_RETURN_IF_ERROR(RewriteTensorListWithConstElement(graph->get(), fld));
 

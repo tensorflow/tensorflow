@@ -31,7 +31,8 @@ Status WrapError(const std::string& message, const ::grpc::Status& status) {
     return errors::Internal("Expected a non-ok grpc status. Wrapping message: ",
                             message);
   } else {
-    return Status(static_cast<tensorflow::error::Code>(status.error_code()),
+    Status s = FromGrpcStatus(status);
+    return Status(s.code(),
                   absl::StrCat(message, ": ", status.error_message()));
   }
 }

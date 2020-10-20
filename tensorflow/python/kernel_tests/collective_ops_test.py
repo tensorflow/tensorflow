@@ -24,13 +24,14 @@ import time
 from absl.testing import parameterized
 
 from tensorflow.python.compat import v2_compat
+from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import test_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.framework import combinations
-from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops as _collective_ops
 from tensorflow.python.platform import test
 
@@ -41,161 +42,239 @@ class CollectiveOpsV1(object):
 
 
 class CollectiveOpsV2(object):
-  all_reduce = _collective_ops.all_reduce_v2
-  all_gather = _collective_ops.all_gather_v2
+
+  @staticmethod
+  def all_reduce(t, group_size, group_key, instance_key, *args, **kwargs):
+    group_size = array_ops.identity(group_size)
+    group_key = array_ops.identity(group_key)
+    instance_key = array_ops.identity(instance_key)
+    return _collective_ops.all_reduce_v2(t, group_size, group_key, instance_key,
+                                         *args, **kwargs)
+
+  @staticmethod
+  def all_gather(t, group_size, group_key, instance_key, *args, **kwargs):
+    group_size = array_ops.identity(group_size)
+    group_key = array_ops.identity(group_key)
+    instance_key = array_ops.identity(instance_key)
+    return _collective_ops.all_gather_v2(t, group_size, group_key, instance_key,
+                                         *args, **kwargs)
+
+
+device_combination = (
+    combinations.combine(device='CPU', communication='RING', required_gpus=0) +
+    combinations.combine(
+        device='GPU', communication=['RING', 'NCCL'], required_gpus=2))
 
 
 @combinations.generate(
-    combinations.combine(
-        collective_ops=[
-            combinations.NamedObject('v1', CollectiveOpsV1),
-            combinations.NamedObject('v2', CollectiveOpsV2)
-        ],
-        mode='eager'))
+    combinations.times(
+        combinations.combine(
+            collective_ops=[
+                combinations.NamedObject('v1', CollectiveOpsV1),
+                combinations.NamedObject('v2', CollectiveOpsV2)
+            ],
+            mode='eager'), device_combination))
 class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
     _setup_context()
     super().setUp()
 
-  def testReduce(self, collective_ops):
+  def testReduce(self, collective_ops, device, communication):
+    dev0 = '/device:%s:0' % device
+    dev1 = '/device:%s:1' % device
 
     @def_function.function
-    def run_all_reduce_1cpu():
-      with ops.device('/device:CPU:0'):
+    def run_all_reduce_1device():
+      with ops.device(dev0):
         in_value = constant_op.constant([1.])
         group_size = 1
         group_key = 1
         instance_key = 1
-        return collective_ops.all_reduce(in_value, group_size, group_key,
-                                         instance_key)
+        return collective_ops.all_reduce(
+            in_value,
+            group_size,
+            group_key,
+            instance_key,
+            communication_hint=communication)
 
     @def_function.function
-    def run_all_reduce_2cpus():
+    def run_all_reduce_2devices():
       in_value = constant_op.constant([1.])
       group_size = 2
       group_key = 2
       instance_key = 2
       collectives = []
-      with ops.device('/device:CPU:0'):
+      with ops.device(dev0):
         collectives.append(
-            collective_ops.all_reduce(in_value, group_size, group_key,
-                                      instance_key))
-      with ops.device('/device:CPU:1'):
+            collective_ops.all_reduce(
+                in_value,
+                group_size,
+                group_key,
+                instance_key,
+                communication_hint=communication))
+      with ops.device(dev1):
         collectives.append(
-            collective_ops.all_reduce(in_value, group_size, group_key,
-                                      instance_key))
+            collective_ops.all_reduce(
+                in_value,
+                group_size,
+                group_key,
+                instance_key,
+                communication_hint=communication))
       return collectives
 
-    self.assertAllClose(run_all_reduce_1cpu(), [1.], rtol=1e-5, atol=1e-5)
-    for result in run_all_reduce_2cpus():
+    self.assertAllClose(run_all_reduce_1device(), [1.], rtol=1e-5, atol=1e-5)
+    for result in run_all_reduce_2devices():
       self.assertAllClose(result, [2.], rtol=1e-5, atol=1e-5)
 
-  def testGather(self, collective_ops):
+  def testGather(self, collective_ops, device, communication):
+    dev0 = '/device:%s:0' % device
+    dev1 = '/device:%s:1' % device
 
     @def_function.function
-    def run_all_gather_1cpu():
-      with ops.device('/device:CPU:0'):
+    def run_all_gather_1device():
+      with ops.device(dev0):
         in_value = constant_op.constant([1.])
         group_size = 1
         group_key = 1
         instance_key = 1
-        return collective_ops.all_gather(in_value, group_size, group_key,
-                                         instance_key)
+        return collective_ops.all_gather(
+            in_value,
+            group_size,
+            group_key,
+            instance_key,
+            communication_hint=communication)
 
     @def_function.function
-    def run_all_gather_2cpus():
+    def run_all_gather_2devices():
       in_value = constant_op.constant([1.])
       group_size = 2
       group_key = 2
       instance_key = 2
       collectives = []
-      with ops.device('/device:CPU:0'):
+      with ops.device(dev0):
         collectives.append(
-            collective_ops.all_gather(in_value, group_size, group_key,
-                                      instance_key))
-      with ops.device('/device:CPU:1'):
+            collective_ops.all_gather(
+                in_value,
+                group_size,
+                group_key,
+                instance_key,
+                communication_hint=communication))
+      with ops.device(dev1):
         collectives.append(
-            collective_ops.all_gather(in_value, group_size, group_key,
-                                      instance_key))
+            collective_ops.all_gather(
+                in_value,
+                group_size,
+                group_key,
+                instance_key,
+                communication_hint=communication))
       return collectives
 
-    self.assertAllClose(run_all_gather_1cpu(), [1.], rtol=1e-5, atol=1e-5)
-    for result in run_all_gather_2cpus():
+    self.assertAllClose(run_all_gather_1device(), [1.], rtol=1e-5, atol=1e-5)
+    for result in run_all_gather_2devices():
       self.assertAllClose(result, [1., 1.], rtol=1e-5, atol=1e-5)
 
-  def testInstanceKeyScopedUnderGroupKey(self, collective_ops):
+  def testInstanceKeyScopedUnderGroupKey(self, collective_ops, device,
+                                         communication):
+    if device == 'GPU' and context.num_gpus() < 4:
+      self.skipTest('not enough GPU')
+
+    dev0 = '/device:%s:0' % device
+    dev1 = '/device:%s:1' % device
+    dev2 = '/device:%s:2' % device
+    dev3 = '/device:%s:3' % device
 
     @def_function.function
-    def run_all_reduce_4cpus_same_instance_key():
+    def run_all_reduce_4devices_same_instance_key():
       # Use a common instance key for both groups.
       instance_key = 0
       # We will create 2 groups each with 2 devices.
       group_size = 2
-      # Group 0 comprises cpu:0 and cpu:1.
+      # Group 0 comprises dev0 and dev1.
       group0_key = 0
-      # Group 1 comprises cpu:2 and cpu:3.
+      # Group 1 comprises dev2 and dev3.
       group1_key = 1
       collectives = []
-      with ops.device('/device:CPU:0'):
+      with ops.device(dev0):
         collectives.append(
             collective_ops.all_reduce(
                 constant_op.constant(1.), group_size, group0_key, instance_key))
-      with ops.device('/device:CPU:1'):
+      with ops.device(dev1):
         collectives.append(
             collective_ops.all_reduce(
                 constant_op.constant(2.), group_size, group0_key, instance_key))
-      with ops.device('/device:CPU:2'):
+      with ops.device(dev2):
         collectives.append(
             collective_ops.all_reduce(
                 constant_op.constant(3.), group_size, group1_key, instance_key))
-      with ops.device('/device:CPU:3'):
+      with ops.device(dev3):
         collectives.append(
             collective_ops.all_reduce(
                 constant_op.constant(4.), group_size, group1_key, instance_key))
       return collectives
 
-    results = run_all_reduce_4cpus_same_instance_key()
+    results = run_all_reduce_4devices_same_instance_key()
     self.assertAllClose(results[0], 3., rtol=1e-5, atol=1e-5)
     self.assertAllClose(results[1], 3., rtol=1e-5, atol=1e-5)
     self.assertAllClose(results[2], 7., rtol=1e-5, atol=1e-5)
     self.assertAllClose(results[3], 7., rtol=1e-5, atol=1e-5)
 
-  def testCollectiveGroupSizeOne(self, collective_ops):
+  def testCollectiveGroupSizeOne(self, collective_ops, device, communication):
+    if communication == 'NCCL':
+      self.skipTest('b/170672646: it crashes with NCCL and group size one')
+    dev0 = '/device:%s:0' % device
+
     group_size = 1
     group_key = 100
     instance_key = 100
-    in_value = [1, 2, 3, 4]
+    in_value = [1., 2., 3., 4.]
     in_tensor = constant_op.constant(in_value)
 
-    reduced_tensor = collective_ops.all_reduce(in_tensor, group_size, group_key,
-                                               instance_key)
+    with ops.device(dev0):
+      reduced_tensor = collective_ops.all_reduce(
+          in_tensor,
+          group_size,
+          group_key,
+          instance_key,
+          communication_hint=communication)
     self.assertAllEqual(in_value, reduced_tensor.numpy())
 
-    gathered_tensor = collective_ops.all_gather(
-        in_tensor, group_size, group_key, instance_key)
+    with ops.device(dev0):
+      gathered_tensor = collective_ops.all_gather(
+          in_tensor,
+          group_size,
+          group_key,
+          instance_key,
+          communication_hint=communication)
     self.assertAllEqual(in_value, gathered_tensor.numpy())
 
-  def testMultipleGroups(self, collective_ops):
+  def testMultipleGroups(self, collective_ops, device, communication):
+    if device == 'GPU' and context.num_gpus() < 4:
+      self.skipTest('not enough GPU')
+
     num_elements = 4
 
     @def_function.function
     def run_all_reduce(group_size, group_key):
       instance_key = group_key
-      input_value = [group_key for i in range(num_elements)]
+      input_value = [float(group_key) for i in range(num_elements)]
       collectives = []
       for device_idx in range(group_size):
-        with ops.device('/CPU:{}'.format(device_idx)):
+        with ops.device('/{}:{}'.format(device, device_idx)):
           input_tensor = constant_op.constant(input_value)
           collectives.append(
-              collective_ops.all_reduce(input_tensor, group_size, group_key,
-                                        instance_key))
+              collective_ops.all_reduce(
+                  input_tensor,
+                  group_size,
+                  group_key,
+                  instance_key,
+                  communication_hint=communication))
       return collectives
 
     def run_and_assert(group_size, group_key):
       for reduced_tensor in run_all_reduce(group_size, group_key):
         self.assertAllEqual(
-            [group_key * group_size for i in range(num_elements)],
+            [float(group_key) * group_size for i in range(num_elements)],
             reduced_tensor.numpy())
 
     run_and_assert(group_size=2, group_key=1)
@@ -203,24 +282,29 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
 
 
 @combinations.generate(
-    combinations.combine(
-        collective_op=[
-            combinations.NamedObject('all_reduce', _collective_ops.all_reduce),
-            combinations.NamedObject('all_reduce_v2',
-                                     _collective_ops.all_reduce_v2),
-            combinations.NamedObject('all_gather', _collective_ops.all_gather),
-            combinations.NamedObject('all_gather_v2',
-                                     _collective_ops.all_gather_v2),
-        ],
-        mode='eager',
-        communication=['ring']))
+    combinations.times(
+        combinations.combine(
+            collective_op=[
+                combinations.NamedObject('all_reduce',
+                                         CollectiveOpsV1.all_reduce),
+                combinations.NamedObject('all_reduce_v2',
+                                         CollectiveOpsV2.all_reduce),
+                combinations.NamedObject('all_gather',
+                                         CollectiveOpsV1.all_gather),
+                combinations.NamedObject('all_gather_v2',
+                                         CollectiveOpsV2.all_gather),
+            ],
+            mode='eager'), device_combination))
 class AbortCollectiveOpsTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
     _setup_context()
     super().setUp()
 
-  def testAbortGroupParamsResolution(self, collective_op, communication):
+  def testAbortGroupParamsResolution(self, collective_op, device,
+                                     communication):
+    dev0 = '/device:%s:0' % device
+    dev1 = '/device:%s:1' % device
     group_size = 2
     group_key = 100
     instance_key = 100
@@ -236,11 +320,23 @@ class AbortCollectiveOpsTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(errors.UnavailableError, 'peer down'):
       # This hangs on params resolution since we're only launching one
       # collective for a group size of 2.
-      collective_op(in_tensor, group_size, group_key, instance_key)
+      with ops.device(dev0):
+        collective_op(
+            in_tensor,
+            group_size,
+            group_key,
+            instance_key,
+            communication_hint=communication)
 
     # After abortion, subsequent collectives should fail immediately.
     with self.assertRaisesRegex(errors.UnavailableError, 'peer down'):
-      collective_op(in_tensor, group_size, group_key, instance_key)
+      with ops.device(dev0):
+        collective_op(
+            in_tensor,
+            group_size,
+            group_key,
+            instance_key,
+            communication_hint=communication)
 
     t.join()
     # Reset the context in order to reset the collective executor.
@@ -248,7 +344,7 @@ class AbortCollectiveOpsTest(test.TestCase, parameterized.TestCase):
 
     # After reset non-NCCL collectives should work.
     def collective_fn():
-      for device in ['CPU:0', 'CPU:1']:
+      for device in [dev0, dev1]:
         with ops.device(device):
           collective_op(
               in_tensor,
@@ -259,14 +355,17 @@ class AbortCollectiveOpsTest(test.TestCase, parameterized.TestCase):
 
     def_function.function(collective_fn)()
 
-  def testAbortInstanceParamsResolution(self, collective_op, communication):
+  def testAbortInstanceParamsResolution(self, collective_op, device,
+                                        communication):
+    dev0 = '/device:%s:0' % device
+    dev1 = '/device:%s:1' % device
     group_size = 2
     group_key = 100
     instance_key = 100
     in_tensor = constant_op.constant([1.])
 
     def collective_fn():
-      for device in ['CPU:0', 'CPU:1']:
+      for device in [dev0, dev1]:
         with ops.device(device):
           collective_op(
               in_tensor,
@@ -290,11 +389,23 @@ class AbortCollectiveOpsTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(errors.UnavailableError, 'peer down'):
       # This hangs on params resolution since we're only launching one
       # collective for a group size of 2.
-      collective_op(in_tensor, group_size, group_key, instance_key)
+      with ops.device(dev0):
+        collective_op(
+            in_tensor,
+            group_size,
+            group_key,
+            instance_key,
+            communication_hint=communication)
 
     # After abortion, subsequent collectives should fail immediately.
     with self.assertRaisesRegex(errors.UnavailableError, 'peer down'):
-      collective_op(in_tensor, group_size, group_key, instance_key)
+      with ops.device(dev0):
+        collective_op(
+            in_tensor,
+            group_size,
+            group_key,
+            instance_key,
+            communication_hint=communication)
 
     context._reset_context()  # pylint: disable=protected-access
     t.join()
@@ -304,7 +415,9 @@ class AbortCollectiveOpsTest(test.TestCase, parameterized.TestCase):
     # After reset non-NCCL collectives should work.
     def_function.function(collective_fn)()
 
-  def testAbortCommunication(self, collective_op, communication):
+  def testAbortCommunication(self, collective_op, device, communication):
+    dev0 = '/device:%s:0' % device
+    dev1 = '/device:%s:1' % device
     group_size = 2
     group_key = 100
     instance_key = 100
@@ -312,7 +425,7 @@ class AbortCollectiveOpsTest(test.TestCase, parameterized.TestCase):
 
     # First perform a normal collective to finish resolution.
     def collective_fn():
-      for device in ['CPU:0', 'CPU:1']:
+      for device in [dev0, dev1]:
         with ops.device(device):
           collective_op(
               in_tensor,
@@ -333,11 +446,23 @@ class AbortCollectiveOpsTest(test.TestCase, parameterized.TestCase):
     t.start()
 
     with self.assertRaisesRegex(errors.UnavailableError, 'peer down'):
-      collective_op(in_tensor, group_size, group_key, instance_key)
+      with ops.device(dev0):
+        collective_op(
+            in_tensor,
+            group_size,
+            group_key,
+            instance_key,
+            communication_hint=communication)
 
     # After abortion, subsequent collectives should fail immediately.
     with self.assertRaisesRegex(errors.UnavailableError, 'peer down'):
-      collective_op(in_tensor, group_size, group_key, instance_key)
+      with ops.device(dev0):
+        collective_op(
+            in_tensor,
+            group_size,
+            group_key,
+            instance_key,
+            communication_hint=communication)
 
     # Reset the context in order to reset the collective executor.
     t.join()
@@ -346,36 +471,40 @@ class AbortCollectiveOpsTest(test.TestCase, parameterized.TestCase):
 
 
 @combinations.generate(
-    combinations.combine(
-        collective_op=[
-            combinations.NamedObject('all_reduce', _collective_ops.all_reduce),
-            combinations.NamedObject('all_reduce_v2',
-                                     _collective_ops.all_reduce_v2),
-            combinations.NamedObject('all_gather', _collective_ops.all_gather),
-            combinations.NamedObject('all_gather_v2',
-                                     _collective_ops.all_gather_v2),
-        ],
-        mode='eager',
-        communication=['ring']))
+    combinations.times(
+        combinations.combine(
+            collective_op=[
+                combinations.NamedObject('all_reduce',
+                                         CollectiveOpsV1.all_reduce),
+                combinations.NamedObject('all_reduce_v2',
+                                         CollectiveOpsV2.all_reduce),
+                combinations.NamedObject('all_gather',
+                                         CollectiveOpsV1.all_gather),
+                combinations.NamedObject('all_gather_v2',
+                                         CollectiveOpsV2.all_gather),
+            ],
+            mode='eager'), device_combination))
 class TimeoutTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
     _setup_context()
     super().setUp()
 
-  def testTimeout(self, collective_op, communication):
-    timeout = 4.5
+  def testTimeout(self, collective_op, device, communication):
+    if device == 'GPU':
+      self.skipTest('b/170980122')
+    timeout = 1.5
 
     @def_function.function
     def run(group_size, reported_group_size=None):
       group_key = 20
       instance_key = 30
-      tensor = [1, 2, 3, 4]
+      tensor = [1., 2., 3., 4.]
       results = []
       if reported_group_size is None:
         reported_group_size = group_size
       for i in range(group_size):
-        with ops.device('/CPU:{}'.format(i)):
+        with ops.device('/{}:{}'.format(device, i)):
           input_data = constant_op.constant(tensor)
           result = collective_op(
               input_data,
@@ -396,18 +525,22 @@ class TimeoutTest(test.TestCase, parameterized.TestCase):
     elapsed = time.time() - start_time
     self.assertAllGreaterEqual(elapsed, timeout)
 
-  def testParamResolutionAfterTimeoutV2(self, collective_op, communication):
+  def testParamResolutionAfterTimeout(self, collective_op, device,
+                                      communication):
+    if device == 'GPU':
+      self.skipTest('b/170980122')
+    dev0 = '/device:%s:0' % device
+    dev1 = '/device:%s:1' % device
     timeout = 1.5
-
     group_key = 20
     instance_key = 30
-    input_data = constant_op.constant([1, 2, 3, 4])
+    input_data = constant_op.constant([1., 2., 3., 4.])
 
     # This timeout comes from param solution.
     with self.assertRaisesRegex(
         errors.DeadlineExceededError,
         'Collective has timed out waiting for other workers'):
-      with ops.device('CPU:0'):
+      with ops.device(dev0):
         collective_op(
             input_data,
             group_size=2,
@@ -418,28 +551,31 @@ class TimeoutTest(test.TestCase, parameterized.TestCase):
 
     # We launch the second device after the first device times out. This is to
     # simulate the situation when other workers are slow and the timeout is
-    # short. Since the CPU:0 times out in the param resolution phase, CPU:1
-    # should times out as well, but in the execute phase.
-    with self.assertRaisesRegex(errors.DeadlineExceededError,
-                                'Collective has timed out during execution'):
-      with ops.device('CPU:1'):
+    # short. It should error immediately.
+    with self.assertRaisesRegex(
+        errors.DeadlineExceededError,
+        'Collective has timed out waiting for other workers'):
+      with ops.device(dev1):
         collective_op(
             input_data,
             group_size=2,
             group_key=group_key,
             instance_key=instance_key,
-            communication_hint=communication,
-            timeout=timeout)
+            communication_hint=communication)
 
-  def testExecutionAfterTimeoutV2(self, collective_op, communication):
+  def testExecutionAfterTimeout(self, collective_op, device, communication):
+    if device == 'GPU':
+      self.skipTest('b/170980122')
+    dev0 = '/device:%s:0' % device
+    dev1 = '/device:%s:1' % device
     timeout = 1.5
     group_key = 20
     instance_key = 30
-    input_data = constant_op.constant([1, 2, 3, 4])
+    input_data = constant_op.constant([1., 2., 3., 4.])
 
     @def_function.function
     def run():
-      for device in ['CPU:0', 'CPU:1']:
+      for device in [dev0, dev1]:
         with ops.device(device):
           collective_op(
               input_data,
@@ -454,7 +590,7 @@ class TimeoutTest(test.TestCase, parameterized.TestCase):
 
     with self.assertRaisesRegex(errors.DeadlineExceededError,
                                 'Collective has timed out during execution'):
-      with ops.device('CPU:0'):
+      with ops.device(dev0):
         collective_op(
             input_data,
             group_size=2,
@@ -468,7 +604,7 @@ class TimeoutTest(test.TestCase, parameterized.TestCase):
     # short. It should error immediately.
     with self.assertRaisesRegex(errors.DeadlineExceededError,
                                 'Collective has timed out during execution'):
-      with ops.device('CPU:1'):
+      with ops.device(dev1):
         # No timeout.
         collective_op(
             input_data,
@@ -480,13 +616,7 @@ class TimeoutTest(test.TestCase, parameterized.TestCase):
 
 def _setup_context():
   context._reset_context()
-  cpus = config.list_physical_devices('CPU')
-  config.set_logical_device_configuration(cpus[0], [
-      context.LogicalDeviceConfiguration(),
-      context.LogicalDeviceConfiguration(),
-      context.LogicalDeviceConfiguration(),
-      context.LogicalDeviceConfiguration()
-  ])
+  test_util.set_logical_devices_to_at_least('CPU', 4)
   context.ensure_initialized()
 
 

@@ -18,15 +18,6 @@ cc_library(
 )
 
 cc_library(
-    name = "mkl_libs_linux",
-    srcs = [
-        "lib/libiomp5.so",
-        "lib/libmklml_intel.so",
-    ],
-    visibility = ["//visibility:public"],
-)
-
-cc_library(
     name = "mkl_libs_darwin",
     srcs = [
         "lib/libiomp5.dylib",

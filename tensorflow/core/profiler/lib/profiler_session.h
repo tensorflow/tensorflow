@@ -38,7 +38,7 @@ namespace tensorflow {
 // Thread-safety: ProfilerSession is thread-safe.
 class ProfilerSession {
  public:
-  // Creates and ProfilerSession and starts profiling.
+  // Creates a ProfilerSession and starts profiling.
   static std::unique_ptr<ProfilerSession> Create(const ProfileOptions& options);
 
   static ProfileOptions DefaultOptions() {

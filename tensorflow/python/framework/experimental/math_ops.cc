@@ -53,5 +53,27 @@ PYBIND11_MODULE(_math_ops, m) {
                     /*transpose_a=*/false, /*transpose_b=*/false));
     return outputs[0];
   });
+  m.def("neg",
+        [](AbstractContext* ctx, AbstractTensorHandle* a, const char* name) {
+          int num_outputs = 1;
+          std::vector<AbstractTensorHandle*> outputs(1);
+          if (!name) {
+            name = "Neg";
+          }
+          MaybeRaiseRegisteredFromStatus(
+              ops::Neg(ctx, {a}, absl::MakeSpan(outputs), name));
+          return outputs[0];
+        });
+  m.def("sub", [](AbstractContext* ctx, AbstractTensorHandle* a,
+                  AbstractTensorHandle* b, const char* name) {
+    int num_outputs = 1;
+    std::vector<AbstractTensorHandle*> outputs(1);
+    if (!name) {
+      name = "Sub";
+    }
+    MaybeRaiseRegisteredFromStatus(
+        ops::Sub(ctx, {a, b}, absl::MakeSpan(outputs), name));
+    return outputs[0];
+  });
 }
 }  // namespace tensorflow

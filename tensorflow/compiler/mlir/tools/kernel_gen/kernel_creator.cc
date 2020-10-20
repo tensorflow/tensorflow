@@ -40,7 +40,7 @@ limitations under the License.
 #include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "mlir/Transforms/BufferPlacement.h"  // from @llvm-project
+#include "mlir/Transforms/Bufferize.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
@@ -90,6 +90,9 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
     pm.addPass(mlir::mhlo::createChloLegalizeToHloPass());
     pm.addPass(mlir::createTransformUnrankedHloPass());
     pm.addPass(mlir::kernel_gen::transforms::CreateShapeToDescriptorsPass());
+    // Clean up the IR created above. In particular, operations on descriptors
+    // are simplified here.
+    pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(mlir::kernel_gen::transforms::CreateBufferizePass());
     pm.addPass(mlir::kernel_gen::transforms::CreateParallelLoopsToSequential());
   }

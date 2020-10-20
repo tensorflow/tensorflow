@@ -693,3 +693,14 @@ func @round_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %0 = "tf.Round"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
+
+// CHECK-LABEL: func @lgamma
+func @lgamma(%arg0: tensor<4xf32>) -> tensor<4xf32> {
+  // The lowering for lgamma is complicated, which makes it awkward to write a
+  // complete test for it here. Instead we test that Lgamma is at least being
+  // lowered here and rely on UnaryOpsTest.testFloatOps and other TensorFlow
+  // tests to check it is lowered correctly and with sufficient precision.
+  // CHECK-NOT: tf.Lgamma
+  %0 = "tf.Lgamma"(%arg0) : (tensor<4xf32>) -> tensor<4xf32>
+  return %0 : tensor<4xf32>
+}

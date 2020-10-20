@@ -59,6 +59,20 @@ struct DotOpConverter : public OpRewritePattern<DotOp> {
       return failure();
     }
 
+    // We don't currently support batching dimensions, or multiple contraction
+    // dimensions.
+    mhlo::DotDimensionNumbers dot_dimension_numbers =
+        op.dot_dimension_numbers();
+    if (dot_dimension_numbers.lhs_batching_dimensions().size() > 0 ||
+        dot_dimension_numbers.rhs_batching_dimensions().size() > 0)
+      return failure();
+    if (dot_dimension_numbers.lhs_contracting_dimensions().size() != 1 ||
+        *dot_dimension_numbers.lhs_contracting_dimensions().begin() != 1 ||
+        dot_dimension_numbers.rhs_contracting_dimensions().size() != 1 ||
+        *dot_dimension_numbers.rhs_contracting_dimensions().begin() != 0) {
+      return failure();
+    }
+
     LogicalResult map_status = success();
     auto body_builder = [&](OpBuilder& builder, Location loc, ValueRange ivs) {
       SmallVector<Value, 2> lhs_indices{ivs[0], ivs[2]},

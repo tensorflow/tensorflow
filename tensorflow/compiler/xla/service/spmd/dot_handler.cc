@@ -91,6 +91,17 @@ Status SpmdPartitioningVisitor::HandleDot(HloInstruction* hlo) {
 
 namespace {
 
+std::vector<int64> GetAllDevicesInOrder(const HloSharding& sharding) {
+  CHECK(!sharding.IsTileMaximal());
+  std::vector<int64> results;
+  results.reserve(sharding.tile_assignment().num_elements());
+  sharding.tile_assignment().Each(
+      [&](absl::Span<const int64> /* indices */, int64 device) {
+        results.push_back(device);
+      });
+  return results;
+}
+
 StatusOr<HloInstruction*> PartitionBaseCase(
     PartitionedHlo lhs, PartitionedHlo rhs, const Shape& output_base_shape,
     const HloSharding& output_sharding, const DotConvDimsMapping& dims_mapping,
@@ -478,7 +489,8 @@ StatusOr<HloInstruction*> PartitionBaseCase(
         auto dot, create_sharded_dot(lhs.hlo(), rhs.hlo(), b, conv_window));
     auto ar =
         lhs.state().collective_ops_creator.create_cross_partition_all_reduce(
-            b, dot, MakeBinaryAdd(output_base_shape.element_type(), module), {},
+            b, dot, MakeBinaryAdd(output_base_shape.element_type(), module),
+            {GetAllDevicesInOrder(lhs.sharding())},
             (*lhs.state().next_channel_id)++);
     ar->set_sharding(HloSharding::Replicate());
     return PartitionedHlo(ar, output_base_shape, lhs.state())
@@ -581,7 +593,8 @@ StatusOr<HloInstruction*> PartitionBaseCase(
     TF_ASSIGN_OR_RETURN(
         auto dot, create_sharded_dot(lhs.hlo(), rhs.hlo(), b, conv_window));
     return lhs.state().collective_ops_creator.create_cross_partition_all_reduce(
-        b, dot, MakeBinaryAdd(output_base_shape.element_type(), module), {},
+        b, dot, MakeBinaryAdd(output_base_shape.element_type(), module),
+        {GetAllDevicesInOrder(lhs.sharding())},
         (*lhs.state().next_channel_id)++);
   }
   return nullptr;
@@ -940,7 +953,7 @@ StatusOr<HloInstruction*> PartitionDotGroupOnNonContracting(
             other.sharding(), {other_group_dims[0]},
             {other.sharding().tile_assignment().dimensions().back() /
              group_count}),
-        output_grouped);
+        output_grouped, /*ignore_group_order=*/true);
     other = other.Reshard(UngroupSharding(grouped));
     partially_replicated_other = other.hlo();
     top_level_sharding_to_reset.emplace_back(other.hlo(), other.sharding());
@@ -1062,7 +1075,8 @@ StatusOr<HloInstruction*> PartitionDotGroupOnContracting(
             {output_sharding.tile_assignment().num_dimensions() - 1},
             {output_sharding.tile_assignment().dimensions().back() /
              group_count}),
-        lhs_grouped);
+        lhs_grouped,
+        /*ignore_group_order=*/true);
     outer_output_tmp_sharding = UngroupSharding(grouped);
     inner_output_sharding = std::move(grouped.sharding);
   } else {
@@ -1125,7 +1139,8 @@ StatusOr<HloInstruction*> PartitionDotGroupOnContracting(
                                       inverse_grouped.device_groups, b)
           .collective_ops_creator.create_cross_partition_all_reduce(
               b, dot, MakeBinaryAdd(output_base_shape.element_type(), module),
-              {}, (*lhs.state().next_channel_id)++);
+              {GetAllDevicesInOrder(inverse_grouped.sharding)},
+              (*lhs.state().next_channel_id)++);
   ar->set_sharding(outer_output_tmp_sharding);
   return PartitionedHlo(ar, output_base_shape, lhs.state())
       .Reshard(output_sharding)

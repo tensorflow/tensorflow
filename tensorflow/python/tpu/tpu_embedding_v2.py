@@ -67,7 +67,7 @@ _NAME_KEY = "_tpu_embedding_layer"
 # sharded variables that can be used in the PSStrategy with optimizers.
 # We implement just enough of the of a tf.Variable so that this could be passed
 # to an optimizer.
-class TPUShardedVariable(sharded_variable.ShardedVariable):
+class TPUShardedVariable(sharded_variable.ShardedVariableMixin):
   """A ShardedVariable class for TPU."""
 
   @property

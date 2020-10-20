@@ -46,9 +46,11 @@ class OpenClConverterImpl : public TensorObjectConverter {
     RETURN_IF_ERROR(kernel_.SetMemoryAuto(buffer_mem));
     RETURN_IF_ERROR(args_.SetObjectRef("tensor", tensor));
     RETURN_IF_ERROR(args_.Bind(kernel_.kernel(), kernel_.GetBindingCounter()));
-    int3 grid = int3(tensor->Width() * tensor->Batch(), tensor->Height(),
-                     tensor->Slices());
-    return queue_->DispatchImplicit(kernel_, grid, {16, 8, 1});
+    const int3 grid = int3(tensor->Width() * tensor->Batch(), tensor->Height(),
+                           tensor->Slices());
+    const int3 work_group_size = {16, 8, 1};
+    const int3 work_groups_count = GetWorkGroupsCount(grid, work_group_size);
+    return queue_->Dispatch(kernel_, work_groups_count, work_group_size);
   }
 
   Arguments args_;
@@ -173,9 +175,11 @@ class TensorToTensorConverter : public OpenClConverterImpl {
     RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", &src_tensor));
     RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", &dst_tensor));
     RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
-    int3 grid = int3(dst_tensor.Width() * dst_tensor.Batch(),
-                     dst_tensor.Height(), dst_tensor.Slices());
-    return queue_->DispatchImplicit(kernel_, grid, {16, 8, 1});
+    const int3 grid = int3(dst_tensor.Width() * dst_tensor.Batch(),
+                           dst_tensor.Height(), dst_tensor.Slices());
+    const int3 work_group_size = {16, 8, 1};
+    const int3 work_groups_count = GetWorkGroupsCount(grid, work_group_size);
+    return queue_->Dispatch(kernel_, work_groups_count, work_group_size);
   }
 
  private:

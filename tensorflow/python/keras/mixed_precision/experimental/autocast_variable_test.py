@@ -77,7 +77,7 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
 
       # within auto cast scope of different dtype
       with autocast_variable.enable_auto_cast_variables(dtypes.float16):
-        self.assertEqual(x.dtype, dtypes.float16)
+        self.assertEqual(x.dtype, dtypes.float32)
         self.assertEqual(x.value().dtype, dtypes.float16)
         self.assertEqual(x.read_value().dtype, dtypes.float16)
         self.assertEqual(array_ops.identity(x).dtype, dtypes.float16)
@@ -111,14 +111,11 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
       self.evaluate(x.initializer)
 
       with autocast_variable.enable_auto_cast_variables(dtypes.float16):
-        self.assertEqual(x.dtype, dtypes.float16)
         self.assertEqual(x.read_value().dtype, dtypes.float16)
 
         with autocast_variable.enable_auto_cast_variables(dtypes.float32):
-          self.assertEqual(x.dtype, dtypes.float32)
           self.assertEqual(x.read_value().dtype, dtypes.float32)
 
-        self.assertEqual(x.dtype, dtypes.float16)
         self.assertEqual(x.read_value().dtype, dtypes.float16)
 
   @ds_combinations.generate(maybe_distribute)
@@ -133,7 +130,7 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
 
       dtype = dtypes.float16
       with autocast_variable.enable_auto_cast_variables(dtype):
-        self.assertEqual(x.dtype, dtypes.float16)
+        self.assertEqual(x.dtype, dtypes.float32)
         self.assertIsInstance(x.dtype, dtypes.DType)
         self.assertEqual(x.true_dtype, dtypes.float32)
         self.assertIsInstance(x.true_dtype, dtypes.DType)
@@ -153,7 +150,7 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
 
           def evaluate(var):
             self.assertIsInstance(var, autocast_variable.AutoCastVariable)
-            self.assertEqual(var.dtype, read_dtype)
+            self.assertEqual(array_ops.identity(var).dtype, read_dtype)  # pylint: disable=cell-var-from-loop
             return self.evaluate(var)
 
         x = get_var(7., dtypes.float32)
@@ -415,13 +412,13 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
     self.evaluate(x.initializer)
 
     with autocast_variable.enable_auto_cast_variables(dtypes.float16):
-      self.assertEqual(x.dtype, dtypes.float16)
+      self.assertEqual(array_ops.identity(x).dtype, dtypes.float16)
 
       # New threads should not see the modified value of the autocast dtype.
       var_dtype = None
       def f():
         nonlocal var_dtype
-        var_dtype = x.dtype
+        var_dtype = x._cast_dtype
       thread = threading.Thread(target=f)
       thread.start()
       thread.join()
@@ -465,24 +462,26 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
     if context.executing_eagerly():
       self.assertStartsWith(
           repr(x),
-          "<AutoCastVariable 'x:0' shape=() dtype=float32 true_dtype=float32, "
-          "numpy="
+          "<AutoCastVariable 'x:0' shape=() dtype=float32 "
+          "dtype_to_cast_to=float32, numpy="
       )
       with autocast_variable.enable_auto_cast_variables(dtypes.float16):
         self.assertStartsWith(
             repr(x),
-            "<AutoCastVariable 'x:0' shape=() dtype=float16 "
-            "true_dtype=float32, numpy="
+            "<AutoCastVariable 'x:0' shape=() dtype=float32 "
+            "dtype_to_cast_to=float16, numpy="
         )
     else:
       self.assertEqual(
           repr(x),
-          "<AutoCastVariable 'x:0' shape=() dtype=float32 true_dtype=float32>"
+          "<AutoCastVariable 'x:0' shape=() dtype=float32 "
+          "dtype_to_cast_to=float32>"
       )
       with autocast_variable.enable_auto_cast_variables(dtypes.float16):
         self.assertEqual(
             repr(x),
-            "<AutoCastVariable 'x:0' shape=() dtype=float16 true_dtype=float32>"
+            "<AutoCastVariable 'x:0' shape=() dtype=float32 "
+            "dtype_to_cast_to=float16>"
         )
 
   def test_repr_distributed(self):
@@ -494,12 +493,14 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
       if use_policy:
         self.assertRegex(
             repr(x).replace('\n', ' '),
-            '<AutoCastDistributedVariable dtype=float32 true_dtype=float32 '
+            '<AutoCastDistributedVariable dtype=float32 '
+            'dtype_to_cast_to=float32 '
             'inner_variable=DistributedVariable.*>')
       else:
         self.assertRegex(
             repr(x).replace('\n', ' '),
-            '<AutoCastDistributedVariable dtype=float32 true_dtype=float32 '
+            '<AutoCastDistributedVariable dtype=float32 '
+            'dtype_to_cast_to=float32 '
             'inner_variable=MirroredVariable.*>')
 
   @parameterized.named_parameters(

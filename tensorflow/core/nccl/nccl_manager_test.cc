@@ -640,6 +640,10 @@ TEST(NcclManagerTest, CommunicatorKey) {
 }
 
 #if !TENSORFLOW_USE_ROCM
+// ROCm platform currently does not support simulating a mutli-node
+// environment, on a single node with multiple GPUS. So tests that rely
+// upon such simulation need to be skipped on the ROCm platform
+
 // This test creates `num_nodes` NcclManagers to simulate a multi-node
 // environment.  It works on a single node with multiple GPUs.  It enqueues NCCL
 // kernels on separate stream per rank.
@@ -661,6 +665,10 @@ TYPED_TEST(NcclManagerTest, MultiNodeSingle) {
 }
 
 #if !TENSORFLOW_USE_ROCM
+// ROCm platform currently does not support simulating a mutli-node
+// environment, on a single node with multiple GPUS. So tests that rely
+// upon such simulation need to be skipped on the ROCm platform
+
 // Multi-node broadcast.
 TYPED_TEST(NcclManagerTest, MultiNodeBroadcast) {
   int num_nodes;
@@ -851,6 +859,10 @@ TYPED_TEST(NcclManagerTest, BroadcastInconsistentSource) {
 }
 
 #if !TENSORFLOW_USE_ROCM
+// ROCm platform currently does not support simulating a mutli-node
+// environment, on a single node with multiple GPUS. So tests that rely
+// upon such simulation need to be skipped on the ROCm platform
+
 TYPED_TEST(NcclManagerTest, Abort) {
   using NodeState = typename TestFixture::NodeState;
   using TestCase = typename TestFixture::TestCase;

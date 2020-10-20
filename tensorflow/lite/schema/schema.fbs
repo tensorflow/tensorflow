@@ -1077,6 +1077,32 @@ table Metadata {
   buffer:uint;
 }
 
+// Map from an alias name of tensor to tensor index in the graph.
+// This is used in Signature def.
+table TensorMap {
+  // Represents the alias to use for this tensor.
+  name:string;
+
+  // The actual tensor index in the primary graph, that 'name' corresponds to.
+  tensor_index:uint;
+}
+
+// This corresponds to SignatureDef in Tensorflow SavedModel.
+// The SignatureDef will be part of the SavedModel provided for conversion.
+table SignatureDef {
+  // Named inputs for this signature.
+  inputs:[TensorMap];
+
+  // Named outputs for this signature.
+  outputs:[TensorMap];
+
+  // Exported method name for this signature.
+  method_name:string;
+
+  // Key value which was in the Tensorflow SavedModel SignatureDef map.
+  key:string;
+}
+
 table Model {
   // Version of the schema.
   version:uint;
@@ -1105,6 +1131,9 @@ table Model {
 
   // Metadata about the model.
   metadata:[Metadata];
+
+  // Optional SignatureDefs for the model.
+  signature_defs:[SignatureDef];
 }
 
 root_type Model;

@@ -26,6 +26,26 @@ func @fusedDepthwiseConv2dRelu6(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<16
   // CHECK: return %0
 }
 
+// CHECK-LABEL: fusedMaxPool2dRelu
+func @fusedMaxPool2dRelu(%arg0: tensor<1x147x147x16xf32>) -> tensor<1x73x73x16xf32> {
+  %0 = "tfl.max_pool_2d"(%arg0) {filter_height = 3 : i32, filter_width = 3 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<1x147x147x16xf32>) -> tensor<1x73x73x16xf32>
+  %1 = "tfl.relu"(%0) : (tensor<1x73x73x16xf32>) -> tensor<1x73x73x16xf32>
+  return %1 : tensor<1x73x73x16xf32>
+
+  // CHECK: %0 = "tfl.max_pool_2d"(%arg0) {filter_height = 3 : i32, filter_width = 3 : i32, fused_activation_function = "RELU", padding = "VALID", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<1x147x147x16xf32>) -> tensor<1x73x73x16xf32>
+  // CHECK: return %0
+}
+
+// CHECK-LABEL: fusedAvgPool2dRelu1
+func @fusedAvgPool2dRelu1(%arg0: tensor<1x147x147x16xf32>) -> tensor<1x73x73x16xf32> {
+  %0 = "tfl.average_pool_2d"(%arg0) {filter_height = 3 : i32, filter_width = 3 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<1x147x147x16xf32>) -> tensor<1x73x73x16xf32>
+  %1 = "tfl.relu_n1_to_1"(%0) : (tensor<1x73x73x16xf32>) -> tensor<1x73x73x16xf32>
+  return %1 : tensor<1x73x73x16xf32>
+
+  // CHECK: %0 = "tfl.average_pool_2d"(%arg0) {filter_height = 3 : i32, filter_width = 3 : i32, fused_activation_function = "RELU_N1_TO_1", padding = "VALID", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<1x147x147x16xf32>) -> tensor<1x73x73x16xf32>
+  // CHECK: return %0
+}
+
 // CHECK-LABEL: fuseAddIntoConv2d
 func @fuseAddIntoConv2d(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<16x3x3x3xf32>) -> tensor<256x30x30x16xf32> {
   %cst = constant dense<1.5> : tensor<16xf32>
@@ -966,6 +986,16 @@ func @Relu(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
   %cst = constant dense<0.0> : tensor<f32>
   %0 = "tfl.maximum"(%arg0, %cst) : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
   return %0 : tensor<2x3xf32>
+
+  // CHECK: %[[RESULT:.*]] = "tfl.relu"(%arg0)
+  // CHECK: return %[[RESULT]]
+}
+
+// CHECK-LABEL: Relu_bf16
+func @Relu_bf16(%arg0: tensor<2x3xbf16>) -> tensor<2x3xbf16> {
+  %cst = constant dense<0.0> : tensor<2x3xbf16>
+  %0 = "tfl.maximum"(%arg0, %cst) : (tensor<2x3xbf16>, tensor<2x3xbf16>) -> tensor<2x3xbf16>
+  return %0 : tensor<2x3xbf16>
 
   // CHECK: %[[RESULT:.*]] = "tfl.relu"(%arg0)
   // CHECK: return %[[RESULT]]

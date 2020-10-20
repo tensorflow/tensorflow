@@ -31,7 +31,6 @@ namespace {
 
 constexpr char kAlgorithm[] = "algorithm";
 constexpr char kModelDataset[] = "ModelDataset";
-constexpr char kRetValOp[] = "_Retval";
 
 constexpr int64 HILL_CLIMB = 0;
 constexpr int64 GRADIENT_DESCENT = 1;
@@ -49,17 +48,11 @@ Status EnableGradientDescent::OptimizeAndCollectStats(
   }
   MutableGraphView graph(output);
 
-  for (const auto& fetch_name : item.fetch) {
-    // If the GrapplerItem is derived from a FunctionDef, we don't optimize it,
-    // because we only want to enable gradient descent on the main dataset
-    // pipeline.
-    auto fetch = graph.GetNode(fetch_name);
-    if (fetch == nullptr || fetch->op() == kRetValOp) {
-      // Heuristic: If the fetch nodes are Retval ops, this item is from a
-      // function.
-      return Status::OK();
-    }
-  }
+  // If the GrapplerItem is derived from a FunctionDef, we don't optimize it,
+  // because we only want to enable gradient descent on the main dataset
+  // pipeline.
+  if (graph_utils::IsItemDerivedFromFunctionDef(item, graph))
+    return Status::OK();
 
   int index = graph_utils::FindGraphNodeWithOp(kModelDataset, *output);
   NodeDef& model_node = *(output->mutable_node(index));

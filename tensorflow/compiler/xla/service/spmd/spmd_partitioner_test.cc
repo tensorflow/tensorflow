@@ -3378,6 +3378,30 @@ ENTRY entry {
   EXPECT_THAT(root, AllOf(op::Dot(lhs, rhs), op::Shape("f32[24,19648]")));
 }
 
+TEST_F(SpmdPartitioningTest, DotPartialDeviceOrder) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = f32[16,256,4096] parameter(0), sharding={devices=[1,1,2,2]1,3,0,2 last_tile_dim_replicate}
+  %rhs = f32[4096,2048] parameter(1), sharding={devices=[2,2]3,1,2,0}
+  ROOT %dot = f32[16,256,2048] dot(%lhs, %rhs),
+    lhs_batch_dims={}, rhs_batch_dims={},
+    lhs_contracting_dims={2}, rhs_contracting_dims={0},
+    sharding={devices=[1,1,2,2]2,3,0,1 last_tile_dim_replicate}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  auto root = module->entry_computation()->root_instruction();
+  auto lhs = AllOf(op::Parameter(0), op::Shape("f32[16,256,2048]"));
+  auto rhs = AllOf(op::Parameter(1), op::Shape("f32[2048,1024]"));
+  EXPECT_THAT(root, AllOf(op::AllReduce(op::Dot(lhs, rhs)),
+                          op::Shape("f32[16,256,1024]")));
+}
+
 TEST_F(SpmdPartitioningTest, EinsumBatchPartitioned) {
   const char* const hlo_string = R"(
 HloModule module

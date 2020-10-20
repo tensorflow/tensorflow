@@ -22,7 +22,7 @@ MKL_SHORT_DEPS = [
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
-    "//tensorflow/core/kernels:bounds_check",
+    "//tensorflow/core/framework:bounds_check",
     "//tensorflow/core/kernels:ops_util",
 ] + mkl_deps()
 
@@ -126,7 +126,7 @@ tf_mkl_kernel_library(
     srcs = ["mkl_quantize_op.cc"],
     deps = [
         "//tensorflow/core/kernels:quantized_ops",
-        "//tensorflow/core:mkl_graph_util",
+        "//tensorflow/core/graph:mkl_graph_util",
         "@gemmlowp",
     ] + MKL_DEPS,
 )
@@ -255,7 +255,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:math_ops_op_lib",
-        "//tensorflow/core:mkl_graph_util",
+        "//tensorflow/core/graph:mkl_graph_util",
         "//tensorflow/core:nn_ops_op_lib",
         "//tensorflow/core/kernels:concat_lib_hdrs",
         "//tensorflow/core/kernels:conv_ops",

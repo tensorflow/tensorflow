@@ -51,9 +51,6 @@ class AutoCastVariable(variables.Variable, core.Tensor):
   >>> with enable_auto_cast_variables(tf.float16):
   ...   tf.identity(v).dtype
   tf.float16
-  >>> with enable_auto_cast_variables(tf.float16):
-  ...   v.dtype  # v.dtype also changes under the context manager
-  tf.float16
 
   The purpose of this class is to allow Keras layers to create variables in
   float32, and automatically cast them to float16 or bfloat16 when the layer is
@@ -82,38 +79,42 @@ class AutoCastVariable(variables.Variable, core.Tensor):
   def _should_cast(self):
     """Returns True if this variable should be casted when accessed."""
     autocast_dtype = getattr(_autocast_dtype, 'dtype', None)
-    return autocast_dtype is not None and self.true_dtype != autocast_dtype
+    return autocast_dtype is not None and self.dtype != autocast_dtype
 
   @property
   def dtype(self):
-    """The dtype this variable will be casted to when read."""
-    dtype = getattr(_autocast_dtype, 'dtype', None)
-    return dtype or self._variable.dtype
+    """The dtype of the underlying variable, before any casts are done."""
+    return self._variable.dtype
 
   @property
   def true_dtype(self):
-    """The dtype of the underlying variable, before any casts are done."""
+    """Deprecated alias of `dtype`."""
     return self._variable.dtype
+
+  @property
+  def _cast_dtype(self):
+    dtype = getattr(_autocast_dtype, 'dtype', None)
+    return dtype or self._variable.dtype
 
   def value(self):
     val = self._variable.value()
     if not self._should_cast():
       return val
-    return math_ops.cast(val, self.dtype)
+    return math_ops.cast(val, self._cast_dtype)
 
   def read_value(self):
     val = self._variable.read_value()
-    return math_ops.cast(val, self.dtype)
+    return math_ops.cast(val, self._cast_dtype)
 
   def sparse_read(self, indices, name=None):
     """Reads the value of this variable sparsely, using `gather`."""
     val = self._variable.sparse_read(indices, name=name)
-    return math_ops.cast(val, self.dtype)
+    return math_ops.cast(val, self._cast_dtype)
 
   def gather_nd(self, indices, name=None):
     """Gather slices of the variable into a Tensor."""
     val = self._variable.gather_nd(indices, name=name)
-    return math_ops.cast(val, self.dtype)
+    return math_ops.cast(val, self._cast_dtype)
 
   def __getattr__(self, name):
     return getattr(self._variable, name)
@@ -124,13 +125,14 @@ class AutoCastVariable(variables.Variable, core.Tensor):
       return ops.convert_to_tensor(self._variable, dtype, name, as_ref)
     # TODO(reedwm): Support as_ref?
     assert not as_ref
-    if dtype is not None and not dtype.is_compatible_with(self.dtype):
+    if dtype is not None and not dtype.is_compatible_with(self._cast_dtype):
       raise ValueError(
-          'Incompatible type conversion requested to type {!r} for variable '
-          'of type {!r}'.format(dtype.name, self.dtype.name))
+          'Incompatible type conversion requested to type {!r} for '
+          'AutoCastVariable which is casted to type {!r}'.format(
+              dtype.name, self._cast_dtype.name))
     val = ops.convert_to_tensor_v2_with_dispatch(
         self._variable, dtype=self._variable.dtype, name=name)
-    return math_ops.cast(val, self.dtype)
+    return math_ops.cast(val, self._cast_dtype)
 
   def _should_act_as_resource_variable(self):
     """Pass resource_variable_ops.is_resource_variable check."""
@@ -139,13 +141,13 @@ class AutoCastVariable(variables.Variable, core.Tensor):
   def __repr__(self):
     if context.executing_eagerly() and not self._in_graph_mode:
       repr_str = ("<AutoCastVariable '{v.name}' shape={v.shape} "
-                  'dtype={v.dtype.name} true_dtype={v.true_dtype.name}, '
+                  'dtype={v.dtype.name} dtype_to_cast_to={v._cast_dtype.name}, '
                   'numpy={np_repr}>')
       return repr_str.format(
           v=self, np_repr=ops.numpy_text(self.read_value(), is_repr=True))
     else:
       repr_str = ("<AutoCastVariable '{v.name}' shape={v.shape} "
-                  'dtype={v.dtype.name} true_dtype={v.true_dtype.name}>')
+                  'dtype={v.dtype.name} dtype_to_cast_to={v._cast_dtype.name}>')
       return repr_str.format(v=self)
 
   # Method delegations: We delegate the following methods to self._variable.
@@ -504,7 +506,8 @@ def create_autocast_variable(variable, op=None):
 
       # pylint: disable=missing-format-attribute
       return ('<AutoCastDistributedVariable dtype={v.dtype.name} '
-              'true_dtype={v.true_dtype.name} inner_variable={v._variable}>'
+              'dtype_to_cast_to={v._cast_dtype.name} '
+              'inner_variable={v._variable}>'
              ).format(v=self)
       # pylint: enable=missing-format-attribute
 

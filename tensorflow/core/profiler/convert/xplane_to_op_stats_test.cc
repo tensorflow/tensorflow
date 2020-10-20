@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/convert/step_events_to_steps_db.h"
 #include "tensorflow/core/profiler/protobuf/diagnostics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
@@ -36,33 +37,34 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
+static constexpr char kXPlanePb[] = "xplane.pb";
+
 TEST(ConvertXPlaneToOpStats, PerfEnv) {
   XSpace space;
   constexpr double kMaxError = 0.01;
   constexpr int kClockRateKHz = 1530000;
   constexpr int kCoreCount = 80;
-  constexpr uint64 kMemoryBandwidthBytesPerSecond = 900 * 1e9;
+  constexpr uint64 kMemoryBandwidthBytesPerSecond =
+      uint64{900} * 1000 * 1000 * 1000;
   // Volta.
   constexpr int kComputeCapMajor = 7;
   constexpr int kComputeCapMinor = 0;
 
   XPlaneBuilder device_plane(
       GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0));
-  device_plane.ParseAndAddStatValue(
-      *device_plane.GetOrCreateStatMetadata("clock_rate"),
-      absl::StrCat(kClockRateKHz));
-  device_plane.ParseAndAddStatValue(
-      *device_plane.GetOrCreateStatMetadata("core_count"),
-      absl::StrCat(kCoreCount));
-  device_plane.ParseAndAddStatValue(
+  device_plane.AddStatValue(*device_plane.GetOrCreateStatMetadata("clock_rate"),
+                            kClockRateKHz);
+  device_plane.AddStatValue(*device_plane.GetOrCreateStatMetadata("core_count"),
+                            kCoreCount);
+  device_plane.AddStatValue(
       *device_plane.GetOrCreateStatMetadata("memory_bandwidth"),
-      absl::StrCat(kMemoryBandwidthBytesPerSecond));
-  device_plane.ParseAndAddStatValue(
+      kMemoryBandwidthBytesPerSecond);
+  device_plane.AddStatValue(
       *device_plane.GetOrCreateStatMetadata("compute_cap_major"),
-      absl::StrCat(kComputeCapMajor));
-  device_plane.ParseAndAddStatValue(
+      kComputeCapMajor);
+  device_plane.AddStatValue(
       *device_plane.GetOrCreateStatMetadata("compute_cap_minor"),
-      absl::StrCat(kComputeCapMinor));
+      kComputeCapMinor);
 
   GroupTfEvents(&space);
   OpStatsOptions options;
@@ -178,9 +180,20 @@ TEST(ConvertXPlaneToOpStats, PropagateAndDedupErrors) {
   EXPECT_EQ(kError, op_stats.diagnostics().errors(/*index=*/0));
 }
 
+TEST(ConvertXPlaneToOpStats, Hostnames) {
+  XSpace space;
+  static constexpr char kHost[] = "host1";
+  *space.add_hostnames() = kHost;
+
+  OpStats op_stats = ConvertXSpaceToOpStats(space, OpStatsOptions());
+  EXPECT_EQ(
+      kHost,
+      op_stats.core_id_to_details().at(kDefaultGpuLocalCoreId).hostname());
+}
+
 // Helper function to build a XSpace and store it to test directory.
-void BuildAndStoreXSpaceForTest(Env* test_env, const std::string& test_dir,
-                                const std::string& xspace_name) {
+void BuildAndStoreXSpaceForTest(Env* test_env, absl::string_view test_dir,
+                                absl::string_view hostname) {
   constexpr int64 kStepNum = 123;
   constexpr int64 kStepId = 456;
   // Create a host only XSpace for test.
@@ -202,6 +215,9 @@ void BuildAndStoreXSpaceForTest(Env* test_env, const std::string& test_dir,
   CreateXEvent(&host_plane_builder, &executor_thread, "aaa:bbb", 30, 70);
   GroupTfEvents(&xspace);
 
+  xspace.add_hostnames(std::string(hostname));
+
+  std::string xspace_name = absl::StrCat(hostname, ".", kXPlanePb);
   TF_CHECK_OK(
       WriteBinaryProto(test_env, io::JoinPath(test_dir, xspace_name), xspace))
       << "Failed to write binary XSpace to file: " << xspace_name;
@@ -214,14 +230,17 @@ TEST(ConvertXPlaneToOpStats, TestConvertMultiXSpacesToCombinedOpStats) {
   TF_CHECK_OK(test_env->CreateDir(test_dir))
       << "Failed to create test directory: " << test_dir;
 
-  const std::string xspace1 = "xspace1.pb";
-  const std::string xspace2 = "xspace2.pb";
-  BuildAndStoreXSpaceForTest(test_env, test_dir, xspace1);
-  BuildAndStoreXSpaceForTest(test_env, test_dir, xspace2);
+  static constexpr char kHost1[] = "host1";
+  static constexpr char kHost2[] = "host2";
+
+  BuildAndStoreXSpaceForTest(test_env, test_dir, kHost1);
+  BuildAndStoreXSpaceForTest(test_env, test_dir, kHost2);
 
   std::vector<std::string> xspace_paths;
-  xspace_paths.push_back(io::JoinPath(test_dir, xspace1));
-  xspace_paths.push_back(io::JoinPath(test_dir, xspace2));
+  xspace_paths.push_back(
+      io::JoinPath(test_dir, absl::StrCat(kHost1, ".", kXPlanePb)));
+  xspace_paths.push_back(
+      io::JoinPath(test_dir, absl::StrCat(kHost2, ".", kXPlanePb)));
   OpStatsOptions options;
   options.generate_op_metrics_db = true;
   options.generate_step_db = true;
@@ -248,8 +267,13 @@ TEST(ConvertXPlaneToOpStats, TestConvertMultiXSpacesToCombinedOpStats) {
   const auto& step_info_per_core =
       combined_op_stats.step_db().step_sequence(0).step_info_per_core();
   // global_core_id is computed using: 1000 * host_id + local_core_id.
-  EXPECT_TRUE(step_info_per_core.contains(1));
-  EXPECT_TRUE(step_info_per_core.contains(1001));
+  EXPECT_TRUE(step_info_per_core.contains(kDefaultGpuLocalCoreId));
+  EXPECT_TRUE(step_info_per_core.contains(1000 + kDefaultGpuLocalCoreId));
+
+  const auto& core_details_map = combined_op_stats.core_id_to_details();
+  EXPECT_EQ(kHost1, core_details_map.at(kDefaultGpuLocalCoreId).hostname());
+  EXPECT_EQ(kHost2,
+            core_details_map.at(1000 + kDefaultGpuLocalCoreId).hostname());
 
   // Tear down environment and directory for testing.
   int64 undeleted_files, undeleted_dirs;

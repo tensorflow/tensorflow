@@ -128,7 +128,7 @@ cc_library(
     copts = tf_profiler_copts(),
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core:regexp_internal",
+        "//tensorflow/core/platform:regexp",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -220,6 +220,7 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = [":friends"],
     deps = [
+        ":tf_op_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -320,7 +321,6 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = [":friends"],
     deps = [
-        ":tf_op_utils",
         ":tf_xplane_visitor",
         ":xplane_builder",
         ":xplane_schema",

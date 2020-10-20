@@ -59,7 +59,7 @@ namespace {
 
 void PopulateComplexLoweringPatterns(MLIRContext* context,
                                      OwningRewritePatternList* patterns) {
-  populateWithGenerated(context, patterns);
+  populateWithGenerated(context, *patterns);
 }
 }  // end namespace mhlo
 }  // end namespace mlir

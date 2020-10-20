@@ -67,9 +67,9 @@ def save_model(model,
 
   The saved model contains:
 
-      - the model's configuration (topology)
-      - the model's weights
-      - the model's optimizer's state (if any)
+  - the model's configuration (topology)
+  - the model's weights
+  - the model's optimizer's state (if any)
 
   Thus the saved model can be reinstantiated in
   the exact same state, without any of the code
