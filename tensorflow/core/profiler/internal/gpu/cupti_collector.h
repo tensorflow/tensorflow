@@ -179,9 +179,9 @@ class CuptiTraceCollector {
   virtual void Flush() = 0;
 
   // Consumer side functions (i.e. called by GPU tracer);
-  virtual void Export(StepStats* step_stats) = 0;
-  virtual void Export(XSpace* space, uint64 end_gpu_ns) = 0;
-  virtual std::string ReportNumEventsIfDropped() = 0;
+  virtual void Export(StepStats* step_stats) {}
+  virtual void Export(XSpace* space, uint64 end_gpu_ns) {}
+  virtual std::string ReportNumEventsIfDropped() { return ""; }
 
   AnnotationMap* annotation_map() { return &annotation_map_; }
 
