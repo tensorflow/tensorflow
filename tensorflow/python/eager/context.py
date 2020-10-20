@@ -948,7 +948,12 @@ class Context(object):
     if self._log_device_placement is not None:
       config.log_device_placement = self._log_device_placement
 
-    config.experimental.enable_mlir_bridge = pywrap_tfe.TF_IsMlirBridgeEnabled()
+    is_mlir_bridge_enabled = pywrap_tfe.TF_IsMlirBridgeEnabled()
+    config.experimental.mlir_bridge_rollout = is_mlir_bridge_enabled
+    if (is_mlir_bridge_enabled ==
+        config_pb2.ConfigProto.Experimental.MLIR_BRIDGE_ROLLOUT_ENABLED):
+      config.experimental.enable_mlir_bridge = True
+
     if self._enable_mlir_graph_optimization is not None:
       config.experimental.enable_mlir_graph_optimization = (
           self._enable_mlir_graph_optimization)
