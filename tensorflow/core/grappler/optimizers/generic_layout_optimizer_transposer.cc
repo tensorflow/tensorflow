@@ -1801,7 +1801,7 @@ Status UnaryGradTransposer::TransposeNode(TransposeContext* context,
   const auto& shape = output_shape_attr->list().shape(0);
   const int rank = shape.dim_size();
   ScopedDataFormatUpgrader data_format_upgrader(context, rank);
-  if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, rank) ||
+  if (!ShouldProcess(*context, *node) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
   }
