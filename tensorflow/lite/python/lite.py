@@ -462,6 +462,8 @@ class TFLiteConverterBase(object):
       self.representative_dataset = RepresentativeDataset(
           self.representative_dataset)
 
+    # Add intermediate tensors to the model if needed.
+    result = _calibrator.add_intermediate_tensors(result)
     calibrate_quantize = _calibrator.Calibrator(result)
     if self._experimental_calibrate_only or self._experimental_new_quantizer:
       calibrated = calibrate_quantize.calibrate(
