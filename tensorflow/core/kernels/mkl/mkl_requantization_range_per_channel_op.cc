@@ -84,7 +84,7 @@ class MklRequantizationRangePerChannelOp : public OpKernel {
 #endif
 #endif  // !ENABLE_MKLDNN_THREADPOOL
     // TODO: Add eigen parallel_for
-    for (ssize_t i = 0; i < depth; ++i) {
+    for (int64_t i = 0; i < depth; ++i) {
       Eigen::Tensor<qint32, 0, Eigen::RowMajor> min =
           transposed_input.chip<0>(i).minimum();
       Eigen::Tensor<qint32, 0, Eigen::RowMajor> max =
