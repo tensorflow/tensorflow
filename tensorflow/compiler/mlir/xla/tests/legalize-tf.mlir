@@ -2634,6 +2634,14 @@ func @slice_variable_start(%arg0: tensor<3x4xi32>, %arg1: tensor<2xi64>) -> tens
   return %0 : tensor<1x4xi32>
 }
 
+// CHECK-LABEL: slice_mhlo_sizes
+func @slice_mhlo_sizes(%arg0: tensor<1x1024x4xf32>, %arg1: tensor<3xi32>) -> tensor<1x512x4xf32> {
+  // CHECK-NOT: "tf.Slice"
+  %0 = "mhlo.constant"() {value = dense<[1, 512, 4]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %1 = "tf.Slice"(%arg0, %arg1, %0) : (tensor<1x1024x4xf32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x512x4xf32>
+  return %1 : tensor<1x512x4xf32>
+}
+
 // CHECK-LABEL: slice_variable_start_negative_one_size
 func @slice_variable_start_negative_one_size(%arg0: tensor<3x4xi32>, %arg1: tensor<2xi64>) -> tensor<1x4xi32> {
   // CHECK: %[[RESULT:.*]] = "tf.Slice"

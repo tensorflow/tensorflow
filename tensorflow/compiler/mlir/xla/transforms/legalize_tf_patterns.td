@@ -528,7 +528,7 @@ def TFSliceSizes2HLOSliceSizes : NativeCodeCall<
     "&$_builder)">;
 
 def : Pat<(TF_SliceOp:$op HLO_Tensor:$input, HLO_Tensor:$starting_indices,
-           (TF_ConstOp $slice_sizes)),
+           (ConstantLikeMatcher AnyAttr:$slice_sizes)),
           (HLO_DynamicSliceOp $input,
            (CastToI64AndUnpackTensor $op, $starting_indices),
            (TFSliceSizes2HLOSliceSizes $input, $starting_indices, $slice_sizes)),
