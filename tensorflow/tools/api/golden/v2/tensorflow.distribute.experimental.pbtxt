@@ -40,4 +40,8 @@ tf_module {
     name: "coordinator"
     mtype: "<type \'module\'>"
   }
+  member {
+    name: "partitioners"
+    mtype: "<type \'module\'>"
+  }
 }
