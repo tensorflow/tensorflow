@@ -91,10 +91,6 @@
   `tf.config.experimental.enable_tensor_float_32_execution`.
 
 * `tf.distribute`:
-  * `MultiWorkerMirroredStrategy` is graduated out of experimental.
-    * Peer failure will no longer cause the cluster to hang.
-    * Major issues with saving are fixed.
-    * See [Multi-worker training with Keras](https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras) for a tutorial.
   * Deprecated `experimental_distribute_datasets_from_function` method and renamed it to `distribute_datasets_from_function` as it is no longer experimental.
 
 ## Bug Fixes and Other Changes
