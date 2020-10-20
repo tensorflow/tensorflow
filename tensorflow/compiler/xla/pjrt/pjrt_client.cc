@@ -576,24 +576,21 @@ void PjRtBuffer::ScopedHold::AddToInput(
   }
 }
 
-/* static */
-StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::FromHostBuffer(
+StatusOr<std::unique_ptr<PjRtBuffer>> PjRtClient::BufferFromHostBuffer(
     const void* data, const Shape& shape,
     HostBufferSemantics host_buffer_semantics,
-    std::shared_ptr<void> buffer_reference, PjRtClient* client,
-    PjRtDevice* device) {
-  tensorflow::profiler::TraceMe traceme("PjRtBuffer::FromHostBuffer");
-  VLOG(2) << "PjRtBuffer::FromHostBuffer: shape: " << shape.ToString()
+    std::shared_ptr<void> buffer_reference, PjRtDevice* device) {
+  tensorflow::profiler::TraceMe traceme("PjRtClient::BufferFromHostBuffer");
+  VLOG(2) << "PjRtClient::BufferFromHostBuffer: shape: " << shape.ToString()
           << " device: " << device->DebugString();
   if (shape.IsTuple()) {
-    return InvalidArgument("Use FromHostLiteral to transfer a tuple");
+    return InvalidArgument("Use BufferFromHostLiteral to transfer a tuple");
   }
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
                       device->GetLocalDeviceState());
   int64 size = ShapeUtil::ByteSizeOf(shape);
 
-  TransferManager* transfer_manager =
-      client->client()->backend().transfer_manager();
+  TransferManager* transfer_manager = client()->backend().transfer_manager();
   TF_ASSIGN_OR_RETURN(Shape compact_shape,
                       transfer_manager->ChooseCompactLayoutForShape(shape));
 
@@ -628,10 +625,11 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::FromHostBuffer(
         };
         buffer = se::DeviceMemoryBase(const_cast<void*>(data), size);
       } else {
-        void* staging_buffer = client->host_memory_allocator()->AllocateRaw(
+        void* staging_buffer = host_memory_allocator()->AllocateRaw(
             cpu_function_runtime::kMinAlign, size);
-        on_delete_callback = [staging_buffer, client]() {
-          client->host_memory_allocator()->DeallocateRaw(staging_buffer);
+        on_delete_callback = [staging_buffer, host_memory_allocator =
+                                                  host_memory_allocator()]() {
+          host_memory_allocator->DeallocateRaw(staging_buffer);
         };
         buffer = se::DeviceMemoryBase(staging_buffer, size);
         std::memcpy(staging_buffer, data, size);
@@ -643,7 +641,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::FromHostBuffer(
           std::initializer_list<se::DeviceMemoryBase>{buffer},
           definition_events, std::move(on_delete_callback));
       return absl::make_unique<PjRtBuffer>(
-          shape, shape, std::move(device_buffer), client, device);
+          shape, shape, std::move(device_buffer), this, device);
     }
   }
 
@@ -651,21 +649,22 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::FromHostBuffer(
       std::unique_ptr<PjRtBuffer> py_buffer,
       AllocateDestinationBuffer(compact_shape, device, local_device,
                                 local_device->host_to_device_stream(),
-                                /*is_uninitialized_create=*/false, client));
+                                /*is_uninitialized_create=*/false, this));
 
-  ScopedHold device_buffer(py_buffer->GetBufferWithUsageHold());
+  PjRtBuffer::ScopedHold device_buffer(py_buffer->GetBufferWithUsageHold());
   CHECK(device_buffer.ok());
 
   // If necessary, allocate a host-side buffer for staging host-to-device
   // transfers. On GPU this is a buffer in pinned memory.
   std::shared_ptr<void> staging_buffer;
   if (host_buffer_semantics == HostBufferSemantics::kImmutableOnlyDuringCall ||
-      client->should_stage_host_to_device_transfers()) {
-    void* ptr = client->host_memory_allocator()->AllocateRaw(
+      should_stage_host_to_device_transfers()) {
+    void* ptr = host_memory_allocator()->AllocateRaw(
         tensorflow::Allocator::kAllocatorAlignment, size);
-    staging_buffer = std::shared_ptr<void>(ptr, [client](void* ptr) {
-      client->host_memory_allocator()->DeallocateRaw(ptr);
-    });
+    staging_buffer = std::shared_ptr<void>(
+        ptr, [host_memory_allocator = host_memory_allocator()](void* ptr) {
+          host_memory_allocator->DeallocateRaw(ptr);
+        });
   }
 
   // Copy the buffer into a staging buffer before returning control to the
@@ -684,14 +683,15 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::FromHostBuffer(
   // usage holds have gone away.
   // TODO(misard) assess if it would be preferable to introduce a heuristic to
   // put the transfer into the calling thread for small literals.
-  auto transfer_h2d = [client, transfer_manager, local_device, data, size,
+  auto transfer_h2d = [local_client = client(), transfer_manager, local_device,
+                       data, size,
                        movable_device_buffer{device_buffer.ToClosure()}, shape,
                        py_buffer{py_buffer.get()}, compact_shape,
                        on_device_shape{py_buffer->on_device_shape()},
                        staging_buffer{std::move(staging_buffer)},
                        buffer_reference{std::move(buffer_reference)},
                        host_buffer_semantics]() {
-    ScopedHold device_buffer(movable_device_buffer);
+    PjRtBuffer::ScopedHold device_buffer(movable_device_buffer);
     // This function uses TF_CHECK_OK and ValueOrDie() since we have no way
     // to report failures from a callback. However, the operations here are
     // unlikely to fail and not recoverable even if we were to fail: DMAs to
@@ -699,7 +699,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::FromHostBuffer(
     // allocation.
 
     ShapedBuffer buffer = device_buffer->AsShapedBuffer(
-        compact_shape, on_device_shape, client->client()->platform());
+        compact_shape, on_device_shape, local_client->platform());
     // If applicable on the backend, stage the transfer via host memory
     // allocated via the host_memory_allocator. On GPU, this is pinned
     // memory.
@@ -736,41 +736,38 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::FromHostBuffer(
     // already defers its work onto a stream (= thread on CPU).
     transfer_h2d();
   } else {
-    client->h2d_transfer_pool()->Schedule(transfer_h2d);
+    h2d_transfer_pool()->Schedule(transfer_h2d);
   }
   return py_buffer;
 }
 
-/* static */
-StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::CreateUninitialized(
-    const Shape& shape, PjRtClient* client, PjRtDevice* device) {
-  tensorflow::profiler::TraceMe traceme("PjRtBuffer::CreateUninitialized");
-  VLOG(2) << "PjRtBuffer::CreateUninitialized: shape: " << shape.ToString()
-          << " device: " << device->DebugString();
+StatusOr<std::unique_ptr<PjRtBuffer>> PjRtClient::CreateUninitializedBuffer(
+    const Shape& shape, PjRtDevice* device) {
+  tensorflow::profiler::TraceMe traceme(
+      "PjRtClient::CreateUninitializedBuffer");
+  VLOG(2) << "PjRtClient::CreateUninitializedBuffer: shape: "
+          << shape.ToString() << " device: " << device->DebugString();
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
                       device->GetLocalDeviceState());
 
-  TransferManager* transfer_manager =
-      client->client()->backend().transfer_manager();
+  TransferManager* transfer_manager = client()->backend().transfer_manager();
   TF_ASSIGN_OR_RETURN(Shape compact_shape,
                       transfer_manager->ChooseCompactLayoutForShape(shape));
 
   return AllocateDestinationBuffer(compact_shape, device, local_device,
                                    /*copy_stream=*/nullptr,
-                                   /*is_uninitialized_create=*/true, client);
+                                   /*is_uninitialized_create=*/true, this);
 }
 
-/* static */
-StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::FromHostLiteral(
-    const LiteralSlice& literal, PjRtClient* client, PjRtDevice* device) {
-  tensorflow::profiler::TraceMe traceme("PjRtBuffer::FromHostLiteral");
-  VLOG(2) << "PjRtBuffer::FromHostLiteral: shape: "
+StatusOr<std::unique_ptr<PjRtBuffer>> PjRtClient::BufferFromHostLiteral(
+    const LiteralSlice& literal, PjRtDevice* device) {
+  tensorflow::profiler::TraceMe traceme("PjRtClient::BufferFromHostLiteral");
+  VLOG(2) << "PjRtClient::BufferFromHostLiteral: shape: "
           << literal.shape().ToString() << " device: " << device->DebugString();
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
                       device->GetLocalDeviceState());
 
-  TransferManager* transfer_manager =
-      client->client()->backend().transfer_manager();
+  TransferManager* transfer_manager = client()->backend().transfer_manager();
   TF_ASSIGN_OR_RETURN(
       Shape compact_shape,
       transfer_manager->ChooseCompactLayoutForShape(literal.shape()));
@@ -778,9 +775,9 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::FromHostLiteral(
       std::unique_ptr<PjRtBuffer> py_buffer,
       AllocateDestinationBuffer(compact_shape, device, local_device,
                                 local_device->host_to_device_stream(),
-                                /*is_uninitialized_create=*/false, client));
+                                /*is_uninitialized_create=*/false, this));
 
-  ScopedHold device_buffer(py_buffer->GetBufferWithUsageHold());
+  PjRtBuffer::ScopedHold device_buffer(py_buffer->GetBufferWithUsageHold());
   CHECK(device_buffer.ok());
 
   // The host to device transfer is performed on a thread pool, mostly because
@@ -789,11 +786,11 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::FromHostLiteral(
   // usage holds have gone away.
   // TODO(misard) assess if it would be preferable to introduce a heuristic to
   // put the transfer into the calling thread for small literals.
-  auto transfer_h2d = [client, transfer_manager, local_device,
+  auto transfer_h2d = [local_client = client(), transfer_manager, local_device,
                        movable_device_buffer{device_buffer.ToClosure()},
                        literal, py_buffer{py_buffer.get()}, compact_shape,
                        on_device_shape{py_buffer->on_device_shape()}]() {
-    ScopedHold device_buffer(movable_device_buffer);
+    PjRtBuffer::ScopedHold device_buffer(movable_device_buffer);
     // This function uses TF_CHECK_OK and ValueOrDie() since we have no way
     // to report failures from a callback. However, the operations here are
     // unlikely to fail and not recoverable even if we were to fail: DMAs to
@@ -802,7 +799,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::FromHostLiteral(
 
     se::Stream* h2d_stream = local_device->host_to_device_stream();
     ShapedBuffer buffer = device_buffer->AsShapedBuffer(
-        compact_shape, on_device_shape, client->client()->platform());
+        compact_shape, on_device_shape, local_client->platform());
     TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
         h2d_stream, literal, buffer));
 
@@ -817,12 +814,12 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::FromHostLiteral(
         .IgnoreError();  // Can return error::Unimplemented
     QCHECK(h2d_stream->ok());
   };
-  client->h2d_transfer_pool()->Schedule(transfer_h2d);
+  h2d_transfer_pool()->Schedule(transfer_h2d);
   return py_buffer;
 }
 
-/*static*/ void PjRtBuffer::MakeCrossHostReceiveBuffers(
-    absl::Span<const Shape> shapes, PjRtClient* client, PjRtDevice* device,
+void PjRtClient::MakeCrossHostReceiveBuffers(
+    absl::Span<const Shape> shapes, PjRtDevice* device,
     PjRtCrossHostRecvNotifier&& notifier) {
   if (shapes.empty()) {
     notifier(InvalidArgument(
@@ -843,7 +840,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::FromHostLiteral(
     StatusOr<std::unique_ptr<PjRtBuffer>> buffer_or =
         AllocateDestinationBuffer(shape, device, local_device,
                                   /*copy_stream=*/nullptr,
-                                  /*is_uninitialized_create=*/false, client);
+                                  /*is_uninitialized_create=*/false, this);
     if (!buffer_or.ok()) {
       notifier(buffer_or.status());
       return;
@@ -851,7 +848,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::FromHostLiteral(
     buffers.push_back(buffer_or.ConsumeValueOrDie());
   }
 
-  client->EnqueueCrossHostReceive(std::move(buffers), std::move(notifier));
+  EnqueueCrossHostReceive(std::move(buffers), std::move(notifier));
 }
 
 PjRtBuffer::PjRtBuffer(Shape on_host_shape, Shape on_device_shape,
@@ -1159,7 +1156,7 @@ PjRtBuffer::CopyToHostAsyncInternal(bool discard_cached_copy,
 
 StatusOr<std::shared_ptr<Literal>> PjRtBuffer::ToLiteral(
     const bool discard_cached_copy, absl::optional<xla::Layout> layout) {
-  tensorflow::profiler::TraceMe traceme("PjRtBuffer::ToLiteral");
+  tensorflow::profiler::TraceMe traceme("PjRtClient::ToLiteral");
   TF_ASSIGN_OR_RETURN(std::shared_ptr<HostValue> host_value,
                       CopyToHostAsyncInternal(discard_cached_copy, layout));
   if (host_value == nullptr) {
@@ -1267,9 +1264,9 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::CopyToDevice(
   // Copying across PjRtClients involves a copy through the host.
   if (dst_device->client() != client_) {
     TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal, ToLiteral());
-    return FromHostBuffer(literal->untyped_data(), literal->shape(),
-                          HostBufferSemantics::kZeroCopy, nullptr,
-                          dst_device->client(), dst_device);
+    return dst_device->client()->BufferFromHostBuffer(
+        literal->untyped_data(), literal->shape(),
+        PjRtClient::HostBufferSemantics::kZeroCopy, nullptr, dst_device);
   }
 
   TF_ASSIGN_OR_RETURN(LocalDeviceState * dst_local_device,
@@ -2061,14 +2058,13 @@ StatusOr<std::pair<std::vector<Shape>, Shape>> GetShardedProgramShapes(
 
 }  // namespace
 
-/*static*/ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtExecutable::Compile(
-    const XlaComputation& computation, PjRtClient* client,
-    CompileOptions options) {
-  tensorflow::profiler::TraceMe traceme("LocalExecutable::Compile");
+StatusOr<std::unique_ptr<PjRtExecutable>> PjRtClient::Compile(
+    const XlaComputation& computation, CompileOptions options) {
+  tensorflow::profiler::TraceMe traceme("PjRtClient::Compile");
 
   ExecutableBuildOptions& build_options = options.executable_build_options;
   if (!build_options.device_allocator()) {
-    build_options.set_device_allocator(client->allocator());
+    build_options.set_device_allocator(allocator());
   }
 
   int num_replicas;
@@ -2084,14 +2080,14 @@ StatusOr<std::pair<std::vector<Shape>, Shape>> GetShardedProgramShapes(
     num_partitions = 1;
   } else {
     if (!build_options.has_device_assignment()) {
-      VLOG(2) << "PjRtExecutable::Compile using default device_assignment.";
+      VLOG(2) << "PjRtClient::Compile using default device_assignment.";
       TF_ASSIGN_OR_RETURN(
           DeviceAssignment device_assignment,
-          client->GetDefaultDeviceAssignment(build_options.num_replicas(),
-                                             build_options.num_partitions()));
+          GetDefaultDeviceAssignment(build_options.num_replicas(),
+                                     build_options.num_partitions()));
       build_options.set_device_assignment(device_assignment);
     }
-    VLOG(2) << "PjRtExecutable::Compile device_assignment:\n"
+    VLOG(2) << "PjRtClient::Compile device_assignment:\n"
             << build_options.device_assignment().ToString();
     num_replicas = build_options.device_assignment().replica_count();
     num_partitions = build_options.device_assignment().computation_count();
@@ -2118,7 +2114,8 @@ StatusOr<std::pair<std::vector<Shape>, Shape>> GetShardedProgramShapes(
 
   // Assign a default layout based on `sharded_shape` to any array subshapes in
   // `dst_shape` that are missing layouts.
-  auto assign_layouts = [client](const Shape& sharded_shape, Shape* dst_shape) {
+  auto assign_layouts = [local_client = client()](const Shape& sharded_shape,
+                                                  Shape* dst_shape) {
     return ShapeUtil::ForEachMutableSubshapeWithStatus(
         dst_shape, [&](Shape* subshape, const ShapeIndex& idx) {
           if (subshape->IsArray() && !subshape->has_layout()) {
@@ -2126,8 +2123,7 @@ StatusOr<std::pair<std::vector<Shape>, Shape>> GetShardedProgramShapes(
             const Shape& sharded_subshape =
                 ShapeUtil::GetSubshape(sharded_shape, idx);
             LayoutUtil::SetToDefaultLayout(subshape);
-            TF_ASSIGN_OR_RETURN(Shape layout, client->client()
-                                                  ->backend()
+            TF_ASSIGN_OR_RETURN(Shape layout, local_client->backend()
                                                   .transfer_manager()
                                                   ->ChooseCompactLayoutForShape(
                                                       sharded_subshape));
@@ -2162,8 +2158,8 @@ StatusOr<std::pair<std::vector<Shape>, Shape>> GetShardedProgramShapes(
     for (int replica = 0; replica < num_replicas; ++replica) {
       for (int partition = 0; partition < num_partitions; ++partition) {
         int device_id = (*device_assignment)(replica, partition);
-        PjRtDevice* device = LookupDevice(*client, device_id);
-        if (device->host_id() != client->host_id()) {
+        PjRtDevice* device = LookupDevice(*this, device_id);
+        if (device->host_id() != host_id()) {
           VLOG(3) << "Non-local device: " << device_id;
           continue;
         }
@@ -2185,15 +2181,14 @@ StatusOr<std::pair<std::vector<Shape>, Shape>> GetShardedProgramShapes(
 
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<LocalExecutable>> local_executables,
-      client->client()->Compile(computation, argument_layout_pointers,
-                                build_options));
+      client()->Compile(computation, argument_layout_pointers, build_options));
 
   auto executable = absl::make_unique<PjRtExecutable>(
       std::move(local_executables), options.parameter_is_tupled_arguments,
       std::move(device_assignment), std::move(local_logical_device_ids),
-      std::move(local_devices), client);
+      std::move(local_devices), this);
   TF_RETURN_IF_ERROR(
-      executable->SetUpDonation(client, options.parameter_is_tupled_arguments));
+      executable->SetUpDonation(this, options.parameter_is_tupled_arguments));
   return executable;
 }
 

@@ -120,6 +120,24 @@ struct PjRtCrossHostRecvBuffer {
 using PjRtCrossHostRecvNotifier =
     std::function<void(StatusOr<std::vector<PjRtCrossHostRecvBuffer>>&&)>;
 
+struct CompileOptions {
+  // The layouts of the arguments that the computation should expect.
+  absl::optional<std::vector<Shape>> argument_layouts;
+
+  // If true, the supplied computation expects its arguments to be wrapped in a
+  // tuple and passed as a single parameter.
+  bool parameter_is_tupled_arguments = false;
+
+  // XLA's compilation time options.
+  ExecutableBuildOptions executable_build_options;
+
+  // If true, the executable can be run on any device. May only be true if
+  // !executable_build_options.has_device_assignment(), so only applies to
+  // single-device executables. Beware: on GPUs, sometimes an executable
+  // compiled for one device doesn't run on another.
+  bool compile_portable_executable = false;
+};
+
 class PjRtExecutable;
 
 // Encapsulates the state of Python session with XLA.
@@ -197,6 +215,63 @@ class PjRtClient {
 
   // Returns a backend-specific HLO cost analysis visitor.
   virtual std::unique_ptr<HloCostAnalysis> GetHloCostAnalysis();
+
+  virtual StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      const XlaComputation& computation, CompileOptions options);
+
+  virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
+      const Shape& shape, PjRtDevice* device);
+
+  // Describes the semantics the caller to BufferFromHostBuffer expects from the
+  // runtime, in a total order from most restrictive to least restrictive.
+  enum class HostBufferSemantics {
+    // The runtime may not hold references to `data` after the call to
+    // `BufferFromHostBuffer` completes. The caller promises that `data` is
+    // immutable and will not be freed only for the duration of the
+    // BufferFromHostBuffer call. `buffer_reference` will be freed by the time
+    // `BufferFromHostBuffer` returns.
+    kImmutableOnlyDuringCall,
+
+    // The runtime may hold onto `data` after the call to `BufferFromHostBuffer`
+    // returns while the runtime completes a transfer to the device. The caller
+    // promises not to mutate or free `data` until the transfer completes, at
+    // which point the runtime will release `buffer_reference`. It is also
+    // correct to wait on the host (directly or indirectly) for the buffer's
+    // definition event to complete.
+    kImmutableUntilTransferCompletes,
+
+    // The PjRtBuffer may alias `data` internally and the runtime may use the
+    // `data` contents as long as the buffer is alive. The caller promises to
+    // keep `data` alive and not to mutate its contents as long as the buffer is
+    // alive; to notify the caller that the buffer may be freed, the runtime
+    // will release its `buffer_reference` when the PjRtBuffer is freed. On
+    // non-CPU platforms this acts identically to
+    // kImmutableUntilTransferCompletes.
+    kZeroCopy,
+  };
+  virtual StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
+      const void* data, const Shape& shape,
+      HostBufferSemantics host_buffer_semantics,
+      std::shared_ptr<void> buffer_reference, PjRtDevice* device);
+
+  // Note that literal must remain in scope until the transfer has completed, so
+  // the caller should, for example, wait for BlockHostUntilReady() completes on
+  // the return value before letting literal go out of scope.
+  virtual StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
+      const LiteralSlice& literal, PjRtDevice* device);
+
+  // Asynchronously makes a vector of PjRtBuffers that can be used to receive
+  // cross host transfers using `client` on `device'. `shapes` must be the exact
+  // shapes, with identical layouts, corresponding to the buffers that will be
+  // sent. When resources for the transfer are available, notifier will be
+  // called with a vector of PjRtCrossHostRecvBuffer structs, one for each
+  // shape in `shapes`. Each struct contains a buffer that will contain the
+  // received value, and an opaque string that should be transmitted to the
+  // sending host and used in a call to CopyToRemoteDevice. None of the recv
+  // buffers will become ready until *all* of the sends have completed.
+  virtual void MakeCrossHostReceiveBuffers(
+      absl::Span<const Shape> shapes, PjRtDevice* device,
+      PjRtCrossHostRecvNotifier&& notifier);
 
  protected:
   friend class PjRtBuffer;
@@ -385,6 +460,7 @@ class PjRtBuffer {
 
    private:
     friend class PjRtBuffer;
+    friend class PjRtClient;
 
     // Helper struct that makes it possible to move a ScopedHold through a
     // closure.
@@ -422,62 +498,6 @@ class PjRtBuffer {
     State state_;
     StatusOr<std::shared_ptr<TrackedDeviceBuffer>> buffer_or_;
   };
-
-  // Returns a buffer with uninitialized contents.
-  static StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitialized(
-      const Shape& shape, PjRtClient* client, PjRtDevice* device);
-
-  // Describes the semantics the caller to FromHostBuffer expects from the
-  // runtime, in a total order from most restrictive to least restrictive.
-  enum class HostBufferSemantics {
-    // The runtime may not hold references to `data` after the call to
-    // `FromHostBuffer` completes. The caller promises that `data` is immutable
-    // and will not be freed only for the duration of the FromHostBuffer call.
-    // `buffer_reference` will be freed by the time `FromHostBuffer` returns.
-    kImmutableOnlyDuringCall,
-
-    // The runtime may hold onto `data` after the call to `FromHostBuffer`
-    // returns while the runtime completes a transfer to the device. The caller
-    // promises not to mutate or free `data` until the transfer completes, at
-    // which point the runtime will release `buffer_reference`. It is also
-    // correct to wait on the host (directly or indirectly) for the buffer's
-    // definition event to complete.
-    kImmutableUntilTransferCompletes,
-
-    // The PjRtBuffer may alias `data` internally and the runtime may use the
-    // `data` contents as long as the buffer is alive.
-    // The caller promises to keep `data` alive and not to mutate its contents
-    // as long as the buffer is alive; to notify the caller that the buffer may
-    // be freed, the runtime will release its `buffer_reference` when the
-    // PjRtBuffer is freed. On non-CPU platforms this acts identically to
-    // kImmutableUntilTransferCompletes.
-    kZeroCopy,
-  };
-  static StatusOr<std::unique_ptr<PjRtBuffer>> FromHostBuffer(
-      const void* data, const Shape& shape,
-      HostBufferSemantics host_buffer_semantics,
-      std::shared_ptr<void> buffer_reference, PjRtClient* client,
-      PjRtDevice* device);
-
-  // Note that literal must remain in scope until the transfer has completed, so
-  // the caller should, for example, wait for BlockHostUntilReady() completes on
-  // the return value before letting literal go out of scope.
-  static StatusOr<std::unique_ptr<PjRtBuffer>> FromHostLiteral(
-      const LiteralSlice& literal, PjRtClient* client, PjRtDevice* device);
-
-  // Asynchronously makes a vector of PjRtBuffers that can be used to receive
-  // cross host transfers using `client` on `device'. `shapes` must be the exact
-  // shapes, with identical layouts, corresponding to the buffers that will be
-  // sent. When resources for the transfer are available, notifier will be
-  // called with a vector of PjRtCrossHostRecvBuffer structs, one for each
-  // shape in `shapes`. Each struct contains a buffer that will contain the
-  // received value, and an opaque string that should be transmitted to the
-  // sending host and used in a call to CopyToRemoteDevice. None of the recv
-  // buffers will become ready until *all* of the sends have completed.
-  static void MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
-                                          PjRtClient* client,
-                                          PjRtDevice* device,
-                                          PjRtCrossHostRecvNotifier&& notifier);
 
   PjRtBuffer(Shape on_host_shape, Shape on_device_shape,
              std::shared_ptr<TrackedDeviceBuffer> device_buffer,
@@ -661,24 +681,6 @@ class PjRtBuffer {
   Semaphore donation_semaphore_;
 };
 
-struct CompileOptions {
-  // The layouts of the arguments that the computation should expect.
-  absl::optional<std::vector<Shape>> argument_layouts;
-
-  // If true, the supplied computation expects its arguments to be wrapped in a
-  // tuple and passed as a single parameter.
-  bool parameter_is_tupled_arguments = false;
-
-  // XLA's compilation time options.
-  ExecutableBuildOptions executable_build_options;
-
-  // If true, the executable can be run on any device. May only be true if
-  // !executable_build_options.has_device_assignment(), so only applies to
-  // single-device executables. Beware: on GPUs, sometimes an executable
-  // compiled for one device doesn't run on another.
-  bool compile_portable_executable = false;
-};
-
 class ExecuteContext {
  public:
   virtual ~ExecuteContext() = default;
@@ -710,10 +712,6 @@ struct ExecuteOptions {
 // buffer will be donated when passed to the execution.
 class PjRtExecutable {
  public:
-  static StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      const XlaComputation& computation, PjRtClient* client,
-      CompileOptions options);
-
   PjRtExecutable(std::vector<std::unique_ptr<LocalExecutable>> executables,
                  bool parameter_is_tupled_arguments,
                  std::shared_ptr<DeviceAssignment> device_assignment,
@@ -783,6 +781,7 @@ class PjRtExecutable {
   }
 
  private:
+  friend class PjRtClient;
   // Initializes information about which arguments to which executables must be
   // donated due to aliases that were specified by the computation.
   Status SetUpDonation(PjRtClient* client, bool tuple_inputs);
