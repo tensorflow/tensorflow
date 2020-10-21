@@ -16,6 +16,7 @@ limitations under the License.
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
@@ -30,8 +31,8 @@ namespace {
 using LLVM::LLVMFuncOp;
 using LLVM::LLVMType;
 
-static constexpr StringRef kCInterfaceAlloc = "_mlir_ciface_tf_alloc_raw";
-static constexpr StringRef kCInterfaceDealloc = "_mlir_ciface_tf_dealloc_raw";
+static constexpr StringRef kCInterfaceAlloc = "_mlir_ciface_tf_alloc";
+static constexpr StringRef kCInterfaceDealloc = "_mlir_ciface_tf_dealloc";
 
 /// Base class for patterns converting TF Framework ops to function calls.
 template <typename OpTy>
@@ -60,18 +61,18 @@ class ConvertToLLVMCallOpPattern : public ConvertOpToLLVMPattern<OpTy> {
   virtual LLVMType GetFuncType() const = 0;
 };
 
-class AllocRawOpConverter : public ConvertToLLVMCallOpPattern<AllocRawOp> {
+class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
  public:
-  using ConvertToLLVMCallOpPattern<AllocRawOp>::ConvertToLLVMCallOpPattern;
+  using ConvertToLLVMCallOpPattern<TFAllocOp>::ConvertToLLVMCallOpPattern;
 
   LogicalResult matchAndRewrite(
       Operation *op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
     Location loc = op->getLoc();
-    AllocRawOp alloc_raw_op = cast<AllocRawOp>(op);
-    AllocRawOp::Adaptor transformed(operands);
+    TFAllocOp tf_alloc_op = cast<TFAllocOp>(op);
+    TFAllocOp::Adaptor transformed(operands);
 
-    MemRefType memref_type = alloc_raw_op.getType();
+    MemRefType memref_type = tf_alloc_op.getType();
 
     // Get memref descriptor sizes.
     SmallVector<Value, 4> sizes;
@@ -82,13 +83,28 @@ class AllocRawOpConverter : public ConvertToLLVMCallOpPattern<AllocRawOp> {
     Value num_bytes = getCumulativeSizeInBytes(
         loc, memref_type.getElementType(), sizes, rewriter);
 
+    // Convert `output_index` or set it to -1 if the attribute is missing.
+    LLVM::LLVMType llvmInt32Type =
+        LLVM::LLVMType::getInt32Ty(rewriter.getContext());
+    Value output_index = rewriter.create<LLVM::ConstantOp>(
+        loc, llvmInt32Type,
+        rewriter.getI32IntegerAttr(tf_alloc_op.output_index().hasValue()
+                                       ? tf_alloc_op.output_index().getValue()
+                                       : -1));
+
+    // Convert `candidate_input_indices`.
+    auto candidates_count_and_ptr = ConvertI32ArrayAttrToStackAllocatedArray(
+        loc, tf_alloc_op.input_indices(), &rewriter);
+
     // Insert function call.
     FlatSymbolRefAttr tf_func_ref = getOrInsertTFFunction(rewriter, op);
     Value allocated_byte_ptr =
         rewriter
             .create<LLVM::CallOp>(
                 loc, getVoidPtrType(), tf_func_ref,
-                llvm::makeArrayRef({transformed.ctx(), num_bytes}))
+                llvm::makeArrayRef({transformed.ctx(), num_bytes, output_index,
+                                    candidates_count_and_ptr.first,
+                                    candidates_count_and_ptr.second}))
             .getResult(0);
 
     MemRefDescriptor memRefDescriptor = CreateMemRefDescriptor(
@@ -103,10 +119,18 @@ class AllocRawOpConverter : public ConvertToLLVMCallOpPattern<AllocRawOp> {
   StringRef GetFuncName() const override { return kCInterfaceAlloc; }
 
   LLVMType GetFuncType() const override {
+    LLVMType llvm_i32_type =
+        LLVM::LLVMType::getInt32Ty(getDialect().getContext());
+    LLVMType llvm_i32_ptr_type = llvm_i32_type.getPointerTo();
     LLVMType llvm_void_ptr_type = getVoidPtrType();
-    return LLVM::LLVMType::getFunctionTy(
+    return LLVMType::getFunctionTy(
         llvm_void_ptr_type,
-        llvm::makeArrayRef({llvm_void_ptr_type, getIndexType()}),
+        llvm::makeArrayRef(
+            {/*void* op_kernel_ctx*/ llvm_void_ptr_type,
+             /*size_t num_bytes*/ getIndexType(),
+             /*int32_t output_index*/ llvm_i32_type,
+             /*int32_t num_candidates*/ llvm_i32_type,
+             /*int32_t* candidate_input_indices*/ llvm_i32_ptr_type}),
         /*isVarArg=*/false);
   }
 
@@ -144,16 +168,53 @@ class AllocRawOpConverter : public ConvertToLLVMCallOpPattern<AllocRawOp> {
     }
     return memref_desc;
   }
+
+  std::pair<Value, Value> ConvertI32ArrayAttrToStackAllocatedArray(
+      Location loc, llvm::Optional<ArrayAttr> attr,
+      ConversionPatternRewriter *rewriter) const {
+    LLVMType llvm_i32_type =
+        LLVM::LLVMType::getInt32Ty(getDialect().getContext());
+    LLVMType llvm_i32_ptr_type = llvm_i32_type.getPointerTo();
+
+    // If the attribute is missing or empty, set the element count to 0 and
+    // return NULL.
+    if (!attr.hasValue() || attr.getValue().empty()) {
+      Value zero = rewriter->create<LLVM::ConstantOp>(
+          loc, llvm_i32_type, rewriter->getI32IntegerAttr(0));
+      Value null_ptr = rewriter->create<LLVM::NullOp>(loc, llvm_i32_ptr_type);
+      return std::make_pair(zero, null_ptr);
+    }
+
+    // Allocate array to store the elements.
+    auto &array_attr = attr.getValue();
+    Value array_size = rewriter->create<LLVM::ConstantOp>(
+        loc, llvm_i32_type, rewriter->getI32IntegerAttr(array_attr.size()));
+    Value array_ptr = rewriter->create<LLVM::AllocaOp>(
+        loc, llvm_i32_ptr_type, array_size, /*alignment=*/0);
+
+    for (auto &dim : llvm::enumerate(array_attr)) {
+      Value index = rewriter->create<LLVM::ConstantOp>(
+          loc, llvm_i32_type, rewriter->getI32IntegerAttr(dim.index()));
+      Value elem_ptr = rewriter->create<LLVM::GEPOp>(loc, llvm_i32_ptr_type,
+                                                     array_ptr, index);
+      Value elem = rewriter->create<LLVM::ConstantOp>(
+          loc, llvm_i32_type,
+          rewriter->getI32IntegerAttr(
+              dim.value().cast<IntegerAttr>().getInt()));
+      rewriter->create<LLVM::StoreOp>(loc, elem, elem_ptr);
+    }
+    return std::make_pair(array_size, array_ptr);
+  }
 };
 
-class DeallocRawOpConverter : public ConvertToLLVMCallOpPattern<DeallocRawOp> {
+class TFDeallocOpConverter : public ConvertToLLVMCallOpPattern<TFDeallocOp> {
  public:
-  using ConvertToLLVMCallOpPattern<DeallocRawOp>::ConvertToLLVMCallOpPattern;
+  using ConvertToLLVMCallOpPattern<TFDeallocOp>::ConvertToLLVMCallOpPattern;
 
   LogicalResult matchAndRewrite(
       Operation *op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
-    DeallocRawOp::Adaptor transformed(operands);
+    TFDeallocOp::Adaptor transformed(operands);
     MemRefDescriptor memref(transformed.memref());
 
     Value allocated_bytes_ptr = rewriter.create<LLVM::BitcastOp>(
@@ -194,7 +255,7 @@ class NullContextOpConverter : public ConvertOpToLLVMPattern<NullContextOp> {
 void PopulateTFFrameworkToLLVMConversionPatterns(
     LLVMTypeConverter *converter, OwningRewritePatternList *patterns) {
   patterns->insert<NullContextOpConverter>(*converter);
-  patterns->insert<AllocRawOpConverter, DeallocRawOpConverter>(*converter);
+  patterns->insert<TFAllocOpConverter, TFDeallocOpConverter>(*converter);
 }
 
 }  // namespace tf_framework
