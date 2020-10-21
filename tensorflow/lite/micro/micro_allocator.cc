@@ -621,13 +621,6 @@ MicroAllocator::~MicroAllocator() {}
 MicroAllocator* MicroAllocator::Create(uint8_t* tensor_arena, size_t arena_size,
                                        ErrorReporter* error_reporter) {
   uint8_t* aligned_arena = AlignPointerUp(tensor_arena, kBufferAlignment);
-  if (aligned_arena != tensor_arena) {
-    TF_LITE_REPORT_ERROR(
-        error_reporter,
-        "%d bytes lost due to alignment. To avoid this loss, please make sure "
-        "the tensor_arena is 16 bytes aligned.",
-        aligned_arena - tensor_arena);
-  }
   size_t aligned_arena_size = tensor_arena + arena_size - aligned_arena;
   return Create(SimpleMemoryAllocator::Create(error_reporter, aligned_arena,
                                               aligned_arena_size),
