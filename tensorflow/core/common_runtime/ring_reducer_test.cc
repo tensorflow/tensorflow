@@ -466,10 +466,10 @@ class RingReducerTest : public ::testing::Test {
     }
 
     void DoReduce() {
-      col_params_.merge_op =
-          GetAdd(col_params_.instance.data_type, device_type_, device_);
-      col_params_.final_op =
-          GetDiv(col_params_.instance.data_type, device_type_, device_);
+      merge_op_ = GetAdd(col_params_.instance.data_type, device_type_, device_);
+      final_op_ = GetDiv(col_params_.instance.data_type, device_type_, device_);
+      col_params_.merge_op = merge_op_.get();
+      col_params_.final_op = final_op_.get();
 
       // Prepare an OpKernelContext.
       OpKernelContext::Params op_params;
@@ -536,6 +536,8 @@ class RingReducerTest : public ::testing::Test {
     Tensor tensor_;
     Device* device_;
     CollectiveParams col_params_;
+    std::unique_ptr<OpKernel> merge_op_;
+    std::unique_ptr<OpKernel> final_op_;
     std::unique_ptr<CollectiveAdapter> ca_;
     std::unique_ptr<OpKernelContext> ctx_;
     Status status_;
