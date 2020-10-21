@@ -44,7 +44,6 @@ from tensorflow.python.eager import function as tf_function
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
@@ -172,10 +171,15 @@ class RemoteValueImpl(RemoteValue):
   """Implementation of `RemoteValue`."""
 
   def __init__(self, closure, type_spec):  # pylint: disable=super-init-not-called
+    """Initializes a `RemoteValueImpl`.
+
+    Args:
+      closure: The closure from which the `RemoteValue` is created.
+      type_spec: The type spec for this `RemoteValue` which is used to trace
+        functions that take this `RemoteValue` as input.
+    """
     self._closure = closure
-    # The type spec for this `RemoteValue` which is used to trace functions that
-    # take this `RemoteValue` as input.
-    self._type_spec = func_graph.convert_structure_to_signature(type_spec)
+    self._type_spec = type_spec
     self._value = None
     self._error = None
     self._status_available_event = threading.Event()
@@ -214,9 +218,6 @@ class RemoteValueImpl(RemoteValue):
     self._status_available_event.wait()
     return self._error
 
-  def _set_type_spec(self, type_spec):
-    self._type_spec = func_graph.convert_structure_to_signature(type_spec)
-
   def fetch(self):
     self._status_available_event.wait()
     if self._status is _RemoteValueStatus.ABORTED:
@@ -227,11 +228,8 @@ class RemoteValueImpl(RemoteValue):
     if self._error is not None:
       raise self._error  # pylint: disable=raising-bad-type
     else:
-      if isinstance(self._value,
-                    (ops.Tensor, resource_variable_ops.BaseResourceVariable)):
-        return self._value.numpy()
-      else:
-        return self._value
+      return nest.map_structure(
+          lambda x: x.numpy() if hasattr(x, "numpy") else x, self._value)
 
 
 class InputError(Exception):
@@ -364,37 +362,32 @@ class Closure(object):
       # function cache lookups).
       with metric_utils.monitored_timer(
           "function_tracing", state_tracker=function._get_tracing_count):  # pylint: disable=protected-access
-        concrete_function = function.get_concrete_function(
+        self._concrete_function = function.get_concrete_function(
             *nest.map_structure(_maybe_as_type_spec, replica_args),
             **nest.map_structure(_maybe_as_type_spec, replica_kwargs))
-      self._function = cancellation_mgr.get_cancelable_function(
-          concrete_function)
-      self._output_remote_values = nest.map_structure(
-          lambda x: RemoteValueImpl(self, x),
-          concrete_function.structured_outputs)
     elif isinstance(function, tf_function.ConcreteFunction):
-      self._function = cancellation_mgr.get_cancelable_function(function)
-      self._output_remote_values = nest.map_structure(
-          lambda x: RemoteValueImpl(self, x), function.structured_outputs)
+      self._concrete_function = function
+
+    if hasattr(self, "_concrete_function"):
+      # If we have a concrete function, we get to retrieve the output type spec
+      # via the structured_output.
+      output_type_spec = func_graph.convert_structure_to_signature(
+          self._concrete_function.structured_outputs)
+      self._function = cancellation_mgr.get_cancelable_function(
+          self._concrete_function)
     else:
-      # Regular python functions.
+      # Otherwise (i.e. what is passed in is a regular python function), we have
+      # no such information.
+      output_type_spec = None
       self._function = function
-      # TODO(yuefengz): maybe we should trace python functions if their inputs
-      # are Python primitives, tensors and composite tensors.
-      self._output_remote_values = RemoteValueImpl(self, None)
 
-  def _fetch_output_remote_values(self):
-    """Temporary method used to sync the scheduler."""
-    # It will do nothing if there is no return value.
-    nest.map_structure(lambda x: x.fetch(), self._output_remote_values)  # pylint: disable=protected-access
+    self.output_remote_value = RemoteValueImpl(self, output_type_spec)
 
-  def _set_output_remote_values_cancelled(self):
-    nest.map_structure(
-        lambda x: x._set_error(  # pylint: disable=protected-access,g-long-lambda
-            errors.CancelledError(
-                None, None, "The corresponding function is "
-                "cancelled. Please reschedule the function.")),
-        self._output_remote_values)  # pylint: disable=protected-access
+  def mark_cancelled(self):
+    self.output_remote_value._set_error(  # pylint: disable=protected-access
+        errors.CancelledError(
+            None, None, "The corresponding function is "
+            "cancelled. Please reschedule the function."))
 
   def execute_on(self, worker):
     """Executes the closure on the given worker.
@@ -411,8 +404,7 @@ class Closure(object):
     if e:
       if not isinstance(e, InputError):
         e = InputError(e)
-      for remote_value in nest.flatten(self._output_remote_values):
-        remote_value._set_error(e)  # pylint: disable=protected-access
+      self.output_remote_value._set_error(e)  # pylint: disable=protected-access
       return
 
     with ops.device(worker.device_name):
@@ -421,9 +413,7 @@ class Closure(object):
           output_value = self._function(
               *nest.map_structure(_maybe_get_remote_value, replica_args),
               **nest.map_structure(_maybe_get_remote_value, replica_kwargs))
-    for remote_value, value in zip(
-        nest.flatten(self._output_remote_values), nest.flatten(output_value)):
-      remote_value._set_value(value)  # pylint: disable=protected-access
+    self.output_remote_value._set_value(output_value)  # pylint: disable=protected-access
 
 
 class _CoordinatedClosureQueue(object):
@@ -492,7 +482,7 @@ class _CoordinatedClosureQueue(object):
       try:
         closure = self._queue.get(block=False)
         self._queue_free_slot_condition.notify()
-        closure._set_output_remote_values_cancelled()  # pylint: disable=protected-access
+        closure.mark_cancelled()
       except queue.Empty:
         break
     # The cancellation manager cannot be reused once cancelled. After all
@@ -564,7 +554,7 @@ class _CoordinatedClosureQueue(object):
       if self._inflight_closure_count < 1:
         raise AssertionError("There is no inflight closures to put_back.")
       if self._error:
-        closure._set_output_remote_values_cancelled()  # pylint: disable=protected-access
+        closure.mark_cancelled()
       else:
         self._queue_free_slot_condition.wait_for(lambda: not self._queue.full())
         self._queue.put(closure, block=False)
@@ -758,7 +748,7 @@ class Worker(object):
         closure.execute_on(self)
         # TODO(yuefengz): we don't have to materialize results every step.
         with metric_utils.monitored_timer("remote_value_fetch"):
-          closure._fetch_output_remote_values()  # pylint: disable=protected-access
+          closure.output_remote_value.fetch()
         self._cluster._closure_queue.mark_finished()  # pylint: disable=protected-access
     except Exception as e:  # pylint: disable=broad-except
       # Avoid logging the derived cancellation error
@@ -766,9 +756,7 @@ class Worker(object):
         logging.error(
             "/job:worker/task:%d encountered the following error when "
             "processing closure: %r:%s", self.worker_index, e, e)
-      nest.map_structure(
-          lambda x: x._set_error(e),  # pylint: disable=protected-access
-          closure._output_remote_values)  # pylint: disable=protected-access
+      closure.output_remote_value._set_error(e)  # pylint: disable=protected-access
       self._cluster._closure_queue.mark_failed(e)  # pylint: disable=protected-access
 
   def _process_queue(self):
@@ -798,7 +786,7 @@ class Worker(object):
         self._cluster._closure_queue._cancellation_mgr,  # pylint: disable=protected-access
         args=args,
         kwargs=kwargs)
-    resource_remote_value = closure._output_remote_values  # pylint: disable=protected-access
+    resource_remote_value = closure.output_remote_value
     self._register_resource(resource_remote_value)
 
     # The following is a short-term solution to lazily create resources in
@@ -901,7 +889,7 @@ class Cluster(object):
         args=args,
         kwargs=kwargs)
     self._closure_queue.put(closure)
-    return closure._output_remote_values  # pylint: disable=protected-access
+    return closure.output_remote_value
 
   def join(self):
     """Blocks until all scheduled functions are executed."""
@@ -1304,7 +1292,7 @@ class _PerWorkerDistributedDataset(object):
     # Setting type_spec of each RemoteValue so that functions taking these
     # RemoteValues as inputs can be traced.
     for iterator_remote_value in per_worker_iterator._values:
-      iterator_remote_value._set_type_spec(
+      iterator_remote_value._type_spec = (  # pylint: disable=protected-access
           iterator_ops.IteratorSpec(
               self._dataset_fn.structured_outputs.element_spec))
     return _PerWorkerDistributedIterator(per_worker_iterator._values)

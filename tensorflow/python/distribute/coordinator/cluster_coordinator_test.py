@@ -46,7 +46,6 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import coordinator
 from tensorflow.python.training.server_lib import ClusterSpec
-from tensorflow.python.util import nest
 
 
 class CoordinatedClosureQueueTest(test.TestCase):
@@ -223,7 +222,7 @@ class CoordinatedClosureQueueTest(test.TestCase):
         errors.CancelledError,
         'The corresponding function is cancelled. Please reschedule the '
         'function.'):
-      closure2._fetch_output_remote_values()
+      closure2.output_remote_value.fetch()
 
     # The error is cleared.
     closure_queue.put(self._create_closure(closure_queue._cancellation_mgr))
@@ -245,7 +244,7 @@ class CoordinatedClosureQueueTest(test.TestCase):
         errors.CancelledError,
         'The corresponding function is cancelled. Please reschedule the '
         'function.'):
-      closure2._fetch_output_remote_values()
+      closure2.output_remote_value.fetch()
 
     # The error is cleared.
     closure_queue.wait()
@@ -266,8 +265,7 @@ class CoordinatedClosureQueueTest(test.TestCase):
     try:
       raise error
     except Exception as e:  # pylint: disable=broad-except
-      nest.map_structure(lambda x: x._set_error(e),
-                         closure._output_remote_values)
+      closure.output_remote_value._set_error(e)
       closure_queue.mark_failed(e)
 
   def _test_cancel_closure_when_error(self, call_wait):
@@ -319,7 +317,7 @@ class CoordinatedClosureQueueTest(test.TestCase):
 
     # This asserts that closure1 has errored.
     with self.assertRaisesRegex(ValueError, 'Some error.'):
-      closure1._fetch_output_remote_values()
+      closure1.output_remote_value.fetch()
 
     # The following asserts that closure3 should have been cancelled.
     if not call_wait:
@@ -327,13 +325,13 @@ class CoordinatedClosureQueueTest(test.TestCase):
           errors.CancelledError,
           'The corresponding function is cancelled. Please reschedule the '
           'function.'):
-        closure3._fetch_output_remote_values()
+        closure3.output_remote_value.fetch()
 
     # Closure2 was an inflight closure when it got cancelled.
-    self.assertEqual(closure2._output_remote_values._status,
+    self.assertEqual(closure2.output_remote_value._status,
                      coordinator_lib._RemoteValueStatus.READY)
     with self.assertRaisesRegex(ValueError, 'Fake cancellation error.'):
-      closure2._fetch_output_remote_values()
+      closure2.output_remote_value.fetch()
 
     # This asserts that the queue has a clear state.
     self.testBasic()
@@ -459,7 +457,20 @@ class ClusterCoordinatorTest(TestCaseWithErrorReportingThread):
 
     got = self.coordinator.schedule(f)
     want = 2, (3, 4), [5], {'v': 1}
+    self.assertEqual(got.fetch(), want)
     self.assertEqual(self.coordinator.fetch(got), want)
+
+  def testFetchingRemoteValueStructure(self):
+    x = constant_op.constant(1)
+
+    @def_function.function
+    def f():
+      return x + 1, (x + 2, x + 3), [x + 4], {'v': x}
+
+    want = 2, (3, 4), [5], {'v': 1}
+    remote_value_list = [self.coordinator.schedule(f) for _ in range(5)]
+    self.assertAllEqual(
+        self.coordinator.fetch(remote_value_list), [want for _ in range(5)])
 
   def testInputFunction(self):
 
@@ -605,7 +616,7 @@ class ClusterCoordinatorTest(TestCaseWithErrorReportingThread):
     # _create_worker_resources is able to infer the tensor spec of the return
     # value of the function passed in. See b/154675763.
     for var in worker_local_var._values:
-      var._set_type_spec(tensor_spec.TensorSpec(var_shape, var_dtype, var_name))
+      var._type_spec = tensor_spec.TensorSpec(var_shape, var_dtype, var_name)
 
     def worker_fn(var):
       var.assign_add(1.0)
@@ -825,7 +836,7 @@ class StrategyIntegrationTest(test.TestCase):
           # Within `replica_fn`, it has to be in a replica context.
           self.assertFalse(
               distribution_strategy_context.in_cross_replica_context())
-          return input_tensor + v
+          return input_tensor + v, input_tensor - v
 
         return self.strategy.run(replica_fn, args=(input_tensor,))
 
@@ -833,12 +844,12 @@ class StrategyIntegrationTest(test.TestCase):
       result = self.coordinator.schedule(
           worker_fn, args=(constant_op.constant(3),))
       self.assertIsInstance(result, coordinator_lib.RemoteValue)
-      self.assertEqual(result.fetch(), 4)
+      self.assertEqual(result.fetch(), (4, 2))
 
     # Asserting scheduling out of scope has the expected behavior.
     result = self.coordinator.schedule(
         worker_fn, args=(constant_op.constant(3),))
-    self.assertEqual(result.fetch(), 4)
+    self.assertEqual(result.fetch(), (4, 2))
 
 
 if __name__ == '__main__':
