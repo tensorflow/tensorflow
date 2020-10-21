@@ -86,7 +86,8 @@ def cycle(obj, cycles, signatures=None):
 @parameterized.named_parameters(
     dict(testcase_name="ReloadOnce", cycles=1),
     dict(testcase_name="ReloadTwice", cycles=2),
-    dict(testcase_name="ReloadThrice", cycles=3))
+    dict(testcase_name="ReloadThrice", cycles=3)
+)
 class LoadTest(test.TestCase, parameterized.TestCase):
 
   def test_structure_import(self, cycles):
@@ -2056,6 +2057,31 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, "requires inputs/variables"):
       imported = load.load_partial(save_dir, ["root.adder"])
 
+  def test_call_untraced_function_raises_error(self):
+
+    class ObjWithFunction(module.Module):
+
+      @def_function.function
+      def foo(self, a):
+        return a
+
+    root = ObjWithFunction()
+    with self.assertLogs(level="WARNING") as logs:
+      loaded = cycle(root, 1)
+
+    expected_save_message = (
+        "WARNING:absl:No concrete functions found for untraced function `foo` "
+        "while saving. This function will not be callable after loading.")
+    expected_load_message = (
+        "WARNING:absl:Could not find any concrete functions to restore for "
+        "this SavedFunction object while loading. The function will not be "
+        "callable.")
+    self.assertIn(expected_save_message, logs.output)
+    self.assertIn(expected_load_message, logs.output)
+
+    with self.assertRaisesRegex(
+        ValueError, "Found zero restored functions for caller function."):
+      loaded.foo(1)
 
 if __name__ == "__main__":
   test.main()
