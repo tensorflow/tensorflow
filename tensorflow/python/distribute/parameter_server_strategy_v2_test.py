@@ -21,8 +21,6 @@ from __future__ import print_function
 
 import functools
 import os
-import platform
-import sys
 
 from absl.testing import parameterized
 
@@ -37,7 +35,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import linalg_ops_impl
-from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variables
 from tensorflow.python.training.server_lib import ClusterSpec
 from tensorflow.python.training.tracking import tracking
@@ -59,10 +56,6 @@ class ParameterServerStrategyV2Test(test.TestCase):
     context._reset_context()
 
   def testVariablePlacement(self):
-
-    if sys.version_info >= (3, 8) and platform.system() == "Windows":
-      # TODO(b/165013260): Fix this
-      self.skipTest("Test is currently broken on Windows with Python 3.8")
 
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
         self.cluster_resolver)
@@ -99,12 +92,6 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
         num_workers=2, num_ps=2)
     cls.cluster_resolver = SimpleClusterResolver(ClusterSpec(cluster_def))
 
-  def setUp(self):
-    super().setUp()
-    if sys.version_info >= (3, 8) and platform.system() == "Windows":
-      # TODO(b/165013260): Fix this
-      self.skipTest("Test is currently broken on Windows with Python 3.8")
-
   def tearDown(self):
     super().tearDown()
     # reset context to disconnect from the cluster.
@@ -120,7 +107,7 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
 
   def testBasic(self):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
-        self.cluster_resolver, partitioned_variables.fixed_size_partitioner(2))
+        self.cluster_resolver, sharded_variable.FixedShardsPartitioner(2))
     with strategy.scope():
       init1 = init_ops_v2.Constant([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
       v1 = variables.Variable(
@@ -150,7 +137,7 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
 
   def testNonCallableInitialValue(self):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
-        self.cluster_resolver, partitioned_variables.fixed_size_partitioner(4))
+        self.cluster_resolver, sharded_variable.FixedShardsPartitioner(4))
     with strategy.scope():
       v = variables.Variable([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
 
@@ -167,7 +154,7 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
 
   def testNumPartitionsLargerThanSize(self):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
-        self.cluster_resolver, partitioned_variables.fixed_size_partitioner(4))
+        self.cluster_resolver, sharded_variable.FixedShardsPartitioner(4))
     with strategy.scope():
       v = variables.Variable([0, 1, 2])
 
@@ -182,8 +169,8 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
 
   def testPartitionToOne(self):
     # For small variables there is only one partition.
-    variable_partitioner = partitioned_variables.min_max_variable_partitioner(
-        max_partitions=2, min_slice_size=64 << 20)
+    variable_partitioner = sharded_variable.MinSizePartitioner(
+        min_shard_bytes=64 << 20, max_shards=2)
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
         self.cluster_resolver, variable_partitioner)
     with strategy.scope():
@@ -207,7 +194,7 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
 
   def testColocateWith(self):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
-        self.cluster_resolver, partitioned_variables.fixed_size_partitioner(2))
+        self.cluster_resolver, sharded_variable.FixedShardsPartitioner(2))
     with strategy.scope():
       v1 = variables.Variable([0, 1, 2, 3])
 
@@ -223,7 +210,7 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
 
   def testPartitionAwareInitializer(self):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
-        self.cluster_resolver, partitioned_variables.fixed_size_partitioner(2))
+        self.cluster_resolver, sharded_variable.FixedShardsPartitioner(2))
     with strategy.scope():
       initializer = PartitionAwareIdentity()
       initial_value = functools.partial(
@@ -240,7 +227,7 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
 
   def testPartitionWhenLackOfInfo(self):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
-        self.cluster_resolver, partitioned_variables.fixed_size_partitioner(2))
+        self.cluster_resolver, sharded_variable.FixedShardsPartitioner(2))
     with strategy.scope():
       initializer = init_ops_v2.Constant([0, 1, 2, 3])
       # Shape is not explicitly specified.
@@ -290,7 +277,7 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
 
   def testCreateInsideTFFunction(self):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
-        self.cluster_resolver, partitioned_variables.fixed_size_partitioner(2))
+        self.cluster_resolver, sharded_variable.FixedShardsPartitioner(2))
 
     collection = []
 
@@ -339,7 +326,7 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
             getter=make_variable)
 
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
-        self.cluster_resolver, partitioned_variables.fixed_size_partitioner(2))
+        self.cluster_resolver, sharded_variable.FixedShardsPartitioner(2))
     ckpt_dir = os.path.join(self.get_temp_dir(), "checkpoint")
 
     with strategy.scope():
@@ -354,7 +341,7 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
 
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
         self.cluster_resolver,
-        partitioned_variables.fixed_size_partitioner(restore_shards))
+        sharded_variable.FixedShardsPartitioner(restore_shards))
 
     with strategy.scope():
       model2 = Model()

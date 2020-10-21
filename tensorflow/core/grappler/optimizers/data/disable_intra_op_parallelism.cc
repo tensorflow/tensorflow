@@ -29,8 +29,8 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-constexpr char kRetValOp[] = "_Retval";
 constexpr char kMaxIntraOpParallelismDataset[] = "MaxIntraOpParallelismDataset";
+constexpr char kModelDataset[] = "ModelDataset";
 
 constexpr std::array<const char*, 2> kMaxIntraOpParallelismDatasetOps = {
     "MaxIntraOpParallelismDataset",
@@ -45,17 +45,11 @@ Status DisableIntraOpParallelism::OptimizeAndCollectStats(
   *output = item.graph;
   MutableGraphView graph(output);
 
-  for (const auto& fetch_name : item.fetch) {
-    // If the GrapplerItem is derived from a FunctionDef, we don't optimize it,
-    // because we only want to disable intra op parallelism on the main dataset
-    // pipeline.
-    auto fetch = graph.GetNode(fetch_name);
-    if (fetch == nullptr || fetch->op() == kRetValOp) {
-      // Heuristic: If the fetch nodes are Retval ops, this item is from a
-      // function.
-      return Status::OK();
-    }
-  }
+  // If the GrapplerItem is derived from a FunctionDef, we don't optimize it,
+  // because we only want to disable intra op parallelism on the main dataset
+  // pipeline.
+  if (graph_utils::IsItemDerivedFromFunctionDef(item, graph))
+    return Status::OK();
 
   if (item.fetch.size() != 1) {
     return errors::InvalidArgument(
@@ -75,9 +69,20 @@ Status DisableIntraOpParallelism::OptimizeAndCollectStats(
 
   NodeDef* sink_node = graph.GetNode(item.fetch.at(0));
   NodeDef* last_node = graph_utils::GetInputNode(*sink_node, graph);
+  // If the pipeline is autotuned (ModelDataset exists as the last dataset in
+  // the pipeline), we insert MaxIntraOpParallelismDataset before ModelDataset.
+  // If the pipeline is not autotuned (ModelDataset doesn't exist), we insert
+  // MaxIntraOpParallelismDataset as the last dataset in the pipeline.
+  //
+  // In general, if exists, ModelDataset should be the last dataset in the
+  // pipeline.
+  if (last_node->op() == kModelDataset) {
+    last_node = graph_utils::GetInputNode(*last_node, graph);
+  }
 
   // Add a const node with value 1
-  NodeDef* max_parallelism_value = graph_utils::AddScalarConstNode(1LL, &graph);
+  NodeDef* max_parallelism_value =
+      graph_utils::AddScalarConstNode(int64{1}, &graph);
 
   NodeDef insert_node;
   graph_utils::SetUniqueGraphNodeName("intra_op_parallelism", graph.graph(),

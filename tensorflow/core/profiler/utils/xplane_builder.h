@@ -34,7 +34,7 @@ namespace profiler {
 
 class XPlaneBuilder;
 
-template <class T>
+template <typename T>
 class XStatsBuilder {
  public:
   explicit XStatsBuilder(T* stats_owner, XPlaneBuilder* stats_metadata_owner)
@@ -79,7 +79,19 @@ class XStatsBuilder {
     proto.SerializeToString(bytes);
   }
 
-  void AddStat(const XStatMetadata& key, const XStat& stat, const XPlane& src);
+  void AddStat(const XStatMetadata& key, const XStat& stat, const XPlane& src) {
+    if (stat.value_case() == XStat::kRefValue) {
+      const auto& stat_metadata_map = src.stat_metadata();
+      const auto it = stat_metadata_map.find(stat.ref_value());
+      if (TF_PREDICT_TRUE(it != stat_metadata_map.end())) {
+        AddStatRefValue(key, it->second.name());
+      }
+    } else {
+      XStat* new_stat = stats_owner_->add_stats();
+      *new_stat = stat;
+      new_stat->set_metadata_id(key.id());
+    }
+  }
 
   XStat* FindOrAddMutableStat(int64 metadata_id) {
     for (auto& stat : *stats_owner_->mutable_stats()) {
@@ -102,7 +114,7 @@ class XStatsBuilder {
     } else if (absl::SimpleAtod(value, &double_value)) {
       AddStatValue(metadata, double_value);
     } else {
-      AddStatValue(metadata, value);
+      AddStatRefValue(metadata, value);
     }
   }
   void ReserveStats(size_t num_stats) {
@@ -115,6 +127,8 @@ class XStatsBuilder {
     stat->set_metadata_id(metadata.id());
     return stat;
   }
+
+  void AddStatRefValue(const XStatMetadata& metadata, absl::string_view value);
 
   T* stats_owner_;
   XPlaneBuilder* stats_metadata_owner_;
@@ -278,24 +292,12 @@ class XPlaneBuilder : public XStatsBuilder<XPlane> {
   absl::flat_hash_map<int64, XLine*> lines_by_id_;
 };
 
-template <class T>
-void XStatsBuilder<T>::AddStat(const XStatMetadata& key, const XStat& stat,
-                               const XPlane& src) {
-  if (stat.value_case() == XStat::kRefValue) {
-    const auto& stat_metadata_map = src.stat_metadata();
-    const auto it = stat_metadata_map.find(stat.ref_value());
-    if (TF_PREDICT_FALSE(it == stat_metadata_map.end())) {
-      // the reference value in stat is not found in XStatMetadata from src.
-      return;
-    }
-    XStatMetadata* value =
-        stats_metadata_owner_->GetOrCreateStatMetadata(it->second.name());
-    AddStatValue(key, *value);
-  } else {
-    XStat* new_stat = stats_owner_->add_stats();
-    *new_stat = stat;
-    new_stat->set_metadata_id(key.id());
-  }
+template <typename T>
+void XStatsBuilder<T>::AddStatRefValue(const XStatMetadata& metadata,
+                                       absl::string_view value) {
+  const XStatMetadata* ref_value =
+      stats_metadata_owner_->GetOrCreateStatMetadata(value);
+  AddStatValue(metadata, *ref_value);
 }
 
 }  // namespace profiler

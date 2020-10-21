@@ -23,9 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/micro/micro_utils.h"
 
 namespace tflite {
-namespace ops {
-namespace micro {
-namespace quantize {
+namespace {
 
 struct OpData {
   tflite::QuantizationParams quantization_params;
@@ -50,7 +48,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   const TfLiteTensor* input = GetInput(context, node, 0);
+  TF_LITE_ENSURE(context, input != nullptr);
   TfLiteTensor* output = GetOutput(context, node, 0);
+  TF_LITE_ENSURE(context, output != nullptr);
 
   // TODO(b/128934713): Add support for fixed-point per-channel quantization.
   // Currently this only support affine per-layer quantization.
@@ -173,22 +173,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-}  // namespace quantize
+}  // namespace
 
-// This Op (QUANTIZE) quantizes the input and produces quantized output.
-// AffineQuantize takes scale and zero point and quantizes the float value to
-// quantized output, in int8_t or uint8_t format.
 TfLiteRegistration Register_QUANTIZE() {
-  return {/*init=*/quantize::Init,
+  return {/*init=*/Init,
           /*free=*/nullptr,
-          /*prepare=*/quantize::Prepare,
-          /*invoke=*/quantize::Eval,
+          /*prepare=*/Prepare,
+          /*invoke=*/Eval,
           /*profiling_string=*/nullptr,
           /*builtin_code=*/0,
           /*custom_name=*/nullptr,
           /*version=*/0};
 }
 
-}  // namespace micro
-}  // namespace ops
 }  // namespace tflite

@@ -64,7 +64,7 @@ int main(int argc, char** argv) {
 
   constexpr int tensor_arena_size = 50 * 1024;
   uint8_t tensor_arena[tensor_arena_size];
-  tflite::MicroInterpreter interpreter(model, resolver, tensor_arena,
+  tflite::MicroInterpreter interpreter(model, micro_op_resolver, tensor_arena,
                                        tensor_arena_size, error_reporter);
   interpreter.AllocateTensors();
 

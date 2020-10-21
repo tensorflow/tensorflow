@@ -60,6 +60,9 @@ class BaseLayerTest(test.TestCase, parameterized.TestCase):
     layer = base_layers.Layer(name='my_layer', trainable=False)
     self.assertEqual(layer.trainable, False)
 
+    # Assert that the layer was not instrumented as a Keras layer
+    self.assertFalse(layer._instrumented_keras_api)
+
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testInt64Layer(self):
     layer = base_layers.Layer(name='my_layer', dtype='int64')
@@ -83,6 +86,8 @@ class BaseLayerTest(test.TestCase, parameterized.TestCase):
 
     with base_layers.keras_style_scope():
       layer = base_layers.Layer(name='my_layer')
+    # Assert that the layer was not instrumented as a Keras layer
+    self.assertFalse(layer._instrumented_keras_api)
     # Test basic variable creation.
     with backend.name_scope('bar'):
       variable = layer.add_variable(

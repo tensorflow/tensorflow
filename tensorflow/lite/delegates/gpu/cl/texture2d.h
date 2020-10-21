@@ -32,7 +32,11 @@ namespace gpu {
 namespace cl {
 
 struct Texture2DDescriptor : public GPUObjectDescriptor {
-  DataType element_type;  // FLOAT32 or FLOAT16
+  DataType element_type;
+  bool normalized = false;   // used with INT data types, if normalized, we read
+                             // in kernel float data.
+  DataType normalized_type;  // can be FLOAT32 or FLOAT16, using with normalized
+                             // = true
 
   // optional
   int2 size = int2(0, 0);

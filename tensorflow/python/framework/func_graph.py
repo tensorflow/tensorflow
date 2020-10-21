@@ -36,6 +36,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import custom_gradient
@@ -400,10 +401,6 @@ class FuncGraph(ops.Graph):
       # optimizers.
       old_graph_key = self._graph_key
       self._graph_key = graph._graph_key
-      # Inherit the auto_cast_variable_read_dtype, since this should not change
-      # inside a function.
-      old_auto_cast_var_read_dtype = self._auto_cast_variable_read_dtype
-      self._auto_cast_variable_read_dtype = graph._auto_cast_variable_read_dtype
       # pylint: enable=protected-access
 
       old_scope_exit_callbacks = self._scope_exit_callbacks
@@ -422,7 +419,6 @@ class FuncGraph(ops.Graph):
             self._device_function_stack = old_device_stack
             self._variable_creator_stack = old_creator_stack
             self._graph_key = old_graph_key
-            self._auto_cast_variable_read_dtype = old_auto_cast_var_read_dtype
     return inner_cm()
 
   @property
@@ -445,6 +441,11 @@ class FuncGraph(ops.Graph):
     if current is None:
       return self._fallback_outer_graph
     return current
+
+  @outer_graph.setter
+  def outer_graph(self, new_outer_graph):
+    """Sets `outer_graph` to `new_outer_graph`."""
+    self._weak_outer_graph = weakref.ref(new_outer_graph)
 
   @property
   def output_types(self):
@@ -721,7 +722,12 @@ class FuncGraph(ops.Graph):
       # device as the source tensor. The device placement may be relaxed at
       # a later date.
       with ops.control_dependencies(None), self.device(tensor.device):
-        graph_const = constant_op.constant(tensor.numpy(), dtype=tensor.dtype,
+        constant_value = tensor_util.constant_value(tensor)
+        if constant_value is None:
+          # Some eager tensors, e.g. parallel tensors, are not convertible to a
+          # single constant. We'll use a placeholder for this case.
+          return self._capture_helper(tensor, name)
+        graph_const = constant_op.constant(constant_value, dtype=tensor.dtype,
                                            shape=tensor.shape, name=name)
       self.add_capture(tensor, graph_const)
     else:
@@ -1204,7 +1210,8 @@ def _get_defun_inputs(args, names, structure, flat_shapes=None):
       # Tensor or not.  For non-tensor entries it should be None.
       shape = next(shapes_iter)
       if isinstance(arg, (ops.Tensor, tensor_spec.TensorSpec)):
-        if isinstance(arg, tensor_spec.TensorSpec) and arg.name:
+        arg_is_spec = isinstance(arg, tensor_spec.TensorSpec)
+        if arg_is_spec and arg.name:
           requested_name = arg.name
         else:
           requested_name = name
@@ -1217,6 +1224,8 @@ def _get_defun_inputs(args, names, structure, flat_shapes=None):
           # Sometimes parameter names are not valid op names, so fall back to
           # unnamed placeholders.
           placeholder = graph_placeholder(arg.dtype, placeholder_shape)
+        if not arg_is_spec:
+          custom_gradient.copy_handle_data(arg, placeholder)
         if name is not None:
           # Record the requested/user-specified name in case it's different than
           # the uniquified name, for validation when exporting signatures.

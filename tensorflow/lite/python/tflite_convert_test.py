@@ -22,7 +22,9 @@ import os
 
 import numpy as np
 
+from tensorflow.core.framework import graph_pb2
 from tensorflow.lite.python import tflite_convert
+from tensorflow.lite.python.convert import register_custom_opdefs
 from tensorflow.python import keras
 from tensorflow.python import tf2
 from tensorflow.python.client import session
@@ -31,6 +33,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework.importer import import_graph_def
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import gfile
@@ -165,6 +168,37 @@ class TfLiteConvertV1Test(TestModels):
     self._run(flags_str, should_succeed=True)
     os.remove(graph_def_file)
 
+  def testQATFrozenGraphDefUInt8(self):
+    with ops.Graph().as_default():
+      in_tensor_1 = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32, name='inputA')
+      in_tensor_2 = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32, name='inputB')
+      _ = array_ops.fake_quant_with_min_max_args(
+          in_tensor_1 + in_tensor_2, min=0., max=1., name='output')
+      sess = session.Session()
+
+    # Write graph to file.
+    graph_def_file = self._getFilepath('model.pb')
+    write_graph(sess.graph_def, '', graph_def_file, False)
+    sess.close()
+
+    # Define converter flags
+    flags_str = ('--std_dev_values=128,128 --mean_values=128,128 '
+                 '--graph_def_file={0} --input_arrays={1} '
+                 '--output_arrays={2}'.format(
+                     graph_def_file, 'inputA,inputB', 'output'))
+
+    # Set inference_type UINT8 and (default) inference_input_type UINT8
+    flags_str_1 = flags_str + ' --inference_type=UINT8'
+    self._run(flags_str_1, should_succeed=True)
+
+    # Set inference_type UINT8 and inference_input_type FLOAT
+    flags_str_2 = flags_str_1 + ' --inference_input_type=FLOAT'
+    self._run(flags_str_2, should_succeed=True)
+
+    os.remove(graph_def_file)
+
   def testSavedModel(self):
     saved_model_dir = self._getFilepath('model')
     with ops.Graph().as_default():
@@ -178,6 +212,73 @@ class TfLiteConvertV1Test(TestModels):
 
     flags_str = '--saved_model_dir={}'.format(saved_model_dir)
     self._run(flags_str, should_succeed=True)
+
+  def _createSavedModelWithCustomOp(self):
+    custom_opdefs_str = (
+        'name: \'CustomAdd\' input_arg: {name: \'Input1\' type: DT_FLOAT} '
+        'input_arg: {name: \'Input2\' type: DT_FLOAT} output_arg: {name: '
+        '\'Output\' type: DT_FLOAT}')
+
+    # Create a graph that has one add op.
+    new_graph = graph_pb2.GraphDef()
+    with ops.Graph().as_default():
+      with session.Session() as sess:
+        in_tensor = array_ops.placeholder(
+            shape=[1, 16, 16, 3], dtype=dtypes.float32, name='input')
+        out_tensor = in_tensor + in_tensor
+        inputs = {'x': in_tensor}
+        outputs = {'z': out_tensor}
+
+        new_graph.CopyFrom(sess.graph_def)
+
+    # Rename Add op name to CustomAdd.
+    for node in new_graph.node:
+      if node.op.startswith('Add'):
+        node.op = 'CustomAdd'
+        del node.attr['T']
+
+    # Register custom op defs to import modified graph def.
+    register_custom_opdefs([custom_opdefs_str])
+
+    # Store saved model.
+    saved_model_dir = self._getFilepath('model')
+    with ops.Graph().as_default():
+      with session.Session() as sess:
+        import_graph_def(new_graph, name='')
+        saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
+    return (saved_model_dir, custom_opdefs_str)
+
+  def testEnsureCustomOpdefsFlag(self):
+    saved_model_dir, _ = self._createSavedModelWithCustomOp()
+
+    # Ensure --custom_opdefs.
+    flags_str = ('--saved_model_dir={0} --allow_custom_ops '
+                 '--experimental_new_converter'.format(saved_model_dir))
+    self._run(flags_str, should_succeed=False)
+
+  def testSavedModelWithCustomOpdefsFlag(self):
+    saved_model_dir, custom_opdefs_str = self._createSavedModelWithCustomOp()
+
+    # Valid conversion.
+    flags_str = (
+        '--saved_model_dir={0} --custom_opdefs="{1}" --allow_custom_ops '
+        '--experimental_new_converter'.format(saved_model_dir,
+                                              custom_opdefs_str))
+    self._run(flags_str, should_succeed=True)
+
+  def testSavedModelWithInvalidCustomOpdefsFlag(self):
+    saved_model_dir, _ = self._createSavedModelWithCustomOp()
+
+    invalid_custom_opdefs_str = (
+        'name: \'CustomAdd\' input_arg: {name: \'Input1\' type: DT_FLOAT} '
+        'output_arg: {name: \'Output\' type: DT_FLOAT}')
+
+    # Valid conversion.
+    flags_str = (
+        '--saved_model_dir={0} --custom_opdefs="{1}" --allow_custom_ops '
+        '--experimental_new_converter'.format(saved_model_dir,
+                                              invalid_custom_opdefs_str))
+    self._run(flags_str, should_succeed=False)
 
   def testKerasFile(self):
     keras_file = self._getKerasModelFile()
@@ -269,9 +370,9 @@ class TfLiteConvertV1Test(TestModels):
         'attr : { name: \'nms_iou_threshold\' type: \'float\'} '
         'attr : { name: \'nms_score_threshold\' type: \'float\'} '
         'attr : { name: \'num_classes\' type: \'int\'} '
-        'attr : { name: \'w_scale\' type: \'int\'} '
-        'attr : { name: \'x_scale\' type: \'int\'} '
-        'attr : { name: \'y_scale\' type: \'int\'}')
+        'attr : { name: \'w_scale\' type: \'float\'} '
+        'attr : { name: \'x_scale\' type: \'float\'} '
+        'attr : { name: \'y_scale\' type: \'float\'}')
 
     flags_str = ('--graph_def_file={0} --input_arrays={1} '
                  '--output_arrays={2} --input_shapes={3} '

@@ -98,10 +98,10 @@ LogicalResult ConvertIfOp(IfOp if_op) {
       if_op.getLoc(), if_op.getResultTypes(), cond, if_op.is_stateless());
   CopyDeviceAndUnderscoredAttributes(if_op, if_region);
 
-  CreateCall(if_op, if_op.then_func(),
+  CreateCall(if_op, if_op.then_function(),
              /*caller_region=*/if_region.then_branch(), if_op.input(),
              /*use_region_args=*/false);
-  CreateCall(if_op, if_op.else_func(),
+  CreateCall(if_op, if_op.else_function(),
              /*caller_region=*/if_region.else_branch(), if_op.input(),
              /*use_region_args=*/false);
   if_op.replaceAllUsesWith(if_region.getResults());
@@ -116,14 +116,14 @@ LogicalResult ConvertWhileOp(WhileOp while_op) {
   CopyDeviceAndUnderscoredAttributes(while_op, while_region);
 
   YieldOp cond_yield =
-      CreateCall(while_op, while_op.cond_func(),
+      CreateCall(while_op, while_op.cond_function(),
                  /*caller_region=*/while_region.cond(), while_op.input(),
                  /*use_region_args=*/true);
   Value i1_cond =
       ConvertConditionToBoolean(cond_yield, cond_yield.getOperand(0));
   cond_yield.setOperand(0, i1_cond);
 
-  CreateCall(while_op, while_op.body_func(),
+  CreateCall(while_op, while_op.body_function(),
              /*caller_region=*/while_region.body(), while_op.input(),
              /*use_region_args=*/true);
   while_op.replaceAllUsesWith(while_region.getResults());

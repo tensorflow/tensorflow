@@ -217,10 +217,11 @@ inline void BatchMatMul(const RuntimeShape& lhs_shape, const int8_t* lhs_data,
   }
 }
 
+template <typename T, typename AccumT>
 inline void BatchMatMul(const FullyConnectedParams& params,
-                        const RuntimeShape& lhs_shape, const int8_t* lhs_data,
-                        const RuntimeShape& rhs_shape, const int8_t* rhs_data,
-                        const RuntimeShape& output_shape, int8_t* output_data) {
+                        const RuntimeShape& lhs_shape, const T* lhs_data,
+                        const RuntimeShape& rhs_shape, const T* rhs_data,
+                        const RuntimeShape& output_shape, T* output_data) {
   const RuntimeShape extended_lhs_shape =
       RuntimeShape::ExtendedShape(5, lhs_shape);
   const RuntimeShape extended_rhs_shape =
@@ -276,33 +277,33 @@ inline void BatchMatMul(const FullyConnectedParams& params,
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
 
   for (int b0 = 0; b0 < batch_dim0; ++b0) {
-    const int8_t* lhs_ptr0 = lhs_data + (b0 * lhs_ext0);
-    const int8_t* rhs_ptr0 = rhs_data + (b0 * rhs_ext0);
+    const T* lhs_ptr0 = lhs_data + (b0 * lhs_ext0);
+    const T* rhs_ptr0 = rhs_data + (b0 * rhs_ext0);
     for (int b1 = 0; b1 < batch_dim1; ++b1) {
-      const int8_t* lhs_ptr1 = lhs_ptr0 + b1 * lhs_ext1;
-      const int8_t* rhs_ptr1 = rhs_ptr0 + b1 * rhs_ext1;
+      const T* lhs_ptr1 = lhs_ptr0 + b1 * lhs_ext1;
+      const T* rhs_ptr1 = rhs_ptr0 + b1 * rhs_ext1;
       for (int b2 = 0; b2 < batch_dim2; ++b2) {
-        const int8_t* lhs_ptr2 = lhs_ptr1 + b2 * lhs_ext2;
-        const int8_t* rhs_ptr2 = rhs_ptr1 + b2 * rhs_ext2;
-        int8_t* out_ptr = output_data + ((b0 * batch_dim1 * batch_dim2) +
-                                         b1 * batch_dim2 + b2) *
-                                            lhs_rows * rhs_cols;
+        const T* lhs_ptr2 = lhs_ptr1 + b2 * lhs_ext2;
+        const T* rhs_ptr2 = rhs_ptr1 + b2 * rhs_ext2;
+        T* out_ptr = output_data +
+                     ((b0 * batch_dim1 * batch_dim2) + b1 * batch_dim2 + b2) *
+                         lhs_rows * rhs_cols;
 
         for (int j = 0; j < rhs_cols; ++j) {
           for (int i = 0; i < lhs_rows; ++i) {
-            int32_t total = 0;
+            AccumT total = 0;
             for (int k = 0; k < accum_depth; ++k) {
-              int32_t lhs_val = lhs_ptr2[accum_depth * i + k];
-              int32_t rhs_val = rhs_ptr2[accum_depth * j + k];
+              AccumT lhs_val = lhs_ptr2[accum_depth * i + k];
+              AccumT rhs_val = rhs_ptr2[accum_depth * j + k];
               total += (lhs_val + filter_offset) * (rhs_val + input_offset);
             }
-            total = MultiplyByQuantizedMultiplier(total, output_multiplier,
-                                                  output_shift);
-            total += output_offset;
-            total = std::max(total, output_activation_min);
-            total = std::min(total, output_activation_max);
+            int32_t total_scaled = MultiplyByQuantizedMultiplier(
+                total, output_multiplier, output_shift);
+            total_scaled += output_offset;
+            total_scaled = std::max(total_scaled, output_activation_min);
+            total_scaled = std::min(total_scaled, output_activation_max);
             const int idx = lhs_rows * j + i;
-            out_ptr[idx] = static_cast<int8_t>(total);
+            out_ptr[idx] = static_cast<T>(total_scaled);
           }
         }
       }

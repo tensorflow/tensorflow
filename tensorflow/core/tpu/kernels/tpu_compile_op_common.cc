@@ -497,26 +497,37 @@ Status TpuCompileOpKernelCommon::OptimizeGraph(
   opts.set_do_function_inlining(true);
   opts.set_do_constant_folding(!flags->tf_xla_disable_constant_folding);
   GraphOptimizer optimizer(opts);
-  // Performs a first function inlining pass before shape inference, since
-  // otherwise shape inference can't see inside functions and a comprehensive
-  // shape_map, including function ops, is needed to constant-propagate Shape
-  // Ops below.
-  GraphOptimizer::Options optimizer_opts;
-  optimizer_opts.inline_multi_device_functions = true;
-  optimizer_opts.inline_impl_selection_group_functions = true;
-  optimizer_opts.inline_with_single_device_body_placer = true;
-  optimizer.Optimize(flr, flr->env(), flr->device(), graph, optimizer_opts);
+  {
+    // Performs a first function inlining pass before shape inference, since
+    // otherwise shape inference can't see inside functions and a comprehensive
+    // shape_map, including function ops, is needed to constant-propagate Shape
+    // Ops below.
+    GraphOptimizer::Options optimizer_opts;
+    optimizer_opts.inline_multi_device_functions = true;
+    optimizer_opts.inline_impl_selection_group_functions = true;
+    optimizer_opts.inline_with_single_device_body_placer = true;
+    // Infer shapes for each node in the computation. Shape inference can help
+    // skip constant folding of large shapes.
+    GraphShapeInfo shape_info;
+    TF_RETURN_IF_ERROR(RunShapeInferenceOnComputation(
+        metadata, arg_shapes, graph->get(), flr, &shape_info));
+    // Converts the GraphShapeInfo into the form needed by the constant-folding
+    // pass of the optimizer.
+    std::unordered_map<string, std::vector<PartialTensorShape>> shape_map;
+    ConvertGraphShapeInfoToShapeMap(**graph, shape_info, &shape_map);
+    optimizer_opts.shape_map = &shape_map;
+    optimizer.Optimize(flr, flr->env(), flr->device(), graph, optimizer_opts);
+  }
 
-  // Infer shapes for each node in the computation.
-  GraphShapeInfo shape_info;
-  TF_RETURN_IF_ERROR(RunShapeInferenceOnComputation(
-      metadata, arg_shapes, graph->get(), flr, &shape_info));
-
-  // Converts the GraphShapeInfo into the form needed by the constant-folding
-  // pass of the optimizer.
-  std::unordered_map<string, std::vector<PartialTensorShape>> shape_map;
-  ConvertGraphShapeInfoToShapeMap(**graph, shape_info, &shape_map);
-  optimizer.Optimize(flr, flr->env(), flr->device(), graph, &shape_map);
+  {
+    // Infer shapes for each node in the computation.
+    GraphShapeInfo shape_info;
+    TF_RETURN_IF_ERROR(RunShapeInferenceOnComputation(
+        metadata, arg_shapes, graph->get(), flr, &shape_info));
+    std::unordered_map<string, std::vector<PartialTensorShape>> shape_map;
+    ConvertGraphShapeInfoToShapeMap(**graph, shape_info, &shape_map);
+    optimizer.Optimize(flr, flr->env(), flr->device(), graph, &shape_map);
+  }
 
   TF_RETURN_IF_ERROR(RewriteTensorListWithConstElement(graph->get(), fld));
 
@@ -589,7 +600,8 @@ Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCache(
 
   const std::string session_name = SessionNameFromMetadata(session_metadata);
   LOG(INFO) << "Compilation of " << key.prefix << " with session name "
-            << session_name << " took " << duration;
+            << session_name << " took " << duration << " and "
+            << (compile_status.ok() ? "succeeded" : "failed");
   tpu_program_group->LogProgramMemorySummary();
   metrics::UpdateXlaCompilationTime(absl::ToInt64Microseconds(duration));
   TpuCompilationMetrics::IncrementCompilationCount(session_name);
@@ -657,10 +669,11 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
 
   int64 uid;
   std::vector<std::string> proto_key;
+  std::vector<std::string> sharding_key;
   std::vector<bool> may_modify_variables;
   absl::Span<const xla::HloProto* const> hlo_metadatas;
   Status status = cache->CompileIfKeyAbsent(
-      key, ctx->session_metadata(), ref_holder, &uid, &proto_key,
+      key, ctx->session_metadata(), ref_holder, &uid, &proto_key, &sharding_key,
       &may_modify_variables, &hlo_metadatas,
       [&](TpuProgramGroupInterface* tpu_program_group) {
         VLOG(1) << "Cloud TPU: Compiling TPU program";
@@ -778,13 +791,21 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
 
   if (status.ok()) {
     for (int i = 0; i < num_cores_with_compiled_programs; ++i) {
-      Tensor output(DT_STRING, TensorShape({2}));
+      Tensor output(DT_STRING, TensorShape({3}));
       if (proto_key.size() == 1) {
         output.vec<tstring>()(0) = proto_key[0];
       } else {
         output.vec<tstring>()(0) = proto_key[i];
       }
       output.vec<tstring>()(1) = rendezvous_key_base;
+      if (sharding_key.empty()) {
+        output.vec<tstring>()(2) = "";
+      } else if (sharding_key.size() == 1) {
+        output.vec<tstring>()(2) = sharding_key[0];
+      } else {
+        TF_RET_CHECK(sharding_key.size() == num_cores_with_compiled_programs);
+        output.vec<tstring>()(2) = sharding_key[i];
+      }
       ctx->set_output(i + 1, output);
     }
     if (!use_mlir_) {
@@ -805,9 +826,10 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
   } else {
     // Return error in the invalid case.
     for (int i = 0; i < num_computations_; ++i) {
-      Tensor output(DT_STRING, TensorShape({2}));
+      Tensor output(DT_STRING, TensorShape({3}));
       output.vec<tstring>()(0) = "<<NO PROGRAM AS COMPILATION FAILED>>";
       output.vec<tstring>()(1) = "<<NO RENDEZVOUS KEY AS COMPILATION FAILED>>";
+      output.vec<tstring>()(2) = "<<NO SHARDing KEY AS COMPILATION FAILED>>";
       ctx->set_output(i + 1, output);
     }
     if (!use_mlir_) {

@@ -643,8 +643,9 @@ Status Queue<TaskType>::ScheduleWithoutSplit(std::unique_ptr<TaskType>* task) {
     }
     profiler::TraceMeProducer trace_me(
         [task] {
-          return profiler::TraceMeEncode("Schedule",
-                                         {{"size", (*task)->size()}});
+          return profiler::TraceMeEncode(
+              "ScheduleWithoutSplit",
+              {{"batching_input_task_size", (*task)->size()}});
         },
         profiler::ContextType::kSharedBatchScheduler,
         batches_.back()->traceme_context_id());
@@ -672,8 +673,8 @@ Status Queue<TaskType>::ScheduleWithoutSplit(std::unique_ptr<TaskType>* task) {
 template <typename TaskType>
 Status Queue<TaskType>::ScheduleWithSplit(std::unique_ptr<TaskType>* task) {
   profiler::TraceMe trace_me([task] {
-    return profiler::TraceMeEncode("ScheduleWithSplit",
-                                   {{"size", (*task)->size()}});
+    return profiler::TraceMeEncode(
+        "ScheduleWithSplit", {{"batching_input_task_size", (*task)->size()}});
   });
   if ((*task)->size() > options_.input_batch_size_limit) {
     return errors::InvalidArgument("Task size ", (*task)->size(),
@@ -809,9 +810,7 @@ void Queue<TaskType>::ProcessBatch(std::unique_ptr<Batch<TaskType>> batch) {
   profiler::TraceMeConsumer trace_me(
       [&] {
         return profiler::TraceMeEncode(
-            "ProcessBatch",
-            {{"size", batch->size()},
-             {"padding", max_execution_batch_size() - batch->size()}});
+            "ProcessBatch", {{"batch_size_before_padding", batch->size()}});
       },
       profiler::ContextType::kSharedBatchScheduler,
       batch->traceme_context_id());

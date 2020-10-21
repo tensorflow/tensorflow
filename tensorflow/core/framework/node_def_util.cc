@@ -930,7 +930,7 @@ Status AddPrefixAndSuffixToNode(StringPiece prefix, StringPiece suffix,
 }
 
 Status MaybeAddPrefixToColocationConstraints(
-    const absl::flat_hash_set<string>& match, StringPiece prefix,
+    const std::unordered_set<string>& match, StringPiece prefix,
     NodeDef* node_def) {
   auto attr = node_def->mutable_attr()->find(kColocationAttrName);
   if (attr == node_def->mutable_attr()->end()) {
@@ -941,7 +941,7 @@ Status MaybeAddPrefixToColocationConstraints(
   for (size_t i = 0; i < constraints_size; ++i) {
     StringPiece original(constraints_list->s(i));
     if (absl::ConsumePrefix(&original, kColocationGroupPrefixStringPiece)) {
-      if (match.contains(original)) {
+      if (match.find(string(original)) != match.end()) {
         (*constraints_list->mutable_s(i)) =
             strings::StrCat(kColocationGroupPrefix, prefix, original);
       }

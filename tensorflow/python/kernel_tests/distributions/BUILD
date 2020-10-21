@@ -11,6 +11,7 @@ cuda_py_test(
     name = "bijector_test",
     size = "small",
     srcs = ["bijector_test.py"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -48,6 +49,7 @@ cuda_py_test(
     name = "kullback_leibler_test",
     size = "small",
     srcs = ["kullback_leibler_test.py"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -60,6 +62,7 @@ cuda_py_test(
     name = "beta_test",
     size = "small",
     srcs = ["beta_test.py"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
@@ -212,6 +215,7 @@ cuda_py_test(
         "no_oss",
         # disable to avoid false positives from scipy.
         "nomsan",
+        "noasan",  #b/168810473
     ],
     deps = [
         "//tensorflow/python:client_testlib",
@@ -264,6 +268,7 @@ cuda_py_test(
     name = "special_math_test",
     size = "medium",
     srcs = ["special_math_test.py"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -280,6 +285,7 @@ cuda_py_test(
     name = "identity_bijector_test",
     size = "small",
     srcs = ["identity_bijector_test.py"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

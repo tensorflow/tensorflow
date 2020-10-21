@@ -60,14 +60,21 @@ class PolicyTest(test.TestCase, parameterized.TestCase):
 
   @testing_utils.enable_v2_dtype_behavior
   def test_repr(self):
-    for policy in ('float32', 'int8', 'mixed_bfloat16', '_infer'):
+    # Test Policy repr
+    for policy in ('float32', 'int8', 'mixed_float16', 'mixed_bfloat16',
+                   '_infer'):
       self.assertEqual(repr(mp_policy.Policy(policy)),
-                       '<Policy "%s", loss_scale=None>' % policy)
-    self.assertEqual(repr(mp_policy.Policy('float16', loss_scale=2)),
-                     '<Policy "float16", loss_scale=FixedLossScale(2.0)>')
+                       '<Policy "%s">' % policy)
+
+    # Test PolicyV1 repr
+    for policy in ('float32', 'int8', 'mixed_bfloat16', '_infer'):
+      self.assertEqual(repr(mp_policy.PolicyV1(policy)),
+                       '<PolicyV1 "%s", loss_scale=None>' % policy)
+    self.assertEqual(repr(mp_policy.PolicyV1('float16', loss_scale=2)),
+                     '<PolicyV1 "float16", loss_scale=FixedLossScale(2.0)>')
     self.assertStartsWith(
-        repr(mp_policy.Policy('mixed_float16')),
-        '<Policy "mixed_float16", loss_scale=DynamicLossScale(')
+        repr(mp_policy.PolicyV1('mixed_float16')),
+        '<PolicyV1 "mixed_float16", loss_scale=DynamicLossScale(')
 
   @testing_utils.enable_v2_dtype_behavior
   def test_policy_errors(self):
@@ -113,26 +120,26 @@ class PolicyTest(test.TestCase, parameterized.TestCase):
 
   @testing_utils.enable_v2_dtype_behavior
   def test_loss_scale(self):
-    policy = mp_policy.Policy('float32')
+    policy = mp_policy.PolicyV1('float32')
     self.assertEqual(policy.loss_scale, None)
 
-    policy = mp_policy.Policy('float32', loss_scale=None)
+    policy = mp_policy.PolicyV1('float32', loss_scale=None)
     self.assertEqual(policy.loss_scale, None)
 
     ls = loss_scale_module.DynamicLossScale()
-    policy = mp_policy.Policy('float32', loss_scale=ls)
+    policy = mp_policy.PolicyV1('float32', loss_scale=ls)
     self.assertIs(policy.loss_scale, ls)
 
-    policy = mp_policy.Policy('float32', loss_scale='dynamic')
+    policy = mp_policy.PolicyV1('float32', loss_scale='dynamic')
     self.assertIsInstance(policy.loss_scale, loss_scale_module.DynamicLossScale)
 
-    policy = mp_policy.Policy('mixed_float16')
+    policy = mp_policy.PolicyV1('mixed_float16')
     self.assertIsInstance(policy.loss_scale, loss_scale_module.DynamicLossScale)
 
-    policy = mp_policy.Policy('mixed_float16', loss_scale=None)
+    policy = mp_policy.PolicyV1('mixed_float16', loss_scale=None)
     self.assertEqual(policy.loss_scale, None)
 
-    policy = mp_policy.Policy('mixed_bfloat16')
+    policy = mp_policy.PolicyV1('mixed_bfloat16')
     self.assertEqual(policy.loss_scale, None)
 
   @testing_utils.enable_v2_dtype_behavior
@@ -173,7 +180,7 @@ class PolicyTest(test.TestCase, parameterized.TestCase):
   @testing_utils.enable_v2_dtype_behavior
   def test_loss_scale_warning(self):
     with test.mock.patch.object(tf_logging, 'warn') as mock_warn:
-      mp_policy.Policy('float32', loss_scale=2.)
+      mp_policy.PolicyV1('float32', loss_scale=2.)
       self.assertEqual(
           mock_warn.call_args[0][0],
           'Creating a Policy with a loss scale is only useful for float16 '
@@ -182,9 +189,9 @@ class PolicyTest(test.TestCase, parameterized.TestCase):
 
     for policy_name in 'float16', 'mixed_float16':
       # Trigger any other warnings that occur only once
-      mp_policy.Policy(policy_name, loss_scale=2.)
+      mp_policy.PolicyV1(policy_name, loss_scale=2.)
       with test.mock.patch.object(tf_logging, 'warn') as mock_warn:
-        mp_policy.Policy(policy_name, loss_scale=2.)
+        mp_policy.PolicyV1(policy_name, loss_scale=2.)
         mock_warn.assert_not_called()
 
   @testing_utils.enable_v2_dtype_behavior
@@ -230,12 +237,6 @@ class PolicyTest(test.TestCase, parameterized.TestCase):
         mp_policy.Policy('mixed_float16'),
         mp_policy.Policy('mixed_bfloat16'),
         mp_policy.Policy('_infer'),
-        mp_policy.Policy('float32', loss_scale=2.),
-        mp_policy.Policy('float32', loss_scale=None),
-        mp_policy.Policy('mixed_float16', loss_scale=2.),
-        mp_policy.Policy('mixed_float16', loss_scale=None),
-        mp_policy.Policy('mixed_bfloat16', loss_scale=2.),
-        mp_policy.Policy('mixed_bfloat16', loss_scale=None),
     ):
       config = policy.get_config()
       new_policy = mp_policy.Policy.from_config(config)
@@ -263,7 +264,7 @@ class PolicyTest(test.TestCase, parameterized.TestCase):
     class MyPolicy(mp_policy.Policy):
       pass
 
-    # Test policies that do not override the loss scale
+    # Test policies that are not equivalent to a single dtype
     for policy in (
         mp_policy.Policy('mixed_float16'),
         mp_policy.Policy('mixed_bfloat16'),
@@ -276,14 +277,14 @@ class PolicyTest(test.TestCase, parameterized.TestCase):
                                          custom_objects={'MyPolicy': MyPolicy})
       self.assertEqual(str(policy), str(new_policy))
 
-    # Test policies that override the loss scale
+    # Test V1 policies that override the loss scale
     for policy in (
-        mp_policy.Policy('float32', loss_scale=2.),
-        mp_policy.Policy('float32', loss_scale=None),
-        mp_policy.Policy('mixed_float16', loss_scale=2.),
-        mp_policy.Policy('mixed_float16', loss_scale=None),
-        mp_policy.Policy('mixed_bfloat16', loss_scale=2.),
-        mp_policy.Policy('mixed_bfloat16', loss_scale=None),
+        mp_policy.PolicyV1('float32', loss_scale=2.),
+        mp_policy.PolicyV1('float32', loss_scale=None),
+        mp_policy.PolicyV1('mixed_float16', loss_scale=2.),
+        mp_policy.PolicyV1('mixed_float16', loss_scale=None),
+        mp_policy.PolicyV1('mixed_bfloat16', loss_scale=2.),
+        mp_policy.PolicyV1('mixed_bfloat16', loss_scale=None),
     ):
       config = mp_policy.serialize(policy)
       expected_loss_scale_config = None
@@ -300,9 +301,6 @@ class PolicyTest(test.TestCase, parameterized.TestCase):
                   'loss_scale': expected_loss_scale_config
               }
           })
-      new_policy = mp_policy.deserialize(
-          config, custom_objects={'MyPolicy': MyPolicy})
-      self.assertEqual(str(policy), str(new_policy))
 
   @testing_utils.enable_v2_dtype_behavior
   def test_error_if_graph_rewrite_enabled(self):

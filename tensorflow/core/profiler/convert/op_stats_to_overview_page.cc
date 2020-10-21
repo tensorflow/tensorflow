@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "google/protobuf/any.pb.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/op_metrics_to_record.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_input_pipeline_analysis.h"
@@ -32,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_function.pb.h"
 #include "tensorflow/core/profiler/utils/diagnostics.h"
+#include "tensorflow/core/profiler/utils/format_utils.h"
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/html_utils.h"
 #include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
@@ -72,6 +72,9 @@ void ComputeHostTips(OverviewPageRecommendation* re) {
   *re->add_host_tips() = MakeOverviewPageTip(
       "input_pipeline_analyzer (especially Section 3 for the breakdown of "
       "input operations on the Host)");
+  *re->add_host_tips() = MakeOverviewPageTip(
+      "tf_data_bottleneck_analysis (find the bottleneck in the tf.data input "
+      "pipeline)");
   *re->add_host_tips() = MakeOverviewPageTip(
       "trace_viewer (look at the activities on the timeline of each Host "
       "Thread near the bottom of the trace view)");
@@ -118,7 +121,7 @@ std::string GeneratePrecisionStatement(const PrecisionStats& precision_stats) {
         (100.0 * precision_stats.compute_16bit_ps()) / total_compute_ps;
     if (percent_16bit < kLowPrecisionPercentThreshold) {
       return absl::StrCat(
-          "Only ", absl::StrFormat("%.1lf", percent_16bit),
+          "Only ", OneDigit(percent_16bit),
           "% of device computation is 16 bit. So you might want to replace "
           "more 32-bit Ops by 16-bit Ops to improve performance (if the "
           "reduced accuracy is acceptable).");
@@ -154,6 +157,10 @@ OverviewPageRecommendation ComputeGenericRecommendation(
     const PrecisionStats& precision_stats) {
   OverviewPageRecommendation re;
   GenericRecommendation generic;
+  generic.set_device_collectives_bottleneck(
+      bottleneck.device_collectives_classification());
+  generic.set_device_collectives_statement(
+      bottleneck.device_collectives_statement());
   generic.set_kernel_launch_bottleneck(
       bottleneck.kernel_launch_classification());
   generic.set_kernel_launch_statement(bottleneck.kernel_launch_statement());
@@ -334,12 +341,10 @@ std::string EagerRecommendationHtml(double host_op_time_eager_percent,
                                     double device_op_time_eager_percent) {
   std::string recommendation = "";
   if (host_op_time_eager_percent > kEagerReportThresholdInPercent)
-    absl::StrAppend(&recommendation,
-                    absl::StrFormat("%.1f", host_op_time_eager_percent),
+    absl::StrAppend(&recommendation, OneDigit(host_op_time_eager_percent),
                     "% of Op time on the host used eager execution. ");
   if (device_op_time_eager_percent > kEagerReportThresholdInPercent)
-    absl::StrAppend(&recommendation,
-                    absl::StrFormat("%.1f", device_op_time_eager_percent),
+    absl::StrAppend(&recommendation, OneDigit(device_op_time_eager_percent),
                     "% of Op time on the device used eager execution. ");
   if (!recommendation.empty())
     absl::StrAppend(&recommendation, "Performance could be improved with ",
@@ -354,7 +359,7 @@ std::string OutsideCompilationRecommendationHtml(
       kOutsideCompilationThresholdInPercent)
     return "";
   return absl::StrCat(
-      absl::StrFormat("%.1lf", device_op_time_outside_compilation_percent),
+      OneDigit(device_op_time_outside_compilation_percent),
       " % of Op time on the device are for outside compilation. Performance "
       "could be improved by avoiding outside compilation.");
 }

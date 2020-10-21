@@ -42,6 +42,7 @@ class CollectiveRemoteAccessDistributed : public CollectiveRemoteAccessLocal {
                     const AllocatorAttributes& to_alloc_attr, Tensor* to_tensor,
                     const DeviceLocality& client_locality,
                     int dev_to_dev_stream_index,
+                    CancellationManager* cancellation_manager,
                     const StatusCallback& done) override;
 
   void CheckPeerHealth(const string& peer_task,
@@ -54,7 +55,7 @@ class CollectiveRemoteAccessDistributed : public CollectiveRemoteAccessLocal {
   // Ownership of `work_queue_` is shared between `this` and
   // `CollectiveExecutorMgr`.
   std::shared_ptr<UnboundedWorkQueue> work_queue_;
-  CancellationManager cancel_mgr_;
+  CancellationManager abortion_cancellation_manager_;
   string task_name_;
 };
 

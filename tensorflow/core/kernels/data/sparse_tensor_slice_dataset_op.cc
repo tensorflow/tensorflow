@@ -56,6 +56,10 @@ class Dataset : public DatasetBase {
 
   int64 Cardinality() const override { return sparse_tensor_.shape()[0]; }
 
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    return Status::OK();
+  }
+
   Status CheckExternalState() const override { return Status::OK(); }
 
  protected:

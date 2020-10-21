@@ -601,8 +601,8 @@ class MklConvCustomBackpropFilterOp
                diff_filter_dims
                    [MklDnnFilterGroupDims::MKL_GROUP_FILTER_DIM_O]});
           AllocateOutputSetMklShape(context, 0, &diff_filter_tensor,
-                                    diff_filter_tf_shape,
-                                    diff_filter_mkl_shape);
+                                    diff_filter_tf_shape, diff_filter_mkl_shape,
+                                    native_format);
         }
       } else {
         // Conv3D: output_dims_mkl_order is in OIDHW format.
@@ -613,7 +613,8 @@ class MklConvCustomBackpropFilterOp
              diff_filter_dims[MklDnnDims3D::Dim3d_I],
              diff_filter_dims[MklDnnDims3D::Dim3d_O]});
         AllocateOutputSetMklShape(context, 0, &diff_filter_tensor,
-                                  diff_filter_tf_shape, diff_filter_mkl_shape);
+                                  diff_filter_tf_shape, diff_filter_mkl_shape,
+                                  native_format);
       }
 
       Tensor* diff_bias_tensor = nullptr;
@@ -807,12 +808,6 @@ class MklConvCustomBackpropFilterOp
           .Label(mkl_op_registry::kMklLayoutDependentOpLabel),           \
       MklConvCustomBackpropFilterOp<CPUDevice, T, false, false, false>); \
   REGISTER_KERNEL_BUILDER(                                               \
-      Name("_MklNativeConv2DBackpropFilter")                             \
-          .Device(DEVICE_CPU)                                            \
-          .TypeConstraint<T>("T")                                        \
-          .Label(mkl_op_registry::kMklNameChangeOpLabel),                \
-      MklConvCustomBackpropFilterOp<CPUDevice, T, false, false, true>);  \
-  REGISTER_KERNEL_BUILDER(                                               \
       Name("_MklConv2DBackpropFilterWithBias")                           \
           .Device(DEVICE_CPU)                                            \
           .TypeConstraint<T>("T")                                        \
@@ -835,7 +830,25 @@ class MklConvCustomBackpropFilterOp
           .Device(DEVICE_CPU)                                            \
           .TypeConstraint<T>("T")                                        \
           .Label(mkl_op_registry::kMklLayoutDependentOpLabel),           \
-      MklConvCustomBackpropFilterOp<CPUDevice, T, false, false, false>);
+      MklConvCustomBackpropFilterOp<CPUDevice, T, false, false, false>); \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("_MklNativeConv2DBackpropFilter")                             \
+          .Device(DEVICE_CPU)                                            \
+          .TypeConstraint<T>("T")                                        \
+          .Label(mkl_op_registry::kMklNameChangeOpLabel),                \
+      MklConvCustomBackpropFilterOp<CPUDevice, T, false, false, true>);  \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("_MklNativeDepthwiseConv2dNativeBackpropFilter")              \
+          .Device(DEVICE_CPU)                                            \
+          .TypeConstraint<T>("T")                                        \
+          .Label(mkl_op_registry::kMklNameChangeOpLabel),                \
+      MklConvCustomBackpropFilterOp<CPUDevice, T, false, true, true>);   \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("_MklNativeConv3DBackpropFilterV2")                           \
+          .Device(DEVICE_CPU)                                            \
+          .TypeConstraint<T>("T")                                        \
+          .Label(mkl_op_registry::kMklNameChangeOpLabel),                \
+      MklConvCustomBackpropFilterOp<CPUDevice, T, false, false, true>);
 
 TF_CALL_float(REGISTER_MKL_FILTER_KERNELS);
 TF_CALL_bfloat16(REGISTER_MKL_FILTER_KERNELS);

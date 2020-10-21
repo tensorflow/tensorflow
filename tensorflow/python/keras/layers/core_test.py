@@ -559,5 +559,20 @@ class CoreLayersTest(keras_parameterized.TestCase):
       self.assertAllEqual(np.ones((10, 20)), layer([x, y]))
 
 
+@keras_parameterized.run_all_keras_modes
+class TFOpLambdaTest(keras_parameterized.TestCase):
+
+  def test_non_tf_symbol(self):
+    def dummy_func(a, b):
+      return a + b
+
+    layer = core.TFOpLambda(dummy_func)
+    self.assertIsNone(layer.symbol)
+    self.assertEqual(layer.name, 'dummy_func')
+
+    with self.assertRaisesRegex(ValueError, 'was generated from .*dummy_func'):
+      layer.get_config()
+
+
 if __name__ == '__main__':
   test.main()
