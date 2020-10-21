@@ -398,3 +398,5 @@ stream_executor::port::internal_statusor::Helper::Crash
 [tensor_handle] # tfe
 tensorflow::TensorHandle::Tensor
 
+[python_api_dispatcher] # python_api_dispatcher
+tensorflow::PythonAPIDispatcher
