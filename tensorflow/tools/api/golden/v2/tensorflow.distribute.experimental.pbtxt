@@ -22,7 +22,7 @@ tf_module {
   }
   member {
     name: "MultiWorkerMirroredStrategy"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'tensorflow.python.distribute.collective_all_reduce_strategy._CollectiveAllReduceStrategyExperimentalMeta\'>"
   }
   member {
     name: "ParameterServerStrategy"
