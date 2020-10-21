@@ -1,0 +1,48 @@
+// RUN: tf-mlir-translate -split-input-file -hlo-text-to-lhlo -optimize-xla-hlo=false %s | FileCheck %s
+
+HloModule TestModule
+
+// CHECK: func @TestComputation
+
+FusedComputation {
+  // CHECK: tensor_load %arg0 {minor_to_major = dense<[0, 1]> : tensor<2xindex>}
+  x = f32[3, 2]{0,1} parameter(0)
+  ROOT y = f32[3, 2]{0,1} add(x, x)
+}
+
+ENTRY TestComputation {
+  x = f32[3, 2]{0,1} parameter(0)
+  ROOT y = f32[3, 2]{0,1} fusion(x), kind=kLoop, calls=FusedComputation
+}
+
+// -----
+
+HloModule ScatterModule
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  ROOT rhs = s32[] parameter(1)
+}
+
+// CHECK: func @main
+// CHECK: "lmhlo.scatter"
+// CHECK: ^bb0(%[[ARG5:.*]]: tensor<i32>, %[[ARG6:.*]]: tensor<i32>):
+// CHECK:  "mhlo.return"(%[[ARG6]])
+// CHECK: indices_are_sorted = false
+// CHECK: index_vector_dim = 1 : i64
+// CHECK: inserted_window_dims = dense<0> : tensor<1xi64>
+// CHECK: scatter_dims_to_operand_dims = dense<0> : tensor<1xi64>
+// CHECK: update_window_dims = dense<1> : tensor<1xi64>
+// CHECK: unique_indices = false
+// CHECK: (memref<3x3xi32>, memref<2xi32>, memref<2x3xi32>, memref<3x3xi32>) -> ()
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2] parameter(1)
+  updates = s32[2,3] parameter(2)
+  ROOT scatter_op = s32[3,3] scatter(operand, indices, updates),
+      to_apply=update_s32,
+      update_window_dims={1},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1
+}
