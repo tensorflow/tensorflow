@@ -60,8 +60,12 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 namespace convert {
+
 using absl::StrAppend;
 using absl::StrCat;
+using ::tensorflow::tensorrt::segment::ClusterProperty;
+using ::tensorflow::tensorrt::segment::NodePtrCompare;
+using ::tensorflow::tensorrt::segment::Segment;
 
 namespace {
 
@@ -125,15 +129,21 @@ bool ShallKeepControlEdgeFrom(const Node* input_node) {
 // Function to get subsegment information structure.
 Status GetEngineInfo(const Graph* g,
                      const grappler::GraphProperties& graph_properties,
-                     const std::set<const Node*>& segment_nodes,
+                     const Segment& segment,
                      const std::unordered_map<string, Node*>& node_map,
                      const std::vector<Node*>& reverse_topo_order,
                      EngineInfo* info) {
   std::vector<const Node*> subgraph_nodes;  // Topologically sorted nodes.
   std::set<const Node*> added_const_nodes;  // Used to prevent double insertion.
+
+  const ClusterProperty& segment_property = segment.property;
+  const std::set<const Node*, NodePtrCompare>& segment_nodes = segment.nodes;
+
   // The device assignment accumulated from the compatible device assignments
   // for the nodes in the segment.
-  DeviceNameUtils::ParsedName segment_device;
+  const DeviceNameUtils::ParsedName segment_device =
+      segment_property.DeviceName();
+  info->max_batch_size = segment_property.BatchSize().GetOptionalMaxBatchSize();
 
   // Map from src_node_name+port to the unique port numbers of the TRT op, where
   // the src_node_name is the name of the source node of the input/output
@@ -146,18 +156,6 @@ Status GetEngineInfo(const Graph* g,
        ++it) {
     const Node* node = *it;
     if (segment_nodes.count(node) == 0) continue;
-
-    absl::optional<DeviceNameUtils::ParsedName> new_segment_device =
-        MergeIfCompatible(segment_device, GetDeviceName(node));
-    if (!new_segment_device.has_value()) {
-      // The segmenter should guarantee that nodes in the same segment have
-      // compatible device assignments.
-      return errors::Internal(
-          "segment nodes have incompatible device assignments: ",
-          DeviceNameUtils::ParsedNameToString(segment_device), " vs ",
-          GetDeviceName(node), " to node ", node->name());
-    }
-    segment_device = *new_segment_device;
     subgraph_nodes.push_back(node);
 
     const int node_id = node->id();
@@ -332,7 +330,7 @@ void UpdateToEngineNode(const std::vector<EngineInfo>& infos,
 //    invocation of CreateTRTNode().
 Status CreateTRTNode(const ConversionParams& params,
                      const std::vector<EngineInfo>& infos, int pos,
-                     int max_batch_size, Graph* graph,
+                     int default_max_batch_size, Graph* graph,
                      std::vector<Node*>* engine_nodes) {
   const auto& info = infos.at(pos);
   std::vector<tensorflow::TensorShapeProto> input_shape_protos;
@@ -427,6 +425,11 @@ Status CreateTRTNode(const ConversionParams& params,
       (info.precision_mode == TrtPrecisionMode::INT8 && info.use_calibration);
   // Build the engine and get its serialized representation.
   string segment_string;
+
+  int max_batch_size = info.max_batch_size.has_value()
+                           ? info.max_batch_size.value()
+                           : default_max_batch_size;
+
   if (info.engine_type == EngineInfo::EngineType::TRTStatic) {
     std::pair<int, Allocator*> device_allocator =
         GetDeviceAndAllocator(params, info);
@@ -443,6 +446,7 @@ Status CreateTRTNode(const ConversionParams& params,
     cudaSetDevice(cuda_device_id);
 
     auto trt_logger = GetLoggerRegistry()->LookUp(params.trt_logger_name);
+
     // Create static engines with precision_mode fp32/fp16.
     TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
     TF_RETURN_IF_ERROR(ConvertGraphDefToEngine(
@@ -486,6 +490,7 @@ Status CreateTRTNode(const ConversionParams& params,
           .Attr("calibration_data", "")
           .Attr("max_cached_engines_count", info.maximum_cached_engines)
           .Attr("workspace_size_bytes", info.max_workspace_size_bytes)
+          .Attr("max_batch_size", max_batch_size)
           .Attr("precision_mode", prec_string)
           .Attr("use_calibration", info.use_calibration)
           .Attr("_use_implicit_batch", params.use_implicit_batch)
@@ -738,7 +743,7 @@ Status ConvertAfterShapes(const ConversionParams& params) {
   segment_options.allow_dynamic_non_batch_dim =
       AllowDynamicNonBatchDimension(params);
 
-  segment::SegmentNodesVector initial_segments;
+  segment::SegmentVector initial_segments;
   TrtNodeValidator validator(static_graph_properties, params.precision_mode,
                              params.use_calibration, params.use_implicit_batch);
   TF_RETURN_IF_ERROR(segment::SegmentGraph(
@@ -759,7 +764,7 @@ Status ConvertAfterShapes(const ConversionParams& params) {
   engine_segments.reserve(initial_segments.size());
   std::vector<Node*> reverse_topo_order;
   GetPostOrder(graph, &reverse_topo_order);
-  segment::SegmentNodesVector converted_segments;
+  segment::SegmentVector converted_segments;
   converted_segments.reserve(initial_segments.size());
   string engine_name_prefix =
       StrCat("TRTEngineOp_", GetNextGraphSequenceNumber(), "_");
@@ -779,6 +784,9 @@ Status ConvertAfterShapes(const ConversionParams& params) {
     curr_engine.use_calibration = params.use_calibration;
     curr_engine.maximum_cached_engines = params.max_cached_engines;
     curr_engine.allow_build_at_runtime = params.allow_build_at_runtime;
+    if (!curr_engine.max_batch_size.has_value()) {
+      curr_engine.max_batch_size = params.max_batch_size;
+    }
 
     status = RegisterGraphToFunctionLibrary(curr_engine.segment_graph_def,
                                             &graph, curr_engine.engine_name);
@@ -837,7 +845,7 @@ Status ConvertAfterShapes(const ConversionParams& params) {
                                 params.max_batch_size, &graph, &engine_nodes);
 
     string msg = StrCat("segment ", i, " consisting of ",
-                        converted_segments.at(i).size(), " nodes by ",
+                        converted_segments.at(i).nodes.size(), " nodes by ",
                         engine.engine_name);
     if (status.ok()) {
       LOG(INFO) << "Replaced " << msg << ".";
@@ -849,7 +857,7 @@ Status ConvertAfterShapes(const ConversionParams& params) {
     }
     if (VLOG_IS_ON(1)) {
       msg = "Segment consists of nodes: ";
-      for (const Node* node : converted_segments.at(i)) {
+      for (const Node* node : converted_segments.at(i).nodes) {
         StrAppend(&msg, node->name(), ", ");
       }
       VLOG(1) << msg;
@@ -858,7 +866,7 @@ Status ConvertAfterShapes(const ConversionParams& params) {
     // If status is ok, we successfully added the node to the graph and can
     // remove segment ops. Otherwise graph is not modified.
     if (status.ok()) {
-      for (const Node* node : converted_segments.at(i)) {
+      for (const Node* node : converted_segments.at(i).nodes) {
         graph.RemoveNode(const_cast<Node*>(node));
       }
     }

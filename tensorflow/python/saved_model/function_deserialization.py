@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import re
+from absl import logging
 
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.protobuf import saved_object_graph_pb2
@@ -32,7 +33,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
@@ -216,11 +216,14 @@ def recreate_function(saved_function, concrete_functions):
   Returns:
     A `Function`.
   """
+  if not saved_function.concrete_functions:
+    logging.warning("Could not find any concrete functions to restore for this "
+                    "SavedFunction object while loading. The function will not "
+                    "be callable.")
   # TODO(andresp): Construct a `Function` with the cache populated
   # instead of creating a new `Function` backed by a Python layer to
   # glue things together. Current approach is nesting functions deeper for each
   # serialization cycle.
-
   coder = nested_structure_coder.StructureCoder()
 
   # Note: handling method functions is tricky since make_decorator does not
@@ -237,7 +240,9 @@ def recreate_function(saved_function, concrete_functions):
       coder)
 
   def restored_function_body(*args, **kwargs):
-    """Calls a restored function."""
+    """Calls a restored function or raises an error if no matching function."""
+    if not saved_function.concrete_functions:
+      raise ValueError("Found zero restored functions for caller function.")
     # This is the format of function.graph.structured_input_signature. At this
     # point, the args and kwargs have already been canonicalized.
     inputs = (args, kwargs)

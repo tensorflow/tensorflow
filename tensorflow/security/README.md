@@ -10,6 +10,8 @@ in [SECURITY.md](https://github.com/tensorflow/tensorflow/blob/master/SECURITY.m
 
 | Advisory Number | Type               | Versions affected | Reported by           | Additional Information      |
 |-----------------|--------------------|:-----------------:|-----------------------|-----------------------------|
+| [TFSA-2020-028](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/security/advisory/tfsa-2020-028.md)   | Float cast overflow undefined behavior               | <= 2.3 | (Reported on GitHub) | [issue report](https://github.com/tensorflow/tensorflow/issues/42129) |
+| [TFSA-2020-027](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/security/advisory/tfsa-2020-027.md)   | Segfault in `tf.quantization.quantize_and_dequantize`| <= 2.3 | (Reported on GitHub) | [issue report](https://github.com/tensorflow/tensorflow/issues/42105) |
 | [TFSA-2020-026](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/security/advisory/tfsa-2020-026.md)   | Segfault in `tf.raw_ops.Switch` in eager mode                                             | 2.2.0, 2.3.0        | Aivul Team from Qihoo 360                     |  |
 | [TFSA-2020-025](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/security/advisory/tfsa-2020-025.md)   | Undefined behavior in `dlpack.to_dlpack`                                                  | 2.2.0, 2.3.0        | Aivul Team from Qihoo 360                     |  |
 | [TFSA-2020-024](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/security/advisory/tfsa-2020-024.md)   | Memory leak in `dlpack.to_dlpack`                                                  | 2.2.0, 2.3.0        | Aivul Team from Qihoo 360                     |  |

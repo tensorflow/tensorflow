@@ -125,7 +125,8 @@ class ExplicitBatchTest(TrtModeTestBase):
 
   def GetConversionParams(self, run_params):
     """Return a TrtConversionParams for test that enables explicit batch."""
-    return super(ExplicitBatchTest, self).GetConversionParams(run_params, False)
+    return super(ExplicitBatchTest, self).GetConversionParams(
+        run_params, implicit_batch=False)
 
   def ExpectedEnginesToBuild(self, run_params):
     """Check that the expected engine is built.

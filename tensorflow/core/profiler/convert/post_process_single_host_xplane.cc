@@ -37,8 +37,6 @@ void MergeHostPlanes(XSpace* space) {
       MergePlanes(*python_tracer_plane, host_plane);
     }
     SortXLinesBy(host_plane, XLinesComparatorByName());
-    // NOTE: RemovePlaneWithName might invalidate plane pointers. so do these
-    // at the last step.
     if (cupti_driver_api_plane) {
       RemovePlaneWithName(space, kCuptiDriverApiPlaneName);
     }

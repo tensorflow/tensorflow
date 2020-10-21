@@ -91,6 +91,10 @@
   `tf.config.experimental.enable_tensor_float_32_execution`.
 
 * `tf.distribute`:
+  * `MultiWorkerMirroredStrategy` is graduated out of experimental.
+    * Peer failure will no longer cause the cluster to hang.
+    * Major issues with saving are fixed.
+    * See [Multi-worker training with Keras](https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras) for a tutorial.
   * Deprecated `experimental_distribute_datasets_from_function` method and renamed it to `distribute_datasets_from_function` as it is no longer experimental.
 
 ## Bug Fixes and Other Changes
@@ -141,6 +145,10 @@
         ([CVE-2020-15212](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-15212),
         [CVE-2020-15213](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-15213),
         [CVE-2020-15214](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-15214))
+    *   Fixes a segfault in `tf.quantization.quantize_and_dequantize`
+        ([CVE-2020-15265](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-15265))
+    *   Fixes an undefined behavior float cast causing a crash
+        ([CVE-2020-15266](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-15266))
 *   TF Core:
     *   `tf.types.experimental.TensorLike` is a new `Union` type that can be
         used as type annotation for variables representing a Tensor or a value
@@ -208,7 +216,16 @@
         how many times the function is called, and independent of global seed
         settings.
 *   `tf.distribute`:
-    *   <ADD RELEASE NOTES HERE>
+    *   (Experimental) Parameter server training:
+        *   Replaced the existing
+            `tf.distribute.experimental.ParameterServerStrategy` symbol with
+            a new class that is for parameter server training in TF2. Usage with
+            the old symbol, usually with Estimator, should be replaced with
+            `tf.compat.v1.distribute.experimental.ParameterServerStrategy`.
+        *   Added `tf.distribute.experimental.coordinator.*` namespace,
+            including the main API `ClusterCoordinator` for coordinating the
+            training cluster, the related data structure `RemoteValue`
+            and `PerWorkerValue`.
 *   `tf.keras`:
     *   Improvements from the functional API refactoring:
         *   Functional model construction does not need to maintain a global

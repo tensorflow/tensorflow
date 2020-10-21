@@ -28,11 +28,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework.func_graph import FuncGraph
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_v2_func_graphs
+from tensorflow.python.util import keras_deps
 from tensorflow.python.util import tf_contextlib
 
 
 _EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE = None
-_KERAS_LAYER_CONTEXT_FUNCTION = None
 _DISABLE_LOWER_USING_SWITCH_MERGE = False
 
 
@@ -242,18 +242,11 @@ def _is_tpu_strategy(strategy):
           strategy.__class__.__name__.startswith("TPUStrategy"))
 
 
-def _register_keras_layer_context_function(func):
-  global _KERAS_LAYER_CONTEXT_FUNCTION
-  # TODO(scottzhu): Disable duplicated inject once keras is moved to
-  # third_party/py/keras.
-  _KERAS_LAYER_CONTEXT_FUNCTION = func
-
-
 def _is_building_keras_layer():
   # TODO(srbs): Remove this function when we no long support session with Keras.
-  global _KERAS_LAYER_CONTEXT_FUNCTION
-  if _KERAS_LAYER_CONTEXT_FUNCTION is not None:
-    return _KERAS_LAYER_CONTEXT_FUNCTION().layer is not None
+  keras_call_context_function = keras_deps.get_call_context_function()
+  if keras_call_context_function:
+    return keras_call_context_function().layer is not None
   else:
     return False
 

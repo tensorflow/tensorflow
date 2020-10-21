@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Module for `Client` and relevant cluster-worker related library.
+"""Module for `ClusterCoordinator` and relevant cluster-worker related library.
 
 This is currently under development and the API is subject to change.
 """
@@ -35,7 +35,7 @@ from six.moves import queue
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import parameter_server_strategy_v2
-from tensorflow.python.distribute.client import metric_utils
+from tensorflow.python.distribute.coordinator import metric_utils
 from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -48,6 +48,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 # Maximum time for failed worker to come back is 1 hour
 _WORKER_MAXIMUM_RECOVERY_SEC = 3600
@@ -56,9 +57,10 @@ _WORKER_MAXIMUM_RECOVERY_SEC = 3600
 # When the maximum queue size is reached, further schedule calls will become
 # blocking until some previously queued closures are executed on workers.
 # Note that using an "infinite" queue size can take a non-trivial portion of
-# memory, and even lead to client OOM. Modify the size to a smaller value for
-# client with constrained memory resource (only recommended for advanced users).
-# Also used in unit tests to ensure the correctness when the queue is full.
+# memory, and even lead to coordinator OOM. Modify the size to a smaller value
+# for coordinator with constrained memory resource (only recommended for
+# advanced users). Also used in unit tests to ensure the correctness when the
+# queue is full.
 _CLOSURE_QUEUE_MAX_SIZE = 256 * 1024
 
 # RPC error message from PS
@@ -99,18 +101,77 @@ class _RemoteValueStatus(enum.Enum):
   READY = "READY"
 
 
+@tf_export("distribute.experimental.coordinator.RemoteValue", v1=[])
 class RemoteValue(object):
   """An asynchronously available value of a remotely executed function.
 
-  `RemoteValue` class is used as the return value of `Client.schedule()` where
-  the underlying concrete value comes at a later time once the function has been
-  remotely executed. `RemoteValue` can be used as an input to a subsequent
-  function scheduled with `Client.schedule()`.
+  `tf.distribute.experimental.coordinator.RemoteValue` class is used as the
+  return value of
+  `tf.distribute.experimental.coordinator.ClusterCoordinator.schedule()` where
+  the underlying concrete value becomes available at a later time once the
+  function has been remotely executed. The underlying concrete value is the
+  `tf.Tensor.numpy()` result of the `tf.Tensor`, or the structure of
+  `tf.Tensor`s, returned from the `tf.function` that was scheduled.
 
-  Note: this class is not thread-safe.
+  `tf.distribute.experimental.coordinator.RemoteValue` to be used as an input to
+  a subsequent function scheduled with
+  `tf.distribute.experimental.coordinator.ClusterCoordinator.schedule()` is
+  currently not supported.
+
+  Example:
+
+  ```python
+  strategy = tf.distribute.experimental.ParameterServerStrategy(
+      cluster_resolver=...)
+  coordinator = (
+      tf.distribute.experimental.coordinator.ClusterCoordinator(strategy))
+
+  with strategy.scope():
+    v1 = tf.Variable(initial_value=0.0)
+    v2 = tf.Variable(initial_value=1.0)
+
+  @tf.function
+  def worker_fn():
+    v1.assign_add(0.1)
+    v2.assign_sub(0.2)
+    return v1.read_value() / v2.read_value()
+
+  result = coordinator.schedule(worker_fn)
+  # Note that `fetch()` gives the actual result instead of a `tf.Tensor`.
+  assert result.fetch() == 0.125
+
+  for _ in range(10):
+    # `worker_fn` will be run on arbitrary workers that are available. The
+    # `result` value will be non-deterministic because the workers are executing
+    # the functions asynchronously.
+    result = coordinator.schedule(worker_fn)
+  ```
   """
 
-  def __init__(self, closure, type_spec):
+  def fetch(self):
+    """Wait for the result of `RemoteValue` to be ready and return the result.
+
+    This makes the value concrete by copying the remote value to local.
+
+    Returns:
+      The actual output of the `tf.function` associated with this `RemoteValue`,
+      previously by a
+      `tf.distribute.experimental.coordinator.ClusterCoordinator.schedule` call.
+      This can be a single value, or a structure of values, depending on the
+      output of the `tf.function`.
+
+    Raises:
+      tf.errors.CancelledError: If the function that produces this `RemoteValue`
+        is aborted or cancelled due to failure, and the user should handle and
+        reschedule.
+    """
+    raise NotImplementedError("Must be implemented in subclasses.")
+
+
+class RemoteValueImpl(RemoteValue):
+  """Implementation of `RemoteValue`."""
+
+  def __init__(self, closure, type_spec):  # pylint: disable=super-init-not-called
     self._closure = closure
     # The type spec for this `RemoteValue` which is used to trace functions that
     # take this `RemoteValue` as input.
@@ -157,16 +218,6 @@ class RemoteValue(object):
     self._type_spec = func_graph.convert_structure_to_signature(type_spec)
 
   def fetch(self):
-    """Wait for the result of RemoteValue to be ready and return the result.
-
-    Returns:
-      The remote value, as a numpy data type (if scalar) or ndarray.
-
-    Raises:
-      tf.errors.CancelledError: If the function that produces this `RemoteValue`
-        is aborted or cancelled due to failure, and the user should handle and
-        reschedule.
-    """
     self._status_available_event.wait()
     if self._status is _RemoteValueStatus.ABORTED:
       raise errors.CancelledError(
@@ -241,8 +292,23 @@ def _maybe_as_type_spec(val):
     return val
 
 
+@tf_export("distribute.experimental.coordinator.PerWorkerValues", v1=[])
 class PerWorkerValues(object):
-  """Holds a list of per worker values."""
+  """A container that holds a list of values, one value per worker.
+
+  `tf.distribute.experimental.coordinator.PerWorkerValues` contains a collection
+  of values, where each of the values represents a resource that are located in
+  individual workers, and upon being used as one of the `args` or `kwargs` of
+  `tf.distribute.experimental.coordinator.ClusterCoordinator.schedule()`, the
+  value specific to a worker will be passed into the function being executed at
+  that particular worker.
+
+  Currently, the only supported path to create an object of
+  `tf.distribute.experimental.coordinator.PerWorkerValues` is through calling
+  `iter` on a `ClusterCoordinator.create_per_worker_dataset`-returned
+  distributed dataset instance. The mechanism to create a custom
+  `tf.distribute.experimental.coordinator.PerWorkerValues` is not yet supported.
+  """
 
   def __init__(self, values):
     self._values = tuple(values)
@@ -262,9 +328,10 @@ def _disallow_remote_value_as_input(structured):
 
   def _raise_if_remote_value(x):
     if isinstance(x, RemoteValue):
-      raise ValueError("RemoteValue cannot be used as an input to scheduled "
-                       "function. Please file a feature request if you need "
-                       "this feature.")
+      raise ValueError(
+          "`tf.distribute.experimental.coordinator.RemoteValue` used "
+          "as an input to scheduled function is not yet "
+          "supported.")
 
   nest.map_structure(_raise_if_remote_value, structured)
 
@@ -274,8 +341,8 @@ class Closure(object):
 
   def __init__(self, function, cancellation_mgr, args=None, kwargs=None):
     if not callable(function):
-      raise ValueError("Function passed to `Client.schedule` must be a "
-                       "callable object.")
+      raise ValueError("Function passed to `ClusterCoordinator.schedule` must "
+                       "be a callable object.")
     self._args = args or ()
     self._kwargs = kwargs or {}
 
@@ -287,9 +354,9 @@ class Closure(object):
       replica_kwargs = _select_worker_slice(0, self._kwargs)
 
       # Note: no need to handle function registration failure since this kind of
-      # failure will not raise exceptions as designed in the runtime. The client
-      # has to rely on subsequent operations that raise to catch function
-      # registration failure.
+      # failure will not raise exceptions as designed in the runtime. The
+      # coordinator has to rely on subsequent operations that raise to catch
+      # function registration failure.
 
       # Record the function tracing overhead. Note that we pass in the tracing
       # count of the def_function.Function as a state tracker, so that metrics
@@ -303,17 +370,18 @@ class Closure(object):
       self._function = cancellation_mgr.get_cancelable_function(
           concrete_function)
       self._output_remote_values = nest.map_structure(
-          lambda x: RemoteValue(self, x), concrete_function.structured_outputs)
+          lambda x: RemoteValueImpl(self, x),
+          concrete_function.structured_outputs)
     elif isinstance(function, tf_function.ConcreteFunction):
       self._function = cancellation_mgr.get_cancelable_function(function)
       self._output_remote_values = nest.map_structure(
-          lambda x: RemoteValue(self, x), function.structured_outputs)
+          lambda x: RemoteValueImpl(self, x), function.structured_outputs)
     else:
       # Regular python functions.
       self._function = function
       # TODO(yuefengz): maybe we should trace python functions if their inputs
       # are Python primitives, tensors and composite tensors.
-      self._output_remote_values = RemoteValue(self, None)
+      self._output_remote_values = RemoteValueImpl(self, None)
 
   def _fetch_output_remote_values(self):
     """Temporary method used to sync the scheduler."""
@@ -394,7 +462,7 @@ class _CoordinatedClosureQueue(object):
 
     if _CLOSURE_QUEUE_MAX_SIZE <= 0:
       logging.warning(
-          "In a `Client`, creating an infinite closure queue can "
+          "In a `ClusterCoordinator`, creating an infinite closure queue can "
           "consume a significant amount of memory and even lead to OOM.")
     self._queue = queue.Queue(maxsize=_CLOSURE_QUEUE_MAX_SIZE)
     self._error = None
@@ -430,10 +498,10 @@ class _CoordinatedClosureQueue(object):
     # The cancellation manager cannot be reused once cancelled. After all
     # closures (queued or inflight) are cleaned up, recreate the cancellation
     # manager with clean state.
-    # Note on thread-safety: this is triggered when one of theses client APIs
-    # are called: `schedule`, `wait`, and `done`. At the same time, no new
-    # closures can be constructed (which reads the _cancellation_mgr to get
-    # cancellable functions).
+    # Note on thread-safety: this is triggered when one of theses
+    # ClusterCoordinator APIs are called: `schedule`, `wait`, and `done`. At the
+    # same time, no new closures can be constructed (which reads the
+    # _cancellation_mgr to get cancellable functions).
     self._cancellation_mgr = cancellation.CancellationManager()
 
   def _raise_if_error(self):
@@ -742,8 +810,8 @@ class Worker(object):
 
   def _register_resource(self, resource_remote_value):
     if not isinstance(resource_remote_value, RemoteValue):
-      raise ValueError(
-          "Resource being registered is not of type `RemoteValue`.")
+      raise ValueError("Resource being registered is not of type "
+                       "`tf.distribute.experimental.coordinator.RemoteValue`.")
     self._resource_remote_value_refs.append(weakref.ref(resource_remote_value))
 
 
@@ -753,7 +821,7 @@ class Cluster(object):
   We assume all function errors are fatal and based on this assumption our
   error reporting logic is:
   1) Both `schedule` and `join` can raise a non-retryable error which is the
-  first error seen by the client from any previously scheduled functions.
+  first error seen by the coordinator from any previously scheduled functions.
   2) When an error is raised, there is no guarantee on how many previously
   scheduled functions have been executed; functions that have not been executed
   will be thrown away and marked as cancelled.
@@ -775,17 +843,17 @@ class Cluster(object):
 
     # Ignore PS failures reported by workers due to transient connection errors.
     # Transient connectivity issues between workers and PS are relayed by the
-    # workers to the client, leading the client to believe that there are PS
-    # failures. The difference between transient vs. permanent PS failure is the
-    # number of reports from the workers. When this env var is set to a positive
-    # integer K, the client ignores up to K reports of a failed PS task. I.e.,
-    # only when there are more than K trials of executing closures fail due to
-    # errors from the same PS instance do we consider the PS instance encounters
-    # a failure.
+    # workers to the coordinator, leading the coordinator to believe that there
+    # are PS failures. The difference between transient vs. permanent PS failure
+    # is the number of reports from the workers. When this env var is set to a
+    # positive integer K, the coordinator ignores up to K reports of a failed PS
+    # task, i.e., only when there are more than K trials of executing closures
+    # fail due to errors from the same PS instance do we consider the PS
+    # instance encounters a failure.
     # TODO(b/164279603): Remove this workaround when the underlying connectivity
     # issue in gRPC server is resolved.
-    self._transient_ps_failures_threshold = int(os.environ.get(
-        "TF_CLIENT_IGNORE_TRANSIENT_PS_FAILURES", 3))
+    self._transient_ps_failures_threshold = int(
+        os.environ.get("TF_COORDINATOR_IGNORE_TRANSIENT_PS_FAILURES", 3))
     self._potential_ps_failures_lock = threading.Lock()
     self._potential_ps_failures_count = [0] * self._num_ps
 
@@ -825,7 +893,7 @@ class Cluster(object):
       kwargs: Keyword arguments for `fn`.
 
     Returns:
-      A structure of `RemoteValue` object.
+      A `RemoteValue` object.
     """
     closure = Closure(
         function,
@@ -844,68 +912,124 @@ class Cluster(object):
     return self._closure_queue.done()
 
 
-class Client(object):
-  """An object to schedule and orchestrate remote function execution.
+@tf_export("distribute.experimental.coordinator.ClusterCoordinator", v1=[])
+class ClusterCoordinator(object):
+  """An object to schedule and coordinate remote function execution.
 
-  A `Client` object represents a program used to create dataset, schedule
-  functions to be executed, and fetch the results of the functions.
+  A `tf.distribute.experimental.coordinator.ClusterCoordinator` object
+  represents a program used to distribute dataset onto the workers, schedule
+  functions to be executed, and fetch the results of the functions. It expects
+  the cluster to contain some machines with processes running TensorFlow
+  servers.
 
-  Currently, `Client` is not supported to be used in a standalone manner.
-  It should be used in conjunction with `ParameterServerStrategyV2`.
+  Currently, `tf.distribute.experimental.coordinator.ClusterCoordinator` is not
+  supported to be used in a standalone manner. It should be used in conjunction
+  with a `tf.distribute` strategy that is designed to work with it. Currently,
+  only `tf.distribute.experimental.ParameterServerStrategy` is supported to work
+  with `tf.distribute.experimental.coordinator.ClusterCoordinator`.
+
+  __Fault tolerance__
+
+  `tf.distribute.experimental.coordinator.ClusterCoordinator`, when used with
+  `tf.distribute.experimental.ParameterServerStrategy`, comes with built-in
+  fault tolerance for worker failures. That is, when some workers are not
+  available for any reason to be reached from the coordinator, the training
+  progress continues to be made with the remaining operating workers, without
+  the need of any additional treatment in user code.
+
+  On the other hand, when a parameter server or the coordinator fails, a
+  `tf.errors.UnavailableError` is raised by `ClusterCoordinator.schedule` or
+  `ClusterCoordinator.join`. If any parameter server fails, the user should
+  restart the processes on the failed parameter servers when they become
+  available, *and* restart the process on the coordinator, so the coordinator
+  can re-create the variables on the parameter servers. If the coordinator fails
+  but all other machines continue to be operating, the user only needs to
+  restart the process on the coordinator, which will automatically connect to
+  the parameter servers and workers, and continue the progress.
+
+  It is thus essential that in user's custom training loop, a checkpoint file is
+  periodically saved, and restored at the start of the program.
+
+  * At-least-once semantics of `schedule`: `schedule` puts the `tf.function` in
+  a queue where it gets picked up by a worker to execute. If a worker picks up
+  a `tf.function`, has begun to execute it, but the worker process is
+  disconnected from the coordinator in the middle of execution, the
+  `tf.function` is deemed not completed, and is put back to the queue. This is
+  regardless of how much progress the `tf.function` has run. Once it is
+  re-queued, it will be picked up again by an arbitrary available worker at some
+  later time. As a result, the same function may be executed more than once, but
+  not less than once. If an `tf.keras.optimizers.Optimizer` is used,
+  `tf.keras.optimizers.Optimizer.iterations` roughly indicates the number of
+  times the gradients have been applied and can be used as an approximation of
+  the total number of steps. The number of times the function has been scheduled
+  by the `tf.distribute.experimental.coordinator.ClusterCoordinator`, on the
+  other hand, should not be indicative of actual steps run. See
+  `tf.distribute.experimental.coordinator.ClusterCoordinator.schedule` for more
+  information.
+
+  See `tf.distribute.experimental.ParameterServerStrategy` docstring for an
+  example usage of this API.
 
   This is currently under development, and the API as well as implementation
-  is subject to changes.
+  are subject to changes.
   """
 
   def __init__(self, strategy):
-    """Initialization of a `Client` instance.
-
-    This connects the client to remote workers and parameter servers, through
-    a `tf.config.experimental_connect_to_cluster` call.
+    """Initialization of a `ClusterCoordinator` instance.
 
     Args:
-      strategy: a `tf.distribute.Strategy` object. Currently, only
-        `ParameterServerStrategyV2` is supported.
+      strategy: a supported `tf.distribute.Strategy` object. Currently, only
+        `tf.distribute.experimental.ParameterServerStrategy` is supported.
 
     Raises:
       ValueError: if the strategy being used is not supported.
     """
     if not isinstance(strategy,
                       parameter_server_strategy_v2.ParameterServerStrategyV2):
-      raise ValueError("Only `ParameterServerStrategyV2` is supported in "
-                       "`Client` currently.")
+      raise ValueError(
+          "Only `tf.distribute.experimental.ParameterServerStrategy` "
+          "is supported to work with "
+          "`tf.distribute.experimental.coordinator.ClusterCoordinator` "
+          "currently.")
     self._strategy = strategy
     self.cluster = Cluster(strategy)
 
   @property
   def strategy(self):
+    """Returns the `Strategy` associated with the `ClusterCoordinator`."""
     return self._strategy
 
   def schedule(self, fn, args=None, kwargs=None):
-    """Schedules `fn` to be dispatched to a worker for execution asynchronously.
+    """Schedules `fn` to be dispatched to a worker for asynchronous execution.
 
     When calling `schedule` with a function `fn`, `fn` will be executed on a
     remote worker at some later time. The process is asynchronous, meaning
     `schedule` returns immediately, possibly without having the result ready
-    yet. `schedule` returns a structure of `RemoteValue` object, which wraps the
-    output of the function. Call `fetch()` on `RemoteValue` to wait for the
+    yet. `schedule` returns a
+    `tf.distribute.experimental.coordinator.RemoteValue` object, which wraps the
+    output of the function. After `schedule` is called, `fetch` can be called
+    on the `tf.distribute.experimental.coordinator.RemoteValue` to wait for the
     function execution to finish and retrieve its output from the remote worker.
+    On the other hand, call
+    `tf.distribute.experimental.coordinator.ClusterCoordinator.join` to wait for
+    all scheduled functions to finish execution before proceeding.
 
     `schedule` guarantees that `fn` will be executed on a worker at least once;
     it could be more than once if its corresponding worker fails in the middle
     of its execution. Note that since worker can fail at any point when
     executing the function, it is possible that the function is partially
-    executed, but `Client` guarantees that in those events, the function will
-    eventually be fully executed, possibly on a different worker that is
-    available.
+    executed, but `tf.distribute.experimental.coordinator.ClusterCoordinator`
+    guarantees that in those events, the function will eventually be fully
+    executed, possibly on a different worker that is available.
 
     If any previously scheduled function raises an error, `schedule` will fail
     by raising any one of those errors, and clear the errors collected so far.
     There are two implications when this happens: 1) user should call `schedule`
     with `fn` again to re-schedule, and 2) some of the previously scheduled
     functions may have not been executed. User can call `fetch` on the returned
-    `RemoteValue` to inspect if they have executed, failed, or cancelled, and
-    reschedule the corresponding function if needed.
+    `tf.distribute.experimental.coordinator.RemoteValue` to inspect if they have
+    executed, failed, or cancelled, and reschedule the corresponding function if
+    needed.
 
     When `schedule` raises, it guarantees that there is no function that is
     still being executed.
@@ -914,12 +1038,14 @@ class Client(object):
     execution, or priority of the workers.
 
     `args` and `kwargs` are the arguments passed into `fn`, when `fn` is
-    executed on a worker. They can be `PerWorkerValues`, which is a collection
-    of values, each of which represents a component specific to a worker; in
-    this case, the argument will be substituted with the corresponding component
-    on the target worker. Arguments that are not `PerWorkerValues` will be
-    passed into `fn` as-is. Currently, `RemoteValue` is not supported to be
-    input `args` or `kwargs`.
+    executed on a worker. They can be
+    `tf.distribute.experimental.coordinator.PerWorkerValues`, which is a
+    'collection of values, each of which represents a component specific to a
+    worker; in this case, the argument will be substituted with the
+    corresponding component on the target worker. Arguments that are not
+    `tf.distribute.experimental.coordinator.PerWorkerValues` will be passed into
+    `fn` as-is. Currently, `tf.distribute.experimental.coordinator.RemoteValue`
+    is not supported to be input `args` or `kwargs`.
 
     Args:
       fn: A `tf.function`; the function to be dispatched to a worker for
@@ -928,12 +1054,13 @@ class Client(object):
       kwargs: Keyword arguments for `fn`.
 
     Returns:
-      A structure of `RemoteValue` object.
+      A `tf.distribute.experimental.coordinator.RemoteValue` object that
+      represents the output of the function scheduled.
 
     Raises:
-      Exception: one of the exceptions caught by the client by any previously
-        scheduled function since the last time an error was thrown or since
-        the beginning of the program.
+      Exception: one of the exceptions caught by the coordinator by any
+        previously scheduled function since the last time an error was thrown or
+        since the beginning of the program.
     """
     # Slot variables are usually created during function tracing time; thus
     # `schedule` needs to be called within the `strategy.scope()`.
@@ -946,18 +1073,18 @@ class Client(object):
     If any previously scheduled function raises an error, `join` will fail by
     raising any one of those errors, and clear the errors collected so far. If
     this happens, some of the previously scheduled functions may have not been
-    executed. Users can call `fetch` on the returned `RemoteValue` to inspect if
-    they have executed, failed, or cancelled. If some that have been cancelled
-    need to be rescheduled, users should call `schedule` with the function
-    again.
+    executed. Users can call `fetch` on the returned
+    `tf.distribute.experimental.coordinator.RemoteValue` to inspect if they have
+    executed, failed, or cancelled. If some that have been cancelled need to be
+    rescheduled, users should call `schedule` with the function again.
 
     When `join` returns or raises, it guarantees that there is no function that
     is still being executed.
 
     Raises:
-      Exception: one of the exceptions caught by the client by any previously
-        scheduled function since the last time an error was thrown or since
-        the beginning of the program.
+      Exception: one of the exceptions caught by the coordinator by any
+        previously scheduled function since the last time an error was thrown or
+        since the beginning of the program.
     """
     self.cluster.join()
 
@@ -969,6 +1096,9 @@ class Client(object):
 
     When `done` returns True or raises, it guarantees that there is no function
     that is still being executed.
+
+    Returns:
+      Whether all the scheduled functions have finished execution.
     """
     return self.cluster.done()
 
@@ -978,12 +1108,15 @@ class Client(object):
     This creates the given dataset generated by dataset_fn on the workers
     and returns an object that represents the collection of those individual
     datasets. Calling `iter` on such collection of dataset returns a
-    `PerWorkerValues`, which is a collection of iterators, where the iterators
-    have been placed on respective workers.
+    `tf.distribute.experimental.coordinator.PerWorkerValues`, which is a
+    collection of iterators, where the iterators have been placed on respective
+    workers.
 
-    Calling `next` on this `PerWorkerValues` of iterators is currently
-    unsupported; it is meant to be passed as an argument into `Client.schedule`.
-    When the scheduled function is picked up and being executed by a worker, the
+    Calling `next` on this
+    `tf.distribute.experimental.coordinator.PerWorkerValues` of iterators is
+    currently unsupported; it is meant to be passed as an argument into
+    `tf.distribute.experimental.coordinator.ClusterCoordinator.schedule`. When
+    the scheduled function is picked up and being executed by a worker, the
     function will receive the individual iterator that corresponds to the
     worker, and now `next` can be called on iterator to get the next (batch or
     example) of data.
@@ -993,6 +1126,26 @@ class Client(object):
     examples may be skipped and not covered by other workers, if the dataset is
     sharded.
 
+    Example:
+
+    ```python
+    @tf.function
+    def worker_fn(iterator):
+      return next(iterator)
+
+    def dataset_fn():
+      return tf.data.from_tensor_slices([3] * 3)
+
+    strategy = tf.distribute.experimental.ParameterServerStrategy(
+        cluster_resolver=...)
+    coordinator = tf.distribute.experimental.coordinator.ClusterCoordinator(
+        strategy=strategy)
+    per_worker_dataset = coordinator.create_per_worker_dataset(dataset_fn)
+    per_worker_iter = iter(per_worker_dataset)
+    remote_value = coordinator.schedule(worker_fn, args=(per_worker_iter,))
+    assert remote_value.fetch() == 3
+    ```
+
     Args:
       dataset_fn: The dataset function that returns a dataset. This is to be
         executed on the workers.
@@ -1000,7 +1153,8 @@ class Client(object):
     Returns:
       An object that represents the collection of those individual
       datasets. `iter` is expected to be called on this object that returns
-      a `PerWorkerValues` of the iterators (that are on the workers).
+      a `tf.distribute.experimental.coordinator.PerWorkerValues` of the
+      iterators (that are on the workers).
     """
     input_workers = input_lib.InputWorkers([
         (w.device_name, [w.device_name]) for w in self.cluster.workers
@@ -1011,7 +1165,8 @@ class Client(object):
   def _create_per_worker_resources(self, fn, args=None, kwargs=None):
     """Synchronously create resources on the workers.
 
-    The resources are represented by `RemoteValue`s.
+    The resources are represented by
+    `tf.distribute.experimental.coordinator.RemoteValue`s.
 
     Args:
       fn: The function to be dispatched to all workers for execution
@@ -1020,7 +1175,9 @@ class Client(object):
       kwargs: Keyword arguments for `fn`.
 
     Returns:
-      A `PerWorkerValues` object, which wraps a tuple of `RemoteValue` objects.
+      A `tf.distribute.experimental.coordinator.PerWorkerValues` object, which
+      wraps a tuple of `tf.distribute.experimental.coordinator.RemoteValue`
+      objects.
     """
     results = []
     for w in self.cluster.workers:
@@ -1028,21 +1185,52 @@ class Client(object):
     return PerWorkerValues(tuple(results))
 
   def fetch(self, val):
-    """Blocking call to fetch results from `RemoteValue`s.
+    """Blocking call to fetch results from the remote values.
 
-    This returns the execution result of `RemoteValue`s; if not ready,
-    waiting for it while blocking the caller.
+    This is a wrapper around
+    `tf.distribute.experimental.coordinator.RemoteValue.fetch` for a
+    `RemoteValue` structure; it returns the execution results of
+    `RemoteValue`s. If not ready, wait for them while blocking the caller.
+
+    Example:
+    ```python
+    strategy = ...
+    coordinator = tf.distribute.experimental.coordinator.ClusterCoordinator(
+        strategy)
+
+    def dataset_fn():
+      return tf.data.Dataset.from_tensor_slices([1, 1, 1])
+
+    with strategy.scope():
+      v = tf.Variable(initial_value=0)
+
+    @tf.function
+    def worker_fn(iterator):
+      def replica_fn(x):
+        v.assign_add(x)
+        return v.read_value()
+      return strategy.run(replica_fn, args=(next(iterator),))
+
+    distributed_dataset = coordinator.create_per_worker_dataset(dataset_fn)
+    distributed_iterator = iter(distributed_dataset)
+    result = coordinator.schedule(worker_fn, args=(distributed_iterator,))
+    assert coordinator.fetch(result) == 1
+    ```
 
     Args:
       val: The value to fetch the results from. If this is structure of
-        `RemoteValue`, `fetch()` will be called on the individual `RemoteValue`
-        to get the result.
+        `tf.distribute.experimental.coordinator.RemoteValue`, `fetch()` will be
+        called on the individual
+        `tf.distribute.experimental.coordinator.RemoteValue` to get the result.
 
     Returns:
-      If `val` is a `RemoteValue` or a structure of `RemoteValue`s, returns
-      the fetched `RemoteValue` value immediately if it's available, or blocks
-      the call until it's available, and returns the fetched `RemoteValue`
-      values with the same structure. If `val` is other types, return (`val`,).
+      If `val` is a `tf.distribute.experimental.coordinator.RemoteValue` or a
+      structure of `tf.distribute.experimental.coordinator.RemoteValue`s,
+      return the fetched `tf.distribute.experimental.coordinator.RemoteValue`
+      values immediately if they are available, or block the call until they are
+      available, and return the fetched
+      `tf.distribute.experimental.coordinator.RemoteValue` values with the same
+      structure. If `val` is other types, return it as-is.
     """
 
     def _maybe_fetch(val):
@@ -1052,10 +1240,7 @@ class Client(object):
         return val
 
     # TODO(yuefengz): we should fetch values in a batch.
-    result = nest.map_structure(_maybe_fetch, val)
-    if not isinstance(result, tuple):
-      return (result,)
-    return result
+    return nest.map_structure(_maybe_fetch, val)
 
 
 # pylint: disable=missing-function-docstring
@@ -1075,13 +1260,14 @@ def handle_parameter_server_failure():
 class _PerWorkerDistributedDataset(object):
   """Represents worker-distributed datasets created from dataset function."""
 
-  def __init__(self, dataset_fn, input_workers, client):
+  def __init__(self, dataset_fn, input_workers, coordinator):
     """Makes an iterable from datasets created by the given function.
 
     Args:
       dataset_fn: A function that returns a `Dataset`.
       input_workers: an `InputWorkers` object.
-      client: a `Client` object, used to create dataset resources.
+      coordinator: a `ClusterCoordinator` object, used to create dataset
+        resources.
     """
     def disallow_variable_creation(next_creator, **kwargs):
       raise ValueError("Creating variables in `dataset_fn` is not allowed.")
@@ -1094,7 +1280,7 @@ class _PerWorkerDistributedDataset(object):
         dataset_fn = def_function.function(dataset_fn).get_concrete_function()
     self._dataset_fn = dataset_fn
     self._input_workers = input_workers
-    self._client = client
+    self._coordinator = coordinator
     self._element_spec = None
 
   def __iter__(self):
@@ -1112,7 +1298,7 @@ class _PerWorkerDistributedDataset(object):
     # If _PerWorkerDistributedDataset.__iter__ is called multiple
     # times, for the same object it should only create and register resource
     # once. Using object id to distinguish different iterator resources.
-    per_worker_iterator = self._client._create_per_worker_resources(
+    per_worker_iterator = self._coordinator._create_per_worker_resources(
         _create_per_worker_iterator)
 
     # Setting type_spec of each RemoteValue so that functions taking these
@@ -1131,7 +1317,7 @@ class _PerWorkerDistributedDataset(object):
 
 
 class _PerWorkerDistributedIterator(PerWorkerValues):
-  """Distributed iterator for `Client`."""
+  """Distributed iterator for `ClusterCoordinator`."""
 
   def __next__(self):
     return self.get_next()

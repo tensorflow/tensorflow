@@ -23,6 +23,7 @@ import functools
 import gc
 import os
 
+from absl import logging
 from tensorflow.core.framework import versions_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
@@ -220,6 +221,12 @@ class _SaveableView(object):
               function._list_all_concrete_functions_for_serialization())  # pylint: disable=protected-access
         else:
           concrete_functions = [function]
+        if not concrete_functions:
+          logging.warning(
+              "No concrete functions found for untraced function `%s` while "
+              "saving. This function will not be callable after loading.",
+              function._name)
+
         for concrete_function in concrete_functions:
           if concrete_function.name not in seen_function_names:
             seen_function_names.add(concrete_function.name)

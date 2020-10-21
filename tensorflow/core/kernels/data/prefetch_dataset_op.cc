@@ -369,6 +369,11 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         }
         *out_tensors = std::move(buffer_.front().value);
         RecordBufferDequeue(ctx, *out_tensors);
+      } else {
+        // If status not ok, we still record the dequeue event to make sure each
+        // enqueue event is paired with a dequeue event even in the presence of
+        // errors.
+        RecordBufferDequeue(ctx, buffer_.front().value);
       }
       if (legacy_autotune_) {
         auto_tuner_.RecordConsumption(buffer_.size());

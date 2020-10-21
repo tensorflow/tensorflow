@@ -362,7 +362,8 @@ class Model(training_lib.Model):
     if isinstance(self._distribution_strategy,
                   (parameter_server_strategy.ParameterServerStrategyV1,
                    parameter_server_strategy.ParameterServerStrategy)):
-      raise NotImplementedError('ParameterServerStrategy currently only works '
+      raise NotImplementedError('`tf.compat.v1.distribute.experimental.Paramet'
+                                'erServerStrategy` currently only works '
                                 'with the tf.Estimator API')
 
     if not self._experimental_run_tf_function:

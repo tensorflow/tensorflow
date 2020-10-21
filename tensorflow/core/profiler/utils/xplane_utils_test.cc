@@ -56,17 +56,28 @@ TEST(XPlaneUtilsTest, RemovePlaneWithName) {
   RemovePlaneWithName(&space, "non-exist");
   EXPECT_EQ(space.planes_size(), 0);
 
-  space.add_planes()->set_name("p1");
-  space.add_planes()->set_name("p2");
-  space.add_planes()->set_name("p3");
+  auto* p1 = space.add_planes();
+  p1->set_name("p1");
+  auto* p2 = space.add_planes();
+  p2->set_name("p2");
+  auto* p3 = space.add_planes();
+  p3->set_name("p3");
+
   RemovePlaneWithName(&space, "non-exist");
   EXPECT_EQ(space.planes_size(), 3);
+
   RemovePlaneWithName(&space, "p2");
   EXPECT_EQ(space.planes_size(), 2);
+  EXPECT_EQ(p1, FindPlaneWithName(space, "p1"));
+  EXPECT_EQ(p3, FindPlaneWithName(space, "p3"));
+
   RemovePlaneWithName(&space, "p1");
   EXPECT_EQ(space.planes_size(), 1);
+  EXPECT_EQ(p3, FindPlaneWithName(space, "p3"));
+
   RemovePlaneWithName(&space, "p1");
   EXPECT_EQ(space.planes_size(), 1);
+
   RemovePlaneWithName(&space, "p3");
   EXPECT_EQ(space.planes_size(), 0);
 }

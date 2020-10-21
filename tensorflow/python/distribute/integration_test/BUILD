@@ -9,6 +9,9 @@ package(
 distribute_py_test(
     name = "saved_model_test",
     srcs = ["saved_model_test.py"],
+    tags = [
+        "no_windows",  # TODO(b/171350360)
+    ],
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:lookup_ops",

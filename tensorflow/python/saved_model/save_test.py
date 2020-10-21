@@ -289,6 +289,29 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
     save.save(model, save_dir)
 
+  def test_save_function_no_trace(self):
+
+    class ObjWithFunction(module.Module):
+
+      @def_function.function
+      def foo(self, a):
+        return a
+
+      @def_function.function
+      def bar(self, a):
+        return a + 1
+
+    root = ObjWithFunction()
+    root.bar(1)
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    with self.assertLogs(level="WARNING") as logs:
+      save.save(root, save_dir)
+
+    expected_message = (
+        "WARNING:absl:No concrete functions found for untraced function `foo` "
+        "while saving. This function will not be callable after loading.")
+    self.assertIn(expected_message, logs.output)
+
   def test_find_default_save_function(self):
 
     class ObjWithDefaultSignature(util.Checkpoint):

@@ -26,6 +26,7 @@ from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.module import module
@@ -62,6 +63,39 @@ def _load_and_run(
       output_dict[output_name] = session.graph.get_tensor_by_name(
           output_tensor_info.name)
     return session.run(output_dict, feed_dict=feed_dict)
+
+
+class PartitionerTest(test.TestCase):
+
+  def test_fixed_shards_partitioner(self):
+    partitioner = sharded_variable.FixedShardsPartitioner(num_shards=2)
+    got = partitioner(tensor_shape.TensorShape([10, 3]), dtypes.float32)
+    self.assertAllEqual(got, [2, 1])
+
+  def test_min_size_partitioner(self):
+    partitioner = sharded_variable.MinSizePartitioner(
+        min_shard_bytes=4, max_shards=2)
+    got = partitioner(tensor_shape.TensorShape([6, 1]), dtypes.float32)
+    self.assertAllEqual(got, [2, 1])
+
+    partitioner = sharded_variable.MinSizePartitioner(
+        min_shard_bytes=4, max_shards=10)
+    got = partitioner(tensor_shape.TensorShape([6, 1]), dtypes.float32)
+    self.assertAllEqual(got, [6, 1])
+
+  def test_max_size_partitioner(self):
+    partitioner = sharded_variable.MaxSizePartitioner(max_shard_bytes=4)
+    got = partitioner(tensor_shape.TensorShape([6, 1]), dtypes.float32)
+    self.assertAllEqual(got, [6, 1])
+
+    partitioner = sharded_variable.MaxSizePartitioner(
+        max_shard_bytes=4, max_shards=2)
+    got = partitioner(tensor_shape.TensorShape([6, 1]), dtypes.float32)
+    self.assertAllEqual(got, [2, 1])
+
+    partitioner = sharded_variable.MaxSizePartitioner(max_shard_bytes=1024)
+    got = partitioner(tensor_shape.TensorShape([6, 1]), dtypes.float32)
+    self.assertAllEqual(got, [1, 1])
 
 
 class ShardedVariableTest(test.TestCase):
