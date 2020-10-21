@@ -1,4 +1,4 @@
-path: "tensorflow.distribute.experimental.partitioners.FixedShardedPartitioner"
+path: "tensorflow.distribute.experimental.partitioners.FixedShardsPartitioner"
 tf_class {
   is_instance: "<class \'tensorflow.python.distribute.sharded_variable.FixedShardsPartitioner\'>"
   is_instance: "<class \'tensorflow.python.distribute.sharded_variable.Partitioner\'>"

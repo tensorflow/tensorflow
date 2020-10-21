@@ -1,7 +1,7 @@
 path: "tensorflow.distribute.experimental.partitioners"
 tf_module {
   member {
-    name: "FixedShardedPartitioner"
+    name: "FixedShardsPartitioner"
     mtype: "<type \'type\'>"
   }
   member {

@@ -70,8 +70,7 @@ class Partitioner(object):
     raise NotImplementedError
 
 
-@tf_export(
-    'distribute.experimental.partitioners.FixedShardedPartitioner', v1=[])
+@tf_export('distribute.experimental.partitioners.FixedShardsPartitioner', v1=[])
 class FixedShardsPartitioner(Partitioner):
   """Partitioner that allocates a fixed number of shards.
 
