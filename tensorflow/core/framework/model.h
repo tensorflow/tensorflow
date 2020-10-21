@@ -251,6 +251,12 @@ class Node {
   // Returns the node output.
   Node* output() const { return output_; }
 
+  // Returns the parameter value.
+  double parameter_value(const string& name) const TF_LOCKS_EXCLUDED(mu_) {
+    tf_shared_lock l(mu_);
+    return parameters_.at(name)->state->value;
+  }
+
   // Returns the aggregate processing time.
   int64 processing_time() const TF_LOCKS_EXCLUDED(mu_) {
     return processing_time_;
