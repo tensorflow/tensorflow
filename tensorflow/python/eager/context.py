@@ -283,7 +283,8 @@ class LogicalDeviceConfiguration(
 
 @tf_export("config.PhysicalDevice")
 class PhysicalDevice(
-    collections.namedtuple("PhysicalDevice", ["name", "device_type", "subdevice_type"])):
+    collections.namedtuple("PhysicalDevice",
+                           ["name", "device_type", "subdevice_type"])):
   """Abstraction for a locally visible physical device.
 
   TensorFlow can utilize various devices such as the CPU or multiple GPUs
@@ -1258,7 +1259,8 @@ class Context(object):
           name = device_spec
           device_type = device_spec.split(":")[1]
           subdevice_type = device_spec.split(":")[1]
-        physical_devices.append(PhysicalDevice(name, device_type, subdevice_type))
+        physical_devices.append(PhysicalDevice(name, device_type,
+                                               subdevice_type))
     return physical_devices
 
   def _initialize_physical_devices(self, reinitialize=False):
