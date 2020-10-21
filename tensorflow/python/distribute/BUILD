@@ -1901,7 +1901,6 @@ tf_py_test(
         "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python:init_ops_v2",
         "//tensorflow/python:linalg_ops_impl",
-        "//tensorflow/python:partitioned_variables",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
