@@ -496,9 +496,6 @@ Status TpuCompileOpKernelCommon::OptimizeGraph(
   opts.set_do_common_subexpression_elimination(false);
   opts.set_do_function_inlining(true);
   opts.set_do_constant_folding(!flags->tf_xla_disable_constant_folding);
-  // Our constant folding is mainly for helping shape inference, so we do not
-  // need to fold large constant values.
-  opts.set_max_folded_constant_in_bytes(1024);
   GraphOptimizer optimizer(opts);
   {
     // Performs a first function inlining pass before shape inference, since
@@ -517,8 +514,7 @@ Status TpuCompileOpKernelCommon::OptimizeGraph(
     // Converts the GraphShapeInfo into the form needed by the constant-folding
     // pass of the optimizer.
     std::unordered_map<string, std::vector<PartialTensorShape>> shape_map;
-    TF_RETURN_IF_ERROR(RunShapeInferenceOnComputation(
-        metadata, arg_shapes, graph->get(), flr, &shape_info));
+    ConvertGraphShapeInfoToShapeMap(**graph, shape_info, &shape_map);
     optimizer_opts.shape_map = &shape_map;
     optimizer.Optimize(flr, flr->env(), flr->device(), graph, optimizer_opts);
   }

@@ -628,7 +628,9 @@ def _wrap_activity_regularizer(layer):
   return def_function.Function(
       layer._activity_regularizer,
       '{}_activity_regularizer'.format(layer.name),
-      input_signature=[tensor_spec.TensorSpec(None, layer.dtype or K.floatx())])
+      input_signature=[
+          tensor_spec.TensorSpec(None, layer._compute_dtype or K.floatx())
+      ])
   # pylint: enable=protected-access
 
 

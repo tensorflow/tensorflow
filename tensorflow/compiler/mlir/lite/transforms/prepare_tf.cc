@@ -740,31 +740,6 @@ struct ConvertTFBroadcastTo : public RewritePattern {
   }
 };
 
-struct ConvertFusedBatchNorm : public OpRewritePattern<TF::FusedBatchNormOp> {
-  explicit ConvertFusedBatchNorm(MLIRContext *context)
-      : OpRewritePattern<TF::FusedBatchNormOp>(context) {}
-
-  LogicalResult matchAndRewrite(TF::FusedBatchNormOp tf_fused_batch_norm_op,
-                                PatternRewriter &rewriter) const override {
-    auto new_result_types =
-        llvm::to_vector<6>(tf_fused_batch_norm_op.getResultTypes());
-    // reserve_space_3
-    new_result_types.push_back(
-        UnrankedTensorType::get(FloatType::getF32(rewriter.getContext())));
-
-    OperationState new_state(tf_fused_batch_norm_op.getLoc(),
-                             TF::FusedBatchNormV3Op::getOperationName(),
-                             tf_fused_batch_norm_op.getOperands(),
-                             new_result_types,
-                             tf_fused_batch_norm_op.getAttrs());
-    Operation *tf_fused_batch_norm_op_v3 = rewriter.createOperation(new_state);
-
-    rewriter.replaceOp(tf_fused_batch_norm_op,
-                       tf_fused_batch_norm_op_v3->getResults().drop_back());
-    return success();
-  }
-};
-
 // The below pattern is equivalent to the DRR rule below
 // The checks are dependent on generated values, so we can't add
 // the checks on intermediate values, ideally we should find equivalent
@@ -1202,7 +1177,6 @@ void PrepareTFPass::runOnFunction() {
   patterns.insert<ConvertTFDilatedConvOp<TF::Conv2DOp>, FusedBatchNormV3Pat,
                   ConvertTFDilatedConvOp<TF::DepthwiseConv2dNativeOp>>(ctx);
 
-  patterns.insert<ConvertFusedBatchNorm>(ctx);
   TFL::populateWithGenerated(ctx, patterns);
   // TODO(karimnosseir): Split to separate pass probably after
   // deciding on long term plan for this optimization.

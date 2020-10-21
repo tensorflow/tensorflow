@@ -45,8 +45,9 @@ cc_library(
 )
 
 filegroup(
-    name = "single_threaded_runtime_srcs",
+    name = "runtime_srcs",
     srcs = [
+        # Single-threaded support.
         "runtime_fp16.cc",
         "runtime_key_value_sort.cc",
         "runtime_pow.cc",
@@ -54,13 +55,20 @@ filegroup(
         "runtime_single_threaded_fft.cc",
         "runtime_single_threaded_matmul.cc",
         "runtime_topk.cc",
+    ] + [
+        # Multi-threaded support.
+        "runtime_conv2d.cc",
+        "runtime_fft.cc",
+        "runtime_matmul.cc",
+        "runtime_fork_join.cc",
     ],
     visibility = [":friends"],
 )
 
 filegroup(
-    name = "single_threaded_runtime_hdrs",
+    name = "runtime_hdrs",
     srcs = [
+        # Single-threaded support.
         "runtime_conv2d_impl.h",
         "runtime_fft_impl.h",
         "runtime_fp16.h",
@@ -70,6 +78,13 @@ filegroup(
         "runtime_single_threaded_fft.h",
         "runtime_single_threaded_matmul.h",
         "runtime_topk.h",
+    ] + [
+        # Multi-threaded support.
+        "runtime_conv2d.h",
+        "runtime_fft.h",
+        "runtime_fork_join.h",
+        "runtime_lightweight_check.h",
+        "runtime_matmul.h",
     ],
     visibility = [":friends"],
 )

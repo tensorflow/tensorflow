@@ -1421,5 +1421,198 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
         input_context=distribution.extended._make_input_context())
 
 
+class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
+                                       parameterized.TestCase):
+  """Tests for PER_WORKER and PER_REPLICA's InputOptions variants."""
+
+  def setUp(self):
+    context._reset_context()
+    strategy_combinations.set_virtual_cpus_to_at_least(3)
+    super(DistributedIteratorPerDeviceTest, self).setUp()
+
+  @combinations.generate(
+      combinations.combine(
+          input_options=[
+              distribute_lib.InputOptions(
+                  experimental_place_dataset_on_device=False,
+                  experimental_prefetch_to_device=True,
+                  experimental_replication_mode=distribute_lib
+                  .InputReplicationMode.PER_WORKER),
+              distribute_lib.InputOptions(
+                  experimental_place_dataset_on_device=False,
+                  experimental_prefetch_to_device=True,
+                  experimental_replication_mode=distribute_lib
+                  .InputReplicationMode.PER_REPLICA),
+          ],
+          mode=["eager"],
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_two_gpus,
+              strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          ]))
+  def testDevicePlacementForPerWorkerValuesWithPrefetch(self, distribution,
+                                                        input_options):
+
+    def dataset_fn(input_context):  # pylint: disable=[unused-argument]
+      return dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
+
+    ds = distribution.experimental_distribute_datasets_from_function(
+        dataset_fn, input_options)
+
+    for x in ds:
+      assert x.values[0].device == distribution.extended.worker_devices[0]
+      assert x.values[0].backing_device == distribution.extended.worker_devices[
+          0]
+      assert x.values[1].device == distribution.extended.worker_devices[1]
+      assert x.values[1].backing_device == distribution.extended.worker_devices[
+          1]
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_two_gpus,
+              strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          ],
+          input_options=[
+              distribute_lib.InputOptions(
+                  experimental_place_dataset_on_device=False,
+                  experimental_prefetch_to_device=False,
+                  experimental_replication_mode=distribute_lib
+                  .InputReplicationMode.PER_WORKER)
+          ],
+          mode=["eager"],
+      ))
+  def testDevicePlacementForPerWorkerValuesWithoutPrefetch(
+      self, distribution, input_options):
+
+    def dataset_fn(input_context):
+      return dataset_ops.Dataset.from_tensor_slices(
+          np.full(4, input_context.input_pipeline_id))
+
+    ds = distribution.experimental_distribute_datasets_from_function(
+        dataset_fn, input_options)
+
+    for x in ds:
+      x = distribution.run(lambda inputs: inputs, args=(x,))
+      assert x.values[
+          0].device == "/job:localhost/replica:0/task:0/device:CPU:0"
+      assert x.values[
+          0].backing_device == "/job:localhost/replica:0/task:0/device:CPU:0"
+      assert x.values[
+          1].device == "/job:localhost/replica:0/task:0/device:CPU:0"
+      assert x.values[
+          1].backing_device == "/job:localhost/replica:0/task:0/device:CPU:0"
+
+  @combinations.generate(
+      combinations.combine(
+          input_options=[
+              distribute_lib.InputOptions(
+                  experimental_place_dataset_on_device=True,
+                  experimental_prefetch_to_device=False,
+                  experimental_replication_mode=distribute_lib
+                  .InputReplicationMode.PER_WORKER),
+              distribute_lib.InputOptions(
+                  experimental_place_dataset_on_device=True,
+                  experimental_prefetch_to_device=True,
+                  experimental_replication_mode=distribute_lib
+                  .InputReplicationMode.PER_REPLICA)
+          ],
+          mode=["eager"],
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_two_gpus,
+              strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          ]))
+  def testDevicePlacementForInvalidCombinations(self, distribution,
+                                                input_options):
+
+    def dataset_fn(input_context):
+      return dataset_ops.Dataset.from_tensor_slices(
+          np.full(4, input_context.input_pipeline_id))
+
+    with self.assertRaises(ValueError):
+      distribution.experimental_distribute_datasets_from_function(
+          dataset_fn, input_options)
+
+  @combinations.generate(
+      combinations.combine(
+          input_options=[
+              distribute_lib.InputOptions(
+                  experimental_place_dataset_on_device=False,
+                  experimental_prefetch_to_device=False,
+                  experimental_replication_mode=distribute_lib
+                  .InputReplicationMode.PER_WORKER),
+              distribute_lib.InputOptions(
+                  experimental_place_dataset_on_device=False,
+                  experimental_prefetch_to_device=True,
+                  experimental_replication_mode=distribute_lib
+                  .InputReplicationMode.PER_WORKER),
+          ],
+          mode=["eager"],
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_two_gpus,
+              strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          ]))
+  def testOutputValuesForPerWorkerInputOptions(self, distribution,
+                                               input_options):
+
+    def dataset_fn(input_context):
+      return dataset_ops.Dataset.from_tensor_slices(
+          np.arange(1, 11).reshape(
+              (2, 5)) * (input_context.input_pipeline_id + 1))
+
+    ds = distribution.experimental_distribute_datasets_from_function(
+        dataset_fn, input_options)
+
+    # validating the values
+    x = next(iter(ds))
+    assert np.array_equal(x.values[0].numpy(), np.array([1, 2, 3, 4, 5]))
+    assert np.array_equal(x.values[1].numpy(), np.array([6, 7, 8, 9, 10]))
+
+  @combinations.generate(
+      combinations.combine(
+          input_options=[
+              distribute_lib.InputOptions(
+                  experimental_place_dataset_on_device=True,
+                  experimental_prefetch_to_device=False,
+                  experimental_replication_mode=distribute_lib
+                  .InputReplicationMode.PER_REPLICA),
+              distribute_lib.InputOptions(
+                  experimental_place_dataset_on_device=False,
+                  experimental_prefetch_to_device=False,
+                  experimental_replication_mode=distribute_lib
+                  .InputReplicationMode.PER_REPLICA),
+              distribute_lib.InputOptions(
+                  experimental_place_dataset_on_device=False,
+                  experimental_prefetch_to_device=True,
+                  experimental_replication_mode=distribute_lib
+                  .InputReplicationMode.PER_REPLICA),
+          ],
+          mode=["eager"],
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_two_gpus,
+              strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          ]))
+  def testOutputValuesForPerReplicaInputOptions(self, distribution,
+                                                input_options):
+
+    def dataset_fn(input_context):
+      return dataset_ops.Dataset.from_tensor_slices(
+          np.arange(1, 10) * (input_context.input_pipeline_id + 1))
+
+    ds = distribution.experimental_distribute_datasets_from_function(
+        dataset_fn, input_options)
+    expected = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9])
+    for i, x in enumerate(ds):
+      # validating the values
+      assert x.values[0].numpy() == expected[i]
+      assert x.values[1].numpy() == expected[i] * 2
+      loop_num = i
+    assert loop_num == len(expected) - 1
+
+
 if __name__ == "__main__":
   test_util.main()

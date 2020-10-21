@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
+namespace tfr {
 
 // An optimization pass that decompose the composite ops in a module according
 // to the decomposition library. Currently the decomposition library is loaded
@@ -42,6 +43,7 @@ class CompositeOpExpansion : public EagerOpRewrite {
   }
 };
 
+}  // namespace tfr
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TFR_INTEGRATION_NODE_EXPANSION_PASS_H_

@@ -150,7 +150,7 @@ Status DataServiceWorkerImpl::EnsureTaskInitialized(
     case DISTRIBUTED_EPOCH: {
       auto split_provider = absl::make_unique<DataServiceSplitProvider>(
           config_.dispatcher_address(), config_.protocol(),
-          task.task_def.job_id());
+          task.task_def.job_id(), config_.dispatcher_timeout_ms());
       TF_RETURN_IF_ERROR(task.dataset->MakeIterator(std::move(split_provider),
                                                     &task.iterator));
       break;

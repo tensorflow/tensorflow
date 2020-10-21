@@ -462,6 +462,9 @@ class MemorySpaceAssignment {
     // max_repacks is greater than 0.
     MemorySpaceAssignmentRepacker* repacker = nullptr;
 
+    // This is only useful for testing, repack after every allocation.
+    bool repack_after_every_allocation = false;
+
     // If true, tries allocating buffers across (e.g., before and inside a while
     // loop body) sequential calls (kWhile, kCall, and kConditional).
     bool allocate_across_sequential_calls = false;
@@ -1200,6 +1203,11 @@ class AlternateMemoryBestFitHeap
   // if found.
   absl::optional<RequiredMemoryAssignment> AliasedRequiredAssignmentForUse(
       const AllocationValue::Use& use) const;
+
+  // Goes through the colocated intervals and adds any required assignment.
+  void AddRequiredAssignmentsForColocatedIntervals(
+      absl::Span<const AlternateMemoryBestFitHeap::BufferInterval* const>
+          colocated_intervals);
 
   // Propagates aliased required assignment for a given position.
   void AddAliasedRequiredAssignment(

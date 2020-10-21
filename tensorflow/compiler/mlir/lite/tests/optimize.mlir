@@ -991,6 +991,16 @@ func @Relu(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
   // CHECK: return %[[RESULT]]
 }
 
+// CHECK-LABEL: Relu_bf16
+func @Relu_bf16(%arg0: tensor<2x3xbf16>) -> tensor<2x3xbf16> {
+  %cst = constant dense<0.0> : tensor<2x3xbf16>
+  %0 = "tfl.maximum"(%arg0, %cst) : (tensor<2x3xbf16>, tensor<2x3xbf16>) -> tensor<2x3xbf16>
+  return %0 : tensor<2x3xbf16>
+
+  // CHECK: %[[RESULT:.*]] = "tfl.relu"(%arg0)
+  // CHECK: return %[[RESULT]]
+}
+
 // CHECK-LABEL: Relu1
 func @Relu1(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
   %cst = constant dense<-1.0> : tensor<f32>

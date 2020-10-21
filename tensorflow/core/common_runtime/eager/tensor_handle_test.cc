@@ -408,4 +408,63 @@ TEST_F(RemoteTensorHandleTest, UnknownRemoteDevice) {
   context->Unref();
 }
 
+TEST(TensorHandle_DeviceNameTest, OnLocalDevice) {
+  std::vector<std::unique_ptr<Device>> devices;
+  devices.emplace_back(
+      CreateDevice("CPU", "/job:localhost/replica:0/task:0/device:CPU:0"));
+  devices.emplace_back(
+      CreateDevice("GPU", "/job:localhost/replica:0/task:0/device:GPU:0"));
+  StaticDeviceMgr local_device_mgr(std::move(devices));
+  auto ctx = new EagerContext(
+      SessionOptions(),
+      tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT, false,
+      false, &local_device_mgr, false, nullptr, nullptr);
+
+  Device* dcpu = local_device_mgr.ListDevices()[0];
+  Device* dgpu = local_device_mgr.ListDevices()[1];
+  tensorflow::DataType dtype = DT_RESOURCE;
+  TensorShape shape = {2};
+  Tensor tcpu(dtype, shape);
+  Tensor tgpu(dtype, shape);
+  Status s;
+
+  TensorHandle* th_cpu =
+      TensorHandle::CreateLocalHandle(std::move(tcpu), dcpu, dcpu, dcpu, ctx);
+  const char* device_name = th_cpu->DeviceName(&s);
+  TF_EXPECT_OK(s);
+  ASSERT_TRUE(absl::StrContains(device_name, "CPU")) << device_name;
+  const char* backing_device_name = th_cpu->BackingDeviceName(&s);
+  TF_EXPECT_OK(s);
+  ASSERT_TRUE(absl::StrContains(backing_device_name, "CPU"))
+      << backing_device_name;
+  const char* device_type = th_cpu->DeviceType(&s);
+  TF_EXPECT_OK(s);
+  ASSERT_TRUE(absl::StrContains(device_type, "CPU")) << device_type;
+  int device_id = th_cpu->DeviceId(&s);
+  TF_EXPECT_OK(s);
+  ASSERT_EQ(0, device_id) << device_id;
+
+  TensorHandle* th_gpu =
+      TensorHandle::CreateLocalHandle(std::move(tgpu), dgpu, dgpu, dgpu, ctx);
+  device_name = th_gpu->DeviceName(&s);
+  TF_EXPECT_OK(s);
+  ASSERT_TRUE(absl::StrContains(device_name, "GPU")) << device_name;
+  backing_device_name = th_gpu->BackingDeviceName(&s);
+  TF_EXPECT_OK(s);
+  std::cout << "backing_device_name for GPU: " << backing_device_name
+            << std::endl;
+  ASSERT_TRUE(absl::StrContains(backing_device_name, "GPU"))
+      << backing_device_name;
+  device_type = th_gpu->DeviceType(&s);
+  TF_EXPECT_OK(s);
+  ASSERT_TRUE(absl::StrContains(device_type, "GPU")) << device_type;
+  device_id = th_gpu->DeviceId(&s);
+  TF_EXPECT_OK(s);
+  ASSERT_EQ(0, device_id) << device_id;
+
+  th_cpu->Unref();
+  th_gpu->Unref();
+  ctx->Unref();
+}
+
 }  // namespace tensorflow

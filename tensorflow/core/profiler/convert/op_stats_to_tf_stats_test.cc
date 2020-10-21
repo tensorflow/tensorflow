@@ -32,7 +32,7 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
-XEventBuilder AddTensorFlowOpEvent(absl::string_view tf_op_fullname,
+XEventBuilder AddTensorFlowOpEvent(std::string&& tf_op_fullname,
                                    int64 start_timestamp_ns, int64 duration_ns,
                                    bool on_device,
                                    absl::string_view kernel_name,
@@ -42,12 +42,13 @@ XEventBuilder AddTensorFlowOpEvent(absl::string_view tf_op_fullname,
   event.SetTimestampNs(start_timestamp_ns);
   event.SetDurationNs(duration_ns);
   if (!on_device) return event;
-  event.ParseAndAddStatValue(*plane->GetOrCreateStatMetadata("level 0"),
-                             tf_op_fullname);
+  event.AddStatValue(
+      *plane->GetOrCreateStatMetadata("level 0"),
+      *plane->GetOrCreateStatMetadata(std::move(tf_op_fullname)));
   return event;
 }
 
-void AddTensorFlowOpEventWithKernelDetails(absl::string_view tf_op_fullname,
+void AddTensorFlowOpEventWithKernelDetails(std::string&& tf_op_fullname,
                                            int64 start_timestamp_ns,
                                            int64 duration_ns, bool on_device,
                                            absl::string_view kernel_name,
@@ -55,8 +56,8 @@ void AddTensorFlowOpEventWithKernelDetails(absl::string_view tf_op_fullname,
                                            XPlaneBuilder* plane,
                                            XLineBuilder* line) {
   XEventBuilder event =
-      AddTensorFlowOpEvent(tf_op_fullname, start_timestamp_ns, duration_ns,
-                           on_device, kernel_name, plane, line);
+      AddTensorFlowOpEvent(std::move(tf_op_fullname), start_timestamp_ns,
+                           duration_ns, on_device, kernel_name, plane, line);
   if (!on_device) return;
   event.ParseAndAddStatValue(*plane->GetOrCreateStatMetadata("kernel_details"),
                              kernel_details);

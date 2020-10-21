@@ -18,16 +18,27 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/mlir/tfr/integration/tfr_decompose_ctx.h"
+#include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
+namespace {
+
+auto* tf_core_op_expansion_node_counter =
+    monitoring::Counter<0>::New("/tensorflow/core/op_expansion/node_counter",
+                                "The number of nodes being op expanded.");
+}  // namespace
+
+namespace tfr {
 
 Status CompositeOpExpansion::Run(EagerOperation* orig_op,
                                  std::unique_ptr<EagerOperation>* out_op) {
   if (!IsEnabled()) return Status::OK();
   if (orig_op->Device() != kVariantDeviceNull) return Status::OK();
 
-  VLOG(1) << "Run Node Expansion Passes";
+  tf_core_op_expansion_node_counter->GetCell()->IncrementBy(1);
+
+  LOG_FIRST_N(INFO, 1) << "Run Node Expansion Passes";
 
   // Get the FunctionDef and insert that into the context
   const NodeDef& ndef = orig_op->MutableAttrs()->BuildNodeDef();
@@ -40,7 +51,7 @@ Status CompositeOpExpansion::Run(EagerOperation* orig_op,
   std::string fname =
       absl::StrCat("_expanded_", ndef.name(), "_", std::to_string(x));
   if (!ctx.FindFunctionByName(fname)) {
-    TF_ASSIGN_OR_RETURN(auto func, TFRDecomposeContext::Expand(ndef, fname));
+    TF_ASSIGN_OR_RETURN(auto func, ExpandNode(ndef, fname));
     TF_RETURN_IF_ERROR(ctx.AddFunctionDef(func));
   }
 
@@ -55,11 +66,14 @@ Status CompositeOpExpansion::Run(EagerOperation* orig_op,
   new_op->MutableAttrs()->CopyAttributes(orig_op->Attrs());
   out_op->reset(new_op);
 
-  VLOG(1) << "Rewrite the op to call function: " << fname;
+  LOG_FIRST_N(INFO, 1)
+      << "Finish Node Expansion Passes. Rewrite the op to call function: "
+      << fname;
 
   return Status::OK();
 }
 
 REGISTER_REWRITE(EagerOpRewriteRegistry::POST_PLACEMENT, CompositeOpExpansion);
 
+}  // namespace tfr
 }  // namespace tensorflow

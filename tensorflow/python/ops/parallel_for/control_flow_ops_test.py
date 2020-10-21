@@ -174,6 +174,7 @@ class PForTest(PForTestCase):
                         pfor_control_flow_ops.vectorized_map(
                             lambda x: x * x, math_ops.range(4)))
     self.assertTrue(def_function.functions_run_eagerly())
+    def_function.run_functions_eagerly(False)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -969,6 +970,27 @@ class TensorListTest(PForTestCase):
               list_ops.tensor_list_element_shape(handle, dtypes.int64))
 
     self._test_loop_fn(loop_fn, 2)
+
+  def test_create_outside_and_push_back(self):
+    h = list_ops.tensor_list_reserve([2], 2, dtypes.int32)
+
+    def loop_fn(i):
+      handle = list_ops.tensor_list_push_back(h, [i, 2])
+      handle = list_ops.tensor_list_push_back(handle, [1, 2])
+      handle = list_ops.tensor_list_push_back(handle, [1, 2])
+      return list_ops.tensor_list_stack(handle, dtypes.int32)
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_create_inside_and_push_back(self):
+
+    def loop_fn(i):
+      handle = list_ops.tensor_list_reserve([2], 2, dtypes.int32)
+      handle = list_ops.tensor_list_push_back(handle, [i, 2])
+      handle = list_ops.tensor_list_push_back(handle, [1, 2])
+      return list_ops.tensor_list_stack(handle, dtypes.int32)
+
+    self._test_loop_fn(loop_fn, 3)
 
   def test_create_outside_and_scatter(self):
     h = list_ops.tensor_list_reserve([2], 2, dtypes.int32)

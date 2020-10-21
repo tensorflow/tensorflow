@@ -135,7 +135,7 @@ IMAGE_DEPS = [
     "//tensorflow/core:lib_internal",
     "//tensorflow/core/lib/png:png_io",
     "//tensorflow/core:protos_all_cc",
-    "//tensorflow/core/kernels:bounds_check",
+    "//tensorflow/core/framework:bounds_check",
     "//tensorflow/core/kernels:eigen_helpers",
     "//tensorflow/core/util/tensor_bundle",
     "//tensorflow/core/util:image_resizer_state",

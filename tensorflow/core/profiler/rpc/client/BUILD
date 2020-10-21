@@ -116,7 +116,6 @@ cc_library(
 tf_cc_test(
     name = "profiler_client_test",
     srcs = ["profiler_client_test.cc"],
-    tags = ["external"],  # So that test suite reruns unconditionally.
     deps = [
         ":profiler_client",
         ":profiler_client_impl",  # for oss
@@ -149,7 +148,6 @@ cc_library(
 tf_cc_test(
     name = "remote_profiler_session_manager_test",
     srcs = ["remote_profiler_session_manager_test.cc"],
-    tags = ["external"],  # So that test suite reruns unconditionally.
     deps = [
         ":profiler_client_impl",  # for oss
         ":profiler_client_test_util",

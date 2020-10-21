@@ -37,6 +37,9 @@ transitive_hdrs(
         "//tensorflow/cc/saved_model:reader",
         "//tensorflow/cc/saved_model:bundle_v2",
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
+        "//tensorflow/c/experimental/stream_executor:stream_executor_hdrs",
+        "//tensorflow/c:kernels_hdrs",
+        "//tensorflow/c:ops_hdrs",
         # WARNING: None of the C/C++ code under python/ has any API guarantees, and TF team
         # reserves the right to change APIs and other header-level interfaces.  If your custom
         # op uses these headers, it may break when users upgrade their version of tensorflow.

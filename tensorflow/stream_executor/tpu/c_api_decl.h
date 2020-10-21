@@ -25,6 +25,9 @@ limitations under the License.
 
 extern "C" {
 
+// Maximum number of array elements to inline into structs for performance.
+#define TPU_C_API_MAX_INLINED 6
+
 enum TpuCoreTypeEnum {
   kTensorCore,
   kEmbeddingV1,
@@ -168,11 +171,50 @@ typedef struct SE_MaybeOwningDeviceMemory {
   SE_DeviceMemoryAllocator allocator;
 } SE_MaybeOwningDeviceMemory;
 
+struct Int64List {
+  union {
+    int64_t* heap;  // owned
+    int64_t inlined[TPU_C_API_MAX_INLINED];
+  };
+  int64_t size;
+};
+
+struct BoolList {
+  union {
+    bool* heap;  // owned
+    bool inlined[TPU_C_API_MAX_INLINED];
+  };
+  int64_t size;
+};
+
+typedef struct XLA_Tile {
+  Int64List dimensions;
+} XLA_Tile;
+
+struct TileList {
+  union {
+    XLA_Tile* heap;  // owned
+    XLA_Tile inlined[TPU_C_API_MAX_INLINED];
+  };
+  int64_t size;
+};
+
+typedef struct XLA_Layout {
+  int format;
+  Int64List minor_to_major;
+  TileList tiles;
+  int64_t element_size_in_bits;
+  int64_t memory_space;
+} XLA_Layout;
+
 // Represents an XLA shape tree.
-// Shapes are flattened in default traversal order.
 typedef struct XLA_Shape {
-  char* bytes;
-  size_t size;
+  int element_type;
+  Int64List dimensions;
+  BoolList dynamic_dimensions;
+  XLA_Shape* tuple_shapes;  // owned
+  int ntuple_shapes;
+  XLA_Layout layout;
 } XLA_Shape;
 
 // Represents a leaf node for a XLA shaped buffer.

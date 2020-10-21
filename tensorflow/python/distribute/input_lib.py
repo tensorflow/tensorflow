@@ -35,6 +35,7 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import input_ops
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values
+from tensorflow.python.distribute.distribute_lib import InputReplicationMode
 from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
@@ -108,7 +109,8 @@ def get_distributed_dataset(dataset,
 def get_distributed_datasets_from_function(dataset_fn,
                                            input_workers,
                                            input_contexts,
-                                           strategy):
+                                           strategy,
+                                           options=None):
   """Returns a distributed dataset from the given input function.
 
   This is a common function that is used by all strategies to return a
@@ -126,22 +128,43 @@ def get_distributed_datasets_from_function(dataset_fn,
         `worker_device_pairs`.
     strategy: a `tf.distribute.Strategy` object, used to run all-reduce to
         handle last partial batch.
+    options: Default is None. `tf.distribute.InputOptions` used to control
+        options on how this dataset is distributed.
 
   Returns:
     A distributed dataset instance.
+
+  Raises:
+    ValueError: if `options.experimental_replication_mode` and
+    `options.experimental_place_dataset_on_device` are not consistent
   """
+  if (options is not None and
+      options.experimental_replication_mode != InputReplicationMode.PER_REPLICA
+      and options.experimental_place_dataset_on_device):
+    raise ValueError(
+        "When `experimental_place_dataset_on_device` is set for dataset "
+        "placement, you must also specify `PER_REPLICA` for the "
+        "replication mode")
+
+  if (options is not None and
+      options.experimental_replication_mode == InputReplicationMode.PER_REPLICA
+      and options.experimental_prefetch_to_device and
+      options.experimental_place_dataset_on_device):
+    raise ValueError(
+        "`experimental_place_dataset_on_device` can not be set to True "
+        "when experimental_prefetch_to_device is True and "
+        "replication mode is set to `PER_REPLICA`")
+
   if tf2.enabled():
-    return DistributedDatasetsFromFunction(
-        dataset_fn,
-        input_workers,
-        input_contexts,
-        strategy)
+    return DistributedDatasetsFromFunction(dataset_fn, input_workers,
+                                           input_contexts, strategy, options)
   else:
     return DistributedDatasetsFromFunctionV1(
         dataset_fn,
         input_workers,
         input_contexts,
-        strategy)
+        strategy,
+        options)
 
 
 @tf_export("distribute.DistributedIterator", v1=[])
@@ -1178,7 +1201,8 @@ class DistributedDatasetV1(DistributedDataset):
 class DistributedDatasetsFromFunction(_IterableInput):
   """Inputs created from dataset function."""
 
-  def __init__(self, dataset_fn, input_workers, input_contexts, strategy):
+  def __init__(self, dataset_fn, input_workers, input_contexts, strategy,
+               options):
     """Makes an iterable from datasets created by the given function.
 
     Args:
@@ -1189,6 +1213,8 @@ class DistributedDatasetsFromFunction(_IterableInput):
         `worker_device_pairs`.
       strategy: a `tf.distribute.Strategy` object, used to run all-reduce to
         handle last partial batch.
+      options: `tf.distribute.InputOptions` used to control options on how this
+        dataset is distributed.
     """
     super(DistributedDatasetsFromFunction, self).__init__(
         input_workers=input_workers)
@@ -1202,10 +1228,10 @@ class DistributedDatasetsFromFunction(_IterableInput):
     self._input_workers = input_workers
     self._input_contexts = input_contexts
     self._strategy = strategy
+    self._options = options
     self._datasets, element_spec = (
-        _create_datasets_per_worker_with_input_context(self._input_contexts,
-                                                       self._input_workers,
-                                                       dataset_fn))
+        _create_datasets_from_function_with_input_context(
+            self._input_contexts, self._input_workers, dataset_fn))
     self._enable_get_next_as_optional = _enable_get_next_as_optional(
         self._strategy, element_spec)
     self._element_spec = _create_distributed_tensor_spec(
@@ -1220,11 +1246,10 @@ class DistributedDatasetsFromFunction(_IterableInput):
       # out this change.
       enable_legacy_iterators = getattr(self._strategy,
                                         "_enable_legacy_iterators", False)
-
       iterators = _create_iterators_per_worker(self._datasets,
                                                self._input_workers,
-                                               enable_legacy_iterators)
-
+                                               enable_legacy_iterators,
+                                               self._options)
       if enable_legacy_iterators:
         iterator = DistributedIteratorV1(
             self._input_workers,
@@ -1233,9 +1258,9 @@ class DistributedDatasetsFromFunction(_IterableInput):
             enable_get_next_as_optional=self._enable_get_next_as_optional)
       else:
         iterator = DistributedIterator(
-            self._input_workers,
-            iterators,
-            self._strategy,
+            input_workers=self._input_workers,
+            iterators=iterators,
+            strategy=self._strategy,
             enable_get_next_as_optional=self._enable_get_next_as_optional)
       iterator._element_spec = self._element_spec  # pylint: disable=protected-access
 
@@ -1475,7 +1500,7 @@ def _recover_shape_fn(data, value_structure):
 class _SingleWorkerDatasetIteratorBase(object):
   """Iterator for a single `tf.data.Dataset`."""
 
-  def __init__(self, dataset, worker, devices):
+  def __init__(self, dataset, worker, devices, options=None):
     """Create iterator for the `dataset` to fetch data to worker's `devices` .
 
     A `MultiDeviceIterator`  or `OwnedMultiDeviceIterator` is used to prefetch
@@ -1485,15 +1510,35 @@ class _SingleWorkerDatasetIteratorBase(object):
       dataset: A `tf.data.Dataset` instance.
       worker: Worker on which ops should be created.
       devices: Distribute data from `dataset` to these devices.
+      options: options.
     """
     self._dataset = dataset
     self._worker = worker
     self._devices = devices
     self._element_spec = dataset.element_spec
+    self._options = options
     self._make_iterator()
 
   def _make_iterator(self):
     raise NotImplementedError("must be implemented in descendants")
+
+  def _format_data_list_with_options(self, data_list):
+    """Change the data in to a list type if required.
+
+    The OwnedMultiDeviceIterator returns the list data type,
+    while the PER_REPLICA iterator (when used with prefetch disabled)
+    returns without the enclosed list. This is to fix the inconsistency.
+    Args:
+      data_list: data_list
+    Returns:
+      list
+    """
+    if (self._options and self._options.experimental_replication_mode ==
+        InputReplicationMode.PER_REPLICA and
+        not self._options.experimental_prefetch_to_device):
+      return [data_list]
+    else:
+      return data_list
 
   def get_next(self, device, name=None):
     """Get next element for the given device."""
@@ -1516,7 +1561,7 @@ class _SingleWorkerDatasetIteratorBase(object):
     """
     del name
     with ops.device(self._worker):
-      return self._iterator.get_next()
+      return self._format_data_list_with_options(self._iterator.get_next())
 
   def get_next_as_list(self, name=None):
     """Get next element from underlying iterator.
@@ -1536,7 +1581,8 @@ class _SingleWorkerDatasetIteratorBase(object):
     """
     del name
     with ops.device(self._worker):
-      data_list = self._iterator.get_next_as_optional()
+      data_list = self._format_data_list_with_options(
+          self._iterator.get_next_as_optional())
       result = []
       for i, data in enumerate(data_list):
         # Place the condition op in the same device as the data so the data
@@ -1616,8 +1662,13 @@ class _SingleWorkerOwnedDatasetIterator(_SingleWorkerDatasetIteratorBase,
                                         composite_tensor.CompositeTensor):
   """Iterator for a DistributedDataset instance."""
 
-  def __init__(self, dataset=None, worker=None, devices=None, components=None,
-               element_spec=None):
+  def __init__(self,
+               dataset=None,
+               worker=None,
+               devices=None,
+               components=None,
+               element_spec=None,
+               options=None):
     """Create iterator for the `dataset` to fetch data to worker's `devices` .
 
     `OwnedMultiDeviceIterator` is used to prefetch input to the devices on the
@@ -1633,6 +1684,8 @@ class _SingleWorkerOwnedDatasetIterator(_SingleWorkerDatasetIteratorBase,
         _SingleWorkerOwnedDatasetIterator from.
       element_spec: A nested structure of `TypeSpec` objects that represents the
       type specification of elements of the iterator.
+      options: `tf.distribute.InputOptions` used to control options on how this
+      dataset is distributed.
     """
     if worker is None or devices is None:
       raise ValueError("Both `worker` and `devices` should be provided")
@@ -1640,6 +1693,7 @@ class _SingleWorkerOwnedDatasetIterator(_SingleWorkerDatasetIteratorBase,
     error_message = ("Either `dataset` or both `components` and `element_spec` "
                      "need to be provided.")
 
+    self._options = options
     if dataset is None:
       if (components is None or element_spec is None):
         raise ValueError(error_message)
@@ -1650,18 +1704,25 @@ class _SingleWorkerOwnedDatasetIterator(_SingleWorkerDatasetIteratorBase,
     else:
       if (components is not None or element_spec is not None):
         raise ValueError(error_message)
-      super(_SingleWorkerOwnedDatasetIterator, self).__init__(dataset, worker,
-                                                              devices)
+      super(_SingleWorkerOwnedDatasetIterator,
+            self).__init__(dataset, worker, devices, options)
 
   def _make_iterator(self):
     """Make appropriate iterator on the dataset."""
     if not self._worker:
       raise ValueError("Worked device must be specified when creating an "
                        "owned iterator.")
-    host_device = device_util.get_host_for_device(self._worker)
-    with ops.device(self._worker):
-      self._iterator = multi_device_iterator_ops.OwnedMultiDeviceIterator(
-          self._dataset, self._devices, source_device=host_device)
+    if (self._options is None or self._options.experimental_replication_mode ==
+        InputReplicationMode.PER_WORKER or
+        (self._options.experimental_replication_mode == InputReplicationMode
+         .PER_REPLICA and self._options.experimental_prefetch_to_device)):
+      host_device = device_util.get_host_for_device(self._worker)
+      with ops.device(self._worker):
+        self._iterator = multi_device_iterator_ops.OwnedMultiDeviceIterator(
+            self._dataset, self._devices, source_device=host_device)
+    else:
+      with ops.device(self._worker):
+        self._iterator = iter(self._dataset)
 
   @property
   def element_spec(self):
@@ -1782,19 +1843,23 @@ class _SingleWorkerCallableIterator(object):
     return []
 
 
-def _create_iterators_per_worker(worker_datasets, input_workers,
-                                 enable_legacy_iterators):
+def _create_iterators_per_worker(worker_datasets,
+                                 input_workers,
+                                 enable_legacy_iterators,
+                                 options=None):
   """Create a multidevice iterator on each of the workers."""
   assert isinstance(input_workers, InputWorkers)
-
   assert len(worker_datasets) == len(input_workers.worker_devices)
   iterators = []
   for i, worker in enumerate(input_workers.worker_devices):
     with ops.device(worker):
       worker_devices = input_workers.compute_devices_for_worker(i)
       if tf2.enabled() and not enable_legacy_iterators:
-        iterator = _SingleWorkerOwnedDatasetIterator(worker_datasets[i], worker,
-                                                     worker_devices)
+        iterator = _SingleWorkerOwnedDatasetIterator(
+            dataset=worker_datasets[i],
+            worker=worker,
+            devices=worker_devices,
+            options=options)
       else:
         iterator = _SingleWorkerDatasetIterator(worker_datasets[i], worker,
                                                 worker_devices)
@@ -1802,8 +1867,9 @@ def _create_iterators_per_worker(worker_datasets, input_workers,
   return iterators
 
 
-def _create_datasets_per_worker_with_input_context(input_contexts,
-                                                   input_workers, dataset_fn):
+def _create_datasets_from_function_with_input_context(input_contexts,
+                                                      input_workers,
+                                                      dataset_fn):
   """Create device datasets per worker given a dataset function."""
   datasets = []
   for i, ctx in enumerate(input_contexts):

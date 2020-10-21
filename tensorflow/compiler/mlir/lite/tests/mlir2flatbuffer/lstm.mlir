@@ -258,6 +258,7 @@ func @main(tensor<1x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, t
 // CHECK-NEXT:   name: "min_runtime_version",
 // CHECK-NEXT:   buffer: 26
 // CHECK-NEXT:   } ]
+// CHECK-NEXT:   signature_defs: [ ]
 // CHECK-NEXT: }
 // CHECK-EMPTY:
 

@@ -188,22 +188,20 @@ Type GetSumAccumulationType(Type input_type) {
   return input_type;
 }
 
-// Returns axis in HLO format from TF elements attr with exactly one element
-// containing axis in the TensorFlow format. TensorFlow format supports negative
-// indexing unlike HLO.
-static IntegerAttr GetHLOAxisFromTFAxis(ElementsAttr attr, int64_t rank,
+// Returns axis in HLO format from TF elements attr with exactly one element or
+// is an IntegerAttr, containing axis in the TensorFlow format. TensorFlow
+// format supports negative indexing unlike HLO.
+static IntegerAttr GetHLOAxisFromTFAxis(Attribute attr, int64_t rank,
                                         Builder *b) {
-  SmallVector<uint64_t, 1> index(attr.getType().getRank(), 0);
-  int64_t axis = attr.getValue<IntegerAttr>(index).getInt();
-  if (axis < 0) {
-    axis += rank;
+  IntegerAttr intAttr = attr.dyn_cast_or_null<IntegerAttr>();
+  if (auto elementAttr = attr.dyn_cast_or_null<ElementsAttr>()) {
+    SmallVector<uint64_t, 1> index(elementAttr.getType().getRank(), 0);
+    intAttr = elementAttr.getValue<IntegerAttr>(index);
   }
-  return b->getI64IntegerAttr(axis);
-}
 
-static IntegerAttr GetHLOAxisFromTFAxis(IntegerAttr attr, int64_t rank,
-                                        Builder *b) {
-  int64_t axis = attr.getInt();
+  assert(intAttr && "Invalid attribute passed to GetHLOAxisFromTFAxis");
+
+  int64_t axis = intAttr.getInt();
   if (axis < 0) {
     axis += rank;
   }
@@ -1707,6 +1705,17 @@ class ConvertEinsumOp : public OpRewritePattern<TF::EinsumOp> {
   }
 };
 
+// Bypasses IdentityN op.
+class ConvertIdentityNOp : public OpRewritePattern<TF::IdentityNOp> {
+ public:
+  using OpRewritePattern<TF::IdentityNOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(TF::IdentityNOp op,
+                                PatternRewriter &rewriter) const override {
+    rewriter.replaceOp(op, op.getOperands());
+    return success();
+  }
+};
+
 template <typename OpTy>
 class ConvertFFTOp : public OpRewritePattern<OpTy> {
  public:
@@ -1881,11 +1890,27 @@ class ConvertFusedBatchNormGradBase
     }
 
     x_backprop = rewriter.create<ConvertOp>(loc, x_backprop, act_ele_type);
-    // It doesn't matter what values we provide for the last 2 results.
-    rewriter.replaceOp(op,
-                       {/*x_backprop=*/x_backprop,
-                        /*scale_backprop=*/scale_backprop,
-                        /*offset_backprop=*/offset_backprop, op.x(), op.x()});
+    Value last_val[2];
+    if (op.getResult(3).use_empty() && op.getResult(4).use_empty()) {
+      // It doesn't matter what values we provide for the last 2 results.
+      last_val[0] = last_val[1] = op.x();
+    } else {
+      auto const_val = rewriter.create<ConstOp>(
+          op.getLoc(),
+          DenseElementsAttr::get<float>(
+              RankedTensorType::get({0}, getElementTypeOrSelf(op.getResult(3))),
+              0.0));
+      auto maybe_cast = [&](Value val, Type t) -> Value {
+        if (val.getType() == t) return val;
+        return rewriter.create<TensorCastOp>(op.getLoc(), t, val);
+      };
+      last_val[0] = maybe_cast(const_val, op.getResult(3).getType());
+      last_val[1] = maybe_cast(const_val, op.getResult(4).getType());
+    }
+    rewriter.replaceOp(
+        op, {/*x_backprop=*/x_backprop,
+             /*scale_backprop=*/scale_backprop,
+             /*offset_backprop=*/offset_backprop, last_val[0], last_val[1]});
     return success();
   }
 };
@@ -6117,13 +6142,14 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
       ConvertFusedBatchNormGradOp, ConvertFusedBatchNormGradV2Op,
       ConvertFusedBatchNormGradV3Op, ConvertFusedBatchNormV2Op,
       ConvertFusedBatchNormV3Op, ConvertInfeedDequeueTupleOp,
-      ConvertInplaceUpdateOp, ConvertLinSpaceOp, ConvertMaxOp, ConvertMinOp,
-      ConvertAvgPool2DOp, ConvertAvgPool3DOp, ConvertAvgPool2DGradOp,
-      ConvertAvgPool3DGradOp, ConvertMaxPool2DOp, ConvertMaxPool3DOp,
-      ConvertMaxPool2DGradOp, ConvertMaxPool3DGradOp, ConvertMeanOp,
-      ConvertOneHotOp, ConvertOutfeedEnqueueTupleOp, ConvertProdOp, ConvertQrOp,
-      ConvertDynamicRangeOp, ConvertMatrixDiagPartV3Op, ConvertRangeOp,
-      ConvertSelectV2Op, ConvertSigmoidOp, ConvertShapeOp, ConvertSizeOp,
+      ConvertIdentityNOp, ConvertInplaceUpdateOp, ConvertLinSpaceOp,
+      ConvertMaxOp, ConvertMinOp, ConvertAvgPool2DOp, ConvertAvgPool3DOp,
+      ConvertAvgPool2DGradOp, ConvertAvgPool3DGradOp, ConvertMaxPool2DOp,
+      ConvertMaxPool3DOp, ConvertMaxPool2DGradOp, ConvertMaxPool3DGradOp,
+      ConvertMeanOp, ConvertOneHotOp, ConvertOutfeedEnqueueTupleOp,
+      ConvertProdOp, ConvertQrOp, ConvertDynamicRangeOp,
+      ConvertMatrixDiagPartV3Op, ConvertRangeOp, ConvertSelectV2Op,
+      ConvertSigmoidOp, ConvertShapeOp, ConvertSizeOp,
       ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
       ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
       ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertSumOp,

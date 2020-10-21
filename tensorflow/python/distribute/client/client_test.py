@@ -37,6 +37,7 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
@@ -554,6 +555,31 @@ class ClientTest(TestCaseWithErrorReportingThread):
 
     with self.assertRaises(ValueError):
       self.client.create_per_worker_dataset(input_fn)
+
+  def testDatasetsShuffledDifferently(self):
+    # This test requires at least two workers in the cluster.
+    self.assertGreaterEqual(len(self.client.cluster.workers), 2)
+
+    random_seed.set_random_seed(None)
+
+    def input_fn():
+      return dataset_ops.DatasetV2.range(0, 100).shuffle(100)
+
+    distributed_dataset = self.client.create_per_worker_dataset(input_fn)
+    distributed_iterator = iter(distributed_dataset)
+
+    # Get elements from the first two iterators.
+    iterator_1 = distributed_iterator._values[0]
+    iterator_1._rebuild_on(self.client.cluster.workers[0])
+    iterator_1 = iterator_1.fetch()
+    elements_in_iterator_1 = [e.numpy() for e in iterator_1]
+
+    iterator_2 = distributed_iterator._values[1]
+    iterator_2._rebuild_on(self.client.cluster.workers[1])
+    iterator_2 = iterator_2.fetch()
+    elements_in_iterator_2 = [e.numpy() for e in iterator_2]
+
+    self.assertNotAllEqual(elements_in_iterator_1, elements_in_iterator_2)
 
   def testPerWorkerValue(self):
     var_shape = tuple()

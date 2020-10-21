@@ -69,6 +69,7 @@ py_test(
     ],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = ["no_rocm"],
     deps = [
         ":policy",
         "//tensorflow/python:client_testlib",

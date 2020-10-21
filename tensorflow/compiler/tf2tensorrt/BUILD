@@ -483,7 +483,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensor_testutil",
+        "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",

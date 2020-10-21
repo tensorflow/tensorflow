@@ -12,10 +12,20 @@ package(
 )
 
 cc_library(
+    name = "stream_executor_hdrs",
+    hdrs = ["stream_executor.h"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/c:c_api_macros",
+        "//tensorflow/c:tf_status",
+    ],
+)
+
+cc_library(
     name = "stream_executor",
     srcs = ["stream_executor.cc"],
     hdrs = ["stream_executor.h"],
-    visibility = ["//visibility:public"],
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":stream_executor_internal",
         "//tensorflow/c:c_api_macros",

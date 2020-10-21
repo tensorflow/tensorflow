@@ -62,7 +62,7 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(llvm::Module* module) {
   }
 
   llvm::TargetOptions target_options =
-      llvm::codegen::InitTargetOptionsFromCodeGenFlags();
+      llvm::codegen::InitTargetOptionsFromCodeGenFlags(llvm::Triple());
   return std::unique_ptr<llvm::TargetMachine>(target->createTargetMachine(
       triple.str(), "generic", "", target_options, llvm::Reloc::Model::PIC_));
 }

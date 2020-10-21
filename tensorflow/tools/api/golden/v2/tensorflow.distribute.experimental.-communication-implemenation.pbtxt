@@ -1,0 +1,16 @@
+path: "tensorflow.distribute.experimental.CommunicationImplemenation"
+tf_class {
+  is_instance: "<enum \'CommunicationImplemenation\'>"
+  member {
+    name: "AUTO"
+    mtype: "<enum \'CommunicationImplemenation\'>"
+  }
+  member {
+    name: "NCCL"
+    mtype: "<enum \'CommunicationImplemenation\'>"
+  }
+  member {
+    name: "RING"
+    mtype: "<enum \'CommunicationImplemenation\'>"
+  }
+}

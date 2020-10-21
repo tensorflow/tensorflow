@@ -73,6 +73,9 @@ class CollectiveOpTest(test.TestCase):
 
   def testCheckHealthPeerDown(self):
 
+    if multi_process_runner.is_oss():
+      self.skipTest("TODO(b/170838845): Failing in OSS")
+
     def worker_fn():
       enable_collective_ops(cluster_resolver_lib.TFConfigClusterResolver())
       context.context().check_collective_ops_peer_health(

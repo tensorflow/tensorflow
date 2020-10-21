@@ -29,7 +29,6 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-constexpr char kRetValOp[] = "_Retval";
 constexpr char kMaxIntraOpParallelismDataset[] = "MaxIntraOpParallelismDataset";
 constexpr char kModelDataset[] = "ModelDataset";
 
@@ -46,17 +45,11 @@ Status DisableIntraOpParallelism::OptimizeAndCollectStats(
   *output = item.graph;
   MutableGraphView graph(output);
 
-  for (const auto& fetch_name : item.fetch) {
-    // If the GrapplerItem is derived from a FunctionDef, we don't optimize it,
-    // because we only want to disable intra op parallelism on the main dataset
-    // pipeline.
-    auto fetch = graph.GetNode(fetch_name);
-    if (fetch == nullptr || fetch->op() == kRetValOp) {
-      // Heuristic: If the fetch nodes are Retval ops, this item is from a
-      // function.
-      return Status::OK();
-    }
-  }
+  // If the GrapplerItem is derived from a FunctionDef, we don't optimize it,
+  // because we only want to disable intra op parallelism on the main dataset
+  // pipeline.
+  if (graph_utils::IsItemDerivedFromFunctionDef(item, graph))
+    return Status::OK();
 
   if (item.fetch.size() != 1) {
     return errors::InvalidArgument(

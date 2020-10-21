@@ -20,7 +20,8 @@ source tensorflow/tools/ci_build/release/common.sh
 install_bazelisk
 
 # Pick a more recent version of xcode
-export DEVELOPER_DIR=/Applications/Xcode_10.3.app/Contents/Developer
+export DEVELOPER_DIR=/Applications/Xcode_11.3.app/Contents/Developer
+export MACOSX_DEPLOYMENT_TARGET=10.10
 sudo xcode-select -s "${DEVELOPER_DIR}"
 python -m virtualenv tf_build_env --system-site-packages
 source tf_build_env/bin/activate

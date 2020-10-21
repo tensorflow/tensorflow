@@ -49,6 +49,13 @@ class InterpreterTest : public ::testing::Test {
  protected:
   TfLiteContext* GetInterpreterContext() { return interpreter_.context_; }
 
+  std::vector<Interpreter::TfLiteDelegatePtr>*
+  mutable_lazy_delegate_providers() {
+    return &interpreter_.lazy_delegate_providers_;
+  }
+
+  bool HasDelegates() { return interpreter_.HasDelegates(); }
+
   Interpreter interpreter_;
 };
 
@@ -1780,6 +1787,63 @@ TEST_F(TestCustomAllocation, ResizeTensorsWithEnoughMemory) {
 
   ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
   VerifyInvoke();
+}
+
+// Tests related to lazy delegate providers that are primarily used for applying
+// TfLite delegates by default.
+class TestLazyDelegateProvider : public InterpreterTest {
+ protected:
+  struct DummyLazyDelegateProvider : public TfLiteDelegate {
+    explicit DummyLazyDelegateProvider(int64_t support_flags) {
+      data_ = static_cast<void*>(this);
+      flags = support_flags;
+      Prepare = [](TfLiteContext*, TfLiteDelegate* delegate) -> TfLiteStatus {
+        return kTfLiteOk;
+      };
+    }
+  };
+
+  void InitWithLazyDelegate(int64_t delegate_flags,
+                            bool create_dyanmic_tensor = false) {
+    TfLiteRegistration reg = {nullptr, nullptr, nullptr, nullptr};
+    ASSERT_EQ(interpreter_.AddTensors(2), kTfLiteOk);
+    interpreter_.SetInputs({0});
+    interpreter_.SetOutputs({1});
+    interpreter_.AddNodeWithParameters({0}, {1}, nullptr, 0, nullptr, &reg);
+
+    Interpreter::TfLiteDelegatePtr delegate(
+        new DummyLazyDelegateProvider(delegate_flags),
+        [](TfLiteDelegate* delegate) {
+          auto* dummy =
+              static_cast<DummyLazyDelegateProvider*>(delegate->data_);
+          delete dummy;
+        });
+    mutable_lazy_delegate_providers()->push_back(std::move(delegate));
+
+    if (create_dyanmic_tensor) {
+      // Mark the output as dynamic tensor.
+      interpreter_.tensor(1)->data.raw = nullptr;
+      interpreter_.tensor(1)->allocation_type = kTfLiteDynamic;
+    }
+  }
+};
+
+TEST_F(TestLazyDelegateProvider, ApplicationSuccess) {
+  InitWithLazyDelegate(kTfLiteDelegateFlagsNone);
+  EXPECT_EQ(kTfLiteOk, interpreter_.AllocateTensors());
+  // We clear Interpreter::lazy_delegate_providers_ after they are tried out.
+  EXPECT_TRUE(mutable_lazy_delegate_providers()->empty());
+  EXPECT_TRUE(HasDelegates());
+}
+
+TEST_F(TestLazyDelegateProvider, ApplicationSkipped) {
+  InitWithLazyDelegate(kTfLiteDelegateFlagsNone,
+                       true /* create_dyanmic_tensor */);
+  EXPECT_EQ(kTfLiteOk, interpreter_.AllocateTensors());
+  EXPECT_TRUE(mutable_lazy_delegate_providers()->empty());
+  // As the delegate doesn't allow dynamic tensor, the delegate won't be applied
+  // and the interpreter doesn't have any delegate applied.
+  EXPECT_FALSE(HasDelegates());
 }
 
 }  // namespace

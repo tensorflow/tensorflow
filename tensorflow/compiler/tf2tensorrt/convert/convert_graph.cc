@@ -755,13 +755,10 @@ Status ConvertAfterShapes(const ConversionParams& params) {
   // Get the EngineInfo for each segment.
   std::unordered_map<string, Node*> node_map;
   TF_RETURN_IF_ERROR(BuildNodeMap(graph, &node_map));
-  float total_num_nodes_in_segments = 0.;
   std::vector<EngineInfo> engine_segments;
   engine_segments.reserve(initial_segments.size());
   std::vector<Node*> reverse_topo_order;
   GetPostOrder(graph, &reverse_topo_order);
-  size_t total_engine_bytes_size = 0;
-  std::vector<size_t> engine_bytes_size;
   segment::SegmentNodesVector converted_segments;
   converted_segments.reserve(initial_segments.size());
   string engine_name_prefix =
@@ -793,9 +790,6 @@ Status ConvertAfterShapes(const ConversionParams& params) {
       continue;
     }
 
-    engine_bytes_size.push_back(curr_engine.segment_graph_def.ByteSizeLong());
-    total_engine_bytes_size += engine_bytes_size.back();
-    total_num_nodes_in_segments += curr_segment.size();
     engine_segments.push_back(std::move(curr_engine));
     converted_segments.push_back(std::move(curr_segment));
 
@@ -834,13 +828,9 @@ Status ConvertAfterShapes(const ConversionParams& params) {
   engine_nodes.resize(engine_segments.size());
   for (int i = 0; i < engine_segments.size(); ++i) {
     auto& engine = engine_segments.at(i);
-    // Partition the workspace size by the average of node ratio and segment
-    // graphdef size
-    engine.max_workspace_size_bytes =
-        params.max_workspace_size_bytes *
-        (engine_bytes_size.at(i) / total_engine_bytes_size +
-         converted_segments.at(i).size() / total_num_nodes_in_segments) /
-        2.0;
+    // TODO(b/170762693): implement the heuristic to calculate
+    // max_workspace_size_bytes.
+    engine.max_workspace_size_bytes = params.max_workspace_size_bytes;
     VLOG(1) << "Assigned " << engine.max_workspace_size_bytes << " bytes to "
             << engine.engine_name;
     auto status = CreateTRTNode(params, engine_segments, i,

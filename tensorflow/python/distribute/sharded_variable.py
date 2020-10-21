@@ -19,8 +19,10 @@ from __future__ import print_function
 
 import copy
 
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as variables_lib
@@ -29,53 +31,35 @@ from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.training.tracking import base as trackable
 
 
-class ShardedVariable(trackable.Trackable):
-  """A container for `Variables` that should be treated as shards.
+class ShardedVariableSpec(type_spec.TypeSpec):
+  """Type specification for a `ShardedVariable`."""
 
-  Variables that are too large to fit on a single device (e.g., large
-  embeddings)
-  may need to be sharded over multiple devices. This class maintains a list of
-  smaller variables that can be independently stored on separate devices (eg,
-  multiple parameter servers), and saves and restores those variables as if they
-  were a single larger variable.
+  __slots__ = ['_variable_specs']
 
-  Objects of this class can be saved with a given number of shards and then
-  restored from a checkpoint into a different number of shards.
+  value_type = property(lambda self: ShardedVariable)
 
-  Objects of this class can be saved to SavedModel format using
-  `tf.saved_model.save`. The SavedModel can be used by programs like TF serving
-  APIs. It is not yet supported to load the SavedModel with
-  `tf.saved_model.load`.
+  def __init__(self, *variable_specs):
+    self._variable_specs = tuple(variable_specs)
 
-  Since `ShardedVariable` can be saved and then restored to different number of
-  shards depending on the restore environments, for example, TF serving APIs
-  would restore to one shard for serving efficiency, when using
-  `ShardedVariable` in a tf.function, one should generally not assume it has the
-  same number of shards across save and load.
+  def _serialize(self):
+    return self._variable_specs
 
-  Sharding is only supported along the first dimension.
+  @property
+  def _component_specs(self):
+    return self._variable_specs
 
-  >>> class Model(tf.Module):
-  ...   def __init__(self):
-  ...     self.sharded_variable = ShardedVariable([
-  ...       tf.Variable([3.0], dtype=tf.float32),
-  ...       tf.Variable([2.0], dtype=tf.float32)
-  ...     ])
-  ...
-  ...   @tf.function(input_signature=[tf.TensorSpec([], dtype=tf.int32)])
-  ...   def fn(self, x):
-  ...     return tf.nn.embedding_lookup(self.sharded_variable.variables, x)
-  ...
-  ...   @tf.function(input_signature=[tf.TensorSpec([], dtype=tf.int32)])
-  ...   def serve_fn(self, x):
-  ...     return tf.nn.embedding_lookup(self.sharded_variable.variables, x)
-  >>>
-  >>> model = Model()
-  >>> model.fn(1).numpy()
-  2.0
-  >>> tf.saved_model.save(model, export_dir='/tmp/saved_model',
-  ...   signatures=model.serve_fn)
-  """
+  def _to_components(self, value):
+    return value.variables
+
+  def _from_components(self, variables):
+    return ShardedVariable(variables)
+
+
+class ShardedVariableMixin(trackable.Trackable):
+  """Mixin for ShardedVariable."""
+
+  # TODO(b/170877138): Remove this mixin once fixed. This mixin is required
+  # since TPUShardedVariable can't be a CompositeTensor.
 
   def __init__(self, variables, name='ShardedVariable'):
     """Treats `variables` as shards of a larger Variable.
@@ -89,17 +73,17 @@ class ShardedVariable(trackable.Trackable):
       tf.Variable(..., shape=(15, 100), dtype=tf.float32),
       tf.Variable(..., shape=(5, 100), dtype=tf.float32)
     ]
-    sharded_variable = ShardedVariable(variables)
+    sharded_variable = ShardedVariableMixin(variables)
     assert sharded_variable.shape.as_list() == [30, 100]
     ```
 
     Args:
       variables: A list of `ResourceVariable`s that comprise this sharded
         variable. Variables should not be shared between different
-        `ShardedVariable` objects.
+        `ShardedVariableMixin` objects.
       name: String. Name of this container. Defaults to "ShardedVariable".
     """
-    super(ShardedVariable, self).__init__()
+    super(ShardedVariableMixin, self).__init__()
     self._variables = variables
     self._name = name
 
@@ -148,6 +132,12 @@ class ShardedVariable(trackable.Trackable):
   def __iter__(self):
     """Return an iterable for accessing the underlying sharded variables."""
     return iter(self._variables)
+
+  @property
+  def _type_spec(self):
+    return ShardedVariableSpec(*(
+        resource_variable_ops.VariableSpec(v.shape, v.dtype)
+        for v in self._variables))
 
   @property
   def variables(self):
@@ -218,6 +208,61 @@ class ShardedVariable(trackable.Trackable):
                                     name=self.name)
 
     return obj_map, resource_map
+
+
+class ShardedVariable(ShardedVariableMixin, composite_tensor.CompositeTensor):
+  """A container for `Variables` that should be treated as shards.
+
+  Variables that are too large to fit on a single device (e.g., large
+  embeddings)
+  may need to be sharded over multiple devices. This class maintains a list of
+  smaller variables that can be independently stored on separate devices (eg,
+  multiple parameter servers), and saves and restores those variables as if they
+  were a single larger variable.
+
+  Objects of this class can be saved with a given number of shards and then
+  restored from a checkpoint into a different number of shards.
+
+  Objects of this class can be saved to SavedModel format using
+  `tf.saved_model.save`. The SavedModel can be used by programs like TF serving
+  APIs. It is not yet supported to load the SavedModel with
+  `tf.saved_model.load`.
+
+  Since `ShardedVariable` can be saved and then restored to different number of
+  shards depending on the restore environments, for example, TF serving APIs
+  would restore to one shard for serving efficiency, when using
+  `ShardedVariable` in a tf.function, one should generally not assume it has the
+  same number of shards across save and load.
+
+  Sharding is only supported along the first dimension.
+
+  >>> class Model(tf.Module):
+  ...   def __init__(self):
+  ...     self.sharded_variable = ShardedVariable([
+  ...       tf.Variable([3.0], dtype=tf.float32),
+  ...       tf.Variable([2.0], dtype=tf.float32)
+  ...     ])
+  ...
+  ...   @tf.function(input_signature=[tf.TensorSpec([], dtype=tf.int32)])
+  ...   def fn(self, x):
+  ...     return tf.nn.embedding_lookup(self.sharded_variable.variables, x)
+  ...
+  ...   @tf.function(input_signature=[tf.TensorSpec([], dtype=tf.int32)])
+  ...   def serve_fn(self, x):
+  ...     return tf.nn.embedding_lookup(self.sharded_variable.variables, x)
+  >>>
+  >>> model = Model()
+  >>> model.fn(1).numpy()
+  2.0
+  >>> tf.saved_model.save(model, export_dir='/tmp/saved_model',
+  ...   signatures=model.serve_fn)
+  """
+
+  @property
+  def _type_spec(self):
+    return ShardedVariableSpec(*(
+        resource_variable_ops.VariableSpec(v.shape, v.dtype)
+        for v in self._variables))
 
 
 def _var_to_tensor(var, dtype=None, name=None, as_ref=False):

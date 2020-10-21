@@ -172,10 +172,11 @@ Status CopyInputToExpectedDevice(EagerContext* ctx, EagerOperation* op,
                         /* mirror= */ true, &result_handle);
   activity.Stop();
   if (!status.ok()) {
-    return errors::Internal("Failed copying input tensor from ",
-                            handle_device->name(), " to ",
-                            expected_input_device->name(), " in order to run ",
-                            op->Name(), ": ", status.error_message());
+    return Status(
+        status.code(),
+        absl::StrCat("Failed copying input tensor from ", handle_device->name(),
+                     " to ", expected_input_device->name(), " in order to run ",
+                     op->Name(), ": ", status.error_message()));
   }
 
   *result = result_handle;

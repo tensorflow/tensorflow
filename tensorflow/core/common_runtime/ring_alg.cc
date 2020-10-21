@@ -389,7 +389,8 @@ void RingAlg::DispatchSend(RingField* rf, const StatusCallback& done) {
       col_params_->group.task_names[send_to_dev_idx], send_buf_key,
       col_ctx_->device, col_ctx_->op_ctx->op_device_context(),
       col_ctx_->op_ctx->output_alloc_attr(0), &rf->chunk,
-      col_ctx_->device_locality, done);
+      col_ctx_->device_locality, col_ctx_->op_ctx->cancellation_manager(),
+      done);
 }
 
 void RingAlg::DispatchRecv(RingField* rf, const StatusCallback& done) {
@@ -409,7 +410,8 @@ void RingAlg::DispatchRecv(RingField* rf, const StatusCallback& done) {
       col_params_->task.is_local[rf->recv_dev_idx], recv_buf_key,
       col_ctx_->device, col_ctx_->op_ctx->op_device_context(),
       col_ctx_->op_ctx->output_alloc_attr(0), dst_tensor,
-      col_ctx_->device_locality, rf->subdiv_idx, done);
+      col_ctx_->device_locality, rf->subdiv_idx,
+      col_ctx_->op_ctx->cancellation_manager(), done);
 }
 
 string RingAlg::FieldState() {

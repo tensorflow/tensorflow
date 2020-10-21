@@ -475,8 +475,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         Status s = GetElement(task_to_process.get(), deadline_micros);
         if (!s.ok()) {
           mutex_lock l(mu_);
-          VLOG(1) << "Failed to get element for task "
-                  << task_to_process->task_id << ": " << s;
+          VLOG(1) << "Failed to get element from worker "
+                  << task_to_process->address << ": " << s;
           task_to_process->in_use = false;
           status_ = s;
           get_next_cv_.notify_all();
@@ -529,6 +529,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             (deadline_micros > deadline_with_backoff_micros)
                 ? deadline_with_backoff_micros
                 : deadline_micros;
+        VLOG(1) << "Failed to get an element from worker " << task->address
+                << ": " << s << ". Will retry in "
+                << (backoff_until - now_micros) << " microseconds";
         Env::Default()->SleepForMicroseconds(backoff_until - now_micros);
       }
 

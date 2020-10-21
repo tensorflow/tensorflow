@@ -3748,6 +3748,21 @@ def _convert_tensor_array_set_item(pfor_input):
     return wrap(_tile_variant(handle, pfor_input), True)
 
 
+@RegisterPFor("TensorListPushBack")
+def _convert_tensor_list_push_back(pfor_input):
+  handle, handle_stacked, _ = pfor_input.input(0)
+  tensor, tensor_stacked, _ = pfor_input.input(1)
+  if handle_stacked:
+    handle = _untile_variant(handle)
+  else:
+    handle = _stack_tensor_list(handle, tensor.dtype,
+                                pfor_input.pfor.loop_len_vector)
+  if not tensor_stacked:
+    tensor = _stack(tensor, pfor_input.pfor.loop_len_vector).t
+  handle = list_ops.tensor_list_push_back(handle, tensor)
+  return wrap(_tile_variant(handle, pfor_input), True)
+
+
 @RegisterPFor("TensorListConcatV2")
 def _convert_tensor_list_concat_v2(pfor_input):
   input_handle = pfor_input.stacked_input(0)
@@ -4134,7 +4149,7 @@ def _outputs_for_branch(func_name, indices, pfor_input, inputs):
   stacked_outputs = []
   for out in outputs:
     if not out.is_stacked:
-      stacked_outputs.append(_stack(out.t, array_ops.size(indices)).t)
+      stacked_outputs.append(_stack(out.t, [array_ops.size(indices)]).t)
     else:
       stacked_outputs.append(out.t)
   return stacked_outputs

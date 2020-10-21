@@ -139,8 +139,7 @@ def gen_register_op(source, method_prefix=None):
       if not method_prefix or name.startswith(method_prefix)
   ]
   headers = r"""
-#include "third_party/tensorflow/core/framework/node_def_builder.h"
-#include "third_party/tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op.h"
 
 namespace tensorflow {
   """

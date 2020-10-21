@@ -26,6 +26,7 @@ from __future__ import print_function
 import collections
 
 from tensorflow.python.eager import backprop_util
+from tensorflow.python.eager import function
 from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import auto_control_deps_utils as acd
 from tensorflow.python.framework import constant_op
@@ -192,6 +193,37 @@ def _IfGrad(op, *grads):  # pylint: disable=invalid-name
   return [None] + outputs
 
 
+def _run_as_function_for_tape_gradients(make_op, cond_inputs):
+  """Fix higher-order tape gradients by wrapping `make_op` in a function."""
+  # GradientTapes created inside a function currently don't work well with
+  # un-wrapped control flow ops in that same function. Wrapping in an extra
+  # layer of intermediate function means we run extra logic in the function
+  # gradient code to record the correct intermediates on the tape.
+  #
+  # The function attribute inputs to cond/case ops are not hashable, so we pass
+  # everything as a capture to bypass defun's caching.
+  if (gradients_util.PossibleTapeGradientTypes(cond_inputs)
+      == gradients_util.POSSIBLE_GRADIENT_TYPES_HIGHER_ORDER
+      # We only need one function between the tape and the cond; if we've
+      # already wrapped once, we stop wrapping to avoid infinite recursion.
+      and not (ops.get_default_graph().building_function
+               and "cond_gradient_wrapper" in ops.get_default_graph().name)):
+
+    op = None
+    def _run_make_and_extract_op():
+      # Post-processing happens on the cond op, not the function call op.
+      nonlocal op
+      tensors = make_op()
+      op, tensors = _get_op_and_outputs(tensors)  # pylint: disable=unused-variable
+      return tensors
+
+    return op, function.defun_with_attributes(
+        _run_make_and_extract_op,
+        attributes=dict(func_name="cond_gradient_wrapper"))()
+  else:
+    return _get_op_and_outputs(make_op())
+
+
 def _build_cond(pred,
                 true_graph,
                 false_graph,
@@ -268,16 +300,17 @@ def _build_cond(pred,
     else:
       op_fn = gen_functional_ops.stateless_if
 
-    tensors = op_fn(
-        pred,
-        cond_inputs, [t.dtype for t in true_graph.outputs],
-        util.create_new_tf_function(true_graph),
-        util.create_new_tf_function(false_graph),
-        output_shapes=_get_output_shapes(true_graph.outputs,
-                                         false_graph.outputs),
-        name=name)
+    def make_op():
+      return op_fn(
+          pred,
+          cond_inputs, [t.dtype for t in true_graph.outputs],
+          util.create_new_tf_function(true_graph),
+          util.create_new_tf_function(false_graph),
+          output_shapes=_get_output_shapes(true_graph.outputs,
+                                           false_graph.outputs),
+          name=name)
+    if_op, tensors = _run_as_function_for_tape_gradients(make_op, cond_inputs)
 
-  if_op, tensors = _get_op_and_outputs(tensors)
   # `if_op` is None if this is a `StatelessIf` op with no outputs.
   if if_op is not None:
     if_op._true_graph = true_graph
@@ -1156,14 +1189,16 @@ def _build_case(branch_index,
   # Create the Case op.
   with ops.control_dependencies(
       sum((list(bg.control_captures) for bg in branch_graphs), [])):
-    tensors = op_fn(
-        branch_index,
-        case_inputs, [t.dtype for t in branch_graphs[0].outputs],
-        [util.create_new_tf_function(g) for g in branch_graphs],
-        output_shapes=_get_output_shapes(*[g.outputs for g in branch_graphs]),
-        name=name)
 
-  case_op, tensors = _get_op_and_outputs(tensors)
+    def _make_op():
+      return op_fn(
+          branch_index,
+          case_inputs, [t.dtype for t in branch_graphs[0].outputs],
+          [util.create_new_tf_function(g) for g in branch_graphs],
+          output_shapes=_get_output_shapes(*[g.outputs for g in branch_graphs]),
+          name=name)
+    case_op, tensors = _run_as_function_for_tape_gradients(
+        _make_op, case_inputs)
 
   if case_op is not None:
     util.maybe_set_lowering_attr(case_op, lower_using_switch_merge)

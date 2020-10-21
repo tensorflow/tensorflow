@@ -432,7 +432,7 @@ class SingleWorkerCrossDeviceOpsTest(CrossDeviceOpsTestBase):
 
 NUM_WORKERS = 3
 
-CollectiveCommunication = cross_device_ops_lib.CollectiveCommunication
+CollectiveCommunication = collective_util.CollectiveCommunication
 
 
 class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
@@ -477,8 +477,7 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
         collective_all_reduce_ops = cross_device_ops_lib.CollectiveAllReduce(
             devices=devices,
             group_size=len(devices),
-            collective_keys=collective_keys,
-            communication=communication)
+            collective_keys=collective_keys)
         return collective_all_reduce_ops, devices, ""
     else:
       # NCCL requires physical GPUs for every replica, which we can't do with
@@ -509,8 +508,7 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
         collective_all_reduce_ops = cross_device_ops_lib.CollectiveAllReduce(
             devices=devices,
             group_size=len(devices) * NUM_WORKERS,
-            collective_keys=collective_keys,
-            communication=communication)
+            collective_keys=collective_keys)
         return (collective_all_reduce_ops, devices,
                 "grpc://" + self._cluster_spec[task_type][task_id])
 

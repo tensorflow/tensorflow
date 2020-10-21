@@ -199,6 +199,7 @@
 // CHECK-NEXT:  name: "min_runtime_version",
 // CHECK-NEXT:  buffer: 14
 // CHECK-NEXT:   } ]
+// CHECK-NEXT:  signature_defs: [ ]
 // CHECK-NEXT: }
 
 func @WhileOp_cond(%arg0: tensor<*xi32>, %arg1: tensor<*xf32>) -> tensor<i1> {

@@ -499,28 +499,19 @@ cc_library(
 
 cc_library(
     name = "device",
-    srcs = ["device.cc"],
     hdrs = ["device.h"],
     copts = tf_copts(),
     deps = [
         "//tensorflow/core:framework_internal",
-        "//tensorflow/core:graph",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
     ],
 )
 
 cc_library(
     name = "device_factory",
-    srcs = ["device_factory.cc"],
     hdrs = ["device_factory.h"],
     copts = tf_copts(),
     deps = [
-        ":device",
-        ":session_options",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:framework_internal",
     ],
 )
 
@@ -1549,6 +1540,7 @@ cc_library(
         ":local_device",
         ":scoped_allocator",
         ":session_options",
+        "@com_google_absl//absl/base",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
@@ -2225,14 +2217,10 @@ tf_cc_test(
 
 tf_cuda_cc_test(
     name = "direct_session_test",
-    size = "small",
+    size = "medium",
     srcs = ["direct_session_test.cc"],
     args = [] + if_cuda(["--heap_check=local"]),  # The GPU tracer leaks memory
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = [
-        "noasan",  # b/168317266
-        "notsan",  # b/168317266
-    ],
     deps = [
         ":core_cpu",
         ":core_cpu_internal",

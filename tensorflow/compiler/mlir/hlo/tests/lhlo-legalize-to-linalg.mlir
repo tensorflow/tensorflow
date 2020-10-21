@@ -621,10 +621,10 @@ func @sign_i16(%input: memref<2x2xi16>, %result: memref<2x2xi16>) {
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i16, %[[RESULT_OUT:.*]]):
 // CHECK-NEXT:   %[[C0:.*]] = constant 0 : i16
-// CHECK-NEXT:   %[[CMP:.*]] = cmpi "eq", %[[OPERAND_IN]], %[[C0]] : i16
 // CHECK-NEXT:   %[[C15:.*]] = constant 15 : i16
-// CHECK-NEXT:   %[[ASHR:.*]] = shift_right_signed %[[OPERAND_IN]], %[[C15]] : i16
 // CHECK-NEXT:   %[[C1:.*]] = constant 1 : i16
+// CHECK-NEXT:   %[[CMP:.*]] = cmpi "eq", %[[OPERAND_IN]], %[[C0]] : i16
+// CHECK-NEXT:   %[[ASHR:.*]] = shift_right_signed %[[OPERAND_IN]], %[[C15]] : i16
 // CHECK-NEXT:   %[[OR:.*]] = or %[[ASHR]], %[[C1]] : i16
 // CHECK-NEXT:   %[[RESULT:.*]] = select %[[CMP]], %[[C0]], %[[OR]] : i16
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i16

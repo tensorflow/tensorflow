@@ -740,7 +740,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       atexit.register(async_wait)
 
     # Flag to turn on VariablePolicy
-    self._use_var_policy = True
+    self._use_var_policy = False
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
     distribute_utils. validate_colocate(colocate_with_variable, self)
@@ -803,6 +803,13 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
             "distribution function.".format(path, type(spec)))
 
   def _experimental_distribute_dataset(self, dataset, options):
+    if (options and options.experimental_replication_mode ==
+        distribute_lib.InputReplicationMode.PER_REPLICA):
+      raise NotImplementedError(
+          "InputReplicationMode.PER_REPLICA "
+          "is only supported in "
+          "`experimental_distribute_datasets_from_function`."
+      )
     if options is None or options.experimental_prefetch_to_device:
       self._check_spec(dataset.element_spec)
 
@@ -813,6 +820,13 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         num_replicas_in_sync=self._num_replicas_in_sync)
 
   def _distribute_datasets_from_function(self, dataset_fn, options):
+    if (options and options.experimental_replication_mode ==
+        distribute_lib.InputReplicationMode.PER_REPLICA):
+      raise NotImplementedError(
+          "InputReplicationMode.PER_REPLICA "
+          "is only supported in "
+          " `experimental_distribute_datasets_from_function` "
+          "of tf.distribute.MirroredStrategy")
     input_workers = self._get_input_workers(options)
     input_contexts = []
     num_workers = input_workers.num_workers
@@ -1022,8 +1036,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         distribute_utils.TPU_VARIABLE_CLASS_MAPPING,
         distribute_utils.TPU_VARIABLE_POLICY_MAPPING, **kwargs)
 
-  def _gather_to_implementation(self, value, destinations, axis,
-                                experimental_hints):
+  def _gather_to_implementation(self, value, destinations, axis, options):
     if not isinstance(value, values.DistributedValues):
       return value
 
@@ -1070,7 +1083,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
     return output
 
-  def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
+  def _reduce_to(self, reduce_op, value, destinations, options):
     if (isinstance(value, values.DistributedValues) or
         tensor_util.is_tensor(value)
        ) and tpu_values.enclosing_tpu_context() is not None:

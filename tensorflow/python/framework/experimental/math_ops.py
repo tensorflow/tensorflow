@@ -35,3 +35,8 @@ def mat_mul(a, b, name=None):
 def neg(a, name=None):
   ctx = context.get_default()
   return _math_ops.neg(ctx, a, name)
+
+
+def sub(a, b, name=None):
+  ctx = context.get_default()
+  return _math_ops.sub(ctx, a, b, name)

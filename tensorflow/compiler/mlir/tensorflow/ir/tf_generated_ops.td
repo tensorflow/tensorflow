@@ -3942,6 +3942,8 @@ The size of 1D Tensors matches the dimension C of the 4D Tensors.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
+  let hasCanonicalizer = 1;
+
   let verifier = [{
     return Verify(*this);
   }];

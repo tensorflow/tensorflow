@@ -83,11 +83,9 @@ tf_cc_test(
     ],
 )
 
-filegroup(
+alias(
     name = "example_parser_configuration_testdata",
-    srcs = [
-        "testdata/parse_example_graph_def.pbtxt",
-    ],
+    actual = "//tensorflow/core/example/testdata:example_parser_configuration_testdata",
 )
 
 tf_proto_library(

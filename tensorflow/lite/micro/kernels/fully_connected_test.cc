@@ -276,10 +276,10 @@ TfLiteStatus TestFullyConnectedFloat(
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims),
-      CreateFloatTensor(weights_data, weights_dims),
-      CreateFloatTensor(bias_data, bias_dims),
-      CreateFloatTensor(output_data, output_dims),
+      CreateTensor(input_data, input_dims),
+      CreateTensor(weights_data, weights_dims),
+      CreateTensor(bias_data, bias_dims),
+      CreateTensor(output_data, output_dims),
   };
 
   return ValidateFullyConnectedGoldens(tensors, tensors_size, activation, 1e-4f,
@@ -317,8 +317,8 @@ TfLiteStatus TestFullyConnectedQuantized(
                             output_zero_point),
   };
 
-  AsymmetricQuantize(golden, golden_quantized, output_dims_count, output_scale,
-                     output_zero_point);
+  Quantize(golden, golden_quantized, output_dims_count, output_scale,
+           output_zero_point);
 
   return ValidateFullyConnectedGoldens(tensors, tensors_size, activation, 0.0f,
                                        output_dims_count, golden_quantized,

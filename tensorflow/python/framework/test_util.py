@@ -108,7 +108,7 @@ except Exception:  # pylint: disable=broad-except
 # Uses the same mechanism as above to selectively enable/disable MLIR
 # compilation.
 def is_mlir_bridge_enabled():
-  return False
+  return None
 
 
 try:
@@ -2022,8 +2022,13 @@ class TensorFlowTestCase(googletest.TestCase):
       # disable it here.
       pywrap_tf_session.TF_SetXlaConstantFoldingDisabled(True)
 
+    # Check if the mlir bridge has been explicitly enabled or disabled. If
+    # is_mlir_bridge_enabled() returns None, the user did not explictly enable
+    # or disable the bridge so do not update enable_mlir_bridge.
     if is_mlir_bridge_enabled():
       context.context().enable_mlir_bridge = True
+    elif is_mlir_bridge_enabled() is not None:
+      context.context().enable_mlir_bridge = False
 
     self._threads = []
     self._tempdir = None

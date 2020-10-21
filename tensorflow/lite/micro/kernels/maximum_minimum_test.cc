@@ -38,9 +38,9 @@ void TestMaxMinFloat(const TfLiteRegistration& registration,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input1_data, input1_dims),
-      CreateFloatTensor(input2_data, input2_dims),
-      CreateFloatTensor(output_data, output_dims),
+      CreateTensor(input1_data, input1_dims),
+      CreateTensor(input2_data, input2_dims),
+      CreateTensor(output_data, output_dims),
   };
 
   int inputs_array_data[] = {2, 0, 1};
@@ -118,9 +118,9 @@ void TestMaxMinQuantizedInt32(
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateInt32Tensor(input1_data, input1_dims),
-      CreateInt32Tensor(input2_data, input2_dims),
-      CreateInt32Tensor(output_data, output_dims),
+      CreateTensor(input1_data, input1_dims),
+      CreateTensor(input2_data, input2_dims),
+      CreateTensor(output_data, output_dims),
   };
 
   int inputs_array_data[] = {2, 0, 1};

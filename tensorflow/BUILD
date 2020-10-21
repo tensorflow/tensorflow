@@ -3,6 +3,7 @@
 # learning applications.
 
 load("@bazel_skylib//lib:selects.bzl", "selects")
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("//tensorflow:tensorflow.bzl", "VERSION", "tf_cc_shared_object", "tf_custom_op_library_additional_deps_impl", "tf_native_cc_binary")
 load(
     "//tensorflow/core/platform:build_config.bzl",
@@ -235,6 +236,12 @@ config_setting(
 config_setting(
     name = "linux_s390x",
     values = {"cpu": "s390x"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "linux_mips64",
+    values = {"cpu": "mips64"},
     visibility = ["//visibility:public"],
 )
 
@@ -563,18 +570,45 @@ selects.config_setting_group(
     ],
 )
 
+# 'enable_registration_v2' opts-in to a different implementation of op and
+# kernel registration - REGISTER_OP, REGISTER_KERNEL_BUILDER, etc.
+#
+# This setting is currently experimental. The 'v2' implementation does _not_
+# correspond to a particular, finalized design; rather, it relates to
+# developing one.
+#
+# The current aim of the 'v2' implementation is to allow 'unused' ops and
+# kernels to be discarded by the linker (to the benefit of binary size).
+bool_flag(
+    name = "enable_registration_v2",
+    build_setting_default = False,
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "registration_v1",
+    flag_values = {":enable_registration_v2": "False"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "registration_v2",
+    flag_values = {":enable_registration_v2": "True"},
+    visibility = ["//visibility:public"],
+)
+
 # DO NOT ADD ANY NEW EXCEPTIONS TO THIS LIST!
 # Instead, please use public APIs or public build rules TF provides.
 # If you need functionality that is not exposed, we will work with you to expand our public APIs.
 package_group(
     name = "internal",
-    packages = ["//tensorflow/..."],
+    packages = [
+        "//learning/lib/ami/simple_ml/...",
+        "//tensorflow/...",
+    ],
 )
 
-package_group(
-    name = "ndarray_tensor_allow_list",
-    packages = ["//learning/pathways/..."],
-)
+package_group(name = "ndarray_tensor_allow_list")
 
 # Packages that use private types symbols, until they are exported.
 # TODO(b/154650521) Remove.
@@ -606,6 +640,7 @@ bzl_library(
         "//third_party/mkl:build_defs_bzl",
         "//third_party/mkl_dnn:build_defs_bzl",
         "//third_party/ngraph:build_defs_bzl",
+        "@bazel_skylib//rules:common_settings",
         "@local_config_cuda//cuda:build_defs_bzl",
         "@local_config_rocm//rocm:build_defs_bzl",
         "@local_config_tensorrt//:build_defs_bzl",
@@ -706,6 +741,9 @@ tf_cc_shared_object(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
+        "//tensorflow/c/experimental/stream_executor:stream_executor_hdrs",
+        "//tensorflow/c:kernels_hdrs",
+        "//tensorflow/c:ops_hdrs",
         "//tensorflow/cc/saved_model:loader_lite_impl",
         "//tensorflow/core/common_runtime:core_cpu_impl",
         "//tensorflow/core:framework_internal_impl",

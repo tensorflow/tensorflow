@@ -2721,10 +2721,10 @@ def reduce_max(input_tensor, axis=None, keepdims=False, name=None):
   tf.Tensor(-1, shape=(), dtype=int32)
   >>> x = tf.constant([4, float('nan')])
   >>> print(tf.reduce_max(x))
-  tf.Tensor(4.0, shape=(), dtype=float32)
+  tf.Tensor(nan, shape=(), dtype=float32)
   >>> x = tf.constant([float('nan'), float('nan')])
   >>> print(tf.reduce_max(x))
-  tf.Tensor(-inf, shape=(), dtype=float32)
+  tf.Tensor(nan, shape=(), dtype=float32)
   >>> x = tf.constant([float('-inf'), float('inf')])
   >>> print(tf.reduce_max(x))
   tf.Tensor(inf, shape=(), dtype=float32)
@@ -4807,6 +4807,35 @@ def ndtri(x, name=None):
   """
   with ops.name_scope(name, "ndtri", [x]):
     return gen_math_ops.ndtri(x)
+
+
+@tf_export("math.erfcinv")
+@dispatch.add_dispatch_support
+def erfcinv(x, name=None):
+  """Computes the inverse of complementary error function.
+
+  Given `x`, compute the inverse complementary error function of `x`.
+  This function is the inverse of `tf.math.erfc`, and is defined on
+  `[0, 2]`.
+
+  >>> tf.math.erfcinv([0., 0.2, 1., 1.5, 2.])
+  <tf.Tensor: shape=(5,), dtype=float32, numpy=
+  array([       inf,  0.9061935, -0.       , -0.4769363,       -inf],
+        dtype=float32)>
+
+  Args:
+    x: `Tensor` with type `float` or `double`.
+    name: A name for the operation (optional).
+  Returns:
+    Inverse complementary error function of `x`.
+
+  @compatibility(numpy)
+  Equivalent to scipy.special.erfcinv
+  @end_compatibility
+  """
+  with ops.name_scope(name, "erfcinv", [x]):
+    x = ops.convert_to_tensor(x, name="start")
+    return -ndtri(0.5 * x) * np.sqrt(0.5)
 
 
 @tf_export("math.ceil", v1=["math.ceil", "ceil"])

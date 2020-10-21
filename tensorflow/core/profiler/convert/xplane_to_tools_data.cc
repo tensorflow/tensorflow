@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_input_pipeline_analysis.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_overview_page.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_pod_viewer.h"
@@ -168,8 +169,18 @@ std::pair<std::string, bool> ConvertMultiXSpacesToPodViewer(
                  << status.error_message();
     return std::make_pair("", false);
   }
-  return std::make_pair(
-      ConvertOpStatsToPodViewer(combined_op_stats).SerializeAsString(), true);
+
+  std::string json_output;
+  protobuf::util::JsonPrintOptions opts;
+  opts.always_print_primitive_fields = true;
+  auto encode_status = protobuf::util::MessageToJsonString(
+      ConvertOpStatsToPodViewer(combined_op_stats), &json_output, opts);
+  if (!encode_status.ok()) {
+    LOG(WARNING) << "Could not convert pod viewer proto to json. Error: "
+                 << encode_status.message();
+    return std::make_pair("", false);
+  }
+  return std::make_pair(json_output, true);
 }
 
 }  // namespace

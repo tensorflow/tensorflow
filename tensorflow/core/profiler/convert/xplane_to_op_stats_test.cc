@@ -44,28 +44,27 @@ TEST(ConvertXPlaneToOpStats, PerfEnv) {
   constexpr double kMaxError = 0.01;
   constexpr int kClockRateKHz = 1530000;
   constexpr int kCoreCount = 80;
-  constexpr uint64 kMemoryBandwidthBytesPerSecond = 900 * 1e9;
+  constexpr uint64 kMemoryBandwidthBytesPerSecond =
+      uint64{900} * 1000 * 1000 * 1000;
   // Volta.
   constexpr int kComputeCapMajor = 7;
   constexpr int kComputeCapMinor = 0;
 
   XPlaneBuilder device_plane(
       GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0));
-  device_plane.ParseAndAddStatValue(
-      *device_plane.GetOrCreateStatMetadata("clock_rate"),
-      absl::StrCat(kClockRateKHz));
-  device_plane.ParseAndAddStatValue(
-      *device_plane.GetOrCreateStatMetadata("core_count"),
-      absl::StrCat(kCoreCount));
-  device_plane.ParseAndAddStatValue(
+  device_plane.AddStatValue(*device_plane.GetOrCreateStatMetadata("clock_rate"),
+                            kClockRateKHz);
+  device_plane.AddStatValue(*device_plane.GetOrCreateStatMetadata("core_count"),
+                            kCoreCount);
+  device_plane.AddStatValue(
       *device_plane.GetOrCreateStatMetadata("memory_bandwidth"),
-      absl::StrCat(kMemoryBandwidthBytesPerSecond));
-  device_plane.ParseAndAddStatValue(
+      kMemoryBandwidthBytesPerSecond);
+  device_plane.AddStatValue(
       *device_plane.GetOrCreateStatMetadata("compute_cap_major"),
-      absl::StrCat(kComputeCapMajor));
-  device_plane.ParseAndAddStatValue(
+      kComputeCapMajor);
+  device_plane.AddStatValue(
       *device_plane.GetOrCreateStatMetadata("compute_cap_minor"),
-      absl::StrCat(kComputeCapMinor));
+      kComputeCapMinor);
 
   GroupTfEvents(&space);
   OpStatsOptions options;

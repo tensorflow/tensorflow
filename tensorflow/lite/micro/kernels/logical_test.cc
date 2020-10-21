@@ -38,9 +38,9 @@ void TestLogicalOp(const TfLiteRegistration& registration,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateBoolTensor(input1_data, input1_dims),
-      CreateBoolTensor(input2_data, input2_dims),
-      CreateBoolTensor(output_data, output_dims),
+      CreateTensor(input1_data, input1_dims),
+      CreateTensor(input2_data, input2_dims),
+      CreateTensor(output_data, output_dims),
   };
 
   int inputs_array_data[] = {2, 0, 1};

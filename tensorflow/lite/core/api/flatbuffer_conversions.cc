@@ -761,6 +761,16 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       *builtin_data = params.release();
       return kTfLiteOk;
     }
+    case BuiltinOperator_CUMSUM: {
+      auto params = safe_allocator.Allocate<TfLiteCumsumParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* cumsum_params = op->builtin_options_as_CumsumOptions()) {
+        params->exclusive = cumsum_params->exclusive();
+        params->reverse = cumsum_params->reverse();
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
     // Below are the ops with no builtin_data structure.
     case BuiltinOperator_BATCH_TO_SPACE_ND:
     // TODO(aselle): Implement call in BuiltinOptions, but nullptrs are

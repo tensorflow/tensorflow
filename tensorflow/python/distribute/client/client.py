@@ -844,11 +844,6 @@ class Cluster(object):
     return self._closure_queue.done()
 
 
-class ParameterServerFailureError(Exception):
-  """An error representing at least one parameter server is interrupted."""
-  pass
-
-
 class Client(object):
   """An object to schedule and orchestrate remote function execution.
 
@@ -942,7 +937,7 @@ class Client(object):
     """
     # Slot variables are usually created during function tracing time; thus
     # `schedule` needs to be called within the `strategy.scope()`.
-    with self.strategy.scope(), _translate_parameter_server_failure():
+    with self.strategy.scope():
       return self.cluster.schedule(fn, args=args, kwargs=kwargs)
 
   def join(self):
@@ -964,8 +959,7 @@ class Client(object):
         scheduled function since the last time an error was thrown or since
         the beginning of the program.
     """
-    with _translate_parameter_server_failure():
-      self.cluster.join()
+    self.cluster.join()
 
   def done(self):
     """Returns whether all the scheduled functions have finished execution.
@@ -1066,23 +1060,10 @@ class Client(object):
 
 # pylint: disable=missing-function-docstring
 @contextlib.contextmanager
-def _translate_parameter_server_failure():
-  try:
-    yield
-  except Exception as e:  # pylint: disable=broad-except
-    if _is_ps_failure(e):
-      raise ParameterServerFailureError(e)
-    else:
-      raise
-
-
-# pylint: disable=missing-function-docstring
-@contextlib.contextmanager
 def handle_parameter_server_failure():
   try:
-    with _translate_parameter_server_failure():
-      yield
-  except ParameterServerFailureError as e:  # pylint: disable=broad-except
+    yield
+  except errors.UnavailableError as e:  # pylint: disable=broad-except
     restart_exit_code = os.environ.get("TF_CLIENT_NON_FATAL_RESTART_EXIT_CODE",
                                        None)
     if restart_exit_code is not None:
@@ -1199,14 +1180,8 @@ def _is_worker_failure(error):
       # remote_handle" part.
       return True
 
-  # TODO(b/162541228): The following 3 types of errors are very rare and only
+  # TODO(b/162541228): The following 2 types of errors are very rare and only
   # observed in large-scale testing. The types of errors should be reduced.
-  # This error could show up when copying function inputs from remote tasks.
-  if isinstance(error, errors.InternalError):
-    if ("Failed copying input tensor" in str(error) or
-        "Unable to find a context_id" in str(error)):
-      return True
-
   # This could happen when the function registration fails. In the observed
   # cases this only happens to the dataset related functions.
   if isinstance(error, errors.NotFoundError):

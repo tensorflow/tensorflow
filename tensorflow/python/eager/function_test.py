@@ -4297,27 +4297,91 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(TypeError, 'missing required arguments: y'):
       foo.add(2)  # pylint: disable=no-value-for-parameter
 
-  @test_util.run_v2_only
-  def testControlDependencyAfterInline(self):
-    v = variables.Variable(0.)
+  def testShapeInferencePropagateConstNestedStack(self):
 
-    @def_function.function
-    def assign():
-      return v.assign(1.)
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec((None, None), dtype=dtypes.int32),
+        tensor_spec.TensorSpec((), dtype=dtypes.int32),
+    ])
+    def f(x, s):
+      old_shape = array_ops.shape(x)
+      new_shape = array_ops.stack([old_shape[0], s], axis=0)
+      y = array_ops.ones(shape=new_shape, dtype=dtypes.int32)
+      return y
 
-    @def_function.function
-    def assign_add():
-      return v.assign_add(1.)
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=(3, 6), dtype=dtypes.int32)
+    ])
+    def g(x):
+      y = f(x, s=5)
+      assert y.shape.as_list() == [3, 5], y.shape.as_list()
+      return y
 
-    @def_function.function
-    def f():
-      check_ops.assert_equal_v2(assign(), 1.)
-      check_ops.assert_equal_v2(assign_add(), 2.)
+    self.assertAllEqual(
+        g(array_ops.zeros([3, 6], dtype=dtypes.int32)), array_ops.ones([3, 5]))
 
-    # We don't have a way to inspect the inlined graph in Python, so we run it
-    # multiple times to have more confidence the dependency is correct.
-    for _ in range(30):
-      f()
+  def testShapeInferencePropagateConstNestedUnstackStack(self):
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec((None, None), dtype=dtypes.int32),
+        tensor_spec.TensorSpec((), dtype=dtypes.int32),
+    ])
+    def f(x, s):
+      s0, _ = array_ops.unstack(array_ops.shape(x), axis=0)
+      new_shape = array_ops.stack([s0, s], axis=0)
+      y = array_ops.ones(shape=new_shape, dtype=dtypes.int32)
+      return y
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=(3, 6), dtype=dtypes.int32)
+    ])
+    def g(x):
+      y = f(x, s=5)
+      assert y.shape.as_list() == [3, 5], y.shape.as_list()
+      return y
+
+    self.assertAllEqual(
+        g(array_ops.zeros([3, 6], dtype=dtypes.int32)), array_ops.ones([3, 5]))
+
+  def testShapeInferencePropagateConstNestedConcat(self):
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec((), dtype=dtypes.int32),
+        tensor_spec.TensorSpec((), dtype=dtypes.int32),
+        tensor_spec.TensorSpec((), dtype=dtypes.int32),
+    ])
+    def f(d1, d2, d3):
+      new_shape = array_ops.concat([[d1], [d2], [d3]], axis=-1)
+      y = array_ops.ones(shape=new_shape, dtype=dtypes.int32)
+      return y
+
+    @def_function.function()
+    def g():
+      y = f(1, 2, 3)
+      assert y.shape.as_list() == [1, 2, 3], y.shape.as_list()
+      return y
+
+    self.assertAllEqual(g(), array_ops.ones([1, 2, 3]))
+
+  def testShapeInferencePropagateConstDoubleNested(self):
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec((), dtype=dtypes.int32),
+        tensor_spec.TensorSpec((), dtype=dtypes.int32),
+        tensor_spec.TensorSpec((), dtype=dtypes.int32),
+    ])
+    def f(d1, d2, d3):
+      new_shape = array_ops.concat([[d1], [d2], [d3]], axis=-1)
+      y = array_ops.ones(shape=new_shape, dtype=dtypes.int32)
+      return y
+
+    @def_function.function()
+    def g():
+      y = def_function.function(f)(1, 2, 3)
+      assert y.shape.as_list() == [1, 2, 3], y.shape.as_list()
+      return y
+
+    self.assertAllEqual(g(), array_ops.ones([1, 2, 3]))
 
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):

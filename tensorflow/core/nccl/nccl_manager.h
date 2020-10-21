@@ -248,7 +248,7 @@ class NcclManager {
   absl::flat_hash_map<se::StreamExecutor*, std::vector<NcclStream*>>
       device_to_comm_streams_ TF_GUARDED_BY(mu_);
 
-  std::vector<std::unique_ptr<Communicator>> communicators_;
+  std::vector<std::unique_ptr<Communicator>> communicators_ TF_GUARDED_BY(mu_);
 
   Status status_ TF_GUARDED_BY(mu_);
 

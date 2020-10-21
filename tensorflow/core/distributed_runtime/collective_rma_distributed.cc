@@ -78,12 +78,12 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
     const string& key, Device* to_device, DeviceContext* to_device_ctx,
     const AllocatorAttributes& to_alloc_attr, Tensor* to_tensor,
     const DeviceLocality& client_locality, int dev_to_dev_stream_index,
-    const StatusCallback& done) {
+    CancellationManager* cancellation_manager, const StatusCallback& done) {
   if (peer_is_local) {
     CollectiveRemoteAccessLocal::RecvFromPeer(
         peer_device, peer_task, peer_is_local, key, to_device, to_device_ctx,
         to_alloc_attr, to_tensor, client_locality, dev_to_dev_stream_index,
-        done);
+        cancellation_manager, done);
     return;
   }
 
@@ -166,10 +166,15 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
     recv_buf_callback(s);
     return;
   }
-  state->call.reset(
-      new RecvBufCall(step_id_, peer_device, peer_task, key, to_device,
-                      to_device_ctx, to_alloc_attr, to_tensor, client_locality,
-                      state->server_attributes, &cancel_mgr_, worker_cache_));
+  // If a per-call `cancellation_manager` is passed to this function, prefer
+  // using that over `abortion_cancellation_manager_`.  This is because abortion
+  // should also be accompanied by opkernel cancellation.
+  state->call.reset(new RecvBufCall(
+      step_id_, peer_device, peer_task, key, to_device, to_device_ctx,
+      to_alloc_attr, to_tensor, client_locality, state->server_attributes,
+      cancellation_manager == nullptr ? &abortion_cancellation_manager_
+                                      : cancellation_manager,
+      worker_cache_));
   state->call->Start(recv_buf_callback);
 }
 
@@ -231,7 +236,7 @@ void CollectiveRemoteAccessDistributed::CheckPeerHealth(
 
 void CollectiveRemoteAccessDistributed::StartAbort(const Status& s) {
   CollectiveRemoteAccessLocal::StartAbort(s);
-  cancel_mgr_.StartCancel();
+  abortion_cancellation_manager_.StartCancel();
 }
 
 }  // namespace tensorflow

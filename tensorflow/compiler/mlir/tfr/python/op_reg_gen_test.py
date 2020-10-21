@@ -55,7 +55,6 @@ class TFRGenTensorTest(test.TestCase):
   def test_op_reg_gen(self):
     cxx_code = gen_register_op(sys.modules[__name__])
     cxx_code_exp = r"""
-      CHECK: #include "third_party/tensorflow/core/framework/node_def_builder.h"
       CHECK-NEXT: #include "third_party/tensorflow/core/framework/op.h"
       CHECK-EMPTY
       CHECK-LABEL: namespace tensorflow {

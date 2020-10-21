@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 
 namespace py = pybind11;
+using tflite::calibration_wrapper::AddIntermediateTensors;
 using tflite::calibration_wrapper::CalibrationWrapper;
 
 PYBIND11_MODULE(_pywrap_tensorflow_lite_calibration_wrapper, m) {
@@ -25,6 +26,9 @@ PYBIND11_MODULE(_pywrap_tensorflow_lite_calibration_wrapper, m) {
     _pywrap_tensorflow_lite_calibration_wrapper
     -----
   )pbdoc";
+  m.def("AddIntermediateTensors", [](py::handle& data) {
+    return tensorflow::PyoOrThrow(AddIntermediateTensors(data.ptr()));
+  });
   py::class_<CalibrationWrapper>(m, "CalibrationWrapper")
       .def(py::init([](py::handle& data) {
         return ::CalibrationWrapper::CreateWrapperCPPFromBuffer(data.ptr());

@@ -580,10 +580,17 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
 
   // MLIR Logic
   m.def("TF_IsMlirBridgeEnabled", [] {
-    return tensorflow::GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge;
+    // Since python protobuf enums are integers, cast to an integer before
+    // returning the enum to python.
+    return static_cast<int32_t>(
+        tensorflow::GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge);
   });
   m.def("TF_EnableMlirBridge", [](bool enabled) {
-    tensorflow::GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge = enabled;
+    tensorflow::GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge =
+        enabled
+            ? tensorflow::ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED
+            : tensorflow::ConfigProto::Experimental::
+                  MLIR_BRIDGE_ROLLOUT_DISABLED;
   });
   m.def("TF_EnableXlaDevices", [] {
     tensorflow::GetXlaDeviceFlags()->tf_xla_enable_xla_devices = true;

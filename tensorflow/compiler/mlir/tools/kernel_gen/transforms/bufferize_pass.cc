@@ -86,7 +86,7 @@ struct BufferizePass : public BufferizePassBase<BufferizePass> {
       return !op.tensor().getType().isa<UnrankedTensorType>();
     });
 
-    BufferAssignmentTypeConverter converter;
+    BufferizeTypeConverter converter;
     auto typesAreLegal = [&converter](Operation* op) {
       return converter.isLegal(op->getOperandTypes()) &&
              converter.isLegal(op->getResultTypes());
@@ -102,8 +102,8 @@ struct BufferizePass : public BufferizePassBase<BufferizePass> {
 
     OwningRewritePatternList patterns;
     mhlo::populateHLOToLHLOConversionPattern(&context, &converter, &patterns);
-    populateWithBufferAssignmentOpConversionPatterns<ReturnOp, ReturnOp,
-                                                     lmhlo::CopyOp>(
+    populateWithBufferizeOpConversionPatterns<ReturnOp, ReturnOp,
+                                              lmhlo::CopyOp>(
         &context, converter, patterns);
     populateStandardBufferizePattern(&context, &converter, &patterns);
     populateShapeTypeConversionPatterns(&context, converter, patterns);

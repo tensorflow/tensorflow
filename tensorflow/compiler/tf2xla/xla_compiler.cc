@@ -584,9 +584,6 @@ std::unique_ptr<Graph> XlaCompiler::GetGraph(const FunctionBody* fbody) {
   opts.set_do_common_subexpression_elimination(false);
   opts.set_do_function_inlining(true);
   opts.set_do_constant_folding(!flags->tf_xla_disable_constant_folding);
-  // Our constant folding is mainly for helping shape inference, so we do not
-  // need to fold large constant values.
-  opts.set_max_folded_constant_in_bytes(1024);
   GraphOptimizer optimizer(opts);
   // Do not constant fold nodes that output DT_VARIANT type tensors.
   // XLA does not support Const nodes of Variant type since it needs
@@ -758,13 +755,15 @@ Status XlaCompiler::CompileFunction(
 
   VLOG(1) << "====================================================";
 #ifdef LIBTPU_ON_GCE
-  if (GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge) {
+  if (GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge ==
+      ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED) {
     VLOG(1) << "MLIR is not supported in this environment.";
   }
   TF_RETURN_IF_ERROR(
       CompileGraph(options, function_id, std::move(graph), args, result));
 #else
-  if (GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge) {
+  if (GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge ==
+      ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED) {
     VLOG(1) << "Using MLIR bridge";
     GraphDebugInfo debug_info;
     std::vector<std::string> control_rets;

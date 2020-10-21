@@ -714,6 +714,7 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:tf_data_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/utils:group_events",
+        "//tensorflow/core/profiler/utils:html_utils",
         "//tensorflow/core/profiler/utils:tf_op_utils",
         "//tensorflow/core/profiler/utils:tf_xplane_visitor",
         "//tensorflow/core/profiler/utils:timespan",
@@ -722,6 +723,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 

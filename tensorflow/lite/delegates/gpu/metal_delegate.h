@@ -47,9 +47,14 @@ typedef struct {
   bool allow_precision_loss;
   TFLGpuDelegateWaitType wait_type;
   // Allows execution of integer quantized models
-  // TODO(b/169350710): Enable by default.
   bool enable_quantization;
 } TFLGpuDelegateOptions;
+
+// Populates TFLGpuDelegateOptions as follows:
+//   allow_precision_loss = false;
+//   wait_type = TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypePassive;
+//   enable_quantization = true;
+TFL_CAPI_EXPORT extern TFLGpuDelegateOptions TFLGpuDelegateOptionsDefault(void);
 
 // Creates a new delegate instance that need to be destroyed with
 // `TFLDeleteTfLiteGpuDelegate` when delegate is no longer used by TFLite.
