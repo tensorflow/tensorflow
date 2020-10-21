@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import threading
+import weakref
 
 from tensorflow.python import _pywrap_parallel_device
 from tensorflow.python.distribute import device_util
@@ -31,6 +32,16 @@ from tensorflow.python.tpu.ops import tpu_ops
 
 _next_device_number = 0
 _next_device_number_lock = threading.Lock()
+
+_all_parallel_devices = weakref.WeakValueDictionary()
+
+
+def unpack(tensor):
+  """Finds `tensor`'s parallel device and unpacks its components."""
+  parallel_device = _all_parallel_devices.get(tensor.device, None)
+  if parallel_device is None:
+    raise ValueError("{} is not a parallel device".format(tensor.device))
+  return parallel_device.unpack(tensor)
 
 
 # TODO(allenl): Expand this docstring once things like getting components on and
@@ -67,6 +78,7 @@ class ParallelDevice(object):
     self._device_ids = None
     self._device_scope = None
     self._saving_scope = None
+    _all_parallel_devices[self._name] = self
 
   def pack(self, tensors):
     """Create a tensor on the parallel device from a sequence of tensors.

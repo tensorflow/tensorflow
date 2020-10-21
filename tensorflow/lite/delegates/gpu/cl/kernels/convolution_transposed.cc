@@ -516,12 +516,12 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
   return c;
 }
 
-absl::Status ConvolutionTransposed::BindArguments() {
+absl::Status ConvolutionTransposed::BindArguments(ArgumentsBinder* args) {
   if (definition_.src_tensors[0].HasAxis(Axis::DEPTH)) {
     const int aligned_h =
         AlignByN(dst_[0]->Height(), stride_.y * block_size_.y);
     RETURN_IF_ERROR(
-        args_.SetInt("grid_size_y", DivideRoundUp(aligned_h, block_size_.y)));
+        args->SetInt("grid_size_y", DivideRoundUp(aligned_h, block_size_.y)));
   }
   return absl::OkStatus();
 }

@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -98,6 +99,10 @@ class VSpace {
       gtl::ArraySlice<Gradient*> output_gradients,
       std::vector<Gradient*>* result) const = 0;
 
+  // Builds a tensor filled with ones with the same shape and dtype as `t`.
+  virtual Status BuildOnesLike(const TapeTensor& t,
+                               Gradient** result) const = 0;
+
   // Looks up the ID of a Gradient.
   virtual int64 TensorId(Gradient* tensor) const = 0;
 
@@ -121,7 +126,7 @@ class GradientTape {
   // functions (and hence the tensors they keep alive). Instead, everything
   // is deleted in ~GradientTape. Persistent GradientTapes are useful when
   // users want to compute multiple gradients over the same tape.
-  GradientTape(bool persistent) : persistent_(persistent) {}
+  explicit GradientTape(bool persistent) : persistent_(persistent) {}
   ~GradientTape() {
     for (const auto& pair : op_tape_) {
       pair.second.backward_function_deleter(pair.second.backward_function);
@@ -595,8 +600,10 @@ Status InitialGradients(
         for (int j = 0; j < op_it->second.output_tensor_info.size(); ++j) {
           if (op_it->second.output_tensor_info[j].GetID() == id) {
             found = true;
-            (*result)[id].push_back(
-                op_it->second.output_tensor_info[j].OnesLike());
+            Gradient* ones_like = nullptr;
+            TF_RETURN_IF_ERROR(vspace.BuildOnesLike(
+                op_it->second.output_tensor_info[j], &ones_like));
+            (*result)[id].push_back(ones_like);
             break;
           }
         }
@@ -611,7 +618,10 @@ Status InitialGradients(
         // target is also a source.
         auto source_tensor = sources_that_are_targets.find(id);
         if (source_tensor != sources_that_are_targets.end()) {
-          (*result)[id].push_back(source_tensor->second.OnesLike());
+          Gradient* ones_like = nullptr;
+          TF_RETURN_IF_ERROR(
+              vspace.BuildOnesLike(source_tensor->second, &ones_like));
+          (*result)[id].push_back(ones_like);
         }
       }
     } else {
@@ -934,7 +944,7 @@ ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::ForwardpropFromTape(
       // TODO(allenl): Figure out why using zeros_like everywhere causes issues
       // for some gradient functions and if there's another way to work around
       // it (e.g. conds instead of ifs). The value shouldn't really matter.
-      aid = output_tensor.OnesLike();
+      TF_RETURN_IF_ERROR(vspace_.BuildOnesLike(output_tensor, &aid));
     }
     if (TF_PREDICT_FALSE(aid == nullptr)) {
       return tensorflow::errors::Internal(

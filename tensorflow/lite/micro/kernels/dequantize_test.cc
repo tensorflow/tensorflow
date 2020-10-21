@@ -18,7 +18,6 @@ limitations under the License.
 #include "tensorflow/lite/micro/kernels/kernel_runner.h"
 #include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
-#include "tensorflow/lite/micro/testing/test_utils.h"
 
 namespace tflite {
 namespace testing {
@@ -62,7 +61,7 @@ void TestDequantizeToFloat(const int* input_dims_data, const float* input_data,
   TfLiteTensor tensors[tensors_size] = {
       CreateQuantizedTensor(input_data, input_data_quantized, input_dims, scale,
                             zero_point),
-      CreateFloatTensor(output_data, output_dims),
+      CreateTensor(output_data, output_dims),
   };
 
   ValidateDequantizeGoldens(tensors, tensors_size, expected_output_data,
@@ -85,7 +84,7 @@ void TestDequantizeToInt32(const int* input_dims_data, const float* input_data,
   TfLiteTensor tensors[tensors_size] = {
       CreateQuantizedTensor(input_data, input_data_quantized, input_dims,
                             input_scale, input_zero_point),
-      CreateInt32Tensor(output_data, output_dims),
+      CreateTensor(output_data, output_dims),
   };
 
   tensors[1].params.scale = output_scale;

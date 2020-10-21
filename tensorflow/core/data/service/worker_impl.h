@@ -60,6 +60,7 @@ class DataServiceWorkerImpl {
     TaskDef task_def;
     mutex mu;
     bool initialized TF_GUARDED_BY(mu) = false;
+    bool finished = false;
     // TODO(aaudibert): Have standalone::Iterator own a reference to
     // standalone::Dataset so that we don't need to store the dataset here.
     std::unique_ptr<standalone::Dataset> dataset;

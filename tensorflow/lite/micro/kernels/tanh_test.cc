@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/kernels/kernel_runner.h"
+#include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
-#include "tensorflow/lite/micro/testing/test_utils.h"
 
 namespace tflite {
 namespace testing {
@@ -77,8 +77,8 @@ void TestTanhFloat(const int input_dims_data[], const float* input_data,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims),
-      CreateFloatTensor(output_data, output_dims),
+      CreateTensor(input_data, input_dims),
+      CreateTensor(output_data, output_dims),
   };
 
   int inputs_array_data[] = {1, 0};
@@ -113,9 +113,8 @@ void TestTanhQuantized(const int input_dims_data[], const float* input_data,
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
   const int output_elements_count = ElementCount(*output_dims);
 
-  tflite::AsymmetricQuantize(expected_output_data, expected_output_quantized,
-                             output_elements_count, output_scale,
-                             output_zero_point);
+  tflite::Quantize(expected_output_data, expected_output_quantized,
+                   output_elements_count, output_scale, output_zero_point);
 
   constexpr int inputs_size = 1;
   constexpr int outputs_size = 1;

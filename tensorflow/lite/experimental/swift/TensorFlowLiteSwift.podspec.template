@@ -52,8 +52,7 @@ Pod::Spec.new do |s|
     metal.test_spec 'Tests' do |ts|
       ts.source_files = swift_dir + 'Tests/{Interpreter,MetalDelegate}Tests.swift'
       ts.resources = [
-        tfl_dir + 'testdata/add.bin',
-        tfl_dir + 'testdata/add_quantized.bin',
+        tfl_dir + 'testdata/multi_add.bin',
       ]
     end
   end

@@ -1403,6 +1403,34 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
       check_dtypes(dtypes.int64, dtypes.int32)
       check_dtypes(dtypes.int64, dtypes.int64)
 
+  def testOutputDtype(self):
+
+    def check_output_dtype(output_dtype):
+      res = self.evaluate(
+          array_ops.sequence_mask(
+              constant_op.constant([1, 3, 2], dtype=dtypes.int32),
+              constant_op.constant(5, dtype=dtypes.int32),
+              dtype=output_dtype))
+      self.assertAllEqual(
+          res,
+          self.evaluate(
+              math_ops.cast([[True, False, False, False, False],
+                             [True, True, True, False, False],
+                             [True, True, False, False, False]], output_dtype)))
+
+    check_output_dtype(dtypes.bool)
+    check_output_dtype("bool")
+    check_output_dtype(np.bool)
+    check_output_dtype(dtypes.int32)
+    check_output_dtype("int32")
+    check_output_dtype(np.int32)
+    check_output_dtype(dtypes.float32)
+    check_output_dtype("float32")
+    check_output_dtype(np.float32)
+    check_output_dtype(dtypes.int64)
+    check_output_dtype("float64")
+    check_output_dtype(np.float64)
+
 
 class ConcatSliceResourceTest(test_util.TensorFlowTestCase):
 
@@ -1582,7 +1610,7 @@ class QuantizeAndDequantizeTest(test_util.TensorFlowTestCase):
         expected = self._scale_per_slice(shape, axis, quant_values)
         unused_minmax_value = 0 if axis is None else [0] * shape[axis]
         fake_quantized = self.evaluate(
-            array_ops.quantize_and_dequantize(
+            array_ops.quantize_and_dequantize_v2(
                 inputs,
                 unused_minmax_value,
                 unused_minmax_value,
@@ -1592,13 +1620,46 @@ class QuantizeAndDequantizeTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(fake_quantized, expected)
         if axis is not None:
           fake_quantized = self.evaluate(
-              array_ops.quantize_and_dequantize(
+              array_ops.quantize_and_dequantize_v2(
                   inputs,
                   unused_minmax_value,
                   unused_minmax_value,
                   range_given=False,
                   axis=(axis - 4)))
           self.assertAllClose(fake_quantized, expected)
+
+  def testBadAxis(self):
+    input_tensor = [2.5, 2.5]
+    input_min = [0, 0]
+    input_max = [1, 1]
+    error_message_pattern = "Shape must be at least rank 11 but is rank 1"
+    # TODO(b/171260356): Eager mode and graph mode throw different error types
+    error = errors.InvalidArgumentError if context.executing_eagerly(
+    ) else ValueError
+    with self.assertRaisesRegex(error, error_message_pattern):
+      self.evaluate(
+          array_ops.quantize_and_dequantize_v2(
+              input=input_tensor,
+              input_min=input_min,
+              input_max=input_max,
+              axis=10))
+
+  def testQuantizeDequantizeGrad(self):
+    shape = (2, 2)
+    max_threshold = 0
+    min_threshold = -10
+    input_value = np.random.rand(2, 2) * 40.0 - 20.0
+    input_tensor = constant_op.constant(input_value, shape=shape,
+                                        name="input_tensor")
+    with self.cached_session():
+      def f(a):
+        return array_ops.quantize_and_dequantize_v2(
+            a,
+            input_min=min_threshold,
+            input_max=max_threshold,
+            range_given=True)
+      output_grad = gradient_checker_v2.compute_gradient(f, [input_tensor])
+      self.assertAllClose(output_grad[0], np.zeros([1, 4, 4]))
 
 
 @test_util.run_all_in_graph_and_eager_modes

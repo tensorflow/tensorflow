@@ -73,6 +73,14 @@ int32 TpuTopologyExternal::LogicalDevicesPerChip(
                                                                    core_type);
 }
 
+int32 TpuTopologyExternal::HostCount() const {
+  return tpu::ExecutorApiFn()->TpuTopology_HostCountFn(topology_);
+}
+
+int32 TpuTopologyExternal::ChipsPerHost() const {
+  return tpu::ExecutorApiFn()->TpuTopology_ChipsPerHostFn(topology_);
+}
+
 TpuTopologyChipBoundsExternal TpuTopologyExternal::chip_bounds() const {
   return {tpu::ExecutorApiFn()->TpuTopology_ChipBounds_XFn(topology_),
           tpu::ExecutorApiFn()->TpuTopology_ChipBounds_YFn(topology_),

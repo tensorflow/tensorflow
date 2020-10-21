@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/collective_param_resolver_local.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 class ConfigProto;
@@ -71,9 +72,8 @@ class CollectiveParamResolverDistributed : public CollectiveParamResolverLocal {
       TF_LOCKS_EXCLUDED(instance_mu_);
 
   // Updates instance_table_ with contents of resp.
-  void UpdateInstanceCache(const GroupRec* gr, CollectiveParams* cp,
-                           const CompleteInstanceResponse& resp,
-                           const StatusCallback& done)
+  Status UpdateInstanceCache(const GroupRec* gr, CollectiveParams* cp,
+                             const CompleteInstanceResponse& resp)
       TF_LOCKS_EXCLUDED(instance_mu_, gr->mu, group_mu_);
 
   // Finish populating *cp.  Semantics are like those of

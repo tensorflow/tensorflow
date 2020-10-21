@@ -1,16 +1,16 @@
 path: "tensorflow.distribute.experimental.CollectiveCommunication"
 tf_class {
-  is_instance: "<enum \'CollectiveCommunication\'>"
+  is_instance: "<enum \'CommunicationImplementation\'>"
   member {
     name: "AUTO"
-    mtype: "<enum \'CollectiveCommunication\'>"
+    mtype: "<enum \'CommunicationImplementation\'>"
   }
   member {
     name: "NCCL"
-    mtype: "<enum \'CollectiveCommunication\'>"
+    mtype: "<enum \'CommunicationImplementation\'>"
   }
   member {
     name: "RING"
-    mtype: "<enum \'CollectiveCommunication\'>"
+    mtype: "<enum \'CommunicationImplementation\'>"
   }
 }

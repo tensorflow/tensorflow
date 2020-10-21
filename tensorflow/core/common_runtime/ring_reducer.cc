@@ -67,9 +67,9 @@ void RingReducer::Run(StatusCallback done) {
 
   if (VLOG_IS_ON(1)) {
     string buf;
-    for (int r = 0; r < col_params_->instance.device_names.size(); ++r) {
+    for (int r = 0; r < col_params_->group.device_names.size(); ++r) {
       strings::StrAppend(&buf, "dev ", r, " : ",
-                         col_params_->instance.device_names[r], "\n");
+                         col_params_->group.device_names[r], "\n");
     }
     for (int sd = 0;
          sd < col_params_->instance.impl_details.subdiv_permutations.size();
@@ -256,7 +256,7 @@ bool RingReducer::RunAsyncParts() {
               rf->action = RF_REDUCE;
               Status s = collective_util::ComputeBinOp(
                   col_ctx_->op_ctx, col_ctx_->op_params, col_ctx_->device,
-                  col_params_->merge_op.get(), &rf->chunk, &rf->tmp_chunk);
+                  col_params_->merge_op, &rf->chunk, &rf->tmp_chunk);
               if (!s.ok()) {
                 aborted = true;
                 StartAbort(s);
@@ -266,13 +266,12 @@ bool RingReducer::RunAsyncParts() {
             }
             break;
           case RF_REDUCE:
-            if (!rf->second_pass && col_params_->final_op.get() &&
-                rf->is_final) {
+            if (!rf->second_pass && col_params_->final_op && rf->is_final) {
               rf->action = RF_FINALIZE;
               group_size_tensor_ready_.WaitForNotification();
               Status s = collective_util::ComputeBinOp(
                   col_ctx_->op_ctx, col_ctx_->op_params, col_ctx_->device,
-                  col_params_->final_op.get(), &rf->chunk, &group_size_tensor_);
+                  col_params_->final_op, &rf->chunk, &group_size_tensor_);
               if (!s.ok()) {
                 aborted = true;
                 StartAbort(s);

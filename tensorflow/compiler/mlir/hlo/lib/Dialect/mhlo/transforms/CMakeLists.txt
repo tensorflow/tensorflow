@@ -49,7 +49,7 @@ add_mlir_library(ChloPasses
 
 add_mlir_library(MhloPasses
   legalize_gather_to_torch_index_select.cc
-  legalize_tanh_to_approximation.cc
+  legalize_trigonometric_to_approximation.cc
   lower_complex.cc
   lower_complex_patterns.td
   lower_general_dot.cc

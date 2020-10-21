@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/utils/tf_op_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -109,7 +110,7 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"ParseExampleProduce", kParseExampleProduce},
       {"ParseExampleConsume", kParseExampleConsume},
       // Batching related.
-      {"BatchingSession", kBatchingSession},
+      {"BatchingSessionRun", kBatchingSessionRun},
       {"ProcessBatch", kProcessBatch},
       // JAX related.
       {"LocalExecutable::ExecuteOnLocalDevices", kExecuteOnLocalDevices},
@@ -185,6 +186,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"tracing_count", kTfFunctionTracingCount},
       {"flops", kFlops},
       {"bytes_accessed", kBytesAccessed},
+      {"selected_group_ids", kSelectedGroupIds},
       // Performance counter related.
       {"Raw Value", kRawValue},
       {"Scaled Value", kScaledValue},
@@ -228,6 +230,19 @@ absl::optional<int64> FindHostEventType(absl::string_view event_name) {
     return *event_type;
   }
   return absl::nullopt;
+}
+
+absl::optional<int64> FindTfOpEventType(absl::string_view event_name) {
+  // TF op names.
+  Category category = ParseTfOpFullname(event_name).category;
+  switch (category) {
+    case Category::kTensorFlow:
+      return HostEventType::kTfOpRun;
+    case Category::kTfData:
+      return HostEventType::kIterator;
+    default:
+      return absl::nullopt;
+  }
 }
 
 absl::string_view GetStatTypeStr(StatType stat_type) {

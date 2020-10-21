@@ -190,6 +190,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(AttributeError, 'no attribute'):
       add(c)
 
+  @test_util.disable_tfrt('Packed tensor is not supported in tfrt yet.')
   def testPackedVariable(self):
     with ops.device('/cpu:0'):
       v0_0 = resource_variable_ops.ResourceVariable(1.0)
@@ -842,6 +843,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     expected = [4.0] * 100
     self.assertSequenceEqual(outputs, expected)
 
+  @test_util.disable_tfrt('b/169431085: This test is flaky on tfrt')
   def testExecutingStatefulDefunConcurrently(self):
 
     v = resource_variable_ops.ResourceVariable(1.0)
@@ -1320,6 +1322,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertIsInstance(
         self.v, resource_variable_ops.ResourceVariable)
 
+  @test_util.disable_tfrt('b/169294215')
   def testRunMetadata(self):
 
     @def_function.function
@@ -3347,6 +3350,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     test_fn()
     self.assertEqual(ag_ctx.control_status_ctx().status, prev_status)
 
+  @test_util.disable_tfrt('b/170435618')
   def testCancelBeforeFunctionExecution(self):
     if not context.executing_eagerly():
       self.skipTest('eager only')
@@ -3364,8 +3368,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(errors.CancelledError):
       cancelable_func()
 
-  # TODO(b/162544929): Enable this test.
-  def DISABLE_testCancelBlockedFunctionExecution(self):
+  @test_util.disable_tfrt('b/170435618')
+  def testCancelBlockedFunctionExecution(self):
     if not context.executing_eagerly():
       self.skipTest('eager only')
 
@@ -3388,6 +3392,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       cancelable_func()
     t.join()
 
+  @test_util.disable_tfrt('b/170435618')
   def testCancelAfterFunctionExecution(self):
     if not context.executing_eagerly():
       self.skipTest('eager only')
@@ -3551,6 +3556,20 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     cf = f.get_concrete_function(a, b)
     for output in [cf(), cf(a), cf(y=b)]:
       self.assertAllEqual(output[0] + output[1], 5555)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConcreteFunctionMethodWithVarargs(self):
+    float32_scalar = tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32)
+
+    class MyModel(module.Module):
+
+      @def_function.function(input_signature=[float32_scalar, float32_scalar])
+      def add(self, *arg):
+        return math_ops.add(*arg)
+
+    m = MyModel()
+    cf = m.add.get_concrete_function()
+    cf(-12.0, 3.0)
 
   @test_util.run_in_graph_and_eager_modes
   def testConcreteFunctionStructuredSignatureKeywordOrder(self):
@@ -4277,6 +4296,92 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     foo = Foo()
     with self.assertRaisesRegex(TypeError, 'missing required arguments: y'):
       foo.add(2)  # pylint: disable=no-value-for-parameter
+
+  def testShapeInferencePropagateConstNestedStack(self):
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec((None, None), dtype=dtypes.int32),
+        tensor_spec.TensorSpec((), dtype=dtypes.int32),
+    ])
+    def f(x, s):
+      old_shape = array_ops.shape(x)
+      new_shape = array_ops.stack([old_shape[0], s], axis=0)
+      y = array_ops.ones(shape=new_shape, dtype=dtypes.int32)
+      return y
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=(3, 6), dtype=dtypes.int32)
+    ])
+    def g(x):
+      y = f(x, s=5)
+      assert y.shape.as_list() == [3, 5], y.shape.as_list()
+      return y
+
+    self.assertAllEqual(
+        g(array_ops.zeros([3, 6], dtype=dtypes.int32)), array_ops.ones([3, 5]))
+
+  def testShapeInferencePropagateConstNestedUnstackStack(self):
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec((None, None), dtype=dtypes.int32),
+        tensor_spec.TensorSpec((), dtype=dtypes.int32),
+    ])
+    def f(x, s):
+      s0, _ = array_ops.unstack(array_ops.shape(x), axis=0)
+      new_shape = array_ops.stack([s0, s], axis=0)
+      y = array_ops.ones(shape=new_shape, dtype=dtypes.int32)
+      return y
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=(3, 6), dtype=dtypes.int32)
+    ])
+    def g(x):
+      y = f(x, s=5)
+      assert y.shape.as_list() == [3, 5], y.shape.as_list()
+      return y
+
+    self.assertAllEqual(
+        g(array_ops.zeros([3, 6], dtype=dtypes.int32)), array_ops.ones([3, 5]))
+
+  def testShapeInferencePropagateConstNestedConcat(self):
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec((), dtype=dtypes.int32),
+        tensor_spec.TensorSpec((), dtype=dtypes.int32),
+        tensor_spec.TensorSpec((), dtype=dtypes.int32),
+    ])
+    def f(d1, d2, d3):
+      new_shape = array_ops.concat([[d1], [d2], [d3]], axis=-1)
+      y = array_ops.ones(shape=new_shape, dtype=dtypes.int32)
+      return y
+
+    @def_function.function()
+    def g():
+      y = f(1, 2, 3)
+      assert y.shape.as_list() == [1, 2, 3], y.shape.as_list()
+      return y
+
+    self.assertAllEqual(g(), array_ops.ones([1, 2, 3]))
+
+  def testShapeInferencePropagateConstDoubleNested(self):
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec((), dtype=dtypes.int32),
+        tensor_spec.TensorSpec((), dtype=dtypes.int32),
+        tensor_spec.TensorSpec((), dtype=dtypes.int32),
+    ])
+    def f(d1, d2, d3):
+      new_shape = array_ops.concat([[d1], [d2], [d3]], axis=-1)
+      y = array_ops.ones(shape=new_shape, dtype=dtypes.int32)
+      return y
+
+    @def_function.function()
+    def g():
+      y = def_function.function(f)(1, 2, 3)
+      assert y.shape.as_list() == [1, 2, 3], y.shape.as_list()
+      return y
+
+    self.assertAllEqual(g(), array_ops.ones([1, 2, 3]))
 
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):

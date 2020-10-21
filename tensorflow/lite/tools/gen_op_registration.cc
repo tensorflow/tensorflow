@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "re2/re2.h"
 #include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 
 namespace tflite {
 
@@ -37,10 +38,11 @@ void ReadOpsFromModel(const ::tflite::Model* model,
   if (!opcodes) return;
   for (const auto* opcode : *opcodes) {
     const int version = opcode->version();
-    if (opcode->builtin_code() != ::tflite::BuiltinOperator_CUSTOM) {
-      auto iter_and_bool = builtin_ops->insert(std::make_pair(
-          tflite::EnumNameBuiltinOperator(opcode->builtin_code()),
-          std::make_pair(version, version)));
+    auto builtin_code = GetBuiltinCode(opcode);
+    if (builtin_code != ::tflite::BuiltinOperator_CUSTOM) {
+      auto iter_and_bool = builtin_ops->insert(
+          std::make_pair(tflite::EnumNameBuiltinOperator(builtin_code),
+                         std::make_pair(version, version)));
       auto& versions = iter_and_bool.first->second;
       versions.first = std::min(versions.first, version);
       versions.second = std::max(versions.second, version);

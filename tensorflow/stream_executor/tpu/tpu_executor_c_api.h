@@ -188,9 +188,15 @@ void TpuTransferManager_TransferLiteralFromDevice(
     XLA_StatusCallbackFn callback, void* ctx);
 int64_t TpuTransferManager_GetByteSizeRequirement(XLA_TransferManager* manager,
                                                   XLA_Shape* shape);
+void TpuTransferManager_ChooseCompactLayoutForShape(
+    XLA_TransferManager* manager, XLA_Shape* host_shape, XLA_Shape* output,
+    SE_Status* status);
 bool TpuTransferManager_CanShapedBufferBeAccessedNow(
     XLA_TransferManager* manager, SE_StreamExecutor* executor,
     XLA_ShapedBuffer* device_buffer);
+bool TpuTransferManager_CanBufferBeAccessedNow(
+    XLA_TransferManager* manager, SE_StreamExecutor* executor,
+    SE_DeviceMemoryBase* device_buffer);
 void TpuTransferManager_WriteSingleTupleIndexTable(
     XLA_TransferManager* manager, SE_Stream* stream,
     SE_DeviceMemoryBase* elements, size_t elements_len, XLA_Shape* shape,
@@ -240,6 +246,9 @@ int TpuTopology_LogicalDevicesPerHost(SE_TpuTopology* tpu_topology,
                                       TpuCoreTypeEnum tpu_core_type);
 int TpuTopology_LogicalDevicesPerChip(SE_TpuTopology* tpu_topology,
                                       TpuCoreTypeEnum tpu_core_type);
+int TpuTopology_HostCount(SE_TpuTopology* tpu_topology);
+int TpuTopology_ChipsPerHost(SE_TpuTopology* tpu_topology);
+
 int TpuTopology_ChipBounds_X(SE_TpuTopology* tpu_topology);
 int TpuTopology_ChipBounds_Y(SE_TpuTopology* tpu_topology);
 int TpuTopology_ChipBounds_Z(SE_TpuTopology* tpu_topology);
@@ -303,6 +312,11 @@ TFTPU_CAPI_EXPORT void TpuExecutable_ExecuteAsyncOnStream(
 TFTPU_CAPI_EXPORT void TpuExecutable_Fingerprint(SE_Executable* executable,
                                                  const char** fingerprint,
                                                  size_t* size);
+
+// Caller is responsible for freeing the returned module's proto and its
+// config's proto.
+TFTPU_CAPI_EXPORT XLA_HloModule
+TpuExecutable_HloModule(SE_Executable* executable);
 
 TFTPU_CAPI_EXPORT void TpuExecutable_Free(SE_Executable*);
 
@@ -406,7 +420,9 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_TransferLiteralToDeviceAsync);
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_TransferLiteralFromDevice);
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_GetByteSizeRequirement);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_ChooseCompactLayoutForShape);
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_CanShapedBufferBeAccessedNow);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_CanBufferBeAccessedNow);
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_WriteSingleTupleIndexTable);
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_GetInfeedLayout);
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_LinearizeToBuffers);
@@ -423,6 +439,9 @@ struct TfTpu_ExecutorApiFn {
 
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_LogicalDevicesPerHost);
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_LogicalDevicesPerChip);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTopology_HostCount);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTopology_ChipsPerHost);
+
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_ChipBounds_X);
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_ChipBounds_Y);
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_ChipBounds_Z);
@@ -450,6 +469,7 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_ShapeSize);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_ExecuteAsyncOnStream);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_Fingerprint);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_HloModule);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_Free);
 
   TFTPU_ADD_FN_IN_STRUCT(XlaShapeToTpuShapeRepresentation);

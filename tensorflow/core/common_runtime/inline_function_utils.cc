@@ -587,7 +587,7 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   //
   // If 'x' is a node in fbody->graph and its copy in 'g' is 'y', we
   // remember 'y' in node_map[x->id()].
-  absl::flat_hash_set<string> fn_nodes;
+  std::unordered_set<string> fn_nodes;
   for (Node* n : fbody->graph->op_nodes()) {
     fn_nodes.insert(n->name());
   }

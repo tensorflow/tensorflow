@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Interfaces/ViewLikeInterface.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/FoldUtils.h"
 
@@ -71,6 +72,24 @@ class LhloFuseLinalgPass
       if (!returnOp) continue;
       for (auto operand : returnOp.getOperands()) {
         result_buffers.insert(operand);
+      }
+    }
+    // Resolve aliasing operations (like casts) on the result to identify
+    // results. This only handles escaping results.
+    // TODO(herhut): Use BufferizeAliasAnalysis for this.
+    llvm::SmallVector<Value, 4> worklist(result_buffers.begin(),
+                                         result_buffers.end());
+    while (!worklist.empty()) {
+      Value result = worklist.pop_back_val();
+      auto definingOp = result.getDefiningOp();
+      if (!definingOp) {
+        continue;
+      }
+      if (auto viewLike = dyn_cast<ViewLikeOpInterface>(definingOp)) {
+        auto alias = viewLike.getViewSource();
+        if (result_buffers.insert(alias).second) {
+          worklist.push_back(alias);
+        }
       }
     }
     MLIRContext* ctx = func.getContext();

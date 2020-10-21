@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/acceleration/compatibility/gpu_compatibility.h"
 
+#include <algorithm>
 #include <memory>
 
 #include <gmock/gmock.h>
@@ -82,6 +83,19 @@ TEST_F(GPUCompatibilityTest, ReturnsDefaultOptions) {
             default_options.experimental_flags);
   EXPECT_EQ(best_options.max_delegated_partitions,
             default_options.max_delegated_partitions);
+}
+
+TEST(GPUCompatibility, RecogniseValidCompatibilityListFlatbuffer) {
+  EXPECT_TRUE(tflite::acceleration::GPUCompatibilityList::IsValidFlatbuffer(
+      g_tflite_acceleration_devicedb_sample_binary,
+      g_tflite_acceleration_devicedb_sample_binary_len));
+}
+
+TEST(GPUCompatibility, RecogniseInvalidCompatibilityListFlatbuffer) {
+  unsigned char invalid_buffer[100];
+  std::fill(invalid_buffer, invalid_buffer + 100, ' ');
+  EXPECT_FALSE(tflite::acceleration::GPUCompatibilityList::IsValidFlatbuffer(
+      invalid_buffer, 100));
 }
 
 }  // namespace

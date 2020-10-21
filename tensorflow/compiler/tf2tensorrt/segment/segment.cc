@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
-#include "tensorflow/compiler/tf2tensorrt/segment/union_find.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
@@ -239,12 +238,6 @@ SimpleGraph::~SimpleGraph() {
 struct SimpleEdgePtrCompare {
   bool operator()(const SimpleEdge* lhs, const SimpleEdge* rhs) const {
     return lhs->id() < rhs->id();
-  }
-};
-
-struct NodePtrCompare {
-  bool operator()(const Node* lhs, const Node* rhs) const {
-    return lhs->name() < rhs->name();
   }
 };
 
@@ -478,7 +471,7 @@ absl::Span<const OpInfo::TensorProperties> GetInputsToDeterminateBatchSize(
       "Add",
       "AddV2",
       "Mul",
-      "Sub"
+      "Sub",
       "Div",
       "FloorDiv",
       "RealDiv",
@@ -646,10 +639,18 @@ ClusterBatchSize GetClusterBatchSizeForNode(
     return cluster_batch_size;
   }
 
+  const NodeDef& node_def = node->def();
+  if (node_def.attr().count(kTftrtOpMaxBatchSizeAttr)) {
+    cluster_batch_size.SetMaxBatchSize(
+        node_def.attr().at(kTftrtOpMaxBatchSizeAttr).i());
+  }
+
+  // As shape inference cannot provide any useful information about the batch
+  // size, we keep it as missing.
   if (!graph_properties ||
       !graph_properties->HasInputProperties(node->name())) {
     VLOG(3) << "doesn't have input property";
-    return cluster_batch_size.SetBatchSizeValue(-1);
+    return cluster_batch_size;
   }
 
   const std::vector<OpInfo::TensorProperties>& input_properties =
@@ -658,9 +659,9 @@ ClusterBatchSize GetClusterBatchSizeForNode(
       FindLeadingShape(GetInputsToDeterminateBatchSize(node, input_properties));
   DCHECK(optional_leading_shape.has_value());
   const TensorShapeProto* leading_shape = optional_leading_shape.value();
-
   DCHECK(!leading_shape->unknown_rank() && leading_shape->dim_size() >= 2);
-  return cluster_batch_size.SetBatchSizeValue(leading_shape->dim(0).size());
+  VLOG(3) << "set batch size as " << leading_shape->dim(0).size();
+  return cluster_batch_size.SetBatchSize(leading_shape->dim(0).size());
 }
 
 void AddSegmentForNode(const grappler::GraphProperties* graph_properties,
@@ -668,12 +669,12 @@ void AddSegmentForNode(const grappler::GraphProperties* graph_properties,
                        SimpleNode* node,
                        const DeviceNameUtils::ParsedName& device_name,
                        bool use_implicit_batch) {
-  segments->emplace_back(
-      node,
+  ClusterProperty property(
       GetClusterBatchSizeForNode(graph_properties,
                                  node == nullptr ? nullptr : node->tf_node(),
                                  use_implicit_batch),
       device_name);
+  segments->emplace_back(node, std::move(property));
 }
 
 }  // namespace
@@ -683,11 +684,14 @@ Status SegmentGraph(const Graph* tf_graph,
                     const std::function<Status(const Node*)>& candidate_fn,
                     const std::function<bool(const Edge*)>& input_candidate_fn,
                     const std::function<bool(const Edge*)>& output_candidate_fn,
-                    const SegmentOptions& options,
-                    SegmentNodesVector* segments) {
+                    const SegmentOptions& options, SegmentVector* segments) {
   if (!options.use_implicit_batch && !options.allow_dynamic_non_batch_dim) {
     return errors::Internal(
         "Explicit batch mode should allow dynamic non-batch dimensions");
+  }
+
+  if (options.use_implicit_batch && !options.maximum_batch_size.has_value()) {
+    return errors::Internal("Implicit batch mode requires maximum_batch_size");
   }
 
   if (!options.allow_dynamic_non_batch_dim && !graph_properties) {
@@ -819,9 +823,9 @@ Status SegmentGraph(const Graph* tf_graph,
     // step until no output edges can be further contracted. This is because
     // contracting an output edge may unblock new edges for contracting.
     ClusterBatchSize expected_batch_size =
-        node_segments[node->id()].BatchSize();
+        node_segments[node->id()].Property().BatchSize();
     DeviceNameUtils::ParsedName expected_device_name =
-        node_segments[node->id()].DeviceName();
+        node_segments[node->id()].Property().DeviceName();
     VLOG(3) << "batch size " << expected_batch_size;
     while (true) {
       std::set<const SimpleEdge*, SimpleEdgePtrCompare> contract_edges;
@@ -842,7 +846,7 @@ Status SegmentGraph(const Graph* tf_graph,
           continue;
         }
         // Out node must have compatible batch size.
-        ClusterBatchSize out_batch_size = out_cluster->BatchSize();
+        ClusterBatchSize out_batch_size = out_cluster->Property().BatchSize();
         ClusterBatchSize merged_batch_size = expected_batch_size;
         if (!merged_batch_size.MergeIfCompatible(out_batch_size)) {
           VLOG(3) << "... ... incompatible batch sizes "
@@ -852,7 +856,7 @@ Status SegmentGraph(const Graph* tf_graph,
         }
 
         const DeviceNameUtils::ParsedName& out_device_name =
-            out_cluster->DeviceName();
+            out_cluster->Property().DeviceName();
         absl::optional<DeviceNameUtils::ParsedName> merged_device_name =
             MergeIfCompatible(expected_device_name, out_device_name);
         if (!merged_device_name.has_value()) {
@@ -898,11 +902,13 @@ Status SegmentGraph(const Graph* tf_graph,
           graph->RemoveEdge(r);
         }
       }
-      if (expected_batch_size != node_segments[node->id()].BatchSize()) {
+      if (expected_batch_size !=
+          node_segments[node->id()].Property().BatchSize()) {
         return errors::Internal(
             "expected batch size is not the same as the actual batch size");
       }
-      if (expected_device_name != node_segments[node->id()].DeviceName()) {
+      if (expected_device_name !=
+          node_segments[node->id()].Property().DeviceName()) {
         return errors::Internal(
             "expected device name is not the same as the actual device name");
       }
@@ -914,18 +920,21 @@ Status SegmentGraph(const Graph* tf_graph,
 
   // A map from the segment identifier (currently the name of the root node of
   // the segment tree) to the segment nodes set.
-  std::map<string, std::set<const Node*, NodePtrCompare>> sg_map;
+  std::map<string, Segment> sg_map;
 
   for (auto& u : node_segments) {
     if ((u.Value() != nullptr) && (u.ParentValue() != nullptr)) {
-      sg_map[u.ParentValue()->name()].insert(u.Value()->tf_node());
+      sg_map[u.ParentValue()->name()].nodes.insert(u.Value()->tf_node());
+    }
+    if ((u.Value() != nullptr) && (u.ParentValue() == u.Value())) {
+      sg_map[u.Value()->name()].property = u.Property();
     }
   }
 
   // --------------------------------- Step 2 ---------------------------------
   // Remove ineligible input/output nodes.
   for (auto& itr : sg_map) {
-    std::set<const Node*, NodePtrCompare>& segment_nodes = itr.second;
+    std::set<const Node*, NodePtrCompare>& segment_nodes = itr.second.nodes;
     VLOG(1) << "Segment original size: " << segment_nodes.size();
     while (true) {
       std::deque<const Node*> in_nodes_que, out_nodes_que;
@@ -1013,7 +1022,8 @@ Status SegmentGraph(const Graph* tf_graph,
   for (const auto& itr : sg_map) {
     const string& segment_root = itr.first;
     // Return format does not require set comparator.
-    std::set<const Node*> segment_nodes(itr.second.begin(), itr.second.end());
+    std::set<const Node*, NodePtrCompare> segment_nodes(
+        itr.second.nodes.begin(), itr.second.nodes.end());
     if (VLOG_IS_ON(1) && !segment_nodes.empty()) {
       string s;
       for (auto node : segment_nodes) {
@@ -1037,8 +1047,7 @@ Status SegmentGraph(const Graph* tf_graph,
               << num_effective_nodes << " effective nodes, dropping";
       continue;
     }
-
-    segments->emplace_back(segment_nodes);
+    segments->emplace_back(itr.second.property, segment_nodes);
   }
 
   return Status::OK();

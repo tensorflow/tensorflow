@@ -8,8 +8,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 filegroup(
     name = "all_py_srcs",
     srcs = glob(["*.py"]),
@@ -41,6 +39,8 @@ tf_py_test(
     deps = [
         ":wrappers",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras:testing_utils",
+        "//tensorflow/python/keras/utils:np_utils",
         "//third_party/py/numpy",
     ],
 )

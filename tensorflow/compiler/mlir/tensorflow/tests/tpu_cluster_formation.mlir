@@ -480,6 +480,53 @@ func @cluster_nested_op_using_resource() {
 // CHECK:  "tf.opA"() ( {
 // CHECK:   "tf.AssignAddVariableOp"([[VAR]], [[CONST]])
 
+
+// -----
+
+
+!tf_res = type tensor<*x!tf.resource<tensor<f32>>>
+
+// Test multiple replicated clusters interleaved and uses resource variables.
+// CHECK-LABEL: func @multiple_replicated_interleaved
+func @multiple_replicated_interleaved(%arg0: !tf_res) {
+  "tf.TPUReplicateMetadata"() {_tpu_replicate = "a", num_replicas = 2, topology = "topology"} : () -> ()
+  "tf.TPUReplicateMetadata"() {_tpu_replicate = "b", num_replicas = 2, topology = "topology"} : () -> ()
+  "tf.TPUReplicateMetadata"() {_tpu_replicate = "c", num_replicas = 2, topology = "topology"} : () -> ()
+  %0 = "tf.TPUReplicatedInput"(%arg0, %arg0) : (!tf_res, !tf_res) -> !tf_res
+  %1 = "tf.TPUReplicatedInput"(%arg0, %arg0) : (!tf_res, !tf_res) -> !tf_res
+  %2 = "tf.TPUReplicatedInput"(%arg0, %arg0) : (!tf_res, !tf_res) -> !tf_res
+  %3 = "tf.ReadVariableOp"(%0) {_tpu_replicate = "a"} : (!tf_res) -> tensor<f32>
+  %4 = "tf.ReadVariableOp"(%1) {_tpu_replicate = "b"} : (!tf_res) -> tensor<f32>
+  %5 = "tf.ReadVariableOp"(%2) {_tpu_replicate = "c"} : (!tf_res) -> tensor<f32>
+  %6 = "tf.Identity"(%3) {_tpu_replicate = "a"} : (tensor<f32>) -> tensor<f32>
+  %7 = "tf.Identity"(%4) {_tpu_replicate = "b"} : (tensor<f32>) -> tensor<f32>
+  %8 = "tf.Identity"(%5) {_tpu_replicate = "c"} : (tensor<f32>) -> tensor<f32>
+  %9:2 = "tf.TPUReplicatedOutput"(%6) : (tensor<f32>) -> (tensor<f32>, tensor<f32>)
+  %10:2 = "tf.TPUReplicatedOutput"(%7) : (tensor<f32>) -> (tensor<f32>, tensor<f32>)
+  %11:2 = "tf.TPUReplicatedOutput"(%8) : (tensor<f32>) -> (tensor<f32>, tensor<f32>)
+  return
+}
+
+// CHECK: tf_device.replicate
+// CHECK: tf_device.replicate
+// CHECK: tf_device.replicate
+
+
+// -----
+
+
+// Test cluster that is replicated but has a non TPUReplicatedOutput consumer.
+// CHECK-LABEL: func @replicated_non_replicated_output
+func @replicated_non_replicated_output() {
+  %0 = "tf.opA"() {_tpu_replicate = "replicate", device = "device", name = "name"} : () -> tensor<i1>
+  %1 = "tf.opB"(%0) : (tensor<i1>) -> tensor<i1>
+  "tf.TPUReplicateMetadata"() {_tpu_replicate = "replicate", device = "device", num_replicas = 2, topology = "topology"} : () -> ()
+  return
+}
+
+// CHECK: [[REPLICATE:%.+]]:2 = tf_device.replicate
+// CHECK: "tf.opB"([[REPLICATE]]#0)
+
 // -----
 
 
@@ -527,20 +574,6 @@ func @mismatched_replicated_output() {
   %0 = "tf.opA"() {_tpu_replicate = "replicate", device = "device", name = "name"} : () -> tensor<i1>
   // expected-error@+1 {{'tf.TPUReplicatedOutput' op requires 2 results}}
   %1:3 = "tf.TPUReplicatedOutput"(%0) : (tensor<i1>) -> (tensor<i1>, tensor<i1>, tensor<i1>)
-  "tf.TPUReplicateMetadata"() {_tpu_replicate = "replicate", device = "device", num_replicas = 2, topology = "topology"} : () -> ()
-  return
-}
-
-
-// -----
-
-
-// Test cluster that should be replicated where its outputs do not lead to a
-// TPUReplicatedOutput.
-func @missing_replicated_output() {
-  // expected-error@+1 {{requires output of tf_device.cluster to lead to a 'tf.TPUReplicatedOutput' op}}
-  %0 = "tf.opA"() {_tpu_replicate = "replicate", device = "device", name = "name"} : () -> tensor<i1>
-  %1 = "tf.opB"(%0) : (tensor<i1>) -> tensor<i1>
   "tf.TPUReplicateMetadata"() {_tpu_replicate = "replicate", device = "device", num_replicas = 2, topology = "topology"} : () -> ()
   return
 }

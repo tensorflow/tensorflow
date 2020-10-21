@@ -17,8 +17,8 @@ limitations under the License.
 #include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/debug_log.h"
 #include "tensorflow/lite/micro/kernels/kernel_runner.h"
+#include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
-#include "tensorflow/lite/micro/testing/test_utils.h"
 
 namespace tflite {
 namespace testing {
@@ -35,9 +35,8 @@ void TestElementwiseFloat(const TfLiteRegistration& registration,
   constexpr int input_size = 1;
   constexpr int output_size = 1;
   constexpr int tensors_size = input_size + output_size;
-  TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims),
-      CreateFloatTensor(output_data, output_dims)};
+  TfLiteTensor tensors[tensors_size] = {CreateTensor(input_data, input_dims),
+                                        CreateTensor(output_data, output_dims)};
 
   // Place a unique value in the uninitialized output buffer.
   for (int i = 0; i < output_dims_count; ++i) {
@@ -72,9 +71,8 @@ void TestElementwiseBool(const TfLiteRegistration& registration,
   constexpr int input_size = 1;
   constexpr int output_size = 1;
   constexpr int tensors_size = input_size + output_size;
-  TfLiteTensor tensors[tensors_size] = {
-      CreateBoolTensor(input_data, input_dims),
-      CreateBoolTensor(output_data, output_dims)};
+  TfLiteTensor tensors[tensors_size] = {CreateTensor(input_data, input_dims),
+                                        CreateTensor(output_data, output_dims)};
 
   // Place false in the uninitialized output buffer.
   for (int i = 0; i < output_dims_count; ++i) {

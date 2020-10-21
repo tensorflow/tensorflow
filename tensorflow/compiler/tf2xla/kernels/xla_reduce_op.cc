@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 namespace {
@@ -38,16 +39,28 @@ class XlaReduceOp : public XlaOpKernel {
         context, dims_set.size() == dimensions_to_reduce_.size(),
         errors::InvalidArgument("Duplicate dimension in dimensions_to_reduce "
                                 "argument to XlaReduce"));
+    if (context->HasAttr("N")) {  // variadic reduce
+      use_tuples_ = true;
+      OP_REQUIRES_OK(context, context->GetAttr("N", &n_));
+    } else {
+      use_tuples_ = false;
+      n_ = 1;
+    }
   }
 
   void Compile(XlaOpKernelContext* context) override {
-    const TensorShape input_shape = context->InputShape("input");
-    const TensorShape init_value_shape = context->InputShape("init_value");
+    OP_REQUIRES(context, n_ * 2 == context->num_inputs(),
+                errors::InvalidArgument("Expected ", n_ * 2, " inputs but got ",
+                                        context->num_inputs()));
+
+    const TensorShape input_shape = context->InputShape(0);
+    const TensorShape init_value_shape = context->InputShape(n_);
     const DataType dtype = context->input_type(0);
 
     const int rank = input_shape.dims();
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(init_value_shape),
-                errors::InvalidArgument("init_value must be a scalar"));
+                errors::InvalidArgument("init_value must be a scalar but got ",
+                                        init_value_shape.DebugString()));
 
     auto dim_in_range = [rank](int64 dim) { return dim >= 0 && dim < rank; };
     OP_REQUIRES(context,
@@ -67,35 +80,58 @@ class XlaReduceOp : public XlaOpKernel {
     compile_options.always_return_tuple = false;
     compile_options.is_entry_computation = false;
     XlaCompiler::CompilationResult reducer;
-    OP_REQUIRES_OK(context, context->compiler()->CompileFunction(
-                                compile_options, *reducer_,
-                                {reducer_arg, reducer_arg}, &reducer));
+    OP_REQUIRES_OK(
+        context,
+        context->compiler()->CompileFunction(
+            compile_options, *reducer_,
+            std::vector<XlaCompiler::Argument>(n_ * 2, reducer_arg), &reducer));
 
-    xla::Shape scalar_shape;
-    OP_REQUIRES_OK(context,
-                   TensorShapeToXLAShape(dtype, TensorShape(), &scalar_shape));
+    xla::Shape expected_shape;
+    OP_REQUIRES_OK(
+        context, TensorShapeToXLAShape(dtype, TensorShape(), &expected_shape));
+    if (use_tuples_) {
+      expected_shape = xla::ShapeUtil::MakeTupleShape(
+          std::vector<xla::Shape>(n_, expected_shape));
+    }
     OP_REQUIRES(
         context,
-        xla::ShapeUtil::Compatible(reducer.xla_output_shape, scalar_shape),
+        xla::ShapeUtil::Compatible(reducer.xla_output_shape, expected_shape),
         errors::InvalidArgument(
             "Invalid output shape of XlaReduce reducer. Expected ",
-            xla::ShapeUtil::HumanString(scalar_shape), " got ",
+            xla::ShapeUtil::HumanString(expected_shape), " got ",
             xla::ShapeUtil::HumanString(reducer.xla_output_shape)));
 
+    std::vector<xla::XlaOp> inputs;
+    std::vector<xla::XlaOp> inits;
+    inputs.reserve(n_);
+    inits.reserve(n_);
+    for (int i = 0; i < n_; i++) {
+      inputs.emplace_back(context->Input(i));
+      inits.emplace_back(context->Input(n_ + i));
+    }
     xla::XlaOp output =
-        xla::Reduce(context->Input("input"), context->Input("init_value"),
-                    *reducer.computation, dimensions_to_reduce_);
-    context->SetOutput(0, output);
+        xla::Reduce(context->builder(), inputs, inits, *reducer.computation,
+                    dimensions_to_reduce_);
+    if (use_tuples_) {
+      for (int i = 0; i < n_; i++) {
+        context->SetOutput(i, xla::GetTupleElement(output, i));
+      }
+    } else {
+      context->SetOutput(0, output);
+    }
   }
 
  private:
   const NameAttrList* reducer_;
   std::vector<int64> dimensions_to_reduce_;
+  bool use_tuples_;
+  int n_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaReduceOp);
 };
 
 REGISTER_XLA_OP(Name("XlaReduce"), XlaReduceOp);
+REGISTER_XLA_OP(Name("XlaVariadicReduce"), XlaReduceOp);
 
 }  // namespace
 }  // namespace tensorflow

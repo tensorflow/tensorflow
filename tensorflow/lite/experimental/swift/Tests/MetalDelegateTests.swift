@@ -34,18 +34,26 @@ class MetalDelegateTests: XCTestCase {
   }
 
   func testInitInterpreterWithDelegate() throws {
+    // If metal device is not available, skip.
+    if MTLCreateSystemDefaultDevice() == nil {
+      return
+    }
     let metalDelegate = MetalDelegate()
-    let interpreter = try Interpreter(modelPath: AddQuantizedModel.path, delegates: [metalDelegate])
+    let interpreter = try Interpreter(modelPath: MultiAddModel.path, delegates: [metalDelegate])
     XCTAssertEqual(interpreter.delegates?.count, 1)
     XCTAssertNil(interpreter.options)
   }
 
   func testInitInterpreterWithOptionsAndDelegate() throws {
+    // If metal device is not available, skip.
+    if MTLCreateSystemDefaultDevice() == nil {
+      return
+    }
     var options = Interpreter.Options()
     options.threadCount = 1
     let metalDelegate = MetalDelegate()
     let interpreter = try Interpreter(
-      modelPath: AddQuantizedModel.path,
+      modelPath: MultiAddModel.path,
       options: options,
       delegates: [metalDelegate]
     )
@@ -91,3 +99,16 @@ class MetalDelegateOptionsTests: XCTestCase {
     XCTAssertNotEqual(options1, options2)
   }
 }
+
+
+/// Values for the `multi_add.bin` model.
+enum MultiAddModel {
+  static let info = (name: "multi_add", extension: "bin")
+
+  static var path: String = {
+    let bundle = Bundle(for: MetalDelegateTests.self)
+    guard let path = bundle.path(forResource: info.name, ofType: info.extension) else { return "" }
+    return path
+  }()
+}
+

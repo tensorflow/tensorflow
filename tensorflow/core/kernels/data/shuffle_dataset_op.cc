@@ -117,6 +117,11 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
     }
   }
 
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    inputs->push_back(input_);
+    return Status::OK();
+  }
+
   Status CheckExternalState() const override {
     return input_->CheckExternalState();
   }
@@ -182,7 +187,8 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
             data_produced_ = true;
             break;
           }
-          if (!data_produced_ && this->dataset()->count_ == -1) {
+          if (ctx->split_provider() == nullptr && !data_produced_ &&
+              this->dataset()->count_ == -1) {
             // If we encounter the end of sequence without producing data, we
             // terminate the iteration immediately. (Otherwise, this iterator
             // would loop infinitely and never produce a value.)
@@ -192,6 +198,9 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
           epoch_++;
           int64 n = slices_.back()->end;
           slices_.push_back(absl::make_unique<Slice>(n, n));
+          if (ctx->split_provider()) {
+            TF_RETURN_IF_ERROR(ctx->split_provider()->Reset());
+          }
           TF_RETURN_IF_ERROR(this->dataset()->input_->MakeIterator(
               ctx, this, this->prefix(), &input_impl_));
         }

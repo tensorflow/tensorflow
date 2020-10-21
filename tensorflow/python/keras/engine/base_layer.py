@@ -79,13 +79,18 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
-from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
+
+# pylint: disable=g-inconsistent-quotes
+metrics_mod = generic_utils.LazyLoader(
+    "metrics_mod", globals(),
+    "tensorflow.python.keras.metrics")
+# pylint: enable=g-inconsistent-quotes
 
 # Prefix that is added to the TF op layer names.
 _TF_OP_LAYER_NAME_PREFIX = 'tf_op_layer_'
@@ -97,9 +102,11 @@ _AUTOCAST_TYPES = (ops.Tensor, sparse_tensor.SparseTensor,
 
 keras_layers_gauge = monitoring.BoolGauge('/tensorflow/api/keras/layers',
                                           'keras layers usage', 'method')
+keras_models_gauge = monitoring.BoolGauge(
+    '/tensorflow/api/keras/models', 'keras model usage', 'method')
 keras_api_gauge = monitoring.BoolGauge('/tensorflow/api/keras',
                                        'keras api usage', 'method')
-keras_model_gauge = monitoring.BoolGauge(
+keras_premade_model_gauge = monitoring.BoolGauge(
     '/tensorflow/api/keras/premade_models', 'premade keras model usage', 'type')
 
 
@@ -117,9 +124,11 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   Arguments:
     trainable: Boolean, whether the layer's variables should be trainable.
     name: String name of the layer.
-    dtype: The dtype of the layer's computations and weights (default of
-      `None` means use `tf.keras.backend.floatx` in TensorFlow 2, or the type
-      of the first input in TensorFlow 1).
+    dtype: The dtype of the layer's computations and weights. Can also be a
+      `tf.keras.mixed_precision.Policy`, which allows the computation and weight
+      dtype to differ. Default of `None` means to use
+      `tf.keras.mixed_precision.global_policy()`, which is a float32 policy
+      unless set to different value.
     dynamic: Set this to `True` if your layer should only be run eagerly, and
       should not be used to generate a static computation graph.
       This would be the case for a Tree-RNN or a recursive network,
@@ -130,9 +139,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   Attributes:
     name: The name of the layer (string).
     dtype: The dtype of the layer's computations and weights. If mixed
-      precision is used with a `tf.keras.mixed_precision.experimental.Policy`,
-      this is instead just the dtype of the layer's weights, as the computations
-      are done in a different dtype.
+      precision is used with a `tf.keras.mixed_precision.Policy`, this is
+      instead just the dtype of the layer's weights, as the computations are
+      done in a different dtype.
     trainable_weights: List of variables to be included in backprop.
     non_trainable_weights: List of variables that should not be
       included in backprop.
@@ -262,18 +271,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   For more information about creating layers, see the guide
   [Writing custom layers and models with Keras](
     https://www.tensorflow.org/guide/keras/custom_layers_and_models)
-
-  About the layer's `dtype` attribute:
-
-  Each layer has a dtype, which is typically the dtype of the layer's
-  computations and variables. A layer's dtype can be queried via the
-  `Layer.dtype` property. The dtype is specified with the `dtype` constructor
-  argument. In TensorFlow 2, the dtype defaults to `tf.keras.backend.floatx()`
-  if no dtype is passed. `floatx()` itself defaults to "float32". Additionally,
-  layers will cast their inputs to the layer's dtype in TensorFlow 2. When mixed
-  precision is used, layers may have different computation and variable dtypes.
-  See `tf.keras.mixed_precision.experimental.Policy` for details on layer
-  dtypes.
   """
 
   # See tf.Module for the usage of this property.
@@ -297,6 +294,20 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   # not available to the restoration code).
   _must_restore_from_config = False
 
+  def _instrument_layer_creation(self):
+    self._instrumented_keras_api = False
+    self._instrumented_keras_layer_class = False
+    self._instrumented_keras_model_class = False
+    if not getattr(self, '_disable_keras_instrumentation', False):
+      keras_api_gauge.get_cell('layer').set(True)
+      self._instrumented_keras_api = True
+      if getattr(self, '_is_model_for_instrumentation', False):
+        keras_models_gauge.get_cell(self.__class__.__name__).set(True)
+        self._instrumented_keras_model_class = True
+      else:
+        keras_layers_gauge.get_cell(self.__class__.__name__).set(True)
+        self._instrumented_keras_layer_class = True
+
   @trackable.no_automatic_dependency_tracking
   def __init__(self,
                trainable=True,
@@ -304,8 +315,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
                dtype=None,
                dynamic=False,
                **kwargs):
-    keras_api_gauge.get_cell('layer').set(True)
-    keras_layers_gauge.get_cell(self.__class__.__name__).set(True)
+    self._instrument_layer_creation()
+
     # These properties should be set by the user via keyword arguments.
     # note that 'dtype', 'input_shape' and 'batch_input_shape'
     # are only applicable to input layers: do not pass these keywords
@@ -367,9 +378,11 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     self._metrics_lock = threading.Lock()
 
     # Both graph and subclassed networks have a dtype policy. For graph
-    # networks, the policy's compute and variable dtypes are ignored, but other
-    # fields, like the loss scale, are used by Models. For subclassed networks,
-    # the compute and variable dtypes are used as like any ordinary layer.
+    # networks, the policy's compute and variable dtypes are ignored. Such
+    # networks only use the policy if it is a PolicyV1, in which case it uses
+    # the PolicyV1's loss_scale (Policy does not have a loss_scale). For
+    # subclassed networks, the compute and variable dtypes are used as like any
+    # ordinary layer.
     self._set_dtype_policy(dtype)
     # Boolean indicating whether the layer automatically casts its inputs to the
     # layer's compute_dtype.
@@ -586,8 +599,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
                          ' for layer %s' % (name, dtype.base_dtype, self.name))
 
     getter = kwargs.pop('getter', base_layer_utils.make_variable)
-    if (autocast and self._dtype_policy.should_cast_variables and
-        dtype.is_floating):
+    if (autocast and
+        self._dtype_policy.compute_dtype != self._dtype_policy.variable_dtype
+        and dtype.is_floating):
       old_getter = getter
       # Wrap variable constructor to return an AutoCastVariable.
       def getter(*args, **kwargs):  # pylint: disable=function-redefined
@@ -834,9 +848,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
       inputs = self._maybe_cast_inputs(inputs)
 
-      # try:
       with backend.name_scope(self._name_scope()):
-        with ops.enable_auto_cast_variables(self._compute_dtype_object):
+        with autocast_variable.enable_auto_cast_variables(
+            self._compute_dtype_object):
           # Build layer if applicable (if the `build` method has been
           # overridden).
           # TODO(kaftan): do we maybe_build here, or have we already done it?
@@ -988,7 +1002,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         if not self.built:
           self._maybe_build(inputs)
 
-        with ops.enable_auto_cast_variables(self._compute_dtype_object):
+        with autocast_variable.enable_auto_cast_variables(
+            self._compute_dtype_object):
           outputs = call_fn(inputs, *args, **kwargs)
 
         if self._activity_regularizer:
@@ -1121,7 +1136,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
             call_fn = self.call
 
           try:
-            with ops.enable_auto_cast_variables(self._compute_dtype_object):
+            with autocast_variable.enable_auto_cast_variables(
+                self._compute_dtype_object):
               outputs = call_fn(cast_inputs, *args, **kwargs)
 
           except errors.OperatorNotAllowedInGraphError as e:
@@ -1220,7 +1236,12 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
   @property
   def dtype(self):
-    """Dtype used by the weights of the layer, set in the constructor."""
+    """The dtype of the layer weights.
+
+    This is equivalent to `Layer.dtype_policy.variable_dtype`. Unless
+    mixed precision is used, this is the same as `Layer.compute_dtype`, the
+    dtype of the layer's computations.
+    """
     return self._dtype_policy.variable_dtype
 
   @property
@@ -1523,7 +1544,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       if callable(loss):
         # We run the loss without autocasting, as regularizers are often
         # numerically unstable in float16.
-        with ops.enable_auto_cast_variables(None):
+        with autocast_variable.enable_auto_cast_variables(None):
           loss = loss()
       if loss is None:
         return None  # Will be filtered out when computing the .losses property
@@ -1601,7 +1622,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     ['max', 'min']
 
     Returns:
-      A list of tensors.
+      A list of `Metric` objects.
     """
     collected_metrics = []
     for layer in self._flatten_layers():
@@ -1619,11 +1640,11 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     class MyMetricLayer(tf.keras.layers.Layer):
       def __init__(self):
         super(MyMetricLayer, self).__init__(name='my_metric_layer')
-        self.mean = metrics_module.Mean(name='metric_1')
+        self.mean = tf.keras.metrics.Mean(name='metric_1')
 
       def call(self, inputs):
         self.add_metric(self.mean(x))
-        self.add_metric(math_ops.reduce_sum(x), name='metric_2')
+        self.add_metric(tf.reduce_sum(x), name='metric_2')
         return inputs
     ```
 
@@ -1715,7 +1736,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         elif metric_obj:
           self._metrics.append(metric_obj)
         else:
-          from tensorflow.python.keras import metrics as metrics_mod  # pylint:disable=g-import-not-at-top
           # Build the metric object with the value's dtype if it defines one
           metric_obj = metrics_mod.Mean(
               name=name, dtype=getattr(value, 'dtype', None))
@@ -2328,11 +2348,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
                        'use a different Strategy, e.g. a MirroredStrategy.' %
                        (strategy.__class__.__name__, self._dtype_policy.name))
 
-    # This has no impact on the layer behavior, and is only used for printing
-    # warnings.
-    self._dtype_defaulted_to_floatx = (not dtype and
-                                       policy.policy_defaults_to_floatx())
-
     # Performance optimization: cache the compute dtype as a Dtype object or
     # None, so that str to Dtype conversion doesn't happen in Layer.__call__.
     # TODO(b/157486353): Investigate returning DTypes in Policy.
@@ -2342,19 +2357,40 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     else:
       self._compute_dtype_object = None
 
-  # TODO(reedwm): Expose this property?
   @property
-  def _compute_dtype(self):
-    """The layer's compute dtype.
+  def dtype_policy(self):
+    """The dtype policy associated with this layer.
 
-    Unless mixed-precision is used, this is the same as `Layer.dtype`.
+    This is an instance of a `tf.keras.mixed_precision.Policy`.
+    """
+    return self._dtype_policy
 
-    If self._autocast is True, layer's will cast floating-point inputs to this.
+  @property
+  def compute_dtype(self):
+    """The dtype of the layer's computations.
+
+    This is equivalent to `Layer.dtype_policy.compute_dtype`. Unless
+    mixed precision is used, this is the same as `Layer.dtype`, the dtype of
+    the weights.
+
+    Layers often perform certain internal computations in higher precision when
+    `compute_dtype` is float16 or bfloat16 for numeric stability. The output
+    will still typically be float16 or bfloat16 in such cases.
 
     Returns:
       The layer's compute dtype.
     """
     return self._dtype_policy.compute_dtype
+
+  @property
+  def _compute_dtype(self):
+    """Deprecated alias of `compute_dtype`."""
+    return self._dtype_policy.compute_dtype
+
+  @property
+  def variable_dtype(self):
+    """Alias of `Layer.dtype`, the dtype of the weights."""
+    return self.dtype
 
   def _maybe_cast_inputs(self, inputs, input_list=None):
     """Maybe casts the inputs to the compute dtype.
@@ -2393,36 +2429,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   def _cast_single_input(self, x):
     """Cast a single Tensor or TensorSpec to the compute dtype."""
     if self._should_cast_single_input(x):
-      if self._dtype_defaulted_to_floatx:
-        self._warn_about_input_casting(x.dtype.base_dtype)
       return math_ops.cast(x, self._compute_dtype_object)
     else:
       return x
-
-  def _warn_about_input_casting(self, input_dtype):
-    # self._already_warned_about_input_casting is only retrieved or set in this
-    # function.
-    already_warned = getattr(self, '_already_warned_about_input_casting', False)
-    if not already_warned:
-      tf_logging.warn(
-          "Layer {self.name} is casting an input tensor from dtype "
-          "{input_dtype} to the layer's dtype of {layer_dtype}, which is new "
-          "behavior in TensorFlow 2.  The layer has dtype {layer_dtype} "
-          'because its dtype defaults to floatx.\n\n'
-          ""
-          "If you intended to run this layer in {layer_dtype}, you can safely "
-          "ignore this warning. If in doubt, this warning is likely only an "
-          "issue if you are porting a TensorFlow 1.X model to TensorFlow 2.\n\n"
-          ""
-          "To change all layers to have dtype {input_dtype} by default, call "
-          "`tf.keras.backend.set_floatx('{input_dtype}')`. To change just this "
-          "layer, pass dtype='{input_dtype}' to the layer constructor. If you "
-          "are the author of this layer, you can disable autocasting by "
-          "passing autocast=False to the base Layer constructor.\n".format(
-              self=self,
-              input_dtype=input_dtype.name,
-              layer_dtype=self._compute_dtype))
-      self._already_warned_about_input_casting = True
 
   # _dtype used to be an attribute set in the constructor. We still expose it
   # because some clients still use it.
@@ -2459,6 +2468,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           generic_utils.to_snake_case(self.__class__.__name__),
           zero_based=zero_based)
     else:
+      backend.observe_object_name(name)
       self._name = name
 
   def _get_existing_metric(self, name=None):
@@ -2829,9 +2839,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       pass
 
     # Keep track of metric instance created in subclassed layer.
-    from tensorflow.python.keras import metrics as metrics_module  # pylint: disable=g-import-not-at-top
     for val in nest.flatten(value):
-      if isinstance(val, metrics_module.Metric) and hasattr(self, '_metrics'):
+      if isinstance(val, metrics_mod.Metric) and hasattr(self, '_metrics'):
         self._metrics.append(val)
 
     # TODO(scottzhu): Need to track Module object as well for weight tracking.
@@ -2852,7 +2861,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # Append value to list of trainable / non-trainable weights if relevant
     # TODO(b/125122625): This won't pick up on any variables added to a
     # list/dict after creation.
-    for val in nest.flatten(value):
+    for val in nest.flatten(value, expand_composites=True):
       # TODO(b/126450014): Remove `_UnreadVariable` check here when assign ops
       # no longer return True for isinstance Variable checks.
       if not isinstance(val, tf_variables.Variable):
@@ -2884,7 +2893,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         'weights', 'trainable_weights', 'non_trainable_weights'
     }
     if hasattr(self, '_layers'):
-      nested_layers = trackable_layer_utils.filter_empty_layer_containers(
+      nested_layers = layer_utils.filter_empty_layer_containers(
           self._layers)
       return list(
           itertools.chain.from_iterable(
@@ -2908,7 +2917,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           continue
         seen_object_ids.add(layer_or_container_id)
 
-        if isinstance(layer_or_container, Layer):
+        if (isinstance(layer_or_container, Layer) and
+            not isinstance(layer_or_container, metrics_mod.Metric)):
           yield layer_or_container
           # Introspect recursively through sublayers.
           if recursive:

@@ -50,6 +50,8 @@ class CalibrationReader;
 
 namespace calibration_wrapper {
 
+PyObject* AddIntermediateTensors(PyObject* data);
+
 class CalibrationWrapper {
  public:
   // SWIG caller takes ownership of pointer.
