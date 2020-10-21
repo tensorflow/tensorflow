@@ -196,6 +196,7 @@ Status GpuTracer::CollectData(RunMetadata* run_metadata) {
 }
 
 Status GpuTracer::CollectData(XSpace* space) {
+  VLOG(2) << "Collecting data to XSpace from GpuTracer.";
   switch (profiling_state_) {
     case State::kNotStarted:
       VLOG(1) << "No trace data collected, session wasn't started";
@@ -230,7 +231,7 @@ Status GpuTracer::CollectData(XSpace* space) {
 // Not in anonymous namespace for testing purposes.
 std::unique_ptr<profiler::ProfilerInterface> CreateGpuTracer(
     const ProfileOptions& options) {
-  VLOG(2) << "Collecting data to XSpace from GpuTracer.";
+  if (options.device_tracer_level() == 0) return nullptr;
   if (options.device_type() != ProfileOptions::GPU &&
       options.device_type() != ProfileOptions::UNSPECIFIED)
     return nullptr;
