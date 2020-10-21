@@ -488,7 +488,7 @@ void TFDefaultLogSink::Send(const TFLogEntry& entry) {
 
   // Android logging at level FATAL does not terminate execution, so abort()
   // is still required to stop the program.
-  if (entry.log_severity() == FATAL) {
+  if (entry.log_severity() == absl::LogSeverity::kFatal) {
     abort();
   }
 #else // PLATFORM_POSIX_ANDROID
