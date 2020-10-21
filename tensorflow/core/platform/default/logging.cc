@@ -479,7 +479,7 @@ void TFDefaultLogSink::Send(const TFLogEntry& entry) {
   std::stringstream ss;
   const auto& fname = entry.FName();
   auto pos = fname.find("/");
-  ss << (pos != std::npos ? fname.substr(pos+1) : fname) << ":" << entry.Line()
+  ss << (pos != std::string::npos ? fname.substr(pos+1) : fname) << ":" << entry.Line()
      << " " << entry.ToString();
   __android_log_write(android_log_level, "native", ss.str().c_str());
 
@@ -488,7 +488,7 @@ void TFDefaultLogSink::Send(const TFLogEntry& entry) {
 
   // Android logging at level FATAL does not terminate execution, so abort()
   // is still required to stop the program.
-  if (severity_ == FATAL) {
+  if (entry.log_severity() == FATAL) {
     abort();
   }
 #else // PLATFORM_POSIX_ANDROID
