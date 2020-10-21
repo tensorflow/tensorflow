@@ -25,6 +25,7 @@ import six
 
 from tensorflow.python import tf2
 from tensorflow.python.data.experimental.ops import batching
+from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.experimental.ops import distribute
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import multi_device_iterator_ops
@@ -1012,7 +1013,7 @@ class DistributedDataset(_IterableInput):
     self._input_workers = input_workers
     self._strategy = strategy
     self._enable_get_next_as_optional = _enable_get_next_as_optional(
-        self._strategy, dataset.element_spec)
+        self._strategy, dataset)
     self._element_spec = _create_distributed_tensor_spec(
         self._strategy, self._cloned_datasets[0].element_spec)
 
@@ -1233,7 +1234,7 @@ class DistributedDatasetsFromFunction(_IterableInput):
         _create_datasets_from_function_with_input_context(
             self._input_contexts, self._input_workers, dataset_fn))
     self._enable_get_next_as_optional = _enable_get_next_as_optional(
-        self._strategy, element_spec)
+        self._strategy, self._datasets[0])
     self._element_spec = _create_distributed_tensor_spec(
         self._strategy, element_spec)
 
@@ -1544,7 +1545,12 @@ class _SingleWorkerDatasetIteratorBase(object):
     """Get next element for the given device."""
     del name
     with ops.device(self._worker):
-      return self._iterator.get_next(device)
+      if isinstance(self._iterator,
+                    (multi_device_iterator_ops.OwnedMultiDeviceIterator,
+                     multi_device_iterator_ops.MultiDeviceIterator)):
+        return self._iterator.get_next(device)
+      else:
+        return self._iterator.get_next()
 
   def get_next_as_list_static_shapes(self, name=None):
     """Get next element from the underlying iterator.
@@ -2081,7 +2087,7 @@ def _replace_per_replica_spec(spec, i):
     return spec
 
 
-def _enable_get_next_as_optional(strategy, element_spec):
+def _enable_get_next_as_optional(strategy, dataset):
   """Returns whether to enable using partial batch handling."""
   # TODO(b/133073708): we currently need a flag to control the usage because
   # there is a performance difference between get_next() and
@@ -2093,5 +2099,13 @@ def _enable_get_next_as_optional(strategy, element_spec):
   if not getattr(strategy.extended, "experimental_enable_get_next_as_optional",
                  False):
     return False
+
+  if context.executing_eagerly():
+    # If the dataset is inifinite, we don't need to enable last partial batch
+    # support. Currently the logic only applies to the case that distributed
+    # dataset is created in eager mode, as we need to evaluate the dataset
+    # cardinality.
+    return cardinality.cardinality(dataset).numpy() != cardinality.INFINITE
+
   return not _is_statically_shaped(
-      element_spec) or strategy.extended._in_multi_worker_mode()  # pylint: disable=protected-access
+      dataset.element_spec) or strategy.extended._in_multi_worker_mode()  # pylint: disable=protected-access
