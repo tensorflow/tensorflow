@@ -2323,15 +2323,26 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
             name = name[4:]  # Remove 'val_' prefix.
             summary_ops_v2.scalar('epoch_' + name, value, step=epoch)
 
+  # allowed_values from tensorflow/core/ops/compat/ops_history_v2/WriteHistogramSummary.pbtxt
+  _SUPPORTED_HISTOGRAM_DTYPES = \
+    [ dtypes.float16, dtypes.bfloat16, dtypes.float32, dtypes.float64
+    , dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64
+    , dtypes.uint8, dtypes.uint16, dtypes.uint32, dtypes.uint64
+    ]
+
   def _log_weights(self, epoch):
     """Logs the weights of the Model to TensorBoard."""
     with self._train_writer.as_default():
       with summary_ops_v2.always_record_summaries():
         for layer in self.model.layers:
           for weight in layer.weights:
-            # allowed_values from tensorflow/core/ops/compat/ops_history_v2/WriteHistogramSummary.pbtxt
-            if weight.dtype not in [ dtypes.float16, dtypes.bfloat16, dtypes.float32, dtypes.float64, dtypes.int8, dtypes.int16, dtypes.int32, dtypes.uint8, dtypes.int64, dtypes.uint16, dtypes.uint32, dtypes.uint64 ]:
-              logging.warn('{weight_name} has dtype {weight_dtype} which is currently not supported by histogram summary. Weight histogram will not be shown in TensorBoard.'.format(weight_name=weight.name, weight_dtype = weight.dtype))
+            if weight.dtype not in TensorBoard._SUPPORTED_HISTOGRAM_DTYPES:
+              logging.warn(
+                '{weight_name} has dtype {weight_dtype} '
+                'which is currently not supported by histogram summary. '
+                'Weight histogram will not be shown in TensorBoard.'
+                .format(weight_name=weight.name, weight_dtype = weight.dtype)
+              )
               continue
             weight_name = weight.name.replace(':', '_')
             summary_ops_v2.histogram(weight_name, weight, step=epoch)
