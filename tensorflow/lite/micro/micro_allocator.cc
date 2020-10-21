@@ -818,6 +818,8 @@ TfLiteStatus MicroAllocator::PrepareNodeAndRegistrationDataFromFlatbuffer(
         GetRegistrationFromOpCode(opcode, op_resolver, error_reporter_,
                                   &(node_and_registrations[i].registration));
     if (status != kTfLiteOk) {
+      // TODO(b/171278094): Use the GetBuiltinCode method in the schema utilitly
+      // to get builtin code from op code.
       TF_LITE_REPORT_ERROR(error_reporter_,
                            "Failed to get registration from op code %s\n ",
                            EnumNameBuiltinOperator(opcode->builtin_code()));
