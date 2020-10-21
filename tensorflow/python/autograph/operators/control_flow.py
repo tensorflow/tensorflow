@@ -1216,6 +1216,3 @@ def _tf_if_stmt(
 def _py_if_stmt(cond, body, orelse):
   """Overload of if_stmt that executes a Python if statement."""
   return body() if cond else orelse()
-
-
-compat_util.deprecated_py2_support(__name__)
