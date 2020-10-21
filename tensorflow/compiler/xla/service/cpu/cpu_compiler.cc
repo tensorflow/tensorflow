@@ -19,6 +19,7 @@ limitations under the License.
 #include <string.h>
 
 #include <map>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -38,6 +39,7 @@ limitations under the License.
 #include "llvm/IR/Verifier.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Error.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
@@ -645,11 +647,11 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   // Compile must be thread-safe so create a new LLVM context for the module.
   mlir::MLIRContext mlir_context;
   LoadMLIRDialects(mlir_context);
-  llvm::LLVMContext llvm_context;
+  auto llvm_context = std::make_unique<llvm::LLVMContext>();
   auto llvm_module =
-      absl::make_unique<llvm::Module>("__compute_module", llvm_context);
+      absl::make_unique<llvm::Module>("__compute_module", *llvm_context);
 
-  auto jit = absl::make_unique<SimpleOrcJIT>(
+  auto jit = SimpleOrcJIT::Create(
       CompilerTargetOptions(module->config()),
       CodeGenOptLevel(module->config()),
       options::OptimizeForSizeRequested(module->config()),
@@ -657,8 +659,12 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
       llvm_ir::GetCpuFastMathFlags(module->config()), pre_optimization_ir_hook,
       post_optimization_ir_hook,
       OrcJITPostCompilationHook::Create(module.get()));
-  llvm_module->setDataLayout(jit->data_layout());
-  llvm_module->setTargetTriple(jit->target_triple().getTriple());
+  if (!jit) {
+    return InternalError("Creating JIT failed: %s",
+                         llvm::toString(jit.takeError()));
+  }
+  llvm_module->setDataLayout((*jit)->data_layout());
+  llvm_module->setTargetTriple((*jit)->target_triple().getTriple());
 
   HloComputation* entry_computation = module->entry_computation();
   std::unordered_map<const HloInstruction*, int64> instruction_to_profile_idx;
@@ -700,7 +706,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   // GetEmbeddedComputations guarantees that a called computation occurs
   // before a caller computation.
 
-  LLVMTargetMachineFeatures target_machine_features(jit->target_machine());
+  LLVMTargetMachineFeatures target_machine_features((*jit)->target_machine());
   IrEmitter ir_emitter(&mlir_context, *module, *assignment, llvm_module.get(),
                        std::move(instruction_to_profile_idx),
                        std::move(computation_to_profile_idx),
@@ -739,7 +745,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   string function_name = [&]() {
     llvm::SmallVector<char, 40> function_name_vector;
     llvm::Mangler::getNameWithPrefix(
-        function_name_vector, entry_function->getName(), jit->data_layout());
+        function_name_vector, entry_function->getName(), (*jit)->data_layout());
     return string(function_name_vector.begin(), function_name_vector.end());
   }();
 
@@ -751,9 +757,11 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   TF_RETURN_IF_ERROR(VerifyLlvmModule(*llvm_module));
 
   // JIT compile the LLVM IR module to in-memory machine code.
-  jit->AddModule(std::move(llvm_module));
+  llvm::orc::ThreadSafeModule thread_safe_module(std::move(llvm_module),
+                                                 std::move(llvm_context));
+  cantFail((*jit)->AddModule(std::move(thread_safe_module)));
   cpu_executable.reset(new CpuExecutable(
-      std::move(jit), std::move(assignment), std::move(module), function_name,
+      std::move(*jit), std::move(assignment), std::move(module), function_name,
       std::move(hlo_profile_printer_data), std::move(hlo_profile_index_map)));
 
   if (embed_ir_in_executable) {
@@ -971,7 +979,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
         llvm_ir::GetCpuFastMathFlags(module->config()),
         pre_optimization_ir_hook, post_optimization_ir_hook, post_codegen_hook);
     std::unique_ptr<llvm::MemoryBuffer> object_file =
-        compiler_functor(llvm_module);
+        cantFail(compiler_functor(llvm_module));
     ObjectFileData object_file_data(object_file->getBufferStart(),
                                     object_file->getBufferEnd());
 
