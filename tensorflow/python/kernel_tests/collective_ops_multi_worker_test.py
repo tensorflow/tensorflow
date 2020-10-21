@@ -20,16 +20,21 @@ from __future__ import print_function
 
 import copy
 import os
+import threading
 import time
+
+from absl.testing import parameterized
 
 from tensorflow.core.protobuf import tensorflow_server_pb2
 from tensorflow.python.distribute import cluster_resolver as cluster_resolver_lib
+from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import collective_ops
 
 
@@ -44,6 +49,12 @@ def enable_collective_ops(cluster_resolver):
       task_index=cluster_resolver.task_id,
       protocol=cluster_resolver.rpc_layer or "grpc")
   context.context().enable_collective_ops(server_def)
+
+
+device_combination = (
+    combinations.combine(device="CPU", communication="RING", required_gpus=0) +
+    combinations.combine(
+        device="GPU", communication=["RING", "NCCL"], required_gpus=1))
 
 
 class CollectiveOpTest(test.TestCase):
@@ -136,6 +147,83 @@ class CollectiveOpTest(test.TestCase):
     mpr.start_single_process("worker", 0)
     with self.assertRaises(errors.InvalidArgumentError):
       mpr.join()
+
+
+two_worker_pool_runner = multi_process_runner.MultiProcessPoolRunner(
+    multi_worker_test_base.create_cluster_spec(num_workers=2),
+    initializer=lambda: enable_collective_ops(cluster_resolver_lib.
+                                              TFConfigClusterResolver()))
+
+
+@combinations.generate(
+    combinations.times(
+        combinations.combine(
+            mode="eager", num_workers=2, runner=two_worker_pool_runner),
+        device_combination))
+class AbortCollectiveOpsTest(test.TestCase, parameterized.TestCase):
+
+  def testAbortCommunication(self, device, communication):
+    if communication == "NCCL":
+      self.skipTest("b/171358086: cannot test multi worker NCCL")
+    dev0 = "/device:%s:0" % device
+    cluster_resolver = cluster_resolver_lib.TFConfigClusterResolver()
+    enable_collective_ops(cluster_resolver)
+    group_size = 2
+    group_key = 100
+    instance_key = 100
+    in_tensor = constant_op.constant([1.])
+
+    # First perform a normal all-reduce to complete the group and instance
+    # resolution.
+    with ops.device(dev0):
+      collective_ops.all_reduce(
+          in_tensor,
+          group_size,
+          group_key,
+          instance_key,
+          communication_hint=communication)
+
+    if cluster_resolver.task_id == 1:
+
+      def abort_fn():
+        time.sleep(2)
+        context.context().abort_collective_ops(errors.UNAVAILABLE, "peer down")
+
+      t = threading.Thread(target=abort_fn)
+      t.start()
+
+      with self.assertRaisesRegex(errors.UnavailableError, "peer down"):
+        with ops.device(dev0):
+          collective_ops.all_reduce(
+              in_tensor,
+              group_size,
+              group_key,
+              instance_key,
+              communication_hint=communication)
+
+      # After abortion, subsequent collectives should fail immediately.
+      with self.assertRaisesRegex(errors.UnavailableError, "peer down"):
+        with ops.device(dev0):
+          collective_ops.all_reduce(
+              in_tensor,
+              group_size,
+              group_key,
+              instance_key,
+              communication_hint=communication)
+
+      t.join()
+
+    # Enable collective ops again in order to reset the collective executor.
+    multi_process_runner.get_barrier().wait()
+    enable_collective_ops(cluster_resolver)
+    multi_process_runner.get_barrier().wait()
+    with ops.device(dev0):
+      collective_ops.all_reduce(
+          in_tensor,
+          group_size,
+          group_key,
+          instance_key,
+          communication_hint=communication)
 
 
 if __name__ == "__main__":

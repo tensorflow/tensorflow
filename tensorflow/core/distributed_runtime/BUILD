@@ -242,6 +242,7 @@ tf_cc_test(
 
 cc_library(
     name = "cancellable_call",
+    srcs = ["cancellable_call.cc"],
     hdrs = ["cancellable_call.h"],
     deps = [
         ":call_options",

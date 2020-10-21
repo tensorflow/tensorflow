@@ -319,11 +319,13 @@ tf_py_test(
         "//tensorflow/python:collective_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:errors",
+        "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:multi_process_runner",
         "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

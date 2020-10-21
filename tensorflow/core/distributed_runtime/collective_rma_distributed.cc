@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/cancellable_call.h"
 #include "tensorflow/core/distributed_runtime/request_id.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/platform/protobuf_internal.h"
 #include "tensorflow/core/protobuf/transport_options.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
@@ -167,16 +168,23 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
     recv_buf_callback(s);
     return;
   }
-  // If a per-call `cancellation_manager` is passed to this function, prefer
-  // using that over `abortion_cancellation_manager_`.  This is because abortion
-  // should also be accompanied by opkernel cancellation.
   state->call.reset(new RecvBufCall(
       step_id_, peer_device, peer_task, key, to_device, to_device_ctx,
       to_alloc_attr, to_tensor, client_locality, state->server_attributes,
-      cancellation_manager == nullptr ? &abortion_cancellation_manager_
-                                      : cancellation_manager,
-      worker_cache_));
-  state->call->Start(recv_buf_callback);
+      cancellation_manager, worker_cache_));
+  CancellationToken abortion_token =
+      abortion_cancel_mgr_.get_cancellation_token();
+  bool already_aborted = !abortion_cancel_mgr_.RegisterCallback(
+      abortion_token, [state] { state->call->Cancel(); });
+  if (already_aborted) {
+    recv_buf_callback(errors::Cancelled("collective ops already aborted"));
+  } else {
+    state->call->Start([this, abortion_token,
+                        done = std::move(recv_buf_callback)](const Status& s) {
+      abortion_cancel_mgr_.DeregisterCallback(abortion_token);
+      done(s);
+    });
+  }
 }
 
 void CollectiveRemoteAccessDistributed::CheckPeerHealth(
@@ -241,7 +249,7 @@ void CollectiveRemoteAccessDistributed::CheckPeerHealth(
 
 void CollectiveRemoteAccessDistributed::StartAbort(const Status& s) {
   CollectiveRemoteAccessLocal::StartAbort(s);
-  abortion_cancellation_manager_.StartCancel();
+  abortion_cancel_mgr_.StartCancel();
 }
 
 }  // namespace tensorflow
