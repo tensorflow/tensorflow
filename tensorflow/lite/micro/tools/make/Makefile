@@ -129,7 +129,7 @@ CCFLAGS  := \
 
 ARFLAGS := -r
 
-ifeq ($(filter armclang,$(ALL_TAGS)),)
+ifeq ($(filter armclang xcore,$(ALL_TAGS)),)
 LDFLAGS += \
   -Wl,--fatal-warnings \
   -Wl,--gc-sections
