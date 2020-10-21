@@ -1797,9 +1797,10 @@ Status TileTransposer::TransposeNode(TransposeContext* context,
 Status UnaryGradTransposer::TransposeNode(TransposeContext* context,
                                           utils::MutableNodeView* node) {
   DCHECK(IsUnaryGrad(*node->node()));
-  const auto* output_shape_attr = node->GetAttr(kAttrOutputShape);
-  const auto& shape = output_shape_attr->list().shape(0);
-  const int rank = shape.dim_size();
+  const int rank = GetFanoutPortRank(*node, 0);
+  if (rank != 4 && rank != 5) {
+    return Status::OK();
+  }
   ScopedDataFormatUpgrader data_format_upgrader(context, rank);
   if (!ShouldProcess(*context, *node) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
