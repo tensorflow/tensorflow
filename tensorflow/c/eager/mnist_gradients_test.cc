@@ -45,9 +45,9 @@ class CppGradients
     Status s = StatusFromTF_Status(status.get());
     CHECK_EQ(errors::OK, s.code()) << s.error_message();
 
-  // Computing numerical gradients with TensorFloat-32 is numerically unstable.
-  // Some forward pass tests also fail with TensorFloat-32 due to low tolerances
-  enable_tensor_float_32_execution(false);
+    // Computing numerical gradients with TensorFloat-32 is numerically unstable.
+    // Some forward pass tests also fail with TensorFloat-32 due to low tolerances
+    enable_tensor_float_32_execution(false);
   }
 };
 
