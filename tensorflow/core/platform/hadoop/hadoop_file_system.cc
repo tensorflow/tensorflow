@@ -196,7 +196,7 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
     if (connectionCache_.find(cacheKey) == connectionCache_.end()) {
       hdfsFS cacheFs = libhdfs()->hdfsBuilderConnect(builder);
       if (cacheFs == nullptr) {
-        return errors::NotFound(strerror(errno));
+        return errors::Aborted(strerror(errno));
       }
       connectionCache_[cacheKey] = cacheFs;
     }
