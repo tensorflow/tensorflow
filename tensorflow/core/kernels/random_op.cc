@@ -74,7 +74,7 @@ class PhiloxRandomOp : public OpKernel {
     OP_REQUIRES_OK(ctx, AllocateOutputWithShape(ctx, shape, 0, &output));
     auto output_flat = output->flat<T>();
     functor::FillPhiloxRandom<Device, Distribution>()(
-        ctx, ctx->eigen_device<Device>(),
+        ctx, ctx->eigen_device<Device>(), /*key=*/nullptr, /*counter=*/nullptr,
         // Multiplier 256 is the same as in FillPhiloxRandomTask; do not change
         // it just here.
         generator_.ReserveRandomOutputs(output_flat.size(), 256),
@@ -123,7 +123,7 @@ class RandomUniformIntOp : public OpKernel {
 
     auto output_flat = output->flat<IntType>();
     functor::FillPhiloxRandom<Device, Distribution>()(
-        ctx, ctx->eigen_device<Device>(),
+        ctx, ctx->eigen_device<Device>(), /*key=*/nullptr, /*counter=*/nullptr,
         // Multiplier 256 is the same as in FillPhiloxRandomTask; do not change
         // it just here.
         generator_.ReserveRandomOutputs(output_flat.size(), 256),
@@ -202,7 +202,7 @@ class RandomGammaOp : public OpKernel {
     // avoid a couple flops which can be done on a per-alpha basis.
 
     auto DoWork = [samples_per_alpha, num_alphas, &rng, samples_flat,
-                   alpha_flat](int start_output, int limit_output) {
+                   alpha_flat](int64 start_output, int64 limit_output) {
       using Eigen::numext::exp;
       using Eigen::numext::log;
       using Eigen::numext::log1p;

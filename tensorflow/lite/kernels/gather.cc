@@ -38,9 +38,14 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   const auto* params =
       reinterpret_cast<const TfLiteGatherParams*>(node->builtin_data);
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  const TfLiteTensor* positions = GetInput(context, node, kInputPositions);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
+  const TfLiteTensor* positions;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputPositions, &positions));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
   switch (positions->type) {
     case kTfLiteInt64:
@@ -132,9 +137,14 @@ TfLiteStatus GatherStrings(TfLiteContext* context, const TfLiteTensor* input,
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const auto* params =
       reinterpret_cast<const TfLiteGatherParams*>(node->builtin_data);
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  const TfLiteTensor* positions = GetInput(context, node, kInputPositions);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
+  const TfLiteTensor* positions;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputPositions, &positions));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
   if (positions->type == kTfLiteInt32) {
     switch (input->type) {

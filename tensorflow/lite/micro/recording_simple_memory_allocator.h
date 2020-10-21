@@ -47,7 +47,7 @@ class RecordingSimpleMemoryAllocator : public SimpleMemoryAllocator {
   // Returns the number of alloc calls from the head or tail.
   size_t GetAllocatedCount() const;
 
-  TfLiteStatus EnsureHeadSize(size_t size, size_t alignment) override;
+  TfLiteStatus SetHeadBufferSize(size_t size, size_t alignment) override;
   uint8_t* AllocateFromTail(size_t size, size_t alignment) override;
 
  private:

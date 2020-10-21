@@ -9,6 +9,8 @@
 # Note(bmzhao): The *.cc files in this directory form the direct implementation of the
 # C API functions exposed in tf/c/experimental/saved_model/public/.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
 # Note(bmzhao): All *type.h files in this directory are the internal definitions of
 # the opaque C types. These headers should only be visible to internal tensorflow
 # implementors.
@@ -222,6 +224,8 @@ cc_library(
     ],
     deps = [
         ":signature_def_function_metadata_type",
+        ":signature_def_param_list",
+        ":signature_def_param_list_type",
         "//tensorflow/c:c_api_macros",
         "//tensorflow/c/experimental/saved_model/core:signature_def_function_metadata",
     ],
@@ -238,6 +242,104 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "signature_def_param",
+    srcs = [
+        "signature_def_param.cc",
+    ],
+    hdrs = [
+        "//tensorflow/c/experimental/saved_model/public:signature_def_param.h",
+    ],
+    copts = tf_copts(),
+    visibility = [
+        "//tensorflow/c/experimental/saved_model/public:__pkg__",
+    ],
+    deps = [
+        ":signature_def_param_type",
+        ":tensor_spec",
+        ":tensor_spec_type",
+        "//tensorflow/c:c_api_macros",
+        "//tensorflow/c:tf_shape_internal",
+        "//tensorflow/c/experimental/saved_model/core:signature_def_function_metadata",
+    ],
+)
+
+cc_library(
+    name = "signature_def_param_type",
+    hdrs = [
+        "signature_def_param_type.h",
+    ],
+    deps = [
+        "//tensorflow/c:conversion_macros",
+        "//tensorflow/c/experimental/saved_model/core:signature_def_function_metadata",
+    ],
+)
+
+cc_library(
+    name = "signature_def_param_list",
+    srcs = [
+        "signature_def_param_list.cc",
+    ],
+    hdrs = [
+        "//tensorflow/c/experimental/saved_model/public:signature_def_param_list.h",
+    ],
+    copts = tf_copts(),
+    visibility = [
+        "//tensorflow/c/experimental/saved_model/public:__pkg__",
+    ],
+    deps = [
+        ":signature_def_param",
+        ":signature_def_param_list_type",
+        ":signature_def_param_type",
+        "//tensorflow/c:c_api_macros",
+    ],
+)
+
+cc_library(
+    name = "signature_def_param_list_type",
+    hdrs = [
+        "signature_def_param_list_type.h",
+    ],
+    deps = [
+        "//tensorflow/c:conversion_macros",
+        "//tensorflow/c/experimental/saved_model/core:signature_def_function_metadata",
+    ],
+)
+
+cc_library(
+    name = "tensor_spec",
+    srcs = [
+        "tensor_spec.cc",
+    ],
+    hdrs = [
+        "//tensorflow/c/experimental/saved_model/public:tensor_spec.h",
+    ],
+    copts = tf_copts(),
+    visibility = [
+        "//tensorflow/c/experimental/saved_model/public:__pkg__",
+    ],
+    deps = [
+        ":tensor_spec_type",
+        "//tensorflow/c:c_api_macros",
+        "//tensorflow/c:tf_datatype",
+        "//tensorflow/c:tf_shape",
+        "//tensorflow/c:tf_shape_internal",
+        "//tensorflow/c/experimental/saved_model/core:tensor_spec",
+    ],
+)
+
+cc_library(
+    name = "tensor_spec_type",
+    hdrs = [
+        "tensor_spec_type.h",
+    ],
+    deps = [
+        "//tensorflow/c:conversion_macros",
+        "//tensorflow/c:tf_shape_internal",
+        "//tensorflow/c/experimental/saved_model/core:tensor_spec",
+    ],
+)
+
 tf_cc_test(
     name = "saved_model_api_test",
     size = "small",
@@ -245,16 +347,26 @@ tf_cc_test(
         "saved_model_api_test.cc",
     ],
     data = [
+        "//tensorflow/c/experimental/saved_model/internal/testdata:saved_models",
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     ],
     deps = [
+        ":saved_model_api_type",
+        "//tensorflow/c:tf_datatype",
+        "//tensorflow/c:tf_shape",
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_tensor",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/eager:c_api_test_util",
+        "//tensorflow/c/experimental/saved_model/core:tf_saved_model_api",
         "//tensorflow/c/experimental/saved_model/public:concrete_function",
         "//tensorflow/c/experimental/saved_model/public:saved_model_api",
+        "//tensorflow/c/experimental/saved_model/public:signature_def_function",
+        "//tensorflow/c/experimental/saved_model/public:signature_def_function_metadata",
+        "//tensorflow/c/experimental/saved_model/public:signature_def_param",
+        "//tensorflow/c/experimental/saved_model/public:signature_def_param_list",
+        "//tensorflow/c/experimental/saved_model/public:tensor_spec",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

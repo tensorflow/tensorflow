@@ -374,7 +374,9 @@ std::pair<float, float> SplitF64ToF32(double x) {
 
   // Only values within the range of F32 are supported, unless it is infinity.
   // Small values with large negative exponents would be rounded to zero.
-  CHECK(std::isfinite(x_f32)) << x;
+  if (!std::isfinite(x_f32)) {
+    LOG(WARNING) << "Out of range F64 constant detected: " << x;
+  }
 
   // The high float is simply the double rounded to the nearest float. Because
   // we are rounding to nearest with ties to even, the error introduced in

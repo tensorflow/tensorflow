@@ -25,6 +25,15 @@ namespace data {
 namespace model {
 namespace {
 
+// Helper function for node traversal that doesn't skip any nodes.
+inline bool IsAnyNode(const std::shared_ptr<Node> node) { return true; }
+
+// Helper function for node traversal that filters out nodes for which
+// autotuning is disabled.
+inline bool IsAutotuneNode(const std::shared_ptr<Node> node) {
+  return node->autotune();
+}
+
 // Wrapper for the square function to reduce verbosity.
 inline double Square(double x) { return x * x; }
 
@@ -82,7 +91,8 @@ class InterleaveMany : public Node {
     if (num_inputs() <= 1) {
       (*output_times)[long_name()] = self_processing_time;
       if (gradients) {
-        for (const auto& node : CollectNodes(TraversalOrder::REVERSE_BFS)) {
+        for (const auto& node :
+             CollectNodes(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
           gradients->erase(node->long_name());
         }
       }
@@ -94,7 +104,8 @@ class InterleaveMany : public Node {
          (*output_times)[inputs_.front()->long_name()]) /
         static_cast<double>(num_inputs() - 1);
     if (gradients) {
-      for (const auto& node : CollectNodes(TraversalOrder::REVERSE_BFS)) {
+      for (const auto& node :
+           CollectNodes(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
         auto* gradient = gtl::FindOrNull(*gradients, node->long_name());
         if (gradient) {
           *gradient /= static_cast<double>(num_inputs() - 1);
@@ -211,7 +222,8 @@ class AsyncInterleaveMany : public Node {
     if (num_inputs() <= 1) {
       (*output_times)[long_name()] = self_processing_time;
       if (gradients) {
-        for (const auto& node : CollectNodes(TraversalOrder::REVERSE_BFS)) {
+        for (const auto& node :
+             CollectNodes(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
           gradients->erase(node->long_name());
         }
       }
@@ -245,7 +257,8 @@ class AsyncInterleaveMany : public Node {
           consumer_time_der +
           producer_time_der * inputs_time_der_sum / parallelism;
 
-      for (const auto& node : CollectNodes(TraversalOrder::REVERSE_BFS)) {
+      for (const auto& node :
+           CollectNodes(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
         auto* gradient = gtl::FindOrNull(*gradients, node->long_name());
         if (gradient) {
           *gradient *= (producer_time_der /
@@ -298,6 +311,15 @@ class AsyncInterleaveMany : public Node {
     (*total_processing_times)[long_name()] =
         self_processing_time + inputs_processing_time;
   }
+
+  double MaximumBufferedBytes() const TF_SHARED_LOCKS_REQUIRED(mu_) {
+    double result = 0;
+    auto* parameter = gtl::FindOrNull(parameters_, kParallelism);
+    if (parameter) {
+      result += (*parameter)->value * AverageBufferedElementSize();
+    }
+    return result;
+  }
 };
 
 class KnownRatio : public Node {
@@ -345,14 +367,16 @@ class KnownRatio : public Node {
     if (ratio_ == 0) {
       (*output_times)[long_name()] = self_processing_time;
       if (gradients) {
-        for (const auto& node : CollectNodes(TraversalOrder::REVERSE_BFS)) {
+        for (const auto& node :
+             CollectNodes(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
           gradients->erase(node->long_name());
         }
       }
       return;
     }
     if (gradients) {
-      for (const auto& node : CollectNodes(TraversalOrder::REVERSE_BFS)) {
+      for (const auto& node :
+           CollectNodes(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
         auto* gradient = gtl::FindOrNull(*gradients, node->long_name());
         if (gradient) {
           *gradient *= ratio_;
@@ -483,7 +507,8 @@ class AsyncKnownRatio : public Node {
       consumer_time = input_time;
       producer_time = 0.0L;
       if (gradients) {
-        for (const auto& node : CollectNodes(TraversalOrder::REVERSE_BFS)) {
+        for (const auto& node :
+             CollectNodes(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
           gradients->erase(node->long_name());
         }
 
@@ -528,7 +553,8 @@ class AsyncKnownRatio : public Node {
       (*output_time_gradients)[long_name()] =
           consumer_time_der + producer_time_der * inputs_time_der_sum;
 
-      for (const auto& node : CollectNodes(TraversalOrder::REVERSE_BFS)) {
+      for (const auto& node :
+           CollectNodes(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
         auto* gradient = gtl::FindOrNull(*gradients, node->long_name());
         if (gradient) {
           *gradient *= (ratio_ * producer_time_der);
@@ -574,6 +600,26 @@ class AsyncKnownRatio : public Node {
         ratio_ * TotalProcessingTimeForInputs(*total_processing_times);
     (*total_processing_times)[long_name()] =
         self_processing_time + inputs_processing_time;
+  }
+
+  double MaximumBufferedBytes() const TF_SHARED_LOCKS_REQUIRED(mu_) {
+    double result = 0;
+    auto* parameter = gtl::FindOrNull(parameters_, kBufferSize);
+    if (!parameter) {
+      parameter = gtl::FindOrNull(parameters_, kParallelism);
+    }
+
+    if (parameter) {
+      if (ratio_ == 0) {
+        result += (*parameter)->value * AverageBufferedElementSize();
+      } else {
+        // The estimation is currently not accurate for MapAndBatchDataset for
+        // the maximum buffer size does not match `num_parallel_calls`
+        // parameter.
+        result += (*parameter)->value * AverageBufferedElementSize() / ratio_;
+      }
+    }
+    return result;
   }
 
  private:
@@ -629,7 +675,8 @@ class UnknownRatio : public Node {
         inputs_.front()->num_elements() == 0) {
       (*output_times)[long_name()] = self_processing_time;
       if (gradients) {
-        for (const auto& node : CollectNodes(TraversalOrder::REVERSE_BFS)) {
+        for (const auto& node :
+             CollectNodes(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
           gradients->erase(node->long_name());
         }
       }
@@ -640,7 +687,8 @@ class UnknownRatio : public Node {
     double ratio = static_cast<double>(inputs_.front()->num_elements()) /
                    static_cast<double>(num_elements_);
     if (gradients) {
-      for (const auto& node : CollectNodes(TraversalOrder::REVERSE_BFS)) {
+      for (const auto& node :
+           CollectNodes(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
         auto* gradient = gtl::FindOrNull(*gradients, node->long_name());
         if (gradient) {
           *gradient *= ratio;
@@ -917,7 +965,8 @@ void Node::CollectTunableParameters(
     absl::flat_hash_map<string, std::shared_ptr<Parameter>>* parameters) const {
   tf_shared_lock l(mu_);
   // Collect tunable parameters from the leaves of the nodes tree to the root.
-  for (const auto& node : CollectNodes(TraversalOrder::REVERSE_BFS)) {
+  for (const auto& node :
+       CollectNodes(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
     tf_shared_lock l(node->mu_);
     node->CollectTunableParametersHelper(parameters);
   }
@@ -928,7 +977,8 @@ string Node::DebugString() const {
   absl::flat_hash_map<string, string> debug_strings;
   tf_shared_lock l(mu_);
   // Build up the debug string from the leaves of the nodes tree to the root.
-  for (const auto& node : CollectNodes(TraversalOrder::REVERSE_BFS)) {
+  for (const auto& node :
+       CollectNodes(TraversalOrder::REVERSE_BFS, IsAnyNode)) {
     tf_shared_lock l(node->mu_);
     node->DebugStringHelper(&debug_strings);
   }
@@ -952,7 +1002,7 @@ double Node::OutputTime(absl::flat_hash_map<string, double>* input_times,
   // `nullptr`) and the output time for each node.
   absl::flat_hash_map<string, double> output_time_gradients, output_times;
   tf_shared_lock l(mu_);
-  auto nodes = CollectNodes(TraversalOrder::BFS);
+  auto nodes = CollectNodes(TraversalOrder::BFS, IsAutotuneNode);
 
   // Computes and stores input time for each node from the root to leaves of the
   // nodes tree.
@@ -1001,7 +1051,8 @@ double Node::TotalBufferedBytes() const {
   absl::flat_hash_map<string, double> total_bytes;
   tf_shared_lock l(mu_);
   // Compute total buffered bytes from the leaves of the nodes tree to the root.
-  for (const auto& node : CollectNodes(TraversalOrder::REVERSE_BFS)) {
+  for (const auto& node :
+       CollectNodes(TraversalOrder::REVERSE_BFS, IsAnyNode)) {
     tf_shared_lock l(node->mu_);
     node->TotalBufferedBytesHelper(&total_bytes);
   }
@@ -1015,7 +1066,8 @@ double Node::TotalMaximumBufferedBytes() const {
   tf_shared_lock l(mu_);
   // Compute total maximum buffered bytes from the leaves of the nodes tree
   // to the root.
-  for (const auto& node : CollectNodes(TraversalOrder::REVERSE_BFS)) {
+  for (const auto& node :
+       CollectNodes(TraversalOrder::REVERSE_BFS, IsAnyNode)) {
     tf_shared_lock l(node->mu_);
     node->TotalMaximumBufferedBytesHelper(&total_bytes);
   }
@@ -1033,7 +1085,8 @@ double Node::TotalProcessingTime(
 
   // Computes per-element CPU time spent in the subtree rooted in the node from
   // the leaves of the nodes tree to the root.
-  for (const auto& node : CollectNodes(TraversalOrder::REVERSE_BFS)) {
+  for (const auto& node :
+       CollectNodes(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
     tf_shared_lock l(node->mu_);
     node->TotalProcessingTimeLocked(processing_times, &total_processing_times);
   }
@@ -1043,11 +1096,34 @@ double Node::TotalProcessingTime(
 }
 
 double Node::AverageBufferedElementSize() const {
-  if (buffered_elements_ == 0) {
-    return 0;
+  DCHECK_GE(num_elements_, 0);
+  DCHECK_GE(buffered_elements_, 0);
+  if (num_elements_ <= 0) {
+    if (buffered_elements_ <= 0) {
+      // If there are no produced elements or buffered elements recorded, return
+      // 0.
+      return 0;
+    }
+    // If there are no produced elements but some buffered elements, return the
+    // average size of all buffered elements.
+    return static_cast<double>(buffered_bytes_) /
+           static_cast<double>(buffered_elements_);
   }
-  return static_cast<double>(buffered_bytes_) /
-         static_cast<double>(buffered_elements_);
+
+  if (buffered_elements_ <= 0) {
+    // If there are no buffered elements but some produced elements, return the
+    // average size of all produced elements.
+    return static_cast<double>(bytes_produced_) /
+           static_cast<double>(num_elements_);
+  }
+
+  // Otherwise, return the mean value of average size of all produced elements
+  // and average size of all buffered elements.
+  return (static_cast<double>(bytes_produced_) /
+              static_cast<double>(num_elements_) +
+          static_cast<double>(buffered_bytes_) /
+              static_cast<double>(buffered_elements_)) /
+         2.0;
 }
 
 double Node::OutputTimeForInputs(
@@ -1123,14 +1199,17 @@ double Node::SelfProcessingTimeLocked() const {
          static_cast<double>(num_elements_);
 }
 
-Node::NodeVector Node::CollectNodes(TraversalOrder order) const
+Node::NodeVector Node::CollectNodes(
+    TraversalOrder order, bool collect_node(const std::shared_ptr<Node>)) const
     TF_SHARED_LOCKS_REQUIRED(mu_) {
   NodeVector node_vector;
   std::list<std::shared_ptr<Node>> temp_list;
 
   for (auto& input : inputs_) {
-    node_vector.push_back(input);
-    temp_list.push_back(input);
+    if (collect_node(input)) {
+      node_vector.push_back(input);
+      temp_list.push_back(input);
+    }
   }
 
   while (!temp_list.empty()) {
@@ -1138,8 +1217,10 @@ Node::NodeVector Node::CollectNodes(TraversalOrder order) const
     temp_list.pop_front();
     tf_shared_lock l(cur_node->mu_);
     for (auto& input : cur_node->inputs_) {
-      node_vector.push_back(input);
-      temp_list.push_back(input);
+      if (collect_node(input)) {
+        node_vector.push_back(input);
+        temp_list.push_back(input);
+      }
     }
   }
 
@@ -1246,18 +1327,15 @@ void Node::TotalMaximumBufferedBytesHelper(
     return;
   }
 
-  double result = 0;
-  auto* parameter = gtl::FindOrNull(parameters_, kBufferSize);
-  if (!parameter) {
-    parameter = gtl::FindOrNull(parameters_, kParallelism);
-  }
-  if (parameter) {
-    result = (*parameter)->value * AverageBufferedElementSize();
-  }
+  double result = MaximumBufferedBytes();
   for (auto& input : inputs_) {
     result += total_bytes->at(input->long_name());
   }
   total_bytes->insert(std::make_pair(long_name(), result));
+}
+
+double Node::MaximumBufferedBytes() const TF_SHARED_LOCKS_REQUIRED(mu_) {
+  return 0;
 }
 
 void Model::AddNode(Node::Factory factory, const string& name,
@@ -1361,9 +1439,6 @@ void Model::OptimizeGradientDescent(int64 cpu_budget, int64 ram_budget,
   VLOG(2) << "Starting optimization of tunable parameters with GradientDescent";
   auto parameters = CollectTunableParameters(snapshot);
   auto essential_parameters = CollectEssentialParallelism(snapshot, parameters);
-  // We add the number of model's buffered bytes because it is excluded from the
-  // memory budget, but it is included in the maximum number of buffered bytes.
-  ram_budget += TotalBufferedBytes(snapshot);
   for (auto& pair : parameters) {
     pair.second->value = pair.second->min;
   }
@@ -1438,9 +1513,6 @@ void Model::OptimizeHillClimb(int64 cpu_budget, int64 ram_budget,
   VLOG(2) << "Starting optimization of tunable parameters with HillClimb";
   const double processing_time = TotalProcessingTime(snapshot);
   auto parameters = CollectTunableParameters(snapshot);
-  // We add the number of model's buffered bytes because it is excluded from the
-  // memory budget, but it is included in the maximum number of buffered bytes.
-  ram_budget += TotalBufferedBytes(snapshot);
   // Buffer size parameter will only be incremented if the output latency
   // improvement is greater than this constant.
   constexpr double kBufferSizeMinDelta = 1.0L;
@@ -1465,7 +1537,7 @@ void Model::OptimizeHillClimb(int64 cpu_budget, int64 ram_budget,
     double best_delta = -1.0L;
     Parameter* best_parameter = nullptr;
     for (auto& pair : parameters) {
-      if (pair.second->value == pair.second->max) {
+      if (pair.second->value >= pair.second->max) {
         continue;
       }
       pair.second->value++;

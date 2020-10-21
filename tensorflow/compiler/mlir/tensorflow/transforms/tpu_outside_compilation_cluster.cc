@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 
@@ -34,9 +35,25 @@ namespace {
 constexpr char kXlaOutsideCompilationAttr[] = "_xla_outside_compilation";
 
 struct TPUOutsideCompilationCluster
-    : public PassWrapper<TPUOutsideCompilationCluster, FunctionPass> {
-  void runOnFunction() override;
+    : public TF::PerFunctionAggregateAnalysisConsumerPass<
+          TPUOutsideCompilationCluster, TF::SideEffectAnalysis> {
+  void runOnFunction(FuncOp func,
+                     const TF::SideEffectAnalysis::Info& side_effect_analysis);
 };
+
+bool IsVariant(Value value) {
+  return getElementTypeOrSelf(value.getType()).isa<TF::VariantType>();
+}
+
+bool HasOutsideCompiledAncestor(Operation* op) {
+  Operation* parent = op->getParentOp();
+  while (parent) {
+    if (parent->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr))
+      return true;
+    parent = parent->getParentOp();
+  }
+  return false;
+}
 
 // Represents an outside compiled cluster. All ops that are added to the same
 // cluster will be extracted together in a later pass.
@@ -47,11 +64,10 @@ class OutsideCompiledCluster {
 
   // Attempts to add an op to this cluster. Ops can be grouped to the same
   // cluster if they have data dependency and are inside the same block.
-  // TODO(kfranko): Ensure that side effecting ops are checked before being
-  // grouped to a same cluster.
-  bool AddOp(Operation* op) {
+  bool AddOp(Operation* op,
+             const TF::SideEffectAnalysis::Info& side_effect_analysis) {
     // Check if the op is safe to add before adding it.
-    if (IsSafeToAdd(op)) {
+    if (IsSafeToAdd(op, side_effect_analysis)) {
       op->setAttr(kXlaOutsideCompilationAttr,
                   StringAttr::get(cluster_name_, op->getContext()));
       host_cluster_ops_.insert(op);
@@ -60,13 +76,70 @@ class OutsideCompiledCluster {
     return false;
   }
 
+  // If any tf.variants are inputs/outputs to the cluster, add them to the
+  // cluster unless they are already marks with outside compilation attribute.
+  bool AddVariantInputsOutputs() {
+    bool added_op = false;
+    llvm::SmallPtrSet<Operation*, 8> expanded_cluster_ops(host_cluster_ops_);
+    for (Operation* cluster_op : host_cluster_ops_) {
+      // Walk the clustered operations to handle nested ops.
+      cluster_op->walk([&](Operation* op) {
+        // Add any operations that provide variant inputs to the cluster.
+        for (auto value : op->getOperands()) {
+          auto input_defining_op = value.getDefiningOp();
+          if (IsVariant(value) && input_defining_op &&
+              !HasOutsideCompiledAncestor(input_defining_op) &&
+              !input_defining_op->getAttrOfType<StringAttr>(
+                  kXlaOutsideCompilationAttr)) {
+            expanded_cluster_ops.insert(input_defining_op);
+            input_defining_op->setAttr(
+                kXlaOutsideCompilationAttr,
+                StringAttr::get(cluster_name_,
+                                input_defining_op->getContext()));
+            added_op = true;
+          }
+        }
+        // Add any operations that consume variant outputs to the cluster.
+        for (auto value : op->getResults()) {
+          if (IsVariant(value)) {
+            for (auto user : value.getUsers()) {
+              if (!host_cluster_ops_.contains(user) &&
+                  !HasOutsideCompiledAncestor(user) &&
+                  !user->getAttrOfType<StringAttr>(
+                      kXlaOutsideCompilationAttr)) {
+                expanded_cluster_ops.insert(user);
+                user->setAttr(
+                    kXlaOutsideCompilationAttr,
+                    StringAttr::get(cluster_name_, user->getContext()));
+                added_op = true;
+              }
+            }
+          }
+        }
+      });
+    }
+    host_cluster_ops_.swap(expanded_cluster_ops);
+
+    return added_op;
+  }
+
  private:
   // Checks if it is safe for an op to be merged into this cluster.
-  bool IsSafeToAdd(Operation* op) {
+  bool IsSafeToAdd(Operation* op,
+                   const TF::SideEffectAnalysis::Info& side_effect_analysis) {
+    if (closed_) return false;
     // If the op is not marked for outside compilation it doesn't belong in a
     // cluster.
-    if (!op->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr))
+    if (!op->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr)) {
+      auto successors = side_effect_analysis.DirectControlSuccessors(op);
+      // If non outside compiled op with side effect successors is encountered,
+      // close this cluster to additions so that no cluster cyclic dependencies
+      // can be created.
+      if (!successors.empty()) {
+        closed_ = true;
+      }
       return false;
+    }
 
     if (host_cluster_ops_.empty()) return true;
 
@@ -76,12 +149,7 @@ class OutsideCompiledCluster {
         op->getUsers(),
         [&](Operation* user) { return host_cluster_ops_.contains(user); });
 
-    const bool inside_same_block =
-        llvm::all_of(host_cluster_ops_, [&](Operation* op_in_cluster) {
-          return op_in_cluster->getBlock() == op->getBlock();
-        });
-
-    return inside_same_block && contains_data_dependency;
+    return contains_data_dependency;
   }
 
   // `host_cluster_op_` stores a set of ops that will be grouped and computed
@@ -90,13 +158,15 @@ class OutsideCompiledCluster {
   // cluster.
   llvm::SmallPtrSet<Operation*, 8> host_cluster_ops_;
   std::string cluster_name_;
+  bool closed_ = false;  // Cluster is closed to further additions.
 };
 
-void TPUOutsideCompilationCluster::runOnFunction() {
+void TPUOutsideCompilationCluster::runOnFunction(
+    FuncOp func, const TF::SideEffectAnalysis::Info& side_effect_analysis) {
   llvm::SmallVector<OutsideCompiledCluster, 8> clusters;
   int cluster_counter = 0;
 
-  getFunction().walk([&](tf_device::ClusterOp tpu_cluster) {
+  func.walk([&](tf_device::ClusterOp tpu_cluster) {
     llvm::SmallVector<Operation*, 4> tpu_cluster_ops;
     tpu_cluster_ops.reserve(tpu_cluster.getBody()->getOperations().size());
 
@@ -108,21 +178,25 @@ void TPUOutsideCompilationCluster::runOnFunction() {
       // Try to add the op to existing clusters.
       bool added = false;
       for (auto& cluster : clusters)
-        if ((added = cluster.AddOp(op))) break;
+        if ((added = cluster.AddOp(op, side_effect_analysis))) break;
 
       // If the op cannot be added to existing clusters, create a new cluster.
       if (!added) {
         OutsideCompiledCluster new_cluster(cluster_counter++);
-        new_cluster.AddOp(op);
+        new_cluster.AddOp(op, side_effect_analysis);
         clusters.push_back(new_cluster);
       }
     }
   });
+  for (auto& cluster : clusters) {
+    bool variants_to_add = true;
+    while (variants_to_add) variants_to_add = cluster.AddVariantInputsOutputs();
+  }
 }
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<ModuleOp>>
 CreateTPUOutsideCompilationClusterPass() {
   return std::make_unique<TPUOutsideCompilationCluster>();
 }

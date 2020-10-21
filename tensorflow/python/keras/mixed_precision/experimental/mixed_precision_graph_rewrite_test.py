@@ -65,13 +65,13 @@ class MixedPrecisionTest(keras_parameterized.TestCase):
     opt = gradient_descent_v2.SGD(1.0)
     opt = enable_mixed_precision_graph_rewrite(opt, 123.)
     self.assertIsInstance(
-        opt, loss_scale_optimizer_v2.LossScaleOptimizer)
-    self.assertEqual(self.evaluate(opt._loss_scale()), 123.)
+        opt, loss_scale_optimizer_v2.LossScaleOptimizerV1)
+    self.assertEqual(self.evaluate(opt.loss_scale), 123.)
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_optimizer_errors(self):
     opt = gradient_descent_v2.SGD(1.0)
-    opt = loss_scale_optimizer_v2.LossScaleOptimizer(opt, 'dynamic')
+    opt = loss_scale_optimizer_v2.LossScaleOptimizerV1(opt, 'dynamic')
     with self.assertRaisesRegex(
         ValueError, '"opt" must not already be an instance of a '
         'LossScaleOptimizer.'):

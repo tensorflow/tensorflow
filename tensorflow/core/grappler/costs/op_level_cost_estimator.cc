@@ -2364,6 +2364,11 @@ Costs OpLevelCostEstimator::PredictResizeBilinear(
     const OpContext& op_context) const {
   bool found_unknown_shapes = false;
 
+  if (op_context.op_info.outputs().empty() ||
+      op_context.op_info.inputs().empty()) {
+    return Costs::ZeroCosts(/*inaccurate=*/true);
+  }
+
   const int64 input_size =
       CalculateTensorSize(op_context.op_info.inputs(0), &found_unknown_shapes);
   const int64 output_size =

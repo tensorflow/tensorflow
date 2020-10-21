@@ -73,7 +73,7 @@ Status TpuExecutable::LoadProgramAndEnqueueToStream(
     c_dev_assign.size = dev_assign_serialized.size;
   }
 
-  auto platform = tensorflow::down_cast<tensorflow::TpuPlatform*>(
+  auto platform = tensorflow::down_cast<tensorflow::tpu::TpuPlatform*>(
       tensorflow::tpu::TpuPlatformInterface::GetRegisteredPlatform());
   auto stream = platform->stream_map()->at(
       run_options.run_options().stream()->implementation());

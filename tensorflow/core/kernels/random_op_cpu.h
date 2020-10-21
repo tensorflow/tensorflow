@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/random_op.h"
+#include "tensorflow/core/kernels/random_ops_util.h"
 #include "tensorflow/core/lib/hash/crc32c.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
@@ -59,8 +60,9 @@ using random::SingleSampleAdapter;
 template <typename Device, class Distribution>
 struct FillPhiloxRandom {
   typedef typename Distribution::ResultElementType T;
-  void operator()(OpKernelContext* ctx, const Device&, random::PhiloxRandom gen,
-                  T* data, int64 size, Distribution dist) {
+  void operator()(OpKernelContext* ctx, const Device&, const uint64* key,
+                  const uint64* counter, random::PhiloxRandom gen, T* data,
+                  int64 size, Distribution dist) {
     OP_REQUIRES(
         ctx, false,
         errors::Internal(
@@ -154,18 +156,24 @@ struct FillPhiloxRandomTask<Distribution, true> {
 // It splits the work into several tasks and run them in parallel
 template <class Distribution>
 void FillPhiloxRandom<CPUDevice, Distribution>::operator()(
-    OpKernelContext* context, const CPUDevice&, random::PhiloxRandom gen,
+    OpKernelContext* ctx, const CPUDevice&, const uint64* key,
+    const uint64* counter, random::PhiloxRandom gen,
     typename Distribution::ResultElementType* data, int64 size,
     Distribution dist) {
   const int kGroupSize = Distribution::kResultElementCount;
 
-  auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
+  auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
 
   int64 total_group_count = (size + kGroupSize - 1) / kGroupSize;
 
   const int kGroupCost =
       random::PhiloxRandom::kResultElementCount *
       (random::PhiloxRandom::kElementCost + Distribution::kElementCost);
+
+  if (key != nullptr && counter != nullptr) {
+    gen = GetPhiloxRandomFromCounterKeyMem(counter, key);
+  }
+
   Shard(worker_threads.num_threads, worker_threads.workers, total_group_count,
         kGroupCost,
         [&gen, data, size, dist](int64 start_group, int64 limit_group) {

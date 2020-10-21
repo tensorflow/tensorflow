@@ -1,3 +1,8 @@
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "genrule")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
@@ -331,9 +336,9 @@ tf_cc_test(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:hlo_profile_printer",
         "//tensorflow/core:lib",
-        "//tensorflow/core:regexp_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:regexp",
         "//third_party/eigen3",
         "@com_google_absl//absl/strings",
     ],
@@ -554,9 +559,9 @@ tf_cc_test(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:hlo_profile_printer",
         "//tensorflow/core:lib",
-        "//tensorflow/core:regexp_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:regexp",
         "//third_party/eigen3",
         "@com_google_absl//absl/strings",
     ],

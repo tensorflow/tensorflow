@@ -1,3 +1,4 @@
+load("//tensorflow:tensorflow.bzl", "filegroup")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 load("//tensorflow:tensorflow.bzl", "tf_native_cc_binary")
 
@@ -53,6 +54,7 @@ tf_native_cc_binary(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_utils",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
     ],
@@ -69,6 +71,7 @@ tf_native_cc_binary(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_utils",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
     ],

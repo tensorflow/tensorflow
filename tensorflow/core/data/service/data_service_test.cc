@@ -45,10 +45,10 @@ TEST(DataService, ParseParallelEpochsProcessingMode) {
   EXPECT_EQ(mode, ProcessingMode::PARALLEL_EPOCHS);
 }
 
-TEST(DataService, ParseOneEpochProcessingMode) {
+TEST(DataService, ParseDistributedEpochProcessingMode) {
   ProcessingMode mode;
-  TF_ASSERT_OK(ParseProcessingMode("one_epoch", mode));
-  EXPECT_EQ(mode, ProcessingMode::ONE_EPOCH);
+  TF_ASSERT_OK(ParseProcessingMode("distributed_epoch", mode));
+  EXPECT_EQ(mode, ProcessingMode::DISTRIBUTED_EPOCH);
 }
 
 TEST(DataService, ParseInvalidProcessingMode) {
@@ -60,7 +60,8 @@ TEST(DataService, ParseInvalidProcessingMode) {
 TEST(DataService, ProcessingModeToString) {
   EXPECT_EQ("parallel_epochs",
             ProcessingModeToString(ProcessingMode::PARALLEL_EPOCHS));
-  EXPECT_EQ("one_epoch", ProcessingModeToString(ProcessingMode::ONE_EPOCH));
+  EXPECT_EQ("distributed_epoch",
+            ProcessingModeToString(ProcessingMode::DISTRIBUTED_EPOCH));
 }
 
 TEST(DataService, GetWorkers) {

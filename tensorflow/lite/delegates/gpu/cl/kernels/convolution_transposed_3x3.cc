@@ -29,10 +29,9 @@ namespace gpu {
 namespace cl {
 ConvolutionTransposed3x3::ConvolutionTransposed3x3(
     const OperationDef& definition, const DeviceInfo& device_info, int2 padding)
-    : GPUOperation(definition),
-      padding_(padding),
-      work_group_launch_order_(2, 0, 1) {
+    : GPUOperation(definition), padding_(padding) {
   work_group_size_ = int3(8, 4, 1);
+  work_group_launch_order_ = int3(2, 0, 1);
   if (device_info.IsPowerVR()) {
     weights_upload_type_ = WeightsUploadType::LOCAL_MEM_ASYNC;
   } else if (device_info.IsNvidia() || device_info.IsIntel()) {
@@ -54,14 +53,12 @@ ConvolutionTransposed3x3::ConvolutionTransposed3x3(
     ConvolutionTransposed3x3&& operation)
     : GPUOperation(std::move(operation)),
       padding_(operation.padding_),
-      work_group_launch_order_(operation.work_group_launch_order_),
       weights_upload_type_(operation.weights_upload_type_) {}
 
 ConvolutionTransposed3x3& ConvolutionTransposed3x3::operator=(
     ConvolutionTransposed3x3&& operation) {
   if (this != &operation) {
     std::swap(padding_, operation.padding_);
-    std::swap(work_group_launch_order_, operation.work_group_launch_order_);
     std::swap(weights_upload_type_, operation.weights_upload_type_);
     GPUOperation::operator=(std::move(operation));
   }
@@ -305,27 +302,33 @@ std::string ConvolutionTransposed3x3::GenerateConvolutionTransposedCode(
   return c;
 }
 
-absl::Status ConvolutionTransposed3x3::BindArguments() {
-  RETURN_IF_ERROR(args_.SetInt("filter_offset", 4 * 9 * src_[0]->Slices()));
+absl::Status ConvolutionTransposed3x3::BindArguments(ArgumentsBinder* args) {
+  RETURN_IF_ERROR(args->SetInt("filter_offset", 4 * 9 * src_[0]->Slices()));
   const int padding_x =
       padding_.x >= 1 ? (padding_.x - 1) / 2 : (padding_.x - 2) / 2;
   const int padding_y =
       padding_.y >= 1 ? (padding_.y - 1) / 2 : (padding_.y - 2) / 2;
-  RETURN_IF_ERROR(args_.SetInt("padding_x", padding_x * src_[0]->Batch()));
-  return args_.SetInt("padding_y", padding_y);
+  RETURN_IF_ERROR(args->SetInt("padding_x", padding_x * src_[0]->Batch()));
+  return args->SetInt("padding_y", padding_y);
+}
+
+void ConvolutionTransposed3x3::GetPossibleKernelWorkGroups(
+    TuningType tuning_type, const DeviceInfo& device_info,
+    const KernelInfo& kernel_info, std::vector<int3>* work_groups) const {
+  if (weights_upload_type_ == WeightsUploadType::LOCAL_MEM_ASYNC ||
+      weights_upload_type_ == WeightsUploadType::LOCAL_MEM_BY_THREADS) {
+    work_groups->push_back(work_group_size_);
+    return;
+  }
+  GetPossibleWorkGroupsConv(tuning_type, device_info, kernel_info, grid_size_,
+                            work_groups);
 }
 
 int3 ConvolutionTransposed3x3::GetGridSize() const {
   const int grid_x = DivideRoundUp(dst_[0]->Width(), 2) * dst_[0]->Batch();
   const int grid_y = DivideRoundUp(dst_[0]->Height(), 2);
   const int grid_z = dst_[0]->Slices();
-  int3 wg;
-  wg.x = DivideRoundUp(grid_x, work_group_size_.x);
-  wg.y = DivideRoundUp(grid_y, work_group_size_.y);
-  wg.z = DivideRoundUp(grid_z, work_group_size_.z);
-  return int3(wg[work_group_launch_order_[0]] * work_group_size_.x,
-              wg[work_group_launch_order_[1]] * work_group_size_.y,
-              wg[work_group_launch_order_[2]] * work_group_size_.z);
+  return int3(grid_x, grid_y, grid_z);
 }
 
 bool IsConvolutionTransposed3x3Supported(

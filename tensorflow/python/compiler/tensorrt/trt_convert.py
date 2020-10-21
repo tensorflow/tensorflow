@@ -50,6 +50,7 @@ from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import saver
 from tensorflow.python.training.tracking import tracking
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
@@ -154,7 +155,7 @@ class TrtConversionParams(
       there is a mismatch between which tensors TRT quantizes and which
       tensors were trained with fake quantization.
     max_batch_size: max size for the input batch. This parameter is only
-      effective when is_dynamic_op=False which is not supported in TF 2.0.
+      effective when use_implicit_batch is true.
     allow_build_at_runtime: whether to build TensorRT engines during runtime.
       If no TensorRT engine can be found in cache that can handle the given
       inputs during runtime, then a new TensorRT engine is built at runtime if
@@ -341,9 +342,8 @@ def get_tensorrt_rewriter_config(conversion_params,
     optimizer.parameter_map["is_dynamic_op"].b = conversion_params.is_dynamic_op
     optimizer.parameter_map[
         "allow_build_at_runtime"].b = conversion_params.allow_build_at_runtime
-    if not is_v2:
-      optimizer.parameter_map[
-          "max_batch_size"].i = conversion_params.max_batch_size
+    optimizer.parameter_map[
+        "max_batch_size"].i = conversion_params.max_batch_size
   else:
     rewriter_config_with_trt.CopyFrom(
         conversion_params.rewriter_config_template)
@@ -427,6 +427,8 @@ class TrtGraphConverter(object):
   ```
   """
 
+  @deprecation.deprecated_args(None, "Remove the use of this argument",
+                               "session_config")
   def __init__(self,
                input_saved_model_dir=None,
                input_saved_model_tags=None,
@@ -995,6 +997,9 @@ class TrtGraphConverterV2(object):
     assert context.executing_eagerly()
     if conversion_params is None:
       conversion_params = TrtConversionParams()
+    elif conversion_params.rewriter_config_template is not None:
+      tf_logging.warn("the rewrite_config_template field will be deprecated.")
+
     _check_trt_version_compatibility()
     _check_conversion_params(conversion_params, is_v2=True)
 

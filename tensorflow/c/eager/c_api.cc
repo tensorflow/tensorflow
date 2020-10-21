@@ -39,7 +39,7 @@ limitations under the License.
 #include "tensorflow/c/eager/tfe_op_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "tensorflow/c/tf_tensor_internal.h"
-#ifdef PLATFORM_GOOGLE
+#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE)
 #include "tensorflow/core/tfrt/eager/c_api_tfrt.h"
 #endif
 #include "tensorflow/core/common_runtime/device.h"
@@ -729,7 +729,7 @@ void TFE_DeleteContextOptions(TFE_ContextOptions* options) { delete options; }
 
 TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
   if (opts->use_tfrt) {
-#ifdef PLATFORM_GOOGLE
+#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE)
     return tensorflow::wrap(new tfrt::tf::ContextInterface(opts->async));
 #else
     status->status = tensorflow::errors::Unimplemented("TFRT is not supported");
@@ -752,8 +752,7 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
       static_cast<tensorflow::ContextDevicePlacementPolicy>(
           opts->device_placement_policy),
       opts->async, opts->lazy_remote_inputs_copy, device_mgr.release(),
-      /*device_mgr_owned*/ true, r,
-      tensorflow::GetDefaultCustomKernelCreator()));
+      /*device_mgr_owned*/ true, r));
 }
 
 void TFE_DeleteContext(TFE_Context* ctx) {
@@ -905,9 +904,7 @@ TF_CAPI_EXPORT extern void TFE_ContextAsyncWait(TFE_Context* ctx,
 
 void TFE_ContextSetThreadLocalDevicePlacementPolicy(
     TFE_Context* ctx, TFE_ContextDevicePlacementPolicy policy) {
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  context->SetThreadLocalDevicePlacementPolicy(
+  tensorflow::unwrap(ctx)->SetThreadLocalDevicePlacementPolicy(
       static_cast<tensorflow::ContextDevicePlacementPolicy>(policy));
 }
 
@@ -916,10 +913,8 @@ void TFE_ContextSetThreadLocalDevicePlacementPolicy(
 // safe to call this function from the async EagerExecutor threads.
 extern TFE_ContextDevicePlacementPolicy TFE_ContextGetDevicePlacementPolicy(
     TFE_Context* ctx) {
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
   return static_cast<TFE_ContextDevicePlacementPolicy>(
-      context->GetDevicePlacementPolicy());
+      tensorflow::unwrap(ctx)->GetDevicePlacementPolicy());
 }
 
 TFE_TensorHandle* TFE_NewTensorHandle(const TF_Tensor* t, TF_Status* status) {
@@ -1430,21 +1425,15 @@ void TFE_ContextRemoveFunction(TFE_Context* ctx, const char* name,
 }
 
 unsigned char TFE_ContextHasFunction(TFE_Context* ctx, const char* name) {
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  return context->FindFunctionDef(name) != nullptr;
+  return tensorflow::unwrap(ctx)->FindFunctionDef(name) != nullptr;
 }
 
 void TFE_ContextEnableRunMetadata(TFE_Context* ctx) {
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  context->SetShouldStoreGraphs(true);
+  tensorflow::unwrap(ctx)->SetShouldStoreGraphs(true);
 }
 
 void TFE_ContextDisableRunMetadata(TFE_Context* ctx) {
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  context->SetShouldStoreGraphs(false);
+  tensorflow::unwrap(ctx)->SetShouldStoreGraphs(false);
 }
 
 }  // extern "C"

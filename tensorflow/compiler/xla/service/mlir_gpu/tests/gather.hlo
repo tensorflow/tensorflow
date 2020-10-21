@@ -12,9 +12,11 @@ ENTRY %Gather (x: f32[100,10], y: s64[4,6]) -> f32[4,6,10] {
 // CHECK: func @gather(%[[ARG0:.*]]: [[TYPE0:.*]], %[[ARG1:.*]]: [[TYPE1:.*]],
 // CHECK-SAME:         %[[RESULT:.*]]: [[RTYPE:.*]]) {
 // CHECK-NEXT: "lmhlo.gather"(%[[ARG0]], %[[ARG1]], %[[RESULT]]) {
-// CHECK-SAME:   collapsed_slice_dims = dense<0> : tensor<1xi64>,
-// CHECK-SAME:   index_vector_dim = 2 : i64,
-// CHECK-SAME:   offset_dims = dense<2> : tensor<1xi64>,
-// CHECK-SAME:   slice_sizes = dense<[1, 10]> : tensor<2xi64>,
-// CHECK-SAME:   start_index_map = dense<0> : tensor<1xi64>
+// CHECK-SAME:   dimension_numbers = {
+// CHECK-SAME:     collapsed_slice_dims = dense<0> : tensor<1xi64>,
+// CHECK-SAME:     index_vector_dim = 2 : i64,
+// CHECK-SAME:     offset_dims = dense<2> : tensor<1xi64>,
+// CHECK-SAME:     start_index_map = dense<0> : tensor<1xi64>
+// CHECK-SAME:   },
+// CHECK-SAME:   slice_sizes = dense<[1, 10]> : tensor<2xi64>
 // CHECK-SAME: } : ([[TYPE0]], [[TYPE1]], [[RTYPE]]) -> ()

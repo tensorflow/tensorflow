@@ -19,6 +19,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_H_
 
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/DialectImplementation.h"
@@ -32,7 +33,7 @@ limitations under the License.
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 
 // clang-format off
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_structs.h.inc"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h"
 #include "mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.h"
 // clang-format on
 

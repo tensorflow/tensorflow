@@ -24,16 +24,17 @@ include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.td"
 //===----------------------------------------------------------------------===//
 
 // Expand acos to MHLO dialect as follows:
-//   acos(x) = 2 * atan(sqrt(1 - x^2) / (1 + x))  if x != -1
+//   acos(x) = 2 * atan2(sqrt(1 - x^2), (1 + x))  if x != -1
 //           = pi                                 if x == -1
 def : Pat<(HLOClient_AcosOp $input),
   (HLO_SelectOp
-    (HLO_CompareOp $input,
-      (HLO_ConstantLike<"0"> $input),
+    (HLO_CompareOp
+      $input,
+      (HLO_ConstantLike<"-1"> $input),
       HLO_COMPARISON_DIRECTION_NE
     ),
     (HLO_MulOp
-      (HLO_ConstantLike<"2.0f"> $input),
+      (HLO_ConstantLike<"2"> $input),
       (HLO_Atan2Op
         (HLO_SqrtOp
           (HLO_SubOp
@@ -47,7 +48,55 @@ def : Pat<(HLOClient_AcosOp $input),
         )
       )
     ),
-    (HLO_ConstantLike<"M_PI"> $input))>;
+    (HLO_ConstantLike<"M_PI"> $input)
+  )>;
+
+// Express `atan` as
+//   atan(x) = atan2(x, 1)
+def : Pat<(HLOClient_AtanOp $input),
+  (HLO_Atan2Op
+    $input,
+    (HLO_ConstantLike<"1"> $input)
+  )>;
+
+// Express `sinh` as
+//   sinh(x) = (e^x - e^-x) / 2                     if |x| < 1
+//           = e^(x + log(1/2)) - e^(-x + log(1/2)) otherwise.
+def : Pat<(HLOClient_SinhOp $input),
+  (HLO_SelectOp
+    (HLO_CompareOp
+      (HLO_AbsOp $input),
+      (HLO_ConstantLike<"1"> $input),
+      HLO_COMPARISON_DIRECTION_LT
+    ),
+    (HLO_DivOp
+      (HLO_SubOp
+        (HLO_ExpOp $input),
+        (HLO_ExpOp
+          (HLO_NegOp $input)
+        )
+      ),
+      (HLO_ConstantLike<"2"> $input)
+    ),
+    (HLO_SubOp
+      (HLO_ExpOp
+        (HLO_AddOp
+          $input,
+          (HLO_LogOp
+            (HLO_ConstantLike<"0.5"> $input)
+          )
+        )
+      ),
+      (HLO_ExpOp
+        (HLO_SubOp
+          (HLO_LogOp
+            (HLO_ConstantLike<"0.5"> $input)
+          ),
+          $input
+        )
+      )
+    )
+  )>;
 
 // Express tan in MHLO dialect as
 //   tan(x) = sin(x) / cos(x).
@@ -56,4 +105,3 @@ def : Pat<(HLOClient_TanOp $input),
     (HLO_SinOp $input),
     (HLO_CosOp $input)
   )>;
-

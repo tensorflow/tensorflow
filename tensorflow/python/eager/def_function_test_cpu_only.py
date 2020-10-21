@@ -23,6 +23,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework import tfrt_utils
 from tensorflow.python.platform import test
 
 
@@ -37,8 +38,9 @@ class DefFunctionCpuOnlyTest(test.TestCase, parameterized.TestCase):
     if test.is_built_with_rocm() or test_util.is_xla_enabled():
       return
 
-    with self.assertRaisesRegexp(errors.UnimplementedError,
-                                 'check target linkage'):
+    with self.assertRaisesRegex((errors.UnknownError if tfrt_utils.enabled()
+                                 else errors.UnimplementedError),
+                                'check target linkage'):
 
       @def_function.function(experimental_compile=True)
       def fn(x):

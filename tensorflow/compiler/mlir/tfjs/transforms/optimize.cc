@@ -50,7 +50,7 @@ void Optimize::runOnFunction() {
   auto *ctx = &getContext();
   auto func = getFunction();
 
-  populateWithGenerated(ctx, &patterns);
+  populateWithGenerated(ctx, patterns);
   applyPatternsAndFoldGreedily(func, patterns);
 }
 }  // namespace

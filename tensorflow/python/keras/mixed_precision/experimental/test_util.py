@@ -130,13 +130,15 @@ class MultiplyLayer(AssertTypeLayer):
 
   def __init__(self,
                regularizer=None,
+               activity_regularizer=None,
                use_operator=False,
                var_name='v',
                **kwargs):
     """Initializes the MultiplyLayer.
 
     Args:
-      regularizer: The regularizer on the scalar variable.
+      regularizer: The weight regularizer on the scalar variable.
+      activity_regularizer: The activity regularizer.
       use_operator: If True, add using the * operator. If False, add using
         tf.multiply.
       var_name: The name of the variable. It can be useful to pass a name other
@@ -148,9 +150,15 @@ class MultiplyLayer(AssertTypeLayer):
     if isinstance(regularizer, dict):
       self._regularizer = regularizers.deserialize(regularizer,
                                                    custom_objects=globals())
+    self._activity_regularizer = activity_regularizer
+    if isinstance(activity_regularizer, dict):
+      self._activity_regularizer = regularizers.deserialize(
+          activity_regularizer, custom_objects=globals())
+
     self._use_operator = use_operator
     self._var_name = var_name
-    super(MultiplyLayer, self).__init__(**kwargs)
+    super(MultiplyLayer, self).__init__(
+        activity_regularizer=self._activity_regularizer, **kwargs)
 
   def build(self, _):
     self.v = self.add_weight(
@@ -159,7 +167,6 @@ class MultiplyLayer(AssertTypeLayer):
 
   def call(self, inputs):
     self.assert_input_types(inputs)
-    assert inputs.dtype == self.v.dtype
     return self._multiply(inputs, self.v)
 
   def _multiply(self, x, y):
@@ -171,6 +178,8 @@ class MultiplyLayer(AssertTypeLayer):
   def get_config(self):
     config = super(MultiplyLayer, self).get_config()
     config['regularizer'] = regularizers.serialize(self._regularizer)
+    config['activity_regularizer'] = regularizers.serialize(
+        self._activity_regularizer)
     config['use_operator'] = self._use_operator
     config['var_name'] = self._var_name
     config['assert_type'] = self._assert_type
@@ -182,6 +191,15 @@ class IdentityRegularizer(regularizers.Regularizer):
   def __call__(self, x):
     assert x.dtype == dtypes.float32
     return array_ops.identity(x)
+
+  def get_config(self):
+    return {}
+
+
+class ReduceSumRegularizer(regularizers.Regularizer):
+
+  def __call__(self, x):
+    return math_ops.reduce_sum(x)
 
   def get_config(self):
     return {}

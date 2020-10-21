@@ -169,6 +169,13 @@ Status EnsureNodeNamesUnique(Graph* g);
 Status GetFetchNode(const MutableGraphView& graph, const GrapplerItem& item,
                     NodeDef** fetch_node);
 
+// Returns true if `item` is derived from a `FunctionDef`, false otherwise.
+// Currently, we determine this heuristically: If we don't have any fetch nodes
+// or all fetch nodes are `Retval` ops, then we consider this item as derived
+// from a `FunctionDef`.
+bool IsItemDerivedFromFunctionDef(const GrapplerItem& item,
+                                  const MutableGraphView& graph_view);
+
 }  // namespace graph_utils
 }  // namespace grappler
 }  // namespace tensorflow

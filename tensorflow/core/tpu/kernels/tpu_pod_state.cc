@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/tpu/tpu_api.h"
 
-#if defined(LIBTFTPU)
+#if defined(LIBTPU_ON_GCE)
 #include "tensorflow/core/tpu/kernels/tpu_util.h"
 #else
 #include "tensorflow/core/tpu/kernels/tpu_util.h"  // copybara"
@@ -54,7 +54,7 @@ xla::StatusOr<std::unique_ptr<TpuCompilationCacheService>>
 ConstructCacheService(ResourceMgr* rmgr, int serving_port,
                       tpu::TpuCompilationCacheInterface* compilation_cache) {
   xla::StatusOr<std::unique_ptr<::grpc::ServerBuilder>> server_builder;
-#if defined(LIBTFTPU)
+#if defined(LIBTPU_ON_GCE)
   server_builder = tpu::CreateServerBuilder(serving_port);
 #else
   server_builder = tpu::CreateServerBuilderGoogle(serving_port);

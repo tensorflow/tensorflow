@@ -57,15 +57,31 @@ multiclass FuseActFnIntoConvOpPat<dag ActFnOp, dag ActFnAttr> {
     [(HasOneUse $conv_out)]>;
 }
 
+multiclass FuseActFnIntoPoolOpPat<dag ActFnOp, dag ActFnAttr> {
+  def FuseActivationFuncWithAvgPool#ActFnOp#ActFnAttr : Pat<
+    (ActFnOp (TFL_AveragePool2DOp:$pool_out $input, $filter_height,
+                  $filter_width, $padding, $stride_h, $stride_w, TFL_AF_None)),
+    (TFL_AveragePool2DOp $input, $filter_height, $filter_width, $padding,
+        $stride_h, $stride_w, ActFnAttr),
+    [(HasOneUse $pool_out)]>;
+  def FuseActivationFuncWithMaxPool#ActFnOp#ActFnAttr : Pat<
+    (ActFnOp (TFL_MaxPool2DOp:$pool_out $input, $padding, $stride_w, $stride_h,
+                  $filter_width, $filter_height, TFL_AF_None)),
+    (TFL_MaxPool2DOp $input, $padding, $stride_w, $stride_h,
+        $filter_width, $filter_height, ActFnAttr),
+    [(HasOneUse $pool_out)]>;
+}
+
 // TODO(hinsu): Also fuse ops corresponding to SIGN_BIT fused
 // activation functions.
 // Currently we're not fusing tanh, sigmoid, hard_swish and other activations
 // those cannot be simply translated into clamping.
 foreach actFnPair = [[TFL_ReluOp, TFL_AF_Relu],
                      [TFL_Relu6Op, TFL_AF_Relu6],
-                     [TFL_Relu1Op, TFL_AF_Relu1]] in
+                     [TFL_Relu1Op, TFL_AF_Relu1]] in {
   defm : FuseActFnIntoConvOpPat<actFnPair[0], actFnPair[1]>;
-
+  defm : FuseActFnIntoPoolOpPat<actFnPair[0], actFnPair[1]>;
+}
 
 class CanFuseConvOrDepthwiseConv<string is_depthwise> : Constraint<
   CPred<"TFL::CanFuseConvOrDepthwiseConv($0, $1, " # is_depthwise # ")">>;
@@ -222,8 +238,6 @@ def eliminate_dq_q_pairs : Pat<
   [(NotFromQuantOpOrSameQuantType $in, $qt)]>;
 
 
-// Constraint that makes sure both operands are the same operands.
-def EqualOperands : Constraint<CPred<"$0 == $1">>;
 
 
 // Checks if the operand has rank == n
@@ -235,28 +249,26 @@ def MatchHardSwishPattern1 : Pat<
   (TFL_MulOp
     (TFL_MulOp
      $x, (TFL_AddOp
-          $y,
+          $x,
           (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "3.0f">),
           TFL_AF_Relu6),
      TFL_AF_None),
     (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "0.166666666f">),
      TFL_AF_None),
-  (TFL_HardSwishOp $x),
-  [(EqualOperands $x, $y)]>;
+  (TFL_HardSwishOp $x)>;
 
 def MatchHardSwishPattern2 : Pat<
   (TFL_MulOp
     $x,
     (TFL_MulOp
      (TFL_AddOp
-      $y,
+      $x,
       (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "3.0f">),
       TFL_AF_Relu6),
      (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "0.166666666f">),
      TFL_AF_None),
      TFL_AF_None),
-  (TFL_HardSwishOp $x),
-  [(EqualOperands $x, $y)]>;
+  (TFL_HardSwishOp $x)>;
 
 // Matching HardSwish with extra FakeQuant. These FakeQuant ops were due to
 // incorrect placement in the quantization aware training.
@@ -265,14 +277,13 @@ def MatchHardSwishQuantized : Pat<
   (TFL_MulOp (TFL_DequantizeOp (TFL_QuantizeOp
     (TFL_MulOp
      $x, (TFL_DequantizeOp (TFL_QuantizeOp (TFL_AddOp
-          $y,
+          $x,
           (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "3.0f">),
           TFL_AF_Relu6), $qattr2)),
      TFL_AF_None), $qattr1)),
     (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "0.166666666f">),
      TFL_AF_None),
-  (TFL_HardSwishOp $x),
-  [(EqualOperands $x, $y)]>;
+  (TFL_HardSwishOp $x)>;
 
 // Constraint that the attribute value is less than 'n'
 class ConstDoubleValueLessThan<string n> : Constraint<
@@ -293,47 +304,44 @@ multiclass L2NormalizePatterns<dag FirstOp, dag SecondOp> {
   // Mul->Rsqrt->Sum->Square Or
   // Div->sqrt->Sum->Square
   def L2NormalizePattern1#FirstOp#SecondOp : Pat<
-                  (FirstOp $operand1,
+                  (FirstOp $x,
                      (SecondOp
                         (TFL_SumOp
-                           (TFL_SquareOp:$sq_op $square_operand),
+                           (TFL_SquareOp:$sq_op $x),
                            (ConstantOp I32ElementsAttr:$axis),
                            $keep_dims)),
                      TFL_AF_None),
-           (TFL_L2NormalizationOp $operand1, TFL_AF_None),
-           [(EqualOperands $operand1, $square_operand),
-            (L2NormValidReduceIndex $sq_op, $axis)]>;
+           (TFL_L2NormalizationOp $x, TFL_AF_None),
+           [(L2NormValidReduceIndex $sq_op, $axis)]>;
 
   // Below patterns for L2Normalize when there is an Add or Maximum
   // adding or clamping to a small constant scalar.
   def L2NormalizePattern2#FirstOp#SecondOp : Pat<
-                    (FirstOp $operand1,
+                    (FirstOp $x,
                      (SecondOp
                       (TFL_AddOp
                        (TFL_SumOp
-                        (TFL_SquareOp:$sq_op $square_operand),
+                        (TFL_SquareOp:$sq_op $x),
                         (ConstantOp I32ElementsAttr:$axis),
                         $keep_dims),
                        (ConstantOp $epsilon), TFL_AF_None)),
            TFL_AF_None),
-           (TFL_L2NormalizationOp $operand1, TFL_AF_None),
-           [(EqualOperands $operand1, $square_operand),
-            (L2NormValidReduceIndex $sq_op, $axis),
+           (TFL_L2NormalizationOp $x, TFL_AF_None),
+           [(L2NormValidReduceIndex $sq_op, $axis),
             (ConstDoubleValueLessThan<"1e-3"> $epsilon)]>;
 
   def L2NormalizePattern3#FirstOp#SecondOp : Pat<
-                    (FirstOp $operand1,
+                    (FirstOp $x,
                      (SecondOp
                       (TFL_MaximumOp
                        (TFL_SumOp
-                        (TFL_SquareOp:$sq_op $square_operand),
+                        (TFL_SquareOp:$sq_op $x),
                         (ConstantOp I32ElementsAttr:$axis),
                         $keep_dims),
                        (ConstantOp $epsilon))),
            TFL_AF_None),
-           (TFL_L2NormalizationOp $operand1, TFL_AF_None),
-           [(EqualOperands $operand1, $square_operand),
-            (L2NormValidReduceIndex $sq_op, $axis),
+           (TFL_L2NormalizationOp $x, TFL_AF_None),
+           [(L2NormValidReduceIndex $sq_op, $axis),
             (ConstDoubleValueLessThan<"1e-3"> $epsilon)]>;
 
 }
@@ -481,9 +489,9 @@ def ConvertExpandDimsToReshape : Pat<
   [(AnyStaticShapeTensor $expand_dims_op)]>;
 
 class FloatValueEquals<string val> : Constraint<CPred<
-  "$0.cast<DenseElementsAttr>().getNumElements() == 1 &&"
-  "$0.isa<DenseFPElementsAttr>() &&"
-  "*$0.cast<DenseElementsAttr>().getValues<float>().begin() == " # val>>;
+  "$0.isa<DenseFPElementsAttr>() && "
+  "llvm::all_of($0.cast<DenseElementsAttr>().getFloatValues(), "
+  "[](const APFloat& f) { return f.isExactlyValue(" # val # "); })">>;
 
 // ReLU patterns
 def MatchReluPattern : Pat<
@@ -505,12 +513,11 @@ def MatchRelu1Pattern2 : Pat<
 
 def MatchLeakyRelu : Pat<
   (TFL_MaximumOp
-    (TFL_MulOp:$mul_out $input1,
+    (TFL_MulOp:$mul_out $x,
      (ConstantOp F32ElementsAttr:$alpha), TFL_AF_None),
-    $input2),
-  (TFL_LeakyReluOp $input1, ExtractSingleElementAsFloat:$alpha),
+    $x),
+  (TFL_LeakyReluOp $x, ExtractSingleElementAsFloat:$alpha),
   [(ConstDoubleValueLessThan<"1"> $alpha),
-   (EqualOperands $input1, $input2),
    (HasOneUse $mul_out)]>;
 
 def RemoveTrivialCast : Pat<(TFL_CastOp:$output $input),
@@ -526,15 +533,14 @@ def PReluAlphaRankCheck : Constraint<
 // f(x) = Relu(x) + (-alpha * Relu(-x))
 def MatchPRelu : Pat<
   (TFL_AddOp
-   (TFL_ReluOp:$relu_out $input1),
+   (TFL_ReluOp:$relu_out $x),
    (TFL_MulOp:$mul_out
-    (TFL_ReluOp (TFL_NegOp:$input_neg_out $input2)),
+    (TFL_ReluOp (TFL_NegOp:$input_neg_out $x)),
     $neg_alpha,
     TFL_AF_None),
    TFL_AF_None),
-  (TFL_PReluOp $input1, (TFL_NegOp $neg_alpha)),
-  [(EqualOperands $input1, $input2),
-   (PReluAlphaRankCheck $neg_alpha, $input1),
+  (TFL_PReluOp $x, (TFL_NegOp $neg_alpha)),
+  [(PReluAlphaRankCheck $neg_alpha, $x),
    (HasOneUse $relu_out),
    (HasOneUse $mul_out),
    (HasOneUse $input_neg_out)]>;

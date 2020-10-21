@@ -160,6 +160,17 @@ Status KernelAndDeviceFunc::InstantiateFunc(const Context& ctx,
   }
   options.composite_devices = composite_devices_;
   options.input_resource_dtypes_and_shapes = input_resource_dtypes_and_shapes_;
+  if (outputs_on_op_device_) {
+    const FunctionLibraryDefinition* lib_def =
+        pflr_->GetFunctionLibraryDefinition();
+    const FunctionDef* fdef = lib_def->Find(ndef.op());
+    if (fdef == nullptr) {
+      return errors::InvalidArgument("Failed to find function ", ndef.op());
+    }
+    for (int i = 0; i < fdef->signature().output_arg_size(); ++i) {
+      options.output_devices.push_back(options.target);
+    }
+  }
 
   const auto& it = ndef.attr().find("executor_type");
   if (it != ndef.attr().end()) {
@@ -308,7 +319,12 @@ Status KernelAndDeviceOp::Run(
   if (outputs != nullptr) {
     outputs->clear();
     for (int i = 0; i < context.num_outputs(); ++i) {
-      outputs->push_back(Tensor(*context.mutable_output(i)));
+      const auto* output_tensor = context.mutable_output(i);
+      if (output_tensor != nullptr) {
+        outputs->push_back(Tensor(*output_tensor));
+      } else {
+        outputs->push_back(Tensor());
+      }
     }
   }
   return Status::OK();

@@ -42,6 +42,7 @@ from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import map_fn
@@ -170,6 +171,57 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
         return tape.gradient(x, v)
 
       self.assertAllEqual(fnWithLoop(), 4.0)
+
+  def checkIteratedGradients(self, func):
+    with context.eager_mode():
+
+      def _Grad(f):
+        def _GradFunction(primal):
+          with backprop.GradientTape() as tape:
+            tape.watch(primal)
+            primal_out = f(primal)
+          return tape.gradient(primal_out, primal)
+        return _GradFunction
+
+      f = func
+      one = constant_op.constant(1.)
+
+      for _ in range(3):
+        theoretical, numerical = gradient_checker_v2.compute_gradient(
+            def_function.function(f), [one])
+        self.assertAllClose(theoretical, numerical, rtol=1e-3)
+        f = _Grad(f)
+        self.assertAllClose(array_ops.reshape(numerical, []),
+                            def_function.function(f)(one),
+                            rtol=1e-3)
+
+  def testIteratedGradients(self):
+
+    def _Func(x):
+      _, z = while_loop_v2(
+          lambda i, _: i < 2,
+          lambda i, y: (i + 1, math_ops.cos(y)),
+          [0, x])
+      return z
+
+    self.checkIteratedGradients(_Func)
+
+  def testIteratedGradientsWithList(self):
+
+    def _Func(x):
+      results = list_ops.empty_tensor_list(
+          element_shape=[], element_dtype=dtypes.float32)
+
+      def _LoopBody(i, y, handle):
+        return (i + 1, math_ops.cos(y),
+                list_ops.tensor_list_push_back(handle, y))
+
+      _, z, results = while_loop_v2(
+          lambda i, _, h: i < 2, _LoopBody, [0, x, results])
+      return z + math_ops.reduce_sum(list_ops.tensor_list_stack(
+          results, dtypes.float32))
+
+    self.checkIteratedGradients(_Func)
 
   def testExternalControlDependencies(self):
     with ops.Graph().as_default(), self.test_session():

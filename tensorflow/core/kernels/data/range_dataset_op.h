@@ -36,6 +36,7 @@ class RangeDatasetOp : public DatasetOpKernel {
 
  private:
   class Dataset;
+  class RangeSplitProvider;
   DataTypeVector output_types_;
 };
 

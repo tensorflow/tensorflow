@@ -402,11 +402,11 @@ Status FindBestConvolveAlgorithm(const FusedConvParameters& params,
             : static_cast<se::ScratchAllocator*>(&scratch_allocator);
     se::dnn::ProfileResult profile_result;
 
-    bool cudnn_launch_status =
+    Status cudnn_launch_status =
         launch(se::dnn::AlgorithmConfig(profile_algorithm), allocator_used,
                output_ptr_rz, &profile_result);
 
-    if (cudnn_launch_status && profile_result.is_valid()) {
+    if (cudnn_launch_status.ok() && profile_result.is_valid()) {
       results.emplace_back();
       auto& result = results.back();
       result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
@@ -531,7 +531,7 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
           {{static_cast<int>(input_pad_top), static_cast<int>(input_pad_left)}},
           {{static_cast<int>(input_pad_bottom),
             static_cast<int>(input_pad_right)}},
-          To32Bit(transformed_input.tensor<T, 4>()), params.data_format);
+          To32Bit(transformed_input.tensor<T, 4>()), params.data_format, T{});
       input = transformed_input;
       in_rows = new_in_rows;
       in_cols = new_in_cols;
@@ -669,19 +669,17 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
     const auto launch = [&](se::dnn::AlgorithmConfig algorithm_config,
                             se::ScratchAllocator* scratch_allocator,
                             se::DeviceMemory<T> output_ptr_to_use,
-                            se::dnn::ProfileResult* profile_result) -> bool {
-      return stream
-          ->ThenFusedConvolveWithAlgorithm(
-              input_desc, input_ptr,                     // input
-              /*conv_input_scale=*/1.0,                  // input_scale
-              filter_desc, filter_ptr,                   // filter
-              conv_desc,                                 // conv
-              side_input_ptr, /*side_input_scale=*/0.0,  // side_input
-              bias_desc, bias_ptr,                       // bias
-              dnn_activation_mode,                       // activation
-              output_desc, &output_ptr_to_use,           // output
-              scratch_allocator, algorithm_config, profile_result)
-          .ok();
+                            se::dnn::ProfileResult* profile_result) -> Status {
+      return stream->FusedConvolveWithAlgorithm(
+          input_desc, input_ptr,                     // input
+          /*conv_input_scale=*/1.0,                  // input_scale
+          filter_desc, filter_ptr,                   // filter
+          conv_desc,                                 // conv
+          side_input_ptr, /*side_input_scale=*/0.0,  // side_input
+          bias_desc, bias_ptr,                       // bias
+          dnn_activation_mode,                       // activation
+          output_desc, &output_ptr_to_use,           // output
+          scratch_allocator, algorithm_config, profile_result);
     };
 
     se::dnn::AlgorithmConfig algorithm_config;
@@ -700,13 +698,9 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
     }
 
     DnnScratchAllocator scratch_allocator(ConvolveScratchSize(), context);
-    bool cudnn_launch_status = launch(algorithm_config, &scratch_allocator,
-                                      output_ptr, /*profile_result=*/nullptr);
-    OP_REQUIRES(
-        context, cudnn_launch_status,
-        errors::Internal(absl::Substitute(
-            "cuDNN launch failure: input shape($0) filter shape($1)",
-            input.shape().DebugString(), filter.shape().DebugString())));
+    Status cudnn_launch_status = launch(algorithm_config, &scratch_allocator,
+                                        output_ptr, /*profile_result=*/nullptr);
+    OP_REQUIRES_OK(context, cudnn_launch_status);
 
     // Convert the output tensor back from NCHW to NHWC.
     if (params.data_format == FORMAT_NHWC) {
@@ -837,7 +831,7 @@ class FusedConv2DOp : public OpKernel {
       const std::array<int, 2>& padding_left,                           \
       const std::array<int, 2>& padding_right,                          \
       typename TTypes<T, 4, int>::Tensor out, TensorFormat data_format, \
-      T padding_value);                                                 \
+      const T& padding_value);                                          \
   extern template struct PadInput<GPUDevice, T, int, 4>
 
 // Registration of the GPU implementations.

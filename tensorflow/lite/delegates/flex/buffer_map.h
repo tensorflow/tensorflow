@@ -47,6 +47,11 @@ class BufferMap {
   // Precondition: HasTensor() is true.
   tensorflow::Tensor GetTensor(int tensor_index) const;
 
+  // Returns the const pointer to tensorflow::Tensor associated with the given
+  // 'tensor_index'.
+  // Precondition: HasTensor() is true.
+  const tensorflow::Tensor* GetTensorPtr(int tensor_index) const;
+
   // Associates the given tensorflow::Tensor with the given 'tensor_index'.
   // Note that TensorFlow Tensors share data buffers, so this method is only a
   // shallow copy.

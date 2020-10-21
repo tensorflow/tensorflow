@@ -214,14 +214,23 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
   def testEnableMlirBridge(self):
     # Default value of enable_mlir_bridge is false.
     self.assertFalse(context.context().config.experimental.enable_mlir_bridge)
+    self.assertEqual(
+        context.context().config.experimental.mlir_bridge_rollout,
+        config_pb2.ConfigProto.Experimental.MLIR_BRIDGE_ROLLOUT_UNSPECIFIED)
 
     # Tests enabling mlir bridge.
     config.enable_mlir_bridge()
     self.assertTrue(context.context().config.experimental.enable_mlir_bridge)
+    self.assertEqual(
+        context.context().config.experimental.mlir_bridge_rollout,
+        config_pb2.ConfigProto.Experimental.MLIR_BRIDGE_ROLLOUT_ENABLED)
 
     # Tests disabling mlir bridge.
     config.disable_mlir_bridge()
     self.assertFalse(context.context().config.experimental.enable_mlir_bridge)
+    self.assertEqual(
+        context.context().config.experimental.mlir_bridge_rollout,
+        config_pb2.ConfigProto.Experimental.MLIR_BRIDGE_ROLLOUT_DISABLED)
 
   @reset_eager
   def testEnableMlirGraphOptimization(self):
@@ -587,6 +596,35 @@ class DeviceTest(test.TestCase):
     # Setting the same GPU configuration is fine
     for gpu in gpus:
       config.set_memory_growth(gpu, True)
+
+  @test_util.run_gpu_only
+  @reset_eager
+  def testGetMemoryUsage(self):
+    device = array_ops.zeros([]).backing_device
+    self.assertGreater(config.get_memory_usage(device), 0)
+
+  @test_util.run_gpu_only
+  @reset_eager
+  def testGetMemoryUsageSubstring(self):
+    self.assertGreater(config.get_memory_usage('GPU:0'), 0)
+
+  @reset_eager
+  def testGetMemoryUsageCPU(self):
+    with self.assertRaisesRegex(ValueError, 'CPU does not support'):
+      config.get_memory_usage('CPU:0')
+
+  @reset_eager
+  def testGetMemoryUsageUnknownDevice(self):
+    with self.assertRaisesRegex(ValueError, 'Failed parsing device name'):
+      config.get_memory_usage('unknown_device')
+
+  @test_util.run_gpu_only
+  @reset_eager
+  def testGetMemoryUsageAmbiguousDevice(self):
+    if len(config.list_physical_devices('GPU')) < 2:
+      self.skipTest('Need at least 2 GPUs')
+    with self.assertRaisesRegex(ValueError, 'Multiple devices'):
+      config.get_memory_usage('GPU')
 
   @test_util.run_gpu_only
   @reset_eager

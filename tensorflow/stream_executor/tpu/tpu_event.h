@@ -19,6 +19,9 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 #include "tensorflow/stream_executor/tpu/c_api_decl.h"
 
+namespace tensorflow {
+namespace tpu {
+
 class TpuEvent : public ::stream_executor::internal::EventInterface {
  public:
   explicit TpuEvent(SE_Event* event) : event_(event) {}
@@ -29,5 +32,8 @@ class TpuEvent : public ::stream_executor::internal::EventInterface {
  private:
   SE_Event* event_;
 };
+
+}  // namespace tpu
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_EVENT_H_

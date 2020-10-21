@@ -318,6 +318,16 @@ port::Status CudnnSupport::Init() {
       return port::Status(port::error::INTERNAL, error);
     }
 
+    // Preload sub libs for cudnn 8.0.4+
+#if CUDNN_MAJOR >= 8 && (CUDNN_MINOR > 0 || CUDNN_PATCHLEVEL >= 4)
+    cudnnOpsInferVersionCheck();
+    cudnnOpsTrainVersionCheck();
+    cudnnCnnInferVersionCheck();
+    cudnnCnnTrainVersionCheck();
+    cudnnAdvInferVersionCheck();
+    cudnnAdvTrainVersionCheck();
+#endif
+
     cudnn_.reset(new CudnnAccess(cudnn_handle));
     return port::Status::OK();
   }
@@ -2709,7 +2719,7 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionForwardAlgorithm(
   // no_scratch algorithm.
   if (!algo_desc.has_value()) {
     return port::Status(
-        port::error::INVALID_ARGUMENT,
+        scratch_or.status().code(),
         absl::StrCat("The primary convolution algorithm failed, ",
                      "while a secondary algorithm is not provided. ",
                      "Returned status: ", scratch_or.status().ToString()));

@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package tensorflow.profiler;
+
+import "tensorflow/core/profiler/protobuf/diagnostics.proto";
+
+message StepBreakdownEvents {
+  int32 id = 1;
+  string name = 2;
+}
+
+// A database of PodStats records.
+message PodStatsDatabase {
+  // All PodStats records, one for each row in the PodStats tool.
+  repeated PodStatsRecord pod_stats_record = 1;
+  // Error and warning messages for diagnosing profiling issues.
+  Diagnostics diagnostics = 3;
+  // A map from event type number to event name string for step breakdown.
+  repeated StepBreakdownEvents step_breakdown_events = 4;
+  reserved 2;
+}
+
+// Next ID: 20
+// There is one PodStatsRecord for each step traced on each compute node.
+message PodStatsRecord {
+  // The host name where the trace was collected.
+  string host_name = 1;
+  // The TPU global chip id where the trace was collected.
+  int32 chip_id = 2;
+  // The TPU node id where the trace was collected.
+  int32 node_id = 3;
+  // The step number.
+  uint32 step_num = 4;
+  // The step duration in micro-seconds.
+  double total_duration_us = 5;
+  // Breakdown the durations for each event type in micro-seconds.
+  map<int32, double> step_breakdown_us = 19;
+  // Indicates the bottleneck out of the above mentioned metrics.
+  string bottleneck = 14;
+  reserved 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18;
+}

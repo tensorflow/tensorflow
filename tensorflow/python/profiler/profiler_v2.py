@@ -48,9 +48,10 @@ _profiler_lock = threading.Lock()
 
 @tf_export('profiler.experimental.ProfilerOptions', v1=[])
 class ProfilerOptions(
-    collections.namedtuple(
-        'ProfilerOptions',
-        ['host_tracer_level', 'python_tracer_level', 'device_tracer_level'])):
+    collections.namedtuple('ProfilerOptions', [
+        'host_tracer_level', 'python_tracer_level', 'device_tracer_level',
+        'delay_ms'
+    ])):
   """Options for finer control over the profiler.
 
   Use `tf.profiler.ProfilerOptions` to control `tf.profiler`
@@ -63,15 +64,22 @@ class ProfilerOptions(
     - enabled, 0 - disabled [default value is 0]
     device_tracer_level: Adjust device (TPU/GPU) tracing level. Values are: 1 -
     enabled, 0 - disabled [default value is 1]
+    delay_ms: Requests for all hosts to start profiling at a timestamp that is
+      `delay_ms` away from the current time. `delay_ms` is in milliseconds. If
+      zero, each host will start profiling immediately upon receiving the
+      request. Default value is None, allowing the profiler guess the best
+      value.
+
   """
 
   def __new__(cls,
               host_tracer_level=2,
               python_tracer_level=0,
-              device_tracer_level=1):
+              device_tracer_level=1,
+              delay_ms=None):
     return super(ProfilerOptions,
                  cls).__new__(cls, host_tracer_level, python_tracer_level,
-                              device_tracer_level)
+                              device_tracer_level, delay_ms)
 
 
 @tf_export('profiler.experimental.start', v1=[])

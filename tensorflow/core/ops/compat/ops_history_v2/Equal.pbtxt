@@ -214,3 +214,30 @@ op {
   }
   is_commutative: true
 }
+op {
+  name: "Equal"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type: DT_BOOL
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "incompatible_shape_error"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  is_commutative: true
+}

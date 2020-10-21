@@ -31,13 +31,11 @@ cc_library(
     srcs = [
         "micro_allocator.cc",
         "micro_interpreter.cc",
-        "micro_optional_debug_tools.cc",
         "simple_memory_allocator.cc",
     ],
     hdrs = [
         "micro_allocator.h",
         "micro_interpreter.h",
-        "micro_optional_debug_tools.h",
         "simple_memory_allocator.h",
     ],
     copts = micro_copts(),
@@ -83,12 +81,14 @@ cc_library(
     deps = [
         ":micro_utils",
         ":op_resolvers",
+        "//tensorflow/lite:type_to_tflitetype",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_utils",
         "@flatbuffers//:runtime_cc",
     ],
 )
@@ -110,6 +110,7 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/lite/micro/kernels:fully_connected",
         "//tensorflow/lite/micro/kernels:micro_ops",
         "//tensorflow/lite/schema:schema_fbs",
     ],
@@ -329,6 +330,7 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":micro_framework",
+        "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )

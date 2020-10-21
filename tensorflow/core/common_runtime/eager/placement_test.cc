@@ -88,7 +88,6 @@ class PlacementTest : public ::testing::Test {
         /* async */ false,
         /* lazy_copy_function_remote_inputs */ false, device_manager_,
         /* device_mgr_owned */ false, /* rendezvous */ nullptr,
-        /* custom_kernel_creator */ nullptr,
         /* cluster_flr */ nullptr);
   }
 

@@ -37,6 +37,9 @@ class GrapplerTest : public ::testing::Test {
   GrapplerTest();
 
  protected:
+  void DisableAllOptimizers();
+  void EnableAllOptimizers();
+
   std::vector<Tensor> EvaluateNodes(
       const GraphDef& graph, const std::vector<string>& node_names) const;
 
@@ -50,6 +53,8 @@ class GrapplerTest : public ::testing::Test {
                    const std::vector<string>& inputs,
                    const std::vector<std::pair<string, AttrValue>>& attributes,
                    GraphDef* graph) const;
+
+  void DisableAllOptimizers(RewriterConfig* cfg);
 
   // Checks if two graphs are equal. Both graphs must have the same set of nodes
   // with the same inputs and attributes. Nodes can be in different order.

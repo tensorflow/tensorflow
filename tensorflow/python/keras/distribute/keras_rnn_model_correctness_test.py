@@ -21,6 +21,7 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python import tf2
 from tensorflow.python.distribute import combinations as ds_combinations
+from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.keras import testing_utils
@@ -29,7 +30,6 @@ from tensorflow.python.keras.layers import recurrent as rnn_v1
 from tensorflow.python.keras.layers import recurrent_v2 as rnn_v2
 from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
-from tensorflow.python.platform import test
 
 
 class _DistributionStrategyRnnModelCorrectnessTest(
@@ -83,10 +83,10 @@ class DistributionStrategyGruModelCorrectnessTest(
       return rnn_v1.GRU
 
   @ds_combinations.generate(
-      keras_correctness_test_base.test_combinations_for_embedding_model())
+      keras_correctness_test_base.test_combinations_for_embedding_model() +
+      keras_correctness_test_base.multi_worker_mirrored_eager())
   def test_gru_model_correctness(self, distribution, use_numpy,
                                  use_validation_data):
-    self.skipTest('Test is sensitive to TF random seed, b/TBD')
     self.run_correctness_test(distribution, use_numpy, use_validation_data)
 
 
@@ -104,13 +104,15 @@ class DistributionStrategyLstmModelCorrectnessTest(
       return rnn_v1.LSTM
 
   @ds_combinations.generate(
-      keras_correctness_test_base.test_combinations_for_embedding_model())
+      keras_correctness_test_base.test_combinations_for_embedding_model() +
+      keras_correctness_test_base.multi_worker_mirrored_eager())
   def test_lstm_model_correctness(self, distribution, use_numpy,
                                   use_validation_data):
     self.run_correctness_test(distribution, use_numpy, use_validation_data)
 
   @ds_combinations.generate(
-      keras_correctness_test_base.test_combinations_for_embedding_model())
+      keras_correctness_test_base.test_combinations_for_embedding_model() +
+      keras_correctness_test_base.multi_worker_mirrored_eager())
   @testing_utils.enable_v2_dtype_behavior
   def test_lstm_model_correctness_mixed_precision(self, distribution, use_numpy,
                                                   use_validation_data):
@@ -125,4 +127,4 @@ class DistributionStrategyLstmModelCorrectnessTest(
 
 
 if __name__ == '__main__':
-  test.main()
+  multi_process_runner.test_main()

@@ -22,7 +22,7 @@ from __future__ import print_function
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import metrics as metrics_module
-from tensorflow.python.keras import optimizers
+from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras.engine import functional
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training
@@ -682,8 +682,8 @@ def clone_and_build_model(
         clone._set_inputs(input_tensors)
 
   if compile_clone:
-    if isinstance(orig_optimizer, optimizers.TFOptimizer):
-      optimizer = optimizers.TFOptimizer(
+    if isinstance(orig_optimizer, optimizer_v1.TFOptimizer):
+      optimizer = optimizer_v1.TFOptimizer(
           orig_optimizer.optimizer, optimizer_iterations)
       K.track_tf_optimizer(optimizer)
     else:
