@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
@@ -33,6 +34,24 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 namespace {
+
+// Removes all elements from 'array' for which pred is true.
+template <typename T, typename Pred>
+void RemoveIf(protobuf::RepeatedPtrField<T>* array, Pred&& pred) {
+  T** const begin = array->mutable_data();
+  T** const end = begin + array->size();
+  T** write = begin;
+  while (write < end && !pred(*write)) ++write;
+  if (write == end) return;
+  // 'write' points to the first element to be removed.
+  for (T** scan = write + 1; scan < end; ++scan) {
+    if (!pred(*scan)) std::swap(*scan, *write++);
+  }
+  const int new_size = write - begin;
+  const int size = array->size();
+  DCHECK_GE(size, new_size);
+  array->DeleteSubrange(new_size, size - new_size);
+}
 
 // Creates a Timespan from an XEvent.
 // WARNING: This should only be used when comparing events from the same XLine.
@@ -113,28 +132,18 @@ void AddOrUpdateStrStat(int64 metadata_id, absl::string_view value,
 }
 
 void RemovePlaneWithName(XSpace* space, absl::string_view name) {
-  auto* planes = space->mutable_planes();
-  planes->erase(
-      std::remove_if(planes->begin(), planes->end(),
-                     [&](const XPlane& plane) { return plane.name() == name; }),
-      planes->end());
+  RemoveIf(space->mutable_planes(),
+           [&](const XPlane* plane) { return plane->name() == name; });
 }
 
 void RemoveEmptyPlanes(XSpace* space) {
-  auto* planes = space->mutable_planes();
-  planes->erase(std::remove_if(planes->begin(), planes->end(),
-                               [&](const XPlane& plane) {
-                                 return plane.lines_size() == 0;
-                               }),
-                planes->end());
+  RemoveIf(space->mutable_planes(),
+           [&](const XPlane* plane) { return plane->lines().empty(); });
 }
 
 void RemoveEmptyLines(XPlane* plane) {
-  auto* lines = plane->mutable_lines();
-  lines->erase(std::remove_if(
-                   lines->begin(), lines->end(),
-                   [&](const XLine& line) { return line.events_size() == 0; }),
-               lines->end());
+  RemoveIf(plane->mutable_lines(),
+           [&](const XLine* line) { return line->events().empty(); });
 }
 
 bool XEventsComparator::operator()(const XEvent* a, const XEvent* b) const {
