@@ -69,8 +69,7 @@ tf_py_test(
     name = "cluster_coordinator_mpr_test",
     srcs = ["cluster_coordinator_mpr_test.py"],
     python_version = "PY3",
-    shard_count = 2,
-    tags = ["no_oss"],  # TODO(b/162119374)
+    shard_count = 5,
     deps = [
         ":cluster_coordinator",
         ":remote_eager_lib",
