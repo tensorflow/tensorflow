@@ -182,6 +182,10 @@ class MergeLayersTest(keras_parameterized.TestCase):
                 concat_layer.compute_mask(
                     [i1, i2], [K.variable(x1), K.variable(x2)]))))
 
+    # Should work with unit-length input.
+    unit_length_o = concat_layer([i1])
+    self.assertListEqual(unit_length_o.shape.as_list(), i1.shape.as_list())
+
     with self.assertRaisesRegex(ValueError, '`mask` should be a list.'):
       concat_layer.compute_mask([i1, i2], x1)
     with self.assertRaisesRegex(ValueError, '`inputs` should be a list.'):
