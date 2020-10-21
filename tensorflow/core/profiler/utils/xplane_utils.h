@@ -50,7 +50,8 @@ void AddOrUpdateIntStat(int64 metadata_id, int64 value,
 void AddOrUpdateStrStat(int64 metadata_id, absl::string_view value,
                         tensorflow::profiler::XEvent* event);
 
-void RemovePlaneWithName(XSpace* space, absl::string_view name);
+void RemovePlane(XSpace* space, const XPlane* plane);
+
 void RemoveEmptyPlanes(XSpace* space);
 void RemoveEmptyLines(XPlane* plane);
 

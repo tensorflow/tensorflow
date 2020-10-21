@@ -35,22 +35,35 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
-// Removes all elements from 'array' for which pred is true.
+// Returns the index of the first element in array for which pred is true.
+// Returns -1 if no such element is found.
+template <typename T, typename Pred>
+int FindIf(const protobuf::RepeatedPtrField<T>& array, Pred&& pred) {
+  for (int i = 0; i < array.size(); ++i) {
+    if (pred(&array.Get(i))) return i;
+  }
+  return -1;
+}
+
+// Removes the given element from array.
+template <typename T>
+void Remove(protobuf::RepeatedPtrField<T>* array, const T* elem) {
+  int i = FindIf(*array, [elem](const T* e) { return elem == e; });
+  if (i == -1) return;
+  for (; i < array->size() - 1; ++i) {
+    array->SwapElements(i + 1, i);
+  }
+  array->RemoveLast();
+}
+
 template <typename T, typename Pred>
 void RemoveIf(protobuf::RepeatedPtrField<T>* array, Pred&& pred) {
-  T** const begin = array->mutable_data();
-  T** const end = begin + array->size();
-  T** write = begin;
-  while (write < end && !pred(*write)) ++write;
-  if (write == end) return;
-  // 'write' points to the first element to be removed.
-  for (T** scan = write + 1; scan < end; ++scan) {
-    if (!pred(*scan)) std::swap(*scan, *write++);
+  int i = FindIf(*array, pred);
+  if (i == -1) return;
+  for (int j = i + 1; j < array->size(); ++j) {
+    if (!pred(&array->Get(j))) array->SwapElements(j, i++);
   }
-  const int new_size = write - begin;
-  const int size = array->size();
-  DCHECK_GE(size, new_size);
-  array->DeleteSubrange(new_size, size - new_size);
+  array->DeleteSubrange(i, array->size() - i);
 }
 
 // Creates a Timespan from an XEvent.
@@ -62,17 +75,15 @@ Timespan XEventTimespan(const XEvent& event) {
 }  // namespace
 
 const XPlane* FindPlaneWithName(const XSpace& space, absl::string_view name) {
-  for (const XPlane& plane : space.planes()) {
-    if (plane.name() == name) return &plane;
-  }
-  return nullptr;
+  int i = FindIf(space.planes(),
+                 [name](const XPlane* plane) { return plane->name() == name; });
+  return (i != -1) ? &space.planes(i) : nullptr;
 }
 
 XPlane* FindMutablePlaneWithName(XSpace* space, absl::string_view name) {
-  for (XPlane& plane : *space->mutable_planes()) {
-    if (plane.name() == name) return &plane;
-  }
-  return nullptr;
+  int i = FindIf(space->planes(),
+                 [name](const XPlane* plane) { return plane->name() == name; });
+  return (i != -1) ? space->mutable_planes(i) : nullptr;
 }
 
 XPlane* FindOrAddMutablePlaneWithName(XSpace* space, absl::string_view name) {
@@ -131,9 +142,9 @@ void AddOrUpdateStrStat(int64 metadata_id, absl::string_view value,
   stat->set_str_value(std::string(value));
 }
 
-void RemovePlaneWithName(XSpace* space, absl::string_view name) {
-  RemoveIf(space->mutable_planes(),
-           [&](const XPlane* plane) { return plane->name() == name; });
+void RemovePlane(XSpace* space, const XPlane* plane) {
+  DCHECK(plane != nullptr);
+  Remove(space->mutable_planes(), plane);
 }
 
 void RemoveEmptyPlanes(XSpace* space) {

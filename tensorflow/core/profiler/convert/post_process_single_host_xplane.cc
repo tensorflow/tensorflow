@@ -38,10 +38,10 @@ void MergeHostPlanes(XSpace* space) {
     }
     SortXLinesBy(host_plane, XLinesComparatorByName());
     if (cupti_driver_api_plane) {
-      RemovePlaneWithName(space, kCuptiDriverApiPlaneName);
+      RemovePlane(space, cupti_driver_api_plane);
     }
     if (python_tracer_plane) {
-      RemovePlaneWithName(space, kPythonTracerPlaneName);
+      RemovePlane(space, python_tracer_plane);
     }
   }
 }
