@@ -13,7 +13,7 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "CommunicationImplemenation"
+    name: "CommunicationImplementation"
     mtype: "<class \'enum.EnumMeta\'>"
   }
   member {

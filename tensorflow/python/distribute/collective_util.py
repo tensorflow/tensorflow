@@ -27,14 +27,14 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 # TODO(b/170340570): print deprecation warning for CollectiveCommunication.
-@tf_export("distribute.experimental.CommunicationImplemenation",
+@tf_export("distribute.experimental.CommunicationImplementation",
            "distribute.experimental.CollectiveCommunication")
-class CommunicationImplemenation(enum.Enum):
+class CommunicationImplementation(enum.Enum):
   """Cross device communication implementation.
 
   Warning: The alias `tf.distribute.experimental.CollectiveCommunication` is
   deprecated and will be removed in a future version. Use
-  `tf.distribute.experimental.CommunicationImplemenation` instead.
+  `tf.distribute.experimental.CommunicationImplementation` instead.
 
   * `AUTO`: Automatically chosen by Tensorflow.
   * `RING`: TensorFlow's ring algorithms for all-reduce and
@@ -48,7 +48,7 @@ class CommunicationImplemenation(enum.Enum):
   # TODO(ayushd): add ncclAllGather implementation.
 
 
-CollectiveCommunication = CommunicationImplemenation
+CollectiveCommunication = CommunicationImplementation
 
 
 @tf_export("distribute.experimental.CommunicationOptions")
@@ -70,7 +70,8 @@ class _OptionsExported(object):
   options = tf.distribute.experimental.CommunicationOptions(
       bytes_per_pack=50 * 1024 * 1024,
       timeout_seconds=120,
-      implementation=tf.distribute.experimental.CommunicationImplemenation.NCCL)
+      implementation=tf.distribute.experimental.CommunicationImplementation.NCCL
+  )
   grads = tf.distribute.get_replica_context().all_reduce(
       'sum', grads, options=options)
   optimizer.apply_gradients(zip(grads, vars),
@@ -85,7 +86,7 @@ class _OptionsExported(object):
   def __init__(self,
                bytes_per_pack=0,
                timeout_seconds=None,
-               implementation=CommunicationImplemenation.AUTO):
+               implementation=CommunicationImplementation.AUTO):
     """Creates a CollectiveHints.
 
     Args:
@@ -100,10 +101,11 @@ class _OptionsExported(object):
         it creates a new thread for each collective, i.e. an overhead of
         `timeout_seconds * num_collectives_per_second` more threads. This only
         works for `tf.distribute.experimental.MultiWorkerMirroredStrategy`.
-      implementation: a `tf.distribute.experimental.CommunicationImplemenation`.
-        This is a hint on the preferred communication implementation.  Possible
-        values include `AUTO`, `RING`, and `NCCL`. NCCL is generally more
-        performant for GPU, but doesn't work for CPU. This only works for
+      implementation: a
+        `tf.distribute.experimental.CommunicationImplementation`. This is a hint
+        on the preferred communication implementation. Possible values include
+        `AUTO`, `RING`, and `NCCL`. NCCL is generally more performant for GPU,
+        but doesn't work for CPU. This only works for
         `tf.distribute.experimental.MultiWorkerMirroredStrategy`.
 
     Raises:
@@ -118,14 +120,14 @@ class Options(object):
   def __init__(self,
                bytes_per_pack=0,
                timeout_seconds=None,
-               implementation=CommunicationImplemenation.AUTO):
+               implementation=CommunicationImplementation.AUTO):
     if bytes_per_pack < 0:
       raise ValueError("bytes_per_pack must be non-negative")
     if isinstance(implementation, str):
-      implementation = CommunicationImplemenation(implementation.upper())
-    if not isinstance(implementation, CommunicationImplemenation):
+      implementation = CommunicationImplementation(implementation.upper())
+    if not isinstance(implementation, CommunicationImplementation):
       raise ValueError("implementation should be a "
-                       "tf.distribute.experimental.CommunicationImplemenation")
+                       "tf.distribute.experimental.CommunicationImplementation")
     self.bytes_per_pack = bytes_per_pack
     self.timeout_seconds = timeout_seconds
     self.implementation = implementation
@@ -151,7 +153,7 @@ class Options(object):
       merged.bytes_per_pack = options.bytes_per_pack
     if options.timeout_seconds is not None:
       merged.timeout_seconds = options.timeout_seconds
-    if options.implementation != CommunicationImplemenation.AUTO:
+    if options.implementation != CommunicationImplementation.AUTO:
       merged.implementation = options.implementation
     return merged
 

@@ -1,4 +1,4 @@
-path: "tensorflow.distribute.experimental.CollectiveCommunication"
+path: "tensorflow.distribute.experimental.CommunicationImplementation"
 tf_class {
   is_instance: "<enum \'CommunicationImplementation\'>"
   member {

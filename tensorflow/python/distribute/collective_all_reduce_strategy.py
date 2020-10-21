@@ -235,7 +235,7 @@ class _CollectiveAllReduceStrategyExperimental(
   @deprecation.deprecated(
       None, "use distribute.MultiWorkerMirroredStrategy instead")
   def __init__(self,
-               communication=collective_util.CommunicationImplemenation.AUTO,
+               communication=collective_util.CommunicationImplementation.AUTO,
                cluster_resolver=None):
     """Creates the strategy.
 
@@ -257,7 +257,7 @@ class _CollectiveAllReduceStrategyExperimental(
   def _from_local_devices(
       cls,
       devices,
-      communication=collective_util.CommunicationImplemenation.AUTO):
+      communication=collective_util.CommunicationImplementation.AUTO):
     """A convenience method to create an object with a list of devices."""
     obj = cls(communication)
     obj.extended._initialize_local(TFConfigClusterResolver(), devices=devices)  # pylint: disable=protected-access
@@ -276,7 +276,7 @@ class CollectiveAllReduceStrategyV1(distribute_lib.StrategyV1):
   _collective_key_base = 0
 
   def __init__(self,
-               communication=collective_util.CommunicationImplemenation.AUTO,
+               communication=collective_util.CommunicationImplementation.AUTO,
                cluster_resolver=None):
     """Initializes the object."""
     communication_options = collective_util.Options(
@@ -698,7 +698,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
 
     if (not ops.executing_eagerly_outside_functions() and
         self._communication_options.implementation ==
-        collective_util.CommunicationImplemenation.NCCL):
+        collective_util.CommunicationImplementation.NCCL):
       updated_config.experimental.collective_nccl = True
 
     if not self._cluster_spec:
@@ -831,7 +831,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
           dummy_value,
           options=collective_util.Options(
               timeout_seconds=self._check_health_initial_timeout,
-              implementation=collective_util.CommunicationImplemenation.RING))
+              implementation=collective_util.CommunicationImplementation.RING))
       if context.is_async():
         context.async_wait()
     except errors.DeadlineExceededError:
@@ -858,7 +858,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
 
   def _warn_nccl_no_gpu(self):
     if ((self._communication_options.implementation ==
-         collective_util.CommunicationImplemenation.NCCL) and
+         collective_util.CommunicationImplementation.NCCL) and
         self._num_gpus_per_worker == 0):
       logging.warning("Enabled NCCL communication but no GPUs detected/"
                       "specified.")
