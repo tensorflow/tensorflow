@@ -83,6 +83,7 @@ py_test(
     tags = [
         "no_oss",
         "requires-gpu-nvidia",
+        "gpu",
     ],  # TODO(phawkins): This test passes, but requires --config=monolithic.
     deps = [
         ":xla_client",

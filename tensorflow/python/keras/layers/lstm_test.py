@@ -141,9 +141,9 @@ class LSTMLayerTest(keras_parameterized.TestCase):
     self.assertEqual(layer.cell.recurrent_kernel.constraint, r_constraint)
     self.assertEqual(layer.cell.bias.constraint, b_constraint)
 
+  @parameterized.parameters([True, False])
   @test.disable_for_rocm(skip_message='Skipping the test as ROCm MIOpen '
                                       'does not support padded input.')
-  @parameterized.parameters([True, False])
   def test_with_masking_layer_LSTM(self, unroll):
     layer_class = keras.layers.LSTM
     inputs = np.random.random((2, 3, 4))

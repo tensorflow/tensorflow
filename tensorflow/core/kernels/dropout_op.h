@@ -46,7 +46,6 @@ struct ApplyDropoutGrad<GPUDevice, T> {
   void operator()(const GPUDevice& d, T* outgrads, const T* grads, const uint8* mask,
                   float rate, uint64 num_elements);
 };
-};
 #endif
-
+}
 #endif
