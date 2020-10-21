@@ -821,6 +821,7 @@ TF_LITE_MICRO_TEST(TestTypicalFirstOpAndSecondOpWithScratchTensors) {
       /*Only first tensor (t0) is in subgraph input list=*/1);
 
   TfLiteEvalTensor* eval_tensors = nullptr;
+  tflite::ScratchBufferHandle* scratch_buffer_handles = nullptr;
   constexpr size_t arena_size = 4096;
   uint8_t arena[arena_size];
   tflite::MicroAllocator* allocator =
@@ -831,7 +832,8 @@ TF_LITE_MICRO_TEST(TestTypicalFirstOpAndSecondOpWithScratchTensors) {
       allocator->StartModelAllocation(model, op_resolver,
                                       &node_and_registration, &eval_tensors));
   TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk, allocator->FinishModelAllocation(model, eval_tensors));
+      kTfLiteOk, allocator->FinishModelAllocation(model, eval_tensors,
+                                                  &scratch_buffer_handles));
 
   uint8_t* start = eval_tensors[0].data.uint8;
   TF_LITE_MICRO_EXPECT_EQ(0, eval_tensors[0].data.uint8 - start);
