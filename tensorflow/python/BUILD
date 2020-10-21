@@ -5672,6 +5672,7 @@ py_library(
         "//tensorflow:__pkg__",
         "//third_party/py/tensorflow_core:__subpackages__",
         "//third_party/py/tf_agents:__subpackages__",
+        "//third_party/py/tfx:__subpackages__",
     ],
     deps = [
         ":_pywrap_tensor_float_32_execution",
