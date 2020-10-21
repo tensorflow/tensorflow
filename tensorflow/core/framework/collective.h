@@ -143,8 +143,8 @@ struct CollectiveParams {
   int source_rank = -1;    // broadcast only
   // Rank of this device in each subdivision permutation.
   std::vector<int> subdiv_rank;
-  std::unique_ptr<OpKernel> merge_op;  // reduction only
-  std::unique_ptr<OpKernel> final_op;  // reduction only
+  OpKernel* merge_op = nullptr;  // reduction only
+  OpKernel* final_op = nullptr;  // reduction only
   string ToString() const;
 };
 
