@@ -2449,12 +2449,11 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
         task_type='worker',
         task_id=1,
         num_accelerators={'GPU': 0})
-    distribution = parameter_server_strategy.ParameterServerStrategy(
+    distribution = parameter_server_strategy.ParameterServerStrategyV1(
         cluster_resolver)
 
     self.assertIsInstance(distribution,
-                          (parameter_server_strategy.ParameterServerStrategyV1,
-                           parameter_server_strategy.ParameterServerStrategy))
+                          parameter_server_strategy.ParameterServerStrategyV1)
 
     with self.assertRaisesRegex(NotImplementedError,
                                 'ParameterServerStrategy*'):

@@ -360,8 +360,7 @@ class Model(training_lib.Model):
               distribution_strategy_context.get_strategy())
 
     if isinstance(self._distribution_strategy,
-                  (parameter_server_strategy.ParameterServerStrategyV1,
-                   parameter_server_strategy.ParameterServerStrategy)):
+                  parameter_server_strategy.ParameterServerStrategyV1):
       raise NotImplementedError('`tf.compat.v1.distribute.experimental.Paramet'
                                 'erServerStrategy` currently only works '
                                 'with the tf.Estimator API')
