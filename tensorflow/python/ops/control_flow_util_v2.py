@@ -189,10 +189,10 @@ def resource_input_index(tensor_name, input_names, node_defs, functions):
     output_idx = int(output_idx)
     node_def = node_defs[op_name]
 
-    if node_def.op == "While":
+    if node_def.op in ("Identity", "While"):
       # Captured resources occur at the same index in the lists of inputs and
-      # outputs of a while op. So we lookup the input of `tensor.op` at the
-      # same index as the index of `tensor` in the `tensor.op.outputs`.
+      # outputs of a while or identity op. So we lookup the input of `tensor.op`
+      # at the same index as the index of `tensor` in the `tensor.op.outputs`.
       tensor_name = node_def.input[output_idx]
     elif node_def.op in ("PartitionedCall", "StatefulPartitionedCall"):
       # Functions output any captured resource tensors used by their
@@ -357,4 +357,3 @@ def run_as_function_for_tape_gradients(make_op, inputs):
     return results
   else:
     return make_op(inputs)
-
