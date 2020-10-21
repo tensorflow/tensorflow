@@ -364,7 +364,6 @@ class ShardedVariableTest(test.TestCase):
     self.assertAllEqual(variables, got)
 
   def test_tf_module(self):
-    self.skipTest('integration with tf.module is not added yet.')
 
     class Model(module.Module):
 
