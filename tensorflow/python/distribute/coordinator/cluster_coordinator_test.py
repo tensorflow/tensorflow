@@ -848,7 +848,7 @@ class StrategyIntegrationTest(test.TestCase):
     self.assertAlmostEqual(v1.read_value().numpy(), 0.1, delta=1e-6)
     self.assertAlmostEqual(v2.read_value().numpy(), 0.8, delta=1e-6)
 
-  def testStrategyRun(self):
+  def testRun(self):
     self.assertFalse(distribution_strategy_context.in_cross_replica_context())
     with self.strategy.scope():
       self.assertTrue(distribution_strategy_context.in_cross_replica_context())
@@ -875,6 +875,49 @@ class StrategyIntegrationTest(test.TestCase):
     result = self.coordinator.schedule(
         worker_fn, args=(constant_op.constant(3),))
     self.assertEqual(result.fetch(), (4, 2))
+
+  def testDistributeDataset(self):
+
+    def per_worker_dataset_fn():
+      dataset = dataset_ops.DatasetV2.range(1, 2)
+      return self.strategy.experimental_distribute_dataset(dataset)
+
+    @def_function.function
+    def worker_fn(iterator):
+      return next(iterator)
+
+    distributed_dataset = self.coordinator.create_per_worker_dataset(
+        per_worker_dataset_fn)
+    result = self.coordinator.schedule(
+        worker_fn, args=(iter(distributed_dataset),))
+    result = result.fetch()
+    self.assertEqual(result, (1,))
+
+  def testDistributeDatasetsFromFunction(self):
+
+    def per_worker_dataset_fn():
+      return self.strategy.distribute_datasets_from_function(
+          lambda _: dataset_ops.DatasetV2.range(1, 2))
+
+    @def_function.function
+    def worker_fn(iterator):
+      return next(iterator)
+
+    distributed_dataset = self.coordinator.create_per_worker_dataset(
+        per_worker_dataset_fn)
+    result = self.coordinator.schedule(
+        worker_fn, args=(iter(distributed_dataset),))
+    result = result.fetch()
+    self.assertEqual(result, (1,))
+
+  def testCallingDistributeDatasetOutside(self):
+    with self.assertRaises(ValueError):
+      dataset = dataset_ops.DatasetV2.range(1, 2)
+      self.strategy.experimental_distribute_dataset(dataset)
+
+    with self.assertRaises(ValueError):
+      self.strategy.distribute_datasets_from_function(
+          lambda _: dataset_ops.DatasetV2.range(1, 2))
 
 
 if __name__ == '__main__':

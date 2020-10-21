@@ -610,6 +610,22 @@ class ParameterServerStrategyV2Extended(
         self._variable_count += 1
         return var
 
+  def _experimental_distribute_dataset(self, dataset, options):
+    if not ops.get_default_graph().building_function:
+      raise ValueError(
+          "The `experimental_distribute_dataset` method must be called inside "
+          "a `tf.function` passed to `create_per_worker_dataset` of "
+          "`tf.distribute.experimental.coordinator.ClusterCoordinator`")
+    return dataset
+
+  def _distribute_datasets_from_function(self, dataset_fn, options):
+    if not ops.get_default_graph().building_function:
+      raise ValueError(
+          "The `distribute_datasets_from_function` method must be called "
+          "inside a `tf.function` passed to `create_per_worker_dataset` of "
+          "`tf.distribute.experimental.coordinator.ClusterCoordinator`")
+    return dataset_fn(distribute_lib.InputContext())
+
   def _call_for_each_replica(self, fn, args, kwargs):
     with distribute_lib.ReplicaContext(
         self._container_strategy(),
