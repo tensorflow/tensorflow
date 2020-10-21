@@ -48,7 +48,7 @@ namespace {
 using ::tensorflow::RemoteProfilerSessionManagerOptions;
 
 // Profiler gives grace after profiling duration to terminate.
-constexpr absl::Duration kSessionGraceTime = absl::Seconds(10);
+constexpr absl::Duration kMinSessionGraceTime = absl::Seconds(60);
 
 tensorflow::Status ValidateHostPortPair(absl::string_view host_port) {
   tensorflow::uint32 port;
@@ -106,9 +106,9 @@ void UpdateMaxSessionDuration(RemoteProfilerSessionManagerOptions& options) {
   // is bounded.
   DCHECK_GT(local_profiler_duration, 0);
   VLOG(3) << "duration_ms was given as " << local_profiler_duration;
-  // Max session duration includes the profiling session and grace time.
-  auto profile_duration =
-      absl::Milliseconds(local_profiler_duration) + kSessionGraceTime;
+  // Max session duration is the profiling session with grace time.
+  auto profile_duration = std::max(
+      kMinSessionGraceTime, absl::Milliseconds(local_profiler_duration) * 2);
   absl::Duration delay_duration;
   // When requested start timestamp is 0, profiling starts immediately.
   if (requested_start_ts > 0) {
