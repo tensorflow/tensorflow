@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/process_util.h"
+#include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/cancellable_call.h"
 #include "tensorflow/core/distributed_runtime/request_id.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
@@ -179,7 +180,7 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
 }
 
 void CollectiveRemoteAccessDistributed::CheckPeerHealth(
-    const string& peer_task, const StatusCallback& done) {
+    const string& peer_task, int64 timeout_in_ms, const StatusCallback& done) {
   if (peer_task == task_name_) {
     // Fast path if the peer is the worker itself.
     done(Status::OK());
@@ -196,13 +197,16 @@ void CollectiveRemoteAccessDistributed::CheckPeerHealth(
                                  "valid form is /job:xxx/replica:0/task:N"));
     return;
   }
+  auto opts = new CallOptions();
+  opts->SetTimeout(timeout_in_ms);
   auto req = new GetStatusRequest();
   auto resp = new GetStatusResponse();
-  // We're not using Cancellable call because GetStatusAsync doesn't support
-  // cancellation yet.
+  // Note that fail_fast is not always respected, so we set a timeout as well.
+  // We're not using CancellableCall since check health shouldn't need to be
+  // cancelled.
   wi->GetStatusAsync(
-      req, resp, /*fail_fast*/ true,
-      [this, req, resp, wi, peer_task, done](Status s) {
+      opts, req, resp, /*fail_fast*/ true,
+      [this, opts, req, resp, wi, peer_task, done](Status s) {
         std::vector<DeviceAttributes> cached_attrs;
         if (s.ok()) {
           s = dev_resolver_->GetAllDeviceAttributes(peer_task, &cached_attrs);
@@ -227,6 +231,7 @@ void CollectiveRemoteAccessDistributed::CheckPeerHealth(
           // first collective.
           s = Status::OK();
         }
+        delete opts;
         delete req;
         delete resp;
         worker_cache_->ReleaseWorker(peer_task, wi);

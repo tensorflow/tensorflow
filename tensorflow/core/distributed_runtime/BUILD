@@ -531,6 +531,7 @@ cc_library(
     srcs = ["collective_rma_distributed.cc"],
     hdrs = ["collective_rma_distributed.h"],
     deps = [
+        ":call_options",
         ":cancellable_call",
         ":request_id",
         ":worker_cache",

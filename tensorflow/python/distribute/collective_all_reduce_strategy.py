@@ -309,6 +309,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
   _check_health_initial_timeout = 0
   # Times to retry before considering the peer is down.
   _check_health_retry_limit = 3
+  # Timeout in seconds the each check health.
+  _check_health_timeout = 10
 
   def __init__(self, container_strategy, cluster_resolver,
                communication_options):
@@ -780,12 +782,13 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
           while True:
             attempts += 1
             try:
-              context.context().check_collective_ops_peer_health(peer)
+              context.context().check_collective_ops_peer_health(
+                  peer, timeout_in_ms=self._check_health_timeout * 1000)
               # If check_collective_ops_peer_health doesn't raise an Exception,
               # the peer is healthy.
               break
-            except (errors.UnavailableError,
-                    errors.FailedPreconditionError) as e:
+            except (errors.UnavailableError, errors.FailedPreconditionError,
+                    errors.DeadlineExceededError) as e:
               # TODO(b/151232436): Always raise UnavailableError when a peer
               # fails. Now there could be many kinds of errors:
               # - Unavailable: when the peer is not reachable, e.g. it's down.

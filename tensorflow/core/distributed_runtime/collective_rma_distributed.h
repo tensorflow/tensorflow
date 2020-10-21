@@ -45,7 +45,7 @@ class CollectiveRemoteAccessDistributed : public CollectiveRemoteAccessLocal {
                     CancellationManager* cancellation_manager,
                     const StatusCallback& done) override;
 
-  void CheckPeerHealth(const string& peer_task,
+  void CheckPeerHealth(const string& peer_task, int64 timeout_in_ms,
                        const StatusCallback& done) override;
 
   void StartAbort(const Status& s) override;

@@ -561,15 +561,15 @@ TF_CAPI_EXPORT extern void TFE_AbortCollectiveOps(TFE_Context* ctx,
   collective_executor_handle->get()->StartAbort(status->status);
 }
 
-TF_CAPI_EXPORT extern void TFE_CollectiveOpsCheckPeerHealth(TFE_Context* ctx,
-                                                            const char* task,
-                                                            TF_Status* status) {
+TF_CAPI_EXPORT extern void TFE_CollectiveOpsCheckPeerHealth(
+    TFE_Context* ctx, const char* task, int64_t timeout_in_ms,
+    TF_Status* status) {
   tensorflow::EagerContext* context =
       tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
   auto collective_executor_handle = context->GetCollectiveExecutorHandle();
   tensorflow::Notification done;
   collective_executor_handle->get()->remote_access()->CheckPeerHealth(
-      task, [&done, status](const Status& s) {
+      task, timeout_in_ms, [&done, status](const Status& s) {
         status->status = s;
         done.Notify();
       });
