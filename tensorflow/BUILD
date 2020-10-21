@@ -78,7 +78,7 @@ config_setting(
 # Config setting that disables the default logger, only logging
 # to registered TFLogSinks
 config_setting(
-    name="no_default_logger",
+    name = "no_default_logger",
     define_values = {"no_default_logger": "true"},
     visibility = ["//visibility:public"],
 )
