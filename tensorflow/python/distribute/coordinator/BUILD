@@ -87,6 +87,38 @@ tf_py_test(
     ],
 )
 
+tf_py_test(
+    name = "fault_tolerance_test",
+    srcs = ["fault_tolerance_test.py"],
+    python_version = "PY3",
+    shard_count = 9,
+    tags = [
+        "noasan",  # Multi-process runner does not work with test sanitizers
+        "notsan",  # Multi-process runner does not work with test sanitizers
+    ],
+    deps = [
+        ":cluster_coordinator",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/distribute:multi_process_runner",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute:parameter_server_strategy_v2",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/training:training_lib",
+    ],
+)
+
 py_library(
     name = "metric_utils",
     srcs = ["metric_utils.py"],
