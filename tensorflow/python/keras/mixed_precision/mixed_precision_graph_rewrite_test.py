@@ -24,8 +24,8 @@ from tensorflow.python.framework import config
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
-from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer as loss_scale_optimizer_v2
-from tensorflow.python.keras.mixed_precision.experimental import policy
+from tensorflow.python.keras.mixed_precision import loss_scale_optimizer as loss_scale_optimizer_v2
+from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_v2
 from tensorflow.python.platform import test
 from tensorflow.python.training.experimental import mixed_precision

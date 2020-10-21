@@ -27,8 +27,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer_utils
-from tensorflow.python.keras.mixed_precision.experimental import device_compatibility_check
-from tensorflow.python.keras.mixed_precision.experimental import policy as mp_policy
+from tensorflow.python.keras.mixed_precision import device_compatibility_check
+from tensorflow.python.keras.mixed_precision import policy as mp_policy
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging

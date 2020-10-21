@@ -51,7 +51,7 @@ from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.keras.distribute import distributed_training_utils_v1
 from tensorflow.python.keras.distribute import optimizer_combinations
 from tensorflow.python.keras.engine import base_layer_utils
-from tensorflow.python.keras.mixed_precision.experimental import policy
+from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
 from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.ops import array_ops

@@ -36,7 +36,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_combinations as combinations
-from tensorflow.python.keras.mixed_precision.experimental import autocast_variable
+from tensorflow.python.keras.mixed_precision import autocast_variable
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_v2
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import state_ops

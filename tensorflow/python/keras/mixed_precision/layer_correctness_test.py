@@ -42,7 +42,7 @@ from tensorflow.python.keras.layers import pooling
 from tensorflow.python.keras.layers import recurrent
 from tensorflow.python.keras.layers import recurrent_v2
 from tensorflow.python.keras.layers import wrappers
-from tensorflow.python.keras.mixed_precision.experimental import policy
+from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.platform import test
 
 

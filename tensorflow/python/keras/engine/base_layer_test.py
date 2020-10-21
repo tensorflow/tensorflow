@@ -1502,7 +1502,7 @@ class IdentityLayer(base_layer.Layer):
 class DTypeTest(keras_parameterized.TestCase):
 
   # This class only have tests relating to layer.dtype. Tests for dtype policies
-  # are in mixed_precision/experimental/keras_test.py
+  # are in mixed_precision/keras_test.py
 
   # TODO(reedwm): Maybe have a separate test file for input casting tests.
 

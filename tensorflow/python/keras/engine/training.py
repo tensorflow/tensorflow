@@ -51,8 +51,8 @@ from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import compile_utils
 from tensorflow.python.keras.engine import data_adapter
 from tensorflow.python.keras.engine import training_utils
-from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer as lso
-from tensorflow.python.keras.mixed_precision.experimental import policy
+from tensorflow.python.keras.mixed_precision import loss_scale_optimizer as lso
+from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.keras.saving import hdf5_format
 from tensorflow.python.keras.saving import save
 from tensorflow.python.keras.saving.saved_model import json_utils
