@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import functools
+import os
 import platform
 import sys
 import threading
@@ -597,6 +598,7 @@ class ClusterCoordinatorTest(TestCaseWithErrorReportingThread):
     self.assertNotAllEqual(elements_in_iterator_1, elements_in_iterator_2)
 
   def testPerWorkerValue(self):
+    self.skipTest('b/168569314')
     var_shape = tuple()
     var_dtype = dtypes.float32
     var_name = 'var'
@@ -662,6 +664,29 @@ class LimitedClosureQueueSizeBasicTest(ClusterCoordinatorTest):
     coordinator_lib._CLOSURE_QUEUE_MAX_SIZE = 2
     cls.coordinator = make_coordinator(num_workers=3, num_ps=2)
     cls.strategy = cls.coordinator.strategy
+
+
+class ScheduleStartDelayTest(ClusterCoordinatorTest):
+  """Test basic functionality works with worker scheduling delay.
+
+  This is basically to make sure that setting environment variables
+  `TF_COORDINATOR_SCHEDULE_START_DELAY` and
+  `TF_COORDINATOR_SCHEDULE_START_DELAY_MAX` will cause any failure.
+  """
+
+  @classmethod
+  def setUpClass(cls):
+    super(ScheduleStartDelayTest, cls).setUpClass()
+    os.environ['TF_COORDINATOR_SCHEDULE_START_DELAY'] = '2'
+    os.environ['TF_COORDINATOR_SCHEDULE_START_DELAY_MAX'] = '4'
+    cls.coordinator = make_coordinator(num_workers=3, num_ps=2)
+    cls.strategy = cls.coordinator.strategy
+
+  @classmethod
+  def tearDownClass(cls):
+    del os.environ['TF_COORDINATOR_SCHEDULE_START_DELAY']
+    del os.environ['TF_COORDINATOR_SCHEDULE_START_DELAY_MAX']
+    super(ScheduleStartDelayTest, cls).tearDownClass()
 
 
 class ErrorReportingTest(TestCaseWithErrorReportingThread):

@@ -29,6 +29,7 @@ import os
 import re
 import sys
 import threading
+import time
 import weakref
 from six.moves import queue
 
@@ -759,7 +760,25 @@ class Worker(object):
       closure.output_remote_value._set_error(e)  # pylint: disable=protected-access
       self._cluster._closure_queue.mark_failed(e)  # pylint: disable=protected-access
 
+  def _maybe_delay(self):
+    """Delay if corresponding env vars are set."""
+    # If the following two env vars variables are set. Scheduling for workers
+    # will start in a staggered manner. Worker i will wait for
+    # `TF_COORDINATOR_SCHEDULE_START_DELAY` * i seconds, not exceeding
+    # `TF_COORDINATOR_SCHEDULE_START_DELAY_MAX`.
+    delay_secs = int(os.environ.get("TF_COORDINATOR_SCHEDULE_START_DELAY", "0"))
+    delay_cap = int(
+        os.environ.get("TF_COORDINATOR_SCHEDULE_START_DELAY_MAX", "0"))
+    if delay_cap:
+      delay_secs = min(delay_secs * self.worker_index, delay_cap)
+    if delay_secs > 0:
+      logging.info("Worker %d sleeping for %d seconds before running function",
+                   self.worker_index, delay_secs)
+    time.sleep(delay_secs)
+
   def _process_queue(self):
+    """Function running in a thread to process closure queues."""
+    self._maybe_delay()
     while True:
       closure = self._cluster._closure_queue.get()  # pylint: disable=protected-access
       self._process_closure(closure)
