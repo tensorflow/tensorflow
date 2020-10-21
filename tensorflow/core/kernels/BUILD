@@ -3339,7 +3339,6 @@ tf_kernel_library(
         "//third_party/mkl:intel_binary_blob",
     ]) + if_cuda_or_rocm([
         "//tensorflow/core/kernels:gpu_utils",
-        "//tensorflow/core/platform:tensor_float_32_utils",
     ]),
 )
 
