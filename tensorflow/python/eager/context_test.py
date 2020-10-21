@@ -29,7 +29,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
-
+from tensorflow.python import pywrap_tfe
 
 class ContextTest(test.TestCase):
 
@@ -135,13 +135,26 @@ class ContextTest(test.TestCase):
       self.skipTest('Need at least 2 GPUs')
     with self.assertRaisesRegex(ValueError, 'Multiple devices'):
       context.context().get_total_memory_usage('GPU')
-
+  
   def testParsePhysicalDevices(self):
     expected_cpu = context.PhysicalDevice(
                      name='/physical_device:CPU:0',
                      device_type='CPU', subdevice_type='CPU')
     cpu_devices = context.context().list_physical_devices("CPU")
     self.assertTrue(expected_cpu in cpu_devices)
+
+  @test.mock.patch.object(pywrap_tfe, 'TF_ListPhysicalDevices')
+  def testParsePhysicalDeviceWithSubdevice(self, mock_list_devices):
+      mock_list_devices.return_value = [b'/physical_device:GPU:XPU:0']
+      new_context = context.Context()
+      expected_gpu = context.PhysicalDevice(
+          name='/physical_device:GPU:XPU:0',
+          device_type='GPU',
+          subdevice_type='XPU')
+      gpu_devices = new_context.list_physical_devices('GPU')
+      self.assertListEqual(gpu_devices, [expected_gpu])
+      xpu_devices = new_context.list_physical_devices('XPU')
+      self.assertListEqual(xpu_devices, [])
 
 if __name__ == '__main__':
   ops.enable_eager_execution()
