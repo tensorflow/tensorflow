@@ -472,6 +472,7 @@ cuda_py_test(
     ],
     python_version = "PY3",
     tags = [
+        "notap",  # TODO(b/171355671)
         "notsan",  # TODO(b/151841995)
     ],
     deps = [
