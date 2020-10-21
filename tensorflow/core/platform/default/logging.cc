@@ -509,6 +509,10 @@ void TFDefaultLogSink::Send(const TFLogEntry& entry) {
 
   char sev;
   switch(entry.log_severity()) {
+    case absl::LogSeverity::kInfo:
+      sev = 'I';
+      break;
+
     case absl::LogSeverity::kWarning:
       sev = 'W';
       break;
