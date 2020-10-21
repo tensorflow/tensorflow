@@ -1343,10 +1343,8 @@ def _extract_failed_ps_instances(err_msg):
 
 def _is_ps_failure(error):
   """Whether the error is considered a parameter server failure."""
-  if (_RPC_ERROR_FROM_PS in str(error) or
-      (isinstance(error, errors.InvalidArgumentError) and
-       "/job:ps" in str(error))):
-    return True
+  return (isinstance(error, errors.UnavailableError) and
+          _RPC_ERROR_FROM_PS in str(error))
 
 
 def _is_worker_failure(error):
@@ -1366,8 +1364,7 @@ def _is_worker_failure(error):
   # failure. In that case, gRPC allows channel (which is different from a
   # connection) to be reused for a replaced server listening to same address.
   if isinstance(error, errors.InvalidArgumentError):
-    if ("Unable to find a context_id" in str(error) or
-        "unknown device" in str(error) or
+    if ("unknown device" in str(error) or
         "Unable to find the relevant tensor remote_handle" in str(error)):
       # TODO(b/159961667): Fix "Unable to find the relevant tensor
       # remote_handle" part.

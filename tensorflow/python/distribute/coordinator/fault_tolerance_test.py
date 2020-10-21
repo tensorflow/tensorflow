@@ -234,20 +234,17 @@ class FaultToleranceTest(test.TestCase):  # pylint: disable=missing-docstring
 
     try:
       self.thread_coord.join([run_thread])
-    except (errors.UnavailableError, errors.InvalidArgumentError) as e:
+    except errors.UnavailableError as e:
       logging.info("Got exception %r, error message is %s", e, e)
 
-      self.assertIn(_RPC_ERROR_FROM_WORKER, str(e))
+      self.assertIn(_RPC_ERROR_FROM_WORKER, str(e))  # pylint: disable=g-assert-in-except
       self.assertNotIn(_RPC_ERROR_FROM_PS, str(e))
 
-      if isinstance(e, errors.UnavailableError):
-        self.assertTrue("failed to connect to all addresses" in str(e) or
-                        "Socket closed" in str(e) or
-                        "Connection reset by peer" in str(e) or
-                        "Transport closed" in str(e))
-
-      if isinstance(e, errors.InvalidArgumentError):
-        self.assertIn("Unable to find a context_id", str(e))
+      self.assertTrue("failed to connect to all addresses" in str(e) or
+                      "Unable to find a context_id" in str(e) or
+                      "Socket closed" in str(e) or
+                      "Connection reset by peer" in str(e) or
+                      "Transport closed" in str(e))
 
   def testWorkerPreemptionErrorTypeWithPythonFunction(self):
 
@@ -271,20 +268,17 @@ class FaultToleranceTest(test.TestCase):  # pylint: disable=missing-docstring
 
     try:
       self.thread_coord.join([run_thread])
-    except (errors.UnavailableError, errors.InvalidArgumentError) as e:
+    except errors.UnavailableError as e:
       logging.info("Got exception %r, error message is %s", e, e)
 
-      self.assertIn(_RPC_ERROR_FROM_WORKER, str(e))
+      self.assertIn(_RPC_ERROR_FROM_WORKER, str(e))  # pylint: disable=g-assert-in-except
       self.assertNotIn(_RPC_ERROR_FROM_PS, str(e))
 
-      if isinstance(e, errors.UnavailableError):
-        self.assertTrue("failed to connect to all addresses" in str(e) or
-                        "Socket closed" in str(e) or
-                        "Connection reset by peer" in str(e) or
-                        "Transport closed" in str(e))
-
-      if isinstance(e, errors.InvalidArgumentError):
-        self.assertIn("Unable to find a context_id", str(e))
+      self.assertTrue("failed to connect to all addresses" in str(e) or
+                      "Unable to find a context_id" in str(e) or
+                      "Socket closed" in str(e) or
+                      "Connection reset by peer" in str(e) or
+                      "Transport closed" in str(e))
 
   def testPSPreemptionErrorType(self):
 
@@ -309,24 +303,22 @@ class FaultToleranceTest(test.TestCase):  # pylint: disable=missing-docstring
     run_thread = threading.Thread(target=run_fn)
     run_thread.start()
     time.sleep(1)  # Let it run a couple steps.
-    self._restart(5, "ps")
+
+    # Use a short restart delay to cover the case that RPC channel is reused
+    self._restart(1, "ps")
 
     try:
       self.thread_coord.join([run_thread])
-    except (errors.UnavailableError, errors.InvalidArgumentError,
-            errors.AbortedError) as e:
+    except (errors.UnavailableError, errors.AbortedError) as e:
       logging.info("Got exception %r, error message is %s", e, e)
-
-      self.assertIn(_RPC_ERROR_FROM_PS, str(e))
+      self.assertIn(_RPC_ERROR_FROM_PS, str(e))  # pylint: disable=g-assert-in-except
 
       if isinstance(e, errors.UnavailableError):
         self.assertTrue("failed to connect to all addresses" in str(e) or
+                        "Unable to find a context_id" in str(e) or
                         "Socket closed" in str(e) or
                         "Connection reset by peer" in str(e) or
                         "Transport closed" in str(e))
-
-      if isinstance(e, errors.InvalidArgumentError):
-        self.assertIn("Unable to find a context_id", str(e))
 
       if isinstance(e, errors.AbortedError):
         self.assertIn("RecvTensor expects a different device incarnation",
