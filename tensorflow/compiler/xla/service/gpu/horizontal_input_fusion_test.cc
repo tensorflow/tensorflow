@@ -61,8 +61,7 @@ TEST_F(HorizontalInputFusionTest, BasicTest) {
    fusion.2 = f16[] fusion(arg.2), kind=kInput, calls=fused_computation.2
    ROOT tuple.1 = (f16[], f16[]) tuple(fusion.1, fusion.2)
  }
-)")
-                    .ValueOrDie();
+)").ValueOrDie();
 
   EXPECT_TRUE(GpuHorizontalInputFusion().Run(module.get()).ValueOrDie());
 
@@ -98,7 +97,7 @@ TEST_F(HorizontalInputFusionTest, ManyInputFusions) {
   auto input_shape = ShapeUtil::MakeShape(F32, {1024, 1024});
   auto output_shape = ShapeUtil::MakeShape(F32, {1024});
   for (int64 i = 0; i < 130; ++i) {
-    // %fused_computation.3 (param_0: f32[1024,1024], param_1: f32[]) ->
+    //%fused_computation.3 (param_0: f32[1024,1024], param_1: f32[]) ->
     // f32[1024] {
     //  %param_0 = f32[1024,1024]{1,0} parameter(0)
     //  %param_1 = f32[] parameter(1)
@@ -111,7 +110,7 @@ TEST_F(HorizontalInputFusionTest, ManyInputFusions) {
     //  ROOT %reduce = f32[1024]{0}
     //      reduce(f32[1024,1024]{1,0} %multiply, f32[] %constant0),
     //          dimensions={1}, to_apply=%add
-    // }
+    //}
     HloInstruction* param_var_in = builder.AddInstruction(
         HloInstruction::CreateParameter(i * 2 + 0, input_shape, "var.in"));
     HloInstruction* param_alpha =
@@ -134,7 +133,8 @@ TEST_F(HorizontalInputFusionTest, ManyInputFusions) {
   // `reduce` instructions fused into the same fusion. 6 is just a randomly
   // picked number as we don't exactly know how large the fusion will be
   // created due to the `FusionWouldBeTooLarge` constraint.
-  CompileAndVerifyIr(module->Clone(), R"(CHECK: reduce-group-6)",
+  CompileAndVerifyIr(module->Clone(),
+                     R"(CHECK: reduce-group-6)",
                      /*match_optimized_ir=*/false);
 
   // Testing with the entire gpu optimization pipeline.
@@ -205,10 +205,42 @@ TEST_F(HorizontalInputFusionTest, MultiOutputFusionTest) {
    ROOT tuple.1 = (f16[], f16[1024]{0}, f16[], f16[1024]{0})
        tuple(gte.3, gte.4, gte.5, gte.6)
  }
-)")
-                    .ValueOrDie();
+)").ValueOrDie();
 
   EXPECT_TRUE(GpuHorizontalInputFusion().Run(module.get()).ValueOrDie());
+}
+
+TEST_F(HorizontalInputFusionTest, NonfusionInstrs) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+ HloModule NonfusionInstrs
+
+ %add_f16 {
+   %x = f16[] parameter(0)
+   %y = f16[] parameter(1)
+   ROOT %add = f16[] add(%x, %y)
+ }
+
+ ENTRY entry_computation {
+   arg.0 = f16[1024]{0} parameter(0)
+   arg.1 = f16[1024]{0} parameter(1)
+   constant0 = f16[] constant(0)
+   reduce.0 = f16[] reduce(arg.0, constant0), dimensions={0}, to_apply=%add_f16
+   reduce.1 = f16[] reduce(arg.1, constant0), dimensions={0}, to_apply=%add_f16
+   ROOT tuple.0 = (f16[], f16[]) tuple(reduce.0, reduce.1)
+ }
+)").ValueOrDie();
+
+  EXPECT_TRUE(GpuHorizontalInputFusion().Run(module.get()).ValueOrDie());
+
+  const HloInstruction* entry_root =
+      module->entry_computation()->root_instruction();
+  EXPECT_THAT(entry_root, op::Tuple((op::GetTupleElement(op::Fusion())),
+                                    (op::GetTupleElement(op::Fusion()))));
+
+  const HloInstruction* fusion = entry_root->operand(0)->operand(0);
+  ASSERT_TRUE(fusion->IsMultiOutputFusion());
+  EXPECT_THAT(fusion->fused_expression_root(),
+              op::Tuple(op::Reduce(), op::Reduce()));
 }
 
 }  // namespace

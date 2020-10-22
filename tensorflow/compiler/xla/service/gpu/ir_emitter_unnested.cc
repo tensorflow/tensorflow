@@ -3991,6 +3991,17 @@ std::vector<std::vector<HloInstruction*>> DivideOutputInstructionsIntoGroups(
   std::vector<std::vector<HloInstruction*>> ret;
   absl::c_for_each(
       groups, [&](auto& iter) { ret.emplace_back(std::move(iter.second)); });
+
+  if (VLOG_IS_ON(3)) {
+    VLOG(3) << "Divide the input fusion into " << ret.size() << " groups.";
+    for (size_t g = 0; g < ret.size(); ++g) {
+      VLOG(3) << "Group " << g << ":";
+      for (size_t j = 0; j < ret[g].size(); ++j) {
+        VLOG(3) << "\t" << ret[g][j]->ToString();
+      }
+    }
+  }
+
   return ret;
 }
 

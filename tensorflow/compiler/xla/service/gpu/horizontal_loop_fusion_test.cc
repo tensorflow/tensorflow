@@ -67,8 +67,7 @@ TEST_F(HorizontalLoopFusionTest, BasicTest) {
    ROOT tuple.1 = (f16[1024]{0}, f16[123]{0})
        tuple(fusion.1, fusion.2)
  }
-)")
-                    .ValueOrDie();
+)").ValueOrDie();
 
   EXPECT_TRUE(GpuHorizontalLoopFusion().Run(module.get()).ValueOrDie());
   EXPECT_TRUE(HloDCE().Run(module.get()).ValueOrDie());
@@ -119,8 +118,7 @@ TEST_F(HorizontalLoopFusionTest, NegativeTestForCycle) {
    ROOT tuple.1 = (f16[123]{0}, f16[123]{0}, f16[123]{0})
        tuple(fusion.1, fusion.2, add.2)
  }
-)")
-                    .ValueOrDie();
+)").ValueOrDie();
 
   EXPECT_FALSE(GpuHorizontalLoopFusion().Run(module.get()).ValueOrDie());
 }
@@ -155,8 +153,7 @@ TEST_F(HorizontalLoopFusionTest, NegativeTestForIncompatibleTypes) {
    ROOT tuple.1 = (f16[1024]{0}, s32[123]{0})
        tuple(fusion.1, fusion.2)
  }
-)")
-                    .ValueOrDie();
+)").ValueOrDie();
 
   EXPECT_FALSE(GpuHorizontalLoopFusion().Run(module.get()).ValueOrDie());
 }
@@ -183,8 +180,7 @@ TEST_F(HorizontalLoopFusionTest, HorizontalLoopFusionAfterVerticalFusion) {
   mul.2.2     = f32[321,5]{1,0} multiply(param.2.3, broadcast.2)
   add.2       = f32[321,5]{1,0} add(mul.2.1, mul.2.2)
   ROOT tuple = (f32[4,1024]{1,0}, f32[321,5]{1,0}) tuple(add.1, add.2)
-})")
-                    .ValueOrDie();
+})").ValueOrDie();
 
   HloPassPipeline fusion("fusion");
   fusion.AddPass<xla::gpu::GpuInstructionFusion>(/*may_duplicate=*/false);
@@ -277,8 +273,7 @@ TEST_F(HorizontalLoopFusionTest, FusingDifferentOutputs) {
    ROOT tuple.1 = (f16[1024]{0}, f16[1024]{0}, f16[123]{0}, f16[123]{0})
        tuple(gte.1, gte.2, gte.3, gte.4)
  }
-)")
-                    .ValueOrDie();
+)").ValueOrDie();
 
   EXPECT_TRUE(GpuHorizontalLoopFusion().Run(module.get()).ValueOrDie());
   EXPECT_TRUE(HloDCE().Run(module.get()).ValueOrDie());
@@ -397,10 +392,70 @@ TEST_F(HorizontalLoopFusionTest, NegativeTestForDynamicUpdateSlice) {
     f1 = f16[5,9,10] fusion(p.00, p.10, p.20), kind=kLoop, calls=fusion.1
     f2 = f16[5,9,10] fusion(p.01, p.11, p.21), kind=kLoop, calls=fusion.2
     ROOT tuple = (f16[5,9,10],f16[5,9,10]) tuple(f1, f2)
-  })")
-                    .ValueOrDie();
+  })").ValueOrDie();
 
   EXPECT_FALSE(GpuHorizontalLoopFusion().Run(module.get()).ValueOrDie());
+}
+
+TEST_F(HorizontalLoopFusionTest, IterativeHorizontalFusion) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+ HloModule NonfusionInstrs
+
+ fused_computation.0 {
+   arg.0 = f16[] parameter(0)
+   arg.1 = f16[123]{0} parameter(1)
+   broadcast.0 = f16[123]{0} broadcast(arg.0), dimensions={}
+   ROOT mul.1 = f16[123]{0} multiply(broadcast.0, arg.1)
+ }
+
+ fused_computation.1 {
+   arg.0 = f16[] parameter(0)
+   arg.1 = f16[456]{0} parameter(1)
+   broadcast.0 = f16[456]{0} broadcast(arg.0), dimensions={}
+   ROOT add.1 = f16[456]{0} add(broadcast.0, arg.1)
+ }
+
+ ENTRY entry_computation {
+   arg.0 = f16[] parameter(0)
+   arg.1 = f16[] parameter(1)
+   arg.2 = f16[123]{0} parameter(2)
+   arg.3 = f16[456]{0} parameter(3)
+   // Test fusion of non-fusion instructions. sqrt.0 and sqrt.1 are to be
+   // fused.
+   sqrt.0 = f16[] sqrt(arg.0)
+   sqrt.1 = f16[] sqrt(arg.1)
+   // fusion.0 and fusion.1 are to be fused.
+   fusion.0 = f16[123]{0}
+       fusion(sqrt.0, arg.2), kind=kLoop, calls=fused_computation.0
+   fusion.1 = f16[456]{0}
+       fusion(sqrt.1, arg.3), kind=kLoop, calls=fused_computation.1
+   ROOT tuple.1 = (f16[123]{0}, f16[456]{0}) tuple(fusion.0, fusion.1)
+ }
+)").ValueOrDie();
+
+  HloPassFix<HloPassPipeline> iterative_h_fusion("iterative_h_fusion");
+  iterative_h_fusion.AddPass<GpuHorizontalLoopFusion>();
+  iterative_h_fusion.AddPass<HloDCE>();
+  EXPECT_TRUE(iterative_h_fusion.Run(module.get()).ValueOrDie());
+
+  // Verify that fusion.0 and fusion.1 are fused.
+  const HloInstruction* entry_root =
+      module->entry_computation()->root_instruction();
+  EXPECT_THAT(entry_root,
+              op::Tuple(op::Bitcast(op::GetTupleElement(op::Fusion())),
+                        op::Bitcast(op::GetTupleElement(op::Fusion()))));
+  const HloInstruction* fusion = entry_root->operand(0)->operand(0)->operand(0);
+  EXPECT_TRUE(fusion->IsMultiOutputFusion());
+
+  // Verify that the total number of fusion instructions is 2 so that we
+  // know sqrt.0 and sqrt.1 are fused.
+  size_t total_fusion_instrs = 0;
+  for (auto instr : module->entry_computation()->instructions()) {
+    if (instr->opcode() == HloOpcode::kFusion) {
+      ++total_fusion_instrs;
+    }
+  }
+  EXPECT_EQ(total_fusion_instrs, 2);
 }
 
 }  // namespace
