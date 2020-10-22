@@ -14,8 +14,10 @@ Should Run Stm32f4 Test
     [Tags]                    stm32f4  uart  tensorflow  arm
     ${BIN} =                  Get Environment Variable    BIN
     ${SCRIPT} =               Get Environment Variable    SCRIPT
+    ${LOGFILE} =              Get Environment Variable    LOGFILE
     ${EXPECTED} =             Get Environment Variable    EXPECTED
     Execute Command           $bin = @${BIN}
+    Execute Command           $logfile = @${LOGFILE}
     Execute Script            ${SCRIPT}
 
     Create Terminal Tester    ${UART}  timeout=15

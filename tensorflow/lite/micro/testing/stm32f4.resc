@@ -22,7 +22,7 @@ machine LoadPlatformDescription @platforms/cpus/stm32f4.repl
 machine LoadPlatformDescriptionFromString "uartSemihosting: UART.SemihostingUart @ cpu"
 showAnalyzer cpu.uartSemihosting Antmicro.Renode.Analyzers.LoggingUartAnalyzer
 
-logFile @/tmp/renode_stm32f4_log.txt
+logFile $logfile
 
 macro reset
 """

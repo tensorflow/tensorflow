@@ -30,20 +30,27 @@ declare -r MICRO_LOG_PATH=${TEST_TMPDIR}
 declare -r MICRO_LOG_FILENAME=${MICRO_LOG_PATH}logs.txt
 mkdir -p ${MICRO_LOG_PATH}
 
+if [ -e $MICRO_LOG_FILENAME ]; then
+    rm $MICRO_LOG_FILENAME &> /dev/null
+fi;
+
 exit_code=0
 
 if ! BIN=${ROOT_DIR}/$1 \
   SCRIPT=${ROOT_DIR}/tensorflow/lite/micro/testing/stm32f4.resc \
+  LOGFILE=$MICRO_LOG_FILENAME \
   EXPECTED="$2" \
   ${ROOT_DIR}/tensorflow/lite/micro/tools/make/downloads/renode/test.sh \
   ${ROOT_DIR}/tensorflow/lite/micro/testing/stm32f4.robot \
-  -r $TEST_TMPDIR &> ${MICRO_LOG_FILENAME}
+  -r $TEST_TMPDIR &> ${MICRO_LOG_PATH}robot_logs.txt
 then
   exit_code=1
 fi
 
+
 echo "LOGS:"
-cat ${MICRO_LOG_FILENAME}
+# Extract output from renode log
+cat ${MICRO_LOG_FILENAME} |grep 'uartSemihosting' |sed 's/^.*from start] *//g'
 if [ $exit_code -eq 0 ]
 then
   echo "$1: PASS"
