@@ -21,7 +21,6 @@ install_bazelisk
 
 # Pick a more recent version of xcode
 export DEVELOPER_DIR=/Applications/Xcode_11.3.app/Contents/Developer
-export MACOSX_DEPLOYMENT_TARGET=10.14
 sudo xcode-select -s "${DEVELOPER_DIR}"
 python3.6 -m virtualenv tf_build_env --system-site-packages
 source tf_build_env/bin/activate
