@@ -377,7 +377,7 @@ def build_debug_info_func(original_graph):
                 (func, sub_func.graph.get_operation_by_name(name)))
           else:
             sys.stderr.write(
-                "Use '@tf.function' or '@defun' to decorate the function.")
+                "Use '@tf.function' or '@defun' to decorate the function.\n")
             continue
       except KeyError:
         # New node created by graph optimizer. No stack trace from source code.
