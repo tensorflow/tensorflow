@@ -15,7 +15,7 @@ tf_cc_shared_object(
     per_os_targets = 1,
     visibility = ["//visibility:public"],
     deps = [":gcs_filesystem_impl"],
-)
+);
 
 # The real implementation of the filesystem.
 cc_library(
