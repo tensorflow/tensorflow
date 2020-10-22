@@ -380,6 +380,9 @@ cuda_py_test(
     name = "cudnn_deterministic_ops_test",
     size = "small",
     srcs = ["cudnn_deterministic_ops_test.py"],
+    tags = [
+        "no_cuda_asan",  # TODO(b/171509035): re-enable.
+    ],
     xla_enable_strict_auto_jit = True,
     deps = [
         ":cudnn_deterministic_base",
@@ -390,6 +393,9 @@ cuda_py_test(
     name = "cudnn_deterministic_test",
     size = "small",
     srcs = ["cudnn_deterministic_test.py"],
+    tags = [
+        "no_cuda_asan",  # TODO(b/171509035): re-enable.
+    ],
     deps = [
         ":cudnn_deterministic_base",
     ],

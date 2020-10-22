@@ -5198,6 +5198,9 @@ cuda_py_test(
     data = ["//tensorflow/core:image_testdata"],
     python_version = "PY3",
     shard_count = 16,
+    tags = [
+        "no_cuda_asan",  # TODO(b/171511582): re-enable.
+    ],
     deps = [
         ":array_ops",
         ":client",
