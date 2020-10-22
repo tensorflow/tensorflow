@@ -96,6 +96,7 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 9,
     tags = [
+        "no_oss",  # TODO(b/168772720)
         "noasan",  # Multi-process runner does not work with test sanitizers
         "notsan",  # Multi-process runner does not work with test sanitizers
     ],
