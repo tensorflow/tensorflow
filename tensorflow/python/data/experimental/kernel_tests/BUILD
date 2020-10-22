@@ -805,6 +805,7 @@ tf_py_test(
     size = "small",
     srcs = ["stats_dataset_ops_test.py"],
     tags = [
+        "no_oss",  # TODO(b/155795733): Note that this functionality is deprecated.
         "no_pip",
         "notap",
     ],
