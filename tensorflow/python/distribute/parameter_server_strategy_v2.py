@@ -44,27 +44,30 @@ from tensorflow.python.util.tf_export import tf_export
 class ParameterServerStrategyV2(distribute_lib.Strategy):
   """An multi-worker tf.distribute strategy with parameter servers.
 
-  Parameter server training refers to the distributed training architecture that
-  requires two types of tasks in the cluster: workers (referred to as "worker"
-  task) and parameter servers (referred to as "ps" task). The variables and
-  updates to those variables are placed on ps, and most computation intensive
-  operations are placed on workers.
+  Parameter server training is a common data-parallel method to scale up a
+  machine learning model on multiple machines. A parameter server training
+  cluster consists of workers and parameter servers. Variables are created on
+  parameter servers and they are read and updated by workers in each step.
+  By default, workers read and update these variables independently without
+  synchronizing with each other. Under this configuration, it is known as
+  asynchronous training.
 
-  In TF2, parameter server training makes use of one coordinator, with some
-  number of workers, and (usually fewer) ps. The coordinator uses a
+  In TensorFlow 2, we recommend a central coordiantion-based architecture for
+  parameter server training, where workers and parameter servers run a
+  `tf.distribute.Server` and there is another task that creates resources on
+  workers and parameter servers, dispatches functions, and coordinates the
+  training. We refer to this task as “coordinator”. The coordinator uses a
   `tf.distribute.experimental.coordinator.ClusterCoordinator` to coordinate the
-  cluster, and a `tf.distribute.experimental.ParameterServerStrategy` for
-  variable distribution. The coordinator does not perform the actual training.
-  Each of the workers and ps runs a `tf.distribute.Server`, which the
-  coordinator connects to through the use of aforementioned two APIs.
+  cluster, and a `tf.distribute.experimental.ParameterServerStrategy` to define
+  variables on parameter servers and computation on workers.
 
-  For the training to work, the coordinator sends requests to workers for the
-  `tf.function`s to be executed on remote workers. Upon receiving requests from
+  For the training to work, the coordinator dispatches `tf.function`s to be
+  executed on remote workers. Upon receiving requests from
   the coordinator, a worker executes the `tf.function` by reading the variables
   from parameter servers, executing the ops, and updating the variables on the
   parameter servers. Each of the worker only processes the requests from the
   coordinator, and communicates with parameter servers, without direct
-  interactions with any of the other workers in the cluster.
+  interactions with other workers in the cluster.
 
   As a result, failures of some workers do not prevent the cluster from
   continuing the work, and this allows the cluster to train with instances that
@@ -72,37 +75,31 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
   coordinator and parameter servers though, must be available at all times for
   the cluster to make progress.
 
-  Note that the coordinator is not one of the training worker. Instead, its
-  responsibility includes placing variables on ps, remotely executing
-  `tf.function`s on workers, and saving checkpoints. Parameter server training
-  thus consists of a server cluster with worker and ps, and a coordinator which
-  connects to them to coordinate. Optionally, an evaluator can be run on the
-  side that periodically reads the checkpoints saved by the coordinator, and
-  saves summaries for example.
+  Note that the coordinator is not one of the training workers. Instead, it
+  creates resources such as variables and datasets, dispatchs `tf.function`s,
+  saving checkpoints and so on. In addition to workers, parameter servers and
+  the coordinator, an optional evaluator can be run on the side that
+  periodically reads the checkpoints saved by the coordinator and runs
+  evaluations against each checkpoint.
 
-  `tf.distribute.experimental.ParameterServerStrategy` works closely with the
-  associated `tf.distribute.experimental.coordinator.ClusterCoordinator` object,
-  and should be used in conjunction with it. Standalone usage of
-  `tf.distribute.experimental.ParameterServerStrategy` without a
-  `tf.distribute.experimental.coordinator.ClusterCoordinator` indicates
-  a parameter server training scheme without a centralized coordinator, which is
-  not supported at this time.
+  `tf.distribute.experimental.ParameterServerStrategy` has to work in
+  conjunction with a `tf.distribute.experimental.coordinator.ClusterCoordinator`
+  object. Standalone usage of
+  `tf.distribute.experimental.ParameterServerStrategy` without central
+  coordination is not supported at this time.
 
   __Example code for coordinator__
 
   Here's an example usage of the API, with a custom training loop to train a
-  model. This code snippet is intended to be run on (the only) one machine that
+  model. This code snippet is intended to be run on (the only) one task that
   is designated as the coordinator. Note that `cluster_resolver`,
   `variable_partitioner`, and `dataset_fn` arguments are explained in the
   following "Cluster setup", "Variable partitioning", and "Dataset preparation"
   sections.
 
-  Currently, environment variable `GRPC_FAIL_FAST` needs to be set in all tasks
-  to work around a known hanging issue as the following code illustrates:
-
   ```python
   # Set the environment variable to allow reporting worker and ps failure to the
-  # coordinator.
+  # coordinator. This a short-term workaround.
   os.environ["GRPC_FAIL_FAST"] = "use_caller"
 
   # Prepare a strategy to use with the cluster and variable partitioning info.
@@ -116,7 +113,7 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
   distributed_dataset = coordinator.create_per_worker_dataset(dataset_fn=...)
 
   with strategy.scope():
-    model = ...  # Variables created can possibly be container of variables
+    model = ...
     optimizer, metrics = ...  # Keras optimizer/metrics are great choices
     checkpoint = tf.train.Checkpoint(model=model, optimizer=optimizer)
     checkpoint_manager = tf.train.CheckpointManager(
@@ -151,10 +148,9 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
 
   __Example code for worker and parameter servers__
 
-  In addition to the coordinator, there should be multiple machines designated
-  as "worker" or "ps". They should run the following code to start a TensorFlow
-  server, waiting for coordinator's request to execute functions or place
-  variables:
+  In addition to the coordinator, there should be tasks designated as
+  "worker" or "ps". They should run the following code to start a TensorFlow
+  server, waiting for coordinator's requests:
 
   ```python
   # Set the environment variable to allow reporting worker and ps failure to the
@@ -166,10 +162,10 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
   cluster_resolver = ...
 
   server = tf.distribute.Server(
-      cluster_resolver.cluster_spec().as_cluster_def(),
+      cluster_resolver.cluster_spec(),
       job_name=cluster_resolver.task_type,
       task_index=cluster_resolver.task_id,
-      protocol=protocol)
+      protocol="grpc")
 
   # Blocking the process that starts a server from exiting.
   server.join()
@@ -184,15 +180,13 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
   the cluster information, as well as the task type and id of the current task.
   See `tf.distribute.cluster_resolver.ClusterResolver` for more information.
 
-  If `TF_CONFIG` environment variable is used for the processes to know the
-  cluster information, a
-  `tf.distribute.cluster_resolver.TFConfigClusterResolver` should be used. Note
-  that for legacy reason, "chief" should be used as the task type for the
-  coordinator, as the following example demonstrates. Here we set `TF_CONFIG`
-  in environment variable, intended to be run by the process of the machine
-  designated as the parameter server (task type "ps") and index 1 (the second),
-  in a cluster with 1 chief, 2 parameter servers, and 3 workers. Note that the
-  it needs to be set before the use of
+  If `TF_CONFIG` environment variable is set, a
+  `tf.distribute.cluster_resolver.TFConfigClusterResolver` should be used as
+  well. Note that for legacy reason, on some platform, "chief" is used as the
+  task type for the coordinator, as the following example demonstrates. Here we
+  set `TF_CONFIG` for the task designated as a parameter server (task type "ps")
+  and index 1 (the second task), in a cluster with 1 chief, 2 parameter servers,
+  and 3 workers. Note that the it needs to be set before the use of
   `tf.distribute.cluster_resolver.TFConfigClusterResolver`.
 
   Example code for cluster setup:
@@ -211,10 +205,15 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
     }
   }
   '''
+  ```
+
+  If you prefer to run the same binary for all tasks, you will need to let the
+  binary branch into different roles at the beginning of the program:
+  ```python
   os.environ["GRPC_FAIL_FAST"] = "use_caller"
   cluster_resolver = tf.distribute.cluster_resolver.TFConfigClusterResolver()
 
-  # If coordinator ("chief" task type), create a strategy
+  # If coordinator, create a strategy and start the training program.
   if cluster_resolver.task_type == 'chief':
     strategy = tf.distribute.experimental.ParameterServerStrategy(
         cluster_resolver)
@@ -225,6 +224,10 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
     server = tf.distribute.Server(...)
     ...
   ```
+  Alternatively, you can also start a bunch of TensorFlow servers in advance and
+  connect to them later. The coordinator can be in the same cluster or on any
+  machine that has connectivity to workers and parameter server. This is covered
+  in our guide and tutorial.
 
   __Variable creation with `strategy.scope()`__
 
@@ -241,8 +244,8 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
       strategy=strategy)
 
   # Variables should be created inside scope to be placed on parameter servers.
-  # If created outside scope such as `v1` here, it would be placed on
-  coordinator.
+  # If created outside scope such as `v1` here, it would be placed on the
+  # coordinator.
   v1 = tf.Variable(initial_value=0.0)
 
   with strategy.scope():
@@ -374,9 +377,6 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
 
   * `tf.distribute.experimental.ParameterServerStrategy` must be used with
   `tf.distribute.experimental.coordinator.ClusterCoordinator`.
-
-  * This strategy is not intended for TPU. Use
-  `tf.distribute.experimental.TPUStrategy` instead.
   """
 
   # pyformat: disable

@@ -103,19 +103,16 @@ class _RemoteValueStatus(enum.Enum):
 
 @tf_export("distribute.experimental.coordinator.RemoteValue", v1=[])
 class RemoteValue(object):
-  """An asynchronously available value of a remotely executed function.
+  """An asynchronously available value of a scheduled function.
 
-  `tf.distribute.experimental.coordinator.RemoteValue` class is used as the
-  return value of
-  `tf.distribute.experimental.coordinator.ClusterCoordinator.schedule()` where
-  the underlying concrete value becomes available at a later time once the
-  function has been remotely executed. The underlying concrete value is the
-  `tf.Tensor.numpy()` result of the `tf.Tensor`, or the structure of
-  `tf.Tensor`s, returned from the `tf.function` that was scheduled.
+  This class is used as the return value of
+  `tf.distribute.experimental.coordinator.ClusterCoordinator.schedule` where
+  the underlying value becomes available at a later time once the function has
+  been executed.
 
-  `tf.distribute.experimental.coordinator.RemoteValue` to be used as an input to
+  Using `tf.distribute.experimental.coordinator.RemoteValue` as an input to
   a subsequent function scheduled with
-  `tf.distribute.experimental.coordinator.ClusterCoordinator.schedule()` is
+  `tf.distribute.experimental.coordinator.ClusterCoordinator.schedule` is
   currently not supported.
 
   Example:
@@ -142,8 +139,7 @@ class RemoteValue(object):
 
   for _ in range(10):
     # `worker_fn` will be run on arbitrary workers that are available. The
-    # `result` value will be non-deterministic because the workers are executing
-    # the functions asynchronously.
+    # `result` value will be available later.
     result = coordinator.schedule(worker_fn)
   ```
   """
@@ -162,8 +158,7 @@ class RemoteValue(object):
 
     Raises:
       tf.errors.CancelledError: If the function that produces this `RemoteValue`
-        is aborted or cancelled due to failure, and the user should handle and
-        reschedule.
+        is aborted or cancelled due to failure.
     """
     raise NotImplementedError("Must be implemented in subclasses.")
 
@@ -296,8 +291,8 @@ class PerWorkerValues(object):
   """A container that holds a list of values, one value per worker.
 
   `tf.distribute.experimental.coordinator.PerWorkerValues` contains a collection
-  of values, where each of the values represents a resource that are located in
-  individual workers, and upon being used as one of the `args` or `kwargs` of
+  of values, where each of the value is located one worker respectively, and
+  upon being used as one of the `args` or `kwargs` of
   `tf.distribute.experimental.coordinator.ClusterCoordinator.schedule()`, the
   value specific to a worker will be passed into the function being executed at
   that particular worker.
@@ -923,56 +918,51 @@ class Cluster(object):
 class ClusterCoordinator(object):
   """An object to schedule and coordinate remote function execution.
 
-  A `tf.distribute.experimental.coordinator.ClusterCoordinator` object
-  represents a program used to distribute dataset onto the workers, schedule
-  functions to be executed, and fetch the results of the functions. It expects
-  the cluster to contain some machines with processes running TensorFlow
-  servers.
+  This class is used to create fault-tolerant resources and dispatch functions
+  to remote TensorFlow servers.
 
-  Currently, `tf.distribute.experimental.coordinator.ClusterCoordinator` is not
-  supported to be used in a standalone manner. It should be used in conjunction
-  with a `tf.distribute` strategy that is designed to work with it. Currently,
-  only `tf.distribute.experimental.ParameterServerStrategy` is supported to work
-  with `tf.distribute.experimental.coordinator.ClusterCoordinator`.
+  Currently, this class is not supported to be used in a standalone manner. It
+  should be used in conjunction with a `tf.distribute` strategy that is designed
+  to work with it. The `ClusterCoordinator` class currently only works
+  `tf.distribute.experimental.ParameterServerStrategy`.
 
-  __Fault tolerance__
+  __The `schedule`/`join` APIs__
 
-  `tf.distribute.experimental.coordinator.ClusterCoordinator`, when used with
+  The most important APIs provided by this class is the `schedule`/`join` pair.
+  The `schedule` API is non-blocking in that it queues a `tf.function` and
+  returns a `RemoteValue` immediately. The queued functions will be dispatched
+  to remote workers in background threads and their `RemoteValue`s will be
+  filled asynchronously. Since `schedule` doesn’t require worker assignment, the
+  `tf.function` passed in can be executed on any available worker. If the worker
+  it is executed on becomes unavailable before its completion, it will be
+  migrated to another worker. Because of this fact and function execution is not
+  atomic, a function may be executed more than once.
+
+  __Handling Task Failure__
+
+  This class when used with
   `tf.distribute.experimental.ParameterServerStrategy`, comes with built-in
   fault tolerance for worker failures. That is, when some workers are not
   available for any reason to be reached from the coordinator, the training
-  progress continues to be made with the remaining operating workers, without
-  the need of any additional treatment in user code.
+  progress continues to be made with the remaining workers. Upon recovery of a
+  failed worker, it will be added for function execution after datasets created
+  by `create_per_worker_dataset` are re-built on it.
 
-  On the other hand, when a parameter server or the coordinator fails, a
-  `tf.errors.UnavailableError` is raised by `ClusterCoordinator.schedule` or
-  `ClusterCoordinator.join`. If any parameter server fails, the user should
-  restart the processes on the failed parameter servers when they become
-  available, *and* restart the process on the coordinator, so the coordinator
-  can re-create the variables on the parameter servers. If the coordinator fails
-  but all other machines continue to be operating, the user only needs to
-  restart the process on the coordinator, which will automatically connect to
-  the parameter servers and workers, and continue the progress.
+  When a parameter server the coordinator fails, a
+  `tf.errors.UnavailableError` is raised by `schedule`, `join` or `done`. In
+  this case, in addition to bringing back the failed parameter server, users
+  should restart the coordinator to so that it reconnects to the parameter
+  server, re-creates the variables and loads checkpoints. If the coordinator
+  fails, users need to bring it back as well. The program will automatically
+  connect to the parameter servers and workers, and continue the progress from a
+  checkpoint.
 
-  It is thus essential that in user's custom training loop, a checkpoint file is
-  periodically saved, and restored at the start of the program.
-
-  * At-least-once semantics of `schedule`: `schedule` puts the `tf.function` in
-  a queue where it gets picked up by a worker to execute. If a worker picks up
-  a `tf.function`, has begun to execute it, but the worker process is
-  disconnected from the coordinator in the middle of execution, the
-  `tf.function` is deemed not completed, and is put back to the queue. This is
-  regardless of how much progress the `tf.function` has run. Once it is
-  re-queued, it will be picked up again by an arbitrary available worker at some
-  later time. As a result, the same function may be executed more than once, but
-  not less than once. If an `tf.keras.optimizers.Optimizer` is used,
-  `tf.keras.optimizers.Optimizer.iterations` roughly indicates the number of
-  times the gradients have been applied and can be used as an approximation of
-  the total number of steps. The number of times the function has been scheduled
-  by the `tf.distribute.experimental.coordinator.ClusterCoordinator`, on the
-  other hand, should not be indicative of actual steps run. See
-  `tf.distribute.experimental.coordinator.ClusterCoordinator.schedule` for more
-  information.
+  It is thus essential that in user's program, a checkpoint file is periodically
+  saved, and restored at the start of the program. If an
+  `tf.keras.optimizers.Optimizer` is checkpointed, after restoring from a
+  checkpoiont, its `iterations` property roughly indicates the number of steps
+  that have been made. This can be used to decide how many epochs and steps are
+  needed before the training completion.
 
   See `tf.distribute.experimental.ParameterServerStrategy` docstring for an
   example usage of this API.
@@ -1009,31 +999,26 @@ class ClusterCoordinator(object):
   def schedule(self, fn, args=None, kwargs=None):
     """Schedules `fn` to be dispatched to a worker for asynchronous execution.
 
-    When calling `schedule` with a function `fn`, `fn` will be executed on a
-    remote worker at some later time. The process is asynchronous, meaning
-    `schedule` returns immediately, possibly without having the result ready
-    yet. `schedule` returns a
-    `tf.distribute.experimental.coordinator.RemoteValue` object, which wraps the
-    output of the function. After `schedule` is called, `fetch` can be called
-    on the `tf.distribute.experimental.coordinator.RemoteValue` to wait for the
-    function execution to finish and retrieve its output from the remote worker.
-    On the other hand, call
+    This method is non-blocking in that it queues the `fn` which will be
+    executed later and returns a
+    `tf.distribute.experimental.coordinator.RemoteValue` object immediately.
+    `fetch` can be called on the it to wait for the function execution to finish
+    and retrieve its output from a remote worker. On the other hand, call
     `tf.distribute.experimental.coordinator.ClusterCoordinator.join` to wait for
-    all scheduled functions to finish execution before proceeding.
+    all scheduled functions to finish.
 
     `schedule` guarantees that `fn` will be executed on a worker at least once;
     it could be more than once if its corresponding worker fails in the middle
     of its execution. Note that since worker can fail at any point when
     executing the function, it is possible that the function is partially
     executed, but `tf.distribute.experimental.coordinator.ClusterCoordinator`
-    guarantees that in those events, the function will eventually be fully
-    executed, possibly on a different worker that is available.
+    guarantees that in those events, the function will eventually be executed on
+    any worker that is available.
 
-    If any previously scheduled function raises an error, `schedule` will fail
-    by raising any one of those errors, and clear the errors collected so far.
-    There are two implications when this happens: 1) user should call `schedule`
-    with `fn` again to re-schedule, and 2) some of the previously scheduled
-    functions may have not been executed. User can call `fetch` on the returned
+    If any previously scheduled function raises an error, `schedule` will raise
+    any one of those errors, and clear the errors collected so far. What happens
+    here, some of the previously scheduled functions may have not been executed.
+    User can call `fetch` on the returned
     `tf.distribute.experimental.coordinator.RemoteValue` to inspect if they have
     executed, failed, or cancelled, and reschedule the corresponding function if
     needed.
@@ -1046,10 +1031,9 @@ class ClusterCoordinator(object):
 
     `args` and `kwargs` are the arguments passed into `fn`, when `fn` is
     executed on a worker. They can be
-    `tf.distribute.experimental.coordinator.PerWorkerValues`, which is a
-    'collection of values, each of which represents a component specific to a
-    worker; in this case, the argument will be substituted with the
-    corresponding component on the target worker. Arguments that are not
+    `tf.distribute.experimental.coordinator.PerWorkerValues` and in this case,
+    the argument will be substituted with the corresponding component on the
+    target worker. Arguments that are not
     `tf.distribute.experimental.coordinator.PerWorkerValues` will be passed into
     `fn` as-is. Currently, `tf.distribute.experimental.coordinator.RemoteValue`
     is not supported to be input `args` or `kwargs`.
@@ -1065,9 +1049,9 @@ class ClusterCoordinator(object):
       represents the output of the function scheduled.
 
     Raises:
-      Exception: one of the exceptions caught by the coordinator by any
-        previously scheduled function since the last time an error was thrown or
-        since the beginning of the program.
+      Exception: one of the exceptions caught by the coordinator from any
+        previously scheduled function, since the last time an error was thrown
+        or since the beginning of the program.
     """
     # Slot variables are usually created during function tracing time; thus
     # `schedule` needs to be called within the `strategy.scope()`.
@@ -1106,48 +1090,57 @@ class ClusterCoordinator(object):
 
     Returns:
       Whether all the scheduled functions have finished execution.
+    Raises:
+      Exception: one of the exceptions caught by the coordinator by any
+        previously scheduled function since the last time an error was thrown or
+        since the beginning of the program.
     """
     return self.cluster.done()
 
   def create_per_worker_dataset(self, dataset_fn):
     """Create dataset on workers by calling `dataset_fn` on worker devices.
 
-    This creates the given dataset generated by dataset_fn on the workers
+    This creates the given dataset generated by dataset_fn on workers
     and returns an object that represents the collection of those individual
-    datasets. Calling `iter` on such collection of dataset returns a
+    datasets. Calling `iter` on such collection of datasets returns a
     `tf.distribute.experimental.coordinator.PerWorkerValues`, which is a
     collection of iterators, where the iterators have been placed on respective
     workers.
 
-    Calling `next` on this
-    `tf.distribute.experimental.coordinator.PerWorkerValues` of iterators is
-    currently unsupported; it is meant to be passed as an argument into
+    Calling `next` on a `PerWorkerValues` of iterator is unsupported. The
+    iterator is meant to be passed as an argument into
     `tf.distribute.experimental.coordinator.ClusterCoordinator.schedule`. When
-    the scheduled function is picked up and being executed by a worker, the
+    the scheduled function is about to be executed by a worker, the
     function will receive the individual iterator that corresponds to the
-    worker, and now `next` can be called on iterator to get the next (batch or
-    example) of data.
+    worker. The `next` method can be called on an iterator inside a
+    scheduled function when the iterator is an input of the function.
 
-    Dataset shuffling and repeating are usually needed in `dataset_fn`; however,
-    sharding is not recommended: some worker may not be available and those
-    examples may be skipped and not covered by other workers, if the dataset is
-    sharded.
+    Currently the `schedule` method assumes workers are all the same and thus
+    assumes the datasets on different workers are the same, except they may be
+    shuffled differently if they contain a `dataset.shuffle` operation and a
+    random seed is not set. Because of this, we also recommend the datasets to
+    be repeated indefinitely and schedule a finite number of steps instead of
+    relying on the `OutOfRangeError` from a dataset.
+
 
     Example:
 
     ```python
-    @tf.function
-    def worker_fn(iterator):
-      return next(iterator)
-
-    def dataset_fn():
-      return tf.data.from_tensor_slices([3] * 3)
-
     strategy = tf.distribute.experimental.ParameterServerStrategy(
         cluster_resolver=...)
     coordinator = tf.distribute.experimental.coordinator.ClusterCoordinator(
         strategy=strategy)
-    per_worker_dataset = coordinator.create_per_worker_dataset(dataset_fn)
+
+    @tf.function
+    def worker_fn(iterator):
+      return next(iterator)
+
+    def per_worker_dataset_fn():
+      return strategy.distribute_datasets_from_function(
+          lambda x: tf.data.from_tensor_slices([3] * 3)
+
+    per_worker_dataset = coordinator.create_per_worker_dataset(
+        per_worker_dataset_fn)
     per_worker_iter = iter(per_worker_dataset)
     remote_value = coordinator.schedule(worker_fn, args=(per_worker_iter,))
     assert remote_value.fetch() == 3
