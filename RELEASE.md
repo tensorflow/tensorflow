@@ -102,6 +102,35 @@ This release contains contributions from many people at Google, as well as:
   `tf.distribute.experimental.CommunicationOptions`.
   `tf.distribute.experimental.CollectiveCommunication` is renamed
   `tf.distribute.experimental.CommunicationImplementation`.
+* `tf.keras.mixed_precision.experimental`:
+  * `AutoCastVariable.dtype` now refers to the actual variable dtype, not the
+    dtype it will be casted to.
+  * When mixed precision is enabled, `tf.keras.layers.Embedding` now outputs a
+    float16 or bfloat16 tensor instead of a float32 tensor.
+  * The property
+    `tf.keras.mixed_precision.experimental.LossScaleOptimizer.loss_scale` is now
+    a tensor, not a `LossScale` object. This means to get a loss scale of a
+    `LossScaleOptimizer` as a tensor, you must now call `opt.loss_scale` instead
+    of `opt.loss_scale()`.
+  * The property `should_cast_variables` has been removed from
+    `tf.keras.mixed_precision.experimental.Policy`
+  * When passing a `tf.mixed_precision.experimental.DynamicLossScale` to
+    `tf.keras.mixed_precision.experimental.LossScaleOptimizer`, the
+    `DynamicLossScale`'s multiplier must be 2.
+  * When passing a `tf.mixed_precision.experimental.DynamicLossScale` to
+    `tf.keras.mixed_precision.experimental.LossScaleOptimizer`, the weights of
+    the `DynanmicLossScale` are copied into the `LossScaleOptimizer` instead of
+    being reused. This means modifying the weights of the `DynamicLossScale`
+    will no longer affect the weights of the LossScaleOptimizer, and vice versa.
+  * The global policy can no longer be set to a non-floating point policy in
+    `tf.keras.mixed_precision.experimental.set_policy`
+  * In `Layer.call`, `AutoCastVariable`s will no longer be casted within
+    `MirroredStrategy.run` or `ReplicaContext.merge_call`. This is because a
+    thread local variable is used to determine whether `AutoCastVariable`s are
+    casted, and those two functions run with a different thread. Note this only
+    applies if one of these two functions is called within `Layer.call`; if one
+    of those two functions calls `Layer.call`, `AutoCastVariable`s will still be
+    casted.
 
 ## Known Caveats
 
@@ -129,6 +158,24 @@ This release contains contributions from many people at Google, as well as:
     * Major issues with saving are fixed.
     * See [Multi-worker training with Keras](https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras) for a tutorial.
   * Deprecated `experimental_distribute_datasets_from_function` method and renamed it to `distribute_datasets_from_function` as it is no longer experimental.
+* The `tf.keras.mixed_precision` API has been made non-experimental. The major
+  changes to the new non-experimental API are:
+  * `tf.keras.mixed_precision.Policy` no longer takes in a
+    `tf.mixed_precision.experimental.LossScale` in the constructor, and no
+    longer has a `LossScale` associated with it. Instead, `Model.compile` will
+    automatically wrap the optimizer with a `LossScaleOptimizer` using dynamic
+    loss scaling if `Policy.name` is "mixed_float16".
+  * `tf.keras.mixed_precision.LossScaleOptimizer`'s constructor takes in
+    different arguments. In particular, it no longer takes in a `LossScale`, and
+    there is no longer a `LossScale` associated with the `LossScaleOptimizer`.
+    Instead, `LossScaleOptimizer` directly implements fixed or dynamic loss
+    scaling. See the documentation of
+    `tf.keras.mixed_precision.experimental.LossScaleOptimizer` for details on
+    the differences between the experimental `LossScaleOptimizer` and the new
+    non-experimental `LossScaleOptimizer`.
+  * `tf.mixed_precision.experimental.LossScale` and its subclasses are
+    deprecated, as all of its functionality now exists within
+    `tf.keras.mixed_precision.LossScaleOptimizer`
 
 ## Bug Fixes and Other Changes
 
