@@ -48,6 +48,8 @@ class DataServiceDispatcherImpl {
   explicit DataServiceDispatcherImpl(
       const experimental::DispatcherConfig& config);
 
+  ~DataServiceDispatcherImpl();
+
   // Starts the dispatcher. If there is a journal, this will read from the
   // journal to restore the dispatcher's state.
   Status Start();
@@ -55,12 +57,13 @@ class DataServiceDispatcherImpl {
   // See dispatcher.proto for API documentation.
 
   /// Worker-facing API.
-  Status RegisterWorker(const RegisterWorkerRequest* request,
-                        RegisterWorkerResponse* response);
+  Status WorkerHeartbeat(const WorkerHeartbeatRequest* request,
+                         WorkerHeartbeatResponse* response);
   Status WorkerUpdate(const WorkerUpdateRequest* request,
                       WorkerUpdateResponse* response);
   Status GetDatasetDef(const GetDatasetDefRequest* request,
                        GetDatasetDefResponse* response);
+  Status GetSplit(const GetSplitRequest* request, GetSplitResponse* response);
 
   /// Client-facing API.
   Status GetOrRegisterDataset(const GetOrRegisterDatasetRequest* request,
@@ -76,6 +79,30 @@ class DataServiceDispatcherImpl {
                     GetWorkersResponse* response);
 
  private:
+  struct DistributedEpochJob {
+    // When the distributed epoch job is first created, we eagerly create the
+    // split provider to fail fast in case the dataset doesn't support
+    // splitting. Split providers for later repetitions are created on demand.
+    explicit DistributedEpochJob(int64 job_id, int64 dataset_id,
+                                 std::unique_ptr<SplitProvider> split_provider)
+        : job_id(job_id), dataset_id(dataset_id) {
+      split_providers[0] = std::move(split_provider);
+    }
+
+    const int64 job_id;
+    const int64 dataset_id;
+    // Map from repetition index to split provider.
+    absl::flat_hash_map<int64, std::unique_ptr<SplitProvider>> split_providers;
+  };
+
+  // Creates a new DistributedEpochJob in `distributed_epoch_jobs_`.
+  Status MakeDistributedEpochJob(int64 job_id, int64 dataset_id)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Makes a split provider for the specified `dataset_id`, and stores it in
+  // `split_provider`.
+  Status MakeSplitProvider(int64 dataset_id,
+                           std::unique_ptr<SplitProvider>& split_provider)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Registers a dataset with the given fingerprint, storing the new dataset's
   // id in `dataset_id`.
   Status RegisterDataset(uint64 fingerprint, const DatasetDef& dataset,
@@ -92,6 +119,8 @@ class DataServiceDispatcherImpl {
                    absl::optional<DispatcherState::NamedJobKey> named_job_key,
                    std::shared_ptr<const DispatcherState::Job>& job)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Creates tasks for the specified worker, one task for every unfinished job.
+  Status CreateTasksForWorker(const std::string& worker_address);
   // Acquires a job client id to read from the given job and sets
   // `job_client_id`.
   Status AcquireJobClientId(
@@ -122,28 +151,52 @@ class DataServiceDispatcherImpl {
   Status ValidateMatchingJob(std::shared_ptr<const DispatcherState::Job> job,
                              ProcessingMode processing_mode, int64 dataset_id)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Checks that the dispatcher has started, returning UNAVAILABLE if it hasn't.
+  Status CheckStarted() LOCKS_EXCLUDED(mu_);
   // Applies a state update, updating both the journal and the in-memory state.
   Status Apply(const Update& update) EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Applies a state update, but doesn't update the journal. Only meant to be
   // used when recovering state when the dispatcher starts.
   Status ApplyWithoutJournaling(const Update& update)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // A thread which periodically checks for jobs to clean up.
+  void JobGcThread();
+  // Scans for old jobs and marks them as finished.
+  Status GcOldJobs() EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Gets a `DatasetDef` from `dataset_store_` for the given dataset id, and
+  // stores it in `dataset_def`.
+  Status GetDatasetDef(int64 dataset_id,
+                       std::shared_ptr<const DatasetDef>& dataset_def)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Gets a `DatasetDef` from `dataset_store_` for the given dataset, and
+  // stores it in `dataset_def`.
+  Status GetDatasetDef(const DispatcherState::Dataset& dataset,
+                       std::shared_ptr<const DatasetDef>& dataset_def)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   const experimental::DispatcherConfig& config_;
+  Env* env_;
 
   mutex mu_;
-
-  int64 next_task_id_ TF_GUARDED_BY(mu_) = 0;
+  bool started_ TF_GUARDED_BY(mu_) = false;
+  bool cancelled_ TF_GUARDED_BY(mu_) = false;
 
   // Cached worker stubs for communicating with workers.
   absl::flat_hash_map<std::string, std::unique_ptr<WorkerService::Stub>>
       worker_stubs_ TF_GUARDED_BY(mu_);
   // Store of dataset definitions.
   std::unique_ptr<DatasetStore> dataset_store_ TF_GUARDED_BY(mu_);
+  // Mapping from job id to `DistributedEpochJob` for jobs with processing mode
+  // DISTRIBUTED_EPOCH.
+  absl::flat_hash_map<int64, std::unique_ptr<DistributedEpochJob>>
+      distributed_epoch_jobs_ TF_GUARDED_BY(mu_);
 
   absl::optional<std::unique_ptr<JournalWriter>> journal_writer_
       TF_GUARDED_BY(mu_);
   DispatcherState state_ TF_GUARDED_BY(mu_);
+  // Condition variable for waking up the job gc thread.
+  condition_variable job_gc_thread_cv_;
+  std::unique_ptr<Thread> job_gc_thread_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(DataServiceDispatcherImpl);
 };

@@ -815,7 +815,7 @@ Costs OpLevelCostEstimator::PredictOpCountBasedCost(
           << " Intermediate Memory Time (ns):"
           << intermediate_memory_cost.count();
 
-  Costs costs;
+  Costs costs = Costs::ZeroCosts();
   costs.compute_time = compute_cost;
   costs.memory_time = memory_cost;
   costs.intermediate_memory_time = intermediate_memory_cost;
@@ -2363,6 +2363,11 @@ Costs OpLevelCostEstimator::PredictSoftmax(const OpContext& op_context) const {
 Costs OpLevelCostEstimator::PredictResizeBilinear(
     const OpContext& op_context) const {
   bool found_unknown_shapes = false;
+
+  if (op_context.op_info.outputs().empty() ||
+      op_context.op_info.inputs().empty()) {
+    return Costs::ZeroCosts(/*inaccurate=*/true);
+  }
 
   const int64 input_size =
       CalculateTensorSize(op_context.op_info.inputs(0), &found_unknown_shapes);

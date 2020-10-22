@@ -32,7 +32,7 @@ namespace tensorflow {
 // environment, a traced representation etc.
 class AbstractContext {
  protected:
-  enum AbstractContextKind { kGraph, kMlir, kEager, kTfrt };
+  enum AbstractContextKind { kGraph, kMlir, kEager, kTfrt, kTape };
   explicit AbstractContext(AbstractContextKind kind) : kind_(kind) {}
   virtual ~AbstractContext() {}
 

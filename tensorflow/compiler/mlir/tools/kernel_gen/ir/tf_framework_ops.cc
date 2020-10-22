@@ -61,10 +61,10 @@ LogicalResult Verify(OpTy op) {
 }
 
 //===----------------------------------------------------------------------===//
-// AllocRawOp
+// TFAllocOp
 //===----------------------------------------------------------------------===//
 template <>
-LogicalResult Verify<AllocRawOp>(AllocRawOp op) {
+LogicalResult Verify<TFAllocOp>(TFAllocOp op) {
   // Check that the total number of operands matches the number of dynamic
   // dimensions specified in the memref type.
   unsigned result_dyn_dims = op.getType().getNumDynamicDims();
@@ -77,9 +77,9 @@ LogicalResult Verify<AllocRawOp>(AllocRawOp op) {
   return success();
 }
 
-#define GET_OP_CLASSES
-#include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.cc.inc"
-
 }  // namespace tf_framework
 }  // namespace kernel_gen
 }  // namespace mlir
+
+#define GET_OP_CLASSES
+#include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.cc.inc"

@@ -545,8 +545,10 @@ message CompleteGroupRequest {
   int32 group_key = 1;
   int32 group_size = 2;
   string device_type = 3;
-  repeated string device_name = 4;
   int32 collective_type = 5;
+  DeviceAttributes device_attributes = 6;
+
+  reserved 4;
 }
 
 // Gives the complete membership of the group identified by group_key.
@@ -555,9 +557,10 @@ message CompleteGroupResponse {
   int32 group_size = 2;
   string device_type = 3;
   int32 num_tasks = 4;  // number of distinct tasks hosting the devices
-  repeated string device_name = 5;
-  repeated string task_name = 6;  // task name prefixes of device_names
   bytes communicator_key = 7;
+  repeated DeviceAttributes device_attributes = 8;
+
+  reserved 5, 6;
 }
 
 // Supplies data about one collective op belonging to the instance identified

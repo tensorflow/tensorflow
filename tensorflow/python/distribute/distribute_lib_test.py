@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 from absl.testing import parameterized
-import numpy as np
 
 from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.data.ops import dataset_ops
@@ -89,20 +88,15 @@ class _TestExtended(distribute_lib.StrategyExtendedV1):
                                            [distribute_lib.InputContext()],
                                            self._container_strategy())
 
-  def _experimental_distribute_datasets_from_function(self, dataset_fn,
-                                                      options):
+  def _distribute_datasets_from_function(self, dataset_fn, options):
     return dataset_fn(distribute_lib.InputContext())
 
   def _local_results(self, value):
     return (value,)
 
-  def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
-    del reduce_op, destinations, experimental_hints
+  def _reduce_to(self, reduce_op, value, destinations, options):
+    del reduce_op, destinations, options
     return value
-
-  def _experimental_make_numpy_dataset(self, numpy_input, session):
-    del session
-    return dataset_ops.DatasetV2.from_tensor_slices(numpy_input)
 
   def _experimental_run_steps_on_iterator(self, fn, iterator, iterations,
                                           initial_loop_values=None):
@@ -124,6 +118,9 @@ class _TestExtended(distribute_lib.StrategyExtendedV1):
       return result
     else:
       return nest.map_structure(self._unwrap, result)
+
+  def _get_local_replica_id(self, replica_id_in_sync_group):
+    return replica_id_in_sync_group
 
 
 def _assert_in_default_state(t):
@@ -162,7 +159,7 @@ class TestStrategyTest(test.TestCase):
 
     def run_fn():
       replica_context = ds_context.get_replica_context()
-      self.assertTrue(replica_context is not None)
+      self.assertIsNotNone(replica_context)
       self.assertIs(None, ds_context.get_cross_replica_context())
       self.assertFalse(ds_context.in_cross_replica_context())
       self.assertTrue(ds_context.has_strategy())
@@ -343,13 +340,6 @@ class TestStrategyTest(test.TestCase):
                                                ((x, "/CPU:0"), (y, "/CPU:0")))
       self.assertEqual(self.evaluate(x), self.evaluate(x_r))
       self.assertEqual(self.evaluate(y), self.evaluate(y_r))
-
-  @_run_in_and_out_of_scope
-  def testExperimentalMakeNumpyDataset(self, dist):
-    numpy_input = np.ones([10], dtype=np.float32)
-    dataset = dist.experimental_make_numpy_dataset(numpy_input)
-    self.assertEqual(
-        self.evaluate(dataset.reduce(0., lambda a, b: a + b)), 10.)
 
   @_run_in_and_out_of_scope
   def testExperimentalRunStepsOnIterator(self, dist):
@@ -546,14 +536,14 @@ class DefaultDistributionStrategyTest(test.TestCase, parameterized.TestCase):
     if context.executing_eagerly():
       dataset_fn = lambda _: dataset_ops.DatasetV2.range(10).batch(2)
       dist_dataset_from_func = \
-          default_strategy.experimental_distribute_datasets_from_function(
+          default_strategy.distribute_datasets_from_function(
               dataset_fn)
       next_val = next(iter(dist_dataset_from_func))
       self.assertAllEqual([0, 1], self.evaluate(next_val))
     else:
       dataset_fn = lambda _: dataset_ops.DatasetV2.range(10).batch(2)
       dist_dataset_from_func = \
-        default_strategy.experimental_distribute_datasets_from_function(
+        default_strategy.distribute_datasets_from_function(
             dataset_fn)
       dataset_ops.make_initializable_iterator(dist_dataset_from_func)
 

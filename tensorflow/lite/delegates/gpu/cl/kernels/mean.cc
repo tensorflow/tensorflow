@@ -35,6 +35,15 @@ Mean::Mean(const OperationDef& definition, const DeviceInfo& device_info)
   if (device_info.IsAdreno3xx()) {
     work_group_size_ = int3(16, 8, 1);
   }
+  if (device_info.IsMali()) {
+    const MaliInfo& mali_info = device_info.mali_info;
+    if (mali_info.IsMaliT6xx() || mali_info.IsMaliT7xx() ||
+        mali_info.IsMaliT8xx()) {
+      work_group_size_ = int3(8, 4, 1);
+    } else {
+      work_group_size_ = int3(8, 8, 1);
+    }
+  }
   code_ = GetMeanKernelCode(definition_, work_group_size_);
 }
 
@@ -108,12 +117,12 @@ std::string Mean::GetMeanKernelCode(const OperationDef& op_def,
   return c;
 }
 
-absl::Status Mean::BindArguments() {
+absl::Status Mean::BindArguments(ArgumentsBinder* args) {
   const double total_size = src_[0]->Width() * src_[0]->Height();
   const double size_0 = work_group_size_.x * work_group_size_.y;
   const double size_1 = total_size / size_0;
-  RETURN_IF_ERROR(args_.SetFloat("inv_multiplier_1", 1.0 / size_1));
-  RETURN_IF_ERROR(args_.SetFloat("inv_multiplier_2", 1.0 / size_0));
+  RETURN_IF_ERROR(args->SetFloat("inv_multiplier_1", 1.0 / size_1));
+  RETURN_IF_ERROR(args->SetFloat("inv_multiplier_2", 1.0 / size_0));
   return absl::OkStatus();
 }
 

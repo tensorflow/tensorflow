@@ -23,7 +23,6 @@ import numpy
 import six
 
 from tensorflow.python.eager import context
-from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -37,6 +36,7 @@ from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
 from tensorflow.python.training.tracking import base
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import util
@@ -177,20 +177,17 @@ class ListTests(keras_parameterized.TestCase):
     m2(m2.null_input())
     self.assertLen(m2.trainable_variables, 6)
 
+  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testUpdatesForwarded(self):
-    with context.graph_mode():
-      model = HasList()
-      model_input = array_ops.ones([32, 2])
-      model(model_input)
+    model = HasList()
+    model_input = array_ops.ones([32, 2])
+    model(model_input)
+    if context.executing_eagerly():
+      self.assertEqual(0, len(model.updates))
+    else:
       self.assertGreater(len(model.layers_with_updates[0].updates), 0)
       self.assertEqual(set(model.layers_with_updates[0].updates),
                        set(model.updates))
-
-    with context.eager_mode():
-      model = HasList()
-      model_input = array_ops.ones([32, 2])
-      model(model_input)
-      self.assertEqual(0, len(model.updates))
 
   @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testLossesForwarded(self):
@@ -609,4 +606,5 @@ class InterfaceTests(keras_parameterized.TestCase):
 
 
 if __name__ == "__main__":
+  ops.enable_eager_execution()
   test.main()

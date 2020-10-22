@@ -439,6 +439,49 @@ TEST(BasicFlatBufferModel, TestParseModelWithSparseTensor) {
 
 // TODO(b/150072943): Add malformed model with sparse tensor tests.
 
+// The models here have at least a node that uses the same tensor as input and
+// output. This causes segfaults when trying to eval the operator, hence we try
+// to prevent this scenario. The earliest place we can check this is in
+// `AllocateTensors`, hence the test checks that `interpreter->AllocateTensors`
+// detects these bad models.
+TEST(BasicFlatBufferModel, TestHandleMalformedModelReuseTensor) {
+  const auto model_path =
+      "tensorflow/lite/testdata/add_shared_tensors.bin";
+
+  std::unique_ptr<tflite::FlatBufferModel> model =
+      FlatBufferModel::BuildFromFile(model_path);
+  ASSERT_NE(model, nullptr);
+
+  tflite::ops::builtin::BuiltinOpResolver resolver;
+  InterpreterBuilder builder(*model, resolver);
+  std::unique_ptr<Interpreter> interpreter;
+  ASSERT_EQ(builder(&interpreter), kTfLiteOk);
+  ASSERT_NE(interpreter, nullptr);
+  ASSERT_NE(interpreter->AllocateTensors(), kTfLiteOk);
+}
+
+// The models here have a buffer index for a tensor pointing to a null buffer.
+// This results in the tensor being interpreted as read-write, but the model
+// assumes the tensor is read-only. As such, `interpreter->Invoke()` would
+// segfault if no precondition check is added. The test checks that the
+// precondition check exists.
+TEST(BasicFlatBufferModel, TestHandleMalformedModelInvalidBuffer) {
+  const auto model_path =
+      "tensorflow/lite/testdata/segment_sum_invalid_buffer.bin";
+
+  std::unique_ptr<tflite::FlatBufferModel> model =
+      FlatBufferModel::BuildFromFile(model_path);
+  ASSERT_NE(model, nullptr);
+
+  tflite::ops::builtin::BuiltinOpResolver resolver;
+  InterpreterBuilder builder(*model, resolver);
+  std::unique_ptr<Interpreter> interpreter;
+  ASSERT_EQ(builder(&interpreter), kTfLiteOk);
+  ASSERT_NE(interpreter, nullptr);
+  ASSERT_EQ(interpreter->AllocateTensors(), kTfLiteOk);
+  ASSERT_NE(interpreter->Invoke(), kTfLiteOk);
+}
+
 // TODO(aselle): Add tests for serialization of builtin op data types.
 // These tests will occur with the evaluation tests of individual operators,
 // not here.

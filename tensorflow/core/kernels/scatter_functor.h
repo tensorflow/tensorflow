@@ -33,9 +33,6 @@ namespace tensorflow {
 class OpKernelContext;
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
-#ifdef TENSORFLOW_USE_SYCL
-typedef Eigen::SyclDevice SYCLDevice;
-#endif  // TENSORFLOW_USE_SYCL
 
 namespace scatter_op {
 
@@ -125,65 +122,6 @@ struct Assign<scatter_op::UpdateOp::MAX> {
   }
 };
 
-#ifdef TENSORFLOW_USE_SYCL
-template <scatter_op::UpdateOp Op>
-struct AssignSYCL {};
-template <>
-struct AssignSYCL<scatter_op::UpdateOp::ASSIGN> {
-  template <typename Device, typename Params, typename Update>
-  static void Run(Device d, Params p, Update u) {
-    p.device(d) = u;
-  }
-};
-
-template <>
-struct AssignSYCL<scatter_op::UpdateOp::ADD> {
-  template <typename Device, typename Params, typename Update>
-  static void Run(Device d, Params p, Update u) {
-    p.device(d) += u;
-  }
-};
-
-template <>
-struct AssignSYCL<scatter_op::UpdateOp::SUB> {
-  template <typename Device, typename Params, typename Update>
-  static void Run(Device d, Params p, Update u) {
-    p.device(d) -= u;
-  }
-};
-
-template <>
-struct AssignSYCL<scatter_op::UpdateOp::MUL> {
-  template <typename Device, typename Params, typename Update>
-  static void Run(Device d, Params p, Update u) {
-    p.device(d) = p * u;
-  }
-};
-
-template <>
-struct AssignSYCL<scatter_op::UpdateOp::DIV> {
-  template <typename Device, typename Params, typename Update>
-  static void Run(Device d, Params p, Update u) {
-    p.device(d) = p / u;
-  }
-};
-
-template <>
-struct AssignSYCL<scatter_op::UpdateOp::MIN> {
-  template <typename Device, typename Params, typename Update>
-  static void Run(Device d, Params p, Update u) {
-    p.device(d) = p.cwiseMin(u);
-  }
-};
-
-template <>
-struct AssignSYCL<scatter_op::UpdateOp::MAX> {
-  template <typename Device, typename Params, typename Update>
-  static void Run(Device d, Params p, Update u) {
-    p.device(d) = p.cwiseMax(u);
-  }
-};
-#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace internal
 }  // namespace scatter_op
@@ -328,30 +266,6 @@ template <typename Index>
 struct ScatterFunctor<GPUDevice, Variant, Index, scatter_op::UpdateOp::ASSIGN>
     : ScatterFunctorVariantAssignBase<GPUDevice, Index> {};
 
-#ifdef TENSORFLOW_USE_SYCL
-template <typename T, typename Index, scatter_op::UpdateOp op>
-struct ScatterFunctorBase<SYCLDevice, T, Index, op> {
-  Index operator()(OpKernelContext* c, const SYCLDevice& d,
-                   typename TTypes<T>::Matrix params,
-                   typename TTypes<T>::ConstMatrix updates,
-                   typename TTypes<Index>::ConstFlat indices) {
-    // indices and params sizes were validated in DoCompute().
-    const Index N = static_cast<Index>(indices.size());
-    const Index limit = static_cast<Index>(params.dimension(0));
-    for (Index i = 0; i < N; i++) {
-      // Grab the index and check its validity.  Do this carefully,
-      // to avoid checking the value and grabbing it again from
-      // memory a second time (a security risk since it may change in between).
-      const Index index = ::tensorflow::internal::SubtleMustCopy(indices(i));
-      if (!FastBoundsCheck(index, limit)) return i;
-      // Copy last Ndim-1 dimensions of updates[i] to params[index]
-      scatter_op::internal::AssignSYCL<op>::Run(
-          d, params.template chip<0>(index), updates.template chip<0>(i));
-    }
-    return -1;
-  }
-};
-#endif  // TENSORFLOW_USE_SYCL
 
 template <typename T, typename Index>
 struct ScatterFunctorBase<CPUDevice, T, Index, scatter_op::UpdateOp::ASSIGN> {
@@ -395,27 +309,6 @@ template <typename T, typename Index, scatter_op::UpdateOp op>
 struct ScatterFunctor<CPUDevice, T, Index, op>
     : ScatterFunctorBase<CPUDevice, T, Index, op> {};
 
-#ifdef TENSORFLOW_USE_SYCL
-template <typename T, typename Index, scatter_op::UpdateOp op>
-struct ScatterFunctorSYCL {
-  Index operator()(OpKernelContext* c, const SYCLDevice& d,
-                   typename TTypes<T>::Matrix params,
-                   typename TTypes<T>::ConstMatrix updates,
-                   typename TTypes<Index>::Flat indices) {
-    // indices and params sizes were validated in DoCompute().
-    const Index N = static_cast<Index>(indices.size());
-    const Index limit = static_cast<Index>(params.dimension(0));
-    for (Index i = 0; i < N; i++) {
-      const Index index = ::tensorflow::internal::SubtleMustCopy(indices(i));
-      if (!FastBoundsCheck(index, limit)) return i;
-      // Copy last Ndim-1 dimensions of updates[i] to params[index]
-      scatter_op::internal::AssignSYCL<op>::Run(
-          d, params.template chip<0>(index), updates.template chip<0>(i));
-    }
-    return -1;
-  }
-};
-#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T, typename Index, scatter_op::UpdateOp op>
 struct ScatterScalarFunctor {
@@ -483,30 +376,6 @@ struct ScatterScalarFunctor<GPUDevice, Variant, Index,
                             scatter_op::UpdateOp::ASSIGN>
     : ScatterScalarFunctorVariantAssignBase<GPUDevice, Index> {};
 
-#ifdef TENSORFLOW_USE_SYCL
-template <typename T, typename Index, scatter_op::UpdateOp op>
-struct ScatterScalarFunctorBase<SYCLDevice, T, Index, op> {
-  Index operator()(OpKernelContext* c, const SYCLDevice& d,
-                   typename TTypes<T>::Matrix params,
-                   const typename TTypes<T>::ConstScalar update,
-                   typename TTypes<Index>::ConstFlat indices) {
-    // indices and params sizes were validated in DoCompute().
-    const Index N = static_cast<Index>(indices.size());
-    const Index limit = static_cast<Index>(params.dimension(0));
-    for (Index i = 0; i < N; i++) {
-      // Grab the index and check its validity.  Do this carefully,
-      // to avoid checking the value and grabbing it again from
-      // memory a second time (a security risk since it may change in between).
-      const Index index = ::tensorflow::internal::SubtleMustCopy(indices(i));
-      if (!FastBoundsCheck(index, limit)) return i;
-      // Broadcast update to params[index]
-      scatter_op::internal::AssignSYCL<op>::RunScalar(
-          d, params.template chip<0>(index), update);
-    }
-    return -1;
-  }
-};
-#endif  // TENSORFLOW_USE_SYCL
 
 template <typename T, typename Index>
 struct ScatterScalarFunctorBase<CPUDevice, T, Index,
@@ -536,27 +405,6 @@ template <typename T, typename Index, scatter_op::UpdateOp op>
 struct ScatterScalarFunctor<CPUDevice, T, Index, op>
     : ScatterScalarFunctorBase<CPUDevice, T, Index, op> {};
 
-#ifdef TENSORFLOW_USE_SYCL
-template <typename T, typename Index, scatter_op::UpdateOp op>
-struct ScatterScalarFunctorSYCL {
-  Index operator()(OpKernelContext* c, const SYCLDevice& d,
-                   typename TTypes<T>::Matrix params,
-                   const typename TTypes<T>::ConstScalar update,
-                   typename TTypes<Index>::Flat indices) {
-    // indices and params sizes were validated in DoCompute().
-    const Index N = static_cast<Index>(indices.size());
-    const Index limit = static_cast<Index>(params.dimension(0));
-    for (Index i = 0; i < N; i++) {
-      const Index index = ::tensorflow::internal::SubtleMustCopy(indices(i));
-      if (!FastBoundsCheck(index, limit)) return i;
-      // Broadcast update to params[index]
-      scatter_op::internal::AssignSYCL<op>::Run(
-          d, params.template chip<0>(index), update());
-    }
-    return -1;
-  }
-};
-#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace functor
 }  // namespace tensorflow

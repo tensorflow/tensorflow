@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/credentials_factory.h"
 
-#include "absl/memory/memory.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 
@@ -36,11 +35,9 @@ CredentialsFactories& credentials_factories() {
 }
 }  // namespace
 
-void CredentialsFactory::Register(std::unique_ptr<CredentialsFactory> factory) {
+void CredentialsFactory::Register(CredentialsFactory* factory) {
   mutex_lock l(*get_lock());
-  if (!credentials_factories()
-           .insert({factory->Protocol(), factory.release()})
-           .second) {
+  if (!credentials_factories().insert({factory->Protocol(), factory}).second) {
     LOG(ERROR)
         << "Two credentials factories are being registered with protocol "
         << factory->Protocol() << ". Which one gets used is undefined.";
@@ -48,11 +45,11 @@ void CredentialsFactory::Register(std::unique_ptr<CredentialsFactory> factory) {
 }
 
 Status CredentialsFactory::Get(absl::string_view protocol,
-                               CredentialsFactory*& out) {
+                               CredentialsFactory** out) {
   mutex_lock l(*get_lock());
   auto it = credentials_factories().find(std::string(protocol));
   if (it != credentials_factories().end()) {
-    out = it->second;
+    *out = it->second;
     return Status::OK();
   }
 
@@ -69,18 +66,18 @@ Status CredentialsFactory::Get(absl::string_view protocol,
 
 Status CredentialsFactory::CreateServerCredentials(
     absl::string_view protocol,
-    std::shared_ptr<::grpc::ServerCredentials>& out) {
+    std::shared_ptr<::grpc::ServerCredentials>* out) {
   CredentialsFactory* factory;
-  TF_RETURN_IF_ERROR(CredentialsFactory::Get(protocol, factory));
+  TF_RETURN_IF_ERROR(CredentialsFactory::Get(protocol, &factory));
   TF_RETURN_IF_ERROR(factory->CreateServerCredentials(out));
   return Status::OK();
 }
 
 Status CredentialsFactory::CreateClientCredentials(
     absl::string_view protocol,
-    std::shared_ptr<::grpc::ChannelCredentials>& out) {
+    std::shared_ptr<::grpc::ChannelCredentials>* out) {
   CredentialsFactory* factory;
-  TF_RETURN_IF_ERROR(CredentialsFactory::Get(protocol, factory));
+  TF_RETURN_IF_ERROR(CredentialsFactory::Get(protocol, &factory));
   TF_RETURN_IF_ERROR(factory->CreateClientCredentials(out));
   return Status::OK();
 }
@@ -90,14 +87,14 @@ class InsecureCredentialsFactory : public CredentialsFactory {
   std::string Protocol() override { return "grpc"; }
 
   Status CreateServerCredentials(
-      std::shared_ptr<::grpc::ServerCredentials>& out) override {
-    out = ::grpc::InsecureServerCredentials();
+      std::shared_ptr<::grpc::ServerCredentials>* out) override {
+    *out = ::grpc::InsecureServerCredentials();
     return Status::OK();
   }
 
   Status CreateClientCredentials(
-      std::shared_ptr<::grpc::ChannelCredentials>& out) override {
-    out = ::grpc::InsecureChannelCredentials();
+      std::shared_ptr<::grpc::ChannelCredentials>* out) override {
+    *out = ::grpc::InsecureChannelCredentials();
     return Status::OK();
   }
 };
@@ -105,8 +102,8 @@ class InsecureCredentialsFactory : public CredentialsFactory {
 class InsecureCredentialsRegistrar {
  public:
   InsecureCredentialsRegistrar() {
-    CredentialsFactory::Register(
-        absl::make_unique<InsecureCredentialsFactory>());
+    auto factory = new InsecureCredentialsFactory();
+    CredentialsFactory::Register(factory);
   }
 };
 static InsecureCredentialsRegistrar registrar;

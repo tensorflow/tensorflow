@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/register_passes.h"
 #include "mlir/InitAllDialects.h"
@@ -31,6 +32,7 @@ int main(int argc, char **argv) {
   registry.insert<mlir::mhlo::MhloDialect>();
   registry.insert<mlir::chlo::HloClientDialect>();
   registry.insert<mlir::lmhlo::LmhloDialect>();
+  registry.insert<mlir::lmhlo_gpu::LmhloGpuDialect>();
 
   return failed(
       mlir::MlirOptMain(argc, argv, "MLIR HLO pass driver\n", registry));

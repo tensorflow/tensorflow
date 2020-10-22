@@ -124,15 +124,26 @@ def canonicalize_signatures(signatures):
       structured_outputs = signature_function(**kwargs)
       return _normalize_outputs(
           structured_outputs, signature_function.name, signature_key)
-    # TODO(b/123902469): Use ConcreteFunction.structured_inputs once their names
-    # always match keyword arguments.
     tensor_spec_signature = {}
-    for keyword, tensor in zip(
+    if signature_function.structured_input_signature is not None:
+      # The structured input signature may contain other non-tensor arguments.
+      inputs = filter(
+          lambda x: isinstance(x, tensor_spec.TensorSpec),
+          nest.flatten(signature_function.structured_input_signature,
+                       expand_composites=True))
+    else:
+      # Structured input signature isn't always defined for some functions.
+      inputs = signature_function.inputs
+
+    for keyword, inp in zip(
         signature_function._arg_keywords,  # pylint: disable=protected-access
-        signature_function.inputs):
+        inputs):
       keyword = compat.as_str(keyword)
-      tensor_spec_signature[keyword] = tensor_spec.TensorSpec.from_tensor(
-          tensor, name=keyword)
+      if isinstance(inp, tensor_spec.TensorSpec):
+        spec = tensor_spec.TensorSpec(inp.shape, inp.dtype, name=keyword)
+      else:
+        spec = tensor_spec.TensorSpec.from_tensor(inp, name=keyword)
+      tensor_spec_signature[keyword] = spec
     final_concrete = signature_wrapper._get_concrete_function_garbage_collected(  # pylint: disable=protected-access
         **tensor_spec_signature)
     # pylint: disable=protected-access

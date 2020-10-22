@@ -17,15 +17,13 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_UTIL_H_
 
 #include <string>
+#include <vector>
 
 #include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/cl/device_info.h"
 #include "tensorflow/lite/delegates/gpu/cl/precision.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
-#include "tensorflow/lite/delegates/gpu/common/access_type.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
-#include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
@@ -58,15 +56,12 @@ void RearrangeWeightsToOHWIOGroupI4O4(
     absl::Span<T> dst) {
   const int dst_slices = DivideRoundUp(weights.shape.o, 4);
   const int src_slices = DivideRoundUp(weights.shape.i, 4);
-  const int kernel_x = weights.shape.w;
-  const int kernel_y = weights.shape.h;
-
   const int dst_groups = DivideRoundUp(dst_slices, out_group_size);
 
   int counter = 0;
   for (int d = 0; d < dst_groups; ++d) {
-    for (int y = 0; y < kernel_y; ++y) {
-      for (int x = 0; x < kernel_x; ++x) {
+    for (int y = 0; y < weights.shape.h; ++y) {
+      for (int x = 0; x < weights.shape.w; ++x) {
         for (int s = 0; s < src_slices; ++s) {
           for (int d_group = 0; d_group < out_group_size; ++d_group) {
             for (int j = 0; j < 4; ++j) {
@@ -91,6 +86,118 @@ void RearrangeWeightsToOHWIOGroupI4O4(
   }
 }
 
+template <DataType S, typename T>
+void RearrangeWeightsToODHWIOGroupI4O4(
+    const tflite::gpu::Tensor<OHWDI, S>& weights, int out_group_size,
+    absl::Span<T> dst) {
+  const int dst_slices = DivideRoundUp(weights.shape.o, 4);
+  const int src_slices = DivideRoundUp(weights.shape.i, 4);
+  const int dst_groups = DivideRoundUp(dst_slices, out_group_size);
+
+  int counter = 0;
+  for (int d = 0; d < dst_groups; ++d) {
+    for (int z = 0; z < weights.shape.d; ++z) {
+      for (int y = 0; y < weights.shape.h; ++y) {
+        for (int x = 0; x < weights.shape.w; ++x) {
+          for (int s = 0; s < src_slices; ++s) {
+            for (int d_group = 0; d_group < out_group_size; ++d_group) {
+              for (int j = 0; j < 4; ++j) {
+                T filter;
+                for (int i = 0; i < 4; ++i) {
+                  const int s_ch = s * 4 + j;
+                  const int d_ch = (d * out_group_size + d_group) * 4 + i;
+                  if (s_ch < weights.shape.i && d_ch < weights.shape.o) {
+                    const int f_index =
+                        weights.shape.LinearIndex({d_ch, y, x, z, s_ch});
+                    filter[i] = weights.data[f_index];
+                  } else {
+                    filter[i] = 0.0f;
+                  }
+                }
+                dst[counter++] = filter;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+template <DataType S, typename T>
+void RearrangeWeightsToI4HWIOOGroupO4(
+    const tflite::gpu::Tensor<OHWI, S>& weights, int out_group_size,
+    absl::Span<T> dst) {
+  const int dst_slices = DivideRoundUp(weights.shape.o, 4);
+  const int src_slices = DivideRoundUp(weights.shape.i, 4);
+  const int dst_groups = DivideRoundUp(dst_slices, out_group_size);
+
+  int counter = 0;
+  for (int j = 0; j < 4; ++j) {
+    for (int y = 0; y < weights.shape.h; ++y) {
+      for (int x = 0; x < weights.shape.w; ++x) {
+        for (int s = 0; s < src_slices; ++s) {
+          for (int d = 0; d < dst_groups; ++d) {
+            for (int d_group = 0; d_group < out_group_size; ++d_group) {
+              T filter;
+              for (int i = 0; i < 4; ++i) {
+                const int s_ch = s * 4 + j;
+                const int d_ch = (d * out_group_size + d_group) * 4 + i;
+                if (s_ch < weights.shape.i && d_ch < weights.shape.o) {
+                  const int f_index =
+                      weights.shape.LinearIndex({d_ch, y, x, s_ch});
+                  filter[i] = weights.data[f_index];
+                } else {
+                  filter[i] = 0.0f;
+                }
+              }
+              dst[counter++] = filter;
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+template <DataType S, typename T>
+void RearrangeWeightsToI4DHWIOOGroupO4(
+    const tflite::gpu::Tensor<OHWDI, S>& weights, int out_group_size,
+    absl::Span<T> dst) {
+  const int dst_slices = DivideRoundUp(weights.shape.o, 4);
+  const int src_slices = DivideRoundUp(weights.shape.i, 4);
+  const int dst_groups = DivideRoundUp(dst_slices, out_group_size);
+
+  int counter = 0;
+  for (int j = 0; j < 4; ++j) {
+    for (int z = 0; z < weights.shape.d; ++z) {
+      for (int y = 0; y < weights.shape.h; ++y) {
+        for (int x = 0; x < weights.shape.w; ++x) {
+          for (int s = 0; s < src_slices; ++s) {
+            for (int d = 0; d < dst_groups; ++d) {
+              for (int d_group = 0; d_group < out_group_size; ++d_group) {
+                T filter;
+                for (int i = 0; i < 4; ++i) {
+                  const int s_ch = s * 4 + j;
+                  const int d_ch = (d * out_group_size + d_group) * 4 + i;
+                  if (s_ch < weights.shape.i && d_ch < weights.shape.o) {
+                    const int f_index =
+                        weights.shape.LinearIndex({d_ch, y, x, z, s_ch});
+                    filter[i] = weights.data[f_index];
+                  } else {
+                    filter[i] = 0.0f;
+                  }
+                }
+                dst[counter++] = filter;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
 // Returns float4 mask for last plane(batch of 4 channels)
 // assumes that plane size is 4;
 // for example we have 7 channels, in our data structures we align it to 8
@@ -106,6 +213,8 @@ int3 GetFirstSuitableWorkGroup(const std::vector<int3>& wgs, int max_wg_size);
 int GetRecommendedBlockSizeForConv(const DeviceInfo& device,
                                    CalculationsPrecision precision,
                                    int task_size);
+
+int3 GetWorkGroupsCount(const int3& grid_size, const int3& work_group_size);
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

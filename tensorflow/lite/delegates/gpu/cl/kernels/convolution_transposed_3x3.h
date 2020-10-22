@@ -40,10 +40,8 @@ class ConvolutionTransposed3x3 : public GPUOperation {
   void GetPossibleKernelWorkGroups(
       TuningType tuning_type, const DeviceInfo& device_info,
       const KernelInfo& kernel_info,
-      std::vector<int3>* work_groups) const override {
-    work_groups->push_back(work_group_size_);
-  }
-  absl::Status BindArguments() override;
+      std::vector<int3>* work_groups) const override;
+  absl::Status BindArguments(ArgumentsBinder* args) override;
   int3 GetGridSize() const override;
 
   // Move only
@@ -78,7 +76,6 @@ class ConvolutionTransposed3x3 : public GPUOperation {
       int2 padding, int3 work_group_launch_order);
 
   int2 padding_;
-  int3 work_group_launch_order_;
   WeightsUploadType weights_upload_type_;
 };
 

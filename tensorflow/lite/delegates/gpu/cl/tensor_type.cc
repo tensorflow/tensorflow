@@ -771,6 +771,46 @@ void TensorDescriptor::UploadData(absl::Span<const float> src) {
   }
 }
 
+bool TensorDescriptor::SupportsZeroClamp(const Axis& axis) const {
+  switch (storage_type) {
+    case TensorStorageType::UNKNOWN:
+      return false;
+    case TensorStorageType::BUFFER:
+    case TensorStorageType::IMAGE_BUFFER:
+      return false;
+    case TensorStorageType::TEXTURE_ARRAY:
+    case TensorStorageType::TEXTURE_2D:
+    case TensorStorageType::SINGLE_TEXTURE_2D:
+      return axis == Axis::WIDTH || axis == Axis::HEIGHT;
+    case TensorStorageType::TEXTURE_3D:
+      return axis == Axis::WIDTH || axis == Axis::HEIGHT || axis == Axis::DEPTH;
+  }
+}
+
+bool TensorDescriptor::CanReadOutOfBorder(const Axis& axis) const {
+  switch (storage_type) {
+    case TensorStorageType::UNKNOWN:
+      return false;
+    case TensorStorageType::BUFFER:
+      return false;
+    case TensorStorageType::IMAGE_BUFFER:
+    case TensorStorageType::TEXTURE_2D:
+    case TensorStorageType::TEXTURE_3D:
+    case TensorStorageType::SINGLE_TEXTURE_2D:
+    case TensorStorageType::TEXTURE_ARRAY:
+      return true;
+  }
+}
+
+bool TensorDescriptor::IsLinear() const {
+  return storage_type == TensorStorageType::BUFFER ||
+         storage_type == TensorStorageType::IMAGE_BUFFER;
+}
+
+bool TensorDescriptor::ReturnsZeroForNegOneRead() const {
+  return storage_type == TensorStorageType::IMAGE_BUFFER;
+}
+
 namespace {
 int GetLinearIndex(const TensorDescriptor& desc, const BHWDC& shape, int b,
                    int x, int y, int d, int s, int sub_c) {

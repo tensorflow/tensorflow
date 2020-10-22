@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/log_memory.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_segment.h"
@@ -323,6 +324,12 @@ class ExecutorState {
   // REQUIRES: `!ready->empty()`.
   void ScheduleReady(TaggedNodeSeq* ready, TaggedNodeReadyQueue* inline_ready);
 
+  // A wrapper for runner_ to keep track of the pending queue length. Op
+  // execution should dispatch work using this function instead of using runner_
+  // directly.
+  template <typename Closure>
+  void RunTask(Closure&& c);
+
   // Clean up when this executor is done.
   void Finish();
   void ScheduleFinish();
@@ -421,6 +428,30 @@ ExecutorState<PropagatorStateType>::~ExecutorState() {
     device_context_->Unref();
   }
   delete slice_reader_cache_;
+}
+
+template <class PropagatorStateType>
+template <typename Closure>
+void ExecutorState<PropagatorStateType>::RunTask(Closure&& c) {
+  // Align the atomic variables at 64 bytes to avoid false-sharing, assuming the
+  // cacheline size is 64 bytes or smaller.
+  alignas(64) static std::atomic<int64_t> num_enqueue_ops{0};
+  alignas(64) static std::atomic<int64_t> num_dequeue_ops{0};
+
+  auto n_enqueues = num_enqueue_ops.fetch_add(1, std::memory_order_relaxed);
+  // Sample the queue length on every 16 enqueue operations. This amortizes the
+  // cost of metric updates across 16 operations.
+  if (n_enqueues % 16 == 0) {
+    auto n_dequeues = num_dequeue_ops.load(std::memory_order_relaxed);
+    metrics::UpdateGraphPendingQueueLength(n_enqueues - n_dequeues);
+  }
+
+  // mutable is needed because std::forward<Closure> in the lambda body may move
+  // the Closure `c`.
+  runner_([c = std::forward<Closure>(c)]() mutable {
+    num_dequeue_ops.fetch_add(1, std::memory_order_relaxed);
+    std::forward<Closure>(c)();
+  });
 }
 
 template <class PropagatorStateType>
@@ -629,8 +660,8 @@ template <class PropagatorStateType>
 void ExecutorState<PropagatorStateType>::Process(TaggedNode tagged_node,
                                                  int64 scheduled_nsec) {
   profiler::TraceMeConsumer activity(
-      // From TraceMeProducer in KernelAndDeviceFunc::RunAsync,
-      // DirectSession::RunInternal or GraphMgr::ExecuteAsync.
+      // From TraceMeProducer in DirectSession::RunInternal,
+      // GraphMgr::ExecuteAsync, or FunctionLibraryRuntime::Run.
       [&] {
         // NOTE: This tracing uses the iteration number from the first tagged
         // node that executes during this call to `Process()`. In principle,
@@ -1088,11 +1119,13 @@ bool ExecutorState<PropagatorStateType>::NodeDone(
       if (rendezvous_) {
         rendezvous_->StartAbort(s);
       }
-      if (collective_executor_) {
-        collective_executor_->StartAbort(s);
-      }
       if (cancellation_manager_) {
         cancellation_manager_->StartCancel();
+      } else if (collective_executor_) {
+        // If there's cancellation_manager_, collective ops aborts
+        // collective_executor_ upon cancellation; otherwise we need to abort
+        // here.
+        collective_executor_->StartAbort(s);
       }
     }
 
@@ -1116,7 +1149,7 @@ void ExecutorState<PropagatorStateType>::ScheduleReady(
       // regardless of the `runner_` implementation, all kernels will run
       // sequentially on the same thread, and thread wakeup overhead and
       // executor mutex contention will be minimized.
-      runner_([this, ready = std::move(*ready), scheduled_nsec]() {
+      RunTask([this, ready = std::move(*ready), scheduled_nsec]() {
         for (auto& tagged_node : ready) {
           Process(tagged_node, scheduled_nsec);
         }
@@ -1131,7 +1164,7 @@ void ExecutorState<PropagatorStateType>::ScheduleReady(
     if (inline_ready == nullptr) {
       // Schedule to run all the ready ops in thread pool.
       for (auto& tagged_node : *ready) {
-        runner_([=]() { Process(tagged_node, scheduled_nsec); });
+        RunTask([=]() { Process(tagged_node, scheduled_nsec); });
       }
     } else {
       for (auto& tagged_node : *ready) {
@@ -1143,7 +1176,7 @@ void ExecutorState<PropagatorStateType>::ScheduleReady(
           if (curr_expensive_node) {
             // Dispatch to another thread since there is plenty of work to
             // do for this thread.
-            runner_(std::bind(&ExecutorState::Process, this,
+            RunTask(std::bind(&ExecutorState::Process, this,
                               *curr_expensive_node, scheduled_nsec));
           }
           curr_expensive_node = &tagged_node;
@@ -1156,7 +1189,7 @@ void ExecutorState<PropagatorStateType>::ScheduleReady(
       } else {
         // There are inline nodes to run already. We dispatch this expensive
         // node to other thread.
-        runner_(std::bind(&ExecutorState::Process, this, *curr_expensive_node,
+        RunTask(std::bind(&ExecutorState::Process, this, *curr_expensive_node,
                           scheduled_nsec));
       }
     }
@@ -1236,11 +1269,13 @@ void ExecutorState<PropagatorStateType>::Finish() {
       if (rendezvous_) {
         rendezvous_->StartAbort(status);
       }
-      if (collective_executor_) {
-        collective_executor_->StartAbort(status);
-      }
       if (cancellation_manager_) {
         cancellation_manager_->StartCancel();
+      } else if (collective_executor_) {
+        // If there's cancellation_manager_, collective ops aborts
+        // collective_executor_ upon cancellation; otherwise we need to abort
+        // here.
+        collective_executor_->StartAbort(status);
       }
     }
     delete this;

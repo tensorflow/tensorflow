@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -1015,6 +1016,144 @@ TEST_F(MetaOptimizerTest, CompressConstants) {
     test::ExpectTensorEqual<float>(tensors[i], tensors_expected[i]);
   }
 }
+
+// Tests for checking expected behavior when skipping tf.data functions in
+// meta optimizer.
+
+// Custom optimizer which counts its calls.
+class TfDataTestOptimizer : public CustomGraphOptimizer {
+ public:
+  static void InitCount() { cnt_ = 0; }
+  static int GetCount() { return cnt_; }
+
+  TfDataTestOptimizer() {}
+  string name() const override { return "tf_data_test_optimizer"; }
+  bool UsesFunctionLibrary() const override { return false; }
+
+  Status Init(
+      const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
+    return Status::OK();
+  }
+
+  Status Optimize(Cluster* cluster, const GrapplerItem& item,
+                  GraphDef* optimized_graph) override {
+    ++cnt_;
+    *optimized_graph = item.graph;
+    return Status::OK();
+  }
+
+  void Feedback(Cluster* cluster, const GrapplerItem& item,
+                const GraphDef& optimized_graph, double result) override {}
+
+ private:
+  static int cnt_;
+};
+
+int TfDataTestOptimizer::cnt_;
+
+REGISTER_GRAPH_OPTIMIZER(TfDataTestOptimizer);
+
+// Test fixture for parametrized testing.
+class TfDataTestFixture
+    : public ::testing::TestWithParam<std::tuple<bool, bool>> {
+ protected:
+  void SetUp() override {
+    is_my_mul_tf_data_ = std::get<0>(GetParam());
+    is_my_square_tf_data_ = std::get<1>(GetParam());
+  }
+  void RunTest();
+
+ private:
+  // controls which of the functions is flagged as tf.data function
+  bool is_my_mul_tf_data_ = false;
+  bool is_my_square_tf_data_ = false;
+};
+
+TEST_P(TfDataTestFixture, TfDataTests) { RunTest(); }
+
+// Core test function.
+void TfDataTestFixture::RunTest() {
+  using test::function::NDef;
+
+  // Define function library:
+  //
+  //  MyMul(x, y)    = x * y
+  //  MySquare(x)    = MyMul(x, x)
+
+  FunctionDef mul_func = FunctionDefHelper::Create(
+      "MyMul", {"x:float", "y:float"}, {"z:float"}, {},
+      {{{"mul"}, "Mul", {"x", "y"}, {{"T", DT_FLOAT}}}},
+      /*ret_def=*/
+      {{"z", "mul:z:0"}});
+  (*mul_func.mutable_attr())[data::kTFDataFunction].set_b(is_my_mul_tf_data_);
+
+  FunctionDef square_func = FunctionDefHelper::Create(
+      "MySquare", {"x:float"}, {"z:float"}, {},
+      {{{"my_mul"}, "MyMul", {"x", "x"}, {{"T", DT_FLOAT}}}},
+      /*ret_def=*/
+      {{"z", "my_mul:z:0"}});
+  (*square_func.mutable_attr())[data::kTFDataFunction].set_b(
+      is_my_square_tf_data_);
+
+  // Tensorflow graph:
+  //
+  //   a = tf.Placeholder(tf.float);
+  //   square = MySquare(a);  // a^2
+  GrapplerItem item;
+  item.id = "tf_graph";
+  item.graph = test::function::GDef(
+      {NDef("a", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+       // Calls into function library
+       NDef("square", "MySquare", {"a"}, {{"T", DT_FLOAT}}, kDevice),
+       // Forward outputs
+       NDef("out_s", "Identity", {"square:0"}, {{"T", DT_FLOAT}}, kDevice)},
+      /*funcs=*/
+      {mul_func, square_func});
+
+  // Use only custom optimizer which counts its calls.
+  TfDataTestOptimizer::InitCount();
+  ConfigProto config_proto;
+  auto& rewriter_config =
+      *(config_proto.mutable_graph_options()->mutable_rewrite_options());
+  rewriter_config.add_optimizers("TfDataTestOptimizer");
+  rewriter_config.set_min_graph_nodes(-1);
+  rewriter_config.set_meta_optimizer_iterations(RewriterConfig::ONE);
+
+  MetaOptimizer optimizer(nullptr, config_proto);
+  GraphDef output;
+  const Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  // We expect one graph optimization + one optimization for each non-tf.data
+  // function. Note that if `MySquare` is flagged as a tf.data function, then
+  // `MyMul` is implicitly also considered a tf.data function because it is
+  // called from `MySquare`.
+  int expected_count = 3;
+  if (is_my_square_tf_data_)
+    expected_count -= 2;
+  else if (is_my_mul_tf_data_)
+    expected_count -= 1;
+  EXPECT_EQ(TfDataTestOptimizer::GetCount(), expected_count);
+
+  // We expect that the tf.data-attribute has been propagated from `MySquare`
+  // to its callee `MyMul` if the value is `true`. Otherwise, the attribute
+  // values should be unchanged.
+  FunctionLibraryDefinition flib(OpRegistry::Global(), output.library());
+  const FunctionDef* square_func_after_opt = flib.Find("MySquare");
+  const FunctionDef* mul_func_after_opt = flib.Find("MyMul");
+
+  EXPECT_EQ(data::IsTFDataFunction(*square_func_after_opt),
+            is_my_square_tf_data_);
+  if (is_my_square_tf_data_ || is_my_mul_tf_data_) {
+    EXPECT_EQ(data::IsTFDataFunction(*mul_func_after_opt), true);
+  } else {
+    EXPECT_EQ(data::IsTFDataFunction(*mul_func_after_opt), false);
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(MetaOptimizerTest, TfDataTestFixture,
+                         ::testing::Combine(::testing::Bool(),
+                                            ::testing::Bool()));
 
 }  // namespace
 }  // namespace grappler

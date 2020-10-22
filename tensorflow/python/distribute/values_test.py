@@ -56,6 +56,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
+from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import save_context
 from tensorflow.python.saved_model import save_options
 from tensorflow.python.training import saver as saver_lib
@@ -112,23 +113,6 @@ def mirrored_and_tpu_strategy_combinations():
 
 
 class DistributedValuesTest(test.TestCase, parameterized.TestCase):
-
-  def testGetEager(self):
-    one = constant_op.constant(1)
-    two = constant_op.constant(2)
-    v = values_lib.DistributedValues((one, two))
-    self.assertEqual(one, v._get())
-    with distribute_lib.ReplicaContext(None, 1):
-      self.assertEqual(two, v._get())
-
-  def testGetGraph(self):
-    with context.graph_mode(), ops.Graph().as_default():
-      one = constant_op.constant(1)
-      two = constant_op.constant(2)
-      v = values_lib.DistributedValues((one, two))
-      self.assertEqual(one, v._get())
-      with distribute_lib.ReplicaContext(None, 1):
-        self.assertEqual(two, v._get())
 
   @combinations.generate(
       combinations.combine(
@@ -682,13 +666,13 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
     with distribution.scope():
       # We use four variables for convenience reasons. They have no special
       # meaning.
-      # - v is used whenever possible, and for the methods that require the
-      # dtype to be integer.
+      # - v is used whenever possible.
       # - w is used for scatter and gather, which require the variable to be
       # non-scalar.
-      # - y is used when the dtype needs to be float.
+      # - y is used when the dtype needs to be integer. Note that aggregation
+      # cannot be MEAN for integers.
       v = variables_lib.Variable(
-          0,
+          0.,
           synchronization=synchronization,
           aggregation=aggregation,
           trainable=True)
@@ -696,10 +680,11 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
                                  synchronization=synchronization,
                                  aggregation=aggregation,
                                  trainable=True)
-      y = variables_lib.Variable(
-          7.,
-          synchronization=synchronization,
-          aggregation=aggregation)
+      if aggregation != variables_lib.VariableAggregation.MEAN:
+        y = variables_lib.Variable(
+            0,
+            synchronization=synchronization,
+            aggregation=aggregation)
 
     # pylint: disable=g-long-lambda
 
@@ -708,7 +693,7 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
     _test(lambda: self.assertIs(v.constraint, None), v)
     # TODO(crccw): should we raise an error instead?
     _test(lambda: self.assertEqual(v.device, v._primary.device), v)
-    _test(lambda: self.assertEqual(v.dtype, dtypes.int32), v)
+    _test(lambda: self.assertEqual(v.dtype, dtypes.float32), v)
     if not context.executing_eagerly():
       _test(lambda: self.assertIs(v.graph, v._primary.graph), v)
     if not context.executing_eagerly():
@@ -722,9 +707,9 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
     _test(lambda: self.assertTrue(v.trainable, True), v)
 
     # tf.Variable methods.
-    _test(lambda: check_ops.assert_equal_v2(v.assign(1), 1), v)
-    _test(lambda: check_ops.assert_equal_v2(v.assign_add(1), 2), v)
-    _test(lambda: check_ops.assert_equal_v2(v.assign_sub(1), 1), v)
+    _test(lambda: check_ops.assert_equal_v2(v.assign(1.), 1.), v)
+    _test(lambda: check_ops.assert_equal_v2(v.assign_add(1.), 2.), v)
+    _test(lambda: check_ops.assert_equal_v2(v.assign_sub(1.), 1.), v)
     # TODO(b/148689177): Implement batch_scatter_update.
     # count_up_to() is skipped since it's deprecated.
     # eval() is skipped since it shouldn't called in a tf.function.
@@ -736,7 +721,7 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
                                           tensor_shape.TensorShape(())), v)
     # initialized_value() is skipped since it shouldn't called in a tf.function.
     # load() is skipped since it shouldn't called in a tf.function.
-    _test(lambda: check_ops.assert_equal_v2(v.read_value(), 1), v)
+    _test(lambda: check_ops.assert_equal_v2(v.read_value(), 1.), v)
     # ref() is skipped since it shouldn't called in a tf.function.
     _test(
         lambda: check_ops.assert_equal_v2(
@@ -770,62 +755,65 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
             [2., 0.5, 1.]), w)
     # set_shape() is skipped since ResourceVariable doesn't implement it.
     # to_proto() is skipped since it shouldn't called in a tf.function.
-    _test(lambda: check_ops.assert_equal_v2(v.value(), 1), v)
+    _test(lambda: check_ops.assert_equal_v2(v.value(), 1.), v)
 
     # DistributedVariable should be treated as ResourceVariable, so it needs to
     # conform to ResourceVariable interface as well.
     _test(lambda: self.assertIs(v.handle, v._primary.handle), v)
 
     # Convert to tensor.
-    _test(lambda: check_ops.assert_equal_v2(ops.convert_to_tensor(v), 1), v)
+    _test(lambda: check_ops.assert_equal_v2(ops.convert_to_tensor(v), 1.), v)
 
     # Control dependency.
     def _with_control_dep():
-      with ops.control_dependencies([v.assign(1)]):
+      with ops.control_dependencies([v.assign(1.)]):
         return array_ops.identity(1)
 
     _test(_with_control_dep, v)
 
     # Operator overloads.
-    _test(lambda: check_ops.assert_equal_v2(v.assign(7), 7), v)
-    _test(lambda: check_ops.assert_equal_v2(v + 1, 8), v)
-    _test(lambda: check_ops.assert_equal_v2(3 + v, 10), v)
-    _test(lambda: check_ops.assert_equal_v2(v + v, 14), v)
-    _test(lambda: check_ops.assert_equal_v2(v - 2, 5), v)
-    _test(lambda: check_ops.assert_equal_v2(v - v, 0), v)
-    _test(lambda: check_ops.assert_equal_v2(v * 2, 14), v)
-    _test(lambda: check_ops.assert_equal_v2(3 * v, 21), v)
-    _test(lambda: check_ops.assert_equal_v2(v * v, 49), v)
+    _test(lambda: check_ops.assert_equal_v2(v.assign(7.), 7.), v)
+    _test(lambda: check_ops.assert_equal_v2(v + 1., 8.), v)
+    _test(lambda: check_ops.assert_equal_v2(3 + v, 10.), v)
+    _test(lambda: check_ops.assert_equal_v2(v + v, 14.), v)
+    _test(lambda: check_ops.assert_equal_v2(v - 2., 5.), v)
+    _test(lambda: check_ops.assert_equal_v2(v - v, 0.), v)
+    _test(lambda: check_ops.assert_equal_v2(v * 2., 14.), v)
+    _test(lambda: check_ops.assert_equal_v2(3 * v, 21.), v)
+    _test(lambda: check_ops.assert_equal_v2(v * v, 49.), v)
     _test(
         lambda: check_ops.assert_equal_v2(
-            math_ops.cast(v / 2, dtypes.float32), 3.5), v)
+            math_ops.cast(v / 2., dtypes.float32), 3.5), v)
     _test(
         lambda: check_ops.assert_equal_v2(
-            math_ops.cast(14 / v, dtypes.float32), 2.), v)
-    _test(lambda: check_ops.assert_equal_v2(v // 2, 3), v)
-    _test(lambda: check_ops.assert_equal_v2(15 // v, 2), v)
-    _test(lambda: check_ops.assert_equal_v2(v % 2, 1), v)
-    _test(lambda: check_ops.assert_equal_v2(16 % v, 2), v)
-    _test(lambda: _assert(v < 12), v)
-    _test(lambda: _assert(v <= 12), v)
-    _test(lambda: _assert(not v > 12), v)
-    _test(lambda: _assert(not v >= 12), v)
-    _test(lambda: _assert(not 12 < v), v)
-    _test(lambda: _assert(not 12 <= v), v)
-    _test(lambda: _assert(12 > v), v)
-    _test(lambda: _assert(12 >= v), v)
-    # XLA doesn't implement pow() with integers.
-    _test(lambda: check_ops.assert_near_v2(pow(y, 3.), 343.), y)
-    _test(lambda: check_ops.assert_near_v2(pow(2., y), 128.), y)
-    _test(lambda: check_ops.assert_equal_v2(abs(v), 7), v)
-    _test(lambda: check_ops.assert_equal_v2(v & 3, 3), v)
-    _test(lambda: check_ops.assert_equal_v2(3 & v, 3), v)
-    _test(lambda: check_ops.assert_equal_v2(v | 8, 15), v)
-    _test(lambda: check_ops.assert_equal_v2(16 | v, 23), v)
-    _test(lambda: check_ops.assert_equal_v2(v ^ 3, 4), v)
-    _test(lambda: check_ops.assert_equal_v2(11 ^ v, 12), v)
-    _test(lambda: check_ops.assert_equal_v2(-v, -7), v)
-    _test(lambda: check_ops.assert_equal_v2(~v, ~7), v)
+            math_ops.cast(14. / v, dtypes.float32), 2.), v)
+    _test(lambda: _assert(v < 12.), v)
+    _test(lambda: _assert(v <= 12.), v)
+    _test(lambda: _assert(not v > 12.), v)
+    _test(lambda: _assert(not v >= 12.), v)
+    _test(lambda: _assert(not 12. < v), v)
+    _test(lambda: _assert(not 12. <= v), v)
+    _test(lambda: _assert(12. > v), v)
+    _test(lambda: _assert(12. >= v), v)
+    _test(lambda: check_ops.assert_near_v2(pow(v, 3.), 343.), v)
+    _test(lambda: check_ops.assert_near_v2(pow(2., v), 128.), v)
+    _test(lambda: check_ops.assert_equal_v2(abs(v), 7.), v)
+
+    # Operator overloads that only works for integers.
+    if aggregation != variables_lib.VariableAggregation.MEAN:
+      _test(lambda: check_ops.assert_equal_v2(y.assign(7), 7), y)
+      _test(lambda: check_ops.assert_equal_v2(y // 2, 3), y)
+      _test(lambda: check_ops.assert_equal_v2(15 // y, 2), y)
+      _test(lambda: check_ops.assert_equal_v2(y % 2, 1), y)
+      _test(lambda: check_ops.assert_equal_v2(16 % y, 2), y)
+      _test(lambda: check_ops.assert_equal_v2(y & 3, 3), y)
+      _test(lambda: check_ops.assert_equal_v2(3 & y, 3), y)
+      _test(lambda: check_ops.assert_equal_v2(y | 8, 15), y)
+      _test(lambda: check_ops.assert_equal_v2(16 | y, 23), y)
+      _test(lambda: check_ops.assert_equal_v2(y ^ 3, 4), y)
+      _test(lambda: check_ops.assert_equal_v2(11 ^ y, 12), y)
+      _test(lambda: check_ops.assert_equal_v2(-y, -7), y)
+      _test(lambda: check_ops.assert_equal_v2(~y, ~7), y)
 
     # Index.
     if isinstance(distribution.extended, tpu_strategy.TPUExtended):
@@ -837,6 +825,67 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
       _test(lambda: check_ops.assert_equal_v2(w[0], 1.), w)
 
     # pylint: enable=g-long-lambda
+
+  def testUnsaveable(self, distribution, synchronization, aggregation, mode):
+    if isinstance(distribution.extended,
+                  parameter_server_strategy.ParameterServerStrategyExtended):
+      self.skipTest("n/a: not appliable to AggregatingVariable")
+    if (isinstance(distribution,
+                   collective_all_reduce_strategy.CollectiveAllReduceStrategy)
+        and mode == "graph"):
+      self.skipTest("MWMS combinations tests do not work well in graph mode.")
+    with distribution.scope():
+      v = variables_lib.Variable([1., 1.],
+                                 synchronization=synchronization,
+                                 aggregation=aggregation)
+
+    with self.cached_session():
+      self.evaluate(variables_lib.global_variables_initializer())
+
+    export_dir = self.get_temp_dir()
+
+    def _assert_unsaveable(f):
+      # Ignore if it cannot be traced. Certain combinations are not supported or
+      # yet or not allowed.
+      try:
+        f = def_function.function(f).get_concrete_function()
+      except (NotImplementedError, ValueError):
+        return
+      with self.assertRaisesRegex(ValueError, "f_with_input_signature"):
+        save.save(v, export_dir, signatures=f)
+
+    _assert_unsaveable(lambda: v.assign(ops.convert_to_tensor([1., 1.])))
+    _assert_unsaveable(lambda: v.assign_add(ops.convert_to_tensor([1., 1.])))
+    _assert_unsaveable(lambda: v.assign_sub(ops.convert_to_tensor([1., 1.])))
+    _assert_unsaveable(lambda: v.scatter_add(_make_index_slices([1.], [0])))
+    _assert_unsaveable(lambda: v.scatter_sub(_make_index_slices([1.], [0])))
+    _assert_unsaveable(lambda: v.scatter_mul(_make_index_slices([1.], [0])))
+    _assert_unsaveable(lambda: v.scatter_div(_make_index_slices([1.], [0])))
+    _assert_unsaveable(lambda: v.scatter_min(_make_index_slices([1.], [0])))
+    _assert_unsaveable(lambda: v.scatter_max(_make_index_slices([1.], [0])))
+    _assert_unsaveable(lambda: v.scatter_update(_make_index_slices([1.], [0])))
+    # Reading a ON_READ variable should be unsaveable if either:
+    # 1) CollectiveAllReduceStrategy, and aggregation is MEAN/SUM.
+    # 2) aggregation is SUM.
+    if (synchronization == variables_lib.VariableSynchronization.ON_READ and
+        (aggregation == variables_lib.VariableAggregation.SUM or
+         (isinstance(distribution.extended,
+                     collective_all_reduce_strategy.CollectiveAllReduceExtended)
+          and aggregation == variables_lib.VariableAggregation.MEAN))):
+      _assert_unsaveable(v.read_value)
+      _assert_unsaveable(v.value)
+      _assert_unsaveable(lambda: ops.convert_to_tensor(v))
+    else:
+      # Otherwise reading a variable should be saveable.
+
+      @def_function.function
+      def f():
+        v.read_value()
+        v.value()
+        return ops.convert_to_tensor(v)
+
+      with self.cached_session():
+        save.save(v, export_dir, signatures=f.get_concrete_function())
 
 
 @combinations.generate(
@@ -1451,4 +1500,4 @@ def _make_index_slices(values, indices, dense_shape=None):
 
 
 if __name__ == "__main__":
-  combinations.main()
+  ds_test_util.main()

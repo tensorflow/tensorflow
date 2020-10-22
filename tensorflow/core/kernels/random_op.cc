@@ -48,9 +48,6 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
-#ifdef TENSORFLOW_USE_SYCL
-typedef Eigen::SyclDevice SYCLDevice;
-#endif  // TENSORFLOW_USE_SYCL
 
 namespace {
 
@@ -77,7 +74,7 @@ class PhiloxRandomOp : public OpKernel {
     OP_REQUIRES_OK(ctx, AllocateOutputWithShape(ctx, shape, 0, &output));
     auto output_flat = output->flat<T>();
     functor::FillPhiloxRandom<Device, Distribution>()(
-        ctx, ctx->eigen_device<Device>(),
+        ctx, ctx->eigen_device<Device>(), /*key=*/nullptr, /*counter=*/nullptr,
         // Multiplier 256 is the same as in FillPhiloxRandomTask; do not change
         // it just here.
         generator_.ReserveRandomOutputs(output_flat.size(), 256),
@@ -126,7 +123,7 @@ class RandomUniformIntOp : public OpKernel {
 
     auto output_flat = output->flat<IntType>();
     functor::FillPhiloxRandom<Device, Distribution>()(
-        ctx, ctx->eigen_device<Device>(),
+        ctx, ctx->eigen_device<Device>(), /*key=*/nullptr, /*counter=*/nullptr,
         // Multiplier 256 is the same as in FillPhiloxRandomTask; do not change
         // it just here.
         generator_.ReserveRandomOutputs(output_flat.size(), 256),
@@ -205,7 +202,7 @@ class RandomGammaOp : public OpKernel {
     // avoid a couple flops which can be done on a per-alpha basis.
 
     auto DoWork = [samples_per_alpha, num_alphas, &rng, samples_flat,
-                   alpha_flat](int start_output, int limit_output) {
+                   alpha_flat](int64 start_output, int64 limit_output) {
       using Eigen::numext::exp;
       using Eigen::numext::log;
       using Eigen::numext::log1p;
@@ -457,52 +454,5 @@ TF_CALL_uint64(REGISTER_FULL_INT);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#ifdef TENSORFLOW_USE_SYCL
-
-#define REGISTER(TYPE)                                                         \
-  template struct functor::FillPhiloxRandom<                                   \
-      SYCLDevice, random::UniformDistribution<random::PhiloxRandom, TYPE>>;    \
-  REGISTER_KERNEL_BUILDER(                                                     \
-      Name("RandomUniform")                                                    \
-          .Device(DEVICE_SYCL)                                                 \
-          .HostMemory("shape")                                                 \
-          .TypeConstraint<TYPE>("dtype"),                                      \
-      PhiloxRandomOp<SYCLDevice, random::UniformDistribution<                  \
-                                     random::PhiloxRandom, TYPE>>);            \
-  REGISTER_KERNEL_BUILDER(                                                     \
-      Name("RandomStandardNormal")                                             \
-          .Device(DEVICE_SYCL)                                                 \
-          .HostMemory("shape")                                                 \
-          .TypeConstraint<TYPE>("dtype"),                                      \
-      PhiloxRandomOp<SYCLDevice,                                               \
-                     random::NormalDistribution<random::PhiloxRandom, TYPE>>); \
-  REGISTER_KERNEL_BUILDER(                                                     \
-      Name("TruncatedNormal")                                                  \
-          .Device(DEVICE_SYCL)                                                 \
-          .HostMemory("shape")                                                 \
-          .TypeConstraint<TYPE>("dtype"),                                      \
-      PhiloxRandomOp<                                                          \
-          SYCLDevice,                                                          \
-          random::TruncatedNormalDistribution<                                 \
-              random::SingleSampleAdapter<random::PhiloxRandom>, TYPE>>);
-
-#define REGISTER_INT(IntType)                                   \
-  REGISTER_KERNEL_BUILDER(Name("RandomUniformInt")              \
-                              .Device(DEVICE_SYCL)              \
-                              .HostMemory("shape")              \
-                              .HostMemory("minval")             \
-                              .HostMemory("maxval")             \
-                              .TypeConstraint<IntType>("Tout"), \
-                          RandomUniformIntOp<SYCLDevice, IntType>);
-
-TF_CALL_float(REGISTER);
-TF_CALL_double(REGISTER);
-TF_CALL_int32(REGISTER_INT);
-TF_CALL_int64(REGISTER_INT);
-
-#undef REGISTER
-#undef REGISTER_INT
-
-#endif  // TENSORFLOW_USE_SYCL
 
 }  // end namespace tensorflow

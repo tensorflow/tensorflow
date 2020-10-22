@@ -49,7 +49,7 @@ class RMSprop(optimizer_v2.OptimizerV2):
     learning_rate: A `Tensor`, floating point value, or a schedule that is a
       `tf.keras.optimizers.schedules.LearningRateSchedule`, or a callable
       that takes no arguments and returns the actual value to use. The
-      learning rate. Defeaults to 0.001.
+      learning rate. Defaults to 0.001.
     rho: Discounting factor for the history/coming gradient. Defaults to 0.9.
     momentum: A scalar or a scalar `Tensor`. Defaults to 0.0.
     epsilon: A small constant for numerical stability. This epsilon is
@@ -109,7 +109,7 @@ class RMSprop(optimizer_v2.OptimizerV2):
       learning_rate: A `Tensor`, floating point value, or a schedule that is a
         `tf.keras.optimizers.schedules.LearningRateSchedule`, or a callable
         that takes no arguments and returns the actual value to use. The
-        learning rate. Defeaults to 0.001.
+        learning rate. Defaults to 0.001.
       rho: Discounting factor for the history/coming gradient. Defaults to 0.9.
       momentum: A scalar or a scalar `Tensor`. Defaults to 0.0.
       epsilon: A small constant for numerical stability. This epsilon is

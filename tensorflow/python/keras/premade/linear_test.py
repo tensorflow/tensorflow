@@ -113,68 +113,66 @@ class LinearModelTest(keras_parameterized.TestCase):
     indices = []
     values = []
     target = np.zeros((batch_size, 1))
-    with context.eager_mode():
-      for i in range(64):
-        rand_int = np.random.randint(3)
-        if rand_int == 0:
-          indices.append((i, 0))
-          val = np.random.uniform(low=-5, high=5)
-          values.append(val)
-          target[i] = 0.3 * val
-        elif rand_int == 1:
-          indices.append((i, 1))
-          val = np.random.uniform(low=-5, high=5)
-          values.append(val)
-          target[i] = 0.2 * val
-        else:
-          indices.append((i, 0))
-          indices.append((i, 1))
-          val_1 = np.random.uniform(low=-5, high=5)
-          val_2 = np.random.uniform(low=-5, high=5)
-          values.append(val_1)
-          values.append(val_2)
-          target[i] = 0.3 * val_1 + 0.2 * val_2
+    for i in range(64):
+      rand_int = np.random.randint(3)
+      if rand_int == 0:
+        indices.append((i, 0))
+        val = np.random.uniform(low=-5, high=5)
+        values.append(val)
+        target[i] = 0.3 * val
+      elif rand_int == 1:
+        indices.append((i, 1))
+        val = np.random.uniform(low=-5, high=5)
+        values.append(val)
+        target[i] = 0.2 * val
+      else:
+        indices.append((i, 0))
+        indices.append((i, 1))
+        val_1 = np.random.uniform(low=-5, high=5)
+        val_2 = np.random.uniform(low=-5, high=5)
+        values.append(val_1)
+        values.append(val_2)
+        target[i] = 0.3 * val_1 + 0.2 * val_2
 
-      indices = np.asarray(indices)
-      values = np.asarray(values)
-      shape = constant_op.constant([batch_size, 2], dtype=dtypes.int64)
-      inp = sparse_tensor.SparseTensor(indices, values, shape)
-      model = linear.LinearModel(use_bias=False)
-      opt = gradient_descent.SGD()
-      for _ in range(20):
-        with backprop.GradientTape() as t:
-          output = model(inp)
-          loss = backend.mean(losses.mean_squared_error(target, output))
-        grads = t.gradient(loss, model.trainable_variables)
-        grads_and_vars = zip(grads, model.trainable_variables)
-        opt.apply_gradients(grads_and_vars)
+    indices = np.asarray(indices)
+    values = np.asarray(values)
+    shape = constant_op.constant([batch_size, 2], dtype=dtypes.int64)
+    inp = sparse_tensor.SparseTensor(indices, values, shape)
+    model = linear.LinearModel(use_bias=False)
+    opt = gradient_descent.SGD()
+    for _ in range(20):
+      with backprop.GradientTape() as t:
+        output = model(inp)
+        loss = backend.mean(losses.mean_squared_error(target, output))
+      grads = t.gradient(loss, model.trainable_variables)
+      grads_and_vars = zip(grads, model.trainable_variables)
+      opt.apply_gradients(grads_and_vars)
 
   # This test is an example for a regression on categorical inputs, i.e.,
   # the output is 0.4, 0.6, 0.9 when input is 'alpha', 'beta', 'gamma'
   # separately.
   def test_linear_model_with_feature_column(self):
-    with context.eager_mode():
-      vocab_list = ['alpha', 'beta', 'gamma']
-      vocab_val = [0.4, 0.6, 0.9]
-      data = np.random.choice(vocab_list, size=256)
-      y = np.zeros_like(data, dtype=np.float32)
-      for vocab, val in zip(vocab_list, vocab_val):
-        indices = np.where(data == vocab)
-        y[indices] = val + np.random.uniform(
-            low=-0.01, high=0.01, size=indices[0].shape)
-      cat_column = fc.categorical_column_with_vocabulary_list(
-          key='symbol', vocabulary_list=vocab_list)
-      ind_column = fc.indicator_column(cat_column)
-      dense_feature_layer = dense_features_v2.DenseFeatures([ind_column])
-      linear_model = linear.LinearModel(
-          use_bias=False, kernel_initializer='zeros')
-      combined = sequential.Sequential([dense_feature_layer, linear_model])
-      opt = gradient_descent.SGD(learning_rate=0.1)
-      combined.compile(opt, 'mse', [])
-      combined.fit(x={'symbol': data}, y=y, batch_size=32, epochs=10)
-      self.assertAllClose([[0.4], [0.6], [0.9]],
-                          combined.layers[1].dense_layers[0].kernel.numpy(),
-                          atol=0.01)
+    vocab_list = ['alpha', 'beta', 'gamma']
+    vocab_val = [0.4, 0.6, 0.9]
+    data = np.random.choice(vocab_list, size=256)
+    y = np.zeros_like(data, dtype=np.float32)
+    for vocab, val in zip(vocab_list, vocab_val):
+      indices = np.where(data == vocab)
+      y[indices] = val + np.random.uniform(
+          low=-0.01, high=0.01, size=indices[0].shape)
+    cat_column = fc.categorical_column_with_vocabulary_list(
+        key='symbol', vocabulary_list=vocab_list)
+    ind_column = fc.indicator_column(cat_column)
+    dense_feature_layer = dense_features_v2.DenseFeatures([ind_column])
+    linear_model = linear.LinearModel(
+        use_bias=False, kernel_initializer='zeros')
+    combined = sequential.Sequential([dense_feature_layer, linear_model])
+    opt = gradient_descent.SGD(learning_rate=0.1)
+    combined.compile(opt, 'mse', [])
+    combined.fit(x={'symbol': data}, y=y, batch_size=32, epochs=10)
+    self.assertAllClose([[0.4], [0.6], [0.9]],
+                        combined.layers[1].dense_layers[0].kernel.numpy(),
+                        atol=0.01)
 
   def test_config(self):
     linear_model = linear.LinearModel(units=3, use_bias=True)

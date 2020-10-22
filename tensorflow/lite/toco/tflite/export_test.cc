@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/toco/tflite/builtin_operator.h"
 #include "tensorflow/lite/toco/tflite/operator.h"
 #include "tensorflow/lite/toco/tflite/types.h"
@@ -171,10 +172,10 @@ class ExportTest : public ::testing::Test {
     auto* model = ::tflite::GetModel(result.data());
 
     for (const ::tflite::OperatorCode* opcode : *model->operator_codes()) {
-      if (opcode->builtin_code() != ::tflite::BuiltinOperator_CUSTOM) {
-        names.push_back(
-            std::string("builtin:") +
-            ::tflite::EnumNameBuiltinOperator(opcode->builtin_code()));
+      auto builtin_code = GetBuiltinCode(opcode);
+      if (builtin_code != ::tflite::BuiltinOperator_CUSTOM) {
+        names.push_back(std::string("builtin:") +
+                        ::tflite::EnumNameBuiltinOperator(builtin_code));
       } else {
         names.push_back(std::string("custom:") +
                         opcode->custom_code()->c_str());
@@ -661,10 +662,10 @@ TEST_F(VersionedOpExportTest, Export) {
   // different versions.
   EXPECT_EQ(2, operator_codes->size());
   EXPECT_EQ(::tflite::BuiltinOperator_CONV_2D,
-            (*operator_codes)[0]->builtin_code());
+            GetBuiltinCode((*operator_codes)[0]));
   EXPECT_EQ(1, (*operator_codes)[0]->version());
   EXPECT_EQ(::tflite::BuiltinOperator_CONV_2D,
-            (*operator_codes)[1]->builtin_code());
+            GetBuiltinCode((*operator_codes)[1]));
   EXPECT_EQ(2, (*operator_codes)[1]->version());
 
   // Verify that the 2 operators points to the correct indices of the operation

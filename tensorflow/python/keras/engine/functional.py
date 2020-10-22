@@ -27,7 +27,6 @@ import warnings
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import context
-from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
@@ -40,13 +39,13 @@ from tensorflow.python.keras.engine import training as training_lib
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.saving.saved_model import network_serialization
 from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
-from tensorflow.python.util import tf_inspect
 
 
 # pylint: disable=g-classes-have-attributes
@@ -140,10 +139,16 @@ class Functional(training_lib.Model):
     # Models constructed with a single Tensor or list of Tensors can
     # be called with a dict, where the keys of the dict are the names
     # of the `Input` objects. Extra keys are ignored with warning.
-    self._enable_dict_to_input_mapping = (
-        not nest.is_nested(self._nested_inputs) or
-        (isinstance(self._nested_inputs, (list, tuple, dict)) and
-         not any(nest.is_nested(t) for t in self._nested_inputs)))
+    if not nest.is_nested(self._nested_inputs):
+      self._enable_dict_to_input_mapping = True
+    elif (isinstance(self._nested_inputs, (list, tuple)) and
+          not any(nest.is_nested(t) for t in self._nested_inputs)):
+      self._enable_dict_to_input_mapping = True
+    elif (isinstance(self._nested_inputs, dict) and
+          not any(nest.is_nested(t) for t in self._nested_inputs.values())):
+      self._enable_dict_to_input_mapping = True
+    else:
+      self._enable_dict_to_input_mapping = False
 
     if not keras_tensor.keras_tensors_enabled():
       if any(not hasattr(tensor, '_keras_history') for tensor in self.outputs):
@@ -635,7 +640,7 @@ class Functional(training_lib.Model):
 
       # Dtype casting.
       tensor = math_ops.cast(tensor, dtype=ref_input.dtype)
-    elif isinstance(tensor, composite_tensor.CompositeTensor):
+    elif tf_utils.is_extension_type(tensor):
       # Dtype casting.
       tensor = math_ops.cast(tensor, dtype=ref_input.dtype)
 
@@ -863,6 +868,13 @@ class Functional(training_lib.Model):
   @property
   def _trackable_saved_model_saver(self):
     return network_serialization.NetworkSavedModelSaver(self)
+
+  def _get_save_spec(self, dynamic_batch=True):
+    if getattr(self, '_has_explicit_input_shape', True):
+      # Functional models and Sequential models that have an explicit input
+      # shape should use the batch size set by the input layer.
+      dynamic_batch = False
+    return super(Functional, self)._get_save_spec(dynamic_batch)
 
 
 def _make_node_key(layer_name, node_index):

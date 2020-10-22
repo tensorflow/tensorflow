@@ -20,8 +20,10 @@ from __future__ import print_function
 
 import collections
 import re
+from absl import logging
 
 from tensorflow.core.framework import function_pb2
+from tensorflow.core.protobuf import saved_object_graph_pb2
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as function_lib
 from tensorflow.python.framework import func_graph as func_graph_lib
@@ -31,7 +33,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
@@ -141,9 +142,18 @@ def _deserialize_function_spec_as_nonmethod(function_spec_proto, coder):
       kwonlydefaults=typeless_fullargspec.kwonlydefaults,
       annotations=typeless_fullargspec.annotations)
   input_signature = coder.decode_proto(function_spec_proto.input_signature)
+
+  # See `tf.function` and the ExperimentalCompile proto for details.
+  experimental_compile = {
+      saved_object_graph_pb2.FunctionSpec.ExperimentalCompile.DEFAULT: None,
+      saved_object_graph_pb2.FunctionSpec.ExperimentalCompile.ON: True,
+      saved_object_graph_pb2.FunctionSpec.ExperimentalCompile.OFF: False,
+  }.get(function_spec_proto.experimental_compile)
+
   return function_lib.FunctionSpec(fullargspec=fullargspec,
                                    is_method=False,
-                                   input_signature=input_signature)
+                                   input_signature=input_signature,
+                                   experimental_compile=experimental_compile)
 
 
 # TODO(allenl): The fact that we can't derive ConcreteFunction calling
@@ -153,8 +163,6 @@ def _deserialize_function_spec_as_nonmethod(function_spec_proto, coder):
 def setup_bare_concrete_function(saved_bare_concrete_function,
                                  concrete_functions):
   """Makes a restored bare concrete function callable."""
-  # Bare concrete functions accept only flat lists of Tensors with unique
-  # names.
   concrete_function = concrete_functions[
       saved_bare_concrete_function.concrete_function_name]
   # pylint: disable=protected-access
@@ -162,6 +170,12 @@ def setup_bare_concrete_function(saved_bare_concrete_function,
       saved_bare_concrete_function.argument_keywords)
   concrete_function._num_positional_args = (
       saved_bare_concrete_function.allowed_positional_arguments)
+  if saved_bare_concrete_function.HasField("function_spec"):
+    coder = nested_structure_coder.StructureCoder()
+    function_spec = _deserialize_function_spec_as_nonmethod(
+        saved_bare_concrete_function.function_spec,
+        coder)
+    concrete_function._set_function_spec(function_spec)
   # pylint: enable=protected-access
   concrete_function.add_to_graph()
   return concrete_function
@@ -176,7 +190,8 @@ class RestoredFunction(def_function.Function):
   def __init__(self, python_function, name, function_spec, concrete_functions):
     # TODO(mdan): We may enable autograph once exceptions are supported.
     super(RestoredFunction, self).__init__(
-        python_function, name, autograph=False)
+        python_function, name, autograph=False,
+        experimental_compile=function_spec.experimental_compile)
     self.concrete_functions = concrete_functions
     self._function_spec = function_spec
 
@@ -201,11 +216,14 @@ def recreate_function(saved_function, concrete_functions):
   Returns:
     A `Function`.
   """
+  if not saved_function.concrete_functions:
+    logging.warning("Could not find any concrete functions to restore for this "
+                    "SavedFunction object while loading. The function will not "
+                    "be callable.")
   # TODO(andresp): Construct a `Function` with the cache populated
   # instead of creating a new `Function` backed by a Python layer to
   # glue things together. Current approach is nesting functions deeper for each
   # serialization cycle.
-
   coder = nested_structure_coder.StructureCoder()
 
   # Note: handling method functions is tricky since make_decorator does not
@@ -222,7 +240,9 @@ def recreate_function(saved_function, concrete_functions):
       coder)
 
   def restored_function_body(*args, **kwargs):
-    """Calls a restored function."""
+    """Calls a restored function or raises an error if no matching function."""
+    if not saved_function.concrete_functions:
+      raise ValueError("Found zero restored functions for caller function.")
     # This is the format of function.graph.structured_input_signature. At this
     # point, the args and kwargs have already been canonicalized.
     inputs = (args, kwargs)
@@ -327,10 +347,11 @@ def load_function_def_library(library, load_shared_name_suffix=None):
     for dep in _list_function_deps(fdef, library_function_names):
       functions[dep].add_to_graph(func_graph)
 
-    # We do not initialize the new ConcreteFunction's function_spec or
+    # We do not initialize the new ConcreteFunction's function_spec and/or
     # arg_keywords here (which are used to parse the structured and flat
-    # signatures, respectively).  function_spec is set up later by
-    # recreate_function(); and arg_keywords by setup_bare_concrete_function().
+    # signatures, respectively). ConcreteFunction that are part of a saved
+    # function is set up later by recreate_function(); and bare ConcreteFunction
+    # is set up by by setup_bare_concrete_function().
     func = function_lib.ConcreteFunction(func_graph)
     func.add_to_graph(graph)
 

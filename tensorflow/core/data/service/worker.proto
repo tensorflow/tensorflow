@@ -23,10 +23,20 @@ message GetElementResponse {
   bool end_of_sequence = 2;
 }
 
+// Named GetWorkerTasks to avoid conflicting with GetTasks in dispatcher.proto
+message GetWorkerTasksRequest {}
+
+message GetWorkerTasksResponse {
+  repeated TaskInfo tasks = 1;
+}
+
 service WorkerService {
   // Processes an task for a dataset, making elements available to clients.
   rpc ProcessTask(ProcessTaskRequest) returns (ProcessTaskResponse);
 
   // Gets the next dataset element.
   rpc GetElement(GetElementRequest) returns (GetElementResponse);
+
+  // Gets the tasks currently being executed by the worker.
+  rpc GetWorkerTasks(GetWorkerTasksRequest) returns (GetWorkerTasksResponse);
 }

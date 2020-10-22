@@ -1,0 +1,4 @@
+func @Sin(%arg0: tensor<?xelem_type>) -> tensor<?xelem_type> {
+  %0 = "tf.Sin"(%arg0) : (tensor<?xelem_type>) -> tensor<?xelem_type>
+  return %0 : tensor<?xelem_type>
+}

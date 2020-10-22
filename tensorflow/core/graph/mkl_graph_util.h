@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 // Since our ops are going to produce and also consume N addition tensors
@@ -87,6 +88,30 @@ bool inline DoesControlEdgeExist(const Node* src, const Node* dst) {
   return false;
 }
 
+// Check if graph should run in layout-dependent mode or native format mode
+// based on environment variable setting. User can set
+// TF_ENABLE_MKL_NATIVE_FORMAT=1 to enable the native format mode.
+bool inline NativeFormatEnabled() {
+  static bool native_fmt_enabled = false;
+  static absl::once_flag once;
+  absl::call_once(once, [&] {
+    TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_MKL_NATIVE_FORMAT",
+                                   /*default_value*/ false,
+                                   &native_fmt_enabled));
+  });
+  return native_fmt_enabled;
+}
+
+// Check if the data_format attribute in the node def represents 5D tensor
+bool inline Check5DFormat(const NodeDef& ndef) {
+  string data_format;
+  TF_CHECK_OK(GetNodeAttr(ndef, "data_format", &data_format));
+  if (data_format.compare("NCDHW") == 0 || data_format.compare("NDHWC") == 0) {
+    return true;
+  }
+  return false;
+}
+
 namespace mkl_op_registry {
 // MKL operators whose kernels are registered with 'MklLayoutDependentOp' label
 // (e.g., MklConv2D) understand input tensors in MKL layout. These operators
@@ -119,22 +144,36 @@ static const char* const kMklEagerOpPrefix = "_MklEager";
 // _MklEager prefix.
 static const char* const kMklNativeOpPrefix = "_MklNative";
 
+// Get the name of Mkl Native (does not depend on layout propagation) op
+// from original TensorFlow op.
+inline string GetMklNativeOpName(const string& name) {
+  // There are few operators that don't depend on layout propagation but are
+  // prefixed with _Mkl instead of _MklNative.
+  bool result =
+      (0 == name.compare("ConjugateTranspose") ||
+       0 == name.compare("BatchMatMul") || 0 == name.compare("BatchMatMulV2") ||
+       0 == name.compare("MatMul") || 0 == name.compare("Transpose"));
+  if (result) {
+    return string(kMklOpPrefix) + name;
+  } else {
+    return string(kMklNativeOpPrefix) + name;
+  }
+}
+
 // Get the name of Mkl op from original TensorFlow op
-// We prefix 'Mkl' to the original op to get Mkl op.
+// We prefix the original op with _Mkl or _MklNative to get Mkl op.
 inline string GetMklOpName(const string& name) {
-  return string(kMklOpPrefix) + name;
+  if (!NativeFormatEnabled()) {
+    return string(kMklOpPrefix) + name;
+  } else {
+    return GetMklNativeOpName(name);
+  }
 }
 
 // Get the name of Mkl Eager op from original TensorFlow op
 // We prefix 'MklEager' to the original op to get Mkl Eager op.
 inline string GetMklEagerOpName(const string& name) {
   return string(kMklEagerOpPrefix) + name;
-}
-
-// Get the name of Mkl Native (does not depend on layout propagation) op
-// from original TensorFlow op.
-inline string GetMklNativeOpName(const string& name) {
-  return string(kMklNativeOpPrefix) + name;
 }
 
 #ifdef ENABLE_INTEL_MKL_BFLOAT16

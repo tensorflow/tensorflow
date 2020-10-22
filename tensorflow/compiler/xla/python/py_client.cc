@@ -30,6 +30,8 @@ namespace xla {
 namespace py = pybind11;
 namespace pprof = tensorflow::tfprof::pprof;
 
+PyClient::PyClient(std::unique_ptr<PjRtClient> pjrt_client)
+    : pjrt_client_(std::move(pjrt_client)) {}
 PyClient::PyClient(std::shared_ptr<PjRtClient> pjrt_client)
     : pjrt_client_(std::move(pjrt_client)) {}
 
@@ -87,7 +89,7 @@ PyClient::GetDefaultDeviceAssignment1D(int num_replicas) {
 
 StatusOr<std::unique_ptr<PyBuffer>> PyClient::BufferFromPyval(
     const pybind11::object& argument, PjRtDevice* device, bool force_copy,
-    PjRtBuffer::HostBufferSemantics host_buffer_semantics) {
+    PjRtClient::HostBufferSemantics host_buffer_semantics) {
   if (device == nullptr) {
     TF_RET_CHECK(!pjrt_client_->local_devices().empty());
     device = pjrt_client_->local_devices().front();
@@ -112,10 +114,9 @@ StatusOr<std::unique_ptr<PyBuffer>> PyClient::BufferFromPyval(
   std::unique_ptr<PjRtBuffer> buffer;
   {
     py::gil_scoped_release gil_release;
-    TF_ASSIGN_OR_RETURN(
-        buffer, PjRtBuffer::FromHostBuffer(
-                    c->buf_ptr, c->shape, host_buffer_semantics,
-                    std::move(py_buffer_ref), pjrt_client_.get(), device));
+    TF_ASSIGN_OR_RETURN(buffer, pjrt_client_->BufferFromHostBuffer(
+                                    c->buf_ptr, c->shape, host_buffer_semantics,
+                                    std::move(py_buffer_ref), device));
   }
   auto traceback = Traceback::Get();
   return std::make_unique<PyBuffer>(shared_from_this(), std::move(buffer),
@@ -129,8 +130,7 @@ StatusOr<std::shared_ptr<PyExecutable>> PyClient::Compile(
   {
     py::gil_scoped_release gil_release;
     TF_ASSIGN_OR_RETURN(executable,
-                        PjRtExecutable::Compile(computation, pjrt_client_.get(),
-                                                std::move(options)));
+                        pjrt_client_->Compile(computation, std::move(options)));
     TF_ASSIGN_OR_RETURN(fingerprint,
                         pjrt_client_->ExecutableFingerprint(*executable));
   }

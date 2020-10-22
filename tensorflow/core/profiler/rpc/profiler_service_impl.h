@@ -20,9 +20,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/profiler_service.grpc.pb.h"
 
 namespace tensorflow {
-
-std::unique_ptr<grpc::ProfilerService::Service> CreateProfilerService();
-
 namespace profiler {
 
 std::unique_ptr<grpc::ProfilerService::Service> CreateProfilerService();

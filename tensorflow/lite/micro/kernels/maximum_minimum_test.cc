@@ -17,8 +17,8 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/kernels/kernel_runner.h"
+#include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
-#include "tensorflow/lite/micro/testing/test_utils.h"
 
 namespace tflite {
 namespace testing {
@@ -38,9 +38,9 @@ void TestMaxMinFloat(const TfLiteRegistration& registration,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input1_data, input1_dims),
-      CreateFloatTensor(input2_data, input2_dims),
-      CreateFloatTensor(output_data, output_dims),
+      CreateTensor(input1_data, input1_dims),
+      CreateTensor(input2_data, input2_dims),
+      CreateTensor(output_data, output_dims),
   };
 
   int inputs_array_data[] = {2, 0, 1};
@@ -104,14 +104,11 @@ void TestMaxMinQuantized(const TfLiteRegistration& registration,
   }
 }
 
-void TestMaxMinQuantizedInt32(const TfLiteRegistration& registration,
-                              const int* input1_dims_data,
-                              const int32_t* input1_data, float input1_scale,
-                              const int* input2_dims_data,
-                              const int32_t* input2_data, float input2_scale,
-                              const int32_t* expected_output_data,
-                              float output_scale, const int* output_dims_data,
-                              int32_t* output_data) {
+void TestMaxMinQuantizedInt32(
+    const TfLiteRegistration& registration, const int* input1_dims_data,
+    const int32_t* input1_data, const int* input2_dims_data,
+    const int32_t* input2_data, const int32_t* expected_output_data,
+    const int* output_dims_data, int32_t* output_data) {
   TfLiteIntArray* input1_dims = IntArrayFromInts(input1_dims_data);
   TfLiteIntArray* input2_dims = IntArrayFromInts(input2_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
@@ -121,9 +118,9 @@ void TestMaxMinQuantizedInt32(const TfLiteRegistration& registration,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateQuantized32Tensor(input1_data, input1_dims, input1_scale),
-      CreateQuantized32Tensor(input2_data, input2_dims, input2_scale),
-      CreateQuantized32Tensor(output_data, output_dims, output_scale),
+      CreateTensor(input1_data, input1_dims),
+      CreateTensor(input2_data, input2_dims),
+      CreateTensor(output_data, output_dims),
   };
 
   int inputs_array_data[] = {2, 0, 1};
@@ -210,9 +207,6 @@ TF_LITE_MICRO_TEST(FloatWithBroadcastTest) {
 }
 
 TF_LITE_MICRO_TEST(Int32WithBroadcastTest) {
-  const float input1_scale = 0.5;
-  const float input2_scale = 0.5;
-  const float output_scale = 0.5;
   const int dims[] = {3, 3, 1, 2};
   const int dims_scalar[] = {1, 1};
   const int32_t data1[] = {1, 0, -1, -2, 3, 11};
@@ -222,14 +216,12 @@ TF_LITE_MICRO_TEST(Int32WithBroadcastTest) {
   int32_t output_data[6];
 
   tflite::testing::TestMaxMinQuantizedInt32(
-      tflite::ops::micro::Register_MAXIMUM(), dims, data1, input1_scale,
-      dims_scalar, data2, input2_scale, golden_max, output_scale, dims,
-      output_data);
+      tflite::ops::micro::Register_MAXIMUM(), dims, data1, dims_scalar, data2,
+      golden_max, dims, output_data);
 
   tflite::testing::TestMaxMinQuantizedInt32(
-      tflite::ops::micro::Register_MINIMUM(), dims, data1, input1_scale,
-      dims_scalar, data2, input2_scale, golden_min, output_scale, dims,
-      output_data);
+      tflite::ops::micro::Register_MINIMUM(), dims, data1, dims_scalar, data2,
+      golden_min, dims, output_data);
 }
 
 TF_LITE_MICRO_TESTS_END

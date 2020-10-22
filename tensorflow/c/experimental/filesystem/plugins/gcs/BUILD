@@ -1,3 +1,5 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
 # Experimental gcs filesystem plugin.
 load("//tensorflow:tensorflow.bzl", "get_win_copts", "tf_cc_shared_object", "tf_cc_test")
 
@@ -60,6 +62,7 @@ cc_library(
     deps = [
         ":cleanup",
         "//tensorflow/c:env",
+        "//tensorflow/c:logging",
         "//tensorflow/c:tf_status",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",

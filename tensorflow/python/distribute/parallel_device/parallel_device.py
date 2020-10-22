@@ -19,26 +19,37 @@ from __future__ import division
 from __future__ import print_function
 
 import threading
+import weakref
 
 from tensorflow.python import _pywrap_parallel_device
 from tensorflow.python.distribute import device_util
-from tensorflow.python.distribute.parallel_device import gen_parallel_device_ops
 from tensorflow.python.distribute.parallel_device import saving
 from tensorflow.python.eager import context
-from tensorflow.python.framework import load_library
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
-from tensorflow.python.platform import resource_loader
+from tensorflow.python.ops import array_ops
 from tensorflow.python.tpu.ops import tpu_ops
-
-load_library.load_op_library(
-    resource_loader.get_path_to_datafile("_parallel_device_ops.so"))
 
 _next_device_number = 0
 _next_device_number_lock = threading.Lock()
 
+_all_parallel_devices = weakref.WeakValueDictionary()
+
+
+def unpack(tensor):
+  """Finds `tensor`'s parallel device and unpacks its components."""
+  parallel_device = _all_parallel_devices.get(tensor.device, None)
+  if parallel_device is None:
+    raise ValueError("{} is not a parallel device".format(tensor.device))
+  return parallel_device.unpack(tensor)
+
 
 # TODO(allenl): Expand this docstring once things like getting components on and
 # off the device are stable.
+#
+# TODO(allenl): Make multi-client work; we need an offset for device IDs, and an
+# indication of how many other devices there are total for collectives which
+# don't have a number of participants hard-coded in their attributes.
 class ParallelDevice(object):
   """A device which executes operations in parallel."""
 
@@ -64,10 +75,10 @@ class ParallelDevice(object):
     device, device_info = _pywrap_parallel_device.GetParallelDeviceCapsules(
         self._name, self.components)
     context.register_custom_device(device, self._name, device_info)
-    with ops.device(self._name):
-      self._device_ids = gen_parallel_device_ops.device_id()
+    self._device_ids = None
     self._device_scope = None
     self._saving_scope = None
+    _all_parallel_devices[self._name] = self
 
   def pack(self, tensors):
     """Create a tensor on the parallel device from a sequence of tensors.
@@ -106,6 +117,27 @@ class ParallelDevice(object):
     Returns:
       A parallel tensor containing 0 on the first device, 1 on the second, etc.
     """
+    if self._device_ids is None:
+      # device_ids may be called from inside a tf.function, in which case the
+      # function captures the eager tensor. We can't pack tensors in a function
+      # at the moment, and even if we could we don't want to hold on to a
+      # symbolic tensor, so we need to init_scope out of the function
+      # temporarily.
+      with ops.init_scope():
+        # TODO(allenl): Functions which capture eager device ID tensors won't be
+        # saveable in SavedModels. Ideally we'd run a DeviceID op every time
+        # device IDs are required, with functions using the op in their bodies
+        # but not hard-coding a fixed number of devices (so they can be re-used
+        # with a different replica count).
+        device_ids_list = []
+        for index, device in enumerate(self.components):
+          with ops.device(device):
+            # The identity op ensures each device ID tensor is placed on its
+            # device.
+            device_ids_list.append(
+                array_ops.identity(constant_op.constant(index)))
+        self._device_ids = self.pack(device_ids_list)
+
     return self._device_ids
 
   def _assert_eager(self):

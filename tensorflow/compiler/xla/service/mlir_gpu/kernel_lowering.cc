@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"  // from @llvm-project
+#include "mlir/Conversion/GPUToROCDL/GPUToROCDLPass.h"  // from @llvm-project
 #include "mlir/Conversion/LinalgToLLVM/LinalgToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToGPU/SCFToGPUPass.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToStandard/SCFToStandard.h"  // from @llvm-project
@@ -26,6 +27,7 @@ limitations under the License.
 #include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"  // from @llvm-project
+#include "mlir/Dialect/LLVMIR/ROCDLDialect.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/Transforms.h"  // from @llvm-project
@@ -33,11 +35,12 @@ limitations under the License.
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "mlir/Transforms/BufferPlacement.h"  // from @llvm-project
+#include "mlir/Transforms/Bufferize.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/xla/service/mlir_gpu/passes.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -46,7 +49,7 @@ namespace mlir_gpu {
 
 Status LowerLHLOToGPU(mlir::ModuleOp module, LowerLHLOToGPUOptions options) {
   mlir::PassManager pm(module.getContext());
-  applyPassManagerCLOptions(pm);
+  tensorflow::applyTensorflowAndCLOptions(pm);
 
   // We have to anticipate later unrolling in tiling to make sure that we get
   // the requested tiling after unrolling. Compute the new tiling here if
@@ -71,7 +74,7 @@ Status LowerLHLOToGPU(mlir::ModuleOp module, LowerLHLOToGPUOptions options) {
   // Next, we can strip the outer fusion operation.
   pm.addPass(createFusionOpRemoverPass());
   // Remove unnecessary LHLO copies.
-  pm.addPass(::mlir::lmhlo::createLhloCopyRemovalPass());
+  pm.addPass(::mlir::createCopyRemovalPass());
   // Transform LHLO operations to LinAlg.
   pm.addPass(::mlir::lmhlo::createLegalizeLhloToLinalgPass());
   // Fuse linalg operations.
@@ -120,10 +123,8 @@ Status LowerLHLOToGPU(mlir::ModuleOp module, LowerLHLOToGPUOptions options) {
   // Approximate of requested.
   if (options.use_approximations) {
     pm.addNestedPass<::mlir::FuncOp>(
-        ::mlir::mhlo::createLegalizeTanhToApproximationPass());
+        ::mlir::mhlo::createLegalizeTrigonometricToApproximationPass());
   }
-  // Move scalar operations into the launch to ensure smaller signatures.
-  pm.addPass(createMoveScalarComputationsIntoGpuLaunchPass());
   // Take launches to launches with kernels.
   pm.addPass(::mlir::createGpuKernelOutliningPass());
   // Make sure the kernel signature resembled the original function's
@@ -179,7 +180,7 @@ class LowerToNVVMPass
 Status LowerKernelBodiesToNVVM(mlir::ModuleOp module) {
   // We cannot verify as the signature of the kernel is rewritten.
   ::mlir::PassManager pm(module.getContext(), /*verifyPasses=*/false);
-  applyPassManagerCLOptions(pm);
+  tensorflow::applyTensorflowAndCLOptions(pm);
 
   // Rewrite kernel functions to LLVM IR.
   auto& kernelPm = pm.nest<::mlir::gpu::GPUModuleOp>();
@@ -193,6 +194,85 @@ Status LowerKernelBodiesToNVVM(mlir::ModuleOp module) {
 
   if (failed(pm.run(module))) {
     return InternalError("Lowering to NVVM IR failed.");
+  }
+  return Status::OK();
+}
+
+namespace {
+
+/// A pass that does the final lowering to ROCDL. It collects all the patterns
+/// that are currently required, currently mixing std, linalg and gpu.
+class LowerToROCDLPass
+    : public ::mlir::PassWrapper<
+          LowerToROCDLPass, ::mlir::OperationPass<::mlir::gpu::GPUModuleOp>> {
+  void getDependentDialects(mlir::DialectRegistry& registry) const override {
+    registry.insert<mlir::ROCDL::ROCDLDialect, mlir::LLVM::LLVMDialect>();
+  }
+
+ public:
+  void runOnOperation() override {
+    ::mlir::gpu::GPUModuleOp m = getOperation();
+
+    ::mlir::OwningRewritePatternList patterns;
+    ::mlir::populateGpuRewritePatterns(m.getContext(), patterns);
+    ::mlir::applyPatternsAndFoldGreedily(m, patterns);
+    patterns.clear();
+
+    ::mlir::LLVMTypeConverter converter(m.getContext());
+    ::mlir::populateStdToLLVMConversionPatterns(converter, patterns);
+    // TODO(b/145824979) Remove linalg once sliceop is in std.
+    ::mlir::populateLinalgToLLVMConversionPatterns(converter, patterns,
+                                                   &getContext());
+    ::mlir::populateGpuToROCDLConversionPatterns(converter, patterns);
+    ::mlir::populateAffineToStdConversionPatterns(patterns, m.getContext());
+
+    ::mlir::ConversionTarget target(getContext());
+    target.addIllegalDialect<::mlir::gpu::GPUDialect>();
+    target
+        .addIllegalOp<mlir::LLVM::CosOp, mlir::LLVM::ExpOp, mlir::LLVM::FAbsOp,
+                      mlir::LLVM::FCeilOp, mlir::LLVM::LogOp,
+                      mlir::LLVM::Log10Op, mlir::LLVM::Log2Op>();
+    target.addIllegalOp<mlir::FuncOp>();
+    target.addLegalDialect<::mlir::LLVM::LLVMDialect>();
+    target.addLegalDialect<::mlir::ROCDL::ROCDLDialect>();
+    // TODO(csigg): Remove once we support replacing non-root ops.
+    target.addLegalOp<::mlir::gpu::GPUModuleOp, ::mlir::gpu::ModuleEndOp,
+                      ::mlir::gpu::YieldOp>();
+    if (failed(mlir::applyFullConversion(m, target, patterns))) {
+      signalPassFailure();
+    }
+  }
+};
+
+}  // namespace
+
+Status LowerKernelBodiesToROCDL(mlir::ModuleOp module) {
+  // We cannot verify as the signature of the kernel is rewritten.
+  ::mlir::PassManager pm(module.getContext(), /*verifyPasses=*/false);
+  tensorflow::applyTensorflowAndCLOptions(pm);
+
+  auto enable_if_vlog_is_on = [](mlir::Pass*, mlir::Operation*) {
+    return VLOG_IS_ON(1);
+  };
+  pm.enableIRPrinting(/*shouldPrintBeforePass=*/{},
+                      /*shouldPrintAfterPass=*/enable_if_vlog_is_on,
+                      /*printModuleScope=*/false,
+                      /*printAfterOnlyOnChange=*/false,
+                      /*out=*/llvm::dbgs());
+
+  // Rewrite kernel functions to LLVM IR.
+  auto& kernelPm = pm.nest<::mlir::gpu::GPUModuleOp>();
+  kernelPm.addPass(::mlir::createLowerToCFGPass());
+  kernelPm.addPass(absl::make_unique<LowerToROCDLPass>());
+
+  // Some basic cleanup.
+  kernelPm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
+  kernelPm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
+  // Remove all location information to prevent a debug build.
+  kernelPm.addPass(::mlir::createStripDebugInfoPass());
+
+  if (failed(pm.run(module))) {
+    return InternalError("Lowering to ROCDL IR failed.");
   }
   return Status::OK();
 }

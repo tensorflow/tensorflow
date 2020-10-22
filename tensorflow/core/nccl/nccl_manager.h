@@ -27,7 +27,6 @@ limitations under the License.
 #endif
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/memory/memory.h"
 #if GOOGLE_CUDA
 #include "third_party/nccl/nccl.h"
 #elif TENSORFLOW_USE_ROCM
@@ -77,7 +76,6 @@ class NcclManager {
           context(static_cast<GPUDeviceContext*>(info->default_context)),
 #endif
           input(input),
-          input_event(nullptr),
           output(output),
           global_rank(global_rank),
           done_callback(std::move(done_callback)),
@@ -85,11 +83,6 @@ class NcclManager {
       DCHECK(executor != nullptr);
       DCHECK(event_mgr != nullptr);
       DCHECK(tensor_stream != nullptr);
-      if (input != nullptr) {
-        input_event = absl::make_unique<se::Event>(executor);
-        input_event->Init();
-        tensor_stream->ThenRecordEvent(input_event.get());
-      }
     }
 
     // StreamExecutor for the device. Expected to be live for process lifetime.
@@ -117,10 +110,6 @@ class NcclManager {
     // Owned by the caller, who must keep it live until `done_callback` is
     // called. Is NULL for participants that only receive data.
     const Tensor* input;
-
-    // Wait on this event rather than synchronizing on the entire stream.
-    // This allows greater concurrency between compute and nccl streams.
-    std::unique_ptr<se::Event> input_event;
 
     // Owned by the caller, who must keep it live until `done_callback` is
     // called. Is NULL for participants that only send data.
@@ -202,6 +191,14 @@ class NcclManager {
   // function.
   void SignalMultiNodeReady(const string& collective_key);
 
+  // Aborts all collectives. After abortion, no further collectives can be
+  // launched with this NcclManager.
+  void StartAbort(const Status& s);
+
+  // Resets a previously aborted NcclManager, making it available for future
+  // collectives.
+  void Reset();
+
  private:
   enum CollectiveType {
     kAllReduce = 1,
@@ -255,7 +252,9 @@ class NcclManager {
   absl::flat_hash_map<se::StreamExecutor*, std::vector<NcclStream*>>
       device_to_comm_streams_ TF_GUARDED_BY(mu_);
 
-  std::vector<std::unique_ptr<Communicator>> communicators_;
+  std::vector<std::unique_ptr<Communicator>> communicators_ TF_GUARDED_BY(mu_);
+
+  Status status_ TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(NcclManager);
 };

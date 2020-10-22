@@ -75,7 +75,7 @@ class DatasetBenchmarkBase(test.Benchmark):
         if warmup:
           # Run once to warm up the session caches.
           sess.run(iterator.initializer)
-          sess.run(next_element)
+          sess.run(next_element.op)
 
         sess.run(iterator.initializer)
         start = time.time()

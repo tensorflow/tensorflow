@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/tools/logging.h"
@@ -79,12 +80,23 @@ std::vector<Matcher<std::complex<float>>> ArrayComplex64Near(
   return matchers;
 }
 
-int SingleOpModel::AddInput(const TensorData& t, bool is_variable) {
+int SingleOpModel::AddInput(const TensorData& t) {
   int id = 0;
   if (t.per_channel_quantization) {
     id = AddTensorPerChannelQuant(t);
   } else {
-    id = AddTensor<float>(t, {}, is_variable);
+    id = AddTensor<float>(t, {});
+  }
+  inputs_.push_back(id);
+  return id;
+}
+
+int SingleOpModel::AddVariableInput(const TensorData& t) {
+  int id = 0;
+  if (t.per_channel_quantization) {
+    id = AddTensorPerChannelQuant(t);
+  } else {
+    id = AddTensor<float>(t, {}, true);
   }
   inputs_.push_back(id);
   return id;
@@ -181,7 +193,10 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
   UpdateOpVersion(buffer_pointer);
 
   if (!resolver_) {
-    auto resolver = new ops::builtin::BuiltinOpResolver();
+    MutableOpResolver* resolver =
+        apply_delegate
+            ? new ops::builtin::BuiltinOpResolver()
+            : new ops::builtin::BuiltinOpResolverWithoutDefaultDelegates();
     for (const auto& reg : custom_registrations_) {
       resolver->AddCustom(reg.first.data(), reg.second());
     }

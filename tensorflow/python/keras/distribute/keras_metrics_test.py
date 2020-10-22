@@ -19,12 +19,13 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import strategy_combinations
-from tensorflow.python.eager import test
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras import metrics
 from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
 
 
 def _labeled_dataset_fn():
@@ -83,9 +84,7 @@ def all_combinations():
 
 def tpu_combinations():
   return combinations.combine(
-      distribution=[
-          strategy_combinations.tpu_strategy_one_step,
-      ],
+      distribution=[strategy_combinations.tpu_strategy,],
       mode=["graph"])
 
 
@@ -114,7 +113,7 @@ class KerasMetricsTest(test.TestCase, parameterized.TestCase):
         if batches_consumed >= 4:  # Consume 4 input batches in total.
           break
 
-  @combinations.generate(all_combinations() + tpu_combinations())
+  @ds_combinations.generate(all_combinations() + tpu_combinations())
   def testMean(self, distribution):
     def _dataset_fn():
       return dataset_ops.Dataset.range(1000).map(math_ops.to_float).batch(

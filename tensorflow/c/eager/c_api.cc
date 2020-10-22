@@ -39,7 +39,7 @@ limitations under the License.
 #include "tensorflow/c/eager/tfe_op_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "tensorflow/c/tf_tensor_internal.h"
-#ifdef PLATFORM_GOOGLE
+#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE)
 #include "tensorflow/core/tfrt/eager/c_api_tfrt.h"
 #endif
 #include "tensorflow/core/common_runtime/device.h"
@@ -70,6 +70,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
+#include "tensorflow/core/distributed_runtime/worker_interface.h"
 #include "tensorflow/core/distributed_runtime/eager/cluster_function_library_runtime.h"
 #endif  // !IS_MOBILE_PLATFORM
 #include "tensorflow/core/framework/node_def_util.h"
@@ -626,21 +627,30 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
                     "targets will fail.";
     }
   } else {
-    // The master's context_view_id will be incremented by one
-    // the UpdateRemoteMaster call later. We want all new workers and
-    // existing workers to also have the updated context_view_id, so
-    // we must set their context_view_id to the existing master's
-    // context_view_id + 1.
-    sg.Update(CreateRemoteContexts(
-        ctx, added_workers, context_id, context_view_id + 1, keep_alive_secs,
-        server_def, remote_eager_workers.get(), context->Executor().Async(),
-        context->LazyCopyFunctionRemoteInputs(), base_request));
+    if (sg.ok()) {
+      // Create remote contexts on the newly added workers only if the master
+      // has collected all device information from them (i.e., the
+      // GetAllRemoteDevices call returns succussfully). Note that in rare cases
+      // GetAllRemoteDevices can still fail even with RPCs configured to wait
+      // until the remote workers to become alive. If the master creates remote
+      // contexts on the workers whose devices are still not collected, those
+      // workers will be treated as existing workers subsequently, so the master
+      // will never get devices from them even with retrying UpdateServerDef.
+      sg.Update(CreateRemoteContexts(
+          ctx, added_workers, context_id, context_view_id + 1, keep_alive_secs,
+          server_def, remote_eager_workers.get(), context->Executor().Async(),
+          context->LazyCopyFunctionRemoteInputs(), base_request));
+    }
     if (!existing_workers.empty()) {
       if (VLOG_IS_ON(1)) {
         for (const string& w : existing_workers) {
           VLOG(1) << "Updating cluster with existing worker " << w;
         }
       }
+      // The master's context_view_id will be incremented by one in the
+      // UpdateRemoteMaster call later. We want existing workers to also have
+      // the updated context_view_id, so we must set their context_view_id to
+      // the master's current context_view_id + 1.
       sg.Update(UpdateRemoteContexts(ctx, existing_workers, added_workers,
                                      removed_workers, context_id,
                                      context_view_id + 1, server_def,
@@ -720,7 +730,7 @@ void TFE_DeleteContextOptions(TFE_ContextOptions* options) { delete options; }
 
 TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
   if (opts->use_tfrt) {
-#ifdef PLATFORM_GOOGLE
+#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE)
     return tensorflow::wrap(new tfrt::tf::ContextInterface(opts->async));
 #else
     status->status = tensorflow::errors::Unimplemented("TFRT is not supported");
@@ -743,8 +753,7 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
       static_cast<tensorflow::ContextDevicePlacementPolicy>(
           opts->device_placement_policy),
       opts->async, opts->lazy_remote_inputs_copy, device_mgr.release(),
-      /*device_mgr_owned*/ true, r,
-      tensorflow::GetDefaultCustomKernelCreator()));
+      /*device_mgr_owned*/ true, r));
 }
 
 void TFE_DeleteContext(TFE_Context* ctx) {
@@ -848,51 +857,41 @@ TF_CAPI_EXPORT extern bool TFE_ContextCheckAlive(TFE_Context* ctx,
   tensorflow::EagerContext* context =
       tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
   tensorflow::GrpcServer* grpc_server =
-      static_cast<tensorflow::GrpcServer*>(context->GetServer());
-
-  std::unique_ptr<tensorflow::eager::EagerClientCache> remote_eager_workers;
-  status->status = grpc_server->master_env()->worker_cache->GetEagerClientCache(
-      &remote_eager_workers);
-  if (!status->status.ok()) {
-    LOG(ERROR) << "Failed to get client cache for remote workers.";
+      dynamic_cast<tensorflow::GrpcServer*>(context->GetServer());
+  if (grpc_server == nullptr) {
+    status->status =
+        tensorflow::errors::Internal("Failed to get tensorflow::GrpcServer.");
+    return false;
+  }
+  tensorflow::WorkerInterface* wi =
+      grpc_server->master_env()->worker_cache->GetOrCreateWorker(worker_name);
+  if (wi == nullptr) {
+    status->status = tensorflow::errors::InvalidArgument(
+        "Unable to find worker interface corresponding to task ", worker_name);
     return false;
   }
 
-  // TODO(yuefengz): support partially specified `worker_name`.
-  tensorflow::core::RefCountPtr<tensorflow::eager::EagerClient> eager_client;
-  status->status = remote_eager_workers->GetClient(worker_name, &eager_client);
-  if (!status->status.ok()) {
-    return false;
-  }
-
-  // Send a rpc request to the worker to check aliveness.
-  tensorflow::eager::KeepAliveRequest request;
-  request.set_context_id(context->GetContextId());
-  tensorflow::eager::KeepAliveResponse response;
-
-  tensorflow::Status keep_alive_status;
+  tensorflow::GetStatusRequest request;
+  tensorflow::GetStatusResponse response;
+  tensorflow::Status remote_status;
   tensorflow::Notification done;
-  eager_client->KeepAliveAsync(
-      &request, &response,
-      [&keep_alive_status, &done](const tensorflow::Status& s) {
-        keep_alive_status = s;
-        done.Notify();
-      });
+  wi->GetStatusAsync(/*opts_=*/nullptr, &request, &response, /*fail_fast=*/true,
+                     [&remote_status, &done](const tensorflow::Status& s) {
+                       remote_status = s;
+                       done.Notify();
+                     });
   done.WaitForNotification();
 
+  // We set OK status so the call does not raise any exceptions. Instead, caller
+  // users the return value to tell if the remote worker is alive.
   status->status = tensorflow::Status::OK();
 
-  // If `context_id` doesn't exist on the remote worker, an InvalidArgument
-  // error will return. But this still indicates that the remote worker is
-  // alive.
-  if (keep_alive_status.ok() ||
-      keep_alive_status.code() == tensorflow::error::INVALID_ARGUMENT) {
+  if (remote_status.ok()) {
     return true;
-  } else {
-    LOG(INFO) << "Remote worker " << worker_name
-              << " is not alive: " << keep_alive_status.error_message();
-    return false;
   }
+  LOG(INFO) << "Remote worker " << worker_name
+            << " is not alive: " << remote_status.error_message();
+  return false;
 #endif  // !IS_MOBILE_PLATFORM
 }
 
@@ -907,9 +906,7 @@ TF_CAPI_EXPORT extern void TFE_ContextAsyncWait(TFE_Context* ctx,
 
 void TFE_ContextSetThreadLocalDevicePlacementPolicy(
     TFE_Context* ctx, TFE_ContextDevicePlacementPolicy policy) {
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  context->SetThreadLocalDevicePlacementPolicy(
+  tensorflow::unwrap(ctx)->SetThreadLocalDevicePlacementPolicy(
       static_cast<tensorflow::ContextDevicePlacementPolicy>(policy));
 }
 
@@ -918,10 +915,8 @@ void TFE_ContextSetThreadLocalDevicePlacementPolicy(
 // safe to call this function from the async EagerExecutor threads.
 extern TFE_ContextDevicePlacementPolicy TFE_ContextGetDevicePlacementPolicy(
     TFE_Context* ctx) {
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
   return static_cast<TFE_ContextDevicePlacementPolicy>(
-      context->GetDevicePlacementPolicy());
+      tensorflow::unwrap(ctx)->GetDevicePlacementPolicy());
 }
 
 TFE_TensorHandle* TFE_NewTensorHandle(const TF_Tensor* t, TF_Status* status) {
@@ -1432,21 +1427,15 @@ void TFE_ContextRemoveFunction(TFE_Context* ctx, const char* name,
 }
 
 unsigned char TFE_ContextHasFunction(TFE_Context* ctx, const char* name) {
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  return context->FindFunctionDef(name) != nullptr;
+  return tensorflow::unwrap(ctx)->FindFunctionDef(name) != nullptr;
 }
 
 void TFE_ContextEnableRunMetadata(TFE_Context* ctx) {
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  context->SetShouldStoreGraphs(true);
+  tensorflow::unwrap(ctx)->SetShouldStoreGraphs(true);
 }
 
 void TFE_ContextDisableRunMetadata(TFE_Context* ctx) {
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  context->SetShouldStoreGraphs(false);
+  tensorflow::unwrap(ctx)->SetShouldStoreGraphs(false);
 }
 
 }  // extern "C"

@@ -30,6 +30,7 @@ from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import values as ds_values
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -40,6 +41,7 @@ from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 from tensorflow.python.keras.optimizer_v2 import utils as optimizer_utils
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -50,9 +52,11 @@ from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
-from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 
+
+keras_optimizers_gauge = monitoring.BoolGauge(
+    "/tensorflow/api/keras/optimizers", "keras optimizer usage", "method")
 
 _DEFAULT_VALID_DTYPES = frozenset([
     dtypes.float16, dtypes.bfloat16, dtypes.float32, dtypes.float64,
@@ -326,6 +330,9 @@ class OptimizerV2(trackable.Trackable):
     Raises:
       ValueError: in case of any invalid argument.
     """
+    # Instrument optimizer usages
+    keras_optimizers_gauge.get_cell(self.__class__.__name__).set(True)
+
     allowed_kwargs = {"clipnorm", "clipvalue", "lr", "decay", "global_clipnorm"}
     for k in kwargs:
       if k not in allowed_kwargs:
@@ -790,6 +797,14 @@ class OptimizerV2(trackable.Trackable):
         return self._get_hyper(name)
       raise e
 
+  def __dir__(self):
+    result = set(super(OptimizerV2, self).__dir__())
+    if "_hyper" in result:
+      result |= self._hyper.keys()
+      if "learning_rate" in self._hyper.keys():
+        result.add("lr")
+    return list(result)
+
   def __setattr__(self, name, value):
     """Override setattr to support dynamic hyperparameter setting."""
     # Backwards compatibility with Keras optimizers.
@@ -949,6 +964,8 @@ class OptimizerV2(trackable.Trackable):
       config["clipnorm"] = self.clipnorm
     if self.clipvalue is not None:
       config["clipvalue"] = self.clipvalue
+    if self.global_clipnorm is not None:
+      config["global_clipnorm"] = self.global_clipnorm
     return config
 
   @classmethod
@@ -1292,7 +1309,7 @@ class OptimizerV2(trackable.Trackable):
         # (aside from double initialization), and makes variable creator scopes
         # behave the same way they do when graph building.
         and not ops.get_default_graph()._variable_creator_stack):  # pylint: disable=protected-access
-      initializer = trackable.CheckpointInitialValue(
+      initializer = trackable.CheckpointInitialValueCallable(
           checkpoint_position=slot_variable_position)
       slot_variable = self.add_slot(
           var=variable,
@@ -1345,7 +1362,7 @@ def _var_key(var):
   # pylint: disable=protected-access
   # Get the distributed variable if it exists.
   if hasattr(var, "_distributed_container"):
-    var = var._distributed_container
+    var = var._distributed_container()
   if var._in_graph_mode:
     return var._shared_name
   return var._unique_id

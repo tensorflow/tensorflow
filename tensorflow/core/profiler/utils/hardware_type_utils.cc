@@ -57,6 +57,17 @@ uint32 GetFmaMaxThroughputPerSMPerCycle(const DeviceCapabilities& device_cap) {
       n_fp32_cores = 64;
       n_tc_cores = 8;
       break;
+    case 8:
+      // Ampere
+      if (device_cap.compute_capability().minor() >= 6) {
+        // Ampere SM86
+        n_fp32_cores = 128;
+      } else {
+        // Ampere SM80
+        n_fp32_cores = 64;
+      }
+      n_tc_cores = 4;
+      break;
     default:
       LOG(ERROR) << "Invalid GPU compute capability.";
       break;
@@ -81,6 +92,8 @@ HardwareType ParseHardwareType(absl::string_view device_type) {
   if (device_type == "TPU") return HardwareType::TPU;
   return HardwareType::UNKNOWN_HARDWARE;
 }
+
+bool HasDevice(HardwareType x) { return x > tensorflow::profiler::CPU_ONLY; }
 
 }  // namespace profiler
 }  // namespace tensorflow

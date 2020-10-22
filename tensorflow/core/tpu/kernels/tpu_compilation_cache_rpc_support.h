@@ -20,7 +20,9 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
+#include "grpcpp/support/slice.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_entry.h"
@@ -82,14 +84,13 @@ std::shared_ptr<::grpc::ChannelCredentials> CreateChannelCredentials();
 // Fills an uinitialized `CacheEntry` from `GetTpuProgramResponse` proto. The
 // `cache_entry` will be instantiated by the function.
 template <typename ResponseType>
-Status FillCacheEntryFromGetTpuProgramResponse(
+Status DeserializeRpcResponseToCacheEntry(
     const absl::string_view local_proto_key, ResponseType* response,
     std::shared_ptr<CacheEntry>* cache_entry);
 
-// A helper to send `TpuCompilationCacheEntry` payload through gRPC channel.
-void SendGetTpuProgramResponseHelper(
-    const TpuCompilationCacheEntry& cache_entry,
-    std::function<void(::grpc::ByteBuffer*, ::grpc::Status)> call_fn);
+// Serializes `TpuCompilationCacheEntry` to gRPC bufer slices.
+xla::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(
+    const TpuCompilationCacheEntry& cache_entry);
 }  // namespace tpu
 }  // namespace tensorflow
 

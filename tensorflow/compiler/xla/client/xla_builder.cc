@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/macros.h"
 
 namespace xla {
 
@@ -117,14 +119,23 @@ HloComputationProto CreateReduceOr(int64 reducer_id,
   }
   return reducer;
 }
+
+bool InstrIsSetBound(const HloInstructionProto* instr_proto) {
+  HloOpcode opcode = StringToHloOpcode(instr_proto->opcode()).ValueOrDie();
+  if (opcode == HloOpcode::kCustomCall &&
+      instr_proto->custom_call_target() == "SetBound") {
+    return true;
+  }
+  return false;
+}
 }  // namespace
 
 namespace internal {
 
-XlaOp XlaBuilderBuildFusion(XlaBuilder* builder,
-                            absl::Span<const XlaOp> operands,
-                            absl::string_view fusion_kind,
-                            const XlaComputation& fused_computation) {
+XlaOp XlaBuilderFriend::BuildFusion(XlaBuilder* builder,
+                                    absl::Span<const XlaOp> operands,
+                                    absl::string_view fusion_kind,
+                                    const XlaComputation& fused_computation) {
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     instr.set_fusion_kind(std::string(fusion_kind));
@@ -136,6 +147,21 @@ XlaOp XlaBuilderBuildFusion(XlaBuilder* builder,
     return builder->AddInstruction(std::move(instr), HloOpcode::kFusion,
                                    operands);
   });
+}
+
+XlaOp XlaBuilderFriend::BuildBitcast(XlaBuilder* builder, XlaOp operand,
+                                     const Shape& shape) {
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    *instr.mutable_shape() = shape.ToProto();
+    return builder->AddInstruction(std::move(instr), HloOpcode::kBitcast,
+                                   {operand});
+  });
+}
+
+HloInstructionProto* XlaBuilderFriend::GetInstruction(XlaOp op) {
+  return &op.builder()
+              ->instructions_[op.builder()->handle_to_index_[op.handle_]];
 }
 
 }  // namespace internal
@@ -293,7 +319,6 @@ void XlaBuilder::IsConstantVisitor(const int64 op_handle,
       // GetDimensionSize is always considered constant in XLA -- If a dynamic
       // dimension is presented, -1 is returned.
       break;
-
     // Non functional ops.
     case HloOpcode::kRng:
     case HloOpcode::kAllReduce:
@@ -306,6 +331,11 @@ void XlaBuilder::IsConstantVisitor(const int64 op_handle,
       // cannot be constant.  We cannot set is_functional=false in other similar
       // cases since we're already relying on IsConstant to return true.
     case HloOpcode::kCustomCall:
+      if (instr.custom_call_target() == "SetBound") {
+        // Set bound is considered constant -- the bound is used as the value.
+        break;
+      }
+      TF_FALLTHROUGH_INTENDED;
     case HloOpcode::kWhile:
       // TODO(b/32495713): We aren't checking the condition and body
       // computations themselves.
@@ -661,8 +691,10 @@ XlaOp XlaBuilder::BinaryOpNoBroadcast(HloOpcode binop, const Shape& shape,
 
 StatusOr<XlaOp> XlaBuilder::Compare(const Shape& shape, XlaOp lhs, XlaOp rhs,
                                     ComparisonDirection direction) {
-  return Compare(shape, lhs, rhs, direction,
-                 Comparison::DefaultComparisonType(shape.element_type()));
+  TF_ASSIGN_OR_RETURN(auto operand_shape, GetShape(lhs));
+  return Compare(
+      shape, lhs, rhs, direction,
+      Comparison::DefaultComparisonType(operand_shape.element_type()));
 }
 
 StatusOr<XlaOp> XlaBuilder::Compare(const Shape& shape, XlaOp lhs, XlaOp rhs,
@@ -1692,7 +1724,9 @@ XlaOp XlaBuilder::CustomCall(
     const string& call_target_name, absl::Span<const XlaOp> operands,
     const Shape& shape, const string& opaque,
     absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
-    bool has_side_effect) {
+    bool has_side_effect,
+    absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
+        output_operand_aliasing) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     if (absl::StartsWith(call_target_name, "$")) {
       return InvalidArgument(
@@ -1724,7 +1758,8 @@ XlaOp XlaBuilder::CustomCall(
       }
     }
     return CustomCallInternal(call_target_name, operands, shape, opaque,
-                              operand_shapes_with_layout, has_side_effect);
+                              operand_shapes_with_layout, has_side_effect,
+                              output_operand_aliasing);
   });
 }
 
@@ -1732,7 +1767,9 @@ StatusOr<XlaOp> XlaBuilder::CustomCallInternal(
     const string& call_target_name, absl::Span<const XlaOp> operands,
     const Shape& shape, const string& opaque,
     absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
-    bool has_side_effect) {
+    bool has_side_effect,
+    absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
+        output_operand_aliasing) {
   HloInstructionProto instr;
   *instr.mutable_shape() = shape.ToProto();
   instr.set_custom_call_target(call_target_name);
@@ -1744,6 +1781,16 @@ StatusOr<XlaOp> XlaBuilder::CustomCallInternal(
     }
   }
   instr.set_custom_call_has_side_effect(has_side_effect);
+  for (const auto& pair : output_operand_aliasing) {
+    auto aliasing = instr.add_custom_call_output_operand_aliasing();
+    aliasing->set_operand_index(pair.second.first);
+    for (int64 index : pair.second.second) {
+      aliasing->add_operand_shape_index(index);
+    }
+    for (int64 index : pair.first) {
+      aliasing->add_output_shape_index(index);
+    }
+  }
   return AddInstruction(std::move(instr), HloOpcode::kCustomCall, operands);
 }
 
@@ -1751,7 +1798,9 @@ XlaOp XlaBuilder::CustomCall(
     const string& call_target_name, absl::Span<const XlaOp> operands,
     const XlaComputation& computation, const Shape& shape, const string& opaque,
     absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
-    bool has_side_effect) {
+    bool has_side_effect,
+    absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
+        output_operand_aliasing) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     if (absl::StartsWith(call_target_name, "$")) {
@@ -1789,6 +1838,16 @@ XlaOp XlaBuilder::CustomCall(
       }
     }
     AddCalledComputation(computation, &instr);
+    for (const auto& pair : output_operand_aliasing) {
+      auto aliasing = instr.add_custom_call_output_operand_aliasing();
+      aliasing->set_operand_index(pair.second.first);
+      for (int64 index : pair.second.second) {
+        aliasing->add_operand_shape_index(index);
+      }
+      for (int64 index : pair.first) {
+        aliasing->add_output_shape_index(index);
+      }
+    }
     return AddInstruction(std::move(instr), HloOpcode::kCustomCall, operands);
   });
 }
@@ -2265,31 +2324,53 @@ XlaOp XlaBuilder::ReduceWindow(XlaOp operand, XlaOp init_value,
                                absl::Span<const int64> window_dimensions,
                                absl::Span<const int64> window_strides,
                                Padding padding) {
-  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
-    TF_RETURN_IF_ERROR(
-        ValidatePaddingValues(AsInt64Slice(operand_shape->dimensions()),
-                              window_dimensions, window_strides));
+  return ReduceWindow(absl::MakeSpan(&operand, 1),
+                      absl::MakeSpan(&init_value, 1), computation,
+                      window_dimensions, window_strides, padding);
+}
 
+XlaOp XlaBuilder::ReduceWindow(absl::Span<const XlaOp> operands,
+                               absl::Span<const XlaOp> init_values,
+                               const XlaComputation& computation,
+                               absl::Span<const int64> window_dimensions,
+                               absl::Span<const int64> window_strides,
+                               Padding padding) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    const Shape* operand_shape = nullptr;
+    for (const auto& operand : operands) {
+      TF_ASSIGN_OR_RETURN(operand_shape, GetShapePtr(operand));
+      TF_RETURN_IF_ERROR(
+          ValidatePaddingValues(AsInt64Slice(operand_shape->dimensions()),
+                                window_dimensions, window_strides));
+    }
+    CHECK(operand_shape != nullptr);
     std::vector<std::pair<int64, int64>> padding_values =
         MakePadding(AsInt64Slice(operand_shape->dimensions()),
                     window_dimensions, window_strides, padding);
     return ReduceWindowWithGeneralPadding(
-        operand, init_value, computation, window_dimensions, window_strides,
+        operands, init_values, computation, window_dimensions, window_strides,
         /*base_dilations=*/{}, /*window_dilations=*/{}, padding_values);
   });
 }
 
 XlaOp XlaBuilder::ReduceWindowWithGeneralPadding(
-    XlaOp operand, XlaOp init_value, const XlaComputation& computation,
+    absl::Span<const XlaOp> operands, absl::Span<const XlaOp> init_values,
+    const XlaComputation& computation,
     absl::Span<const int64> window_dimensions,
     absl::Span<const int64> window_strides,
     absl::Span<const int64> base_dilations,
     absl::Span<const int64> window_dilations,
     absl::Span<const std::pair<int64, int64>> padding) {
+  std::vector<const Shape*> operand_shapes, init_shapes;
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
-    TF_ASSIGN_OR_RETURN(const Shape* init_shape, GetShapePtr(init_value));
+    for (int i = 0; i < operands.size(); ++i) {
+      const auto& operand = operands[i];
+      const auto& init_value = init_values[i];
+      TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+      operand_shapes.push_back(operand_shape);
+      TF_ASSIGN_OR_RETURN(const Shape* init_shape, GetShapePtr(init_value));
+      init_shapes.push_back(init_shape);
+    }
     TF_ASSIGN_OR_RETURN(const ProgramShape& to_apply_shape,
                         computation.GetProgramShape());
     TF_ASSIGN_OR_RETURN(auto window,
@@ -2299,10 +2380,31 @@ XlaOp XlaBuilder::ReduceWindowWithGeneralPadding(
                             /*rhs_dilation=*/window_dilations));
     TF_ASSIGN_OR_RETURN(
         Shape shape, ShapeInference::InferReduceWindowShape(
-                         *operand_shape, *init_shape, window, to_apply_shape));
-    return ReduceWindowInternal(shape, operand, init_value, computation,
+                         absl::MakeSpan(operand_shapes),
+                         absl::MakeSpan(init_shapes), window, to_apply_shape));
+    return ReduceWindowInternal(shape, operands, init_values, computation,
                                 std::move(window));
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::ReduceWindowInternal(
+    const Shape& shape, absl::Span<const XlaOp> operands,
+    absl::Span<const XlaOp> init_values, const XlaComputation& computation,
+    Window window) {
+  if (operands.size() == 1) {
+    return ReduceWindowInternal(shape, operands[0], init_values[0], computation,
+                                window);
+  } else {
+    HloInstructionProto instr;
+    *instr.mutable_shape() = shape.ToProto();
+    *instr.mutable_window() = std::move(window);
+    AddCalledComputation(computation, &instr);
+    std::vector<XlaOp> args;
+    args.insert(args.end(), operands.begin(), operands.end());
+    args.insert(args.end(), init_values.begin(), init_values.end());
+    return AddInstruction(std::move(instr), HloOpcode::kReduceWindow,
+                          absl::MakeSpan(args));
+  }
 }
 
 StatusOr<XlaOp> XlaBuilder::ReduceWindowInternal(
@@ -3086,6 +3188,15 @@ StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
       case HloOpcode::kConstant:
         SetInstructionAsConstant(new_instr, id, new_shape, false);
         break;
+      case HloOpcode::kCustomCall:
+        if (instr_proto->custom_call_target() == "SetBound") {
+          SetInstructionAsConstant(new_instr, id, new_shape, true);
+          break;
+        } else {
+          return InvalidArgument(
+              "Dynamic inferencing on custom call %s is not supported",
+              instr_proto->DebugString());
+        }
       case HloOpcode::kParameter:
         SetInstructionAsConstant(new_instr, id, new_shape, true);
         break;
@@ -3149,7 +3260,8 @@ StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
     TF_ASSIGN_OR_RETURN(HloOpcode opcode,
                         StringToHloOpcode(instr_proto->opcode()));
     if (next_operand >= instr_proto->operand_ids_size() ||
-        opcode == HloOpcode::kGetDimensionSize) {
+        opcode == HloOpcode::kGetDimensionSize ||
+        InstrIsSetBound(instr_proto)) {
       // No more operands to process, process self.
       int64 new_id = ++global_id;
       VLOG(3) << "new_id: " << new_id << "instr: " << instr_proto->name();
@@ -3235,26 +3347,33 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
                         LookUpInstructionByHandle(handle));
 
     if (instr_proto->opcode() ==
-        HloOpcodeString(HloOpcode::kGetDimensionSize)) {
-      // At this point, BuildConstantSubGraph should never encounter a
-      // GetDimensionSize with a dynamic dimension. IsConstant check would have
-      // failed at the beginning of this function.
-      //
-      // Replace GetDimensionSize with a Constant representing the static bound
-      // of the shape.
-      int64 dimension = instr_proto->dimensions(0);
-      int64 operand_handle = instr_proto->operand_ids(0);
-      TF_ASSIGN_OR_RETURN(const HloInstructionProto* operand_proto,
-                          LookUpInstructionByHandle(operand_handle));
+            HloOpcodeString(HloOpcode::kGetDimensionSize) ||
+        InstrIsSetBound(instr_proto)) {
+      int32 constant_value = -1;
+      if (instr_proto->opcode() ==
+          HloOpcodeString(HloOpcode::kGetDimensionSize)) {
+        // At this point, BuildConstantSubGraph should never encounter a
+        // GetDimensionSize with a dynamic dimension. IsConstant check would
+        // have failed at the beginning of this function.
+        //
+        // Replace GetDimensionSize with a Constant representing the static
+        // bound of the shape.
+        int64 dimension = instr_proto->dimensions(0);
+        int64 operand_handle = instr_proto->operand_ids(0);
+        TF_ASSIGN_OR_RETURN(const HloInstructionProto* operand_proto,
+                            LookUpInstructionByHandle(operand_handle));
 
-      int32 constant_dimension_size = -1;
-      if (!(operand_proto->shape().is_dynamic_dimension(dimension) &&
-            dynamic_dimension_is_minus_one)) {
-        constant_dimension_size =
-            static_cast<int32>(operand_proto->shape().dimensions(dimension));
+        if (!(operand_proto->shape().is_dynamic_dimension(dimension) &&
+              dynamic_dimension_is_minus_one)) {
+          constant_value =
+              static_cast<int32>(operand_proto->shape().dimensions(dimension));
+        }
+      } else {
+        TF_RET_CHECK(
+            absl::SimpleAtoi(instr_proto->backend_config(), &constant_value));
       }
 
-      Literal literal = LiteralUtil::CreateR0(constant_dimension_size);
+      Literal literal = LiteralUtil::CreateR0(constant_value);
 
       HloInstructionProto const_instr;
       *const_instr.mutable_shape() = literal.shape().ToProto();
@@ -3284,6 +3403,9 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
                         LookUpInstructionByHandle(id));
 
     if (instr_src->opcode() == HloOpcodeString(HloOpcode::kGetDimensionSize)) {
+      continue;
+    }
+    if (InstrIsSetBound(instr_src)) {
       continue;
     }
     auto* instr = entry.add_instructions();
@@ -3826,31 +3948,39 @@ XlaOp Call(XlaBuilder* builder, const XlaComputation& computation,
   return builder->Call(computation, operands);
 }
 
-XlaOp CustomCall(XlaBuilder* builder, const string& call_target_name,
-                 absl::Span<const XlaOp> operands, const Shape& shape,
-                 const string& opaque, bool has_side_effect) {
+XlaOp CustomCall(
+    XlaBuilder* builder, const string& call_target_name,
+    absl::Span<const XlaOp> operands, const Shape& shape, const string& opaque,
+    bool has_side_effect,
+    absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
+        output_operand_aliasing) {
   return builder->CustomCall(call_target_name, operands, shape, opaque,
                              /*operand_shapes_with_layout=*/absl::nullopt,
-                             has_side_effect);
+                             has_side_effect, output_operand_aliasing);
 }
 
-XlaOp CustomCallWithComputation(XlaBuilder* builder,
-                                const string& call_target_name,
-                                absl::Span<const XlaOp> operands,
-                                const XlaComputation& computation,
-                                const Shape& shape, const string& opaque,
-                                bool has_side_effect) {
-  return builder->CustomCall(
-      call_target_name, operands, computation, shape, opaque,
-      /*operand_shapes_with_layout=*/absl::nullopt, has_side_effect);
+XlaOp CustomCallWithComputation(
+    XlaBuilder* builder, const string& call_target_name,
+    absl::Span<const XlaOp> operands, const XlaComputation& computation,
+    const Shape& shape, const string& opaque, bool has_side_effect,
+    absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
+        output_operand_aliasing) {
+  return builder->CustomCall(call_target_name, operands, computation, shape,
+                             opaque,
+                             /*operand_shapes_with_layout=*/absl::nullopt,
+                             has_side_effect, output_operand_aliasing);
 }
 
-XlaOp CustomCallWithLayout(XlaBuilder* builder, const string& call_target_name,
-                           absl::Span<const XlaOp> operands, const Shape& shape,
-                           absl::Span<const Shape> operand_shapes_with_layout,
-                           const string& opaque, bool has_side_effect) {
+XlaOp CustomCallWithLayout(
+    XlaBuilder* builder, const string& call_target_name,
+    absl::Span<const XlaOp> operands, const Shape& shape,
+    absl::Span<const Shape> operand_shapes_with_layout, const string& opaque,
+    bool has_side_effect,
+    absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
+        output_operand_aliasing) {
   return builder->CustomCall(call_target_name, operands, shape, opaque,
-                             operand_shapes_with_layout, has_side_effect);
+                             operand_shapes_with_layout, has_side_effect,
+                             output_operand_aliasing);
 }
 
 XlaOp Complex(const XlaOp lhs, const XlaOp rhs,
@@ -3980,6 +4110,17 @@ XlaOp ReduceWindow(const XlaOp operand, const XlaOp init_value,
                                          padding);
 }
 
+XlaOp ReduceWindow(absl::Span<const XlaOp> operands,
+                   absl::Span<const XlaOp> init_values,
+                   const XlaComputation& computation,
+                   absl::Span<const int64> window_dimensions,
+                   absl::Span<const int64> window_strides, Padding padding) {
+  CHECK(!operands.empty());
+  return operands[0].builder()->ReduceWindow(operands, init_values, computation,
+                                             window_dimensions, window_strides,
+                                             padding);
+}
+
 XlaOp ReduceWindowWithGeneralPadding(
     const XlaOp operand, const XlaOp init_value,
     const XlaComputation& computation,
@@ -3989,8 +4130,9 @@ XlaOp ReduceWindowWithGeneralPadding(
     absl::Span<const int64> window_dilations,
     absl::Span<const std::pair<int64, int64>> padding) {
   return operand.builder()->ReduceWindowWithGeneralPadding(
-      operand, init_value, computation, window_dimensions, window_strides,
-      base_dilations, window_dilations, padding);
+      absl::MakeSpan(&operand, 1), absl::MakeSpan(&init_value, 1), computation,
+      window_dimensions, window_strides, base_dilations, window_dilations,
+      padding);
 }
 
 XlaOp AllGather(const XlaOp operand, int64 all_gather_dimension,

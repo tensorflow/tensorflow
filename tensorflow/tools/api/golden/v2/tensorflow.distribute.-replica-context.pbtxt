@@ -1,6 +1,7 @@
 path: "tensorflow.distribute.ReplicaContext"
 tf_class {
   is_instance: "<class \'tensorflow.python.distribute.distribute_lib.ReplicaContext\'>"
+  is_instance: "<class \'tensorflow.python.distribute.distribute_lib.ReplicaContextBase\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "devices"
@@ -23,8 +24,12 @@ tf_class {
     argspec: "args=[\'self\', \'strategy\', \'replica_id_in_sync_group\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "all_gather"
+    argspec: "args=[\'self\', \'value\', \'axis\', \'options\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "all_reduce"
-    argspec: "args=[\'self\', \'reduce_op\', \'value\', \'experimental_hints\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'reduce_op\', \'value\', \'options\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "merge_call"

@@ -11,7 +11,6 @@ tensorflow::Status SetTpuConfigStructFns(void* library_handle) {
 
   TFTPU_SET_FN(config_fn, ConfigureDistributedTpuOp_DoWork);
   TFTPU_SET_FN(config_fn, WaitForDistributedTpuOp_DoWork);
-  TFTPU_SET_FN(config_fn, ShutdownDistributedTpuOp_DoWork);
   TFTPU_SET_FN(config_fn, InitializeHostForDistributedTpuOp_DoWork);
   TFTPU_SET_FN(config_fn, SetGlobalTPUArrayOp_DoWork);
   TFTPU_SET_FN(config_fn, DisconnectDistributedTpuChipsOp_DoWork);
@@ -20,6 +19,11 @@ tensorflow::Status SetTpuConfigStructFns(void* library_handle) {
   TFTPU_SET_FN(config_fn, TpuConfigurationApi_HasTPUPodState);
   TFTPU_SET_FN(config_fn, TpuConfigurationApi_TpusPerHost);
   TFTPU_SET_FN(config_fn, TpuConfigurationApi_TpuMemoryLimit);
+  TFTPU_SET_FN(config_fn,
+               TpuConfigurationApi_RemoteCompilationCacheSizeInBytes);
+  TFTPU_SET_FN(config_fn,
+               TpuConfigurationApi_CompilationCacheServerAddressFromConfig);
+  TFTPU_SET_FN(config_fn, TpuConfigurationApi_GetServerAddressAndPort);
 
   return tensorflow::Status::OK();
 }
@@ -37,7 +41,6 @@ tensorflow::Status SetTpuMeshStateStructFns(void* library_handle) {
 tensorflow::Status SetCompileStructFn(void* library_handle) {
   auto* compile_fn = tensorflow::tpu::CompileApiFn();
 
-  TFTPU_SET_FN(compile_fn, TpuCompile_CompileAheadOfTime);
   TFTPU_SET_FN(compile_fn, TpuCompile_CompileAndBuild);
 
   return tensorflow::Status::OK();
@@ -72,6 +75,10 @@ tensorflow::Status SetTpuProgramStructFn(void* library_handle) {
   TFTPU_SET_FN(tpu_program_fn, TpuProgram_GetMayModifyVariables);
   TFTPU_SET_FN(tpu_program_fn, TpuProgram_HasSharding);
   TFTPU_SET_FN(tpu_program_fn, TpuProgram_GetTpuProgram);
+  TFTPU_SET_FN(tpu_program_fn, TpuProgram_SerializeTpuExecutable);
+  TFTPU_SET_FN(tpu_program_fn, TpuProgram_SerializeCompilerMetadata);
+  TFTPU_SET_FN(tpu_program_fn,
+               TpuProgram_DeserializeFromGetTpuProgramResponseProto);
 
   return tensorflow::Status::OK();
 }

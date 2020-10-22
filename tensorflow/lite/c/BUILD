@@ -47,6 +47,7 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         ":common",
+        "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core/api",
     ],
@@ -60,11 +61,12 @@ cc_library(
     deps = [
         ":c_api_internal",
         ":common",
+        "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:version",
-        "//tensorflow/lite/core/api",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/kernels/internal:compatibility",
     ],
     alwayslink = 1,
 )
@@ -125,6 +127,7 @@ cc_library(
         "common.h",
     ],
     compatible_with = get_compatible_with_portable(),
+    deps = ["//tensorflow/lite:builtin_ops"],
     alwayslink = 1,
 )
 

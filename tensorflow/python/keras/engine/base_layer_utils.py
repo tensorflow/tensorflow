@@ -30,15 +30,14 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.utils import control_flow_util
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_util_v2
-from tensorflow.python.ops import control_flow_v2_func_graphs
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.training.tracking import base as tracking
+from tensorflow.python.util import keras_deps
 from tensorflow.python.util import nest
-from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 
 _call_context = threading.local()
@@ -418,7 +417,7 @@ def call_context():
   return call_ctx
 
 
-control_flow_util_v2._register_keras_layer_context_function(call_context)  # pylint: disable=protected-access
+keras_deps.register_call_context_function(call_context)
 
 
 class CallContext(object):
@@ -580,11 +579,7 @@ def check_graph_consistency(tensor=None, method='add_loss', force_raise=False):
   """
   if (force_raise or
       (ops.executing_eagerly_outside_functions() and
-       hasattr(tensor, 'graph') and
-       isinstance(tensor.graph,
-                  (control_flow_v2_func_graphs.CondBranchFuncGraph,
-                   control_flow_v2_func_graphs.WhileCondFuncGraph,
-                   control_flow_v2_func_graphs.WhileBodyFuncGraph)))):
+       hasattr(tensor, 'graph') and tensor.graph.is_control_flow_graph)):
     if method == 'activity_regularizer':
       bad_example = """
       class TestModel(tf.keras.Model):
@@ -746,9 +741,9 @@ def enable_v2_dtype_behavior():
   autocasting part of the V2 behavior for that layer, but not the defaulting to
   floatx part of the V2 behavior.
 
-  When a global `tf.keras.mixed_precision.experimental.Policy` is set, a Keras
-  layer's dtype will default to the global policy instead of floatx. Layers
-  will automatically cast inputs to the policy's compute_dtype.
+  When a global `tf.keras.mixed_precision.Policy` is set, a Keras layer's dtype
+  will default to the global policy instead of floatx. Layers will automatically
+  cast inputs to the policy's compute_dtype.
   """
   global V2_DTYPE_BEHAVIOR
   V2_DTYPE_BEHAVIOR = True
@@ -852,7 +847,7 @@ def no_ragged_support(inputs, layer_name):
 
 
 def is_split_variable(v):
-  """Returns True if `v` is either a PartionedVariable or a SharedVariable."""
+  """Returns True if `v` is either a PartionedVariable or a ShardedVariable."""
   return hasattr(v, '_variable_list') or hasattr(v, '_variables')
 
 

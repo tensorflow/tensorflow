@@ -16,19 +16,27 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_FULLY_CONNECTED_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_FULLY_CONNECTED_H_
 
+#include <stdint.h>
+
+#include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
+#include "tensorflow/lite/delegates/gpu/cl/arguments.h"
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
+#include "tensorflow/lite/delegates/gpu/cl/cl_kernel.h"
+#include "tensorflow/lite/delegates/gpu/cl/device_info.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
-#include "tensorflow/lite/delegates/gpu/cl/linear_storage.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor.h"
-#include "tensorflow/lite/delegates/gpu/cl/util.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/tuning_parameters.h"
+#include "tensorflow/lite/delegates/gpu/cl/precision.h"
+#include "tensorflow/lite/delegates/gpu/cl/texture2d.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
-#include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
+#include "tensorflow/lite/delegates/gpu/common/util.h"
 
 namespace tflite {
 namespace gpu {
@@ -36,52 +44,77 @@ namespace cl {
 
 template <DataType T, typename S>
 void RearrangeFCWeightsToIOO4I4(const tflite::gpu::Tensor<OHWI, T>& weights,
-                                absl::Span<S> dst) {
+                                S* dst) {
   const int src_channels = weights.shape.i;
   const int padded_src_channels = AlignByN(src_channels, 4);
   const int dst_channels = weights.shape.o;
   const int padded_dst_channels = AlignByN(dst_channels, 4);
 
-  // The weights are to be rearranged in such a way that the first 4 elements of
-  // each row, starting from row_0, are copied onto the destination buffer. The
-  // next set of 4 elements are then copied and so on. As an example, an 8x8
-  // matrix would be rearranged as below.
+  // Change the travelsal order of the weight matrix in the following way:
+  // The matrix is segmented to blocks of 4x4. If (any) dimension of the matrix
+  // size is not divisible by 4, then pad with zeros. Each block is stored
+  // contigously. The 16 elements within a block are ordered as 4 elements of
+  // the first column, 4 elems of the second, etc. Blocks then traversed as
+  // columns first, rows last. As an example, an 8x8 matrix would be traversed
+  // as below.
   //
-  //  | a0 a1 a2 a3 a4 a5 a6 a7 |              | a0 a1 a2 a3 b0 b1 b2 b3 |
-  //  | b0 b1 b2 b3 b4 b5 b6 b7 |              | c0 c1 c2 c3 d0 d1 d2 d3 |
-  //  | c0 c1 c2 c3 c4 c5 c6 c7 |              | e0 e1 e2 e3 f0 f1 f2 f3 |
-  //  | d0 d1 d2 d3 d4 d5 d6 d7 |  --------->  | g0 g1 g2 g3 h0 h1 h2 h3 |
-  //  | e0 e1 e2 e3 e4 e5 e6 e7 |              | a4 a5 a6 a7 b4 b5 b6 b7 |
-  //  | f0 f1 f2 f3 f4 f5 f6 f7 |              | c4 c5 c6 c7 d4 d5 d6 d7 |
-  //  | g0 g1 g2 g3 g4 g5 g6 g7 |              | e4 e5 e6 e7 f4 f5 f6 f7 |
-  //  | h0 h1 h2 h3 h4 h5 h6 h7 |              | g4 g5 g6 g7 h4 h5 h6 h7 |
+  //  |  0  4  8 12 32 36 40 44 |
+  //  |  1  5  9 13 33 37 41 45 |
+  //  |  2  6 10 14 34 38 42 46 |
+  //  |  3  7 11 15 35 39 43 47 |
+  //  | 16 20 24 28 48 52 56 60 |
+  //  | 17 21 25 29 49 53 57 61 |
+  //  | 18 22 26 30 50 54 58 62 |
+  //  | 19 23 27 31 51 55 59 63 |
+  //
+  // The benefit of doing this is that reading contigous 16 elements gives a 4x4
+  // block of the matrix, where the first 4 elements is the first row of the
+  // block, second 4 elements is the second row of the block, etc. Subsequent
+  // blocks contain elements of the same 4 columns.
 
-  for (int y = 0; y < dst_channels; y++) {
-    int x = 0;
-    for (; x + 4 <= src_channels; x += 4) {
-      const int idx_data_0 = src_channels * y + x;
-      S filter = S(weights.data[idx_data_0], weights.data[idx_data_0 + 1],
-                   weights.data[idx_data_0 + 2], weights.data[idx_data_0 + 3]);
-      dst[y + padded_dst_channels * x / 4] = filter;
-    }
-
-    // If the width is not a multiple of 4, padding is required and the padded
-    // region is filled with zeros.
-    if (src_channels != padded_src_channels) {
-      const int idx_data_0 = src_channels * y + x;
-
-      S filter = S(x < src_channels ? weights.data[idx_data_0] : 0.0,
-                   x + 1 < src_channels ? weights.data[idx_data_0 + 1] : 0.0,
-                   x + 2 < src_channels ? weights.data[idx_data_0 + 2] : 0.0,
-                   x + 3 < src_channels ? weights.data[idx_data_0 + 3] : 0.0);
-      dst[y + padded_dst_channels * x / 4] = filter;
+  for (int block_y = 0; 4 * block_y < padded_dst_channels; block_y++) {
+    for (int y_in_block = 0; y_in_block < 4; y_in_block++) {
+      for (int block_x = 0; 4 * block_x < padded_src_channels; block_x++) {
+        for (int x_in_block = 0; x_in_block < 4; x_in_block++) {
+          int y = 4 * block_y + y_in_block;
+          int x = 4 * block_x + x_in_block;
+          // Consider destination as an array with extents
+          // [padded_src_channels/4][padded_dst_channels/4][4][4]
+          int dst_index = block_x * padded_dst_channels * 4 + block_y * 16 +
+                          x_in_block * 4 + y_in_block;
+          if (x < src_channels && y < dst_channels) {
+            dst[dst_index] = weights.data[src_channels * y + x];
+          } else {
+            dst[dst_index] = 0.0f;
+          }
+        }
+      }
     }
   }
+}
 
-  // Fill the padded columns with zeros.
-  for (int y = dst_channels; y < padded_dst_channels; y++) {
-    for (int x = 0; x < padded_src_channels; x += 4) {
-      dst[y + padded_dst_channels * x / 4] = S(0.0);
+template <DataType T, typename S>
+void RearrangeFCWeightsToOIO4I4(const tflite::gpu::Tensor<OHWI, T>& weights,
+                                S* dst) {
+  const int src_channels = weights.shape.i;
+  const int src_depth = DivideRoundUp(src_channels, 4);
+  const int dst_channels = weights.shape.o;
+  const int dst_depth = DivideRoundUp(dst_channels, 4);
+
+  int counter = 0;
+  for (int d = 0; d < dst_depth; ++d) {
+    for (int s = 0; s < src_depth; ++s) {
+      for (int i = 0; i < 4; ++i) {
+        const int src_ch = s * 4 + i;
+        for (int j = 0; j < 4; ++j) {
+          const int dst_ch = d * 4 + j;
+          if (src_ch < src_channels && dst_ch < dst_channels) {
+            dst[counter++] = weights.data[dst_ch * src_channels + src_ch];
+          } else {
+            dst[counter++] = 0.0f;
+          }
+        }
+      }
     }
   }
 }
@@ -110,15 +143,16 @@ class FullyConnected : public GPUOperation {
       const FullyConnectedAttributes& attr);
 
   template <DataType T>
-  void UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights);
+  void UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
+                     bool weights_are_buffer);
 
   std::string GetFullyConnectedKernelCode(const OperationDef& op_def,
-                                          const int3& work_group_size);
+                                          const DeviceInfo& device_info);
 };
 
 template <DataType T>
-void FullyConnected::UploadWeights(
-    const tflite::gpu::Tensor<OHWI, T>& weights) {
+void FullyConnected::UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
+                                   bool weights_are_buffer) {
   const int src_depth = DivideRoundUp(weights.shape.i, 4);
   const int dst_depth = DivideRoundUp(weights.shape.o, 4);
 
@@ -127,22 +161,40 @@ void FullyConnected::UploadWeights(
 
   const int float4_size = f32_weights ? 16 : 8;
 
-  BufferDescriptor desc;
-  desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
-  desc.element_size = 16;
-  desc.size = float4_size * elements_count;
-  desc.data.resize(desc.size);
+  if (weights_are_buffer) {
+    BufferDescriptor desc;
+    desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
+    desc.element_size = 16;
+    desc.size = float4_size * elements_count;
+    desc.data.resize(desc.size);
 
-  if (f32_weights) {
-    float4* ptr = reinterpret_cast<float4*>(desc.data.data());
-    RearrangeFCWeightsToIOO4I4(weights, absl::MakeSpan(ptr, elements_count));
+    if (f32_weights) {
+      float* ptr = reinterpret_cast<float*>(desc.data.data());
+      RearrangeFCWeightsToIOO4I4(weights, ptr);
+    } else {
+      half* ptr = reinterpret_cast<half*>(desc.data.data());
+      RearrangeFCWeightsToIOO4I4(weights, ptr);
+    }
+
+    args_.AddObject("weights",
+                    absl::make_unique<BufferDescriptor>(std::move(desc)));
   } else {
-    half4* ptr = reinterpret_cast<half4*>(desc.data.data());
-    RearrangeFCWeightsToIOO4I4(weights, absl::MakeSpan(ptr, elements_count));
-  }
+    Texture2DDescriptor desc;
+    desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
+    desc.size = int2(src_depth * 4, dst_depth);
+    desc.data.resize(float4_size * elements_count);
 
-  args_.AddObject("weights",
-                  absl::make_unique<BufferDescriptor>(std::move(desc)));
+    if (f32_weights) {
+      float* ptr = reinterpret_cast<float*>(desc.data.data());
+      RearrangeFCWeightsToOIO4I4(weights, ptr);
+    } else {
+      half* ptr = reinterpret_cast<half*>(desc.data.data());
+      RearrangeFCWeightsToOIO4I4(weights, ptr);
+    }
+
+    args_.AddObject("weights",
+                    absl::make_unique<Texture2DDescriptor>(std::move(desc)));
+  }
 }
 
 FullyConnected CreateFullyConnected(const DeviceInfo& device_info,

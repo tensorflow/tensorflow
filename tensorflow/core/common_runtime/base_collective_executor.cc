@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
 #define VALUE_IN_DEBUG_STRING false
@@ -215,39 +216,69 @@ BaseCollectiveExecutor::~BaseCollectiveExecutor() {}
 
 void BaseCollectiveExecutor::StartAbort(const Status& s) {
   VLOG(1) << "BaseCollectiveExecutor::StartAbort " << s;
-  cem_->GetParamResolver()->StartAbort(s);
-  remote_access_->StartAbort(s);
+  Status status;
+  {
+    mutex_lock l(status_mu_);
+    if (!status_.ok()) {
+      LOG(WARNING)
+          << "BaseCollectiveExecutor already aborted, ignoring StartAbort: "
+          << s;
+      return;
+    }
+    status_ = StatusGroup::MakeDerived(Status(
+        s.code(),
+        absl::StrCat(
+            "Collective ops is aborted by: ", s.error_message(),
+            "\nThe error could be from a previous operation. Restart your "
+            "program to reset.")));
+    status = status_;
+  }
+  cem_->GetParamResolver()->StartAbort(status);
+  remote_access_->StartAbort(status);
+  if (cem_->GetNcclCommunicator() != nullptr) {
+    cem_->GetNcclCommunicator()->StartAbort(status);
+  }
+}
+
+Status BaseCollectiveExecutor::GetStatus(const Status& s) {
+  if (s.ok()) return s;
+  mutex_lock l(status_mu_);
+  // If the collective executor is already aborted, use the aborted status
+  // which is more likely the actual error instead of an artifact of an
+  // abortion.
+  if (!status_.ok()) {
+    VLOG(2) << "Overriding status with collective ops executor status. "
+               "Original status: "
+            << s;
+    return status_;
+  }
+  return s;
 }
 
 void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
                                           const CollectiveParams& col_params,
                                           const string& exec_key,
                                           StatusCallback done) {
+  // See CompleteParamsAsync() how done() and the timeout callback interacts.
   const auto is_callback_called = std::make_shared<std::atomic<bool>>(false);
-
-  // On any individual collective Op failure we need to abort the
-  // BufRendezvous so that other Ops in the instance don't hang
-  // waiting for transmissions that will never happen.
-  StatusCallback done_safe = [this, done, is_callback_called](const Status& s) {
-    auto should_call_callback = !is_callback_called->exchange(true);
-    if (should_call_callback) {
-      if (!s.ok()) {
-        remote_access_->buf_rendezvous()->StartAbort(s);
-      }
-      done(s);
+  auto done_safe = [this, done, is_callback_called](const Status& s) {
+    bool called = is_callback_called->exchange(true);
+    if (!called) {
+      done(GetStatus(s));
     }
   };
-
   auto timeout_microseconds = static_cast<int64>(
       col_params.instance.impl_details.timeout_seconds * 1'000'000);
   if (timeout_microseconds > 0) {
     // TODO(xldrx): Share the timeout watchdog thread among collectives.
     SchedNonBlockingClosureAfter(
-        timeout_microseconds, [is_callback_called, done_safe] {
-          if (!is_callback_called->load()) {
-            auto status = Status(error::DEADLINE_EXCEEDED,
-                                 "Collective has timed out during execution.");
-            done_safe(status);
+        timeout_microseconds, [this, is_callback_called, done] {
+          bool called = is_callback_called->exchange(true);
+          if (!called) {
+            Status status(error::DEADLINE_EXCEEDED,
+                          "Collective has timed out during execution.");
+            StartAbort(status);
+            done(status);
           }
         });
   }
@@ -269,8 +300,8 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
   }
   core::ScopedUnref unref(col_impl);
   auto col_ctx = std::make_shared<CollectiveContext>(
-      this, dev_mgr_, ctx, CtxParams(ctx), col_params, exec_key, step_id_,
-      input, output);
+      this, cem_->GetNcclCommunicator(), dev_mgr_, ctx, CtxParams(ctx),
+      col_params, exec_key, step_id_, input, output);
   status = col_impl->InitializeCollectiveContext(col_ctx);
   if (!status.ok()) {
     done_safe(status);
@@ -279,16 +310,18 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
   // Run on an unbounded work queue that can handle blocking work so as to not
   // starve executor threads.
   col_impl->Ref();
-  RunClosure([col_impl, col_ctx, done_safe, ctx]() {
+  profiler::TraceMeProducer producer("BaseCollectiveExecutor::ExecuteAsync");
+  RunClosure([col_impl, col_ctx, done_safe, ctx,
+              context_id = producer.GetContextId()]() {
     core::ScopedUnref unref(col_impl);
-    profiler::TraceMe activity(
+    profiler::TraceMeConsumer consumer(
         [ctx] {
           string op = profiler::TraceMeOp(ctx->op_kernel().name_view(),
                                           ctx->op_kernel().type_string_view());
           return profiler::TraceMeEncode(std::move(op),
                                          {{"id", ctx->step_id()}});
         },
-        profiler::TraceMeLevel::kInfo);
+        context_id);
     col_impl->Ref();
     col_impl->Run([col_impl, col_ctx, done_safe](const Status& s) {
       core::ScopedUnref unref(col_impl);
@@ -298,34 +331,40 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
 }
 
 void BaseCollectiveExecutor::CompleteParamsAsync(
-    const string& device, CollectiveParams* cp, CancellationManager* cancel_mgr,
-    StatusCallback done) {
-  cp->instance.gpu_ring_order = *gpu_ring_order_;
+    const DeviceAttributes& device, CollectiveParams* cp,
+    CancellationManager* cancel_mgr, StatusCallback done) {
+  cp->group.gpu_ring_order = *gpu_ring_order_;
+  // We need to make sure that when the timeout callback executes,
+  // CollectiveExecutor and CollectiveExecutorMgr are both alive. After done()
+  // is called, CollectiveExecutorMgr may be destructed and we don't have a way
+  // to keep it without making the ownerships more complicated. Therefore if the
+  // timeout callback executes, done_safe will become a no-op and the timeout
+  // callback is responsible for invoking done() at the end.
   const auto is_callback_called = std::make_shared<std::atomic<bool>>(false);
-  auto done_with_timeout = done;
+  auto done_safe = [this, is_callback_called, done](const Status& s) {
+    bool called = is_callback_called->exchange(true);
+    if (!called) {
+      done(GetStatus(s));
+    }
+  };
   auto timeout_microseconds =
       static_cast<int64>(cp->instance.impl_details.timeout_seconds * 1'000'000);
   if (timeout_microseconds > 0) {
     // TODO(xldrx): Share the timeout watchdog thread among collectives.
     SchedNonBlockingClosureAfter(
-        timeout_microseconds, [is_callback_called, done] {
-          auto should_call_callback = !is_callback_called->exchange(true);
-          if (should_call_callback) {
-            auto status =
-                Status(error::DEADLINE_EXCEEDED,
-                       "Collective has timed out waiting for other workers.");
+        timeout_microseconds, [this, is_callback_called, done]() {
+          bool called = is_callback_called->exchange(true);
+          if (!called) {
+            Status status(
+                error::DEADLINE_EXCEEDED,
+                "Collective has timed out waiting for other workers.");
+            StartAbort(status);
             done(status);
           }
         });
-    done_with_timeout = [is_callback_called, done](const Status& s) {
-      auto should_call_callback = !is_callback_called->exchange(true);
-      if (should_call_callback) {
-        done(s);
-      }
-    };
   }
   cem_->GetParamResolver()->CompleteParamsAsync(device, cp, cancel_mgr,
-                                                done_with_timeout);
+                                                done_safe);
 }
 
 Status BaseCollectiveExecutor::CreateCollective(
@@ -396,9 +435,9 @@ void BaseCollectiveExecutor::UnblockDependencies(
   mutex_lock l(launch_mu_);
   if (launched_.find(col_params.instance.instance_key) == launched_.end()) {
     const string& task_name =
-        col_params.instance.task_names[col_params.default_rank];
+        col_params.group.task_names[col_params.default_rank];
     const int32 num_devices =
-        col_params.instance.num_devices_per_task.at(task_name);
+        col_params.group.num_devices_per_task.at(task_name);
     launched_[col_params.instance.instance_key] = num_devices;
   }
   if (--launched_[col_params.instance.instance_key] == 0) {

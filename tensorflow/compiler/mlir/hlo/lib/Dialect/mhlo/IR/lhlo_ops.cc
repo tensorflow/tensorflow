@@ -46,7 +46,6 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 
 namespace mlir {
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.cc.inc"
 namespace lmhlo {
 
 LmhloDialect::LmhloDialect(MLIRContext *context)
@@ -159,8 +158,14 @@ static LogicalResult Verify(ReshapeMemRefCastOp op) {
   return success();
 }
 
+}  // namespace lmhlo
+}  // namespace mlir
+
 #define GET_OP_CLASSES
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.cc.inc"
+
+namespace mlir {
+namespace lmhlo {
 
 // TODO(cheshire): Support folding, reuse code from hlo_ops.cc.
 

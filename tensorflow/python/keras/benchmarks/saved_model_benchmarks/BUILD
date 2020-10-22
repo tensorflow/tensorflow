@@ -8,7 +8,11 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
+filegroup(
+    name = "all_py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = ["//tensorflow/python/keras/google/private_tf_api_test:__pkg__"],
+)
 
 # To run CPU benchmarks:
 #   bazel run -c opt benchmarks_test -- --benchmarks=.
@@ -39,6 +43,7 @@ cuda_py_test(
         "no_pip",  # b/161253163
         "no_windows",  # b/160628318
     ],
+    tfrt_enabled = True,
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",
@@ -53,6 +58,7 @@ cuda_py_test(
         "no_pip",  # b/161253163
         "no_windows",  # b/160628318
     ],
+    tfrt_enabled = True,
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",
@@ -67,6 +73,7 @@ cuda_py_test(
         "no_pip",  # b/161253163
         "no_windows",  # b/160628318
     ],
+    tfrt_enabled = True,
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",
@@ -81,6 +88,7 @@ cuda_py_test(
         "no_pip",  # b/161253163
         "no_windows",  # b/160628318
     ],
+    tfrt_enabled = True,
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",
@@ -95,6 +103,7 @@ cuda_py_test(
         "no_pip",  # b/161253163
         "no_windows",  # b/160628318
     ],
+    tfrt_enabled = True,
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",
@@ -109,6 +118,7 @@ cuda_py_test(
         "no_pip",  # b/161253163
         "no_windows",  # b/160628318
     ],
+    tfrt_enabled = True,
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",
@@ -123,6 +133,7 @@ cuda_py_test(
         "no_pip",  # b/161253163
         "no_windows",  # b/160628318
     ],
+    tfrt_enabled = True,
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",
@@ -137,6 +148,7 @@ cuda_py_test(
         "no_pip",  # b/161253163
         "no_windows",  # b/160628318
     ],
+    tfrt_enabled = True,
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",

@@ -26,8 +26,11 @@ namespace gpu {
 
 std::ostream& operator<<(std::ostream& out,
                          const LaunchDimensions& launch_dims) {
-  out << absl::StrFormat("[block: %d, thread: %d]", launch_dims.block_count(),
-                         launch_dims.threads_per_block());
+  LaunchDimensions::Dim3D block_counts = launch_dims.block_counts();
+  LaunchDimensions::Dim3D thread_counts = launch_dims.thread_counts_per_block();
+  out << absl::StrFormat("[block: {%d, %d, %d}, thread: {%d, %d, %d}]",
+                         block_counts.x, block_counts.y, block_counts.z,
+                         thread_counts.x, thread_counts.y, thread_counts.z);
   return out;
 }
 
@@ -53,7 +56,7 @@ static int64 ThreadsPerBlockLimit(GpuDeviceInfo gpu_device_info) {
 // Calculates the launch dimensions used to invoke `hlo`.
 LaunchDimensions CalculateLaunchDimensions(const Shape& shape,
                                            GpuDeviceInfo gpu_device_info,
-                                           int unroll_factor) {
+                                           int unroll_factor, bool few_waves) {
   int64 num_elements = ShapeUtil::ElementsIn(shape);
   if (num_elements <= 1) {
     return LaunchDimensions();
@@ -87,6 +90,11 @@ LaunchDimensions CalculateLaunchDimensions(const Shape& shape,
   }
 
   int64 block_count = CeilOfRatio(num_elements, threads_per_block);
+  if (few_waves) {
+    threads_per_block = std::min(threads_per_block, int64{128});
+    block_count = gpu_device_info.core_count *
+                  (gpu_device_info.threads_per_core_limit / threads_per_block);
+  }
   VLOG(2) << absl::StrFormat(
       "Initialized the block count to ceil(# of elements / threads per "
       "block) = ceil(%d/%d) = %d",

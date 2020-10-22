@@ -201,8 +201,10 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
   // Merging into all users enables the removal of 'fusion' from the
   // computation.
   if (!absl::c_all_of(fusion->users(), [&](const HloInstruction* user) {
-        return user->opcode() == HloOpcode::kFusion &&
-               IsProducerConsumerFusible(*fusion, *user);
+        return IsProducerConsumerFusible(*fusion, *user) &&
+               // Do not fuse into bitcast ops, which are no-ops and do not
+               // generate any GPU code.
+               user->opcode() != HloOpcode::kBitcast;
       })) {
     VLOG(3) << "Not merging " << fusion->name()
             << ": Some of its users are not loop/input fusion kernels.";
@@ -283,7 +285,15 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
   // Merge fused instructions from 'fusion' into each user.
   std::vector<HloInstruction*> users = fusion->users();
   for (HloInstruction* user : users) {
-    user->MergeFusionInstruction(fusion);
+    if (user->opcode() == HloOpcode::kFusion) {
+      user->MergeFusionInstruction(fusion);
+    } else {
+      HloInstruction* fused_user =
+          computation_->AddInstruction(HloInstruction::CreateFusion(
+              user->shape(), ChooseFusionKind(*fusion, *user), user));
+      TF_CHECK_OK(computation_->ReplaceInstruction(user, fused_user));
+      fused_user->MergeFusionInstruction(fusion);
+    }
     changed_ = true;
   }
   ++total_merged_;
@@ -296,7 +306,7 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
                            })
           << " }";
   // Remove 'fusion' instruction.
-  CHECK_EQ(0, fusion->user_count());
+  CHECK_EQ(0, fusion->user_count()) << fusion->ToString();
   return computation_->RemoveInstruction(fusion);
 }
 

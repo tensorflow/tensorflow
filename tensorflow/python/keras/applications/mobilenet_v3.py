@@ -61,14 +61,15 @@ BASE_DOCSTRING = """Instantiates the {name} architecture.
   The following table describes the performance of MobileNets:
   ------------------------------------------------------------------------
   MACs stands for Multiply Adds
-
-  |Classification Checkpoint|MACs(M)|Parameters(M)|Top1 Accuracy|Pixel1|CPU(ms)|
-  | [mobilenet_v3_large_1.0_224]              | 217 | 5.4 |   75.6   |   51.2  |
-  | [mobilenet_v3_large_0.75_224]             | 155 | 4.0 |   73.3   |   39.8  |
-  | [mobilenet_v3_large_minimalistic_1.0_224] | 209 | 3.9 |   72.3   |   44.1  |
-  | [mobilenet_v3_small_1.0_224]              | 66  | 2.9 |   68.1   |   15.8  |
-  | [mobilenet_v3_small_0.75_224]             | 44  | 2.4 |   65.4   |   12.8  |
-  | [mobilenet_v3_small_minimalistic_1.0_224] | 65  | 2.0 |   61.9   |   12.2  |
+  
+  |Classification Checkpoint|MACs(M)|Parameters(M)|Top1 Accuracy|Pixel1 CPU(ms)|
+  |---|---|---|---|---|
+  | mobilenet_v3_large_1.0_224              | 217 | 5.4 |   75.6   |   51.2  |
+  | mobilenet_v3_large_0.75_224             | 155 | 4.0 |   73.3   |   39.8  |
+  | mobilenet_v3_large_minimalistic_1.0_224 | 209 | 3.9 |   72.3   |   44.1  |
+  | mobilenet_v3_small_1.0_224              | 66  | 2.9 |   68.1   |   15.8  |
+  | mobilenet_v3_small_0.75_224             | 44  | 2.4 |   65.4   |   12.8  |
+  | mobilenet_v3_small_minimalistic_1.0_224 | 65  | 2.0 |   61.9   |   12.2  |
 
   The weights for all 6 models are obtained and translated from the Tensorflow
   checkpoints from TensorFlow checkpoints found [here]
@@ -76,8 +77,10 @@ BASE_DOCSTRING = """Instantiates the {name} architecture.
 
   Optionally loads weights pre-trained on ImageNet.
 
-  Caution: Be sure to properly pre-process your inputs to the application.
-  Please see `applications.mobilenet_v3.preprocess_input` for an example.
+  Note: each Keras Application expects a specific kind of input preprocessing.
+  For MobileNetV3, call
+  `tf.keras.applications.mobilenet_v3.preprocess_input` on your
+  inputs before passing them to the model.
 
   Arguments:
     input_shape: Optional shape tuple, to be specified if you would

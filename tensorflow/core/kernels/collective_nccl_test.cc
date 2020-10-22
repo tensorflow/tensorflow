@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/nccl/collective_communicator.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/unbounded_work_queue.h"
@@ -84,6 +85,7 @@ class NcclTestBase : public ::testing::Test {
   NcclTestBase(CollectiveType collective_type, const string& collective_name)
       : collective_type_(collective_type),
         collective_name_(collective_name),
+        nccl_communicator_(MaybeCreateNcclCommunicator()),
         work_queue_(std::make_shared<UnboundedWorkQueue>(
             Env::Default(), "collective_executor")),
         col_exec_(nullptr) {}
@@ -134,15 +136,14 @@ class NcclTestBase : public ::testing::Test {
     col_params_.instance.data_type = DT_FLOAT;
     col_params_.instance.impl_details.collective_name = collective_name_;
     const string task_name = "/job:worker/replica:0/task:0";
-    col_params_.instance.num_devices_per_task[task_name] = num_ranks;
+    col_params_.group.num_devices_per_task[task_name] = num_ranks;
     for (int rank = 0; rank < num_ranks; ++rank) {
-      col_params_.instance.device_names.push_back(
-          device_names[rank % num_gpus]);
-      col_params_.instance.task_names.push_back(task_name);
+      col_params_.group.device_names.push_back(device_names[rank % num_gpus]);
+      col_params_.group.task_names.push_back(task_name);
     }
     for (int rank = 0; rank < num_ranks; ++rank) {
       instances_.push_back(absl::make_unique<DeviceInstance>(
-          rank, col_params_.instance.device_names[rank], this));
+          rank, col_params_.group.device_names[rank], this));
     }
   }
 
@@ -247,11 +248,11 @@ class NcclTestBase : public ::testing::Test {
       TF_CHECK_OK(parent_->dev_mgr_->LookupDevice(device_name_, &device_))
           << "Could not find device " << device_name_ << " existing devices "
           << parent_->dev_mgr_->DebugString();
+      merge_op_ = GetAdd(device_);
+      final_op_ = GetDiv(device_);
       col_params_.name = parent_->col_params_.name;
       col_params_.default_rank = rank;
-      col_params_.group.group_key = parent_->col_params_.group.group_key;
-      col_params_.group.device_type = parent_->col_params_.group.device_type;
-      col_params_.group.group_size = parent_->col_params_.group.group_size;
+      col_params_.group = parent_->col_params_.group;
       col_params_.instance = parent->col_params_.instance;
     }
 
@@ -318,7 +319,8 @@ class NcclTestBase : public ::testing::Test {
           strings::StrCat(col_params_.instance.instance_key, ":0:0");
       auto* reducer = new NcclReducer();
       auto col_ctx = std::make_shared<CollectiveContext>(
-          parent_->col_exec_, parent_->dev_mgr_.get(),
+          parent_->col_exec_, parent_->nccl_communicator_.get(),
+          parent_->dev_mgr_.get(),
           /*OpKernelContext=*/&ctx, &op_params, col_params_, exec_key, kStepId,
           /*input=*/&input_, /*output=*/&input_);
       TF_CHECK_OK(reducer->InitializeCollectiveContext(col_ctx));
@@ -349,7 +351,8 @@ class NcclTestBase : public ::testing::Test {
           strings::StrCat(col_params_.instance.instance_key, ":0:0");
       auto* broadcaster = new NcclBroadcaster();
       auto col_ctx = std::make_shared<CollectiveContext>(
-          parent_->col_exec_, parent_->dev_mgr_.get(),
+          parent_->col_exec_, parent_->nccl_communicator_.get(),
+          parent_->dev_mgr_.get(),
           /*OpKernelContext=*/&ctx, &op_params, col_params_, exec_key, kStepId,
           /*input=*/col_params_.is_source ? &input_ : nullptr,
           /*output=*/&input_);
@@ -389,7 +392,8 @@ class NcclTestBase : public ::testing::Test {
           strings::StrCat(col_params_.instance.instance_key, ":0:0");
       auto* gatherer = new NcclGatherer();
       auto col_ctx = std::make_shared<CollectiveContext>(
-          parent_->col_exec_, parent_->dev_mgr_.get(),
+          parent_->col_exec_, parent_->nccl_communicator_.get(),
+          parent_->dev_mgr_.get(),
           /*OpKernelContext=*/&ctx, &op_params, col_params_, exec_key, kStepId,
           /*input=*/&input_,
           /*output=*/&output_);
@@ -412,6 +416,8 @@ class NcclTestBase : public ::testing::Test {
     Tensor output_;
     Device* device_;
     CollectiveParams col_params_;
+    std::unique_ptr<OpKernel> merge_op_;
+    std::unique_ptr<OpKernel> final_op_;
     Status status_;
   };
 
@@ -419,6 +425,7 @@ class NcclTestBase : public ::testing::Test {
   const string collective_name_;
   std::vector<std::unique_ptr<tensorflow::Device>> gpus_;
   TestCollectiveExecutorMgr col_exec_mgr_;
+  std::unique_ptr<NcclCommunicatorInterface> nccl_communicator_;
   std::shared_ptr<UnboundedWorkQueue> work_queue_;
   CollectiveExecutor* col_exec_;
   std::unique_ptr<DeviceMgr> dev_mgr_;
@@ -456,8 +463,8 @@ class NcclReducerTest : public NcclTestBase {
   }
 
   void InitDevice(DeviceInstance* di) override {
-    di->col_params_.merge_op = GetAdd(di->device_);
-    di->col_params_.final_op = GetDiv(di->device_);
+    di->col_params_.merge_op = di->merge_op_.get();
+    di->col_params_.final_op = di->final_op_.get();
   }
 
   void RunCollectiveOnDevice(DeviceInstance* di) override { di->RunReduce(); }

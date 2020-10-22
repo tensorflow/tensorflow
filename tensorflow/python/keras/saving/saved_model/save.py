@@ -22,6 +22,7 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.saving.saved_model import save_impl
+from tensorflow.python.keras.saving.saved_model import utils
 from tensorflow.python.keras.utils.generic_utils import LazyLoader
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.saved_model import save as save_lib
@@ -38,7 +39,7 @@ training_lib = LazyLoader(
 
 
 def save(model, filepath, overwrite, include_optimizer, signatures=None,
-         options=None):
+         options=None, save_traces=True):
   """Saves a model as a SavedModel to the filepath.
 
   Args:
@@ -49,8 +50,14 @@ def save(model, filepath, overwrite, include_optimizer, signatures=None,
     signatures: Signatures to save with the SavedModel. Applicable to the 'tf'
       format only. Please see the `signatures` argument in `tf.saved_model.save`
       for details.
-    options: Optional `tf.saved_model.SaveOptions` object that specifies
-      options for saving to SavedModel.
+    options: (only applies to SavedModel format) `tf.saved_model.SaveOptions`
+      object that specifies options for saving to SavedModel.
+    save_traces: (only applies to SavedModel format) When enabled, the
+      SavedModel will store the function traces for each layer. This
+      can be disabled, so that only the configs of each layer are stored.
+      Defaults to `True`. Disabling this will decrease serialization time
+      and reduce file size, but it requires that all custom layers/models
+      implement a `get_config()` method.
 
   Raises:
     ValueError: if the model's inputs have not been defined.
@@ -61,8 +68,9 @@ def save(model, filepath, overwrite, include_optimizer, signatures=None,
     if not proceed:
       return
 
-  if save_impl.should_skip_serialization(model):
-    saving_utils.raise_model_input_error(model)
+  if save_traces:
+    if save_impl.should_skip_serialization(model):
+      saving_utils.raise_model_input_error(model)
 
   if not include_optimizer:
     orig_optimizer = model.optimizer
@@ -77,7 +85,8 @@ def save(model, filepath, overwrite, include_optimizer, signatures=None,
     # the replica context is not available when calling `add_update()`, and thus
     # we use the default replica context here.
     with distribution_strategy_context._get_default_replica_context():  # pylint: disable=protected-access
-      save_lib.save(model, filepath, signatures, options)
+      with utils.keras_option_scope(save_traces):
+        save_lib.save(model, filepath, signatures, options)
 
   if not include_optimizer:
     model.optimizer = orig_optimizer

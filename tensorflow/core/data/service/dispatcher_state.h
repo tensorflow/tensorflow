@@ -113,15 +113,18 @@ class DispatcherState {
 
   struct Task {
     explicit Task(int64 task_id, int64 job_id, int64 dataset_id,
+                  ProcessingMode processing_mode,
                   const std::string& worker_address)
         : task_id(task_id),
           job_id(job_id),
           dataset_id(dataset_id),
+          processing_mode(processing_mode),
           worker_address(worker_address) {}
 
     const int64 task_id;
     const int64 job_id;
     const int64 dataset_id;
+    const ProcessingMode processing_mode;
     const std::string worker_address;
     bool finished = false;
   };
@@ -179,7 +182,7 @@ class DispatcherState {
   void CreateTask(const CreateTaskUpdate& create_task);
   void FinishTask(const FinishTaskUpdate& finish_task);
 
-  int64 next_available_dataset_id_ = 0;
+  int64 next_available_dataset_id_ = 1000;
   // Registered datasets, keyed by dataset ids.
   absl::flat_hash_map<int64, std::shared_ptr<Dataset>> datasets_by_id_;
   // Registered datasets, keyed by dataset fingerprints.
@@ -189,24 +192,26 @@ class DispatcherState {
   // Registered workers, keyed by address.
   absl::flat_hash_map<std::string, std::shared_ptr<Worker>> workers_;
 
-  int64 next_available_job_id_ = 0;
+  int64 next_available_job_id_ = 2000;
   // Jobs, keyed by job ids.
   absl::flat_hash_map<int64, std::shared_ptr<Job>> jobs_;
   // Named jobs, keyed by their names and indices. Not all jobs have names, so
   // this is a subset of the jobs stored in `jobs_`.
   absl::flat_hash_map<NamedJobKey, std::shared_ptr<Job>> named_jobs_;
 
-  int64 next_available_job_client_id_ = 0;
+  int64 next_available_job_client_id_ = 3000;
   // Mapping from client ids to the jobs they are associated with.
   absl::flat_hash_map<int64, std::shared_ptr<Job>> jobs_for_client_ids_;
 
-  int64 next_available_task_id_ = 0;
+  int64 next_available_task_id_ = 4000;
   // Tasks, keyed by task ids.
   absl::flat_hash_map<int64, std::shared_ptr<Task>> tasks_;
   // Tasks, keyed by job ids.
   absl::flat_hash_map<int64, std::vector<std::shared_ptr<Task>>> tasks_by_job_;
-  // Tasks, keyed by worker addresses.
-  absl::flat_hash_map<std::string, std::vector<std::shared_ptr<Task>>>
+  // Tasks, keyed by worker addresses. The values are a map from task id to
+  // task.
+  absl::flat_hash_map<std::string,
+                      absl::flat_hash_map<int64, std::shared_ptr<Task>>>
       tasks_by_worker_;
 };
 

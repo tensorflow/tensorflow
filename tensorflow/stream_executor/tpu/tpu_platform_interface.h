@@ -35,14 +35,19 @@ class TpuPlatformInterface : public stream_executor::Platform {
   // Returns a TPU platform to be used by TPU ops. If multiple TPU platforms are
   // registered, finds the most suitable one. Returns nullptr if no TPU platform
   // is registered or an error occurred.
-  static TpuPlatformInterface* GetRegisteredPlatform();
+  //
+  // 'initialize_platform' can be set to false to not initialize a platform if
+  // not necessary. 'num_tries' specifies the number of tries if the TPU
+  // platform isn't initialized yet, with a 1-second delay between each try
+  // (num_tries == 1 means try once with no retries).
+  static TpuPlatformInterface* GetRegisteredPlatform(
+      bool initialize_platform = true, int num_tries = 5);
 
-  // Option to not initialize a platform if not necessary.
-  static TpuPlatformInterface* GetRegisteredPlatform(bool initialize_platform);
+  virtual Status Reset(bool only_tear_down, absl::string_view reason) = 0;
 
-  virtual Status Reset() { return Reset(false); }
+  Status Reset(absl::string_view reason) { return Reset(false, reason); }
 
-  virtual Status Reset(bool only_tear_down) = 0;
+  Status Reset() { return Reset(false, {}); }
 
   virtual int64 TpuMemoryLimit() = 0;
 
@@ -51,6 +56,10 @@ class TpuPlatformInterface : public stream_executor::Platform {
   virtual const TpuTopologyPtr GetTopologyPtr() = 0;
 
   virtual const TpuHostLocationExternal GetTpuHostLocation() const = 0;
+
+  TpuTopologyExternal topology() {
+    return TpuTopologyExternal(GetTopologyPtr());
+  }
 };
 
 }  // namespace tpu

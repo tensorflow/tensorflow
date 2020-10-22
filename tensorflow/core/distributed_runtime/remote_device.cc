@@ -45,6 +45,7 @@ class RemoteDevice : public Device {
   ResourceMgr* resource_manager() override {
     LOG(FATAL) << "Accessing the resource manager of a remote device is not "
                << "supported.";
+    std::abort();
   }
 
   bool IsLocal() const override { return false; }
@@ -142,7 +143,8 @@ void NewRemoteDevices(Env* env, WorkerCacheInterface* worker_cache,
       }
     }
   };
-  wi->GetStatusAsync(&call->req, &call->resp, /*fail_fast=*/false, cb);
+  wi->GetStatusAsync(/*opts=*/nullptr, &call->req, &call->resp,
+                     /*fail_fast=*/false, cb);
 }
 
 }  // namespace tensorflow

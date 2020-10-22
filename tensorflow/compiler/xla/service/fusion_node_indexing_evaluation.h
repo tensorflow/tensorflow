@@ -24,19 +24,22 @@ limitations under the License.
 namespace xla {
 class FusionNodeIndexingEvaluation {
  public:
-  explicit FusionNodeIndexingEvaluation(const HloInstruction* fusion);
+  explicit FusionNodeIndexingEvaluation(const HloInstruction* fusion,
+                                        int64 root_usage_count = 1);
 
-  // Evaluate the average number of times an instruction is emitted inside the
-  // fusion node, if 'producer' is fused into 'fusion_'. If this average
-  // duplication is "too high" (some arbitrary chosen constant), returns
-  // true.
-  bool AverageCodeDuplicationTooHigh(const HloInstruction* producer) const;
+  // Evaluate the number of times 'producer' would be emitted if it is fused
+  // into 'fusion_'. If the duplication is "too high" (some arbitrary chosen
+  // constant), returns true.
+  bool CodeDuplicationTooHigh(const HloInstruction* producer) const;
 
-  // Evaluate the total number of times an instruction is emitted inside the
-  // fusion node, if 'producer' is fused into 'fusion_'. An instruction may be
-  // emitted several times, once for each different index value with which it is
-  // indexed.
-  int64 EvaluateTotalEmittedInstructions(const HloInstruction* producer) const;
+  // Evaluate the maximum code duplication inside the fusion node. If the
+  // maximum code duplication is "too high" (some arbitrary chosen constant),
+  // returns true.
+  bool MaxCodeDuplicationTooHigh() const;
+
+  // Evaluate the number of times 'producer' would be emitted if it is fused
+  // into 'fusion_'.
+  int64 EvaluateEmittedInstructions(const HloInstruction* producer) const;
 
   // Update the evaluation cache after having fused 'producer' into 'fusion_'.
   // 'producer' is the cloned instruction which is now part of the fusion
@@ -56,6 +59,8 @@ class FusionNodeIndexingEvaluation {
       HloInstruction* fusion_operand);
 
  private:
+  static const int64 kAllowedCodeDuplication;
+
   // Computes the 'indexing_users_' and 'index_usage_count_' maps based on the
   // current instructions inside the fusion node. Also updates
   // 'total_emitted_instructions_' accordingly.
@@ -84,9 +89,6 @@ class FusionNodeIndexingEvaluation {
 
   // The fusion instruction.
   const HloInstruction* fusion_;
-
-  // The total number of emitted instructions.
-  int64 total_emitted_instructions_;
 };
 }  // namespace xla
 

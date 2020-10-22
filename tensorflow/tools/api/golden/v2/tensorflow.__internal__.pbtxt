@@ -1,0 +1,23 @@
+path: "tensorflow.__internal__"
+tf_module {
+  member {
+    name: "CompositeTensor"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "decorator"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "distribute"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "test"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "tracking"
+    mtype: "<type \'module\'>"
+  }
+}

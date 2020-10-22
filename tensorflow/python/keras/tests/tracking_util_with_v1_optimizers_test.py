@@ -1,4 +1,4 @@
-  # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,9 +26,7 @@ from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import combinations
@@ -39,6 +37,7 @@ from tensorflow.python.keras.layers import core
 from tensorflow.python.module import module
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
 from tensorflow.python.training import adam
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
@@ -283,7 +282,7 @@ class CheckpointingTests(keras_parameterized.TestCase):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
 
-    def _train_fn(optimizer, model):
+    def _train_fn(optimizer, model, root):
       input_value = constant_op.constant([[3.]])
       optimizer.minimize(
           functools.partial(model, input_value),
@@ -303,7 +302,7 @@ class CheckpointingTests(keras_parameterized.TestCase):
 
         for _ in range(num_training_steps):
           strategy.extended.call_for_each_replica(
-              functools.partial(_train_fn, optimizer, model))
+              functools.partial(_train_fn, optimizer, model, root))
         root.save(file_prefix=checkpoint_prefix)
         self.assertEqual((training_continuation + 1) * num_training_steps,
                          root.optimizer_step.numpy())
@@ -314,7 +313,7 @@ class CheckpointingTests(keras_parameterized.TestCase):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
 
-    def _train_fn(optimizer, model):
+    def _train_fn(optimizer, model, root):
       input_value = constant_op.constant([[3.]])
       return optimizer.minimize(
           functools.partial(model, input_value),
@@ -332,7 +331,7 @@ class CheckpointingTests(keras_parameterized.TestCase):
           status = root.restore(checkpoint_management.latest_checkpoint(
               checkpoint_directory))
           train_op = strategy.extended.call_for_each_replica(
-              functools.partial(_train_fn, optimizer, model))
+              functools.partial(_train_fn, optimizer, model, root))
           with self.session() as session:
             if training_continuation > 0:
               status.assert_consumed()
@@ -460,16 +459,7 @@ class CheckpointingTests(keras_parameterized.TestCase):
                            self.evaluate(root.save_counter))
   # pylint: enable=cell-var-from-loop
 
-  def _get_checkpoint_name(self, name):
-    root = module.Module()
-    trackable_utils.add_variable(
-        root, name=name, shape=[1, 2], dtype=dtypes.float64)
-    (named_variable,), _, _ = trackable_utils._serialize_object_graph(
-        root, saveables_cache=None)
-    with ops.name_scope_v2("root/" + named_variable.name):
-      pass  # Make sure we can use this as an op name if we prefix it.
-    return named_variable.name
-
+  @combinations.generate(combinations.combine(mode=["eager"]))
   def testAnonymousVarsInInit(self):
 
     class Model(training.Model):
@@ -483,21 +473,20 @@ class CheckpointingTests(keras_parameterized.TestCase):
       def call(self, x):
         return x * self.w + self.b
 
-    with context.eager_mode():
-      model = Model()
-      optimizer = adam.AdamOptimizer(learning_rate=0.05)
-      checkpoint_directory = self.get_temp_dir()
-      checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
-      checkpoint = trackable_utils.Checkpoint(
-          model=model, optimizer=optimizer)
-      for _ in range(2):
-        checkpoint.save(checkpoint_prefix)
-        with backprop.GradientTape() as tape:
-          loss = (constant_op.constant(1.)
-                  - model(constant_op.constant(1.))) ** 2
-        grad = tape.gradient(loss, model.vars)
-        optimizer.apply_gradients(
-            [(g, v) for g, v in zip(grad, model.vars)])
+    model = Model()
+    optimizer = adam.AdamOptimizer(learning_rate=0.05)
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    checkpoint = trackable_utils.Checkpoint(
+        model=model, optimizer=optimizer)
+    for _ in range(2):
+      checkpoint.save(checkpoint_prefix)
+      with backprop.GradientTape() as tape:
+        loss = (constant_op.constant(1.)
+                - model(constant_op.constant(1.))) ** 2
+      grad = tape.gradient(loss, model.vars)
+      optimizer.apply_gradients(
+          [(g, v) for g, v in zip(grad, model.vars)])
 
   @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def test_initialize_if_not_restoring(self):
@@ -708,4 +697,5 @@ class CheckpointCompatibilityTests(keras_parameterized.TestCase):
 
 
 if __name__ == "__main__":
+  ops.enable_eager_execution()
   test.main()

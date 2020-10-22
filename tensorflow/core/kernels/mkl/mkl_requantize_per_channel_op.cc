@@ -17,6 +17,7 @@ limitations under the License.
 
 #ifdef INTEL_MKL
 #define EIGEN_USE_THREADS
+
 #include <math.h>
 
 #include "mkldnn.hpp"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/meta_support.h"
 #include "tensorflow/core/kernels/no_op.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/util/mkl_types.h"
 #include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
@@ -101,13 +101,13 @@ class MklRequantizePerChannelOp : public OpKernel {
       memory::dims dims_mkl_order =
           TFShapeToMklDnnDimsInNCHW(input.shape(), FORMAT_NHWC);
       memory::desc input_md = memory::desc(dims_mkl_order, MklDnnType<qint32>(),
-                                           MEMORY_FORMAT::nhwc);
+                                           memory::format_tag::nhwc);
       memory::desc output_md =
           (out_type_ == DT_QINT8)
               ? memory::desc(dims_mkl_order, MklDnnType<qint8>(),
-                             MEMORY_FORMAT::nhwc)
+                             memory::format_tag::nhwc)
               : memory::desc(dims_mkl_order, MklDnnType<quint8>(),
-                             MEMORY_FORMAT::nhwc);
+                             memory::format_tag::nhwc);
 
       void* input_buf =
           static_cast<void*>(const_cast<qint32*>(input.flat<qint32>().data()));
@@ -121,28 +121,21 @@ class MklRequantizePerChannelOp : public OpKernel {
       }
 
       std::unique_ptr<memory> input_mem_prim(
-          new MEMORY_CONSTRUCTOR_USING_MD(input_md, cpu_engine_, input_buf));
+          new memory(input_md, cpu_engine_, input_buf));
       std::unique_ptr<memory> output_mem_prim(
-          new MEMORY_CONSTRUCTOR_USING_MD(output_md, cpu_engine_, output_buf));
+          new memory(output_md, cpu_engine_, output_buf));
 
       mkldnn::reorder::primitive_desc reorder_pd =
-          REORDER_PD_CONSTRUCTOR_WITH_ATTR(
-              GET_MEMORY_PRIMITIVE_DESC_FROM_MEM_PTR(input_mem_prim),
-              GET_MEMORY_PRIMITIVE_DESC_FROM_MEM_PTR(output_mem_prim),
-              cpu_engine_, reorder_attr);
+          ReorderPd(cpu_engine_, input_mem_prim->get_desc(), cpu_engine_,
+                    output_mem_prim->get_desc(), reorder_attr);
       std::shared_ptr<stream> reorder_stream;
       reorder_stream.reset(CreateStream(ctx, cpu_engine_));
-#ifndef ENABLE_MKLDNN_V1
-      reorder_stream->submit(
-          {mkldnn::reorder(reorder_pd, *input_mem_prim, *output_mem_prim)});
-#else
       std::unordered_map<int, mkldnn::memory> reorder_args = {
           {MKLDNN_ARG_FROM, *input_mem_prim},
           {MKLDNN_ARG_TO, *output_mem_prim}};
       std::unique_ptr<mkldnn::primitive> reorder_prim(
           new mkldnn::reorder(reorder_pd));
       reorder_prim->execute(*reorder_stream, reorder_args);
-#endif  // !ENABLE_MKLDNN_V1
 
       Tensor* output_min = nullptr;
       Tensor* output_max = nullptr;
@@ -172,7 +165,7 @@ class MklRequantizePerChannelOp : public OpKernel {
   const int kOutputMinIndex = 1;
   const int kOutputMaxIndex = 2;
   DataType out_type_;
-  engine cpu_engine_ = engine(ENGINE_CPU, 0);
+  engine cpu_engine_ = engine(engine::kind::cpu, 0);
 };
 
 // Registration for out_type: qint8

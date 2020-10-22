@@ -64,7 +64,9 @@ void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(
       ctx, grpc_util::Retry(
                [&]() { return client.RegisterDataset(graph_def, dataset_id); },
-               /*description=*/"register dataset", deadline_micros));
+               /*description=*/
+               strings::StrCat("register dataset with dispatcher at ", address),
+               deadline_micros));
 
   Tensor* output;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape{}, &output));

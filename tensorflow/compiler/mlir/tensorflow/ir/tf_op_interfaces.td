@@ -21,7 +21,7 @@ limitations under the License.
 include "mlir/IR/OpBase.td"
 
 //===----------------------------------------------------------------------===//
-// TensorFlow interfaces
+// TensorFlow Layout Optimization Interfaces.
 //===----------------------------------------------------------------------===//
 
 def TF_LayoutSensitiveInterface : OpInterface<"LayoutSensitiveInterface"> {
@@ -102,6 +102,50 @@ def TF_FoldOperandsTransposeInterface : OpInterface<"FoldOperandsTransposeInterf
   let verify = [{
     return VerifyFoldOperandsTransposeInterface($_op);
   }];
+}
+
+//===----------------------------------------------------------------------===//
+// TensorFlow Contraction Fusion Interfaces.
+//===----------------------------------------------------------------------===//
+
+def TF_ContractionFusableInterface : OpInterface<"ContractionFusableInterface"> {
+  let description = [{
+    A contraction fusable operation is one that can be fused into the output of
+    a tensor contraction (MatMul, Conv2D, etc...) operation.
+
+    For example all element wise operations are trivially contraction fusable.
+  }];
+
+  let methods = [
+    InterfaceMethod<
+      [{Returns contraction fusion if the operation satisfies all the fusion
+        requirements. Otherwise returns empty optional.}],
+      "Optional<ContractionFusion>", "GetContractionFusion", (ins)
+    >,
+  ];
+}
+
+//===----------------------------------------------------------------------===//
+// TensorFlow Resource Handle Interfaces.
+//===----------------------------------------------------------------------===//
+
+def TF_ResourceHandleAllocatorInterface : OpInterface<"ResourceHandleAllocatorInterface"> {
+  let description = [{
+    A resource handle allocator operation is one that creates a resource handle,
+    or looks up and reuses an existing resource handle.
+  }];
+
+  let methods = [
+    InterfaceMethod<
+      /*desc=*/[{Returns the resource handle value and unique id associated with
+                 the resource handle. If a resource handle is reused, then an
+                 existing id will be returned.}],
+      /*retTy=*/"ResourceHandleValueAndId",
+      /*methodName=*/"GetResourceHandleValueAndId",
+      /*args=*/(ins "llvm::SmallDenseMap<ResourceHandle, int64_t>&":$resource_handle_id_map,
+                    "int64_t&":$next_id)
+    >,
+  ];
 }
 
 #endif // TF_OP_INTERFACES

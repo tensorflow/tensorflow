@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "llvm/Support/FileCheck.h"
+#include "llvm/FileCheck/FileCheck.h"
 #include "llvm/Support/SourceMgr.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"

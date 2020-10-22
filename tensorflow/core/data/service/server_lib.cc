@@ -46,7 +46,7 @@ Status GrpcDataServerBase::Start() {
   ::grpc::ServerBuilder builder;
   std::shared_ptr<::grpc::ServerCredentials> credentials;
   TF_RETURN_IF_ERROR(
-      CredentialsFactory::CreateServerCredentials(protocol_, credentials));
+      CredentialsFactory::CreateServerCredentials(protocol_, &credentials));
   builder.AddListeningPort(strings::StrCat("0.0.0.0:", requested_port_),
                            credentials, &bound_port_);
   builder.SetMaxReceiveMessageSize(-1);
@@ -135,6 +135,18 @@ Status WorkerGrpcDataServer::StartServiceInternal() {
       worker_address, kPortPlaceholder, absl::StrCat(bound_port()),
       /*replace_all=*/false);
   TF_RETURN_IF_ERROR(service_->Start(resolved_address));
+  return Status::OK();
+}
+
+Status WorkerGrpcDataServer::NumTasks(int* num_tasks) {
+  GetWorkerTasksRequest req;
+  GetWorkerTasksResponse resp;
+  ::grpc::ServerContext ctx;
+  ::grpc::Status s = service_->GetWorkerTasks(&ctx, &req, &resp);
+  if (!s.ok()) {
+    return grpc_util::WrapError("Failed to get tasks", s);
+  }
+  *num_tasks = resp.tasks_size();
   return Status::OK();
 }
 

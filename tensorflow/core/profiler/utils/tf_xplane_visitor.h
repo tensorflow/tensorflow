@@ -24,7 +24,8 @@ namespace tensorflow {
 namespace profiler {
 
 inline XPlaneVisitor CreateTfXPlaneVisitor(const XPlane* plane) {
-  return XPlaneVisitor(plane, {FindHostEventType}, {FindStatType});
+  return XPlaneVisitor(plane, {FindHostEventType, FindTfOpEventType},
+                       {FindStatType});
 }
 
 }  // namespace profiler

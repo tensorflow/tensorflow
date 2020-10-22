@@ -22,10 +22,10 @@ limitations under the License.
 
 using std::vector;
 using tensorflow::ops::Conj;
-using tensorflow::ops::Identity;
 using tensorflow::ops::MatMul;
 using tensorflow::ops::Mul;
-using tensorflow::ops::ZerosLike;
+using tensorflow::ops::Neg;
+using tensorflow::ops::SqrtGrad;
 
 namespace tensorflow {
 namespace gradients {
@@ -36,21 +36,14 @@ class AddGradientFunction : public GradientFunction {
   Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
                  vector<AbstractTensorHandle*>* grad_outputs) override {
     grad_outputs->resize(2);
-    vector<AbstractTensorHandle*> identity_outputs(1);
-    // TODO(b/145674566): Handle name unification in tracing code.
     // TODO(b/161805092): Support broadcasting.
 
-    std::string name = "Identity_A";
-    TF_RETURN_IF_ERROR(ops::Identity(ctx->ctx, {grad_inputs[0]},
-                                     absl::MakeSpan(identity_outputs),
-                                     name.c_str()));
-    (*grad_outputs)[0] = identity_outputs[0];
+    DCHECK(grad_inputs[0]);
+    (*grad_outputs)[0] = grad_inputs[0];
+    (*grad_outputs)[1] = grad_inputs[0];
 
-    name = "Identity_B";
-    TF_RETURN_IF_ERROR(ops::Identity(ctx->ctx, {grad_inputs[0]},
-                                     absl::MakeSpan(identity_outputs),
-                                     name.c_str()));
-    (*grad_outputs)[1] = identity_outputs[0];
+    (*grad_outputs)[0]->Ref();
+    (*grad_outputs)[1]->Ref();
     return Status::OK();
   }
   ~AddGradientFunction() override {}
@@ -79,6 +72,25 @@ class ExpGradientFunction : public GradientFunction {
 
  private:
   AbstractTensorHandlePtr exp_;
+};
+
+class SqrtGradientFunction : public GradientFunction {
+ public:
+  explicit SqrtGradientFunction(AbstractTensorHandle* sqrt) : sqrt_(sqrt) {
+    sqrt->Ref();
+  }
+  Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
+                 vector<AbstractTensorHandle*>* grad_outputs) override {
+    std::string name = "Sqrt_Grad";
+    grad_outputs->resize(1);
+    TF_RETURN_IF_ERROR(SqrtGrad(ctx->ctx, {sqrt_.get(), grad_inputs[0]},
+                                absl::MakeSpan(*grad_outputs), name.c_str()));
+    return Status::OK();
+  }
+  ~SqrtGradientFunction() override {}
+
+ private:
+  AbstractTensorHandlePtr sqrt_;
 };
 
 class MatMulGradientFunction : public GradientFunction {
@@ -190,6 +202,56 @@ class MatMulGradientFunction : public GradientFunction {
   AttrBuilder forward_attrs;
 };
 
+class NegGradientFunction : public GradientFunction {
+ public:
+  Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
+                 vector<AbstractTensorHandle*>* grad_outputs) override {
+    /* Given upstream grad U and a Neg op Y = -X, the gradients are:
+     *
+     *    dX =  -U
+     *
+     */
+
+    grad_outputs->resize(1);
+    std::string name = "Neg_Grad";
+    TF_RETURN_IF_ERROR(ops::Neg(ctx->ctx, {grad_inputs[0]},
+                                absl::MakeSpan(*grad_outputs), name.c_str()));
+    return Status::OK();
+  }
+  ~NegGradientFunction() override {}
+};
+
+class SubGradientFunction : public GradientFunction {
+ public:
+  Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
+                 vector<AbstractTensorHandle*>* grad_outputs) override {
+    /* Given upstream grad U and a Sub op A-B, the gradients are:
+     *
+     *    dA =  U
+     *    dB = -U
+     *
+     */
+
+    grad_outputs->resize(2);
+
+    // Grad for A
+    DCHECK(grad_inputs[0]);
+    (*grad_outputs)[0] = grad_inputs[0];
+    (*grad_outputs)[0]->Ref();
+
+    // Grad for B
+    // negate the upstream grad
+    std::vector<AbstractTensorHandle*> neg_outputs(1);
+    std::string name = "Neg_Sub_Grad_B";
+    TF_RETURN_IF_ERROR(ops::Neg(ctx->ctx, {grad_inputs[0]},
+                                absl::MakeSpan(neg_outputs), name.c_str()));
+    (*grad_outputs)[1] = neg_outputs[0];
+
+    return Status::OK();
+  }
+  ~SubGradientFunction() override {}
+};
+
 }  // namespace
 
 BackwardFunction* AddRegisterer(const ForwardOperation& op) {
@@ -215,6 +277,33 @@ BackwardFunction* MatMulRegisterer(const ForwardOperation& op) {
   // For ops with a single output, the gradient function is not called if there
   // is no incoming gradient. So we do not need to worry about creating zeros
   // grads in this case.
+  auto default_gradients = new PassThroughDefaultGradients(op);
+  return new BackwardFunction(gradient_function, default_gradients);
+}
+
+BackwardFunction* SqrtRegisterer(const ForwardOperation& op) {
+  auto gradient_function = new SqrtGradientFunction(op.outputs[0]);
+  // For ops with a single output, the gradient function is not called if there
+  // is no incoming gradient. So we do not need to worry about creating zeros
+  // grads in this case.
+  auto default_gradients = new PassThroughDefaultGradients(op);
+  return new BackwardFunction(gradient_function, default_gradients);
+}
+
+BackwardFunction* NegRegisterer(const ForwardOperation& op) {
+  auto gradient_function = new NegGradientFunction;
+  // For ops with a single output, the gradient function is not called if there
+  // is no incoming gradient. So we do not need to worry about creating zeros
+  // grads in this case.
+  auto default_gradients = new PassThroughDefaultGradients(op);
+  return new BackwardFunction(gradient_function, default_gradients);
+}
+
+BackwardFunction* SubRegisterer(const ForwardOperation& op) {
+  // For ops with a single output, the gradient function is not called if there
+  // is no incoming gradient. So we do not need to worry about creating zeros
+  // grads in this case.
+  auto gradient_function = new SubGradientFunction;
   auto default_gradients = new PassThroughDefaultGradients(op);
   return new BackwardFunction(gradient_function, default_gradients);
 }

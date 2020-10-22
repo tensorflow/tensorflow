@@ -90,6 +90,9 @@ class GraphFloat32 {
   // @return graph outputs, that are values without consumers.
   std::vector<Value*> outputs() const;
 
+  // @return values updated in place with a previously defined tensor reference.
+  std::vector<Value*> variable_inputs() const;
+
   // @return inputs into the given node. Returns empty vector for deleted node.
   std::vector<Value*> FindInputs(NodeId id) const;
 
@@ -233,18 +236,28 @@ absl::Status RemovePrecedingNode(GraphFloat32* graph, const Node* to_remove,
 absl::Status RemoveFollowingNode(GraphFloat32* graph, const Node* to_remove,
                                  const Node* to_keep);
 
-// Removes to_remove node.
-// Requires that node has one input and one output;
-absl::Status RemoveOneInputOneOutputNode(GraphFloat32* graph,
-                                         const Node* to_remove);
+// Removes simple_node and its output value from the graph. Node is considered
+// simple if it has only one input and one output value. Input value is kept.
+absl::Status RemoveSimpleNodeKeepInput(GraphFloat32* graph,
+                                       const Node* simple_node);
+
+// Removes simple_node and its input value from the graph. Node is considered
+// simple if it has only one input and one output value. Output value is kept.
+// simple_node should be an exclusive consumer of its input value.
+absl::Status RemoveSimpleNodeKeepOutput(GraphFloat32* graph,
+                                        const Node* simple_node);
 
 absl::Status AddOutput(GraphFloat32* graph, const Node* from_node,
                        Value** output);
 
+// Makes a direct connection between from_node and to_node. All input parameters
+// except output are expected to be initialized before passing to the function.
+// If from_node already has an output value, which is not yet consumed by
+// to_node, it may be passed as output parameter.
 absl::Status ConnectTwoNodes(GraphFloat32* graph, const Node* from_node,
                              const Node* to_node, Value** output);
 
-// @return true if all tensors have same batch value.
+// @return true if all tensors have same batch value or if model has no values.
 bool IsBatchMatchesForAllValues(const GraphFloat32& model);
 
 }  // namespace gpu

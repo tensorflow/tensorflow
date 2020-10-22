@@ -65,9 +65,8 @@ bool GpuInstructionFusion::ShouldFuseInexpensiveChecks(HloInstruction* consumer,
   }
   // Cost condition: not fuse (simple, expensive producers) and (consumers who
   // reuse operand elements).
-  if (producer->opcode() != HloOpcode::kFusion &&
-      consumer->ReusesOperandElements(operand_index) &&
-      is_expensive(*producer)) {
+  if (producer->opcode() != HloOpcode::kFusion && is_expensive(*producer) &&
+      ReusesOperandElements(consumer, operand_index)) {
     VLOG(4) << "Do not fuse simple, expensive producer " << producer->name()
             << " and consumer which reuses operand elements.";
     return false;
@@ -113,8 +112,7 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     fusion_node_evaluations_.emplace(consumer,
                                      FusionNodeIndexingEvaluation(consumer));
   }
-  if (fusion_node_evaluations_.at(consumer).AverageCodeDuplicationTooHigh(
-          producer)) {
+  if (fusion_node_evaluations_.at(consumer).CodeDuplicationTooHigh(producer)) {
     VLOG(5) << "Fusion of " << producer->name() << " into " << consumer->name()
             << " would result in overly large code duplication.";
     return false;

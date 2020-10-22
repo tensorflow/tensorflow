@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/kernels/kernel_runner.h"
+#include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
-#include "tensorflow/lite/micro/testing/test_utils.h"
 
 namespace tflite {
 namespace testing {
@@ -27,7 +27,7 @@ using uint8_t = std::uint8_t;
 using int32_t = std::int32_t;
 
 TfLiteTensor TestCreateTensor(const float* data, TfLiteIntArray* dims) {
-  return CreateFloatTensor(data, dims);
+  return CreateTensor(data, dims);
 }
 
 TfLiteTensor TestCreateTensor(const uint8_t* data, TfLiteIntArray* dims) {
@@ -48,7 +48,7 @@ void TestResizeNearestNeighbor(const int* input_dims_data, const T* input_data,
                                const int* output_dims_data, T* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
 
-  int expected_size_dims_data[] = {2, 1, 2};
+  int expected_size_dims_data[] = {1, 2};
   TfLiteIntArray* expected_size_dims =
       IntArrayFromInts(expected_size_dims_data);
 
@@ -59,9 +59,11 @@ void TestResizeNearestNeighbor(const int* input_dims_data, const T* input_data,
   constexpr int tensors_size = 3;
   TfLiteTensor tensors[tensors_size] = {
       TestCreateTensor(input_data, input_dims),
-      CreateInt32Tensor(expected_size_data, expected_size_dims),
+      CreateTensor(expected_size_data, expected_size_dims),
       TestCreateTensor(output_data, output_dims),
   };
+
+  tensors[1].allocation_type = kTfLiteMmapRo;
 
   TfLiteResizeNearestNeighborParams builtin_data = {false, false};
 

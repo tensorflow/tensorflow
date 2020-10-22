@@ -50,10 +50,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   const TfLiteTensor* input = GetInput(context, node, /*index=*/0);
+  TF_LITE_ENSURE(context, input != nullptr);
   const TfLiteTensor* paddings = GetInput(context, node, /*index=*/1);
+  TF_LITE_ENSURE(context, paddings != nullptr);
   const TfLiteTensor* constant_values =
       NumInputs(node) == 3 ? GetInput(context, node, /*index=*/2) : nullptr;
   TfLiteTensor* output = GetOutput(context, node, /*index=*/0);
+  TF_LITE_ENSURE(context, output != nullptr);
 
   TF_LITE_ENSURE_EQ(context, input->type, output->type);
 

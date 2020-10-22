@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_traits.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_verifiers.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tfrt_ops.h"
 
 namespace mlir {
 namespace TF {
@@ -112,8 +113,7 @@ class TensorFlowDialect : public Dialect {
   // same interface.
   template <typename... Args>
   void addOperations() {
-    (void)std::initializer_list<int>{
-        0, (addOperation(AbstractOperation::get<Args>(*this)), 0)...};
+    Dialect::addOperations<Args...>();
   }
 
   using ConstantFoldHook = LogicalResult (*)(Operation *, ArrayRef<Attribute>,

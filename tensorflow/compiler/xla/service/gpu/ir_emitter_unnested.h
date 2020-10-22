@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk_emitter.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/kernel_support_library.h"
 
 namespace xla {
@@ -58,7 +59,6 @@ struct MlirBufferSlice : public BufferSlice {
 
 struct MlirEmitterInput {
   mlir::Operation* op;
-  absl::string_view name;
   Thunk::ThunkInfo thunk_info;
   MlirBufferSlice extra_slice;
 };
@@ -159,9 +159,10 @@ class IrEmitterUnnested : public IrEmitter,
   Status HandleRng(HloInstruction* random) override;
   Status HandleRngGetAndUpdateState(HloInstruction* rng_state) override;
   Status HandleScatter(HloInstruction* scatter) override;
+  Status EmitScatterFromMlir(MlirEmitterInput mlir_input);
   Status HandleSelect(HloInstruction* select) override;
   Status HandleSort(HloInstruction* sort) override;
-  Status EmitMlirSort(MlirEmitterInput input);
+  Status EmitSortFromMlir(MlirEmitterInput mlir_input);
   Status HandleTriangularSolve(HloInstruction* hlo) override;
   Status HandleTupleSelect(HloInstruction* tuple_select) override;
   Status HandleAllReduce(HloInstruction* crs) override;
@@ -178,10 +179,7 @@ class IrEmitterUnnested : public IrEmitter,
   // `unroll_factor` is greater than one.
   Status EmitTargetElementLoopInThunk(
       const HloInstruction& hlo, const llvm_ir::ElementGenerator& body_emitter,
-      KernelThunk* thunk, int unroll_factor);
-
-  // Emits LLVM global variables corresponding to constant instructions.
-  Status EmitConstantGlobals();
+      KernelThunk* thunk, int unroll_factor, bool few_waves = false);
 
   Status Postprocess(HloInstruction* hlo) override;
 
@@ -372,6 +370,16 @@ class IrEmitterUnnested : public IrEmitter,
   // }
   // ```
   //
+  // Moreover, a heuristic is implemented to divide the reduce instructions
+  // into groups for parallelization (see `DivideOutputInstructionsIntoGroups`
+  // for details about the heuristic.) Reduce instructions in the same group
+  // will run sequentially while different groups will run in parallel.
+  //
+  // we use raw block_id_y to select the reduce groups for execution without
+  // complicating the index calculation in the code generation of the reduce
+  // instructions. In other words, a block_id_y is assigned to a group and so
+  // different groups can be run in parallel.
+  //
   // output_instructions: Output instructions in the computation: instruction
   // itself if it's not a fusion, fusion root if fusion is not multi-output, and
   // elements of the fusion multi-output tuple otherwise.
@@ -401,16 +409,38 @@ class IrEmitterUnnested : public IrEmitter,
       const llvm_ir::IrArray::Index& slice_input_index);
 
   // Emits code for an in-place scatter, modifying `thunk`s launch dimensions in
-  // the process. `scatter` may be fused, scatter indices are taken from
-  // `scatter_indices_gen`, updates from`updates_gen`. The output buffer is
-  // expected to have the operand values in it already. If unique_indices
-  // is false, we will use an atomic update. Using true for unique_indices
-  // behaves properly only when it is guaranteed that the indices to be
-  // updated do not overlap. The caller is responsible for ensuring this is
-  // the case.
-  Status EmitScatter(Thunk* thunk, HloInstruction* scatter,
+  // the process. Scatter indices are taken from `scatter_indices_gen`, updates
+  // from `updates_gen`. The output buffer is expected to have the operand
+  // values in it already. If unique_indices is false, we will use an atomic
+  // update. Using true for unique_indices behaves properly only when it is
+  // guaranteed that the indices to be updated do not overlap. The caller is
+  // responsible for ensuring this is the case.
+  Status EmitScatter(Thunk* thunk, mlir::lmhlo::ScatterOp scatter,
+                     const llvm_ir::IrArray& output,
                      const llvm_ir::ElementGenerator& scatter_indices_gen,
-                     const llvm_ir::ElementGenerator& updates_gen);
+                     const llvm_ir::ElementGenerator& updates_gen,
+                     std::function<llvm::Type*(int64)> get_index_type);
+
+  // Structure describing a scatter operation for IR emission.
+  // TODO(jurahul): Migrate element generators to use MLIR.
+  //                Migrate update_computation to be an MLIR Region.
+  struct ScatterDescriptor {
+    std::string name;
+    Shape operand_shape;
+    Shape scatter_indices_shape;
+    Shape updates_shape;
+    mlir::mhlo::ScatterDimensionNumbers dim_numbers;
+    bool unique_indices;
+    const HloComputation* update_computation;
+    llvm_ir::IrArray output;
+    llvm_ir::ElementGenerator scatter_indices_gen;
+    llvm_ir::ElementGenerator updates_gen;
+    std::function<llvm::Type*(int64)> get_index_type;
+  };
+
+  // Emits code for an in-place scatter using the provided scatter operation
+  // description.
+  Status EmitScatter(const ScatterDescriptor& desc, Thunk* thunk);
 
   // Returns true if a 0-2-1 tiling algorithm is already used to emit the kernel
   // for the hlo instruction.
@@ -517,6 +547,12 @@ class IrEmitterUnnested : public IrEmitter,
       absl::Span<const ShapeIndex> reduction_output_shape_indices,
       absl::Span<HloComputation* const> reducers,
       const TilingKernelInfo& tiling_kernel_info);
+
+  // Emits code for reductions in the output_instructions.
+  void EmitIRForReduction(HloInstruction* unnested_hlo,
+                          absl::Span<HloInstruction* const> output_instructions,
+                          ReductionCodegenInfo* reduction_info,
+                          const Shape& input_shape);
 
   // For each reducer, emits the shuffle-down loop to accumulate the partial
   // result to the global result.

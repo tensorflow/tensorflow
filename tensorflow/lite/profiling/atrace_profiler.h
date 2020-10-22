@@ -22,6 +22,9 @@ limitations under the License.
 namespace tflite {
 namespace profiling {
 
+// Creates a profiler which reports the traced events to the Android ATrace.
+// Nullptr will be returned if the Android system property 'debug.tflite.trace'
+// is not set or the property value is not 1.
 std::unique_ptr<tflite::Profiler> MaybeCreateATraceProfiler();
 
 }  // namespace profiling

@@ -20,6 +20,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/batching_util/concat_split_util.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/monitoring/percentile_sampler.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/util/incremental_barrier.h"
 
 namespace tensorflow {
@@ -202,6 +204,11 @@ Status BatchResourceBase::ConcatInputTensors(
 
   const int padded_batch_size = RoundToLowestAllowedBatchSize(batch.size());
   const int padding_amount = padded_batch_size - batch.size();
+  profiler::TraceMe trace_me([padded_batch_size, padding_amount]() {
+    return profiler::TraceMeEncode(
+        "ConcatInputTensors", {{"batch_size_after_padding", padded_batch_size},
+                               {"padding_amount", padding_amount}});
+  });
   RecordPaddingSize(padding_amount, GetModelName(context), padded_batch_size);
   RecordProcessedBatchSize(padded_batch_size, GetModelName(context));
 

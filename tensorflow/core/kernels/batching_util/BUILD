@@ -1,5 +1,6 @@
 # Description: Utilities.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
@@ -97,6 +98,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:traceme_encode",
     ],
     alwayslink = 1,
 )
@@ -247,6 +249,8 @@ cc_library(
         "//tensorflow/core/kernels/batching_util:threadsafe_status",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:thread_annotations",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:traceme_encode",
         "//tensorflow/core/util:incremental_barrier",
     ],
 )

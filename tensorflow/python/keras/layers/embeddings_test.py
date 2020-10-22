@@ -28,6 +28,7 @@ from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
@@ -145,6 +146,17 @@ class EmbeddingTest(keras_parameterized.TestCase):
     model.run_eagerly = testing_utils.should_run_eagerly()
     outputs = model.predict(np.array([[0, 2, 4]], dtype='int32'))
     self.assertAllClose(outputs, [[[1., 2.], [5., 6.], [9., 10.]]])
+
+  @testing_utils.enable_v2_dtype_behavior
+  def test_mixed_precision_embedding(self):
+    try:
+      policy.set_policy('mixed_float16')
+      layer = keras.layers.Embedding(input_dim=5, output_dim=2)
+      self.assertEqual(layer._dtype_policy.name, 'mixed_float16')
+      outputs = layer(np.array([0, 1, 2]))
+      self.assertEqual(outputs.dtype, 'float16')
+    finally:
+      policy.set_policy('float32')
 
 
 if __name__ == '__main__':

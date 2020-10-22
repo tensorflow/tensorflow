@@ -33,12 +33,15 @@ from tensorflow.python import keras
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.saving.saved_model import load as keras_load
 from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -70,6 +73,36 @@ class SubclassedModelNoConfig(keras.Model):
     for layer in self.all_layers:
       x = layer(x)
     return x
+
+
+class SparseDense(keras.layers.Dense):
+
+  def call(self, inputs):
+    input_shape = array_ops.stack(
+        (math_ops.reduce_prod(array_ops.shape(inputs)[:-1]),
+         self.kernel.shape[0]))
+    output_shape = array_ops.concat(
+        (array_ops.shape(inputs)[:-1], [self.kernel.shape[1]]), -1)
+    x = sparse_ops.sparse_reshape(inputs, input_shape)
+    return array_ops.reshape(
+        self.activation(
+            sparse_ops.sparse_tensor_dense_matmul(x, self.kernel) + self.bias),
+        output_shape)
+
+
+class SubclassedSparseModelNoConfig(keras.Model):
+
+  def __init__(self, a, b):
+    super(SubclassedSparseModelNoConfig, self).__init__()
+    self.a = a
+    self.shared = CustomLayerNoConfig(a, b)
+    self.all_layers = [SparseDense(4)]
+
+  def call(self, inputs):
+    x = inputs
+    for layer in self.all_layers:
+      x = layer(x)
+    return self.shared(x + self.a)
 
 
 class SubclassedModelWithConfig(SubclassedModelNoConfig):
@@ -171,6 +204,9 @@ class ReviveTestBase(keras_parameterized.TestCase):
                         self.evaluate(revived.weights))
     input_arr = constant_op.constant(
         np.random.random((2, 2, 3)).astype(np.float32))
+    if isinstance(revived._saved_model_inputs_spec,
+                  sparse_tensor.SparseTensorSpec):
+      input_arr = sparse_ops.from_dense(input_arr)
 
     self.assertAllClose(model(input_arr), revived(input_arr))
     self.assertAllClose(sum(model.losses), sum(revived.losses))
@@ -276,6 +312,15 @@ class TestModelRevive(ReviveTestBase):
     revived = keras_load.load(self.path)
     self._assert_revived_correctness(model, revived)
 
+  def test_revive_subclassed_with_sparse_model(self):
+    model = SubclassedSparseModelNoConfig(1., 2.)
+    # Run data through the Model to create save spec and weights.
+    x = sparse_ops.from_dense(np.ones((10, 2, 3), dtype=np.float32))
+    model.predict(x, batch_size=10)
+    model.save(self.path, save_format='tf')
+    revived = keras_load.load(self.path)
+    self._assert_revived_correctness(model, revived)
+
   def test_revive_sequential_inputs(self):
     model = keras.models.Sequential([
         keras.Input((None,), dtype=dtypes.string),
@@ -294,6 +339,29 @@ class TestModelRevive(ReviveTestBase):
     model.save(self.path, include_optimizer=False, save_format='tf')
     revived = keras_load.load(self.path, compile=False)
     self._assert_revived_correctness(model, revived)
+
+  def test_load_compiled_metrics(self):
+    model = testing_utils.get_small_sequential_mlp(1, 3)
+
+    # Compile with dense categorical accuracy
+    model.compile('rmsprop', 'mse', 'acc')
+    x = np.random.random((5, 10)).astype(np.float32)
+    y_true = np.random.random((5, 3)).astype(np.float32)
+    model.train_on_batch(x, y_true)
+
+    model.save(self.path, include_optimizer=True, save_format='tf')
+    revived = keras_load.load(self.path, compile=True)
+    self.assertAllClose(model.test_on_batch(x, y_true),
+                        revived.test_on_batch(x, y_true))
+
+    # Compile with sparse categorical accuracy
+    model.compile('rmsprop', 'mse', 'acc')
+    y_true = np.random.randint(0, 3, (5, 1)).astype(np.float32)
+    model.train_on_batch(x, y_true)
+    model.save(self.path, include_optimizer=True, save_format='tf')
+    revived = keras_load.load(self.path, compile=True)
+    self.assertAllClose(model.test_on_batch(x, y_true),
+                        revived.test_on_batch(x, y_true))
 
 
 if __name__ == '__main__':
