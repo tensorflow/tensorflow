@@ -210,7 +210,6 @@ tf_py_test(
     size = "small",
     srcs = ["saved_model/json_utils_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":saving",
         "//tensorflow/python:client_testlib",

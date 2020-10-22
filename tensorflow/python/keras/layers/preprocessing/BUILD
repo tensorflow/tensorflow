@@ -644,7 +644,6 @@ tf_py_test(
     name = "table_utils_test",
     srcs = ["table_utils_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":table_utils",
         "//tensorflow/python:client_testlib",

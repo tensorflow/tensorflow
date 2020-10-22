@@ -54,7 +54,6 @@ tf_py_test(
 tf_py_test(
     name = "conversion_test",
     srcs = ["conversion_test.py"],
-    tfrt_enabled = True,
     deps = [
         ":impl",
         "//tensorflow/python:client_testlib",
