@@ -88,6 +88,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/service/while_loop_analysis.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -234,6 +235,47 @@ bool BinarySearchDenseElementsAttr(::mlir::DenseIntElementsAttr elements,
   return std::binary_search(
       elements.begin(), elements.end(), value,
       [](const ::mlir::APInt& x, const ::mlir::APInt& y) { return x.slt(y); });
+}
+
+// Returns true if the fusion contains any instruction that is likely
+// translated to complex LLVM IR, such as loops, and prevent vectorization.
+bool MayPreventVectorization(const HloInstruction& hlo) {
+  if (hlo.opcode() == HloOpcode::kFusion) {
+    return absl::c_any_of(hlo.fused_instructions_computation()->instructions(),
+                          [](const HloInstruction* instr) {
+                            switch (instr->opcode()) {
+                              case HloOpcode::kReduceWindow:
+                              case HloOpcode::kSort:
+                              case HloOpcode::kDot:
+                              case HloOpcode::kSin:
+                              case HloOpcode::kCos:
+                              case HloOpcode::kPower:
+                              case HloOpcode::kAtan2:
+                                return true;
+                              default:
+                                return false;
+                            }
+                          });
+  } else if (hlo.IsElementwise()) {
+    // Unfused elementwise operations are usually memory bound, unroll them.
+    switch (hlo.opcode()) {
+        // The following elementwise operation implementations contain branches.
+        // LLVM vectorizer doesn't work in that case.
+        // The unrolled code is faster when it isn't vectorized.
+      case HloOpcode::kSin:
+      case HloOpcode::kCos:
+      case HloOpcode::kPower:
+      case HloOpcode::kAtan2:
+        return true;
+      default:
+        return false;
+    }
+  } else if (hlo.opcode() == HloOpcode::kReduce && hlo.shape().IsArray()) {
+    // TODO: check if the to_apply() attribute contains instruction
+    // that break LLVM vectorization.
+    return false;
+  }
+  return true;
 }
 
 }  // namespace
@@ -766,6 +808,202 @@ Status IrEmitterUnnested::HandleFft(HloInstruction* fft) {
 
 Status IrEmitterUnnested::HandleTriangularSolve(HloInstruction* hlo) {
   return ThunkEmitter(this).HandleTriangularSolve(hlo);
+}
+
+// Convert the following form of fusion region:
+//   fusion() {
+//     %0 = tensor_load %external_memref0
+//     %1 = tensor_load %external_memref1
+//     ...
+//     tensor_store %ret, %external_memref2
+//   }
+// to
+//   fusion(%external_memref0, %external_memref1) (^bb(%0, %1) {
+//     ...
+//     mhlo.return %ret
+//   })
+//
+// So that it's suitable for MHLO -> XLA HLO conversion.
+// This function won't be needed once ElementalIrEmitter migrates to take MHLO
+// instead.
+static Status ProcessFusionForConversion(mlir::Region* region,
+                                         std::vector<mlir::Value>* operands,
+                                         std::vector<mlir::Value>* outputs,
+                                         std::vector<Shape>* operand_shapes) {
+  std::vector<mlir::TensorLoadOp> loads;
+  std::vector<mlir::TensorStoreOp> stores;
+
+  region->walk([&](mlir::TensorLoadOp load) {
+    if (load.memref().getParentRegion() != region) {
+      loads.push_back(load);
+    }
+  });
+
+  region->walk([&](mlir::TensorStoreOp store) {
+    if (store.memref().getParentRegion() != region) {
+      stores.push_back(store);
+    }
+  });
+
+  for (auto load : loads) {
+    auto arg = region->addArgument(load.getType());
+    load.replaceAllUsesWith(arg);
+    operands->push_back(load.memref());
+    Shape shape = TypeToShape(load.getType());
+    auto attr = mlir::GetLayoutFromMlirHlo(load);
+    if (attr) {
+      std::vector<int64> minor_to_major;
+      absl::c_transform(
+          attr, std::back_inserter(minor_to_major),
+          std::function<int64(const llvm::APInt&)>(&llvm::APInt::getZExtValue));
+      *shape.mutable_layout() = LayoutUtil::MakeLayout(minor_to_major);
+    } else {
+      *shape.mutable_layout() =
+          LayoutUtil::MakeDescendingLayout(load.getType().getShape().size());
+    }
+    operand_shapes->push_back(shape);
+    load.erase();
+  }
+
+  std::vector<mlir::Value> returned_values;
+  for (auto store : stores) {
+    returned_values.push_back(store.tensor());
+    outputs->push_back(store.memref());
+    store.erase();
+  }
+
+  region->back().back().erase();
+  auto b = mlir::OpBuilder::atBlockEnd(&region->back());
+  auto loc = returned_values[0].getLoc();
+  b.create<mlir::mhlo::ReturnOp>(loc, returned_values);
+  return Status::OK();
+}
+
+// Similar to the general GetMlirBufferSlices, but it's specific to fusion,
+// since fusion doesn't have any ODS operands and memory side-effect
+// annotations.
+static StatusOr<std::vector<MlirBufferSlice>> CreateFusionSlices(
+    absl::Span<const mlir::Value> fusion_operands,
+    absl::Span<const mlir::Value> fusion_outputs,
+    absl::Span<const Shape> operand_shapes, const Shape& output_shape,
+    const BufferAssignment& buffer_assignment) {
+  absl::Span<const BufferAllocation> allocations(
+      buffer_assignment.Allocations());
+
+  std::vector<MlirBufferSlice> slices;
+  for (int i = 0; i < fusion_operands.size(); i++) {
+    mlir::Value operand = fusion_operands[i];
+    MlirBufferSlice slice;
+    TF_ASSIGN_OR_RETURN(slice.buffer_slice,
+                        GetAllocationSliceForMlir(operand, allocations));
+    slice.shape = operand_shapes.at(i);
+    slices.push_back(slice);
+  }
+  for (int i = 0; i < fusion_outputs.size(); i++) {
+    mlir::Value output = fusion_outputs[i];
+    MlirBufferSlice slice;
+    TF_ASSIGN_OR_RETURN(slice.buffer_slice,
+                        GetAllocationSliceForMlir(output, allocations));
+    slice.written = true;
+    if (output_shape.IsTuple()) {
+      slice.shape = output_shape.tuple_shapes(i);
+    } else {
+      slice.shape = output_shape;
+    }
+    slices.push_back(slice);
+  }
+
+  return slices;
+}
+
+// TODO(timshen): update the comment once the HandleFusion code path deleted.
+//
+// This is migrated from IrEmitter::HandleFusion() with IrEmitterUnnested as the
+// subclass. The logic is de-virtualized and less scattered.
+Status IrEmitterUnnested::EmitLoopFusionFromMlir(MlirEmitterInput input,
+                                                 const Shape& output_shape,
+                                                 int unroll_factor) {
+  auto fusion = mlir::cast<mlir::lmhlo::FusionOp>(input.op);
+  std::string name = mlir::GetNameFromLoc(fusion.getLoc());
+
+  std::vector<mlir::Value> fusion_operands;
+  std::vector<mlir::Value> fusion_outputs;
+  std::vector<Shape> operand_shapes;
+  TF_RETURN_IF_ERROR(ProcessFusionForConversion(
+      &fusion.region(), &fusion_operands, &fusion_outputs, &operand_shapes));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<MlirBufferSlice> slices,
+      CreateFusionSlices(fusion_operands, fusion_outputs, operand_shapes,
+                         output_shape,
+                         ir_emitter_context_->buffer_assignment()));
+  slices.push_back(input.extra_slice);
+
+  std::vector<llvm_ir::IrArray> ir_arrays;
+  Thunk* kernel_thunk;
+  {
+    std::unique_ptr<KernelThunk> kernel_thunk_ptr =
+        BuildKernelThunkForMlir(name, input.thunk_info, slices, &ir_arrays);
+    kernel_thunk = kernel_thunk_ptr.get();
+    thunk_sequence_.emplace_back(std::move(kernel_thunk_ptr));
+  }
+
+  TF_ASSIGN_OR_RETURN(const HloComputation* fused_computation,
+                      GetOrCreateSubComputationFromRegion(&fusion.region()));
+
+  CHECK_EQ(fusion_operands.size(), fused_computation->num_parameters());
+  for (int i = 0; i < fused_computation->num_parameters(); i++) {
+    *fused_computation->parameter_instruction(i)
+         ->mutable_shape()
+         ->mutable_layout() = slices[i].shape.layout();
+  }
+
+  GpuElementalIrEmitter elemental_emitter(hlo_module_config_, module_, &b_,
+                                          GetNestedComputer());
+
+  FusedIrEmitter fused_emitter(
+      [&] {
+        auto operand_ir_arrays =
+            absl::MakeSpan(ir_arrays).subspan(0, fusion_operands.size());
+        return std::vector<llvm_ir::IrArray>(operand_ir_arrays.begin(),
+                                             operand_ir_arrays.end());
+      },
+      &elemental_emitter);
+  TF_RETURN_IF_ERROR(
+      fused_computation->root_instruction()->Accept(&fused_emitter));
+
+  auto element_generator = fused_emitter.GetRootGenerator();
+  Shape element_shape = TypeToShape(fusion_outputs[0].getType());
+  LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
+      element_shape, ir_emitter_context_->gpu_device_info(), unroll_factor);
+  UpdateLaunchDimensions(launch_dimensions, kernel_thunk,
+                         ir_emitter_context_->llvm_module());
+  auto output_arrays = absl::MakeSpan(ir_arrays).subspan(fusion_operands.size(),
+                                                         fusion_outputs.size());
+  llvm::Type* index_type = GetIndexTypeForKernelFromMlir(
+      fusion, launch_dimensions.launch_bound(), &b_);
+
+  if (fusion_outputs.size() > 1) {
+    // Emit the tuple pointers in one thread.  We could do this at any point in
+    // the kernel, but we do it at the beginning in the hopes of reducing
+    // register pressure, since we touch threadIdx.x and blockIdx.x at the
+    // beginning of the kernel *anyway*.
+    KernelSupportLibrary{&b_}.If("emit_mof_tuple", IsBlock0Thread0(&b_), [&] {
+      llvm_ir::EmitTuple(ir_arrays.back(), output_arrays, &b_);
+    });
+    // For multioutput fusion, we need to emit each operand and the root.
+    TF_RETURN_IF_ERROR(ParallelLoopEmitter(element_generator, output_arrays,
+                                           launch_dimensions, &b_,
+                                           unroll_factor)
+                           .EmitLoop(name, index_type));
+  } else {
+    TF_RETURN_IF_ERROR(ParallelLoopEmitter(element_generator, output_arrays[0],
+                                           launch_dimensions, &b_,
+                                           unroll_factor)
+                           .EmitLoop(name, index_type));
+  }
+
+  b_.SetInsertPoint(b_.GetInsertBlock()->getTerminator());
+  return Status::OK();
 }
 
 Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
@@ -1510,16 +1748,38 @@ Status IrEmitterUnnested::HandleSelect(HloInstruction* select) {
   return IrEmitter::HandleSelect(select);
 }
 
+// This transformation should be migrated off. See b/171334474.
 StatusOr<const HloComputation*>
 IrEmitterUnnested::GetOrCreateSubComputationFromRegion(mlir::Region* region) {
   std::unique_ptr<HloModule>& module = scratch_nested_computations_[region];
   if (module == nullptr) {
     xla::XlaComputation xla_computation;
-    TF_RETURN_IF_ERROR(ConvertRegionToComputation(region, &xla_computation));
+    mlir::MlirToHloConversionOptions options;
+    options.propagate_layouts = true;
+    TF_RETURN_IF_ERROR(
+        ConvertRegionToComputation(region, &xla_computation, options));
+
     TF_ASSIGN_OR_RETURN(auto program_shape, xla_computation.GetProgramShape());
     TF_ASSIGN_OR_RETURN(
         module, HloModule::CreateFromProto(xla_computation.proto(),
                                            HloModuleConfig(program_shape)));
+
+    // Post-process the generated computation:
+    // * Sanitize constant names, so that they can be used as LLVM global
+    // symbols.
+    // * Propagate layouts for tuple types.
+    for (HloComputation* computation : module->computations()) {
+      for (HloInstruction* instr : computation->MakeInstructionPostOrder()) {
+        if (instr->opcode() == HloOpcode::kConstant) {
+          instr->SetAndSanitizeName(llvm_ir::SanitizeConstantName(*instr));
+        }
+        if (instr->shape().IsTuple()) {
+          TF_ASSIGN_OR_RETURN(*instr->mutable_shape(),
+                              ShapeInference::InferVariadicOpShape(
+                                  instr->opcode(), instr->operands()));
+        }
+      }
+    }
   }
   return module->entry_computation();
 }
@@ -2518,51 +2778,6 @@ Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
   b_.SetInsertPoint(b_.GetInsertBlock()->getTerminator());
   return Status::OK();
 }
-
-namespace {
-
-// Returns true if the fusion contains any instruction that is likely
-// translated to complex LLVM IR, such as loops, and prevent vectorization.
-bool MayPreventVectorization(const HloInstruction& hlo) {
-  if (hlo.opcode() == HloOpcode::kFusion) {
-    return absl::c_any_of(hlo.fused_instructions_computation()->instructions(),
-                          [](const HloInstruction* instr) {
-                            switch (instr->opcode()) {
-                              case HloOpcode::kReduceWindow:
-                              case HloOpcode::kSort:
-                              case HloOpcode::kDot:
-                              case HloOpcode::kSin:
-                              case HloOpcode::kCos:
-                              case HloOpcode::kPower:
-                              case HloOpcode::kAtan2:
-                                return true;
-                              default:
-                                return false;
-                            }
-                          });
-  } else if (hlo.IsElementwise()) {
-    // Unfused elementwise operations are usually memory bound, unroll them.
-    switch (hlo.opcode()) {
-        // The following elementwise operation implementations contain branches.
-        // LLVM vectorizer doesn't work in that case.
-        // The unrolled code is faster when it isn't vectorized.
-      case HloOpcode::kSin:
-      case HloOpcode::kCos:
-      case HloOpcode::kPower:
-      case HloOpcode::kAtan2:
-        return true;
-      default:
-        return false;
-    }
-  } else if (hlo.opcode() == HloOpcode::kReduce && hlo.shape().IsArray()) {
-    // TODO: check if the to_apply() attribute contains instruction
-    // that break LLVM vectorization.
-    return false;
-  }
-  return true;
-}
-
-}  // namespace
 
 Status IrEmitterUnnested::EmitTargetElementLoop(
     const HloInstruction& hlo, const llvm_ir::ElementGenerator& body_emitter) {

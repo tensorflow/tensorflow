@@ -1180,9 +1180,9 @@ StatusOr<xla::Literal> CreateArrayLiteralFromAttr(ElementsAttr attr,
 }
 
 xla::Layout ExtractLayout(mlir::Operation* op, int rank) {
-  if (auto attr =
-          op->getAttrOfType<mlir::DenseIntElementsAttr>("minor_to_major")) {
+  if (auto attr = GetLayoutFromMlirHlo(op)) {
     llvm::SmallVector<int64, 4> minor_to_major;
+    DCHECK_EQ(rank, attr.size());
     minor_to_major.reserve(attr.size());
     for (const llvm::APInt& i : attr) {
       minor_to_major.push_back(i.getZExtValue());
@@ -1735,6 +1735,10 @@ Status ConvertMlirHloToHlo(
     return diag_handler.ConsumeStatus();
 
   return Status::OK();
+}
+
+DenseIntElementsAttr GetLayoutFromMlirHlo(mlir::Operation* op) {
+  return op->getAttrOfType<mlir::DenseIntElementsAttr>("minor_to_major");
 }
 
 }  // namespace mlir

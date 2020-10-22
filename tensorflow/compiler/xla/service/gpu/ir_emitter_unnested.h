@@ -52,7 +52,7 @@ struct HloBufferSlice : public BufferSlice {
 
 struct MlirBufferSlice : public BufferSlice {
   // The buffer is modified by the kernel.
-  bool written;
+  bool written = false;
 
   Shape shape;
 };
@@ -60,6 +60,15 @@ struct MlirBufferSlice : public BufferSlice {
 struct MlirEmitterInput {
   mlir::Operation* op;
   Thunk::ThunkInfo thunk_info;
+
+  // A field to allow plumbing extra information that BufferAssignment has, but
+  // LMHLO/MLIR representation does not have. Specifically, this is for passing
+  // the allocated buffer for tuple outputs (an array of pointers to tuple
+  // elements).
+  //
+  // TODO(timshen): We need a corresponding construct in LMHLO to represent
+  // this, aka an array of pointers to different memrefs. Once we have that, we
+  // can merge this information back to LMHLO graph and remove this field.
   MlirBufferSlice extra_slice;
 };
 
@@ -149,6 +158,8 @@ class IrEmitterUnnested : public IrEmitter,
   Status HandleDot(HloInstruction* dot) override;
   Status HandleFft(HloInstruction* fft) override;
   Status HandleFusion(HloInstruction* fusion) override;
+  Status EmitLoopFusionFromMlir(MlirEmitterInput input,
+                                const Shape& output_shape, int unroll_factor);
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
   Status HandleReduce(HloInstruction* reduce) override;
   Status HandleSelectAndScatter(HloInstruction* instruction) override;
