@@ -260,8 +260,6 @@ void HorizontalLoopFusionImpl::FusionCandidates::Initialize(
       continue;
     } else {
       VLOG(2) << "Find a fusion candidate " << instr->ToString();
-      // Encapsulate it into a fusion computation for unified representation
-      // for later processing.
       fusible_instrs_.push_back(instr);
     }
   }
