@@ -1,15 +1,9 @@
 # Release 2.4.0
 
-<REPLACE THIS TEXT WITH THE RELEASE NOTES>
-
-# Release 2.4.0
-
 <INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
 
 ## Breaking Changes
 
-* <DOCUMENT BREAKING CHANGES HERE>
-* <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
 * Certain float32 ops run in lower precsion on Ampere based GPUs, including 
   matmuls and convolutions, due to the use of
   [TensorFloat-32](https://blogs.nvidia.com/blog/2020/05/14/tensorfloat-32-precision-format/).
@@ -81,8 +75,6 @@
 
 ## Major Features and Improvements
 
-* <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
-* <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
 * A new module named `tf.experimental.numpy` is added, which is a NumPy-compatible API for writing TF programs. This module provides class `ndarray`, which mimics the `ndarray` class in NumPy, and wraps an immutable `tf.Tensor` under the hood. A subset of NumPy functions (e.g. `numpy.add`) are provided. Their inter-operation with TF facilities is seamless in most cases. See [tensorflow/python/ops/numpy_ops/README.md](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/ops/numpy_ops/README.md) for details of what operations are supported and what are the differences from NumPy.
 * A major refactoring of the internals of the Keras Functional API has been completed, that should improve the reliability, stability, and performance of constructing Functional models.
 * Support for
@@ -104,9 +96,6 @@
 
 ## Bug Fixes and Other Changes
 
-*   <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
-*   <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
-*   <NOTES SHOULD BE GROUPED PER AREA>
 *   Security:
     *   Fixes an undefined behavior causing a segfault in `tf.raw_ops.Switch`
         ([CVE-2020-15190](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-15190))
@@ -327,11 +316,6 @@
     *   `DynamicBuffer::AddJoinedString()` will now add a separator if the first
         string to be joined is empty.
     *  Added support for cumulative sum (cumsum), both as builtin op and MLIR conversion.
-    *   <ADD RELEASE NOTES HERE>
-
-*   `tf.random`:
-
-    *   <ADD RELEASE NOTES HERE>
 
 *   Math and Linear Algebra:
 
@@ -342,7 +326,6 @@
     *   Added support for the `beta` parameter of the FTRL optimizer for TPU
         embeddings. Users of other TensorFlow platforms can implement equivalent
         behavior by adjusting the `l2` parameter.
-    *   <ADD RELEASE NOTES HERE>
 
 *   XLA Support:
 
@@ -351,11 +334,6 @@
     *   Added `tf.function.experimental_get_compiler_ir` which returns compiler
         IR (currently 'hlo' and 'optimized_hlo') for given input for given
         function.
-    *   <ADD RELEASE NOTES HERE>
-
-*   Tracing and Debugging:
-
-    *   <ADD RELEASE NOTES HERE>
 
 *   `tf.train.Checkpoint`:
 
@@ -397,13 +375,10 @@
         rollout the new MLIR TPU bridge.
     *   Added `tf.experimental.register_filesystem_plugin` to load modular
         filesystem plugins from Python
-    *   <ADD RELEASE NOTES HERE>
 
 ## Thanks to our Contributors
 
-This release contains contributions from many people at Google, as well as:
-
-stjohnso98, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+This release contains contributions from many people at Google and external contributors.
 
 
 # Release 2.3.1
