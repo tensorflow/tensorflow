@@ -2237,9 +2237,21 @@ HloConvolutionInstruction::CloneWithNewOperandsImpl(
 HloReduceWindowInstruction::HloReduceWindowInstruction(
     const Shape& shape, HloInstruction* operand, HloInstruction* init_value,
     const Window& window, HloComputation* reduce_computation)
+    : HloReduceWindowInstruction(shape, absl::MakeSpan(&operand, 1),
+                                 absl::MakeSpan(&init_value, 1), window,
+                                 reduce_computation) {}
+
+HloReduceWindowInstruction::HloReduceWindowInstruction(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    absl::Span<HloInstruction* const> init_values, const Window& window,
+    HloComputation* reduce_computation)
     : HloInstruction(HloOpcode::kReduceWindow, shape), window_(window) {
-  AppendOperand(operand);
-  AppendOperand(init_value);
+  for (auto* operand : operands) {
+    AppendOperand(operand);
+  }
+  for (auto* init_value : init_values) {
+    AppendOperand(init_value);
+  }
   AppendComputation(reduce_computation);
 }
 
