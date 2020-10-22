@@ -22,7 +22,7 @@ Required parameters:
 
 Optional parameters:
 
-  - TOOLCHAIN: armgcc (default) or armmclang
+  - TOOLCHAIN: gcc (default) or armmclang
   - For Cortex-M55, ARM Compiler 6.14 or later is required.
 
 Some examples:
