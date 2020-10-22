@@ -24,12 +24,14 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.saved_model import save_context
 from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -452,6 +454,7 @@ class ShardedVariable(ShardedVariableMixin, composite_tensor.CompositeTensor):
 
 
 def _var_to_tensor(var, dtype=None, name=None, as_ref=False):
+  """Converts a `ShardedVariable` to a `Tensor`."""
   del name
   if dtype is not None and not dtype.is_compatible_with(var.dtype):
     raise ValueError(
@@ -460,9 +463,40 @@ def _var_to_tensor(var, dtype=None, name=None, as_ref=False):
   if as_ref:
     raise NotImplementedError(
         "ShardedVariable doesn't support being used as a reference.")
+  # We use op dispatch mechanism to override embedding_lookup ops when called
+  # with ShardedVariable. This requires embedding_lookup ops to raise TypeError
+  # when called with ShardedVariable. However since ShardedVariable can be
+  # converted to a tensor via concat, embedding_lookup ops would silently
+  # do the convertion and never raise a TypeError. To be able to properly
+  # raise a TypeError, namescope is used to detect if this method is called
+  # within a embedding_lookup op.
+  # NOTE: This doesn't work in eager mode since op namescope is always cleared
+  # in eager. This also breaks if user sets the name of embedding_lookup op
+  # with something that doesn't contain str "embedding_lookup".
+  #
+  # TODO(chenkai): Find a more robust way to do this, which should not rely
+  # on namescope.
+  if 'embedding_lookup' in ops.get_name_scope():
+    raise TypeError('Converting ShardedVariable to tensor in embedding lookup'
+                    ' ops is disallowed.')
   return array_ops.concat(var.variables, axis=0)
 
 
 # Register a conversion function which reads the value of the variable,
 # allowing instances of the class to be used as tensors.
 ops.register_tensor_conversion_function(ShardedVariable, _var_to_tensor)
+
+
+# Override the behavior of embedding_lookup(sharded_variable, ...)
+@dispatch.dispatch_for_types(embedding_ops.embedding_lookup, ShardedVariable)
+def embedding_lookup(params,
+                     ids,
+                     partition_strategy='mod',
+                     name=None,
+                     validate_indices=True,
+                     max_norm=None):
+  if isinstance(params, list):
+    params = params[0]
+  return embedding_ops.embedding_lookup(params.variables, ids,
+                                        partition_strategy, name,
+                                        validate_indices, max_norm)
