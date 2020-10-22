@@ -975,7 +975,7 @@ cuda_py_test(
     #
     # TODO(b/128347673): Re-enable.
     tags = ["no_windows"],
-    tfrt_enabled = True,
+    tfrt_enabled = False,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
