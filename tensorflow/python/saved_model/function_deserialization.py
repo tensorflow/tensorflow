@@ -216,10 +216,6 @@ def recreate_function(saved_function, concrete_functions):
   Returns:
     A `Function`.
   """
-  if not saved_function.concrete_functions:
-    logging.warning("Could not find any concrete functions to restore for this "
-                    "SavedFunction object while loading. The function will not "
-                    "be callable.")
   # TODO(andresp): Construct a `Function` with the cache populated
   # instead of creating a new `Function` backed by a Python layer to
   # glue things together. Current approach is nesting functions deeper for each
