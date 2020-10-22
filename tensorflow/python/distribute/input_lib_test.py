@@ -1456,7 +1456,7 @@ class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
                                                         input_options):
 
     def dataset_fn(input_context):  # pylint: disable=[unused-argument]
-      return dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
+      return dataset_ops.Dataset.from_tensor_slices([1, 2, 3, 4])
 
     ds = distribution.experimental_distribute_datasets_from_function(
         dataset_fn, input_options)
