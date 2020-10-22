@@ -36,7 +36,8 @@ if ! BIN=${ROOT_DIR}/$1 \
   SCRIPT=${ROOT_DIR}/tensorflow/lite/micro/testing/bluepill.resc \
   EXPECTED="$2" \
   ${ROOT_DIR}/tensorflow/lite/micro/tools/make/downloads/renode/test.sh \
-  ${ROOT_DIR}/tensorflow/lite/micro/testing/bluepill.robot &> ${MICRO_LOG_FILENAME}
+  ${ROOT_DIR}/tensorflow/lite/micro/testing/bluepill.robot \
+  -r $TEST_TMPDIR &> ${MICRO_LOG_FILENAME}
 then
   exit_code=1
 fi

@@ -36,7 +36,8 @@ if ! BIN=${ROOT_DIR}/$1 \
   SCRIPT=${ROOT_DIR}/tensorflow/lite/micro/testing/stm32f4.resc \
   EXPECTED="$2" \
   ${ROOT_DIR}/tensorflow/lite/micro/tools/make/downloads/renode/test.sh \
-  ${ROOT_DIR}/tensorflow/lite/micro/testing/stm32f4.robot &> ${MICRO_LOG_FILENAME}
+  ${ROOT_DIR}/tensorflow/lite/micro/testing/stm32f4.robot \
+  -r $TEST_TMPDIR &> ${MICRO_LOG_FILENAME}
 then
   exit_code=1
 fi
