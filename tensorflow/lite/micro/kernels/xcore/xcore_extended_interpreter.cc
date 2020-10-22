@@ -249,15 +249,26 @@ TfLiteStatus ExtendedXCoreInterpreter::GetTensorDetailsBufferSizes(
     return kTfLiteError;
   }
 
-  *dims = tensor_p->shape()->Length();
+  *dims = 0;
+  auto* shape_vector = tensor_p->shape();
+  if (shape_vector) {
+    *dims = shape_vector->Length();
+  }
+
+  *scales = 1;
+  *zero_points = 1;
   const tflite::QuantizationParameters* quantization_params =
       tensor_p->quantization();
   if (quantization_params) {
-    *scales = quantization_params->scale()->Length();
-    *zero_points = quantization_params->zero_point()->Length();
-  } else {
-    *scales = 1;
-    *zero_points = 1;
+    auto* scale_vector = quantization_params->scale();
+    if (scale_vector) {
+      *scales = scale_vector->Length();
+    }
+
+    auto* zero_points_vector = quantization_params->zero_point();
+    if (zero_points_vector) {
+      *zero_points = zero_points_vector->Length();
+    }
   }
   return kTfLiteOk;
 }
@@ -272,24 +283,37 @@ TfLiteStatus ExtendedXCoreInterpreter::GetTensorDetails(
     return kTfLiteError;
   }
 
-  if (tensor_p->name()) std::strncpy(name, tensor_p->name()->c_str(), name_len);
-
-  for (int i = 0; i < tensor_p->shape()->Length(); i++) {
-    shape[i] = tensor_p->shape()->Get(i);
+  if (tensor_p->name()) {
+    std::strncpy(name, tensor_p->name()->c_str(), name_len);
   }
+
+  auto* shape_vector = tensor_p->shape();
+  if (shape_vector) {
+    for (int i = 0; i < shape_vector->Length(); i++) {
+      shape[i] = shape_vector->Get(i);
+    }
+  }
+
+  scale[0] = 0.0;
+  zero_point[0] = 0;
+
   ConvertTensorType(tensor_p->type(), (TfLiteType*)type, reporter_);
   const tflite::QuantizationParameters* quantization_params =
       tensor_p->quantization();
   if (quantization_params) {
-    for (int i = 0; i < quantization_params->scale()->Length(); i++) {
-      scale[i] = quantization_params->scale()->Get(i);
+    auto* scale_vector = quantization_params->scale();
+    if (scale_vector) {
+      for (int i = 0; i < scale_vector->Length(); i++) {
+        scale[i] = scale_vector->Get(i);
+      }
     }
-    for (int i = 0; i < quantization_params->zero_point()->Length(); i++) {
-      zero_point[i] = quantization_params->zero_point()->Get(i);
+
+    auto* zero_points_vector = quantization_params->zero_point();
+    if (zero_points_vector) {
+      for (int i = 0; i < zero_points_vector->Length(); i++) {
+        zero_point[i] = zero_points_vector->Get(i);
+      }
     }
-  } else {
-    *scale = 0.0;
-    *zero_point = 0;
   }
   return kTfLiteOk;
 }
