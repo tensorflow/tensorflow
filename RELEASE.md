@@ -11,7 +11,8 @@
   [TensorFloat-32](https://blogs.nvidia.com/blog/2020/05/14/tensorfloat-32-precision-format/).
   Specifically, inputs to such ops are rounded from 23 bits of precision to 10
   bits of precision. This is unlikely to cause issues in practice for deep
-  learning models. TensorFloat-32 can be disabled by running
+  learning models. In some cases, TensorFloat-32 is also used for complex64 ops.
+  TensorFloat-32 can be disabled by running
   `config.experimental.enable_tensor_float_32_execution(False)`. The "Major
   Features and Improvements" section has more details.
 * The byte layout for string tensors across the C-API has been updated to match

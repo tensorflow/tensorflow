@@ -81,6 +81,9 @@ def enable_tensor_float_32_execution(enabled):
   be added in the future. As a result, precision of float32 ops may decrease in
   minor versions of TensorFlow.
 
+  TensorFloat-32 is also used for some complex64 ops. Currently, TensorFloat-32
+  is used in fewer cases for complex64 as it is for float32.
+
   Args:
     enabled: Bool indicating whether to enable TensorFloat-32 execution.
   """
