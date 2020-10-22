@@ -4355,6 +4355,7 @@ py_library(
         ":array_ops",
         ":handle_data_util",
         ":list_ops_gen",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -5455,6 +5456,7 @@ py_test(
         ":array_ops",
         ":client",
         ":client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
