@@ -1283,7 +1283,7 @@ void OpKernelRegistrar::Register(const KernelDef* kernel_def,
                                  StringPiece kernel_class_name,
                                  std::unique_ptr<OpKernelFactory> factory) {
   // OpKernelRegistrar::Register is intended to be used by Kernel C API for
-  // dynamic kernel registeration. subdevice type is registered from plugin.
+  // dynamic kernel registration. subdevice type is registered from plugin.
   const string key =
       Key(kernel_def->op(), DeviceType(kernel_def->device_type()),
           kernel_def->subdevice_type(), kernel_def->label());

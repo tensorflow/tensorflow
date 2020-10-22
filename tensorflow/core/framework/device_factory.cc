@@ -65,7 +65,7 @@ int32 DeviceFactory::DevicePriority(const string& device_type) {
 
 // static
 // If subdevice type is not found in the device factories, that means
-// device is not registed. In this case, device type will be used as
+// device is not registered. In this case, device type will be used as
 // subdevice type.
 string DeviceFactory::SubDeviceType(const string& device_type) {
   tf_shared_lock l(*get_device_factory_lock());
