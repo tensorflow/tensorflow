@@ -32,6 +32,7 @@ from tensorflow.core.protobuf import config_pb2 as _config_pb2
 from tensorflow.core.protobuf import graph_debug_info_pb2
 from tensorflow.core.protobuf import meta_graph_pb2 as _meta_graph_pb2
 from tensorflow.lite.python import schema_py_generated as schema_fb
+from tensorflow.lite.python import schema_util
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs
 from tensorflow.lite.python.op_hint import find_all_hinted_output_nodes
 from tensorflow.lite.toco import types_pb2 as _types_pb2
@@ -641,7 +642,8 @@ def _modify_model_input_type(model, inference_input_type=dtypes.float32):
   # Find all quantize operators
   quant_opcode_idxs = []
   for idx, opcode in enumerate(model.operatorCodes):
-    if opcode.builtinCode == schema_fb.BuiltinOperator.QUANTIZE:
+    builtin_code = schema_util.get_builtin_code_from_operator_code(opcode)
+    if builtin_code == schema_fb.BuiltinOperator.QUANTIZE:
       quant_opcode_idxs.append(idx)
   if not quant_opcode_idxs:
     raise ValueError("Model input is not quantized.")
@@ -721,7 +723,8 @@ def _modify_model_output_type(model, inference_output_type=dtypes.float32):
   # Find all dequantize operators
   dequant_opcode_idxs = []
   for idx, opcode in enumerate(model.operatorCodes):
-    if opcode.builtinCode == schema_fb.BuiltinOperator.DEQUANTIZE:
+    builtin_code = schema_util.get_builtin_code_from_operator_code(opcode)
+    if builtin_code == schema_fb.BuiltinOperator.DEQUANTIZE:
       dequant_opcode_idxs.append(idx)
   if not dequant_opcode_idxs:
     raise ValueError("Model output is not dequantized.")
@@ -769,7 +772,8 @@ def _modify_model_output_type(model, inference_output_type=dtypes.float32):
     # Find a quantize operator
     quant_opcode_idx = -1
     for idx, opcode in enumerate(model.operatorCodes):
-      if opcode.builtinCode == schema_fb.BuiltinOperator.QUANTIZE:
+      builtin_code = schema_util.get_builtin_code_from_operator_code(opcode)
+      if builtin_code == schema_fb.BuiltinOperator.QUANTIZE:
         quant_opcode_idx = idx
         break
     # Create a quantize operator, if none exist
@@ -843,4 +847,3 @@ def modify_model_io_type(
   _modify_model_output_type(model_object, inference_output_type)
 
   return _convert_model_from_object_to_bytearray(model_object)
-
