@@ -76,11 +76,13 @@ class ParameterServerStrategyV2Test(test.TestCase):
 
 class PartitionAwareIdentity(object):
 
-  def __call__(self, shape, dtype, shard_info):
+  def __call__(self, shape, dtype, **kwargs):
     value = linalg_ops_impl.eye(*shape, dtype=dtype)
-    if shard_info is not None:
-      value = array_ops.slice(value, shard_info.offset, shard_info.shape)
-    return value
+    if "partition_shape" in kwargs and "partition_offset" in kwargs:
+      return array_ops.slice(value, kwargs["partition_offset"],
+                             kwargs["partition_shape"])
+    raise AssertionError("PartitionAwareIdentity do not support "
+                         "non-partitioned initialization")
 
 
 class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
@@ -208,7 +210,7 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(v2.device, v1.variables[0].device)
     self.assertAllEqual(v2, [4, 5])
 
-  def testPartitionAwareInitializer(self):
+  def testCustomPartitionAwareInitializer(self):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
         self.cluster_resolver, sharded_variable.FixedShardsPartitioner(2))
     with strategy.scope():
