@@ -147,6 +147,8 @@ function install_ubuntu_16_pip_deps {
   "${PIP_CMD}" install --user 'portpicker ~= 1.3.1'
   "${PIP_CMD}" install --user 'scipy ~= 1.5.2'
   # LINT.ThenChange(:mac_pip_installations)
+  # Need to be addressed later. Unblocking 2.4 branchcut
+  "${PIP_CMD}" install --user 'PyYAML ~= 5.3.1'
 }
 
 function install_macos_pip_deps {
