@@ -36,11 +36,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/tracked_device_buffer.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -50,25 +52,62 @@ limitations under the License.
 
 namespace xla {
 
+// TODO(zhangqiaorjc): Add a registration mechanism to add new platforms.
+enum class PjRtPlatformId : int {
+  kCpu = 0,
+  kNvidiaGpu = 1,
+  kAmdGpu = 2,
+  kTpu = 3,
+  kEdgeTpu = 4,
+  kInterpreter = 5
+};
+constexpr const char* Name(PjRtPlatformId platform_id) {
+  switch (platform_id) {
+    case PjRtPlatformId::kCpu:
+      return "cpu";
+    case PjRtPlatformId::kNvidiaGpu:
+      // TODO(zhangqiaorjc): Rename to nvidia_gpu when we add AMD support.
+      return "gpu";
+    case PjRtPlatformId::kAmdGpu:
+      return "amd_gpu";
+    case PjRtPlatformId::kTpu:
+      return "tpu";
+    case PjRtPlatformId::kEdgeTpu:
+      return "edge_tpu";
+    case PjRtPlatformId::kInterpreter:
+      return "interpreter";
+  }
+}
+
 class PjRtClient;
 
 class PjRtDevice {
  public:
   explicit PjRtDevice(int id,
                       std::unique_ptr<LocalDeviceState> local_device_state,
-                      std::string platform_name, std::string device_kind,
-                      int host_id = 0)
+                      std::string device_kind, int host_id = 0)
       : id_(id),
+        local_device_id_(
+            local_device_state ? local_device_state->device_ordinal() : -1),
         local_device_state_(std::move(local_device_state)),
         host_id_(host_id),
-        platform_name_(std::move(platform_name)),
         device_kind_(std::move(device_kind)) {}
   virtual ~PjRtDevice() {}
+
+  // Must set client exactly once.
+  void SetClient(PjRtClient* client) {
+    CHECK(client_ == nullptr);
+    client_ = client;
+  }
 
   // The ID of this device. IDs are unique among devices of this type
   // (e.g. CPUs, GPUs). On multi-host platforms, this will be unique across all
   // hosts' devices.  This is the ID that should be used in a DeviceAssignment.
   int id() const { return id_; }
+
+  bool IsLocalDevice() const { return local_device_id_ != -1; }
+
+  int local_device_id() const { return local_device_id_; }
 
   // If this is a device local to this host, returns a LocalDeviceState object
   // that can be used to manipulate the device. Returns nullptr if the device is
@@ -85,7 +124,11 @@ class PjRtDevice {
   // The ID of this device's host. This is always 0 on single-host platforms.
   int host_id() const { return host_id_; }
 
-  const std::string& platform_name() const { return platform_name_; }
+  // Return `platform_id` from client.
+  PjRtPlatformId platform_id() const;
+
+  // Return `platform_name` from client.
+  const std::string& platform_name() const;
 
   // A vendor-dependent string that uniquely identifies the kind of device.
   const std::string& device_kind() const { return device_kind_; }
@@ -102,12 +145,10 @@ class PjRtDevice {
   virtual StatusOr<Literal> TransferFromOutfeed(const Shape& shape) const;
 
  private:
-  friend class PjRtClient;
-
   const int id_;
+  const int local_device_id_;  // -1 means not local.
   const std::unique_ptr<LocalDeviceState> local_device_state_;
   const int host_id_;
-  const std::string platform_name_;
   const std::string device_kind_;
   PjRtClient* client_ = nullptr;
 };
@@ -155,7 +196,7 @@ class PjRtClient {
  public:
   // `allocator` may null, in which case the platform default allocator is used.
   explicit PjRtClient(
-      std::string platform_name, LocalClient* client,
+      PjRtPlatformId platform_id, LocalClient* client,
       std::vector<std::unique_ptr<PjRtDevice>> devices, int host_id,
       std::unique_ptr<se::DeviceMemoryAllocator> allocator,
       std::unique_ptr<tensorflow::Allocator> host_memory_allocator,
@@ -178,11 +219,15 @@ class PjRtClient {
     return id_to_device_;
   }
   int host_id() const { return host_id_; }
+  PjRtPlatformId platform_id() const { return platform_id_; }
   const std::string& platform_name() const { return platform_name_; }
 
   LocalDeviceState& device_state(int device_ordinal) const {
     return *local_devices_.at(device_ordinal)->local_device_state();
   }
+
+  // Return a local PjRtDevice for a given `local_device_id`.
+  virtual StatusOr<PjRtDevice*> LookupLocalDevice(int local_device_id) const;
 
   LocalClient* client() const { return client_; }
   se::DeviceMemoryAllocator* allocator() const { return allocator_; }
@@ -280,6 +325,16 @@ class PjRtClient {
       absl::Span<const Shape> shapes, PjRtDevice* device,
       PjRtCrossHostRecvNotifier&& notifier);
 
+  virtual StatusOr<ChannelHandle> CreateChannelHandle() {
+    return client()->CreateChannelHandle();
+  }
+  virtual StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() {
+    return client()->CreateDeviceToHostChannelHandle();
+  }
+  virtual StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() {
+    return client()->CreateHostToDeviceChannelHandle();
+  }
+
  protected:
   friend class PjRtBuffer;
   virtual void EnqueueCrossHostReceive(
@@ -293,7 +348,8 @@ class PjRtClient {
     return Unimplemented("Cross host sends not implemented.");
   }
 
-  std::string platform_name_;
+  const PjRtPlatformId platform_id_;
+  const std::string platform_name_;
   LocalClient* client_;
 
   // Allocator to be used for staging memory transfers to devices.
@@ -509,7 +565,7 @@ class PjRtBuffer {
   PjRtBuffer(Shape on_host_shape, Shape on_device_shape,
              std::shared_ptr<TrackedDeviceBuffer> device_buffer,
              PjRtClient* client, PjRtDevice* device);
-  ~PjRtBuffer();
+  virtual ~PjRtBuffer();
 
   PjRtBuffer(const PjRtBuffer&) = delete;
   PjRtBuffer(PjRtBuffer&&) = delete;
@@ -519,6 +575,7 @@ class PjRtBuffer {
   const Shape& on_host_shape() const { return on_host_shape_; }
   const Shape& on_device_shape() const { return on_device_shape_; }
   PjRtDevice* device() const { return device_; }
+  PjRtPlatformId platform_id() const { return client_->platform_id(); }
   const std::string& platform_name() const { return client_->platform_name(); }
   PjRtClient* client() const { return client_; }
   bool IsEmptyTuple() const {
@@ -610,6 +667,9 @@ class PjRtBuffer {
   // Blocks the host until the buffer's value has been computed and is ready for
   // immediate use on the device. Useful in particular for timing benchmarks.
   Status BlockHostUntilReady();
+
+  // Whether this buffer is on CPU and thus allows for certain optimizations.
+  bool IsOnCpu() const;
 
  private:
   friend class PjRtClient;
@@ -781,6 +841,9 @@ class PjRtExecutable {
   void Delete() { executables_.clear(); }
 
   const string& name() const;
+
+  // Return an HloModule per partition.
+  StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules();
 
  protected:
   bool parameter_is_tupled_arguments() const {

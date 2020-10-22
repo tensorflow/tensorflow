@@ -113,6 +113,13 @@ limitations under the License.
 
 namespace xla {
 
+PjRtPlatformId PjRtDevice::platform_id() const {
+  return client_->platform_id();
+}
+const std::string& PjRtDevice::platform_name() const {
+  return client_->platform_name();
+}
+
 StatusOr<LocalDeviceState*> PjRtDevice::GetLocalDeviceState() const {
   if (local_device_state_) {
     return local_device_state_.get();
@@ -145,8 +152,8 @@ StatusOr<DeviceAssignment> DevicesToDeviceAssignment(
           devices[replica].size(), replica, devices[0].size());
     }
     for (int partition = 0; partition < devices[replica].size(); ++partition) {
-      if (devices[0][0]->platform_name() !=
-          devices[replica][partition]->platform_name()) {
+      if (devices[0][0]->platform_id() !=
+          devices[replica][partition]->platform_id()) {
         return InvalidArgument(
             "Device assignment passed to Compile() must have devices of a "
             "single kind, got %s for replica 0 partition 0 and %s for replica "
@@ -175,13 +182,14 @@ class CpuAllocator : public tensorflow::Allocator {
 };
 
 PjRtClient::PjRtClient(
-    std::string platform_name, LocalClient* client,
+    PjRtPlatformId platform_id, LocalClient* client,
     std::vector<std::unique_ptr<PjRtDevice>> devices, int host_id,
     std::unique_ptr<se::DeviceMemoryAllocator> allocator,
     std::unique_ptr<tensorflow::Allocator> host_memory_allocator,
     bool should_stage_host_to_device_transfers,
     std::unique_ptr<GpuExecutableRunOptions> gpu_run_options)
-    : platform_name_(std::move(platform_name)),
+    : platform_id_(platform_id),
+      platform_name_(Name(platform_id)),
       client_(client),
       host_memory_allocator_(std::move(host_memory_allocator)),
       devices_(std::move(devices)),
@@ -206,15 +214,15 @@ PjRtClient::PjRtClient(
     CHECK(id_to_device_.insert({device->id(), device.get()}).second)
         << "Duplicate device id: " << device->id();
 
-    if (device->local_device_state()) {
-      int idx = device->local_device_state()->device_ordinal();
+    if (device->IsLocalDevice()) {
+      int idx = device->local_device_id();
       if (idx >= local_devices_.size()) {
         local_devices_.resize(idx + 1);
       }
       CHECK(local_devices_[idx] == nullptr) << idx;
       local_devices_[idx] = device.get();
     }
-    device->client_ = this;
+    device->SetClient(this);
   }
   for (int idx = 0; idx < local_devices_.size(); ++idx) {
     CHECK(local_devices_[idx] != nullptr) << idx;
@@ -576,6 +584,10 @@ void PjRtBuffer::ScopedHold::AddToInput(
   }
 }
 
+bool PjRtBuffer::IsOnCpu() const {
+  return client()->platform_id() == PjRtPlatformId::kCpu;
+}
+
 StatusOr<std::unique_ptr<PjRtBuffer>> PjRtClient::BufferFromHostBuffer(
     const void* data, const Shape& shape,
     HostBufferSemantics host_buffer_semantics,
@@ -863,6 +875,16 @@ StatusOr<Literal> PjRtDevice::TransferFromOutfeed(const Shape& shape) const {
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device, GetLocalDeviceState());
   return local_device->client()->TransferFromOutfeedLocal(
       shape, local_device->device_ordinal());
+}
+
+StatusOr<PjRtDevice*> PjRtClient::LookupLocalDevice(int local_device_id) const {
+  for (auto* device : local_devices_) {
+    if (local_device_id == device->local_device_id()) {
+      return device;
+    }
+  }
+  return InvalidArgument("No matching device found for local_device_id %d",
+                         local_device_id);
 }
 
 PjRtBuffer::PjRtBuffer(Shape on_host_shape, Shape on_device_shape,
@@ -1983,6 +2005,19 @@ PjRtExecutable::ExecuteOnLocalDevices(
     wrapped_results[i] = std::move(statusor.ValueOrDie());
   }
   return wrapped_results;
+}
+
+StatusOr<std::vector<std::shared_ptr<HloModule>>>
+PjRtExecutable::GetHloModules() {
+  std::vector<std::shared_ptr<HloModule>> modules;
+  modules.reserve(executables().size());
+  for (const auto& local_exec : executables()) {
+    if (!local_exec->executable()->has_module()) {
+      return InvalidArgument("Executable does not have HLO modules.");
+    }
+    modules.push_back(local_exec->executable()->shared_module());
+  }
+  return std::move(modules);
 }
 
 namespace {

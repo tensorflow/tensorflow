@@ -228,35 +228,31 @@ StatusOr<DLDeviceType> DLDeviceTypeForDevice(const PjRtDevice& device) {
 StatusOr<DLContext> DLContextForDevice(const PjRtDevice& device) {
   DLContext context;
   TF_ASSIGN_OR_RETURN(context.device_type, DLDeviceTypeForDevice(device));
-  context.device_id = device.local_device_state()->device_ordinal();
+  context.device_id = device.local_device_id();
   return context;
 }
 
 StatusOr<PjRtDevice*> DeviceForDLContext(const PjRtClient& client,
                                          const DLContext& context) {
-  se::Platform::Id platform_id;
   switch (context.device_type) {
     case kDLCPU:
-      platform_id = se::host::kHostPlatformId;
-      break;
+      if (client.platform_id() != PjRtPlatformId::kCpu) {
+        return InvalidArgument(
+            "DLPack CPU device type mismatch with PjRtClient platform %s",
+            client.platform_name());
+      }
+      return client.LookupLocalDevice(context.device_id);
     case kDLGPU:
-      platform_id = se::cuda::kCudaPlatformId;
-      break;
+      if (client.platform_id() != PjRtPlatformId::kNvidiaGpu) {
+        return InvalidArgument(
+            "DLPack GPU device type mismatch with PjRtClient platform %s",
+            client.platform_name());
+      }
+      return client.LookupLocalDevice(context.device_id);
     default:
       return InvalidArgument("Unknown/unsupported DLPack device type %d",
                              context.device_type);
   }
-  auto it = absl::c_find_if(client.local_devices(), [&](PjRtDevice* device) {
-    return device->local_device_state()->executor()->platform()->id() ==
-               platform_id &&
-           device->local_device_state()->device_ordinal() == context.device_id;
-  });
-  if (it == client.local_devices().end()) {
-    return InvalidArgument(
-        "No matching device found for DLPack device_type %d device_id %d",
-        context.device_type, context.device_id);
-  }
-  return *it;
 }
 
 }  // namespace
@@ -301,8 +297,7 @@ StatusOr<py::capsule> BufferToDLPackManagedTensor(py::handle py_buffer,
   pack->tensor.manager_ctx = pack.get();
   pack->tensor.deleter = DLPackTensorDeleter;
   TF_ASSIGN_OR_RETURN(dt.ctx, DLContextForDevice(*buffer->buffer()->device()));
-  dt.ctx.device_id =
-      buffer->buffer()->device()->local_device_state()->device_ordinal();
+  dt.ctx.device_id = buffer->buffer()->device()->local_device_id();
   dt.ndim = buffer->buffer()->on_host_shape().dimensions_size();
   TF_ASSIGN_OR_RETURN(dt.dtype,
                       PrimitiveTypeToDLDataType(
