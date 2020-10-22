@@ -16,9 +16,17 @@ limitations under the License.
 
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfr/integration/tfr_decompose_ctx.h"
+#include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
+namespace {
+
+auto* tf_core_op_expansion_graph_counter =
+    monitoring::Counter<0>::New("/tensorflow/core/op_expansion/graph_counter",
+                                "The number of graphs being op expanded.");
+}  // namespace
+
 namespace tfr {
 
 bool GraphDecomposePass::IsEnabled(const ConfigProto& config_proto) const {
@@ -33,6 +41,8 @@ Status GraphDecomposePass::Run(const ConfigProto& config_proto,
                             "library was not found";
     return Status::OK();
   }
+
+  tf_core_op_expansion_graph_counter->GetCell()->IncrementBy(1);
 
   LOG_FIRST_N(INFO, 1) << "Run Graph Decomposition Passes";
 

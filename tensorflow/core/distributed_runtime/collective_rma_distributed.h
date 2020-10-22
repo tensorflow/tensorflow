@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COLLECTIVE_RMA_DISTRIBUTED_H_
 
 #include "tensorflow/core/common_runtime/collective_rma_local.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/unbounded_work_queue.h"
 
@@ -42,9 +43,10 @@ class CollectiveRemoteAccessDistributed : public CollectiveRemoteAccessLocal {
                     const AllocatorAttributes& to_alloc_attr, Tensor* to_tensor,
                     const DeviceLocality& client_locality,
                     int dev_to_dev_stream_index,
+                    CancellationManager* cancellation_manager,
                     const StatusCallback& done) override;
 
-  void CheckPeerHealth(const string& peer_task,
+  void CheckPeerHealth(const string& peer_task, int64 timeout_in_ms,
                        const StatusCallback& done) override;
 
   void StartAbort(const Status& s) override;
@@ -54,7 +56,7 @@ class CollectiveRemoteAccessDistributed : public CollectiveRemoteAccessLocal {
   // Ownership of `work_queue_` is shared between `this` and
   // `CollectiveExecutorMgr`.
   std::shared_ptr<UnboundedWorkQueue> work_queue_;
-  CancellationManager cancel_mgr_;
+  CancellationManager abortion_cancel_mgr_;
   string task_name_;
 };
 

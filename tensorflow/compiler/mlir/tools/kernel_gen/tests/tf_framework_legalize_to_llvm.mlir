@@ -1,15 +1,15 @@
-// RUN: kernel-gen-opt %s -tf-kernel-to-llvm -split-input-file | FileCheck %s
+// RUN: kernel-gen-opt %s -tf-kernel-to-llvm -split-input-file --print-ir-after-all | FileCheck %s
 
-// CHECK: llvm.func @_mlir_ciface_tf_alloc_raw
-// CHECK-SAME:  (!llvm.ptr<i8>, !llvm.i64) -> !llvm.ptr<i8>
+// CHECK: llvm.func @_mlir_ciface_tf_alloc
+// CHECK-SAME:  (!llvm.ptr<i8>, !llvm.i64, !llvm.i32, !llvm.i32, !llvm.ptr<i32>) -> !llvm.ptr<i8>
 
-// CHECK-LABEL: llvm.func @alloc_raw(
+// CHECK-LABEL: llvm.func @alloc(
 // CHECK-SAME:    [[TF_CTX:%.*]]: !llvm.ptr<i8>,
 // CHECK-SAME:    [[SIZE_0:%.*]]: !llvm.i64,
 // CHECK-SAME:    [[SIZE_2:%.*]]: !llvm.i64) -> [[DESC_TY:!.*]] {
-func @alloc_raw(%ctx: !tf_framework.op_kernel_context,
+func @alloc(%ctx: !tf_framework.op_kernel_context,
                 %size_0 : index , %size_2 : index) -> memref<?x10x?xf32> {
-  %buf = tf_framework.alloc_raw(%ctx, %size_0, %size_2) : memref<?x10x?xf32>
+  %buf = tf_framework.alloc(%ctx, %size_0, %size_2) : memref<?x10x?xf32>
   std.return %buf : memref<?x10x?xf32>
 }
 // Compute number of elements.
@@ -25,10 +25,19 @@ func @alloc_raw(%ctx: !tf_framework.op_kernel_context,
 // CHECK: [[SIZE_OF_FLOAT:%.*]] = llvm.ptrtoint [[GEP]]
 // CHECK-SAME:            !llvm.ptr<float> to !llvm.i64
 
-// Allocate memory.
+// Compute total size in bytes.
 // CHECK: [[NUM_BYTES:%.*]] = llvm.mul [[NUM_ELEM_1]], [[SIZE_OF_FLOAT]]
-// CHECK: [[BYTES_PTR:%.*]] = llvm.call @{{.*}}([[TF_CTX]], [[NUM_BYTES]])
-// CHECK-SAME:                  (!llvm.ptr<i8>, !llvm.i64) -> !llvm.ptr<i8>
+
+// Compute output index (-1) and candidate indices (0, NULL).
+// CHECK: [[OUTPUT_INDEX:%.*]] = llvm.mlir.constant(-1 : i32) : !llvm.i32
+// CHECK-NEXT: [[NUM_CANDIDATES:%.*]] = llvm.mlir.constant(0 : i32) : !llvm.i32
+// CHECK-NEXT: [[CANDIDATES_PTR:%.*]] = llvm.mlir.null : !llvm.ptr<i32>
+
+// Allocate memory.
+// CHECK: [[BYTES_PTR:%.*]] = llvm.call @{{.*}}([[TF_CTX]], [[NUM_BYTES]],
+// CHECK-SAME: [[OUTPUT_INDEX]], [[NUM_CANDIDATES]], [[CANDIDATES_PTR]])
+// CHECK-SAME: (!llvm.ptr<i8>, !llvm.i64, !llvm.i32, !llvm.i32, !llvm.ptr<i32>
+// CHECK-SAME: ) -> !llvm.ptr<i8>
 
 // Build memref descriptor.
 // CHECK: [[DESC_0:%.*]] = llvm.mlir.undef : [[DESC_TY]]
@@ -55,13 +64,13 @@ func @alloc_raw(%ctx: !tf_framework.op_kernel_context,
 
 // -----
 
-// CHECK: llvm.func @_mlir_ciface_tf_dealloc_raw(!llvm.ptr<i8>, !llvm.ptr<i8>)
+// CHECK: llvm.func @_mlir_ciface_tf_dealloc(!llvm.ptr<i8>, !llvm.ptr<i8>)
 
-// CHECK-LABEL: llvm.func @dealloc_raw(
+// CHECK-LABEL: llvm.func @dealloc(
 // CHECK-SAME:    [[TF_CTX:%.*]]: !llvm.ptr<i8>,
-func @dealloc_raw(%ctx: !tf_framework.op_kernel_context,
+func @dealloc(%ctx: !tf_framework.op_kernel_context,
                   %memref : memref<?x10xf32>) {
-  tf_framework.dealloc_raw(%ctx, %memref) : memref<?x10xf32>
+  tf_framework.dealloc(%ctx, %memref) : memref<?x10xf32>
   return
 }
 // Extract allocated ptr from the memref descriptor.
@@ -71,5 +80,5 @@ func @dealloc_raw(%ctx: !tf_framework.op_kernel_context,
 // CHECK-SAME:                   !llvm.ptr<float> to !llvm.ptr<i8>
 
 // Deallocate.
-// CHECK: llvm.call @_mlir_ciface_tf_dealloc_raw(
+// CHECK: llvm.call @_mlir_ciface_tf_dealloc(
 // CHECK-SAME: [[TF_CTX]], [[VOID_PTR]]) : (!llvm.ptr<i8>, !llvm.ptr<i8>) -> ()

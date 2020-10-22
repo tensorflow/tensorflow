@@ -47,9 +47,8 @@ from tensorflow.python.util.tf_export import tf_export
 _LOCAL_CPU = "/device:CPU:0"
 
 
-# TODO(yuefengz): maybe cache variables on local CPU.
-@tf_export("distribute.experimental.ParameterServerStrategy", v1=[])
-class ParameterServerStrategy(distribute_lib.Strategy):
+@tf_export(v1=["distribute.experimental.ParameterServerStrategy"])  # pylint: disable=missing-docstring
+class ParameterServerStrategyV1(distribute_lib.StrategyV1):
   """An asynchronous multi-worker parameter server tf.distribute strategy.
 
   This strategy requires two roles: workers and parameter servers. Variables and
@@ -112,11 +111,11 @@ class ParameterServerStrategy(distribute_lib.Strategy):
     """
     if cluster_resolver is None:
       cluster_resolver = TFConfigClusterResolver()
-    if not cluster_resolver.cluster_spec():
-      raise ValueError("Cluster spec must be non-empty in `cluster_resolver`.")
-    extended = ParameterServerStrategyExtended(
-        self, cluster_resolver=cluster_resolver)
-    super(ParameterServerStrategy, self).__init__(extended)
+    super(ParameterServerStrategyV1, self).__init__(
+        ParameterServerStrategyExtended(
+            self, cluster_resolver=cluster_resolver))
+    distribute_lib.distribution_strategy_gauge.get_cell("V1").set(
+        "ParameterServerStrategy")
 
   def experimental_distribute_dataset(self, dataset, options=None):
     if (options and options.experimental_replication_mode ==
@@ -127,7 +126,7 @@ class ParameterServerStrategy(distribute_lib.Strategy):
           "`experimental_distribute_datasets_from_function`."
       )
     self._raise_pss_error_if_eager()
-    super(ParameterServerStrategy,
+    super(ParameterServerStrategyV1,
           self).experimental_distribute_dataset(dataset=dataset,
                                                 options=options)
 
@@ -140,38 +139,23 @@ class ParameterServerStrategy(distribute_lib.Strategy):
           "`experimental_distribute_datasets_from_function` "
           "of tf.distribute.MirroredStrategy")
     self._raise_pss_error_if_eager()
-    super(ParameterServerStrategy, self).distribute_datasets_from_function(
+    super(ParameterServerStrategyV1, self).distribute_datasets_from_function(
         dataset_fn=dataset_fn, options=options)
 
   def run(self, fn, args=(), kwargs=None, options=None):
     self._raise_pss_error_if_eager()
-    super(ParameterServerStrategy, self).run(
+    super(ParameterServerStrategyV1, self).run(
         fn, args=args, kwargs=kwargs, options=options)
 
   def scope(self):
     self._raise_pss_error_if_eager()
-    return super(ParameterServerStrategy, self).scope()
+    return super(ParameterServerStrategyV1, self).scope()
 
   def _raise_pss_error_if_eager(self):
     if context.executing_eagerly():
-      raise NotImplementedError("ParameterServerStrategy currently only works "
-                                "with the tf.Estimator API")
-
-
-@tf_export(v1=["distribute.experimental.ParameterServerStrategy"])  # pylint: disable=missing-docstring
-class ParameterServerStrategyV1(distribute_lib.StrategyV1):
-
-  __doc__ = ParameterServerStrategy.__doc__
-
-  def __init__(self, cluster_resolver=None):
-    """Initializes this strategy."""
-    super(ParameterServerStrategyV1, self).__init__(
-        ParameterServerStrategyExtended(
-            self, cluster_resolver=cluster_resolver))
-    distribute_lib.distribution_strategy_gauge.get_cell("V1").set(
-        "ParameterServerStrategy")
-
-  __init__.__doc__ = ParameterServerStrategy.__init__.__doc__
+      raise NotImplementedError(
+          "`tf.compat.v1.distribute.experimental.ParameterServerStrategy` "
+          "currently only works with the tf.Estimator API")
 
 
 # TODO(josh11b): Switch to V2 when we no longer need to support tf.compat.v1.

@@ -4383,6 +4383,47 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllEqual(g(), array_ops.ones([1, 2, 3]))
 
+  @test_util.run_v2_only
+  def testControlDependencyAfterInline(self):
+    v = variables.Variable(0.)
+
+    @def_function.function
+    def assign():
+      return v.assign(1.)
+
+    @def_function.function
+    def assign_add():
+      return v.assign_add(1.)
+
+    @def_function.function
+    def f():
+      check_ops.assert_equal_v2(assign(), 1.)
+      check_ops.assert_equal_v2(assign_add(), 2.)
+
+    # We don't have a way to inspect the inlined graph in Python, so we run it
+    # multiple times to have more confidence the dependency is correct.
+    for _ in range(30):
+      f()
+
+  @test_util.run_v2_only
+  def testReadInFuncWriteOutside(self):
+    # Run many times since we are testing for a potential race condition.
+    for _ in range(30):
+      # pylint: disable=cell-var-from-loop
+      v = variables.Variable(1.)
+
+      @def_function.function
+      def add_one():
+        return v + 1.
+
+      @def_function.function
+      def get_v_plus_one():
+        v_plus_one = add_one()
+        v.assign_add(2.0)
+        return v_plus_one
+
+      self.assertAllEqual(get_v_plus_one(), 2.0)
+
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 

@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
@@ -50,6 +51,21 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfr/ir/tfr_types.h"
 #include "tensorflow/compiler/mlir/tfr/passes/passes.h"
 #include "tensorflow/compiler/mlir/tfr/utils/utils.h"
+#include "tensorflow/core/lib/monitoring/counter.h"
+
+namespace tensorflow {
+namespace {
+
+auto* tf_core_op_expansion_op_counter =
+    monitoring::Counter<1>::New("/tensorflow/core/op_expansion/op_counter",
+                                "The number of composite op expanded.", "name");
+}
+
+void IncreaseOpExpansionExecuteCounterByOne(const std::string& op_name) {
+  tf_core_op_expansion_op_counter->GetCell(op_name)->IncrementBy(1);
+}
+
+}  // namespace tensorflow
 
 //===----------------------------------------------------------------------===//
 // The pass to decompose unregistered TF ops with the TFR compose function.
@@ -62,7 +78,6 @@ namespace {
 // Decompose the TF ops with the registered composition library.
 struct DecomposeTFOpsPass
     : public PassWrapper<DecomposeTFOpsPass, FunctionPass> {
-
   explicit DecomposeTFOpsPass(llvm::Optional<ModuleOp> external_tfr_module)
       : external_tfr_module(external_tfr_module) {}
 
@@ -117,6 +132,9 @@ LogicalResult DecomposeTFOpsPass::RewriteUnregisteredTFOps() {
       // There are no decomposition methods defined for this op, skip.
       return;
     }
+
+    tensorflow::IncreaseOpExpansionExecuteCounterByOne(
+        op->getName().getStringRef().str());
 
     auto compose_func_type = compose_func.getType();
     builder.setInsertionPoint(op);

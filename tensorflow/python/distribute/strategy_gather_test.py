@@ -35,6 +35,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
 
@@ -572,6 +573,71 @@ class GatherTest(test.TestCase, parameterized.TestCase):
       with self.assertRaisesRegex(ValueError,
                                   r'Dimension \d in both shapes must be equal'):
         strategy.run(run, args=(per_replica_value,))
+
+  def testAllGatherGradient(self, strategy, pure_eager):
+    if pure_eager:
+      self.skipTest('`tf.gradients` is not supported with eager execution '
+                    'without using tf.functions.')
+
+    def all_gather_fn(value):
+      axis = 1
+      ctx = ds_context.get_replica_context()
+      return ctx.all_gather(array_ops.identity(value), axis)
+
+    gradient_comp = sum(range(1, strategy.num_replicas_in_sync + 1))
+    gradient = [[gradient_comp], [gradient_comp]]
+    grads_for_all_replicas = [gradient] * _get_num_replicas_per_client(strategy)
+
+    @def_function.function
+    def step(c):
+      x = constant_op.constant([[3.], [5.]])
+      mid = all_gather_fn(x)
+      y = mid * c
+      return gradients_impl.gradients_v2(y, [x])[0]
+
+    def value_fn(ctx):
+      x = [1., 2., 3., 4., 5., 6., 7., 8.]
+      return array_ops.constant([x[ctx.replica_id_in_sync_group]])
+
+    per_replica_value = strategy.experimental_distribute_values_from_function(
+        value_fn)
+    result = strategy.experimental_local_results(
+        strategy.run(step, args=(per_replica_value,)))
+
+    self.assertAllEqual(grads_for_all_replicas, result)
+
+  def testAllGatherGradientNest(self, strategy, pure_eager):
+    if pure_eager:
+      self.skipTest('`tf.gradients` is not supported with eager execution '
+                    'without using tf.functions.')
+
+    def all_gather_fn(value):
+      axis = 1
+      ctx = ds_context.get_replica_context()
+      return ctx.all_gather(array_ops.identity(value), axis)
+
+    gradient_comp = sum(range(1, strategy.num_replicas_in_sync + 1))
+    gradient = [[gradient_comp], [gradient_comp]]
+    grads_for_all_replicas = [gradient] * _get_num_replicas_per_client(strategy)
+
+    @def_function.function
+    def step(c):
+      x = constant_op.constant([[3.], [5.]])
+      y = constant_op.constant([[2.], [4.]])
+      mid = all_gather_fn([x, y])
+      y = mid * c
+      return gradients_impl.gradients_v2(y, [x])[0]
+
+    def value_fn(ctx):
+      x = [1., 2., 3., 4., 5., 6., 7., 8.]
+      return array_ops.constant([x[ctx.replica_id_in_sync_group]])
+
+    per_replica_value = strategy.experimental_distribute_values_from_function(
+        value_fn)
+    result = strategy.experimental_local_results(
+        strategy.run(step, args=(per_replica_value,)))
+
+    self.assertAllEqual(grads_for_all_replicas, result)
 
 
 def _make_indexed_slices(values, indices, dense_shape):

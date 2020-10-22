@@ -748,7 +748,7 @@ class Context(object):
     self.ensure_initialized()
     pywrap_tfe.TFE_AbortCollectiveOps(self._handle, code, message)
 
-  def check_collective_ops_peer_health(self, task):
+  def check_collective_ops_peer_health(self, task, timeout_in_ms):
     """Check collective peer health.
 
     This probes each task to see if they're still alive. Note that restarted
@@ -758,6 +758,7 @@ class Context(object):
 
     Args:
       task: a task string, must be in the format of /job:xxx/replica:0/task:N.
+      timeout_in_ms: an integer, the timeout. If zero, there's no timeout.
 
     Raises:
       tf.errors.UnavailableError: when a peer is down.
@@ -766,7 +767,8 @@ class Context(object):
       tf.errors.InvalidArgumentError: when the task string is invalid.
     """
     self.ensure_initialized()
-    pywrap_tfe.TFE_CollectiveOpsCheckPeerHealth(self._handle, task)
+    pywrap_tfe.TFE_CollectiveOpsCheckPeerHealth(self._handle, task,
+                                                timeout_in_ms)
 
   @property
   def _handle(self):
@@ -948,7 +950,12 @@ class Context(object):
     if self._log_device_placement is not None:
       config.log_device_placement = self._log_device_placement
 
-    config.experimental.enable_mlir_bridge = pywrap_tfe.TF_IsMlirBridgeEnabled()
+    is_mlir_bridge_enabled = pywrap_tfe.TF_IsMlirBridgeEnabled()
+    config.experimental.mlir_bridge_rollout = is_mlir_bridge_enabled
+    if (is_mlir_bridge_enabled ==
+        config_pb2.ConfigProto.Experimental.MLIR_BRIDGE_ROLLOUT_ENABLED):
+      config.experimental.enable_mlir_bridge = True
+
     if self._enable_mlir_graph_optimization is not None:
       config.experimental.enable_mlir_graph_optimization = (
           self._enable_mlir_graph_optimization)

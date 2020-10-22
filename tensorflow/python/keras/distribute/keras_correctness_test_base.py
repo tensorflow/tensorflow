@@ -32,7 +32,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras.distribute import distributed_training_utils
-from tensorflow.python.keras.mixed_precision.experimental import policy
+from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.keras.preprocessing import sequence
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest

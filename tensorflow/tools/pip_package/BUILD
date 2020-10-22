@@ -133,7 +133,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/keras:combinations",
     "//tensorflow/python/keras/layers/preprocessing:preprocessing_test_utils",
     "//tensorflow/python/keras/distribute:distribute_test_lib_pip",
-    "//tensorflow/python/keras/mixed_precision/experimental:test_util",
+    "//tensorflow/python/keras/mixed_precision:test_util",
     "//tensorflow/python/keras/tests:model_subclassing_test_util",
     "//tensorflow/python/keras/tests:model_architectures",
     "//tensorflow/python/keras/benchmarks:keras_benchmark_lib_pip",
@@ -154,9 +154,9 @@ COMMON_PIP_DEPS = [
     "//tensorflow/tools/common:test_module1",
     "//tensorflow/tools/common:traverse",
     "//tensorflow/python/distribute:parameter_server_strategy_v2",
-    "//tensorflow/python/distribute/client:client",
-    "//tensorflow/python/distribute/client:remote_eager_lib",
-    "//tensorflow/python/distribute/client:metric_utils",
+    "//tensorflow/python/distribute/coordinator:cluster_coordinator",
+    "//tensorflow/python/distribute/coordinator:remote_eager_lib",
+    "//tensorflow/python/distribute/coordinator:metric_utils",
 ]
 
 # On Windows, python binary is a zip file of runfiles tree.

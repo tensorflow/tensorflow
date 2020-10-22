@@ -26,7 +26,6 @@ from __future__ import print_function
 
 import os
 import shutil
-import sys
 
 from absl.testing import parameterized
 import numpy as np
@@ -114,7 +113,7 @@ class GlobalLayerThatShouldFailIfNotAdded(keras.layers.Layer):
 
 
 @keras_parameterized.run_all_keras_modes
-class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
+class TestSavedModelFormatAllModes(keras_parameterized.TestCase):
 
   def _save_model_dir(self, dirname='saved_model'):
     temp_dir = self.get_temp_dir()
@@ -411,14 +410,16 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     self.evaluate(variables.variables_initializer(model.variables))
     saved_model_dir = self._save_model_dir()
 
-    with self.captureWritesToStream(sys.stderr) as captured_logs:
-      model.save(saved_model_dir, save_format='tf')
-      loaded = keras_load.load(saved_model_dir)
+    # TODO(kathywu): Re-enable this check after removing the tf.saved_model.save
+    # metadata warning.
+    # with self.captureWritesToStream(sys.stderr) as captured_logs:
+    model.save(saved_model_dir, save_format='tf')
+    loaded = keras_load.load(saved_model_dir)
 
     # Assert that saving does not log deprecation warnings
     # (even if it needs to set learning phase for compat reasons)
-    if context.executing_eagerly():
-      self.assertNotIn('deprecated', captured_logs.contents())
+    # if context.executing_eagerly():
+    #   self.assertNotIn('deprecated', captured_logs.contents())
 
     input_arr = array_ops.constant([[11], [12], [13]], dtype=dtypes.float32)
     input_arr2 = array_ops.constant([[14], [15], [16]], dtype=dtypes.float32)
@@ -829,6 +830,14 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     self.evaluate(variables.variables_initializer(loaded.variables))
     self.assertAllClose(model.predict(f), loaded.predict(f))
 
+
+class TestSavedModelFormat(test.TestCase):
+
+  def _save_model_dir(self, dirname='saved_model'):
+    temp_dir = self.get_temp_dir()
+    self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
+    return os.path.join(temp_dir, dirname)
+
   def test_load_with_partially_failed_serialization(self):
 
     class BadCustomLayer(keras.layers.Layer):
@@ -857,6 +866,48 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     self.assertAllEqual([[1.0]], self.evaluate(loaded(inp)))
     with self.assertRaisesRegex(ValueError, 'call function was not serialized'):
       loaded.layer(inp)
+
+  def test_save_without_tracing(self):
+
+    class DoNotTrace(keras.layers.Layer):
+
+      def __init__(self):
+        super(DoNotTrace, self).__init__()
+        self.input_spec = keras.layers.InputSpec(shape=[None])
+        self.built = True
+
+      def call(self, inputs):
+        raise ValueError('I said do not trace')
+
+      def get_config(self):
+        return {}
+
+    root = keras.models.Sequential()
+    root.add(keras.layers.Input(shape=(3,)))
+    root.attached_layer = DoNotTrace()
+
+    saved_model_dir = self._save_model_dir()
+
+    # With the default settings, the call function is traced.
+    with self.assertRaisesRegex(ValueError, 'do not trace'):
+      root.save(saved_model_dir, save_format='tf')
+
+    # When saving the config only, the layer call function should not be not
+    # traced.
+    root.save(saved_model_dir, save_format='tf', save_traces=False)
+    loaded = tf_load.load(saved_model_dir)
+    self.assertTrue(hasattr(loaded, 'attached_layer'))
+
+    # This should raise an error when loaded without the custom object
+    loaded = keras_load.load(saved_model_dir)
+    with self.assertRaisesRegex(ValueError, 'Cannot call custom layer'):
+      loaded.attached_layer(constant_op.constant([1.]))
+
+    # Try loading with the custom objects
+    with generic_utils.CustomObjectScope({'DoNotTrace': DoNotTrace}):
+      loaded = keras_load.load(saved_model_dir)
+    with self.assertRaisesRegex(ValueError, 'I said do not trace'):
+      loaded.attached_layer(constant_op.constant([1.]))
 
 
 class TestLayerCallTracing(test.TestCase, parameterized.TestCase):

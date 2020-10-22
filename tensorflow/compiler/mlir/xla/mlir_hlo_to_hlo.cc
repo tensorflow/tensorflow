@@ -1012,13 +1012,24 @@ LogicalResult ExportXlaOp(SortOp op, OpLoweringContext ctx) {
                                                      &comparator)))
     return failure();
 
-  auto tupled = xla::Sort(GetTuple(op.operands(), ctx), comparator,
+  auto sorted = xla::Sort(GetTuple(op.operands(), ctx), comparator,
                           op.dimension(), op.is_stable());
 
   auto& value_map = *ctx.values;
+  auto shape_or = sorted.builder()->GetShape(sorted);
+  if (!shape_or.ok()) {
+    return op.emitError(shape_or.status().ToString());
+  }
+
+  xla::Shape& shape = shape_or.ValueOrDie();
+  if (!shape.IsTuple()) {
+    value_map[op.getResult(0)] = sorted;
+    return success();
+  }
+
   // MLIR's sort supports multiple returns, untuple all the results of XLA's.
   for (auto it : llvm::enumerate(op.getResults())) {
-    value_map[it.value()] = xla::GetTupleElement(tupled, it.index());
+    value_map[it.value()] = xla::GetTupleElement(sorted, it.index());
   }
   return success();
 }

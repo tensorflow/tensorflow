@@ -18,15 +18,25 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/mlir/tfr/integration/tfr_decompose_ctx.h"
+#include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
+namespace {
+
+auto* tf_core_op_expansion_node_counter =
+    monitoring::Counter<0>::New("/tensorflow/core/op_expansion/node_counter",
+                                "The number of nodes being op expanded.");
+}  // namespace
+
 namespace tfr {
 
 Status CompositeOpExpansion::Run(EagerOperation* orig_op,
                                  std::unique_ptr<EagerOperation>* out_op) {
   if (!IsEnabled()) return Status::OK();
   if (orig_op->Device() != kVariantDeviceNull) return Status::OK();
+
+  tf_core_op_expansion_node_counter->GetCell()->IncrementBy(1);
 
   LOG_FIRST_N(INFO, 1) << "Run Node Expansion Passes";
 

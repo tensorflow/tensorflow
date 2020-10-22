@@ -123,7 +123,9 @@ cc_library(
         ":tfr",
         ":utils",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -228,6 +230,7 @@ cc_library(
     deps = [
         ":tfr_decompose_ctx",
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
+        "//tensorflow/core:lib",
         "//tensorflow/stream_executor/lib",
         "@llvm-project//mlir:IR",
     ],
@@ -257,6 +260,7 @@ cc_library(
     hdrs = ["integration/node_expansion_pass.h"],
     deps = [
         ":tfr_decompose_ctx",
+        "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime/eager:core",
         "//tensorflow/core/common_runtime/eager:eager_op_rewrite_registry",
         "//tensorflow/stream_executor/lib",

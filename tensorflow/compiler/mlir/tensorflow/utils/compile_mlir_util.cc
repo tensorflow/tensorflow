@@ -278,10 +278,6 @@ void CreateConvertMlirToXlaHloPipeline(
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   pm.addPass(mlir::TF::CreateTensorListOpsDecompositionPass());
   pm.addPass(mlir::TF::CreateStackOpsDecompositionPass());
-
-  // TODO(b/159127949): TensorArray decomposition passes does not handle region
-  // based control flow yet. So convert back to functional control flow.
-  pm.addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
   pm.addPass(mlir::TF::CreateTensorArrayOpsDecompositionPass());
   pm.addPass(mlir::TFDevice::CreateDecomposeResourceOpsPass());
   pm.addPass(mlir::TF::CreatePromoteResourcesToArgsPass());
@@ -289,6 +285,10 @@ void CreateConvertMlirToXlaHloPipeline(
   // Guarantee all functions have one use, which enables shape inference.
   pm.addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+  // TODO(b/171426148): We cannot completely remove region to functional control
+  // flow conversion from this pipeline yet as it causes some unit tests to
+  // fail.
+  pm.addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
   // LegalizeTFControlFlow encapsulates arguments for control flow operations
   // with a tuple argument which break the assumption of resource lifting
   // inside PromoteResourcesToArgs.

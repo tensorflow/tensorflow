@@ -19352,7 +19352,7 @@ func CollectiveReduceV2TimeoutSeconds(value float32) CollectiveReduceV2Attr {
 }
 
 // Mutually reduces multiple tensors of identical type and shape.
-func CollectiveReduceV2(scope *Scope, input tf.Output, group_size tf.Output, group_key tf.Output, instance_key tf.Output, ordering_token []tf.Output, merge_op string, final_op string, optional ...CollectiveReduceV2Attr) (data tf.Output) {
+func CollectiveReduceV2(scope *Scope, input tf.Output, group_size tf.Output, group_key tf.Output, instance_key tf.Output, merge_op string, final_op string, optional ...CollectiveReduceV2Attr) (data tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
@@ -19363,7 +19363,7 @@ func CollectiveReduceV2(scope *Scope, input tf.Output, group_size tf.Output, gro
 	opspec := tf.OpSpec{
 		Type: "CollectiveReduceV2",
 		Input: []tf.Input{
-			input, group_size, group_key, instance_key, tf.OutputList(ordering_token),
+			input, group_size, group_key, instance_key,
 		},
 		Attrs: attrs,
 	}
@@ -38571,7 +38571,7 @@ func CollectiveGatherTimeoutSeconds(value float32) CollectiveGatherAttr {
 }
 
 // Mutually accumulates multiple tensors of identical type and shape.
-func CollectiveGather(scope *Scope, input tf.Output, ordering_token []tf.Output, group_size int64, group_key int64, instance_key int64, shape tf.Shape, optional ...CollectiveGatherAttr) (data tf.Output) {
+func CollectiveGather(scope *Scope, input tf.Output, group_size int64, group_key int64, instance_key int64, shape tf.Shape, optional ...CollectiveGatherAttr) (data tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
@@ -38582,7 +38582,7 @@ func CollectiveGather(scope *Scope, input tf.Output, ordering_token []tf.Output,
 	opspec := tf.OpSpec{
 		Type: "CollectiveGather",
 		Input: []tf.Input{
-			input, tf.OutputList(ordering_token),
+			input,
 		},
 		Attrs: attrs,
 	}
@@ -42949,7 +42949,7 @@ func CollectiveReduceTimeoutSeconds(value float32) CollectiveReduceAttr {
 }
 
 // Mutually reduces multiple tensors of identical type and shape.
-func CollectiveReduce(scope *Scope, input tf.Output, ordering_token []tf.Output, group_size int64, group_key int64, instance_key int64, merge_op string, final_op string, subdiv_offsets []int64, optional ...CollectiveReduceAttr) (data tf.Output) {
+func CollectiveReduce(scope *Scope, input tf.Output, group_size int64, group_key int64, instance_key int64, merge_op string, final_op string, subdiv_offsets []int64, optional ...CollectiveReduceAttr) (data tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
@@ -42960,7 +42960,7 @@ func CollectiveReduce(scope *Scope, input tf.Output, ordering_token []tf.Output,
 	opspec := tf.OpSpec{
 		Type: "CollectiveReduce",
 		Input: []tf.Input{
-			input, tf.OutputList(ordering_token),
+			input,
 		},
 		Attrs: attrs,
 	}
@@ -50152,7 +50152,7 @@ func CollectiveGatherV2TimeoutSeconds(value float32) CollectiveGatherV2Attr {
 }
 
 // Mutually accumulates multiple tensors of identical type and shape.
-func CollectiveGatherV2(scope *Scope, input tf.Output, group_size tf.Output, group_key tf.Output, instance_key tf.Output, ordering_token []tf.Output, optional ...CollectiveGatherV2Attr) (data tf.Output) {
+func CollectiveGatherV2(scope *Scope, input tf.Output, group_size tf.Output, group_key tf.Output, instance_key tf.Output, optional ...CollectiveGatherV2Attr) (data tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
@@ -50163,7 +50163,7 @@ func CollectiveGatherV2(scope *Scope, input tf.Output, group_size tf.Output, gro
 	opspec := tf.OpSpec{
 		Type: "CollectiveGatherV2",
 		Input: []tf.Input{
-			input, group_size, group_key, instance_key, tf.OutputList(ordering_token),
+			input, group_size, group_key, instance_key,
 		},
 		Attrs: attrs,
 	}

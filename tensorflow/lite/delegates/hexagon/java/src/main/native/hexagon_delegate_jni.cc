@@ -45,6 +45,7 @@ Java_org_tensorflow_lite_HexagonDelegate_setAdspLibraryPath(
   std::stringstream path;
   path << lib_dir_path
        << ";/system/lib/rfsa/adsp;/system/vendor/lib/rfsa/adsp;/dsp";
+  env->ReleaseStringUTFChars(native_lib_path, lib_dir_path);
   return setenv("ADSP_LIBRARY_PATH", path.str().c_str(), 1 /*override*/) == 0
              ? JNI_TRUE
              : JNI_FALSE;

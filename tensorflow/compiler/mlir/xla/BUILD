@@ -428,8 +428,8 @@ tf_cc_binary(
     name = "xla-opt",
     deps = [
         ":all_xla_passes_for_testing",
-        "//tensorflow/compiler/jit:xla_cpu_jit",
-        "//tensorflow/compiler/jit:xla_gpu_jit",
         "//tensorflow/compiler/mlir:tf_mlir_opt_main",
+        "//tensorflow/compiler/xla/service:cpu_plugin",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
     ],
 )

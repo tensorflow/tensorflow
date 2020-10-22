@@ -37,6 +37,7 @@ from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values
+from tensorflow.python.distribute.cluster_resolver import ClusterResolver
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
 from tensorflow.python.eager import context
@@ -46,10 +47,12 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("distribute.experimental.MultiWorkerMirroredStrategy", v1=[])
+# pylint: disable=line-too-long
+@tf_export("distribute.MultiWorkerMirroredStrategy", v1=[])
 class CollectiveAllReduceStrategy(distribute_lib.Strategy):
   """A distribution strategy for synchronous training on multiple workers.
 
@@ -63,7 +66,12 @@ class CollectiveAllReduceStrategy(distribute_lib.Strategy):
   `cluster_resolver` correctly. For example, if you are using
   `tf.distribute.cluster_resolver.TFConfigClusterResolver`, each worker needs to
   have its corresponding `task_type` and `task_id` set in the `TF_CONFIG`
-  environment variable.
+  environment variable. An example TF_CONFIG on worker-0 of a two worker cluster
+  is:
+
+  ```
+  TF_CONFIG = '{"cluster": {"worker": ["localhost:12345", "localhost:23456"]}, "task": {"type": "worker", "index": 0} }'
+  ```
 
   Your program runs on each worker as-is. Note that collectives require each
   worker to participate. All `tf.distribute` and non `tf.distribute` API may use
@@ -76,8 +84,57 @@ class CollectiveAllReduceStrategy(distribute_lib.Strategy):
   strategy uses. If it's zero, the strategy uses the CPU. All workers need to
   use the same number of devices, otherwise the behavior is undefined.
 
-  This strategy is not intended for TPU. Use
-  `tf.distribute.experimental.TPUStrategy` instead.
+  This strategy is not intended for TPU. Use `tf.distribute.TPUStrategy`
+  instead.
+
+  After setting up TF_CONFIG, using this strategy is similar to using
+  `tf.distribute.MirroredStrategy` and `tf.distribute.TPUStrategy`.
+
+  ```
+  strategy = tf.distribute.MultiWorkerMirroredStrategy()
+
+  with strategy.scope():
+    model = tf.keras.Sequential([
+      tf.keras.layers.Dense(2, input_shape=(5,)),
+    ])
+    optimizer = tf.keras.optimizers.SGD(learning_rate=0.1)
+
+  def dataset_fn(ctx):
+    x = np.random.random((2, 5)).astype(np.float32)
+    y = np.random.randint(2, size=(2, 1))
+    dataset = tf.data.Dataset.from_tensor_slices((x, y))
+    return dataset.repeat().batch(1, drop_remainder=True)
+  dist_dataset = strategy.distribute_datasets_from_function(dataset_fn)
+
+  model.compile()
+  model.fit(dist_dataset)
+  ```
+
+  You can also write your own training loop:
+
+  ```
+  @tf.function
+  def train_step(iterator):
+
+    def step_fn(inputs):
+      features, labels = inputs
+      with tf.GradientTape() as tape:
+        logits = model(features, training=True)
+        loss = tf.keras.losses.sparse_categorical_crossentropy(
+            labels, logits)
+
+      grads = tape.gradient(loss, model.trainable_variables)
+      optimizer.apply_gradients(zip(grads, model.trainable_variables))
+
+    strategy.run(step_fn, args=(next(iterator),))
+
+  for _ in range(NUM_STEP):
+    train_step(iterator)
+  ```
+
+  See
+  [Multi-worker training with Keras](https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras)
+  for a detailed tutorial.
 
   __Saving__
 
@@ -98,6 +155,7 @@ class CollectiveAllReduceStrategy(distribute_lib.Strategy):
   Tensorflow API.
 
   """
+  # pylint: enable=line-too-long
 
   # TODO(anjalisridhar): Update our guides with examples showing how we can use
   # the cluster_resolver argument.
@@ -106,21 +164,23 @@ class CollectiveAllReduceStrategy(distribute_lib.Strategy):
   _collective_key_base = 0
 
   def __init__(self,
-               communication=collective_util.CommunicationImplemenation.AUTO,
-               cluster_resolver=None):
+               cluster_resolver=None,
+               communication_options=None):
     """Creates the strategy.
 
     Args:
-      communication: optional
-        `tf.distribute.experimental.CommunicationImplemenation`. This is a hint
-        on the preferred collective communication implementation. Possible
-        values include `AUTO`, `RING`, and `NCCL`.
       cluster_resolver: optional
         `tf.distribute.cluster_resolver.ClusterResolver`. If `None`,
         `tf.distribute.cluster_resolver.TFConfigClusterResolver` is used.
+      communication_options: optional
+        `tf.distribute.experimental.CommunicationOptions`. This configures the
+        default options for cross device communications. It can be overridden by
+        options provided to the communication APIs like
+        `tf.distribute.ReplicaContext.all_reduce`. See
+        `tf.distribute.experimental.CommunicationOptions` for details.
     """
-    communication_options = collective_util.Options(
-        implementation=communication)
+    if communication_options is None:
+      communication_options = collective_util.Options()
     super(CollectiveAllReduceStrategy, self).__init__(
         CollectiveAllReduceExtended(
             self,
@@ -136,12 +196,9 @@ class CollectiveAllReduceStrategy(distribute_lib.Strategy):
         "num_replicas_per_worker").set(self.extended._num_gpus_per_worker)
 
   @classmethod
-  def _from_local_devices(
-      cls,
-      devices,
-      communication=collective_util.CommunicationImplemenation.AUTO):
+  def _from_local_devices(cls, devices, communication_options=None):
     """A convenience method to create an object with a list of devices."""
-    obj = cls(communication)
+    obj = cls(communication_options=communication_options)
     obj.extended._initialize_local(TFConfigClusterResolver(), devices=devices)  # pylint: disable=protected-access
     return obj
 
@@ -158,13 +215,68 @@ class CollectiveAllReduceStrategy(distribute_lib.Strategy):
     return self.extended._cluster_resolver  # pylint: disable=protected-access
 
 
+class _CollectiveAllReduceStrategyExperimentalMeta(type):
+
+  @classmethod
+  def __instancecheck__(cls, instance):
+    # This is to make isinstance(tf.distribute.MultiWorkerMirroredStrategy(),
+    # tf.distribute.experimental.MultiWorkerMirroredStrategy). Some libraries is
+    # performing such check.
+    return isinstance(instance, CollectiveAllReduceStrategy)
+
+
+@tf_export("distribute.experimental.MultiWorkerMirroredStrategy", v1=[])
+class _CollectiveAllReduceStrategyExperimental(
+    CollectiveAllReduceStrategy,
+    metaclass=_CollectiveAllReduceStrategyExperimentalMeta):
+
+  __doc__ = CollectiveAllReduceStrategy.__doc__
+
+  @deprecation.deprecated(
+      None, "use distribute.MultiWorkerMirroredStrategy instead")
+  def __init__(self,
+               communication=collective_util.CommunicationImplementation.AUTO,
+               cluster_resolver=None):
+    """Creates the strategy.
+
+    Args:
+      communication: optional
+        `tf.distribute.experimental.CommunicationImplementation`. This is a hint
+        on the preferred collective communication implementation. Possible
+        values include `AUTO`, `RING`, and `NCCL`.
+      cluster_resolver: optional
+        `tf.distribute.cluster_resolver.ClusterResolver`. If `None`,
+        `tf.distribute.cluster_resolver.TFConfigClusterResolver` is used.
+    """
+    communication_options = collective_util.Options(
+        implementation=communication)
+    super(_CollectiveAllReduceStrategyExperimental,
+          self).__init__(cluster_resolver, communication_options)
+
+  @classmethod
+  def _from_local_devices(
+      cls,
+      devices,
+      communication=collective_util.CommunicationImplementation.AUTO):
+    """A convenience method to create an object with a list of devices."""
+    obj = cls(communication)
+    obj.extended._initialize_local(TFConfigClusterResolver(), devices=devices)  # pylint: disable=protected-access
+    return obj
+
+
+_CollectiveAllReduceStrategyExperimental.__name__ = CollectiveAllReduceStrategy.__name__
+
+
 @tf_export(v1=["distribute.experimental.MultiWorkerMirroredStrategy"])  # pylint: disable=missing-docstring
 class CollectiveAllReduceStrategyV1(distribute_lib.StrategyV1):
 
   __doc__ = CollectiveAllReduceStrategy.__doc__
 
+  # The starting number for collective keys. This should only be set in tests.
+  _collective_key_base = 0
+
   def __init__(self,
-               communication=collective_util.CommunicationImplemenation.AUTO,
+               communication=collective_util.CommunicationImplementation.AUTO,
                cluster_resolver=None):
     """Initializes the object."""
     communication_options = collective_util.Options(
@@ -197,12 +309,21 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
   _check_health_initial_timeout = 0
   # Times to retry before considering the peer is down.
   _check_health_retry_limit = 3
+  # Timeout in seconds the each check health.
+  _check_health_timeout = 10
 
   def __init__(self, container_strategy, cluster_resolver,
                communication_options):
+    if not isinstance(communication_options, collective_util.Options):
+      raise ValueError("communication_options must be an instance of "
+                       "tf.distribute.experimental.CommunicationOptions")
     self._cluster_resolver = cluster_resolver or TFConfigClusterResolver()
+    if not isinstance(self._cluster_resolver, ClusterResolver):
+      raise ValueError("cluster_resolver must be an instance of "
+                       "tf.distribute.cluster_resolver.ClusterResolver")
     distribute_lib.StrategyExtendedV1.__init__(self, container_strategy)
     self._communication_options = communication_options
+    self._collective_key_base = container_strategy._collective_key_base  # pylint: disable=protected-access
     self._initialize_strategy(self._cluster_resolver)
     self._cfer_fn_cache = weakref.WeakKeyDictionary()
     self.experimental_enable_get_next_as_optional = True
@@ -248,7 +369,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._host_input_device = numpy_dataset.SingleDevice(self._worker_device)
 
     self._collective_keys = cross_device_utils.CollectiveKeys(
-        group_key_start=1 + CollectiveAllReduceStrategy._collective_key_base)  # pylint: disable=protected-access
+        group_key_start=1 + self._collective_key_base)
     self._cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
         devices=local_devices,
         group_size=len(local_devices),
@@ -363,7 +484,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       local_devices = (self._worker_device,)
 
     self._collective_keys = cross_device_utils.CollectiveKeys(
-        group_key_start=1 + CollectiveAllReduceStrategy._collective_key_base)  # pylint: disable=protected-access
+        group_key_start=1 + self._collective_key_base)
     self._cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
         devices=local_devices,
         group_size=len(local_devices) * self._num_workers,
@@ -579,7 +700,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
 
     if (not ops.executing_eagerly_outside_functions() and
         self._communication_options.implementation ==
-        collective_util.CommunicationImplemenation.NCCL):
+        collective_util.CommunicationImplementation.NCCL):
       updated_config.experimental.collective_nccl = True
 
     if not self._cluster_spec:
@@ -661,12 +782,13 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
           while True:
             attempts += 1
             try:
-              context.context().check_collective_ops_peer_health(peer)
+              context.context().check_collective_ops_peer_health(
+                  peer, timeout_in_ms=self._check_health_timeout * 1000)
               # If check_collective_ops_peer_health doesn't raise an Exception,
               # the peer is healthy.
               break
-            except (errors.UnavailableError,
-                    errors.FailedPreconditionError) as e:
+            except (errors.UnavailableError, errors.FailedPreconditionError,
+                    errors.DeadlineExceededError) as e:
               # TODO(b/151232436): Always raise UnavailableError when a peer
               # fails. Now there could be many kinds of errors:
               # - Unavailable: when the peer is not reachable, e.g. it's down.
@@ -712,7 +834,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
           dummy_value,
           options=collective_util.Options(
               timeout_seconds=self._check_health_initial_timeout,
-              implementation=collective_util.CommunicationImplemenation.RING))
+              implementation=collective_util.CommunicationImplementation.RING))
       if context.is_async():
         context.async_wait()
     except errors.DeadlineExceededError:
@@ -739,7 +861,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
 
   def _warn_nccl_no_gpu(self):
     if ((self._communication_options.implementation ==
-         collective_util.CommunicationImplemenation.NCCL) and
+         collective_util.CommunicationImplementation.NCCL) and
         self._num_gpus_per_worker == 0):
       logging.warning("Enabled NCCL communication but no GPUs detected/"
                       "specified.")

@@ -1441,6 +1441,15 @@ class CondV2ContainerTest(test.TestCase):
 
 class CondV2ColocationGroupAndDeviceTest(test.TestCase):
 
+  def setUp(self):
+    super(CondV2ColocationGroupAndDeviceTest, self).setUp()
+    cpus = context.context().list_physical_devices("CPU")
+    context.context().set_logical_device_configuration(
+        cpus[0], [
+            context.LogicalDeviceConfiguration(),
+            context.LogicalDeviceConfiguration()
+        ])
+
   def testColocateWithBeforeCond(self):
     with ops.Graph().as_default() as g:
       with self.session(graph=g):
@@ -1516,31 +1525,64 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
         self.assertTrue(len(run_metadata.partition_graphs) >= 2)
 
   def testDeviceBeforeCond(self):
-    with ops.Graph().as_default() as g:
-      with self.session(graph=g):
+    with context.eager_mode():
+      def fn():
+        cpu_zero_op = test_ops.device_placement_op()
+        self.assertEqual("/device:CPU:0", cpu_zero_op.device)
+        with ops.device("CPU:1"):
+          cpu_one_op = test_ops.device_placement_op()
+          self.assertEqual("/device:CPU:1", cpu_one_op.device)
+        return cpu_zero_op, cpu_one_op
 
-        def fn():
-          self.assertEqual("", constant_op.constant(3.0).op.device)
-          return test_ops.device_placement_op()
-
+      @def_function.function
+      def _cond_wrapper():
         with ops.device("/device:CPU:0"):
-          self.assertIn(
-              compat.as_bytes("CPU:0"),
-              self.evaluate(cond_v2.cond_v2(constant_op.constant(True),
-                                            fn, fn)))
+          return cond_v2.cond_v2(constant_op.constant(True), fn, fn)
 
-        def fn2():
-          self.assertEqual("", constant_op.constant(3.0).op.device)
-          return test_ops.device_placement_op()
+      zero_expected, one_expected = self.evaluate(_cond_wrapper())
+      self.assertIn(compat.as_bytes("CPU:0"), zero_expected)
+      self.assertIn(compat.as_bytes("CPU:1"), one_expected)
 
-        if test_util.is_gpu_available():
-          with ops.device("/device:GPU:0"):
-            self.assertIn(
-                compat.as_bytes("GPU:0"),
-                self.evaluate(cond_v2.cond_v2(constant_op.constant(True),
-                                              fn2, fn2)))
-        else:
-          self.skipTest("Test requires a GPU to check GPU device placement.")
+      def fn2():
+        self.assertEqual("/device:GPU:0", constant_op.constant(3.0).op.device)
+        return test_ops.device_placement_op()
+
+      @def_function.function
+      def _cond_wrapper2():
+        with ops.device("/device:GPU:0"):
+          return cond_v2.cond_v2(constant_op.constant(True), fn2, fn2)
+
+      if test_util.is_gpu_available():
+        self.assertIn(compat.as_bytes("GPU:0"),
+                      self.evaluate(_cond_wrapper2()))
+      else:
+        self.skipTest("Test requires a GPU to check GPU device placement.")
+
+  def testColocationBeforeCond(self):
+    with context.eager_mode():
+
+      def _fn():
+        result = test_ops.device_placement_op()
+        self.assertIn("colocation_test_op",
+                      result.op.colocation_groups()[0].decode())
+        return result
+
+      @def_function.function(autograph=False)
+      def _cond_wrapper():
+        with ops.device("/device:CPU:0"):
+          op_on_cpu_0 = test_ops.device_placement_op(name="colocation_test_op")
+        with ops.device("/device:CPU:1"):
+          op_on_cpu_1 = test_ops.device_placement_op(
+              name="colocation_test_op_1")
+        condition = constant_op.constant(True)
+        with ops.colocate_with(op_on_cpu_0.op):
+          zero_expected = cond_v2.cond_v2(condition, _fn, _fn)
+        with ops.colocate_with(op_on_cpu_1.op):
+          one_expected = cond_v2.cond_v2(condition, _fn, _fn)
+        return zero_expected, one_expected
+      zero_expected, one_expected = self.evaluate(_cond_wrapper())
+      self.assertIn(compat.as_bytes("CPU:0"), zero_expected)
+      self.assertIn(compat.as_bytes("CPU:1"), one_expected)
 
   def testDeviceInAndOutOfCond(self):
     with ops.Graph().as_default() as g:

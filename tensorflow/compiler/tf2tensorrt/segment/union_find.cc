@@ -17,7 +17,6 @@ limitations under the License.
 
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
-#include "tensorflow/core/lib/core/errors.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 
@@ -54,10 +53,12 @@ inline absl::optional<T> MergeCompatible(const absl::optional<T>& a,
 
 }  // namespace
 
-ClusterBatchSize::ClusterBatchSize() : batch_size_(absl::nullopt) {}
+ClusterBatchSize::ClusterBatchSize()
+    : batch_size_(absl::nullopt), max_batch_size_(absl::nullopt) {}
 
 bool ClusterBatchSize::operator==(const ClusterBatchSize& other) {
-  return batch_size_ == other.batch_size_;
+  return batch_size_ == other.batch_size_ &&
+         max_batch_size_ == other.max_batch_size_;
 }
 
 ClusterBatchSize& ClusterBatchSize::SetBatchSize(int batch_size) {
@@ -68,6 +69,9 @@ ClusterBatchSize& ClusterBatchSize::SetBatchSize(int batch_size) {
 ClusterBatchSize& ClusterBatchSize::SetBatchSize(
     const absl::optional<int>& batch_size) {
   batch_size_ = MergeCompatible<int>(batch_size_, batch_size);
+  if (batch_size_.has_value() && batch_size_.value() >= 0) {
+    SetMaxBatchSize(batch_size_);
+  }
   return *this;
 }
 
@@ -78,23 +82,45 @@ int ClusterBatchSize::GetBatchSize() const {
   return batch_size_.value();
 }
 
+ClusterBatchSize& ClusterBatchSize::SetMaxBatchSize(int max_batch_size) {
+  SetBatchSize(static_cast<absl::optional<int>>(max_batch_size));
+  return *this;
+}
+
+ClusterBatchSize& ClusterBatchSize::SetMaxBatchSize(
+    const absl::optional<int>& max_batch_size) {
+  max_batch_size_ = MergeCompatible<int>(max_batch_size_, max_batch_size);
+  return *this;
+}
+
+absl::optional<int> ClusterBatchSize::GetOptionalMaxBatchSize() const {
+  return max_batch_size_;
+}
+
 bool ClusterBatchSize::MergeIfCompatible(const ClusterBatchSize& other) {
-  if (!CheckIfCompatible(batch_size_, other.batch_size_)) {
+  if (!CheckIfCompatible(batch_size_, other.batch_size_) ||
+      !CheckIfCompatible(max_batch_size_, other.max_batch_size_)) {
     return false;
   }
+
   SetBatchSize(other.batch_size_);
+  SetMaxBatchSize(other.max_batch_size_);
   return true;
 }
 
 string ClusterBatchSize::ToString() const {
   string s;
-  absl::StrAppendFormat(&s, "batch_size=(");
-  if (HasBatchSize()) {
-    absl::StrAppendFormat(&s, "%d", GetBatchSize());
-  } else {
-    absl::StrAppendFormat(&s, "?");
-  }
-  absl::StrAppend(&s, ")");
+  const auto append_optional_num = [&](const absl::optional<int>& num) {
+    if (num.has_value()) {
+      absl::StrAppendFormat(&s, "%d", num.value());
+    } else {
+      absl::StrAppendFormat(&s, "?");
+    }
+  };
+  absl::StrAppendFormat(&s, "batch_size=");
+  append_optional_num(batch_size_);
+  absl::StrAppendFormat(&s, ", max_batch_size=");
+  append_optional_num(max_batch_size_);
   return s;
 }
 

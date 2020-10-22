@@ -52,8 +52,8 @@ from tensorflow.python.keras.engine import training_eager_v1
 from tensorflow.python.keras.engine import training_generator_v1
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.engine import training_utils_v1
-from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
-from tensorflow.python.keras.mixed_precision.experimental import policy
+from tensorflow.python.keras.mixed_precision import loss_scale_optimizer
+from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.saving.saved_model import model_serialization
 from tensorflow.python.keras.utils import data_utils
@@ -360,9 +360,9 @@ class Model(training_lib.Model):
               distribution_strategy_context.get_strategy())
 
     if isinstance(self._distribution_strategy,
-                  (parameter_server_strategy.ParameterServerStrategyV1,
-                   parameter_server_strategy.ParameterServerStrategy)):
-      raise NotImplementedError('ParameterServerStrategy currently only works '
+                  parameter_server_strategy.ParameterServerStrategyV1):
+      raise NotImplementedError('`tf.compat.v1.distribute.experimental.Paramet'
+                                'erServerStrategy` currently only works '
                                 'with the tf.Estimator API')
 
     if not self._experimental_run_tf_function:

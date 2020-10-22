@@ -470,8 +470,9 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
         devices = ["/device:CPU:0"]
 
       if use_strategy_object:
+        comm_options = collective_util.Options(implementation=communication)
         strategy = (mwms_lib.CollectiveAllReduceStrategy
-                    ._from_local_devices(devices, communication=communication))  # pylint: disable=protected-access
+                    ._from_local_devices(devices, comm_options))  # pylint: disable=protected-access
         return strategy, devices, ""
       else:
         collective_all_reduce_ops = cross_device_ops_lib.CollectiveAllReduce(
@@ -500,8 +501,9 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
             task_type=task_type,
             task_id=task_id,
             num_accelerators={"GPU": num_gpus})
+        comm_options = collective_util.Options(implementation=communication)
         strategy = mwms_lib.CollectiveAllReduceStrategy(
-            cluster_resolver=resolver, communication=communication)
+            communication_options=comm_options, cluster_resolver=resolver)
         return (strategy, devices,
                 "grpc://" + self._cluster_spec[task_type][task_id])
       else:

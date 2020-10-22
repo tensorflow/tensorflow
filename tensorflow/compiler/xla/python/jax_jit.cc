@@ -465,10 +465,10 @@ std::unique_ptr<xla::PjRtBuffer> ConvertToScalarBuffer(
     xla::PjRtDevice* device) {
   CppType data = py::cast<Pybind11Type>(scalar);
   xla::Shape shape = xla::ShapeUtil::MakeShapeWithType<CppType>({});
-  return ValueOrThrow(xla::PjRtBuffer::FromHostBuffer(
+  return ValueOrThrow(client->BufferFromHostBuffer(
       &data, shape,
-      xla::PjRtBuffer::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
-      client, device));
+      xla::PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+      device));
 }
 
 // Convert a scalar to the associated PjRtBuffer or raises an error if it is
@@ -502,17 +502,17 @@ StatusOr<std::unique_ptr<xla::PjRtBuffer>> ScalarToBuffer(
     if (jax_enable_x64) {
       xla::complex128 data(result.real, result.imag);
       xla::Shape shape = xla::ShapeUtil::MakeShapeWithType<xla::complex128>({});
-      return ValueOrThrow(xla::PjRtBuffer::FromHostBuffer(
+      return ValueOrThrow(client->BufferFromHostBuffer(
           &data, shape,
-          xla::PjRtBuffer::HostBufferSemantics::kImmutableOnlyDuringCall,
-          nullptr, client, device));
+          xla::PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
+          nullptr, device));
     } else {
       xla::complex64 data(result.real, result.imag);
       xla::Shape shape = xla::ShapeUtil::MakeShapeWithType<xla::complex64>({});
-      return ValueOrThrow(xla::PjRtBuffer::FromHostBuffer(
+      return ValueOrThrow(client->BufferFromHostBuffer(
           &data, shape,
-          xla::PjRtBuffer::HostBufferSemantics::kImmutableOnlyDuringCall,
-          nullptr, client, device));
+          xla::PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
+          nullptr, device));
     }
   }
   return InvalidArgument(
@@ -678,7 +678,7 @@ Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
           ValueOrThrow(pyclient.BufferFromPyval(
               numpy_array, data_device,
               /*force_copy=*/false, /*host_buffer_semantics=*/
-              xla::PjRtBuffer::HostBufferSemantics::kZeroCopy));
+              xla::PjRtClient::HostBufferSemantics::kZeroCopy));
       arg_buffers.push_back(buffer->buffer());
 
       ArgSignature sig;

@@ -38,7 +38,7 @@ py_library(
         "//tensorflow/python/keras/datasets",
         "//tensorflow/python/keras/feature_column",
         "//tensorflow/python/keras/layers",
-        "//tensorflow/python/keras/mixed_precision/experimental:mixed_precision_experimental",
+        "//tensorflow/python/keras/mixed_precision:mixed_precision_experimental",
         "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/keras/premade",
         "//tensorflow/python/keras/preprocessing",

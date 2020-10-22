@@ -479,6 +479,47 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   return std::move(module);
 }
 
+static absl::optional<bool> DummyCanShareBufferFunction(const HloInstruction*,
+                                                        const HloInstruction*,
+                                                        const ShapeIndex&) {
+  return absl::nullopt;
+}
+
+StatusOr<
+    std::tuple<std::unique_ptr<HloModule>, std::unique_ptr<BufferAssignment>>>
+GpuCompiler::RunHloPassesAndBufferAssignement(
+    std::unique_ptr<HloModule> hlo_module, se::StreamExecutor* executor,
+    se::DeviceMemoryAllocator* device_allocator, bool optimize) {
+  if (optimize) {
+    TF_ASSIGN_OR_RETURN(hlo_module, RunHloPasses(std::move(hlo_module),
+                                                 executor, device_allocator));
+  }
+
+  std::unique_ptr<StreamAssignment> stream_assignment =
+      AssignStreams(*hlo_module);
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<GpuHloSchedule> hlo_schedule,
+      GpuHloSchedule::Build(*hlo_module, *stream_assignment, pointer_size_));
+
+  auto buffer_size_bytes_function =
+      [this](const BufferValue& buffer_value) -> int64 {
+    return GpuCompiler::GetSizeOfShape(buffer_value.shape(), pointer_size_);
+  };
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<BufferAssignment> assignment,
+      BufferAssigner::Run(
+          hlo_module.get(), hlo_schedule->ConsumeHloOrdering(),
+          buffer_size_bytes_function,
+          /*color_alignment=*/
+          [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; },
+          /*allocate_buffers_for_constants=*/true,
+          /*colorer=*/BufferAssigner::DefaultColorer(),
+          /*must_not_live_out=*/{}, DummyCanShareBufferFunction));
+
+  return std::make_tuple(std::move(hlo_module), std::move(assignment));
+}
+
 // The order of `thunk_sequence` corresponds to
 // `hlo_schedule->ThunkLaunchOrder()`.
 static Status CompileModuleToLlvmIrImpl(
@@ -722,12 +763,6 @@ StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                                 const AotCompilationOptions& options) {
   return Unimplemented("not yet implemented: GpuCompiler::CompileAheadOfTime");
-}
-
-static absl::optional<bool> DummyCanShareBufferFunction(const HloInstruction*,
-                                                        const HloInstruction*,
-                                                        const ShapeIndex&) {
-  return absl::nullopt;
 }
 
 StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(

@@ -1,19 +1,16 @@
 # Generic Makefile target for ARM Cortex M builds.
 # For more info see: tensorflow/lite/micro/cortex_m_generic/README.md
 
-TOOLCHAIN:=armgcc
 FLOAT := soft
 GCC_TARGET_ARCH := $(TARGET_ARCH)
 
 ifeq ($(TARGET_ARCH), cortex-m0)
   CORE=M0
   ARM_LDFLAGS := -Wl,--cpu=Cortex-M0
-  TARGET_SPECIFIC_FLAGS +=
 
 else ifeq ($(TARGET_ARCH), cortex-m3)
   CORE=M3
   ARM_LDFLAGS := -Wl,--cpu=Cortex-M3
-  TARGET_SPECIFIC_FLAGS +=
 
 else ifeq ($(TARGET_ARCH), cortex-m33)
   CORE=M33
@@ -24,7 +21,6 @@ else ifeq ($(TARGET_ARCH), cortex-m33)
 else ifeq ($(TARGET_ARCH), cortex-m33+nodsp)
   CORE=M33
   ARM_LDFLAGS := -Wl,--cpu=Cortex-M33.no_dsp.no_fp
-  TARGET_SPECIFIC_FLAGS +=
 
 else ifeq ($(TARGET_ARCH), cortex-m4)
   CORE=M4
@@ -33,6 +29,7 @@ else ifeq ($(TARGET_ARCH), cortex-m4)
 else ifeq ($(TARGET_ARCH), cortex-m4+fp)
   CORE=M4
   ARM_LDFLAGS := -Wl,--cpu=Cortex-M4
+  TARGET_SPECIFIC_FLAGS += -D__FPU_PRESENT=1 -mfpu=fpv4-sp-d16
   FLOAT=hard
   GCC_TARGET_ARCH := cortex-m4
 
@@ -45,7 +42,6 @@ else ifeq ($(TARGET_ARCH), cortex-m55)
 else ifeq ($(TARGET_ARCH), cortex-m55+nodsp+nofp)
   CORE=M55
   ARM_LDFLAGS := -Wl,--cpu=8.1-M.Main.mve.no_dsp.no_fp
-  TARGET_SPECIFIC_FLAGS +=
 
 else ifeq ($(TARGET_ARCH), cortex-m55+nofp)
   CORE=M55
@@ -67,7 +63,7 @@ else
 endif
 
 ifneq ($(filter cortex-m55%,$(TARGET_ARCH)),)
-  ifeq ($(TOOLCHAIN), armgcc)
+  ifeq ($(TOOLCHAIN), gcc)
     $(error "Micro architecure support is not available for arm-gcc for TARGET_ARCH=$(TARGET_ARCH)")
   endif
 
@@ -100,7 +96,7 @@ ifeq ($(TOOLCHAIN), armclang)
   # https://developer.arm.com/documentation/100891/0611/troubleshooting/general-troubleshooting-advice
   MICROLITE_LIBS := $(filter-out -lm,$(MICROLITE_LIBS))
 
-else ifeq ($(TOOLCHAIN), armgcc)
+else ifeq ($(TOOLCHAIN), gcc)
   export PATH := $(MAKEFILE_DIR)/downloads/gcc_embedded/bin/:$(PATH)
   $(eval $(call add_third_party_download,$(GCC_EMBEDDED_URL),$(GCC_EMBEDDED_MD5),gcc_embedded,))
 

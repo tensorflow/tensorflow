@@ -661,9 +661,6 @@ tf_py_test(
     srcs = ["text_vectorization_test.py"],
     python_version = "PY3",
     shard_count = 4,
-    tags = [
-        "noasan",  #TODO(b/161376526): Enable when bug fix lands.
-    ],
     deps = [
         ":preprocessing_test_utils",
         ":text_vectorization",

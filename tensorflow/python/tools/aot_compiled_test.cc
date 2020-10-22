@@ -13,12 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#define EIGEN_USE_THREADS
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/python/tools/aot_compiled_vars_and_arithmetic.h"
 #include "tensorflow/python/tools/aot_compiled_vars_and_arithmetic_frozen.h"
 #include "tensorflow/python/tools/aot_compiled_x_matmul_y_large.h"
+#include "tensorflow/python/tools/aot_compiled_x_matmul_y_large_multithreaded.h"
 #include "tensorflow/python/tools/aot_compiled_x_matmul_y_small.h"
 #include "tensorflow/python/tools/aot_compiled_x_plus_y.h"
 
@@ -36,24 +39,24 @@ TEST(AOTCompiledSavedModelTest, XPlusY) {
 TEST(AOTCompiledSavedModelTest, XMatmulYLarge) {
   XMatmulYLarge model;
   // Calculation is: output_0 = x @ y.
-  EXPECT_EQ(model.arg0_size(), sizeof(float) * 3000 * 5000);
-  EXPECT_EQ(model.arg1_size(), sizeof(float) * 5000 * 4000);
-  EXPECT_EQ(model.result0_size(), sizeof(float) * 3000 * 4000);
+  EXPECT_EQ(model.arg_feed_x_count(), 3000 * 5000);
+  EXPECT_EQ(model.arg_feed_y_count(), 5000 * 4000);
+  EXPECT_EQ(model.result0_count(), 3000 * 4000);
 
-  Eigen::Tensor<float, 2, Eigen::RowMajor> arg0(3000, 5000);
-  Eigen::Tensor<float, 2, Eigen::RowMajor> arg1(5000, 4000);
-  arg0.setRandom();
-  arg1.setRandom();
+  Eigen::Tensor<float, 2, Eigen::RowMajor> arg_feed_x(3000, 5000);
+  Eigen::Tensor<float, 2, Eigen::RowMajor> arg_feed_y(5000, 4000);
+  arg_feed_x.setRandom();
+  arg_feed_y.setRandom();
 
   // Set up dimensions for standard matmul.
   const Eigen::array<Eigen::IndexPair<int>, 1> product_dims = {
       Eigen::IndexPair<int>(1, 0)};
   // Ground truth matmul.
   const Eigen::Tensor<float, 2, Eigen::RowMajor> expected_output0 =
-      arg0.contract(arg1, product_dims);
+      arg_feed_x.contract(arg_feed_y, product_dims);
 
-  model.set_arg_feed_x_data(arg0.data());
-  model.set_arg_feed_y_data(arg1.data());
+  model.set_arg_feed_x_data(arg_feed_x.data());
+  model.set_arg_feed_y_data(arg_feed_y.data());
   CHECK(model.Run());
   EXPECT_NEAR(model.result_fetch_output_0(0, 0), expected_output0(0, 0),
               /*abs_error=*/1e-6f);
@@ -62,27 +65,61 @@ TEST(AOTCompiledSavedModelTest, XMatmulYLarge) {
               /*abs_error=*/1e-6f);
 }
 
-TEST(AOTCompiledSavedModelTest, XMatmulYSmall) {
-  XMatmulYSmall model;
-  // Calculation is: output_0 = x @ y.
-  EXPECT_EQ(model.arg0_size(), sizeof(float) * 3 * 5);
-  EXPECT_EQ(model.arg1_size(), sizeof(float) * 5 * 4);
-  EXPECT_EQ(model.result0_size(), sizeof(float) * 3 * 4);
+TEST(AOTCompiledSavedModelTest, XMatmulYLargeMultithreaded) {
+  XMatmulYLargeMultithreaded model;
 
-  Eigen::Tensor<float, 2, Eigen::RowMajor> arg0(3, 5);
-  Eigen::Tensor<float, 2, Eigen::RowMajor> arg1(5, 4);
-  arg0.setRandom();
-  arg1.setRandom();
+  Eigen::ThreadPool pool(2);
+  Eigen::ThreadPoolDevice device(&pool, pool.NumThreads());
+  model.set_thread_pool(&device);
+
+  // Calculation is: output_0 = x @ y.
+  EXPECT_EQ(model.arg_feed_x_count(), 3000 * 5000);
+  EXPECT_EQ(model.arg_feed_y_count(), 5000 * 4000);
+  EXPECT_EQ(model.result0_count(), 3000 * 4000);
+
+  Eigen::Tensor<float, 2, Eigen::RowMajor> arg_feed_x(3000, 5000);
+  Eigen::Tensor<float, 2, Eigen::RowMajor> arg_feed_y(5000, 4000);
+  arg_feed_x.setRandom();
+  arg_feed_y.setRandom();
 
   // Set up dimensions for standard matmul.
   const Eigen::array<Eigen::IndexPair<int>, 1> product_dims = {
       Eigen::IndexPair<int>(1, 0)};
   // Ground truth matmul.
   const Eigen::Tensor<float, 2, Eigen::RowMajor> expected_output0 =
-      arg0.contract(arg1, product_dims);
+      arg_feed_x.contract(arg_feed_y, product_dims);
 
-  model.set_arg_feed_x_data(arg0.data());
-  model.set_arg_feed_y_data(arg1.data());
+  model.set_arg_feed_x_data(arg_feed_x.data());
+  model.set_arg_feed_y_data(arg_feed_y.data());
+  CHECK(model.Run());
+  EXPECT_NEAR(model.result_fetch_output_0(0, 0), expected_output0(0, 0),
+              /*abs_error=*/1e-3f);
+  EXPECT_NEAR(model.result_fetch_output_0(2999, 3999),
+              expected_output0(2999, 3999),
+              /*abs_error=*/1e-3f);
+}
+
+TEST(AOTCompiledSavedModelTest, XMatmulYSmall) {
+  XMatmulYSmall model;
+  // Calculation is: output_0 = x @ y.
+  EXPECT_EQ(model.arg_feed_x_count(), 3 * 5);
+  EXPECT_EQ(model.arg_feed_y_count(), 5 * 4);
+  EXPECT_EQ(model.result0_count(), 3 * 4);
+
+  Eigen::Tensor<float, 2, Eigen::RowMajor> arg_feed_x(3, 5);
+  Eigen::Tensor<float, 2, Eigen::RowMajor> arg_feed_y(5, 4);
+  arg_feed_x.setRandom();
+  arg_feed_y.setRandom();
+
+  // Set up dimensions for standard matmul.
+  const Eigen::array<Eigen::IndexPair<int>, 1> product_dims = {
+      Eigen::IndexPair<int>(1, 0)};
+  // Ground truth matmul.
+  const Eigen::Tensor<float, 2, Eigen::RowMajor> expected_output0 =
+      arg_feed_x.contract(arg_feed_y, product_dims);
+
+  model.set_arg_feed_x_data(arg_feed_x.data());
+  model.set_arg_feed_y_data(arg_feed_y.data());
   CHECK(model.Run());
   EXPECT_NEAR(model.result_fetch_output_0(0, 0), expected_output0(0, 0),
               /*abs_error=*/1e-6f);

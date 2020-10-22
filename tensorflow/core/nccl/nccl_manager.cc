@@ -739,6 +739,7 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
 
         VLOG(2) << "call NcclAllReduce collective_key "
                 << collective->collective_key << " participant " << p_idx
+                << " num_participants " << collective->participants.size()
                 << " sendbuff " << sendbuff << " recvbuff " << recvbuff
                 << " nccl_comm " << nccl_comm << " comm_stream " << comm_stream
                 << " cuda_stream " << cu_stream;
@@ -849,7 +850,6 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
 }
 
 void NcclManager::StartAbort(const Status& s) {
-  VLOG(1) << "NcclManager StartAbort";
   absl::flat_hash_map<string, Collective*> collectives;
   std::vector<std::unique_ptr<Communicator>> communicators;
   {
@@ -864,6 +864,9 @@ void NcclManager::StartAbort(const Status& s) {
     collectives.swap(collectives_);
     communicators.swap(communicators_);
   }
+  VLOG(2) << "Aborted NcclManager " << this << " with " << collectives.size()
+          << " collectives and " << communicators.size()
+          << " comms with status " << s;
   // collectives_ contains pending launches that haven't been dispatched to
   // kernel launch threads, so we can simply invoke the done callbacks of them.
   for (const auto& item : collectives) {
@@ -893,6 +896,12 @@ void NcclManager::StartAbort(const Status& s) {
     }
   }
   pending.Wait();
+}
+
+void NcclManager::Reset() {
+  mutex_lock l(mu_);
+  status_ = Status();
+  VLOG(2) << "Reset NcclManager " << this;
 }
 
 }  // namespace tensorflow

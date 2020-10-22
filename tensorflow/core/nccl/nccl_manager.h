@@ -195,6 +195,10 @@ class NcclManager {
   // launched with this NcclManager.
   void StartAbort(const Status& s);
 
+  // Resets a previously aborted NcclManager, making it available for future
+  // collectives.
+  void Reset();
+
  private:
   enum CollectiveType {
     kAllReduce = 1,

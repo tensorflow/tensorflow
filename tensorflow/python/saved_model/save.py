@@ -23,6 +23,7 @@ import functools
 import gc
 import os
 
+from absl import logging
 from tensorflow.core.framework import versions_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
@@ -42,6 +43,7 @@ from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.platform import tf_logging
 from tensorflow.python.saved_model import builder_impl
 from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import function_serialization
@@ -220,6 +222,12 @@ class _SaveableView(object):
               function._list_all_concrete_functions_for_serialization())  # pylint: disable=protected-access
         else:
           concrete_functions = [function]
+        if not concrete_functions:
+          logging.warning(
+              "No concrete functions found for untraced function `%s` while "
+              "saving. This function will not be callable after loading.",
+              function._name)
+
         for concrete_function in concrete_functions:
           if concrete_function.name not in seen_function_names:
             seen_function_names.add(concrete_function.name)
@@ -735,14 +743,17 @@ def _serialize_object_graph(saveable_view, asset_file_def_index):
     if serialized is not None:
       proto.concrete_functions[name].CopyFrom(serialized)
 
+  saved_object_metadata = False
   for obj, obj_proto in zip(saveable_view.nodes, proto.nodes):
-    _write_object_proto(obj, obj_proto, asset_file_def_index,
-                        saveable_view.function_name_map)
-  return proto
+    has_saved_object_metadata = _write_object_proto(
+        obj, obj_proto, asset_file_def_index, saveable_view.function_name_map)
+    saved_object_metadata = saved_object_metadata or has_saved_object_metadata
+  return proto, saved_object_metadata
 
 
 def _write_object_proto(obj, proto, asset_file_def_index, function_name_map):
   """Saves an object into SavedObject proto."""
+  has_saved_object_metadata = False  # The metadata field will be deprecated.
   if isinstance(obj, tracking.Asset):
     proto.asset.SetInParent()
     proto.asset.asset_file_def_index = asset_file_def_index[obj]
@@ -778,11 +789,14 @@ def _write_object_proto(obj, proto, asset_file_def_index, function_name_map):
     if registered_type_proto is None:
       # Fallback for types with no matching registration
       # pylint:disable=protected-access
+      metadata = obj._tracking_metadata
+      if metadata:
+        has_saved_object_metadata = True
       registered_type_proto = saved_object_graph_pb2.SavedUserObject(
           identifier=obj._object_identifier,
           version=versions_pb2.VersionDef(
               producer=1, min_consumer=1, bad_consumers=[]),
-          metadata=obj._tracking_metadata)
+          metadata=metadata)
       # pylint:enable=protected-access
     proto.user_object.CopyFrom(registered_type_proto)
 
@@ -795,6 +809,7 @@ def _write_object_proto(obj, proto, asset_file_def_index, function_name_map):
   # documentation.
   if hasattr(obj, "_write_object_proto"):
     obj._write_object_proto(proto, options)  # pylint: disable=protected-access
+  return has_saved_object_metadata
 
 
 def _export_debug_info(exported_graph, export_dir):
@@ -992,8 +1007,7 @@ def save(obj, export_dir, signatures=None, options=None):
         instances with input signatures or concrete functions. Keys of such a
         dictionary may be arbitrary strings, but will typically be from the
         `tf.saved_model.signature_constants` module.
-    options: Optional, `tf.saved_model.SaveOptions` object that specifies
-      options for saving.
+    options: `tf.saved_model.SaveOptions` object for configuring save options.
 
   Raises:
     ValueError: If `obj` is not trackable.
@@ -1144,11 +1158,27 @@ def _build_meta_graph_impl(obj,
       for fdef in func._stateless_fn._function_cache.all_values():  # pylint: disable=protected-access
         function_aliases[fdef.name] = alias
 
-  object_graph_proto = _serialize_object_graph(saveable_view,
-                                               asset_info.asset_index)
+  object_graph_proto, saved_object_metadata = _serialize_object_graph(
+      saveable_view, asset_info.asset_index)
   meta_graph_def.object_graph_def.CopyFrom(object_graph_proto)
 
-  return meta_graph_def, exported_graph, object_saver, asset_info
+  if saved_object_metadata:
+    tf_logging.warn(
+        'FOR KERAS USERS: The object that you are saving contains one or more '
+        'Keras models or layers. If you are loading the SavedModel with '
+        '`tf.keras.models.load_model`, continue reading (otherwise, you may '
+        'ignore the following instructions). Please change your code to save '
+        'with `tf.keras.models.save_model` or `model.save`, and confirm that '
+        'the file "keras.metadata" exists in the export directory. In the '
+        'future, Keras will only load the SavedModels that have this file. In '
+        'other words, `tf.saved_model.save` will no longer write SavedModels '
+        'that can be recovered as Keras models (this will apply in TF 2.5).'
+        '\n\nFOR DEVS: If you are overwriting _tracking_metadata in your class,'
+        ' this property has been used to save metadata in the SavedModel. The '
+        'metadta field will be deprecated soon, so please move the metadata to '
+        'a different file.')
+
+  return (meta_graph_def, exported_graph, object_saver, asset_info)
 
 
 def _build_meta_graph(obj,

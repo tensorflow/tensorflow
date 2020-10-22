@@ -134,8 +134,8 @@ Status ConvertModule(std::unique_ptr<HloModule> hlo_module, ModuleOp module,
   return Status::OK();
 }
 
-// This pass take a MLIR HLO module, convert it to XLA to perform the HLO
-// optimization pipeline for the required platform, and then convert back to
+// This pass takes an MLIR HLO module, converts it to XLA to perform the HLO
+// optimization pipeline for the required platform, and then converts it back to
 // MLIR LHLO.
 class XlaHloToLhloPass
     : public PassWrapper<XlaHloToLhloPass, OperationPass<ModuleOp>> {
@@ -398,6 +398,49 @@ StatusOr<lmhlo::FusionOp> LhloDialectEmitter::EmitFusionOp(
 
 Status LhloDialectEmitter::HandleFusion(HloInstruction* instr) {
   return EmitFusionOp(instr).status();
+}
+
+StatusOr<mhlo::ScatterDimensionNumbers>
+LhloDialectEmitter::GetScatterDimensionNumbers(HloInstruction* instr) {
+  auto* scatter_instr = ::xla::Cast<::xla::HloScatterInstruction>(instr);
+
+  const ::xla::ScatterDimensionNumbers& xla_scatter_dim =
+      scatter_instr->scatter_dimension_numbers();
+  auto scatter_dimension_numbers = mhlo::ScatterDimensionNumbers::get(
+      getI64DenseElementsAttr(xla_scatter_dim.update_window_dims()),
+      getI64DenseElementsAttr(xla_scatter_dim.inserted_window_dims()),
+      getI64DenseElementsAttr(xla_scatter_dim.scatter_dims_to_operand_dims()),
+      builder_.getI64IntegerAttr(xla_scatter_dim.index_vector_dim()),
+      module_.getContext());
+  return scatter_dimension_numbers;
+}
+
+StatusOr<lmhlo::ScatterOp> LhloDialectEmitter::EmitScatterOp(
+    HloInstruction* instr) {
+  TF_ASSIGN_OR_RETURN(auto scatter,
+                      CreateOpWithoutAttrs<lmhlo::ScatterOp>(instr));
+
+  // copy attributes
+  auto* scatter_instr = ::xla::Cast<::xla::HloScatterInstruction>(instr);
+
+  TF_ASSIGN_OR_RETURN(auto scatter_dimension_numbers,
+                      GetScatterDimensionNumbers(instr));
+  scatter.scatter_dimension_numbersAttr(scatter_dimension_numbers);
+  scatter.indices_are_sortedAttr(
+      builder_.getBoolAttr(scatter_instr->indices_are_sorted()));
+  scatter.unique_indicesAttr(
+      builder_.getBoolAttr(scatter_instr->unique_indices()));
+
+  // import update computation as region
+  TF_RETURN_IF_ERROR(::xla::HloFunctionImporter::ImportAsRegion(
+      *scatter_instr->called_computations()[0], &scatter.update_computation(),
+      &builder_));
+
+  return scatter;
+}
+
+Status LhloDialectEmitter::HandleScatter(HloInstruction* instr) {
+  return EmitScatterOp(instr).status();
 }
 
 StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(

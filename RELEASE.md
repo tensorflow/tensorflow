@@ -11,7 +11,8 @@
   [TensorFloat-32](https://blogs.nvidia.com/blog/2020/05/14/tensorfloat-32-precision-format/).
   Specifically, inputs to such ops are rounded from 23 bits of precision to 10
   bits of precision. This is unlikely to cause issues in practice for deep
-  learning models. TensorFloat-32 can be disabled by running
+  learning models. In some cases, TensorFloat-32 is also used for complex64 ops.
+  TensorFloat-32 can be disabled by running
   `config.experimental.enable_tensor_float_32_execution(False)`. The "Major
   Features and Improvements" section has more details.
 * The byte layout for string tensors across the C-API has been updated to match
@@ -91,6 +92,10 @@
   `tf.config.experimental.enable_tensor_float_32_execution`.
 
 * `tf.distribute`:
+  * `MultiWorkerMirroredStrategy` is graduated out of experimental.
+    * Peer failure will no longer cause the cluster to hang.
+    * Major issues with saving are fixed.
+    * See [Multi-worker training with Keras](https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras) for a tutorial.
   * Deprecated `experimental_distribute_datasets_from_function` method and renamed it to `distribute_datasets_from_function` as it is no longer experimental.
 
 ## Bug Fixes and Other Changes
@@ -141,6 +146,10 @@
         ([CVE-2020-15212](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-15212),
         [CVE-2020-15213](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-15213),
         [CVE-2020-15214](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-15214))
+    *   Fixes a segfault in `tf.quantization.quantize_and_dequantize`
+        ([CVE-2020-15265](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-15265))
+    *   Fixes an undefined behavior float cast causing a crash
+        ([CVE-2020-15266](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-15266))
 *   TF Core:
     *   `tf.types.experimental.TensorLike` is a new `Union` type that can be
         used as type annotation for variables representing a Tensor or a value
@@ -208,7 +217,16 @@
         how many times the function is called, and independent of global seed
         settings.
 *   `tf.distribute`:
-    *   <ADD RELEASE NOTES HERE>
+    *   (Experimental) Parameter server training:
+        *   Replaced the existing
+            `tf.distribute.experimental.ParameterServerStrategy` symbol with
+            a new class that is for parameter server training in TF2. Usage with
+            the old symbol, usually with Estimator, should be replaced with
+            `tf.compat.v1.distribute.experimental.ParameterServerStrategy`.
+        *   Added `tf.distribute.experimental.coordinator.*` namespace,
+            including the main API `ClusterCoordinator` for coordinating the
+            training cluster, the related data structure `RemoteValue`
+            and `PerWorkerValue`.
 *   `tf.keras`:
     *   Improvements from the functional API refactoring:
         *   Functional model construction does not need to maintain a global
@@ -253,6 +271,12 @@
     *   For Keras model, the individual call of `Model.evaluate` uses no cached
         data for evaluation, while `Model.fit` uses cached data when
         `validation_data` arg is provided for better performance.
+    *   Added a `save_traces` argument to `model.save`/
+        `tf.keras.models.save_model` which determines whether the SavedModel
+        format stores the Keras model/layer call functions. The traced functions
+        allow Keras to revive custom models and layers without the original
+        class definition, but if this isn't required the tracing can be
+        disabled with the added option.
 *   `tf.function` / AutoGraph:
     *   Added `experimental_follow_type_hints` argument for `tf.function`. When
         True, the function may use type annotations to optimize the tracing
@@ -741,6 +765,7 @@ stjohnso98, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
     * Add `tf.saved_model.LoadOptions` with [`experimental_io_device`](https://www.tensorflow.org/versions/r2.3/api_docs/python/tf/saved_model/LoadOptions?hl=en) as arg with default value `None` to choose the I/O device for loading models and weights.
     * Update `tf.saved_model.SaveOptions` with [`experimental_io_device`](https://www.tensorflow.org/versions/r2.3/api_docs/python/tf/saved_model/SaveOptions?hl=en) as arg with default value `None` to choose the I/O device for saving models and weights.
     * Mutable tables now restore checkpointed values when loaded from SavedModel.
+    * The user object metadata field in the SavedModel proto has been deprecated as part of the updates to Keras SavedModel. Keras was the only consumer of this field prior to the update.
   * GPU
     * TF 2.3 includes PTX kernels only for [compute capability](https://developer.nvidia.com/cuda-gpus) 7.0 to reduce the TF pip binary size.  Earlier releases included PTX for a variety of older compute capabilities.
     * Remove environmental variable `TF_USE_CUDNN`.

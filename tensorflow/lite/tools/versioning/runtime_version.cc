@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/schema/mutable/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 
 namespace tflite {
 namespace {
@@ -340,7 +341,7 @@ void UpdateMinimumRuntimeVersionForModel(uint8_t* model_buffer_pointer) {
       const OperatorCode* op_code =
           model->operator_codes()->Get(op->opcode_index());
       std::string runtime_version = FindMinimumRuntimeVersionForOp(
-          op_code->builtin_code(), op_code->version());
+          GetBuiltinCode(op_code), op_code->version());
       if (runtime_version.empty() ||
           runtime_version == kPendingReleaseVersion) {
         // In case we didn't find the current op in the map, or the operator

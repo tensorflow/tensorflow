@@ -1041,7 +1041,7 @@ beta function.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_BiasAddOp : TF_Op<"BiasAdd", [NoSideEffect, TF_ContractionFusableInterface]> {
+def TF_BiasAddOp : TF_Op<"BiasAdd", [NoSideEffect, TF_ContractionFusableInterface, TF_LayoutSensitiveInterface]> {
   let summary = "Adds `bias` to `value`.";
 
   let description = [{
@@ -1065,6 +1065,11 @@ Broadcasting is supported, so `value` may have any number of dimensions.
   let extraClassDeclaration = [{
     // TF_ContractionFusableInterface:
     Optional<ContractionFusion> GetContractionFusion();
+    // TF_LayoutSensitiveInterface:
+    SmallVector<unsigned, 4> GetLayoutDependentArgs() { return {0}; }
+    SmallVector<unsigned, 4> GetLayoutDependentResults() { return {0}; }
+    StringRef GetOptimalLayout(const RuntimeDevices& devices);
+    LogicalResult UpdateDataFormat(StringRef data_format);
   }];
 
   let verifier = [{
@@ -13223,6 +13228,175 @@ num_elements: optional. If not -1, the number of elements in the list.
   }];
 }
 
+def TF_TensorScatterAddOp : TF_Op<"TensorScatterAdd", [NoSideEffect]> {
+  let summary = [{
+Adds sparse `updates` to an existing tensor according to `indices`.
+  }];
+
+  let description = [{
+This operation creates a new tensor by adding sparse `updates` to the passed
+in `tensor`.
+This operation is very similar to `tf.scatter_nd_add`, except that the updates
+are added onto an existing tensor (as opposed to a variable). If the memory
+for the existing tensor cannot be re-used, a copy is made and updated.
+
+`indices` is an integer tensor containing indices into a new tensor of shape
+`tensor.shape`.  The last dimension of `indices` can be at most the rank of
+`tensor.shape`:
+
+    indices.shape[-1] <= tensor.shape.rank
+
+The last dimension of `indices` corresponds to indices into elements
+(if `indices.shape[-1] = tensor.shape.rank`) or slices
+(if `indices.shape[-1] < tensor.shape.rank`) along dimension
+`indices.shape[-1]` of `tensor.shape`.  `updates` is a tensor with shape
+
+    indices.shape[:-1] + tensor.shape[indices.shape[-1]:]
+
+The simplest form of tensor_scatter_add is to add individual elements to a
+tensor by index. For example, say we want to add 4 elements in a rank-1
+tensor with 8 elements.
+
+In Python, this scatter add operation would look like this:
+
+```python
+    indices = tf.constant([[4], [3], [1], [7]])
+    updates = tf.constant([9, 10, 11, 12])
+    tensor = tf.ones([8], dtype=tf.int32)
+    updated = tf.tensor_scatter_nd_add(tensor, indices, updates)
+    print(updated)
+```
+
+The resulting tensor would look like this:
+
+    [1, 12, 1, 11, 10, 1, 1, 13]
+
+We can also, insert entire slices of a higher rank tensor all at once. For
+example, if we wanted to insert two slices in the first dimension of a
+rank-3 tensor with two matrices of new values.
+
+In Python, this scatter add operation would look like this:
+
+```python
+    indices = tf.constant([[0], [2]])
+    updates = tf.constant([[[5, 5, 5, 5], [6, 6, 6, 6],
+                            [7, 7, 7, 7], [8, 8, 8, 8]],
+                           [[5, 5, 5, 5], [6, 6, 6, 6],
+                            [7, 7, 7, 7], [8, 8, 8, 8]]])
+    tensor = tf.ones([4, 4, 4],dtype=tf.int32)
+    updated = tf.tensor_scatter_nd_add(tensor, indices, updates)
+    print(updated)
+```
+
+The resulting tensor would look like this:
+
+    [[[6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8], [9, 9, 9, 9]],
+     [[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]],
+     [[6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8], [9, 9, 9, 9]],
+     [[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]]]
+
+Note that on CPU, if an out of bound index is found, an error is returned.
+On GPU, if an out of bound index is found, the index is ignored.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$tensor,
+    TF_I32OrI64Tensor:$indices,
+    TF_Tensor:$updates
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_TensorScatterSubOp : TF_Op<"TensorScatterSub", [NoSideEffect]> {
+  let summary = [{
+Subtracts sparse `updates` from an existing tensor according to `indices`.
+  }];
+
+  let description = [{
+This operation creates a new tensor by subtracting sparse `updates` from the
+passed in `tensor`.
+This operation is very similar to `tf.scatter_nd_sub`, except that the updates
+are subtracted from an existing tensor (as opposed to a variable). If the memory
+for the existing tensor cannot be re-used, a copy is made and updated.
+
+`indices` is an integer tensor containing indices into a new tensor of shape
+`shape`.  The last dimension of `indices` can be at most the rank of `shape`:
+
+    indices.shape[-1] <= shape.rank
+
+The last dimension of `indices` corresponds to indices into elements
+(if `indices.shape[-1] = shape.rank`) or slices
+(if `indices.shape[-1] < shape.rank`) along dimension `indices.shape[-1]` of
+`shape`.  `updates` is a tensor with shape
+
+    indices.shape[:-1] + shape[indices.shape[-1]:]
+
+The simplest form of tensor_scatter_sub is to subtract individual elements
+from a tensor by index. For example, say we want to insert 4 scattered elements
+in a rank-1 tensor with 8 elements.
+
+In Python, this scatter subtract operation would look like this:
+
+```python
+    indices = tf.constant([[4], [3], [1], [7]])
+    updates = tf.constant([9, 10, 11, 12])
+    tensor = tf.ones([8], dtype=tf.int32)
+    updated = tf.tensor_scatter_nd_sub(tensor, indices, updates)
+    print(updated)
+```
+
+The resulting tensor would look like this:
+
+    [1, -10, 1, -9, -8, 1, 1, -11]
+
+We can also, insert entire slices of a higher rank tensor all at once. For
+example, if we wanted to insert two slices in the first dimension of a
+rank-3 tensor with two matrices of new values.
+
+In Python, this scatter add operation would look like this:
+
+```python
+    indices = tf.constant([[0], [2]])
+    updates = tf.constant([[[5, 5, 5, 5], [6, 6, 6, 6],
+                            [7, 7, 7, 7], [8, 8, 8, 8]],
+                           [[5, 5, 5, 5], [6, 6, 6, 6],
+                            [7, 7, 7, 7], [8, 8, 8, 8]]])
+    tensor = tf.ones([4, 4, 4],dtype=tf.int32)
+    updated = tf.tensor_scatter_nd_sub(tensor, indices, updates)
+    print(updated)
+```
+
+The resulting tensor would look like this:
+
+    [[[-4, -4, -4, -4], [-5, -5, -5, -5], [-6, -6, -6, -6], [-7, -7, -7, -7]],
+     [[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]],
+     [[-4, -4, -4, -4], [-5, -5, -5, -5], [-6, -6, -6, -6], [-7, -7, -7, -7]],
+     [[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]]]
+
+Note that on CPU, if an out of bound index is found, an error is returned.
+On GPU, if an out of bound index is found, the index is ignored.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$tensor,
+    TF_I32OrI64Tensor:$indices,
+    TF_Tensor:$updates
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_TensorScatterUpdateOp : TF_Op<"TensorScatterUpdate", [NoSideEffect]> {
   let summary = [{
 Scatter `updates` into an existing tensor according to `indices`.
@@ -13473,6 +13647,33 @@ The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:
   }];
 
   let hasFolder = 1;
+}
+
+def TF_TridiagonalSolveOp : TF_Op<"TridiagonalSolve", [NoSideEffect]> {
+  let summary = "Solves tridiagonal systems of equations.";
+
+  let description = [{
+Solves tridiagonal systems of equations.
+  Supports batch dimensions and multiple right-hand sides per each left-hand
+  side.
+  On CPU, solution is computed via Gaussian elimination with or without partial
+  pivoting, depending on `partial_pivoting` attribute. On GPU, Nvidia's cuSPARSE
+  library is used: https://docs.nvidia.com/cuda/cusparse/index.html#gtsv
+  Partial pivoting is not yet supported by XLA backends.
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Complex128, TF_Complex64, TF_Float32, TF_Float64]>:$diagonals,
+    TensorOf<[TF_Complex128, TF_Complex64, TF_Float32, TF_Float64]>:$rhs,
+
+    DefaultValuedAttr<BoolAttr, "true">:$partial_pivoting
+  );
+
+  let results = (outs
+    TensorOf<[TF_Complex128, TF_Complex64, TF_Float32, TF_Float64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_TruncateDivOp : TF_Op<"TruncateDiv", [NoSideEffect, ResultsBroadcastableShape]>,
@@ -14418,6 +14619,27 @@ key: A unique identifier for this region used to match up host transfers.
   let results = (outs);
 
   TF_DerivedOperandTypeAttr Tinput = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_XlaSortOp : TF_Op<"XlaSort", [NoSideEffect]> {
+  let summary = "Wraps the XLA Sort operator, documented at";
+
+  let description = [{
+https://www.tensorflow.org/performance/xla/operation_semantics#sort
+.
+
+Sorts a tensor. Currently only sorts in ascending order are supported.
+  }];
+
+  let arguments = (ins
+    Arg<TF_Tensor, [{A `Tensor` of type T.}]>:$input
+  );
+
+  let results = (outs
+    Res<TF_Tensor, [{A `Tensor` of type T.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_XlaSvdOp : TF_Op<"XlaSvd", [NoSideEffect]> {

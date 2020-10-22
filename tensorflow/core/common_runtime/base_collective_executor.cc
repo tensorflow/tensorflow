@@ -216,11 +216,43 @@ BaseCollectiveExecutor::~BaseCollectiveExecutor() {}
 
 void BaseCollectiveExecutor::StartAbort(const Status& s) {
   VLOG(1) << "BaseCollectiveExecutor::StartAbort " << s;
-  cem_->GetParamResolver()->StartAbort(s);
-  remote_access_->StartAbort(s);
-  if (cem_->GetNcclCommunicator() != nullptr) {
-    cem_->GetNcclCommunicator()->StartAbort(s);
+  Status status;
+  {
+    mutex_lock l(status_mu_);
+    if (!status_.ok()) {
+      LOG(WARNING)
+          << "BaseCollectiveExecutor already aborted, ignoring StartAbort: "
+          << s;
+      return;
+    }
+    status_ = StatusGroup::MakeDerived(Status(
+        s.code(),
+        absl::StrCat(
+            "Collective ops is aborted by: ", s.error_message(),
+            "\nThe error could be from a previous operation. Restart your "
+            "program to reset.")));
+    status = status_;
   }
+  cem_->GetParamResolver()->StartAbort(status);
+  remote_access_->StartAbort(status);
+  if (cem_->GetNcclCommunicator() != nullptr) {
+    cem_->GetNcclCommunicator()->StartAbort(status);
+  }
+}
+
+Status BaseCollectiveExecutor::GetStatus(const Status& s) {
+  if (s.ok()) return s;
+  mutex_lock l(status_mu_);
+  // If the collective executor is already aborted, use the aborted status
+  // which is more likely the actual error instead of an artifact of an
+  // abortion.
+  if (!status_.ok()) {
+    VLOG(2) << "Overriding status with collective ops executor status. "
+               "Original status: "
+            << s;
+    return status_;
+  }
+  return s;
 }
 
 void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
@@ -229,10 +261,10 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
                                           StatusCallback done) {
   // See CompleteParamsAsync() how done() and the timeout callback interacts.
   const auto is_callback_called = std::make_shared<std::atomic<bool>>(false);
-  auto done_safe = [done, is_callback_called](const Status& s) {
+  auto done_safe = [this, done, is_callback_called](const Status& s) {
     bool called = is_callback_called->exchange(true);
     if (!called) {
-      done(s);
+      done(GetStatus(s));
     }
   };
   auto timeout_microseconds = static_cast<int64>(
@@ -309,10 +341,10 @@ void BaseCollectiveExecutor::CompleteParamsAsync(
   // timeout callback executes, done_safe will become a no-op and the timeout
   // callback is responsible for invoking done() at the end.
   const auto is_callback_called = std::make_shared<std::atomic<bool>>(false);
-  auto done_safe = [done, is_callback_called](const Status& s) {
+  auto done_safe = [this, is_callback_called, done](const Status& s) {
     bool called = is_callback_called->exchange(true);
     if (!called) {
-      done(s);
+      done(GetStatus(s));
     }
   };
   auto timeout_microseconds =

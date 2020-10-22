@@ -48,7 +48,7 @@ namespace {
 using ::tensorflow::RemoteProfilerSessionManagerOptions;
 
 // Profiler gives grace after profiling duration to terminate.
-constexpr absl::Duration kSessionGraceTime = absl::Seconds(5);
+constexpr absl::Duration kMinSessionGraceTime = absl::Seconds(60);
 
 tensorflow::Status ValidateHostPortPair(absl::string_view host_port) {
   tensorflow::uint32 port;
@@ -106,9 +106,9 @@ void UpdateMaxSessionDuration(RemoteProfilerSessionManagerOptions& options) {
   // is bounded.
   DCHECK_GT(local_profiler_duration, 0);
   VLOG(3) << "duration_ms was given as " << local_profiler_duration;
-  // Max session duration includes the profiling session and grace time.
-  auto profile_duration =
-      absl::Milliseconds(local_profiler_duration) + kSessionGraceTime;
+  // Max session duration is the profiling session with grace time.
+  auto profile_duration = std::max(
+      kMinSessionGraceTime, absl::Milliseconds(local_profiler_duration) * 2);
   absl::Duration delay_duration;
   // When requested start timestamp is 0, profiling starts immediately.
   if (requested_start_ts > 0) {
@@ -146,6 +146,7 @@ RemoteProfilerSessionManagerOptions GetOptionsLocked(absl::string_view logdir,
   VLOG(2) << "repository_path set to "
           << options.profiler_options().repository_path();
 
+  int delay_ms = 0;
   for (const auto& kw : opts) {
     std::string key = py::cast<std::string>(kw.first);
     if (key == "host_tracer_level") {
@@ -160,9 +161,26 @@ RemoteProfilerSessionManagerOptions GetOptionsLocked(absl::string_view logdir,
       auto value = py::cast<int>(kw.second);
       options.mutable_profiler_options()->set_python_tracer_level(value);
       VLOG(1) << "python_tracer_level set to " << value;
+    } else if (key == "delay_ms") {
+      if (!kw.second.is_none()) {
+        delay_ms = py::cast<int>(kw.second);
+      }
     } else {
       LOG(WARNING) << "Unrecognised key: " << key;
     }
+  }
+
+  if (delay_ms) {
+    absl::Time start_timestamp = now + absl::Milliseconds(delay_ms);
+    tensorflow::int64 start_timestamp_ns = absl::ToUnixNanos(start_timestamp);
+    options.mutable_profiler_options()->set_start_timestamp_ns(
+        start_timestamp_ns);
+    LOG(INFO) << "delay_ms was " << delay_ms << ", start_timestamp_ns set to "
+              << start_timestamp_ns << " [" << start_timestamp << "]";
+  } else {
+    DCHECK_EQ(options.mutable_profiler_options()->start_timestamp_ns(), 0);
+    LOG(INFO) << "Profiling will start immediately because delay_ms was unset "
+                 "or zero.";
   }
 
   return options;

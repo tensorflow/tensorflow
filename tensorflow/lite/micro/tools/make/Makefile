@@ -37,6 +37,7 @@ TARGET := $(HOST_OS)
 TARGET_ARCH := $(HOST_ARCH)
 
 # Default compiler and tool names:
+TOOLCHAIN:=gcc
 CXX_TOOL := g++
 CC_TOOL := gcc
 AR_TOOL := ar
@@ -123,16 +124,20 @@ CXXFLAGS := \
   -fno-threadsafe-statics \
   $(COMMON_FLAGS)
 
-CCFLAGS  := \
-	-std=c11 \
-	$(COMMON_FLAGS)
+CCFLAGS := \
+  -std=c11 \
+  $(COMMON_FLAGS)
 
 ARFLAGS := -r
 
-ifeq ($(filter armclang,$(ALL_TAGS)),)
-LDFLAGS += \
-  -Wl,--fatal-warnings \
-  -Wl,--gc-sections
+ifeq ($(TOOLCHAIN), gcc)
+  ifneq ($(TARGET), osx)
+    # GCC on MacOS uses an LLVM backend so we avoid the additional linker flags
+    # that are unsupported with LLVM.
+    LDFLAGS += \
+      -Wl,--fatal-warnings \
+      -Wl,--gc-sections
+  endif
 endif
 
 # override these in the makefile.inc for specific compiler targets

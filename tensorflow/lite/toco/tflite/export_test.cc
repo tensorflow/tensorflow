@@ -662,10 +662,10 @@ TEST_F(VersionedOpExportTest, Export) {
   // different versions.
   EXPECT_EQ(2, operator_codes->size());
   EXPECT_EQ(::tflite::BuiltinOperator_CONV_2D,
-            (*operator_codes)[0]->builtin_code());
+            GetBuiltinCode((*operator_codes)[0]));
   EXPECT_EQ(1, (*operator_codes)[0]->version());
   EXPECT_EQ(::tflite::BuiltinOperator_CONV_2D,
-            (*operator_codes)[1]->builtin_code());
+            GetBuiltinCode((*operator_codes)[1]));
   EXPECT_EQ(2, (*operator_codes)[1]->version());
 
   // Verify that the 2 operators points to the correct indices of the operation

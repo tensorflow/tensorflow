@@ -1382,6 +1382,7 @@ py_library(
         ":_pywrap_kernel_registry",
         ":_pywrap_py_exception_registry",
         ":_pywrap_py_func",  # TODO(b/142001480): remove once the bug is fixed.
+        ":_pywrap_python_api_dispatcher",
         ":_pywrap_python_op_gen",
         ":_pywrap_quantize_training",
         ":_pywrap_stacktrace_handler",
@@ -1750,6 +1751,45 @@ tf_py_test(
     python_version = "PY3",
     tags = ["no_pip"],
     tfrt_enabled = True,
+)
+
+cc_library(
+    name = "python_api_dispatcher",
+    srcs = ["framework/python_api_dispatcher.cc"],
+    hdrs = ["framework/python_api_dispatcher.h"],
+    deps = [
+        ":cpp_python_util",
+        ":safe_pyobject_ptr",
+        "//tensorflow/core/platform:logging",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+# Note: this target is only used by python_api_dispatcher_test.
+tf_python_pybind_extension(
+    name = "_pywrap_python_api_dispatcher",
+    # testonly = True,
+    srcs = ["framework/python_api_dispatcher_wrapper.cc"],
+    hdrs = ["framework/python_api_dispatcher.h"],
+    module_name = "_pywrap_python_api_dispatcher",
+    deps = [
+        ":safe_pyobject_ptr_required_hdrs",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@pybind11",
+    ],
+)
+
+tf_py_test(
+    name = "python_api_dispatcher_test",
+    srcs = ["framework/python_api_dispatcher_test.py"],
+    python_version = "PY3",
+    tags = ["no_pip"],
+    deps = [
+        ":_pywrap_python_api_dispatcher",
+        ":client_testlib",
+    ],
 )
 
 py_library(
@@ -5672,6 +5712,7 @@ py_library(
         "//tensorflow:__pkg__",
         "//third_party/py/tensorflow_core:__subpackages__",
         "//third_party/py/tf_agents:__subpackages__",
+        "//third_party/py/tfx:__subpackages__",
     ],
     deps = [
         ":_pywrap_tensor_float_32_execution",
@@ -6048,6 +6089,7 @@ pywrap_tensorflow_macro(
         ":pybind11_lib",
         ":pybind11_status",
         ":pybind11_proto",
+        ":python_api_dispatcher",
         ":python_op_gen",
         ":safe_pyobject_ptr",
         ":tf_session_helper",
@@ -6120,6 +6162,7 @@ filegroup(
         ":numpy_lib",  # checkpoint_reader
         ":py_exception_registry",  # py_exception_registry
         ":py_func_lib",  # py_func
+        ":python_api_dispatcher",  # python_api_dispatcher
         ":python_op_gen",  # python_op_gen
         ":safe_ptr",  # checkpoint_reader
         "//tensorflow/c:checkpoint_reader",  # checkpoint_reader
