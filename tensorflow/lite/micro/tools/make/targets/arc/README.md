@@ -269,8 +269,10 @@ comments about make versions.
 Before building the application itself, you need to generate the project for
 this application from TensorFlow sources and external dependencies. To generate
 it for a custom TCF you need to set the following variables in the make command
-line: * TARGET_ARCH=arc * TCF_FILE=<path to TCF file> * (optional)
-LCF_FILE=<path to LCF file>
+line:
+* TARGET=arc_custom 
+* TCF_FILE=<path to TCF file> 
+* (optional) LCF_FILE=<path to LCF file>
 
 If you don’t supply an external LCF, the one embedded in the TCF will be used
 instead
@@ -279,7 +281,7 @@ For instance, to build **Person Detection** test application, use the following
 command from the root directory of the TensorFlow repo:
 
 ```
-make -f tensorflow/lite/micro/tools/make/Makefile generate_person_detection_test_int8_make_project TARGET_ARCH=arc TCF_FILE=<path_to_tcf_file> LCF_FILE=<path_to_lcf_file>
+make -f tensorflow/lite/micro/tools/make/Makefile generate_person_detection_test_int8_make_project TARGET=arc_custom TCF_FILE=<path_to_tcf_file> LCF_FILE=<path_to_lcf_file>
 ```
 
 The application project will be generated into
