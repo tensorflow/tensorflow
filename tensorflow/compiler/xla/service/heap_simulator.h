@@ -481,8 +481,8 @@ class ConstrainedGlobalDecreasingSizeBestFitHeap
  public:
   explicit ConstrainedGlobalDecreasingSizeBestFitHeap(
       uint64 size_limit_per_heap, int64 alignment, Type type = kSpatial)
-      : size_limit_per_heap_(size_limit_per_heap),
-        GlobalDecreasingSizeBestFitHeap<HloValue>(alignment, type) {}
+      : GlobalDecreasingSizeBestFitHeap<HloValue>(alignment, type),
+        size_limit_per_heap_(size_limit_per_heap) {}
   ~ConstrainedGlobalDecreasingSizeBestFitHeap() override {}
 
   Result Finish() override;
