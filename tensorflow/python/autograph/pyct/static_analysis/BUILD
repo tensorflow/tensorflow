@@ -26,7 +26,7 @@ py_library(
         "reaching_fndefs.py",
         "type_inference.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python:util",
@@ -40,7 +40,7 @@ py_test(
     name = "activity_test",
     srcs = ["activity_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":static_analysis",
         "//tensorflow/python:client_testlib",
@@ -53,7 +53,7 @@ py_library(
     name = "activity_test_lib",
     testonly = True,
     srcs = ["activity_test.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":static_analysis",
         "//tensorflow/python:client_testlib",
