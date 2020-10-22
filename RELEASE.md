@@ -293,6 +293,8 @@ This release contains contributions from many people at Google, as well as:
     *   Improvements to Keras preprocessing layers:
         *   TextVectorization can now accept a vocabulary list or file as an
             init arg.
+        *   TextVectorization, StringLookup, and IntegerLookup can now accept a
+            vocabulary file via the `set_vocab_from_file` method.
         *   Normalization can now accept mean and variance values as init args.
     *   In `Attention` and `AdditiveAttention` layers, the `call()` method now
         accepts a `return_attention_scores` argument. When set to
