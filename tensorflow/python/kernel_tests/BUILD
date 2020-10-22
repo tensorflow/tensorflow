@@ -313,7 +313,10 @@ tf_py_test(
     size = "medium",
     srcs = ["collective_ops_multi_worker_test.py"],
     python_version = "PY3",
-    tags = ["no_rocm"],
+    tags = [
+        "no_rocm",
+        "notsan",  # TODO(b/171435192)
+    ],
     tfrt_enabled = False,
     deps = [
         "//tensorflow/python:collective_ops",
