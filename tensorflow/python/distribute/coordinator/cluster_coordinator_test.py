@@ -848,7 +848,7 @@ class StrategyIntegrationTest(test.TestCase):
     self.assertAlmostEqual(v1.read_value().numpy(), 0.1, delta=1e-6)
     self.assertAlmostEqual(v2.read_value().numpy(), 0.8, delta=1e-6)
 
-  def testRun(self):
+  def testRunAndReduce(self):
     self.assertFalse(distribution_strategy_context.in_cross_replica_context())
     with self.strategy.scope():
       self.assertTrue(distribution_strategy_context.in_cross_replica_context())
@@ -863,7 +863,11 @@ class StrategyIntegrationTest(test.TestCase):
               distribution_strategy_context.in_cross_replica_context())
           return input_tensor + v, input_tensor - v
 
-        return self.strategy.run(replica_fn, args=(input_tensor,))
+        run_result = self.strategy.run(replica_fn, args=(input_tensor,))
+        reduced_result = self.strategy.reduce('SUM', run_result, axis=None)
+        check_ops.assert_equal_v2(run_result, (4, 2))
+        check_ops.assert_equal_v2(reduced_result, (4, 2))
+        return reduced_result
 
       # Asserting scheduling in scope has the expected behavior.
       result = self.coordinator.schedule(

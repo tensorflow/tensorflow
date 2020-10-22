@@ -668,6 +668,11 @@ class ParameterServerStrategyV2Extended(
       # TODO(rchao): Support multi-replica per worker or sync-group.
       return distribute_utils.regroup((fn(*args, **kwargs),))
 
+  def _reduce(self, reduce_op, value):
+    # TODO(rchao): Provide implementation for multi-replica. Also look into why
+    # the default implementation is not working.
+    return value
+
 
 # The warning that will be logged if the way we initialize sharded variables
 # is memory-inefficient.
