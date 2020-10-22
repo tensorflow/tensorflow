@@ -1144,7 +1144,22 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
     return Status::OK();
   }
 
-  return IrEmitter::HandleFusion(fusion);
+  int unroll_factor = 1;
+  if (!MayPreventVectorization(*fusion)) {
+    unroll_factor = ComputeMaxUnrollFactor(fusion);
+  }
+
+  MlirEmitterInput input;
+  TF_ASSIGN_OR_RETURN(input.op, lhlo_scratch_emitter_.EmitFusionOp(fusion));
+  const auto& buffer_assignment = ir_emitter_context_->buffer_assignment();
+  auto& slice = input.extra_slice;
+  TF_ASSIGN_OR_RETURN(slice.buffer_slice,
+                      buffer_assignment.GetUniqueSlice(fusion, {}));
+  slice.written = true;
+  slice.shape = fusion->shape();
+  input.thunk_info = GetThunkInfo(fusion);
+
+  return EmitLoopFusionFromMlir(input, fusion->shape(), unroll_factor);
 }
 
 Status IrEmitterUnnested::HandleCopy(HloInstruction* copy) {
