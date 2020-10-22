@@ -100,10 +100,15 @@ PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane) {
 
 namespace {
 
-void SetRunEnvironment(int32 accelerator_count, RunEnvironment* env) {
+void SetRunEnvironment(const XSpace& space, int32 accelerator_count,
+                       RunEnvironment* env) {
   // Currently, we only support profiling one host and one program.
   env->set_host_count(1);
   env->set_task_count(1);
+  for (const auto& hostname : space.hostnames()) {
+    std::vector<std::string> hostname_split = absl::StrSplit(hostname, ':');
+    (*env->mutable_hostnames())[hostname_split[0]] = true;
+  }
   env->set_device_type(accelerator_count > 0 ? "GPU" : "CPU");
   env->set_device_core_count(accelerator_count);
 }
@@ -155,7 +160,8 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
   // Convert device planes.
   OpMetricsDbCombiner op_metrics_db_combiner(
       op_stats.mutable_device_op_metrics_db());
-  SetRunEnvironment(device_planes.size(), op_stats.mutable_run_environment());
+  SetRunEnvironment(space, device_planes.size(),
+                    op_stats.mutable_run_environment());
 
   KernelReportMap reports;
   // TODO(b/161942993) parallelize XPlane processing per thread.

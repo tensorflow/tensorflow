@@ -526,3 +526,21 @@ tf_cc_test(
         "@com_google_absl//absl/strings",
     ],
 )
+
+cc_library(
+    name = "device_caps_utils",
+    srcs = ["device_caps_utils.cc"],
+    hdrs = ["device_caps_utils.h"],
+    copts = tf_profiler_copts(),
+    visibility = [":friends"],
+    deps = [
+        ":xplane_builder",
+        ":xplane_schema",
+        ":xplane_visitor",
+        "//tensorflow/core:platform_base",
+        "//tensorflow/core/platform:types",
+        "//tensorflow/core/profiler/protobuf:hardware_types_proto_cc",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)

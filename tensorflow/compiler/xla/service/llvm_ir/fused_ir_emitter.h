@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <map>
 #include <unordered_map>
-#include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/optional.h"
@@ -154,10 +153,9 @@ class FusedIrEmitter : public ConstDfsHloVisitorWithDefault {
 
   // Cache of generated values, lest we regenerate an element of a node with
   // multiple outgoing edges
-  absl::flat_hash_map<const HloInstruction*,
-                      absl::flat_hash_map<std::pair<const llvm::BasicBlock*,
-                                                    std::vector<llvm::Value*>>,
-                                          llvm::Value*>>
+  absl::flat_hash_map<
+      const HloInstruction*,
+      absl::flat_hash_map<std::vector<llvm::Value*>, llvm::Value*>>
       generated_value_cache_;
 };
 

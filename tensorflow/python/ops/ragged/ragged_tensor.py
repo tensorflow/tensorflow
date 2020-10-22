@@ -1737,6 +1737,11 @@ class RaggedTensor(composite_tensor.CompositeTensor,
       if default_value is None:
         default_value = array_ops.zeros((), self.dtype)
 
+      if (isinstance(shape, (list, tuple)) and
+          any(isinstance(v, ops.Tensor) for v in shape) and
+          all(isinstance(v, (int, ops.Tensor)) for v in shape)):
+        shape = array_ops.stack(shape)
+
       shape_tensor = _shape_as_tensor(shape, row_partition_tensors[0].dtype)
       tensor = gen_ragged_conversion_ops.ragged_tensor_to_tensor(
           shape=shape_tensor,

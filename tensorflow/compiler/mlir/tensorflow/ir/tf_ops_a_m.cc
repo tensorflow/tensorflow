@@ -454,6 +454,20 @@ Optional<ContractionFusion> BiasAddOp::GetContractionFusion() {
   return ContractionFusion("BiasAdd", /*additional_arguments=*/{1});
 }
 
+LogicalResult BiasAddOp::UpdateDataFormat(StringRef data_format) {
+  return ::mlir::TF::UpdateDataFormat(data_format, this);
+}
+
+StringRef BiasAddOp::GetOptimalLayout(const RuntimeDevices &devices) {
+  // Keep current data format if no GPUs are available or if explicit placement
+  // does not allow to use GPU for this operation.
+  if (!CanUseGpuDevice(devices) || !CanUseGpuDevice(getOperation()))
+    return data_format();
+
+  // Prefer NHWC for GPU devices.
+  return "NHWC";
+}
+
 //===----------------------------------------------------------------------===//
 // BiasAddGradOp
 //===----------------------------------------------------------------------===//

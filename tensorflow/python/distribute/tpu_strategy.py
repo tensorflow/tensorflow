@@ -52,7 +52,6 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -1480,12 +1479,8 @@ class _TPUReplicaContext(distribute_lib.ReplicaContext):
       result = array_ops.concat(squeezed, axis=axis)
       return result
 
-    @custom_gradient.custom_gradient
-    def grad_wrapper(*xs):
-      ys = [_all_to_all(t, axis=axis) for t in xs]
-      return ys, lambda *dy_s: self.all_gather(dy_s, axis)
-
-    return nest.pack_sequence_as(value, grad_wrapper(*nest.flatten(value)))
+    ys = [_all_to_all(t, axis=axis) for t in nest.flatten(value)]
+    return nest.pack_sequence_as(value, ys)
 
 
 def _set_last_step_outputs(ctx, last_step_tensor_outputs):

@@ -7502,6 +7502,11 @@ op {
     name: "input"
     type_attr: "T"
   }
+  input_arg {
+    name: "ordering_token"
+    type: DT_RESOURCE
+    number_attr: "Nordering_token"
+  }
   output_arg {
     name: "data"
     type_attr: "T"
@@ -7549,6 +7554,14 @@ op {
       f: 0
     }
   }
+  attr {
+    name: "Nordering_token"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
   is_stateful: true
 }
 op {
@@ -7568,6 +7581,11 @@ op {
   input_arg {
     name: "instance_key"
     type: DT_INT32
+  }
+  input_arg {
+    name: "ordering_token"
+    type: DT_RESOURCE
+    number_attr: "Nordering_token"
   }
   output_arg {
     name: "data"
@@ -7599,6 +7617,14 @@ op {
     default_value {
       f: 0
     }
+  }
+  attr {
+    name: "Nordering_token"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
   }
   is_stateful: true
 }
@@ -7647,6 +7673,11 @@ op {
   input_arg {
     name: "input"
     type_attr: "T"
+  }
+  input_arg {
+    name: "ordering_token"
+    type: DT_RESOURCE
+    number_attr: "Nordering_token"
   }
   output_arg {
     name: "data"
@@ -7725,6 +7756,14 @@ op {
       f: 0
     }
   }
+  attr {
+    name: "Nordering_token"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
   is_stateful: true
 }
 op {
@@ -7744,6 +7783,11 @@ op {
   input_arg {
     name: "instance_key"
     type: DT_INT32
+  }
+  input_arg {
+    name: "ordering_token"
+    type: DT_RESOURCE
+    number_attr: "Nordering_token"
   }
   output_arg {
     name: "data"
@@ -7797,6 +7841,14 @@ op {
     default_value {
       f: 0
     }
+  }
+  attr {
+    name: "Nordering_token"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
   }
   is_stateful: true
 }

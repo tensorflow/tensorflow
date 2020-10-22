@@ -143,6 +143,12 @@ SimpleOrcJIT::SimpleOrcJIT(
   main_jit_dylib_->addGenerator(
       std::make_unique<RuntimeSymbolGenerator>(*this));
   object_layer_.registerJITEventListener(*this);
+
+  // Copied from LLJIT, required to find symbols on Windows.
+  if (target_machine_->getTargetTriple().isOSBinFormatCOFF()) {
+    object_layer_.setOverrideObjectFlagsWithResponsibilityFlags(true);
+    object_layer_.setAutoClaimResponsibilityForObjectSymbols(true);
+  }
 }
 
 llvm::Expected<std::unique_ptr<SimpleOrcJIT>> SimpleOrcJIT::Create(

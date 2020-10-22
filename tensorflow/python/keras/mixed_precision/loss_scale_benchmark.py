@@ -25,7 +25,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
-from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
+from tensorflow.python.keras.mixed_precision import loss_scale_optimizer
 from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables

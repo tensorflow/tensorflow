@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import functools
+import os
 import platform
 import sys
 import threading
@@ -46,7 +47,6 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import coordinator
 from tensorflow.python.training.server_lib import ClusterSpec
-from tensorflow.python.util import nest
 
 
 class CoordinatedClosureQueueTest(test.TestCase):
@@ -223,7 +223,7 @@ class CoordinatedClosureQueueTest(test.TestCase):
         errors.CancelledError,
         'The corresponding function is cancelled. Please reschedule the '
         'function.'):
-      closure2._fetch_output_remote_values()
+      closure2.output_remote_value.fetch()
 
     # The error is cleared.
     closure_queue.put(self._create_closure(closure_queue._cancellation_mgr))
@@ -245,7 +245,7 @@ class CoordinatedClosureQueueTest(test.TestCase):
         errors.CancelledError,
         'The corresponding function is cancelled. Please reschedule the '
         'function.'):
-      closure2._fetch_output_remote_values()
+      closure2.output_remote_value.fetch()
 
     # The error is cleared.
     closure_queue.wait()
@@ -266,8 +266,7 @@ class CoordinatedClosureQueueTest(test.TestCase):
     try:
       raise error
     except Exception as e:  # pylint: disable=broad-except
-      nest.map_structure(lambda x: x._set_error(e),
-                         closure._output_remote_values)
+      closure.output_remote_value._set_error(e)
       closure_queue.mark_failed(e)
 
   def _test_cancel_closure_when_error(self, call_wait):
@@ -319,7 +318,7 @@ class CoordinatedClosureQueueTest(test.TestCase):
 
     # This asserts that closure1 has errored.
     with self.assertRaisesRegex(ValueError, 'Some error.'):
-      closure1._fetch_output_remote_values()
+      closure1.output_remote_value.fetch()
 
     # The following asserts that closure3 should have been cancelled.
     if not call_wait:
@@ -327,13 +326,13 @@ class CoordinatedClosureQueueTest(test.TestCase):
           errors.CancelledError,
           'The corresponding function is cancelled. Please reschedule the '
           'function.'):
-        closure3._fetch_output_remote_values()
+        closure3.output_remote_value.fetch()
 
     # Closure2 was an inflight closure when it got cancelled.
-    self.assertEqual(closure2._output_remote_values._status,
+    self.assertEqual(closure2.output_remote_value._status,
                      coordinator_lib._RemoteValueStatus.READY)
     with self.assertRaisesRegex(ValueError, 'Fake cancellation error.'):
-      closure2._fetch_output_remote_values()
+      closure2.output_remote_value.fetch()
 
     # This asserts that the queue has a clear state.
     self.testBasic()
@@ -459,7 +458,20 @@ class ClusterCoordinatorTest(TestCaseWithErrorReportingThread):
 
     got = self.coordinator.schedule(f)
     want = 2, (3, 4), [5], {'v': 1}
+    self.assertEqual(got.fetch(), want)
     self.assertEqual(self.coordinator.fetch(got), want)
+
+  def testFetchingRemoteValueStructure(self):
+    x = constant_op.constant(1)
+
+    @def_function.function
+    def f():
+      return x + 1, (x + 2, x + 3), [x + 4], {'v': x}
+
+    want = 2, (3, 4), [5], {'v': 1}
+    remote_value_list = [self.coordinator.schedule(f) for _ in range(5)]
+    self.assertAllEqual(
+        self.coordinator.fetch(remote_value_list), [want for _ in range(5)])
 
   def testInputFunction(self):
 
@@ -586,6 +598,7 @@ class ClusterCoordinatorTest(TestCaseWithErrorReportingThread):
     self.assertNotAllEqual(elements_in_iterator_1, elements_in_iterator_2)
 
   def testPerWorkerValue(self):
+    self.skipTest('b/168569314')
     var_shape = tuple()
     var_dtype = dtypes.float32
     var_name = 'var'
@@ -605,7 +618,7 @@ class ClusterCoordinatorTest(TestCaseWithErrorReportingThread):
     # _create_worker_resources is able to infer the tensor spec of the return
     # value of the function passed in. See b/154675763.
     for var in worker_local_var._values:
-      var._set_type_spec(tensor_spec.TensorSpec(var_shape, var_dtype, var_name))
+      var._type_spec = tensor_spec.TensorSpec(var_shape, var_dtype, var_name)
 
     def worker_fn(var):
       var.assign_add(1.0)
@@ -651,6 +664,29 @@ class LimitedClosureQueueSizeBasicTest(ClusterCoordinatorTest):
     coordinator_lib._CLOSURE_QUEUE_MAX_SIZE = 2
     cls.coordinator = make_coordinator(num_workers=3, num_ps=2)
     cls.strategy = cls.coordinator.strategy
+
+
+class ScheduleStartDelayTest(ClusterCoordinatorTest):
+  """Test basic functionality works with worker scheduling delay.
+
+  This is basically to make sure that setting environment variables
+  `TF_COORDINATOR_SCHEDULE_START_DELAY` and
+  `TF_COORDINATOR_SCHEDULE_START_DELAY_MAX` will cause any failure.
+  """
+
+  @classmethod
+  def setUpClass(cls):
+    super(ScheduleStartDelayTest, cls).setUpClass()
+    os.environ['TF_COORDINATOR_SCHEDULE_START_DELAY'] = '2'
+    os.environ['TF_COORDINATOR_SCHEDULE_START_DELAY_MAX'] = '4'
+    cls.coordinator = make_coordinator(num_workers=3, num_ps=2)
+    cls.strategy = cls.coordinator.strategy
+
+  @classmethod
+  def tearDownClass(cls):
+    del os.environ['TF_COORDINATOR_SCHEDULE_START_DELAY']
+    del os.environ['TF_COORDINATOR_SCHEDULE_START_DELAY_MAX']
+    super(ScheduleStartDelayTest, cls).tearDownClass()
 
 
 class ErrorReportingTest(TestCaseWithErrorReportingThread):
@@ -812,7 +848,7 @@ class StrategyIntegrationTest(test.TestCase):
     self.assertAlmostEqual(v1.read_value().numpy(), 0.1, delta=1e-6)
     self.assertAlmostEqual(v2.read_value().numpy(), 0.8, delta=1e-6)
 
-  def testStrategyRun(self):
+  def testRunAndReduce(self):
     self.assertFalse(distribution_strategy_context.in_cross_replica_context())
     with self.strategy.scope():
       self.assertTrue(distribution_strategy_context.in_cross_replica_context())
@@ -825,20 +861,67 @@ class StrategyIntegrationTest(test.TestCase):
           # Within `replica_fn`, it has to be in a replica context.
           self.assertFalse(
               distribution_strategy_context.in_cross_replica_context())
-          return input_tensor + v
+          return input_tensor + v, input_tensor - v
 
-        return self.strategy.run(replica_fn, args=(input_tensor,))
+        run_result = self.strategy.run(replica_fn, args=(input_tensor,))
+        reduced_result = self.strategy.reduce('SUM', run_result, axis=None)
+        check_ops.assert_equal_v2(run_result, (4, 2))
+        check_ops.assert_equal_v2(reduced_result, (4, 2))
+        return reduced_result
 
       # Asserting scheduling in scope has the expected behavior.
       result = self.coordinator.schedule(
           worker_fn, args=(constant_op.constant(3),))
       self.assertIsInstance(result, coordinator_lib.RemoteValue)
-      self.assertEqual(result.fetch(), 4)
+      self.assertEqual(result.fetch(), (4, 2))
 
     # Asserting scheduling out of scope has the expected behavior.
     result = self.coordinator.schedule(
         worker_fn, args=(constant_op.constant(3),))
-    self.assertEqual(result.fetch(), 4)
+    self.assertEqual(result.fetch(), (4, 2))
+
+  def testDistributeDataset(self):
+
+    def per_worker_dataset_fn():
+      dataset = dataset_ops.DatasetV2.range(1, 2)
+      return self.strategy.experimental_distribute_dataset(dataset)
+
+    @def_function.function
+    def worker_fn(iterator):
+      return next(iterator)
+
+    distributed_dataset = self.coordinator.create_per_worker_dataset(
+        per_worker_dataset_fn)
+    result = self.coordinator.schedule(
+        worker_fn, args=(iter(distributed_dataset),))
+    result = result.fetch()
+    self.assertEqual(result, (1,))
+
+  def testDistributeDatasetsFromFunction(self):
+
+    def per_worker_dataset_fn():
+      return self.strategy.distribute_datasets_from_function(
+          lambda _: dataset_ops.DatasetV2.range(1, 2))
+
+    @def_function.function
+    def worker_fn(iterator):
+      return next(iterator)
+
+    distributed_dataset = self.coordinator.create_per_worker_dataset(
+        per_worker_dataset_fn)
+    result = self.coordinator.schedule(
+        worker_fn, args=(iter(distributed_dataset),))
+    result = result.fetch()
+    self.assertEqual(result, (1,))
+
+  def testCallingDistributeDatasetOutside(self):
+    with self.assertRaises(ValueError):
+      dataset = dataset_ops.DatasetV2.range(1, 2)
+      self.strategy.experimental_distribute_dataset(dataset)
+
+    with self.assertRaises(ValueError):
+      self.strategy.distribute_datasets_from_function(
+          lambda _: dataset_ops.DatasetV2.range(1, 2))
 
 
 if __name__ == '__main__':

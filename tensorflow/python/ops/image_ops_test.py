@@ -5119,7 +5119,6 @@ class PSNRTest(test_util.TensorFlowTestCase):
     """Returns an image or image batch with given shape."""
     return np.random.rand(*shape).astype(np.float32) * max_val
 
-  @test_util.run_deprecated_v1
   def testPSNRSingleImage(self):
     image1 = self._RandomImage((8, 8, 1), 1)
     image2 = self._RandomImage((8, 8, 1), 1)
@@ -5130,10 +5129,9 @@ class PSNRTest(test_util.TensorFlowTestCase):
                                        dtype=dtypes.float32)
       tf_image2 = constant_op.constant(image2, shape=image2.shape,
                                        dtype=dtypes.float32)
-      tf_psnr = image_ops.psnr(tf_image1, tf_image2, 1.0, "psnr").eval()
+      tf_psnr = self.evaluate(image_ops.psnr(tf_image1, tf_image2, 1.0, "psnr"))
       self.assertAllClose(psnr, tf_psnr, atol=0.001)
 
-  @test_util.run_deprecated_v1
   def testPSNRMultiImage(self):
     image1 = self._RandomImage((10, 8, 8, 1), 1)
     image2 = self._RandomImage((10, 8, 8, 1), 1)
@@ -5144,10 +5142,9 @@ class PSNRTest(test_util.TensorFlowTestCase):
                                        dtype=dtypes.float32)
       tf_image2 = constant_op.constant(image2, shape=image2.shape,
                                        dtype=dtypes.float32)
-      tf_psnr = image_ops.psnr(tf_image1, tf_image2, 1, "psnr").eval()
+      tf_psnr = self.evaluate(image_ops.psnr(tf_image1, tf_image2, 1, "psnr"))
       self.assertAllClose(psnr, tf_psnr, atol=0.001)
 
-  @test_util.run_deprecated_v1
   def testGoldenPSNR(self):
     q20, q72, q95 = self._LoadTestImages()
 
@@ -5165,23 +5162,21 @@ class PSNRTest(test_util.TensorFlowTestCase):
       tf_q20 = constant_op.constant(q20, shape=q20.shape, dtype=dtypes.float32)
       tf_q72 = constant_op.constant(q72, shape=q72.shape, dtype=dtypes.float32)
       tf_q95 = constant_op.constant(q95, shape=q95.shape, dtype=dtypes.float32)
-      tf_psnr1 = image_ops.psnr(tf_q20, tf_q72, 1, "psnr1").eval()
-      tf_psnr2 = image_ops.psnr(tf_q20, tf_q95, 1, "psnr2").eval()
-      tf_psnr3 = image_ops.psnr(tf_q72, tf_q95, 1, "psnr3").eval()
+      tf_psnr1 = self.evaluate(image_ops.psnr(tf_q20, tf_q72, 1, "psnr1"))
+      tf_psnr2 = self.evaluate(image_ops.psnr(tf_q20, tf_q95, 1, "psnr2"))
+      tf_psnr3 = self.evaluate(image_ops.psnr(tf_q72, tf_q95, 1, "psnr3"))
       self.assertAllClose(psnr1, tf_psnr1, atol=0.001)
       self.assertAllClose(psnr2, tf_psnr2, atol=0.001)
       self.assertAllClose(psnr3, tf_psnr3, atol=0.001)
 
-  @test_util.run_deprecated_v1
   def testInfinity(self):
     q20, _, _ = self._LoadTestImages()
     psnr = self._PSNR_NumPy(q20, q20, 1)
     with self.cached_session(use_gpu=True):
       tf_q20 = constant_op.constant(q20, shape=q20.shape, dtype=dtypes.float32)
-      tf_psnr = image_ops.psnr(tf_q20, tf_q20, 1, "psnr").eval()
+      tf_psnr = self.evaluate(image_ops.psnr(tf_q20, tf_q20, 1, "psnr"))
       self.assertAllClose(psnr, tf_psnr, atol=0.001)
 
-  @test_util.run_deprecated_v1
   def testInt(self):
     img1 = self._RandomImage((10, 8, 8, 1), 255)
     img2 = self._RandomImage((10, 8, 8, 1), 255)
@@ -5193,7 +5188,7 @@ class PSNRTest(test_util.TensorFlowTestCase):
     psnr_float32 = image_ops.psnr(img1, img2, 1.0)
     with self.cached_session(use_gpu=True):
       self.assertAllClose(
-          psnr_uint8.eval(), self.evaluate(psnr_float32), atol=0.001)
+          self.evaluate(psnr_uint8), self.evaluate(psnr_float32), atol=0.001)
 
 
 class SSIMTest(test_util.TensorFlowTestCase):
@@ -5223,18 +5218,21 @@ class SSIMTest(test_util.TensorFlowTestCase):
     """Returns an image or image batch with given shape."""
     return np.random.rand(*shape).astype(np.float32) * max_val
 
-  @test_util.run_deprecated_v1
   def testAgainstMatlab(self):
     """Tests against values produced by Matlab."""
     img = self._LoadTestImages()
     expected = self._ssim[np.triu_indices(3)]
 
-    ph = [array_ops.placeholder(dtype=dtypes.float32) for _ in range(2)]
-    ssim = image_ops.ssim(
-        *ph, max_val=1.0, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03)
+    def ssim_func(x):
+      return image_ops.ssim(
+          *x, max_val=1.0, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03)
+
     with self.cached_session(use_gpu=True):
-      scores = [ssim.eval(dict(zip(ph, t)))
-                for t in itertools.combinations_with_replacement(img, 2)]
+      scores = [
+          self.evaluate(ssim_func(t))
+          for t in itertools.combinations_with_replacement(img, 2)
+      ]
+
     self.assertAllClose(expected, np.squeeze(scores), atol=1e-4)
 
   def testBatch(self):
@@ -5292,7 +5290,6 @@ class SSIMTest(test_util.TensorFlowTestCase):
     with self.cached_session(use_gpu=True):
       self.assertAllClose(expected, self.evaluate(ssim), atol=1e-4)
 
-  @test_util.run_deprecated_v1
   def testNegative(self):
     """Tests against negative SSIM index."""
     step = np.expand_dims(np.arange(0, 256, 16, dtype=np.uint8), axis=0)
@@ -5311,9 +5308,8 @@ class SSIMTest(test_util.TensorFlowTestCase):
         k1=0.01,
         k2=0.03)
     with self.cached_session(use_gpu=True):
-      self.assertLess(ssim.eval(), 0)
+      self.assertLess(self.evaluate(ssim), 0)
 
-  @test_util.run_deprecated_v1
   def testInt(self):
     img1 = self._RandomImage((1, 16, 16, 3), 255)
     img2 = self._RandomImage((1, 16, 16, 3), 255)
@@ -5327,7 +5323,7 @@ class SSIMTest(test_util.TensorFlowTestCase):
         img1, img2, 1.0, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03)
     with self.cached_session(use_gpu=True):
       self.assertAllClose(
-          ssim_uint8.eval(), self.evaluate(ssim_float32), atol=0.001)
+          self.evaluate(ssim_uint8), self.evaluate(ssim_float32), atol=0.001)
 
 
 class MultiscaleSSIMTest(test_util.TensorFlowTestCase):

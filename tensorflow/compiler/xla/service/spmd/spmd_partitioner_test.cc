@@ -6134,6 +6134,43 @@ ENTRY entry {
                           op::Shape("f32[8,105,210,32]")));
 }
 
+TEST_F(SpmdPartitioningTest, Fft3D) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  constant = c64[1,1,6]
+    constant({{{(0,0),(1,1),(2,2),(3,3),(4,4),(5,5)}}}),
+    sharding={devices=[1,1,2]0,1}
+  ROOT fft = c64[1,1,6] fft(c64[1,1,6] constant), fft_type=FFT, fft_length={6},
+    sharding={devices=[1,1,2]0,1}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  auto root = module->entry_computation()->root_instruction();
+  auto input = AllOf(op::DynamicSlice(op::Constant(), op::Constant(),
+                                      op::Constant(), op::Reshape()),
+                     op::Shape("c64[1,1,3]"));
+  auto padded_input =
+      AllOf(op::DynamicSlice(
+                op::Concatenate(input, op::CollectivePermute(op::Slice())),
+                op::Constant(), op::Constant(), op::Reshape()),
+            op::Shape("c64[1,1,4]"));
+
+  auto shuffled_input =
+      AllOf(op::Slice(op::AllToAll(op::Dot(padded_input, op::Convert()))),
+            op::Shape("c64[1,1,3]"));
+
+  auto local_fft = AllOf(op::Fft(shuffled_input), op::Shape("c64[1,1,3]"));
+
+  EXPECT_THAT(root, AllOf(op::GetTupleElement(op::While(op::Tuple(
+                              _, op::Multiply(local_fft, op::Exp()), _, _, _))),
+                          op::Shape("c64[1,1,3]")));
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla

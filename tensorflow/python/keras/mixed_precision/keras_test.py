@@ -44,10 +44,10 @@ from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.layers import core
-from tensorflow.python.keras.mixed_precision.experimental import get_layer_policy
-from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
-from tensorflow.python.keras.mixed_precision.experimental import policy
-from tensorflow.python.keras.mixed_precision.experimental import test_util as mp_test_util
+from tensorflow.python.keras.mixed_precision import get_layer_policy
+from tensorflow.python.keras.mixed_precision import loss_scale_optimizer
+from tensorflow.python.keras.mixed_precision import policy
+from tensorflow.python.keras.mixed_precision import test_util as mp_test_util
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.keras.saving import save
 from tensorflow.python.keras.utils import generic_utils
@@ -1091,9 +1091,9 @@ class KerasModelTest(keras_parameterized.TestCase):
     ckpt_dir = os.path.join(
         flags.FLAGS['test_srcdir'].value,
         'org_tensorflow/tensorflow/python/keras',
-        'mixed_precision/experimental/testdata/lso_ckpt_tf2.2')
+        'mixed_precision/testdata/lso_ckpt_tf2.2')
     # ckpt_dir = test.test_src_dir_path(
-    #     'python/keras/mixed_precision/experimental/testdata/lso_ckpt_tf2.2')
+    #     'python/keras/mixed_precision/testdata/lso_ckpt_tf2.2')
     model.load_weights(os.path.join(ckpt_dir, 'ckpt'))
     model.compile(opt, 'mse', run_eagerly=testing_utils.should_run_eagerly())
     model(np.zeros((2, 2)))  # Create model weights
@@ -1126,9 +1126,9 @@ class KerasModelTest(keras_parameterized.TestCase):
     saved_model_dir = os.path.join(
         flags.FLAGS['test_srcdir'].value,
         'org_tensorflow/tensorflow/python/keras',
-        'mixed_precision/experimental/testdata/lso_savedmodel_tf2.2')
+        'mixed_precision/testdata/lso_savedmodel_tf2.2')
     # saved_model_dir = test.test_src_dir_path(
-    #     'python/keras/mixed_precision/experimental/testdata/'
+    #     'python/keras/mixed_precision/testdata/'
     #     'lso_savedmodel_tf2.2')
     model = save.load_model(saved_model_dir)
     expected_kernel = np.array([[9.229685, 10.901115], [10.370763, 9.757362]])

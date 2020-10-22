@@ -101,7 +101,7 @@ class ClusterParameters(combinations_lib.ParameterModifier):
     else:
       has_chief = kwargs.get("has_chief", False)
       num_workers = kwargs.get("num_workers", 1)
-      runner = None
+      runner = kwargs.get("runner", None)
 
     # Always set cluster parameters if they're requested. So that generate()
     # works when there's no startegy in the combinations.

@@ -21,7 +21,7 @@ from __future__ import print_function
 import re
 
 from tensorflow.python.keras import combinations
-from tensorflow.python.keras.mixed_precision.experimental import device_compatibility_check
+from tensorflow.python.keras.mixed_precision import device_compatibility_check
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 

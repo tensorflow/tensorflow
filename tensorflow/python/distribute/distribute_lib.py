@@ -2935,6 +2935,7 @@ class ReplicaContextBase(object):
     require_replica_context(self)
     if kwargs is None:
       kwargs = {}
+
     merge_fn = autograph.tf_convert(
         merge_fn, autograph_ctx.control_status_ctx(), convert_by_default=False)
     return self._merge_call(merge_fn, args, kwargs)
@@ -3246,8 +3247,23 @@ class ReplicaContext(ReplicaContextBase):
     @custom_gradient.custom_gradient
     def grad_wrapper(*xs):
       ys = self.merge_call(batch_all_gather, args=xs)
-      # The gradient of an all-gather is itself an all-gather.
-      return ys, lambda *dy_s: self.all_gather(dy_s, axis)
+
+      def grad(*dy_s):
+        grads = self.all_reduce(reduce_util.ReduceOp.SUM, dy_s)
+        new_grads = []
+        for i, grad in enumerate(grads):
+          input_shape = array_ops.shape(xs[i])
+          axis_dim = array_ops.reshape(input_shape[axis], [1])
+          with ops.control_dependencies([array_ops.identity(grads)]):
+            d = self.all_gather(axis_dim, axis=0)
+            begin_dim = math_ops.reduce_sum(d[:self.replica_id_in_sync_group])
+            end_dim = begin_dim + array_ops.shape(xs[i])[axis]
+            new_grad = array_ops.gather(
+                grad, axis=axis, indices=math_ops.range(begin_dim, end_dim))
+            new_grads.append(new_grad)
+        return new_grads
+
+      return ys, grad
 
     return nest.pack_sequence_as(value, grad_wrapper(*nest.flatten(value)))
 

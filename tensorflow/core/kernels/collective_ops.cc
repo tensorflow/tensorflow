@@ -505,17 +505,15 @@ class CollectiveReduceV2OpKernel : public CollectiveOpKernel {
     sub_node.add_input(c->def().input(0));
     sub_node.add_input(c->def().input(0));
     sub_node.set_device(c->def().device());
-    SetAttrValue(col_params_.instance.data_type,
-                 &(*sub_node.mutable_attr())["T"]);
+    SetAttrValue(data_type_, &(*sub_node.mutable_attr())["T"]);
     merge_op_ = BuildOpKernel(c, merge_op_name, &sub_node);
     final_op_ = BuildOpKernel(c, final_op_name, &sub_node);
 
     name_ = strings::StrCat(c->def().name(), ": ReduceV2(", merge_op_name, ",",
                             final_op_name, ")");
     device_type_ = c->device_type();
-    VLOG(2) << "CollectiveReduceV2 " << this << " name " << col_params_.name
-            << " communication_hint "
-            << col_params_.instance.impl_details.communication_hint;
+    VLOG(2) << "CollectiveReduceV2 " << this << " name " << name_
+            << " communication_hint " << communication_hint_;
   }
 
  protected:
@@ -617,7 +615,6 @@ class CollectiveReduceV2OpKernel : public CollectiveOpKernel {
   DeviceType device_type_;
   std::unique_ptr<OpKernel> merge_op_;
   std::unique_ptr<OpKernel> final_op_;
-  CollectiveParams col_params_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("CollectiveReduceV2").Device(DEVICE_CPU),

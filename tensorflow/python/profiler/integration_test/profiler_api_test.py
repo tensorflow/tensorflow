@@ -83,7 +83,7 @@ class ProfilerApiTest(test_util.TensorFlowTestCase):
 
     model.fit(x=train_ds, epochs=2, steps_per_epoch=steps)
 
-  def test_single_worker_sampling_mode(self):
+  def test_single_worker_sampling_mode(self, delay_ms=None):
     """Test single worker sampling mode."""
 
     def on_worker(port):
@@ -100,6 +100,7 @@ class ProfilerApiTest(test_util.TensorFlowTestCase):
           host_tracer_level=2,
           python_tracer_level=0,
           device_tracer_level=1,
+          delay_ms=delay_ms,
       )
 
       profiler_client.trace('localhost:{}'.format(port), logdir, duration_ms,
@@ -114,6 +115,11 @@ class ProfilerApiTest(test_util.TensorFlowTestCase):
     thread_profiler.join()
     thread_worker.join(120)
     self._check_xspace_pb_exist(logdir)
+
+  def test_single_worker_sampling_mode_delayed(self):
+    """Test single worker sampling mode with delay."""
+
+    self.test_single_worker_sampling_mode(delay_ms=1000)
 
   def test_single_worker_programmatic_mode(self):
     """Test single worker programmatic mode."""

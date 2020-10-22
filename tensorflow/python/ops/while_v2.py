@@ -429,19 +429,20 @@ def _build_while_op(loop_vars, cond_graph, body_graph, output_shapes,
   else:
     op_fn = gen_functional_ops.stateless_while
 
-  outputs = op_fn(
-      loop_vars,
-      util.create_new_tf_function(cond_graph),
-      util.create_new_tf_function(body_graph),
-      output_shapes=output_shapes,
-      parallel_iterations=parallel_iterations,
-      name=name)
-  while_op = outputs[0].op
-  _copy_handle_data(body_graph.outputs, outputs)
-  util.maybe_set_lowering_attr(while_op)
-  util.maybe_propagate_compile_time_consts_in_xla(while_op)
-  _set_read_only_resource_inputs_attr(while_op, [cond_graph, body_graph])
-  return outputs
+  def _make_op(inputs):
+    while_op, tensors = util.get_op_and_outputs(op_fn(
+        inputs,
+        util.create_new_tf_function(cond_graph),
+        util.create_new_tf_function(body_graph),
+        output_shapes=output_shapes,
+        parallel_iterations=parallel_iterations,
+        name=name))
+    _copy_handle_data(body_graph.outputs, tensors)
+    util.maybe_set_lowering_attr(while_op)
+    util.maybe_propagate_compile_time_consts_in_xla(while_op)
+    _set_read_only_resource_inputs_attr(while_op, [cond_graph, body_graph])
+    return tensors
+  return util.run_as_function_for_tape_gradients(_make_op, loop_vars)
 
 
 def _get_intermediates(func_graph):
@@ -822,7 +823,7 @@ def _get_accumulator(tensor):
     # tf.defun adds an Identity for each output, check whether that is the case.
     identity_op = t.consumers()[0]
     if (identity_op.type == "Identity" and
-        identity_op.outputs[0] in tensor.graph.outputs):
+        any(identity_op.outputs[0] is t for t in tensor.graph.outputs)):
       return identity_op.outputs[0]
     return None
 

@@ -235,7 +235,7 @@ class _CollectiveAllReduceStrategyExperimental(
   @deprecation.deprecated(
       None, "use distribute.MultiWorkerMirroredStrategy instead")
   def __init__(self,
-               communication=collective_util.CommunicationImplemenation.AUTO,
+               communication=collective_util.CommunicationImplementation.AUTO,
                cluster_resolver=None):
     """Creates the strategy.
 
@@ -257,7 +257,7 @@ class _CollectiveAllReduceStrategyExperimental(
   def _from_local_devices(
       cls,
       devices,
-      communication=collective_util.CommunicationImplemenation.AUTO):
+      communication=collective_util.CommunicationImplementation.AUTO):
     """A convenience method to create an object with a list of devices."""
     obj = cls(communication)
     obj.extended._initialize_local(TFConfigClusterResolver(), devices=devices)  # pylint: disable=protected-access
@@ -276,7 +276,7 @@ class CollectiveAllReduceStrategyV1(distribute_lib.StrategyV1):
   _collective_key_base = 0
 
   def __init__(self,
-               communication=collective_util.CommunicationImplemenation.AUTO,
+               communication=collective_util.CommunicationImplementation.AUTO,
                cluster_resolver=None):
     """Initializes the object."""
     communication_options = collective_util.Options(
@@ -309,6 +309,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
   _check_health_initial_timeout = 0
   # Times to retry before considering the peer is down.
   _check_health_retry_limit = 3
+  # Timeout in seconds the each check health.
+  _check_health_timeout = 10
 
   def __init__(self, container_strategy, cluster_resolver,
                communication_options):
@@ -698,7 +700,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
 
     if (not ops.executing_eagerly_outside_functions() and
         self._communication_options.implementation ==
-        collective_util.CommunicationImplemenation.NCCL):
+        collective_util.CommunicationImplementation.NCCL):
       updated_config.experimental.collective_nccl = True
 
     if not self._cluster_spec:
@@ -780,12 +782,13 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
           while True:
             attempts += 1
             try:
-              context.context().check_collective_ops_peer_health(peer)
+              context.context().check_collective_ops_peer_health(
+                  peer, timeout_in_ms=self._check_health_timeout * 1000)
               # If check_collective_ops_peer_health doesn't raise an Exception,
               # the peer is healthy.
               break
-            except (errors.UnavailableError,
-                    errors.FailedPreconditionError) as e:
+            except (errors.UnavailableError, errors.FailedPreconditionError,
+                    errors.DeadlineExceededError) as e:
               # TODO(b/151232436): Always raise UnavailableError when a peer
               # fails. Now there could be many kinds of errors:
               # - Unavailable: when the peer is not reachable, e.g. it's down.
@@ -831,7 +834,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
           dummy_value,
           options=collective_util.Options(
               timeout_seconds=self._check_health_initial_timeout,
-              implementation=collective_util.CommunicationImplemenation.RING))
+              implementation=collective_util.CommunicationImplementation.RING))
       if context.is_async():
         context.async_wait()
     except errors.DeadlineExceededError:
@@ -858,7 +861,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
 
   def _warn_nccl_no_gpu(self):
     if ((self._communication_options.implementation ==
-         collective_util.CommunicationImplemenation.NCCL) and
+         collective_util.CommunicationImplementation.NCCL) and
         self._num_gpus_per_worker == 0):
       logging.warning("Enabled NCCL communication but no GPUs detected/"
                       "specified.")

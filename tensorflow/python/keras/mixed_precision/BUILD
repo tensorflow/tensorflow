@@ -76,7 +76,7 @@ py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python/keras",
         "//tensorflow/python/keras:combinations",
-        "//tensorflow/python/keras/mixed_precision/experimental:loss_scale_optimizer",
+        "//tensorflow/python/keras/mixed_precision:loss_scale_optimizer",
         "//tensorflow/python/keras/optimizer_v2",
     ],
 )
@@ -257,8 +257,8 @@ cuda_py_test(
     size = "medium",
     srcs = ["keras_test.py"],
     data = [
-        "//tensorflow/python/keras/mixed_precision/experimental/testdata:lso_ckpt_tf2.2",
-        "//tensorflow/python/keras/mixed_precision/experimental/testdata:lso_savedmodel_tf2.2",
+        "//tensorflow/python/keras/mixed_precision/testdata:lso_ckpt_tf2.2",
+        "//tensorflow/python/keras/mixed_precision/testdata:lso_savedmodel_tf2.2",
     ],
     python_version = "PY3",
     shard_count = 10,

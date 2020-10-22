@@ -398,6 +398,7 @@ TensorHandlePtr CollectiveSum(TFE_Context* context, TFE_TensorHandle* input,
   TFE_OpSetAttrIntList(op.get(), "subdiv_offsets", nullptr, 0);
 
   TFE_OpAddInput(op.get(), input, status);
+  TFE_OpAddInputList(op.get(), nullptr, 0, status);
   if (TF_GetCode(status) != TF_OK) return nullptr;
 
   TFE_TensorHandle* result_handle;
@@ -488,6 +489,7 @@ void RegisterCollectiveMulFunction(TFE_Context* context,
                    final_op.length());
   TF_SetAttrIntList(reduce_desc, "subdiv_offsets", nullptr, 0);
   TF_AddInput(reduce_desc, x);
+  TF_AddInputList(reduce_desc, nullptr, 0);
   TF_Operation* reduce_op = TF_FinishOperation(reduce_desc, status);
   if (TF_GetCode(status) != TF_OK) return;
   TF_Operation* operations[]{placeholder_op, reduce_op};

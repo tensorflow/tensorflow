@@ -278,6 +278,16 @@ class KerasObjectLoader(object):
       for name in PUBLIC_ATTRIBUTES:
         delete_tracking(node, name)
 
+      if isinstance(node, functional_lib.Functional):
+        # Delete the temporary layer dependencies, which were used to restore
+        # the checkpointed values. When the model is live, the user can delete
+        # or add layers to the model at any time, so these layer dependencies
+        # may be obsolete.
+        dependencies = list(node._self_unconditional_dependency_names)  # pylint: disable=protected-access
+        for name in dependencies:
+          if re.match(r'^layer(_with_weights)?-[\d+]', name) is not None:
+            delete_tracking(node, name)
+
   def _add_children_recreated_from_config(self, obj, proto, node_id):
     """Recursively records objects recreated from config."""
     # pylint: disable=protected-access
@@ -302,7 +312,7 @@ class KerasObjectLoader(object):
     # This is stored in the SavedModel as layer.keras_api.layer_metrics in
     # SavedModels created after Tf 2.2.
     metric_list_node_id = self._search_for_child_node(
-        node_id, [constants.KERAS_ATTR, 'layer_metrics'], raise_error=False)
+        node_id, [constants.KERAS_ATTR, 'layer_metrics'])
     if metric_list_node_id is not None and hasattr(obj, '_metrics'):
       obj_metrics = {m.name: m for m in obj._metrics}
       for reference in self._proto.nodes[metric_list_node_id].children:
@@ -384,8 +394,10 @@ class KerasObjectLoader(object):
 
       config = metadata.get('config')
       if _is_graph_network(node) and generic_utils.validate_config(config):
-        self.model_layer_dependencies[node_id] = (
-            node, self._get_child_layer_node_ids(node_id, node.name))
+        child_nodes = self._get_child_layer_node_ids(node_id)
+        self.model_layer_dependencies[node_id] = (node, child_nodes)
+        if not child_nodes:
+          self._models_to_reconstruct.append(node_id)
       return node, setter
 
     # Detect whether this object can be revived from the config. If not, then
@@ -448,9 +460,10 @@ class KerasObjectLoader(object):
 
     # Record this model and its layers. This will later be used to reconstruct
     # the model.
-    layers = self._get_child_layer_node_ids(node_id, model.name)
+    layers = self._get_child_layer_node_ids(node_id)
     self.model_layer_dependencies[node_id] = (model, layers)
-
+    if not layers:
+      self._models_to_reconstruct.append(node_id)
     return model
 
   def _revive_layer_from_config(self, metadata, node_id):
@@ -621,8 +634,14 @@ class KerasObjectLoader(object):
     """Reconstructs the network structure."""
     config = json_utils.decode(
         self._proto.nodes[model_id].user_object.metadata)['config']
-    if isinstance(model, models_lib.Sequential):
-      if not isinstance(layers[0], input_layer.InputLayer):
+
+    # Set up model inputs
+    if model.inputs:
+      # Inputs may already be created if the model is instantiated in another
+      # object's __init__.
+      pass
+    elif isinstance(model, models_lib.Sequential):
+      if not layers or not isinstance(layers[0], input_layer.InputLayer):
         if config['layers'][0]['class_name'] == 'InputLayer':
           layers.insert(0, input_layer.InputLayer.from_config(
               config['layers'][0]['config']))
@@ -635,13 +654,13 @@ class KerasObjectLoader(object):
               name=layers[0].name + '_input'))
       model.__init__(layers, name=config['name'])
       if not model.inputs:
-        first_layer = self._get_child_layer_node_ids(model_id, model.name)[0]
+        first_layer = self._get_child_layer_node_ids(model_id)[0]
         input_specs = self._infer_inputs(first_layer)
         input_shapes = self._infer_inputs(first_layer, convert_to_shapes=True)
         model._set_inputs(input_specs)  # pylint: disable=protected-access
         if not model.built and not isinstance(input_specs, dict):
           model.build(input_shapes)
-    else:
+    else:  # Reconstruct functional model
       (inputs, outputs,
        created_layers) = functional_lib.reconstruct_from_config(
            config, created_layers={layer.name: layer for layer in layers})
@@ -654,15 +673,31 @@ class KerasObjectLoader(object):
     # Unblock models that are dependent on this model.
     self._unblock_model_reconstruction(model_id, model)
 
-  def _get_child_layer_node_ids(self, node_id, name):
-    """Returns the node ids of the children layers of a node."""
-    # Retrieve the node id of layer.keras_api.layers.
-    layer_list = self._search_for_child_node(
-        node_id, [constants.KERAS_ATTR, 'layers'], name)
-    return [node.node_id for node in self._proto.nodes[layer_list].children]
+  def _get_child_layer_node_ids(self, node_id):
+    """Returns the node ids of each layer in a Sequential/Functional model."""
+    # Sequential and Functional track layers with names following the format
+    # "layer-N". Use this to generate the list of layers.
+    num_layers = 0
+    child_layers = {}
+    pattern = re.compile('layer-(\\d+)')
 
-  def _search_for_child_node(
-      self, parent_id, path_to_child, debugging_name=None, raise_error=True):
+    for child in self._proto.nodes[node_id].children:
+      m = pattern.match(child.local_name)
+      if m is None:
+        continue
+      layer_n = int(m.group(1))
+      num_layers = max(layer_n + 1, num_layers)
+      child_layers[layer_n] = child.node_id
+
+    ordered = []
+    for n in range(num_layers):
+      child = child_layers.get(n)
+      if child is None:
+        break
+      ordered.append(child)
+    return ordered
+
+  def _search_for_child_node(self, parent_id, path_to_child):
     """Returns node id of child node.
 
     A helper method for traversing the object graph proto.
@@ -680,37 +715,23 @@ class KerasObjectLoader(object):
     Args:
       parent_id: node id of parent node
       path_to_child: list of children names.
-      debugging_name: the name to print out when raising an error.
-      raise_error: Whether to raise an error if the child isn't found.
 
     Returns:
       node_id of child, or None if child isn't found.
-
-    Raises:
-      ValueError: if child isn't found and raise_error is True.
     """
     if not path_to_child:
       return parent_id
 
     for child in self._proto.nodes[parent_id].children:
       if child.local_name == path_to_child[0]:
-        return self._search_for_child_node(child.node_id, path_to_child[1:],
-                                           debugging_name, raise_error)
-
-    if raise_error:
-      raise ValueError(
-          'Error when loading {}: could not find attribute {}.\n'
-          'Most likely this object was serialized incorrectly.'
-          .format(debugging_name or path_to_child[0], path_to_child[0]))
-    else:
-      return None
+        return self._search_for_child_node(child.node_id, path_to_child[1:])
+    return None
 
   def _infer_inputs(self, layer_node_id, convert_to_shapes=False):
     """Infers input shape of layer from SavedModel functions."""
     coder = nested_structure_coder.StructureCoder()
     call_fn_id = self._search_for_child_node(
-        layer_node_id, ['call_and_return_all_conditional_losses'], None,
-        raise_error=False)
+        layer_node_id, ['call_and_return_all_conditional_losses'])
     if call_fn_id is None:
       return None
 
@@ -797,9 +818,9 @@ def _unable_to_call_layer_due_to_serialization_issue(
   """
 
   raise ValueError(
-      'Cannot call {} ({}), because the call function was not serialized to '
-      'the SavedModel (due to lack information about the inputs). Please try '
-      'one of the following methods to fix the serialization:'
+      'Cannot call custom layer {} of type {}, because the call function was '
+      'not serialized to the SavedModel.'
+      'Please try one of the following methods to fix this issue:'
       '\n\n(1) Implement `get_config` and `from_config` in the layer/model '
       'class, and pass the object to the `custom_objects` argument when '
       'loading the model. For more details, see: '
@@ -808,7 +829,7 @@ def _unable_to_call_layer_due_to_serialization_issue(
       'and not `__call__`. The input shape and dtype will be automatically '
       'recorded when the object is called, and used when saving. To manually '
       'specify the input shape/dtype, decorate the call function with '
-      '`@tf.function(input_signature=...)`.'.format(layer.name, layer))
+      '`@tf.function(input_signature=...)`.'.format(layer.name, type(layer)))
 
 
 def _finalize_config_layers(layers):
@@ -976,8 +997,11 @@ def _revive_setter(layer, name, value):
   elif (isinstance(layer, functional_lib.Functional) and
         re.match(r'^layer(_with_weights)?-[\d+]', name) is not None):
     # Edges named "layer-n" or "layer_with_weights-n", which are tracked in
-    # network._track_layers, should not be added as an attribute.
-    pass
+    # network._track_layers, should not be added as an attribute. They should
+    # be temporarily added as a dependency so that checkpointed values can be
+    # restored. These dependencies are manually deleted in
+    # KerasObjectLoader.del_tracking.
+    layer._track_trackable(value, name)  # pylint: disable=protected-access
   elif getattr(layer, name, None) is not None:
     # Don't overwrite already defined attributes.
     pass
