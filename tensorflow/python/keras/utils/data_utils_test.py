@@ -100,6 +100,9 @@ class TestGetFileAndValidateIt(test.TestCase):
           keras.utils.data_utils.validate_file(path, hashval_sha256))
       os.remove(path)
 
+    with self.assertRaisesRegexp(ValueError, "Please specify the 'origin'.*"):
+      _ = keras.utils.data_utils.get_file()
+
 
 class TestSequence(keras.utils.data_utils.Sequence):
 
