@@ -18,11 +18,15 @@ from __future__ import division
 from __future__ import print_function
 
 import binascii
+import copy
+import functools
+import operator
 import os
 import uuid
 
 import six
 
+from multiprocessing.dummy import Pool
 from tensorflow.python import _pywrap_file_io
 from tensorflow.python.framework import errors
 from tensorflow.python.util import compat
@@ -336,11 +340,15 @@ def write_string_to_file(filename, file_content):
 
 
 @tf_export(v1=["gfile.Glob"])
-def get_matching_files(filename):
+def get_matching_files(filename, max_parallel_num=1):
   """Returns a list of files that match the given pattern(s).
 
   Args:
     filename: string or iterable of strings. The glob pattern(s).
+    max_parallel_num: int. If `filename` is iterable of strings and
+      `max_parallel_num` is greater than one, it will create a threadpool to
+      match all strings parallelly. The size of threadpool is
+      `min(max_parallel_num, len(list(filename)))`.
 
   Returns:
     A list of strings containing filenames that match the given pattern(s).
@@ -348,12 +356,13 @@ def get_matching_files(filename):
   Raises:
   *  errors.OpError: If there are filesystem / directory listing errors.
   *  errors.NotFoundError: If pattern to be matched is an invalid directory.
+  *  TypeError: If any argument does not have the expected type.
   """
-  return get_matching_files_v2(filename)
+  return get_matching_files_v2(filename, max_parallel_num)
 
 
 @tf_export("io.gfile.glob")
-def get_matching_files_v2(pattern):
+def get_matching_files_v2(pattern, max_parallel_num=1):
   r"""Returns a list of files that match the given pattern(s).
 
   The patterns are defined as strings. Supported patterns are defined
@@ -396,6 +405,10 @@ def get_matching_files_v2(pattern):
 
   Args:
     pattern: string or iterable of strings. The glob pattern(s).
+    max_parallel_num: int. If `pattern` is iterable of strings and
+      `max_parallel_num` is greater than one, it will create a threadpool to
+      match all strings parallelly. The size of threadpool is
+      `min(max_parallel_num, len(list(pattern)))`.
 
   Returns:
     A list of strings containing filenames that match the given pattern(s).
@@ -403,6 +416,7 @@ def get_matching_files_v2(pattern):
   Raises:
     errors.OpError: If there are filesystem / directory listing errors.
     errors.NotFoundError: If pattern to be matched is an invalid directory.
+    TypeError: If any argument does not have the expected type.
   """
   if isinstance(pattern, six.string_types):
     return [
@@ -411,7 +425,11 @@ def get_matching_files_v2(pattern):
         for matching_filename in _pywrap_file_io.GetMatchingFiles(
             compat.as_bytes(pattern))
     ]
-  else:
+
+  if not isinstance(max_parallel_num, int):
+    raise TypeError("`max_parallel_num` must be a integer.")
+
+  if max_parallel_num <= 1:
     return [
         # Convert the filenames to string from bytes.
         compat.as_str_any(matching_filename)  # pylint: disable=g-complex-comprehension
@@ -419,6 +437,22 @@ def get_matching_files_v2(pattern):
         for matching_filename in _pywrap_file_io.GetMatchingFiles(
             compat.as_bytes(single_filename))
     ]
+
+  def handle_single_pattern(single_pattern):
+    partial_files = [
+      compat.as_str_any(matching_filename)
+      for matching_filename in _pywrap_file_io.GetMatchingFiles(
+          compat.as_bytes(single_pattern))
+    ]
+    return partial_files
+
+  patterns = list(copy.deepcopy(pattern))
+  pool = Pool(processes=min(max_parallel_num, 
+                            len(patterns)))
+  all_files = pool.map(handle_single_pattern, patterns)
+  pool.close()
+  pool.join()
+  return functools.reduce(operator.concat, all_files)
 
 
 @tf_export(v1=["gfile.MkDir"])
