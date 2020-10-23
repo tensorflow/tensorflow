@@ -417,7 +417,7 @@ class Context(object):
       execution_mode = SYNC
     self._default_is_async = execution_mode == ASYNC
     self._lazy_remote_inputs_copy = None
-    self._use_tfrt = tfrt_utils.enabled()
+    self._use_tfrt = is_tfrt_enabled()
     self._server_def = server_def
     self._collective_ops_server_def = None
     self._collective_leader = None
