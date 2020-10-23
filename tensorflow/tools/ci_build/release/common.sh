@@ -223,6 +223,10 @@ function maybe_skip_v1 {
 function copy_to_new_project_name {
   WHL_PATH="$1"
   NEW_PROJECT_NAME="$2"
+  PYTHON_CMD="$3"
+
+  # Debugging only, could be removed after we know it works
+  echo "copy_to_new_project_name PATH is ${PATH}"
 
   ORIGINAL_WHL_NAME=$(basename "${WHL_PATH}")
   ORIGINAL_WHL_DIR=$(realpath "$(dirname "${WHL_PATH}")")
@@ -232,7 +236,7 @@ function copy_to_new_project_name {
   VERSION="$(echo "${FULL_TAG}" | cut -d '-' -f 1)"
 
   TMP_DIR="$(mktemp -d)"
-  wheel unpack "${WHL_PATH}" -d "${TMP_DIR}"
+  ${PYTHON_CMD} -m wheel unpack "${WHL_PATH}" -d "${TMP_DIR}"
   TMP_UNPACKED_DIR="$(ls -d "${TMP_DIR}"/* | head -n 1)"
   pushd "${TMP_UNPACKED_DIR}"
 
@@ -247,7 +251,7 @@ function copy_to_new_project_name {
   NEW_PROJECT_NAME_DASH="${NEW_PROJECT_NAME//_/-}"
   sed -i.bak "s/${ORIGINAL_PROJECT_NAME_DASH}/${NEW_PROJECT_NAME_DASH}/g" "${NEW_WHL_DIR_PREFIX}.dist-info/METADATA"
 
-  wheel pack "${TMP_UNPACKED_DIR}" -d "${ORIGINAL_WHL_DIR}"
+  ${PYTHON_CMD} -m wheel pack "${TMP_UNPACKED_DIR}" -d "${ORIGINAL_WHL_DIR}"
   popd
   rm -rf "${TMP_DIR}"
 }
