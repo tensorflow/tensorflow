@@ -157,7 +157,7 @@ class Module(tracking.AutoTrackable):
       name) followed by variables from all submodules recursively (breadth
       first).
     """
-    return tuple(self._flatten(predicate=_is_variable))
+    return tuple(self._flatten(predicate=_is_variable, expand_composites=True))
 
   @property
   def trainable_variables(self):
@@ -172,7 +172,8 @@ class Module(tracking.AutoTrackable):
       name) followed by variables from all submodules recursively (breadth
       first).
     """
-    return tuple(self._flatten(predicate=_is_trainable_variable))
+    return tuple(
+        self._flatten(predicate=_is_trainable_variable, expand_composites=True))
 
   @property
   def submodules(self):
@@ -202,7 +203,8 @@ class Module(tracking.AutoTrackable):
                recursive=True,
                predicate=None,
                attribute_traversal_key=None,
-               with_path=False):
+               with_path=False,
+               expand_composites=False):
     """Flattened attribute values in sorted order by attribute name.
 
     Modules are flattened by first walking their attributes in name order.
@@ -247,6 +249,8 @@ class Module(tracking.AutoTrackable):
         as the object itself. If `with_path` is `True` then leaves will not be
         de-duplicated (e.g. if the same leaf instance is reachable via multiple
         modules then it will be yielded multiple times with different paths).
+      expand_composites: If true, then composite tensors are expanded into their
+        component tensors.
 
     Returns:
       Flat generator for leaves of the current module and optionally all
@@ -261,7 +265,8 @@ class Module(tracking.AutoTrackable):
         predicate=predicate,
         attributes_to_ignore=self._TF_MODULE_IGNORED_PROPERTIES,
         attribute_traversal_key=attribute_traversal_key,
-        with_path=with_path)
+        with_path=with_path,
+        expand_composites=expand_composites)
 
   @classmethod
   def with_name_scope(cls, method):
@@ -326,6 +331,7 @@ def _flatten_module(module,
                     attribute_traversal_key,
                     attributes_to_ignore,
                     with_path,
+                    expand_composites,
                     module_path=(),
                     seen=None):
   """Implementation of `flatten`."""
@@ -341,7 +347,8 @@ def _flatten_module(module,
 
     prop = module_dict[key]
     try:
-      leaves = nest.flatten_with_tuple_paths(prop)
+      leaves = nest.flatten_with_tuple_paths(
+          prop, expand_composites=expand_composites)
     except Exception as cause:  # pylint: disable=broad-except
       six.raise_from(
           ValueError(
@@ -376,6 +383,7 @@ def _flatten_module(module,
         attribute_traversal_key=attribute_traversal_key,
         attributes_to_ignore=submodule._TF_MODULE_IGNORED_PROPERTIES,  # pylint: disable=protected-access
         with_path=with_path,
+        expand_composites=expand_composites,
         module_path=submodule_path,
         seen=seen)
 

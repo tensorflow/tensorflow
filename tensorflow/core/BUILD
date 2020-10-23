@@ -46,7 +46,6 @@
 #
 # Public mobile targets, e.g. for Android:
 #
-# filegroup ":android_proto_srcs" - Protos
 # cc_library ":portable_tensorflow_lib" - Native library
 # cc_library ":portable_tensorflow_lib_lite" - Native library, without ops,
 #   supporting SELECTIVE_REGISTRATION feature.
@@ -88,7 +87,7 @@ load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
 load("//tensorflow:tensorflow.bzl", "if_nccl")
 
 # buildifier: disable=same-origin-load
-load("@tf_toolchains//macros:cpp.bzl", "tensorflow_opensource_extra_deps")
+load("//tensorflow:tensorflow.bzl", "tensorflow_opensource_extra_deps")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests_gpu")
@@ -290,12 +289,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "framework_bounds_check",
-    actual = "//tensorflow/core/framework:bounds_check",
-    visibility = ["//tensorflow/core/kernels:friends"],
-)
-
 # Minimal lib so that tools used for mobile compilation
 # don't have to depend on lib/platformlib.
 cc_library(
@@ -455,6 +448,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:reader_op_kernel.h",
         "//tensorflow/core/framework:register_types.h",
         "//tensorflow/core/framework:register_types_traits.h",
+        "//tensorflow/core/framework:registration_options.h",
         "//tensorflow/core/framework:resource_mgr.h",
         "//tensorflow/core/framework:resource_op_kernel.h",
         "//tensorflow/core/framework:rng_alg.h",
@@ -839,13 +833,6 @@ tf_cuda_library(
 
 # -----------------------------------------------------------------------------
 # Public Android targets
-
-# List of protos we want on android
-filegroup(
-    name = "android_proto_srcs",
-    srcs = CORE_PROTO_SRCS,
-    visibility = ["//visibility:public"],
-)
 
 # Sources required to build the TensorFlow framework without the runtime on
 # mobile platforms. This is essentially the sources required to build
@@ -1656,7 +1643,7 @@ cc_header_only_library(
         ":lib",
         ":lib_internal",
         ":version_lib",
-        "//tensorflow/core/kernels:bounds_check",
+        "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/platform/default/build_config:platformlib",
     ],
 )
@@ -1708,6 +1695,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:attr_value_proto_text",
         "//tensorflow/core/framework:attr_value_util",
         "//tensorflow/core/framework:bfloat16",
+        "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/framework:common_shape_fns",
         "//tensorflow/core/framework:kernel_shape_util",
         "//tensorflow/core/framework:node_def_util",
@@ -1721,7 +1709,6 @@ tf_cuda_library(
         "//tensorflow/core/framework:shape_inference",
         "//tensorflow/core/framework:tensor",
         "//tensorflow/core/framework:tensor_shape",
-        "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core/platform:env_impl",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/profiler/lib:annotated_traceme",
@@ -1819,7 +1806,7 @@ tf_cuda_library(
         ":function_ops_op_lib",
         ":functional_grad",
         ":functional_ops_op_lib",
-        "//tensorflow/core/kernels:bounds_check",
+        "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/kernels:required",
     ]),
     alwayslink = 1,
@@ -1872,25 +1859,11 @@ cc_library(
     ],
 )
 
-# TODO(gonnet): Remove this alias once all users have been moved to the actual target.
-alias(
-    name = "tensor_testutil",
-    actual = "//tensorflow/core/framework:tensor_testutil",
-)
-
 # Main program for tests
 alias(
     name = "test_main",
     actual = "//tensorflow/core/platform:test_main",
     visibility = ["//tensorflow:internal"],
-)
-
-test_suite(
-    name = "low_level_tests",
-    tests = [
-        ":low_level_library_tests",
-        "//tensorflow/core/platform:low_level_library_tests",
-    ],
 )
 
 tf_cc_tests(
@@ -1913,7 +1886,6 @@ tf_cc_tests(
         "//tensorflow/core/lib/random:legacy_lib_random_tests",
         "//tensorflow/core/lib/strings:legacy_low_level_library_tests",
     ],
-    create_named_test_suite = True,
     deps = [
         ":lib",
         ":lib_internal",
@@ -1949,26 +1921,10 @@ tf_cc_test(
     ],
 )
 
-test_suite(
-    name = "platform_tests",
-    tests = [
-        "//tensorflow/core/platform:abi_test",
-        "//tensorflow/core/platform:env_test",
-        "//tensorflow/core/platform:fake_python_env_test",
-        "//tensorflow/core/platform:file_system_test",
-        "//tensorflow/core/platform:numa_test",
-        "//tensorflow/core/platform:platform_strings_test",
-        "//tensorflow/core/platform:rocm_rocdl_path_test",
-        "//tensorflow/core/platform:setround_test",
-        "//tensorflow/core/platform:unbounded_work_queue_test",
-        "//tensorflow/core/platform:vmodule_test",
-    ],
-)
-
 tf_cc_test(
     name = "lib_jpeg_jpeg_mem_unittest",
     srcs = ["lib/jpeg/jpeg_mem_unittest.cc"],
-    data = glob(["lib/jpeg/testdata/*.jpg"]),
+    data = ["//tensorflow/core/lib/jpeg/testdata"],
     deps = [
         ":jpeg_internal",
         ":lib",
@@ -2017,15 +1973,6 @@ tf_cc_test(
     ],
 )
 
-test_suite(
-    name = "higher_level_tests",
-    tests = [
-        ":core_higher_level_tests",
-        "//tensorflow/core/framework:higher_level_tests",
-        "//tensorflow/core/util:higher_level_tests",
-    ],
-)
-
 tf_cc_tests(
     name = "core_higher_level_tests",
     size = "small",
@@ -2044,7 +1991,6 @@ tf_cc_tests(
         "//tensorflow/core/graph:validate_test.cc",
         "//tensorflow/core/util/sparse:higher_level_tests_group",
     ],
-    create_named_test_suite = True,
     linkopts = select({
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
@@ -2166,23 +2112,12 @@ filegroup(
         "//tensorflow/core/lib/ssim:testdata",
         "//tensorflow/core/lib/psnr:testdata",
         # JPEG data
-        "lib/jpeg/testdata/jpeg_merge_test1.jpg",
-        "lib/jpeg/testdata/jpeg_merge_test1_cmyk.jpg",
-        # JPEG data for jpeg benchmark.
-        "lib/jpeg/testdata/small.jpg",
-        "lib/jpeg/testdata/medium.jpg",
-        # Corrupted JPEG files for tests
-        "lib/jpeg/testdata/bad_huffman.jpg",
-        "lib/jpeg/testdata/corrupt.jpg",
-        # -- hand-edited variant: stops at line 0
-        "lib/jpeg/testdata/corrupt34_2.jpg",
-        # -- hand-edited variant: stops at line 4
-        "lib/jpeg/testdata/corrupt34_3.jpg",
-        # -- hand-edited variant: stops after a restart marker
-        "lib/jpeg/testdata/corrupt34_4.jpg",
+        "//tensorflow/core/lib/jpeg/testdata",
         # GIF data
         "lib/gif/testdata/lena.gif",
         "lib/gif/testdata/scan.gif",
+        "lib/gif/testdata/red_black.gif",
+        "lib/gif/testdata/squares.gif",
         # GIF data with optimization
         "lib/gif/testdata/optimized.gif",
         # BMP data

@@ -949,9 +949,9 @@ void TestPrepareTensorForShape(
 
   NodeDef dummy_node_def = MakeNodeDef("dummy_op", "DummyOp", {});
   for (bool validation_only : {false, true}) {
-    const Status status = converter->PrepareTensorForShape(
-        input, GetTestDims(reshape_dims), validation_only, &output_tensor,
-        dummy_node_def);
+    const Status status =
+        PrepareTensorForShape(converter, input, GetTestDims(reshape_dims),
+                              validation_only, &output_tensor, dummy_node_def);
     if (expected_code == error::OK) {
       TF_EXPECT_OK(status);
       if (validation_only) {
@@ -4275,72 +4275,72 @@ TEST_P(OpConverterTest1, ConvertConv2D) {
 
   // Ok.
   std::vector<TestParams> ok_params = {
-    // Basic
-    TestParams{/*input_dims=*/{1, 1, 2, 3},
-               /*input=*/{0, 1, 2, 3, 3, 4},
-               /*filter_dims=*/{1, 2, 1, 1},
-               /*filter=*/{-1, 1},
-               /*strides=*/{1, 1, 1, 1},
-               /*padding=*/"VALID",
-               /*data_format=*/"NCHW",
-               /*dilations=*/{1, 1, 1, 1},
-               /*expected_output_dims=*/{1, 1, 2, 2},
-               /*expected_output=*/{1, 1, 0, 1}},
-    // SAME padding (Asymmetric)
-    TestParams{/*input_dims=*/{1, 1, 2, 3},
-               /*input=*/{0, 1, 2, 3, 3, 4},
-               /*filter_dims=*/{1, 2, 1, 1},
-               /*filter=*/{-1, 1},
-               /*strides=*/{1, 1, 1, 1},
-               /*padding=*/"SAME",
-               /*data_format=*/"NCHW",
-               /*dilations=*/{1, 1, 1, 1},
-               /*expected_output_dims=*/{1, 1, 2, 3},
-               /*expected_output=*/{1, 1, -2, 0, 1, -4}},
-    // SAME padding (Symmetric)
-    TestParams{/*input_dims=*/{1, 1, 2, 3},
-               /*input=*/{0, 1, 2, 3, 3, 4},
-               /*filter_dims=*/{1, 3, 1, 1},
-               /*filter=*/{-1, 0, 1},
-               /*strides=*/{1, 1, 1, 1},
-               /*padding=*/"SAME",
-               /*data_format=*/"NCHW",
-               /*dilations=*/{1, 1, 1, 1},
-               /*expected_output_dims=*/{1, 1, 2, 3},
-               /*expected_output=*/{1, 2, -1, 3, 1, -3}},
-    // NHWC
-    TestParams{/*input_dims=*/{1, 2, 3, 1},
-               /*input=*/{0, 1, 2, 3, 3, 4},
-               /*filter_dims=*/{1, 2, 1, 1},
-               /*filter=*/{-1, 1},
-               /*strides=*/{1, 1, 1, 1},
-               /*padding=*/"VALID",
-               /*data_format=*/"NHWC",
-               /*dilations=*/{1, 1, 1, 1},
-               /*expected_output_dims=*/{1, 2, 2, 1},
-               /*expected_output=*/{1, 1, 0, 1}},
-    // Dilated
-    TestParams{/*input_dims=*/{1, 1, 2, 3},
-               /*input=*/{0, 1, 2, 3, 3, 4},
-               /*filter_dims=*/{1, 2, 1, 1},
-               /*filter=*/{-1, 1},
-               /*strides=*/{1, 1, 1, 1},
-               /*padding=*/"VALID",
-               /*data_format=*/"NCHW",
-               /*dilations=*/{1, 1, 1, 2},
-               /*expected_output_dims=*/{1, 1, 2, 1},
-               /*expected_output=*/{2, 1}},
-    // Strided
-    TestParams{/*input_dims=*/{1, 1, 2, 4},
-               /*input=*/{0, 1, 2, 2, 3, 4, 4, 7},
-               /*filter_dims=*/{1, 2, 1, 1},
-               /*filter=*/{-1, 1},
-               /*strides=*/{1, 1, 1, 2},
-               /*padding=*/"VALID",
-               /*data_format=*/"NCHW",
-               /*dilations=*/{1, 1, 1, 1},
-               /*expected_output_dims=*/{1, 1, 2, 2},
-               /*expected_output=*/{1, 0, 1, 3}},
+      // Basic
+      TestParams{/*input_dims=*/{1, 1, 2, 3},
+                 /*input=*/{0, 1, 2, 3, 3, 4},
+                 /*filter_dims=*/{1, 2, 1, 1},
+                 /*filter=*/{-1, 1},
+                 /*strides=*/{1, 1, 1, 1},
+                 /*padding=*/"VALID",
+                 /*data_format=*/"NCHW",
+                 /*dilations=*/{1, 1, 1, 1},
+                 /*expected_output_dims=*/{1, 1, 2, 2},
+                 /*expected_output=*/{1, 1, 0, 1}},
+      // SAME padding (Asymmetric)
+      TestParams{/*input_dims=*/{1, 1, 2, 3},
+                 /*input=*/{0, 1, 2, 3, 3, 4},
+                 /*filter_dims=*/{1, 2, 1, 1},
+                 /*filter=*/{-1, 1},
+                 /*strides=*/{1, 1, 1, 1},
+                 /*padding=*/"SAME",
+                 /*data_format=*/"NCHW",
+                 /*dilations=*/{1, 1, 1, 1},
+                 /*expected_output_dims=*/{1, 1, 2, 3},
+                 /*expected_output=*/{1, 1, -2, 0, 1, -4}},
+      // SAME padding (Symmetric)
+      TestParams{/*input_dims=*/{1, 1, 2, 3},
+                 /*input=*/{0, 1, 2, 3, 3, 4},
+                 /*filter_dims=*/{1, 3, 1, 1},
+                 /*filter=*/{-1, 0, 1},
+                 /*strides=*/{1, 1, 1, 1},
+                 /*padding=*/"SAME",
+                 /*data_format=*/"NCHW",
+                 /*dilations=*/{1, 1, 1, 1},
+                 /*expected_output_dims=*/{1, 1, 2, 3},
+                 /*expected_output=*/{1, 2, -1, 3, 1, -3}},
+      // NHWC
+      TestParams{/*input_dims=*/{1, 2, 3, 1},
+                 /*input=*/{0, 1, 2, 3, 3, 4},
+                 /*filter_dims=*/{1, 2, 1, 1},
+                 /*filter=*/{-1, 1},
+                 /*strides=*/{1, 1, 1, 1},
+                 /*padding=*/"VALID",
+                 /*data_format=*/"NHWC",
+                 /*dilations=*/{1, 1, 1, 1},
+                 /*expected_output_dims=*/{1, 2, 2, 1},
+                 /*expected_output=*/{1, 1, 0, 1}},
+      // Dilated
+      TestParams{/*input_dims=*/{1, 1, 2, 3},
+                 /*input=*/{0, 1, 2, 3, 3, 4},
+                 /*filter_dims=*/{1, 2, 1, 1},
+                 /*filter=*/{-1, 1},
+                 /*strides=*/{1, 1, 1, 1},
+                 /*padding=*/"VALID",
+                 /*data_format=*/"NCHW",
+                 /*dilations=*/{1, 1, 1, 2},
+                 /*expected_output_dims=*/{1, 1, 2, 1},
+                 /*expected_output=*/{2, 1}},
+      // Strided
+      TestParams{/*input_dims=*/{1, 1, 2, 4},
+                 /*input=*/{0, 1, 2, 2, 3, 4, 4, 7},
+                 /*filter_dims=*/{1, 2, 1, 1},
+                 /*filter=*/{-1, 1},
+                 /*strides=*/{1, 1, 1, 2},
+                 /*padding=*/"VALID",
+                 /*data_format=*/"NCHW",
+                 /*dilations=*/{1, 1, 1, 1},
+                 /*expected_output_dims=*/{1, 1, 2, 2},
+                 /*expected_output=*/{1, 0, 1, 3}},
   };
 
   for (int i = 0; i < ok_params.size(); i++) {
@@ -6812,20 +6812,20 @@ template <typename OpType, DataType dtype>
 void TestConvertResize(OpConverterTest* test) {
   typedef typename EnumToDataType<dtype>::Type CType;
 
-  std::vector<ResizeTestParams<CType>> params {
-    {
-        /*input_dims=*/{1, 2, 1},       // H, W, C
-        /*output_resize_dims=*/{2, 3},  // H_out, W_out
-        /*input_values=*/CastTestVector<float, CType>({2.0f, -1.0f}),
-        /*align_corners=*/false,
-        /*expected_output_dims=*/{2, 3, 1},  // H, W, C
-        /*expected_nearest_output_values=*/
-        CastTestVector<float, CType>({2.0f, 2.0f, -1.0f, 2.0f, 2.0f, -1.0f}),
-        /*expected_bilinear_output_values=*/
-        CastTestVector<float, CType>({2.0f, 0.f, -1.0f, 2.0f, 0.f, -1.0f}),
-    },
-    {
-      /*input_dims=*/{1, 2, 1},           // H, W, C
+  std::vector<ResizeTestParams<CType>> params{
+      {
+          /*input_dims=*/{1, 2, 1},       // H, W, C
+          /*output_resize_dims=*/{2, 3},  // H_out, W_out
+          /*input_values=*/CastTestVector<float, CType>({2.0f, -1.0f}),
+          /*align_corners=*/false,
+          /*expected_output_dims=*/{2, 3, 1},  // H, W, C
+          /*expected_nearest_output_values=*/
+          CastTestVector<float, CType>({2.0f, 2.0f, -1.0f, 2.0f, 2.0f, -1.0f}),
+          /*expected_bilinear_output_values=*/
+          CastTestVector<float, CType>({2.0f, 0.f, -1.0f, 2.0f, 0.f, -1.0f}),
+      },
+      {
+          /*input_dims=*/{1, 2, 1},       // H, W, C
           /*output_resize_dims=*/{2, 3},  // H_out, W_out
           /*input_values=*/CastTestVector<float, CType>({2.0f, -1.0f}),
           /*align_corners=*/true,
@@ -6834,8 +6834,7 @@ void TestConvertResize(OpConverterTest* test) {
           CastTestVector<float, CType>({2.0f, 2.0f, -1.0f, 2.0f, 2.0f, -1.0f}),
           /*expected_bilinear_output_values=*/
           CastTestVector<float, CType>({2.0f, 0.5f, -1.0f, 2.0f, 0.5f, -1.0f}),
-    }
-  };
+      }};
 
 // This use case is not supported as of TRT version 7.1
 #if IS_TRT_VERSION_GE(7, 1, 0, 0)

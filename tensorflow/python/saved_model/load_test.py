@@ -86,7 +86,8 @@ def cycle(obj, cycles, signatures=None):
 @parameterized.named_parameters(
     dict(testcase_name="ReloadOnce", cycles=1),
     dict(testcase_name="ReloadTwice", cycles=2),
-    dict(testcase_name="ReloadThrice", cycles=3))
+    dict(testcase_name="ReloadThrice", cycles=3)
+)
 class LoadTest(test.TestCase, parameterized.TestCase):
 
   def test_structure_import(self, cycles):
@@ -2028,6 +2029,55 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
             tensor_spec.TensorSpec(shape=[], dtype=dtypes.float32)])
     cycle(root, 1)
 
+  def test_load_partial_object(self):
+    root = module.Module()
+    root.variables_holder = module.Module()
+    root.variables_holder.v = variables.Variable(1.)
+
+    class Adder(module.Module):
+
+      @def_function.function(input_signature=[tensor_spec.TensorSpec(shape=[])])
+      def __call__(self, y):
+        root.variables_holder.v.assign_add(y)
+        return 1
+
+    root.adder = Adder()
+
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(root, save_dir)
+
+    imported = load.load_partial(save_dir,
+                                 ["root.variables_holder.v", "root.adder"])
+    v = imported["root.variables_holder.v"]
+    adder = imported["root.adder"]
+    self.assertEqual(self.evaluate(v), 1)
+    adder(5)
+    self.assertEqual(self.evaluate(v), 6)
+
+    with self.assertRaisesRegex(ValueError, "requires inputs/variables"):
+      imported = load.load_partial(save_dir, ["root.adder"])
+
+  def test_call_untraced_function_raises_error(self):
+
+    class ObjWithFunction(module.Module):
+
+      @def_function.function
+      def foo(self, a):
+        return a
+
+    root = ObjWithFunction()
+    with self.assertLogs(level="WARNING") as logs:
+      loaded = cycle(root, 1)
+
+    expected_save_message = (
+        "WARNING:absl:Found untraced functions such as foo while saving "
+        "(showing 1 of 1). These functions will not be directly callable after "
+        "loading.")
+    self.assertIn(expected_save_message, logs.output)
+
+    with self.assertRaisesRegex(
+        ValueError, "Found zero restored functions for caller function."):
+      loaded.foo(1)
 
 if __name__ == "__main__":
   test.main()

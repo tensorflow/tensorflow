@@ -393,6 +393,10 @@ tensorflow::tensor_float_32_execution_enabled
 
 [get_compiler_ir] # tfe
 tensorflow::GetCompilerIr
+stream_executor::port::internal_statusor::Helper::Crash
 
 [tensor_handle] # tfe
 tensorflow::TensorHandle::Tensor
+
+[python_api_dispatcher] # python_api_dispatcher
+tensorflow::PythonAPIDispatcher

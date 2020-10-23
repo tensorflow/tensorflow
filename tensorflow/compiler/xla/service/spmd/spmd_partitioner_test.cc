@@ -3378,6 +3378,30 @@ ENTRY entry {
   EXPECT_THAT(root, AllOf(op::Dot(lhs, rhs), op::Shape("f32[24,19648]")));
 }
 
+TEST_F(SpmdPartitioningTest, DotPartialDeviceOrder) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = f32[16,256,4096] parameter(0), sharding={devices=[1,1,2,2]1,3,0,2 last_tile_dim_replicate}
+  %rhs = f32[4096,2048] parameter(1), sharding={devices=[2,2]3,1,2,0}
+  ROOT %dot = f32[16,256,2048] dot(%lhs, %rhs),
+    lhs_batch_dims={}, rhs_batch_dims={},
+    lhs_contracting_dims={2}, rhs_contracting_dims={0},
+    sharding={devices=[1,1,2,2]2,3,0,1 last_tile_dim_replicate}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  auto root = module->entry_computation()->root_instruction();
+  auto lhs = AllOf(op::Parameter(0), op::Shape("f32[16,256,2048]"));
+  auto rhs = AllOf(op::Parameter(1), op::Shape("f32[2048,1024]"));
+  EXPECT_THAT(root, AllOf(op::AllReduce(op::Dot(lhs, rhs)),
+                          op::Shape("f32[16,256,1024]")));
+}
+
 TEST_F(SpmdPartitioningTest, EinsumBatchPartitioned) {
   const char* const hlo_string = R"(
 HloModule module
@@ -5115,7 +5139,7 @@ ENTRY entry {
           op::DynamicSlice(
               op::Pad(op::Concatenate(multiply, right_halo), op::Constant()),
               op::Reshape(), op::Constant()),
-          op::Reshape(), op::Constant()));
+          op::Subtract(), op::Subtract()));
   auto add_rhs = AllOf(op::Shape("f32[2,3]"),
                        op::DynamicSlice(op::Pad(op::Constant(), op::Constant()),
                                         op::Reshape(), op::Constant()));
@@ -5167,9 +5191,10 @@ ENTRY entry {
       AllOf(op::Shape("f32[4,8]"),
             op::Copy(op::DynamicSlice(op::Parameter(0), op::Reshape(),
                                       op::Constant())));
-  auto tiled = AllOf(op::Shape("f32[4,4]"),
-                     op::Copy(op::DynamicSlice(partially_replicated,
-                                               op::Constant(), op::Reshape())));
+  auto tiled =
+      AllOf(op::Shape("f32[4,4]"),
+            op::Copy(op::DynamicSlice(partially_replicated, op::Subtract(),
+                                      op::Subtract())));
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, tiled);
 }
@@ -5223,9 +5248,10 @@ ENTRY entry {
       AllOf(op::Shape("f32[4,8]"),
             op::Copy(op::DynamicSlice(op::Parameter(0), op::Reshape(),
                                       op::Constant())));
-  auto tiled = AllOf(op::Shape("f32[4,4]"),
-                     op::Copy(op::DynamicSlice(partially_replicated,
-                                               op::Constant(), op::Reshape())));
+  auto tiled =
+      AllOf(op::Shape("f32[4,4]"),
+            op::Copy(op::DynamicSlice(partially_replicated, op::Subtract(),
+                                      op::Subtract())));
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, tiled);
 }
@@ -5250,9 +5276,10 @@ ENTRY entry {
       AllOf(op::Shape("f32[8,8]"),
             op::Copy(op::DynamicSlice(op::Parameter(0), op::Constant(),
                                       op::Constant())));
-  auto tiled = AllOf(op::Shape("f32[4,4]"),
-                     op::Copy(op::DynamicSlice(partially_replicated,
-                                               op::Reshape(), op::Reshape())));
+  auto tiled =
+      AllOf(op::Shape("f32[4,4]"),
+            op::Copy(op::DynamicSlice(partially_replicated, op::Subtract(),
+                                      op::Subtract())));
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, tiled);
 }
@@ -5309,7 +5336,7 @@ ENTRY entry {
   auto tiled =
       AllOf(op::Shape("f32[4,4]"),
             op::Copy(op::CollectivePermute(op::DynamicSlice(
-                partially_replicated, op::Reshape(), op::Constant()))));
+                partially_replicated, op::Subtract(), op::Subtract()))));
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, tiled);
 }
@@ -5816,8 +5843,8 @@ ENTRY entry {
       op::Shape("f32[8,801,1,1024]"));
   auto resharded_lhs =
       AllOf(op::Reshape(op::Transpose(op::AllToAll(op::Reshape(
-                op::Pad(op::DynamicSlice(lhs, op::Constant(), op::Constant(),
-                                         op::Constant(), op::Reshape()),
+                op::Pad(op::DynamicSlice(lhs, op::Subtract(), op::Subtract(),
+                                         op::Subtract(), op::Subtract()),
                         op::Constant()))))),
             op::Shape("f32[16,401,1,512]"));
   auto left_halo = AllOf(op::Shape("f32[16,2, 1, 512]"),
@@ -6108,6 +6135,43 @@ ENTRY entry {
   EXPECT_THAT(root, AllOf(op::AllReduce(op::Convolution(
                               exchanged_lhs, op::CollectivePermute(rhs))),
                           op::Shape("f32[8,105,210,32]")));
+}
+
+TEST_F(SpmdPartitioningTest, Fft3D) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  constant = c64[1,1,6]
+    constant({{{(0,0),(1,1),(2,2),(3,3),(4,4),(5,5)}}}),
+    sharding={devices=[1,1,2]0,1}
+  ROOT fft = c64[1,1,6] fft(c64[1,1,6] constant), fft_type=FFT, fft_length={6},
+    sharding={devices=[1,1,2]0,1}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  auto root = module->entry_computation()->root_instruction();
+  auto input = AllOf(op::DynamicSlice(op::Constant(), op::Constant(),
+                                      op::Constant(), op::Reshape()),
+                     op::Shape("c64[1,1,3]"));
+  auto padded_input =
+      AllOf(op::DynamicSlice(
+                op::Concatenate(input, op::CollectivePermute(op::Slice())),
+                op::Constant(), op::Constant(), op::Reshape()),
+            op::Shape("c64[1,1,4]"));
+
+  auto shuffled_input =
+      AllOf(op::Slice(op::AllToAll(op::Dot(padded_input, op::Convert()))),
+            op::Shape("c64[1,1,3]"));
+
+  auto local_fft = AllOf(op::Fft(shuffled_input), op::Shape("c64[1,1,3]"));
+
+  EXPECT_THAT(root, AllOf(op::GetTupleElement(op::While(op::Tuple(
+                              _, op::Multiply(local_fft, op::Exp()), _, _, _))),
+                          op::Shape("c64[1,1,3]")));
 }
 
 }  // namespace

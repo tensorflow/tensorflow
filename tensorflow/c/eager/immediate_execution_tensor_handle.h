@@ -44,6 +44,10 @@ class ImmediateExecutionTensorHandle : public AbstractTensorHandle {
   virtual const char* DeviceName(Status* status) const = 0;
   // Returns the device where the tensor was placed.
   virtual const char* BackingDeviceName(Status* status) const = 0;
+  // Returns the device type which created the handle.
+  virtual const char* DeviceType(Status* status) const = 0;
+  // Returns the device ID which created the handle.
+  virtual int DeviceId(Status* status) const = 0;
   // Returns a tensor for the handle. If tensor is remote, it will be copied.
   virtual AbstractTensorInterface* Resolve(Status* status) = 0;
 

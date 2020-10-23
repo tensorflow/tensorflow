@@ -75,6 +75,11 @@ constexpr char kTFDataResourceTag[] = "tfdata";
 class DatasetBase;
 class SerializationContext;
 
+inline bool IsTFDataFunction(const FunctionDef& func) {
+  return (func.attr().contains(data::kTFDataFunction) &&
+          func.attr().at(data::kTFDataFunction).b());
+}
+
 // Interface for reading values from a key-value store.
 // Used for restoring iterator state. This class is thread safe.
 // Please see comment on IteratorStateWriter for guidance around using the

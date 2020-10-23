@@ -356,6 +356,7 @@ tf_cc_test(
     size = "small",
     srcs = ["xplane_to_op_stats_test.cc"],
     deps = [
+        ":step_events_to_steps_db",
         ":xplane_to_op_stats",
         ":xplane_to_tf_functions",
         "//tensorflow/core:lib",
@@ -684,17 +685,23 @@ cc_library(
     deps = [
         ":op_stats_to_input_pipeline_analysis",
         ":op_stats_to_overview_page",
+        ":op_stats_to_pod_viewer",
         ":op_stats_to_tf_stats",
         ":xplane_to_memory_profile",
         ":xplane_to_op_stats",
+        ":xplane_to_tf_data_stats",
         ":xplane_to_trace_events",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:input_pipeline_proto_cc",
         "//tensorflow/core/profiler/protobuf:kernel_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:overview_page_proto_cc",
+        "//tensorflow/core/profiler/protobuf:pod_viewer_proto_cc",
+        "//tensorflow/core/profiler/protobuf:tf_data_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:tf_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:xplane_schema",
+        "//tensorflow/core/profiler/utils:xplane_utils",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -705,11 +712,13 @@ cc_library(
     hdrs = ["xplane_to_tf_data_stats.h"],
     copts = tf_profiler_copts(),
     deps = [
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/profiler/protobuf:tf_data_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/utils:group_events",
+        "//tensorflow/core/profiler/utils:html_utils",
         "//tensorflow/core/profiler/utils:tf_op_utils",
         "//tensorflow/core/profiler/utils:tf_xplane_visitor",
         "//tensorflow/core/profiler/utils:timespan",
@@ -718,6 +727,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 

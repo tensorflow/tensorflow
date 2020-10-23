@@ -35,8 +35,8 @@ void TestReluFloat(const int* input_dims_data, const float* input_data,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims),
-      CreateFloatTensor(output_data, output_dims),
+      CreateTensor(input_data, input_dims),
+      CreateTensor(output_data, output_dims),
   };
 
   int inputs_array_data[] = {1, 0};
@@ -68,8 +68,8 @@ void TestRelu6Float(const int* input_dims_data, const float* input_data,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims),
-      CreateFloatTensor(output_data, output_dims),
+      CreateTensor(input_data, input_dims),
+      CreateTensor(output_data, output_dims),
   };
 
   int inputs_array_data[] = {1, 0};
@@ -123,8 +123,8 @@ void TestReluUint8(const int* input_dims_data, const float* input_data,
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
-  AsymmetricQuantize(golden, golden_quantized, output_elements_count,
-                     output_scale, output_zero_point);
+  Quantize(golden, golden_quantized, output_elements_count, output_scale,
+           output_zero_point);
 
   for (int i = 0; i < output_elements_count; ++i) {
     TF_LITE_MICRO_EXPECT_EQ(golden_quantized[i], output_data[i]);
@@ -164,8 +164,8 @@ void TestRelu6Uint8(const int* input_dims_data, const float* input_data,
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
-  AsymmetricQuantize(golden, golden_quantized, output_elements_count,
-                     output_scale, output_zero_point);
+  Quantize(golden, golden_quantized, output_elements_count, output_scale,
+           output_zero_point);
 
   for (int i = 0; i < output_elements_count; ++i) {
     TF_LITE_MICRO_EXPECT_EQ(golden_quantized[i], output_data[i]);
@@ -204,8 +204,8 @@ void TestReluInt8(const int* input_dims_data, const float* input_data,
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
-  AsymmetricQuantize(golden, golden_quantized, output_elements_count,
-                     output_scale, output_zero_point);
+  Quantize(golden, golden_quantized, output_elements_count, output_scale,
+           output_zero_point);
 
   for (int i = 0; i < output_elements_count; ++i) {
     TF_LITE_MICRO_EXPECT_EQ(golden_quantized[i], output_data[i]);
@@ -244,8 +244,8 @@ void TestRelu6Int8(const int* input_dims_data, const float* input_data,
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
-  AsymmetricQuantize(golden, golden_quantized, output_elements_count,
-                     output_scale, output_zero_point);
+  Quantize(golden, golden_quantized, output_elements_count, output_scale,
+           output_zero_point);
 
   for (int i = 0; i < output_elements_count; ++i) {
     TF_LITE_MICRO_EXPECT_EQ(golden_quantized[i], output_data[i]);

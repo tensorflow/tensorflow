@@ -46,9 +46,9 @@ from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_spec
-from tensorflow.python.keras.mixed_precision.experimental import autocast_variable
-from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
-from tensorflow.python.keras.mixed_precision.experimental import policy
+from tensorflow.python.keras.mixed_precision import autocast_variable
+from tensorflow.python.keras.mixed_precision import loss_scale_optimizer
+from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
@@ -112,9 +112,9 @@ class Layer(base_layer.Layer):
   Attributes:
     name: The name of the layer (string).
     dtype: The dtype of the layer's computations and weights. If mixed
-      precision is used with a `tf.keras.mixed_precision.experimental.Policy`,
-      this is instead just the dtype of the layer's weights, as the computations
-      are done in a different dtype.
+      precision is used with a `tf.keras.mixed_precision.Policy`, this is
+      instead just the dtype of the layer's weights, as the computations are
+      done in a different dtype.
     updates: List of update ops of this layer.
     losses: List of losses added by this layer.
     trainable_weights: List of variables to be included in backprop.
@@ -133,8 +133,7 @@ class Layer(base_layer.Layer):
   if no dtype is passed. `floatx()` itself defaults to "float32". Additionally,
   layers will cast their inputs to the layer's dtype in TensorFlow 2. When mixed
   precision is used, layers may have different computation and variable dtypes.
-  See `tf.keras.mixed_precision.experimental.Policy` for details on layer
-  dtypes.
+  See `tf.keras.mixed_precision.Policy` for details on layer dtypes.
   """
 
   # See tf.Module for the usage of this property.
@@ -152,8 +151,8 @@ class Layer(base_layer.Layer):
   @trackable.no_automatic_dependency_tracking
   def __init__(self, trainable=True, name=None, dtype=None, dynamic=False,
                **kwargs):
-    base_layer.keras_api_gauge.get_cell('layer').set(True)
-    base_layer.keras_layers_gauge.get_cell(self.__class__.__name__).set(True)
+    self._instrument_layer_creation()
+
     # These properties should be set by the user via keyword arguments.
     # note that 'dtype', 'input_shape' and 'batch_input_shape'
     # are only applicable to input layers: do not pass these keywords
@@ -199,9 +198,11 @@ class Layer(base_layer.Layer):
     self._metrics = []
 
     # Both graph and subclassed networks have a dtype policy. For graph
-    # networks, the policy's compute and variable dtypes are ignored, but other
-    # fields, like the loss scale, are used by Models. For subclassed networks,
-    # the compute and variable dtypes are used as like any ordinary layer.
+    # networks, the policy's compute and variable dtypes are ignored. Such
+    # networks only use the policy if it is a PolicyV1, in which case it uses
+    # the PolicyV1's loss_scale (Policy does not have a loss_scale). For
+    # subclassed networks, the compute and variable dtypes are used as like any
+    # ordinary layer.
     self._set_dtype_policy(dtype)
     # Boolean indicating whether the layer automatically casts its inputs to the
     # layer's compute_dtype.
@@ -420,8 +421,9 @@ class Layer(base_layer.Layer):
         raise ValueError('An initializer for variable %s of type %s is required'
                          ' for layer %s' % (name, dtype.base_dtype, self.name))
 
-    if (autocast and self._dtype_policy.should_cast_variables and
-        dtype.is_floating):
+    if (autocast and
+        self._dtype_policy.compute_dtype != self._dtype_policy.variable_dtype
+        and dtype.is_floating):
       # Wrap 'getter' with a version that returns an AutoCastVariable.
       old_getter = getter
       def getter(*args, **kwargs):  # pylint: disable=function-redefined
@@ -2102,9 +2104,10 @@ class Layer(base_layer.Layer):
         # operations.
         with tf_utils.maybe_init_scope(self):
           self.build(input_shapes)
-      # We must set self.built since user defined build functions are not
-      # constrained to set self.built.
-      self.built = True
+      # We must set also ensure that the layer is marked as built, and the build
+      # shape is stored since user defined build functions may not be calling
+      # `super.build()`
+      Layer.build(self, input_shapes)
 
     # Optionally load weight values specified at layer instantiation.
     if self._initial_weights is not None:

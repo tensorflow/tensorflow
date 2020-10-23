@@ -66,6 +66,7 @@ func @main(tensor<3x!quant.uniform<i8:f32, 0.1>>) -> tensor<3x!quant.uniform<i8:
   // CHECK-NEXT:  name: "min_runtime_version",
   // CHECK-NEXT:  buffer: 4
   // CHECK-NEXT:  } ]
+  // CHECK-NEXT:  signature_defs: [ ]
   // CHECK-NEXT:}
 
   %0 = "tfl.pseudo_qconst"() { qtype = tensor<3x!quant.uniform<i8:f32, 0.1>>, value = dense<2> : tensor<3xi8>} : () -> tensor<3x!quant.uniform<i8:f32, 0.1>>

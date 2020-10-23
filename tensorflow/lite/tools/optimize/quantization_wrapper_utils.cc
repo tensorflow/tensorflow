@@ -68,6 +68,10 @@ TfLiteStatus LoadModel(const string& path, ModelT* model) {
 
 TfLiteStatus AddIntermediateTensorsToFusedOp(
     flatbuffers::FlatBufferBuilder* builder, ModelT* model) {
+  // Return early when the model has no operator.
+  if (model->subgraphs.size() == 1 && model->subgraphs[0]->operators.empty()) {
+    return kTfLiteOk;
+  }
   // Return early if the model already has intermediate tensors.
   if (IntermediateTensorExists(model)) {
     return kTfLiteOk;

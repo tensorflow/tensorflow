@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/interpreter_device.h"
 #include "tensorflow/compiler/xla/pjrt/nvidia_gpu_device.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/tpu_client.h"
 #include "tensorflow/compiler/xla/python/bfloat16.h"
 #include "tensorflow/compiler/xla/python/dlpack.h"
 #include "tensorflow/compiler/xla/python/jax_jit.h"
@@ -205,6 +206,23 @@ bool IsOptimizedBuild() {
 #endif  // NDEBUG
 }
 
+// Safe version of ShapeUtil::MakeShapeWithLayout that fails gracefully on
+// invalid input.
+StatusOr<Shape> MakeShapeWithLayout(
+    PrimitiveType element_type, absl::Span<const int64> dims,
+    absl::optional<absl::Span<const int64>> minor_to_major) {
+  TF_ASSIGN_OR_RETURN(Shape shape,
+                      ShapeUtil::MakeValidatedShape(element_type, dims));
+  if (minor_to_major) {
+    *shape.mutable_layout() = LayoutUtil::MakeLayout(*minor_to_major);
+    TF_RETURN_IF_ERROR(
+        LayoutUtil::ValidateLayoutForShape(shape.layout(), shape));
+  } else {
+    shape.clear_layout();
+  }
+  return shape;
+}
+
 }  // namespace
 
 PYBIND11_MODULE(xla_extension, m) {
@@ -261,15 +279,13 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_static(
           "array_shape",
           [](PrimitiveType type, py::object dims_seq,
-             absl::optional<py::object> layout_seq) -> Shape {
+             absl::optional<py::object> layout_seq) -> StatusOr<Shape> {
             std::vector<int64> dims = IntSequenceToVector(dims_seq);
             if (layout_seq) {
               std::vector<int64> layout = IntSequenceToVector(*layout_seq);
-              return ShapeUtil::MakeShapeWithLayout(type, dims, layout);
+              return MakeShapeWithLayout(type, dims, layout);
             } else {
-              Shape shape = ShapeUtil::MakeShape(type, dims);
-              shape.clear_layout();
-              return shape;
+              return MakeShapeWithLayout(type, dims, absl::nullopt);
             }
           },
           "Constructs an array shape.", py::arg("type"), py::arg("dims"),
@@ -277,16 +293,14 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_static(
           "array_shape",
           [](py::dtype dtype, py::object dims_seq,
-             absl::optional<py::object> layout_seq) -> Shape {
+             absl::optional<py::object> layout_seq) -> StatusOr<Shape> {
             PrimitiveType type = ValueOrThrow(DtypeToPrimitiveType(dtype));
             std::vector<int64> dims = IntSequenceToVector(dims_seq);
             if (layout_seq) {
               std::vector<int64> layout = IntSequenceToVector(*layout_seq);
-              return ShapeUtil::MakeShapeWithLayout(type, dims, layout);
+              return MakeShapeWithLayout(type, dims, layout);
             } else {
-              Shape shape = ShapeUtil::MakeShape(type, dims);
-              shape.clear_layout();
-              return shape;
+              return MakeShapeWithLayout(type, dims, absl::nullopt);
             }
           },
           "Constructs an array shape.", py::arg("type"), py::arg("dims"),
@@ -465,10 +479,7 @@ PYBIND11_MODULE(xla_extension, m) {
            [](const PjRtDevice& device, const LiteralSlice& literal) {
              GlobalPyRefManager()->CollectGarbage();
              py::gil_scoped_release gil_release;
-             TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                                 device.GetLocalDeviceState());
-             return local_device->client()->TransferToInfeedLocal(
-                 literal, local_device->device_ordinal());
+             return device.TransferToInfeed(literal);
            })
       .def("transfer_from_outfeed",
            [](const PjRtDevice& device,
@@ -477,8 +488,6 @@ PYBIND11_MODULE(xla_extension, m) {
              std::shared_ptr<Literal> literal_shared;
              {
                py::gil_scoped_release gil_release;
-               TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                                   device.GetLocalDeviceState());
                Shape shape_with_layout = shape;
                ShapeUtil::ForEachMutableSubshape(
                    &shape_with_layout, [](Shape* subshape, const ShapeIndex&) {
@@ -486,10 +495,8 @@ PYBIND11_MODULE(xla_extension, m) {
                        LayoutUtil::SetToDefaultLayout(subshape);
                      }
                    });
-               TF_ASSIGN_OR_RETURN(
-                   Literal literal,
-                   local_device->client()->TransferFromOutfeedLocal(
-                       shape_with_layout, local_device->device_ordinal()));
+               TF_ASSIGN_OR_RETURN(Literal literal, device.TransferFromOutfeed(
+                                                        shape_with_layout));
 
                literal_shared = std::make_shared<Literal>(std::move(literal));
              }
@@ -521,12 +528,12 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("PLATFORM", GpuAllocatorConfig::Kind::kPlatform)
       .value("BFC", GpuAllocatorConfig::Kind::kBFC);
 
-  py::enum_<PjRtBuffer::HostBufferSemantics>(m, "HostBufferSemantics")
+  py::enum_<PjRtClient::HostBufferSemantics>(m, "HostBufferSemantics")
       .value("IMMUTABLE_ONLY_DURING_CALL",
-             PjRtBuffer::HostBufferSemantics::kImmutableOnlyDuringCall)
+             PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall)
       .value("IMMUTABLE_UNTIL_TRANSFER_COMPLETES",
-             PjRtBuffer::HostBufferSemantics::kImmutableUntilTransferCompletes)
-      .value("ZERO_COPY", PjRtBuffer::HostBufferSemantics::kZeroCopy);
+             PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes)
+      .value("ZERO_COPY", PjRtClient::HostBufferSemantics::kZeroCopy);
 
   py::class_<PyClient, std::shared_ptr<PyClient>> py_local_client(m, "Client");
   py_local_client.def_property_readonly("platform", &PyClient::platform_name)
@@ -548,7 +555,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("buffer_from_pyval", &PyClient::BufferFromPyval, py::arg("argument"),
            py::arg("device") = nullptr, py::arg("force_copy") = false,
            py::arg("host_buffer_semantics") =
-               PjRtBuffer::HostBufferSemantics::kZeroCopy)
+               PjRtClient::HostBufferSemantics::kZeroCopy)
       .def("compile", &PyClient::Compile, py::arg("computation"),
            py::arg("compile_options") = CompileOptions())
       .def("heap_profile", &PyClient::HeapProfile);
@@ -580,6 +587,14 @@ PYBIND11_MODULE(xla_extension, m) {
       py::arg("asynchronous") = true,
       py::arg("allocator_config") = GpuAllocatorConfig(),
       py::arg("distributed_client") = nullptr, py::arg("node_id") = 0);
+  m.def(
+      "get_tpu_client",
+      [](bool asynchronous) -> StatusOr<std::shared_ptr<PyClient>> {
+        TF_ASSIGN_OR_RETURN(std::shared_ptr<PjRtClient> client,
+                            GetTpuClient(asynchronous));
+        return std::make_shared<PyClient>(std::move(client));
+      },
+      py::arg("asynchronous") = true);
 
   py::class_<Traceback::Frame>(m, "Frame")
       .def_readonly("file_name", &Traceback::Frame::file_name)
@@ -626,9 +641,7 @@ PYBIND11_MODULE(xla_extension, m) {
           [](py::object buffer_obj) -> StatusOr<py::object> {
             GlobalPyRefManager()->CollectGarbage();
             PyBuffer* buffer = buffer_obj.cast<PyBuffer*>();
-            LocalDeviceState* state =
-                buffer->buffer()->device()->local_device_state();
-            if (state->executor()->platform_kind() == se::PlatformKind::kHost &&
+            if (buffer->buffer()->IsOnCpu() &&
                 buffer->buffer()->on_device_shape().IsArray() &&
                 buffer->buffer()->on_device_shape().element_type() != BF16) {
               py::object out = py::reinterpret_steal<py::object>(
@@ -877,7 +890,8 @@ PYBIND11_MODULE(xla_extension, m) {
                  ShapeIndex(param_index.begin(), param_index.end()));
            });
 
-  m.def("buffer_to_dlpack_managed_tensor", BufferToDLPackManagedTensor);
+  m.def("buffer_to_dlpack_managed_tensor", BufferToDLPackManagedTensor,
+        py::arg("buffer"), py::arg("take_ownership") = true);
   m.def("dlpack_managed_tensor_to_buffer", DLPackManagedTensorToBuffer);
 
   py::enum_<PrecisionConfig::Precision>(m, "PrecisionConfig_Precision")

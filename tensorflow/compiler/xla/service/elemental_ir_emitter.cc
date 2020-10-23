@@ -2540,6 +2540,10 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduceWindow(
   //     if I in bounds of input
   //       value = function(value, input[I])
   //     output[O] = value
+  if (reduce_window->shape().IsTuple()) {
+    return Status(tensorflow::error::UNIMPLEMENTED,
+                  "Variadic reduce window op is not yet fully supported.");
+  }
   const HloInstruction* operand = reduce_window->operand(0);
   const Window& window = reduce_window->window();
 

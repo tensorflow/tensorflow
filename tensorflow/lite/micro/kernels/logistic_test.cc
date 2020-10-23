@@ -79,8 +79,8 @@ void TestLogisticFloat(const int* input_dims_data, const float* input_data,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims),
-      CreateFloatTensor(output_data, output_dims),
+      CreateTensor(input_data, input_dims),
+      CreateTensor(output_data, output_dims),
   };
 
   ValidateLogisticGoldens(tensors, tensors_size, output_data, golden,
@@ -108,8 +108,8 @@ void TestLogisticQuantized(const int* input_dims_data, const float* input_data,
                             output_zero_point),
   };
 
-  tflite::AsymmetricQuantize(golden, golden_quantized, output_elements_count,
-                             output_scale, output_zero_point);
+  tflite::Quantize(golden, golden_quantized, output_elements_count,
+                   output_scale, output_zero_point);
   ValidateLogisticGoldens(tensors, tensors_size, output_data, golden_quantized,
                           output_elements_count, 1.0);
 }

@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
+#include "tensorflow/lite/delegates/gpu/cl/serialization_generated.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
 #include "tensorflow/lite/delegates/gpu/common/access_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -77,6 +78,11 @@ class Arguments : public ArgumentsBinder {
   ~Arguments() override = default;
 
  private:
+  friend flatbuffers::Offset<data::Arguments> Encode(
+      const Arguments& args, flatbuffers::FlatBufferBuilder* builder);
+  friend absl::Status Decode(CLContext* context, const data::Arguments* fb_args,
+                             Arguments* args);
+
   void AddBuffer(const std::string& name, const GPUBufferDescriptor& desc);
   void AddImage2D(const std::string& name, const GPUImage2DDescriptor& desc);
   void AddImage2DArray(const std::string& name,
@@ -118,6 +124,9 @@ class Arguments : public ArgumentsBinder {
   void ResolveObjectNames(const std::string& object_name,
                           const std::vector<std::string>& member_names,
                           std::string* code);
+
+  GPUObjectDescriptor* GetObjectDescriptor(
+      const std::string& object_name) const;
 
   static constexpr char kArgsPrefix[] = "args.";
 

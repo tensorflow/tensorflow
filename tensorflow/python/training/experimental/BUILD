@@ -107,7 +107,6 @@ cuda_py_test(
     size = "small",
     srcs = ["mixed_precision_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":mixed_precision",
         "//tensorflow/python:client_testlib",

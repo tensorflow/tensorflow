@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToGPU/SCFToGPUPass.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToStandard/SCFToStandard.h"  // from @llvm-project
+#include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/ParallelLoopMapper.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
@@ -36,6 +37,7 @@ limitations under the License.
 #include "mlir/Dialect/SCF/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/Transforms.h"  // from @llvm-project
+#include "mlir/Dialect/Shape/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -81,15 +83,19 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
     pm.addPass(mlir::mhlo::createLegalizeToLhloPass(
         /*results_escape_functions=*/true));
     // Moving `AllocOp`s and inserting missing `DeallocOp`s
-    pm.addPass(::mlir::createBufferPlacementPass());
+    pm.addPass(::mlir::createBufferHoistingPass());
+    pm.addPass(::mlir::createBufferDeallocationPass());
     pm.addNestedPass<mlir::FuncOp>(mlir::createCopyRemovalPass());
     pm.addPass(mlir::kernel_gen::transforms::CreateShapeToDescriptorsPass());
   } else {
     pm.addPass(mlir::mhlo::createLegalizeTFPass(
         /*allow_partial_conversion=*/false, /*legalize_chlo=*/false));
-    pm.addPass(mlir::mhlo::createChloLegalizeToHloPass());
     pm.addPass(mlir::createTransformUnrankedHloPass());
+    pm.addPass(mlir::mhlo::createChloLegalizeToHloPass());
     pm.addPass(mlir::kernel_gen::transforms::CreateShapeToDescriptorsPass());
+    // Clean up the IR created above. In particular, operations on descriptors
+    // are simplified here.
+    pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(mlir::kernel_gen::transforms::CreateBufferizePass());
     pm.addPass(mlir::kernel_gen::transforms::CreateParallelLoopsToSequential());
   }
@@ -166,6 +172,11 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
     pm.addPass(xla::mlir_gpu::createRewriteKernelSignaturePass());
   }
   pm.addPass(::mlir::createLowerAffinePass());
+
+  // Constraints are removed as late as possible and before lowering to CFG.
+  pm.addPass(::mlir::createConvertShapeConstraintsPass());
+  pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
+
   pm.addPass(::mlir::createLowerToCFGPass());
   if (failed(pm.run(module))) {
     return InternalError("Lowering to GPU kernels failed.");

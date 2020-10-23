@@ -188,7 +188,7 @@ TfLiteStatus EvalInteger8x8_16(
     const TfLiteTensor* input_gate_bias, const TfLiteTensor* forget_gate_bias,
     const TfLiteTensor* cell_gate_bias, const TfLiteTensor* output_gate_bias,
     const TfLiteTensor* projection_weights, const TfLiteTensor* projection_bias,
-    const TfLiteLSTMParams* params,
+    const TfLiteLSTMParams* params, bool forward_sequence, bool time_major,
     const lstm_eval::IntegerLstmParameter* integer_lstm_param,
     TfLiteTensor* output_state, TfLiteTensor* cell_state, TfLiteTensor* output,
     TfLiteTensor* scratch0, TfLiteTensor* scratch1, TfLiteTensor* scratch2,

@@ -736,24 +736,38 @@ class PodTpuDriver : public TpuDriver {
 
       auto done = [this, event_id]() {
         mu_.AssertHeld();
-        if (events_.count(event_id) == 0) {
-          LOG(ERROR) << "Cannot find event id " << event_id
-                     << " in WaitForEvent.";
-        }
-        return events_[event_id]->underlying_event != nullptr &&
-               events_[event_id]->underlying_event.use_count() != 0;
+        // The event was either completed and erased from the map or we have
+        // an underlying event available to us.
+        return events_.count(event_id) == 0 ||
+               (events_[event_id]->underlying_event != nullptr &&
+                events_[event_id]->underlying_event.use_count() != 0);
       };
 
       auto status = mu_.AwaitWithTimeout(absl::Condition(&done), duration);
       if (!status) {
         return absl::nullopt;
       }
-      underlying_event = events_[event_id]->underlying_event;
+
+      if (events_.count(event_id) > 0) {
+        underlying_event = events_[event_id]->underlying_event;
+      } else {
+        underlying_event = nullptr;
+      }
     }
 
     // Wait for the underlying event without holding on to the event_lock_, or
     // else incoming events will not be processed.
-    return underlying_event->AwaitWithTimeout(duration);
+    if (underlying_event != nullptr) {
+      return underlying_event->AwaitWithTimeout(duration);
+    } else {
+      absl::MutexLock l(&mu_);
+      auto event_status = abnormal_event_status_.find(event_id);
+      if (event_status == abnormal_event_status_.end()) {
+        return Status::OK();
+      } else {
+        return event_status->second;
+      }
+    }
   }
 
   void AddCallbackForEvent(int64_t event_id, std::function<void(Status)> fn)
@@ -768,13 +782,13 @@ class PodTpuDriver : public TpuDriver {
       } else {
         fn(event_status->second);
       }
-    }
-
-    if (event->second->underlying_event != nullptr &&
-        event->second->underlying_event.use_count() != 0) {
-      event->second->underlying_event->AddCallback(fn);
     } else {
-      event->second->callbacks.push_back(std::move(fn));
+      if (event->second->underlying_event != nullptr &&
+          event->second->underlying_event.use_count() != 0) {
+        event->second->underlying_event->AddCallback(fn);
+      } else {
+        event->second->callbacks.push_back(std::move(fn));
+      }
     }
   }
 

@@ -97,13 +97,18 @@ Tensor ConvertDescriptorToTensor(
       auto result_desc = MLIR_FUNCTION(tf_op, mlir_type)(ctx, &input_desc);   \
       free(input_desc.descriptor);                                            \
                                                                               \
-      tensorflow::AllocatorAttributes attrs;                                  \
-      auto* allocator = ctx->get_allocator(attrs);                            \
-                                                                              \
-      Tensor result_tensor = ConvertDescriptorToTensor<data_type>(            \
-          result_desc, tf_data_type, allocator);                              \
+      /* Compare data pointers to detect forwarding. */                       \
+      void* result_data_ptr = static_cast<void**>(result_desc.descriptor)[0]; \
+      if (input.data() == result_data_ptr) {                                  \
+        ctx->set_output(0, input);                                            \
+      } else {                                                                \
+        tensorflow::AllocatorAttributes attrs;                                \
+        auto* allocator = ctx->get_allocator(attrs);                          \
+        Tensor result_tensor = ConvertDescriptorToTensor<data_type>(          \
+            result_desc, tf_data_type, allocator);                            \
+        ctx->set_output(0, result_tensor);                                    \
+      }                                                                       \
       free(result_desc.descriptor);                                           \
-      ctx->set_output(0, result_tensor);                                      \
     }                                                                         \
   };                                                                          \
   }                                                                           \

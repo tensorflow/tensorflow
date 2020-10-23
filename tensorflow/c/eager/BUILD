@@ -11,6 +11,9 @@ load(
 )
 
 # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")
 
 # buildifier: disable=same-origin-load
@@ -94,6 +97,7 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime:remote_device",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/distributed_runtime:worker_env",
+        "//tensorflow/core/distributed_runtime:worker_interface",
         "//tensorflow/core:gpu_runtime",
     ] + internal_tfrt_deps(),
     alwayslink = 1,
@@ -635,6 +639,19 @@ cc_library(
     deps = [
         ":immediate_execution_tensor_handle",
         "//tensorflow/c:conversion_macros",
+    ],
+)
+
+cc_header_only_library(
+    name = "tfe_tensorhandle_internal_hdrs_only",
+    extra_deps = [
+        "@com_google_absl//absl/strings",
+    ],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        ":tfe_tensorhandle_internal",
     ],
 )
 

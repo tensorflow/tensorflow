@@ -106,9 +106,9 @@ void TestMeanFloatInput4D(const int* input_dims_data, const float* input_data,
 
   constexpr int tensors_size = num_of_inputs + num_of_outputs;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims),
-      CreateInt32Tensor(axis_data, axis_dims),
-      CreateFloatTensor(output_data, output_dims),
+      CreateTensor(input_data, input_dims),
+      CreateTensor(axis_data, axis_dims),
+      CreateTensor(output_data, output_dims),
   };
 
   TF_LITE_MICRO_EXPECT_EQ(
@@ -133,9 +133,9 @@ void TestReduceOpFloat(const int* input_dims_data, const float* input_data,
 
   constexpr int tensors_size = num_of_inputs + num_of_outputs;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims),
-      CreateInt32Tensor(axis_data, axis_dims),
-      CreateFloatTensor(output_data, output_dims),
+      CreateTensor(input_data, input_dims),
+      CreateTensor(axis_data, axis_dims),
+      CreateTensor(output_data, output_dims),
   };
 
   TF_LITE_MICRO_EXPECT_EQ(
@@ -165,15 +165,14 @@ void TestReduceOpQuantized(
   TfLiteTensor tensors[] = {
       CreateQuantizedTensor(input_data, input_data_quant, input_dims,
                             input_scale, input_zero_point),
-      CreateInt32Tensor(axis_data, axis_dims),
+      CreateTensor(axis_data, axis_dims),
       CreateQuantizedTensor(output_data_quant, output_dims, output_scale,
                             output_zero_point),
   };
 
   // Quantize expected output
-  tflite::AsymmetricQuantize(expected_output_data, expected_output_data_quant,
-                             output_dims_count, output_scale,
-                             output_zero_point);
+  tflite::Quantize(expected_output_data, expected_output_data_quant,
+                   output_dims_count, output_scale, output_zero_point);
 
   TF_LITE_MICRO_EXPECT_EQ(
       kTfLiteOk,
@@ -204,15 +203,14 @@ void TestMeanOpQuantized(const int* input_dims_data, const float* input_data,
   TfLiteTensor tensors[] = {
       CreateQuantizedTensor(input_data, input_data_quant, input_dims,
                             input_scale, input_zero_point),
-      CreateInt32Tensor(axis_data, axis_dims),
+      CreateTensor(axis_data, axis_dims),
       CreateQuantizedTensor(output_data_quant, output_dims, output_scale,
                             output_zero_point),
   };
 
   // Quantize expected output
-  tflite::AsymmetricQuantize(expected_output_data, expected_output_data_quant,
-                             output_dims_count, output_scale,
-                             output_zero_point);
+  tflite::Quantize(expected_output_data, expected_output_data_quant,
+                   output_dims_count, output_scale, output_zero_point);
 
   TF_LITE_MICRO_EXPECT_EQ(
       kTfLiteOk,

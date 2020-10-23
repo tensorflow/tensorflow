@@ -923,19 +923,15 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
         func = lambda: math_ops.reduce_logsumexp(x)
       self._run(func, 3000, execution_mode=execution_mode)
 
-  @test_util.disable_tfrt("b/169371018: Support ScalarHost in RTFB.")
   def benchmark_tf_reduce_logsumexp_CPU(self):
     self._benchmark_tf_reduce_logsumexp()
 
-  @test_util.disable_tfrt("b/169371018: Support ScalarHost in RTFB.")
   def benchmark_tf_reduce_logsumexp_CPU_async(self):
     self._benchmark_tf_reduce_logsumexp(execution_mode=context.ASYNC)
 
-  @test_util.disable_tfrt("b/169371018: Support ScalarHost in RTFB.")
   def benchmark_tf_reduce_logsumexp_GPU(self):
     self._benchmark_tf_reduce_logsumexp(device=GPU)
 
-  @test_util.disable_tfrt("b/169371018: Support ScalarHost in RTFB.")
   def benchmark_tf_reduce_logsumexp_GPU_async(self):
     self._benchmark_tf_reduce_logsumexp(device=GPU,
                                         execution_mode=context.ASYNC)

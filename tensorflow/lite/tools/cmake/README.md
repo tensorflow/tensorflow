@@ -4,13 +4,13 @@ This page describes how to build the TensorFlow Lite static library with CMake
 tool.
 
 The following instructions have been tested on Ubuntu 16.04.3 64-bit PC (AMD64)
-and TensorFlow devel docker image
+, TensorFlow devel docker image and Windows 10.
 [tensorflow/tensorflow:devel](https://hub.docker.com/r/tensorflow/tensorflow/tags/).
 
 **Note:** This is an experimental that is subject to change.
 
-**Note:** The following are not currently supported: Android, iOS, Tests and
-Host Tools (i.e benchmark / analysis tools etc.)
+**Note:** The following are not currently supported: iOS, Tests and
+Host Tools (i.e analysis tools etc.)
 
 #### Step 1. Install CMake tool
 
@@ -72,6 +72,12 @@ current directory.
 #### Step 5. Build TensorFlow Lite Benchmark Tool
 
 In the tflite_build directory,
+
+```sh
+cmake --build . -j -t benchmark_model
+```
+
+Or
 
 ```sh
 make benchmark_model -j

@@ -1540,6 +1540,7 @@ cc_library(
         ":local_device",
         ":scoped_allocator",
         ":session_options",
+        "@com_google_absl//absl/base",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
@@ -2216,14 +2217,10 @@ tf_cc_test(
 
 tf_cuda_cc_test(
     name = "direct_session_test",
-    size = "small",
+    size = "medium",
     srcs = ["direct_session_test.cc"],
     args = [] + if_cuda(["--heap_check=local"]),  # The GPU tracer leaks memory
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = [
-        "noasan",  # b/168317266
-        "notsan",  # b/168317266
-    ],
     deps = [
         ":core_cpu",
         ":core_cpu_internal",
@@ -2525,10 +2522,11 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tf_cc_test_gpu(
     name = "lower_if_op_test",
     size = "small",
     srcs = ["lower_if_op_test.cc"],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":core_cpu",
         ":core_cpu_internal",

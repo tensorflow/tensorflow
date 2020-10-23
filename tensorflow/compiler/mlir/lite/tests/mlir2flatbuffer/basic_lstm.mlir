@@ -116,6 +116,7 @@ func @main(tensor<1x384xf32>, tensor<1x96xf32>, tensor<384x480xf32>, tensor<384x
 // CHECK-NEXT:  name: "min_runtime_version",
 // CHECK-NEXT:  buffer: 10
 // CHECK-NEXT:  } ]
+// CHECK-NEXT:  signature_defs: [ ]
 // CHECK-NEXT:}
 
 ^bb0(%arg0: tensor<1x384xf32>, %arg1: tensor<1x96xf32>, %arg2: tensor<384x480xf32>, %arg3: tensor<384xf32>, %arg4: tensor<1x96xf32>):

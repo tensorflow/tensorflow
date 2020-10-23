@@ -60,6 +60,7 @@ func @main(tensor<4xcomplex<f64>>, tensor<4xcomplex<f64>>) -> tensor<4xcomplex<f
 // CHECK-NEXT:    name: "min_runtime_version",
 // CHECK-NEXT:    buffer: 4
 // CHECK-NEXT:  } ]
+// CHECK-NEXT:  signature_defs: [ ]
 // CHECK-NEXT:}
 
   %0 = "tf.Add"(%arg0, %arg1)  : (tensor<4xcomplex<f64>>, tensor<4xcomplex<f64>>) -> tensor<4xcomplex<f64>> loc("add")

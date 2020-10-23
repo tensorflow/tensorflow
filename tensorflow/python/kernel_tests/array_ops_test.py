@@ -1628,6 +1628,22 @@ class QuantizeAndDequantizeTest(test_util.TensorFlowTestCase):
                   axis=(axis - 4)))
           self.assertAllClose(fake_quantized, expected)
 
+  def testBadAxis(self):
+    input_tensor = [2.5, 2.5]
+    input_min = [0, 0]
+    input_max = [1, 1]
+    error_message_pattern = "Shape must be at least rank 11 but is rank 1"
+    # TODO(b/171260356): Eager mode and graph mode throw different error types
+    error = errors.InvalidArgumentError if context.executing_eagerly(
+    ) else ValueError
+    with self.assertRaisesRegex(error, error_message_pattern):
+      self.evaluate(
+          array_ops.quantize_and_dequantize_v2(
+              input=input_tensor,
+              input_min=input_min,
+              input_max=input_max,
+              axis=10))
+
   def testQuantizeDequantizeGrad(self):
     shape = (2, 2)
     max_threshold = 0

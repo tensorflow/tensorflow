@@ -107,8 +107,10 @@ class AutomaticControlDependenciesTest(test.TestCase):
       v = resource_variable_ops.ResourceVariable(1.0)
       self.evaluate(variables.global_variables_initializer())
       with acd.AutomaticControlDependencies() as c:
-        read_op = gen_resource_variable_ops.read_variable_op(
-            v.handle, v.dtype).op
+        read_op = gen_resource_variable_ops.read_variable_op(v.handle,
+                                                             v.dtype).op
+        # Read ops get added to control outputs only if they have consumers.
+        c.mark_as_return(read_op.outputs[0])
       self.assertIn(read_op, c.ops_which_must_run)
 
   def testVariableMultipleReadsAndWrites(self):
@@ -133,6 +135,11 @@ class AutomaticControlDependenciesTest(test.TestCase):
             v.handle, v + 1)
         assign_op4 = gen_resource_variable_ops.assign_variable_op(
             v.handle, v + 1)
+        # Read ops get added to control outputs only if they have consumers.
+        c.mark_as_return(read_op1.outputs[0])
+        c.mark_as_return(read_op2.outputs[0])
+        c.mark_as_return(read_op3.outputs[0])
+        c.mark_as_return(read_op4.outputs[0])
 
       # Verify the control edges.
       self.assertIn(read_op1, assign_op1.control_inputs)

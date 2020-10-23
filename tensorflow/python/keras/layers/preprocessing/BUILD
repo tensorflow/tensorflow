@@ -343,9 +343,6 @@ cuda_py_test(
     srcs = ["category_crossing_test.py"],
     python_version = "PY3",
     shard_count = 4,
-    tags = [
-        "no_windows",  # b/149031156
-    ],
     deps = [
         ":category_crossing",
         "//tensorflow/python:array_ops",
@@ -590,6 +587,10 @@ tf_py_test(
     size = "small",
     srcs = ["normalization_test.py"],
     python_version = "PY3",
+    tags = [
+        "broken",  # b/170974360
+        "noasan",  # TODO(b/337374867) fails with -fsanitize=null
+    ],
     deps = [
         ":normalization",
         ":preprocessing_test_utils",
@@ -640,7 +641,6 @@ tf_py_test(
     name = "table_utils_test",
     srcs = ["table_utils_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":table_utils",
         "//tensorflow/python:client_testlib",
@@ -657,9 +657,6 @@ tf_py_test(
     srcs = ["text_vectorization_test.py"],
     python_version = "PY3",
     shard_count = 4,
-    tags = [
-        "noasan",  #TODO(b/161376526): Enable when bug fix lands.
-    ],
     deps = [
         ":preprocessing_test_utils",
         ":text_vectorization",
@@ -701,6 +698,7 @@ tf_py_test(
     name = "reduction_test",
     srcs = ["reduction_test.py"],
     python_version = "PY3",
+    tags = ["notsan"],  # TODO(b/170783154)
     deps = [
         ":reduction",
         "//tensorflow/python:client_testlib",

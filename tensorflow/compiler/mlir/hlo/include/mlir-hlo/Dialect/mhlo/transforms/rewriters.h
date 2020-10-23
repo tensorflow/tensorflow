@@ -27,7 +27,6 @@ namespace mlir {
 class LLVMTypeConverter;
 class LowerToLLVMOptions;
 class OwningRewritePatternList;
-class BufferAssignmentPlacer;
 
 // Populates a collection of rewrite patterns to realize element-wise operations
 // on ranked tensors where possible.
@@ -56,9 +55,9 @@ void PopulateMhloToStdPatterns(OwningRewritePatternList *patterns,
                                MLIRContext *ctx);
 
 // Collection of rewrite patterns for lowering of HLO to LHLO dialect.
-void populateHLOToLHLOConversionPattern(
-    MLIRContext *context, BufferAssignmentTypeConverter *converter,
-    OwningRewritePatternList *patterns);
+void populateHLOToLHLOConversionPattern(MLIRContext *context,
+                                        BufferizeTypeConverter *converter,
+                                        OwningRewritePatternList *patterns);
 
 // Collection of rewrite patterns for lowering of HLO to Linalg dialect.
 void populateHLOToLinalgConversionPattern(MLIRContext *context,

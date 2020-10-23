@@ -195,6 +195,10 @@ class NcclManager {
   // launched with this NcclManager.
   void StartAbort(const Status& s);
 
+  // Resets a previously aborted NcclManager, making it available for future
+  // collectives.
+  void Reset();
+
  private:
   enum CollectiveType {
     kAllReduce = 1,
@@ -248,7 +252,7 @@ class NcclManager {
   absl::flat_hash_map<se::StreamExecutor*, std::vector<NcclStream*>>
       device_to_comm_streams_ TF_GUARDED_BY(mu_);
 
-  std::vector<std::unique_ptr<Communicator>> communicators_;
+  std::vector<std::unique_ptr<Communicator>> communicators_ TF_GUARDED_BY(mu_);
 
   Status status_ TF_GUARDED_BY(mu_);
 

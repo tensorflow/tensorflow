@@ -699,6 +699,8 @@ class MultiProcessRunner(object):
     sig = sig or getattr(signal, 'SIGKILL', signal.SIGTERM)
     for (task_type, task_id), p in self._processes.items():
       if p.exitcode is not None:
+        logging.info('%s-%d has already exited. Not terminating.', task_type,
+                     task_id)
         continue
       try:
         os.kill(p.pid, sig)
@@ -866,6 +868,11 @@ def _shutdown_all_pool_runners():
     pool.shutdown()
 
 
+def is_oss():
+  """Returns whether the test is run under OSS."""
+  return len(sys.argv) >= 1 and 'bazel' in sys.argv[0]
+
+
 class MultiProcessPoolRunner(object):
   """A utility class to start a process pool to simulate a cluster.
 
@@ -919,6 +926,9 @@ class MultiProcessPoolRunner(object):
     if dill is None:
       raise unittest.SkipTest(
           'TODO(b/150264776): Resolve dependency issue in CI')
+    if is_oss():
+      raise unittest.SkipTest(
+          'TODO(b/170360740): MultiProcessPoolRunner timing out in OSS')
 
     self._runner = MultiProcessRunner(
         fn=lambda: None,

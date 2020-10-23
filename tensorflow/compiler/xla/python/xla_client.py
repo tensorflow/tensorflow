@@ -90,11 +90,16 @@ def _gpu_backend_factory(distributed_client=None, node_id=0):
       node_id=node_id)
 
 
+def _tpu_backend_factory():
+  return _xla.get_tpu_client(asynchronous=True)
+
+
 # Backend factories, keyed by user-visible name, in increasing priority order.
 _local_backend_factories = collections.OrderedDict([
     ('interpreter', _interpreter_backend_factory),
     ('cpu', _cpu_backend_factory),
     ('gpu', _gpu_backend_factory),
+    ('tpu', _tpu_backend_factory),
 ])
 
 

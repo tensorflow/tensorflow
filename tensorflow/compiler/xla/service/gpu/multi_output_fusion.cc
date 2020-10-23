@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -146,6 +147,16 @@ std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
     if (FusionWouldBeTooLarge(*producer, *consumer)) {
       VLOG(3) << producer->name() << " and " << consumer->name()
               << " would be too large of a fusion.";
+      continue;
+    }
+    // Make sure the emitter can codegen the fusion op efficiently. We currently
+    // can have exponential time/memory requirements for emitting certain fusion
+    // ops, in which case we don't want to fuse.
+    // TODO(b/119692968): Remove this once fixed in the emitter.
+    if (FusedIrEmitter::IsFusedIrEmitterInefficient(consumer, producer)) {
+      VLOG(3) << "Fusion of " << producer->name() << " into "
+              << consumer->name()
+              << " would result in overly large code duplication.";
       continue;
     }
     fusion_candidates.push_back(consumer);

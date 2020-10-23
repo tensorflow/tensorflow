@@ -312,12 +312,26 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
   def _experimental_distribute_dataset(self, dataset, options):
     # Note that split_batch_by argument is not passed because it is always 1 in
     # this strategy, and adding it adds unnecessary overhead to the dataset.
+    if (options and options.experimental_replication_mode ==
+        distribute_lib.InputReplicationMode.PER_REPLICA):
+      raise NotImplementedError(
+          "InputReplicationMode.PER_REPLICA "
+          "is only supported in  "
+          "`experimental_distribute_datasets_from_function`."
+      )
     return input_lib.get_distributed_dataset(
         dataset,
         self._input_workers_with_options(options),
         self._container_strategy())
 
   def _distribute_datasets_from_function(self, dataset_fn, options):
+    if (options and options.experimental_replication_mode ==
+        distribute_lib.InputReplicationMode.PER_REPLICA):
+      raise NotImplementedError(
+          "InputReplicationMode.PER_REPLICA "
+          "is only supported in "
+          "`experimental_distribute_datasets_from_function` "
+          "of tf.distribute.MirroredStrategy")
     return input_lib.get_distributed_datasets_from_function(
         dataset_fn,
         self._input_workers_with_options(options),
@@ -379,13 +393,12 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
     with ops.device(self._device), _OneDeviceReplicaContext(strategy):
       return fn(*args, **kwargs)
 
-  def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
-    del reduce_op, destinations, experimental_hints
+  def _reduce_to(self, reduce_op, value, destinations, options):
+    del reduce_op, destinations, options
     return value
 
-  def _gather_to_implementation(self, value, destinations, axis,
-                                experimental_hints):
-    del destinations, axis, experimental_hints
+  def _gather_to_implementation(self, value, destinations, axis, options):
+    del destinations, axis, options
     return value
 
   def _update(self, var, fn, args, kwargs, group):

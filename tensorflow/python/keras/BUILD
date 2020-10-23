@@ -38,7 +38,7 @@ py_library(
         "//tensorflow/python/keras/datasets",
         "//tensorflow/python/keras/feature_column",
         "//tensorflow/python/keras/layers",
-        "//tensorflow/python/keras/mixed_precision/experimental:mixed_precision_experimental",
+        "//tensorflow/python/keras/mixed_precision:mixed_precision_experimental",
         "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/keras/premade",
         "//tensorflow/python/keras/preprocessing",
@@ -339,7 +339,6 @@ tf_py_test(
     size = "small",
     srcs = ["activations_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":activations",
         ":backend",
@@ -359,7 +358,6 @@ tf_py_test(
     size = "small",
     srcs = ["combinations_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":combinations",
         ":testing_utils",
@@ -376,7 +374,6 @@ tf_py_test(
     size = "small",
     srcs = ["constraints_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":backend",
         ":combinations",
@@ -391,7 +388,6 @@ tf_py_test(
     size = "small",
     srcs = ["initializers_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":backend",
         ":combinations",
@@ -426,7 +422,6 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 8,
     tags = ["notsan"],
-    tfrt_enabled = True,
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -630,7 +625,6 @@ tf_py_test(
     size = "medium",
     srcs = ["backend_config_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":backend",
         ":backend_config",
@@ -645,7 +639,6 @@ tf_py_test(
     srcs = ["keras_parameterized_test.py"],
     python_version = "PY3",
     tags = ["notsan"],
-    tfrt_enabled = True,
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",

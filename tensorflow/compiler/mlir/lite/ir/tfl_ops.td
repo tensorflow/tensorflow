@@ -876,6 +876,30 @@ def TFL_CosOp: TFL_Op<"cos", [
   let hasFolder = 1;
 }
 
+def TFL_CumsumOp: TFL_Op<"cumsum", [
+    NoSideEffect,
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    NoQuantizableResult,
+    TFL_OperandHasRank<1, 0>]> {
+  let summary = "Cumsum operator";
+
+  let description = [{
+    Compute the cumulative sum of the tensor x along axis.
+  }];
+
+  let arguments = (
+    ins TFL_TensorOf<[F32, I32, I64]>:$input,
+    TFL_I32Tensor:$axis,
+    DefaultValuedAttr<BoolAttr, "false">:$exclusive,
+    DefaultValuedAttr<BoolAttr, "false">:$reverse
+  );
+
+  let results = (outs TFL_TensorOf<[F32, I32, I64]>:$output);
+
+  let hasOptions = 1;
+}
+
 def TFL_DepthwiseConv2DOp :
     TFL_ConvOp<"depthwise_conv_2d", "Depthwise-separable convolution", 3> {
   let arguments = (

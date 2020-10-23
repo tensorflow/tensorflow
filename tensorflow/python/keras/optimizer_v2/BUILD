@@ -92,7 +92,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["adagrad_test.py"],
     shard_count = 4,
-    tfrt_enabled = True,
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
@@ -113,7 +112,10 @@ cuda_py_test(
     size = "medium",
     srcs = ["adam_test.py"],
     shard_count = 4,
-    tags = ["no_rocm"],
+    tags = [
+        "no_rocm",
+        "no_windows",  # TODO(b/171384138)
+    ],
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
@@ -177,7 +179,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["ftrl_test.py"],
     shard_count = 4,
-    tfrt_enabled = True,
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
@@ -217,7 +218,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["nadam_test.py"],
     shard_count = 4,
-    tfrt_enabled = True,
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
@@ -264,7 +264,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["learning_rate_schedule_test.py"],
     shard_count = 4,
-    tfrt_enabled = True,
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
@@ -279,7 +278,6 @@ cuda_py_test(
     name = "legacy_learning_rate_decay_test",
     size = "medium",
     srcs = ["legacy_learning_rate_decay_test.py"],
-    tfrt_enabled = True,
     deps = [
         ":legacy_learning_rate_decay",
         "//tensorflow/python:framework_test_lib",
