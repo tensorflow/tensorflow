@@ -49,15 +49,28 @@ class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
   ::xla::StatusOr<lmhlo::ScatterOp> EmitScatterOp(::xla::HloInstruction* instr);
   ::xla::StatusOr<mhlo::ScatterDimensionNumbers> GetScatterDimensionNumbers(
       ::xla::HloInstruction* instr);
+  ::xla::StatusOr<lmhlo::SelectAndScatterOp> EmitSelectAndScatterOp(
+      ::xla::HloInstruction* instr);
 
  private:
   template <typename OpType>
   ::xla::StatusOr<OpType> CreateOpWithoutAttrs(::xla::HloInstruction* instr);
 
   template <typename T>
-  DenseIntElementsAttr getI64DenseElementsAttr(const T& container) {
+  DenseIntElementsAttr GetI64DenseElementsAttr(const T& container) {
     return builder_.getI64TensorAttr(
         {container.data(), static_cast<size_t>(container.size())});
+  }
+
+  DenseIntElementsAttr GetWindowElements(
+      const ::xla::Window& window,
+      std::function<int64_t(const xla::WindowDimension& dim)> getter) {
+    llvm::SmallVector<int64_t, 4> elements;
+    elements.reserve(window.dimensions_size());
+    for (const ::xla::WindowDimension& dim : window.dimensions()) {
+      elements.push_back(getter(dim));
+    }
+    return GetI64DenseElementsAttr(elements);
   }
 
   tensorflow::Status DefaultAction(::xla::HloInstruction* instr) final;
@@ -71,6 +84,7 @@ class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
   tensorflow::Status HandleSort(::xla::HloInstruction* instr) final;
   tensorflow::Status HandleFusion(::xla::HloInstruction* instr) final;
   tensorflow::Status HandleScatter(::xla::HloInstruction* instr) final;
+  tensorflow::Status HandleSelectAndScatter(::xla::HloInstruction* instr) final;
 
   // Helper function that recursively visits the tuple structure in
   // `current_shape`, and reconstruct a matching lmhlo::TupleOp.

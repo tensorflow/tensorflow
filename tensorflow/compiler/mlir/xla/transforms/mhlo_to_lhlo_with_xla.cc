@@ -407,9 +407,9 @@ LhloDialectEmitter::GetScatterDimensionNumbers(HloInstruction* instr) {
   const ::xla::ScatterDimensionNumbers& xla_scatter_dim =
       scatter_instr->scatter_dimension_numbers();
   auto scatter_dimension_numbers = mhlo::ScatterDimensionNumbers::get(
-      getI64DenseElementsAttr(xla_scatter_dim.update_window_dims()),
-      getI64DenseElementsAttr(xla_scatter_dim.inserted_window_dims()),
-      getI64DenseElementsAttr(xla_scatter_dim.scatter_dims_to_operand_dims()),
+      GetI64DenseElementsAttr(xla_scatter_dim.update_window_dims()),
+      GetI64DenseElementsAttr(xla_scatter_dim.inserted_window_dims()),
+      GetI64DenseElementsAttr(xla_scatter_dim.scatter_dims_to_operand_dims()),
       builder_.getI64IntegerAttr(xla_scatter_dim.index_vector_dim()),
       module_.getContext());
   return scatter_dimension_numbers;
@@ -441,6 +441,43 @@ StatusOr<lmhlo::ScatterOp> LhloDialectEmitter::EmitScatterOp(
 
 Status LhloDialectEmitter::HandleScatter(HloInstruction* instr) {
   return EmitScatterOp(instr).status();
+}
+
+StatusOr<lmhlo::SelectAndScatterOp> LhloDialectEmitter::EmitSelectAndScatterOp(
+    HloInstruction* instr) {
+  TF_ASSIGN_OR_RETURN(auto select_and_scatter,
+                      CreateOpWithoutAttrs<lmhlo::SelectAndScatterOp>(instr));
+
+  // copy attributes
+  auto* select_and_scatter_instr =
+      ::xla::Cast<::xla::HloSelectAndScatterInstruction>(instr);
+  const ::xla::Window& window = select_and_scatter_instr->window();
+
+  select_and_scatter.window_dimensionsAttr(
+      GetWindowElements(window, [](const ::xla::WindowDimension& dim) {
+        return static_cast<int64_t>(dim.size());
+      }));
+  select_and_scatter.window_stridesAttr(
+      GetWindowElements(window, [](const ::xla::WindowDimension& dim) {
+        return static_cast<int64_t>(dim.stride());
+      }));
+  select_and_scatter.paddingAttr(
+      GetWindowElements(window, [](const ::xla::WindowDimension& dim) {
+        return static_cast<int64_t>(dim.padding_low());
+      }));
+
+  // import select and scatter computation as region
+  TF_RETURN_IF_ERROR(::xla::HloFunctionImporter::ImportAsRegion(
+      *select_and_scatter_instr->select(), &select_and_scatter.select(),
+      &builder_));
+  TF_RETURN_IF_ERROR(::xla::HloFunctionImporter::ImportAsRegion(
+      *select_and_scatter_instr->scatter(), &select_and_scatter.scatter(),
+      &builder_));
+  return select_and_scatter;
+}
+
+Status LhloDialectEmitter::HandleSelectAndScatter(HloInstruction* instr) {
+  return EmitSelectAndScatterOp(instr).status();
 }
 
 StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(
