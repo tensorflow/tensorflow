@@ -43,7 +43,7 @@ yes "" | "$PYTHON_BIN_PATH" configure.py
 # Get the default test targets for bazel.
 source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 
-tag_filters="gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_oss_py38"
+tag_filters="gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_oss_py38,-no_cuda11"
 
 test +e
 bazel test --config=cuda --config=opt \
