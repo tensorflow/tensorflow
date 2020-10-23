@@ -20,7 +20,7 @@ Should Run Bluepill Test
     Execute Command           $logfile = @${LOGFILE}
     Execute Script            ${SCRIPT}
 
-    Create Terminal Tester    ${UART}  timeout=15
+    Create Terminal Tester    ${UART}  timeout=2
     Start Emulation
 
     Wait For Line On Uart     ${EXPECTED}

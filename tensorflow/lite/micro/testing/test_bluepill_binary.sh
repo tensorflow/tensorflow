@@ -30,6 +30,26 @@ declare -r MICRO_LOG_PATH=${TEST_TMPDIR}
 declare -r MICRO_LOG_FILENAME=${MICRO_LOG_PATH}logs.txt
 mkdir -p ${MICRO_LOG_PATH}
 
+declare -r RENODE_TEST_SCRIPT=${ROOT_DIR}/tensorflow/lite/micro/tools/make/downloads/renode/test.sh
+if [ ! -f "${RENODE_TEST_SCRIPT}" ]; then
+  echo "The renode test script: ${RENODE_TEST_SCRIPT} does not exist. Please " \
+       "make sure that you have correctly installed Renode for TFLM. See " \
+       "tensorflow/lite/micro/docs/renode.md for more details."
+  exit 1
+fi
+
+if ! ${RENODE_TEST_SCRIPT} &> /dev/null
+then
+  echo "The following command failed: ${RENODE_TEST_SCRIPT}. Please " \
+       "make sure that you have correctly installed Renode for TFLM. See " \
+       "tensorflow/lite/micro/docs/renode.md for more details."
+  exit 1
+fi
+
+
+# This check ensures that we only have a single $MICRO_LOG_FILENAME. Without it,
+# renode will do a log rotation and there will be multiple files such as
+# $MICRO_LOG_FILENAME.1 $MICRO_LOG_FILENAME.2 etc.
 if [ -e $MICRO_LOG_FILENAME ]; then
     rm $MICRO_LOG_FILENAME &> /dev/null
 fi;
@@ -40,7 +60,7 @@ if ! BIN=${ROOT_DIR}/$1 \
   SCRIPT=${ROOT_DIR}/tensorflow/lite/micro/testing/bluepill.resc \
   LOGFILE=$MICRO_LOG_FILENAME \
   EXPECTED="$2" \
-  ${ROOT_DIR}/tensorflow/lite/micro/tools/make/downloads/renode/test.sh \
+  ${RENODE_TEST_SCRIPT} \
   ${ROOT_DIR}/tensorflow/lite/micro/testing/bluepill.robot \
   -r $TEST_TMPDIR &> ${MICRO_LOG_PATH}robot_logs.txt
 then

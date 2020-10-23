@@ -417,7 +417,6 @@ include $(MICRO_LITE_BENCHMARKS)
 THIRD_PARTY_TARGETS :=
 $(foreach DOWNLOAD,$(THIRD_PARTY_DOWNLOADS),$(eval $(call create_download_rule,$(DOWNLOAD))))
 third_party_downloads: $(THIRD_PARTY_TARGETS)
-	bash $(MAKEFILE_DIR)/download_renode.sh $(MAKEFILE_DIR)/downloads/renode
 
 MICROLITE_LIB_OBJS := $(addprefix $(OBJDIR), \
 $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(MICROLITE_CC_SRCS))))
