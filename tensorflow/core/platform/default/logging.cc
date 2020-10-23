@@ -468,7 +468,7 @@ void TFDefaultLogSink::Send(const TFLogEntry& entry) {
       android_log_level = ANDROID_LOG_FATAL;
       break;
     default:
-      if (severity_ < absl::LogSeverity::kInfo) {
+      if (entry.log_severity() < absl::LogSeverity::kInfo) {
         android_log_level = ANDROID_LOG_VERBOSE;
       } else {
         android_log_level = ANDROID_LOG_ERROR;
