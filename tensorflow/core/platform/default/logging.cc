@@ -66,7 +66,7 @@ class TFLogSinks {
     // Up to 128 messages will be queued until a log sink is added. 
     // The queue will then be logged to the first added log sink.
     // 
-    // NO_DEFAULT_LOGGER is not defined defined:
+    // NO_DEFAULT_LOGGER is not defined:
     // The messages will be logged using the default logger. The default logger
     // will log to stdout on all platforms except for Android. On Androit the
     // default Android logger will be used.
