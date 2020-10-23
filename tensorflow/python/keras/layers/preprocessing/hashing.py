@@ -213,7 +213,7 @@ class Hashing(base_preprocessing_layer.PreprocessingLayer):
     indices = [sp_inp.indices for sp_inp in sparse_inputs]
     values = [sp_inp.values for sp_inp in sparse_inputs]
     shapes = [sp_inp.dense_shape for sp_inp in sparse_inputs]
-    indices_out, values_out, shapes_out = gen_sparse_ops.sparse_cross_hashed(
+    indices_out, values_out, shapes_out = gen_sparse_ops.SparseCrossHashed(
         indices=indices,
         values=values,
         shapes=shapes,
