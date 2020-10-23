@@ -1000,13 +1000,6 @@ PartitionedHlo::ReshardFromPartialReplicateWithDynamicSlice(
         target.tile_assignment().dimensions().back());
   }
 
-  // Get per_group partitioner state.
-  std::vector<int64> group_dims(sharding().tile_assignment().num_dimensions() -
-                                1);
-  std::iota(group_dims.begin(), group_dims.end(), 0);
-  auto sharding_grouped = GroupShardingOnDims(sharding(), group_dims);
-  auto per_group_partitioner_state = CreatePerGroupPartitioningState(
-      state_, sharding_grouped.device_groups, state_.b);
   // 2. Get the padded_hlo, do right halo exchange if needed.
   auto padded_hlo = PadFromPartialReplicateShape(
       hlo_, base_shape_, sharding(), temp_target_sharding, expand_tile_dims,
@@ -1017,20 +1010,24 @@ PartitionedHlo::ReshardFromPartialReplicateWithDynamicSlice(
   }
   // 3. Slice out the tile from replicate ones.
   auto shard_shape = MakePartitionedShape(base_shape_, temp_target_sharding);
-  // device assignment within each group is sorted in
-  // HloSharding::PartialTile, thus partiton_id within each group can be
-  // matched with the order in tile_assignment.
-  Array<int64> tiling_assignment(tiling_dim_factors);
-  tiling_assignment.FillIota(0);
+  // Since we are just slicing, we can just use the differences between the new
+  // and old offsets in the full shape as the dynamic-slice offsets.
+  auto padded_base_shape = shard_shape;
+  for (int64 i = 0; i < padded_base_shape.rank(); ++i) {
+    padded_base_shape.set_dimensions(
+        i, padded_base_shape.dimensions(i) *
+               temp_target_sharding.tile_assignment().dim(i));
+  }
+  auto offsets = MakePartitionOffsets(padded_base_shape, temp_target_sharding,
+                                      state_.partition_id, state_.b);
+  auto old_offsets = MakePartitionOffsets(padded_base_shape, sharding(),
+                                          state_.partition_id, state_.b);
+  for (int64 i = 0; i < offsets.size(); ++i) {
+    offsets[i] = state_.b->AddInstruction(HloInstruction::CreateBinary(
+        offsets[i]->shape(), HloOpcode::kSubtract, offsets[i], old_offsets[i]));
+  }
   auto slice = state_.b->AddInstruction(HloInstruction::CreateDynamicSlice(
-      shard_shape, padded_hlo.value(),
-      MakePartitionOffsets(padded_hlo.value()->shape(),
-                           target.ReplicateOnLastTileDim()
-                               ? HloSharding::PartialTile(tiling_assignment)
-                               : HloSharding::Tile(tiling_assignment),
-                           per_group_partitioner_state.partition_id,
-                           per_group_partitioner_state.b),
-      shard_shape.dimensions()));
+      shard_shape, padded_hlo.value(), offsets, shard_shape.dimensions()));
   slice->set_sharding(temp_target_sharding);
   auto result = PartitionedHlo(slice, base_shape_, state_);
   // If temp_target_sharding's device assignment is different from target,

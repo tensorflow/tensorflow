@@ -1,7 +1,7 @@
-// RUN: kernel-gen-opt %s -tf-kernel-to-llvm -split-input-file --print-ir-after-all | FileCheck %s
+// RUN: kernel-gen-opt %s -tf-kernel-to-llvm -split-input-file | FileCheck %s
 
 // CHECK: llvm.func @_mlir_ciface_tf_alloc
-// CHECK-SAME:  (!llvm.ptr<i8>, !llvm.i64, !llvm.i32, !llvm.i32, !llvm.ptr<i32>) -> !llvm.ptr<i8>
+// CHECK-SAME:  (!llvm.ptr<i8>, !llvm.i64, !llvm.i64, !llvm.i32, !llvm.i32, !llvm.ptr<i32>) -> !llvm.ptr<i8>
 
 // CHECK-LABEL: llvm.func @alloc(
 // CHECK-SAME:    [[TF_CTX:%.*]]: !llvm.ptr<i8>,
@@ -15,7 +15,7 @@ func @alloc(%ctx: !tf_framework.op_kernel_context,
 // Compute number of elements.
 // CHECK: [[SIZE_1:%.*]] = llvm.mlir.constant(10 : index) : !llvm.i64
 // CHECK: [[NUM_ELEM_0:%.*]] = llvm.mul [[SIZE_0]], [[SIZE_1]] : !llvm.i64
-// CHECK: [[NUM_ELEM_1:%.*]] = llvm.mul [[NUM_ELEM_0]], [[SIZE_2]] : !llvm.i64
+// CHECK: [[NUM_ELEMS:%.*]] = llvm.mul [[NUM_ELEM_0]], [[SIZE_2]] : !llvm.i64
 
 // Compute the size of an individual element.
 // CHECK: [[NULL:%.*]] = llvm.mlir.null : !llvm.ptr<float>
@@ -25,19 +25,15 @@ func @alloc(%ctx: !tf_framework.op_kernel_context,
 // CHECK: [[SIZE_OF_FLOAT:%.*]] = llvm.ptrtoint [[GEP]]
 // CHECK-SAME:            !llvm.ptr<float> to !llvm.i64
 
-// Compute total size in bytes.
-// CHECK: [[NUM_BYTES:%.*]] = llvm.mul [[NUM_ELEM_1]], [[SIZE_OF_FLOAT]]
-
 // Compute output index (-1) and candidate indices (0, NULL).
 // CHECK: [[OUTPUT_INDEX:%.*]] = llvm.mlir.constant(-1 : i32) : !llvm.i32
 // CHECK-NEXT: [[NUM_CANDIDATES:%.*]] = llvm.mlir.constant(0 : i32) : !llvm.i32
 // CHECK-NEXT: [[CANDIDATES_PTR:%.*]] = llvm.mlir.null : !llvm.ptr<i32>
 
 // Allocate memory.
-// CHECK: [[BYTES_PTR:%.*]] = llvm.call @{{.*}}([[TF_CTX]], [[NUM_BYTES]],
-// CHECK-SAME: [[OUTPUT_INDEX]], [[NUM_CANDIDATES]], [[CANDIDATES_PTR]])
-// CHECK-SAME: (!llvm.ptr<i8>, !llvm.i64, !llvm.i32, !llvm.i32, !llvm.ptr<i32>
-// CHECK-SAME: ) -> !llvm.ptr<i8>
+// CHECK: [[BYTES_PTR:%.*]] = llvm.call @{{.*}}([[TF_CTX]], [[NUM_ELEMS]],
+// CHECK-SAME: [[SIZE_OF_FLOAT]], [[OUTPUT_INDEX]], [[NUM_CANDIDATES]],
+// CHECK-SAME: [[CANDIDATES_PTR]])
 
 // Build memref descriptor.
 // CHECK: [[DESC_0:%.*]] = llvm.mlir.undef : [[DESC_TY]]

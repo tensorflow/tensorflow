@@ -340,7 +340,6 @@ tf_py_test(
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -356,7 +355,6 @@ tf_py_test(
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -372,7 +370,6 @@ tf_py_test(
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -641,7 +638,6 @@ tf_py_test(
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
-    tfrt_enabled = True,
     deps = [
         ":base_layer",
         ":engine",

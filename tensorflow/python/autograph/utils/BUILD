@@ -29,7 +29,7 @@ py_library(
         "tensors.py",
         "testing.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/python:dtypes",
@@ -47,7 +47,7 @@ py_test(
     name = "context_managers_test",
     srcs = ["context_managers_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":utils",
         "//tensorflow/python:client_testlib",
@@ -58,7 +58,7 @@ py_test(
     name = "misc_test",
     srcs = ["misc_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":utils",
         "//tensorflow/python:client_testlib",
@@ -69,7 +69,7 @@ py_test(
     name = "py_func_test",
     srcs = ["py_func_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = ["no_windows"],
     deps = [
         ":utils",
@@ -81,7 +81,7 @@ py_test(
     name = "tensor_list_test",
     srcs = ["tensor_list_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":utils",
         "//tensorflow/python:client_testlib",
@@ -93,7 +93,7 @@ py_test(
     name = "tensors_test",
     srcs = ["tensors_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":utils",
         "//tensorflow/python:client_testlib",

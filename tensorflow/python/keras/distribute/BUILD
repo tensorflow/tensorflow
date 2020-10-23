@@ -136,7 +136,6 @@ cuda_py_test(
     srcs = ["worker_training_state_test.py"],
     python_version = "PY3",
     shard_count = 4,
-    tfrt_enabled = True,
     deps = [
         ":multi_worker_testing_utils",
         ":worker_training_state",
@@ -513,8 +512,6 @@ distribute_py_test(
     shard_count = 31,
     tags = [
         "multi_and_single_gpu",
-        "no_cuda11",
-        "no_oss",
         "no_windows_gpu",
         "noasan",  # TODO(b/337374867) fails with -fsanitize=null
         "notpu",  # TODO(b/153672562)
@@ -734,6 +731,7 @@ py_test(
     srcs = ["multi_worker_callback_tf2_test.py"],
     python_version = "PY3",
     shard_count = 5,
+    tags = ["no_oss_py38"],  #TODO(b/171435331)
     deps = [
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:combinations",

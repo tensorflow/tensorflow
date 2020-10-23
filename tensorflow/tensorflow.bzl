@@ -2221,6 +2221,7 @@ def gpu_py_test(
         xla_enable_strict_auto_jit = False,
         xla_enabled = False,
         grpc_enabled = False,
+        xla_tags = [],  # additional tags for xla_gpu tests
         **kwargs):
     if main == None:
         main = name + ".py"
@@ -2243,7 +2244,7 @@ def gpu_py_test(
                 kernels = kernels,
                 main = main,
                 shard_count = shard_count,
-                tags = test_tags + ["xla", "manual"],
+                tags = test_tags + xla_tags + ["xla", "manual"],
                 xla_enabled = xla_enabled,
                 xla_enable_strict_auto_jit = True,
                 **kwargs

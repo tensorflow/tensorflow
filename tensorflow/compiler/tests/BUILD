@@ -1698,6 +1698,7 @@ tf_cuda_cc_test(
     name = "unary_ops_composition_test",
     srcs = ["unary_ops_composition_test.cc"],
     tags = [
+        "no_cuda_asan",  # TODO(b/171317888): re-enable.
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ] + tf_cuda_tests_tags(),
     deps = [

@@ -1047,7 +1047,6 @@ cuda_py_test(
     name = "cross_device_utils_test",
     srcs = ["cross_device_utils_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":combinations",
         ":cross_device_utils",
@@ -1692,6 +1691,7 @@ py_test(
     srcs = ["multi_process_runner_test.py"],
     python_version = "PY3",
     shard_count = 12,
+    tags = ["no_oss_py38"],  #TODO(b/171435331)
     deps = [
         ":multi_process_runner",
         ":multi_worker_test_base",

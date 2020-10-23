@@ -107,7 +107,6 @@ tf_py_test(
     name = "loader_test",
     size = "small",
     srcs = ["loader_test.py"],
-    tfrt_enabled = True,
     deps = [
         ":builder",
         ":loader",
@@ -166,7 +165,6 @@ tf_py_test(
     srcs = ["saved_model_test.py"],
     data = ["//tensorflow/cc/saved_model:saved_model_half_plus_two"],
     tags = ["no_windows"],
-    tfrt_enabled = True,
     deps = [
         ":builder",
         ":constants",
@@ -217,7 +215,6 @@ tf_py_test(
     name = "utils_test",
     size = "small",
     srcs = ["utils_test.py"],
-    tfrt_enabled = True,
     deps = [
         ":utils",
         "//tensorflow/core:protos_all_py",
@@ -250,7 +247,6 @@ tf_py_test(
     name = "signature_def_utils_test",
     size = "small",
     srcs = ["signature_def_utils_test.py"],
-    tfrt_enabled = True,
     deps = [
         ":signature_constants",
         ":signature_def_utils",
@@ -266,7 +262,6 @@ tf_py_test(
     name = "simple_save_test",
     size = "small",
     srcs = ["simple_save_test.py"],
-    tfrt_enabled = True,
     deps = [
         ":loader",
         ":signature_constants",
@@ -311,7 +306,6 @@ tf_py_test(
     name = "save_context_test",
     srcs = ["save_context_test.py"],
     srcs_version = "PY2AND3",
-    tfrt_enabled = True,
     deps = [
         ":save_context",
         ":save_options",
@@ -533,7 +527,6 @@ py_strict_library(
 tf_py_test(
     name = "revived_types_test",
     srcs = ["revived_types_test.py"],
-    tfrt_enabled = True,
     deps = [
         ":revived_types",
         "//tensorflow/core:protos_all_py",
@@ -608,7 +601,6 @@ py_strict_library(
 tf_py_test(
     name = "nested_structure_coder_test",
     srcs = ["nested_structure_coder_test.py"],
-    tfrt_enabled = True,
     deps = [
         ":nested_structure_coder",
         "//tensorflow/core:protos_all_py",
@@ -653,7 +645,6 @@ py_strict_library(
 tf_py_test(
     name = "method_name_updater_test",
     srcs = ["method_name_updater_test.py"],
-    tfrt_enabled = True,
     deps = [
         ":method_name_updater",
         "//tensorflow/core:protos_all_py",

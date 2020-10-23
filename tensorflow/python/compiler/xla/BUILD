@@ -102,7 +102,6 @@ cuda_py_test(
         "no_mac",
         "no_windows",
     ],
-    tfrt_enabled = True,
     xla_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",

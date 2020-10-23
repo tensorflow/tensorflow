@@ -83,7 +83,8 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
     pm.addPass(mlir::mhlo::createLegalizeToLhloPass(
         /*results_escape_functions=*/true));
     // Moving `AllocOp`s and inserting missing `DeallocOp`s
-    pm.addPass(::mlir::createBufferPlacementPass());
+    pm.addPass(::mlir::createBufferHoistingPass());
+    pm.addPass(::mlir::createBufferDeallocationPass());
     pm.addNestedPass<mlir::FuncOp>(mlir::createCopyRemovalPass());
     pm.addPass(mlir::kernel_gen::transforms::CreateShapeToDescriptorsPass());
   } else {

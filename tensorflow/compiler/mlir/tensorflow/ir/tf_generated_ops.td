@@ -1645,12 +1645,10 @@ Mutually reduces multiple tensors of identical type and shape.
     TF_Int32Tensor:$group_size,
     TF_Int32Tensor:$group_key,
     TF_Int32Tensor:$instance_key,
-    Variadic<TF_ResourceTensor>:$ordering_token,
 
     TF_AnyStrAttrOf<["Min", "Max", "Mul", "Add"]>:$merge_op,
     TF_AnyStrAttrOf<["Id", "Div"]>:$final_op,
-    DefaultValuedAttr<StrAttr, "auto">:$communication_hint,
-    DefaultValuedAttr<F32Attr, "0.0f">:$timeout_seconds
+    DefaultValuedAttr<StrAttr, "auto">:$communication_hint
   );
 
   let results = (outs
@@ -1658,7 +1656,6 @@ Mutually reduces multiple tensors of identical type and shape.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-  TF_DerivedOperandSizeAttr Nordering_token = TF_DerivedOperandSizeAttr<4>;
 }
 
 def TF_ComplexOp : TF_Op<"Complex", [NoSideEffect, ResultsBroadcastableShape]> {

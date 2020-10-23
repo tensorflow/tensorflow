@@ -144,7 +144,7 @@ int PjRtBufferGetBuffer(PyObject* exporter, Py_buffer* view, int flags) {
     // Additionally we call BlockHostUntilReady() below, which may block.
     py::gil_scoped_release gil_release;
 
-    if (buffer.device()->platform_name() != "cpu") {
+    if (!buffer.IsOnCpu()) {
       return InvalidArgument(
           "Python buffer protocol is only defined for CPU buffers.");
     }

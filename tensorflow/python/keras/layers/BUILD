@@ -590,7 +590,6 @@ tf_py_test(
     srcs = ["subclassed_layers_test.py"],
     python_version = "PY3",
     shard_count = 3,
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -808,7 +807,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["separable_convolutional_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -855,7 +853,6 @@ tf_py_test(
     size = "small",
     srcs = ["serialization_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -922,7 +919,6 @@ tf_py_test(
     tags = [
         "notsan",
     ],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -939,7 +935,6 @@ tf_py_test(
     size = "small",
     srcs = ["layers_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":layers",
         "//tensorflow/python:client_testlib",

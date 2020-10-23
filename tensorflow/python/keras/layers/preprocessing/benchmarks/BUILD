@@ -18,7 +18,6 @@ tf_py_test(
     name = "category_encoding_benchmark",
     srcs = ["category_encoding_benchmark.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
@@ -36,7 +35,6 @@ tf_py_test(
     name = "category_crossing_benchmark",
     srcs = ["category_crossing_benchmark.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
@@ -55,7 +53,6 @@ tf_py_test(
     name = "hashing_benchmark",
     srcs = ["hashing_benchmark.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
@@ -74,7 +71,6 @@ tf_py_test(
     name = "index_lookup_adapt_benchmark",
     srcs = ["index_lookup_adapt_benchmark.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
@@ -92,7 +88,6 @@ tf_py_test(
     name = "normalization_adapt_benchmark",
     srcs = ["normalization_adapt_benchmark.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -112,7 +107,6 @@ cuda_py_test(
     name = "image_preproc_benchmark",
     srcs = ["image_preproc_benchmark.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

@@ -94,15 +94,17 @@ void CreateXEvent(const CuptiTracerEvent& event, XPlaneBuilder* plane,
     std::string memcpy_details = absl::StrCat("size:", memcpy_info.num_bytes,
                                               " dest:", memcpy_info.destination,
                                               " async:", memcpy_info.async);
-    xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
-                            GetStatTypeStr(StatType::kMemcpyDetails)),
-                        memcpy_details);
+    xevent.AddStatValue(
+        *plane->GetOrCreateStatMetadata(
+            GetStatTypeStr(StatType::kMemcpyDetails)),
+        *plane->GetOrCreateStatMetadata(std::move(memcpy_details)));
   } else if (event.type == CuptiTracerEventType::MemoryAlloc) {
     std::string memalloc_details =
         absl::StrCat("num_bytes:", event.memalloc_info.num_bytes);
-    xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
-                            GetStatTypeStr(StatType::kMemallocDetails)),
-                        memalloc_details);
+    xevent.AddStatValue(
+        *plane->GetOrCreateStatMetadata(
+            GetStatTypeStr(StatType::kMemallocDetails)),
+        *plane->GetOrCreateStatMetadata(std::move(memalloc_details)));
   }
 
   std::vector<Annotation> annotation_stack =

@@ -868,9 +868,12 @@ tf_cc_test(
         "partially_decluster_pass_test.cc",
         "rearrange_function_argument_pass_test.cc",
     ],
-    # TODO(b/141643254) Re-enable msan after fixing use-of-uninitialized-value
-    # error.
-    tags = ["nomsan"] + tf_cuda_tests_tags(),
+    tags = [
+        # TODO(b/141643254) Re-enable msan after fixing
+        # use-of-uninitialized-value error.
+        "nomsan",
+        "no_cuda_asan",  # TODO(b/171317460): re-enable.
+    ] + tf_cuda_tests_tags(),
     deps = [
         ":common",
         ":compilability_check_util",

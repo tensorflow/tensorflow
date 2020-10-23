@@ -343,9 +343,6 @@ cuda_py_test(
     srcs = ["category_crossing_test.py"],
     python_version = "PY3",
     shard_count = 4,
-    tags = [
-        "no_windows",  # b/149031156
-    ],
     deps = [
         ":category_crossing",
         "//tensorflow/python:array_ops",
@@ -644,7 +641,6 @@ tf_py_test(
     name = "table_utils_test",
     srcs = ["table_utils_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":table_utils",
         "//tensorflow/python:client_testlib",

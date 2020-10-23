@@ -641,9 +641,7 @@ PYBIND11_MODULE(xla_extension, m) {
           [](py::object buffer_obj) -> StatusOr<py::object> {
             GlobalPyRefManager()->CollectGarbage();
             PyBuffer* buffer = buffer_obj.cast<PyBuffer*>();
-            LocalDeviceState* state =
-                buffer->buffer()->device()->local_device_state();
-            if (state->executor()->platform_kind() == se::PlatformKind::kHost &&
+            if (buffer->buffer()->IsOnCpu() &&
                 buffer->buffer()->on_device_shape().IsArray() &&
                 buffer->buffer()->on_device_shape().element_type() != BF16) {
               py::object out = py::reinterpret_steal<py::object>(

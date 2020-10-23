@@ -19,6 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
@@ -395,8 +397,8 @@ def _build_element_shape(shape):
   # Shape is unknown.
   if shape is None:
     return -1
-  # Shape is a scalar.
-  if not shape:
+  # Shape is numpy array or a scalar.
+  if isinstance(shape, (np.ndarray, np.generic)) or not shape:
     return ops.convert_to_tensor(shape, dtype=dtypes.int32)
   # Shape is a sequence of dimensions. Convert None dims to -1.
   def convert(val):

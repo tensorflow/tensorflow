@@ -79,9 +79,11 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
     getMemRefDescriptorSizes(loc, memref_type,
                              llvm::to_vector<4>(transformed.dyn_sizes()),
                              rewriter, sizes);
-    // Get memory block size in bytes.
-    Value num_bytes = getCumulativeSizeInBytes(
-        loc, memref_type.getElementType(), sizes, rewriter);
+    // Get number of elements.
+    Value num_elements = getNumElements(loc, sizes, rewriter);
+    // Get element size.
+    Value element_size =
+        getSizeInBytes(loc, memref_type.getElementType(), rewriter);
 
     // Convert `output_index` or set it to -1 if the attribute is missing.
     LLVM::LLVMType llvmInt32Type =
@@ -102,7 +104,8 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
         rewriter
             .create<LLVM::CallOp>(
                 loc, getVoidPtrType(), tf_func_ref,
-                llvm::makeArrayRef({transformed.ctx(), num_bytes, output_index,
+                llvm::makeArrayRef({transformed.ctx(), num_elements,
+                                    element_size, output_index,
                                     candidates_count_and_ptr.first,
                                     candidates_count_and_ptr.second}))
             .getResult(0);
@@ -127,7 +130,8 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
         llvm_void_ptr_type,
         llvm::makeArrayRef(
             {/*void* op_kernel_ctx*/ llvm_void_ptr_type,
-             /*size_t num_bytes*/ getIndexType(),
+             /*size_t num_elements*/ getIndexType(),
+             /*size_t element_size*/ getIndexType(),
              /*int32_t output_index*/ llvm_i32_type,
              /*int32_t num_candidates*/ llvm_i32_type,
              /*int32_t* candidate_input_indices*/ llvm_i32_ptr_type}),

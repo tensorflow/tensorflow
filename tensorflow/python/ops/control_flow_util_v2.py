@@ -28,7 +28,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework.func_graph import FuncGraph
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_v2_func_graphs
-from tensorflow.python.ops import gradients_util
 from tensorflow.python.util import keras_deps
 from tensorflow.python.util import tf_contextlib
 
@@ -313,48 +312,3 @@ def get_func_graph(op, input_shapes, func_name):
     func_graph = function_def_to_graph.function_def_to_graph(
         fdef, input_shapes)
   return func_graph
-
-
-def get_op_and_outputs(op_or_outputs):
-  if isinstance(op_or_outputs, ops.Operation):
-    return op_or_outputs, []
-  elif not op_or_outputs:  # Empty list.
-    return None, []
-  else:
-    return op_or_outputs[0].op, op_or_outputs
-
-
-def run_as_function_for_tape_gradients(make_op, inputs):
-  """Fix higher-order tape gradients by wrapping `make_op` in a function.
-
-  Args:
-    make_op: A function that takes a list of inputs and returns a list of output
-      tensors. This function should set any handle data relevant to its outputs
-      before returning.
-    inputs: A list of tensors to check for tape gradients and pass to
-      `make_op`. These should include all tensors used in `make_op`.
-
-  Returns:
-    Tensors corresponding to `make_op`'s output.
-  """
-  # GradientTapes created inside a function currently don't work well with
-  # un-wrapped control flow ops in that same function. Wrapping in an extra
-  # layer of intermediate function means we run extra logic in the function
-  # gradient code to record the correct intermediates on the tape.
-  #
-  # The function attribute inputs to control flow ops are not hashable, so we
-  # pass everything as a capture to bypass defun's caching.
-  if (gradients_util.PossibleTapeGradientTypes(inputs)
-      == gradients_util.POSSIBLE_GRADIENT_TYPES_HIGHER_ORDER
-      # We only need one function between the tape and the op; if we've already
-      # wrapped once, we stop wrapping to avoid infinite recursion.
-      and not (ops.get_default_graph().building_function
-               and "cflow_gradient_wrapper" in ops.get_default_graph().name)):
-    results = function.defun_with_attributes(
-        make_op,
-        autograph=False,
-        attributes=dict(func_name="cflow_gradient_wrapper"))(inputs)
-    return results
-  else:
-    return make_op(inputs)
-

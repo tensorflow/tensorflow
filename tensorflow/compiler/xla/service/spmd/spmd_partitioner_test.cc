@@ -5139,7 +5139,7 @@ ENTRY entry {
           op::DynamicSlice(
               op::Pad(op::Concatenate(multiply, right_halo), op::Constant()),
               op::Reshape(), op::Constant()),
-          op::Reshape(), op::Constant()));
+          op::Subtract(), op::Subtract()));
   auto add_rhs = AllOf(op::Shape("f32[2,3]"),
                        op::DynamicSlice(op::Pad(op::Constant(), op::Constant()),
                                         op::Reshape(), op::Constant()));
@@ -5191,9 +5191,10 @@ ENTRY entry {
       AllOf(op::Shape("f32[4,8]"),
             op::Copy(op::DynamicSlice(op::Parameter(0), op::Reshape(),
                                       op::Constant())));
-  auto tiled = AllOf(op::Shape("f32[4,4]"),
-                     op::Copy(op::DynamicSlice(partially_replicated,
-                                               op::Constant(), op::Reshape())));
+  auto tiled =
+      AllOf(op::Shape("f32[4,4]"),
+            op::Copy(op::DynamicSlice(partially_replicated, op::Subtract(),
+                                      op::Subtract())));
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, tiled);
 }
@@ -5247,9 +5248,10 @@ ENTRY entry {
       AllOf(op::Shape("f32[4,8]"),
             op::Copy(op::DynamicSlice(op::Parameter(0), op::Reshape(),
                                       op::Constant())));
-  auto tiled = AllOf(op::Shape("f32[4,4]"),
-                     op::Copy(op::DynamicSlice(partially_replicated,
-                                               op::Constant(), op::Reshape())));
+  auto tiled =
+      AllOf(op::Shape("f32[4,4]"),
+            op::Copy(op::DynamicSlice(partially_replicated, op::Subtract(),
+                                      op::Subtract())));
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, tiled);
 }
@@ -5274,9 +5276,10 @@ ENTRY entry {
       AllOf(op::Shape("f32[8,8]"),
             op::Copy(op::DynamicSlice(op::Parameter(0), op::Constant(),
                                       op::Constant())));
-  auto tiled = AllOf(op::Shape("f32[4,4]"),
-                     op::Copy(op::DynamicSlice(partially_replicated,
-                                               op::Reshape(), op::Reshape())));
+  auto tiled =
+      AllOf(op::Shape("f32[4,4]"),
+            op::Copy(op::DynamicSlice(partially_replicated, op::Subtract(),
+                                      op::Subtract())));
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, tiled);
 }
@@ -5333,7 +5336,7 @@ ENTRY entry {
   auto tiled =
       AllOf(op::Shape("f32[4,4]"),
             op::Copy(op::CollectivePermute(op::DynamicSlice(
-                partially_replicated, op::Reshape(), op::Constant()))));
+                partially_replicated, op::Subtract(), op::Subtract()))));
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, tiled);
 }
@@ -5840,8 +5843,8 @@ ENTRY entry {
       op::Shape("f32[8,801,1,1024]"));
   auto resharded_lhs =
       AllOf(op::Reshape(op::Transpose(op::AllToAll(op::Reshape(
-                op::Pad(op::DynamicSlice(lhs, op::Constant(), op::Constant(),
-                                         op::Constant(), op::Reshape()),
+                op::Pad(op::DynamicSlice(lhs, op::Subtract(), op::Subtract(),
+                                         op::Subtract(), op::Subtract()),
                         op::Constant()))))),
             op::Shape("f32[16,401,1,512]"));
   auto left_halo = AllOf(op::Shape("f32[16,2, 1, 512]"),

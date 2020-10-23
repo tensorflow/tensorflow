@@ -250,6 +250,7 @@ enum ProfileType {
   INVALID = 0;
   WINDOW = 1;
   FLAG = 2;
+  INTEGER = 3;
 }
 
 // Symbolization metadata for HLO Instructions.

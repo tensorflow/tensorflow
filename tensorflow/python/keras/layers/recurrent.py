@@ -1568,7 +1568,6 @@ class SimpleRNN(RNN):
     self.input_spec = [InputSpec(ndim=3)]
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
-    self._maybe_reset_cell_dropout_mask(self.cell)
     return super(SimpleRNN, self).call(
         inputs, mask=mask, training=training, initial_state=initial_state)
 
@@ -2103,7 +2102,6 @@ class GRU(RNN):
     self.input_spec = [InputSpec(ndim=3)]
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
-    self._maybe_reset_cell_dropout_mask(self.cell)
     return super(GRU, self).call(
         inputs, mask=mask, training=training, initial_state=initial_state)
 
@@ -2778,7 +2776,6 @@ class LSTM(RNN):
     self.input_spec = [InputSpec(ndim=3)]
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
-    self._maybe_reset_cell_dropout_mask(self.cell)
     return super(LSTM, self).call(
         inputs, mask=mask, training=training, initial_state=initial_state)
 
