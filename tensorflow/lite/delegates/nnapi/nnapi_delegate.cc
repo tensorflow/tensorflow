@@ -565,18 +565,14 @@ TfLiteStatus GetTargetSdkVersion(
 // If exclude_nnapi_reference is true this method will return false if the
 // accelerator_name in the delegate options is equal to "nnapi-reference"
 bool ShouldUseTargetDevices(StatefulNnApiDelegate::Options delegate_options,
-                            const NnApi* nnapi,
                             bool exclude_nnapi_reference = false) {
   const char* device_name_ptr = delegate_options.accelerator_name;
   std::string nnapi_cpu("nnapi-reference");
   bool has_selected_accelerator = device_name_ptr != nullptr;
   if (exclude_nnapi_reference && has_selected_accelerator) {
-    if (nnapi_cpu == device_name_ptr) return false;
+    has_selected_accelerator = nnapi_cpu != device_name_ptr;
   }
-  return (delegate_options.disallow_nnapi_cpu &&
-          nnapi->android_sdk_version >=
-              delegate::nnapi::kMinSdkVersionForNNAPI12) ||
-         has_selected_accelerator;
+  return (delegate_options.disallow_nnapi_cpu) || has_selected_accelerator;
 }
 
 // Fills the given result vector with the list of devices the given delegate
@@ -3483,7 +3479,7 @@ TfLiteStatus NNAPIDelegateKernel::Init(TfLiteContext* context,
   const auto delegate_options =
       StatefulNnApiDelegate::GetOptions(params->delegate);
   if (nnapi_->android_sdk_version >= kMinSdkVersionForNNAPI12 &&
-      ShouldUseTargetDevices(delegate_options, nnapi_)) {
+      ShouldUseTargetDevices(delegate_options)) {
     TF_LITE_ENSURE_STATUS(GetTargetDevices(context, params->delegate, nnapi_,
                                            nnapi_errno, &nnapi_devices_));
 
@@ -4813,7 +4809,7 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
   // If not, don't delegate to NNAPI's CPU reference implementation unless
   // it has been specified as target accelerator.
   if (nnapi->android_sdk_version >= kMinSdkVersionForNNAPI12) {
-    if (ShouldUseTargetDevices(delegate_options, nnapi)) {
+    if (ShouldUseTargetDevices(delegate_options)) {
       std::vector<ANeuralNetworksDevice*> devices;
       TF_LITE_ENSURE_STATUS(
           GetTargetDevices(context, delegate, nnapi, nnapi_errno, &devices));
@@ -4853,7 +4849,7 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
 
   // Check for every node if it is supported
   const bool is_accelerator_specified = ShouldUseTargetDevices(
-      delegate_options, nnapi, /*exclude_nnapi_reference=*/true);
+      delegate_options, /*exclude_nnapi_reference=*/true);
   for (int node_index : TfLiteIntArrayView(plan)) {
     TfLiteNode* node;
     TfLiteRegistration* registration;
