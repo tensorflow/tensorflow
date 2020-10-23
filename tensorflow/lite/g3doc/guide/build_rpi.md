@@ -81,8 +81,8 @@ PATH=../rpi_tools/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/bin:$PATH \
 
 ## Compile natively on Raspberry Pi
 
-The following instructions have been tested on Raspberry Pi Zero, Raspbian
-GNU/Linux 10 (buster), gcc version 8.3.0 (Raspbian 8.3.0-6+rpi1):
+The following instructions have been tested on Raspberry Pi Zero, Raspberry Pi
+OS GNU/Linux 10 (Buster), gcc version 8.3.0 (Raspbian 8.3.0-6+rpi1):
 
 To natively compile TensorFlow Lite follow the steps:
 
