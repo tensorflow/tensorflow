@@ -25,11 +25,15 @@ namespace tensorflow {
 
 class EagerOpRewriteTest : public ::testing::Test {
  public:
-  EagerOpRewriteTest() {}
+  EagerOpRewriteTest() : eager_ctx_(nullptr) {}
+  ~EagerOpRewriteTest() {
+    if (eager_ctx_) {
+      eager_ctx_->Unref();
+    }
+  }
 
   // Creates a new op to be used as input to MKL eager rewrite.
-  static std::unique_ptr<tensorflow::EagerOperation> CreateOp(
-      const string op_name) {
+  std::unique_ptr<tensorflow::EagerOperation> CreateOp(const string op_name) {
     std::unique_ptr<DeviceMgr> device_mgr =
         absl::make_unique<StaticDeviceMgr>(DeviceFactory::NewDevice(
             "CPU", {}, "/job:localhost/replica:0/task:0/device:CPU:0"));
@@ -37,22 +41,21 @@ class EagerOpRewriteTest : public ::testing::Test {
     bool lazy_remote_tensor_copy = false;
     tensorflow::Rendezvous* rendezvous =
         new tensorflow::IntraProcessRendezvous(device_mgr.get());
-    tensorflow::EagerContext* eager_ctx = new tensorflow::EagerContext(
+    eager_ctx_ = new tensorflow::EagerContext(
         SessionOptions(),
         tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
         async, lazy_remote_tensor_copy, device_mgr.get(), false, rendezvous);
 
     EagerExecutor executor_(false);
     std::unique_ptr<tensorflow::EagerOperation> op(
-        new tensorflow::EagerOperation(eager_ctx));
+        new tensorflow::EagerOperation(eager_ctx_));
     EXPECT_EQ(Status::OK(),
               op.get()->Reset(op_name.c_str(), nullptr, false, &executor_));
-    eager_ctx->Unref();
     return op;
   }
 
   // Validates the result of MKL eager rewrite.
-  static void CheckRewrite(EagerOperation* orig_op, string expected_op_name) {
+  void CheckRewrite(EagerOperation* orig_op, string expected_op_name) {
     std::unique_ptr<tensorflow::EagerOperation> out_op;
     EagerOpRewriteRegistry::Global()->RunRewrite(
         EagerOpRewriteRegistry::PRE_EXECUTION, orig_op, &out_op);
@@ -65,6 +68,9 @@ class EagerOpRewriteTest : public ::testing::Test {
 
     EXPECT_EQ(actual_op_name, expected_op_name);
   }
+
+ protected:
+  tensorflow::EagerContext* eager_ctx_;
 };
 
 #define CONV_OPS                                                      \

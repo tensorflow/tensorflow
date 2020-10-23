@@ -14,8 +14,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 filegroup(
     name = "all_py_srcs",
     srcs = glob(["*.py"]),
@@ -38,6 +36,7 @@ py_library(
         "training_eager_v1.py",
         "training_generator_v1.py",
         "training_utils.py",
+        "training_utils_v1.py",
         "training_v1.py",
     ],
     srcs_version = "PY2AND3",
@@ -64,6 +63,7 @@ py_library(
         "//tensorflow/python/keras:constraints",
         "//tensorflow/python/keras:initializers",
         "//tensorflow/python/keras:losses",
+        "//tensorflow/python/keras:metrics",
         "//tensorflow/python/keras:optimizers",
         "//tensorflow/python/keras:regularizers",
         "//tensorflow/python/keras/distribute",
@@ -254,6 +254,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:lookup_ops",
+        "//tensorflow/python/keras",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:combinations",
     ],
@@ -272,6 +273,7 @@ tf_py_test(
     deps = [
         ":data_adapter",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
         "//third_party/py/numpy",
     ],
 )
@@ -300,7 +302,6 @@ cuda_py_test(
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
-    tfrt_enabled = True,
     deps = [
         ":engine",
         "//tensorflow/python:client_testlib",
@@ -335,6 +336,22 @@ tf_py_test(
     name = "keras_tensor_test",
     size = "small",
     srcs = ["keras_tensor_test.py"],
+    python_version = "PY3",
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+    ],
+    tfrt_enabled = True,
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "ragged_keras_tensor_test",
+    size = "small",
+    srcs = ["ragged_keras_tensor_test.py"],
     python_version = "PY3",
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564
@@ -542,15 +559,14 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "training_utils_test",
+    name = "training_utils_v1_test",
     size = "medium",
-    srcs = ["training_utils_test.py"],
+    srcs = ["training_utils_v1_test.py"],
     python_version = "PY3",
     tags = [
         "no_oss",  # TODO(b/135021748) reenable
         "notsan",
     ],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -571,6 +587,8 @@ tf_py_test(
     deps = [
         ":base_layer",
         ":engine",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/keras:combinations",
         "//tensorflow/python/keras:testing_utils",
         "//tensorflow/python/keras/utils:layer_utils",
     ],
@@ -598,6 +616,7 @@ tf_py_test(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:combinations",
         "//tensorflow/python/keras:initializers",
@@ -625,6 +644,7 @@ tf_py_test(
     deps = [
         ":base_layer",
         ":engine",
+        "//tensorflow/python/keras",
         "//tensorflow/python/keras:testing_utils",
         "//tensorflow/python/keras/utils:layer_utils",
     ],
@@ -661,11 +681,13 @@ tf_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/keras",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:combinations",
         "//tensorflow/python/keras:regularizers",
         "//tensorflow/python/keras:testing_utils",
         "//tensorflow/python/keras/layers",
+        "//tensorflow/python/keras/legacy_tf_layers:core",
         "//tensorflow/python/keras/mixed_precision/experimental:policy",
         "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/keras/utils:tf_utils",
@@ -709,7 +731,7 @@ tf_py_test(
 
 tf_py_test(
     name = "deferred_sequential_test",
-    size = "small",
+    size = "medium",
     srcs = ["deferred_sequential_test.py"],
     python_version = "PY3",
     tags = [

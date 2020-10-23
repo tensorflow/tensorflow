@@ -96,19 +96,15 @@ class ConstantFoldingTest(test.TestCase):
         f(x, y).numpy()
     self.assertLen(graphs, 1)
     assign_count = 0
-    read_count = 0
     for node in graphs[0].node:
       if node.op == 'AssignAddVariableOp':
         self.assertEqual(node.input[0], 'y')
         assign_count += 1
-      if node.op == 'ReadVariableOp':
-        read_count += 1
 
     # Make sure that the only variable update that remains after
-    # grappler optimization is that of y, and that we prune all
-    # but the 2 necessary variable reads.
+    # grappler optimization is that of y.
     self.assertEqual(assign_count, 1)
-    self.assertEqual(read_count, 2)
+    self.assertLen(graphs[0].node, 11)
 
 
 if __name__ == '__main__':

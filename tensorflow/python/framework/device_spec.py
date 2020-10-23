@@ -21,7 +21,8 @@ from __future__ import print_function
 from tensorflow.python.util.tf_export import tf_export
 
 
-_VALID_DEVICE_TYPES = frozenset({"CPU", "GPU", "TPU", "CUSTOM"})
+# EPU represents for TPU embedding for now. Subject to change in future.
+_VALID_DEVICE_TYPES = frozenset({"CPU", "GPU", "TPU", "CUSTOM", "EPU"})
 
 
 # ==============================================================================

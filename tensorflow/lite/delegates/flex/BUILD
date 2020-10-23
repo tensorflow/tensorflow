@@ -129,8 +129,6 @@ tf_cc_test(
     srcs = ["delegate_test.cc"],
     tags = [
         "no_gpu",  # GPU + flex is not officially supported.
-        "no_mac",  # b/169276266
-        "nomsan",  # b/169431678
     ],
     deps = [
         ":delegate",
@@ -294,6 +292,6 @@ cc_library(
     deps = [
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:portable_jpeg_internal",
-        "//tensorflow/core:portable_png_internal",
+        "//tensorflow/core/lib/png:png_io",
     ],
 )

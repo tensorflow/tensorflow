@@ -980,7 +980,7 @@ void TensorHandle::Poison(Status status, const Device* d) {
 
 Status TensorHandle::CopyToDevice(const EagerContext& ctx,
                                   tensorflow::Device* d,
-                                  tensorflow::Tensor* output) {
+                                  tensorflow::Tensor* output) const {
   tensorflow::Device* dstd = (d == nullptr) ? ctx.HostCPU() : d;
   tensorflow::Device* srcd = absl::get<Device*>(DeviceOrHostCPU(ctx));
   const bool dst_cpu = dstd->tensorflow_gpu_device_info() == nullptr;

@@ -92,7 +92,6 @@ cuda_py_test(
     size = "small",
     srcs = ["copy_to_device_test.py"],
     tags = ["no_windows_gpu"],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
@@ -158,6 +157,7 @@ tf_py_test(
     srcs = ["data_service_ops_test.py"],
     shard_count = 10,
     srcs_version = "PY3",
+    tags = ["notap"],  # TODO(b/170783829)
     deps = [
         ":data_service_test_base",
         "//tensorflow:tensorflow_py",
@@ -578,7 +578,6 @@ cuda_py_test(
     size = "small",
     srcs = ["prefetch_to_device_test.py"],
     tags = ["no_windows_gpu"],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",

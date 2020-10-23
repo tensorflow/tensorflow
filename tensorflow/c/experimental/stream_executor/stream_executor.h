@@ -52,7 +52,7 @@ limitations under the License.
 //   params.device = &device;
 //
 //   /* Plugin code below */
-//   constexpr char DEVICE_NAME[] = "MyDevice";
+//   constexpr char DEVICE_NAME[] = "MY_DEVICE";
 //   constexpr char DEVICE_TYPE[] = "GPU";
 //
 //   void create_device(const SP_Platform* platform,
@@ -416,10 +416,15 @@ typedef struct SP_Platform {
 
   void* ext;  // free-form data set by plugin
 
-  // Platform name. Must be null-terminated.
+  // Platform name (also referred to as subtype), for example MY_DEVICE.
+  // The name must start with a capital letter and consist of
+  // capital letters and underscores.
+  // Must be null-terminated.
   const char* name;
 
   // Device type name, for example GPU. Must be null-terminated.
+  // The name must start with a capital letter and consist of
+  // capital letters and underscores.
   const char* type;
 
   // Number of visible devices

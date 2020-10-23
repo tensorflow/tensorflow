@@ -212,6 +212,7 @@ py_library(
         "//tensorflow/python:pywrap_tf_session",
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:tf2",
+        "//tensorflow/python:tfrt_utils",
         "//tensorflow/python:util",
         "//third_party/py/numpy",
     ],
@@ -263,6 +264,7 @@ cuda_py_test(
     size = "small",
     srcs = ["context_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":context",
         ":test",
@@ -374,6 +376,7 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "no_windows",  #TODO(b/139745667)
+        "notsan",  #TODO(b/139745667)
     ],
     deps = [
         ":backprop",
@@ -432,7 +435,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["function_argument_naming_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
+    # TODO(b/169371527): insert transfer op in eager lowering for TFRT.
     deps = [
         ":backprop",
         ":def_function",
@@ -793,6 +796,7 @@ tf_py_test(
     name = "pywrap_tfe_test",
     srcs = ["pywrap_tfe_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":backprop",
         ":context",
@@ -835,6 +839,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:while_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
+        "//tensorflow/python/distribute/parallel_device",
         "//tensorflow/python/profiler:trace",
         "//tensorflow/python/training/tracking:base",
     ],
@@ -871,7 +876,7 @@ cuda_py_test(
     name = "def_function_test",
     srcs = ["def_function_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
+    # TODO(b/169371527): insert transfer op in eager lowering for TFRT.
     deps = [
         ":def_function",
         "//tensorflow/python:client_testlib",
@@ -977,6 +982,26 @@ tf_py_test(
         ":wrap_function",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
+    ],
+)
+
+cuda_py_test(
+    name = "wrap_function_device_test",
+    srcs = ["wrap_function_device_test.py"],
+    python_version = "PY3",
+    xla_enable_strict_auto_jit = False,
+    xla_enabled = False,
+    deps = [
+        ":def_function",
+        ":wrap_function",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:config",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

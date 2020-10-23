@@ -453,6 +453,7 @@ cc_library(
     deps = [
         ":test_log_proto_impl_cc",
         "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:env_impl",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:mutex",
@@ -757,7 +758,6 @@ tf_cc_tests(
         "//tensorflow/core",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:direct_session_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -767,6 +767,7 @@ tf_cc_tests(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/platform:regexp",
         "//third_party/eigen3",

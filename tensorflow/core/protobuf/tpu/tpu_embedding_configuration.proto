@@ -87,9 +87,6 @@ message TPUEmbeddingConfiguration {
   // problem.
   bool pipeline_execution_with_tensor_core = 7;
 
-  // Extended output layout information; if not provided, a compatibility mode
-  // will use defaults that match the old layout. Providing a value for this
-  // field is EXPERIMENTAL and most ways of filling it will probably break. Do
-  // not set it unless you know what you are doing.
-  TPUEmbeddingOutputLayout output_layout = 8;
+  // Extended output layout information; deprecated and now ignored.
+  TPUEmbeddingOutputLayout output_layout = 8 [deprecated = true];
 }

@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 
@@ -28,8 +30,7 @@ struct PropagateTensorFlowABIKnowledgePass
     : public PropagateTensorFlowABIKnowledgePassBase<
           PropagateTensorFlowABIKnowledgePass> {
   explicit PropagateTensorFlowABIKnowledgePass(
-      mlir::FunctionType type, llvm::ArrayRef<uint32_t> same_shape) {
-    func_type_ = type;
+      llvm::ArrayRef<uint32_t> same_shape) {
     same_shape_ = same_shape;
   }
 
@@ -49,6 +50,21 @@ struct PropagateTensorFlowABIKnowledgePass
     // This only works if the function is local and we can rewrite it.
     if (func.isExternal()) return;
 
+    auto function_list =
+        func.getParentOfType<ModuleOp>().getOps<mlir::FuncOp>();
+    if (function_list.empty()) {
+      func.emitError() << "No possible kernel function found";
+      return signalPassFailure();
+    }
+    auto func_iterator = function_list.begin();
+    if (std::next(func_iterator) != function_list.end()) {
+      func.emitError() << "More than one possible kernel function detected";
+      return signalPassFailure();
+    }
+    // Note that this dereference is necessary to prevent a
+    // stack-use-after-return error.
+    auto func_type = (*func_iterator).getType();
+
     mlir::OpBuilder b(func.getBody());
     // Steal the LLVM representation of the index type from the third argument.
     auto index_type = func.getArgument(3).getType();
@@ -60,7 +76,7 @@ struct PropagateTensorFlowABIKnowledgePass
     std::vector<uint32_t> positions;
     // Collect the agument and return types of the surrounding function.
     auto arg_types = llvm::to_vector<4>(llvm::concat<const mlir::Type>(
-        func_type_.getInputs(), func_type_.getResults()));
+        func_type.getInputs(), func_type.getResults()));
     for (mlir::Type arg_type : arg_types) {
       if (!arg_type.isa<mlir::MemRefType>()) {
         func.emitError() << "argument of surrounding func is not ranked memref";
@@ -112,10 +128,8 @@ struct PropagateTensorFlowABIKnowledgePass
 }  // namespace
 
 std::unique_ptr<mlir::OperationPass<mlir::LLVM::LLVMFuncOp>>
-CreatePropagateTensorFlowABIKnowledgePass(mlir::FunctionType type,
-                                          llvm::ArrayRef<uint32_t> same_shape) {
-  return std::make_unique<PropagateTensorFlowABIKnowledgePass>(type,
-                                                               same_shape);
+CreatePropagateTensorFlowABIKnowledgePass(llvm::ArrayRef<uint32_t> same_shape) {
+  return std::make_unique<PropagateTensorFlowABIKnowledgePass>(same_shape);
 }
 
 }  // namespace transforms

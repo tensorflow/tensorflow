@@ -1283,7 +1283,8 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
   }
 
   // Builds a tensor filled with ones with the same shape and dtype as `t`.
-  Status BuildOnesLike(PyTapeTensor t, PyObject** result) const override {
+  Status BuildOnesLike(const PyTapeTensor& t,
+                       PyObject** result) const override {
     *result = t.OnesLike();
     return Status::OK();
   }

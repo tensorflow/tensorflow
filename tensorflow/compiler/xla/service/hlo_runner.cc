@@ -211,8 +211,7 @@ static std::vector<ExecutionInput> ExecutionInputsFromScopedShapedBuffers(
             *buffer_tree.mutable_element(index) = execution_input_buffer;
           }
         });
-    execution_inputs.emplace_back(std::move(buffer_tree),
-                                  input_buffer.on_host_shape());
+    execution_inputs.emplace_back(std::move(buffer_tree));
   }
   return execution_inputs;
 }

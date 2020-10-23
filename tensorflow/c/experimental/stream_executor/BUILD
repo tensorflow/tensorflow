@@ -22,6 +22,8 @@ cc_library(
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:regexp",
+        "//tensorflow/core/platform:strcat",
         "//tensorflow/stream_executor:executor_cache",
         "//tensorflow/stream_executor:multi_platform_manager",
         "//tensorflow/stream_executor:platform",

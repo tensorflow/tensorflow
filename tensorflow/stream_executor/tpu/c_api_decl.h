@@ -177,7 +177,6 @@ typedef struct XLA_Shape {
 
 // Represents a leaf node for a XLA shaped buffer.
 typedef struct XLA_ShapedBuffer {
-  XLA_Shape on_host_shape;
   XLA_Shape on_device_shape;
   int device_ordinal;
 
@@ -208,7 +207,6 @@ typedef struct SE_ExecutionInput {
   XLA_ShapeIndex* unowned_indices;
   int unowned_indices_size;
   XLA_Shape dynamic_shape;
-  XLA_Shape host_shape;
 } SE_ExecutionInput;
 
 typedef struct SE_ExecutionOutput {

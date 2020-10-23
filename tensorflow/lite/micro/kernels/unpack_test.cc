@@ -17,8 +17,8 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/debug_log.h"
 #include "tensorflow/lite/micro/kernels/kernel_runner.h"
+#include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
-#include "tensorflow/lite/micro/testing/test_utils.h"
 
 namespace tflite {
 namespace testing {
@@ -222,10 +222,10 @@ void TestUnpackThreeOutputsQuantized32(
   constexpr int output_size = 3;
   constexpr int tensors_size = input_size + output_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateQuantized32Tensor(input_data, input_dims, 1.0),
-      CreateQuantized32Tensor(output1_data, output1_dims, 1.0),
-      CreateQuantized32Tensor(output2_data, output2_dims, 1.0),
-      CreateQuantized32Tensor(output3_data, output3_dims, 1.0)};
+      CreateInt32Tensor(input_data, input_dims),
+      CreateInt32Tensor(output1_data, output1_dims),
+      CreateInt32Tensor(output2_data, output2_dims),
+      CreateInt32Tensor(output3_data, output3_dims)};
 
   // Place a unique value in the uninitialized output buffer.
   for (int i = 0; i < output1_dims_count; ++i) {

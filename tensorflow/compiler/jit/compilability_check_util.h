@@ -124,6 +124,10 @@ class RecursiveCompilabilityChecker {
     // Whether ops known to have numerical accuracy issues should be considered
     // compilable..
     bool allow_inaccurate_ops = false;
+
+    // Require the function to be always compilable, regardless whether some
+    // control flow branches might be dead for a given input.
+    bool require_always_compilable = false;
   };
 
   RecursiveCompilabilityChecker(OperationFilter op_filter,
@@ -210,6 +214,14 @@ class RecursiveCompilabilityChecker {
                          std::vector<StackFrameView>* stack_trace,
                          NameAttrList* encapsulating_function,
                          UncompilableNodesMap* uncompilable_nodes) const;
+
+  // Tests whether 'case_node' is compilable. Every operator in all branches
+  // must be compilable.
+  bool IsCompilableCase(const Node& case_node,
+                        FunctionLibraryRuntime* lib_runtime,
+                        std::vector<StackFrameView>* stack_trace,
+                        NameAttrList* encapsulating_function,
+                        UncompilableNodesMap* uncompilable_nodes) const;
 
   // Returns compilability of node def retrieved from `node`'s attribute with
   // name `attr_name`.

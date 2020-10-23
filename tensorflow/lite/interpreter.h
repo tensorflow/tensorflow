@@ -368,7 +368,7 @@ class Interpreter {
   /// WARNING: NNAPI cannot be disabled after the graph has been prepared
   /// (via `AllocateTensors`) with NNAPI enabled.
   ///
-  /// NOTE: This API is deprecated, prefer using the NNAPI delegate directly.
+  /// WARNING: This API is deprecated, prefer using the NNAPI delegate directly.
   /// This method will be removed in a future release.
   void UseNNAPI(bool enable);
 
@@ -380,8 +380,12 @@ class Interpreter {
   TfLiteStatus SetNumThreads(int num_threads);
 
   /// Allow float16 precision for FP32 calculation when possible.
-  /// default: not allow.
-  /// WARNING: This is an experimental API and subject to change.
+  /// Default: not allow.
+  ///
+  /// WARNING: This API is deprecated: prefer controlling this via delegate
+  /// options, e.g. `tflite::StatefulNnApiDelegate::Options::allow_fp16' or
+  /// `TfLiteGpuDelegateOptionsV2::is_precision_loss_allowed`.
+  /// This method will be removed in a future release.
   void SetAllowFp16PrecisionForFp32(bool allow);
 
   /// Get the half precision flag.
@@ -576,6 +580,11 @@ class Interpreter {
   const Subgraph& primary_subgraph() const {
     return *subgraphs_.front();  // Safe as subgraphs_ always has 1 entry.
   }
+
+  /// WARNING: Experimental interface, subject to change
+  // Get the error reporter associated with this interpreter.
+  ErrorReporter* error_reporter() const { return error_reporter_; }
+
 #endif  // DOXYGEN_SKIP
 
  private:
@@ -601,9 +610,6 @@ class Interpreter {
 
   // Returns true if cancellation function returns true.
   bool IsCancelled();
-
-  // Get the error reporter associated with this interpreter.
-  ErrorReporter* error_reporter() { return error_reporter_; }
 
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive

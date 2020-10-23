@@ -13,8 +13,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 tpu_module = [
     "tpu.",
     "distribute.tpu_strategy",

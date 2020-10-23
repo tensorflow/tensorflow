@@ -16,7 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_INTERNAL_CPU_HOST_TRACER_UTILS_H_
 
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/internal/traceme_recorder.h"
+#include "tensorflow/core/profiler/internal/cpu/traceme_recorder.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {

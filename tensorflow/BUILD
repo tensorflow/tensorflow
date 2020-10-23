@@ -568,17 +568,7 @@ selects.config_setting_group(
 # If you need functionality that is not exposed, we will work with you to expand our public APIs.
 package_group(
     name = "internal",
-    packages = [
-        "//learning/brain/distribute/...",
-        "//learning/brain/swift/x10/...",
-        "//perftools/accelerators/xprof/api/...",
-        "//tensorflow/...",
-        "//tensorflow_estimator/python/estimator/...",
-        "//tensorflow_models/official/...",
-        "//third_party/py/autograph/...",
-        "//third_party/swift/tensorflow/x10/...",
-        "//third_party/swift/tensorflow_apis/...",
-    ],
+    packages = ["//tensorflow/..."],
 )
 
 package_group(
@@ -588,10 +578,8 @@ package_group(
 
 # Packages that use private types symbols, until they are exported.
 # TODO(b/154650521) Remove.
-package_group(
-    name = "types_whitelist",
-    packages = ["//learning/deepmind/tensorflow/replicator/..."],
-)
+# If this is modified, then copy.bara.sky must also be modified.
+package_group(name = "types_whitelist")
 
 # Packages that use StructuredTensors.
 # TODO(b/159007891) Remove this package once StructuredTensor is exported.
@@ -719,7 +707,7 @@ tf_cc_shared_object(
     deps = [
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
         "//tensorflow/cc/saved_model:loader_lite_impl",
-        "//tensorflow/core:core_cpu_impl",
+        "//tensorflow/core/common_runtime:core_cpu_impl",
         "//tensorflow/core:framework_internal_impl",
         "//tensorflow/core/common_runtime/gpu:gpu_runtime_impl",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry_impl",

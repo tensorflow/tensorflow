@@ -132,10 +132,10 @@ bool InstrIsSetBound(const HloInstructionProto* instr_proto) {
 
 namespace internal {
 
-XlaOp XlaBuilderBuildFusion(XlaBuilder* builder,
-                            absl::Span<const XlaOp> operands,
-                            absl::string_view fusion_kind,
-                            const XlaComputation& fused_computation) {
+XlaOp XlaBuilderFriend::BuildFusion(XlaBuilder* builder,
+                                    absl::Span<const XlaOp> operands,
+                                    absl::string_view fusion_kind,
+                                    const XlaComputation& fused_computation) {
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     instr.set_fusion_kind(std::string(fusion_kind));
@@ -147,6 +147,21 @@ XlaOp XlaBuilderBuildFusion(XlaBuilder* builder,
     return builder->AddInstruction(std::move(instr), HloOpcode::kFusion,
                                    operands);
   });
+}
+
+XlaOp XlaBuilderFriend::BuildBitcast(XlaBuilder* builder, XlaOp operand,
+                                     const Shape& shape) {
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    *instr.mutable_shape() = shape.ToProto();
+    return builder->AddInstruction(std::move(instr), HloOpcode::kBitcast,
+                                   {operand});
+  });
+}
+
+HloInstructionProto* XlaBuilderFriend::GetInstruction(XlaOp op) {
+  return &op.builder()
+              ->instructions_[op.builder()->handle_to_index_[op.handle_]];
 }
 
 }  // namespace internal
@@ -676,8 +691,10 @@ XlaOp XlaBuilder::BinaryOpNoBroadcast(HloOpcode binop, const Shape& shape,
 
 StatusOr<XlaOp> XlaBuilder::Compare(const Shape& shape, XlaOp lhs, XlaOp rhs,
                                     ComparisonDirection direction) {
-  return Compare(shape, lhs, rhs, direction,
-                 Comparison::DefaultComparisonType(shape.element_type()));
+  TF_ASSIGN_OR_RETURN(auto operand_shape, GetShape(lhs));
+  return Compare(
+      shape, lhs, rhs, direction,
+      Comparison::DefaultComparisonType(operand_shape.element_type()));
 }
 
 StatusOr<XlaOp> XlaBuilder::Compare(const Shape& shape, XlaOp lhs, XlaOp rhs,

@@ -217,6 +217,8 @@ tf_cuda_library(
             "//tensorflow/core:lib_internal",
             "//tensorflow/core/distributed_runtime:server_lib",
             "//tensorflow/core/kernels:logging_ops",
+            "//tensorflow/compiler/mlir/tfr:node_expansion_pass",
+            "//tensorflow/compiler/mlir/tfr:graph_decompose_pass",
         ],
     }),
     alwayslink = 1,
@@ -252,6 +254,30 @@ tf_cuda_library(
             "//tensorflow/core:lib",
         ],
     }),
+)
+
+cc_library(
+    name = "tf_shape",
+    srcs = ["tf_shape.cc"],
+    hdrs = ["tf_shape.h"],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":c_api_macros",
+        ":tf_shape_internal",
+        "//tensorflow/core:framework",
+    ],
+)
+
+cc_library(
+    name = "tf_shape_internal",
+    hdrs = ["tf_shape_internal.h"],
+    copts = tf_copts(),
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":conversion_macros",
+        "//tensorflow/core:framework",
+    ],
 )
 
 cc_library(

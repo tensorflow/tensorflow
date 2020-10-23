@@ -246,6 +246,9 @@ int TpuTopology_LogicalDevicesPerHost(SE_TpuTopology* tpu_topology,
                                       TpuCoreTypeEnum tpu_core_type);
 int TpuTopology_LogicalDevicesPerChip(SE_TpuTopology* tpu_topology,
                                       TpuCoreTypeEnum tpu_core_type);
+int TpuTopology_HostCount(SE_TpuTopology* tpu_topology);
+int TpuTopology_ChipsPerHost(SE_TpuTopology* tpu_topology);
+
 int TpuTopology_ChipBounds_X(SE_TpuTopology* tpu_topology);
 int TpuTopology_ChipBounds_Y(SE_TpuTopology* tpu_topology);
 int TpuTopology_ChipBounds_Z(SE_TpuTopology* tpu_topology);
@@ -436,6 +439,9 @@ struct TfTpu_ExecutorApiFn {
 
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_LogicalDevicesPerHost);
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_LogicalDevicesPerChip);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTopology_HostCount);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTopology_ChipsPerHost);
+
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_ChipBounds_X);
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_ChipBounds_Y);
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_ChipBounds_Z);

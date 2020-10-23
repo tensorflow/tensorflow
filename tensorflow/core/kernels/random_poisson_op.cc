@@ -150,6 +150,16 @@ struct PoissonFunctor<CPUDevice, T, U> {
           }
           continue;
         }
+        if (Eigen::numext::isinf(rate) && rate > CT(0)) {
+          // Fill the rest of the samples for the current rate value.
+          for (int64 sample_idx = output_idx % num_samples;
+               sample_idx < num_samples && output_idx < limit_output;
+               sample_idx++, output_idx++) {
+            U k = Eigen::NumTraits<U>::infinity();
+            samples_rate_output[sample_idx * num_rate] = k;
+          }
+          continue;
+        }
         // Transformed rejection due to Hormann.
         //
         // Given a CDF F(x), and G(x), a dominating distribution chosen such

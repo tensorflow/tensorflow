@@ -49,6 +49,7 @@ from tensorflow.python.ops import summary_ops_v2 as summary
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import analytics
 from tensorflow.python.platform import gfile
+from tensorflow.python.platform import remote_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary_iterator
 from tensorflow.python.tpu import tensor_tracer_flags
@@ -342,24 +343,6 @@ def keras_layer_tracepoint(layer, checkpoint_name):
   except RuntimeError:
     pass
   return layer
-
-
-def _trace_files_need_precreated(output_dir):
-  """Return True if trace files must be pre-created by users."""
-
-  if not output_dir.startswith('/'):
-    return False
-  if len(output_dir) < 5:
-    return False
-  if output_dir[2] != 'n':
-    return False
-  if output_dir[3] != 's':
-    return False
-  if output_dir[1] != 'c':
-    return False
-  if output_dir[4] != '/':
-    return False
-  return True
 
 
 class TensorTracer(object):
@@ -927,7 +910,9 @@ class TensorTracer(object):
         msg = '"%s"' % tensor_name
 
       if self._parameters.trace_dir:
-        output_path = os.path.join(self._parameters.trace_dir, _TRACE_FILE_NAME)
+        output_path = os.path.join(
+            self._parameters.trace_dir,
+            _TRACE_FILE_NAME + self._get_outfile_suffix())
         output_stream = _OUTPUT_STREAM_ESCAPE + output_path
       else:
         output_stream = sys.stderr
@@ -1229,20 +1214,10 @@ class TensorTracer(object):
       # Output files are handled by tf.summary operations, no need to precreate
       # them.
       return
-    if _trace_files_need_precreated(self._parameters.trace_dir):
-      for replica_id in range(0, self._tt_config.num_replicas):
-        trace_file_path = os.path.join(
-            self._parameters.trace_dir,
-            _COMPACT_TRACE_FILE_PREFIX) + '%d'%replica_id
-        if not gfile.Exists(trace_file_path):
-          raise RuntimeError(
-              '%s must be pre-created with the '
-              'appropriate properties.'%trace_file_path)
-    else:
+    if not gfile.Exists(self._parameters.trace_dir):
+      file_io.recursive_create_dir(self._parameters.trace_dir)
       if not gfile.Exists(self._parameters.trace_dir):
-        file_io.recursive_create_dir(self._parameters.trace_dir)
-        if not gfile.Exists(self._parameters.trace_dir):
-          raise RuntimeError('Failed to create %s'%self._parameters.trace_dir)
+        raise RuntimeError('Failed to create %s'%self._parameters.trace_dir)
 
   def _create_temp_cache(self, num_traced_tensors, num_signatures):
     """Creates a temporary cache with the given dimensions.
@@ -1317,18 +1292,89 @@ class TensorTracer(object):
         tensor_tracer_flags.TRACE_MODE_SUMMARY,
         tensor_tracer_flags.TRACE_MODE_FULL_TENSOR_SUMMARY)
 
-  def _generate_flush_cache_op(self, num_replicas, on_tpu):
+  def _inspect_summary_cache(self, cache, replica_id, step_num, output_stream,
+                             tensor_trace_order):
+    """Generates a print operation to print trace inspection.
+
+    Args:
+      cache: Tensor storing the trace results for the step.
+      replica_id: Tensor storing the replica id of the running core.
+      step_num: Step number.
+      output_stream: Where to print the outputs, e.g., file path, or sys.stderr.
+      tensor_trace_order: TensorTraceOrder object holding tensorname to id map.
+
+    Returns:
+      The Op to flush the cache to file.
+    """
+    def _inspect_tensor(tensor):
+      """Returns the text to be printed for inspection output."""
+      if (self._parameters.trace_mode ==
+          tensor_tracer_flags.TRACE_MODE_NAN_INF):
+        return control_flow_ops.cond(
+            math_ops.greater(tensor, 0.0),
+            lambda: 'has NaNs/Infs!',
+            lambda: 'has no NaNs or Infs.')
+      else:
+        return tensor
+
+    # Check if the cache includes any nan or inf
+    if self._parameters.trace_mode == tensor_tracer_flags.TRACE_MODE_NAN_INF:
+      # Cache has 1s or 0s if the mode is NaN_INF
+      step_has_nan_or_inf = math_ops.greater(math_ops.reduce_sum(cache), 0.0)
+    else:
+      # Cache has the actual numerics for other modes.
+      step_has_nan_or_inf = math_ops.reduce_any(
+          gen_math_ops.logical_or(
+              gen_math_ops.is_nan(cache), gen_math_ops.is_inf(cache)))
+
+    # Summarizing message for each step.
+    step_error_message = control_flow_ops.cond(
+        step_has_nan_or_inf,
+        lambda: 'NaNs or Infs in the step!',
+        lambda: 'No numerical issues have been found for the step.')
+
+    # No need to print core numbers if the cache is merged already.
+    if self._parameters.collect_summary_per_core:
+      stats = ['\n\n', 'core:', replica_id, ',', 'step:', step_num, '-->',
+               step_error_message,
+               'Printing tensors for mode:%s...' % self._parameters.trace_mode]
+    else:
+      stats = ['\n\n', 'step:', step_num, '-->', step_error_message,
+               'Printing tensors for mode:%s...' % self._parameters.trace_mode]
+
+    for tensor_name, cache_idx in sorted(
+        tensor_trace_order.tensorname_to_cache_idx.items(),
+        key=lambda item: item[1]):
+      if self._parameters.collect_summary_per_core:
+        stats.extend([
+            '\n', 'core:', replica_id, ',', 'step:', step_num, ',',
+            tensor_name, '-->', _inspect_tensor(cache[cache_idx, 0])])
+      else:
+        stats.extend([
+            '\n', 'step:', step_num, ',',
+            tensor_name, '-->', _inspect_tensor(cache[cache_idx, 0])])
+    return logging_ops.print_v2(*stats, summarize=-1,
+                                output_stream=output_stream)
+
+  def _get_outfile_suffix(self):
+    if remote_utils.is_remote_path(self._parameters.trace_dir):
+      return remote_utils.get_appendable_file_encoding()
+    else:
+      return ''
+
+  def _generate_flush_cache_op(self, num_replicas, on_tpu, tensor_trace_order):
     """Generates an Op that will flush the cache to file.
 
     Args:
       num_replicas: total number of replicas.
       on_tpu: if the graph is executed on TPU.
+      tensor_trace_order: TensorTraceOrder object holding tensorname to id map.
 
     Returns:
       The Op to flush the cache to file.
     """
 
-    def _flush_fun(cache, replica_id):
+    def _flush_fun(cache, replica_id, step_num):
       """Flushes the cache to a file corresponding to replica_id."""
 
       def _f(file_index):
@@ -1339,19 +1385,27 @@ class TensorTracer(object):
           if self._parameters.trace_dir:
             output_path = (os.path.join(self._parameters.trace_dir,
                                         _COMPACT_TRACE_FILE_PREFIX)
-                           + replica_str)
+                           + replica_str + self._get_outfile_suffix())
             output_stream = _OUTPUT_STREAM_ESCAPE + output_path
           else:
             output_stream = sys.stderr
 
           new_step_line = _REPLICA_ID_TAG + replica_str
           print_ops = []
-          for i in range(self._num_signature_dimensions()):
-            print_ops.append(logging_ops.print_v2(
-                new_step_line, '\n',
-                cache[:, i], '\n',
-                summarize=-1,
-                output_stream=output_stream))
+          if self._parameters.inspect_trace:
+            if self._num_signature_dimensions() > 1:
+              raise ValueError('Inspecting multi signatures are not supported.')
+            print_ops.append(self._inspect_summary_cache(
+                cache=cache, replica_id=replica_id, step_num=step_num,
+                output_stream=output_stream,
+                tensor_trace_order=tensor_trace_order))
+          else:
+            for i in range(self._num_signature_dimensions()):
+              print_ops.append(logging_ops.print_v2(
+                  new_step_line, '\n',
+                  cache[:, i], '\n',
+                  summarize=-1,
+                  output_stream=output_stream))
           with ops.control_dependencies(print_ops):
             return constant_op.constant(0).op
         return _print_cache
@@ -1388,10 +1442,12 @@ class TensorTracer(object):
         cache_val = self.merge_caches_on_tpu(cache_val)
         cache_val = self.aggregate_global_cache(cache_val)[0]
 
-      flush_op = tpu.outside_compilation(_flush_fun,
-                                         cache_val, self._replica_id)
+      flush_op = tpu.outside_compilation(
+          _flush_fun, cache_val, self._replica_id,
+          array_ops.identity(training_util.get_or_create_global_step()))
     else:
-      flush_op = _flush_fun(cache_val, self._replica_id)
+      flush_op = _flush_fun(cache_val, self._replica_id,
+                            training_util.get_or_create_global_step())
     if self._use_temp_cache():
       with ops.control_dependencies([flush_op]):
         return constant_op.constant(0).op
@@ -1405,13 +1461,15 @@ class TensorTracer(object):
         with ops.control_dependencies([assign_op]):
           return constant_op.constant(0).op
 
-  def _flush_tensor_values_cache(self, tensor_fetches, op_fetches, on_tpu):
+  def _flush_tensor_values_cache(self, tensor_fetches, op_fetches, on_tpu,
+                                 tensor_trace_order):
     """Flushes the intermediate tensor values in the graph to the cache.
 
     Args:
       tensor_fetches: list of tensor results returned by the model_fn.
       op_fetches: list of ops that are returned by the model_fn, e.g., train_op.
       on_tpu: if the graph is executed on TPU.
+      tensor_trace_order: TensorTraceOrder object holding tensorname to id map.
 
     Returns:
       An identical copy of tensor_fetches.
@@ -1421,7 +1479,7 @@ class TensorTracer(object):
     with ops.control_dependencies(op_fetches +
                                   [tensor.op for tensor in tensor_fetches]):
       flush_cache_op = self._generate_flush_cache_op(
-          self._tt_config.num_replicas, on_tpu)
+          self._tt_config.num_replicas, on_tpu, tensor_trace_order)
       return control_flow_ops.tuple(tensor_fetches,
                                     control_inputs=[flush_cache_op])
 
@@ -1837,7 +1895,8 @@ class TensorTracer(object):
           del self._host_call_fn[_TT_HOSTCALL_KEY]
       else:
         processed_t_fetches = self._flush_tensor_values_cache(
-            processed_t_fetches, op_fetches, on_tpu=on_tpu)
+            processed_t_fetches, op_fetches, on_tpu=on_tpu,
+            tensor_trace_order=tensor_trace_order)
 
     # processed_t_fetches is a list at this point. Convert it to the same
     # format as given in tensor_fetches.

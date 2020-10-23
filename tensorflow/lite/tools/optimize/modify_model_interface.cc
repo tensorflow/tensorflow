@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/tools/optimize/model_utils.h"
 
 namespace tflite {
@@ -66,7 +67,7 @@ std::vector<TensorOpTensor> GetInputTensors(const TensorType& input_type,
          op_idx--) {
       OperatorT* op = subgraph->operators[op_idx].get();
       const BuiltinOperator op_code =
-          model->operator_codes[op->opcode_index]->builtin_code;
+          GetBuiltinCode(model->operator_codes[op->opcode_index].get());
       TensorT* input_tensor = subgraph->tensors[op->inputs[0]].get();
       if (input_tensors.find(input_tensor) == input_tensors.end()) {
         continue;
@@ -141,7 +142,7 @@ std::vector<TensorOpTensor> GetOutputTensors(const TensorType& output_type,
          op_idx--) {
       OperatorT* op = subgraph->operators[op_idx].get();
       const BuiltinOperator op_code =
-          model->operator_codes[op->opcode_index]->builtin_code;
+          GetBuiltinCode(model->operator_codes[op->opcode_index].get());
       TensorT* output_tensor = subgraph->tensors[op->outputs[0]].get();
       if (output_tensors.find(output_tensor) == output_tensors.end()) {
         continue;
@@ -217,7 +218,8 @@ TfLiteStatus SetOutputTypeToUINT8(ModelT* model,
   // Find Quant op code index.
   size_t quant_op_index = 0;
   for (size_t i = 0; i < model->operator_codes.size(); ++i) {
-    if (model->operator_codes[i]->builtin_code == BuiltinOperator_QUANTIZE) {
+    if (GetBuiltinCode(model->operator_codes[i].get()) ==
+        BuiltinOperator_QUANTIZE) {
       quant_op_index = i;
     }
   }

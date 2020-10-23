@@ -139,6 +139,9 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     bool emit_select_tf_ops, bool emit_custom_ops,
     const mlir::TFL::QuantizationSpecs& quant_specs, std::string* result,
     mlir::PassManager* pass_manager) {
+  // Explicitly disable dumping Op details on failures.
+  module.getContext()->printOpOnDiagnostic(false);
+
   // Register a warning handler only log to std out.
   mlir::ScopedDiagnosticHandler s(
       module.getContext(), [](mlir::Diagnostic& diag) {

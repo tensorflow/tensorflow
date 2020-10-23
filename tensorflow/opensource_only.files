@@ -8,6 +8,7 @@ tensorflow/go/op/wrappers.go
 tensorflow/lite/micro/build_def.bzl
 tensorflow/python/autograph/core/config.py
 tensorflow/python/eager/benchmarks_test_base.py
+tensorflow/python/framework/tfrt_utils.py
 tensorflow/python/tpu/profiler/pip_package/BUILD
 tensorflow/python/tpu/profiler/pip_package/README
 tensorflow/python/tpu/profiler/pip_package/build_pip_package.sh
@@ -203,6 +204,7 @@ tensorflow/third_party/tensorrt/build_defs.bzl.tpl
 tensorflow/third_party/tensorrt/tensorrt/include/tensorrt_config.h.tpl
 tensorflow/third_party/tensorrt/tensorrt_configure.bzl
 tensorflow/third_party/termcolor.BUILD
+tensorflow/third_party/tf_toolchains.BUILD
 tensorflow/third_party/tflite_mobilenet.BUILD
 tensorflow/third_party/tflite_mobilenet_float.BUILD
 tensorflow/third_party/tflite_mobilenet_quant.BUILD

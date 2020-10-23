@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/mutable_op_resolver.h"
 #include "tensorflow/lite/op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/util.h"
 #include "tensorflow/lite/version.h"

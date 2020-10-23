@@ -3,7 +3,7 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_tpu",
+    "if_libtpu",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_cc_test",
@@ -116,7 +116,6 @@ filegroup(
         "immediate_execution_context.h",
         "immediate_execution_operation.h",
         "immediate_execution_tensor_handle.h",
-        "mnist_gradients_testutil.h",
         "tape.h",
         "tfe_cancellation_manager_internal.h",
         "tfe_context_internal.h",
@@ -290,7 +289,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/lib/llvm_rtti",
-    ] + if_tpu(
+    ] + if_libtpu(
         if_false = ["//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration"],
         if_true = [],
     ),
@@ -314,6 +313,7 @@ cc_library(
         ":gradients_internal",
         ":gradients_util",
         ":tape",
+        "//tensorflow/c/experimental/gradients/tape:tape_context",
         "//tensorflow/c/experimental/ops:array_ops",
         "//tensorflow/c/experimental/ops:math_ops",
         "//tensorflow/c/experimental/ops:nn_ops",
@@ -354,7 +354,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/lib/llvm_rtti",
-    ] + if_tpu(
+    ] + if_libtpu(
         if_false = ["//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration"],
         if_true = [],
     ),

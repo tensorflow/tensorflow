@@ -24,10 +24,12 @@ namespace tflite {
 
 // List of buckets currently recorded by this class. Each type keeps a list of
 // allocated information during model initialization.
+// TODO(b/169834511): Add tracking for scratch buffer allocations.
 enum class RecordedAllocationType {
   kTfLiteEvalTensorData,
   kPersistentTfLiteTensorData,
   kPersistentTfLiteTensorQuantizationData,
+  kPersistentBufferData,
   kTfLiteTensorVariableBufferData,
   kNodeAndRegistrationArray,
   kOpData,
@@ -66,6 +68,8 @@ class RecordingMicroAllocator : public MicroAllocator {
   // defined in RecordedAllocationType.
   void PrintAllocations() const;
 
+  void* AllocatePersistentBuffer(size_t bytes) override;
+
  protected:
   TfLiteStatus AllocateNodeAndRegistrations(
       const Model* model,
@@ -77,12 +81,12 @@ class RecordingMicroAllocator : public MicroAllocator {
       const Model* model, TfLiteEvalTensor** eval_tensors) override;
   TfLiteStatus AllocateVariables(const SubGraph* subgraph,
                                  TfLiteEvalTensor* eval_tensors) override;
-  // TODO(b/160894903): Once all kernels have been updated to the new API drop
+  // TODO(b/162311891): Once all kernels have been updated to the new API drop
   // this method. It is only used to record TfLiteTensor persistent allocations.
   TfLiteTensor* AllocatePersistentTfLiteTensorInternal(
       const Model* model, TfLiteEvalTensor* eval_tensors,
       int tensor_index) override;
-  // TODO(b/160894903): Once all kernels have been updated to the new API drop
+  // TODO(b/162311891): Once all kernels have been updated to the new API drop
   // this function since all allocations for quantized data will take place in
   // the temp section.
   TfLiteStatus PopulateTfLiteTensorFromFlatbuffer(const Model* model,
@@ -108,6 +112,7 @@ class RecordingMicroAllocator : public MicroAllocator {
   RecordedAllocation recorded_tflite_eval_tensor_data_ = {};
   RecordedAllocation recorded_persistent_tflite_tensor_data_ = {};
   RecordedAllocation recorded_persistent_tflite_tensor_quantization_data_ = {};
+  RecordedAllocation recorded_persistent_buffer_data_ = {};
   RecordedAllocation recorded_tflite_tensor_variable_buffer_data_ = {};
   RecordedAllocation recorded_node_and_registration_array_data_ = {};
   RecordedAllocation recorded_op_data_ = {};

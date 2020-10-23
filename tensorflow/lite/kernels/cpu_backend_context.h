@@ -50,7 +50,35 @@ class CpuBackendContext final : public TfLiteInternalBackendContext {
 
   void ClearCaches() override { ruy_context_->ClearPrepackedCache(); }
 
+  bool HasAvxOrAbove();
+
  private:
+  // Copy the wrapper class for cpuinfo from Ruy.
+  class CpuInfo final {
+   public:
+    CpuInfo() {}
+    ~CpuInfo();
+
+    // X86 features
+    bool Avx();
+    bool Avx2Fma();
+    bool Avx512();
+
+   private:
+    enum class InitStatus {
+      kNotYetAttempted,
+      kInitialized,
+      kFailed,
+    };
+
+    InitStatus init_status_ = InitStatus::kNotYetAttempted;
+
+    bool EnsureInitialized();
+    InitStatus Initialize();
+    CpuInfo(const CpuInfo&) = delete;
+    CpuInfo& operator=(const CpuInfo&) = delete;
+  };
+
   // To enable a smooth transition from the current direct usage
   // of the underlying gemmlowp context to going through abstractions
   // (see :cpu_backend_gemm), for now a CpuBackendContext always
@@ -59,6 +87,7 @@ class CpuBackendContext final : public TfLiteInternalBackendContext {
   // elide what can be elided based on TFLITE_WITH_RUY.
   const std::unique_ptr<ruy::Context> ruy_context_;
   const std::unique_ptr<gemmlowp::GemmContext> gemmlowp_context_;
+  CpuInfo cpuinfo_;
 
   // The maximum of threads used for parallelizing TfLite ops. However,
   // cpu_backend_threadpool::Execute creates as many threads as it's

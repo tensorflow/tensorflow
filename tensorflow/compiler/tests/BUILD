@@ -1089,6 +1089,7 @@ tf_xla_py_test(
     name = "reduce_ops_test",
     size = "medium",
     srcs = ["reduce_ops_test.py"],
+    enable_mlir_bridge = True,
     python_version = "PY3",
     shard_count = 5,
     tags = [
@@ -1281,7 +1282,9 @@ tf_xla_py_test(
     python_version = "PY3",
     shard_count = 10,
     tags = [
+        "no_oss",  # b/170479349
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",  # b/170479349
         "optonly",
     ],
     deps = [
@@ -1351,7 +1354,6 @@ tf_xla_py_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-        "notap",  # b/162025277
     ],
     deps = [
         ":xla_test",
@@ -1484,6 +1486,7 @@ tf_xla_py_test(
         "//tensorflow/compiler/tf2xla/python:xla",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
+        "//tensorflow/python:image_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:training",
     ],
@@ -1545,6 +1548,7 @@ tf_xla_py_test(
     name = "sort_ops_test",
     size = "medium",
     srcs = ["sort_ops_test.py"],
+    enable_mlir_bridge = True,
     python_version = "PY3",
     shard_count = 1,
     # Times out in fastbuild mode.

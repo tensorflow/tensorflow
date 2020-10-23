@@ -965,33 +965,34 @@ class MetricTest(test.TestCase, parameterized.TestCase):
                                  num_tensor_args,
                                  shape=(1, 5),
                                  test_sample_weight=True):
-    tf_save.save(metric, save_dir)
-    loaded = keras_load.load(save_dir)
-    self.evaluate([v.initializer for v in loaded.variables])
-    self.assertEqual(metric.name, loaded.name)
-    self.assertEqual(metric.dtype, loaded.dtype)
+    with self.cached_session():
+      tf_save.save(metric, save_dir)
+      loaded = keras_load.load(save_dir)
+      self.evaluate([v.initializer for v in loaded.variables])
+      self.assertEqual(metric.name, loaded.name)
+      self.assertEqual(metric.dtype, loaded.dtype)
 
-    inputs = self.generate_inputs(num_tensor_args, shape)
-    actual = self.evaluate(metric(*inputs))
-    self.assertAllClose(actual, loaded(*inputs))
-    self.assertAllClose(metric.variables, loaded.variables)
-
-    # Test with separate calls to update state and result.
-    inputs = self.generate_inputs(num_tensor_args, shape)
-    self.evaluate(metric.update_state(*inputs))
-    self.evaluate(loaded.update_state(*inputs))
-    actual = self.evaluate(metric.result())
-    self.assertAllClose(actual, loaded.result())
-
-    if test_sample_weight:
-      # Test with sample weights input.
       inputs = self.generate_inputs(num_tensor_args, shape)
-      sample_weight = self.generate_inputs(1, [])[0]
-      inputs.append(sample_weight)
-
       actual = self.evaluate(metric(*inputs))
       self.assertAllClose(actual, loaded(*inputs))
-    return loaded
+      self.assertAllClose(metric.variables, loaded.variables)
+
+      # Test with separate calls to update state and result.
+      inputs = self.generate_inputs(num_tensor_args, shape)
+      self.evaluate(metric.update_state(*inputs))
+      self.evaluate(loaded.update_state(*inputs))
+      actual = self.evaluate(metric.result())
+      self.assertAllClose(actual, loaded.result())
+
+      if test_sample_weight:
+        # Test with sample weights input.
+        inputs = self.generate_inputs(num_tensor_args, shape)
+        sample_weight = self.generate_inputs(1, [])[0]
+        inputs.append(sample_weight)
+
+        actual = self.evaluate(metric(*inputs))
+        self.assertAllClose(actual, loaded(*inputs))
+      return loaded
 
   @parameterized.named_parameters([
       ('mean', keras.metrics.Mean, 1, (1, 5)),
@@ -1053,6 +1054,33 @@ class MetricTest(test.TestCase, parameterized.TestCase):
             self._save_model_dir('second_save'),
             num_tensor_args,
             test_sample_weight=False)
+
+  def test_registered_custom_metric(self):
+
+    @generic_utils.register_keras_serializable('Testing')
+    class CustomMeanMetric(keras.metrics.Mean):
+
+      def update_state(self, *args):  # pylint: disable=useless-super-delegation
+        # Sometimes built-in metrics return an op in update_state. Custom
+        # metrics don't support returning ops, so wrap the update_state method
+        # while returning nothing.
+        super(CustomMeanMetric, self).update_state(*args)
+
+    with self.cached_session():
+      metric = CustomMeanMetric()
+      save_dir = self._save_model_dir('first_save')
+      self.evaluate([v.initializer for v in metric.variables])
+      loaded = self._test_metric_save_and_load(
+          metric,
+          save_dir,
+          num_tensor_args=1,
+          test_sample_weight=False)
+
+      self._test_metric_save_and_load(
+          loaded,
+          self._save_model_dir('second_save'),
+          num_tensor_args=1,
+          test_sample_weight=False)
 
   def test_custom_metric_wrapped_call(self):
 
