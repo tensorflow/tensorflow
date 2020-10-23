@@ -471,7 +471,29 @@ class AbortCollectiveOpsTest(test.TestCase, parameterized.TestCase):
     _setup_context()
     def_function.function(collective_fn)()
 
-  def testOpErrorNotAbort(self, collective_op, device, communication):
+
+class OpCancellationTest(test.TestCase, parameterized.TestCase):
+
+  def setUp(self):
+    _setup_context()
+    super().setUp()
+
+  @combinations.generate(
+      combinations.times(
+          combinations.combine(
+              collective_op=[
+                  combinations.NamedObject('all_reduce',
+                                           CollectiveOpsV1.all_reduce),
+                  combinations.NamedObject('all_reduce_v2',
+                                           CollectiveOpsV2.all_reduce),
+                  combinations.NamedObject('all_gather',
+                                           CollectiveOpsV1.all_gather),
+                  combinations.NamedObject('all_gather_v2',
+                                           CollectiveOpsV2.all_gather),
+              ],
+              mode='eager'), device_combination))
+  def testOpErrorNotAbortIfNoCollective(self, collective_op, device,
+                                        communication):
     # Do not abort if there's no active collective ops. There could be
     # exceptions like EOF which we expect users to catch, aborting collective
     # ops on all op errors intervenes with this workflow.
@@ -504,9 +526,20 @@ class AbortCollectiveOpsTest(test.TestCase, parameterized.TestCase):
       f()
     collective_fn(constant_op.constant([1.]))
 
-  def testOpErrorAbort(self, collective_op, device, communication):
-    # Abort collective ops if there're active collective ops at the time of an
-    # op error. This is due to the inability to cancel collective ops, and op
+  @combinations.generate(
+      combinations.times(
+          combinations.combine(
+              collective_op=[
+                  combinations.NamedObject('all_reduce',
+                                           CollectiveOpsV1.all_reduce),
+                  combinations.NamedObject('all_gather',
+                                           CollectiveOpsV1.all_gather),
+              ],
+              mode='eager'), device_combination))
+  def testOpErrorAbortWithCollective(self, collective_op, device,
+                                     communication):
+    # Abort v1 collective ops if there're active collective ops at the time of
+    # an op error. This is due to the inability to cancel collective ops, and op
     # errors may cause running collective ops to hang.
     dev0 = '/device:%s:0' % device
     group_size = 2
@@ -547,6 +580,71 @@ class AbortCollectiveOpsTest(test.TestCase, parameterized.TestCase):
             group_key,
             instance_key,
             communication_hint=communication)
+
+  @combinations.generate(
+      combinations.times(
+          combinations.combine(
+              collective_op=[
+                  combinations.NamedObject('all_reduce_v2',
+                                           CollectiveOpsV2.all_reduce),
+                  combinations.NamedObject('all_gather_v2',
+                                           CollectiveOpsV2.all_gather),
+              ],
+              mode='eager'), device_combination))
+  def testOpErrorNotAbortWithCollective(self, collective_op, device,
+                                        communication):
+    # Do not abort v2 collective ops even if there're active collective ops at
+    # the time of an op error. We rely cancellation to terminate active
+    # collective ops.
+    dev0 = '/device:%s:0' % device
+    dev1 = '/device:%s:1' % device
+    group_size = 2
+    group_key = 100
+    instance_key = 100
+    in_tensor = constant_op.constant([1.])
+
+    @def_function.function
+    def collective_fn():
+      for device in [dev0, dev1]:
+        with ops.device(device):
+          collective_op(
+              in_tensor,
+              group_size,
+              group_key,
+              instance_key,
+              communication_hint=communication)
+
+    # Local params resolution cannot be cancelled yet, so we perform a normal
+    # collective so that the group is resolved.
+    collective_fn()
+
+    # Make the dataset sleep a while so that the collective is being executed
+    # when the EOF happens.
+    dataset = dataset_ops.Dataset.from_tensors([1.]).apply(
+        dataset_testing.sleep(sleep_microseconds=200))
+
+    @def_function.function
+    def f():
+      # Launch a collective op that won't be able to finish to test cancellation
+      # when other ops error.
+      with ops.device(dev0):
+        ret = collective_op(
+            in_tensor,
+            group_size,
+            group_key,
+            instance_key,
+            communication_hint=communication)
+      iterator = iter(dataset)
+      next(iterator)
+      # This should raise EOF.
+      next(iterator)
+      return ret
+
+    with self.assertRaises(errors.OutOfRangeError):
+      f()
+    # Collective ops shouldn't be aborted and new collectives should be able to
+    # proceed.
+    collective_fn()
 
 
 @combinations.generate(

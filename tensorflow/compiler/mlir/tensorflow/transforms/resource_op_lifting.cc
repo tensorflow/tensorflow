@@ -201,8 +201,20 @@ void ForwardStoreToLoad(Block* block) {
       if (!last_store) continue;
 
       // Use stored value in last_store to replace all uses of current resource
-      // load's result, then erase this resource load.
-      read_variable_op.value().replaceAllUsesWith(last_store.value());
+      // load's result, then erase this resource load. Add an intermediate
+      // CastOp if the shape of types doesn't exactly match.
+      Type read_type = read_variable_op.value().getType();
+      if (read_type != last_store.value().getType()) {
+        OpBuilder builder(last_store);
+        builder.setInsertionPointAfter(last_store);
+        auto cast = builder.create<TF::CastOp>(
+            last_store.getLoc(), read_type, last_store.value(),
+            /*Truncate=*/builder.getBoolAttr(false));
+        read_variable_op.value().replaceAllUsesWith(cast);
+      } else {
+        read_variable_op.value().replaceAllUsesWith(last_store.value());
+      }
+
       read_variable_op.erase();
       continue;
     }
@@ -483,7 +495,7 @@ void RegionResourceHoister::AppendResourceStoreValueToReturn(
     auto new_return_operands = llvm::to_vector<4>(old_return->getOperands());
     new_return_operands.resize(num_new_results_);
 
-    // initialize return values for written resources to be the hosited reads.
+    // initialize return values for written resources to be the hoisted reads.
     for (Value resource : written_resources_) {
       const ResourceInfo& info = resources_[resource];
       new_return_operands[info.result_index] = info.hoisted_read;

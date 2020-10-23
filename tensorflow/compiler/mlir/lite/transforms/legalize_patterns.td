@@ -54,7 +54,7 @@ def ExtractSingleElementAsInt32 : NativeCodeCall<
     "$_builder.getI32IntegerAttr(ExtractSingleElementAsInteger($_self.cast<ElementsAttr>()).getInt())">;
 
 // Converts tensor with int64 to int32.
-def CreateCastToInt32 : NativeCodeCall<
+def CreateTFLCastToInt32Op : NativeCodeCall<
   "CreateCastToInt32($0, $_loc, $_builder)">;
 
 // Checks whether the given operation has static shapes and same shapes of all inputs.
@@ -216,12 +216,9 @@ def LegalizeSqueeze : Pat<(TF_SqueezeOp $arg, $squeeze_dims),
                           (TFL_SqueezeOp $arg, $squeeze_dims)>;
 def LegalizeTanh : Pat<(TF_TanhOp $arg), (TFL_TanhOp $arg)>;
 
-def LegalizeTransposeInt64 : Pat<
-  (TF_TransposeOp $arg, (ConstantOp Int64ElementsAttr:$perm)),
-  (TFL_TransposeOp $arg, (CreateCastToInt32 $perm))>;
-
 def LegalizeTranspose : Pat<(TF_TransposeOp $arg, $perm),
-                            (TFL_TransposeOp $arg, $perm)>;
+                            (TFL_TransposeOp $arg,
+                            (CreateTFLCastToInt32Op $perm))>;
 
 def LegalizeWhere : Pat<(TF_WhereOp $arg), (TFL_WhereOp $arg)>;
 def LegalizeZerosLike : Pat<(TF_ZerosLikeOp $arg), (TFL_ZerosLikeOp $arg)>;

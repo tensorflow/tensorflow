@@ -1924,7 +1924,7 @@ tf_cc_test(
 tf_cc_test(
     name = "lib_jpeg_jpeg_mem_unittest",
     srcs = ["lib/jpeg/jpeg_mem_unittest.cc"],
-    data = glob(["lib/jpeg/testdata/*.jpg"]),
+    data = ["//tensorflow/core/lib/jpeg/testdata"],
     deps = [
         ":jpeg_internal",
         ":lib",
@@ -2112,20 +2112,7 @@ filegroup(
         "//tensorflow/core/lib/ssim:testdata",
         "//tensorflow/core/lib/psnr:testdata",
         # JPEG data
-        "lib/jpeg/testdata/jpeg_merge_test1.jpg",
-        "lib/jpeg/testdata/jpeg_merge_test1_cmyk.jpg",
-        # JPEG data for jpeg benchmark.
-        "lib/jpeg/testdata/small.jpg",
-        "lib/jpeg/testdata/medium.jpg",
-        # Corrupted JPEG files for tests
-        "lib/jpeg/testdata/bad_huffman.jpg",
-        "lib/jpeg/testdata/corrupt.jpg",
-        # -- hand-edited variant: stops at line 0
-        "lib/jpeg/testdata/corrupt34_2.jpg",
-        # -- hand-edited variant: stops at line 4
-        "lib/jpeg/testdata/corrupt34_3.jpg",
-        # -- hand-edited variant: stops after a restart marker
-        "lib/jpeg/testdata/corrupt34_4.jpg",
+        "//tensorflow/core/lib/jpeg/testdata",
         # GIF data
         "lib/gif/testdata/lena.gif",
         "lib/gif/testdata/scan.gif",

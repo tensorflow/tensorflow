@@ -136,7 +136,6 @@ cuda_py_test(
     srcs = ["worker_training_state_test.py"],
     python_version = "PY3",
     shard_count = 4,
-    tfrt_enabled = True,
     deps = [
         ":multi_worker_testing_utils",
         ":worker_training_state",
@@ -513,8 +512,6 @@ distribute_py_test(
     shard_count = 31,
     tags = [
         "multi_and_single_gpu",
-        "no_cuda11",
-        "no_oss",
         "no_windows_gpu",
         "noasan",  # TODO(b/337374867) fails with -fsanitize=null
         "notpu",  # TODO(b/153672562)

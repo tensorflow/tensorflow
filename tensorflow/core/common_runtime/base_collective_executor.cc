@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -42,6 +43,14 @@ limitations under the License.
 #define VALUE_IN_DEBUG_STRING false
 
 namespace tensorflow {
+
+namespace {
+bool IsCancelled(CancellationManager* cancel_mgr) {
+  return cancel_mgr != nullptr &&
+         (cancel_mgr->IsCancelled() || cancel_mgr->IsCancelling());
+}
+}  // namespace
+
 /*static*/
 int64 CollectiveAdapter::AlignedChunkElts(int64 elt_bytes, int64 total_elts,
                                           int64 num_chunks) {
@@ -215,14 +224,12 @@ CollectiveAdapter* MakeCollectiveAdapter(Tensor* output, int num_chunks,
 BaseCollectiveExecutor::~BaseCollectiveExecutor() {}
 
 void BaseCollectiveExecutor::StartAbort(const Status& s) {
-  VLOG(1) << "BaseCollectiveExecutor::StartAbort " << s;
   Status status;
   {
     mutex_lock l(status_mu_);
     if (!status_.ok()) {
-      LOG(WARNING)
-          << "BaseCollectiveExecutor already aborted, ignoring StartAbort: "
-          << s;
+      VLOG(2) << "BaseCollectiveExecutor already aborted, ignoring StartAbort: "
+              << s;
       return;
     }
     status_ = StatusGroup::MakeDerived(Status(
@@ -233,6 +240,7 @@ void BaseCollectiveExecutor::StartAbort(const Status& s) {
             "program to reset.")));
     status = status_;
   }
+  LOG(ERROR) << "BaseCollectiveExecutor::StartAbort " << s;
   cem_->GetParamResolver()->StartAbort(status);
   remote_access_->StartAbort(status);
   if (cem_->GetNcclCommunicator() != nullptr) {
@@ -261,9 +269,14 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
                                           StatusCallback done) {
   // See CompleteParamsAsync() how done() and the timeout callback interacts.
   const auto is_callback_called = std::make_shared<std::atomic<bool>>(false);
-  auto done_safe = [this, done, is_callback_called](const Status& s) {
+  auto done_safe = [this, done, ctx, is_callback_called](const Status& s) {
     bool called = is_callback_called->exchange(true);
     if (!called) {
+      if (!s.ok() && !IsCancelled(ctx->cancellation_manager())) {
+        // This is a collective error. Abort CollectiveExecutor so that this
+        // error can propagate to other workers.
+        StartAbort(s);
+      }
       done(GetStatus(s));
     }
   };
@@ -341,9 +354,15 @@ void BaseCollectiveExecutor::CompleteParamsAsync(
   // timeout callback executes, done_safe will become a no-op and the timeout
   // callback is responsible for invoking done() at the end.
   const auto is_callback_called = std::make_shared<std::atomic<bool>>(false);
-  auto done_safe = [this, is_callback_called, done](const Status& s) {
+  auto done_safe = [this, is_callback_called, cancel_mgr,
+                    done](const Status& s) {
     bool called = is_callback_called->exchange(true);
     if (!called) {
+      if (!s.ok() && !IsCancelled(cancel_mgr)) {
+        // This is a collective error. Abort CollectiveExecutor so that this
+        // error can propagate to other workers.
+        StartAbort(s);
+      }
       done(GetStatus(s));
     }
   };

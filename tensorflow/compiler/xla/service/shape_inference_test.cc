@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/client/padding.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -912,6 +913,32 @@ TEST_F(ReduceShapeInferenceTest, ReduceMultiOutput) {
                                inferred_status.ValueOrDie()));
 }
 
+TEST_F(ReduceShapeInferenceTest, ReduceWindowMultiOutput) {
+  Shape f32_arg_shape = ShapeUtil::MakeShape(F32, {5, 3, 1});
+  Shape s32_arg_shape = ShapeUtil::MakeShape(S32, {5, 3, 1});
+  std::vector<const Shape*> args = {&f32_arg_shape, &s32_arg_shape};
+  std::vector<const Shape*> inits = {&f32_, &s32_};
+  ProgramShape to_apply = ShapeUtil::MakeProgramShape(
+      {f32_, s32_, f32_, s32_}, ShapeUtil::MakeTupleShape({f32_, s32_}));
+  std::vector<int64> window_dimensions = {1, 2, 4};
+  std::vector<int64> window_strides = {1, 1, 1};
+  std::vector<std::pair<int64, int64>> padding_values =
+      MakePadding(AsInt64Slice(f32_arg_shape.dimensions()), window_dimensions,
+                  window_strides, Padding::kValid);
+  TF_ASSERT_OK_AND_ASSIGN(
+      Window window,
+      ShapeInference::InferWindowFromDimensions(
+          window_dimensions, window_strides, padding_values, {}, {}));
+  auto inferred_status = ShapeInference::InferReduceWindowShape(
+      absl::MakeSpan(args), absl::MakeSpan(inits), window, to_apply);
+  VLOG(2) << inferred_status.ValueOrDie().ToString() << "\n";
+  EXPECT_IS_OK(inferred_status.status());
+  EXPECT_TRUE(ShapeUtil::Equal(
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {5, 2, 0}),
+                                 ShapeUtil::MakeShape(S32, {5, 2, 0})}),
+      inferred_status.ValueOrDie()));
+}
+
 TEST_F(ReduceShapeInferenceTest, ErrorMultiOutputBadReducerInput1) {
   Shape f32_arg_shape = ShapeUtil::MakeShape(F32, {5, 3});
   Shape s32_arg_shape = ShapeUtil::MakeShape(S32, {5, 3});
@@ -946,6 +973,29 @@ TEST_F(ReduceShapeInferenceTest, ErrorMultiOutputBadReducerInput3) {
   EXPECT_FALSE(inferred_status.ok());
   EXPECT_THAT(inferred_status.status().error_message(),
               HasSubstr("must have at least 2 arguments, has 0"));
+}
+
+TEST_F(ReduceShapeInferenceTest, ErrorBadReduceWindowInput) {
+  Shape f32_arg_shape = ShapeUtil::MakeShape(F32, {5, 3, 1});
+  Shape s32_arg_shape = ShapeUtil::MakeShape(S32, {5, 3, 1});
+  std::vector<const Shape*> args = {&f32_arg_shape, &s32_arg_shape};
+  std::vector<const Shape*> inits = {&f32_, &s32_};
+  ProgramShape to_apply = ShapeUtil::MakeProgramShape(
+      {f32_, f32_, f32_, f32_}, ShapeUtil::MakeTupleShape({f32_, s32_}));
+  std::vector<int64> window_dimensions = {1, 2, 4};
+  std::vector<int64> window_strides = {1, 1, 1};
+  std::vector<std::pair<int64, int64>> padding_values =
+      MakePadding(AsInt64Slice(f32_arg_shape.dimensions()), window_dimensions,
+                  window_strides, Padding::kValid);
+  TF_ASSERT_OK_AND_ASSIGN(
+      Window window,
+      ShapeInference::InferWindowFromDimensions(
+          window_dimensions, window_strides, padding_values, {}, {}));
+  auto inferred_status = ShapeInference::InferReduceWindowShape(
+      absl::MakeSpan(args), absl::MakeSpan(inits), window, to_apply);
+  EXPECT_FALSE(inferred_status.status().ok());
+  EXPECT_THAT(inferred_status.status().error_message(),
+              HasSubstr("f32[] vs s32[]"));
 }
 
 TEST_F(ReduceShapeInferenceTest, ErrorMultiOutputBadReducerOutput1) {

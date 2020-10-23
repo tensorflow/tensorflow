@@ -30,8 +30,6 @@ limitations under the License.
 namespace xla {
 namespace {
 
-static const char kGpuPlatformName[] = "gpu";
-
 // A custom PjRtClient that overrides the device assignment method.
 class GpuClient : public xla::PjRtClient {
  public:
@@ -298,8 +296,8 @@ Status BuildDistributedDevices(
 GpuDevice::GpuDevice(int id,
                      std::unique_ptr<LocalDeviceState> local_device_state,
                      std::string device_kind, int node_id)
-    : PjRtDevice(id, std::move(local_device_state), kGpuPlatformName,
-                 std::move(device_kind), node_id) {}
+    : PjRtDevice(id, std::move(local_device_state), std::move(device_kind),
+                 node_id) {}
 
 StatusOr<std::unique_ptr<PjRtClient>> GetNvidiaGpuClient(
     bool asynchronous, const GpuAllocatorConfig& allocator_config,
@@ -325,7 +323,7 @@ StatusOr<std::unique_ptr<PjRtClient>> GetNvidiaGpuClient(
   }
 
   return std::unique_ptr<PjRtClient>(std::make_unique<GpuClient>(
-      "gpu", xla_client, std::move(devices),
+      PjRtPlatformId::kNvidiaGpu, xla_client, std::move(devices),
       /*node_id=*/node_id, std::move(allocator),
       std::move(host_memory_allocator),
       /*should_stage_host_to_device_transfers=*/true,

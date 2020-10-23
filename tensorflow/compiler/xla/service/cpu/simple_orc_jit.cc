@@ -116,15 +116,14 @@ SimpleOrcJIT::SimpleOrcJIT(
           << " features: " << target_machine_->getTargetFeatureString().str();
 
   // Materialize unknown symbols from the runtime symbol table.
-  class RuntimeSymbolGenerator
-      : public llvm::orc::JITDylib::DefinitionGenerator {
+  class RuntimeSymbolGenerator : public llvm::orc::DefinitionGenerator {
     SimpleOrcJIT& jit_;
 
    public:
     explicit RuntimeSymbolGenerator(SimpleOrcJIT& jit) : jit_(jit) {}
     llvm::Error tryToGenerate(
-        llvm::orc::LookupKind, llvm::orc::JITDylib& jit_dylib,
-        llvm::orc::JITDylibLookupFlags,
+        llvm::orc::LookupState&, llvm::orc::LookupKind,
+        llvm::orc::JITDylib& jit_dylib, llvm::orc::JITDylibLookupFlags,
         const llvm::orc::SymbolLookupSet& names) override {
       llvm::orc::SymbolMap new_defs;
 
@@ -148,6 +147,12 @@ SimpleOrcJIT::SimpleOrcJIT(
   if (target_machine_->getTargetTriple().isOSBinFormatCOFF()) {
     object_layer_.setOverrideObjectFlagsWithResponsibilityFlags(true);
     object_layer_.setAutoClaimResponsibilityForObjectSymbols(true);
+  }
+}
+
+SimpleOrcJIT::~SimpleOrcJIT() {
+  if (auto err = execution_session_->endSession()) {
+    execution_session_->reportError(std::move(err));
   }
 }
 

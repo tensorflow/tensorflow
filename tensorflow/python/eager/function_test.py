@@ -3526,6 +3526,20 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         self.assertAllEqual(output[0] + output[1], 1253)
 
   @test_util.run_in_graph_and_eager_modes
+  def testConcreteFunctionWithNonTensorStringInputs(self):
+
+    @def_function.function
+    def f(x, y):
+      return string_ops.string_join([x, y])
+
+    a = constant_op.constant('a')
+    b = 'b'
+
+    cf = f.get_concrete_function(a, b)
+    for output in [cf(a), cf(x=a), cf(a, b), cf(x=a, y=b)]:
+      self.assertAllEqual(output, b'ab')
+
+  @test_util.run_in_graph_and_eager_modes
   def testConcreteFunctionWithBoundNestedNonTensorInputs(self):
 
     @def_function.function

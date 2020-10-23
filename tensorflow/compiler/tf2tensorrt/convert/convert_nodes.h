@@ -529,19 +529,6 @@ class Converter {
                          const NodeDef& node_def,
                          absl::string_view sub_op_name = "");
 
-  // Converts 'input' of 'node_def' into 'tensor' with shape specified by 'dims'
-  // (which doesn't contain the batch dimension).
-  //
-  // If validation_only is true, it doesn't do the conversion but only do some
-  // minimum validation for the eligibility of the conversion, and *tensor will
-  // be set to nullptr.
-  Status PrepareTensorForShape(const TRT_TensorOrWeights& input,
-                               const nvinfer1::Dims& dims,
-                               const bool validation_only,
-                               nvinfer1::ITensor** tensor,
-                               const NodeDef& node_def,
-                               absl::optional<int> op_instance = absl::nullopt);
-
   // Reshapes a dynamic shape tensor by removing or adding dimensions of size 1,
   // and/or permuting the dimensions. The new shape is derived from the shape of
   // the input tensor according to the slices and size_for_added_dims arguments.
@@ -606,6 +593,10 @@ class Converter {
   nvinfer1::ITensor* CreateConstantLayer(const TRT_ShapedWeights& weights,
                                          const nvinfer1::Dims& dims);
 
+  // Gets the min and max value in a TRT_ShapedWeights
+  Status GetWeightRange(const TRT_ShapedWeights& weights, float* out_min,
+                        float* out_max) const;
+
  private:
   Converter(TrtPrecisionMode precision_mode, bool use_calibration,
             nvinfer1::ILogger* trt_logger, const bool use_implicit_batch);
@@ -629,10 +620,6 @@ class Converter {
   void RegisterOpConverters();
 
   void PropagateQuantizationRanges();
-
-  // Gets the min and max value in a TRT_ShapedWeights
-  Status GetWeightRange(const TRT_ShapedWeights& weights, float* out_min,
-                        float* out_max) const;
 
   // Registered op converters by op type.
   std::unordered_map<string, OpConverter> op_registry_;
@@ -686,6 +673,21 @@ class Converter {
   friend class ConverterTest;
   friend class OpConverterTest;
 };
+
+// Converts 'input' of 'node_def' into 'tensor' with shape specified by 'dims'
+// (which doesn't contain the batch dimension).
+//
+// If validation_only is true, it doesn't do the conversion but only do some
+// minimum validation for the eligibility of the conversion, and *tensor will
+// be set to nullptr.
+// If validation_only is false converter must not be nullptr.
+Status PrepareTensorForShape(Converter* converter,
+                             const TRT_TensorOrWeights& input,
+                             const nvinfer1::Dims& dims,
+                             const bool validation_only,
+                             nvinfer1::ITensor** tensor,
+                             const NodeDef& node_def,
+                             absl::optional<int> op_instance = absl::nullopt);
 
 // Return OK if the broadcast scheme is supported and compute the shapes after
 // broadcasting. check_feasibility can be set to false in cases where dimensions

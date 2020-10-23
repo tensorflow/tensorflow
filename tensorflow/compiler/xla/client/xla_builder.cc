@@ -2324,31 +2324,53 @@ XlaOp XlaBuilder::ReduceWindow(XlaOp operand, XlaOp init_value,
                                absl::Span<const int64> window_dimensions,
                                absl::Span<const int64> window_strides,
                                Padding padding) {
-  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
-    TF_RETURN_IF_ERROR(
-        ValidatePaddingValues(AsInt64Slice(operand_shape->dimensions()),
-                              window_dimensions, window_strides));
+  return ReduceWindow(absl::MakeSpan(&operand, 1),
+                      absl::MakeSpan(&init_value, 1), computation,
+                      window_dimensions, window_strides, padding);
+}
 
+XlaOp XlaBuilder::ReduceWindow(absl::Span<const XlaOp> operands,
+                               absl::Span<const XlaOp> init_values,
+                               const XlaComputation& computation,
+                               absl::Span<const int64> window_dimensions,
+                               absl::Span<const int64> window_strides,
+                               Padding padding) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    const Shape* operand_shape = nullptr;
+    for (const auto& operand : operands) {
+      TF_ASSIGN_OR_RETURN(operand_shape, GetShapePtr(operand));
+      TF_RETURN_IF_ERROR(
+          ValidatePaddingValues(AsInt64Slice(operand_shape->dimensions()),
+                                window_dimensions, window_strides));
+    }
+    CHECK(operand_shape != nullptr);
     std::vector<std::pair<int64, int64>> padding_values =
         MakePadding(AsInt64Slice(operand_shape->dimensions()),
                     window_dimensions, window_strides, padding);
     return ReduceWindowWithGeneralPadding(
-        operand, init_value, computation, window_dimensions, window_strides,
+        operands, init_values, computation, window_dimensions, window_strides,
         /*base_dilations=*/{}, /*window_dilations=*/{}, padding_values);
   });
 }
 
 XlaOp XlaBuilder::ReduceWindowWithGeneralPadding(
-    XlaOp operand, XlaOp init_value, const XlaComputation& computation,
+    absl::Span<const XlaOp> operands, absl::Span<const XlaOp> init_values,
+    const XlaComputation& computation,
     absl::Span<const int64> window_dimensions,
     absl::Span<const int64> window_strides,
     absl::Span<const int64> base_dilations,
     absl::Span<const int64> window_dilations,
     absl::Span<const std::pair<int64, int64>> padding) {
+  std::vector<const Shape*> operand_shapes, init_shapes;
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
-    TF_ASSIGN_OR_RETURN(const Shape* init_shape, GetShapePtr(init_value));
+    for (int i = 0; i < operands.size(); ++i) {
+      const auto& operand = operands[i];
+      const auto& init_value = init_values[i];
+      TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+      operand_shapes.push_back(operand_shape);
+      TF_ASSIGN_OR_RETURN(const Shape* init_shape, GetShapePtr(init_value));
+      init_shapes.push_back(init_shape);
+    }
     TF_ASSIGN_OR_RETURN(const ProgramShape& to_apply_shape,
                         computation.GetProgramShape());
     TF_ASSIGN_OR_RETURN(auto window,
@@ -2358,10 +2380,31 @@ XlaOp XlaBuilder::ReduceWindowWithGeneralPadding(
                             /*rhs_dilation=*/window_dilations));
     TF_ASSIGN_OR_RETURN(
         Shape shape, ShapeInference::InferReduceWindowShape(
-                         *operand_shape, *init_shape, window, to_apply_shape));
-    return ReduceWindowInternal(shape, operand, init_value, computation,
+                         absl::MakeSpan(operand_shapes),
+                         absl::MakeSpan(init_shapes), window, to_apply_shape));
+    return ReduceWindowInternal(shape, operands, init_values, computation,
                                 std::move(window));
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::ReduceWindowInternal(
+    const Shape& shape, absl::Span<const XlaOp> operands,
+    absl::Span<const XlaOp> init_values, const XlaComputation& computation,
+    Window window) {
+  if (operands.size() == 1) {
+    return ReduceWindowInternal(shape, operands[0], init_values[0], computation,
+                                window);
+  } else {
+    HloInstructionProto instr;
+    *instr.mutable_shape() = shape.ToProto();
+    *instr.mutable_window() = std::move(window);
+    AddCalledComputation(computation, &instr);
+    std::vector<XlaOp> args;
+    args.insert(args.end(), operands.begin(), operands.end());
+    args.insert(args.end(), init_values.begin(), init_values.end());
+    return AddInstruction(std::move(instr), HloOpcode::kReduceWindow,
+                          absl::MakeSpan(args));
+  }
 }
 
 StatusOr<XlaOp> XlaBuilder::ReduceWindowInternal(
@@ -4067,6 +4110,17 @@ XlaOp ReduceWindow(const XlaOp operand, const XlaOp init_value,
                                          padding);
 }
 
+XlaOp ReduceWindow(absl::Span<const XlaOp> operands,
+                   absl::Span<const XlaOp> init_values,
+                   const XlaComputation& computation,
+                   absl::Span<const int64> window_dimensions,
+                   absl::Span<const int64> window_strides, Padding padding) {
+  CHECK(!operands.empty());
+  return operands[0].builder()->ReduceWindow(operands, init_values, computation,
+                                             window_dimensions, window_strides,
+                                             padding);
+}
+
 XlaOp ReduceWindowWithGeneralPadding(
     const XlaOp operand, const XlaOp init_value,
     const XlaComputation& computation,
@@ -4076,8 +4130,9 @@ XlaOp ReduceWindowWithGeneralPadding(
     absl::Span<const int64> window_dilations,
     absl::Span<const std::pair<int64, int64>> padding) {
   return operand.builder()->ReduceWindowWithGeneralPadding(
-      operand, init_value, computation, window_dimensions, window_strides,
-      base_dilations, window_dilations, padding);
+      absl::MakeSpan(&operand, 1), absl::MakeSpan(&init_value, 1), computation,
+      window_dimensions, window_strides, base_dilations, window_dilations,
+      padding);
 }
 
 XlaOp AllGather(const XlaOp operand, int64 all_gather_dimension,

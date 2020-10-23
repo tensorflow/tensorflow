@@ -1163,12 +1163,9 @@ def set_system_libs_flag(environ_cp):
       syslibs = ','.join(sorted(syslibs.split()))
     write_action_env_to_bazelrc('TF_SYSTEM_LIBS', syslibs)
 
-  if 'PREFIX' in environ_cp:
-    write_to_bazelrc('build --define=PREFIX=%s' % environ_cp['PREFIX'])
-  if 'LIBDIR' in environ_cp:
-    write_to_bazelrc('build --define=LIBDIR=%s' % environ_cp['LIBDIR'])
-  if 'INCLUDEDIR' in environ_cp:
-    write_to_bazelrc('build --define=INCLUDEDIR=%s' % environ_cp['INCLUDEDIR'])
+  for varname in ('PREFIX', 'LIBDIR', 'INCLUDEDIR', 'PROTOBUF_INCLUDE_PATH'):
+    if varname in environ_cp:
+      write_to_bazelrc('build --define=%s=%s' % (varname, environ_cp[varname]))
 
 
 def is_reduced_optimize_huge_functions_available(environ_cp):

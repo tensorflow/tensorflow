@@ -136,11 +136,22 @@ struct CallSignature {
                         other.keyword_args, other.dynamic_args_signatures,
                         other.device) &&
            // `==` on py:objects is the Python `is`. We need equal.
-           std::equal(static_args.begin(), static_args.end(),
-                      other.static_args.begin(), other.static_args.end(),
-                      [](const py::object& a, const py::object& b) {
-                        return a.equal(b);
-                      });
+           std::equal(
+               static_args.begin(), static_args.end(),
+               other.static_args.begin(), other.static_args.end(),
+               [](const py::object& a, const py::object& b) {
+                 try {
+                   return a.equal(b);
+                 } catch (const py::error_already_set& e) {
+                   throw std::invalid_argument(absl::StrCat(
+                       "static arguments should be comparable using __eq__."
+                       "The following error was raised when comparing two "
+                       "objects of types ",
+                       py::cast<std::string>(py::str(py::type::of(a))), " and ",
+                       py::cast<std::string>(py::str(py::type::of(b))),
+                       ". The error was:\n", e.what()));
+                 }
+               });
   }
   bool operator!=(const CallSignature& other) const {
     return !(*this == other);
@@ -175,12 +186,6 @@ H AbslHashValue(H h, const CallSignature::KwargEntry& kw) {
 
 template <typename H>
 H AbslHashValue(H h, const CallSignature& s) {
-  // /!\ important: We cannot include static arguments to the hash, because
-  // the py::object must be hashable for absl. We can try delegating to the
-  // Python __hash__, but there are many non-hashable Python types such as
-  // np.ndarray.
-  // TODO(jblespiau): We should either ban non-hashable objects from jit or we
-  // should hash them by object identity.
   h = H::combine_contiguous(std::move(h),
                             s.dynamic_positional_args_treedef.data(),
                             s.dynamic_positional_args_treedef.size());
@@ -189,6 +194,20 @@ H AbslHashValue(H h, const CallSignature& s) {
   h = H::combine_contiguous(std::move(h), s.dynamic_args_signatures.data(),
                             s.dynamic_args_signatures.size());
   h = H::combine(std::move(h), s.device);
+  for (const auto& static_arg : s.static_args) {
+    ssize_t hash;
+    try {
+      hash = py::hash(static_arg);
+    } catch (const py::error_already_set& e) {
+      throw std::invalid_argument(absl::StrCat(
+          "Non-hashable static arguments are not supported. An error occured "
+          "while trying to hash an object of type ",
+          py::cast<std::string>(py::str(py::type::of(static_arg))), ", ",
+          py::cast<std::string>(py::str(static_arg)), ". The error was:\n",
+          e.what(), "\n"));
+    }
+    h = H::combine(std::move(h), hash);
+  }
   return h;
 }
 
