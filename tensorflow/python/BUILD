@@ -5049,6 +5049,9 @@ cuda_py_test(
     srcs = ["ops/control_flow_ops_test.py"],
     python_version = "PY3",
     shard_count = 2,
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         ":array_ops",
         ":cond_v2",
@@ -5258,6 +5261,9 @@ cuda_py_test(
     srcs = ["ops/math_grad_test.py"],
     python_version = "PY3",
     tags = ["no_windows_gpu"],
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -5349,6 +5355,9 @@ cuda_py_test(
     srcs = ["ops/nn_test.py"],
     python_version = "PY3",
     tags = ["no_windows"],
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         ":array_ops",
         ":client_testlib",
