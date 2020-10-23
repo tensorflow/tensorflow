@@ -58,7 +58,6 @@ Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
   // Find the fixed prefix by looking for the first wildcard.
   string fixed_prefix = pattern.substr(0, pattern.find_first_of("*?[\\"));
   string eval_pattern = pattern;
-  std::vector<string> all_files;
   string dir(io::Dirname(fixed_prefix));
   // If dir is empty then we need to fix up fixed_prefix and eval_pattern to
   // include . as the top level directory.
@@ -113,16 +112,13 @@ Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
       if (children_dir_status[i].ok()) {
         dir_q.push_back(child_path);
       }
-      all_files.push_back(child_path);
+      // Match the obtained files to the input pattern.
+      if (env->MatchPath(child_path, eval_pattern)) {
+        results->push_back(child_path);
+      }
     }
   }
 
-  // Match all obtained files to the input pattern.
-  for (const auto& f : all_files) {
-    if (env->MatchPath(f, eval_pattern)) {
-      results->push_back(f);
-    }
-  }
   return ret;
 }
 
