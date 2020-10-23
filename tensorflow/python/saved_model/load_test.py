@@ -52,6 +52,7 @@ from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import numpy_ops as tnp
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.numpy_ops import np_arrays
@@ -405,7 +406,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
                             dtype=dtypes.int32).numpy())
 
     concrete_functions = root.f._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
-    self.assertEqual(4, len(concrete_functions))
+    self.assertLen(concrete_functions, 4)
 
     imported = cycle(root, cycles)
 
@@ -421,6 +422,28 @@ class LoadTest(test.TestCase, parameterized.TestCase):
                         imported.f(
                             constant_op.constant([1.0, 2.0, 3.0]),
                             dtype=dtypes.int32).numpy())
+
+  def test_function_with_str_bytes_input(self, cycles):
+
+    @def_function.function
+    def func(x, y):
+      return string_ops.string_join([x, y])
+
+    root = tracking.AutoTrackable()
+    root.f = func
+
+    self.assertAllEqual(b"ab", root.f("a", "b"))
+    self.assertAllEqual(b"ab", root.f("a", constant_op.constant("b")))
+    self.assertAllEqual(b"ab", root.f(constant_op.constant("a"), "b"))
+
+    concrete_functions = root.f._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
+    self.assertLen(concrete_functions, 3)
+
+    imported = cycle(root, cycles)
+
+    self.assertAllEqual(b"ab", imported.f("a", "b"))
+    self.assertAllEqual(b"ab", imported.f("a", constant_op.constant("b")))
+    self.assertAllEqual(b"ab", imported.f(constant_op.constant("a"), "b"))
 
   def test_function_no_return(self, cycles):
 
@@ -892,7 +915,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual([2, 4], root.f(constant_op.constant([1, 2])).numpy())
 
     concrete_functions = root.f._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
-    self.assertEqual(1, len(concrete_functions))
+    self.assertLen(concrete_functions, 1)
 
     imported = cycle(root, cycles)
 
@@ -1177,7 +1200,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(1., imported.variables[0].numpy())
     self.assertEqual(3., imported.variables[2].numpy())
     self.assertIs(None, imported.variables[1])
-    self.assertEqual(3, len(imported.variables))
+    self.assertLen(imported.variables, 3)
 
   def test_tuple(self, cycles):
     root = tracking.AutoTrackable()
