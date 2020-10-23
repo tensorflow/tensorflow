@@ -80,7 +80,7 @@ class CollectiveOpTest(test.TestCase):
           ]:
             context.context().check_collective_ops_peer_health(
                 task, timeout_in_ms=1000)
-        except errors.UnavailableError:
+        except (errors.UnavailableError, errors.DeadlineExceededError):
           continue
         break
       multi_process_runner.get_barrier().wait()
