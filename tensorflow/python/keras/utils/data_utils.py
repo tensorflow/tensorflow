@@ -197,7 +197,7 @@ def get_file(fname=None,
   Arguments:
       fname: Name of the file. If an absolute path `/path/to/file.txt` is
           specified the file will be saved at that location. If None, the
-          `origin` path basename will be used.
+          name of the file at `origin` will be used.
       origin: Original URL of the file.
       untar: Deprecated in favor of `extract` argument.
           boolean, whether the file should be decompressed
@@ -224,7 +224,8 @@ def get_file(fname=None,
       Path to the downloaded file
   """
   if origin is None:
-    raise ValueError("Missing origin")
+    raise ValueError("Please specify the 'origin' argument (URL of the file "
+                     "to download)")
   if cache_dir is None:
     cache_dir = os.path.join(os.path.expanduser('~'), '.keras')
   if md5_hash is not None and file_hash is None:
