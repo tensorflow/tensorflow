@@ -498,12 +498,15 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     ])
     def func(inp):
       tanh = tf.math.tanh(inp)
+      # Flex delegate will merge the consecutive conv3d and erf ops into one
+      # Delegate node.
       conv3d = tf.nn.conv3d(
           tanh,
           tf.ones([3, 3, 3, 3, 3]),
           strides=[1, 1, 1, 1, 1],
           padding='SAME')
-      output = tf.math.tanh(conv3d)
+      erf = tf.math.erf(conv3d)
+      output = tf.math.tanh(erf)
       return output
 
     def calibration_gen():
