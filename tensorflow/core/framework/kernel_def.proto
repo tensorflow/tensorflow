@@ -16,6 +16,12 @@ message KernelDef {
 
   // Type of device this kernel runs on.
   string device_type = 2;
+ 
+  // Sub-type of device this kernel runs on.
+  // For first-party devices, subdevice_type is the same as device type.
+  // For PluggableDevices(third-party devices), subdevice_type is registered 
+  // by plugin.
+  string subdevice_type = 7;
 
   message AttrConstraint {
     // Name of an attr from the Op.
@@ -40,12 +46,6 @@ message KernelDef {
   // priority is 0. The higher the priority the better. By default (i.e. if
   // this is not set), we prefer GPU kernels over CPU.
   int32 priority = 6;
-
-  // Sub-type of device this kernel runs on.
-  // For first-party devices, subdevice_type is the same as device type.
-  // For PluggableDevices(third-party devices), subdevice_type is registered 
-  // by plugin.
-  string subdevice_type = 7;
 }
 
 // A collection of KernelDefs
