@@ -206,7 +206,7 @@ const Model* ModelBuilder::BuildModel(
   } else {
     // A non-zero value of num_subgraph_inputs means that some of
     // the operator input tensors are not subgraph inputs.
-    TFLITE_DCHECK(num_subgraph_inputs < inputs.size());
+    TFLITE_DCHECK(num_subgraph_inputs <= inputs.size());
   }
 
   const flatbuffers::Offset<SubGraph> subgraphs[subgraphs_size] = {
