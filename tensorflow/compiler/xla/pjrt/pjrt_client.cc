@@ -235,62 +235,6 @@ StatusOr<DeviceAssignment> PjRtClient::GetDefaultDeviceAssignment(
                                                                 num_partitions);
 }
 
-StatusOr<absl::flat_hash_set<int>> PjRtClient::GetParametersThatMustBeDonated(
-    const LocalExecutable& executable, bool tuple_inputs) const {
-  HloComputation* computation =
-      executable.executable()->module().entry_computation();
-  int number_of_parameters = [&]() -> int {
-    if (tuple_inputs) {
-      CHECK_EQ(computation->num_parameters(), 1);
-      const Shape& input_tuple_shape =
-          computation->parameter_instruction(0)->shape();
-      CHECK(input_tuple_shape.IsTuple());
-      return input_tuple_shape.tuple_shapes_size();
-    } else {
-      return computation->num_parameters();
-    }
-  }();
-  // If any buffer in a parameter is aliased we will donate the entire input
-  // parameter.
-  absl::flat_hash_set<int> parameters_to_donate;
-  const HloInputOutputAliasConfig& config =
-      executable.executable()->module().input_output_alias_config();
-  TF_RETURN_IF_ERROR(config.ForEachAliasWithStatus(
-      [&](const ShapeIndex& output_index,
-          const HloInputOutputAliasConfig::Alias& alias) {
-        if (tuple_inputs) {
-          if (alias.parameter_number != 0) {
-            return InvalidArgument(
-                "Unexpected parameter number %d in alias config with tupled "
-                "inputs",
-                alias.parameter_number);
-          }
-          const ShapeIndex& index = alias.parameter_index;
-          if (!index.empty()) {
-            int this_parameter = index.data()[0];
-            if (this_parameter >= number_of_parameters) {
-              return InvalidArgument(
-                  "Unexpected parameter index %s in alias config with tupled "
-                  "inputs and %d parameters",
-                  index.ToString(), number_of_parameters);
-            }
-            parameters_to_donate.insert(this_parameter);
-          }
-        } else {
-          int this_parameter = alias.parameter_number;
-          if (this_parameter >= number_of_parameters) {
-            return InvalidArgument(
-                "Unexpected parameter number %d in alias config without tupled "
-                "inputs and %d parameters",
-                this_parameter, number_of_parameters);
-          }
-          parameters_to_donate.insert(this_parameter);
-        }
-        return Status::OK();
-      }));
-  return parameters_to_donate;
-}
-
 std::unique_ptr<HloCostAnalysis> PjRtClient::GetHloCostAnalysis() {
   return absl::make_unique<HloCostAnalysis>(
       client_->backend().compiler()->ShapeSizeBytesFunction());
@@ -1531,12 +1475,66 @@ PjRtExecutable::PjRtExecutable(
   }
 }
 
-Status PjRtExecutable::SetUpDonation(PjRtClient* client, bool tuple_inputs) {
+StatusOr<absl::flat_hash_set<int>> GetParametersThatMustBeDonated(
+    const HloModule& module, bool tuple_inputs) {
+  HloComputation* computation = module.entry_computation();
+  int number_of_parameters = [&]() -> int {
+    if (tuple_inputs) {
+      CHECK_EQ(computation->num_parameters(), 1);
+      const Shape& input_tuple_shape =
+          computation->parameter_instruction(0)->shape();
+      CHECK(input_tuple_shape.IsTuple());
+      return input_tuple_shape.tuple_shapes_size();
+    } else {
+      return computation->num_parameters();
+    }
+  }();
+  // If any buffer in a parameter is aliased we will donate the entire input
+  // parameter.
+  absl::flat_hash_set<int> parameters_to_donate;
+  const HloInputOutputAliasConfig& config = module.input_output_alias_config();
+  TF_RETURN_IF_ERROR(config.ForEachAliasWithStatus(
+      [&](const ShapeIndex& output_index,
+          const HloInputOutputAliasConfig::Alias& alias) {
+        if (tuple_inputs) {
+          if (alias.parameter_number != 0) {
+            return InvalidArgument(
+                "Unexpected parameter number %d in alias config with tupled "
+                "inputs",
+                alias.parameter_number);
+          }
+          const ShapeIndex& index = alias.parameter_index;
+          if (!index.empty()) {
+            int this_parameter = index.data()[0];
+            if (this_parameter >= number_of_parameters) {
+              return InvalidArgument(
+                  "Unexpected parameter index %s in alias config with tupled "
+                  "inputs and %d parameters",
+                  index.ToString(), number_of_parameters);
+            }
+            parameters_to_donate.insert(this_parameter);
+          }
+        } else {
+          int this_parameter = alias.parameter_number;
+          if (this_parameter >= number_of_parameters) {
+            return InvalidArgument(
+                "Unexpected parameter number %d in alias config without tupled "
+                "inputs and %d parameters",
+                this_parameter, number_of_parameters);
+          }
+          parameters_to_donate.insert(this_parameter);
+        }
+        return Status::OK();
+      }));
+  return parameters_to_donate;
+}
+
+Status PjRtExecutable::SetUpDonation(bool tuple_inputs) {
   parameters_that_must_be_donated_.reserve(executables_.size());
   for (auto& executable : executables_) {
-    TF_ASSIGN_OR_RETURN(
-        absl::flat_hash_set<int> parameters_to_donate,
-        client->GetParametersThatMustBeDonated(*executable, tuple_inputs));
+    TF_ASSIGN_OR_RETURN(absl::flat_hash_set<int> parameters_to_donate,
+                        GetParametersThatMustBeDonated(
+                            executable->executable()->module(), tuple_inputs));
     parameters_that_must_be_donated_.emplace_back(
         std::move(parameters_to_donate));
   }
@@ -2237,7 +2235,7 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtClient::Compile(
       std::move(device_assignment), std::move(local_logical_device_ids),
       std::move(local_devices), this);
   TF_RETURN_IF_ERROR(
-      executable->SetUpDonation(this, options.parameter_is_tupled_arguments));
+      executable->SetUpDonation(options.parameter_is_tupled_arguments));
   return executable;
 }
 

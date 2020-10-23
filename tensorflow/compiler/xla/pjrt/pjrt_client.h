@@ -251,13 +251,6 @@ class PjRtClient {
   // function specifies which one the platform expects.
   virtual bool EnqueueD2DTransfersOnSrcStream() const { return true; }
 
-  // Some platforms allow executables to donate buffers so that they can be
-  // aliased from inputs to outputs. This function returns the list of
-  // parameters that must be donated when executable is run. tuple_inputs
-  // reflects the option that executable was compiled with.
-  virtual StatusOr<absl::flat_hash_set<int>> GetParametersThatMustBeDonated(
-      const LocalExecutable& executable, bool tuple_inputs) const;
-
   // Generates a unique fingerprint for `executable`. See
   // PjRtExecutable::fingerprint_.
   virtual StatusOr<absl::optional<std::string>> ExecutableFingerprint(
@@ -854,7 +847,7 @@ class PjRtExecutable {
   friend class PjRtClient;
   // Initializes information about which arguments to which executables must be
   // donated due to aliases that were specified by the computation.
-  Status SetUpDonation(PjRtClient* client, bool tuple_inputs);
+  Status SetUpDonation(bool tuple_inputs);
 
   virtual bool MustDonateParameter(int executable_idx, int parameter) const;
 
@@ -912,6 +905,13 @@ class PjRtExecutable {
   // (see xla.cc).
   std::vector<PjRtDevice*> local_devices_;
 };
+
+// Executables can donate buffers so that buffers can be aliased from inputs
+// to outputs. This function returns the list of parameters that must be
+// donated when executable is run. tuple_inputs reflects the option that
+// executable was compiled with.
+StatusOr<absl::flat_hash_set<int>> GetParametersThatMustBeDonated(
+    const HloModule& hlo_module, bool tuple_inputs);
 
 }  // namespace xla
 
