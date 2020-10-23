@@ -967,16 +967,6 @@ class TensorShape(object):
       other = TensorShape(other)
     return other.concatenate(self)
 
-  def __mul__(self, other):
-    if not isinstance(other, int):
-      raise TypeError("Can't multiply shape by non-int")
-    if self._dims is None:
-      return self
-    return TensorShape(self._dims * other)
-
-  def __rmul__(self, other):
-    return self.__mul__(other)
-
   def __hash__(self):
     if not self.is_fully_defined():
       raise ValueError("Unable to hash partially defined TensorShape.")
