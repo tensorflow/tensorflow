@@ -219,7 +219,7 @@ hdfsFS Connect(tf_hadoop_filesystem::HadoopFile* hadoop_file,
         builder, namenode.empty() ? nullptr : namenode.c_str());
     auto cacheFs = libhdfs->hdfsBuilderConnect(builder);
     if (cacheFs == nullptr) {
-      TF_SetStatusFromIOError(status, TF_NOT_FOUND, strerror(errno));
+      TF_SetStatusFromIOError(status, TF_ABORTED, strerror(errno));
       return cacheFs;
     }
     hadoop_file->connection_cache[cacheKey] = cacheFs;
