@@ -696,6 +696,7 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
             "//third_party/mlir:BUILD": "mlir/BUILD",
             "//third_party/mlir:test.BUILD": "mlir/test/BUILD",
         },
+        patch_file = clean_dep("//third_party:llvm_fix_windows.patch"),
     )
 
     # Intel openMP that is part of LLVM sources.
