@@ -76,7 +76,6 @@ from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops as _ops
 from tensorflow.python.framework.errors_impl import NotFoundError as _NotFoundError
 from tensorflow.python.framework.importer import import_graph_def as _import_graph_def
-from tensorflow.python.keras.saving import saving_utils as _saving_utils
 from tensorflow.python.lib.io import file_io as _file_io
 from tensorflow.python.saved_model import loader_impl as _loader_impl
 from tensorflow.python.saved_model import signature_constants as _signature_constants
@@ -843,7 +842,9 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
       input_signature = _keras_saving_utils.model_input_signature(
           self._keras_model, keep_original_batch_size=True)
 
-    func = _saving_utils.trace_model_call(self._keras_model, input_signature)
+    # TODO(b/169898786): Use the Keras public API when TFLite moves out of TF
+    func = _keras_saving_utils.trace_model_call(
+        self._keras_model, input_signature)
     concrete_func = func.get_concrete_function()
     self._funcs = [concrete_func]
 
@@ -1468,7 +1469,8 @@ class TFLiteKerasModelConverter(TFLiteConverterBaseV1):
       _keras.backend.set_learning_phase(False)
       keras_model = _keras.models.load_model(model_file, custom_objects)
 
-      function = _saving_utils.trace_model_call(keras_model)
+      # TODO(b/169898786): Use the Keras public API when TFLite moves out of TF
+      function = _keras_saving_utils.trace_model_call(keras_model)
       concrete_func = function.get_concrete_function()
 
       frozen_func = _convert_to_constants.convert_variables_to_constants_v2(
