@@ -518,7 +518,7 @@ _TF_TO_NP = {
     types_pb2.DT_INT64:
         np.int64,
     types_pb2.DT_BOOL:
-        np.bool,
+        np.bool_,
     types_pb2.DT_QINT8:
         _np_qint8,
     types_pb2.DT_QUINT8:

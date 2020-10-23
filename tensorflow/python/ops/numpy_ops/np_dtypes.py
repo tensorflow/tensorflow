@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops.numpy_ops import np_export
 
 
@@ -86,7 +87,7 @@ def canonicalize_dtype(dtype):
 
 def _result_type(*arrays_and_dtypes):
   dtype = np.result_type(*arrays_and_dtypes)
-  return canonicalize_dtype(dtype)
+  return dtypes.as_dtype(canonicalize_dtype(dtype))
 
 
 def _get_cached_dtype(dtype):

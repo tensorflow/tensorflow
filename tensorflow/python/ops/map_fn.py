@@ -38,14 +38,8 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
-from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
-
-
-np_arrays = lazy_loader.LazyLoader(
-    "np_arrays", globals(),
-    "tensorflow.python.ops.numpy_ops.np_arrays")
 
 
 @tf_export(v1=["map_fn"])
@@ -426,8 +420,6 @@ def map_fn(fn,
 
     # Check that inputs are not scalars.
     first_elem = elems_flat[0]
-    if isinstance(first_elem, np_arrays.ndarray):
-      first_elem = first_elem.data
     elems_static_shape = first_elem.shape
     if elems_static_shape.ndims is not None and elems_static_shape.ndims < 1:
       if len(elems_flat) == 1:

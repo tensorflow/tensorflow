@@ -376,6 +376,41 @@ class ShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     else:
       self.assertEqual(expected, mcs.as_list())
 
+  def testMul(self):
+    base = tensor_shape.TensorShape([1, 2, 3, 4])
+    base_with_none = tensor_shape.TensorShape([1, 2, 3, 4, None])
+    rank_unknown = tensor_shape.TensorShape(None)
+
+    def _test(fn):
+      actual = fn(base)
+      expected = tensor_shape.TensorShape([1, 2, 3, 4, 1, 2, 3, 4])
+      self.assertEqual(actual, expected)
+
+      actual = fn(base_with_none)
+      expected = tensor_shape.TensorShape([1, 2, 3, 4, None, 1, 2, 3, 4, None])
+      expected.assert_is_compatible_with(actual)
+
+      actual = fn(rank_unknown)
+      expected = tensor_shape.TensorShape(None)
+      expected.assert_is_compatible_with(actual)
+
+    _test(lambda shape: shape * 2)  # Test __mul__
+    _test(lambda shape: 2 * shape)  # Test __rmul__
+
+  def testHash(self):
+    base = tensor_shape.TensorShape([1, 2, 3, 4])
+    base_copy = tensor_shape.TensorShape([1, 2, 3, 4])
+    self.assertEqual(hash(base), hash(base_copy))
+
+    with self.assertRaisesRegex(ValueError, r"Unable to hash partially"):
+      hash(tensor_shape.TensorShape([1, 2, 3, 4, None]))
+
+    with self.assertRaisesRegex(ValueError, r"Unable to hash partially"):
+      hash(tensor_shape.TensorShape(None))
+
+    with self.assertRaisesRegex(ValueError, r"Unable to hash Dimension"):
+      hash(tensor_shape.Dimension(None))
+
   def testMostSpecificCompatibleShape(self):
     self._testMostSpecificCompatibleShapeHelper([1, 2], None, None)
     self._testMostSpecificCompatibleShapeHelper(None, [1, 2], None)

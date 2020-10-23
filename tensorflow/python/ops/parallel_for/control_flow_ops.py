@@ -248,7 +248,6 @@ def _pfor_impl(loop_fn,
       loop_fn_outputs = loop_fn(loop_var)
 
   # Convert outputs to Tensor if needed.
-  rewrap_as_ndarray = False
   tmp_loop_fn_outputs = []
   for loop_fn_output in nest.flatten(loop_fn_outputs):
     if (loop_fn_output is not None and not isinstance(
@@ -260,9 +259,6 @@ def _pfor_impl(loop_fn,
                      " IndexedSlices separately, and handle the vectorized"
                      " outputs directly." % loop_fn_output)
         loop_fn_output = ops.convert_to_tensor(loop_fn_output)
-      elif isinstance(loop_fn_output, np_arrays.ndarray):
-        loop_fn_output = loop_fn_output.data
-        rewrap_as_ndarray = True
       else:
         loop_fn_output = ops.convert_to_tensor(loop_fn_output)
     tmp_loop_fn_outputs.append(loop_fn_output)
@@ -286,8 +282,6 @@ def _pfor_impl(loop_fn,
       outputs = []
       for loop_fn_output in nest.flatten(loop_fn_outputs):
         output = converter.convert(loop_fn_output)
-        if rewrap_as_ndarray:
-          output = np_arrays.tensor_to_ndarray(output)
         outputs.append(output)
       return nest.pack_sequence_as(loop_fn_outputs, outputs)
   else:
@@ -306,8 +300,6 @@ def _pfor_impl(loop_fn,
       flattened_loop_fn_outputs = nest.flatten(loop_fn_outputs)
       for loop_fn_output in flattened_loop_fn_outputs:
         output = converter.convert(loop_fn_output)
-        if rewrap_as_ndarray:
-          output = np_arrays.tensor_to_ndarray(output)
         remaining_outputs.append(output)
 
     with ops.name_scope("pfor_tiled"):
@@ -343,10 +335,6 @@ def _pfor_impl(loop_fn,
                      for x, y in zip(remaining_outputs, tiled_outputs)])
       else:
         outputs = tiled_outputs
-      flattened_outputs = nest.flatten(outputs)
-      if rewrap_as_ndarray:
-        flattened_outputs = [
-            np_arrays.tensor_to_ndarray(x) for x in flattened_outputs]
       return nest.pack_sequence_as(loop_fn_outputs, nest.flatten(outputs))
 
 
@@ -358,8 +346,6 @@ def _broadcasting_gather(x, i):
   elif static_first_dim is None:
     i = array_ops.where_v2(array_ops.shape(x)[0] > 1, i, 0)
   result = array_ops.gather(x, i)
-  if isinstance(x, np_arrays.ndarray):
-    result = np_arrays.ndarray.from_tensor(result)
   return result
 
 
@@ -474,8 +460,6 @@ def vectorized_map(fn, elems, fallback_to_while_loop=True):
   # Extract batch size from the maximum first dimension of any element.
   flat_elems = nest.flatten(elems)
   def _get_shape(x):
-    if isinstance(x, np_arrays.ndarray):
-      x = x.data
     if x.shape.rank is None:
       return None
     return x.shape.as_list()[0]

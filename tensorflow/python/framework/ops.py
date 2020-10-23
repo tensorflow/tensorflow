@@ -256,7 +256,7 @@ def disable_tensor_equality():
 
 
 # TODO(mdan): This object should subclass Symbol, not just Tensor.
-@tf_export("Tensor")
+@tf_export("Tensor", "experimental.numpy.ndarray", v1=["Tensor"])
 class Tensor(internal.NativeObject, core_tf_types.Tensor):
   """A tensor is a multidimensional array of elements represented by a
 
@@ -384,6 +384,17 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
     self._consumers = []
     self._id = uid()
     self._name = None
+
+  def __getattr__(self, name):
+    if name in {"T", "astype", "ravel", "transpose", "reshape", "clip", "size",
+                "tolist"}:
+      raise AttributeError("""
+        If you are looking for numpy-related methods, please run the following:
+        import tensorflow.python.ops.numpy_ops.np_config
+        np_config.enable_numpy_behavior()""")
+
+    raise AttributeError("'{}' object has no attribute '{}'".format(
+        type(self).__name__, name))
 
   @staticmethod
   def _create_with_tf_output(op, value_index, dtype, tf_output):
@@ -6930,6 +6941,30 @@ def _reconstruct_sequence_inputs(op_def, inputs, attrs):
 
   assert i == len(inputs)
   return grouped_inputs
+
+
+_numpy_style_type_promotion = False
+
+
+def enable_numpy_style_type_promotion():
+  """If called, follows NumPy's rules for type promotion.
+
+  Used for enabling NumPy behavior on methods for TF NumPy.
+  """
+  global _numpy_style_type_promotion
+  _numpy_style_type_promotion = True
+
+
+_numpy_style_slicing = False
+
+
+def enable_numpy_style_slicing():
+  """If called, follows NumPy's rules for slicing Tensors.
+
+  Used for enabling NumPy behavior on slicing for TF NumPy.
+  """
+  global _numpy_style_slicing
+  _numpy_style_slicing = True
 
 
 class _TensorIterator(object):

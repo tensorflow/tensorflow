@@ -160,7 +160,7 @@ class MathTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(
           actual.dtype, expected.dtype,
           'Dtype mismatch.\nActual: {}\nExpected: {}\n{}'.format(
-              actual.dtype, expected.dtype, msg))
+              actual.dtype.as_numpy_dtype, expected.dtype, msg))
     self.assertEqual(
         actual.shape, expected.shape,
         'Shape mismatch.\nActual: {}\nExpected: {}\n{}'.format(
@@ -350,4 +350,6 @@ class MathTest(test.TestCase, parameterized.TestCase):
 
 if __name__ == '__main__':
   ops.enable_eager_execution()
+  ops.enable_numpy_style_type_promotion()
+  np_math_ops.enable_numpy_methods_on_tensor()
   test.main()

@@ -36,6 +36,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.numpy_ops import np_array_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
+from tensorflow.python.ops.numpy_ops import np_math_ops
 from tensorflow.python.platform import test
 
 
@@ -305,49 +306,47 @@ class ArrayCreationTest(test.TestCase):
 
     def test_copy_equal_false():
       # Backing tensor is the same if copy=False, other attributes being None.
-      self.assertIs(
-          np_array_ops.array(zeros_list, copy=False).data, zeros_list.data)
-      self.assertIs(
-          np_array_ops.array(zeros_list.data, copy=False).data, zeros_list.data)
+      self.assertIs(np_array_ops.array(zeros_list, copy=False), zeros_list)
+      self.assertIs(np_array_ops.array(zeros_list, copy=False), zeros_list)
 
       # Backing tensor is different if ndmin is not satisfied.
       self.assertIsNot(
-          np_array_ops.array(zeros_list, copy=False, ndmin=2).data,
-          zeros_list.data)
+          np_array_ops.array(zeros_list, copy=False, ndmin=2),
+          zeros_list)
       self.assertIsNot(
-          np_array_ops.array(zeros_list.data, copy=False, ndmin=2).data,
-          zeros_list.data)
+          np_array_ops.array(zeros_list, copy=False, ndmin=2),
+          zeros_list)
       self.assertIs(
-          np_array_ops.array(zeros_list, copy=False, ndmin=1).data,
-          zeros_list.data)
+          np_array_ops.array(zeros_list, copy=False, ndmin=1),
+          zeros_list)
       self.assertIs(
-          np_array_ops.array(zeros_list.data, copy=False, ndmin=1).data,
-          zeros_list.data)
+          np_array_ops.array(zeros_list, copy=False, ndmin=1),
+          zeros_list)
 
       # Backing tensor is different if dtype is not satisfied.
       self.assertIsNot(
-          np_array_ops.array(zeros_list, copy=False, dtype=int).data,
-          zeros_list.data)
+          np_array_ops.array(zeros_list, copy=False, dtype=int),
+          zeros_list)
       self.assertIsNot(
-          np_array_ops.array(zeros_list.data, copy=False, dtype=int).data,
-          zeros_list.data)
+          np_array_ops.array(zeros_list, copy=False, dtype=int),
+          zeros_list)
       self.assertIs(
-          np_array_ops.array(zeros_list, copy=False, dtype=float).data,
-          zeros_list.data)
+          np_array_ops.array(zeros_list, copy=False, dtype=float),
+          zeros_list)
       self.assertIs(
-          np_array_ops.array(zeros_list.data, copy=False, dtype=float).data,
-          zeros_list.data)
+          np_array_ops.array(zeros_list, copy=False, dtype=float),
+          zeros_list)
 
     test_copy_equal_false()
     with ops.device('CPU:1'):
       test_copy_equal_false()
 
-    self.assertNotIn('CPU:1', zeros_list.data.backing_device)
+    self.assertNotIn('CPU:1', zeros_list.backing_device)
     with ops.device('CPU:1'):
-      self.assertIn('CPU:1', np_array_ops.array(zeros_list, copy=True).data
-                    .backing_device)
-      self.assertIn('CPU:1', np_array_ops.array(np.array(0), copy=True).data
-                    .backing_device)
+      self.assertIn(
+          'CPU:1', np_array_ops.array(zeros_list, copy=True).backing_device)
+      self.assertIn(
+          'CPU:1', np_array_ops.array(np.array(0), copy=True).backing_device)
 
   def testAsArray(self):
     for a, dtype in itertools.product(self.all_arrays, self.all_types):
@@ -515,9 +514,6 @@ class ArrayCreationTest(test.TestCase):
       msg = 'Shape match failed for: {}. Expected: {} Actual: {}'.format(
           msg, expected.shape, actual.shape)
     self.assertEqual(actual.shape, expected.shape, msg=msg)
-    if msg:
-      msg = 'Shape: {} is not a tuple for {}'.format(actual.shape, msg)
-    self.assertIsInstance(actual.shape, tuple, msg=msg)
 
   def match_dtype(self, actual, expected, msg=None):
     if msg:
@@ -535,7 +531,7 @@ class ArrayCreationTest(test.TestCase):
     self.match_dtype(actual, expected, msg)
     self.match_shape(actual, expected, msg)
     if not almost:
-      if not actual.shape:
+      if not actual.shape.rank:
         self.assertEqual(actual.tolist(), expected.tolist())
       else:
         self.assertSequenceEqual(actual.tolist(), expected.tolist())
@@ -636,11 +632,11 @@ class ArrayMethodsTest(test.TestCase):
     run_test(np.arange(9).reshape((3, 3)).tolist())
 
     a = np_array_ops.asarray(0)
-    self.assertNotIn('CPU:1', a.data.backing_device)
+    self.assertNotIn('CPU:1', a.backing_device)
     with ops.device('CPU:1'):
-      self.assertIn('CPU:1', np_array_ops.array(a, copy=True).data
+      self.assertIn('CPU:1', np_array_ops.array(a, copy=True)
                     .backing_device)
-      self.assertIn('CPU:1', np_array_ops.array(np.array(0), copy=True).data
+      self.assertIn('CPU:1', np_array_ops.array(np.array(0), copy=True)
                     .backing_device)
 
   def testCumProdAndSum(self):
@@ -824,12 +820,13 @@ class ArrayMethodsTest(test.TestCase):
     self.assertRaises(NotImplementedError, np_array_ops.size, np.ones((2, 2)),
                       1)
 
-    @def_function.function(input_signature=[tensor_spec.TensorSpec(shape=None)])
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(dtype=dtypes.float64, shape=None)])
     def f(arr):
       arr = np_array_ops.asarray(arr)
       return np_array_ops.size(arr)
 
-    self.assertEqual(f(np_array_ops.ones((3, 2))).data.numpy(), 6)
+    self.assertEqual(f(np_array_ops.ones((3, 2))).numpy(), 6)
 
   def testRavel(self):
 
@@ -984,9 +981,6 @@ class ArrayMethodsTest(test.TestCase):
       msg = 'Shape match failed for: {}. Expected: {} Actual: {}'.format(
           msg, expected.shape, actual.shape)
     self.assertEqual(actual.shape, expected.shape, msg=msg)
-    if msg:
-      msg = 'Shape: {} is not a tuple for {}'.format(actual.shape, msg)
-    self.assertIsInstance(actual.shape, tuple, msg=msg)
 
   def match_dtype(self, actual, expected, msg=None):
     if msg:
@@ -1004,7 +998,7 @@ class ArrayMethodsTest(test.TestCase):
     if check_dtype:
       self.match_dtype(actual, expected, msg)
     self.match_shape(actual, expected, msg)
-    if not actual.shape:
+    if not actual.shape.rank:
       self.assertAllClose(actual.tolist(), expected.tolist())
     else:
       self.assertAllClose(actual.tolist(), expected.tolist())
@@ -1165,9 +1159,6 @@ class ArrayManipulationTest(test.TestCase):
       msg = 'Shape match failed for: {}. Expected: {} Actual: {}'.format(
           msg, expected.shape, actual.shape)
     self.assertEqual(actual.shape, expected.shape, msg=msg)
-    if msg:
-      msg = 'Shape: {} is not a tuple for {}'.format(actual.shape, msg)
-    self.assertIsInstance(actual.shape, tuple, msg=msg)
 
   def match_dtype(self, actual, expected, msg=None):
     if msg:
@@ -1184,7 +1175,7 @@ class ArrayManipulationTest(test.TestCase):
     self.assertIsInstance(actual, np_arrays.ndarray)
     self.match_dtype(actual, expected, msg)
     self.match_shape(actual, expected, msg)
-    if not actual.shape:
+    if not actual.shape.rank:
       self.assertEqual(actual.tolist(), expected.tolist())
     else:
       self.assertSequenceEqual(actual.tolist(), expected.tolist())
@@ -1192,4 +1183,6 @@ class ArrayManipulationTest(test.TestCase):
 
 if __name__ == '__main__':
   ops.enable_eager_execution()
+  ops.enable_numpy_style_type_promotion()
+  np_math_ops.enable_numpy_methods_on_tensor()
   test.main()

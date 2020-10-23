@@ -38,9 +38,6 @@ from tensorflow.python.types import core
 from tensorflow.python.util import nest
 
 
-tensor_to_ndarray = np_arrays.tensor_to_ndarray
-
-
 def _canonicalize_axis(axis, rank):
   return _canonicalize_axes([axis], rank)[0]
 
@@ -478,8 +475,6 @@ def _maybe_get_dtype(x):
   """Returns a numpy type if available from x. Skips if x is numpy.ndarray."""
   # Don't put np.ndarray in this list, because np.result_type looks at the
   # value (not just dtype) of np.ndarray to decide the result type.
-  if isinstance(x, np_arrays.ndarray):
-    return x.dtype
   if isinstance(x, numbers.Real):
     return x
   if isinstance(x, (core.Tensor, indexed_slices.IndexedSlices)):
