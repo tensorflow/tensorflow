@@ -101,35 +101,4 @@ Status LoadDynamicLibrary(const char* library_filename, void** result,
   return Status::OK();
 }
 
-// Load a Pluggable Device library
-// On sucess, returns the handle to library in result and return OK from the
-// function. Otherwise return nullptr in result and error Status from the
-// function.
-//
-// If `library_filename` has already been loaded, we return a cached handle.
-// Device and Kernels/Ops are registered as globals when a library is laoded
-// for the first time.
-Status LoadPluggableDeviceLibrary(const char* library_filename, void** result) {
-  static mutex mu(LINKER_INITIALIZED);
-  static std::unordered_map<string, Library> loaded_libs;
-  Env* env = Env::Default();
-  Library library;
-  {
-    mutex_lock lock(mu);
-    if (loaded_libs.find(library_filename) != loaded_libs.end()) {
-      library = loaded_libs[library_filename];
-    } else {
-      Status s = env->LoadDynamicLibrary(library_filename, &library.handle);
-      if (s.ok()) {
-        // Init PluggableDevice Plugin
-      } else {
-        return s;
-      }
-
-      loaded_libs[library_filename] = library;
-    }
-    *result = library.handle;
-    return Status::OK();
-  }
-}
 }  // namespace tensorflow

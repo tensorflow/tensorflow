@@ -1244,12 +1244,12 @@ class Context(object):
   def invoking_op_callbacks(self, value):
     self._thread_local_data.invoking_op_callbacks = value
 
-  def _initialize_physical_devices(self):
+  def _initialize_physical_devices(self, reinitialize=False):
     """Get local devices visible to the system."""
     # We lazy initialize self._physical_devices since we do not want to do this
     # the constructor since the backend may not be initialized yet.
     with self._device_lock:
-      if self._physical_devices is not None:
+      if reinitialize is False and self._physical_devices is not None:
         return
 
       devs = pywrap_tfe.TF_ListPhysicalDevices()
@@ -1267,29 +1267,12 @@ class Context(object):
 
     # Import device settings that may have been passed into the constructor
     self._import_config()
-
+  
   def reinitialize_physical_devices(self):
     """Get local devices visible to the system."""
-    # We lazy initialize self._physical_devices since we do not want to do this
-    # the constructor since the backend may not be initialized yet.
-    with self._device_lock:
-      devs = pywrap_tfe.TF_ListPhysicalDevices()
-      self._physical_devices = [
-          PhysicalDevice(name=d.decode(),
-                         device_type=d.decode().split(":")[1]) for d in devs]
-      self._physical_device_to_index = {
-          p: i for i, p in enumerate(self._physical_devices)
-      }
-
-      self._visible_device_list = list(self._physical_devices)
-      self._memory_growth_map = {
-          d: None for d in self._physical_devices if d.device_type == "GPU"
-      }
-
-    # Import device settings that may have been passed into the constructor
-    self._import_config()
-
-
+    # Reinitialize the physical device list after registering
+    # the pluggable device.
+    self._initialize_physical_devices(True)
 
   def list_physical_devices(self, device_type=None):
     """List local devices visible to the system.

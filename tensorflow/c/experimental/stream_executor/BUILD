@@ -60,11 +60,3 @@ tf_cc_test(
         "//tensorflow/stream_executor:stream_executor_pimpl",
     ],
 )
-
-exports_files(
-    srcs = [
-        "stream_executor.h",
-        "stream_executor_internal.h",
-    ],
-    visibility = ["//visibility:public"],
-)

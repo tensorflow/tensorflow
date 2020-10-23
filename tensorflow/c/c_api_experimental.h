@@ -308,7 +308,7 @@ TF_ImportGraphDefOptionsSetValidateColocationConstraints(
 // device and related kernels present in that library.
 //
 // Pass "library_filename" to a platform-specific mechanism for dynamically
-// loading a library. The reles for determining the exact location of the
+// loading a library. The rules for determining the exact location of the
 // library are platform-specific and are not documented here
 //
 // On success, place OK in status and return the newly created library handle.

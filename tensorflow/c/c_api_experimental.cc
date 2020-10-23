@@ -37,7 +37,9 @@ limitations under the License.
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/casts.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/net.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/strcat.h"
@@ -747,6 +749,14 @@ void TF_ImportGraphDefOptionsSetValidateColocationConstraints(
   opts->opts.validate_colocation_constraints = enable;
 }
 
+// Load a Pluggable Device library
+// On sucess, returns the handle to library in result and return OK from the
+// function. Otherwise return nullptr in result and error Status from the
+// function.
+//
+// If `library_filename` has already been loaded, we return a cached handle.
+// Device and Kernels/Ops are registered as globals when a library is loaded
+// for the first time.
 TF_Library* TF_LoadPluggableDeviceLibrary(const char* library_filename,
                                           TF_Status* status) {
 #if defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
@@ -755,17 +765,28 @@ TF_Library* TF_LoadPluggableDeviceLibrary(const char* library_filename,
   return nullptr;
 #else
   TF_Library* lib_handle = new TF_Library;
-  status->status = tensorflow::LoadPluggableDeviceLibrary(
-      library_filename, &lib_handle->lib_handle);
-  if (!status->status.ok()) {
-    delete lib_handle;
-    return nullptr;
+  static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
+  static std::unordered_map<std::string, void*> loaded_libs;
+  tensorflow::Env* env = tensorflow::Env::Default();
+  {
+    tensorflow::mutex_lock lock(mu);
+    if (loaded_libs.find(library_filename) != loaded_libs.end()) {
+      lib_handle->lib_handle = loaded_libs[library_filename];
+    } else {
+      status->status =
+          env->LoadDynamicLibrary(library_filename, &lib_handle->lib_handle);
+      if (status->status.ok()) {
+        // Init PluggableDevice Plugin
+      } else {
+        delete lib_handle;
+        return nullptr;
+      }
+    }
+    return lib_handle;
   }
-  return lib_handle;
 #endif
 }
 
 void TF_DeletePluggableDeviceLibraryHandle(TF_Library* lib_handle) {
-  if (lib_handle == nullptr) return;
   delete lib_handle;
 }
