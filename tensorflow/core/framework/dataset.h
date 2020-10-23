@@ -76,8 +76,8 @@ class DatasetBase;
 class SerializationContext;
 
 inline bool IsTFDataFunction(const FunctionDef& func) {
-  return (func.attr().contains(data::kTFDataFunction) &&
-          func.attr().at(data::kTFDataFunction).b());
+  auto iter = func.attr().find(data::kTFDataFunction);
+  return (iter != func.attr().end() && iter->second.b());
 }
 
 // Interface for reading values from a key-value store.
