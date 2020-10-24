@@ -1225,7 +1225,7 @@ cc_library(
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "@llvm-project//mlir:Analysis",
+        "//tensorflow/stream_executor/lib",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:StandardOps",
     ],
