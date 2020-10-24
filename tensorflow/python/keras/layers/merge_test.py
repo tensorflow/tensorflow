@@ -287,8 +287,6 @@ class MergeLayersTestNoExecution(test.TestCase):
       keras.layers.concatenate([i1, i2], axis=-1)
     with self.assertRaisesRegex(ValueError, 'called on a list'):
       keras.layers.concatenate(i1, axis=-1)
-    with self.assertRaisesRegex(ValueError, 'called on a list'):
-      keras.layers.concatenate([i1], axis=-1)
 
   def test_concatenate_with_partial_shape(self):
     i1 = keras.layers.Input(shape=(5,), batch_size=32)
