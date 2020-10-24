@@ -138,14 +138,7 @@ tensorflow/third_party/nccl/archive.patch
 tensorflow/third_party/nccl/build_defs.bzl.tpl
 tensorflow/third_party/nccl/nccl_configure.bzl
 tensorflow/third_party/nccl/system.BUILD.tpl
-tensorflow/third_party/ngraph/BUILD
-tensorflow/third_party/ngraph/LICENSE
-tensorflow/third_party/ngraph/NGRAPH_LICENSE
-tensorflow/third_party/ngraph/build_defs.bzl
-tensorflow/third_party/ngraph/ngraph.BUILD
-tensorflow/third_party/ngraph/ngraph_tf.BUILD
-tensorflow/third_party/ngraph/nlohmann_json.BUILD
-tensorflow/third_party/ngraph/tbb.BUILD
+tensorflow/third_party/nlohmann_json.BUILD
 tensorflow/third_party/opt_einsum.BUILD
 tensorflow/third_party/pcre.BUILD
 tensorflow/third_party/png.BUILD

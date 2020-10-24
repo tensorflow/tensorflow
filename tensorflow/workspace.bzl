@@ -1089,46 +1089,13 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     tf_http_archive(
-        name = "tbb",
-        build_file = clean_dep("//third_party/ngraph:tbb.BUILD"),
-        sha256 = "c3245012296f09f1418b78a8c2f17df5188b3bd0db620f7fd5fabe363320805a",
-        strip_prefix = "tbb-2019_U1",
-        urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/01org/tbb/archive/2019_U1.zip",
-            "https://github.com/01org/tbb/archive/2019_U1.zip",
-        ],
-    )
-
-    tf_http_archive(
-        name = "ngraph",
-        build_file = clean_dep("//third_party/ngraph:ngraph.BUILD"),
-        sha256 = "a1780f24a1381fc25e323b4b2d08b6ef5129f42e011305b2a34dcf43a48030d5",
-        strip_prefix = "ngraph-0.11.0",
-        urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/NervanaSystems/ngraph/archive/v0.11.0.tar.gz",
-            "https://github.com/NervanaSystems/ngraph/archive/v0.11.0.tar.gz",
-        ],
-    )
-
-    tf_http_archive(
         name = "nlohmann_json_lib",
-        build_file = clean_dep("//third_party/ngraph:nlohmann_json.BUILD"),
+        build_file = clean_dep("//third_party:nlohmann_json.BUILD"),
         sha256 = "c377963a95989270c943d522bfefe7b889ef5ed0e1e15d535fd6f6f16ed70732",
         strip_prefix = "json-3.4.0",
         urls = [
             "https://storage.googleapis.com/mirror.tensorflow.org/github.com/nlohmann/json/archive/v3.4.0.tar.gz",
             "https://github.com/nlohmann/json/archive/v3.4.0.tar.gz",
-        ],
-    )
-
-    tf_http_archive(
-        name = "ngraph_tf",
-        build_file = clean_dep("//third_party/ngraph:ngraph_tf.BUILD"),
-        sha256 = "742a642d2c6622277df4c902b6830d616d0539cc8cd843d6cdb899bb99e66e36",
-        strip_prefix = "ngraph-tf-0.9.0",
-        urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/NervanaSystems/ngraph-tf/archive/v0.9.0.zip",
-            "https://github.com/NervanaSystems/ngraph-tf/archive/v0.9.0.zip",
         ],
     )
 
