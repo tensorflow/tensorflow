@@ -57,6 +57,9 @@ class Benchmark {
             const SessionOptions* options = nullptr, Graph* init = nullptr,
             Rendezvous* rendez = nullptr, const char* executor_type = "",
             bool old_benchmark_api = true);
+
+  Benchmark(const string& device, Graph* g, bool old_benchmark_api);
+
   ~Benchmark();
 
   // Executes the graph for "iters" times.
