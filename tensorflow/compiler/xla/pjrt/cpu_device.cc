@@ -58,7 +58,7 @@ StatusOr<std::unique_ptr<PjRtClient>> GetCpuClient(bool asynchronous) {
   }
 
   return std::make_unique<PjRtClient>(
-      PjRtPlatformId::kCpu, client, std::move(devices), /*host_id=*/0,
+      kCpuName, client, std::move(devices), /*host_id=*/0,
       /*allocator=*/nullptr, /*host_memory_allocator=*/nullptr,
       /*should_stage_host_to_device_transfers=*/false,
       /*gpu_run_options=*/nullptr);
