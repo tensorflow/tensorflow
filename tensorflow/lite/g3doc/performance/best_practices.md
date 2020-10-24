@@ -39,7 +39,7 @@ help in understanding performance bottlenecks and which operators dominate the
 computation time.
 
 You can also use
-[TensrFlow Lite tracing](measurement.md#trace_tensorflow_lite_internals_in_android)
+[TensorFlow Lite tracing](measurement.md#trace_tensorflow_lite_internals_in_android)
 to profile the model in your Android application, using standard Android system
 tracing, and to visualize the operator invocations by time with GUI based
 profiling tools.

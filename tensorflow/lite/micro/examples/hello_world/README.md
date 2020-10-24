@@ -168,7 +168,7 @@ make -f tensorflow/lite/micro/tools/make/Makefile TARGET=esp generate_hello_worl
 
 ### Building the example
 
-Go the the example project directory
+Go to the example project directory
 ```
 cd tensorflow/lite/micro/tools/make/gen/esp_xtensa-esp32/prj/hello_world/esp-idf
 ```
@@ -201,7 +201,7 @@ idf.py --port /dev/ttyUSB0 flash monitor
 
 The following instructions will help you build and deploy this example to
 [HIMAX WE1 EVB](https://github.com/HimaxWiseEyePlus/bsp_tflu/tree/master/HIMAX_WE1_EVB_board_brief)
-board. To undstand more about using this board, please check
+board. To understand more about using this board, please check
 [HIMAX WE1 EVB user guide](https://github.com/HimaxWiseEyePlus/bsp_tflu/tree/master/HIMAX_WE1_EVB_user_guide).
 
 ### Initial Setup
