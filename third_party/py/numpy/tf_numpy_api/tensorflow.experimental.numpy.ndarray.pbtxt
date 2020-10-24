@@ -1,15 +1,14 @@
 path: "tensorflow.experimental.numpy.ndarray"
 tf_class {
-  is_instance: "<class \'tensorflow.python.framework.ops.Tensor\'>"
-  is_instance: "<class \'tensorflow.python.types.internal.NativeObject\'>"
-  is_instance: "<class \'tensorflow.python.types.core.Tensor\'>"
+  is_instance: "<class \'tensorflow.python.ops.numpy_ops.np_arrays.ndarray\'>"
+  is_instance: "<class \'tensorflow.python.framework.composite_tensor.CompositeTensor\'>"
   is_instance: "<type \'object\'>"
   member {
-    name: "OVERLOADABLE_OPERATORS"
-    mtype: "<type \'set\'>"
+    name: "T"
+    mtype: "<type \'property\'>"
   }
   member {
-    name: "device"
+    name: "data"
     mtype: "<type \'property\'>"
   }
   member {
@@ -17,15 +16,7 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
-    name: "graph"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "name"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "op"
+    name: "ndim"
     mtype: "<type \'property\'>"
   }
   member {
@@ -33,35 +24,39 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
-    name: "value_index"
+    name: "size"
     mtype: "<type \'property\'>"
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'op\', \'value_index\', \'dtype\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'shape\', \'dtype\', \'buffer\'], varargs=None, keywords=None, defaults=[\"<class \'float\'>\", \'None\'], "
   }
   member_method {
-    name: "consumers"
+    name: "astype"
+    argspec: "args=[\'self\', \'dtype\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "clip"
+    argspec: "args=[\'a\', \'a_min\', \'a_max\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "from_tensor"
+    argspec: "args=[\'cls\', \'tensor\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "ravel"
+    argspec: "args=[\'a\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "reshape"
+    argspec: "args=[\'a\'], varargs=newshape, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "tolist"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "eval"
-    argspec: "args=[\'self\', \'feed_dict\', \'session\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
-  }
-  member_method {
-    name: "experimental_ref"
-    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "get_shape"
-    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "ref"
-    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "set_shape"
-    argspec: "args=[\'self\', \'shape\'], varargs=None, keywords=None, defaults=None"
+    name: "transpose"
+    argspec: "args=[\'a\', \'axes\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
 }

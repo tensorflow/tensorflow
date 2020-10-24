@@ -66,7 +66,7 @@ def randn(*args):
   if np_utils.isscalar(args):
     args = (args,)
   dtype = np_dtypes.default_float_type()
-  return random_ops.random_normal(args, dtype=dtype)
+  return np_utils.tensor_to_ndarray(random_ops.random_normal(args, dtype=dtype))
 
 
 @np_utils.np_doc('random.uniform')
@@ -76,8 +76,9 @@ def uniform(low=0.0, high=1.0, size=None):
   high = np_array_ops.asarray(high, dtype=dtype)
   if size is None:
     size = array_ops.broadcast_dynamic_shape(low.shape, high.shape)
-  return random_ops.random_uniform(
-      shape=size, minval=low, maxval=high, dtype=dtype)
+  return np_utils.tensor_to_ndarray(
+      random_ops.random_uniform(
+          shape=size, minval=low, maxval=high, dtype=dtype))
 
 
 @np_utils.np_doc('random.random')
@@ -103,5 +104,6 @@ def randint(low, high=None, size=None, dtype=onp.int):  # pylint: disable=missin
   dtype = np_utils.result_type(dtype)
   if dtype not in (onp.int32, onp.int64):
     raise ValueError('Only np.int32 or np.int64 types are supported')
-  return random_ops.random_uniform(
-      shape=size, minval=low, maxval=high, dtype=dtype)
+  return np_utils.tensor_to_ndarray(
+      random_ops.random_uniform(
+          shape=size, minval=low, maxval=high, dtype=dtype))

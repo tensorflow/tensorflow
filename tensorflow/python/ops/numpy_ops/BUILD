@@ -13,7 +13,6 @@ py_library(
         "__init__.py",
         "np_array_ops.py",
         "np_arrays.py",
-        "np_config.py",
         "np_dtypes.py",
         "np_export.py",
         "np_math_ops.py",
