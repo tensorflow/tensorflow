@@ -14,6 +14,10 @@ load(
     "tf_py_logged_benchmark",
 )
 load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_additional_rpc_deps",
+)
 
 package(
     licenses = ["notice"],  # Apache 2.0
@@ -1000,7 +1004,7 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:platform",
         "//tensorflow/python/distribute/cluster_resolver:base_cluster_resolver_py",
-    ],
+    ] + tf_additional_rpc_deps(),
 )
 
 cuda_py_test(
