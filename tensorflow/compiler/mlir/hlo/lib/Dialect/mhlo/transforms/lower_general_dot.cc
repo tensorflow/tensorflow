@@ -38,7 +38,6 @@ using mlir::LogicalResult;
 using mlir::MLIRContext;
 using mlir::OpRewritePattern;
 using mlir::OwningRewritePatternList;
-using mlir::PassRegistration;
 using mlir::PassWrapper;
 using mlir::PatternRewriter;
 using mlir::RankedTensorType;

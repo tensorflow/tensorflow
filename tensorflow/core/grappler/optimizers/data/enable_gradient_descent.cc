@@ -31,6 +31,7 @@ namespace {
 
 constexpr char kAlgorithm[] = "algorithm";
 constexpr char kModelDataset[] = "ModelDataset";
+
 constexpr int64 HILL_CLIMB = 0;
 constexpr int64 GRADIENT_DESCENT = 1;
 
@@ -47,9 +48,15 @@ Status EnableGradientDescent::OptimizeAndCollectStats(
   }
   MutableGraphView graph(output);
 
-  int index = graph_utils::FindGraphNodeWithOp(kModelDataset, *output);
+  // If the GrapplerItem is derived from a FunctionDef, we don't optimize it,
+  // because we only want to enable gradient descent on the main dataset
+  // pipeline.
+  if (graph_utils::IsItemDerivedFromFunctionDef(item, graph))
+    return Status::OK();
 
+  int index = graph_utils::FindGraphNodeWithOp(kModelDataset, *output);
   NodeDef& model_node = *(output->mutable_node(index));
+
   if (model_node.attr().at(kAlgorithm).i() == HILL_CLIMB) {
     (*model_node.mutable_attr())[kAlgorithm].set_i(GRADIENT_DESCENT);
     stats->num_changes++;

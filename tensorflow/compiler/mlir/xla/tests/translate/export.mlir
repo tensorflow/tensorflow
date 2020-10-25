@@ -963,6 +963,22 @@ func @main(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
 // CHECK: [[GET0:%.+]] = f32[16,16] get-tuple-element((f32[16,16], s32[16,16]) [[SORT]]), index=0
 // CHECK: ROOT [[GET1:%.+]] = s32[16,16] get-tuple-element((f32[16,16], s32[16,16]) [[SORT]]), index=1
 
+// -----
+
+// CHECK:  HloModule
+func @main(%input0: tensor<16x16xf32>) {
+  %0 = "mhlo.sort"(%input0) ( {
+  ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
+    %7 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    "mhlo.return"(%7) : (tensor<i1>) -> ()
+  }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>) -> (tensor<16x16xf32>)
+  return
+}
+
+// CHECK: %[[SORT_CMP:.*]] ([[ARG0:.*]]: f32[], [[ARG1:.*]]: f32[]) -> pred[] {
+// CHECK:   ROOT %[[CMP:.*]] = pred[] compare(f32[] %[[ARG0]], f32[] %[[ARG1]]), direction=GT
+
+// CHECK: ROOT %[[RESULT:.*]] = f32[16,16] sort(f32[16,16] %Arg_0.1), dimensions={1}, is_stable=true, to_apply=%[[SORT_CMP]]
 
 // -----
 
@@ -1101,4 +1117,34 @@ func @main(%arg: tensor<3xui64>) -> tuple<tensor<3xui64>, tensor<2x2xui32>> {
 // CHECK: ROOT %[[RESULT:.*]] = (u64[3], u32[2,2]) rng-bit-generator(u64[3] %[[ARG0]]), algorithm=rng_philox
   %0 = "mhlo.rng_bit_generator"(%arg) {rng_algorithm = 2 : i32} : (tensor<3xui64>) -> tuple<tensor<3xui64>, tensor<2x2xui32>>
   return %0 : tuple<tensor<3xui64>, tensor<2x2xui32>>
+}
+
+// -----
+
+// CHECK:  HloModule
+func @main(%arg: tensor<3x4xf32>) -> tensor<3x4xf32> {
+// CHECK: %[[ARG0:.*]] = f32[3,4] parameter(0)
+// CHECK: ROOT %[[RESULT:.*]] = f32[3,4] cbrt(f32[3,4] %[[ARG0]])
+  %0 = "mhlo.cbrt"(%arg) : (tensor<3x4xf32>) -> tensor<3x4xf32>
+  return %0 : tensor<3x4xf32>
+}
+
+// -----
+
+// CHECK:  HloModule
+func @main(%arg: tensor<3x4xf32>) -> tensor<3x4xf32> {
+// CHECK: %[[ARG0:.*]] = f32[3,4] parameter(0)
+// CHECK: ROOT %[[RESULT:.*]] = f32[3,4] reduce-precision(f32[3,4] %[[ARG0]]), exponent_bits=8, mantissa_bits=10
+  %0 = "mhlo.reduce_precision"(%arg) {exponent_bits = 8 : i32, mantissa_bits = 10 : i32} : (tensor<3x4xf32>) -> tensor<3x4xf32>
+  return %0 : tensor<3x4xf32>
+}
+
+// -----
+
+// CHECK:  HloModule
+func @main(%arg: tensor<3x4xf32>) -> tensor<3x4x1xf32> {
+// CHECK: %[[ARG0:.*]] = f32[3,4] parameter(0)
+// CHECK: ROOT %[[RESULT:.*]] = f32[3,4,1] bitcast(f32[3,4] %[[ARG0]])
+  %0 = "mhlo.bitcast"(%arg) : (tensor<3x4xf32>) -> tensor<3x4x1xf32>
+  return %0 : tensor<3x4x1xf32>
 }

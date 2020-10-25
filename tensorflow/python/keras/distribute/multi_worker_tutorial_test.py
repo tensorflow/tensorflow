@@ -32,7 +32,6 @@ from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_combinations as combinations
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras.datasets import mnist
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.lib.io import file_io
@@ -158,7 +157,7 @@ class MultiWorkerTutorialTest(parameterized.TestCase, test.TestCase):
         file_io.delete_recursively_v2(os.path.dirname(write_model_path))
 
       # Make sure chief finishes saving before non-chief's assertions.
-      multi_process_runner.barrier().wait()
+      multi_process_runner.get_barrier().wait()
 
       if not file_io.file_exists_v2(model_path):
         raise RuntimeError()
@@ -179,7 +178,7 @@ class MultiWorkerTutorialTest(parameterized.TestCase, test.TestCase):
         file_io.delete_recursively_v2(write_checkpoint_dir)
 
       # Make sure chief finishes saving before non-chief's assertions.
-      multi_process_runner.barrier().wait()
+      multi_process_runner.get_barrier().wait()
 
       if not file_io.file_exists_v2(checkpoint_dir):
         raise RuntimeError()
@@ -196,12 +195,14 @@ class MultiWorkerTutorialTest(parameterized.TestCase, test.TestCase):
 
     model_path = os.path.join(self.get_temp_dir(), 'model.tf')
     checkpoint_dir = os.path.join(self.get_temp_dir(), 'ckpt')
-    with test_util.skip_if_error(self, errors_impl.UnavailableError):
+    try:
       mpr_result = multi_process_runner.run(
           fn,
           multi_worker_test_base.create_cluster_spec(num_workers=num_workers),
           args=(model_path, checkpoint_dir),
           return_output=True)
+    except errors_impl.UnavailableError as e:
+      self.skipTest('Skipping error: {}: {}'.format(type(e), str(e)))
 
     self.assertTrue(
         any([

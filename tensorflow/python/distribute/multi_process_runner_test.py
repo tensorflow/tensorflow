@@ -54,7 +54,7 @@ def fn_that_returns_args_and_kwargs(*args, **kwargs):
 
 
 def fn_with_barrier():
-  return multi_process_runner.barrier()
+  return multi_process_runner.get_barrier()
 
 
 def fn_that_returns_pid():
@@ -81,15 +81,15 @@ class MultiProcessRunnerTest(test.TestCase):
     mpr_result = multi_process_runner.run(
         fn_that_adds_task_type_in_return_data,
         multi_worker_test_base.create_cluster_spec(
-            num_workers=2, num_ps=3, has_eval=1))
+            num_workers=2, num_ps=3, has_chief=True))
 
-    job_count_dict = {'worker': 2, 'ps': 3, 'evaluator': 1}
+    job_count_dict = {'worker': 2, 'ps': 3, 'chief': 1}
     for data in mpr_result.return_value:
       job_count_dict[data] -= 1
 
     self.assertEqual(job_count_dict['worker'], 0)
     self.assertEqual(job_count_dict['ps'], 0)
-    self.assertEqual(job_count_dict['evaluator'], 0)
+    self.assertEqual(job_count_dict['chief'], 0)
 
   def test_multi_process_runner_error_propagates_from_subprocesses(self):
     runner = multi_process_runner.MultiProcessRunner(
@@ -210,7 +210,7 @@ class MultiProcessRunnerTest(test.TestCase):
     mpr = multi_process_runner.MultiProcessRunner(
         fn,
         multi_worker_test_base.create_cluster_spec(
-            has_chief=True, num_workers=2, num_ps=2, has_eval=True),
+            has_chief=True, num_workers=2, num_ps=2),
         return_output=True)
     mpr._dependence_on_chief = False
 
@@ -221,7 +221,7 @@ class MultiProcessRunnerTest(test.TestCase):
 
     list_to_assert = mpr_result.stdout
 
-    for job in ['chief', 'evaluator']:
+    for job in ['chief']:
       for iteration in range(5):
         self.assertTrue(
             any('(logging) {}-0, i: {}'.format(job, iteration) in line
@@ -296,7 +296,7 @@ class MultiProcessRunnerTest(test.TestCase):
 
   def test_barrier_called_in_main_process(self):
     with self.assertRaises(ValueError):
-      multi_process_runner.barrier()
+      multi_process_runner.get_barrier()
 
   def test_stdout_available_when_timeout(self):
 
@@ -319,6 +319,9 @@ class MultiProcessRunnerTest(test.TestCase):
 
   def test_seg_fault_raises_error(self):
 
+    if multi_process_runner.is_oss():
+      self.skipTest('TODO(b/171004637): Failing in OSS')
+
     def fn_expected_to_seg_fault():
       ctypes.string_at(0)  # Intentionally made seg fault.
 
@@ -331,9 +334,13 @@ class MultiProcessRunnerTest(test.TestCase):
     self.assertIn('Subprocess worker-0 exited with exit code',
                   str(cm.exception))
     list_to_assert = cm.exception.mpr_result.stdout
-    self.assertTrue(any('SIGSEGV' in line for line in list_to_assert))
+    self.assertTrue(
+        any('Segmentation fault' in line for line in list_to_assert))
 
   def test_seg_fault_in_chief_raises_error(self):
+
+    if multi_process_runner.is_oss():
+      self.skipTest('TODO(b/171004637): Failing in OSS')
 
     def fn_expected_to_seg_fault():
       if multi_worker_test_base.get_task_type() == 'worker':
@@ -350,7 +357,8 @@ class MultiProcessRunnerTest(test.TestCase):
     self.assertIn('Subprocess chief-0 exited with exit code',
                   str(cm.exception))
     list_to_assert = cm.exception.mpr_result.stdout
-    self.assertTrue(any('SIGSEGV' in line for line in list_to_assert))
+    self.assertTrue(
+        any('Segmentation fault' in line for line in list_to_assert))
 
   def test_exit_code_is_reported_by_chief_subprocess(self):
 
@@ -514,6 +522,9 @@ class MultiProcessRunnerTest(test.TestCase):
 
   def test_timeout_none(self):
 
+    if multi_process_runner.is_oss():
+      self.skipTest('Intentionally skipping longer test in OSS.')
+
     def fn():
       time.sleep(250)
       raise ValueError('Worker 0 errored')
@@ -579,9 +590,13 @@ class MultiProcessPoolRunnerTest(test.TestCase):
     self.assertAllEqual(result, [1, 1])
 
   def test_global_pool(self):
+    if multi_process_runner.is_oss():
+      self.skipTest('TODO(b/170360740): Failing in OSS')
     _global_pool.run(fn_that_does_nothing)
 
   def test_nested_pool(self):
+    if multi_process_runner.is_oss():
+      self.skipTest('TODO(b/170360740): Failing in OSS')
 
     def fn():
       # This runs in sub processes, so they are each using their own

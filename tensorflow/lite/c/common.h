@@ -46,8 +46,17 @@ extern "C" {
 
 typedef enum TfLiteStatus {
   kTfLiteOk = 0,
+
+  // Generally referring to an error in the runtime (i.e. interpreter)
   kTfLiteError = 1,
+
+  // Generally referring to an error from a TfLiteDelegate itself.
   kTfLiteDelegateError = 2,
+
+  // Generally referring to an error in applying a delegate due to
+  // incompatibility between runtime and delegate, e.g., this error is returned
+  // when trying to apply a TfLite delegate onto a model graph that's already
+  // immutable.
   kTfLiteApplicationError = 3
 } TfLiteStatus;
 
@@ -421,7 +430,7 @@ typedef struct TfLiteCustomAllocation {
   size_t bytes;
 } TfLiteCustomAllocation;
 
-// An tensor in the interpreter system which is a wrapper around a buffer of
+// A tensor in the interpreter system which is a wrapper around a buffer of
 // data including a dimensionality (or NULL if not currently defined).
 #ifndef TF_LITE_STATIC_MEMORY
 typedef struct TfLiteTensor {

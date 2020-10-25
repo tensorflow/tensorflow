@@ -29,6 +29,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (instancetype)init {
   self = [super init];
   if (self != nil) {
+    _quantizationEnabled = true;
     _waitType = TFLMetalDelegateThreadWaitTypePassive;
   }
   return self;

@@ -18,8 +18,8 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/kernels/kernel_runner.h"
+#include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
-#include "tensorflow/lite/micro/testing/test_utils.h"
 
 namespace tflite {
 namespace testing {
@@ -61,9 +61,9 @@ void TestComparisonFloat(const TfLiteRegistration& registration,
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
 
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input1_data, input1_dims),
-      CreateFloatTensor(input2_data, input2_dims),
-      CreateBoolTensor(output_data, output_dims),
+      CreateTensor(input1_data, input1_dims),
+      CreateTensor(input2_data, input2_dims),
+      CreateTensor(output_data, output_dims),
   };
 
   TestComparison(registration, tensors, expected_output_data, output_data);
@@ -79,9 +79,9 @@ void TestComparisonBool(const TfLiteRegistration& registration,
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
 
   TfLiteTensor tensors[tensors_size] = {
-      CreateBoolTensor(input1_data, input1_dims),
-      CreateBoolTensor(input2_data, input2_dims),
-      CreateBoolTensor(output_data, output_dims),
+      CreateTensor(input1_data, input1_dims),
+      CreateTensor(input2_data, input2_dims),
+      CreateTensor(output_data, output_dims),
   };
 
   TestComparison(registration, tensors, expected_output_data, output_data);
@@ -97,9 +97,9 @@ void TestComparisonInt(const TfLiteRegistration& registration,
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
 
   TfLiteTensor tensors[tensors_size] = {
-      CreateInt32Tensor(input1_data, input1_dims),
-      CreateInt32Tensor(input2_data, input2_dims),
-      CreateBoolTensor(output_data, output_dims),
+      CreateTensor(input1_data, input1_dims),
+      CreateTensor(input2_data, input2_dims),
+      CreateTensor(output_data, output_dims),
   };
 
   TestComparison(registration, tensors, expected_output_data, output_data);
@@ -122,7 +122,7 @@ void TestComparisonQuantizedUInt8(const TfLiteRegistration& registration,
                             input1_scale, input1_zero_point),
       CreateQuantizedTensor(input2_data, input2_quantized, input2_dims,
                             input2_scale, input2_zero_point),
-      CreateBoolTensor(output_data, output_dims),
+      CreateTensor(output_data, output_dims),
   };
 
   TestComparison(registration, tensors, expected_output_data, output_data);
@@ -145,7 +145,7 @@ void TestComparisonQuantizedInt8(const TfLiteRegistration& registration,
                             input1_scale, input1_zero_point),
       CreateQuantizedTensor(input2_data, input2_quantized, input2_dims,
                             input2_scale, input2_zero_point),
-      CreateBoolTensor(output_data, output_dims),
+      CreateTensor(output_data, output_dims),
   };
 
   TestComparison(registration, tensors, expected_output_data, output_data);

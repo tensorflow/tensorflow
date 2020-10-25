@@ -17,8 +17,8 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/kernels/kernel_runner.h"
+#include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
-#include "tensorflow/lite/micro/testing/test_utils.h"
 
 namespace tflite {
 namespace testing {
@@ -30,64 +30,32 @@ constexpr float kInputMax = 2.0;
 constexpr float kOutputMin = -1.0;
 constexpr float kOutputMax = 127.0 / 128.0;
 
-void QuantizeInputData(const float input_data[], int length,
-                       uint8_t* quantized_data) {
-  for (int i = 0; i < 6; i++) {
-    quantized_data[i] = tflite::testing::F2Q(
-        input_data[i], tflite::testing::kInputMin, tflite::testing::kInputMax);
-  }
-}
-
-void QuantizeInputData(const float input_data[], int length,
-                       int8_t* quantized_data) {
-  for (int i = 0; i < 6; i++) {
-    quantized_data[i] = tflite::testing::F2QS(
-        input_data[i], tflite::testing::kInputMin, tflite::testing::kInputMax);
-  }
-}
-
 TfLiteTensor CreateL2NormTensor(const float* data, TfLiteIntArray* dims,
                                 bool is_input) {
-  return CreateFloatTensor(data, dims);
-}
-
-TfLiteTensor CreateL2NormTensor(const uint8_t* data, TfLiteIntArray* dims,
-                                bool is_input) {
-  TfLiteTensor tensor;
-
-  if (is_input) {
-    tensor = CreateQuantizedTensor(data, dims, kInputMin, kInputMax);
-  } else {
-    tensor = CreateQuantizedTensor(data, dims, kOutputMin, kOutputMax);
-  }
-
-  tensor.quantization.type = kTfLiteAffineQuantization;
-  return tensor;
-}
-
-TfLiteTensor CreateL2NormTensor(const int8_t* data, TfLiteIntArray* dims,
-                                bool is_input) {
-  TfLiteTensor tensor;
-
-  if (is_input) {
-    tensor = CreateQuantizedTensor(data, dims, kInputMin, kInputMax);
-  } else {
-    tensor = CreateQuantizedTensor(data, dims, kOutputMin, kOutputMax);
-  }
-
-  tensor.quantization.type = kTfLiteAffineQuantization;
-  return tensor;
+  return CreateTensor(data, dims);
 }
 
 template <typename T>
-inline float Dequantize(const T data, float scale, int32_t zero_point) {
-  return scale * (data - zero_point);
+TfLiteTensor CreateL2NormTensor(const T* data, TfLiteIntArray* dims,
+                                bool is_input) {
+  float kInputScale = ScaleFromMinMax<T>(kInputMin, kInputMax);
+  int kInputZeroPoint = ZeroPointFromMinMax<T>(kInputMin, kInputMax);
+  float kOutputScale = ScaleFromMinMax<T>(kOutputMin, kOutputMax);
+  int kOutputZeroPoint = ZeroPointFromMinMax<T>(kOutputMin, kOutputMax);
+  TfLiteTensor tensor;
+  if (is_input) {
+    tensor = CreateQuantizedTensor(data, dims, kInputScale, kInputZeroPoint);
+  } else {
+    tensor = CreateQuantizedTensor(data, dims, kOutputScale, kOutputZeroPoint);
+  }
+
+  tensor.quantization.type = kTfLiteAffineQuantization;
+  return tensor;
 }
 
 template <typename T>
 void TestL2Normalization(const int* input_dims_data, const T* input_data,
-                         const float* expected_output_data, T* output_data,
-                         float variance) {
+                         const T* expected_output_data, T* output_data) {
   TfLiteIntArray* dims = IntArrayFromInts(input_dims_data);
 
   const int output_dims_count = ElementCount(*dims);
@@ -116,25 +84,8 @@ void TestL2Normalization(const int* input_dims_data, const T* input_data,
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
-  // Compare the results from dequantization and expected outputs, and make
-  // sure the difference is within a threshold.
-  if (tensors[1].quantization.type != kTfLiteNoQuantization) {
-    TfLiteTensor* output_tensor = &tensors[1];
-    int32_t zero_point = output_tensor->params.zero_point;
-    float scale = output_tensor->params.scale;
-
-    for (int i = 0; i < output_dims_count; ++i) {
-      float output_val = Dequantize(output_data[i], scale, zero_point);
-
-      TF_LITE_MICRO_EXPECT_LE(expected_output_data[i] - variance, output_val);
-      TF_LITE_MICRO_EXPECT_GE(expected_output_data[i] + variance, output_val);
-    }
-  } else {
-    for (int i = 0; i < output_dims_count; ++i) {
-      float output_val = static_cast<float>(output_data[i]);
-      TF_LITE_MICRO_EXPECT_LE(expected_output_data[i] - variance, output_val);
-      TF_LITE_MICRO_EXPECT_GE(expected_output_data[i] + variance, output_val);
-    }
+  for (int i = 0; i < output_dims_count; ++i) {
+    TF_LITE_MICRO_EXPECT_EQ(expected_output_data[i], output_data[i]);
   }
 }
 
@@ -153,7 +104,7 @@ TF_LITE_MICRO_TEST(SimpleFloatTest) {
   float output_data[data_length];
 
   tflite::testing::TestL2Normalization<float>(
-      input_dims, input_data, expected_output_data, output_data, 0);
+      input_dims, input_data, expected_output_data, output_data);
 }
 
 TF_LITE_MICRO_TEST(ZerosVectorFloatTest) {
@@ -164,7 +115,7 @@ TF_LITE_MICRO_TEST(ZerosVectorFloatTest) {
   float output_data[data_length];
 
   tflite::testing::TestL2Normalization<float>(
-      input_dims, input_data, expected_output_data, output_data, 0);
+      input_dims, input_data, expected_output_data, output_data);
 }
 
 TF_LITE_MICRO_TEST(SimpleFloatWithRankLessThanFourTest) {
@@ -176,7 +127,7 @@ TF_LITE_MICRO_TEST(SimpleFloatWithRankLessThanFourTest) {
   float output_data[data_length];
 
   tflite::testing::TestL2Normalization<float>(
-      input_dims, input_data, expected_output_data, output_data, 0);
+      input_dims, input_data, expected_output_data, output_data);
 }
 
 TF_LITE_MICRO_TEST(MultipleBatchFloatTest) {
@@ -195,107 +146,91 @@ TF_LITE_MICRO_TEST(MultipleBatchFloatTest) {
   float output_data[data_length];
 
   tflite::testing::TestL2Normalization<float>(
-      input_dims, input_data, expected_output_data, output_data, 0);
+      input_dims, input_data, expected_output_data, output_data);
 }
 
 TF_LITE_MICRO_TEST(ZerosVectorUint8Test) {
   const int input_dims[] = {4, 1, 1, 1, 6};
   constexpr int data_length = 6;
-  const float input_data[data_length] = {0};
-  const float expected_output_data[data_length] = {0};
-  uint8_t quantized_input[data_length];
+  const uint8_t input_data[data_length] = {127, 127, 127, 127, 127, 127};
+  const uint8_t expected_output[data_length] = {128, 128, 128, 128, 128, 128};
   uint8_t output_data[data_length];
 
-  tflite::testing::QuantizeInputData(input_data, data_length, quantized_input);
-
-  tflite::testing::TestL2Normalization<uint8_t>(
-      input_dims, quantized_input, expected_output_data, output_data, .1);
+  tflite::testing::TestL2Normalization<uint8_t>(input_dims, input_data,
+                                                expected_output, output_data);
 }
 
 TF_LITE_MICRO_TEST(SimpleUint8Test) {
   const int input_dims[] = {4, 1, 1, 1, 6};
   constexpr int data_length = 6;
-  float input_data[data_length] = {-1.1, 0.6, 0.7, 1.2, -0.7, 0.1};
-  float expected_output[data_length] = {-0.55, 0.3, 0.35, 0.6, -0.35, 0.05};
-  uint8_t quantized_input[data_length];
+  const uint8_t input_data[data_length] = {57, 165, 172, 204, 82, 133};
+  const uint8_t expected_output[data_length] = {
+      58, 166, 173, 205, 83, 134,
+  };
   uint8_t output_data[data_length];
 
-  tflite::testing::QuantizeInputData(input_data, data_length, quantized_input);
-
-  tflite::testing::TestL2Normalization<uint8_t>(
-      input_dims, quantized_input, expected_output, output_data, .1);
+  tflite::testing::TestL2Normalization<uint8_t>(input_dims, input_data,
+                                                expected_output, output_data);
 }
 
 TF_LITE_MICRO_TEST(SimpleInt8Test) {
   const int input_dims[] = {4, 1, 1, 1, 6};
   constexpr int data_length = 6;
-  float input_data[data_length] = {-1.1, 0.6, 0.7, 1.2, -0.7, 0.1};
-  float expected_output[data_length] = {-0.55, 0.3, 0.35, 0.6, -0.35, 0.05};
-  int8_t quantized_input[data_length];
+  const int8_t input_data[data_length] = {-71, 37, 44, 76, -46, 5};
+  const int8_t expected_output[data_length] = {-70, 38, 45, 77, -45, 6};
   int8_t output_data[data_length];
 
-  tflite::testing::QuantizeInputData(input_data, data_length, quantized_input);
-
-  tflite::testing::TestL2Normalization<int8_t>(
-      input_dims, quantized_input, expected_output, output_data, .1);
+  tflite::testing::TestL2Normalization<int8_t>(input_dims, input_data,
+                                               expected_output, output_data);
 }
 
 TF_LITE_MICRO_TEST(ZerosVectorInt8Test) {
   const int input_dims[] = {4, 1, 1, 1, 6};
   constexpr int data_length = 6;
-  const float input_data[data_length] = {0};
-  const float expected_output_data[data_length] = {0};
-  int8_t quantized_input[data_length];
+  const int8_t input_data[data_length] = {-1, -1, -1, -1, -1, -1};
+  const int8_t expected_output[data_length] = {0, 0, 0, 0, 0, 0};
   int8_t output_data[data_length];
 
-  tflite::testing::QuantizeInputData(input_data, data_length, quantized_input);
-
-  tflite::testing::TestL2Normalization<int8_t>(
-      input_dims, quantized_input, expected_output_data, output_data, .1);
+  tflite::testing::TestL2Normalization<int8_t>(input_dims, input_data,
+                                               expected_output, output_data);
 }
 
 TF_LITE_MICRO_TEST(MultipleBatchUint8Test) {
-  const int input_dims[] = {4, 1, 1, 1, 6};
+  const int input_dims[] = {2, 3, 6};
   constexpr int data_length = 18;
-  float input_data[data_length] = {
-      -1.1, 0.6, 0.7, 1.2, -0.7, 0.1,  // batch 1
-      -1.1, 0.6, 0.7, 1.2, -0.7, 0.1,  // batch 2
-      -1.1, 0.6, 0.7, 1.2, -0.7, 0.1,  // batch 3
+  const uint8_t input_data[data_length] = {
+      57, 165, 172, 204, 82, 133,  // batch 1
+      57, 165, 172, 204, 82, 133,  // batch 2
+      57, 165, 172, 204, 82, 133,  // batch 3
   };
-  float expected_output[data_length] = {
-      -0.55, 0.3, 0.35, 0.6, -0.35, 0.05,  // batch 1
-      -0.55, 0.3, 0.35, 0.6, -0.35, 0.05,  // batch 2
-      -0.55, 0.3, 0.35, 0.6, -0.35, 0.05,  // batch 3
+  const uint8_t expected_output[data_length] = {
+      58, 166, 173, 205, 83, 134,  // batch 1
+      58, 166, 173, 205, 83, 134,  // batch 2
+      58, 166, 173, 205, 83, 134,  // batch 3
   };
-  uint8_t quantized_input[data_length];
   uint8_t output_data[data_length];
 
-  tflite::testing::QuantizeInputData(input_data, data_length, quantized_input);
-
-  tflite::testing::TestL2Normalization<uint8_t>(
-      input_dims, quantized_input, expected_output, output_data, .1);
+  tflite::testing::TestL2Normalization<uint8_t>(input_dims, input_data,
+                                                expected_output, output_data);
 }
 
 TF_LITE_MICRO_TEST(MultipleBatchInt8Test) {
-  const int input_dims[] = {4, 1, 1, 1, 6};
+  const int input_dims[] = {2, 3, 6};
   constexpr int data_length = 18;
-  float input_data[data_length] = {
-      -1.1, 0.6, 0.7, 1.2, -0.7, 0.1,  // batch 1
-      -1.1, 0.6, 0.7, 1.2, -0.7, 0.1,  // batch 2
-      -1.1, 0.6, 0.7, 1.2, -0.7, 0.1,  // batch 3
+  const int8_t input_data[data_length] = {
+      -71, 37, 44, 76, -46, 5,  // batch 1
+      -71, 37, 44, 76, -46, 5,  // batch 2
+      -71, 37, 44, 76, -46, 5,  // batch 3
   };
-  float expected_output[data_length] = {
-      -0.55, 0.3, 0.35, 0.6, -0.35, 0.05,  // batch 1
-      -0.55, 0.3, 0.35, 0.6, -0.35, 0.05,  // batch 2
-      -0.55, 0.3, 0.35, 0.6, -0.35, 0.05,  // batch 3
+  const int8_t expected_output[data_length] = {
+      -70, 38, 45, 77, -45, 6,  // batch 1
+      -70, 38, 45, 77, -45, 6,  // batch 2
+      -70, 38, 45, 77, -45, 6,  // batch 3
   };
-  int8_t quantized_input[data_length];
   int8_t output_data[data_length];
 
-  tflite::testing::QuantizeInputData(input_data, data_length, quantized_input);
-
-  tflite::testing::TestL2Normalization<int8_t>(
-      input_dims, quantized_input, expected_output, output_data, .1);
+  tflite::testing::TestL2Normalization<int8_t>(input_dims, input_data,
+                                               expected_output, output_data);
 }
 
 TF_LITE_MICRO_TESTS_END

@@ -111,7 +111,7 @@ struct LogSumExpReducer {
   template <typename Packet>
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T
   finalizeBoth(const T saccum, const Packet& vaccum) const {
-    auto max_reducer = Eigen::internal::MaxReducer<T>();
+    auto max_reducer = Eigen::internal::MaxReducer<T, Eigen::PropagateNaN>();
     auto sum_reducer = Eigen::internal::SumReducer<T>();
     auto exp = Eigen::internal::scalar_exp_op<T>();
     auto cmp_lt =

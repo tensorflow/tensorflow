@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/tools/logging.h"
@@ -192,7 +193,10 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
   UpdateOpVersion(buffer_pointer);
 
   if (!resolver_) {
-    auto resolver = new ops::builtin::BuiltinOpResolver();
+    MutableOpResolver* resolver =
+        apply_delegate
+            ? new ops::builtin::BuiltinOpResolver()
+            : new ops::builtin::BuiltinOpResolverWithoutDefaultDelegates();
     for (const auto& reg : custom_registrations_) {
       resolver->AddCustom(reg.first.data(), reg.second());
     }

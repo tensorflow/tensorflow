@@ -67,7 +67,7 @@ _NAME_KEY = "_tpu_embedding_layer"
 # sharded variables that can be used in the PSStrategy with optimizers.
 # We implement just enough of the of a tf.Variable so that this could be passed
 # to an optimizer.
-class TPUShardedVariable(sharded_variable.ShardedVariable):
+class TPUShardedVariable(sharded_variable.ShardedVariableMixin):
   """A ShardedVariable class for TPU."""
 
   @property
@@ -372,8 +372,9 @@ class TPUEmbedding(tracking.AutoTrackable):
 
       self._config_proto = self._create_config_proto()
 
-      logging.info("Initializing TPU Embedding engine with config: %s",
-                   self._config_proto)
+      logging.info("Initializing TPU Embedding engine.")
+      tpu_embedding_v2_utils.log_tpu_embedding_configuration(self._config_proto)
+
       @def_function.function
       def load_config():
         tpu.initialize_system_for_tpu_embedding(self._config_proto)

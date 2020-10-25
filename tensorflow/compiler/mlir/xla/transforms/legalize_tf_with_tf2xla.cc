@@ -151,6 +151,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::IgammaOp>(),
     TypeID::get<TF::IgammacOp>(),
     TypeID::get<TF::IgammaGradAOp>(),
+    TypeID::get<TF::InTopKV2Op>(),
     TypeID::get<TF::InvertOp>(),
     TypeID::get<TF::InvOp>(),
     TypeID::get<TF::LRNOp>(),
@@ -160,7 +161,6 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::LeftShiftOp>(),
     TypeID::get<TF::LessEqualOp>(),
     TypeID::get<TF::LessOp>(),
-    TypeID::get<TF::LgammaOp>(),
     TypeID::get<TF::ListDiffOp>(),
     TypeID::get<TF::LogicalAndOp>(),
     TypeID::get<TF::LogicalNotOp>(),
@@ -177,6 +177,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::MulOp>(),
     TypeID::get<TF::MultinomialOp>(),
     TypeID::get<TF::NegOp>(),
+    TypeID::get<TF::NextAfterOp>(),
     TypeID::get<TF::NonMaxSuppressionV4Op>(),
     TypeID::get<TF::NotEqualOp>(),
     TypeID::get<TF::PadOp>(),
@@ -227,8 +228,11 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::StatelessTruncatedNormalOp>(),
     TypeID::get<TF::SubOp>(),
     TypeID::get<TF::TanOp>(),
+    TypeID::get<TF::TensorScatterAddOp>(),
+    TypeID::get<TF::TensorScatterSubOp>(),
     TypeID::get<TF::TPUEmbeddingActivationsOp>(),
     TypeID::get<TF::TransposeOp>(),
+    TypeID::get<TF::TridiagonalSolveOp>(),
     TypeID::get<TF::TruncateDivOp>(),
     TypeID::get<TF::TruncatedNormalOp>(),
     TypeID::get<TF::TruncateModOp>(),
@@ -241,9 +245,11 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::XlaDynamicSliceOp>(),
     TypeID::get<TF::XlaDynamicUpdateSliceOp>(),
     TypeID::get<TF::XlaEinsumOp>(),
+    TypeID::get<TF::XlaKeyValueSortOp>(),
     TypeID::get<TF::XlaPadOp>(),
     TypeID::get<TF::Xlog1pyOp>(),
-    TypeID::get<TF::XlogyOp>()
+    TypeID::get<TF::XlogyOp>(),
+    TypeID::get<TF::XlaSortOp>()
   };
   // clang-format on
 

@@ -20,12 +20,8 @@ exports_files(["test_linux_binary.sh"])
 
 cc_library(
     name = "micro_test",
-    srcs = [
-        "test_utils.cc",
-    ],
     hdrs = [
         "micro_test.h",
-        "test_utils.h",
     ],
     visibility = [
         ":micro",

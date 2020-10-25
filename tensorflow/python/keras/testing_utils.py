@@ -304,6 +304,7 @@ _thread_local_data = threading.local()
 _thread_local_data.model_type = None
 _thread_local_data.run_eagerly = None
 _thread_local_data.saved_model_format = None
+_thread_local_data.save_kwargs = None
 
 
 @tf_contextlib.contextmanager
@@ -383,7 +384,7 @@ def should_run_eagerly():
 
 
 @tf_contextlib.contextmanager
-def saved_model_format_scope(value):
+def saved_model_format_scope(value, **kwargs):
   """Provides a scope within which the savde model format to test is `value`.
 
   The saved model format gets restored to its original value upon exiting the
@@ -391,17 +392,21 @@ def saved_model_format_scope(value):
 
   Arguments:
      value: saved model format value
+     **kwargs: optional kwargs to pass to the save function.
 
   Yields:
     The provided value.
   """
-  previous_value = _thread_local_data.saved_model_format
+  previous_format = _thread_local_data.saved_model_format
+  previous_kwargs = _thread_local_data.save_kwargs
   try:
     _thread_local_data.saved_model_format = value
-    yield value
+    _thread_local_data.save_kwargs = kwargs
+    yield
   finally:
     # Restore saved model format to initial value.
-    _thread_local_data.saved_model_format = previous_value
+    _thread_local_data.saved_model_format = previous_format
+    _thread_local_data.save_kwargs = previous_kwargs
 
 
 def get_save_format():
@@ -411,6 +416,15 @@ def get_save_format():
         '`saved_model_format_scope()` or `run_with_all_saved_model_formats` '
         'decorator.')
   return _thread_local_data.saved_model_format
+
+
+def get_save_kwargs():
+  if _thread_local_data.save_kwargs is None:
+    raise ValueError(
+        'Cannot call `get_save_kwargs()` outside of a '
+        '`saved_model_format_scope()` or `run_with_all_saved_model_formats` '
+        'decorator.')
+  return _thread_local_data.save_kwargs or {}
 
 
 def get_model_type():

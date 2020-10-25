@@ -347,6 +347,7 @@ cc_library(
         "optimized/eigen_tensor_reduced_instantiations_oss.h",
         "optimized/multithreaded_conv.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":common",

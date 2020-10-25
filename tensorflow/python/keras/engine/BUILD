@@ -63,12 +63,13 @@ py_library(
         "//tensorflow/python/keras:constraints",
         "//tensorflow/python/keras:initializers",
         "//tensorflow/python/keras:losses",
+        "//tensorflow/python/keras:metrics",
         "//tensorflow/python/keras:optimizers",
         "//tensorflow/python/keras:regularizers",
         "//tensorflow/python/keras/distribute",
-        "//tensorflow/python/keras/mixed_precision/experimental:autocast_variable",
-        "//tensorflow/python/keras/mixed_precision/experimental:loss_scale_optimizer",
-        "//tensorflow/python/keras/mixed_precision/experimental:policy",
+        "//tensorflow/python/keras/mixed_precision:autocast_variable",
+        "//tensorflow/python/keras/mixed_precision:loss_scale_optimizer",
+        "//tensorflow/python/keras/mixed_precision:policy",
         "//tensorflow/python/keras/saving",
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:metrics_utils",
@@ -151,9 +152,9 @@ py_library(
         # TODO(keras-team): Fix the cyclar deps between layer and metrics.
         # "//tensorflow/python/keras:metrics",
         "//tensorflow/python/keras:regularizers",
-        "//tensorflow/python/keras/mixed_precision/experimental:autocast_variable",
-        "//tensorflow/python/keras/mixed_precision/experimental:loss_scale_optimizer",
-        "//tensorflow/python/keras/mixed_precision/experimental:policy",
+        "//tensorflow/python/keras/mixed_precision:autocast_variable",
+        "//tensorflow/python/keras/mixed_precision:loss_scale_optimizer",
+        "//tensorflow/python/keras/mixed_precision:policy",
         "//tensorflow/python/keras/saving",
         "//tensorflow/python/keras/utils:generic_utils",
         "//tensorflow/python/keras/utils:layer_utils",
@@ -339,7 +340,21 @@ tf_py_test(
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
-    tfrt_enabled = True,
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "ragged_keras_tensor_test",
+    size = "small",
+    srcs = ["ragged_keras_tensor_test.py"],
+    python_version = "PY3",
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -355,7 +370,6 @@ tf_py_test(
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -392,6 +406,7 @@ tf_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/keras",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:callbacks",
         "//tensorflow/python/keras:combinations",
@@ -623,7 +638,6 @@ tf_py_test(
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
-    tfrt_enabled = True,
     deps = [
         ":base_layer",
         ":engine",
@@ -648,6 +662,7 @@ tf_py_test(
         ":engine",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:composite_tensor",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
@@ -660,6 +675,7 @@ tf_py_test(
         "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:type_spec",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
@@ -671,7 +687,7 @@ tf_py_test(
         "//tensorflow/python/keras:testing_utils",
         "//tensorflow/python/keras/layers",
         "//tensorflow/python/keras/legacy_tf_layers:core",
-        "//tensorflow/python/keras/mixed_precision/experimental:policy",
+        "//tensorflow/python/keras/mixed_precision:policy",
         "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/keras/utils:tf_utils",
         "//tensorflow/python/ops/ragged:ragged_tensor",
@@ -714,7 +730,7 @@ tf_py_test(
 
 tf_py_test(
     name = "deferred_sequential_test",
-    size = "small",
+    size = "medium",
     srcs = ["deferred_sequential_test.py"],
     python_version = "PY3",
     tags = [

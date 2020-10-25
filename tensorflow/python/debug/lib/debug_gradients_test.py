@@ -36,7 +36,7 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.training import gradient_descent
 
 
-@test_util.run_deprecated_v1
+@test_util.run_v1_only("Sessions are not available in TF 2.x")
 class IdentifyGradientTest(test_util.TensorFlowTestCase):
 
   def setUp(self):

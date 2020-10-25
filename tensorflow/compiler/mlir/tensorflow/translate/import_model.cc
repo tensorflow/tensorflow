@@ -74,6 +74,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/upgrade_graph.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/convert_attr.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
@@ -103,6 +104,7 @@ limitations under the License.
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/grappler/utils/transitive_fanin.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/path.h"
@@ -128,6 +130,10 @@ using mlir::tf_saved_model::SessionInitializerOp;
 using stream_executor::port::StatusOr;
 
 namespace {
+
+auto* reference_variable_gauge = tensorflow::monitoring::Gauge<bool, 0>::New(
+    "/tensorflow/core/uses_reference_variables",
+    "Tracks if reference variables are used anywhere in the graph");
 
 constexpr char kTpuReplicateAttr[] = "_tpu_replicate";
 
@@ -308,21 +314,6 @@ class ImporterBase {
   // Converts the tensor proto into an MLIR elements attribute.
   StatusOr<mlir::ElementsAttr> ConvertTensorProto(const TensorProto& value) {
     return ::tensorflow::ConvertTensorProto(value, &builder_);
-  }
-
-  // Converts the tensor shape proto into an MLIR shape attribute.
-  StatusOr<mlir::TF::ShapeAttr> ConvertTensorShapeProto(
-      const TensorShapeProto& shape) {
-    if (shape.unknown_rank())
-      return mlir::TF::ShapeAttr::get(builder_.getContext(), llvm::None);
-
-    llvm::SmallVector<int64_t, 4> dims;
-    dims.reserve(shape.dim().size());
-    for (const auto& dim : shape.dim()) {
-      dims.push_back(dim.size());
-    }
-    return mlir::TF::ShapeAttr::get(builder_.getContext(),
-                                    llvm::makeArrayRef(dims));
   }
 
   // Converts func name in graphdef to mlir::SymbolRefAttribute.
@@ -1142,74 +1133,36 @@ StatusOr<mlir::FlatSymbolRefAttr> ImporterBase::ConvertFunctionCallName(
 StatusOr<mlir::Attribute> ImporterBase::ConvertAttributeValue(
     const AttrValue& value) {
   switch (value.value_case()) {
-    case AttrValue::kI:
-      return builder_.getI64IntegerAttr(value.i());
-    case AttrValue::kS:
-      return builder_.getStringAttr(value.s());
-    case AttrValue::kF:
-      return builder_.getFloatAttr(builder_.getF32Type(), value.f());
-    case AttrValue::kB:
-      return builder_.getBoolAttr(value.b());
-    case AttrValue::kType: {
-      mlir::Type type;
-      TF_RETURN_IF_ERROR(ConvertDataType(value.type(), builder_, &type));
-      return mlir::TypeAttr::get(type);
-    }
-    case AttrValue::kShape:
-      return ConvertTensorShapeProto(value.shape());
-    case AttrValue::kTensor:
-      return ConvertTensorProto(value.tensor());
-    case AttrValue::kList: {
-      absl::InlinedVector<mlir::Attribute, 8> attrs;
-      for (const auto& item : value.list().i())
-        attrs.push_back(builder_.getI64IntegerAttr(item));
-      for (const auto& item : value.list().s())
-        attrs.push_back(builder_.getStringAttr(item));
-      for (const auto& item : value.list().f())
-        attrs.push_back(builder_.getFloatAttr(builder_.getF32Type(), item));
-      for (const auto& item : value.list().b())
-        attrs.push_back(builder_.getBoolAttr(item));
-      for (const auto& item : value.list().type()) {
-        mlir::Type type;
-        TF_RETURN_IF_ERROR(ConvertDataType(DataType(item), builder_, &type));
-        attrs.push_back(mlir::TypeAttr::get(type));
-      }
-      for (const auto& item : value.list().shape()) {
-        TF_ASSIGN_OR_RETURN(auto attr, ConvertTensorShapeProto(item));
-        attrs.push_back(attr);
-      }
-      for (const auto& item : value.list().tensor()) {
-        TF_ASSIGN_OR_RETURN(auto attr, ConvertTensorProto(item));
-        attrs.push_back(attr);
-      }
-      for (const auto& item : value.list().func()) {
-        TF_ASSIGN_OR_RETURN(auto attr, ConvertFunctionCallName(item.name()));
-        if (item.attr_size() != 0)
-          return errors::Unimplemented(
-              "func attributes with non-zero attr.size()");
-        attrs.push_back(attr);
-      }
-      return builder_.getArrayAttr(
-          llvm::makeArrayRef(attrs.begin(), attrs.end()));
-    }
     case AttrValue::kFunc: {
       // TODO(b/156546237): Unify kFunc/NameAttrList attribute representation.
       // Currently kFunc/NameAttrList attributes in a kList/repeated AttrValue
       // will not use this representation.
       NamedAttrList attrs;
       for (const auto& func_attr : value.func().attr()) {
-        TF_ASSIGN_OR_RETURN(auto attr, ConvertAttributeValue(func_attr.second));
+        TF_ASSIGN_OR_RETURN(
+            auto attr, ImporterBase::ConvertAttributeValue(func_attr.second));
         attrs.push_back(builder_.getNamedAttr(func_attr.first, attr));
       }
       auto func_attrs = builder_.getDictionaryAttr(attrs);
       return mlir::TF::FuncAttr::get(context_, value.func().name(), func_attrs);
     }
-    case AttrValue::VALUE_NOT_SET:
-      return builder_.getUnitAttr();
-    // kPlaceholder is not implemented.
+    case AttrValue::kList: {
+      if (!value.list().func().empty()) {
+        absl::InlinedVector<mlir::Attribute, 8> attrs;
+        for (const auto& item : value.list().func()) {
+          TF_ASSIGN_OR_RETURN(auto attr, ConvertFunctionCallName(item.name()));
+          if (item.attr_size() != 0)
+            return errors::Unimplemented(
+                "func attributes with non-zero attr.size()");
+          attrs.push_back(attr);
+        }
+        return builder_.getArrayAttr(
+            llvm::makeArrayRef(attrs.begin(), attrs.end()));
+      }
+      return ConvertNonFuncAttributeValue(value, &builder_);
+    }
     default:
-      return errors::Unimplemented(
-          absl::StrCat("Attribute ", value.DebugString()));
+      return ConvertNonFuncAttributeValue(value, &builder_);
   }
 }
 
@@ -2109,6 +2062,11 @@ class GraphDefImporter : public ImporterBase {
       llvm::StringRef func_name);
 
  private:
+  // Checks if a Module contains any ref variables in any operation operands
+  // or results, including checking Block arguments and operations within
+  // regions.
+  static bool ModuleContainsRefType(mlir::ModuleOp module);
+
   explicit GraphDefImporter(
       const FunctionLibraryDefinition& flib, const GraphDebugInfo& debug_info,
       const GraphImportConfig& specs, mlir::ModuleOp module,
@@ -2144,6 +2102,38 @@ class GraphDefImporter : public ImporterBase {
       absl::InlinedVector<Node*, 4>* control_ret_nodes);
 };
 
+bool IsTensorFlowRefType(mlir::Type ty) {
+  return mlir::getElementTypeOrSelf(ty).isa<mlir::TF::TensorFlowRefType>();
+}
+
+bool OpHasRefTypeOperandOrResult(mlir::Operation* op) {
+  // Check op operands.
+  for (mlir::Type ty : op->getOperandTypes())
+    if (IsTensorFlowRefType(ty)) return true;
+  // Check op results.
+  for (mlir::Type ty : op->getResultTypes())
+    if (IsTensorFlowRefType(ty)) return true;
+  // Check all block arguments within any regions the op has.
+  for (mlir::Region& region : op->getRegions())
+    for (mlir::Block& block : region)
+      for (auto& arg : block.getArguments())
+        if (IsTensorFlowRefType(arg.getType())) return true;
+  return false;
+}
+
+bool GraphDefImporter::ModuleContainsRefType(mlir::ModuleOp module) {
+  // If walk is interrupted at any point, that means a ref variable was found.
+  // At this point, we've confirmed existence of a ref variable and don't need
+  // to continue looking.
+  return module
+      .walk([&](mlir::Operation* op) {
+        if (OpHasRefTypeOperandOrResult(op))
+          return mlir::WalkResult::interrupt();
+        return mlir::WalkResult::advance();
+      })
+      .wasInterrupted();
+}
+
 StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
     mlir::MLIRContext* context, const Graph& graph,
     const GraphDebugInfo& debug_info, const FunctionLibraryDefinition& flib_def,
@@ -2178,28 +2168,27 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
     TF_RETURN_IF_ERROR(importer.GetControlRetsFromGraph(specs.control_outputs,
                                                         &control_ret_nodes));
 
-    if (!arg_nodes.empty() || !ret_nodes.empty() ||
-        !control_ret_nodes.empty()) {
-      mlir::Builder b(context);
-      std::string s;
-      llvm::raw_string_ostream ss(s);
-      auto node_name = [&](const OutputTensor& tensor) {
-        ss << tensor.node->name();
-      };
-      llvm::interleave(arg_nodes, ss, node_name, ",");
-      auto inputs = b.getNamedAttr("inputs", b.getStringAttr(ss.str()));
-      s.clear();
-      llvm::interleave(ret_nodes, ss, node_name, ",");
-      auto outputs = b.getNamedAttr("outputs", b.getStringAttr(ss.str()));
-      s.clear();
-      llvm::interleave(specs.control_outputs, ss, ",");
-      auto control_outputs =
-          b.getNamedAttr("control_outputs", b.getStringAttr(ss.str()));
+    mlir::Builder b(context);
+    std::string s;
+    llvm::raw_string_ostream ss(s);
+    auto node_name = [&](const OutputTensor& tensor) {
+      ss << tensor.node->name();
+    };
+    llvm::interleave(arg_nodes, ss, node_name, ",");
+    auto inputs = b.getNamedAttr("inputs", b.getStringAttr(ss.str()));
+    s.clear();
+    llvm::interleave(ret_nodes, ss, node_name, ",");
+    auto outputs = b.getNamedAttr("outputs", b.getStringAttr(ss.str()));
+    s.clear();
+    llvm::interleave(specs.control_outputs, ss, ",");
+    auto control_outputs =
+        b.getNamedAttr("control_outputs", b.getStringAttr(ss.str()));
 
-      attrs.push_back(b.getNamedAttr(
-          "tf.entry_function",
-          b.getDictionaryAttr({inputs, outputs, control_outputs})));
-    }
+    // Under `graph_as_function` mode, `tf.entry_function` is always set as it
+    // is assumed feed, fetch, and target nodes are set correctly.
+    attrs.push_back(b.getNamedAttr(
+        "tf.entry_function",
+        b.getDictionaryAttr({inputs, outputs, control_outputs})));
   } else {
     // Collects the argument and return nodes by looking up the node names
     // specified by the user.
@@ -2241,6 +2230,13 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
 
   TF_RETURN_IF_ERROR(importer.ImporterBase::Convert(
       func_name, func_type, arg_nodes, ret_nodes, control_ret_nodes, attrs));
+
+  // Check if there are any reference variables in the module.
+  bool contains_ref_var = ModuleContainsRefType(*module);
+  reference_variable_gauge->GetCell()->Set(contains_ref_var);
+  if (contains_ref_var) {
+    VLOG(1) << "Graph contains one or more reference variables";
+  }
 
   // Mark main function public, others private.
   for (auto function : module.get().getOps<mlir::FuncOp>()) {

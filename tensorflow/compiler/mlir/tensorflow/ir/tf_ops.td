@@ -178,6 +178,9 @@ An n-way switch statement, implementing the following:
   let verifier = [{
     return Verify(*this);
   }];
+
+  let hasCanonicalizer = 1;
+
 }
 
 // In MLIR, the TensorFlow tensor value is represented as an ElementsAttr, with
@@ -386,6 +389,12 @@ else_branch: A region that computes the outputs of the op if cond = false.
   let verifier = [{
     return Verify(*this);
   }];
+
+  let builders = [OpBuilder<
+    "OpBuilder &builder, OperationState &result, TypeRange resultTypes, ValueRange operands, llvm::ArrayRef<::mlir::NamedAttribute> attributes, unsigned numRegions", [{
+      assert(numRegions == 2u && "mismatched number of regions");
+      build(builder, result, resultTypes, operands, attributes);
+    }]>];
 
   let hasCanonicalizer = 1;
 }
@@ -787,7 +796,7 @@ This operation holds the metadata common to operations of a `tpu.replicate()` co
   let results = (outs);
 }
 
-def TF_VarHandleOp : TF_Op<"VarHandleOp", []> {
+def TF_VarHandleOp : TF_Op<"VarHandleOp", [TF_ResourceHandleAllocatorInterface]> {
   let summary = "Creates a handle to a Variable resource from its name.";
 
   let description = [{
@@ -816,6 +825,13 @@ Example:
     TF_DerivedOperandOrResultHandleTypeAttr<"resource">;
   TF_DerivedOperandOrResultHandleShapeAttr shape =
     TF_DerivedOperandOrResultHandleShapeAttr<"resource">;
+
+  let extraClassDeclaration = [{
+    // TF_ResourceHandleAllocatorInterface:
+    ResourceHandleValueAndId GetResourceHandleValueAndId(
+      llvm::SmallDenseMap<ResourceHandle, int64_t> &resource_handle_id_map,
+      int64_t &next_id);
+  }];
 }
 
 // Multiple variadic operands with different sizes are not supported by the
@@ -1619,7 +1635,7 @@ event: A string containing a binary-encoded tf.Event proto.
   let results = (outs);
 }
 
-def TF_SummaryWriterOp : TF_Op<"SummaryWriter", []> {
+def TF_SummaryWriterOp : TF_Op<"SummaryWriter", [TF_ResourceHandleAllocatorInterface]> {
   let summary = "Returns a handle to be used to access a summary writer.";
 
   let description = [{
@@ -1637,6 +1653,13 @@ writer: the summary writer resource. Scalar handle.
   let results = (outs
     Res<TF_ResourceTensor, "", [TF_SummaryAlloc]>:$writer
   );
+
+  let extraClassDeclaration = [{
+    // TF_ResourceHandleAllocatorInterface:
+    ResourceHandleValueAndId GetResourceHandleValueAndId(
+      llvm::SmallDenseMap<ResourceHandle, int64_t> &resource_handle_id_map,
+      int64_t &next_id);
+  }];
 }
 
 def TF_WriteAudioSummaryOp : TF_Op<"WriteAudioSummary", []> {

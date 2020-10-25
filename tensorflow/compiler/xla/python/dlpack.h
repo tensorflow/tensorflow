@@ -22,7 +22,11 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<pybind11::capsule> BufferToDLPackManagedTensor(PyBuffer* buffer);
+// If take_ownership is true, ownership of the buffer is handed to DLPack, and
+// the receiver may mutate the buffer as they see fit. Otherwise PjRt retains
+// ownership of the buffer and it should be immutable.
+StatusOr<pybind11::capsule> BufferToDLPackManagedTensor(pybind11::handle buffer,
+                                                        bool take_ownership);
 
 StatusOr<std::unique_ptr<PyBuffer>> DLPackManagedTensorToBuffer(
     const pybind11::capsule& tensor, std::shared_ptr<PyClient> client);

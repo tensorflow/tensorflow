@@ -382,6 +382,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   Status HandleDot(HloInstruction* hlo) override;
   Status HandleDynamicSlice(HloInstruction* hlo) override;
   Status HandleDynamicUpdateSlice(HloInstruction* hlo) override;
+  Status HandleFft(HloInstruction* hlo) override;
   Status HandleGather(HloInstruction* hlo) override;
   Status HandleGetTupleElement(HloInstruction* hlo) override;
   Status HandleInfeed(HloInstruction* hlo) override;

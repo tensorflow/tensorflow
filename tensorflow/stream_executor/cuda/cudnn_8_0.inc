@@ -55,6 +55,23 @@ cudnnStatus_t CUDNNWINAPI cudnnDestroy(cudnnHandle_t handle) {
   return func_ptr(handle);
 }
 
+
+#if CUDNN_MAJOR>=8 && (CUDNN_MINOR > 0 || CUDNN_PATCHLEVEL >= 4)
+cudnnStatus_t CUDNNWINAPI cudnnCnnInferVersionCheck(void) {
+  using FuncPtr = cudnnStatus_t(CUDNNWINAPI *)();
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudnnCnnInferVersionCheck");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr();
+}
+
+cudnnStatus_t CUDNNWINAPI cudnnCnnTrainVersionCheck(void) {
+  using FuncPtr = cudnnStatus_t(CUDNNWINAPI *)();
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudnnCnnTrainVersionCheck");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr();
+}
+#endif
+
 cudnnStatus_t CUDNNWINAPI cudnnSetStream(cudnnHandle_t handle,
                                          cudaStream_t streamId) {
   using FuncPtr = cudnnStatus_t(CUDNNWINAPI *)(cudnnHandle_t, cudaStream_t);

@@ -18,7 +18,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'communication\', \'cluster_resolver\'], varargs=None, keywords=None, defaults=[\'CollectiveCommunication.AUTO\', \'None\'], "
+    argspec: "args=[\'self\', \'communication\', \'cluster_resolver\'], varargs=None, keywords=None, defaults=[\'CommunicationImplementation.AUTO\', \'None\'], "
   }
   member_method {
     name: "colocate_vars_with"

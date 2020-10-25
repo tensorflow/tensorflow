@@ -118,7 +118,7 @@ Status TFDataMetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   for (const auto& name : flib.ListFunctionNames()) {
     auto* func = flib.Find(name);
     // Skip non tf.data functions.
-    if (!func->attr().contains(data::kTFDataFunction)) continue;
+    if (!data::IsTFDataFunction(*func)) continue;
     VLOG(3) << "Optimize function: function=" << func->signature().name();
     optimized_functions = true;
 

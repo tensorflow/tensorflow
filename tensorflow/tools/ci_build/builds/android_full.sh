@@ -28,7 +28,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/builds_common.sh"
 configure_android_workspace
 
-CPUS=armeabi-v7a,arm64-v8a,x86,x86_64
+CPUS=armeabi-v7a,arm64-v8a,x86
 
 OUT_DIR="$(pwd)/out/"
 AAR_LIB_TMP="$(pwd)/aar_libs"
@@ -44,7 +44,7 @@ do
         --compilation_mode=opt --cxxopt=-std=c++14 \
         --crosstool_top=//external:android/crosstool \
         --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
-        //tensorflow/core:android_tensorflow_lib \
+        //tensorflow/core:portable_tensorflow_lib \
         //tensorflow/tools/android/inference_interface:libtensorflow_inference.so \
         //tensorflow/tools/android/test:libtensorflow_demo.so \
         //tensorflow/tools/benchmark:benchmark_model

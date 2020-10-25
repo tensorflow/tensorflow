@@ -17,7 +17,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/core/lib/gtl/cleanup.h"
-#include "tensorflow/core/tpu/kernels/tpu_compile_c_api.h"
+#include "tensorflow/core/tpu/tpu_ops_c_api.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -77,7 +77,7 @@ std::string GuaranteedConstFingerprint(
     uint64_t fingerprint = 0;
     for (const Tensor& constant : guaranteed_constants) {
       fingerprint =
-          tpu::UtilApiFn()->TpuCompile_CreateGuaranteedConstFingerprintFn(
+          tpu::OpsApiFn()->TpuCompile_CreateGuaranteedConstFingerprintFn(
               fingerprint, constant.tensor_data().data(),
               constant.tensor_data().size());
     }
@@ -110,7 +110,7 @@ TpuCompilationCacheKey CreateCompilationCacheKey(
     }
   }
   CompilationCacheKeyResult result =
-      tpu::UtilApiFn()->TpuCompile_CreateCompilationCacheKeyFn(
+      tpu::OpsApiFn()->TpuCompile_CreateCompilationCacheKeyFn(
           CompilationCacheKeyProperty{
               config_prefix.data(),
               shapes_prefix.data(),
@@ -125,7 +125,7 @@ TpuCompilationCacheKey CreateCompilationCacheKey(
               mesh_state.data(),
           });
   auto buffer_cleanup = gtl::MakeCleanup([result]() {
-    tpu::UtilApiFn()->TpuCompile_DestroyCompilationCacheKeyFn(result);
+    tpu::OpsApiFn()->TpuCompile_DestroyCompilationCacheKeyFn(result);
   });
   TpuCompilationCacheKey key;
   key.prefix = result.key;

@@ -84,6 +84,10 @@ std::unique_ptr<OperationPass<FuncOp>> CreateGpuOpFusionPass();
 std::unique_ptr<OperationPass<mlir::FuncOp>>
 CreateTensorDeviceCopyConversionPass();
 
+// Returns a pass that folds tf.BroadcastTo nodes with subsequent nodes if they
+// have built in broadcasting support.
+std::unique_ptr<OperationPass<FuncOp>> CreateBroadcastFoldPass();
+
 struct LayoutOptimizationPipelineOptions
     : public PassPipelineOptions<LayoutOptimizationPipelineOptions> {
   Option<std::string> force_data_format{
@@ -353,6 +357,9 @@ CreateTPUUpdateEmbeddingEnqueueOpInputsPass();
 // ops to a separate parallel_execute region to run on CPU.
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTPUExtractOutsideCompilationPass();
+
+// Creates a pass that propagates TPU devices to users.
+std::unique_ptr<OperationPass<FuncOp>> CreateTPUDevicePropagationPass();
 
 // Populates the supplied passmanager with the passes required to run the
 // bridge.

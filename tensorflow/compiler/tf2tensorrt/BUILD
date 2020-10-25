@@ -70,7 +70,7 @@ tf_cuda_cc_test(
     deps = [
         "//tensorflow/core/common_runtime/gpu:gpu_init",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor",
+        "//tensorflow/core/platform:stream_executor",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ] + if_tensorrt([
@@ -113,7 +113,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:lib_proto_parsing",
-        "//tensorflow/core:stream_executor",
+        "//tensorflow/core/platform:stream_executor",
         "//tensorflow/core:stream_executor_headers_lib",
         "//tensorflow/core/common_runtime:core_cpu_lib_no_ops",
         "//tensorflow/core/grappler/costs:graph_properties",
@@ -483,7 +483,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensor_testutil",
+        "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -495,15 +495,32 @@ tf_cuda_cc_test(
 
 # Library for the segmenting portion of TensorRT operation creation
 cc_library(
-    name = "segment",
-    srcs = ["segment/segment.cc"],
+    name = "union_find",
+    srcs = ["segment/union_find.cc"],
     hdrs = [
-        "segment/segment.h",
         "segment/union_find.h",
     ],
     copts = tf_copts(),
     deps = [
+        ":utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "segment",
+    srcs = ["segment/segment.cc"],
+    hdrs = [
+        "segment/segment.h",
+    ],
+    copts = tf_copts(),
+    deps = [
         ":common_utils",
+        ":union_find",
         ":utils",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",

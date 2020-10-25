@@ -75,7 +75,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
-        "//tensorflow/core:regexp_internal",
+        "//tensorflow/core/platform:regexp",
     ] + if_llvm_system_z_available([
         "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
     ]) + if_llvm_aarch64_available([

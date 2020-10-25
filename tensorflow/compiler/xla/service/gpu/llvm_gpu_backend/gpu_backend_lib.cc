@@ -149,7 +149,7 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
   }
 
   llvm::TargetOptions target_options =
-      llvm::codegen::InitTargetOptionsFromCodeGenFlags();
+      llvm::codegen::InitTargetOptionsFromCodeGenFlags(llvm::Triple());
 
   // Set the verbose assembly options.
   target_options.MCOptions.AsmVerbose = false;
@@ -225,7 +225,7 @@ void EmitBitcodeToFile(const llvm::Module& module, absl::string_view filename) {
 // for the NVPTX target.
 string EmitModuleToPTX(llvm::Module* module,
                        llvm::TargetMachine* target_machine) {
-  std::string ptx;  // need a std::string instead of a ::string.
+  std::string ptx;
   {
     llvm::raw_string_ostream stream(ptx);
     llvm::buffer_ostream pstream(stream);

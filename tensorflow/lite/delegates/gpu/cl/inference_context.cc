@@ -153,7 +153,7 @@ CLNode& CLNode::operator=(CLNode&& node) {
 
 absl::Status InferenceContext::InitFromGraph(
     const CreateInferenceInfo& create_info, const GraphFloat32& graph,
-    Environment* env) {
+    Environment* env, std::vector<uint8_t>* serialized_model) {
   CreationContext creation_context;
   creation_context.device = env->GetDevicePtr();
   creation_context.context = &env->context();
@@ -182,10 +182,6 @@ absl::Status InferenceContext::InitFromGraph(
   RETURN_IF_ERROR(Compile(creation_context));
   RETURN_IF_ERROR(UpdateParams());
 
-  for (auto& node : nodes_) {
-    node.operation->args_.ReleaseCPURepresentation();
-  }
-
   TuningParameters tuning_parameters;
   tuning_parameters.queue = env->profiling_queue();
   tuning_parameters.info = &env->device().info_;
@@ -201,14 +197,54 @@ absl::Status InferenceContext::InitFromGraph(
     }
   }
   RETURN_IF_ERROR(Tune(tuning_parameters));
+
+  if (serialized_model) {
+    flatbuffers::FlatBufferBuilder builder;
+    auto encoded_fb = Encode(*this, &builder);
+    data::FinishInferenceContextBuffer(builder, encoded_fb);
+    serialized_model->resize(builder.GetSize());
+    std::memcpy(serialized_model->data(), builder.GetBufferPointer(),
+                builder.GetSize());
+  }
+  for (auto& node : nodes_) {
+    node.operation->args_.ReleaseCPURepresentation();
+  }
+  return absl::OkStatus();
+}
+
+absl::Status InferenceContext::RestoreDeserialized(
+    const std::vector<uint8_t>& serialized_model, Environment* env) {
+  flatbuffers::Verifier verifier(serialized_model.data(),
+                                 serialized_model.size());
+  if (!data::VerifyInferenceContextBuffer(verifier)) {
+    return absl::DataLossError("Deserialization failed.");
+  }
+  auto decoded_fb = data::GetInferenceContext(serialized_model.data());
+  RETURN_IF_ERROR(Decode(&env->context(), decoded_fb, this));
+
+  CreationContext creation_context;
+  creation_context.device = env->GetDevicePtr();
+  creation_context.context = &env->context();
+  creation_context.queue = env->queue();
+  creation_context.cache = env->program_cache();
+
+  RETURN_IF_ERROR(AllocateMemory(creation_context.context));
+  BindMemoryToOperations();
+  for (auto& node : nodes_) {
+    RETURN_IF_ERROR(node.operation->CompileDeserialized(creation_context));
+  }
+  RETURN_IF_ERROR(UpdateParams());
+  for (auto& node : nodes_) {
+    node.operation->args_.ReleaseCPURepresentation();
+  }
   return absl::OkStatus();
 }
 
 absl::Status InferenceContext::InitFromGraphWithTransforms(
     const CreateInferenceInfo& create_info, GraphFloat32* graph,
-    Environment* env) {
+    Environment* env, std::vector<uint8_t>* serialized_model) {
   RETURN_IF_ERROR(RunGraphTransforms(graph));
-  RETURN_IF_ERROR(InitFromGraph(create_info, *graph, env));
+  RETURN_IF_ERROR(InitFromGraph(create_info, *graph, env, serialized_model));
   return absl::OkStatus();
 }
 

@@ -50,6 +50,7 @@ from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import saver
 from tensorflow.python.training.tracking import tracking
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
@@ -119,7 +120,7 @@ class TrtConversionParams(
         "rewriter_config_template", "max_workspace_size_bytes",
         "precision_mode", "minimum_segment_size", "is_dynamic_op",
         "maximum_cached_engines", "use_calibration", "max_batch_size",
-        "allow_build_at_runtime", "allow_mixed_precision_on_unconverted_ops"
+        "allow_build_at_runtime"
     ])):
   """Parameters that are used for TF-TRT conversion.
 
@@ -160,10 +161,6 @@ class TrtConversionParams(
       inputs during runtime, then a new TensorRT engine is built at runtime if
       allow_build_at_runtime=True, and otherwise native TF is used. This
       argument is only effective if is_dynamic_op=True.
-    allow_mixed_precision_on_unconverted_ops: whether to allow TensorFlow to
-      use mixed precision on the operations which are not converted to inside
-      a TensorRT engine. This argument has a default value of True, and is
-      only effective if the requested `precision_mode` is lower than FP32.
   """
 
   def __new__(cls,
@@ -175,13 +172,13 @@ class TrtConversionParams(
               maximum_cached_engines=1,
               use_calibration=True,
               max_batch_size=1,
-              allow_build_at_runtime=True,
-              allow_mixed_precision_on_unconverted_ops=True):
-    return super(TrtConversionParams, cls).__new__(
-        cls, rewriter_config_template, max_workspace_size_bytes, precision_mode,
-        minimum_segment_size, is_dynamic_op, maximum_cached_engines,
-        use_calibration, max_batch_size, allow_build_at_runtime,
-        allow_mixed_precision_on_unconverted_ops)
+              allow_build_at_runtime=True):
+    return super(TrtConversionParams,
+                 cls).__new__(cls, rewriter_config_template,
+                              max_workspace_size_bytes, precision_mode,
+                              minimum_segment_size, is_dynamic_op,
+                              maximum_cached_engines, use_calibration,
+                              max_batch_size, allow_build_at_runtime)
 
 
 DEFAULT_TRT_CONVERSION_PARAMS = TrtConversionParams()
@@ -251,12 +248,6 @@ def _check_conversion_params(conversion_params, is_v2=False):
          "if is_dynamic_op=False, therefore assuming "
          "allow_build_at_runtime=False. If building TensorRT engines "
          "at runtime is desired, set is_dynamic_op=True."))
-
-  if not conversion_params.allow_mixed_precision_on_unconverted_ops:
-    tf_logging.warn("Mixed precision on OPs not converted by TF-TRT has been "
-                    "deactivated. We recommend setting: "
-                    "`allow_mixed_precision_on_unconverted_ops=True` for "
-                    "performance reasons.")
 
 
 def _check_trt_version_compatibility():
@@ -357,14 +348,6 @@ def get_tensorrt_rewriter_config(conversion_params,
     rewriter_config_with_trt.CopyFrom(
         conversion_params.rewriter_config_template)
 
-  if (conversion_params.allow_mixed_precision_on_unconverted_ops and
-      conversion_params.precision_mode != TrtPrecisionMode.FP32):
-    rewriter_config_with_trt.auto_mixed_precision = \
-        rewriter_config_pb2.RewriterConfig.ON
-  else:
-    rewriter_config_with_trt.auto_mixed_precision = \
-        rewriter_config_pb2.RewriterConfig.OFF
-
   # Disabling optimizers should happen after CopyFrom the template
   # otherwise the template can overwrite the disablement.
   if disable_non_trt_optimizers:
@@ -384,7 +367,6 @@ def get_tensorrt_rewriter_config(conversion_params,
         rewriter_config_pb2.RewriterConfig.NO_MEM_OPT)
     rewriter_config_with_trt.pin_to_host_optimization = off
     rewriter_config_with_trt.auto_parallel.enable = False
-    rewriter_config_with_trt.auto_mixed_precision = off
 
   return rewriter_config_with_trt
 
@@ -445,6 +427,8 @@ class TrtGraphConverter(object):
   ```
   """
 
+  @deprecation.deprecated_args(None, "Remove the use of this argument",
+                               "session_config")
   def __init__(self,
                input_saved_model_dir=None,
                input_saved_model_tags=None,
@@ -458,8 +442,7 @@ class TrtGraphConverter(object):
                minimum_segment_size=3,
                is_dynamic_op=False,
                maximum_cached_engines=1,
-               use_calibration=True,
-               allow_mixed_precision_on_unconverted_ops=True):
+               use_calibration=True):
     """Initialize the converter.
 
     Args:
@@ -498,10 +481,6 @@ class TrtGraphConverter(object):
         will occur. Please note that accuracy may be negatively affected if
         there is a mismatch between which tensors TRT quantizes and which
         tensors were trained with fake quantization.
-      allow_mixed_precision_on_unconverted_ops: whether to allow TensorFlow to
-        use mixed precision on the operations which are not converted to inside
-        a TensorRT engine. This argument has a default value of True, and is
-        only effective if the requested `precision_mode` is lower than FP32.
 
     Raises:
       ValueError: if the combination of the parameters is invalid.
@@ -561,10 +540,7 @@ class TrtGraphConverter(object):
         maximum_cached_engines=maximum_cached_engines,
         use_calibration=use_calibration,
         max_batch_size=max_batch_size,
-        allow_build_at_runtime=True,
-        allow_mixed_precision_on_unconverted_ops=
-          allow_mixed_precision_on_unconverted_ops
-    )
+        allow_build_at_runtime=True)
     _check_conversion_params(self._conversion_params)
 
   def _run_conversion(self):
@@ -1021,6 +997,9 @@ class TrtGraphConverterV2(object):
     assert context.executing_eagerly()
     if conversion_params is None:
       conversion_params = TrtConversionParams()
+    elif conversion_params.rewriter_config_template is not None:
+      tf_logging.warn("the rewrite_config_template field will be deprecated.")
+
     _check_trt_version_compatibility()
     _check_conversion_params(conversion_params, is_v2=True)
 
@@ -1079,6 +1058,10 @@ class TrtGraphConverterV2(object):
         [tensor.name for tensor in func.outputs])
     rebuilt_func.graph.structured_outputs = nest.pack_sequence_as(
         func.graph.structured_outputs, rebuilt_func.graph.structured_outputs)
+    # Copy structured input signature from original function (used during
+    # serialization)
+    rebuilt_func.graph.structured_input_signature = (
+        func.structured_input_signature)
     return rebuilt_func
 
   # TODO(laigd): provide a utility function to optimize a ConcreteFunction and
@@ -1131,6 +1114,10 @@ class TrtGraphConverterV2(object):
     self._converted_func.graph.structured_outputs = nest.pack_sequence_as(
         func.graph.structured_outputs,
         self._converted_func.graph.structured_outputs)
+    # Copy structured input signature from original function (used during
+    # serialization)
+    self._converted_func.graph.structured_input_signature = (
+        func.structured_input_signature)
 
     if self._need_calibration:
       for inp in calibration_input_fn():
@@ -1286,6 +1273,8 @@ class TrtGraphConverterV2(object):
       reset_converted_func.graph.structured_outputs = nest.pack_sequence_as(
           self._converted_func.graph.structured_outputs,
           reset_converted_func.graph.structured_outputs)
+      reset_converted_func.graph.strucutred_input_signature = (
+          self._converted_func.structured_input_signature)
       self._converted_func = reset_converted_func
 
     signatures[self._input_saved_model_signature_key] = self._converted_func

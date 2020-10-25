@@ -9,7 +9,15 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "distribute"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "test"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "tf2"
     mtype: "<type \'module\'>"
   }
   member {

@@ -113,7 +113,7 @@ void NcclReducer::Run(StatusCallback done) {
   if (final_status.ok()) {
     final_status = collective_util::ComputeBinOp(
         col_ctx_->op_ctx, col_ctx_->op_params, col_ctx_->device,
-        col_params_->final_op.get(), col_ctx_->output, &group_size);
+        col_params_->final_op, col_ctx_->output, &group_size);
   }
   done(final_status);
 }

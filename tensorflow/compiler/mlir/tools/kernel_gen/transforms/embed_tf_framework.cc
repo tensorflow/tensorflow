@@ -75,19 +75,19 @@ class AllocOpConverter : public OpConversionPattern<AllocOp> {
       return failure();
     }
     // Symbolic operands that bind to the symbols of the memref's layout map are
-    // not supported by AllocRawOp.
+    // not supported by TFAllocOp.
     if (alloc.getNumSymbolicOperands() != 0) {
       return failure();
     }
-    rewriter.replaceOpWithNewOp<AllocRawOp>(alloc, alloc.getType(), ctx,
-                                            operands);
+    rewriter.replaceOpWithNewOp<TFAllocOp>(alloc, alloc.getType(), ctx,
+                                           operands);
     return success();
   }
 };
 
 // Converts std.dealloc to tf_framework.dealloc_raw using OpKernelContextType
 // arg of the parent function.
-class DeallocOpConverter : public OpConversionPattern<DeallocOp> {
+class TFDeallocOpConverter : public OpConversionPattern<DeallocOp> {
  public:
   using OpConversionPattern<DeallocOp>::OpConversionPattern;
 
@@ -108,8 +108,8 @@ class DeallocOpConverter : public OpConversionPattern<DeallocOp> {
       return failure();
     }
     DeallocOp::Adaptor transformed(operands);
-    rewriter.replaceOpWithNewOp<DeallocRawOp>(dealloc, ctx,
-                                              transformed.memref());
+    rewriter.replaceOpWithNewOp<TFDeallocOp>(dealloc, ctx,
+                                             transformed.memref());
     return success();
   }
 };
@@ -118,7 +118,7 @@ class DeallocOpConverter : public OpConversionPattern<DeallocOp> {
 
 void PopulateEmbedTFFrameworkConversionPatterns(
     MLIRContext *context, OwningRewritePatternList *patterns) {
-  patterns->insert<AllocOpConverter, DeallocOpConverter, FuncOpConverter>(
+  patterns->insert<AllocOpConverter, TFDeallocOpConverter, FuncOpConverter>(
       context);
 }
 

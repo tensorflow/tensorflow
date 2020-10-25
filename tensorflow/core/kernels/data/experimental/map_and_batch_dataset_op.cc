@@ -527,6 +527,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
               "Failed to allocate memory for the batch of component ", i);
         }
       }
+      RecordBufferEnqueue(ctx.get(), result->output);
       result->output_allocated = true;
       return Status::OK();
     }
@@ -536,6 +537,9 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
                          std::vector<Tensor>* out_tensors,
                          bool* end_of_sequence) {
       mutex_lock l(result->mu);
+      if (result->output_allocated) {
+        RecordBufferDequeue(ctx, result->output);
+      }
       if (result->num_elements == 0) {
         if (result->status.ok() || errors::IsOutOfRange(result->status)) {
           *end_of_sequence = true;

@@ -542,6 +542,10 @@ def TfExecutor_NextIterationSinkOp : TfExecutor_Op<"NextIteration.Sink",
     }]>
    ];
 
+  let extraClassDeclaration = [{
+    NextIterationSourceOp GetSource();
+  }];
+
   let assemblyFormat = " `[` $token `]` $input (`,` $controlInputs^)? `:` type($input) attr-dict";
 
   let printer = ?;

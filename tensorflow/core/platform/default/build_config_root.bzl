@@ -71,6 +71,3 @@ def if_dynamic_kernels(extra_deps, otherwise = []):
         str(Label("//tensorflow:dynamic_loaded_kernels")): extra_deps,
         "//conditions:default": otherwise,
     })
-
-def register_extension_info(**kwargs):
-    pass
