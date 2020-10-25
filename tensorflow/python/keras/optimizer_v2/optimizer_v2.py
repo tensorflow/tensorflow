@@ -338,6 +338,12 @@ class OptimizerV2(trackable.Trackable):
       if k not in allowed_kwargs:
         raise TypeError("Unexpected keyword argument "
                         "passed to optimizer: " + str(k))
+      if k == "lr" and (isinstance(kwargs[k],
+                        (ops.Tensor,
+                        learning_rate_schedule.LearningRateSchedule))
+                        or callable(kwargs[k])):
+        raise ValueError("lr expected >=0 and is included for backward "
+                          "compatibility, use learning_rate instead.")
       # checks that all keyword arguments are non-negative.
       if kwargs[k] is not None and kwargs[k] < 0:
         raise ValueError("Expected {} >= 0, received: {}".format(k, kwargs[k]))
