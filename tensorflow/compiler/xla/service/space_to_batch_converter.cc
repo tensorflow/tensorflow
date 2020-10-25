@@ -95,8 +95,9 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
 
   // This is the spatial dimension we choose to spilt.
   constexpr int64 kChosenSpatialDim = 0;
-  constexpr int64 kLowLimitForSplitCount = 4;
-  constexpr int64 kHighLimitForSplitCount = 24;
+  // We choose the new batch size to be a constant so that space-to-batch
+  // propagation through several convolutional layers is consistent.
+  constexpr int64 kNewBatchSize = 8;
 
   // Batch in batch_group_count has different semantics (it isn't true batch).
   // Consider supporting this case in future if needed.
@@ -151,35 +152,16 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
       input_dim_size + inherent_low_padding + inherent_high_padding;
   VLOG(1) << "spatial size " << spatial_size;
 
-  int64 min_pad_size = INT64_MAX;
-  int64 num_splits;
-  // Explore several splitting points; choose one that requires least padding.
-  // This padding is done so that we can evenly reshape.
-  for (int64 j = kHighLimitForSplitCount; j >= kLowLimitForSplitCount; j--) {
-    if (input_dim_size / j < kernel_spatial_dim_size) {
-      continue;
-    }
+  const int64 num_splits = kNewBatchSize / old_batch_size;
 
-    if (spatial_size < j) {
-      continue;
-    }
-
-    const int64 output_offsets = convolution->shape().dimensions(
-        dim_numbers.output_spatial_dimensions(kChosenSpatialDim));
-    const int64 output_offsets_per_split = CeilOfRatio(output_offsets, j);
-
-    const int64 spatial_split_size = output_offsets_per_split * stride;
-
-    // Pad spatial dim
-    const int64 pad_size = spatial_split_size * j - spatial_size;
-    if (pad_size >= 0 && pad_size < min_pad_size) {
-      min_pad_size = pad_size;
-      num_splits = j;
-    }
+  // We currently only cater to evenly divisible cases.
+  if (kNewBatchSize % old_batch_size != 0) {
+    return Status::OK();
   }
 
-  // No suitable split found.
-  if (min_pad_size == INT64_MAX) {
+  // Splitting will be incorrect in these cases.
+  if (spatial_size < num_splits ||
+      input_dim_size / num_splits < kernel_spatial_dim_size) {
     return Status::OK();
   }
 
@@ -200,7 +182,6 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
         continue;
       }
       if (i == spatial_dimension_to_split) {
-        new_dim_numbers.set_input_batch_dimension(pushed_counter);
         transpose_dims.push_back(activations_batch_dim);
         new_batch_dim = pushed_counter;
         pushed_counter++;
@@ -232,16 +213,21 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
   const int64 output_offsets_per_split =
       CeilOfRatio(output_offsets, num_splits);
 
-  const int64 spatial_split_size = output_offsets_per_split * stride;
-  const int64 slice_size =
-      (output_offsets_per_split - 1) * stride + kernel_spatial_dim_size;
+  int64 spatial_split_size = output_offsets_per_split * stride;
+  // Keep increasing the split size so that overall size isn't smaller than the
+  // original spatial dimension.
+  while (spatial_split_size * num_splits - spatial_size < 0) {
+    spatial_split_size += stride;
+  }
 
-  VLOG(1) << "spatial_split_size " << spatial_split_size << " stride "
-          << stride;
+  const int64 slice_size =
+      spatial_split_size + kernel_spatial_dim_size - stride;
 
   // Pad spatial dim.
   const int64 pad_size = spatial_split_size * num_splits - spatial_size;
 
+  VLOG(1) << "spatial_split_size " << spatial_split_size << " stride "
+          << stride;
   VLOG(1) << "spatial_dimension_to_split " << spatial_dimension_to_split
           << " num_splits " << num_splits << " kernel_spatial_dim_size "
           << kernel_spatial_dim_size;
@@ -266,12 +252,9 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
 
   // Now we reorganize the activations. E.g. if the shape [B, SPACE] was [1, 16]
   // and 4 splits were needed, we first create [4, 4]. Next, to deal with halo
-  // in the spatial dimension, we first pad that dimension. E.g. if halo size
-  // was 2, we'd create a shape of [4, 6]. We then flatten the shape such that
-  // A = [1, 24]. Now, we rotate the flattened 24 dimension left by 2 (with
-  // -2 low padding and +2 high padding) to create shape B. Then, we select
-  // between A and B such that halo regions are placed into A at the right
-  // locations.
+  // in the spatial dimension, we generate a gather. E.g. if halo size was 2,
+  // we'd create a shape of [24] using the gather, and reshape it into [6, 4]
+  // (4 being the batch).
 
   // The benefit of the above mentioned scheme is that it allows for batch
   // growth. Here are some examples of the size increases it causes for a 3x3
@@ -293,87 +276,109 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
 
   VLOG(1) << "First reshape done " << batch_increased_reshape->ToString();
 
-  PaddingConfig padding_config =
-      MakeNoPaddingConfig(batch_increased_reshape->shape().dimensions_size());
-  padding_config.mutable_dimensions(spatial_dimension_to_split)
-      ->set_edge_padding_high(slice_size - spatial_split_size);
-  HloInstruction* padding =
-      computation_->AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::Zero(batch_increased_reshape->shape().element_type())));
-  TF_ASSIGN_OR_RETURN(
-      HloInstruction * pad_applied,
-      MakePadHlo(batch_increased_reshape, padding, padding_config));
+  // Create a gather HLO. We extract slices for given spatial and batch
+  // dimensions.
+  std::vector<int64> slice_sizes(activations->shape().dimensions().begin(),
+                                 activations->shape().dimensions().end());
+  slice_sizes[spatial_dimension_to_split] = 1;
+  slice_sizes[activations_batch_dim] = 1;
 
-  VLOG(1) << "Padding done " << pad_applied->ToString();
-
-  auto straightened_activations_dims = reshape_dimensions;
-  straightened_activations_dims[spatial_dimension_to_split] =
-      num_splits * slice_size;
-  straightened_activations_dims[activations_batch_dim] = old_batch_size;
-
-  VLOG(1) << "slice_size " << slice_size;
-  TF_ASSIGN_OR_RETURN(
-      HloInstruction * straightened_activations,
-      MakeReshapeHlo(straightened_activations_dims, pad_applied));
-
-  VLOG(1) << "Straightening done";
-
-  PaddingConfig rotation_padding_config =
-      MakeNoPaddingConfig(straightened_activations->shape().dimensions_size());
-  rotation_padding_config.mutable_dimensions(spatial_dimension_to_split)
-      ->set_edge_padding_high(slice_size - spatial_split_size);
-  rotation_padding_config.mutable_dimensions(spatial_dimension_to_split)
-      ->set_edge_padding_low(spatial_split_size - slice_size);
-  HloInstruction* rotation_padding =
-      computation_->AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::Zero(straightened_activations->shape().element_type())));
-  TF_ASSIGN_OR_RETURN(HloInstruction * rotated_activations,
-                      MakePadHlo(straightened_activations, rotation_padding,
-                                 rotation_padding_config));
-  convolution->SetupDerivedInstruction(rotated_activations);
-
-  // Build a constant PRED to decide which elements in the split dimension
-  // are from halo.
-  tensorflow::core::Bitmap b(num_splits * slice_size);
-  for (int k = 0; k < num_splits * slice_size; ++k) {
-    if (k % slice_size < spatial_split_size) {
-      b.set(k);
+  const int64 rank = activations->shape().dimensions_size();
+  std::vector<int64> offset_dims;
+  std::vector<int64> collapsed_dims(2);
+  int64 collapsed_dim_counter = 0;
+  bool seen_collapsed = false;
+  for (int j = 0; j < rank; ++j) {
+    if (j == activations_batch_dim || j == spatial_dimension_to_split) {
+      collapsed_dims[collapsed_dim_counter++] = j;
+      seen_collapsed = true;
     } else {
-      b.clear(k);
+      if (seen_collapsed) {
+        offset_dims.push_back(j - 1);
+      } else {
+        offset_dims.push_back(j);
+      }
     }
   }
+  std::vector<int64> start_index(2);
+  start_index[0] = activations_batch_dim;
+  start_index[1] = spatial_dimension_to_split;
 
-  auto arg_literal = LiteralUtil::CreateR1(b);
-  HloInstruction* slice_mask = computation_->AddInstruction(
+  xla::GatherDimensionNumbers gather_dim_numbers =
+      HloGatherInstruction::MakeGatherDimNumbers(
+          /*offset_dims=*/offset_dims,
+          /*collapsed_slice_dims=*/collapsed_dims,
+          /*start_index_map=*/start_index,
+          /*index_vector_dim=*/1);
+
+  // Create a static index for the gather.
+  auto arg_array = absl::make_unique<Array2D<int32>>(
+      slice_size * old_batch_size * num_splits, 2);
+  auto generate_cell = [&](int64 i, int64 j, int32* value) {
+    const int64 row_number = i / (num_splits * old_batch_size);
+    if (row_number >= spatial_split_size) {
+      if (j == 0) {
+        *value = i % (num_splits * old_batch_size) + 1;
+        if (num_splits * old_batch_size <=
+            i % (num_splits * old_batch_size) + 1) {
+          *value = 0;
+        }
+      } else {
+        *value = row_number - spatial_split_size;
+      }
+    } else {
+      if (j == 0) {
+        *value = i % (num_splits * old_batch_size);
+      } else {
+        *value = row_number;
+      }
+    }
+  };
+
+  arg_array->Each(generate_cell);
+
+  auto arg_literal = LiteralUtil::CreateR2FromArray2D<int32>(*arg_array);
+  VLOG(1) << " arg_literal " << arg_literal.ToString();
+  HloInstruction* index = computation_->AddInstruction(
       HloInstruction::CreateConstant(std::move(arg_literal)));
 
-  // Broadcast the mask in all dimensions of the activations.
-  HloInstruction* shape_mask =
-      MakeBroadcastHlo(slice_mask, {spatial_dimension_to_split},
-                       straightened_activations->shape().dimensions());
+  VLOG(1) << "slice_size " << slice_size;
+  std::vector<int64> gather_output_shape_dims(
+      activations->shape().dimensions().begin(),
+      activations->shape().dimensions().end());
 
-  VLOG(1) << "Shape mask made " << shape_mask->ToString();
+  gather_output_shape_dims[activations_batch_dim] =
+      slice_size * old_batch_size * num_splits;
+  gather_output_shape_dims.erase(gather_output_shape_dims.begin() +
+                                 spatial_dimension_to_split);
 
-  TF_ASSIGN_OR_RETURN(HloInstruction * select,
-                      MakeSelectHlo(shape_mask, straightened_activations,
-                                    rotated_activations, convolution));
-  VLOG(1) << "Select generated" << select->ToString();
+  auto gather_shape = ShapeUtil::MakeShape(activations->shape().element_type(),
+                                           gather_output_shape_dims);
 
-  // Increase batch size for one last time.
-  std::vector<int64> combined_batch_dimensions(
-      pad_applied->shape().dimensions().begin(),
-      pad_applied->shape().dimensions().end());
+  HloInstruction* gather = computation_->AddInstruction(
+      HloInstruction::CreateGather(gather_shape, batch_increased_reshape, index,
+                                   gather_dim_numbers, slice_sizes, false));
 
-  combined_batch_dimensions[activations_batch_dim] =
+  std::vector<int64> gather_reshape_dimensions(
+      activations->shape().dimensions().begin(),
+      activations->shape().dimensions().end());
+
+  gather_reshape_dimensions[activations_batch_dim] = slice_size;
+  gather_reshape_dimensions[spatial_dimension_to_split] =
       old_batch_size * num_splits;
+
+  // Reshape the gather so that batch is split out.
   TF_ASSIGN_OR_RETURN(activations,
-                      MakeReshapeHlo(combined_batch_dimensions, select));
+                      MakeReshapeHlo(gather_reshape_dimensions, gather));
 
   VLOG(1) << "Batch merge done " << activations->ToString();
 
   // Now, we rewrite the convolution with a larger batch.
-  const auto& activations_shape = activations->shape();
-  const int64 rank = activations_shape.dimensions_size();
+
+  // Set the batch and spatial dimensions for the new convolution.
+  new_dim_numbers.set_input_batch_dimension(spatial_dimension_to_split);
+  new_dim_numbers.set_input_spatial_dimensions(kChosenSpatialDim,
+                                               activations_batch_dim);
 
   // We will generate output such that batch is followed by the split spatial
   // dimension.
