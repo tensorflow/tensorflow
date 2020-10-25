@@ -683,7 +683,11 @@ def _modify_model_input_type(model, inference_input_type=dtypes.float32):
       input_quant_ops.append(op)
 
   if len(subgraph.inputs) != len(input_quant_ops):
-    raise ValueError("Model input is not quantized.")
+    logging.warning(
+        "For model inputs containing unsupported operations which cannot be "
+        "quantized, the `inference_input_type` attribute will default to the "
+        "original type."
+        )
 
   # Modify model input type
   if inference_input_type == dtypes.uint8:
@@ -765,7 +769,11 @@ def _modify_model_output_type(model, inference_output_type=dtypes.float32):
       output_dequant_ops.append(op)
 
   if len(subgraph.outputs) != len(output_dequant_ops):
-    raise ValueError("Model output is not dequantized.")
+    logging.warning(
+        "For model outputs containing unsupported operations which cannot be "
+        "quantized, the `inference_output_type` attribute will default to the "
+        "original type."
+        )
 
   # Modify model output type
   if inference_output_type == dtypes.uint8:

@@ -46,17 +46,13 @@ load(
     "if_mkl_open_source_only",
     "if_mkldnn_threadpool",
 )
-load(
-    "//third_party/ngraph:build_defs.bzl",
-    "if_ngraph",
-)
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 
 # version for the shared libraries, can
 # not contain rc or alpha, only numbers.
 # Also update tensorflow/core/public/version.h
 # and tensorflow/tools/pip_package/setup.py
-VERSION = "2.4.0"
+VERSION = "2.5.0"
 VERSION_MAJOR = VERSION.split(".")[0]
 
 # Sanitize a dependency so that it works correctly from code that includes
@@ -334,7 +330,6 @@ def tf_copts(
         if_mkl(["-DINTEL_MKL=1", "-DENABLE_MKLDNN_V1", "-DENABLE_INTEL_MKL_BFLOAT16", "-DINTEL_MKL_DNN_ONLY"]) +
         if_mkldnn_threadpool(["-DENABLE_MKLDNN_THREADPOOL"]) +
         if_enable_mkl(["-DENABLE_MKL"]) +
-        if_ngraph(["-DINTEL_NGRAPH=1"]) +
         if_android_arm(["-mfpu=neon"]) +
         if_linux_x86_64(["-msse3"]) +
         if_ios_x86_64(["-msse4.1"]) +

@@ -513,6 +513,9 @@ cuda_py_test(
     srcs = ["convolutional_test.py"],
     python_version = "PY3",
     shard_count = 8,
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -526,6 +529,9 @@ cuda_py_test(
     size = "medium",
     srcs = ["convolutional_transpose_test.py"],
     python_version = "PY3",
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -706,6 +712,9 @@ cuda_py_test(
     tags = [
         "no_rocm",
         "notsan",
+    ],
+    xla_tags = [
+        "no_cuda_asan",  # times out
     ],
     deps = [
         "//tensorflow/python:client_testlib",

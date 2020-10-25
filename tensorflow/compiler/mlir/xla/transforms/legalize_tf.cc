@@ -786,11 +786,11 @@ static int GetDimensionSizeFromEnd(Value input, int dim_from_end) {
 // dimension and last dimension, respectively). The element type of the
 // outputted RankedTensorType will match the element type of `input`.
 // Requires that `input` is a tensor.
-static RankedTensorType Get2DTensorType(Value input) {
+static RankedTensorType Get2DTensorType(Value input, Value num_lower) {
   // `dim_0` refers to the second-to-last dimension; `dim_1` refers to the last.
   int dim_0 = GetDimensionSizeFromEnd(input, 1);
   int dim_1 = GetDimensionSizeFromEnd(input, 0);
-  auto element_type = input.getType().cast<TensorType>().getElementType();
+  auto element_type = num_lower.getType().cast<TensorType>().getElementType();
   return RankedTensorType::get({dim_0, dim_1}, element_type);
 }
 

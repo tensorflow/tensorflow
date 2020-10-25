@@ -145,6 +145,7 @@ cc_library(
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/status",
         "@com_google_protobuf//:protobuf_headers",
     ],
 )

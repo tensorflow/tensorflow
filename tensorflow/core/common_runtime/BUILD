@@ -2260,13 +2260,8 @@ tf_cuda_cc_test(
 # enables support for TensorFlow Debugger (tfdbg).
 tf_cc_test(
     name = "direct_session_with_debug_test",
-    size = "small",
     srcs = ["direct_session_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = [
-        "noasan",  #b/168811551
-        "notsan",  #b/168811551
-    ],
     deps = [
         ":core",
         ":core_cpu",

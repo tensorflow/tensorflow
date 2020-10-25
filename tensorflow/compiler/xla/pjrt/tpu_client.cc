@@ -118,7 +118,7 @@ PjRtTpuClient::PjRtTpuClient(LocalClient* client,
                              std::vector<std::unique_ptr<PjRtDevice>> devices,
                              int host_id,
                              tf_tpu::TpuPlatformInterface* tpu_platform)
-    : PjRtClient(PjRtPlatformId::kTpu, client, std::move(devices), host_id,
+    : PjRtClient(kTpuName, client, std::move(devices), host_id,
                  /*allocator=*/nullptr,
                  /*host_memory_allocator=*/nullptr,
                  /*should_stage_host_to_device_transfers=*/false,
@@ -145,7 +145,7 @@ StatusOr<absl::optional<std::string>> PjRtTpuClient::ExecutableFingerprint(
     return InvalidArgument(
         "Passed executable from different client (platform '%s') to "
         "PjRtTpuClient::ExecutableFingerprint",
-        Name(executable.client()->platform_id()));
+        executable.client()->platform_name());
   }
   if (executable.executables().size() > 1) {
     LOG(INFO) << "ExecutableFingerprint not fully implemented for MPMD "

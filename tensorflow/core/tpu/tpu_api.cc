@@ -23,39 +23,9 @@ TfTpu_BaseFn* InitializeApiFn() {
   return &base_fn;
 }
 
-TfTpu_ConfigApiFn* ConfigApiFn() {
-  static TfTpu_ConfigApiFn config_api_fn;
-  return &config_api_fn;
-}
-
-TfTpu_MeshStateApiFn* MeshStateApiFn() {
-  static TfTpu_MeshStateApiFn mesh_state_api_fn;
-  return &mesh_state_api_fn;
-}
-
-TfTpu_CompileApiFn* CompileApiFn() {
-  static TfTpu_CompileApiFn compile_api_fn;
-  return &compile_api_fn;
-}
-
-TfTpu_ExecuteApiFn* ExecuteApiFn() {
-  static TfTpu_ExecuteApiFn execute_api_fn;
-  return &execute_api_fn;
-}
-
-TfTpu_TpuProgramApiFn* TpuProgramApiFn() {
-  static TfTpu_TpuProgramApiFn tpu_program_api_fn;
-  return &tpu_program_api_fn;
-}
-
-TfTpu_NodeContextApiFn* NodeContextApiFn() {
-  static TfTpu_NodeContextApiFn node_context_api_fn;
-  return &node_context_api_fn;
-}
-
-TfTpu_UtilApiFn* UtilApiFn() {
-  static TfTpu_UtilApiFn util_api_fn;
-  return &util_api_fn;
+TfTpu_OpsApiFn* OpsApiFn() {
+  static TfTpu_OpsApiFn ops_api_fn;
+  return &ops_api_fn;
 }
 
 }  // namespace tpu

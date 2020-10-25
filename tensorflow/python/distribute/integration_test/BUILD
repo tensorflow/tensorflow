@@ -36,7 +36,6 @@ cuda_py_test(
     shard_count = 2,
     tags = [
         "multi_and_single_gpu",
-        "no_oss_py38",  #TODO(b/171435331)
     ],
     deps = [
         "//tensorflow:tensorflow_py",

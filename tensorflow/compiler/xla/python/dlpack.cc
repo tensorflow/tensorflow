@@ -236,14 +236,14 @@ StatusOr<PjRtDevice*> DeviceForDLContext(const PjRtClient& client,
                                          const DLContext& context) {
   switch (context.device_type) {
     case kDLCPU:
-      if (client.platform_id() != PjRtPlatformId::kCpu) {
+      if (client.platform_id() != kCpuId) {
         return InvalidArgument(
             "DLPack CPU device type mismatch with PjRtClient platform %s",
             client.platform_name());
       }
       return client.LookupLocalDevice(context.device_id);
     case kDLGPU:
-      if (client.platform_id() != PjRtPlatformId::kNvidiaGpu) {
+      if (client.platform_id() != kGpuId) {
         return InvalidArgument(
             "DLPack GPU device type mismatch with PjRtClient platform %s",
             client.platform_name());

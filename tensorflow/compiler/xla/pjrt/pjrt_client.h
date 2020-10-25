@@ -45,39 +45,23 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/platform/types.h"
 
 // API notes:
 // PjRt stands for "Pretty much Just another RunTime".
 
 namespace xla {
 
-// TODO(zhangqiaorjc): Add a registration mechanism to add new platforms.
-enum class PjRtPlatformId : int {
-  kCpu = 0,
-  kNvidiaGpu = 1,
-  kAmdGpu = 2,
-  kTpu = 3,
-  kEdgeTpu = 4,
-  kInterpreter = 5
-};
-constexpr const char* Name(PjRtPlatformId platform_id) {
-  switch (platform_id) {
-    case PjRtPlatformId::kCpu:
-      return "cpu";
-    case PjRtPlatformId::kNvidiaGpu:
-      // TODO(zhangqiaorjc): Rename to nvidia_gpu when we add AMD support.
-      return "gpu";
-    case PjRtPlatformId::kAmdGpu:
-      return "amd_gpu";
-    case PjRtPlatformId::kTpu:
-      return "tpu";
-    case PjRtPlatformId::kEdgeTpu:
-      return "edge_tpu";
-    case PjRtPlatformId::kInterpreter:
-      return "interpreter";
-  }
-}
+using PjRtPlatformId = uint64;
+
+constexpr char kCpuName[] = "cpu";
+constexpr char kGpuName[] = "gpu";
+constexpr char kTpuName[] = "tpu";
+static const PjRtPlatformId kCpuId = tensorflow::Fingerprint64(kCpuName);
+static const PjRtPlatformId kGpuId = tensorflow::Fingerprint64(kGpuName);
+static const PjRtPlatformId kTpuId = tensorflow::Fingerprint64(kTpuName);
 
 class PjRtClient;
 
@@ -196,7 +180,7 @@ class PjRtClient {
  public:
   // `allocator` may null, in which case the platform default allocator is used.
   explicit PjRtClient(
-      PjRtPlatformId platform_id, LocalClient* client,
+      std::string platform_name, LocalClient* client,
       std::vector<std::unique_ptr<PjRtDevice>> devices, int host_id,
       std::unique_ptr<se::DeviceMemoryAllocator> allocator,
       std::unique_ptr<tensorflow::Allocator> host_memory_allocator,

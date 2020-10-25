@@ -365,7 +365,8 @@ class getIntegerAttr<string x>: NativeCodeCall<
   "$_builder.getI64IntegerAttr(" # x # ")">;
 
 class GetDimensionSizeFromEnd<string dimFromEnd>: NativeCodeCall<
-  "$_builder.getI64IntegerAttr(GetDimensionSizeFromEnd($0, " # dimFromEnd # "))"
+  "$_builder.getIntegerAttr(getElementTypeOrSelf($1.getType()), "
+  "                         GetDimensionSizeFromEnd($0, " # dimFromEnd # "))"
   >;
 
 // TODO(b/149615308): Enable IotaOp usage as a child operation in a pattern
@@ -373,7 +374,7 @@ class GetDimensionSizeFromEnd<string dimFromEnd>: NativeCodeCall<
 // cannot be inferred.
 class createIotaOp<string dim>: NativeCodeCall<
   "$_builder.create<mhlo::IotaOp>($0.getOwner()->getLoc(), "
-  "Get2DTensorType($1), $_builder.getI64IntegerAttr(" # dim # "))">;
+  "Get2DTensorType($1, $2), $_builder.getI64IntegerAttr(" # dim # "))">;
 
 // This op needs to be created in C++ because the generated Convert Op has no
 // way to specify shape information as an input. In the MatrixBandPart op
@@ -396,9 +397,10 @@ def createConvertOp: NativeCodeCall<
 //   return (indicator ? input : zero_matrix)
 //
 // TODO(b/149961547): Support dynamic shaped `input` in MatrixBandPartOp.
-def : Pattern<(TF_MatrixBandPartOp:$op AnyRankedTensor:$input, $num_lower, $num_upper),
-         [(HLO_ConstOp:$m_dim (GetDimensionSizeFromEnd<"0"> $input)),
-          (HLO_ConstOp:$n_dim (GetDimensionSizeFromEnd<"1"> $input)),
+def : Pattern<(TF_MatrixBandPartOp:$op AnyStaticShapeTensor:$input, $num_lower,
+               $num_upper),
+         [(HLO_ConstOp:$m_dim (GetDimensionSizeFromEnd<"1"> $input, $num_lower)),
+          (HLO_ConstOp:$n_dim (GetDimensionSizeFromEnd<"0"> $input, $num_upper)),
           (HLO_SelectOp:$num_lower_or_m
            (HLO_CompareOp
             $num_lower, (HLO_ConstOp:$zero (ConstantSplat<"0"> $num_lower)),
@@ -414,22 +416,17 @@ def : Pattern<(TF_MatrixBandPartOp:$op AnyRankedTensor:$input, $num_lower, $num_
            $n_dim,
            $num_upper
           ),
-          (HLO_SelectOp
+          (TF_SelectV2Op
            (HLO_AndOp
             (HLOClient_BroadcastCompareOp
-             (HLO_NegOp
-              (createConvertOp $op, $num_lower_or_m, $input)
-             ),
+             (HLO_NegOp $num_lower_or_m),
              (HLO_SubOp:$offset
-              (createIotaOp<"1"> $op, $input), (createIotaOp<"0"> $op, $input)
+              (createIotaOp<"1"> $op, $input, $num_lower),
+              (createIotaOp<"0"> $op, $input, $num_lower)
              ),
              (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LE
             ),
-            (HLOClient_BroadcastCompareOp
-             $offset,
-             (createConvertOp
-              $op, $num_upper_or_n, $input
-             ),
+            (HLOClient_BroadcastCompareOp $offset, $num_upper_or_n,
              (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LE
             )
            ),

@@ -6,7 +6,6 @@ load("//third_party/mkl:build_defs.bzl", "if_mkl", "if_mkl_ml")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_license_deps")
-load("//third_party/ngraph:build_defs.bzl", "if_ngraph")
 
 package(default_visibility = ["//visibility:private"])
 
@@ -275,12 +274,7 @@ filegroup(
             "@com_github_grpc_grpc//:LICENSE",
             "@com_github_grpc_grpc//third_party/address_sorting:LICENSE",
         ],
-    ) + if_ngraph([
-        "@ngraph//:LICENSE",
-        "@ngraph_tf//:LICENSE",
-        "@nlohmann_json_lib//:LICENSE.MIT",
-        "@tbb//:LICENSE",
-    ]) + tf_additional_license_deps(),
+    ) + tf_additional_license_deps(),
 )
 
 sh_binary(

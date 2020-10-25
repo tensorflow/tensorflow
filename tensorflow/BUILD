@@ -24,10 +24,6 @@ load(
     "TENSORFLOW_API_INIT_FILES_V1",  # @unused
 )
 load(
-    "//third_party/ngraph:build_defs.bzl",
-    "if_ngraph",
-)
-load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl_ml",
 )
@@ -472,14 +468,6 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-# This flag is set from the configure step when the user selects with nGraph option.
-# By default it should be false
-config_setting(
-    name = "with_ngraph_support",
-    values = {"define": "with_ngraph_support=true"},
-    visibility = ["//visibility:public"],
-)
-
 # This flag specifies whether TensorFlow 2.0 API should be built instead
 # of 1.* API. Note that TensorFlow 2.0 API is currently under development.
 config_setting(
@@ -639,7 +627,6 @@ bzl_library(
         "//tensorflow/core/platform/default:cuda_build_defs_bzl",
         "//third_party/mkl:build_defs_bzl",
         "//third_party/mkl_dnn:build_defs_bzl",
-        "//third_party/ngraph:build_defs_bzl",
         "@bazel_skylib//rules:common_settings",
         "@local_config_cuda//cuda:build_defs_bzl",
         "@local_config_rocm//rocm:build_defs_bzl",
@@ -847,7 +834,7 @@ tf_cc_shared_object(
         "//tensorflow/cc:scope",
         "//tensorflow/cc/profiler",
         "//tensorflow/core:tensorflow",
-    ] + if_ngraph(["@ngraph_tf//:ngraph_tf"]),
+    ],
 )
 
 # ** Targets for Windows build (start) **

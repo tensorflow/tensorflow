@@ -250,6 +250,7 @@ distribute_py_test(
     main = "custom_training_loop_models_test.py",
     tags = [
         "multi_and_single_gpu",
+        "no_cuda_asan",  # times out
         "notsan",  # TODO(b/170954243)
     ],
     tpu_tags = [
@@ -435,6 +436,7 @@ distribute_py_test(
     tags = [
         "broken",  # b/170975619
         "multi_and_single_gpu",
+        "no_cuda_asan",  # times out
         "no_rocm",
         "no_windows_gpu",
         "notsan",
@@ -566,6 +568,7 @@ distribute_py_test(
     shard_count = 4,
     tags = [
         "multi_and_single_gpu",
+        "no_cuda_asan",  # times out
         "no_rocm",
         "no_windows_gpu",
         "notsan",

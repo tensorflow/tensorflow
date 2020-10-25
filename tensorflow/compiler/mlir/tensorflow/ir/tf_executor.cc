@@ -824,6 +824,10 @@ LogicalResult Verify(NextIterationSinkOp sink) {
 
 }  // anonymous namespace
 
+NextIterationSourceOp NextIterationSinkOp::GetSource() {
+  return cast<NextIterationSourceOp>(token().getDefiningOp());
+}
+
 //===----------------------------------------------------------------------===//
 // tf_executor.Exit
 //===----------------------------------------------------------------------===//

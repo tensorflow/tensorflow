@@ -498,12 +498,15 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     ])
     def func(inp):
       tanh = tf.math.tanh(inp)
+      # Flex delegate will merge the consecutive conv3d and erf ops into one
+      # Delegate node.
       conv3d = tf.nn.conv3d(
           tanh,
           tf.ones([3, 3, 3, 3, 3]),
           strides=[1, 1, 1, 1, 1],
           padding='SAME')
-      output = tf.math.tanh(conv3d)
+      erf = tf.math.erf(conv3d)
+      output = tf.math.tanh(erf)
       return output
 
     def calibration_gen():
@@ -574,6 +577,94 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     self.assertLen(output_details, 1)
     self.assertEqual(inference_input_output_type.as_numpy_dtype,
                      output_details[0]['dtype'])
+
+  def _getIntegerQuantizationModelWithUnsupportedOps(self):
+    np.random.seed(0)
+
+    root = tracking.AutoTrackable()
+
+    @tf.function(input_signature=[
+        tf.TensorSpec(shape=[3], dtype=tf.float32),
+        tf.TensorSpec(shape=[3], dtype=tf.float32)
+    ])
+    def func(a, b):
+      # ceil kernel does not support int8 nor int16 types neither.
+      left = tf.math.ceil(a)
+      right = tf.nn.tanh(b)
+      add = tf.math.add(left, right)
+      # ceil kernel does not support int8 nor int16 types neither.
+      output = tf.math.ceil(add)
+      return (output, right)
+
+    def calibration_gen():
+      for _ in range(5):
+        yield [
+            np.random.uniform(-1, 1, size=(3)).astype(np.float32),
+            np.random.uniform(-1, 1, size=(3)).astype(np.float32)
+        ]
+
+    root.f = func
+    return (root.f.get_concrete_function(), calibration_gen)
+
+  @parameterized.named_parameters(
+      ('_INT8InputOutput', False, False, dtypes.int8),
+      ('_UINT8InputOutput', False, False, dtypes.uint8),
+      ('_INT16Quantize_INT16InputOutput', False, True, dtypes.int16),
+      ('_IntOnly_INT8InputOutput', True, False, dtypes.int8),
+      ('_IntOnly_UINT8InputOutput', True, False, dtypes.uint8),
+      ('_IntOnly_INT16Quantize_INT16InputOutput', True, True, dtypes.int16))
+  @test_util.run_v2_only
+  def testIntegerQuantizationWithUnsupportedOps(self, is_int_only,
+                                                is_int16_quantize,
+                                                inference_input_output_type):
+    func, calib_gen = self._getIntegerQuantizationModelWithUnsupportedOps()
+
+    quantized_converter = tf.lite.TFLiteConverter.from_concrete_functions(
+        [func])
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_converter.representative_dataset = calib_gen
+    if is_int_only:
+      if is_int16_quantize:
+        quantized_converter.target_spec.supported_ops = [
+            lite.OpsSet.\
+            EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8,
+            lite.OpsSet.TFLITE_BUILTINS
+        ]
+      else:
+        quantized_converter.target_spec.supported_ops = [
+            lite.OpsSet.TFLITE_BUILTINS_INT8, lite.OpsSet.TFLITE_BUILTINS
+        ]
+    else:
+      if is_int16_quantize:
+        quantized_converter.target_spec.supported_ops = [
+            lite.OpsSet.\
+            EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8,
+            lite.OpsSet.TFLITE_BUILTINS
+        ]
+      else:
+        quantized_converter.target_spec.supported_ops = [
+            lite.OpsSet.TFLITE_BUILTINS
+        ]
+
+    quantized_converter.inference_input_type = inference_input_output_type
+    quantized_converter.inference_output_type = inference_input_output_type
+    quantized_tflite_model = quantized_converter.convert()
+    self.assertIsNotNone(quantized_tflite_model)
+
+    interpreter = Interpreter(model_content=quantized_tflite_model)
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()
+    self.assertLen(input_details, 2)
+    # Allow float32 for fallback.
+    self.assertEqual(input_details[0]['dtype'], dtypes.float32)
+    self.assertEqual(input_details[1]['dtype'],
+                     inference_input_output_type.as_numpy_dtype)
+    output_details = interpreter.get_output_details()
+    self.assertLen(output_details, 2)
+    # Allow float32 for fallback.
+    self.assertEqual(output_details[0]['dtype'], dtypes.float32)
+    self.assertEqual(output_details[1]['dtype'],
+                     inference_input_output_type.as_numpy_dtype)
 
 
 class FromSavedModelTest(lite_v2_test_util.ModelTest):

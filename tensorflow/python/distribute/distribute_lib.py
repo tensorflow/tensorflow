@@ -977,7 +977,7 @@ class StrategyBase(object):
     }]
 
 
-    Three key actions happending under the hood of this method are batching,
+    Three key actions happening under the hood of this method are batching,
     sharding, and prefetching.
 
     In the code snippet above, `dataset` is batched by `global_batch_size`, and

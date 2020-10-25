@@ -80,6 +80,10 @@ class InterpreterBuilder {
                                  const std::vector<int>& dims);
   TfLiteStatus ParseSparsity(const SparsityParameters* src_sparsity,
                              TfLiteSparsity** sparsity);
+  TfLiteStatus ParseSignatureDefs(
+      const flatbuffers::Vector<flatbuffers::Offset<SignatureDef>>*
+          signature_def_list,
+      Interpreter* interpreter);
 
   const ::tflite::Model* model_;
   const OpResolver& op_resolver_;

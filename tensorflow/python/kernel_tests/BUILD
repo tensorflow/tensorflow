@@ -1526,6 +1526,9 @@ cuda_py_test(
     name = "cast_op_test",
     size = "small",
     srcs = ["cast_op_test.py"],
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -1606,6 +1609,9 @@ cuda_py_test(
     name = "argmax_op_test",
     size = "small",
     srcs = ["argmax_op_test.py"],
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:math_ops",
@@ -1701,6 +1707,9 @@ cuda_py_test(
     name = "betainc_op_test",
     size = "small",
     srcs = ["betainc_op_test.py"],
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -2174,6 +2183,9 @@ cuda_py_test(
     name = "lu_op_test",
     size = "small",
     srcs = ["lu_op_test.py"],
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -2237,6 +2249,9 @@ cuda_py_test(
     name = "morphological_ops_test",
     size = "small",
     srcs = ["morphological_ops_test.py"],
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -2278,6 +2293,9 @@ cuda_py_test(
     name = "stack_op_test",
     size = "small",
     srcs = ["stack_op_test.py"],
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -2889,6 +2907,9 @@ cuda_py_test(
     name = "pool_test",
     size = "medium",
     srcs = ["pool_test.py"],
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -3401,6 +3422,9 @@ cuda_py_test(
     size = "medium",
     srcs = ["matrix_band_part_op_test.py"],
     shard_count = 20,
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

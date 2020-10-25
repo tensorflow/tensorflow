@@ -1773,6 +1773,14 @@ def TestFactory(xla_backend, cloud_tpu=False):
                           dtype=np.int32)
       self._ExecuteAndCompareClose(c, expected=[expected])
 
+  class DeviceTest(ComputationTest):
+
+    def testPlatform(self):
+      for device in self.backend.local_devices():
+        self.assertEqual(device.platform, self.backend.platform)
+
+  tests.append(DeviceTest)
+
   class ErrorTest(ComputationTest):
 
     def setUp(self):

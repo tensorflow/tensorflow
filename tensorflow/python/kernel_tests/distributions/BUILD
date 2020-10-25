@@ -60,6 +60,9 @@ cuda_py_test(
     name = "beta_test",
     size = "small",
     srcs = ["beta_test.py"],
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",

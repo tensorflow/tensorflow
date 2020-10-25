@@ -107,6 +107,14 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
       return "GroupByWindowDatasetOp::Dataset";
     }
 
+    int64 Cardinality() const override {
+      int64 n = input_->Cardinality();
+      if (n == kInfiniteCardinality) {
+        return n;
+      }
+      return kUnknownCardinality;
+    }
+
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
       inputs->push_back(input_);
