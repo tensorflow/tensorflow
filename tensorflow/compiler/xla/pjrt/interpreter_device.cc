@@ -52,7 +52,7 @@ StatusOr<std::unique_ptr<PjRtClient>> GetInterpreterClient() {
   devices.push_back(std::move(device));
 
   return std::make_unique<PjRtClient>(
-      PjRtPlatformId::kInterpreter, client, std::move(devices), /*host_id=*/0,
+      "interpreter", client, std::move(devices), /*host_id=*/0,
       /*allocator=*/nullptr, /*host_memory_allocator=*/nullptr,
       /*should_stage_host_to_device_transfers=*/false,
       /*gpu_run_options=*/nullptr);

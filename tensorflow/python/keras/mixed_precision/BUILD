@@ -192,6 +192,9 @@ cuda_py_test(
     size = "medium",
     srcs = ["loss_scale_optimizer_test.py"],
     python_version = "PY3",
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         ":loss_scale_optimizer",
         ":test_util",

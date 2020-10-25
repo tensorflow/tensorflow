@@ -19,7 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import atexit
 import collections
 import contextlib
 import json
@@ -926,9 +925,6 @@ class MultiProcessPoolRunner(object):
     if dill is None:
       raise unittest.SkipTest(
           'TODO(b/150264776): Resolve dependency issue in CI')
-    if is_oss():
-      raise unittest.SkipTest(
-          'TODO(b/170360740): MultiProcessPoolRunner timing out in OSS')
 
     self._runner = MultiProcessRunner(
         fn=lambda: None,
@@ -947,10 +943,6 @@ class MultiProcessPoolRunner(object):
             task_id,
             fn=_pool_runner_worker,
             args=(task_type, task_id, initializer, conn2))
-    # In the case MultiProcessPoolRunner is not GC-ed, we register an atexit
-    # callback to shut them down. For example, when there're global
-    # MultiProcessPoolRunner.
-    atexit.register(_shutdown_all_pool_runners)
 
   def run(self, fn, args=None, kwargs=None):
     """Runs `fn` with `args` and `kwargs` on all jobs.
@@ -1422,4 +1414,17 @@ def test_main():
     tf.__internal__.distribute.multi_process_runner.test_main()
   ```
   """
+  # Inject tearDownModule() to shut down all pool runners. Active pool runners
+  # will block the program from exiting. This is necessary for global pool
+  # runners. We tried atexit in the past, and it doesn't work in some
+  # deployment.
+  old_tear_down_module = getattr(sys.modules['__main__'], 'tearDownModule',
+                                 None)
+
+  def tear_down_module():
+    _shutdown_all_pool_runners()
+    if old_tear_down_module is not None:
+      old_tear_down_module()
+
+  setattr(sys.modules['__main__'], 'tearDownModule', tear_down_module)
   multi_process_lib.test_main()

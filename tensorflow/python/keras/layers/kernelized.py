@@ -30,6 +30,7 @@ from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.util.tf_export import keras_export
 
@@ -219,9 +220,9 @@ class RandomFourierFeatures(base_layer.Layer):
 
   def call(self, inputs):
     inputs = ops.convert_to_tensor_v2_with_dispatch(inputs, dtype=self.dtype)
-    inputs = gen_math_ops.cast(inputs, dtypes.float32)
+    inputs = math_ops.cast(inputs, dtypes.float32)
     kernel = (1.0 / self.kernel_scale) * self.unscaled_kernel
-    outputs = gen_math_ops.mat_mul(inputs, kernel)
+    outputs = gen_math_ops.MatMul(a=inputs, b=kernel)
     outputs = nn.bias_add(outputs, self.bias)
     return gen_math_ops.cos(outputs)
 

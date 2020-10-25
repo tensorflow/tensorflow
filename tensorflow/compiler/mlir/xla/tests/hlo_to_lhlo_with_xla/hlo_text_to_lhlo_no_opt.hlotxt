@@ -2,7 +2,7 @@
 
 HloModule TestModule
 
-// CHECK: func @TestComputation
+// CHECK-LABEL: func @TestComputation
 
 FusedComputation {
   // CHECK: tensor_load %arg0 {minor_to_major = dense<[0, 1]> : tensor<2xindex>}
@@ -24,7 +24,7 @@ update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
   ROOT rhs = s32[] parameter(1)
 }
 
-// CHECK: func @main
+// CHECK-LABEL: func @main
 // CHECK: "lmhlo.scatter"
 // CHECK: ^bb0(%[[ARG5:.*]]: tensor<i32>, %[[ARG6:.*]]: tensor<i32>):
 // CHECK:  "mhlo.return"(%[[ARG6]])
@@ -45,4 +45,39 @@ ENTRY main {
       inserted_window_dims={0},
       scatter_dims_to_operand_dims={0},
       index_vector_dim=1
+}
+
+// -----
+
+HloModule SelectAndScatter
+
+%ge_F32 (lhs.5: f32[], rhs.6: f32[]) -> pred[] {
+  %lhs.5 = f32[] parameter(0)
+  %rhs.6 = f32[] parameter(1)
+  ROOT %compare.7 = pred[] compare(f32[] %lhs.5, f32[] %rhs.6), direction=GE
+}
+
+%add_F32 (lhs.9: f32[], rhs.10: f32[]) -> f32[] {
+  %lhs.9 = f32[] parameter(0)
+  %rhs.10 = f32[] parameter(1)
+  ROOT %add.11 = f32[] add(f32[] %lhs.9, f32[] %rhs.10)
+}
+
+// CHECK-LABEL: func @main
+// CHECK: "lmhlo.select_and_scatter"
+// CHECK: ^bb0(%[[ARG0:.*]]: tensor<f32>, %[[ARG1:.*]]: tensor<f32>):
+// CHECK: %[[COMPARE:.*]] = "mhlo.compare"(%[[ARG0]], %[[ARG1]]) {comparison_direction = "GE"}
+// CHECK: "mhlo.return"(%[[COMPARE]]) : (tensor<i1>) -> ()
+// CHECK: ^bb0(%[[ARG2:.*]]: tensor<f32>, %[[ARG3:.*]]: tensor<f32>):
+// CHECK: %[[ADD:.*]] = mhlo.add %[[ARG2]], %[[ARG3]]
+// CHECK: "mhlo.return"(%[[ADD]]) : (tensor<f32>) -> ()
+// CHECK: padding = dense<0> : tensor<1xi64>
+// CHECK: window_dimensions = dense<3> : tensor<1xi64>
+// CHECK: window_strides = dense<3> : tensor<1xi64>
+// CHECK: (memref<6xf32>, memref<2xf32>, memref<f32>, memref<6xf32>) -> ()
+ENTRY main () -> f32[6] {
+  %operand = f32[6]{0} parameter(0)
+  %source = f32[2]{0} parameter(1)
+  %init = f32[] parameter(2)
+  ROOT %select-and-scatter.12 = f32[6]{0} select-and-scatter(f32[6]{0} %operand, f32[2]{0} %source, f32[] %init), window={size=3 stride=3}, select=%ge_F32, scatter=%add_F32
 }

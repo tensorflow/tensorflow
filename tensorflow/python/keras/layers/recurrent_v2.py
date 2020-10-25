@@ -680,8 +680,8 @@ def gpu_gru(inputs, init_h, kernel, recurrent_kernel, bias, mask, time_major,
       # expected_output = [0, 0, 6, 5 ,4]
       inputs = array_ops.reverse_sequence_v2(
           inputs, sequence_lengths, seq_axis=seq_axis, batch_axis=batch_axis)
-    outputs, h, _, _, _ = gen_cudnn_rnn_ops.cudnn_rnnv3(
-        inputs,
+    outputs, h, _, _, _ = gen_cudnn_rnn_ops.CudnnRNNV3(
+        input=inputs,
         input_h=init_h,
         input_c=0,
         params=params,
