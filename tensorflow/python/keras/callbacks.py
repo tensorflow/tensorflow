@@ -2650,8 +2650,8 @@ class LambdaCallback(Callback):
   r"""Callback for creating simple, custom callbacks on-the-fly.
 
   This callback is constructed with anonymous functions that will be called
-  at the appropriate time. Note that the callbacks expects positional
-  arguments, as:
+  at the appropriate time (during `Model.{fit | evaluate | predict}`).
+  Note that the callbacks expects positional arguments, as:
 
   - `on_epoch_begin` and `on_epoch_end` expect two positional arguments:
     `epoch`, `logs`
