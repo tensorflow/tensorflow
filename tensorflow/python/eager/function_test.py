@@ -1322,7 +1322,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertIsInstance(
         self.v, resource_variable_ops.ResourceVariable)
 
-  @test_util.disable_tfrt('b/169294215')
   def testRunMetadata(self):
 
     @def_function.function
