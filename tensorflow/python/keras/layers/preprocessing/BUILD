@@ -47,7 +47,6 @@ py_library(
     name = "discretization",
     srcs = [
         "discretization.py",
-        "discretization_v1.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -55,7 +54,6 @@ py_library(
         "//tensorflow/python:boosted_trees_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:resources",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:tf_export",
@@ -460,7 +458,6 @@ tf_py_test(
     size = "small",
     srcs = ["discretization_test.py"],
     python_version = "PY3",
-    shard_count = 4,
     tags = ["no_rocm"],
     deps = [
         ":discretization",
