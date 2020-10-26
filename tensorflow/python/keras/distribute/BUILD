@@ -89,6 +89,17 @@ py_library(
         "worker_training_state.py",
     ],
     srcs_version = "PY2AND3",
+    deps = [
+        ":distributed_file_utils",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/keras:backend",
+        "//tensorflow/python/keras/utils:mode_keys",
+        "//tensorflow/python/training:checkpoint_management",
+        "//tensorflow/python/training/tracking:util",
+    ],
 )
 
 py_library(
@@ -735,6 +746,7 @@ py_test(
     python_version = "PY3",
     shard_count = 5,
     deps = [
+        ":distributed_file_utils",
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:multi_process_runner",
@@ -877,5 +889,27 @@ py_test(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras",
+    ],
+)
+
+py_library(
+    name = "distributed_file_utils",
+    srcs = [
+        "distributed_file_utils.py",
+    ],
+    deps = [
+        "//tensorflow/python:lib",
+        "//tensorflow/python/distribute:distribute_lib",
+    ],
+)
+
+py_test(
+    name = "distributed_file_utils_test",
+    srcs = ["distributed_file_utils_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":distributed_file_utils",
+        "//tensorflow/python:client_testlib",
     ],
 )

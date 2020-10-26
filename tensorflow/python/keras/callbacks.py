@@ -35,12 +35,12 @@ import six
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import distribute_lib
-from tensorflow.python.distribute import distributed_file_utils
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.distribute import distributed_file_utils
 from tensorflow.python.keras.distribute import worker_training_state
 from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 from tensorflow.python.keras.utils import generic_utils
