@@ -1110,23 +1110,35 @@ static tensorflow::int64 FastTensorId(PyObject* tensor) {
   return id;
 }
 
-static tensorflow::DataType FastTensorDtype(PyObject* tensor) {
+namespace tensorflow {
+DataType PyTensor_DataType(PyObject* tensor) {
   if (EagerTensor_CheckExact(tensor)) {
     return PyEagerTensor_Dtype(tensor);
+  } else {
+#if PY_MAJOR_VERSION < 3
+    // Python 2.x:
+    static PyObject* dtype_attr = PyString_InternFromString("dtype");
+    static PyObject* type_enum_attr = PyString_InternFromString("_type_enum");
+#else
+    // Python 3.x:
+    static PyObject* dtype_attr = PyUnicode_InternFromString("dtype");
+    static PyObject* type_enum_attr = PyUnicode_InternFromString("_type_enum");
+#endif
+    Safe_PyObjectPtr dtype_field(PyObject_GetAttr(tensor, dtype_attr));
+    if (!dtype_field) {
+      return DT_INVALID;
+    }
+
+    Safe_PyObjectPtr enum_field(
+        PyObject_GetAttr(dtype_field.get(), type_enum_attr));
+    if (!enum_field) {
+      return DT_INVALID;
+    }
+
+    return static_cast<DataType>(MakeInt(enum_field.get()));
   }
-  PyObject* dtype_field = PyObject_GetAttrString(tensor, "dtype");
-  if (dtype_field == nullptr) {
-    return tensorflow::DT_INVALID;
-  }
-  PyObject* enum_field = PyObject_GetAttrString(dtype_field, "_type_enum");
-  Py_DECREF(dtype_field);
-  if (enum_field == nullptr) {
-    return tensorflow::DT_INVALID;
-  }
-  tensorflow::int64 id = MakeInt(enum_field);
-  Py_DECREF(enum_field);
-  return static_cast<tensorflow::DataType>(id);
 }
+}  // namespace tensorflow
 
 class PyTapeTensor {
  public:
@@ -1423,9 +1435,9 @@ PyObject* PyTapeTensor::OnesLike() const {
     return py_vspace->OnesLike(tensor);
   }
   PyObject* py_shape = GetShape();
-  PyObject* py_dtype = GetPyDType();
-  PyObject* result = py_vspace->Ones(py_shape, py_dtype);
-  Py_DECREF(py_dtype);
+  PyObject* dtype_field = GetPyDType();
+  PyObject* result = py_vspace->Ones(py_shape, dtype_field);
+  Py_DECREF(dtype_field);
   Py_DECREF(py_shape);
   return result;
 }
@@ -1436,9 +1448,9 @@ PyObject* PyTapeTensor::ZerosLike() const {
     return py_vspace->ZerosLike(tensor);
   }
   PyObject* py_shape = GetShape();
-  PyObject* py_dtype = GetPyDType();
-  PyObject* result = py_vspace->Zeros(py_shape, py_dtype);
-  Py_DECREF(py_dtype);
+  PyObject* dtype_field = GetPyDType();
+  PyObject* result = py_vspace->Zeros(py_shape, dtype_field);
+  Py_DECREF(dtype_field);
   Py_DECREF(py_shape);
   return result;
 }
@@ -1929,7 +1941,7 @@ bool TensorShapesAndDtypes(PyObject* tensors,
   for (int i = 0; i < len; ++i) {
     PyObject* item = seq_array[i];
     tensor_ids->push_back(FastTensorId(item));
-    dtypes->push_back(FastTensorDtype(item));
+    dtypes->push_back(tensorflow::PyTensor_DataType(item));
   }
   return true;
 }
@@ -2238,7 +2250,7 @@ std::vector<tensorflow::DataType> MakeTensorDtypeList(PyObject* tensors) {
   list.reserve(len);
   for (int i = 0; i < len; ++i) {
     PyObject* tensor = seq_array[i];
-    list.push_back(FastTensorDtype(tensor));
+    list.push_back(tensorflow::PyTensor_DataType(tensor));
   }
   Py_DECREF(seq);
   return list;
@@ -2790,7 +2802,8 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
       if (result[i] == nullptr) {
         if (unconnected_gradients_zero) {
           // generate a zeros tensor in the shape of sources[i]
-          tensorflow::DataType dtype = FastTensorDtype(sources_obj[i]);
+          tensorflow::DataType dtype =
+              tensorflow::PyTensor_DataType(sources_obj[i]);
           PyTapeTensor tensor =
               PyTapeTensor(sources_vec[i], dtype, sources_obj[i]);
           result[i] = tensor.ZerosLike();
@@ -2886,7 +2899,7 @@ PyObject* TFE_Py_PackJVPs(PyObject* tensors) {
     if (input == Py_None) {
       continue;
     }
-    tensorflow::DataType input_dtype(FastTensorDtype(input));
+    tensorflow::DataType input_dtype(tensorflow::PyTensor_DataType(input));
     if (input_dtype == tensorflow::DT_INVALID) {
       return nullptr;
     }
@@ -3058,7 +3071,7 @@ bool CheckInputsOk(PyObject* seq, int start_index,
 
 tensorflow::DataType MaybeGetDType(PyObject* item) {
   if (EagerTensor_CheckExact(item) || CheckResourceVariable(item)) {
-    return FastTensorDtype(item);
+    return tensorflow::PyTensor_DataType(item);
   }
 
   return tensorflow::DT_INVALID;
