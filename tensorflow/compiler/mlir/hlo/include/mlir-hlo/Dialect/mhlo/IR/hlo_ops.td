@@ -699,7 +699,8 @@ def HLO_CompareOp: HLO_Op<"compare", [NoSideEffect, SameTypeOperands,
 def HLO_SliceOp: HLO_Op<
       "slice",
       [NoSideEffect, SameOperandsAndResultElementType,
-       AllTypesMatch<["start_indices", "limit_indices", "strides"]>]> {
+       AllTypesMatch<["start_indices", "limit_indices", "strides"]>,
+       DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let arguments = (ins
     HLO_Tensor:$operand,
     I64ElementsAttr:$start_indices,
@@ -711,21 +712,6 @@ def HLO_SliceOp: HLO_Op<
 
   let hasCanonicalizer = 1;
   let hasFolder = 1;
-
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, Value operand, "
-    "DenseIntElementsAttr start_indices, DenseIntElementsAttr limit_indices, "
-    "DenseIntElementsAttr strides"
-  >];
-
-  let extraClassDeclaration = [{
-    // Infers output type for given operand and attributes. Result type is
-    // unranked if any of the attributes is illegal.
-    static Type InferOutputTypes(Builder *builder, Value operand,
-                                 DenseIntElementsAttr start_indices,
-                                 DenseIntElementsAttr limit_indices,
-                                 DenseIntElementsAttr strides);
-  }];
 }
 
 def HLO_DynamicSliceOp: HLO_Op<"dynamic-slice",
