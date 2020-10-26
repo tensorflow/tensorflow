@@ -4,7 +4,7 @@
 
 * `tf.distribute` introduces experimental support for asynchronous training of Keras models via the [`tf.distribute.experimental.ParameterServerStrategy`](https://www.tensorflow.org/api_docs/python/tf/distribute/experimental/ParameterServerStrategy?version=nightly) API. Please see below for additional details.
 
-* Improved and robust [`MultiWorkerMirroredStrategy`](https://www.tensorflow.org/api_docs/python/tf/distribute/MultiWorkerMirroredStrategy) has graduated out of experimental and is now part of the Core APIs. Some of the major improvements involve handling peer failure and model saving. Please check out the detailed tutorial on [Multi-worker training with Keras](https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras)
+* [`MultiWorkerMirroredStrategy`](https://www.tensorflow.org/api_docs/python/tf/distribute/MultiWorkerMirroredStrategy) is now a stable API and is no longer considered experimental. Some of the major improvements involve handling peer failure and model saving. Please check out the detailed tutorial on [Multi-worker training with Keras](https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras)
 
 * Introduces experimental support for a new module named [`tf.experimental.numpy`](https://www.tensorflow.org/api_docs/python/tf/experimental/numpy) which is a NumPy-compatible API for writing TF programs. See the [detailed guide](https://www.tensorflow.org/guide/tf_numpy) to learn more. Additional details below. 
 
@@ -133,7 +133,7 @@
     * Added `tf.distribute.experimental.coordinator.*` namespace, including the main API `ClusterCoordinator` for coordinating the training cluster, the related       data structure `RemoteValue` and `PerWorkerValue`.
 
 ### `tf.keras`:
-  * Improvements from the functional API refactoring:
+  * Improvements from the Functional API refactoring:
     * Functional model construction does not need to maintain a global workspace graph, removing memory leaks especially when building many
       models or very large models.
     * Functional model construction should be ~8-10% faster on average.
