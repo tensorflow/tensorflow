@@ -2061,6 +2061,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "XlaSelfAdjointEig",
                                      "XlaSend",
                                      "XlaSetBound",
+                                     "XlaSetDynamicDimensionSize",
                                      "XlaSharding",
                                      "XlaSort",
                                      "XlaSpmdFullToShardShape",
