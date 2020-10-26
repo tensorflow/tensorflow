@@ -300,6 +300,7 @@ cc_library(
         ":hlo_utils",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:status_macros",

@@ -157,6 +157,16 @@ def : Pat<(HLO_SelectOp $cond, $t, $e), (TF_SelectOp $cond, $t, $e)>;
 def : Pat<(HLO_ConcatenateOp $inputs, $dim),
           (TF_ConcatV2Op $inputs, (TF_ConstOp $dim))>;
 
+class HasCompareType<string value> :
+    CPred<"$_self.cast<StringAttr>().getValue() == \"" # value # "\"">;
+
+// Attribute value should be such that it matches the comparison used by
+// TensorFlow, if the attribute is present.
+def IsTFCompareType : AttrConstraint<
+   Or<[CPred<"!$_self">, HasCompareType<"FLOAT">, HasCompareType<"SIGNED">,
+       HasCompareType<"UNSIGNED">]>,
+   "compare type supported by TensorFlow">;
+
 //===----------------------------------------------------------------------===//
 // Compare op patterns.
 // Note that these are legalized from chlo.broadcast_* ops, since those are
@@ -166,18 +176,22 @@ def : Pat<(HLO_ConcatenateOp $inputs, $dim),
 
 foreach p = [[TF_EqualOp, HLO_COMPARISON_DIRECTION_EQ],
              [TF_NotEqualOp, HLO_COMPARISON_DIRECTION_NE]] in {
-  def : Pat<(HLOClient_BroadcastCompareOp $l, $r, $_, p[1]), (p[0] $l, $r, ConstBoolAttrTrue),
+  def : Pat<(HLOClient_BroadcastCompareOp $l, $r, $_, p[1], IsTFCompareType:$type),
+            (p[0] $l, $r, ConstBoolAttrTrue),
             [(AreBroadcastCompatible $l, $r)]>;
-  def : Pat<(HLO_CompareOp $l, $r, p[1]), (p[0] $l, $r, ConstBoolAttrTrue)>;
+  def : Pat<(HLO_CompareOp $l, $r, p[1], IsTFCompareType:$type),
+            (p[0] $l, $r, ConstBoolAttrTrue)>;
 }
 
 foreach pair = [[TF_GreaterEqualOp, HLO_COMPARISON_DIRECTION_GE],
                 [TF_GreaterOp, HLO_COMPARISON_DIRECTION_GT],
                 [TF_LessEqualOp, HLO_COMPARISON_DIRECTION_LE],
                 [TF_LessOp, HLO_COMPARISON_DIRECTION_LT]] in {
-  def : Pat<(HLOClient_BroadcastCompareOp $l, $r, $_, pair[1]), (pair[0] $l, $r),
+  def : Pat<(HLOClient_BroadcastCompareOp $l, $r, $_, pair[1], IsTFCompareType:$type),
+            (pair[0] $l, $r),
             [(AreBroadcastCompatible $l, $r)]>;
-  def : Pat<(HLO_CompareOp $l, $r, pair[1]), (pair[0] $l, $r)>;
+  def : Pat<(HLO_CompareOp $l, $r, pair[1], IsTFCompareType:$type),
+            (pair[0] $l, $r)>;
 }
 
 def ConvertDotOp : NativeCodeCall<"ConvertDotOp($_builder, "

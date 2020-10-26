@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/xla/attribute_importer.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
+#include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -305,7 +306,12 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       MakeAndReturn(CustomCallOp);
     }
     case HloOpcode::kCompare: {
-      attributes.push_back(ConvertComparisonDirection(instruction));
+      auto compare = Cast<HloCompareInstruction>(instruction);
+      attributes.push_back(ConvertComparisonDirection(compare->direction()));
+      auto default_type = Comparison::DefaultComparisonType(
+          compare->operand(0)->shape().element_type());
+      if (compare->type() != default_type)
+        attributes.push_back(ConvertComparisonType(compare->type()));
       MakeAndReturn(CompareOp);
     }
     case HloOpcode::kCholesky: {
@@ -855,11 +861,16 @@ StatusOr<Value> HloFunctionImporter::GetMlirValue(HloInstruction* instruction) {
 }
 
 mlir::NamedAttribute HloFunctionImporter::ConvertComparisonDirection(
-    HloInstruction* instruction) {
+    ComparisonDirection direction) {
   return builder_->getNamedAttr(
       "comparison_direction",
-      builder_->getStringAttr(
-          ComparisonDirectionToString(instruction->comparison_direction())));
+      builder_->getStringAttr(ComparisonDirectionToString(direction)));
+}
+
+mlir::NamedAttribute HloFunctionImporter::ConvertComparisonType(
+    Comparison::Type type) {
+  return builder_->getNamedAttr(
+      "compare_type", builder_->getStringAttr(ComparisonTypeToString(type)));
 }
 
 mlir::DenseIntElementsAttr HloFunctionImporter::ConvertDimensions(

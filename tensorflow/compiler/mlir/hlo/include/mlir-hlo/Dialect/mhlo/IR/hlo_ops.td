@@ -680,16 +680,19 @@ def HLO_CompareOp: HLO_Op<"compare", [NoSideEffect, SameTypeOperands,
   let arguments = (ins
     HLO_Tensor:$lhs,
     HLO_Tensor:$rhs,
-    HLO_ComparisonDirectionAttr:$comparison_direction
+    HLO_ComparisonDirectionAttr:$comparison_direction,
+    OptionalAttr<HLO_ComparisonTypeAttr>:$compare_type
   );
   let results = (outs HLO_PredTensor);
 
   let hasFolder = 1;
 
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, Value lhs, Value rhs, "
-    "StringAttr comparison_direction"
-  >];
+  let builders = [
+    OpBuilder<"OpBuilder &builder, OperationState &result, Value lhs, Value rhs, "
+              "StringAttr comparison_direction, StringAttr compare_type = {}">,
+  ];
+
+  let hasCustomHLOConverter = 1;
 }
 
 //===----------------------------------------------------------------------===//

@@ -2611,10 +2611,12 @@ void UnaryEinsumOp::getCanonicalizationPatterns(
 //===----------------------------------------------------------------------===//
 
 void CompareOp::build(OpBuilder& builder, OperationState& result, Value lhs,
-                      Value rhs, StringAttr comparison_direction) {
+                      Value rhs, StringAttr comparison_direction,
+                      StringAttr compare_type) {
   auto new_type =
       UpdateResultElementType(&builder, lhs.getType(), builder.getI1Type());
-  build(builder, result, new_type, lhs, rhs, comparison_direction);
+  build(builder, result, new_type, lhs, rhs, comparison_direction,
+        compare_type);
 }
 
 LogicalResult CompareOp::inferReturnTypeComponents(

@@ -731,6 +731,28 @@ LogicalResult ExportXlaOp(CaseOp op, OpLoweringContext ctx) {
   return success();
 }
 
+// Specialize CompareOp export to set broadcast_dimensions argument.
+mlir::LogicalResult ExportXlaOp(mlir::mhlo::CompareOp op,
+                                OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaOp lhs, rhs;
+  if (failed(GetXlaOp(op.lhs(), value_map, &lhs, op))) return mlir::failure();
+  if (failed(GetXlaOp(op.rhs(), value_map, &rhs, op))) return mlir::failure();
+  auto dir = Convert_comparison_direction(op.comparison_direction());
+  auto type_attr = op.compare_typeAttr();
+
+  xla::XlaOp xla_result;
+  if (type_attr) {
+    auto type =
+        xla::StringToComparisonType(type_attr.getValue().str()).ValueOrDie();
+    xla_result = xla::Compare(lhs, rhs, /*broadcast_dimensions=*/{}, dir, type);
+  } else {
+    xla_result = xla::Compare(lhs, rhs, dir);
+  }
+  value_map[op] = xla_result;
+  return mlir::success();
+}
+
 LogicalResult ExportXlaOp(ConstOp op, OpLoweringContext ctx) {
   return failure();
 }
