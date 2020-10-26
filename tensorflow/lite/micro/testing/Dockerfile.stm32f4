@@ -13,21 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 
-using sysbus
+# This docker configuration file lets you emulate a stm32f4 board
+# on an x86 desktop or laptop, which can be useful for debugging and
+# automated testing.
+FROM antmicro/renode:latest
 
-mach create
-machine LoadPlatformDescription @platforms/cpus/stm32f4.repl
-
-# These lines are needed to show the results of DebugLog calls in the output.
-machine LoadPlatformDescriptionFromString "uartSemihosting: UART.SemihostingUart @ cpu"
-showAnalyzer cpu.uartSemihosting Antmicro.Renode.Analyzers.LoggingUartAnalyzer
-
-logFile @/tmp/renode_stm32f4_log.txt
-
-macro reset
-"""
-    sysbus LoadELF $bin
-"""
-
-runMacro $reset
-
+LABEL maintainer="Pete Warden <petewarden@google.com>"

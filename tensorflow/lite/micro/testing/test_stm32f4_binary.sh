@@ -27,30 +27,30 @@
 declare -r ROOT_DIR=`pwd`
 declare -r TEST_TMPDIR=/tmp/test_stm32f4_binary/
 declare -r MICRO_LOG_PATH=${TEST_TMPDIR}
-declare -r MICRO_LOG_FILENAME=${MICRO_LOG_PATH}logs.txt
+declare -r MICRO_LOG_FILENAME=${MICRO_LOG_PATH}/logs.txt
 mkdir -p ${MICRO_LOG_PATH}
 
-if [ -e $MICRO_LOG_FILENAME ]; then
-    rm $MICRO_LOG_FILENAME &> /dev/null
-fi;
+docker build -t renode_stm32f4 \
+  -f ${ROOT_DIR}/tensorflow/lite/micro/testing/Dockerfile.stm32f4 \
+  ${ROOT_DIR}/tensorflow/lite/micro/testing/
 
 exit_code=0
-
-if ! BIN=${ROOT_DIR}/$1 \
-  SCRIPT=${ROOT_DIR}/tensorflow/lite/micro/testing/stm32f4.resc \
-  LOGFILE=$MICRO_LOG_FILENAME \
-  EXPECTED="$2" \
-  ${ROOT_DIR}/tensorflow/lite/micro/tools/make/downloads/renode/test.sh \
-  ${ROOT_DIR}/tensorflow/lite/micro/testing/stm32f4.robot \
-  -r $TEST_TMPDIR &> ${MICRO_LOG_PATH}robot_logs.txt
+# running in `if` to avoid setting +e
+if ! docker run \
+  --log-driver=none -a stdout -a stderr \
+  -v ${ROOT_DIR}:/workspace \
+  -v /tmp:/tmp \
+  -e BIN=/workspace/$1 \
+  -e SCRIPT=/workspace/tensorflow/lite/micro/testing/stm32f4.resc \
+  -e EXPECTED="$2" \
+  -it renode_stm32f4 \
+  /bin/bash -c "/opt/renode/tests/test.sh /workspace/tensorflow/lite/micro/testing/stm32f4.robot 2>&1 >${MICRO_LOG_FILENAME}"
 then
   exit_code=1
 fi
 
-
 echo "LOGS:"
-# Extract output from renode log
-cat ${MICRO_LOG_FILENAME} |grep 'uartSemihosting' |sed 's/^.*from start] *//g'
+cat ${MICRO_LOG_FILENAME}
 if [ $exit_code -eq 0 ]
 then
   echo "$1: PASS"
