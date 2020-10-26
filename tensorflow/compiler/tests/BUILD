@@ -1298,7 +1298,7 @@ tf_xla_py_test(
     name = "stateless_random_ops_test",
     size = "medium",
     srcs = ["stateless_random_ops_test.py"],
-    enable_mlir_bridge = True,
+    enable_mlir_bridge = False,  # TODO(rocm): no_rocm, need to re-enable this for ROCm
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
