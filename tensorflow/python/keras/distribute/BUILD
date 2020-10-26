@@ -436,10 +436,7 @@ distribute_py_test(
     tags = [
         "broken",  # b/170975619
         "multi_and_single_gpu",
-<<<<<<< HEAD
-=======
         "no_cuda_asan",  # times out
->>>>>>> google_upstream/master
         "no_rocm",
         "no_windows_gpu",
         "notsan",

@@ -160,12 +160,8 @@ class LayerCorrectnessTest(keras_parameterized.TestCase):
         will be randomly generated
     """
 
-<<<<<<< HEAD:tensorflow/python/keras/mixed_precision/experimental/layer_correctness_test.py
-    if f32_layer_fn==convolutional.ZeroPadding2D and test.is_built_with_rocm():
-=======
     if f32_layer_fn == convolutional.ZeroPadding2D and \
        test.is_built_with_rocm():
->>>>>>> google_upstream/master:tensorflow/python/keras/mixed_precision/layer_correctness_test.py
       return
     if isinstance(input_shape[0], int):
       input_shapes = [input_shape]

@@ -45,6 +45,10 @@ tf_cuda_library(
         "//tensorflow/core/profiler/lib:profiler_factory",
         "//tensorflow/core/profiler/lib:profiler_interface",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:parse_annotation",
+        "//tensorflow/core/profiler/utils:xplane_builder",
+        "//tensorflow/core/profiler/utils:xplane_schema",
+        "//tensorflow/core/profiler/utils:xplane_utils",
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -142,7 +146,6 @@ tf_cuda_library(
 )
 
 tf_cuda_library(
-<<<<<<< HEAD
     name = "rocm_tracer",
     srcs = if_rocm_is_configured_compat(["rocm_tracer.cc"]),
     hdrs = if_rocm_is_configured_compat(["rocm_tracer.h"]),
@@ -157,7 +160,10 @@ tf_cuda_library(
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/container:node_hash_set",
         "@com_google_absl//absl/types:optional",
-=======
+    ],
+)
+
+tf_cuda_library(
     name = "cupti_collector",
     srcs = if_cuda_is_configured_compat(["cupti_collector.cc"]),
     hdrs = if_cuda_is_configured_compat(["cupti_collector.h"]),
@@ -176,7 +182,6 @@ tf_cuda_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:node_hash_set",
         "@com_google_absl//absl/strings",
->>>>>>> google_upstream/master
     ],
 )
 

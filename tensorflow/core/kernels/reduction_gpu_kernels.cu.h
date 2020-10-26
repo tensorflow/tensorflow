@@ -1319,82 +1319,54 @@ struct ReduceFunctor<GPUDevice, functor::MeanReducer<Eigen::half>> {
 };
 
 template <typename T>
-<<<<<<< HEAD
-struct ReduceFunctor<GPUDevice, Eigen::internal::MaxReducer<T>> {
-  using TM = typename MapComplexToHipComplex<T>::TM;
-  template <typename OUT_T, typename IN_T, typename ReductionAxes>
-  static void Reduce(OpKernelContext* ctx, OUT_T out, IN_T in,
-                     const ReductionAxes& reduction_axes,
-                     const Eigen::internal::MaxReducer<T>& reducer) {
-    ReduceImpl<TM, gpuprim::Max, TM*, TM*, ReductionAxes>(
-        ctx, (TM*)out.data(), (TM*)in.data(), in.rank(), in.dimension(0),
-=======
 struct ReduceFunctor<GPUDevice,
                      Eigen::internal::MaxReducer<T, Eigen::PropagateNaN>> {
+  using TM = typename MapComplexToHipComplex<T>::TM;
   template <typename OUT_T, typename IN_T, typename ReductionAxes>
   static void Reduce(
       OpKernelContext* ctx, OUT_T out, IN_T in,
       const ReductionAxes& reduction_axes,
       const Eigen::internal::MaxReducer<T, Eigen::PropagateNaN>& reducer) {
-    ReduceImpl<T, MaxPropagateNaN, T*, T*, ReductionAxes>(
-        ctx, (T*)out.data(), (T*)in.data(), in.rank(), in.dimension(0),
->>>>>>> google_upstream/master
+    ReduceImpl<TM, MaxPropagateNaN, TM*, TM*, ReductionAxes>(
+        ctx, (TM*)out.data(), (TM*)in.data(), in.rank(), in.dimension(0),
         in.rank() >= 2 ? in.dimension(1) : 1,
         in.rank() >= 3 ? in.dimension(2) : 1, out.rank(), reduction_axes,
         MaxPropagateNaN());
   }
 
   template <typename OUT_T>
-<<<<<<< HEAD
-  static void FillIdentity(const GPUDevice& d, OUT_T out,
-                           const Eigen::internal::MaxReducer<T>& reducer) {
-    FillIdentityEigenImplWithCast<T>(d, To32Bit(out), Eigen::internal::MaxReducer<TM>());
-=======
   static void FillIdentity(
       const GPUDevice& d, OUT_T out,
       const Eigen::internal::MaxReducer<T, Eigen::PropagateNaN>& reducer) {
-    FillIdentityEigenImpl(d, To32Bit(out), reducer);
->>>>>>> google_upstream/master
+    FillIdentityEigenImplWithCast<T>(
+        d, To32Bit(out),
+        Eigen::internal::MaxReducer<TM, Eigen::PropagateNaN>());
   }
 };
 
 template <typename T>
-<<<<<<< HEAD
-struct ReduceFunctor<GPUDevice, Eigen::internal::MinReducer<T>> {
-  using TM = typename MapComplexToHipComplex<T>::TM;
-  template <typename OUT_T, typename IN_T, typename ReductionAxes>
-  static void Reduce(OpKernelContext* ctx, OUT_T out, IN_T in,
-                     const ReductionAxes& reduction_axes,
-                     const Eigen::internal::MinReducer<T>& reducer) {
-    ReduceImpl<TM, gpuprim::Min, TM*, TM*, ReductionAxes>(
-        ctx, (TM*)out.data(), (TM*)in.data(), in.rank(), in.dimension(0),
-=======
 struct ReduceFunctor<GPUDevice,
                      Eigen::internal::MinReducer<T, Eigen::PropagateNaN>> {
+  using TM = typename MapComplexToHipComplex<T>::TM;
   template <typename OUT_T, typename IN_T, typename ReductionAxes>
   static void Reduce(
       OpKernelContext* ctx, OUT_T out, IN_T in,
       const ReductionAxes& reduction_axes,
       const Eigen::internal::MinReducer<T, Eigen::PropagateNaN>& reducer) {
-    ReduceImpl<T, MinPropagateNaN, T*, T*, ReductionAxes>(
-        ctx, (T*)out.data(), (T*)in.data(), in.rank(), in.dimension(0),
->>>>>>> google_upstream/master
+    ReduceImpl<TM, MinPropagateNaN, TM*, TM*, ReductionAxes>(
+        ctx, (TM*)out.data(), (TM*)in.data(), in.rank(), in.dimension(0),
         in.rank() >= 2 ? in.dimension(1) : 1,
         in.rank() >= 3 ? in.dimension(2) : 1, out.rank(), reduction_axes,
         MinPropagateNaN());
   }
 
   template <typename OUT_T>
-<<<<<<< HEAD
-  static void FillIdentity(const GPUDevice& d, OUT_T out,
-                           const Eigen::internal::MinReducer<T>& reducer) {
-    FillIdentityEigenImplWithCast<T>(d, To32Bit(out), Eigen::internal::MinReducer<TM>());
-=======
   static void FillIdentity(
       const GPUDevice& d, OUT_T out,
       const Eigen::internal::MinReducer<T, Eigen::PropagateNaN>& reducer) {
-    FillIdentityEigenImpl(d, To32Bit(out), reducer);
->>>>>>> google_upstream/master
+    FillIdentityEigenImplWithCast<T>(
+        d, To32Bit(out),
+        Eigen::internal::MinReducer<TM, Eigen::PropagateNaN>());
   }
 };
 

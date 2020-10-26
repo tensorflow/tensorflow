@@ -1898,13 +1898,9 @@ tf_py_test(
     srcs = ["parameter_server_strategy_v2_test.py"],
     python_version = "PY3",
     tags = [
-<<<<<<< HEAD
         "no_rocm",
-        "notsan",  # b/168675975
-=======
         "no_windows",  # TODO(171349346)
         "notsan",  # TODO(b/168675975)
->>>>>>> google_upstream/master
     ],
     deps = [
         ":multi_worker_test_base",

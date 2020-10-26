@@ -94,10 +94,6 @@ struct IndirectLinearData {
   Entry* const backing_data;
 };
 
-<<<<<<< HEAD
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-=======
->>>>>>> google_upstream/master
 template <typename T>
 struct StridedData {
   typedef impl::Entry<T> Entry;
@@ -471,11 +467,7 @@ Status LaunchSortKernel(OpKernelContext* ctx, const T* input, int num_rows,
 
   gpuprim::CountingInputIterator<int> counting_iter(0);
   gpuprim::TransformInputIterator<int, SegmentOffsetCreator,
-<<<<<<< HEAD
-                              gpuprim::CountingInputIterator<int>>
-=======
                                   gpuprim::CountingInputIterator<int>>
->>>>>>> google_upstream/master
       segment_offsets_t(counting_iter, SegmentOffsetCreator(num_cols));
 
   Tensor temp_values;
