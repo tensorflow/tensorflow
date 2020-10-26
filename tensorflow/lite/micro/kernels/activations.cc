@@ -205,12 +205,12 @@ TfLiteStatus Relu6Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, input != nullptr);
 
   if (input->type == kTfLiteInt8) {
-    data->six_int8 = FloatToAsymmetricQuantizedInt8(6.0f, input->params.scale,
-                                                    input->params.zero_point);
+    data->six_int8 = FloatToQuantizedType<int8_t>(6.0f, input->params.scale,
+                                                  input->params.zero_point);
     data->zero_int8 = input->params.zero_point;
   } else if (input->type == kTfLiteUInt8) {
-    data->six_uint8 = FloatToAsymmetricQuantizedUInt8(6.0f, input->params.scale,
-                                                      input->params.zero_point);
+    data->six_uint8 = FloatToQuantizedType<uint8_t>(6.0f, input->params.scale,
+                                                    input->params.zero_point);
     data->zero_uint8 = input->params.zero_point;
   }
 

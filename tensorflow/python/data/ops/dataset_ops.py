@@ -2070,7 +2070,7 @@ name=None))
         stride of the input elements in the sliding window. Must be positive.
         The default value of 1 means "retain every input element".
       drop_remainder: (Optional.) A `tf.bool` scalar `tf.Tensor`, representing
-        whether the last window should be dropped if its size is smaller than
+        whether the last windows should be dropped if their size is smaller than
         `size`.
 
     Returns:

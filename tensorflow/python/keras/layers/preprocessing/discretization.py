@@ -25,8 +25,9 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import boosted_trees_ops
+from tensorflow.python.ops import gen_boosted_trees_ops
 from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.parallel_for import control_flow_ops
 from tensorflow.python.ops.ragged import ragged_functional_ops
 from tensorflow.python.util.tf_export import keras_export
@@ -91,9 +92,9 @@ class Discretization(base_preprocessing_layer.PreprocessingLayer):
 
   def call(self, inputs):
     def _bucketize_op(bins):
-      bins = [gen_math_ops.cast(bins, dtypes.float32)]
-      return lambda inputs: boosted_trees_ops.boosted_trees_bucketize(  # pylint: disable=g-long-lambda
-          float_values=[gen_math_ops.cast(inputs, dtypes.float32)],
+      bins = [math_ops.cast(bins, dtypes.float32)]
+      return lambda inputs: gen_boosted_trees_ops.BoostedTreesBucketize(  # pylint: disable=g-long-lambda
+          float_values=[math_ops.cast(inputs, dtypes.float32)],
           bucket_boundaries=bins)[0]
 
     if tf_utils.is_ragged(inputs):
@@ -105,10 +106,10 @@ class Discretization(base_preprocessing_layer.PreprocessingLayer):
       # this can cause errors in Graph mode, so wrap the tensor in an identity.
       return array_ops.identity(integer_buckets)
     elif isinstance(inputs, sparse_tensor.SparseTensor):
-      integer_buckets = boosted_trees_ops.boosted_trees_bucketize(
-          [gen_math_ops.cast(inputs.values, dtypes.float32)],
-          bucket_boundaries=[gen_math_ops.cast(array_ops.squeeze(self.bins),
-                                               dtypes.float32)])[0]
+      integer_buckets = gen_boosted_trees_ops.BoostedTreesBucketize(
+          float_values=[math_ops.cast(inputs.values, dtypes.float32)],
+          bucket_boundaries=[math_ops.cast(array_ops.squeeze(self.bins),
+                                           dtypes.float32)])[0]
       return sparse_tensor.SparseTensor(
           indices=array_ops.identity(inputs.indices),
           values=integer_buckets,

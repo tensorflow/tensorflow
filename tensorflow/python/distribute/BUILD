@@ -153,8 +153,9 @@ py_library(
         ":multi_process_runner",
         ":multi_worker_test_base",
         ":one_device_strategy",
+        ":parameter_server_strategy_v2",
         ":sharded_variable",
-        "//tensorflow/python/distribute/client",
+        "//tensorflow/python/distribute/coordinator:cluster_coordinator",
         "//tensorflow/python/distribute/experimental",
     ],
 )
@@ -428,16 +429,24 @@ py_library(
         ":collective_util",
         ":cross_device_ops",
         ":cross_device_utils",
+        ":device_util",
+        ":distribute_lib",
+        ":distribute_utils",
         ":input_lib",
         ":mirrored_strategy",
         ":multi_worker_util",
         ":numpy_dataset",
+        ":reduce_util",
         ":values",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:collective_ops",
+        "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:tf_export",
         "//tensorflow/python:training",
+        "//tensorflow/python:util",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
     ],
@@ -462,6 +471,7 @@ cuda_py_test(
     ],
     python_version = "PY3",
     tags = [
+        "notap",  # TODO(b/171355671)
         "notsan",  # TODO(b/151841995)
     ],
     deps = [
@@ -1036,7 +1046,6 @@ cuda_py_test(
     name = "cross_device_utils_test",
     srcs = ["cross_device_utils_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":combinations",
         ":cross_device_utils",
@@ -1058,6 +1067,10 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
+        "no_cuda_asan",  # times out
+    ],
+    xla_tags = [
+        "no_cuda_asan",  # times out
     ],
     deps = [
         ":collective_util",
@@ -1103,9 +1116,15 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:composite_tensor",
+        "//tensorflow/python:embedding_ops",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:partitioned_variables",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tf_export",
+        "//tensorflow/python:type_spec",
+        "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/saved_model:save_context",
         "//tensorflow/python/training/saving:saveable_object_util",
@@ -1125,11 +1144,13 @@ tf_py_test(
         ":sharded_variable",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:session",
+        "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
@@ -1184,6 +1205,7 @@ distribute_py_test(
     shard_count = 5,
     tags = [
         "multi_and_single_gpu",
+        "no_cuda_asan",  # times out
         "no_rocm",
         "notsan",  # b/168645872
     ],
@@ -1673,6 +1695,7 @@ py_test(
     srcs = ["multi_process_runner_test.py"],
     python_version = "PY3",
     shard_count = 12,
+    tags = ["no_oss_py38"],  #TODO(b/171435331)
     deps = [
         ":multi_process_runner",
         ":multi_worker_test_base",
@@ -1761,7 +1784,7 @@ distribute_py_test(
     srcs = ["strategy_gather_test.py"],
     disable_mlir_bridge = False,
     python_version = "PY3",
-    shard_count = 2,
+    shard_count = 4,
     tags = [
         "multi_and_single_gpu",
         "notsan",  # TODO(b/160006974)
@@ -1875,19 +1898,24 @@ tf_py_test(
     srcs = ["parameter_server_strategy_v2_test.py"],
     python_version = "PY3",
     tags = [
+<<<<<<< HEAD
         "no_rocm",
         "notsan",  # b/168675975
+=======
+        "no_windows",  # TODO(171349346)
+        "notsan",  # TODO(b/168675975)
+>>>>>>> google_upstream/master
     ],
     deps = [
         ":multi_worker_test_base",
         ":parameter_server_strategy_v2",
         ":sharded_variable",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python:init_ops_v2",
         "//tensorflow/python:linalg_ops_impl",
-        "//tensorflow/python:partitioned_variables",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",

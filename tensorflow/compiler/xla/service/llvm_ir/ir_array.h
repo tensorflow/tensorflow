@@ -110,15 +110,12 @@ class IrArray {
 
     bool LinearValidOnShape(const Shape& a) const;
 
+    static bool ShapeIsCompatible(const Shape& a, const Shape& b);
+
     bool ShapeIsCompatible(const Shape& a) const {
-      Shape own_shape = ShapeUtil::MakeShape(a.element_type(), dims_);
-      *own_shape.mutable_layout() = layout_;
-      // The shape 'a' could have dynamic dimensions set. Before we check for
-      // equality, we need to copy the information which dimensions are dynamic.
-      for (int64 i = 0; i < a.rank(); ++i) {
-        own_shape.set_dynamic_dimension(i, a.is_dynamic_dimension(i));
-      }
-      return ShapeUtil::Equal(own_shape, a);
+      return ShapeIsCompatible(
+          a, ShapeUtil::MakeShapeWithLayout(a.element_type(), dims_,
+                                            layout_.minor_to_major()));
     }
 
     // Given that "this" is the target index of a reshape from `input_shape`

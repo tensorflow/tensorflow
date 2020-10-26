@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import copy
 import numpy as np
 import six
@@ -66,7 +67,7 @@ def get_reachable_from_inputs(inputs, targets=None):
   reachable = object_identity.ObjectIdentitySet(inputs)
   if targets:
     remaining_targets = object_identity.ObjectIdentitySet(nest.flatten(targets))
-  queue = inputs[:]
+  queue = collections.deque(inputs)
 
   while queue:
     x = queue.pop()
@@ -93,7 +94,7 @@ def get_reachable_from_inputs(inputs, targets=None):
         reachable.add(y)
         if targets:
           remaining_targets.discard(y)
-        queue.insert(0, y)
+        queue.appendleft(y)
 
     if targets and not remaining_targets:
       return reachable

@@ -112,18 +112,18 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
       int num_replicas);
 
   StatusOr<ChannelHandle> CreateChannelHandle() {
-    return pjrt_client_->client()->CreateChannelHandle();
+    return pjrt_client_->CreateChannelHandle();
   }
   StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() {
-    return pjrt_client_->client()->CreateDeviceToHostChannelHandle();
+    return pjrt_client_->CreateDeviceToHostChannelHandle();
   }
   StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() {
-    return pjrt_client_->client()->CreateHostToDeviceChannelHandle();
+    return pjrt_client_->CreateHostToDeviceChannelHandle();
   }
 
   StatusOr<std::unique_ptr<PyBuffer>> BufferFromPyval(
       const pybind11::object& argument, PjRtDevice* device, bool force_copy,
-      PjRtBuffer::HostBufferSemantics host_buffer_semantics);
+      PjRtClient::HostBufferSemantics host_buffer_semantics);
 
   StatusOr<std::shared_ptr<PyExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options);

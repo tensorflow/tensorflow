@@ -31,6 +31,9 @@ class MlirBridgePass : public MlirOptimizationPass {
 
   bool IsEnabled(const ConfigProto& config_proto) const override {
     return config_proto.experimental().enable_mlir_bridge() ||
+           config_proto.experimental().mlir_bridge_rollout() ==
+               tensorflow::ConfigProto::Experimental::
+                   MLIR_BRIDGE_ROLLOUT_ENABLED ||
            tensorflow::GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge ==
                tensorflow::ConfigProto::Experimental::
                    MLIR_BRIDGE_ROLLOUT_ENABLED;
@@ -50,7 +53,10 @@ class MlirBridgeV1CompatPass : public MlirV1CompatOptimizationPass {
 
   bool IsEnabled(const ConfigProto& config_proto) const override {
     return config_proto.experimental().enable_mlir_bridge() ||
-           GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge ==
+           config_proto.experimental().mlir_bridge_rollout() ==
+               tensorflow::ConfigProto::Experimental::
+                   MLIR_BRIDGE_ROLLOUT_ENABLED ||
+           tensorflow::GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge ==
                tensorflow::ConfigProto::Experimental::
                    MLIR_BRIDGE_ROLLOUT_ENABLED;
   }

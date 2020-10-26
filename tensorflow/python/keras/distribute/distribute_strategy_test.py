@@ -29,7 +29,6 @@ from tensorflow.python.data.experimental.ops.distribute_options import AutoShard
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.distribute import central_storage_strategy
-from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
@@ -52,7 +51,7 @@ from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.keras.distribute import distributed_training_utils_v1
 from tensorflow.python.keras.distribute import optimizer_combinations
 from tensorflow.python.keras.engine import base_layer_utils
-from tensorflow.python.keras.mixed_precision.experimental import policy
+from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
 from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.ops import array_ops
@@ -1151,9 +1150,6 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
     if mode == 'graph' and _is_tpu_strategy(distribution):
       self.skipTest('partial batch not supported with TPU in graph mode.')
 
-    if isinstance(distribution,
-                  collective_all_reduce_strategy.CollectiveAllReduceStrategy):
-      self.skipTest('EOF error causes subsequent collective ops fail.')
     with self.cached_session():
       with distribution.scope():
         optimizer_fn = gradient_descent_keras.SGD
@@ -1166,8 +1162,8 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
             loss,
             metrics=metrics)
 
-      inputs = np.zeros((1000, 3), dtype=np.float32)
-      targets = np.zeros((1000, 4), dtype=np.float32)
+      inputs = np.zeros((100, 3), dtype=np.float32)
+      targets = np.zeros((100, 4), dtype=np.float32)
       # steps/steps_per_epoch are calculated when using numpy arrays as
       # input data.
       fit_with_numpy = model.fit(
@@ -2453,12 +2449,11 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
         task_type='worker',
         task_id=1,
         num_accelerators={'GPU': 0})
-    distribution = parameter_server_strategy.ParameterServerStrategy(
+    distribution = parameter_server_strategy.ParameterServerStrategyV1(
         cluster_resolver)
 
     self.assertIsInstance(distribution,
-                          (parameter_server_strategy.ParameterServerStrategyV1,
-                           parameter_server_strategy.ParameterServerStrategy))
+                          parameter_server_strategy.ParameterServerStrategyV1)
 
     with self.assertRaisesRegex(NotImplementedError,
                                 'ParameterServerStrategy*'):

@@ -458,6 +458,7 @@ filegroup(
     srcs = [
         "include/mlir/Dialect/StandardOps/IR/Ops.td",
         "include/mlir/IR/OpAsmInterface.td",
+        "include/mlir/IR/SymbolInterfaces.td",
         "include/mlir/Interfaces/CallInterfaces.td",
         "include/mlir/Interfaces/ControlFlowInterfaces.td",
         "include/mlir/Interfaces/SideEffectInterfaces.td",

@@ -64,7 +64,6 @@ cuda_py_test(
     tags = [
         "no_pip",
     ],
-    tfrt_enabled = True,
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
     deps = [
         ":model_analyzer_testlib",

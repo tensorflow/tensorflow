@@ -821,6 +821,7 @@ def aot_compile_cpu(args):
     variables_to_feed = None  # We will identify them after.
   else:
     variables_to_feed = args.variables_to_feed.split(',')
+
   saved_model_aot_compile.aot_compile_cpu_meta_graph_def(
       checkpoint_path=checkpoint_path,
       meta_graph_def=saved_model_utils.get_meta_graph_def(
@@ -831,7 +832,7 @@ def aot_compile_cpu(args):
       target_triple=args.target_triple,
       target_cpu=args.target_cpu,
       cpp_class=args.cpp_class,
-      enable_multithreading=args.enable_multithreading)
+      multithreading=args.multithreading.lower() not in ('f', 'false', '0'))
 
 
 def add_show_subparser(subparsers):
@@ -1140,11 +1141,13 @@ def add_aot_compile_cpu_subparser(subparsers):
             '(this applies to all input arguments from the signature as '
             'well).'))
   parser_compile.add_argument(
-      '--enable_multithreading',
-      type=bool,
-      default='',
-      help=('*NOT CURRENTLY SUPPORTED*  '
-            'Enable multithreading in the compiled computation.'))
+      '--multithreading',
+      type=str,
+      default='False',
+      help=('Enable multithreading in the compiled computation.  '
+            'Note that if using this option, the resulting object files '
+            'may have external dependencies on multithreading libraries '
+            'like nsync.'))
 
   parser_compile.set_defaults(func=aot_compile_cpu)
 

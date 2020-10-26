@@ -454,6 +454,20 @@ Optional<ContractionFusion> BiasAddOp::GetContractionFusion() {
   return ContractionFusion("BiasAdd", /*additional_arguments=*/{1});
 }
 
+LogicalResult BiasAddOp::UpdateDataFormat(StringRef data_format) {
+  return ::mlir::TF::UpdateDataFormat(data_format, this);
+}
+
+StringRef BiasAddOp::GetOptimalLayout(const RuntimeDevices &devices) {
+  // Keep current data format if no GPUs are available or if explicit placement
+  // does not allow to use GPU for this operation.
+  if (!CanUseGpuDevice(devices) || !CanUseGpuDevice(getOperation()))
+    return data_format();
+
+  // Prefer NHWC for GPU devices.
+  return "NHWC";
+}
+
 //===----------------------------------------------------------------------===//
 // BiasAddGradOp
 //===----------------------------------------------------------------------===//
@@ -1121,15 +1135,6 @@ LogicalResult ConcatOffsetOp::fold(ArrayRef<Attribute> operands,
   }
 
   return success();
-}
-
-//===----------------------------------------------------------------------===//
-// ConjOp
-//===----------------------------------------------------------------------===//
-
-void ConjOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                         MLIRContext *context) {
-  results.insert<ConjNested>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2186,15 +2191,6 @@ void IfRegionOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 }
 
 //===----------------------------------------------------------------------===//
-// InvertOp
-//===----------------------------------------------------------------------===//
-
-void InvertOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                           MLIRContext *context) {
-  results.insert<InvertNested>(context);
-}
-
-//===----------------------------------------------------------------------===//
 // InvertPermutationOp
 //===----------------------------------------------------------------------===//
 
@@ -2257,9 +2253,9 @@ void LogOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 
 void LogicalNotOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
-  results.insert<LogicalNotNested, LogicalNotOfEqual, LogicalNotOfNotEqual,
-                 LogicalNotOfGreater, LogicalNotOfGreaterEqual,
-                 LogicalNotOfLess, LogicalNotOfLessEqual>(context);
+  results.insert<LogicalNotOfEqual, LogicalNotOfNotEqual, LogicalNotOfGreater,
+                 LogicalNotOfGreaterEqual, LogicalNotOfLess,
+                 LogicalNotOfLessEqual>(context);
 }
 
 //===----------------------------------------------------------------------===//

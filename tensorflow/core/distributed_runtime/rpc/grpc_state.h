@@ -84,7 +84,8 @@ class RPCState : public GrpcClientCQTag {
                 return false;
               }
             }(),
-            /*timeout_in_ms=*/0, max_retries, target) {
+            (call_opts != nullptr ? call_opts->GetTimeout() : 0), max_retries,
+            target) {
   }
 
   template <typename Request>

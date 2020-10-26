@@ -1194,7 +1194,7 @@ def check_steps_argument(input_data, steps, steps_name):
         but not provided.
   """
   is_x_iterator = isinstance(
-      input_data, (iterator_ops.Iterator, iterator_ops.OwnedIterator))
+      input_data, (iterator_ops.Iterator, iterator_ops.IteratorBase))
   if (input_data is None or is_x_iterator or has_symbolic_tensors(input_data) or
       (isinstance(input_data, list) and not input_data)):
     if steps is None:
@@ -1418,7 +1418,7 @@ def is_feature_layer(layer):
 def is_eager_dataset_or_iterator(data):
   return context.executing_eagerly() and isinstance(
       data, (dataset_ops.DatasetV1, dataset_ops.DatasetV2,
-             iterator_ops.OwnedIterator))
+             iterator_ops.IteratorBase))
 
 
 # pylint: disable=protected-access
@@ -1456,7 +1456,7 @@ def verify_dataset_shuffled(x):
 
 def is_dataset_or_iterator(data):
   return isinstance(data, (dataset_ops.DatasetV1, dataset_ops.DatasetV2,
-                           iterator_ops.Iterator, iterator_ops.OwnedIterator))
+                           iterator_ops.Iterator, iterator_ops.IteratorBase))
 
 
 def get_iterator(dataset):
@@ -1741,7 +1741,7 @@ def unpack_validation_data(validation_data, raise_if_ambiguous=True):
     tuple of 3, (x, y, sample_weights) for numpy and tensor input.
   """
   if (isinstance(validation_data, (iterator_ops.Iterator,
-                                   iterator_ops.OwnedIterator,
+                                   iterator_ops.IteratorBase,
                                    dataset_ops.DatasetV2,
                                    data_utils.Sequence))
       or not hasattr(validation_data, '__len__')):

@@ -63,7 +63,6 @@ tf_py_test(
         "no_rocm",
         "notsan",  # b/168814536
     ],
-    tfrt_enabled = True,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",

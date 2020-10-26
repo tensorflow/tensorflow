@@ -205,11 +205,6 @@ class InputTypeSpecTest(test.TestCase, parameterized.TestCase):
       combinations.combine(
           mode=["eager"],
           distribution=[
-              strategy_combinations.one_device_strategy,
-              strategy_combinations.mirrored_strategy_with_one_cpu,
-              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-              strategy_combinations.tpu_strategy,
-              strategy_combinations.central_storage_strategy_with_gpu_and_cpu,
               strategy_combinations.multi_worker_mirrored_2x1_cpu,
               strategy_combinations.multi_worker_mirrored_2x1_gpu,
               strategy_combinations.multi_worker_mirrored_2x2_gpu,
@@ -321,11 +316,9 @@ class InputTypeSpecTest(test.TestCase, parameterized.TestCase):
               strategy_combinations.multi_worker_mirrored_2x2_gpu,
           ],
           tf_api_version=2,
-          enable_get_next_as_optional=[True, False],
           drop_remainder=[True, False],
       ))
   def testFromDatasetDoesNotTriggerFunctionTracing(self, distribution,
-                                                   enable_get_next_as_optional,
                                                    drop_remainder):
     self.trace_count = 0
 
@@ -334,8 +327,7 @@ class InputTypeSpecTest(test.TestCase, parameterized.TestCase):
       del v
       self.trace_count += 1
 
-    distribution.extended.experimental_enable_get_next_as_optional = (
-        enable_get_next_as_optional)
+    distribution.extended.experimental_enable_get_next_as_optional = True
     # Total dataset size 5 allows us to have full batches, partial batches and
     # empty batches.
     dataset = dataset_ops.DatasetV2.from_tensor_slices(np.ones((5, 3))).batch(
@@ -354,11 +346,10 @@ class InputTypeSpecTest(test.TestCase, parameterized.TestCase):
               strategy_combinations.multi_worker_mirrored_2x2_gpu,
           ],
           tf_api_version=2,
-          enable_get_next_as_optional=[True, False],
           drop_remainder=[True, False],
       ))
   def testFromDatasetFileShardingDoesNotTriggerFunctionTracing(
-      self, distribution, enable_get_next_as_optional, drop_remainder):
+      self, distribution, drop_remainder):
     # Create files that produce partial/empty batches at different batch.
     fname1 = os.path.join(self.get_temp_dir(), "1.txt")
     _create_text_file(fname1, 5)
@@ -372,8 +363,7 @@ class InputTypeSpecTest(test.TestCase, parameterized.TestCase):
       del v
       self.trace_count += 1
 
-    distribution.extended.experimental_enable_get_next_as_optional = (
-        enable_get_next_as_optional)
+    distribution.extended.experimental_enable_get_next_as_optional = True
     dataset = readers.TextLineDatasetV2([fname1, fname2]).batch(
         4, drop_remainder=drop_remainder)
     dataset = distribution.experimental_distribute_dataset(dataset)
@@ -390,11 +380,10 @@ class InputTypeSpecTest(test.TestCase, parameterized.TestCase):
               strategy_combinations.multi_worker_mirrored_2x2_gpu,
           ],
           tf_api_version=2,
-          enable_get_next_as_optional=[True, False],
           drop_remainder=[True, False],
       ))
-  def testFromFunctionDoesNotTriggerFunctionTracing(
-      self, distribution, enable_get_next_as_optional, drop_remainder):
+  def testFromFunctionDoesNotTriggerFunctionTracing(self, distribution,
+                                                    drop_remainder):
 
     def dataset_fn(input_context):
       # Total dataset size 5 allows us to have full batches, partial batches and
@@ -413,8 +402,7 @@ class InputTypeSpecTest(test.TestCase, parameterized.TestCase):
       del v
       self.trace_count += 1
 
-    distribution.extended.experimental_enable_get_next_as_optional = (
-        enable_get_next_as_optional)
+    distribution.extended.experimental_enable_get_next_as_optional = True
     dataset = distribution.experimental_distribute_datasets_from_function(
         dataset_fn)
     for v in iter(dataset):
@@ -430,11 +418,10 @@ class InputTypeSpecTest(test.TestCase, parameterized.TestCase):
               strategy_combinations.multi_worker_mirrored_2x2_gpu,
           ],
           tf_api_version=2,
-          enable_get_next_as_optional=[True, False],
           drop_remainder=[True, False],
       ))
   def testFromFunctionFileShardingDoesNotTriggerFunctionTracing(
-      self, distribution, enable_get_next_as_optional, drop_remainder):
+      self, distribution, drop_remainder):
     # Create files that produce partial/empty batches at different batch.
     fname1 = os.path.join(self.get_temp_dir(), "1.txt")
     _create_text_file(fname1, 5)
@@ -456,8 +443,7 @@ class InputTypeSpecTest(test.TestCase, parameterized.TestCase):
       del v
       self.trace_count += 1
 
-    distribution.extended.experimental_enable_get_next_as_optional = (
-        enable_get_next_as_optional)
+    distribution.extended.experimental_enable_get_next_as_optional = True
     dataset = distribution.experimental_distribute_datasets_from_function(
         dataset_fn)
     for v in iter(dataset):

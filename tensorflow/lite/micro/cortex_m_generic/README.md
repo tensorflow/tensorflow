@@ -1,3 +1,5 @@
+<!-- mdformat off(b/169948621#comment2) -->
+
 # Generic Cortex-Mx customizations
 
 The customization requires a definition where the debug log goes to. The purpose
@@ -13,42 +15,51 @@ See debug_log_callback.h
 
 # How to build
 
-Required parameters: - TARGET: cortex_m_generic - TARGET_ARCH: cortex-mXX (For
-all options see:
-tensorflow/lite/micro/tools/make/targets/cortex_m_generic_makefile.inc)
+Required parameters:
 
-Optional parameters: - TOOLCHAIN: armgcc (default) or armmclang - For
-Cortex-M55, ARM Compiler 6.14 or later is required.
+  - TARGET: cortex_m_generic
+  - TARGET_ARCH: cortex-mXX (For all options see: tensorflow/lite/micro/tools/make/targets/cortex_m_generic_makefile.inc)
+
+Optional parameters:
+
+  - TOOLCHAIN: gcc (default) or armmclang
+  - For Cortex-M55, ARM Compiler 6.14 or later is required.
 
 Some examples:
 
-Building with arm-gcc ``` make -f tensorflow/lite/micro/tools/make/Makefile
-TARGET=cortex_m_generic TARGET_ARCH=cortex-m7 microlite make -f
-tensorflow/lite/micro/tools/make/Makefile TARGET=cortex_m_generic
-TARGET_ARCH=cortex-m7 TAGS=cmsis-nn microlite
+Building with arm-gcc
 
-make -f tensorflow/lite/micro/tools/make/Makefile TARGET=cortex_m_generic
-TARGET_ARCH=cortex-m4 TAGS=cmsis-nn microlite make -f
-tensorflow/lite/micro/tools/make/Makefile TARGET=cortex_m_generic
-TARGET_ARCH=cortex-m4+fp TAGS=cmsis-nn microlite ```
+```
+make -f tensorflow/lite/micro/tools/make/Makefile TARGET=cortex_m_generic TARGET_ARCH=cortex-m7 microlite
+make -f tensorflow/lite/micro/tools/make/Makefile TARGET=cortex_m_generic TARGET_ARCH=cortex-m7 TAGS=cmsis-nn microlite
 
-Building with armclang `make -f tensorflow/lite/micro/tools/make/Makefile
-TOOLCHAIN=armclang TARGET=cortex_m_generic TARGET_ARCH=cortex-m55 microlite make
--f tensorflow/lite/micro/tools/make/Makefile TOOLCHAIN=armclang
-TARGET=cortex_m_generic TARGET_ARCH=cortex-m55 TAGS=cmsis-nn microlite make -f
-tensorflow/lite/micro/tools/make/Makefile TOOLCHAIN=armclang
-TARGET=cortex_m_generic TARGET_ARCH=cortex-m55+nofp TAGS=cmsis-nn microlite`
+make -f tensorflow/lite/micro/tools/make/Makefile TARGET=cortex_m_generic TARGET_ARCH=cortex-m4 TAGS=cmsis-nn microlite
+make -f tensorflow/lite/micro/tools/make/Makefile TARGET=cortex_m_generic TARGET_ARCH=cortex-m4+fp TAGS=cmsis-nn microlite
+```
+
+Building with armclang
+
+```
+make -f tensorflow/lite/micro/tools/make/Makefile TOOLCHAIN=armclang TARGET=cortex_m_generic TARGET_ARCH=cortex-m55 microlite
+make -f tensorflow/lite/micro/tools/make/Makefile TOOLCHAIN=armclang TARGET=cortex_m_generic TARGET_ARCH=cortex-m55 TAGS=cmsis-nn microlite
+make -f tensorflow/lite/micro/tools/make/Makefile TOOLCHAIN=armclang TARGET=cortex_m_generic TARGET_ARCH=cortex-m55+nofp TAGS=cmsis-nn microlite
+```
 
 The Tensorflow Lite Micro makefiles download a specific version of the arm-gcc
-compiler to tensorflow/lite/micro/tools/make/downloads/gcc_embedded. If desired,
-a different version can be used by providing `TARGET_TOOLCHAIN_ROOT` option to
-the Makefile. `make -f tensorflow/lite/micro/tools/make/Makefile
-TARGET=cortex_m_generic TARGET_ARCH=cortex-m4
-TARGET_TOOLCHAIN_ROOT=/path/to/arm-gcc/ microlite`
+compiler to tensorflow/lite/micro/tools/make/downloads/gcc_embedded.
+
+If desired, a different version can be used by providing `TARGET_TOOLCHAIN_ROOT`
+option to the Makefile:
+
+```
+make -f tensorflow/lite/micro/tools/make/Makefile TARGET=cortex_m_generic TARGET_ARCH=cortex-m4+fp TARGET_TOOLCHAIN_ROOT=/path/to/arm-gcc/ microlite
+```
 
 Similarly, `TAGS=cmsis-nn` downloads a specific version of CMSIS to
 tensorflow/lite/micro/tools/make/downloads/cmsis. While this is the only version
 that is regularly tested, you can use your own version of CMSIS as well by
-providing `CMSIS_PATH` to the Makefile: `make -f
-tensorflow/lite/micro/tools/make/Makefile TARGET=cortex_m_generic
-TARGET_ARCH=cortex-m4 TAGS=cmsis-nn CMSIS_PATH=/path/to/own/cmsis microlite`
+providing `CMSIS_PATH` to the Makefile:
+
+```
+make -f tensorflow/lite/micro/tools/make/Makefile TARGET=cortex_m_generic TARGET_ARCH=cortex-m4+fp TAGS=cmsis-nn CMSIS_PATH=/path/to/own/cmsis microlite
+```

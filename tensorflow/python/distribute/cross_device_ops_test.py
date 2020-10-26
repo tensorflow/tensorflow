@@ -46,9 +46,11 @@ from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.util import nest
 
-CommunicationImplemenation = collective_util.CommunicationImplemenation
+CommunicationImplementation = collective_util.CommunicationImplementation
 ReduceOp = reduce_util.ReduceOp
 IndexedSlicesValue = indexed_slices.IndexedSlicesValue
 IndexedSlices = indexed_slices.IndexedSlices
@@ -203,10 +205,11 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
           "reduce_op",
           "communication_options",
           "use_scoped_allocator",
+          "use_collective_v2",
       ])
   RunOptions.__new__.__defaults__ = (["eager",
                                       "func_graph"], 2, 0, ReduceOp.SUM,
-                                     collective_util.Options(), True)
+                                     collective_util.Options(), True, False)
 
   def reduce_and_verify(self, inputs, expect, options):
     """Reduce the given `inputs` and verify the output matches `expect`.
@@ -220,6 +223,8 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
     """
 
     def replica_fn():
+      cross_device_utils.CollectiveReplicaLauncher._use_collective_v2 = (
+          options.use_collective_v2)
       collective, devices, pid = self.make_collective(options.num_processes,
                                                       options.gpus_per_process)
 
@@ -259,6 +264,8 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
     def replica_fn():
       cross_device_utils.CollectiveReplicaLauncher._use_scoped_allocator = (
           options.use_scoped_allocator)
+      cross_device_utils.CollectiveReplicaLauncher._use_collective_v2 = (
+          options.use_collective_v2)
       collective, devices, pid = self.make_collective(options.num_processes,
                                                       options.gpus_per_process)
 
@@ -300,18 +307,20 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
           implementation=[
               # NCCL is only used for batch reduce, so we are not including
               # NCCL combination here.
-              CommunicationImplemenation.AUTO,
-              CommunicationImplemenation.RING
+              CommunicationImplementation.AUTO,
+              CommunicationImplementation.RING
           ],
-          reduce_op=[ReduceOp.SUM, ReduceOp.MEAN]))
+          reduce_op=[ReduceOp.SUM, ReduceOp.MEAN],
+          use_collective_v2=[True, False]))
   def testAllReduceDense(self, num_processes, required_gpus, implementation,
-                         reduce_op):
+                         reduce_op, use_collective_v2):
     options = self.RunOptions(
         num_processes=num_processes,
         gpus_per_process=required_gpus,
         reduce_op=reduce_op,
         communication_options=collective_util.Options(
-            implementation=implementation))
+            implementation=implementation),
+        use_collective_v2=use_collective_v2)
     group_size = options.num_processes * (options.gpus_per_process or 1)
 
     inputs_data = [1.0, 2.0, 3.0, 4.0]
@@ -333,20 +342,22 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
           implementation=[
               # NCCL is only used for batch reduce, so we are not including
               # NCCL combination here.
-              CommunicationImplemenation.AUTO,
-              CommunicationImplemenation.RING
+              CommunicationImplementation.AUTO,
+              CommunicationImplementation.RING
           ],
           # TODO(b/166682130): add MEAN reduce once the bug is fixed.
-          reduce_op=ReduceOp.SUM))
+          reduce_op=ReduceOp.SUM,
+          use_collective_v2=[True, False]))
   def testAllReduceSparse(self, num_processes, required_gpus, implementation,
-                          reduce_op):
+                          reduce_op, use_collective_v2):
     options = self.RunOptions(
         mode=["func_graph"],  # Sparse reduce is not supported in eager.
         num_processes=num_processes,
         gpus_per_process=required_gpus,
         reduce_op=reduce_op,
         communication_options=collective_util.Options(
-            implementation=implementation))
+            implementation=implementation),
+        use_collective_v2=use_collective_v2)
     group_size = options.num_processes * (options.gpus_per_process or 1)
 
     inputs_data = [
@@ -377,7 +388,8 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
 
     self.reduce_and_verify(inputs, expect, options)
 
-  def testAllReduceSparseVariableLength(self):
+  @combinations.generate(combinations.combine(use_collective_v2=[True, False]))
+  def testAllReduceSparseVariableLength(self, use_collective_v2):
     # One device per process, 2 processes, 2 replicas in total.
     inputs = [
         IndexedSlicesValue(values=[[1.]], indices=[0], dense_shape=[10, 1]),
@@ -394,23 +406,28 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
         self.RunOptions(
             mode=["func_graph"],  # Sparse reduce is not supported in eager.
             num_processes=2,
-            reduce_op=ReduceOp.SUM))
+            reduce_op=ReduceOp.SUM,
+            use_collective_v2=use_collective_v2))
 
   @combinations.generate(
       combinations.combine(
           num_processes=[1, 2],
           required_gpus=[0, 1, 2],
           implementation=[
-              CommunicationImplemenation.AUTO, CommunicationImplemenation.RING,
-              CommunicationImplemenation.NCCL
+              CommunicationImplementation.AUTO,
+              CommunicationImplementation.RING, CommunicationImplementation.NCCL
           ],
           reduce_op=[ReduceOp.SUM, ReduceOp.MEAN],
-          use_scoped_allocator=[True, False]))
+          use_scoped_allocator=[True, False],
+          use_collective_v2=[True, False]))
   def testBatchAllReduceDense(self, num_processes, required_gpus,
-                              implementation, reduce_op, use_scoped_allocator):
-    if required_gpus == 0 and implementation == CommunicationImplemenation.NCCL:
+                              implementation, reduce_op, use_scoped_allocator,
+                              use_collective_v2):
+    if (required_gpus == 0 and
+        implementation == CommunicationImplementation.NCCL):
       self.skipTest("Skip CPU + NCCL combination")
-    if num_processes == 2 and implementation == CommunicationImplemenation.NCCL:
+    if (num_processes == 2 and
+        implementation == CommunicationImplementation.NCCL):
       self.skipTest("Skip NCCL + 2 processes combination. NCCL requires "
                     "physical GPUs for every process.")
 
@@ -420,7 +437,8 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
         reduce_op=reduce_op,
         communication_options=collective_util.Options(
             implementation=implementation),
-        use_scoped_allocator=use_scoped_allocator)
+        use_scoped_allocator=use_scoped_allocator,
+        use_collective_v2=use_collective_v2)
     group_size = options.num_processes * (options.gpus_per_process or 1)
 
     inputs_data = [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0]]
@@ -440,18 +458,22 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
           num_processes=[1, 2],
           required_gpus=[0, 1, 2],
           implementation=[
-              CommunicationImplemenation.AUTO,
-              CommunicationImplemenation.RING,
-              CommunicationImplemenation.NCCL,
+              CommunicationImplementation.AUTO,
+              CommunicationImplementation.RING,
+              CommunicationImplementation.NCCL,
           ],
           # TODO(b/166682130): add MEAN reduce once the bug is fixed.
           reduce_op=ReduceOp.SUM,
-          use_scoped_allocator=[True, False]))
+          use_scoped_allocator=[True, False],
+          use_collective_v2=[True, False]))
   def testBatchAllReduceSparse(self, num_processes, required_gpus,
-                               implementation, reduce_op, use_scoped_allocator):
-    if required_gpus == 0 and implementation == CommunicationImplemenation.NCCL:
+                               implementation, reduce_op, use_scoped_allocator,
+                               use_collective_v2):
+    if (required_gpus == 0 and
+        implementation == CommunicationImplementation.NCCL):
       self.skipTest("Skip CPU + NCCL combination")
-    if num_processes == 2 and implementation == CommunicationImplemenation.NCCL:
+    if (num_processes == 2 and
+        implementation == CommunicationImplementation.NCCL):
       self.skipTest("Skip NCCL + 2 processes combination. NCCL requires "
                     "physical GPUs for every process.")
 
@@ -462,7 +484,8 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
         reduce_op=reduce_op,
         communication_options=collective_util.Options(
             implementation=implementation),
-        use_scoped_allocator=use_scoped_allocator)
+        use_scoped_allocator=use_scoped_allocator,
+        use_collective_v2=use_collective_v2)
     group_size = options.num_processes * (options.gpus_per_process or 1)
 
     inputs_data = ([
@@ -526,13 +549,16 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
           axis=[0, 1, 2],
           func_mode=["eager", "func_graph"],
           implementation=[
-              CommunicationImplemenation.NCCL, CommunicationImplemenation.AUTO,
-              CommunicationImplemenation.RING
-          ]))
+              CommunicationImplementation.NCCL,
+              CommunicationImplementation.AUTO, CommunicationImplementation.RING
+          ],
+          use_collective_v2=[True, False]))
   def testAllGatherSameShape(self, num_processes, required_gpus, implementation,
-                             func_mode, axis):
+                             func_mode, axis, use_collective_v2):
 
     def replica_fn():
+      cross_device_utils.CollectiveReplicaLauncher._use_collective_v2 = (
+          use_collective_v2)
       collective, devices, _ = self.make_collective(num_processes,
                                                     required_gpus)
       options = collective_util.Options(implementation=implementation)
@@ -565,16 +591,51 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(
+          num_processes=[1, 2],
+          required_gpus=[0, 1, 2],
+          implementation=[CommunicationImplementation.RING]))
+  def testCollectiveV2ControlFlow(self, num_processes, required_gpus,
+                                  implementation):
+
+    def replica_fn():
+      cross_device_utils.CollectiveReplicaLauncher._use_collective_v2 = True
+      collective, devices, _ = self.make_collective(num_processes,
+                                                    required_gpus)
+      options = collective_util.Options(implementation=implementation)
+      value = make_per_replica_value(constant_op.constant([1.]), devices)
+
+      @def_function.function
+      def reduce_fn():
+
+        def cond_body():
+          reduced = collective.reduce(reduce_util.ReduceOp.SUM, value, value,
+                                      options)
+          return math_ops.add_n(self.as_list(reduced)) / len(devices)
+
+        return control_flow_ops.cond(
+            array_ops.identity(False), cond_body, cond_body)
+
+      num_replicas = num_processes * len(devices)
+      self.assertAllEqual(reduce_fn(), [1. * num_replicas])
+
+    get_global_mpr(num_processes).run(replica_fn)
+
+  @combinations.generate(
+      combinations.combine(
           num_processes=1,
           required_gpus=2,
           implementation=[
-              CommunicationImplemenation.NCCL, CommunicationImplemenation.RING
-          ]))
+              CommunicationImplementation.NCCL, CommunicationImplementation.RING
+          ],
+          use_collective_v2=[True, False]))
   def testMultiThreadedCollectiveLaunchNoInterleave(self, num_processes,
                                                     required_gpus,
-                                                    implementation):
+                                                    implementation,
+                                                    use_collective_v2):
 
     def replica_fn():
+      cross_device_utils.CollectiveReplicaLauncher._use_collective_v2 = (
+          use_collective_v2)
       collective, devices, _ = self.make_collective(num_processes,
                                                     required_gpus)
       options = collective_util.Options(implementation=implementation)
@@ -626,12 +687,15 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
           num_processes=1,
           required_gpus=2,
           implementation=[
-              CommunicationImplemenation.NCCL, CommunicationImplemenation.RING
-          ]))
+              CommunicationImplementation.NCCL, CommunicationImplementation.RING
+          ],
+          use_collective_v2=[True, False]))
   def testInputsAreFunctionArgs(self, num_processes, required_gpus,
-                                implementation):
+                                implementation, use_collective_v2):
 
     def replica_fn():
+      cross_device_utils.CollectiveReplicaLauncher._use_collective_v2 = (
+          use_collective_v2)
       collective, devices, _ = self.make_collective(num_processes,
                                                     required_gpus)
       options = collective_util.Options(implementation=implementation)
@@ -664,11 +728,14 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
       combinations.combine(
           num_processes=2,
           required_gpus=[0, 1],
-          implementation=[CommunicationImplemenation.RING]))
-  def testTimeoutReduceDense(self, num_processes, implementation,
-                             required_gpus):
+          implementation=[CommunicationImplementation.RING],
+          use_collective_v2=[True, False]))
+  def testTimeoutReduceDense(self, num_processes, implementation, required_gpus,
+                             use_collective_v2):
 
     def replica_fn():
+      cross_device_utils.CollectiveReplicaLauncher._use_collective_v2 = (
+          use_collective_v2)
       collective, devices, task_id = self.make_collective(
           num_processes, required_gpus)
       if task_id != 0:
@@ -680,7 +747,7 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
 
       @def_function.function
       def reduce_dense():
-        collective.reduce(reduce_util.ReduceOp.SUM, v, v, options)
+        return collective.reduce(reduce_util.ReduceOp.SUM, v, v, options)
 
       # The collective should time out because we only launch it on worker-0,
       # while there're three workers in total.
@@ -693,11 +760,14 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
       combinations.combine(
           num_processes=2,
           required_gpus=[0, 1],
-          implementation=[CommunicationImplemenation.RING]))
+          implementation=[CommunicationImplementation.RING],
+          use_collective_v2=[True, False]))
   def testTimeoutBatchReduceDense(self, num_processes, implementation,
-                                  required_gpus):
+                                  required_gpus, use_collective_v2):
 
     def replica_fn():
+      cross_device_utils.CollectiveReplicaLauncher._use_collective_v2 = (
+          use_collective_v2)
       collective, devices, task_id = self.make_collective(
           num_processes, required_gpus)
       if task_id != 0:
@@ -709,8 +779,8 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
 
       @def_function.function
       def batch_reduce_dense():
-        collective.batch_reduce(reduce_util.ReduceOp.SUM, [(v, v), (v, v)],
-                                options)
+        return collective.batch_reduce(reduce_util.ReduceOp.SUM,
+                                       [(v, v), (v, v)], options)
 
       # The collective should time out because we only launch it on worker-0,
       # while there're two workers in total.
@@ -723,11 +793,14 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
       combinations.combine(
           num_processes=2,
           required_gpus=[0, 1],
-          implementation=[CommunicationImplemenation.RING]))
+          implementation=[CommunicationImplementation.RING],
+          use_collective_v2=[True, False]))
   def testTimeoutReduceSparse(self, num_processes, implementation,
-                              required_gpus):
+                              required_gpus, use_collective_v2):
 
     def replica_fn():
+      cross_device_utils.CollectiveReplicaLauncher._use_collective_v2 = (
+          use_collective_v2)
       collective, devices, task_id = self.make_collective(
           num_processes, required_gpus)
       if task_id != 0:
@@ -741,7 +814,7 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
 
       @def_function.function
       def reduce_sparse():
-        collective.reduce(reduce_util.ReduceOp.SUM, v, v, options)
+        return collective.reduce(reduce_util.ReduceOp.SUM, v, v, options)
 
       # The collective should time out because we only launch it on worker-0,
       # while there're two workers in total.
@@ -754,11 +827,14 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
       combinations.combine(
           num_processes=2,
           required_gpus=[0, 1],
-          implementation=[CommunicationImplemenation.RING]))
+          implementation=[CommunicationImplementation.RING],
+          use_collective_v2=[True, False]))
   def testTimeoutBatchReduceSparse(self, num_processes, required_gpus,
-                                   implementation):
+                                   implementation, use_collective_v2):
 
     def replica_fn():
+      cross_device_utils.CollectiveReplicaLauncher._use_collective_v2 = (
+          use_collective_v2)
       collective, devices, task_id = self.make_collective(
           num_processes, required_gpus)
       if task_id != 0:
@@ -772,8 +848,8 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
 
       @def_function.function
       def batch_reduce_sparse():
-        collective.batch_reduce(reduce_util.ReduceOp.SUM, [(v, v), (v, v)],
-                                options)
+        return collective.batch_reduce(reduce_util.ReduceOp.SUM,
+                                       [(v, v), (v, v)], options)
 
       # The collective should time out because we only launch it on worker-0,
       # while there're two workers in total.

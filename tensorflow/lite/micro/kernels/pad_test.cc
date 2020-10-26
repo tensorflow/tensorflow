@@ -101,10 +101,9 @@ void TestPadFloat(const int* input_dims_data, const float* input_data,
   constexpr int inputs_size = 2;
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
-  TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims),
-      CreateInt32Tensor(pad_data, pad_dims),
-      CreateFloatTensor(output_data, output_dims)};
+  TfLiteTensor tensors[tensors_size] = {CreateTensor(input_data, input_dims),
+                                        CreateTensor(pad_data, pad_dims),
+                                        CreateTensor(output_data, output_dims)};
 
   // Pad tensor must be constant.
   tensors[1].allocation_type = kTfLiteMmapRo;
@@ -130,10 +129,9 @@ void TestPadV2Float(const int* input_dims_data, const float* input_data,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims),
-      CreateInt32Tensor(pad_data, pad_dims),
-      CreateFloatTensor(&pad_value, pad_value_dims),
-      CreateFloatTensor(output_data, output_dims)};
+      CreateTensor(input_data, input_dims), CreateTensor(pad_data, pad_dims),
+      CreateTensor(&pad_value, pad_value_dims),
+      CreateTensor(output_data, output_dims)};
 
   // Pad tensor must be constant.
   tensors[1].allocation_type = kTfLiteMmapRo;
@@ -161,15 +159,15 @@ void TestPadQuantized(const int* input_dims_data, const float* input_data,
   TfLiteTensor tensors[tensors_size] = {
       CreateQuantizedTensor(input_data, input_quantized, input_dims,
                             input_scale, input_zero_point),
-      CreateInt32Tensor(pad_data, pad_dims),
+      CreateTensor(pad_data, pad_dims),
       CreateQuantizedTensor(output_data, output_dims, output_scale,
                             output_zero_point)};
 
   // Pad tensor must be constant.
   tensors[1].allocation_type = kTfLiteMmapRo;
 
-  tflite::AsymmetricQuantize(golden, golden_quantized, output_dims_count,
-                             output_scale, output_zero_point);
+  tflite::Quantize(golden, golden_quantized, output_dims_count, output_scale,
+                   output_zero_point);
   TF_LITE_MICRO_EXPECT_EQ(
       expected_status,
       ValidatePadGoldens(tensors, tensors_size, golden_quantized, output_data,
@@ -200,7 +198,7 @@ void TestPadV2Quantized(const int* input_dims_data, const float* input_data,
   TfLiteTensor tensors[tensors_size] = {
       CreateQuantizedTensor(input_data, input_quantized, input_dims,
                             input_scale, input_zero_point),
-      CreateInt32Tensor(pad_data, pad_dims),
+      CreateTensor(pad_data, pad_dims),
       CreateQuantizedTensor(&pad_value, &pad_value_quantized, pad_value_dims,
                             pad_value_scale, pad_value_zero_point),
       CreateQuantizedTensor(output_data, output_dims, output_scale,
@@ -211,8 +209,8 @@ void TestPadV2Quantized(const int* input_dims_data, const float* input_data,
   tensors[2].params.scale = pad_value_scale;
   tensors[3].params.scale = output_scale;
 
-  tflite::AsymmetricQuantize(golden, golden_quantized, output_dims_count,
-                             output_scale, output_zero_point);
+  tflite::Quantize(golden, golden_quantized, output_dims_count, output_scale,
+                   output_zero_point);
   TF_LITE_MICRO_EXPECT_EQ(
       expected_status,
       ValidatePadV2Goldens(tensors, tensors_size, golden_quantized, output_data,

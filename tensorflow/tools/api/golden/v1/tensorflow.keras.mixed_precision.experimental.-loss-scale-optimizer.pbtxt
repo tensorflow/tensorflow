@@ -1,7 +1,8 @@
 path: "tensorflow.keras.mixed_precision.experimental.LossScaleOptimizer"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras.mixed_precision.experimental.loss_scale_optimizer.LossScaleOptimizer\'>"
-  is_instance: "<class \'tensorflow.python.keras.mixed_precision.experimental.loss_scale_optimizer._DelegatingTrackableMixin\'>"
+  is_instance: "<class \'tensorflow.python.keras.mixed_precision.loss_scale_optimizer.LossScaleOptimizerV1\'>"
+  is_instance: "<class \'tensorflow.python.keras.mixed_precision.loss_scale_optimizer.LossScaleOptimizer\'>"
+  is_instance: "<class \'tensorflow.python.keras.mixed_precision.loss_scale_optimizer._DelegatingTrackableMixin\'>"
   is_instance: "<class \'tensorflow.python.keras.optimizer_v2.optimizer_v2.OptimizerV2\'>"
   is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
   is_instance: "<type \'object\'>"
@@ -14,7 +15,27 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "dynamic"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "dynamic_counter"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "dynamic_growth_steps"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "global_clipnorm"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "initial_scale"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "inner_optimizer"
     mtype: "<type \'property\'>"
   }
   member {

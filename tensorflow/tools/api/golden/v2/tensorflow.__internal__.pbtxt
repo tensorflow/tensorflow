@@ -17,6 +17,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "tf2"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "tracking"
     mtype: "<type \'module\'>"
   }

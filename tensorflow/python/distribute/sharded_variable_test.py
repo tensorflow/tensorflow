@@ -24,8 +24,11 @@ from tensorflow.python.client import session as session_lib
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.module import module
@@ -62,6 +65,39 @@ def _load_and_run(
       output_dict[output_name] = session.graph.get_tensor_by_name(
           output_tensor_info.name)
     return session.run(output_dict, feed_dict=feed_dict)
+
+
+class PartitionerTest(test.TestCase):
+
+  def test_fixed_shards_partitioner(self):
+    partitioner = sharded_variable.FixedShardsPartitioner(num_shards=2)
+    got = partitioner(tensor_shape.TensorShape([10, 3]), dtypes.float32)
+    self.assertAllEqual(got, [2, 1])
+
+  def test_min_size_partitioner(self):
+    partitioner = sharded_variable.MinSizePartitioner(
+        min_shard_bytes=4, max_shards=2)
+    got = partitioner(tensor_shape.TensorShape([6, 1]), dtypes.float32)
+    self.assertAllEqual(got, [2, 1])
+
+    partitioner = sharded_variable.MinSizePartitioner(
+        min_shard_bytes=4, max_shards=10)
+    got = partitioner(tensor_shape.TensorShape([6, 1]), dtypes.float32)
+    self.assertAllEqual(got, [6, 1])
+
+  def test_max_size_partitioner(self):
+    partitioner = sharded_variable.MaxSizePartitioner(max_shard_bytes=4)
+    got = partitioner(tensor_shape.TensorShape([6, 1]), dtypes.float32)
+    self.assertAllEqual(got, [6, 1])
+
+    partitioner = sharded_variable.MaxSizePartitioner(
+        max_shard_bytes=4, max_shards=2)
+    got = partitioner(tensor_shape.TensorShape([6, 1]), dtypes.float32)
+    self.assertAllEqual(got, [2, 1])
+
+    partitioner = sharded_variable.MaxSizePartitioner(max_shard_bytes=1024)
+    got = partitioner(tensor_shape.TensorShape([6, 1]), dtypes.float32)
+    self.assertAllEqual(got, [1, 1])
 
 
 class ShardedVariableTest(test.TestCase):
@@ -330,7 +366,6 @@ class ShardedVariableTest(test.TestCase):
     self.assertAllEqual(variables, got)
 
   def test_tf_module(self):
-    self.skipTest('integration with tf.module is not added yet.')
 
     class Model(module.Module):
 
@@ -428,6 +463,56 @@ class ShardedVariableTest(test.TestCase):
 
     checkpoint_deps = set(dep.ref for dep in layer._checkpoint_dependencies)
     self.assertEqual(checkpoint_deps, set([layer.w, layer.b]))
+
+  def test_embedding_lookup(self):
+    v = [
+        variables_lib.Variable([[1., 2.], [3., 4.]]),
+        variables_lib.Variable([[5., 6.], [7., 8.]]),
+        variables_lib.Variable([[9., 10.]])
+    ]
+    sv = sharded_variable.ShardedVariable(v)
+
+    @def_function.function
+    def lookup():
+      ids = constant_op.constant([0, 3, 4])
+      return embedding_ops.embedding_lookup_v2(sv, ids)
+
+    @def_function.function
+    def sparse_lookup():
+      sp_ids = sparse_tensor.SparseTensor(
+          indices=[[0, 0], [0, 1], [1, 0], [2, 2]],
+          values=[0, 3, 4, 1],
+          dense_shape=[3, 3])
+      return embedding_ops.embedding_lookup_sparse_v2(sv, sp_ids, None)
+
+    @def_function.function
+    def safe_sparse_lookup():
+      sp_ids = sparse_tensor.SparseTensor(
+          indices=[[0, 0], [0, 1], [1, 0], [2, 2]],
+          values=[0, -1, 4, 1],
+          dense_shape=[3, 3])
+      sp_weights = sparse_tensor.SparseTensor(
+          indices=[[0, 0], [0, 1], [1, 0], [2, 2]],
+          values=[1., 1., -1., 1.],
+          dense_shape=[3, 3])
+      return embedding_ops.safe_embedding_lookup_sparse_v2(
+          sv, sp_ids, sp_weights)
+
+    # TODO(chenkai): Add safe_sparse_lookup to the list. Currently
+    # ShardedVariable is converted to a tensor in safe_sparse_lookup.
+    for func in [lookup, sparse_lookup]:
+      num_gather_ops = 0
+      for op in func.get_concrete_function().graph.get_operations():
+        if op.type == 'ResourceGather':
+          num_gather_ops += 1
+      self.assertEqual(
+          num_gather_ops, len(v), 'Number of ResourceGather op does not match'
+          ' expected, possibly due to ShardedVariable accidentally being'
+          ' converted to tensor in embedding_lookup ops.')
+
+    self.assertAllEqual(lookup(), [[1., 2.], [7., 8.], [9., 10.]])
+    self.assertAllClose(sparse_lookup(), [[4., 5.], [9., 10.], [3., 4.]])
+    self.assertAllClose(safe_sparse_lookup(), [[1., 2.], [0., 0.], [3., 4.]])
 
 
 if __name__ == '__main__':

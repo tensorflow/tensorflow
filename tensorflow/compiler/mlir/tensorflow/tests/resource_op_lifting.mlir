@@ -82,6 +82,38 @@ func @same_resource_load_and_store() -> tensor<*xi32> {
 
 // -----
 
+// Tests that a resource ops with both load and store are hoisted
+// but input to load and output from store have mixed defined/undefined shapes.
+
+// CHECK-LABEL: func @same_resource_load_and_store_cast
+func @same_resource_load_and_store_cast() -> tensor<1xi32> {
+
+  // CHECK: %[[RES_HANDLE:[0-9]*]] = "tf.VarHandleOp"
+  %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
+
+  // CHECK: %[[RES_READ_VAL:[0-9]*]] = "tf.ReadVariableOp"(%[[RES_HANDLE]])
+  // CHECK: %[[CLUSTER_RES:[0-9]*]]:2 = "tf_device.cluster"
+  // CHECK: %[[COMPUTE_RES:[0-9]*]] = "tf.SomeComputation"(%[[RES_READ_VAL]])
+  // CHECK: %[[CAST_RES:[0-9]*]] = "tf.Cast"(%[[COMPUTE_RES]])
+  // CHECK: tf_device.return %[[CAST_RES]], %[[COMPUTE_RES]]
+  // CHECK: {cluster_attr = "cluster_attr"}
+  // CHECK-SAME: () -> (tensor<1xi32>, tensor<*xi32>)
+  // CHECK: "tf.AssignVariableOp"(%[[RES_HANDLE]], %[[CLUSTER_RES]]#1)
+
+  %1 = "tf_device.cluster"() ( {
+    %2 = "tf.ReadVariableOp"(%0) {dtype = i32} : (tensor<*x!tf.resource>) -> tensor<1xi32>
+    %3 = "tf.SomeComputation"(%2) : (tensor<1xi32>) -> (tensor<*xi32>)
+    "tf.AssignVariableOp"(%0, %3) {dtype = i32} : (tensor<*x!tf.resource>, tensor<*xi32>) -> ()
+    %4 = "tf.ReadVariableOp"(%0) {dtype = i32} : (tensor<*x!tf.resource>) -> tensor<1xi32>
+    tf_device.return %4 : tensor<1xi32>
+  }) {cluster_attr = "cluster_attr"} : () -> tensor<1xi32>
+
+  // CHECK: return %[[CLUSTER_RES]]#0
+  return %1 : tensor<1xi32>
+}
+
+// -----
+
 // Tests that internal resource operations are not hoisted.
 
 // CHECK-LABEL: func @internal_resource

@@ -42,8 +42,8 @@ from tensorflow.python.keras import layers
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training
-from tensorflow.python.keras.mixed_precision.experimental import policy
-from tensorflow.python.keras.mixed_precision.experimental import test_util as mp_test_util
+from tensorflow.python.keras.mixed_precision import policy
+from tensorflow.python.keras.mixed_precision import test_util as mp_test_util
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn

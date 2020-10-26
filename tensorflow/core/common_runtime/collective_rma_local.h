@@ -43,6 +43,7 @@ class CollectiveRemoteAccessLocal : public CollectiveRemoteAccess {
                     const AllocatorAttributes& to_alloc_attr, Tensor* to_tensor,
                     const DeviceLocality& client_locality,
                     int dev_to_dev_stream_index,
+                    CancellationManager* cancellation_manager,
                     const StatusCallback& done) override;
 
   void PostToPeer(const string& peer_device, const string& peer_task,
@@ -51,9 +52,10 @@ class CollectiveRemoteAccessLocal : public CollectiveRemoteAccess {
                   const AllocatorAttributes& from_alloc_attr,
                   const Tensor* from_tensor,
                   const DeviceLocality& client_locality,
+                  CancellationManager* cancellation_manager,
                   const StatusCallback& done) override;
 
-  void CheckPeerHealth(const string& peer_task,
+  void CheckPeerHealth(const string& peer_task, int64 timeout_in_ms,
                        const StatusCallback& done) override;
 
   BufRendezvous* buf_rendezvous() override { return &buf_rendezvous_; }

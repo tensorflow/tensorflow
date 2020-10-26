@@ -24,6 +24,7 @@ import contextlib
 from six.moves import xrange, zip  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
@@ -1007,3 +1008,15 @@ def _AggregatedGrads(grads,
       # out_grads[i] is [], thus its aggregation is simply None.
       out_grads[i] = None
   return out_grads
+
+
+# Represents the output of TFE_Py_TapeSetPossibleGradientTypes. Real enums are
+# unfortunately too slow to use here.
+POSSIBLE_GRADIENT_TYPES_NONE = 0
+POSSIBLE_GRADIENT_TYPES_FIRST_ORDER = 1
+POSSIBLE_GRADIENT_TYPES_HIGHER_ORDER = 2
+
+
+def PossibleTapeGradientTypes(tensors):
+  """Determines whether and how `args` may require tape gradients."""
+  return pywrap_tfe.TFE_Py_TapeSetPossibleGradientTypes(tensors)

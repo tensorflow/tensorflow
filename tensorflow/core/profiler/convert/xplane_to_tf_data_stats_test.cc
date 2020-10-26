@@ -77,99 +77,103 @@ TEST(XPlaneToTfDataStatsTest, HostInputPipeline) {
   CombinedTfDataStatsBuilder builder(&combined_tf_data_stats);
   builder.Add("host1", &host_plane);
   builder.Finalize();
-  EXPECT_THAT(combined_tf_data_stats, EqualsProto(R"pb(
-                bottleneck_analysis: {
-                  host: "host1"
-                  input_pipeline: "Host:0"
-                  max_latency_ps: 100000000
-                  iterator_name: "Range"
-                  iterator_long_name: "Iterator::Prefetch::Range"
-                }
-                tf_data_stats: {
-                  key: "host1"
-                  value: {
-                    iterator_metadata: {
-                      key: 123,
-                      value: {
-                        id: 123
-                        name: "Prefetch"
-                        long_name: "Iterator::Prefetch"
-                        is_async: true
-                      }
+  EXPECT_THAT(
+      combined_tf_data_stats, EqualsProto(R"pb(
+        bottleneck_analysis: {
+          host: "host1"
+          input_pipeline: "Host:0"
+          max_latency_ps: 100000000
+          iterator_name: "Range"
+          iterator_long_name: "Iterator::Prefetch::Range"
+          suggestion: "See <a href=\"https://www.tensorflow.org/guide/data_performance_analysis\" target=\"_blank\">this</a> for suggestions."
+        }
+        tf_data_stats: {
+          key: "host1"
+          value: {
+            iterator_metadata: {
+              key: 123,
+              value: {
+                id: 123
+                name: "Prefetch"
+                long_name: "Iterator::Prefetch"
+                is_async: true
+              }
+            }
+            iterator_metadata: {
+              key: 456,
+              value: {
+                id: 456
+                parent_id: 123
+                name: "Range"
+                long_name: "Iterator::Prefetch::Range"
+                is_async: false
+              }
+            }
+            input_pipelines {
+              key: 123,
+              value: {
+                metadata { id: 123 type: HOST name: "Host:0" }
+                avg_latency_ps: 60000000
+                min_latency_ps: 20000000
+                max_latency_ps: 100000000
+                num_slow_calls: 1
+                stats {
+                  bottleneck_iterator_id: 456
+                  iterator_stats {
+                    key: 123,
+                    value: {
+                      id: 123
+                      start_time_ps: 0
+                      duration_ps: 100000000
+                      self_time_ps: 20000000
+                      is_blocking: true
+                      num_calls: 1
                     }
-                    iterator_metadata: {
-                      key: 456,
-                      value: {
-                        id: 456
-                        parent_id: 123
-                        name: "Range"
-                        long_name: "Iterator::Prefetch::Range"
-                        is_async: false
-                      }
-                    }
-                    input_pipelines {
-                      key: 123,
-                      value: {
-                        metadata { id: 123 type: HOST name: "Host:0" }
-                        avg_latency_ps: 60000000
-                        min_latency_ps: 20000000
-                        max_latency_ps: 100000000
-                        num_slow_calls: 1
-                        stats {
-                          bottleneck_iterator_id: 456
-                          iterator_stats {
-                            key: 123,
-                            value: {
-                              id: 123
-                              start_time_ps: 0
-                              duration_ps: 100000000
-                              self_time_ps: 20000000
-                              is_blocking: true
-                              num_calls: 1
-                            }
-                          }
-                          iterator_stats {
-                            key: 456,
-                            value: {
-                              id: 456
-                              start_time_ps: 0
-                              duration_ps: 80000000
-                              self_time_ps: 80000000
-                              is_blocking: true
-                              num_calls: 1
-                            }
-                          }
-                        }
-                        stats {
-                          bottleneck_iterator_id: 123
-                          iterator_stats {
-                            key: 123,
-                            value: {
-                              id: 123
-                              start_time_ps: 200000000
-                              duration_ps: 20000000
-                              self_time_ps: 20000000
-                              is_blocking: true
-                              num_calls: 1
-                            }
-                          }
-                          iterator_stats {
-                            key: 456,
-                            value: {
-                              id: 456
-                              start_time_ps: 100000000
-                              duration_ps: 80000000
-                              self_time_ps: 80000000
-                              is_blocking: false
-                              num_calls: 1
-                            }
-                          }
-                        }
-                      }
+                  }
+                  iterator_stats {
+                    key: 456,
+                    value: {
+                      id: 456
+                      start_time_ps: 0
+                      duration_ps: 80000000
+                      self_time_ps: 80000000
+                      is_blocking: true
+                      num_calls: 1
                     }
                   }
                 }
-              )pb"));
+                stats {
+                  bottleneck_iterator_id: 123
+                  iterator_stats {
+                    key: 123,
+                    value: {
+                      id: 123
+                      start_time_ps: 200000000
+                      duration_ps: 20000000
+                      self_time_ps: 20000000
+                      is_blocking: true
+                      num_calls: 1
+                    }
+                  }
+                  iterator_stats {
+                    key: 456,
+                    value: {
+                      id: 456
+                      start_time_ps: 100000000
+                      duration_ps: 80000000
+                      self_time_ps: 80000000
+                      is_blocking: false
+                      num_calls: 1
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        is_input_bound: true
+        summary: "Your profile has a tf.data input pipeline slower than 50 us. Below shows a bottleneck in the slow input pipeline and a suggestion on how to fix it."
+      )pb"));
 }
 
 TEST(XPlaneToTfDataStatsTest, DeviceInputPipeline) {
@@ -205,82 +209,84 @@ TEST(XPlaneToTfDataStatsTest, DeviceInputPipeline) {
   builder.Add("host1", &host_plane);
   builder.Finalize();
   // Device input pipeline is not considered for bottleneck analysis.
-  EXPECT_THAT(combined_tf_data_stats, EqualsProto(R"pb(
-                bottleneck_analysis: {}
-                tf_data_stats: {
-                  key: "host1"
-                  value: {
-                    iterator_metadata: {
-                      key: 123,
-                      value: {
-                        id: 123
-                        name: "Prefetch"
-                        long_name: "Iterator::Prefetch"
-                        is_async: true
-                      }
+  EXPECT_THAT(
+      combined_tf_data_stats, EqualsProto(R"pb(
+        bottleneck_analysis: {}
+        tf_data_stats: {
+          key: "host1"
+          value: {
+            iterator_metadata: {
+              key: 123,
+              value: {
+                id: 123
+                name: "Prefetch"
+                long_name: "Iterator::Prefetch"
+                is_async: true
+              }
+            }
+            iterator_metadata: {
+              key: 456,
+              value: {
+                id: 456
+                parent_id: 123
+                name: "Generator"
+                long_name: "Iterator::Prefetch::Generator"
+                is_async: false
+              }
+            }
+            input_pipelines {
+              key: 123,
+              value: {
+                metadata { id: 123 type: DEVICE name: "Device:0" }
+                avg_latency_ps: 65000000
+                min_latency_ps: 30000000
+                max_latency_ps: 100000000
+                num_slow_calls: 1
+                stats {
+                  bottleneck_iterator_id: 456
+                  iterator_stats {
+                    key: 123,
+                    value: {
+                      id: 123
+                      start_time_ps: 100000000
+                      duration_ps: 100000000
+                      self_time_ps: 20000000
+                      is_blocking: true
+                      num_calls: 1
                     }
-                    iterator_metadata: {
-                      key: 456,
-                      value: {
-                        id: 456
-                        parent_id: 123
-                        name: "Generator"
-                        long_name: "Iterator::Prefetch::Generator"
-                        is_async: false
-                      }
-                    }
-                    input_pipelines {
-                      key: 123,
-                      value: {
-                        metadata { id: 123 type: DEVICE name: "Device:0" }
-                        avg_latency_ps: 65000000
-                        min_latency_ps: 30000000
-                        max_latency_ps: 100000000
-                        num_slow_calls: 1
-                        stats {
-                          bottleneck_iterator_id: 456
-                          iterator_stats {
-                            key: 123,
-                            value: {
-                              id: 123
-                              start_time_ps: 100000000
-                              duration_ps: 100000000
-                              self_time_ps: 20000000
-                              is_blocking: true
-                              num_calls: 1
-                            }
-                          }
-                          iterator_stats {
-                            key: 456,
-                            value: {
-                              id: 456
-                              start_time_ps: 100000000
-                              duration_ps: 80000000
-                              self_time_ps: 80000000
-                              is_blocking: true
-                              num_calls: 1
-                            }
-                          }
-                        }
-                        stats {
-                          bottleneck_iterator_id: 123
-                          iterator_stats {
-                            key: 123,
-                            value: {
-                              id: 123
-                              start_time_ps: 0
-                              duration_ps: 30000000
-                              self_time_ps: 30000000
-                              is_blocking: true
-                              num_calls: 1
-                            }
-                          }
-                        }
-                      }
+                  }
+                  iterator_stats {
+                    key: 456,
+                    value: {
+                      id: 456
+                      start_time_ps: 100000000
+                      duration_ps: 80000000
+                      self_time_ps: 80000000
+                      is_blocking: true
+                      num_calls: 1
                     }
                   }
                 }
-              )pb"));
+                stats {
+                  bottleneck_iterator_id: 123
+                  iterator_stats {
+                    key: 123,
+                    value: {
+                      id: 123
+                      start_time_ps: 0
+                      duration_ps: 30000000
+                      self_time_ps: 30000000
+                      is_blocking: true
+                      num_calls: 1
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        summary: "No tf.data activitiy captured in your profile. If your job uses tf.data, try to capture a longer profile."
+      )pb"));
 }
 
 // Test with the following example dataset:
@@ -325,74 +331,78 @@ TEST(XPlaneToTfDataStatsTest, MapAndBatch) {
   CombinedTfDataStatsBuilder builder(&combined_tf_data_stats);
   builder.Add("host1", &host_plane);
   builder.Finalize();
-  EXPECT_THAT(combined_tf_data_stats, EqualsProto(R"pb(
-                bottleneck_analysis: {
-                  host: "host1"
-                  input_pipeline: "Host:0"
-                  max_latency_ps: 100000000
-                  iterator_name: "Range"
-                  iterator_long_name: "Iterator::MapAndBatch::Range"
-                }
-                tf_data_stats: {
-                  key: "host1"
-                  value: {
-                    iterator_metadata: {
-                      key: 123,
-                      value: {
-                        id: 123
-                        name: "MapAndBatch"
-                        long_name: "Iterator::MapAndBatch"
-                        is_async: true
-                      }
+  EXPECT_THAT(
+      combined_tf_data_stats, EqualsProto(R"pb(
+        bottleneck_analysis: {
+          host: "host1"
+          input_pipeline: "Host:0"
+          max_latency_ps: 100000000
+          iterator_name: "Range"
+          iterator_long_name: "Iterator::MapAndBatch::Range"
+          suggestion: "See <a href=\"https://www.tensorflow.org/guide/data_performance_analysis\" target=\"_blank\">this</a> for suggestions."
+        }
+        tf_data_stats: {
+          key: "host1"
+          value: {
+            iterator_metadata: {
+              key: 123,
+              value: {
+                id: 123
+                name: "MapAndBatch"
+                long_name: "Iterator::MapAndBatch"
+                is_async: true
+              }
+            }
+            iterator_metadata: {
+              key: 456,
+              value: {
+                id: 456
+                parent_id: 123
+                name: "Range"
+                long_name: "Iterator::MapAndBatch::Range"
+                is_async: false
+              }
+            }
+            input_pipelines {
+              key: 123,
+              value: {
+                metadata { id: 123 type: HOST name: "Host:0" }
+                avg_latency_ps: 100000000
+                min_latency_ps: 100000000
+                max_latency_ps: 100000000
+                num_slow_calls: 1
+                stats {
+                  bottleneck_iterator_id: 456
+                  iterator_stats {
+                    key: 123,
+                    value: {
+                      id: 123
+                      start_time_ps: 0
+                      duration_ps: 100000000
+                      self_time_ps: 40000000
+                      is_blocking: true
+                      num_calls: 1
                     }
-                    iterator_metadata: {
-                      key: 456,
-                      value: {
-                        id: 456
-                        parent_id: 123
-                        name: "Range"
-                        long_name: "Iterator::MapAndBatch::Range"
-                        is_async: false
-                      }
-                    }
-                    input_pipelines {
-                      key: 123,
-                      value: {
-                        metadata { id: 123 type: HOST name: "Host:0" }
-                        avg_latency_ps: 100000000
-                        min_latency_ps: 100000000
-                        max_latency_ps: 100000000
-                        num_slow_calls: 1
-                        stats {
-                          bottleneck_iterator_id: 456
-                          iterator_stats {
-                            key: 123,
-                            value: {
-                              id: 123
-                              start_time_ps: 0
-                              duration_ps: 100000000
-                              self_time_ps: 40000000
-                              is_blocking: true
-                              num_calls: 1
-                            }
-                          }
-                          iterator_stats {
-                            key: 456,
-                            value: {
-                              id: 456
-                              start_time_ps: 0
-                              duration_ps: 60000000
-                              self_time_ps: 60000000
-                              is_blocking: true
-                              num_calls: 2
-                            }
-                          }
-                        }
-                      }
+                  }
+                  iterator_stats {
+                    key: 456,
+                    value: {
+                      id: 456
+                      start_time_ps: 0
+                      duration_ps: 60000000
+                      self_time_ps: 60000000
+                      is_blocking: true
+                      num_calls: 2
                     }
                   }
                 }
-              )pb"));
+              }
+            }
+          }
+        }
+        is_input_bound: true
+        summary: "Your profile has a tf.data input pipeline slower than 50 us. Below shows a bottleneck in the slow input pipeline and a suggestion on how to fix it."
+      )pb"));
 }
 
 }  // namespace

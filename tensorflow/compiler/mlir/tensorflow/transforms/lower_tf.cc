@@ -215,7 +215,7 @@ class LowerAddNOp : public RewritePattern {
 };
 
 // Lowers DynamicStitch op with constant indices and with static input and
-// output shapes using Reshape, UnPack and ConcatV2 op.
+// output shapes using Reshape, UnPack and Pack op.
 //
 //   %indices0 = "tf.Const"() {value = dense<4> : tensor<i32>}
 //   %indices1 = "tf.Const"() {value = dense<[[3, 2], [1, 0]]> :
@@ -237,7 +237,7 @@ class LowerAddNOp : public RewritePattern {
 //     : (tensor<4x2xf32>) -> (tensor<2xf32>, tensor<2xf32>, tensor<2xf32>,
 //     tensor<2xf32>)
 //   %axis = "tf.Const"() {value = dense<0> : tensor<i64>}
-//   %0 = "tf.ConcatV2"(items1#3, items1#2, items1#1, items1#0, %items0, %axis)
+//   %0 = "tf.Pack"(items1#3, items1#2, items1#1, items1#0, %items0, %axis)
 //     : (tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>,
 //        tensor<2xf32>, tensor<i64>) -> tensor<5x2xf32>
 //
@@ -303,8 +303,7 @@ class LowerDynamicStitchOp : public OpRewritePattern<TF::DynamicStitchOp> {
       }
     }
 
-    auto axis = rewriter.create<ConstOp>(loc, rewriter.getI64IntegerAttr(0));
-    rewriter.replaceOpWithNewOp<ConcatV2Op>(op, op.getType(), values, axis);
+    rewriter.replaceOpWithNewOp<PackOp>(op, op.getType(), values);
     return success();
   }
 };

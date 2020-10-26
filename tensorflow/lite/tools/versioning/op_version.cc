@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 
 namespace tflite {
 namespace {
@@ -621,9 +622,10 @@ TensorType GetTensorType(int32_t idx, const SubGraph* subgraph) {
 // options to decide op version.
 OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
                            const SubGraph* subgraph) {
-  OpSignature op_sig = {op_code->builtin_code()};
+  auto builtin_code = GetBuiltinCode(op_code);
+  OpSignature op_sig = {builtin_code};
 
-  switch (op_code->builtin_code()) {
+  switch (builtin_code) {
     case BuiltinOperator_DEPTHWISE_CONV_2D: {
       auto conv_option = op->builtin_options_as_DepthwiseConv2DOptions();
       if (conv_option) {
@@ -797,14 +799,15 @@ void UpdateOpVersion(uint8_t* model_buffer_pointer) {
       OperatorCode* op_code =
           model->mutable_operator_codes()->GetMutableObject(op->opcode_index());
 
-      if (op_code->builtin_code() != BuiltinOperator_CUSTOM) {
+      auto builtin_code = GetBuiltinCode(op_code);
+      if (builtin_code != BuiltinOperator_CUSTOM) {
         OpSignature op_sig = GetOpSignature(op_code, op, subgraph);
         // Update builtin operator version.
         int32_t op_ver = GetBuiltinOperatorVersion(op_sig);
         if (!op_code->mutate_version(op_ver)) {
           LOG(ERROR) << "Can't set operator "
-                     << EnumNameBuiltinOperator(op_code->builtin_code())
-                     << " to version " << op_ver;
+                     << EnumNameBuiltinOperator(builtin_code) << " to version "
+                     << op_ver;
         }
       }
     }

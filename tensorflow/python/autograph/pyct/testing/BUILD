@@ -22,7 +22,7 @@ py_library(
         "basic_definitions.py",
         "decorators.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
 )
 
@@ -31,7 +31,7 @@ py_library(
     srcs = [
         "codegen.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python/autograph/pyct",
@@ -45,7 +45,7 @@ py_test(
     size = "large",
     srcs = ["codegen_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "manual",
         "no_windows",
