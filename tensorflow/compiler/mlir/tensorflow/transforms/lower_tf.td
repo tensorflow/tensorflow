@@ -271,12 +271,15 @@ def LowerFakeQuantWithMinMaxArgs :
 def CreateTFShapeOp : NativeCodeCall<
     "$_builder.create<TF::ShapeOp>($0.getLoc(), $1, $2)">;
 
-// TODO(hinsu): Support inputs of TensorList types.
-def LowerZerosLikeOp :
-  Pat<(TF_ZerosLikeOp:$src_op
-       TensorOf<[AnyInteger, AnyFloat, AnyComplex]>:$input),
-      (TF_BroadcastToOp (TF_ConstOp (GetScalarOfType<0> $input)),
-                        (CreateTFShapeOp $src_op, $input, /*use 32bit*/ConstBoolAttrFalse))>;
+class LowerInitializationOp<Op FromOp, int initial_val>
+  : Pat<(FromOp:$src_op
+         TensorOf<[AnyInteger, AnyFloat, AnyComplex]>:$input),
+        (TF_BroadcastToOp (TF_ConstOp (GetScalarOfType<initial_val> $input)),
+                          (CreateTFShapeOp $src_op, $input,
+                                           /*use 32bit*/ConstBoolAttrFalse))>;
+
+def LowerZerosLikeOp : LowerInitializationOp<TF_ZerosLikeOp, 0>;
+def LowerOnesLikeOp : LowerInitializationOp<TF_OnesLikeOp, 1>;
 
 def LowerScatterNdOp :
   Pat<(TF_ScatterNdOp $indices,
