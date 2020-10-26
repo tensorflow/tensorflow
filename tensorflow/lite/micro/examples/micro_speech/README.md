@@ -1,3 +1,5 @@
+<!-- mdformat off(b/169948621#comment2) -->
+
 # Micro Speech Example
 
 This example shows how to run a 20 kB model that can recognize 2 keywords,
@@ -214,28 +216,36 @@ The next steps assume that the
 
 ### Generate the examples
 
-The example project can be generated with the following command: `make -f
-tensorflow/lite/micro/tools/make/Makefile TARGET=esp
-generate_micro_speech_esp_project`
+The example project can be generated with the following command:
+```
+make -f tensorflow/lite/micro/tools/make/Makefile TARGET=esp generate_micro_speech_esp_project
+```
 
 ### Building the example
 
-Go to the example project directory `cd
-tensorflow/lite/micro/tools/make/gen/esp_xtensa-esp32/prj/micro_speech/esp-idf`
+Go the the example project directory
+```
+cd tensorflow/lite/micro/tools/make/gen/esp_xtensa-esp32/prj/micro_speech/esp-idf
+```
 
 Then build with `idf.py` `idf.py build`
 
 ### Load and run the example
 
-To flash (replace `/dev/ttyUSB0` with the device serial port): `idf.py --port
-/dev/ttyUSB0 flash`
+To flash (replace `/dev/ttyUSB0` with the device serial port):
+```
+idf.py --port /dev/ttyUSB0 flash
+```
 
-Monitor the serial output: `idf.py --port /dev/ttyUSB0 monitor`
+Monitor the serial output:
+```idf.py --port /dev/ttyUSB0 monitor```
 
 Use `Ctrl+]` to exit.
 
-The previous two commands can be combined: `idf.py --port /dev/ttyUSB0 flash
-monitor`
+The previous two commands can be combined:
+```
+idf.py --port /dev/ttyUSB0 flash monitor
+```
 
 ## Deploy to SparkFun Edge
 
