@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/arguments.h"
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
+#include "tensorflow/lite/delegates/gpu/cl/cl_arguments.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
@@ -120,7 +121,7 @@ class GPUOperation {
   absl::Status UpdateParams();
 
   absl::Status AddToQueue(CLCommandQueue* queue) {
-    RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
+    RETURN_IF_ERROR(cl_args_.Bind(kernel_.kernel()));
     return queue->Dispatch(kernel_, work_groups_count_, work_group_size_);
   }
 
@@ -168,11 +169,15 @@ class GPUOperation {
   // applicable only with elementwise_ = true;
   bool check_src_channels_size_ = false;
 
+  // Temporary, will be resolved later
+  void MoveObjectRefsFromCLToGeneric() { cl_args_.MoveObjectRefsOut(&args_); }
+  void MoveObjectRefsFromGenericToCL() { cl_args_.MoveObjectRefsIn(&args_); }
+  void SyncScalarValues() { cl_args_.CopyScalarValues(&args_); }
+
  protected:
   friend flatbuffers::Offset<data::GPUOperation> Encode(
       const GPUOperation& op, flatbuffers::FlatBufferBuilder* builder);
-  friend absl::Status Decode(CLContext* context,
-                             const data::GPUOperation* fb_op, GPUOperation* op);
+  friend absl::Status Decode(const data::GPUOperation* fb_op, GPUOperation* op);
 
   virtual absl::Status BindArguments(ArgumentsBinder* args) {
     return absl::OkStatus();
@@ -183,7 +188,6 @@ class GPUOperation {
   OperationDef definition_;
   std::vector<Tensor*> src_;
   std::vector<Tensor*> dst_;
-  CLKernel kernel_;
   int grid_dimension_ = 3;  // can be 1, 2 or 3
   int3 work_group_launch_order_ = int3(0, 1, 2);
   int3 grid_size_ = int3(0, 0, 0);
@@ -191,6 +195,8 @@ class GPUOperation {
   std::vector<std::string> dst_tensors_names_;
 
  private:
+  CLKernel kernel_;
+  CLArguments cl_args_;
   int3 work_groups_count_ = int3(0, 0, 0);
   int linkable_count_ = 0;
   std::string elementwise_code_;  // temporary, used during op construction
