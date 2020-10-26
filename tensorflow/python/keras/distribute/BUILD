@@ -734,7 +734,6 @@ py_test(
     srcs = ["multi_worker_callback_tf2_test.py"],
     python_version = "PY3",
     shard_count = 5,
-    tags = ["no_oss_py38"],  #TODO(b/171435331)
     deps = [
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:combinations",

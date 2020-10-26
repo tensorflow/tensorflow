@@ -301,7 +301,6 @@ tf_py_test(
     srcs = ["collective_ops_multi_worker_test.py"],
     python_version = "PY3",
     tags = [
-        "no_oss_py38",  #TODO(b/171435331)
         "no_rocm",
         "notsan",  # TODO(b/171435192)
     ],
