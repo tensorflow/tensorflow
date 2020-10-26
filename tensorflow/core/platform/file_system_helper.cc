@@ -90,7 +90,7 @@ Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
   // Setup a parallel BFS to explore everything under dir.
   std::deque<std::pair<string, int>> dir_q;
   std::deque<std::pair<string, int>> next_dir_q;
-  dir_q.emplace_back({dirs[0], 0});
+  dir_q.emplace_back(std::make_pair(dirs[0], 0));
   Status ret;  // Status to return.
   std::mutex results_mutex;
   std::condition_variable results_cond;
@@ -100,7 +100,8 @@ Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
     next_dir_q.clear();
     std::vector<Status> new_rets(dir_q.size());
     auto handle_level = [fs, &results, &dir_q, &next_dir_q, &new_rets,
-      &results_mutex, &results_cond, &next_que_mutex, &next_que_cond](int i) {
+      &is_directory, &dirs, &results_mutex, &results_cond,
+      &next_que_mutex, &next_que_cond](int i) {
 
       string current_dir = dir_q.at(i).first;
       int dir_index = dir_q.at(i).second;
@@ -146,7 +147,7 @@ Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
         if (children_dir_status[j].ok()) {
           if (dir_index != dirs.size() - 1) {
             std::lock_guard<std::mutex> lk(next_que_mutex);
-            next_dir_q.emplace_back(child_path);
+            next_dir_q.emplace_back(std::make_pair(child_path, dir_index));
             next_que_cond.notify_one();
           } else {
             std::lock_guard<std::mutex> lk(results_mutex);
