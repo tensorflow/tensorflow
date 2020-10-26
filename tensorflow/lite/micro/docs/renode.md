@@ -31,16 +31,16 @@ Renode can be installed and used in a variety of ways, as documented
 [here](https://renode.readthedocs.io/en/latest/). For the purpose of Tensorflow
 Lite Micro, we make use of a portable version for Linux.
 
- 1. Install the Renode test dependencies
-
-    ```
-    pip3 install pyyaml requests psutil robotframework==3.1
-    ```
-
  1. Download portable version of Renode for Linux:
 
     ```
     tensorflow/lite/micro/testing/download_renode.sh tensorflow/lite/micro/tools/make/downloads/renode
+    ```
+
+ 2. Install the Renode test dependencies
+
+    ```
+    pip3 install -r tensorflow/lite/micro/tools/make/downloads/renode/tests/requirements.txt
     ```
 
 At this point in time you will be ready to run TFLM tests with Renode.
