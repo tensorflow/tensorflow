@@ -3655,6 +3655,8 @@ cc_library(
         ":hlo_dce",
         ":hlo_liveness_analysis",
         ":hlo_pass",
+        ":tuple_simplifier",
+        ":while_loop_simplifier",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
