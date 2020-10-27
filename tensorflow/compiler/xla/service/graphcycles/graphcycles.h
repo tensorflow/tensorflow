@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_JIT_GRAPHCYCLES_GRAPHCYCLES_H_
-#define TENSORFLOW_COMPILER_JIT_GRAPHCYCLES_GRAPHCYCLES_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GRAPHCYCLES_GRAPHCYCLES_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_GRAPHCYCLES_GRAPHCYCLES_H_
 
 #include <vector>
 
@@ -149,4 +149,4 @@ class GraphCycles {
 };
 
 }  // namespace tensorflow
-#endif  // TENSORFLOW_COMPILER_JIT_GRAPHCYCLES_GRAPHCYCLES_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GRAPHCYCLES_GRAPHCYCLES_H_

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/jit/graphcycles/ordered_set.h"
+#include "tensorflow/compiler/xla/service/graphcycles/ordered_set.h"
 
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"

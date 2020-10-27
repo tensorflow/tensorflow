@@ -15,7 +15,7 @@ limitations under the License.
 
 // A test for the GraphCycles interface.
 
-#include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
+#include "tensorflow/compiler/xla/service/graphcycles/graphcycles.h"
 
 #include <optional>
 #include <random>
