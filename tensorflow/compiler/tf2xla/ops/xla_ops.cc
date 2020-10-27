@@ -307,7 +307,8 @@ REGISTER_OP("XlaSetDynamicDimensionSize")
     .Input("size: int32")
     .Output("output: T")
     .Attr("T: type")
-    .SetShapeFn(shape_inference::UnchangedShape)
+    // Use unknown shape to prevent constant folding.
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(
         R"doc(Make a static dimension into a xla bounded dynamic dimension.
         The current static dimension size will become the bound and the second

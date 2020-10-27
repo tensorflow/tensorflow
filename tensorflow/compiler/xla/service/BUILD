@@ -2722,16 +2722,34 @@ cc_library(
 )
 
 cc_library(
+    name = "dynamic_window_utils",
+    srcs = ["dynamic_window_utils.cc"],
+    hdrs = ["dynamic_window_utils.h"],
+    deps = [
+        ":hlo",
+        ":shape_inference",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/core/platform:macros",
+    ],
+)
+
+cc_library(
     name = "dynamic_dimension_inference",
     srcs = ["dynamic_dimension_inference.cc"],
     hdrs = ["dynamic_dimension_inference.h"],
     deps = [
+        ":dynamic_window_utils",
         ":hlo",
         ":hlo_casting_utils",
         ":tuple_util",
         ":while_util",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_tree",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -2751,10 +2769,13 @@ cc_library(
     hdrs = ["dynamic_padder.h"],
     deps = [
         ":dynamic_dimension_inference",
+        ":dynamic_window_utils",
         ":hlo",
         ":hlo_casting_utils",
+        ":hlo_creation_utils",
         ":hlo_dce",
         ":hlo_pass",
+        ":hlo_verifier",
         ":shape_inference",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:literal",
@@ -2762,6 +2783,7 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:lib",

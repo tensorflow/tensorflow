@@ -193,6 +193,7 @@ class HloParserImpl : public HloParser {
     kHloComputation,
     kBracedHloComputationList,
     kFftType,
+    kPaddingType,
     kComparisonDirection,
     kComparisonType,
     kWindow,
@@ -328,6 +329,7 @@ class HloParserImpl : public HloParser {
   bool ParseTiles(std::vector<Tile>* tiles);
   bool ParseOpcode(HloOpcode* result);
   bool ParseFftType(FftType* result);
+  bool ParsePaddingType(PaddingType* result);
   bool ParseComparisonDirection(ComparisonDirection* result);
   bool ParseComparisonType(Comparison::Type* result);
   bool ParseFusionKind(HloInstruction::FusionKind* result);
@@ -1838,6 +1840,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<HloComputation*> to_apply;
       optional<std::vector<std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>>
           output_to_operand_aliasing;
+      optional<PaddingType> padding_type;
       attrs["custom_call_target"] = {/*required=*/true, AttrTy::kString,
                                      &custom_call_target};
       attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
@@ -1856,6 +1859,12 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["output_to_operand_aliasing"] = {/*required=*/false,
                                              AttrTy::kInstructionAliasing,
                                              &output_to_operand_aliasing};
+
+      attrs["padding_type"] = {/*required=*/false, AttrTy::kPaddingType,
+                               &padding_type};
+      optional<std::vector<PrecisionConfig::Precision>> operand_precision;
+      attrs["operand_precision"] = {/*required=*/false, AttrTy::kPrecisionList,
+                                    &operand_precision};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
@@ -1921,6 +1930,9 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       if (batch_group_count.has_value()) {
         custom_call_instr->set_batch_group_count(*batch_group_count);
       }
+      if (padding_type.has_value()) {
+        custom_call_instr->set_padding_type(*padding_type);
+      }
       if (custom_call_has_side_effect.has_value()) {
         custom_call_instr->set_custom_call_has_side_effect(
             *custom_call_has_side_effect);
@@ -1929,6 +1941,15 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
         custom_call_instr->set_output_to_operand_aliasing(
             std::move(*output_to_operand_aliasing));
       }
+      PrecisionConfig precision_config;
+      if (operand_precision) {
+        *precision_config.mutable_operand_precision() = {
+            operand_precision->begin(), operand_precision->end()};
+      } else {
+        precision_config.mutable_operand_precision()->Resize(
+            operands.size(), PrecisionConfig::DEFAULT);
+      }
+      *custom_call_instr->mutable_precision_config() = precision_config;
       break;
     }
     case HloOpcode::kDot: {
@@ -3105,6 +3126,14 @@ bool HloParserImpl::ParseAttributeHelper(
         static_cast<optional<FftType>*>(attr_out_ptr)->emplace(result);
         return true;
       }
+      case AttrTy::kPaddingType: {
+        PaddingType result;
+        if (!ParsePaddingType(&result)) {
+          return false;
+        }
+        static_cast<optional<PaddingType>*>(attr_out_ptr)->emplace(result);
+        return true;
+      }
       case AttrTy::kComparisonDirection: {
         ComparisonDirection result;
         if (!ParseComparisonDirection(&result)) {
@@ -4241,6 +4270,19 @@ bool HloParserImpl::ParseFftType(FftType* result) {
   std::string val = lexer_.GetStrVal();
   if (!FftType_Parse(val, result) || !FftType_IsValid(*result)) {
     return TokenError(StrFormat("expects fft type but sees: %s", val));
+  }
+  lexer_.Lex();
+  return true;
+}
+
+bool HloParserImpl::ParsePaddingType(PaddingType* result) {
+  VLOG(3) << "ParsePaddingType";
+  if (lexer_.GetKind() != TokKind::kIdent) {
+    return TokenError("expects padding type");
+  }
+  std::string val = lexer_.GetStrVal();
+  if (!PaddingType_Parse(val, result) || !PaddingType_IsValid(*result)) {
+    return TokenError(StrFormat("expects padding type but sees: %s", val));
   }
   lexer_.Lex();
   return true;
