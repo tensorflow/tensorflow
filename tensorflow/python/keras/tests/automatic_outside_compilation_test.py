@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import os
 
+from absl import flags
 import numpy as np
 
 from tensorboard.plugins.histogram import summary_v2 as histogram_summary_v2
@@ -45,7 +46,7 @@ from tensorflow.python.keras.layers import pooling as pool_layer_lib
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import summary_ops_v2
-from tensorflow.python.platform import flags
+# from tensorflow.python.platform import flags
 from tensorflow.python.platform import test
 from tensorflow.python.summary import summary_iterator
 from tensorflow.python.tpu import tpu_strategy_util
