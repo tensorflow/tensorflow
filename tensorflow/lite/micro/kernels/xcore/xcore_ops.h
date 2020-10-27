@@ -24,10 +24,10 @@ constexpr const char* Bsign_8_OpCode = "XC_bsign_8";
 // Under development
 constexpr const char* Pad_OpCode = "XC_pad";
 constexpr const char* BConv2d_Int8_OpCode = "XC_bconv2d_int8";
-constexpr const char* BConv2d_Int8_DeepIn_DeepOut_OpCode = "XC_bconv2d_int8_DIDO";
+constexpr const char* BConv2d_Int8_DeepIn_DeepOut_OpCode =
+    "XC_bconv2d_int8_DIDO";
 constexpr const char* BConv2d_Bitpacked_OpCode = "XC_bconv2d_bin";
 constexpr const char* BConv2d_Bitpacked_DeepIn_OpCode = "XC_bconv2d_bin_DI";
-
 
 // Currently unused, may be deprecated
 constexpr const char* Requantize_16_to_8_OpCode = "XC_requantize_16_to_8";
@@ -69,7 +69,7 @@ TfLiteRegistration* Register_Lookup_8();
 TfLiteRegistration* Register_BSign_8();
 
 // Under development
-TfLiteRegistration* Register_BConv2D_Bin_Out();  // TODO: rename this
+TfLiteRegistration* Register_BConv2D_Bitpacked_Deepin();
 TfLiteRegistration* Register_Pad();
 
 // operators not currently inserted by the XCORE converter
