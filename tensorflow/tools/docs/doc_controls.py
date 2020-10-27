@@ -18,10 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from typing import TypeVar
+
+T = TypeVar("T")
+
+
 _DEPRECATED = "_tf_docs_deprecated"
 
 
-def set_deprecated(obj):
+def set_deprecated(obj: T) -> T:
   """Explicitly tag an object as deprecated for the doc generator."""
   setattr(obj, _DEPRECATED, None)
   return obj
@@ -30,7 +35,7 @@ def set_deprecated(obj):
 _DO_NOT_DOC = "_tf_docs_do_not_document"
 
 
-def do_not_generate_docs(obj):
+def do_not_generate_docs(obj: T) -> T:
   """A decorator: Do not generate docs for this object.
 
   For example the following classes:
@@ -111,7 +116,7 @@ def do_not_generate_docs(obj):
 _DO_NOT_DOC_INHERITABLE = "_tf_docs_do_not_doc_inheritable"
 
 
-def do_not_doc_inheritable(obj):
+def do_not_doc_inheritable(obj: T) -> T:
   """A decorator: Do not generate docs for this method.
 
   This version of the decorator is "inherited" by subclasses. No docs will be
@@ -174,7 +179,7 @@ def do_not_doc_inheritable(obj):
 _FOR_SUBCLASS_IMPLEMENTERS = "_tf_docs_tools_for_subclass_implementers"
 
 
-def for_subclass_implementers(obj):
+def for_subclass_implementers(obj: T) -> T:
   """A decorator: Only generate docs for this method in the defining class.
 
   Also group this method's docs with and `@abstractmethod` in the class's docs.
@@ -254,7 +259,7 @@ do_not_doc_in_subclasses = for_subclass_implementers
 _DOC_PRIVATE = "_tf_docs_doc_private"
 
 
-def doc_private(obj):
+def doc_private(obj: T) -> T:
   """A decorator: Generates docs for private methods/functions.
 
   For example:
