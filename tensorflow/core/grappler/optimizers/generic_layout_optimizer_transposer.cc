@@ -780,6 +780,10 @@ Status BiasAddTransposer::TransposeNode(
   VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
           << "' with op '" << node->GetOp() << "' from data format '"
           << context->src_format << "' to '" << context->dst_format << "'";
+  // BiasAdd itself only needs NCHW/NHWC to determine whether C dim is the
+  // second or the last dim. Therefore, we use the original 4D data format in
+  // the context to update the node. For the input/output tensor, the
+  // corresponding 4D or 5D data format is needed.
   TF_RETURN_IF_ERROR(UpdateNode(context, node));
   ScopedDataFormatUpgrader data_format_upgrader(context, rank);
   TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, {0}, node, kOpTranspose));
@@ -800,6 +804,10 @@ Status BiasAddGradTransposer::TransposeNode(TransposeContext* context,
   VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
           << "' with op '" << node->GetOp() << "' from data format '"
           << context->src_format << "' to '" << context->dst_format << "'";
+  // BiasAddGrad itself only needs NCHW/NHWC to determine whether C dim is the
+  // second or the last dim. Therefore, we use the original 4D data format in
+  // the context to update the node. For the input tensor, the corresponding 4D
+  // or 5D data format is needed.
   TF_RETURN_IF_ERROR(UpdateNode(context, node));
   ScopedDataFormatUpgrader data_format_upgrader(context, rank);
   TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, {0}, node, kOpTranspose));
@@ -1121,8 +1129,9 @@ bool LayoutAgnosticOpTransposer::IsAfterDstToSrcTransform(
   return false;
 }
 
-std::vector<int> LayoutAgnosticOpTransposer::GetVariadic4DOr5DFaninPorts(
-    const TransposeContext& context, const utils::MutableNodeView& node) const {
+std::vector<int> LayoutAgnosticOpTransposer::GetVariadicNDFaninPorts(
+    const TransposeContext& context, const utils::MutableNodeView& node,
+    int rank) const {
   std::vector<int> ports;
   const int num_regular_fanins = node.NumRegularFanins();
   ports.reserve(num_regular_fanins);
@@ -1130,8 +1139,7 @@ std::vector<int> LayoutAgnosticOpTransposer::GetVariadic4DOr5DFaninPorts(
     const auto& regular_fanin = node.GetRegularFanin(i);
     auto* regular_fanin_node = regular_fanin.node_view();
     int regular_fanin_port = regular_fanin.index();
-    if ((IsFanoutPortRankN(*regular_fanin_node, regular_fanin_port, 4) ||
-         IsFanoutPortRankN(*regular_fanin_node, regular_fanin_port, 5)) &&
+    if ((IsFanoutPortRankN(*regular_fanin_node, regular_fanin_port, rank)) &&
         ((IsAfterDstToSrcTransform(context, *regular_fanin_node) &&
           IsLayoutAgnosticOp(*regular_fanin_node->node())) ||
          IsLayoutOptimizerAddedDstToSrcTranspose(context,
@@ -1377,14 +1385,33 @@ Status FillOpTransposer::TransposeNode(TransposeContext* context,
 Status IdentityNTransposer::TransposeNode(TransposeContext* context,
                                           utils::MutableNodeView* node) {
   DCHECK(IsIdentityN(*node->node()));
-  const auto ports = GetVariadic4DOr5DFaninPorts(*context, *node);
-  if (!ShouldProcess(*context, *node) || ports.empty()) {
+  const auto ports_4d = GetVariadicNDFaninPorts(*context, *node, 4);
+
+  // Temporarily upgrade the context to obtain the number of 5D fanin ports.
+  std::vector<int> ports_5d;
+  {
+    ScopedDataFormatUpgrader data_format_upgrader(context, 5);
+    ports_5d = GetVariadicNDFaninPorts(*context, *node, 5);
+  }
+
+  if (!ShouldProcess(*context, *node)) {
     return Status::OK();
   }
-  TF_RETURN_IF_ERROR(
-      UpdateFaninEdgesWithOp(context, ports, node, kOpTranspose));
-  TF_RETURN_IF_ERROR(
-      UpdateFanoutEdgesWithOp(context, ports, node, kOpTranspose));
+
+  if (!ports_4d.empty()) {
+    TF_RETURN_IF_ERROR(
+        UpdateFaninEdgesWithOp(context, ports_4d, node, kOpTranspose));
+    TF_RETURN_IF_ERROR(
+        UpdateFanoutEdgesWithOp(context, ports_4d, node, kOpTranspose));
+  }
+
+  if (!ports_5d.empty()) {
+    ScopedDataFormatUpgrader data_format_upgrader(context, 5);
+    TF_RETURN_IF_ERROR(
+        UpdateFaninEdgesWithOp(context, ports_5d, node, kOpTranspose));
+    TF_RETURN_IF_ERROR(
+        UpdateFanoutEdgesWithOp(context, ports_5d, node, kOpTranspose));
+  }
   return context->graph_view->GetMutationBuilder()->Apply();
 }
 
@@ -1597,12 +1624,14 @@ Status ShapeTransposer::TransposeNode(TransposeContext* context,
 Status ShapeNTransposer::TransposeNode(TransposeContext* context,
                                        utils::MutableNodeView* node) {
   DCHECK(IsShapeN(*node->node()));
+  // ShapeN requires all input tensors to have the same dimensions. Therefore,
+  // we simply use the 0th fanin port.
   const int rank = GetFaninPortRank(*node, 0);
   if (rank != 4 && rank != 5) {
     return Status::OK();
   }
   ScopedDataFormatUpgrader data_format_upgrader(context, rank);
-  const auto ports = GetVariadic4DOr5DFaninPorts(*context, *node);
+  const auto ports = GetVariadicNDFaninPorts(*context, *node, rank);
   if (!ShouldProcess(*context, *node) || ports.empty()) {
     return Status::OK();
   }

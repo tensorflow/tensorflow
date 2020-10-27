@@ -327,9 +327,9 @@ class LayoutAgnosticOpTransposer : public Transposer {
   bool IsAfterDstToSrcTransform(const TransposeContext& context,
                                 const utils::MutableNodeView& node) const;
 
-  std::vector<int> GetVariadic4DOr5DFaninPorts(
-      const TransposeContext& context,
-      const utils::MutableNodeView& node) const;
+  std::vector<int> GetVariadicNDFaninPorts(
+      const TransposeContext& context, const utils::MutableNodeView& node,
+      int rank) const;
 };
 
 class DefaultLayoutAgnosticOpTransposer : public LayoutAgnosticOpTransposer {
