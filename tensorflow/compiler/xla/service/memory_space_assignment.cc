@@ -1130,7 +1130,7 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
   HeapSimulator::Result<HloValue> result;
   result.heap_size = result_.heap_size;
   result.heap_results.emplace_back(std::move(result_));
-  return std::move(result);
+  return result;
 }
 
 void AlternateMemoryBestFitHeap::CreateAllocationValuesFromColocatedIntervals(
