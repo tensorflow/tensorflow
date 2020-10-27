@@ -473,14 +473,15 @@ foreach ValueOp = [TFL_CeilOp, TFL_ExpOp, TFL_FloorOp, TFL_NegOp,
 // if called without a ranked tensor it will fail.
 def GetShape: NativeCodeCall<"GetShape($0)">;
 
-// Returns True if the operand type is RankedTensorType.
-def HasRankedTensor : Constraint<
-    CPred<"$0.getType().isa<RankedTensorType>()">>;
+// Returns True if the operand type is RankedTensorType and valid.
+def HasValidRankedTensor : Constraint<CPred<
+  "$0.getType().isa<RankedTensorType>() && "
+  "$0.getType().cast<RankedTensorType>().getNumDynamicDims() <= 1">>;
 
 def ConvertSqueezeToReshape : Pat<
   (TFL_SqueezeOp:$squeeze_op $input, $squeeze_dims),
   (TFL_ReshapeOp $input, (ConstantOp (GetShape $squeeze_op))),
-  [(HasRankedTensor $squeeze_op)]>;
+  [(HasValidRankedTensor $squeeze_op)]>;
 
 // Convert expand_dims to reshape if possible.
 def ConvertExpandDimsToReshape : Pat<
