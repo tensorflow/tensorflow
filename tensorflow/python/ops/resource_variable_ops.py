@@ -792,7 +792,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     # explicit placement with a custom device, causing `v.is_initalized()` to
     # fail under a non-custom device context if `v` is in a custom device. The
     # explicit placement below makes this work, but should not be necessary once
-    # the logic is updated to handle cases like this.
+    # the logic is updated to handle cases like this..
     with ops.device(self.device):
       return gen_resource_variable_ops.var_is_initialized_op(self.handle, name)
 
