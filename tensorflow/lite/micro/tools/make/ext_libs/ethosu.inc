@@ -28,7 +28,7 @@ ifneq ($(filter ethos-u,$(ALL_TAGS)),)
 
     # Currently there is a dependency to CMSIS-NN
     THIRD_PARTY_DOWNLOADS += \
-        $(eval $(call add_third_party_download,$(CMSIS_URL),$(CMSIS_MD5),cmsis,patch_cmsis))
+        $(eval $(call add_third_party_download,$(CMSIS_URL),$(CMSIS_MD5),cmsis,))
     ifeq ($(CMSIS_PATH),)
       CMSIS_PATH = $(MAKEFILE_DIR)/downloads/cmsis/
     endif

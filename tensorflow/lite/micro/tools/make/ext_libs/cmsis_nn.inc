@@ -6,7 +6,7 @@ ifneq ($(filter cmsis-nn,$(ALL_TAGS)),)
 
     # Setup CMSIS-NN lib and add required header files to microlite lib INCLUDE
     THIRD_PARTY_DOWNLOADS += \
-      $(eval $(call add_third_party_download,$(CMSIS_URL),$(CMSIS_MD5),cmsis,patch_cmsis))
+      $(eval $(call add_third_party_download,$(CMSIS_URL),$(CMSIS_MD5),cmsis,))
 
     CMSIS_PATH := $(MAKEFILE_DIR)/downloads/cmsis/
 
@@ -89,9 +89,7 @@ ifneq ($(filter cmsis-nn,$(ALL_TAGS)),)
 
     # Cherry-picked list of headers that are needed to compile the CMSIS-NN
     # optimized kernels. We don't include all the possible CMSIS headers because
-    # of their large number. See the RFC document for more details:
-    # https://docs.google.com/document/d/14GRxeVEgSKgKBKAijO7oxnI49nLoTYBFQmPok-rG0cw
-    # Note: If you add a .h here, you must update patch_cmsis() in download_and_extract.sh as well.
+    # of their large number.
     THIRD_PARTY_CC_HDRS += \
       $(CMSIS_PATH)CMSIS/Core/Include/cmsis_compiler.h \
       $(CMSIS_PATH)CMSIS/DSP/Include/arm_common_tables.h \
