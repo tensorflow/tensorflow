@@ -51,7 +51,7 @@ def trace(service_addr,
     logdir: Path to save profile data to, typically a TensorBoard log directory.
       This path must be accessible to both the client and server.
       e.g. logdir='gs://your_tb_dir'
-    duration_ms: Duration of tracing or monitoring in mliiseconds. Must be
+    duration_ms: Duration of tracing or monitoring in milliseconds. Must be
       greater than zero.
     worker_list: An optional TPU only configuration. The list of workers to
       profile in the current session.
