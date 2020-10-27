@@ -72,6 +72,7 @@ cc_library(
         "//tensorflow/python:py_seq_tensor",
         "//tensorflow/python:py_util",
         "//tensorflow/python:safe_ptr",
+        "//tensorflow/python:safe_pyobject_ptr",
         "//tensorflow/python:stack_trace",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
