@@ -17,9 +17,11 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
 import os
-from tensorflow.python.distribute import distributed_file_utils
-from tensorflow.python.eager import test
+
+from tensorflow.python.keras.distribute import distributed_file_utils
+from tensorflow.python.platform import test
 
 
 class DistributedFileUtilsTest(test.TestCase):

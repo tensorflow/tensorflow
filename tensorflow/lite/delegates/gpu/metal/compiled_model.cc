@@ -535,7 +535,6 @@ ComputeTaskDescriptorPtr FuseChain(const FusionSequence& chain) {
       uniform_index++;
       fused_descriptor->uniform_buffers.push_back({"", buffer.data_function});
     }
-    fused_descriptor->args = std::move(desc->args);
 
     if (desc->is_linkable) {
       call_code +=
@@ -544,6 +543,7 @@ ComputeTaskDescriptorPtr FuseChain(const FusionSequence& chain) {
       function_index++;
     }
   }
+  fused_descriptor->args = std::move(sequence.front()->args);
 
   ComputeTaskDescriptorPtr non_linkable = sequence.front();
   fused_descriptor->shader_source =

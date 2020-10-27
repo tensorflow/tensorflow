@@ -121,7 +121,7 @@ class LhloFuseLinalgPass
       for (unsigned id = 0, e = LinalgOp(op).getNumInputs(); id < e; ++id) {
         linalg::Aliases aliases;
         linalg::LinalgDependenceGraph graph(aliases, linalg_ops);
-        if (auto info = fuseProducerOf(b, op, id, graph, &folder)) {
+        if (auto info = fuseProducerOfBuffer(b, op, id, graph, &folder)) {
           auto originalOp = info->originalProducer.getOperation();
           erase_set.insert(originalOp);
           auto originalOpInLinalgOpsVector = std::find_if(

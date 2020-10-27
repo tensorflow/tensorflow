@@ -549,7 +549,7 @@ TfLiteStatus GetTargetSdkVersion(
       (devices_sdk_version < nnapi->android_sdk_version)) {
     TFLITE_LOG(TFLITE_LOG_INFO,
                "Changing Android NN SDK version %d to version "
-               "supported by target devices: %d",
+               "supported by target devices: %lld",
                nnapi->android_sdk_version, devices_sdk_version);
 
     *target_sdk_version = devices_sdk_version;

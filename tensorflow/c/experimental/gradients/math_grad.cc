@@ -252,6 +252,43 @@ class SubGradientFunction : public GradientFunction {
   ~SubGradientFunction() override {}
 };
 
+class MulGradientFunction : public GradientFunction {
+ public:
+  explicit MulGradientFunction(vector<AbstractTensorHandle*> f_inputs)
+      : forward_inputs(f_inputs) {}
+
+  Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
+                 vector<AbstractTensorHandle*>* grad_outputs) override {
+    /* Given upstream grad U and a mul op A*B, the gradients are:
+     *
+     *    dA = U * B
+     *    dB = A * U
+     *
+     */
+
+    AbstractTensorHandle* upstream_grad = grad_inputs[0];
+    grad_outputs->resize(2);
+    std::vector<AbstractTensorHandle*> mul_outputs(1);
+
+    // Gradient for A
+    std::string name = "Mul_Grad_A";
+    TF_RETURN_IF_ERROR(Mul(ctx->ctx, {upstream_grad, forward_inputs[1]},
+                           absl::MakeSpan(mul_outputs), name.c_str()));
+    (*grad_outputs)[0] = mul_outputs[0];
+
+    // Gradient for B
+    name = "Mul_Grad_B";
+    TF_RETURN_IF_ERROR(Mul(ctx->ctx, {forward_inputs[0], upstream_grad},
+                           absl::MakeSpan(mul_outputs), name.c_str()));
+    (*grad_outputs)[1] = mul_outputs[0];
+    return Status::OK();
+  }
+  ~MulGradientFunction() override {}
+
+ private:
+  vector<AbstractTensorHandle*> forward_inputs;
+};
+
 }  // namespace
 
 BackwardFunction* AddRegisterer(const ForwardOperation& op) {
@@ -304,6 +341,15 @@ BackwardFunction* SubRegisterer(const ForwardOperation& op) {
   // is no incoming gradient. So we do not need to worry about creating zeros
   // grads in this case.
   auto gradient_function = new SubGradientFunction;
+  auto default_gradients = new PassThroughDefaultGradients(op);
+  return new BackwardFunction(gradient_function, default_gradients);
+}
+
+BackwardFunction* MulRegisterer(const ForwardOperation& op) {
+  // For ops with a single output, the gradient function is not called if there
+  // is no incoming gradient. So we do not need to worry about creating zeros
+  // grads in this case.
+  auto gradient_function = new MulGradientFunction(op.inputs);
   auto default_gradients = new PassThroughDefaultGradients(op);
   return new BackwardFunction(gradient_function, default_gradients);
 }

@@ -52,39 +52,14 @@ cc_library(
     srcs = ["arguments.cc"],
     hdrs = ["arguments.h"],
     deps = [
-        ":cl_device",
         ":gpu_object",
-        ":opencl_wrapper",
         ":serialization_cc_fbs",
-        ":tensor_type",
-        ":util",
         "//tensorflow/lite/delegates/gpu/common:access_type",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_test(
-    name = "arguments_test",
-    srcs = ["arguments_test.cc"],
-    linkstatic = True,
-    tags = tf_gpu_tests_tags() + [
-        "linux",
-        "local",
-    ],
-    deps = [
-        ":arguments",
-        ":buffer",
-        ":device_info",
-        ":gpu_object",
-        ":tensor",
-        ":tensor_type",
-        "//tensorflow/lite/delegates/gpu/common:data_type",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -129,6 +104,45 @@ cc_library(
         ":environment",
         ":opencl_wrapper",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "cl_arguments",
+    srcs = ["cl_arguments.cc"],
+    hdrs = ["cl_arguments.h"],
+    deps = [
+        ":arguments",
+        ":cl_context",
+        ":device_info",
+        ":gpu_object",
+        ":tensor",
+        ":tensor_type",
+        "//tensorflow/lite/delegates/gpu/common:access_type",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common:util",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_test(
+    name = "cl_arguments_test",
+    srcs = ["cl_arguments_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":arguments",
+        ":buffer",
+        ":cl_arguments",
+        ":device_info",
+        ":gpu_object",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

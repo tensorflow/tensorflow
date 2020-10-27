@@ -35,12 +35,12 @@ import six
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import distribute_lib
-from tensorflow.python.distribute import distributed_file_utils
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.distribute import distributed_file_utils
 from tensorflow.python.keras.distribute import worker_training_state
 from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 from tensorflow.python.keras.utils import generic_utils
@@ -2650,8 +2650,8 @@ class LambdaCallback(Callback):
   r"""Callback for creating simple, custom callbacks on-the-fly.
 
   This callback is constructed with anonymous functions that will be called
-  at the appropriate time. Note that the callbacks expects positional
-  arguments, as:
+  at the appropriate time (during `Model.{fit | evaluate | predict}`).
+  Note that the callbacks expects positional arguments, as:
 
   - `on_epoch_begin` and `on_epoch_end` expect two positional arguments:
     `epoch`, `logs`

@@ -4,6 +4,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 package(
     default_visibility = [
         "//tensorflow/compiler/tf2xla:internal",
+        "//tensorflow/compiler/xla:internal",
     ],
     licenses = ["notice"],  # Apache 2.0
 )

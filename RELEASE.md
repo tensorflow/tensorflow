@@ -24,6 +24,11 @@
 *   <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 *   <NOTES SHOULD BE GROUPED PER AREA>
 
+*   `tf.data`:
+    *   Exposing `tf.data.experimental.ExternalStatePolicy`, which can be used
+        to control how external state should be handled during dataset
+        serialization or iterator checkpointing.
+  
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:

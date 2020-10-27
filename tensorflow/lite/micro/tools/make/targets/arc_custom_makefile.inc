@@ -15,26 +15,22 @@
 # Settings for not pre-defined ARC processors. 
 # User need to specify ARC target with Tool Configuration File (*.tcf). 
 # Path to this file must be passed through TCF_FILE variable.
-# Otherwise, default em7d_voice_audio configuration is used 
-ifeq ($(TARGET_ARCH), arc)
+# Otherwise, default em7d_voice_audio configuration is used
 
-# Known target are specified with their own make configurations. 
-ifeq ($(filter $(TARGET), arc_emsdp),)
-
+TARGET_ARCH := arc
 ARC_TOOLCHAIN := mwdt
 
+# Overriding TARGET variable to change name of project folder according
+# to specified Tool Configuration File (*.tcf) passed through TCF_FILE variable
+# or default em7d_voice_audio configuration.
 ifneq ($(TCF_FILE), )
-  TARGET = $(basename $(notdir $(TCF_FILE)))
+  override TARGET = $(basename $(notdir $(TCF_FILE)))
 else
   $(warning TCF_FILE variable is not specified. Use default em7d_voice_audio configuration)
-  TARGET = em7d_voice_audio
+  override TARGET = em7d_voice_audio
   TCF_FILE = em7d_voice_audio
 endif
 
 include $(MAKEFILE_DIR)/targets/arc/arc_common.inc
 
 MAKE_PROJECT_FILES := $(filter-out README_MAKE.md, $(MAKE_PROJECT_FILES)) README_ARC.md
-
-endif  # $(TARGET)
-endif  # $(TARGET_ARCH)...
-

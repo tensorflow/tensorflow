@@ -71,7 +71,6 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 5,
     tags = [
-        "no_oss_py38",  # TODO(b/171435331)
         "notsan",  # TODO(b/171406091)
     ],
     deps = [

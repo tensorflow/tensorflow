@@ -301,7 +301,6 @@ tf_py_test(
     srcs = ["collective_ops_multi_worker_test.py"],
     python_version = "PY3",
     tags = [
-        "no_oss_py38",  #TODO(b/171435331)
         "no_rocm",
         "notsan",  # TODO(b/171435192)
     ],
@@ -1986,6 +1985,9 @@ cuda_py_test(
     size = "medium",
     srcs = ["depthtospace_op_test.py"],
     tags = ["no_windows_gpu"],
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -3205,7 +3207,7 @@ cuda_py_test(
     name = "extract_image_patches_grad_test",
     size = "medium",
     srcs = ["extract_image_patches_grad_test.py"],
-    shard_count = 3,
+    shard_count = 9,
     tags = ["notap"],  # http://b/31080670
     deps = [
         "//tensorflow/python:array_ops",
@@ -3268,6 +3270,9 @@ cuda_py_test(
     size = "medium",
     srcs = ["concat_op_test.py"],
     tags = ["no_windows"],  # b/126916429
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:array_ops_gen",

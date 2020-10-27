@@ -834,6 +834,9 @@ cuda_py_test(
         "no_oss",
         "notsan",  # TODO(b/170954246)
     ],
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",

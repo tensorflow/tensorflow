@@ -2141,13 +2141,12 @@ def _enable_get_next_as_optional(strategy, dataset):
                  False):
     return False
 
-  if context.executing_eagerly() and cardinality.cardinality(
-      dataset).numpy() == cardinality.INFINITE:
+  if context.executing_eagerly():
     # If the dataset is inifinite, we don't need to enable last partial batch
     # support. Currently the logic only applies to the case that distributed
     # dataset is created in eager mode, as we need to evaluate the dataset
     # cardinality.
-    return False
+    return cardinality.cardinality(dataset).numpy() != cardinality.INFINITE
 
   return not _is_statically_shaped(
       dataset.element_spec) or strategy.extended._in_multi_worker_mode()  # pylint: disable=protected-access
