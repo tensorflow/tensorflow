@@ -487,7 +487,12 @@ def remove_checkpoint(checkpoint_prefix,
 def _delete_file_if_exists(filespec):
   """Deletes files matching `filespec`."""
   for pathname in file_io.get_matching_files(filespec):
-    file_io.delete_file(pathname)
+    try:
+      file_io.delete_file(pathname)
+    except errors.NotFoundError:
+      logging.warning(
+          "Hit NotFoundError when deleting '%s', possibly because another "
+          "process/thread is also deleting/moving the same file", pathname)
 
 
 def meta_graph_filename(checkpoint_filename, meta_graph_suffix="meta"):
