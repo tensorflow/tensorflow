@@ -952,8 +952,8 @@ class Function(object):
     canon_args, canon_kwds, _, filtered_flat_args = \
         self._stateful_fn._function_spec.canonicalize_function_inputs(  # pylint: disable=protected-access
             *args, **kwds)
-    return function_lib.defun(fn_with_cond)(canon_args, canon_kwds,
-                                            filtered_flat_args)
+    return function_lib.defun(fn_with_cond, autograph=False)(
+        canon_args, canon_kwds, filtered_flat_args)
 
   def experimental_get_compiler_ir(self, *args, **kwargs):
     """Returns compiler IR for the compiled function.
