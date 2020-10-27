@@ -1985,6 +1985,9 @@ cuda_py_test(
     size = "medium",
     srcs = ["depthtospace_op_test.py"],
     tags = ["no_windows_gpu"],
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -3267,6 +3270,9 @@ cuda_py_test(
     size = "medium",
     srcs = ["concat_op_test.py"],
     tags = ["no_windows"],  # b/126916429
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:array_ops_gen",

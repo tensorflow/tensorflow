@@ -302,6 +302,9 @@ cuda_py_test(
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         ":engine",
         "//tensorflow/python:client_testlib",

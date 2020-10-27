@@ -545,6 +545,9 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
     ],
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         ":saved_model_test_base",
         "//tensorflow/python/keras/saving",
@@ -816,6 +819,9 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_rocm",
+    ],
+    xla_tags = [
+        "no_cuda_asan",  # times out
     ],
     deps = [
         ":saved_model_test_base",
