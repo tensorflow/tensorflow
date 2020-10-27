@@ -237,7 +237,12 @@ function copy_to_new_project_name {
 
   TMP_DIR="$(mktemp -d)"
   ${PYTHON_CMD} -m wheel unpack "${WHL_PATH}" -d "${TMP_DIR}"
-  TMP_UNPACKED_DIR="$(ls -1 "${TMP_DIR}" | head -n 1)"
+  # Debug:
+  find "${TMP_DIR}"
+  ls -l "${TMP_DIR}"
+  ls -l "${TMP_DIR}"/*
+  # End debug
+  TMP_UNPACKED_DIR="$(find "${TMP_DIR}" -type d | tail -n 1)"
   pushd "${TMP_UNPACKED_DIR}"
 
   ORIGINAL_WHL_DIR_PREFIX="${ORIGINAL_PROJECT_NAME}-${VERSION}"
