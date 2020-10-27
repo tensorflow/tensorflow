@@ -130,14 +130,6 @@ absl::Status BufferDescriptor::PerformGetPtrSelector(
   return absl::OkStatus();
 }
 
-absl::Status BufferDescriptor::CreateGPUObject(CLContext* context,
-                                               GPUObjectPtr* result) const {
-  Buffer gpu_buffer;
-  RETURN_IF_ERROR(gpu_buffer.CreateFromBufferDescriptor(*this, context));
-  *result = absl::make_unique<Buffer>(std::move(gpu_buffer));
-  return absl::OkStatus();
-}
-
 Buffer::Buffer(cl_mem buffer, size_t size_in_bytes)
     : buffer_(buffer), size_(size_in_bytes) {}
 

@@ -21,8 +21,12 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
+#include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
+#include "tensorflow/lite/delegates/gpu/cl/linear_storage.h"
+#include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
+#include "tensorflow/lite/delegates/gpu/cl/texture2d.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 
 namespace tflite {
@@ -158,6 +162,47 @@ std::string GetDefaultSamplers(const DeviceInfo& device_info) {
 
   return result;
 }
+
+absl::Status CreateCLObject(GPUObjectDescriptor* desc, CLContext* context,
+                            GPUObjectPtr* result) {
+  const auto* buffer_desc = dynamic_cast<const BufferDescriptor*>(desc);
+  if (buffer_desc) {
+    Buffer gpu_buffer;
+    RETURN_IF_ERROR(
+        gpu_buffer.CreateFromBufferDescriptor(*buffer_desc, context));
+    *result = absl::make_unique<Buffer>(std::move(gpu_buffer));
+    return absl::OkStatus();
+  }
+
+  const auto* texture_desc = dynamic_cast<const Texture2DDescriptor*>(desc);
+  if (texture_desc) {
+    Texture2D gpu_texture;
+    RETURN_IF_ERROR(
+        gpu_texture.CreateFromTexture2DDescriptor(*texture_desc, context));
+    *result = absl::make_unique<Texture2D>(std::move(gpu_texture));
+    return absl::OkStatus();
+  }
+
+  const auto* linear_desc = dynamic_cast<const TensorLinearDescriptor*>(desc);
+  if (linear_desc) {
+    LinearStorage gpu_storage;
+    RETURN_IF_ERROR(
+        gpu_storage.CreateFromTensorLinearDescriptor(*linear_desc, context));
+    *result = absl::make_unique<LinearStorage>(std::move(gpu_storage));
+    return absl::OkStatus();
+  }
+
+  const auto* tensor_desc = dynamic_cast<const TensorDescriptor*>(desc);
+  if (tensor_desc) {
+    Tensor gpu_tensor;
+    RETURN_IF_ERROR(gpu_tensor.CreateFromDescriptor(*tensor_desc, context));
+    *result = absl::make_unique<Tensor>(std::move(gpu_tensor));
+    return absl::OkStatus();
+  }
+
+  return absl::InvalidArgumentError("Unknown GPU descriptor.");
+}
+
 }  // namespace
 
 // Static
@@ -198,7 +243,7 @@ absl::Status CLArguments::AllocateObjects(const Arguments& args,
   objects_.resize(args.objects_.size());
   int i = 0;
   for (auto& t : args.objects_) {
-    RETURN_IF_ERROR(t.second->CreateGPUObject(context, &objects_[i]));
+    RETURN_IF_ERROR(CreateCLObject(t.second.get(), context, &objects_[i]));
     i++;
   }
   return absl::OkStatus();

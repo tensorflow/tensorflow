@@ -149,10 +149,6 @@ class GPUObjectDescriptor {
   }
   virtual GPUResources GetGPUResources() const { return GPUResources(); }
 
-  virtual absl::Status CreateGPUObject(
-      CLContext* context, std::unique_ptr<GPUObject>* result) const {
-    return absl::OkStatus();
-  }
   virtual void Release() {}
 
   void SetAccess(AccessType access_type) { access_type_ = access_type; }

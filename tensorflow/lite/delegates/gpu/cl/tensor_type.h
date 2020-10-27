@@ -68,8 +68,6 @@ struct TensorDescriptor : public GPUObjectDescriptor {
 
   GPUResources GetGPUResources() const override;
 
-  absl::Status CreateGPUObject(CLContext* context,
-                               GPUObjectPtr* result) const override;
   void Release() override { data.clear(); }
 
   bool HasAxis(Axis axis) const;
