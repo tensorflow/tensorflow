@@ -4,7 +4,7 @@
 
 * `tf.distribute` introduces experimental support for asynchronous training of Keras models via the [`tf.distribute.experimental.ParameterServerStrategy`](https://www.tensorflow.org/api_docs/python/tf/distribute/experimental/ParameterServerStrategy?version=nightly) API. Please see below for additional details.
 
-* [`MultiWorkerMirroredStrategy`](https://www.tensorflow.org/api_docs/python/tf/distribute/MultiWorkerMirroredStrategy) is now a stable API and is no longer considered experimental. Some of the major improvements involve handling peer failure and model saving. Please check out the detailed tutorial on [Multi-worker training with Keras](https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras)
+* [`MultiWorkerMirroredStrategy`](https://www.tensorflow.org/api_docs/python/tf/distribute/MultiWorkerMirroredStrategy) is now a stable API and is no longer considered experimental. Some of the major improvements involve handling peer failure and many bug fixes. Please check out the detailed tutorial on [Multi-worker training with Keras](https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras)
 
 * Introduces experimental support for a new module named [`tf.experimental.numpy`](https://www.tensorflow.org/api_docs/python/tf/experimental/numpy) which is a NumPy-compatible API for writing TF programs. See the [detailed guide](https://www.tensorflow.org/guide/tf_numpy) to learn more. Additional details below. 
 
@@ -54,12 +54,12 @@
   * `tf.data.experimental.service.WorkerServer` now takes a config tuple instead of individual arguments. Usages should be updated to  `tf.data.experimental.service.WorkerServer(worker_config)`.
   
 * `tf.distribute`:
-  * `tf.distribute.Strategy.experimental_make_numpy_dataset` is removed. Please use `tf.data.Dataset.from_tensor_slices` instead.
-  * `experimental_hints` in `tf.distribute.StrategyExtended.reduce_to`, `tf.distribute.StrategyExtended.batch_reduce_to`,      `tf.distribute.ReplicaContext.all_reduce` are renamed to `options`:
-  * `tf.distribute.experimental.CollectiveHints` is renamed `tf.distribute.experimental.CommunicationOptions`.
-  * `tf.distribute.experimental.CollectiveCommunication` is renamed `tf.distribute.experimental.CommunicationImplementation`.
-  * Deprecated `experimental_distribute_datasets_from_function` method and renamed it to `distribute_datasets_from_function` as it is no longer experimental.
-  * Removed `tf.distribute.Strategy.experimental_run_v2` method, which was deprecated in TF 2.2.
+  * Removes `tf.distribute.Strategy.experimental_make_numpy_dataset`. Please use `tf.data.Dataset.from_tensor_slices` instead.
+  * Renames `experimental_hints` in `tf.distribute.StrategyExtended.reduce_to`, `tf.distribute.StrategyExtended.batch_reduce_to`,      `tf.distribute.ReplicaContext.all_reduce` to `options`:
+  * Renames `tf.distribute.experimental.CollectiveHints` to `tf.distribute.experimental.CommunicationOptions`.
+  * Renames `tf.distribute.experimental.CollectiveCommunication` to `tf.distribute.experimental.CommunicationImplementation`.
+  * Renames `tf.distribute.Strategy.experimental_distribute_datasets_from_function` to `distribute_datasets_from_function` as it is no longer experimental. 
+  * Removes `tf.distribute.Strategy.experimental_run_v2` method, which was deprecated in TF 2.2.
 
 * `tf.lite`:
   * `tf.quantization.quantize_and_dequantize_v2` has been introduced, which updates the gradient definition for quantization which is outside the range
@@ -131,6 +131,8 @@
     * Replaces the existing `tf.distribute.experimental.ParameterServerStrategy` symbol with a new class that is for parameter server training in TF2. Usage of
       the old symbol, usually with Estimator API, should be **replaced** with [`tf.compat.v1.distribute.experimental.ParameterServerStrategy`].
     * Added `tf.distribute.experimental.coordinator.*` namespace, including the main API `ClusterCoordinator` for coordinating the training cluster, the related       data structure `RemoteValue` and `PerWorkerValue`.
+  * Adds `tf.distribute.Strategy.gather` and `tf.distribute.ReplicaContext.all_gather` APIs to support gathering dense distributed values.
+  * Fixes various issues with saving a distributed model.
 
 ### `tf.keras`:
   * Improvements from the Functional API refactoring:
