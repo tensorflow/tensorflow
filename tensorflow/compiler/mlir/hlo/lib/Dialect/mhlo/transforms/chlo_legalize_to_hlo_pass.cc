@@ -49,7 +49,7 @@ struct ChloLegalizeToHloPass
     chlo::PopulateLegalizeChloToHloPatterns(&getContext(), &conversionPatterns);
 
     if (failed(applyPartialConversion(getFunction(), conversionTarget,
-                                      conversionPatterns))) {
+                                      std::move(conversionPatterns)))) {
       return signalPassFailure();
     }
   }

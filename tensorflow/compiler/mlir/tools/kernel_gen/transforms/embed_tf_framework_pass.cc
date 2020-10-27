@@ -64,7 +64,7 @@ class EmbedTFFrameworkPass
       return !op->getParentOfType<FuncOp>().getAttrOfType<UnitAttr>(kTFEntry);
     });
 
-    if (failed(applyPartialConversion(m, target, patterns))) {
+    if (failed(applyPartialConversion(m, target, std::move(patterns)))) {
       signalPassFailure();
     }
   }

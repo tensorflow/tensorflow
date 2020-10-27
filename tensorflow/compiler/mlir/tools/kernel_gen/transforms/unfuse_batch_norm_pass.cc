@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 
@@ -29,7 +30,7 @@ struct UnfuseBatchNormPass
   void runOnFunction() override {
     mlir::OwningRewritePatternList patterns;
     mlir::mhlo::PopulateUnfuseBatchNormPatterns(&getContext(), &patterns);
-    mlir::applyPatternsAndFoldGreedily(getOperation(), patterns);
+    mlir::applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
   }
 };
 

@@ -555,7 +555,8 @@ struct HloLegalizeToLhlo
         &context, converter, patterns);
     populateShapeStructuralTypeConversionsAndLegality(&context, converter,
                                                       patterns, target);
-    if (failed(applyPartialConversion(getOperation(), target, patterns)))
+    if (failed(applyPartialConversion(getOperation(), target,
+                                      std::move(patterns))))
       signalPassFailure();
   }
 

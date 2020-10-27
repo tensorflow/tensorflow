@@ -677,6 +677,7 @@ void LegalizeTF::runOnFunction() {
   // Ophint python converter converted tf node pattern.
   patterns.insert<LegalizeUnidirectionalSequenceLstm,
                   LegalizeUnidirectionalSequenceRnn>(context);
+  FrozenRewritePatternList frozenPatterns(std::move(patterns));
 
   ConversionTarget target(*context);
   // It is legal to have TF ops in the graph still which can be
@@ -716,7 +717,7 @@ void LegalizeTF::runOnFunction() {
   // Currently unit-test doesn't do multiple tries, so we need this.
   const int max_iterations = 15;
   for (int i = 0; i < max_iterations; ++i) {
-    if (failed(applyPartialConversion(func, target, patterns))) {
+    if (failed(applyPartialConversion(func, target, frozenPatterns))) {
       return;
     }
   }

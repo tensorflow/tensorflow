@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/Interfaces/ViewLikeInterface.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/FoldUtils.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
 namespace lmhlo {
@@ -111,7 +112,7 @@ class LhloFuseLinalgPass
       }
     });
     auto patterns = linalg::getLinalgTilingCanonicalizationPatterns(ctx);
-    applyPatternsAndFoldGreedily(func, patterns);
+    applyPatternsAndFoldGreedily(func, std::move(patterns));
 
     // Fuse producers of tiled linalg ops.
     llvm::SmallDenseSet<Operation*> erase_set;
@@ -132,7 +133,7 @@ class LhloFuseLinalgPass
       }
 
       auto patterns = linalg::getLinalgTilingCanonicalizationPatterns(ctx);
-      applyPatternsAndFoldGreedily(func, patterns);
+      applyPatternsAndFoldGreedily(func, std::move(patterns));
     }
     for (auto* e : erase_set) e->erase();
   }

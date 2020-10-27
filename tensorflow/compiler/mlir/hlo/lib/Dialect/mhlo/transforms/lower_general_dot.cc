@@ -25,10 +25,10 @@ limitations under the License.
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/Operation.h"
-#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 using mlir::DenseIntElementsAttr;
 using mlir::ElementsAttr;
@@ -182,7 +182,7 @@ struct LegalizeGeneralDotPass
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     mlir::mhlo::PopulateGeneralDotOpLoweringPatterns(&patterns, &getContext());
-    applyPatternsAndFoldGreedily(getFunction(), patterns);
+    applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
   }
 };
 

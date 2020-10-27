@@ -38,6 +38,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
@@ -573,7 +574,8 @@ class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     patterns.insert<Tf2XlaRewritePattern>(device_type_);
-    if (failed(applyPatternsAndFoldGreedily(getFunction(), patterns)))
+    if (failed(
+            applyPatternsAndFoldGreedily(getFunction(), std::move(patterns))))
       signalPassFailure();
   }
 

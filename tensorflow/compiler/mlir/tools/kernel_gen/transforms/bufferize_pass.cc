@@ -110,7 +110,7 @@ struct BufferizePass : public BufferizePassBase<BufferizePass> {
     patterns.insert<UnrankedTensorStoreTestOnlyPattern>(&context);
 
     auto module = getOperation();
-    if (failed(applyPartialConversion(module, target, patterns))) {
+    if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
       signalPassFailure();
     }
   }

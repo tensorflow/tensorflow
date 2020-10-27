@@ -22,10 +22,10 @@ limitations under the License.
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
@@ -100,7 +100,7 @@ void BroadcastFoldPass::runOnFunction() {
   auto func = getFunction();
 
   patterns.insert<ConvertResultsBroadcastableShapeOp>();
-  applyPatternsAndFoldGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
 }  // namespace
