@@ -327,7 +327,7 @@ class TensorBoard(callbacks.TensorBoard):
     logs = logs or {}
     if context.executing_eagerly():
       # use v2 summary ops
-      with self.writer.as_default(), summary_ops_v2.always_record_summaries():
+      with self.writer.as_default(), summary_ops_v2.record_if(True):
         for name, value in logs.items():
           if isinstance(value, np.ndarray):
             value = value.item()

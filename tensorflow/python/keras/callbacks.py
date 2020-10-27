@@ -2150,7 +2150,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
   def _write_keras_model_train_graph(self):
     """Writes Keras model train_function graph to TensorBoard."""
     with self._train_writer.as_default():
-      with summary_ops_v2.always_record_summaries():
+      with summary_ops_v2.record_if(True):
         train_fn = self.model.train_function
         # If the train_function is a `tf.function`, we can write out a graph
         if hasattr(train_fn, 'function_spec'):
@@ -2159,7 +2159,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
   def _write_keras_model_summary(self):
     """Writes Keras graph network summary to TensorBoard."""
     with self._train_writer.as_default():
-      with summary_ops_v2.always_record_summaries():
+      with summary_ops_v2.record_if(True):
         summary_writable = (
             self.model._is_graph_network or  # pylint: disable=protected-access
             self.model.__class__.__name__ == 'Sequential')  # pylint: disable=protected-access
@@ -2351,7 +2351,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     if batch is None:
       batch = self._stop_batch
     with self._train_writer.as_default():
-      with summary_ops_v2.always_record_summaries():
+      with summary_ops_v2.record_if(True):
         # TODO(b/126388999): Remove step info in the summary name.
         summary_ops_v2.trace_export(name='batch_%d' % batch, step=batch)
     profiler.stop()
@@ -2377,7 +2377,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     val_logs = {k: v for k, v in logs.items() if k.startswith('val_')}
     train_logs = self._collect_learning_rate(train_logs)
 
-    with summary_ops_v2.always_record_summaries():
+    with summary_ops_v2.record_if(True):
       if train_logs:
         with self._train_writer.as_default():
           for name, value in train_logs.items():
@@ -2391,7 +2391,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
   def _log_weights(self, epoch):
     """Logs the weights of the Model to TensorBoard."""
     with self._train_writer.as_default():
-      with summary_ops_v2.always_record_summaries():
+      with summary_ops_v2.record_if(True):
         for layer in self.model.layers:
           for weight in layer.weights:
             weight_name = weight.name.replace(':', '_')

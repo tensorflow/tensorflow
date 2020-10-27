@@ -257,7 +257,7 @@ class AutoOutsideCompilationWithKerasTest(test.TestCase):
       def _custom_step(features, labels):
         del labels
         logits = model(features)
-        with summary_ops_v2.always_record_summaries(), writer.as_default():
+        with summary_ops_v2.record_if(True), writer.as_default():
           scalar_summary_v2.scalar(
               'logits',
               math_ops.reduce_sum(logits),
