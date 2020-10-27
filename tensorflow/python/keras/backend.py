@@ -6513,7 +6513,7 @@ def configure_and_create_distributed_session(distribution_strategy):
     dc.run_distribute_coordinator(
         _create_session,
         distribution_strategy,
-        mode=dc.CoordinatorMode.INDEPENDENT_WORKER)
+        mode='independent_worker')
   else:
     _create_session(distribution_strategy)
 
