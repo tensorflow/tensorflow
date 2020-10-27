@@ -34,6 +34,9 @@ OutputTensor ToOutputTensor(const Output& output) {
 // Utility function for converting to internal C++ datatypes.
 std::vector<OutputTensor> ToOutputTensors(const std::vector<Output>& outputs) {
   std::vector<OutputTensor> result(outputs.size());
+  if (outputs.empty()) {
+      return result;
+  }
   for (int i = 0; i < outputs.size(); ++i) {
     result[i] = ToOutputTensor(outputs[i]);
   }
@@ -43,6 +46,9 @@ std::vector<OutputTensor> ToOutputTensors(const std::vector<Output>& outputs) {
 // Utility function for converting to internal C++ datatypes.
 std::vector<Node*> ToNodes(const std::vector<Output>& outputs) {
   std::vector<Node*> result(outputs.size());
+  if (outputs.empty()) {
+      return result;
+  }
   for (int i = 0; i < outputs.size(); ++i) {
     result[i] = outputs[i].node();
   }
