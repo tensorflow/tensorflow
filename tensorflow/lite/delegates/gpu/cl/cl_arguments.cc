@@ -435,31 +435,31 @@ void CLArguments::RenameArgumentsInCode(std::string* code) {
 
 void CLArguments::AddBuffer(const std::string& name,
                             const GPUBufferDescriptor& desc) {
-  buffers_[name] = desc;
+  buffers_[name].desc = desc;
 }
 void CLArguments::AddImage2D(const std::string& name,
                              const GPUImage2DDescriptor& desc) {
-  images2d_[name] = desc;
+  images2d_[name].desc = desc;
 }
 
 void CLArguments::AddImage2DArray(const std::string& name,
                                   const GPUImage2DArrayDescriptor& desc) {
-  image2d_arrays_[name] = desc;
+  image2d_arrays_[name].desc = desc;
 }
 
 void CLArguments::AddImage3D(const std::string& name,
                              const GPUImage3DDescriptor& desc) {
-  images3d_[name] = desc;
+  images3d_[name].desc = desc;
 }
 
 void CLArguments::AddImageBuffer(const std::string& name,
                                  const GPUImageBufferDescriptor& desc) {
-  image_buffers_[name] = desc;
+  image_buffers_[name].desc = desc;
 }
 
 void CLArguments::AddCustomMemory(const std::string& name,
                                   const GPUCustomMemoryDescriptor& desc) {
-  custom_memories_[name] = desc;
+  custom_memories_[name].desc = desc;
 }
 
 void CLArguments::AddGPUResources(const std::string& name,
@@ -643,39 +643,41 @@ std::string CLArguments::GetListOfArgs() {
   std::string result;
   for (auto& t : buffers_) {
     const std::string type_name =
-        t.second.data_type == DataType::FLOAT32 ? "float" : "half";
+        t.second.desc.data_type == DataType::FLOAT32 ? "float" : "half";
     std::string attributes;
-    for (const auto& attr : t.second.attributes) {
+    for (const auto& attr : t.second.desc.attributes) {
       attributes += absl::StrCat("  __attribute__((", attr, "))");
     }
     AppendArgument(
-        absl::StrCat(MemoryTypeToCLType(t.second.memory_type), " ",
-                     ToCLDataType(t.second.data_type, t.second.element_size),
-                     "* ", t.first, attributes),
+        absl::StrCat(
+            MemoryTypeToCLType(t.second.desc.memory_type), " ",
+            ToCLDataType(t.second.desc.data_type, t.second.desc.element_size),
+            "* ", t.first, attributes),
         &result);
   }
   for (auto& t : image_buffers_) {
-    AppendArgument(absl::StrCat(GetImageModifier(t.second.access_type),
+    AppendArgument(absl::StrCat(GetImageModifier(t.second.desc.access_type),
                                 " image1d_buffer_t ", t.first),
                    &result);
   }
   for (auto& t : images2d_) {
-    AppendArgument(absl::StrCat(GetImageModifier(t.second.access_type),
+    AppendArgument(absl::StrCat(GetImageModifier(t.second.desc.access_type),
                                 " image2d_t ", t.first),
                    &result);
   }
   for (auto& t : image2d_arrays_) {
-    AppendArgument(absl::StrCat(GetImageModifier(t.second.access_type),
+    AppendArgument(absl::StrCat(GetImageModifier(t.second.desc.access_type),
                                 " image2d_array_t ", t.first),
                    &result);
   }
   for (auto& t : images3d_) {
-    AppendArgument(absl::StrCat(GetImageModifier(t.second.access_type),
+    AppendArgument(absl::StrCat(GetImageModifier(t.second.desc.access_type),
                                 " image3d_t ", t.first),
                    &result);
   }
   for (auto& t : custom_memories_) {
-    AppendArgument(absl::StrCat(t.second.type_name, " ", t.first), &result);
+    AppendArgument(absl::StrCat(t.second.desc.type_name, " ", t.first),
+                   &result);
   }
   for (int i = 0; i < shared_int4s_data_.size() / 4; ++i) {
     AppendArgument(absl::StrCat("int4 shared_int4_", i), &result);

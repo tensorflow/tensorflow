@@ -35,30 +35,25 @@ namespace cl {
 struct GPUImage2DDescriptor {
   DataType data_type;
   AccessType access_type;
-  cl_mem memory;
 };
 
 struct GPUImage3DDescriptor {
   DataType data_type;
   AccessType access_type;
-  cl_mem memory;
 };
 
 struct GPUImage2DArrayDescriptor {
   DataType data_type;
   AccessType access_type;
-  cl_mem memory;
 };
 
 struct GPUImageBufferDescriptor {
   DataType data_type;
   AccessType access_type;
-  cl_mem memory;
 };
 
 struct GPUCustomMemoryDescriptor {
   std::string type_name;
-  cl_mem memory;
 };
 
 enum class MemoryType { GLOBAL, CONSTANT, LOCAL };
@@ -71,7 +66,6 @@ struct GPUBufferDescriptor {
   int element_size;
   MemoryType memory_type = MemoryType::GLOBAL;
   std::vector<std::string> attributes;
-  cl_mem memory;
 };
 
 struct GPUResources {
