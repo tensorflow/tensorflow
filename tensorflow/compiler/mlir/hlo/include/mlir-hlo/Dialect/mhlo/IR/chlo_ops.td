@@ -427,7 +427,10 @@ def HLOClient_BroadcastCompareOp : HLOClient_BroadcastBinaryElementwiseOp<
   string summary = "Compare operator (with optional broadcasting)";
 
   string description = [{
-    Compares `lhs` and `rhs` elementwise according to `comparison_direction`.
+    Compares `lhs` and `rhs` elementwise according to `comparison_direction`
+    and `compare_type`. If unspecified, `compare_type` is FLOAT for float element
+    types, SIGNED for signed element types and UNSIGNED for unsigned element
+    types.
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_comparison_operations.
@@ -437,13 +440,15 @@ def HLOClient_BroadcastCompareOp : HLOClient_BroadcastBinaryElementwiseOp<
     HLO_Tensor:$lhs,
     HLO_Tensor:$rhs,
     OptionalAttr<BroadcastDimAttr>:$broadcast_dimensions,
-    HLO_ComparisonDirectionAttr:$comparison_direction
+    HLO_ComparisonDirectionAttr:$comparison_direction,
+    OptionalAttr<HLO_ComparisonTypeAttr>:$compare_type
   );
   let results = (outs HLO_PredTensor);
 
   let builders = [OpBuilder<
     "OpBuilder &builder, OperationState &result, Value lhs, Value rhs, "
-    "DenseIntElementsAttr broadcast_dimensions, StringAttr comparison_direction"
+    "DenseIntElementsAttr broadcast_dimensions, "
+    "StringAttr comparison_direction, StringAttr compare_type = {}"
   >];
 }
 

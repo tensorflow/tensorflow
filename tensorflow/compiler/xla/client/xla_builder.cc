@@ -1439,6 +1439,110 @@ XlaOp XlaBuilder::ConvGeneralDilated(
   });
 }
 
+StatusOr<HloInstructionProto> XlaBuilder::DynamicConvInstruction(
+    XlaOp lhs, XlaOp rhs, absl::Span<const int64> window_strides,
+    absl::Span<const std::pair<int64, int64>> padding,
+    absl::Span<const int64> lhs_dilation, absl::Span<const int64> rhs_dilation,
+    const ConvolutionDimensionNumbers& dimension_numbers,
+    int64 feature_group_count, int64 batch_group_count,
+    const PrecisionConfig* precision_config, PaddingType padding_type) {
+  TF_ASSIGN_OR_RETURN(const Shape* lhs_shape, GetShapePtr(lhs));
+  TF_ASSIGN_OR_RETURN(const Shape* rhs_shape, GetShapePtr(rhs));
+  std::vector<int64> window_dimensions(
+      dimension_numbers.kernel_spatial_dimensions_size());
+  for (std::vector<int64>::size_type i = 0; i < window_dimensions.size(); ++i) {
+    window_dimensions[i] =
+        rhs_shape->dimensions(dimension_numbers.kernel_spatial_dimensions(i));
+  }
+
+  TF_ASSIGN_OR_RETURN(Window window, ShapeInference::InferWindowFromDimensions(
+                                         window_dimensions, window_strides,
+                                         padding, lhs_dilation, rhs_dilation));
+  TF_ASSIGN_OR_RETURN(Shape shape,
+                      ShapeInference::InferConvolveShape(
+                          *lhs_shape, *rhs_shape, feature_group_count,
+                          batch_group_count, window, dimension_numbers));
+
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+
+  *instr.mutable_window() = window;
+  *instr.mutable_convolution_dimension_numbers() = dimension_numbers;
+  instr.set_feature_group_count(feature_group_count);
+  instr.set_batch_group_count(batch_group_count);
+  instr.set_padding_type(padding_type);
+
+  if (precision_config != nullptr) {
+    *instr.mutable_precision_config() = *precision_config;
+  }
+  return std::move(instr);
+}
+
+XlaOp XlaBuilder::DynamicConvInputGrad(
+    XlaOp input_sizes, XlaOp lhs, XlaOp rhs,
+    absl::Span<const int64> window_strides,
+    absl::Span<const std::pair<int64, int64>> padding,
+    absl::Span<const int64> lhs_dilation, absl::Span<const int64> rhs_dilation,
+    const ConvolutionDimensionNumbers& dimension_numbers,
+    int64 feature_group_count, int64 batch_group_count,
+    const PrecisionConfig* precision_config, PaddingType padding_type) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(
+        HloInstructionProto instr,
+        DynamicConvInstruction(lhs, rhs, window_strides, padding, lhs_dilation,
+                               rhs_dilation, dimension_numbers,
+                               feature_group_count, batch_group_count,
+                               precision_config, padding_type));
+
+    instr.set_custom_call_target("DynamicConvolutionInputGrad");
+
+    return AddInstruction(std::move(instr), HloOpcode::kCustomCall,
+                          {input_sizes, lhs, rhs});
+  });
+}
+
+XlaOp XlaBuilder::DynamicConvKernelGrad(
+    XlaOp activations, XlaOp gradients, absl::Span<const int64> window_strides,
+    absl::Span<const std::pair<int64, int64>> padding,
+    absl::Span<const int64> lhs_dilation, absl::Span<const int64> rhs_dilation,
+    const ConvolutionDimensionNumbers& dimension_numbers,
+    int64 feature_group_count, int64 batch_group_count,
+    const PrecisionConfig* precision_config, PaddingType padding_type) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(
+        HloInstructionProto instr,
+        DynamicConvInstruction(activations, gradients, window_strides, padding,
+                               lhs_dilation, rhs_dilation, dimension_numbers,
+                               feature_group_count, batch_group_count,
+                               precision_config, padding_type));
+
+    instr.set_custom_call_target("DynamicConvolutionKernelGrad");
+
+    return AddInstruction(std::move(instr), HloOpcode::kCustomCall,
+                          {activations, gradients});
+  });
+}
+
+XlaOp XlaBuilder::DynamicConvForward(
+    XlaOp lhs, XlaOp rhs, absl::Span<const int64> window_strides,
+    absl::Span<const std::pair<int64, int64>> padding,
+    absl::Span<const int64> lhs_dilation, absl::Span<const int64> rhs_dilation,
+    const ConvolutionDimensionNumbers& dimension_numbers,
+    int64 feature_group_count, int64 batch_group_count,
+    const PrecisionConfig* precision_config, PaddingType padding_type) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(
+        HloInstructionProto instr,
+        DynamicConvInstruction(lhs, rhs, window_strides, padding, lhs_dilation,
+                               rhs_dilation, dimension_numbers,
+                               feature_group_count, batch_group_count,
+                               precision_config, padding_type));
+    instr.set_custom_call_target("DynamicConvolutionForward");
+
+    return AddInstruction(std::move(instr), HloOpcode::kCustomCall, {lhs, rhs});
+  });
+}
+
 StatusOr<XlaOp> XlaBuilder::ConvGeneralDilatedInternal(
     const Shape& shape, XlaOp lhs, XlaOp rhs, const Window& window,
     absl::Span<const int64> window_strides,
@@ -3899,6 +4003,49 @@ XlaOp ConvGeneralDilated(const XlaOp lhs, const XlaOp rhs,
       lhs, rhs, window_strides, padding, lhs_dilation, rhs_dilation,
       dimension_numbers, feature_group_count, batch_group_count,
       precision_config);
+}
+
+XlaOp DynamicConvInputGrad(XlaOp input_sizes, const XlaOp lhs, const XlaOp rhs,
+                           absl::Span<const int64> window_strides,
+                           absl::Span<const std::pair<int64, int64>> padding,
+                           absl::Span<const int64> lhs_dilation,
+                           absl::Span<const int64> rhs_dilation,
+                           const ConvolutionDimensionNumbers& dimension_numbers,
+                           int64 feature_group_count, int64 batch_group_count,
+                           const PrecisionConfig* precision_config,
+                           PaddingType padding_type) {
+  return lhs.builder()->DynamicConvInputGrad(
+      input_sizes, lhs, rhs, window_strides, padding, lhs_dilation,
+      rhs_dilation, dimension_numbers, feature_group_count, batch_group_count,
+      precision_config, padding_type);
+}
+
+XlaOp DynamicConvKernelGrad(
+    XlaOp activations, XlaOp gradients, absl::Span<const int64> window_strides,
+    absl::Span<const std::pair<int64, int64>> padding,
+    absl::Span<const int64> lhs_dilation, absl::Span<const int64> rhs_dilation,
+    const ConvolutionDimensionNumbers& dimension_numbers,
+    int64 feature_group_count, int64 batch_group_count,
+    const PrecisionConfig* precision_config, PaddingType padding_type) {
+  return activations.builder()->DynamicConvKernelGrad(
+      activations, gradients, window_strides, padding, lhs_dilation,
+      rhs_dilation, dimension_numbers, feature_group_count, batch_group_count,
+      precision_config, padding_type);
+}
+
+XlaOp DynamicConvForward(const XlaOp lhs, const XlaOp rhs,
+                         absl::Span<const int64> window_strides,
+                         absl::Span<const std::pair<int64, int64>> padding,
+                         absl::Span<const int64> lhs_dilation,
+                         absl::Span<const int64> rhs_dilation,
+                         const ConvolutionDimensionNumbers& dimension_numbers,
+                         int64 feature_group_count, int64 batch_group_count,
+                         const PrecisionConfig* precision_config,
+                         PaddingType padding_type) {
+  return lhs.builder()->DynamicConvForward(
+      lhs, rhs, window_strides, padding, lhs_dilation, rhs_dilation,
+      dimension_numbers, feature_group_count, batch_group_count,
+      precision_config, padding_type);
 }
 
 XlaOp Fft(const XlaOp operand, FftType fft_type,

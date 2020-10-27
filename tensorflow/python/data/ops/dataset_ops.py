@@ -3020,9 +3020,9 @@ class Options(options_lib.OptionsBase):
       docstring="This option can be used to override the default policy for "
       "how to handle external state when serializing a dataset or "
       "checkpointing its iterator. There are three settings available - "
-      "IGNORE: in which we completely ignore any state; WARN: We warn the "
-      "user that some state might be thrown away; FAIL: We fail if any state "
-      "is being captured.")
+      "IGNORE: External state is ignored without a warning; WARN: External "
+      "state is ignored and a warning is logged; FAIL: External state results "
+      "in an error.")
 
   def _graph_rewrites(self):
     """Produces lists of enabled, disabled, default static graph rewrites.

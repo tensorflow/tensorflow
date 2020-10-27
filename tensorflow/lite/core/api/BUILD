@@ -97,7 +97,7 @@ cc_test(
     srcs = ["op_resolver_test.cc"],
     deps = [
         ":api",
-        "//tensorflow/lite/schema:schema_utils",
+        "//tensorflow/lite/schema:schema_conversion_utils",
         "@com_google_googletest//:gtest",
     ],
 )

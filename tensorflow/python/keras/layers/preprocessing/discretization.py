@@ -122,7 +122,8 @@ class Discretization(base_preprocessing_layer.PreprocessingLayer):
             "found {}".format(input_shape))
 
       reshaped = array_ops.reshape(
-          inputs, [-1, gen_math_ops.prod(input_shape.as_list()[1:], axis=0)])
+          inputs,
+          [-1, gen_math_ops.Prod(input=input_shape.as_list()[1:], axis=0)])
 
       return array_ops.reshape(
           control_flow_ops.vectorized_map(

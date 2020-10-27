@@ -70,7 +70,7 @@ section for instructions on toolchain installation.
 
 If you wish to use the MetaWare Debugger to debug your code, you need to also
 install the Digilent Adept 2 software, which includes the necessary drivers for
-connecting to the targets. This is available from oficial
+connecting to the targets. This is available from official
 [Digilent site](https://reference.digilentinc.com/reference/software/adept/start?redirect=1#software_downloads).
 You should install the “System” component, and Runtime. Utilities and SDK are
 NOT required.
@@ -269,7 +269,7 @@ comments about make versions.
 Before building the application itself, you need to generate the project for
 this application from TensorFlow sources and external dependencies. To generate
 it for a custom TCF you need to set the following variables in the make command
-line: * TARGET_ARCH=arc * TCF_FILE=<path to TCF file> * (optional)
+line: * TARGET=arc_custom * TCF_FILE=<path to TCF file> * (optional)
 LCF_FILE=<path to LCF file>
 
 If you don’t supply an external LCF, the one embedded in the TCF will be used
@@ -279,7 +279,7 @@ For instance, to build **Person Detection** test application, use the following
 command from the root directory of the TensorFlow repo:
 
 ```
-make -f tensorflow/lite/micro/tools/make/Makefile generate_person_detection_test_int8_make_project TARGET_ARCH=arc TCF_FILE=<path_to_tcf_file> LCF_FILE=<path_to_lcf_file>
+make -f tensorflow/lite/micro/tools/make/Makefile generate_person_detection_test_int8_make_project TARGET=arc_custom TCF_FILE=<path_to_tcf_file> LCF_FILE=<path_to_lcf_file>
 ```
 
 The application project will be generated into

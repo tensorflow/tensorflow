@@ -247,8 +247,11 @@ bool TensorFlowDialect::CanHaveSideEffects(Operation *op) {
 }
 
 std::vector<TensorFlowDialect::AdditionalOpFunction>
-    *TensorFlowDialect::additional_operation_hooks_ =
-        new std::vector<TensorFlowDialect::AdditionalOpFunction>();
+    *TensorFlowDialect::GetAdditionalOperationHooks() {
+  static auto *const additional_operation_hooks =
+      new std::vector<TensorFlowDialect::AdditionalOpFunction>();
+  return additional_operation_hooks;
+}
 
 TensorFlowDialect::ConstantFoldHook TensorFlowDialect::constant_fold_hook_;
 TensorFlowDialect::DecodeConstantHook TensorFlowDialect::decode_constant_hook_;
@@ -276,7 +279,7 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
   // registered.
   allowUnknownOperations();
 
-  for (const auto &hook : *TensorFlowDialect::additional_operation_hooks_) {
+  for (const auto &hook : *GetAdditionalOperationHooks()) {
     hook(*this);
   }
 }

@@ -749,11 +749,30 @@ def HLO_ComparisonDirectionAttr : StrEnumAttr<"ComparisonDirection",
       HLO_COMPARISON_DIRECTION_LT
     ]>;
 
+def HLO_DEFAULT_COMPARISON_TYPE : NativeCodeCall<"StringAttr()">;
+def HLO_COMPARISON_TYPE_FLOAT : StrEnumAttrCase<"FLOAT">;
+def HLO_COMPARISON_TYPE_FLOAT_TOTAL_ORDER : StrEnumAttrCase<"TOTALORDER">;
+def HLO_COMPARISON_TYPE_SIGNED : StrEnumAttrCase<"SIGNED">;
+def HLO_COMPARISON_TYPE_UNSIGNED : StrEnumAttrCase<"UNSIGNED">;
+
+def HLO_ComparisonTypeAttr : StrEnumAttr<"ComparisonType",
+    "Which comparison type to use.",
+    [
+      HLO_COMPARISON_TYPE_FLOAT,
+      HLO_COMPARISON_TYPE_FLOAT_TOTAL_ORDER,
+      HLO_COMPARISON_TYPE_SIGNED,
+      HLO_COMPARISON_TYPE_UNSIGNED
+    ]>;
+
+
 class BASE_HLO_CompareOp {
   string summary = "Comparison operator";
 
   string description = [{
-    Compares `lhs` and `rhs` elementwise according to `comparison_direction`.
+    Compares `lhs` and `rhs` elementwise according to `comparison_direction`
+    and `compare_type`. If unspecified, `compare_type` is FLOAT for float element
+    types, SIGNED for signed element types and UNSIGNED for unsigned element
+    types.
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_comparison_operations.
@@ -1363,7 +1382,7 @@ class BASE_HLO_BitcastOp {
 
   string description = [{
     This op changes the shape of the input in the way that the physical
-    arranggment of elements are unchanged.
+    arrangement of elements are unchanged.
 
     However, the op needs layout information to make sense of "physical
     arrangement of elements". Layout support in MHLO is currently under

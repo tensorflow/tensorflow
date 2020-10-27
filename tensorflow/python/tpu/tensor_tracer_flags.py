@@ -80,6 +80,7 @@ _TT_PREFIX = 'tensor_tracer'
 
 _TT_NORM = 'norm'
 _TT_MAX = 'max'
+_TT_MAX_ABS = 'max-abs'
 _TT_MIN = 'min'
 _TT_MEAN = 'mean'
 _TT_VAR = 'var'
@@ -87,13 +88,15 @@ _TT_SIZE = 'size'
 
 TT_SUMMARY_NORM = '%s_%s' % (_TT_PREFIX, _TT_NORM)
 TT_SUMMARY_MAX = '%s_%s' % (_TT_PREFIX, _TT_MAX)
+TT_SUMMARY_MAX_ABS = '%s_%s' % (_TT_PREFIX, _TT_MAX_ABS)
 TT_SUMMARY_MIN = '%s_%s' % (_TT_PREFIX, _TT_MIN)
 TT_SUMMARY_MEAN = '%s_%s' % (_TT_PREFIX, _TT_MEAN)
 TT_SUMMARY_VAR = '%s_%s' % (_TT_PREFIX, _TT_VAR)
 TT_SUMMARY_SIZE = '%s_%s' % (_TT_PREFIX, _TT_SIZE)
 
 TT_SUMMARY_SIGNATURES = (TT_SUMMARY_NORM, TT_SUMMARY_MAX, TT_SUMMARY_MIN,
-                         TT_SUMMARY_MEAN, TT_SUMMARY_VAR, TT_SUMMARY_SIZE)
+                         TT_SUMMARY_MEAN, TT_SUMMARY_VAR, TT_SUMMARY_SIZE,
+                         TT_SUMMARY_MAX_ABS)
 
 
 class TTParameters(object):
@@ -292,7 +295,7 @@ class TTParameters(object):
             signature, TT_SUMMARY_SIGNATURES))
     if not tt_signatures:
       # Default case collects norm and max only.
-      return {TT_SUMMARY_MAX: 0, TT_SUMMARY_NORM: 1}
+      return {TT_SUMMARY_MAX_ABS: 0, TT_SUMMARY_NORM: 1}
     else:
       return {signature: idx for idx, signature in enumerate(tt_signatures)}
 
@@ -303,6 +306,9 @@ class TTParameters(object):
             TRACE_MODE_NAN_INF: math_ops.reduce_max,
             TT_SUMMARY_NORM: linalg_ops.norm,
             TT_SUMMARY_MAX: math_ops.reduce_max,
+            TT_SUMMARY_MAX_ABS:
+                lambda t, axis=0: math_ops.reduce_max(math_ops.abs(t),  # pylint: disable=g-long-lambda
+                                                      axis=axis),
             TT_SUMMARY_MIN: math_ops.reduce_min,
             TT_SUMMARY_MEAN: math_ops.reduce_mean,
             TT_SUMMARY_VAR: math_ops.reduce_max,  # Simply reduce max variance.

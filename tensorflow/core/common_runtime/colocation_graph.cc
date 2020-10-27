@@ -805,7 +805,14 @@ Status ColocationGraph::AddHostOnlyDataTypesConstraints() {
     absl::optional<bool> is_host_data_type;
 
     auto edge_filter = [&](const Edge& edge) -> bool {
-      return !is_host_data_type.has_value();
+      // We already found the underlying data type.
+      if (is_host_data_type.has_value()) return false;
+
+      // Otherwise follow only DT_VARIANT data edges.
+      auto edge_dtype = [&]() -> DataType {
+        return edge.src()->output_type(edge.src_output());
+      };
+      return !edge.IsControlEdge() && edge_dtype() == DT_VARIANT;
     };
 
     auto enter = [&](Node* n) -> void {

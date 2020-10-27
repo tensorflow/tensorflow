@@ -808,7 +808,8 @@ void LegalizeHloToTf::runOnFunction() {
   ConversionTarget target(context);
   target.addLegalDialect<TensorFlowDialect>();
   target.addLegalOp<CallOp, ConstantOp>();
-  if (failed(applyPartialConversion(getFunction(), target, patterns))) {
+  if (failed(
+          applyPartialConversion(getFunction(), target, std::move(patterns)))) {
     getFunction().emitError("mhlo to TF legalization failed.");
     signalPassFailure();
   }

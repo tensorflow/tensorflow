@@ -34,7 +34,6 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
-from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
@@ -65,6 +64,7 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import rmsprop
+from tensorflow.python.training import server_lib
 from tensorflow.python.util import nest
 
 _RANDOM_SEED = 1337
@@ -2445,7 +2445,7 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     cluster_spec = multi_worker_test_base.create_in_process_cluster(
         num_workers=3, num_ps=2)
     cluster_resolver = SimpleClusterResolver(
-        cluster_spec=multi_worker_util.normalize_cluster_spec(cluster_spec),
+        cluster_spec=server_lib.ClusterSpec(cluster_spec),
         task_type='worker',
         task_id=1,
         num_accelerators={'GPU': 0})

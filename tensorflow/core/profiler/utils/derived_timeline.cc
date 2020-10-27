@@ -264,7 +264,7 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
         if (stat.Type() == StatType::kGroupId) {
           group_id = stat.IntValue();
         } else if (stat.Type() == StatType::kDeviceId) {
-          device_id = stat.IntValue();
+          device_id = stat.IntOrUintValue();
         } else if (stat.Type() == StatType::kCorrelationId) {
           correlation_id = stat.IntValue();
         }

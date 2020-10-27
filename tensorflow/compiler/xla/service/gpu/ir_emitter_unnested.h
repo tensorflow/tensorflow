@@ -163,6 +163,8 @@ class IrEmitterUnnested : public IrEmitter,
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
   Status HandleReduce(HloInstruction* reduce) override;
   Status HandleSelectAndScatter(HloInstruction* instruction) override;
+  Status EmitSelectAndScatterFromMlir(
+      MlirEmitterInput mlir_input, std::unique_ptr<Thunk>&& initializer_thunk);
   Status HandleTuple(HloInstruction* tuple) override;
   Status HandleWhile(HloInstruction* xla_while) override;
   Status HandleInfeed(HloInstruction* xla_infeed) override;

@@ -84,12 +84,16 @@ absl::Status MetalArguments::Init(int buffer_offset, Arguments* args, std::strin
     struct_desc += "};";
     const_data_.resize(aligned_pos * 4);
     for (auto& it : float_values_) {
-      float* ptr = reinterpret_cast<float*>(&const_data_[it.second.bytes_offset]);
-      *ptr = it.second.value;
+      if (it.second.active) {
+        float* ptr = reinterpret_cast<float*>(&const_data_[it.second.bytes_offset]);
+        *ptr = it.second.value;
+      }
     }
     for (auto& it : int_values_) {
-      int32_t* ptr = reinterpret_cast<int32_t*>(&const_data_[it.second.bytes_offset]);
-      *ptr = it.second.value;
+      if (it.second.active) {
+        int32_t* ptr = reinterpret_cast<int32_t*>(&const_data_[it.second.bytes_offset]);
+        *ptr = it.second.value;
+      }
     }
   } else {
     struct_desc = "";

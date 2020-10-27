@@ -132,6 +132,12 @@ Status Profile(const std::string& repository_root,
                    << client_response.service_address;
     } else {
       has_trace_data = true;
+      // If server side returns tool data in the response, saves that into the
+      // repository. This improves backward compatibility by reducing assumption
+      // of what server side does.
+      TF_RETURN_IF_ERROR(SaveProfile(repository_root, session_id,
+                                     client_response.service_address, response,
+                                     &std::cout));
     }
     if (!client_response.status.ok()) {
       LOG(WARNING) << client_response.service_address << " returned "

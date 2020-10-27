@@ -431,6 +431,23 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
         ds, num_repeats * list(range(num_elements)), assert_items_equal=True)
 
   @combinations.generate(test_base.eager_only_combinations())
+  def testDistributeDistributedEpochForeverRepeat(self):
+    cluster = self.create_cluster(num_workers=2)
+    num_elements = 20
+    elements_to_read = 1000
+    ds = dataset_ops.Dataset.range(num_elements).repeat()
+    ds = self.make_distributed_dataset(
+        ds, cluster, processing_mode="distributed_epoch")
+    it = iter(ds)
+    results = {}
+    for _ in range(elements_to_read):
+      val = next(it).numpy()
+      if val not in results: results[val] = 0
+      results[val] += 1
+    for i in range(num_elements):
+      self.assertGreater(results[i], elements_to_read / num_elements / 2)
+
+  @combinations.generate(test_base.eager_only_combinations())
   def testDistributeDistributedEpochShuffleAndRepeat(self):
     cluster = self.create_cluster(num_workers=2)
     num_repeats = 5

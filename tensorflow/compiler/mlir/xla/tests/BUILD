@@ -12,7 +12,7 @@ glob_lit_tests(
     data = [":test_utilities"],
     driver = "@llvm-project//mlir:run_lit.sh",
     tags_override = {
-        "hlo_to_lhlo_with_xla/gpu_ops.mlir": tf_cuda_tests_tags(),
+        "hlo_to_lhlo_with_xla/gpu_ops.mlir": tf_cuda_tests_tags() + ["noasan"],  # TODO(b/171751580)
     },
     test_file_exts = [
         "mlir",

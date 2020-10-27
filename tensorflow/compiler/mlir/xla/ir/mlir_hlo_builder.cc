@@ -385,12 +385,14 @@ StatusOr<XlaOp> MlirHloBuilder::AddInstruction(
 
 StatusOr<XlaOp> MlirHloBuilder::Compare(const Shape& shape, XlaOp lhs,
                                         XlaOp rhs,
-                                        ComparisonDirection direction) {
+                                        ComparisonDirection direction,
+                                        Comparison::Type type) {
   TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
                                          shape, builder_));
   auto op = builder_.create<mlir::mhlo::CompareOp>(
       loc_, ty, GetValue(lhs), GetValue(rhs),
-      builder_.getStringAttr(ComparisonDirectionToString(direction)));
+      builder_.getStringAttr(ComparisonDirectionToString(direction)),
+      builder_.getStringAttr(ComparisonTypeToString(type)));
   return MakeXlaOp(op.getResult());
 }
 

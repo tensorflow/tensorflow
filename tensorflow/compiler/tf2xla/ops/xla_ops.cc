@@ -301,6 +301,19 @@ REGISTER_OP("XlaSetBound")
         returns the same value.
 )doc");
 
+REGISTER_OP("XlaSetDynamicDimensionSize")
+    .Input("input: T")
+    .Input("dim_index: int32")
+    .Input("size: int32")
+    .Output("output: T")
+    .Attr("T: type")
+    // Use unknown shape to prevent constant folding.
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(
+        R"doc(Make a static dimension into a xla bounded dynamic dimension.
+        The current static dimension size will become the bound and the second
+        operand becomes the dynamic size of the dimension.)doc");
+
 REGISTER_OP("XlaDynamicSlice")
     .Input("input: T")
     .Input("start_indices: Tindices")

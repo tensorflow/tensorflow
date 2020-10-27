@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/delegates/gpu/cl/arguments.h"
+#include "tensorflow/lite/delegates/gpu/cl/cl_arguments.h"
 
 #include <cstdint>
 #include <string>
@@ -20,6 +20,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/match.h"
+#include "tensorflow/lite/delegates/gpu/cl/arguments.h"
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/device_info.h"
 #include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
@@ -27,7 +28,7 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
-TEST(ArgumentsTest, TestSelectorResolve) {
+TEST(CLArgumentsTest, TestSelectorResolve) {
   BufferDescriptor desc;
   desc.element_type = DataType::FLOAT32;
   desc.element_size = 4;
@@ -43,14 +44,15 @@ __kernel void main_function($0) {
   }
 })";
 
+  CLArguments cl_args;
   DeviceInfo device_info;
-  ASSERT_OK(args.TransformToCLCode(device_info, {}, &sample_code));
+  ASSERT_OK(cl_args.Init(device_info, {}, nullptr, &args, &sample_code));
   EXPECT_TRUE(absl::StrContains(sample_code, "value = weights_buffer[id];"));
   EXPECT_TRUE(
       absl::StrContains(sample_code, "__global float4* weights_buffer"));
 }
 
-TEST(ArgumentsTest, TestNoSelector) {
+TEST(CLArgumentsTest, TestNoSelector) {
   BufferDescriptor desc;
   desc.element_type = DataType::FLOAT32;
   desc.element_size = 4;
@@ -64,16 +66,10 @@ TEST(ArgumentsTest, TestNoSelector) {
     value = args.weights.UnknownSelector(id);
   }
 )";
+  CLArguments cl_args;
   DeviceInfo device_info;
-  EXPECT_FALSE(args.TransformToCLCode(device_info, {}, &sample_code).ok());
-}
-
-TEST(ArgumentsTest, TestRenameArgs) {
-  Arguments linkable_args;
-  linkable_args.AddFloat("alpha", 0.5f);
-  std::string linkable_code = "in_out_value += args.alpha;\n";
-  linkable_args.RenameArgs("_link0", &linkable_code);
-  EXPECT_EQ(linkable_code, "in_out_value += args.alpha_link0;\n");
+  EXPECT_FALSE(
+      cl_args.Init(device_info, {}, nullptr, &args, &sample_code).ok());
 }
 
 }  // namespace cl

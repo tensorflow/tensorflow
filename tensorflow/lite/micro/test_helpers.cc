@@ -30,7 +30,8 @@ limitations under the License.
 #include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/micro_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/schema/schema_utils.h"
+
+// TODO(b/170464050): Use TFLM test only version of schema_utils.
 
 namespace tflite {
 namespace testing {

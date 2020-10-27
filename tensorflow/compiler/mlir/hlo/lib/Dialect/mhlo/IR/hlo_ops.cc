@@ -2142,14 +2142,66 @@ BINARY_FOLDER(MinOp, min);
 // SliceOp
 //===----------------------------------------------------------------------===//
 
-void SliceOp::build(OpBuilder& builder, OperationState& result, Value operand,
-                    DenseIntElementsAttr start_indices,
-                    DenseIntElementsAttr limit_indices,
-                    DenseIntElementsAttr strides) {
-  return build(builder, result,
-               InferOutputTypes(&builder, operand, start_indices, limit_indices,
-                                strides),
-               operand, start_indices, limit_indices, strides);
+// Returns output dimension size for slice result for the given arguments.
+// Returns -1 if arguments are illegal.
+static int64_t InferSliceDim(int64_t input_dim, int64_t start, int64_t end,
+                             int64_t stride) {
+  if (input_dim == -1 || start < 0 || start > end || end > input_dim ||
+      stride == 0)
+    return -1;
+
+  return llvm::divideCeil(end - start, stride);
+}
+
+LogicalResult SliceOp::inferReturnTypes(
+    MLIRContext* context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<Type>& inferredReturnTypes) {
+  SliceOpAdaptor slice(operands, attributes);
+  // TODO(jpienaar): Update this code after refactoring verify.
+  if (failed(slice.verify(location.getValueOr(UnknownLoc::get(context))))) {
+    return failure();
+  }
+
+  Type ty = slice.operand().getType();
+  RankedTensorType ranked_ty = ty.dyn_cast<RankedTensorType>();
+  if (!ranked_ty) {
+    // The operand type is unranked, so the best we can infer for the result
+    // type is an unranked tensor with the same element type as the operand
+    // type.
+    inferredReturnTypes.assign({ty});
+    return success();
+  }
+
+  int64_t rank = ranked_ty.getRank();
+  ShapedType attr_ty = slice.start_indices().getType();
+  if (attr_ty.getRank() != 1 || attr_ty.getNumElements() != rank ||
+      !attr_ty.getElementType().isSignlessInteger(64) ||
+      slice.limit_indices().getType() != attr_ty ||
+      slice.strides().getType() != attr_ty) {
+    // Unfortunately we can't rely on the AllTypesMatch trait for the SliceOp
+    // having been verified at this point. Emit an error message that matches
+    // the one that would be reported by AllTypesMatch for a more consistent
+    // user experience.
+    // TODO(b/171567182): Clean this up after AllTypesMatch has been refactored.
+    return emitOptionalError(location,
+                             "failed to verify that all of {start_indices, "
+                             "limit_indices, strides} have same type");
+  }
+
+  SmallVector<int64_t, 4> start(slice.start_indices().getValues<int64_t>());
+  SmallVector<int64_t, 4> limit(slice.limit_indices().getValues<int64_t>());
+  SmallVector<int64_t, 4> stride_vals(slice.strides().getValues<int64_t>());
+
+  SmallVector<int64_t, 4> shape;
+  shape.reserve(rank);
+  for (int64_t i = 0, e = rank; i != e; i++) {
+    shape.push_back(InferSliceDim(ranked_ty.getDimSize(i), start[i], limit[i],
+                                  stride_vals[i]));
+  }
+  inferredReturnTypes.assign(
+      {RankedTensorType::get(shape, ranked_ty.getElementType())});
+  return success();
 }
 
 template <typename I, typename E>
@@ -2330,46 +2382,6 @@ struct SimplifyConcatSlice : public OpRewritePattern<SliceOp> {
 void SliceOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
                                           MLIRContext* context) {
   results.insert<SimplifyConcatSlice>(context);
-}
-
-// Returns output dimension size for slice result for the given arguments.
-// Returns -1 if arguments are illegal.
-static int64_t InferSliceDim(int64_t input_dim, int64_t start, int64_t end,
-                             int64_t stride) {
-  if (input_dim == -1 || start < 0 || start > end || end > input_dim ||
-      stride == 0)
-    return -1;
-
-  return llvm::divideCeil(end - start, stride);
-}
-
-Type SliceOp::InferOutputTypes(Builder* builder, Value operand,
-                               DenseIntElementsAttr start_indices,
-                               DenseIntElementsAttr limit_indices,
-                               DenseIntElementsAttr strides) {
-  Type ty = operand.getType();
-  RankedTensorType ranked_ty = ty.dyn_cast<RankedTensorType>();
-  if (!ranked_ty) return ty;
-  int64_t rank = ranked_ty.getRank();
-
-  // Illegal attributes.
-  ShapedType attr_ty = start_indices.getType();
-  if (attr_ty.getRank() != 1 || attr_ty.getNumElements() != rank ||
-      !attr_ty.getElementType().isSignlessInteger(64) ||
-      limit_indices.getType() != attr_ty || strides.getType() != attr_ty)
-    return ty;
-
-  SmallVector<int64_t, 4> start(start_indices.getValues<int64_t>());
-  SmallVector<int64_t, 4> limit(limit_indices.getValues<int64_t>());
-  SmallVector<int64_t, 4> stride_vals(strides.getValues<int64_t>());
-
-  SmallVector<int64_t, 4> shape;
-  shape.reserve(rank);
-  for (int64_t i = 0, e = rank; i != e; i++) {
-    shape.push_back(InferSliceDim(ranked_ty.getDimSize(i), start[i], limit[i],
-                                  stride_vals[i]));
-  }
-  return RankedTensorType::get(shape, ranked_ty.getElementType());
 }
 
 //===----------------------------------------------------------------------===//
@@ -2599,10 +2611,12 @@ void UnaryEinsumOp::getCanonicalizationPatterns(
 //===----------------------------------------------------------------------===//
 
 void CompareOp::build(OpBuilder& builder, OperationState& result, Value lhs,
-                      Value rhs, StringAttr comparison_direction) {
+                      Value rhs, StringAttr comparison_direction,
+                      StringAttr compare_type) {
   auto new_type =
       UpdateResultElementType(&builder, lhs.getType(), builder.getI1Type());
-  build(builder, result, new_type, lhs, rhs, comparison_direction);
+  build(builder, result, new_type, lhs, rhs, comparison_direction,
+        compare_type);
 }
 
 LogicalResult CompareOp::inferReturnTypeComponents(

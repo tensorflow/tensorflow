@@ -32,14 +32,31 @@ namespace profiler {
 
 namespace {
 
-bool IsHostEvent(const CuptiTracerEvent& event) {
+bool IsHostEvent(const CuptiTracerEvent& event, int64* line_id) {
   // DriverCallback(i.e. kernel launching) events are host events.
-  if (event.source == CuptiTracerEventSource::DriverCallback) return true;
+  if (event.source == CuptiTracerEventSource::DriverCallback) {
+    *line_id = event.thread_id;
+    return true;
+  }
   // Non-overhead activity events are device events.
-  if (event.type != CuptiTracerEventType::Overhead) return false;
+  if (event.type != CuptiTracerEventType::Overhead) {
+    *line_id = event.stream_id;
+    return false;
+  }
   // Overhead events can be associated with a thread or a stream, etc.
   // If a valid thread id is specified, we consider it as a host event.
-  return event.thread_id != CuptiTracerEvent::kInvalidThreadId;
+  //
+  if (event.stream_id != CuptiTracerEvent::kInvalidStreamId) {
+    *line_id = event.stream_id;
+    return false;
+  } else if (event.thread_id != CuptiTracerEvent::kInvalidStreamId &&
+             event.thread_id != 0) {
+    *line_id = event.thread_id;
+    return true;
+  } else {
+    *line_id = kThreadIdOverhead;
+    return false;
+  }
 }
 
 void CreateXEvent(const CuptiTracerEvent& event, XPlaneBuilder* plane,
@@ -60,6 +77,11 @@ void CreateXEvent(const CuptiTracerEvent& event, XPlaneBuilder* plane,
   XEventBuilder xevent = line->AddEvent(*event_metadata);
   xevent.SetTimestampNs(event.start_time_ns);
   xevent.SetEndTimestampNs(event.end_time_ns);
+  if (event.source == CuptiTracerEventSource::DriverCallback) {
+    xevent.AddStatValue(
+        *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kDeviceId)),
+        event.device_id);
+  }
   if (event.correlation_id != CuptiTracerEvent::kInvalidCorrelationId) {
     xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
                             GetStatTypeStr(StatType::kCorrelationId)),
@@ -146,6 +168,8 @@ std::string GetDeviceXLineName(
   std::string line_name = absl::StrCat("Stream #", stream_id);
   event_types.erase(CuptiTracerEventType::Unsupported);
   if (event_types.empty()) return line_name;
+  if (event_types.count(CuptiTracerEventType::Overhead))
+    return "CUPTI overhead";
   std::vector<const char*> type_names;
   for (const auto event_type : event_types) {
     type_names.emplace_back(GetTraceEventTypeName(event_type));
@@ -226,23 +250,26 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
                                      step_stats);
     }
   }
-  void Export(XSpace* space, uint64 end_gpu_ns) override {
+  // Returns true if some GPU events are captured.
+  bool Export(XSpace* space, uint64 end_gpu_ns) override {
     LOG(INFO) << " GpuTracer has collected " << num_callback_events_
               << " callback api events and " << num_activity_events_
               << " activity events. " << ReportDroppedEvents();
+    size_t num_events = 0;
     XPlaneBuilder host_plane(
         FindOrAddMutablePlaneWithName(space, kCuptiDriverApiPlaneName));
     for (int device_ordinal = 0; device_ordinal < num_gpus_; ++device_ordinal) {
       std::string name = GpuPlaneName(device_ordinal);
       XPlaneBuilder device_plane(FindOrAddMutablePlaneWithName(space, name));
       device_plane.SetId(device_ordinal);
-      per_device_collector_[device_ordinal].Flush(start_gpu_ns_, end_gpu_ns,
-                                                  &device_plane, &host_plane);
+      num_events += per_device_collector_[device_ordinal].Flush(
+          start_gpu_ns_, end_gpu_ns, &device_plane, &host_plane);
       per_device_collector_[device_ordinal].GetDeviceCapabilities(
           device_ordinal, &device_plane);
       NormalizeTimeStamps(&device_plane, start_walltime_ns_);
     }
     NormalizeTimeStamps(&host_plane, start_walltime_ns_);
+    return num_events > 0;
   }
   std::string ReportDroppedEvents() {
     absl::MutexLock lock(&mutex_);
@@ -432,16 +459,15 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
       events.clear();
     }
 
-    void Flush(uint64 start_gpu_ns, uint64 end_gpu_ns,
-               XPlaneBuilder* device_plane, XPlaneBuilder* host_plane) {
+    size_t Flush(uint64 start_gpu_ns, uint64 end_gpu_ns,
+                 XPlaneBuilder* device_plane, XPlaneBuilder* host_plane) {
       mutex_lock l(m);
       // Tracking event types per line.
       absl::flat_hash_map<int64, absl::flat_hash_set<CuptiTracerEventType>>
           events_types_per_line;
       for (auto& event : events) {
-        bool is_host_event = IsHostEvent(event);
-        int64 line_id = is_host_event ? static_cast<int64>(event.thread_id)
-                                      : event.stream_id;
+        int64 line_id = CuptiTracerEvent::kInvalidThreadId;
+        bool is_host_event = IsHostEvent(event, &line_id);
         if (line_id == CuptiTracerEvent::kInvalidThreadId ||
             line_id == CuptiTracerEvent::kInvalidStreamId)
           continue;
@@ -458,7 +484,9 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
       host_plane->ForEachLine([&](XLineBuilder line) {
         line.SetName(absl::StrCat("Host Threads/", line.Id()));
       });
+      size_t num_events = events.size();
       events.clear();
+      return num_events;
     }
 
     void GetDeviceCapabilities(int32 device_ordinal,
