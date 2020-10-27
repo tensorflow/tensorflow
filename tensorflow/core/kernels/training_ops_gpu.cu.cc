@@ -800,7 +800,7 @@ struct SparseApplyKerasMomentum<GPUDevice, T, Tindex> {
 
 
 template <typename T, typename Tindex>
-__global__ __launch_bounds__(1024) ResourceSparseApplyAdadeltaKernel(
+__global__ __launch_bounds__(1024) void ResourceSparseApplyAdadeltaKernel(
     T* var, T* accum, T* accum_update, const T* lr, const T* rho, const T* epsilon,
     const T* grad, const Tindex* indices, Tindex param_rows, Tindex updates_size, 
     Tindex indices_size) {
