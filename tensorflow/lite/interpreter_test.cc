@@ -985,17 +985,6 @@ TEST(BasicInterpreter, TestOverflow) {
   }
 }
 
-TEST(BasicInterpreter, TestUseNNAPI) {
-  TestErrorReporter reporter;
-  Interpreter interpreter(&reporter);
-  interpreter.UseNNAPI(true);
-  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
-  ASSERT_EQ(interpreter.Invoke(), kTfLiteOk);
-  interpreter.UseNNAPI(false);
-  ASSERT_EQ(reporter.error_messages(),
-            "Attempting to disable NNAPI delegate after it's applied.");
-}
-
 TEST(BasicInterpreter, TestUnsupportedDelegateFunctions) {
   Interpreter interpreter;
   ASSERT_EQ(interpreter.AddTensors(2), kTfLiteOk);

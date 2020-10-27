@@ -28,7 +28,13 @@
     *   Exposing `tf.data.experimental.ExternalStatePolicy`, which can be used
         to control how external state should be handled during dataset
         serialization or iterator checkpointing.
-  
+
+*   `tf.lite`:
+    *   NNAPI
+        *   Removed deprecated `Interpreter::UseNNAPI(bool)` C++ API.
+            *   Use `NnApiDelegate()` and related delegate configuration methods
+                directly.
+
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
