@@ -3817,10 +3817,10 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
     }
   }
 
-  int num_retvals = 0;
+  int64_t num_outputs = 0;
   for (int i = 0; i < op_def->output_arg_size(); i++) {
     const auto& output_arg = op_def->output_arg(i);
-    int delta = 1;
+    int64_t delta = 1;
     if (!output_arg.number_attr().empty()) {
       delta = attr_list_sizes[output_arg.number_attr()];
     } else if (!output_arg.type_list_attr().empty()) {
@@ -3831,8 +3831,17 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
           "Attributes suggest that the size of an output list is less than 0");
       return nullptr;
     }
-    num_retvals += delta;
+    num_outputs += delta;
   }
+
+  // If number of retvals is larger than int32, we error out.
+  if (static_cast<int64_t>(static_cast<int32_t>(num_outputs)) != num_outputs) {
+    PyErr_SetString(
+        PyExc_ValueError,
+        Printf("Number of outputs is too big: %ld", num_outputs).c_str());
+    return nullptr;
+  }
+  int num_retvals = num_outputs;
 
   tensorflow::gtl::InlinedVector<TFE_TensorHandle*, 2> retvals(num_retvals);
 
