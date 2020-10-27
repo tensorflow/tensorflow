@@ -79,12 +79,6 @@ namespace eager {
 class RemoteMgr;
 }  // namespace eager
 
-class RunMetadataListener {
- public:
-  virtual ~RunMetadataListener() {}
-  virtual void BeforeClearRunMetadata() = 0;
-};
-
 class TensorHandle;
 class EagerOperation;
 
@@ -310,8 +304,11 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   mutex* MetadataMu() TF_LOCK_RETURNED(metadata_mu_) { return &metadata_mu_; }
   bool ShouldStoreGraphs() TF_LOCKS_EXCLUDED(metadata_mu_);
   void SetShouldStoreGraphs(bool value) override;
-  RunMetadata* RunMetadataProto() { return &run_metadata_; }
-  void ClearRunMetadata() TF_EXCLUSIVE_LOCKS_REQUIRED(metadata_mu_);
+  RunMetadata* RunMetadataProto() TF_EXCLUSIVE_LOCKS_REQUIRED(metadata_mu_) {
+    return run_metadata_.get();
+  }
+  std::unique_ptr<RunMetadata> ExportRunMetadata() override
+      TF_LOCKS_EXCLUDED(metadata_mu_);
 
   void StartStep() override;
   void EndStep() override;
@@ -587,7 +584,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // Whether we should compute RunMetadata.
   std::atomic<bool> should_store_graphs_{false};
   mutex metadata_mu_;
-  RunMetadata run_metadata_ TF_GUARDED_BY(metadata_mu_);
+  std::unique_ptr<RunMetadata> run_metadata_ TF_GUARDED_BY(metadata_mu_);
   GraphCollector graph_collector_;
   std::atomic<bool> log_device_placement_;
   std::atomic<bool> allow_soft_placement_;

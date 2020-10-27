@@ -36,11 +36,13 @@ from tensorflow.python.data.experimental.ops.distribute_options import AutoShard
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import composite_tensor_utils
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
@@ -55,9 +57,20 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util.compat import collections_abc
+
+
+def is_composite_or_composite_value(tensor):
+  """Returns true if 'tensor' is a CompositeTensor or a CT Value object."""
+  # TODO(b/125094323): This should be isinstance(CompositeTensor) or
+  # isinstance(CompositeTensorValue) once we support that.
+  return isinstance(
+      tensor,
+      (composite_tensor.CompositeTensor, sparse_tensor.SparseTensorValue,
+       ragged_tensor_value.RaggedTensorValue))
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -156,8 +169,7 @@ class ConcatAggregator(Aggregator):
         use_steps=True, num_samples=None, steps=None, batch_size=batch_size)
 
   def create(self, batch_element):
-    self.composite = composite_tensor_utils.is_composite_or_composite_value(
-        batch_element)
+    self.composite = is_composite_or_composite_value(batch_element)
 
   def aggregate(self, batch_element, batch_start=None, batch_end=None):
 
@@ -313,12 +325,11 @@ class OutputsAggregator(Aggregator):
     # SparseTensorValue is a named tuple which nest will flatten, so we need
     # to guard it to properly handle the structure.
     self._structure = nest.get_traverse_shallow_structure(
-        lambda x: not composite_tensor_utils.is_composite_or_composite_value(x),
-        batch_outs)
+        lambda x: not is_composite_or_composite_value(x), batch_outs)
     batch_outs = nest.flatten_up_to(self._structure, batch_outs)
 
     for batch_element in batch_outs:
-      if composite_tensor_utils.is_composite_or_composite_value(batch_element):
+      if is_composite_or_composite_value(batch_element):
         # If the output is not a ndarray, it will be either a composite tensor
         # or a composite tensor's Value object. In either case, we can't
         # allocate an array to hold the object - we'll handle it later.
@@ -399,7 +410,7 @@ def standardize_single_array(x, expected_shape=None):
   if x is None:
     return None
 
-  if composite_tensor_utils.is_composite_or_composite_value(x):
+  if is_composite_or_composite_value(x):
     return x
 
   if isinstance(x, int):
@@ -517,7 +528,7 @@ def standardize_input_data(data,
           if not tensorshape:
             continue
           data_shape = tuple(tensorshape.as_list())
-        elif composite_tensor_utils.is_composite_or_composite_value(data[i]):
+        elif is_composite_or_composite_value(data[i]):
           tensorshape = composite_tensor_utils.get_shape(data[i])
           data_shape = tuple(tensorshape.as_list())
         else:
@@ -610,8 +621,7 @@ def check_array_lengths(inputs, targets, weights=None):
   """
 
   def is_tensor_or_composite_tensor(x):
-    return tensor_util.is_tensor(
-        x) or composite_tensor_utils.is_composite_or_composite_value(x)
+    return tensor_util.is_tensor(x) or is_composite_or_composite_value(x)
 
   def set_of_lengths(x):
     # Returns a set with the variation between
@@ -1194,7 +1204,7 @@ def check_steps_argument(input_data, steps, steps_name):
         but not provided.
   """
   is_x_iterator = isinstance(
-      input_data, (iterator_ops.Iterator, iterator_ops.OwnedIterator))
+      input_data, (iterator_ops.Iterator, iterator_ops.IteratorBase))
   if (input_data is None or is_x_iterator or has_symbolic_tensors(input_data) or
       (isinstance(input_data, list) and not input_data)):
     if steps is None:
@@ -1418,7 +1428,7 @@ def is_feature_layer(layer):
 def is_eager_dataset_or_iterator(data):
   return context.executing_eagerly() and isinstance(
       data, (dataset_ops.DatasetV1, dataset_ops.DatasetV2,
-             iterator_ops.OwnedIterator))
+             iterator_ops.IteratorBase))
 
 
 # pylint: disable=protected-access
@@ -1456,7 +1466,7 @@ def verify_dataset_shuffled(x):
 
 def is_dataset_or_iterator(data):
   return isinstance(data, (dataset_ops.DatasetV1, dataset_ops.DatasetV2,
-                           iterator_ops.Iterator, iterator_ops.OwnedIterator))
+                           iterator_ops.Iterator, iterator_ops.IteratorBase))
 
 
 def get_iterator(dataset):
@@ -1741,7 +1751,7 @@ def unpack_validation_data(validation_data, raise_if_ambiguous=True):
     tuple of 3, (x, y, sample_weights) for numpy and tensor input.
   """
   if (isinstance(validation_data, (iterator_ops.Iterator,
-                                   iterator_ops.OwnedIterator,
+                                   iterator_ops.IteratorBase,
                                    dataset_ops.DatasetV2,
                                    data_utils.Sequence))
       or not hasattr(validation_data, '__len__')):

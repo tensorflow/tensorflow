@@ -551,22 +551,22 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         name = "dill_archive",
         build_file = clean_dep("//third_party:dill.BUILD"),
         urls = [
-            "http://mirror.tensorflow.org/files.pythonhosted.org/packages/c7/11/345f3173809cea7f1a193bfbf02403fff250a3360e0e118a1630985e547d/dill-0.3.1.1.tar.gz",
-            "https://files.pythonhosted.org/packages/c7/11/345f3173809cea7f1a193bfbf02403fff250a3360e0e118a1630985e547d/dill-0.3.1.1.tar.gz",
+            "http://mirror.tensorflow.org/files.pythonhosted.org/packages/e2/96/518a8ea959a734b70d2e95fef98bcbfdc7adad1c1e5f5dd9148c835205a5/dill-0.3.2.zip",
+            "https://files.pythonhosted.org/packages/e2/96/518a8ea959a734b70d2e95fef98bcbfdc7adad1c1e5f5dd9148c835205a5/dill-0.3.2.zip",
         ],
-        sha256 = "42d8ef819367516592a825746a18073ced42ca169ab1f5f4044134703e7a049c",
-        strip_prefix = "dill-0.3.1.1",
+        sha256 = "6e12da0d8e49c220e8d6e97ee8882002e624f1160289ce85ec2cc0a5246b3a2e",
+        strip_prefix = "dill-0.3.2",
     )
 
     tf_http_archive(
         name = "tblib_archive",
         build_file = clean_dep("//third_party:tblib.BUILD"),
         urls = [
-            "http://mirror.tensorflow.org/files.pythonhosted.org/packages/ec/c4/8c651f3240a73c28a218194f3d527eb2be5a173d08501060cdee84ade33f/tblib-1.3.2.tar.gz",
-            "https://files.pythonhosted.org/packages/ec/c4/8c651f3240a73c28a218194f3d527eb2be5a173d08501060cdee84ade33f/tblib-1.3.2.tar.gz",
+            "http://mirror.tensorflow.org/files.pythonhosted.org/packages/d3/41/901ef2e81d7b1e834b9870d416cb09479e175a2be1c4aa1a9dcd0a555293/tblib-1.7.0.tar.gz",
+            "https://files.pythonhosted.org/packages/d3/41/901ef2e81d7b1e834b9870d416cb09479e175a2be1c4aa1a9dcd0a555293/tblib-1.7.0.tar.gz",
         ],
-        sha256 = "436e4200e63d92316551179dc540906652878df4ff39b43db30fcf6400444fe7",
-        strip_prefix = "tblib-1.3.2",
+        sha256 = "059bd77306ea7b419d4f76016aef6d7027cc8a0785579b5aad198803435f882c",
+        strip_prefix = "tblib-1.7.0",
     )
 
     filegroup_external(
@@ -680,8 +680,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "c89447b65984c97145f63be21e42cfa98da60dd2"
-    LLVM_SHA256 = "b35dd27eace459897c07faa333b0cb9ddc0ef260b20582dd04b6910d548a7e08"
+    LLVM_COMMIT = "26750a1264b3df114a1efae7cde6f0784206b2ce"
+    LLVM_SHA256 = "eb360bbcd3e4b505689a21756c89fdf087064882899bab2f98258f8cf0546218"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
@@ -1088,46 +1088,13 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     tf_http_archive(
-        name = "tbb",
-        build_file = clean_dep("//third_party/ngraph:tbb.BUILD"),
-        sha256 = "c3245012296f09f1418b78a8c2f17df5188b3bd0db620f7fd5fabe363320805a",
-        strip_prefix = "tbb-2019_U1",
-        urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/01org/tbb/archive/2019_U1.zip",
-            "https://github.com/01org/tbb/archive/2019_U1.zip",
-        ],
-    )
-
-    tf_http_archive(
-        name = "ngraph",
-        build_file = clean_dep("//third_party/ngraph:ngraph.BUILD"),
-        sha256 = "a1780f24a1381fc25e323b4b2d08b6ef5129f42e011305b2a34dcf43a48030d5",
-        strip_prefix = "ngraph-0.11.0",
-        urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/NervanaSystems/ngraph/archive/v0.11.0.tar.gz",
-            "https://github.com/NervanaSystems/ngraph/archive/v0.11.0.tar.gz",
-        ],
-    )
-
-    tf_http_archive(
         name = "nlohmann_json_lib",
-        build_file = clean_dep("//third_party/ngraph:nlohmann_json.BUILD"),
+        build_file = clean_dep("//third_party:nlohmann_json.BUILD"),
         sha256 = "c377963a95989270c943d522bfefe7b889ef5ed0e1e15d535fd6f6f16ed70732",
         strip_prefix = "json-3.4.0",
         urls = [
             "https://storage.googleapis.com/mirror.tensorflow.org/github.com/nlohmann/json/archive/v3.4.0.tar.gz",
             "https://github.com/nlohmann/json/archive/v3.4.0.tar.gz",
-        ],
-    )
-
-    tf_http_archive(
-        name = "ngraph_tf",
-        build_file = clean_dep("//third_party/ngraph:ngraph_tf.BUILD"),
-        sha256 = "742a642d2c6622277df4c902b6830d616d0539cc8cd843d6cdb899bb99e66e36",
-        strip_prefix = "ngraph-tf-0.9.0",
-        urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/NervanaSystems/ngraph-tf/archive/v0.9.0.zip",
-            "https://github.com/NervanaSystems/ngraph-tf/archive/v0.9.0.zip",
         ],
     )
 

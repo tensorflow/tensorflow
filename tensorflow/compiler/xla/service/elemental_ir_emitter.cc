@@ -2486,6 +2486,10 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
         return EmitElementalReduce(reduce_instr, std::move(input_generators),
                                    std::move(initial_value_generators), index);
       };
+    case HloOpcode::kConvolution:
+      return [this, hlo, &operand_to_generator](const IrArray::Index& index) {
+        return EmitConvolution(hlo, operand_to_generator, index);
+      };
     default:
       return [hlo](const IrArray::Index& index) {
         return Unimplemented("Unhandled opcode for elemental IR emission: %s",
@@ -2728,6 +2732,13 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduce(
     CHECK_EQ(accumulator_addrs.size(), 1);
     return Load(accumulator_addrs[0]);
   }
+}
+
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitConvolution(
+    const HloInstruction* hlo,
+    const ElementalIrEmitter::HloToElementGeneratorMap& operand_to_generator,
+    const llvm_ir::IrArray::Index& index) {
+  return Unimplemented("Elemental convolution is not implemented");
 }
 
 // Evaluate polynomial using Horner's method.

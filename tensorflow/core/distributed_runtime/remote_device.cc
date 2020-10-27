@@ -50,6 +50,8 @@ class RemoteDevice : public Device {
 
   bool IsLocal() const override { return false; }
 
+  bool IsRemoteCallAllowed() const override { return true; }
+
  private:
   const string local_dev_name_;
 

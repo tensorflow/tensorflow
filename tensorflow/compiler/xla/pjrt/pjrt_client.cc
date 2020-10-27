@@ -98,6 +98,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
@@ -182,14 +183,14 @@ class CpuAllocator : public tensorflow::Allocator {
 };
 
 PjRtClient::PjRtClient(
-    PjRtPlatformId platform_id, LocalClient* client,
+    std::string platform_name, LocalClient* client,
     std::vector<std::unique_ptr<PjRtDevice>> devices, int host_id,
     std::unique_ptr<se::DeviceMemoryAllocator> allocator,
     std::unique_ptr<tensorflow::Allocator> host_memory_allocator,
     bool should_stage_host_to_device_transfers,
     std::unique_ptr<GpuExecutableRunOptions> gpu_run_options)
-    : platform_id_(platform_id),
-      platform_name_(Name(platform_id)),
+    : platform_id_(tensorflow::Fingerprint64(platform_name)),
+      platform_name_(std::move(platform_name)),
       client_(client),
       host_memory_allocator_(std::move(host_memory_allocator)),
       devices_(std::move(devices)),
@@ -528,9 +529,7 @@ void PjRtBuffer::ScopedHold::AddToInput(
   }
 }
 
-bool PjRtBuffer::IsOnCpu() const {
-  return client()->platform_id() == PjRtPlatformId::kCpu;
-}
+bool PjRtBuffer::IsOnCpu() const { return client()->platform_id() == kCpuId; }
 
 StatusOr<std::unique_ptr<PjRtBuffer>> PjRtClient::BufferFromHostBuffer(
     const void* data, const Shape& shape,

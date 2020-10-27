@@ -50,6 +50,7 @@ namespace data {
 
 namespace {
 // The name of the journal directory inside the dispatcher's working directory.
+// This name is load-bearing; do not change.
 constexpr char kJournalDir[] = "tf_data_dispatcher_journal";
 // The name of the datasets directory inside the dispatcher's working directory.
 constexpr char kDatasetsDir[] = "datasets";

@@ -48,3 +48,4 @@ project, we have additional documentation in the [docs](docs/) folder.
 *   [Benchmarks](benchmarks/README.md)
 *   [Memory Management](docs/memory_management.md)
 *   [New Platform Support](docs/new_platform_support.md)
+*   [Software Emulation with Renode](docs/renode.md)

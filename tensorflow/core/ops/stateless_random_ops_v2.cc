@@ -101,7 +101,6 @@ REGISTER_OP("StatelessRandomGetKeyCounterAlg")
     .Output("counter: uint64")
     .Output("alg: int32")
     .Attr("Tseed: {int32, int64} = DT_INT64")
-    .SetIsStateful()  // because outputs depend on device
     .SetShapeFn([](InferenceContext* c) {
       // Check seed shape
       ShapeHandle seed;

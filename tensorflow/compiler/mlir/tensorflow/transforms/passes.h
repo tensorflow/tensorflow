@@ -278,7 +278,7 @@ CreateMarkOpsForOutsideCompilationPass();
 // Creates a pass that hoists a `tf_device.launch` body and assigns a `device`
 // attribute to each TensorFlow dialect op in the body based on the `device`
 // attribute on the `tf_device.launch`.
-std::unique_ptr<OperationPass<FuncOp>> CreateLaunchToDeviceAttributePass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateLaunchToDeviceAttributePass();
 }  // namespace TFDevice
 
 namespace TFTPU {
@@ -357,6 +357,9 @@ CreateTPUUpdateEmbeddingEnqueueOpInputsPass();
 // ops to a separate parallel_execute region to run on CPU.
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTPUExtractOutsideCompilationPass();
+
+// Creates a pass that propagates TPU devices to users.
+std::unique_ptr<OperationPass<FuncOp>> CreateTPUDevicePropagationPass();
 
 // Populates the supplied passmanager with the passes required to run the
 // bridge.

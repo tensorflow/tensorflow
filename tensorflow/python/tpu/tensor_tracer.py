@@ -92,6 +92,7 @@ _SKIP_REPORT_FILE = 'None'  # Do not write report proto if --report_file=None
 
 _TT_SUMMARY_NORM = tensor_tracer_flags.TT_SUMMARY_NORM
 _TT_SUMMARY_MAX = tensor_tracer_flags.TT_SUMMARY_MAX
+_TT_SUMMARY_MAX_ABS = tensor_tracer_flags.TT_SUMMARY_MAX_ABS
 _TT_SUMMARY_MIN = tensor_tracer_flags.TT_SUMMARY_MIN
 _TT_SUMMARY_MEAN = tensor_tracer_flags.TT_SUMMARY_MEAN
 _TT_SUMMARY_VAR = tensor_tracer_flags.TT_SUMMARY_VAR
@@ -813,14 +814,9 @@ class TensorTracer(object):
         var = array_ops.reshape(var, [])
       return mean, var
 
-    def _show_max_abs(tensor):
-      tensor = math_ops.cast(tensor, dtypes.float32)
-      output_tensor = math_ops.reduce_max(math_ops.abs(tensor))
-      zero = constant_op.constant(0, dtypes.float32)
-      output_tensor = gen_math_ops.maximum(zero, output_tensor)
-      # The shape has to be 1. Set it if it does not have the information.
-      output_tensor = array_ops.reshape(output_tensor, [1])
-      return output_tensor
+    def _show_max_abs(tensor, cast_to_f32=True):
+      return _compute_signature(
+          tensor, lambda t: math_ops.reduce_max(math_ops.abs(t)), cast_to_f32)
 
     if self._parameters.trace_mode == tensor_tracer_flags.TRACE_MODE_NAN_INF:
       return {self._parameters.trace_mode: _detect_nan_inf(tensor)}
@@ -852,6 +848,8 @@ class TensorTracer(object):
           signature_result_tensor = _show_norm(tensor, cast_to_f32=False)
         elif signature_name == _TT_SUMMARY_MAX:
           signature_result_tensor = _show_max(tensor, cast_to_f32=False)
+        elif signature_name == _TT_SUMMARY_MAX_ABS:
+          signature_result_tensor = _show_max_abs(tensor, cast_to_f32=False)
         elif signature_name == _TT_SUMMARY_MIN:
           signature_result_tensor = _show_min(tensor, cast_to_f32=False)
         elif signature_name == _TT_SUMMARY_SIZE:

@@ -505,9 +505,9 @@ struct HloCompareAdaptor {
   static mhlo::CompareOp CreateOp(BroadcastCompareOp from_op, Type result_type,
                                   Value broadcasted_lhs, Value broadcasted_rhs,
                                   OpBuilder &builder) {
-    return builder.create<mhlo::CompareOp>(from_op.getLoc(), result_type,
-                                           broadcasted_lhs, broadcasted_rhs,
-                                           from_op.comparison_direction());
+    return builder.create<mhlo::CompareOp>(
+        from_op.getLoc(), result_type, broadcasted_lhs, broadcasted_rhs,
+        from_op.comparison_direction(), from_op.compare_typeAttr());
   }
 };
 

@@ -199,6 +199,81 @@ class FromSessionTest(TestModels, parameterized.TestCase):
       interpreter.set_tensor(input_index, dummy_tensor)
 
   @parameterized.named_parameters(
+      ('_INT8InputOutput', False, False, dtypes.int8),
+      ('_UINT8InputOutput', False, False, dtypes.uint8),
+      ('_INT16Quantize_INT16InputOutput', False, True, dtypes.int16),
+      ('_IntOnly_INT8InputOutput', True, False, dtypes.int8),
+      ('_IntOnly_UINT8InputOutput', True, False, dtypes.uint8),
+      ('_IntOnly_INT16Quantize_INT16InputOutput', True, True, dtypes.int16))
+  def testIntegerQuantizationWithUnsupportedOps(self, is_int_only,
+                                                is_int16_quantize,
+                                                inference_input_output_type):
+    with ops.Graph().as_default():
+      in_tensor_a = array_ops.placeholder(shape=[3], dtype=dtypes.float32)
+      in_tensor_b = array_ops.placeholder(shape=[3], dtype=dtypes.float32)
+      # ceil kernel does not support int8 nor int16 types neither.
+      left = math_ops.ceil(in_tensor_a)
+      out_tensor_b = math_ops.tanh(in_tensor_b)
+      add = math_ops.add(left, out_tensor_b)
+      # ceil kernel does not support int8 nor int16 types neither.
+      out_tensor_a = math_ops.ceil(add)
+      sess = session.Session()
+
+    def calibration_gen():
+      for _ in range(5):
+        yield [
+            np.random.uniform(-1, 1, size=(3)).astype(np.float32),
+            np.random.uniform(-1, 1, size=(3)).astype(np.float32)
+        ]
+
+    quantized_converter = lite.TFLiteConverter.from_session(
+        sess, [in_tensor_a, in_tensor_b], [out_tensor_a, out_tensor_b])
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_converter.representative_dataset = calibration_gen
+    if is_int_only:
+      if is_int16_quantize:
+        quantized_converter.target_spec.supported_ops = [
+            lite.OpsSet.\
+            EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8,
+            lite.OpsSet.TFLITE_BUILTINS
+        ]
+      else:
+        quantized_converter.target_spec.supported_ops = [
+            lite.OpsSet.TFLITE_BUILTINS_INT8, lite.OpsSet.TFLITE_BUILTINS
+        ]
+    else:
+      if is_int16_quantize:
+        quantized_converter.target_spec.supported_ops = [
+            lite.OpsSet.\
+            EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8,
+            lite.OpsSet.TFLITE_BUILTINS
+        ]
+      else:
+        quantized_converter.target_spec.supported_ops = [
+            lite.OpsSet.TFLITE_BUILTINS
+        ]
+
+    quantized_converter.inference_input_type = inference_input_output_type
+    quantized_converter.inference_output_type = inference_input_output_type
+    quantized_tflite_model = quantized_converter.convert()
+    self.assertIsNotNone(quantized_tflite_model)
+
+    interpreter = Interpreter(model_content=quantized_tflite_model)
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()
+    self.assertLen(input_details, 2)
+    # Allow float32 for fallback.
+    self.assertEqual(input_details[0]['dtype'], dtypes.float32)
+    self.assertEqual(input_details[1]['dtype'],
+                     inference_input_output_type.as_numpy_dtype)
+    output_details = interpreter.get_output_details()
+    self.assertLen(output_details, 2)
+    # Allow float32 for fallback.
+    self.assertEqual(output_details[0]['dtype'], dtypes.float32)
+    self.assertEqual(output_details[1]['dtype'],
+                     inference_input_output_type.as_numpy_dtype)
+
+  @parameterized.named_parameters(
       ('EnableMlirConverter', True),  # enable mlir
       ('DisableMlirConverter', False))  # disable mlir
   def testString(self, enable_mlir_converter):

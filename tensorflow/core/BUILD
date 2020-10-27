@@ -1463,28 +1463,9 @@ cc_library(
     ],
 )
 
-cc_library(
+alias(
     name = "jpeg_internal",
-    srcs = [
-        "lib/jpeg/jpeg_handle.cc",
-        "lib/jpeg/jpeg_mem.cc",
-        "//tensorflow/core/platform:jpeg_hdrs",
-    ],
-    hdrs = [
-        "lib/jpeg/jpeg_handle.h",
-        "lib/jpeg/jpeg_mem.h",
-    ],
-    copts = tf_copts(),
-    linkopts = select({
-        "//tensorflow:freebsd": [],
-        "//tensorflow:windows": [],
-        "//conditions:default": ["-ldl"],
-    }),
-    deps = [
-        ":lib",
-        ":lib_internal",
-        "//tensorflow/core/platform:jpeg",
-    ],
+    actual = "//tensorflow/core/lib/jpeg:jpeg_internal",
 )
 
 cc_library(
@@ -1509,32 +1490,9 @@ cc_library(
     ],
 )
 
-cc_library(
+alias(
     name = "portable_jpeg_internal",
-    srcs = if_mobile([
-        "lib/jpeg/jpeg_handle.cc",
-        "lib/jpeg/jpeg_mem.cc",
-        "//tensorflow/core/platform:jpeg_hdrs",
-    ]),
-    hdrs = [
-        "lib/jpeg/jpeg_handle.h",
-        "lib/jpeg/jpeg_mem.h",
-        "//tensorflow/core/lib/core:legacy_lib_core_stringpiece_header",
-        "//tensorflow/core/platform:jpeg_internal_hdrs",
-        "//tensorflow/core/platform/default:integral_types.h",
-        "//tensorflow/core/platform/default:logging.h",
-    ],
-    copts = tf_copts(),
-    linkopts = if_android(["-ldl"]),
-    deps = [
-        ":core_stringpiece",
-        "//tensorflow/core/platform:dynamic_annotations",
-        "//tensorflow/core/platform:jpeg",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:stringpiece",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/strings",
-    ],
+    actual = "//tensorflow/core/lib/jpeg:portable_jpeg_internal",
 )
 
 cc_library(
@@ -1918,20 +1876,6 @@ tf_cc_test(
         ":test",
         ":test_main",
         "//third_party/eigen3",
-    ],
-)
-
-tf_cc_test(
-    name = "lib_jpeg_jpeg_mem_unittest",
-    srcs = ["lib/jpeg/jpeg_mem_unittest.cc"],
-    data = ["//tensorflow/core/lib/jpeg/testdata"],
-    deps = [
-        ":jpeg_internal",
-        ":lib",
-        ":lib_internal",
-        ":test",
-        ":test_main",
-        "@com_google_absl//absl/base",
     ],
 )
 

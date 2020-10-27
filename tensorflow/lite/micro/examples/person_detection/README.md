@@ -308,7 +308,7 @@ generate_person_detection_esp_project`
 
 ### Building the example
 
-Go the the example project directory `cd
+Go to the example project directory `cd
 tensorflow/lite/micro/tools/make/gen/esp_xtensa-esp32/prj/person_detection/esp-idf`
 
 As the `person_detection` example requires an external component `esp32-camera`

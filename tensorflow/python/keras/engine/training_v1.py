@@ -29,7 +29,6 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.framework import composite_tensor_utils
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -576,7 +575,7 @@ class Model(training_lib.Model):
     #  integrated into the data adapters in the v2 loop. We can't do this yet
     #  because we currently have to fall back for unhandled data types.
     if isinstance(inputs, (iterator_ops.Iterator,
-                           iterator_ops.OwnedIterator)):
+                           iterator_ops.IteratorBase)):
       raise ValueError('For performance reasons Keras `fit`, `evaluate` and'
                        '`predict` accept tf.data `Datasets` as input but not '
                        'iterators that have been manually generated from '
@@ -1742,7 +1741,7 @@ class Model(training_lib.Model):
 
         # Check Dataset/Iterator batch size is consistent with InputLayer.
         if isinstance(x, (dataset_ops.DatasetV2, iterator_ops.Iterator,
-                          iterator_ops.OwnedIterator)):
+                          iterator_ops.IteratorBase)):
           ds_batch_size = tensor_shape.as_dimension(
               nest.flatten(dataset_ops.get_legacy_output_shapes(x))[0][0]).value
           if ds_batch_size is not None:
@@ -2495,7 +2494,7 @@ class Model(training_lib.Model):
     # users should explicitly add composite tensor inputs to their subclassed
     # models.
     for input_tensor in processed_inputs:
-      if composite_tensor_utils.is_composite_or_composite_value(input_tensor):
+      if training_utils_v1.is_composite_or_composite_value(input_tensor):
         # TODO(b/132691975): Document subclass-model CT input handling.
         raise ValueError(
             'All SparseTensor and RaggedTensor inputs must be explicitly '

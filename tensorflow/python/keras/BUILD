@@ -130,6 +130,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":backend",
+        "//tensorflow/python/keras/layers:advanced_activations",
         "//tensorflow/python/keras/utils:engine_utils",
     ],
 )
@@ -152,7 +153,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":backend",
-        "//tensorflow/python/distribute:distributed_file_utils",
+        "//tensorflow/python/keras/distribute:distributed_file_utils",
         "//tensorflow/python/keras/distribute:worker_training_state",
         "//tensorflow/python/keras/protobuf:projector_config_proto_py",
         "//tensorflow/python/keras/utils:engine_utils",

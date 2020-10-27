@@ -222,16 +222,22 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::SqrtGradOp>(),
     TypeID::get<TF::SquareOp>(),
     TypeID::get<TF::StatelessMultinomialOp>(),
+    TypeID::get<TF::StatelessRandomGetKeyCounterAlgOp>(),
     TypeID::get<TF::StatelessRandomNormalOp>(),
+    TypeID::get<TF::StatelessRandomNormalV2Op>(),
     TypeID::get<TF::StatelessRandomUniformOp>(),
+    TypeID::get<TF::StatelessRandomUniformV2Op>(),
     TypeID::get<TF::StatelessRandomUniformIntOp>(),
+    TypeID::get<TF::StatelessRandomUniformIntV2Op>(),
     TypeID::get<TF::StatelessTruncatedNormalOp>(),
+    TypeID::get<TF::StatelessTruncatedNormalV2Op>(),
     TypeID::get<TF::SubOp>(),
     TypeID::get<TF::TanOp>(),
     TypeID::get<TF::TensorScatterAddOp>(),
     TypeID::get<TF::TensorScatterSubOp>(),
     TypeID::get<TF::TPUEmbeddingActivationsOp>(),
     TypeID::get<TF::TransposeOp>(),
+    TypeID::get<TF::TridiagonalSolveOp>(),
     TypeID::get<TF::TruncateDivOp>(),
     TypeID::get<TF::TruncatedNormalOp>(),
     TypeID::get<TF::TruncateModOp>(),
@@ -247,7 +253,8 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::XlaKeyValueSortOp>(),
     TypeID::get<TF::XlaPadOp>(),
     TypeID::get<TF::Xlog1pyOp>(),
-    TypeID::get<TF::XlogyOp>()
+    TypeID::get<TF::XlogyOp>(),
+    TypeID::get<TF::XlaSortOp>()
   };
   // clang-format on
 

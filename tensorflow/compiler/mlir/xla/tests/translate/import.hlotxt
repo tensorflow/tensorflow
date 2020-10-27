@@ -144,10 +144,10 @@ add {
   %Arg_2.3 = f32[3] parameter(2)
 
   // CHECK-NEXT:  "mhlo.compare"(%arg0, %arg1) {comparison_direction = "EQ"} : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xi1>
-  %compare.4 = pred[3] compare(Arg_0.1, Arg_1.2), direction=EQ
+  %compare.4 = pred[3] compare(Arg_0.1, Arg_1.2), direction=EQ, type=FLOAT
 
-  // CHECK-NEXT:  "mhlo.compare"(%arg0, %arg1) {comparison_direction = "LE"} : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xi1>
-  %compare.5 = pred[3] compare(Arg_0.1, Arg_1.2), direction=LE
+  // CHECK-NEXT:  "mhlo.compare"(%arg0, %arg1) {compare_type = "TOTALORDER", comparison_direction = "LE"} : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xi1>
+  %compare.5 = pred[3] compare(Arg_0.1, Arg_1.2), direction=LE, type=TOTALORDER
 
   // Requires broadcast of compatible tensors.
   // CHECK-NEXT:  "mhlo.compare"(%arg0, %arg2) {comparison_direction = "GT"} : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xi1>

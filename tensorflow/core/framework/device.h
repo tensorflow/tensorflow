@@ -178,6 +178,9 @@ class Device : public DeviceBase {
 
   virtual bool IsLocal() const { return true; }
 
+  // Informs if this Device can be used as a caller in RemoteCall operation.
+  virtual bool IsRemoteCallAllowed() const;
+
  protected:
   void DeleteResourceMgr() {
     delete rmgr_;

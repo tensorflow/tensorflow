@@ -309,52 +309,50 @@ class LocalCollectiveAllReduceStrategy(
     with policy.policy_scope('mixed_float16'):
       self._test_mixed_precision(None, None, required_gpus)
 
-# TODO(b/170360740): Timeout in OSS
-if not multi_process_runner.is_oss():
 
-  @ds_combinations.generate(
-      combinations.combine(
-          strategy=[
-              strategy_combinations.multi_worker_mirrored_2x1_cpu,
-              strategy_combinations.multi_worker_mirrored_2x1_gpu,
-          ],
-          mode=['eager']))
-  class DistributedCollectiveAllReduceStrategyEagerTest(test.TestCase,
-                                                        parameterized.TestCase):
+@ds_combinations.generate(
+    combinations.combine(
+        strategy=[
+            strategy_combinations.multi_worker_mirrored_2x1_cpu,
+            strategy_combinations.multi_worker_mirrored_2x1_gpu,
+        ],
+        mode=['eager']))
+class DistributedCollectiveAllReduceStrategyEagerTest(test.TestCase,
+                                                      parameterized.TestCase):
 
-    def testFitWithoutStepsPerEpochPartialBatch(self, strategy):
+  def testFitWithoutStepsPerEpochPartialBatch(self, strategy):
 
-      def _model_fn():
-        x = layers.Input(shape=(1,), name='input')
-        y = layers.Dense(1, name='dense')(x)
-        model = training.Model(x, y)
-        return model
+    def _model_fn():
+      x = layers.Input(shape=(1,), name='input')
+      y = layers.Dense(1, name='dense')(x)
+      model = training.Model(x, y)
+      return model
 
-      def _get_dataset():
-        inputs = array_ops.expand_dims_v2(
-            constant_op.constant(range(10)), axis=1)
-        targets = array_ops.expand_dims_v2(
-            constant_op.constant(range(10)), axis=1)
-        # Make global batch size 12 for 2 replicas and a non-repeated dataset
-        # with 10 elements so that we have partial batch
-        dataset = dataset_ops.Dataset.from_tensor_slices(
-            (inputs, targets)).batch(
-                12, drop_remainder=False)
-        return dataset
+    def _get_dataset():
+      inputs = array_ops.expand_dims_v2(
+          constant_op.constant(range(10)), axis=1)
+      targets = array_ops.expand_dims_v2(
+          constant_op.constant(range(10)), axis=1)
+      # Make global batch size 12 for 2 replicas and a non-repeated dataset
+      # with 10 elements so that we have partial batch
+      dataset = dataset_ops.Dataset.from_tensor_slices(
+          (inputs, targets)).batch(
+              12, drop_remainder=False)
+      return dataset
 
-      with strategy.scope():
-        optimizer_fn = gradient_descent_keras.SGD
-        optimizer = optimizer_fn(0.001)
-        model = _model_fn()
-        loss = 'mse'
-        metrics = ['mae']
-        model.compile(optimizer, loss, metrics=metrics)
-      dataset = _get_dataset()
-      kernel_before = model.get_weights()[0][0]
-      model.fit(dataset, epochs=10)
-      kernel_after = model.get_weights()[0][0]
-      self.assertNotEqual(kernel_before, kernel_after)
-      self.assertGreater(abs(kernel_before - 1), abs(kernel_after - 1))
+    with strategy.scope():
+      optimizer_fn = gradient_descent_keras.SGD
+      optimizer = optimizer_fn(0.001)
+      model = _model_fn()
+      loss = 'mse'
+      metrics = ['mae']
+      model.compile(optimizer, loss, metrics=metrics)
+    dataset = _get_dataset()
+    kernel_before = model.get_weights()[0][0]
+    model.fit(dataset, epochs=10)
+    kernel_after = model.get_weights()[0][0]
+    self.assertNotEqual(kernel_before, kernel_after)
+    self.assertGreater(abs(kernel_before - 1), abs(kernel_after - 1))
 
 
 if __name__ == '__main__':

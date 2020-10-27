@@ -448,6 +448,20 @@ TEST(OutputTypesForNode, Simple) {
   EXPECT_FALSE(OutputTypeForNode(node_def, op_def, 2, &type).ok());
 }
 
+TEST(OutputTypesForNode, LargeOutput) {
+  const OpDef op_def = ToOpDef(OpDefBuilder("TestSplitOp")
+                                   .Input("value: int64")
+                                   .Output("output: num_split * int64")
+                                   .Attr("num_split: int >= 1"));
+  int64 num_split = 1000000000000;
+  const NodeDef node_def =
+      ToNodeDef(std::move(NodeDefBuilder("test_split_op", &op_def)
+                              .Input(FakeInput())
+                              .Attr("num_split", num_split)));
+  DataTypeVector types;
+  EXPECT_FALSE(OutputTypesForNode(node_def, op_def, &types).ok());
+}
+
 TEST(OutputTypesForNode_AttrSliceOverload, Simple) {
   const OpDef op_def = ToOpDef(OpDefBuilder("Simple")
                                    .Input("a: float")

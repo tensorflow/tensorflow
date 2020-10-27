@@ -24,6 +24,7 @@ limitations under the License.
 #include <Python.h>
 
 #include "tensorflow/c/eager/c_api.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
@@ -396,6 +397,10 @@ TF_Status* GetStatus();
 void ReturnStatus(TF_Status* status);
 
 namespace tensorflow {
+
+// Returns the DataType for the specified tensor.  Returns DT_INVALID if
+// PyObject is not a tensor.
+DataType PyTensor_DataType(PyObject* tensor);
 
 // Thread-local data associated with a Python eager Context object.
 //

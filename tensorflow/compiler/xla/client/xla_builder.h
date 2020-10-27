@@ -852,9 +852,10 @@ class XlaBuilder {
                  absl::optional<ComparisonDirection> direction = absl::nullopt,
                  absl::optional<Comparison::Type> type = absl::nullopt);
 
+  StatusOr<XlaOp> Compare(const Shape& shape, XlaOp lhs, XlaOp rhs,
+                          ComparisonDirection direction);
+
   // Internal helper method for binary op compare without broadcast dimensions.
-  virtual StatusOr<XlaOp> Compare(const Shape& shape, XlaOp lhs, XlaOp rhs,
-                                  ComparisonDirection direction);
   virtual StatusOr<XlaOp> Compare(const Shape& shape, XlaOp lhs, XlaOp rhs,
                                   ComparisonDirection direction,
                                   Comparison::Type type);

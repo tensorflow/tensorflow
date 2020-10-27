@@ -77,8 +77,10 @@ cc_library(
         ":dnnl_version_h",
     ],
     hdrs = glob(["include/*"]),
-    copts = [
-        "-fexceptions",
+    copts = select({
+        "@org_tensorflow//tensorflow:windows": [],
+        "//conditions:default": ["-fexceptions"],
+    }) + [
         "-UUSE_MKL",
         "-UUSE_CBLAS",
     ] + tf_openmp_copts(),

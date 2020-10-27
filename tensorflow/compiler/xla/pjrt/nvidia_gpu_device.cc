@@ -323,7 +323,7 @@ StatusOr<std::unique_ptr<PjRtClient>> GetNvidiaGpuClient(
   }
 
   return std::unique_ptr<PjRtClient>(std::make_unique<GpuClient>(
-      PjRtPlatformId::kNvidiaGpu, xla_client, std::move(devices),
+      kGpuName, xla_client, std::move(devices),
       /*node_id=*/node_id, std::move(allocator),
       std::move(host_memory_allocator),
       /*should_stage_host_to_device_transfers=*/true,

@@ -1820,7 +1820,7 @@ def TF_ConfigureTPUEmbeddingOp : TF_Op<"ConfigureTPUEmbedding", []> {
   let results = (outs);
 }
 
-def TF_ConjOp : TF_Op<"Conj", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_ConjOp : TF_Op<"Conj", [Involution, NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Returns the complex conjugate of a complex number.";
 
   let description = [{
@@ -1848,8 +1848,6 @@ tf.conj(input) ==> [-2.25 - 4.75j, 3.25 - 5.75j]
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-
-  let hasCanonicalizer = 1;
 }
 
 def TF_ConjugateTransposeOp : TF_Op<"ConjugateTranspose", [NoSideEffect]> {
@@ -4892,7 +4890,7 @@ I.e., \\(y = 1 / x\\).
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_InvertOp : TF_Op<"Invert", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_InvertOp : TF_Op<"Invert", [Involution, NoSideEffect, SameOperandsAndResultType]> {
   let summary = [{
 Invert (flip) each bit of supported types; for example, type `uint8` value 01010101 becomes 10101010.
   }];
@@ -4948,8 +4946,6 @@ for dtype in dtype_list:
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-
-  let hasCanonicalizer = 1;
 }
 
 def TF_InvertPermutationOp : TF_Op<"InvertPermutation", [NoSideEffect]> {
@@ -5621,7 +5617,7 @@ def TF_LogicalAndOp : TF_Op<"LogicalAnd", [Commutative, NoSideEffect, ResultsBro
   );
 }
 
-def TF_LogicalNotOp : TF_Op<"LogicalNot", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_LogicalNotOp : TF_Op<"LogicalNot", [Involution, NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Returns the truth value of `NOT x` element-wise.";
 
   let arguments = (ins
@@ -7334,7 +7330,7 @@ def TF_NdtriOp : TF_Op<"Ndtri", [NoSideEffect]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_NegOp : TF_Op<"Neg", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_NegOp : TF_Op<"Neg", [Involution, NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes numerical negative value element-wise.";
 
   let description = [{
@@ -7350,8 +7346,6 @@ I.e., \\(y = -x\\).
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-
-  let hasCanonicalizer = 1;
 }
 
 def TF_NextAfterOp : TF_Op<"NextAfter", [NoSideEffect, ResultsBroadcastableShape]>,
@@ -7712,6 +7706,20 @@ times by rerunning "MakeIterator".
   let results = (outs
     Res<TF_ResourceTensor, "", [TF_DatasetIteratorAlloc]>:$handle
   );
+}
+
+def TF_OnesLikeOp : TF_Op<"OnesLike", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Returns a tensor of ones with the same shape and type as x.";
+
+  let arguments = (ins
+    TensorOf<[TF_Bfloat16, TF_Bool, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint8]>:$x
+  );
+
+  let results = (outs
+    TensorOf<[TF_Bfloat16, TF_Bool, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint8]>:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_OutfeedEnqueueTupleOp : TF_Op<"OutfeedEnqueueTuple", []> {
@@ -8626,7 +8634,7 @@ tf.real(input) ==> [-2.25, 3.25]
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF_ReciprocalOp : TF_Op<"Reciprocal", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_ReciprocalOp : TF_Op<"Reciprocal", [Involution, NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes the reciprocal of x element-wise.";
 
   let description = [{
@@ -8642,8 +8650,6 @@ I.e., \\(y = 1 / x\\).
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-
-  let hasCanonicalizer = 1;
 }
 
 def TF_ReciprocalGradOp : TF_Op<"ReciprocalGrad", [NoSideEffect, SameOperandsAndResultType]> {
@@ -11869,6 +11875,28 @@ The outputs are a deterministic function of `shape`, `seed`, and `alpha`.
   TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<2>;
 }
 
+def TF_StatelessRandomGetKeyCounterAlgOp : TF_Op<"StatelessRandomGetKeyCounterAlg", []> {
+  let summary = [{
+Picks the best algorithm based on device, and scrambles seed into key and counter.
+  }];
+
+  let description = [{
+This op picks the best counter-based RNG algorithm based on device, and scrambles a shape-[2] seed into a key and a counter, both needed by the counter-based algorithm. The scrambling is opaque but approximately satisfies the property that different seed results in different key/counter pair (which will in turn result in different random numbers).
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$seed
+  );
+
+  let results = (outs
+    TF_Uint64Tensor:$key,
+    TF_Uint64Tensor:$counter,
+    TF_Int32Tensor:$alg
+  );
+
+  TF_DerivedOperandTypeAttr Tseed = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_StatelessRandomNormalOp : TF_Op<"StatelessRandomNormal", [NoSideEffect, TF_NoConstantFold]> {
   let summary = [{
 Outputs deterministic pseudorandom values from a normal distribution.
@@ -11891,6 +11919,32 @@ The outputs are a deterministic function of `shape` and `seed`.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tseed = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_StatelessRandomNormalV2Op : TF_Op<"StatelessRandomNormalV2", [NoSideEffect]> {
+  let summary = [{
+Outputs deterministic pseudorandom values from a normal distribution.
+  }];
+
+  let description = [{
+The generated values will have mean 0 and standard deviation 1.
+
+The outputs are a deterministic function of `shape`, `key`, `counter` and `alg`.
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$shape,
+    TF_Uint64Tensor:$key,
+    TF_Uint64Tensor:$counter,
+    TF_Int32Tensor:$alg
+  );
+
+  let results = (outs
+    TF_FloatTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tshape = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 
@@ -11999,6 +12053,61 @@ The outputs are a deterministic function of `shape`, `seed`, `minval`, and `maxv
   TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<2>;
 }
 
+def TF_StatelessRandomUniformIntV2Op : TF_Op<"StatelessRandomUniformIntV2", [NoSideEffect]> {
+  let summary = [{
+Outputs deterministic pseudorandom random integers from a uniform distribution.
+  }];
+
+  let description = [{
+The generated values follow a uniform distribution in the range `[minval, maxval)`.
+
+The outputs are a deterministic function of `shape`, `key`, `counter`, `alg`, `minval` and `maxval`.
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$shape,
+    TF_Uint64Tensor:$key,
+    TF_Uint64Tensor:$counter,
+    TF_Int32Tensor:$alg,
+    TensorOf<[TF_Int32, TF_Int64, TF_Uint32, TF_Uint64]>:$minval,
+    TensorOf<[TF_Int32, TF_Int64, TF_Uint32, TF_Uint64]>:$maxval
+  );
+
+  let results = (outs
+    TensorOf<[TF_Int32, TF_Int64, TF_Uint32, TF_Uint64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tshape = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<4>;
+}
+
+def TF_StatelessRandomUniformV2Op : TF_Op<"StatelessRandomUniformV2", [NoSideEffect]> {
+  let summary = [{
+Outputs deterministic pseudorandom random values from a uniform distribution.
+  }];
+
+  let description = [{
+The generated values follow a uniform distribution in the range `[0, 1)`. The
+lower bound 0 is included in the range, while the upper bound 1 is excluded.
+
+The outputs are a deterministic function of `shape`, `key`, `counter` and `alg`.
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$shape,
+    TF_Uint64Tensor:$key,
+    TF_Uint64Tensor:$counter,
+    TF_Int32Tensor:$alg
+  );
+
+  let results = (outs
+    TF_FloatTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tshape = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_StatelessTruncatedNormalOp : TF_Op<"StatelessTruncatedNormal", [NoSideEffect, TF_NoConstantFold]> {
   let summary = [{
 Outputs deterministic pseudorandom values from a truncated normal distribution.
@@ -12023,6 +12132,34 @@ The outputs are a deterministic function of `shape` and `seed`.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tseed = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_StatelessTruncatedNormalV2Op : TF_Op<"StatelessTruncatedNormalV2", [NoSideEffect]> {
+  let summary = [{
+Outputs deterministic pseudorandom values from a truncated normal distribution.
+  }];
+
+  let description = [{
+The generated values follow a normal distribution with mean 0 and standard
+deviation 1, except that values whose magnitude is more than 2 standard
+deviations from the mean are dropped and re-picked.
+
+The outputs are a deterministic function of `shape`, `key`, `counter` and `alg`.
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$shape,
+    TF_Uint64Tensor:$key,
+    TF_Uint64Tensor:$counter,
+    TF_Int32Tensor:$alg
+  );
+
+  let results = (outs
+    TF_FloatTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tshape = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 

@@ -14,6 +14,10 @@ load(
     "tf_py_logged_benchmark",
 )
 load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_additional_rpc_deps",
+)
 
 package(
     licenses = ["notice"],  # Apache 2.0
@@ -68,6 +72,7 @@ cc_library(
         "//tensorflow/python:py_seq_tensor",
         "//tensorflow/python:py_util",
         "//tensorflow/python:safe_ptr",
+        "//tensorflow/python:safe_pyobject_ptr",
         "//tensorflow/python:stack_trace",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
@@ -783,6 +788,7 @@ tf_py_test(
     name = "pywrap_tfe_test",
     srcs = ["pywrap_tfe_test.py"],
     python_version = "PY3",
+    tags = ["no_windows"],  # TODO(b/171756439)
     deps = [
         ":backprop",
         ":context",
@@ -1000,7 +1006,7 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:platform",
         "//tensorflow/python/distribute/cluster_resolver:base_cluster_resolver_py",
-    ],
+    ] + tf_additional_rpc_deps(),
 )
 
 cuda_py_test(
