@@ -167,7 +167,7 @@ class TensorBoard(callbacks.TensorBoard):
   def _init_writer(self, model):
     """Sets file writer."""
     if context.executing_eagerly():
-      self.writer = summary_ops_v2.create_file_writer(self.log_dir)
+      self.writer = summary_ops_v2.create_file_writer_v2(self.log_dir)
       if not model.run_eagerly and self.write_graph:
         with self.writer.as_default():
           summary_ops_v2.graph(K.get_graph(), step=0)
