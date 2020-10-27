@@ -1335,7 +1335,7 @@ broadcasted shape. `s0`, `s1` and `r0` are all integer vectors.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_BroadcastGradientArgsOp : TF_Op<"BroadcastGradientArgs", [NoSideEffect]> {
+def TF_BroadcastGradientArgsOp : TF_Op<"BroadcastGradientArgs", [NoSideEffect, SameOperandsAndResultElementType]> {
   let summary = [{
 Return the reduction indices for computing gradients of s0 op s1 with broadcast.
   }];
@@ -1355,6 +1355,12 @@ This is typically used by gradient computations for a broadcasting operation.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
+
+  let hasFolder = 1;
 }
 
 def TF_BroadcastToOp : TF_Op<"BroadcastTo", [NoSideEffect]> {
