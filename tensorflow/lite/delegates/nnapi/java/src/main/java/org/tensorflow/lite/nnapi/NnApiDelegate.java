@@ -76,8 +76,8 @@ public class NnApiDelegate implements Delegate, AutoCloseable {
     }
 
     /**
-     * Configure the location to be used to store model compilation cache entries. If either
-     * {@code cacheDir} or {@code modelToken} parameters are unset NNAPI caching will be disabled.
+     * Configure the location to be used to store model compilation cache entries. If either {@code
+     * cacheDir} or {@code modelToken} parameters are unset NNAPI caching will be disabled.
      *
      * <p>Only effective on Android 10 (API level 29) and above.
      */
@@ -151,7 +151,7 @@ public class NnApiDelegate implements Delegate, AutoCloseable {
             /*overrideDisallowCpu=*/ options.useNnapiCpu != null,
             /*disallowCpuValue=*/ options.useNnapiCpu != null
                 ? !options.useNnapiCpu.booleanValue()
-                : false,
+                : true,
             options.allowFp16 != null ? options.allowFp16 : false);
   }
 

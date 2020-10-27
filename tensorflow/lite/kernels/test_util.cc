@@ -230,6 +230,13 @@ TfLiteStatus SingleOpModel::ApplyDelegate() {
     ++num_applied_delegates_;
   } else {
     auto* delegate_providers = tflite::KernelTestDelegateProviders::Get();
+    // Most TFLite NNAPI delegation tests have been written to run against the
+    // NNAPI CPU path. We'll enable that for tests. However, need to first check
+    // if the parameter is present - it will not be if the NNAPI delegate
+    // provider is not linked into the test.
+    if (delegate_providers->ConstParams().HasParam("disable_nnapi_cpu")) {
+      delegate_providers->MutableParams()->Set("disable_nnapi_cpu", false);
+    }
     for (auto& one : delegate_providers->CreateAllDelegates()) {
       // The raw ptr always points to the actual TfLiteDegate object.
       auto* delegate_raw_ptr = one.get();
