@@ -10,7 +10,6 @@ package(
 cuda_py_test(
     name = "batch_gather_op_test",
     srcs = ["batch_gather_op_test.py"],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -24,7 +23,9 @@ cuda_py_test(
     name = "unstack_op_test",
     size = "small",
     srcs = ["unstack_op_test.py"],
-    tfrt_enabled = True,
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -39,7 +40,6 @@ cuda_py_test(
     name = "slice_op_test",
     size = "medium",
     srcs = ["slice_op_test.py"],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

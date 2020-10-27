@@ -11,5 +11,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:util",
+        "//tensorflow/python/eager:def_function",
     ],
 )

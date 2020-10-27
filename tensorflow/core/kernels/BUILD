@@ -1657,6 +1657,9 @@ tf_cuda_cc_test(
     name = "conv_ops_test",
     size = "medium",
     srcs = ["conv_ops_test.cc"],
+    tags = [
+        "no_cuda_asan",  # TODO(b/171342275): re-enable.
+    ],
     deps = [
         ":conv_ops",
         ":ops_testutil",
@@ -1756,7 +1759,9 @@ tf_cuda_cc_test(
     name = "depthwise_conv_ops_test",
     size = "small",
     srcs = ["depthwise_conv_ops_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + [
+        "no_cuda_asan",  # TODO(b/171342266): re-enable.
+    ],
     deps = [
         ":conv_ops",
         ":ops_testutil",
@@ -3340,7 +3345,6 @@ tf_kernel_library(
         "//third_party/mkl:intel_binary_blob",
     ]) + if_cuda_or_rocm([
         "//tensorflow/core/kernels:gpu_utils",
-        "//tensorflow/core/platform:tensor_float_32_utils",
     ]),
 )
 

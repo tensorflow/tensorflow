@@ -108,25 +108,12 @@ def ConvertToConcatV2 : Pat<(TF_ConcatOp $axis, $inputs),
                             (TF_ConcatV2Op $inputs, $axis)>;
 
 //===----------------------------------------------------------------------===//
-// Conj op patterns.
-//===----------------------------------------------------------------------===//
-
-def ConjNested : Pat<(TF_ConjOp (TF_ConjOp $arg)), (replaceWithValue $arg)>;
-
-//===----------------------------------------------------------------------===//
 // Div op patterns.
 //===----------------------------------------------------------------------===//
 
 /// Favor Mul over Div.
 def DivWithSqrtDivisor : Pat<(TF_DivOp $arg0, (TF_SqrtOp $arg1)),
                              (TF_MulOp $arg0, (TF_RsqrtOp $arg1))>;
-
-//===----------------------------------------------------------------------===//
-// Invert op patterns.
-//===----------------------------------------------------------------------===//
-
-def InvertNested : Pat<(TF_InvertOp (TF_InvertOp $arg)),
-                       (replaceWithValue $arg)>;
 
 //===----------------------------------------------------------------------===//
 // Log op patterns.
@@ -150,10 +137,6 @@ def LogToLog1p : Pat<
 // LogicalNot op patterns.
 //===----------------------------------------------------------------------===//
 
-// TODO(ezhulenev): Generalize this pattern for all involutions.
-def LogicalNotNested : Pat<(TF_LogicalNotOp (TF_LogicalNotOp $arg)),
-                           (replaceWithValue $arg)>;
-
 def LogicalNotOfEqual : Pat<
     (TF_LogicalNotOp (TF_EqualOp $arg0, $arg1, $shape_error)),
     (TF_NotEqualOp $arg0, $arg1, $shape_error)>;
@@ -176,12 +159,6 @@ def LogicalNotOfLessEqual : Pat<(TF_LogicalNotOp (TF_LessEqualOp $arg0, $arg1)),
                                 (TF_GreaterOp $arg0, $arg1)>;
 
 //===----------------------------------------------------------------------===//
-// Neg op patterns.
-//===----------------------------------------------------------------------===//
-
-def NegNested : Pat<(TF_NegOp (TF_NegOp $arg)), (replaceWithValue $arg)>;
-
-//===----------------------------------------------------------------------===//
 // RealDiv op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -196,23 +173,14 @@ def RealDivWithConstDivisor : Pat<
   (TF_MulOp $arg0, (TF_ReciprocalOp (TF_ConstOp $value)))>;
 
 //===----------------------------------------------------------------------===//
-// Reciprocal op patterns.
-//===----------------------------------------------------------------------===//
-
-def ReciprocalNested : Pat<(TF_ReciprocalOp (TF_ReciprocalOp $arg)),
-                           (replaceWithValue $arg)>;
-
-//===----------------------------------------------------------------------===//
 // Reshape op patterns.
 //===----------------------------------------------------------------------===//
 
 def RedundantReshape : Pat<(TF_ReshapeOp (TF_ReshapeOp $arg, $unused), $shape),
                            (TF_ReshapeOp $arg, $shape)>;
 
-def IsSame : Constraint<CPred<"$0 == $1">>;
-def ReshapeToSelfShape : Pat<(TF_ReshapeOp $arg0, (TF_ShapeOp $arg1)),
-                         (replaceWithValue $arg0),
-                         [(IsSame $arg0, $arg1)]>;
+def ReshapeToSelfShape : Pat<(TF_ReshapeOp $x, (TF_ShapeOp $x)),
+                         (replaceWithValue $x)>;
 
 //===----------------------------------------------------------------------===//
 // Select op patterns.

@@ -580,8 +580,10 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
 
   // MLIR Logic
   m.def("TF_IsMlirBridgeEnabled", [] {
-    return tensorflow::GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge ==
-           tensorflow::ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED;
+    // Since python protobuf enums are integers, cast to an integer before
+    // returning the enum to python.
+    return static_cast<int32_t>(
+        tensorflow::GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge);
   });
   m.def("TF_EnableMlirBridge", [](bool enabled) {
     tensorflow::GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge =
@@ -1052,11 +1054,11 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     TFE_AbortCollectiveOps(tensorflow::InputTFE_Context(ctx), status.get());
   });
   m.def("TFE_CollectiveOpsCheckPeerHealth",
-        [](const py::handle& ctx, const char* task) {
+        [](const py::handle& ctx, const char* task, int64_t timeout_in_ms) {
           tensorflow::Safe_TF_StatusPtr status =
               tensorflow::make_safe(TF_NewStatus());
           TFE_CollectiveOpsCheckPeerHealth(tensorflow::InputTFE_Context(ctx),
-                                           task, status.get());
+                                           task, timeout_in_ms, status.get());
           tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
         });
   m.def("TF_ListPhysicalDevices", &tensorflow::TF_ListPhysicalDevices);

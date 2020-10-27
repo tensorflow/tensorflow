@@ -99,7 +99,8 @@ class TestCluster(object):
         server_lib.WorkerServer(
             server_lib.WorkerConfig(
                 dispatcher_address=self.dispatcher_address(),
-                heartbeat_interval_ms=TEST_HEARTBEAT_INTERVAL_MS),
+                heartbeat_interval_ms=TEST_HEARTBEAT_INTERVAL_MS,
+                dispatcher_timeout_ms=1000),
             start=start))
 
   def start_dispatcher(self):

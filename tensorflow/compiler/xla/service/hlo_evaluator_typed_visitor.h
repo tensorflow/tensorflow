@@ -1932,6 +1932,10 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   }
 
   Status HandleReduceWindow(HloInstruction* reduce_window) override {
+    if (reduce_window->shape().IsTuple()) {
+      return Status(tensorflow::error::UNIMPLEMENTED,
+                    "Variadic reduce window op is not yet fully supported.");
+    }
     auto operand = reduce_window->operand(0);
     const Window& window = reduce_window->window();
     HloComputation* function = reduce_window->to_apply();

@@ -654,7 +654,14 @@ Status DataServiceDispatcherImpl::GetTasks(const GetTasksRequest* request,
   mutex_lock l(mu_);
   VLOG(3) << "Looking up tasks for job client id " << request->job_client_id();
   std::shared_ptr<const Job> job;
-  TF_RETURN_IF_ERROR(state_.JobForJobClientId(request->job_client_id(), job));
+  Status s = state_.JobForJobClientId(request->job_client_id(), job);
+  if (errors::IsNotFound(s) && !config_.fault_tolerant_mode()) {
+    return errors::NotFound(
+        "Unknown job client id ", request->job_client_id(),
+        ". The dispatcher is not configured to be fault tolerant, so this "
+        "could be caused by a dispatcher restart.");
+  }
+  TF_RETURN_IF_ERROR(s);
   std::vector<std::shared_ptr<const Task>> tasks;
   TF_RETURN_IF_ERROR(state_.TasksForJob(job->job_id, tasks));
   for (const auto& task : tasks) {

@@ -1429,13 +1429,13 @@ class PFor(object):
     return [wrap(output, False) for output in nest.flatten(outputs)]
 
   def _convert_helper(self, op_or_tensor):
-    stack = [op_or_tensor]
+    stack = collections.deque([op_or_tensor])
     while stack:
       y = stack[0]
       if y in self._conversion_map:
         assert isinstance(self._conversion_map[y],
                           (WrappedTensor, ops.Operation))
-        stack.pop(0)
+        stack.popleft()
         continue
       if isinstance(y, ops.Operation):
         assert not y.outputs, (
@@ -1472,7 +1472,7 @@ class PFor(object):
 
       def _add_to_stack(x):
         if x not in self._conversion_map:
-          stack.insert(0, x)
+          stack.appendleft(x)
           return True
         else:
           return False
@@ -1630,7 +1630,7 @@ class PFor(object):
               else:
                 new_output.t.set_shape(output_shape)
             self._add_conversion(old_output, new_output)
-        stack.pop(0)
+        stack.popleft()
 
     return self._conversion_map[op_or_tensor]
 
@@ -3748,6 +3748,42 @@ def _convert_tensor_array_set_item(pfor_input):
     return wrap(_tile_variant(handle, pfor_input), True)
 
 
+@RegisterPFor("TensorListPushBack")
+def _convert_tensor_list_push_back(pfor_input):
+  handle, handle_stacked, _ = pfor_input.input(0)
+  tensor, tensor_stacked, _ = pfor_input.input(1)
+  if handle_stacked:
+    handle = _untile_variant(handle)
+  else:
+    handle = _stack_tensor_list(handle, tensor.dtype,
+                                pfor_input.pfor.loop_len_vector)
+  if not tensor_stacked:
+    tensor = _stack(tensor, pfor_input.pfor.loop_len_vector).t
+  handle = list_ops.tensor_list_push_back(handle, tensor)
+  return wrap(_tile_variant(handle, pfor_input), True)
+
+
+@RegisterPFor("TensorListPopBack")
+def _convert_tensor_array_push_back(pfor_input):
+  handle = pfor_input.stacked_input(0)
+  element_shape = pfor_input.unstacked_input(1)
+  handle = _untile_variant(handle)
+
+  if element_shape.shape.ndims == 0:
+    # Default / unspecified
+    vectorized_shape = -1
+  else:
+    # PopBack has an element shape set when it's the gradient of PushBack, only
+    # used when the list is uninitialized.
+    vectorized_shape = array_ops.concat(
+        [pfor_input.pfor.loop_len_vector, element_shape], axis=0)
+
+  output_handle, tensor = gen_list_ops.tensor_list_pop_back(
+      input_handle=handle, element_dtype=pfor_input.get_attr("element_dtype"),
+      element_shape=vectorized_shape)
+  return wrap(output_handle, True), wrap(tensor, True)
+
+
 @RegisterPFor("TensorListConcatV2")
 def _convert_tensor_list_concat_v2(pfor_input):
   input_handle = pfor_input.stacked_input(0)
@@ -4134,7 +4170,7 @@ def _outputs_for_branch(func_name, indices, pfor_input, inputs):
   stacked_outputs = []
   for out in outputs:
     if not out.is_stacked:
-      stacked_outputs.append(_stack(out.t, array_ops.size(indices)).t)
+      stacked_outputs.append(_stack(out.t, [array_ops.size(indices)]).t)
     else:
       stacked_outputs.append(out.t)
   return stacked_outputs

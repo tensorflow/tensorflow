@@ -43,7 +43,7 @@ void ValidateQuantizeGoldens(TfLiteTensor* tensors, int tensors_size,
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
   // Use reference quantization from test utils to compare against op output.
-  AsymmetricQuantize(golden, golden_quantized, output_len, scale, zero_point);
+  Quantize(golden, golden_quantized, output_len, scale, zero_point);
   for (int i = 0; i < output_len; ++i) {
     TF_LITE_MICRO_EXPECT_EQ(golden_quantized[i], output_data[i]);
   }
@@ -71,7 +71,7 @@ void TestQuantizeFloat(const int* input_dims_data, const float* input_data,
   // 1 input, 1 output.
   constexpr int tensors_size = 2;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims),
+      CreateTensor(input_data, input_dims),
       output_tensor,
   };
 

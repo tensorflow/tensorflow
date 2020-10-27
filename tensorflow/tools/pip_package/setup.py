@@ -50,7 +50,7 @@ from setuptools.dist import Distribution
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '2.4.0'
+_VERSION = '2.5.0'
 
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
@@ -78,7 +78,6 @@ REQUIRED_PACKAGES = [
     'absl-py ~= 0.10',
     'astunparse ~= 1.6.3',
     'flatbuffers ~= 1.12.0',
-    'gast ~= 0.4',
     'google_pasta ~= 0.2',
     'h5py ~= 2.10.0',
     'keras_preprocessing ~= 1.1.2',
@@ -90,6 +89,9 @@ REQUIRED_PACKAGES = [
     'typing_extensions ~= 3.7.4',
     'wheel ~= 0.35',
     'wrapt ~= 1.12.1',
+    # These packages needs to be pinned exactly as newer versions are
+    # incompatible with the rest of the ecosystem
+    'gast == 0.3.3',
     # TensorFlow ecosystem packages that TF exposes API for
     # These need to be in sync with the existing TF version
     # They are updated during the release process
@@ -144,6 +146,7 @@ CONSOLE_SCRIPTS = [
     'tflite_convert = tensorflow.lite.python.tflite_convert:main',
     'toco = tensorflow.lite.python.tflite_convert:main',
     'saved_model_cli = tensorflow.python.tools.saved_model_cli:main',
+    'import_pb_to_tensorboard = tensorflow.python.tools.import_pb_to_tensorboard:main',
     # We need to keep the TensorBoard command, even though the console script
     # is now declared by the tensorboard pip package. If we remove the
     # TensorBoard command, pip will inappropriately remove it during install,

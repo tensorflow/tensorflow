@@ -20,4 +20,8 @@ tf_module {
     name: "output_all_intermediates"
     argspec: "args=[\'state\'], varargs=None, keywords=None, defaults=None"
   }
+  member_method {
+    name: "register_filesystem_plugin"
+    argspec: "args=[\'plugin_location\'], varargs=None, keywords=None, defaults=None"
+  }
 }

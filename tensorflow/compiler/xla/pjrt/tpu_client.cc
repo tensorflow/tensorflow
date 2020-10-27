@@ -118,7 +118,7 @@ PjRtTpuClient::PjRtTpuClient(LocalClient* client,
                              std::vector<std::unique_ptr<PjRtDevice>> devices,
                              int host_id,
                              tf_tpu::TpuPlatformInterface* tpu_platform)
-    : PjRtClient("tpu", client, std::move(devices), host_id,
+    : PjRtClient(kTpuName, client, std::move(devices), host_id,
                  /*allocator=*/nullptr,
                  /*host_memory_allocator=*/nullptr,
                  /*should_stage_host_to_device_transfers=*/false,

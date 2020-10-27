@@ -806,6 +806,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
   // Minor-to-major is a permutation of [0, rank), presenting tensor dimensions
   // in physical minor-to-major order.
   if (instruction->shape().IsArray() &&
+      !instruction->shape().layout().minor_to_major().empty() &&
       instruction->shape().layout() !=
           LayoutUtil::MakeDescendingLayout(
               instruction->shape().dimensions().size())) {

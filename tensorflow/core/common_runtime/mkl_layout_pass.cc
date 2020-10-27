@@ -3231,8 +3231,9 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
       // BiasAdd has only 1 output (at slot 0) and merged node also has only 1
       // output (at slot 0).
       const int kConv2DWithBiasOutputSlot = 0;
-      DCHECK((*g)->AddEdge(new_node, kConv2DWithBiasOutputSlot, e->dst(),
-                           e->dst_input()));
+      auto new_edge = (*g)->AddEdge(new_node, kConv2DWithBiasOutputSlot,
+                                    e->dst(), e->dst_input());
+      DCHECK(new_edge);
     }
   }
 
@@ -3525,8 +3526,9 @@ Status MklLayoutRewritePass::MergeConv2DBackpropFilterWithBiasAddGrad(
         (*g)->AddControlEdge(new_node, e->dst(), true);
       }
     } else {
-      DCHECK((*g)->AddEdge(new_node, kMergedNodeBiasGradOutputIdx, e->dst(),
-                           e->dst_input()));
+      auto new_edge = (*g)->AddEdge(new_node, kMergedNodeBiasGradOutputIdx,
+                                    e->dst(), e->dst_input());
+      DCHECK(new_edge);
     }
   }
   unique_node.clear();
@@ -3539,8 +3541,9 @@ Status MklLayoutRewritePass::MergeConv2DBackpropFilterWithBiasAddGrad(
         (*g)->AddControlEdge(new_node, e->dst(), true);
       }
     } else {
-      DCHECK((*g)->AddEdge(new_node, kMergedNodeFilterGradOutputIdx, e->dst(),
-                           e->dst_input()));
+      auto new_edge = (*g)->AddEdge(new_node, kMergedNodeFilterGradOutputIdx,
+                                    e->dst(), e->dst_input());
+      DCHECK(new_edge);
     }
   }
 
@@ -3668,10 +3671,11 @@ Status MklLayoutRewritePass::RewriteNodeForLayoutPropagation(
         (*g)->AddControlEdge(*new_node, e->dst(), true);
       }
     } else {
-      DCHECK((*g)->AddEdge(
+      auto new_edge = (*g)->AddEdge(
           *new_node,
           GetTensorDataIndex(e->src_output(), e->src()->num_outputs()),
-          e->dst(), e->dst_input()));
+          e->dst(), e->dst_input());
+      DCHECK(new_edge);
     }
   }
   return Status::OK();
@@ -4044,8 +4048,9 @@ bool MklLayoutRewritePass::FixMklMetaDataEdgeIfNeeded(std::unique_ptr<Graph>* g,
   if (IsConstant(e_metadata->src())) {
     Node* e_metadata_dst = e_metadata->dst();
     int e_metadata_in_slot = e_metadata->dst_input();
-    DCHECK((*g)->AddEdge(n_data, n_metadata_op_slot, e_metadata_dst,
-                         e_metadata_in_slot));
+    auto new_edge = (*g)->AddEdge(n_data, n_metadata_op_slot, e_metadata_dst,
+                                  e_metadata_in_slot);
+    DCHECK(new_edge);
 
     (*g)->RemoveEdge(e_metadata);
     return true;

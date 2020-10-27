@@ -50,7 +50,6 @@ from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import variable_scope
@@ -672,7 +671,7 @@ class Flatten(Layer):
       # Full static shape is guaranteed to be available.
       # Performance: Using `constant_op` is much faster than passing a list.
       flattened_shape = constant_op.constant([inputs.shape[0], -1])
-      return gen_array_ops.reshape(inputs, flattened_shape)
+      return array_ops.reshape(inputs, flattened_shape)
     else:
       input_shape = inputs.shape
       rank = input_shape.rank

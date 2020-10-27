@@ -114,8 +114,8 @@ void TestHardSwishQuantized(int size, const T* output_data,
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
-  AsymmetricDequantize<T>(output_data, output_elements_count, output_scale,
-                          output_zero_point, dequantized_output);
+  Dequantize<T>(output_data, output_elements_count, output_scale,
+                output_zero_point, dequantized_output);
 
   for (int i = 0; i < output_elements_count; ++i) {
     TF_LITE_MICRO_EXPECT_NEAR(float_ref_output_values[i], dequantized_output[i],
@@ -194,8 +194,8 @@ void TestHardSwishQuantizedBias(const int size, const T* output_data,
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
-  AsymmetricDequantize<T>(output_data, output_elements_count, output_scale,
-                          output_zero_point, dequantized_output);
+  Dequantize<T>(output_data, output_elements_count, output_scale,
+                output_zero_point, dequantized_output);
 
   float sum_diff = 0;
   for (int i = 0; i < size; i++) {
@@ -229,8 +229,8 @@ void TestHardSwishFloat(const int size, float* output_data,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(float_input_values, input_dims),
-      CreateFloatTensor(output_data, output_dims),
+      CreateTensor(float_input_values, input_dims),
+      CreateTensor(output_data, output_dims),
   };
 
   int inputs_array_data[] = {1, 0};

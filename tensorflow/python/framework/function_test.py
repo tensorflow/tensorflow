@@ -1487,6 +1487,8 @@ class FunctionCaptureByValueTest(test.TestCase):
       self.assertAllEqual(y, [[12.0]])
 
 
+@test_util.run_all_without_tensor_float_32(
+    "Calls matmul in custom LSTM function")
 class UnrollLSTMTest(test.TestCase):
   BATCH_SIZE = 16
   LSTM_DIMS = 32
@@ -1593,7 +1595,6 @@ class UnrollLSTMTest(test.TestCase):
       self.assertAllClose(mv0, mv2, rtol=1e-4)
       self.assertAllClose(mv0, mv3, rtol=1e-4)
 
-  @test_util.run_without_tensor_float_32("Calls matmul in custom LSTM function")
   def testUnrollLSTMGrad(self):
     # Run one step of the unrolled lstm graph.
     def RunForwardBackward(mode, cfg=None):

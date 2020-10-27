@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_TF2TENSORRT_SEGMENT_UNION_FIND_H_
 
 #include "absl/types/optional.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
@@ -45,14 +46,24 @@ namespace segment {
 // cluster to either have the same dynamic batch size equivalent class or the
 // same static batch size value.
 //
+// Besides, all the nodes with an annotated max batch size inside the same
+// cluster shall have the same annotated max batch size. (It is allowed if
+// part or all the nodes inside the cluster doesn't have annotated max batch
+// size). Static batch sizes are treated as max batch size annotations. The
+// converter max batch size is used for an OP with a dynamic batch size and no
+// annotated max batch size.
+//
 // cluster:  a = a1[1,3] + a1[1,3]
 // ClusterBatchSize: batch_size_ = 1
+//                   max_batch_size_ = 1
 //
 // cluster:  b = b1[-1,3] + b2[-1, 3]
 // ClusterBatchSize: batch_size_ = -1
+//                   max_batch_size_ = null
 //
-// cluster:  c = c1[-2,3] + c2[-2, 3]
+// cluster:  c = c1[-2,3] + c2[-2, 3](max_batch_size=100)
 // ClusterBatchSize: batch_size_ = -2
+//                   max_batch_size_ = 100
 //
 // When constructing cluster for explicit batch mode, all ClusterBatchSize is
 // irrelevant.
@@ -72,23 +83,35 @@ class ClusterBatchSize {
   bool HasBatchSize() const;
   int GetBatchSize() const;
 
+  // Sets the max batch size assuming that the object doesn't have a max batch
+  // size yet.
+  ClusterBatchSize& SetMaxBatchSize(int max_batch_size);
+  absl::optional<int> GetOptionalMaxBatchSize() const;
+
   // Merge `other` into the current ClusterBatchSize if the two are not
   // conflicting. Two ClusterBatchSizes are conflicting iff they both have a
   // value and their values are different.
   bool MergeIfCompatible(const ClusterBatchSize& other);
 
-  // Returns a string for the batch size.
+  // Returns a string for the batch size and the annotated max batch size.
+  // For the batch size:
   //   If the object has a static batch size, return a string representing a
   //     non-negative integer.
   //   If the object has a dynamic batch size, return a string representing a
   //     negative integer as an equivalent class.
-  //   If the object doesn't have a batch size yet, return a "?" symbol string.
+  //   If the object doesn't have a batch size yet, return "?".
+  // For the annotated max batch size:
+  //   If the cluster has annotated max batch size in at least one of the nodes,
+  //     return a string representing the annotated max batch size. Otherwise,
+  //     return "?".
   std::string ToString() const;
 
  private:
   ClusterBatchSize& SetBatchSize(const absl::optional<int>& batch_size);
+  ClusterBatchSize& SetMaxBatchSize(const absl::optional<int>& batch_size);
 
   absl::optional<int> batch_size_;
+  absl::optional<int> max_batch_size_;
 };
 
 inline std::ostream& operator<<(std::ostream& os,

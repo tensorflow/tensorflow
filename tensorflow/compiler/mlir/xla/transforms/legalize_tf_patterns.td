@@ -53,7 +53,7 @@ def GetHLOAxisFromTFAxisVariadic : NativeCodeCall<
 
 def CastElementsToI64Elements : NativeCodeCall<
   "hlo::ConvertElementsAttr("
-    "$0, $_builder.getIntegerType(64)).cast<DenseIntElementsAttr>()">;
+    "$0.cast<ElementsAttr>(), $_builder.getIntegerType(64)).cast<DenseIntElementsAttr>()">;
 
 def : Pattern<
     (TF_FusedBatchNormOp:$root $x, $scale, $offset, $mean, $variance, $epsilon,
@@ -253,7 +253,7 @@ def IsShapedTensor
 // the conversion, original Concat op operands still refers to the old ops even
 // if HLO constant op is introduced as an replacement for the TensorFlow
 // Constant op.
-def : Pat<(TF_ConcatV2Op $inputs, (TF_ConstOp OneElementAttr:$axis)),
+def : Pat<(TF_ConcatV2Op $inputs, (ConstantLikeMatcher OneElementAttr:$axis)),
           (HLO_ConcatenateOp $inputs,
             (GetHLOAxisFromTFAxisVariadic $axis, $inputs)),
           [(HasRankedFirstOperand $inputs)]>;
@@ -262,7 +262,7 @@ def : Pat<(TF_ConcatV2Op $inputs, (TF_ConstOp OneElementAttr:$axis)),
 // CollectivePermute op patterns.
 //===----------------------------------------------------------------------===//
 
-def : Pat<(TF_CollectivePermuteOp $input, (TF_ConstOp $source_target_pairs)),
+def : Pat<(TF_CollectivePermuteOp $input, (ConstantLikeMatcher ElementsAttr:$source_target_pairs)),
           (HLO_CollectivePermuteOp $input,
             (CastElementsToI64Elements $source_target_pairs))>;
 
@@ -270,7 +270,7 @@ def : Pat<(TF_CollectivePermuteOp $input, (TF_ConstOp $source_target_pairs)),
 // CrossReplicaSum op patterns.
 //===----------------------------------------------------------------------===//
 
-def : Pat<(TF_CrossReplicaSumOp $input, (TF_ConstOp $group_assignment)),
+def : Pat<(TF_CrossReplicaSumOp $input, (ConstantLikeMatcher ElementsAttr:$group_assignment)),
           (HLO_CrossReplicaSumOp $input,
             (CastElementsToI64Elements $group_assignment))>;
 
@@ -278,7 +278,7 @@ def : Pat<(TF_CrossReplicaSumOp $input, (TF_ConstOp $group_assignment)),
 // All2All op patterns.
 //===----------------------------------------------------------------------===//
 
-def : Pat<(TF_AllToAllOp AnyRankedTensor:$input, (TF_ConstOp $group_assignment), I64Attr:$concat_dimension, $split_dimension, $split_count),
+def : Pat<(TF_AllToAllOp AnyRankedTensor:$input, (ConstantLikeMatcher ElementsAttr:$group_assignment), I64Attr:$concat_dimension, $split_dimension, $split_count),
           (HLO_AllToAllOp $input, $split_dimension, $concat_dimension, $split_count, (CastElementsToI64Elements $group_assignment))>;
 
 //===----------------------------------------------------------------------===//
@@ -308,7 +308,7 @@ def : Pat<(TF_IFFTOp:$res $input),
 // indexing to the HLO format.
 def LegalizeGatherV2 :
   Pat<(TF_GatherV2Op AnyRankedTensor:$params, AnyRankedTensor:$indices,
-        (TF_ConstOp $axis), $batch_dims),
+        (ConstantLikeMatcher ElementsAttr:$axis), $batch_dims),
       (HLO_TorchIndexSelectOp $params, $indices,
         (GetHLOAxisFromTFAxis $axis, $params),
         (GetHLOAxisFromTFAxis $batch_dims, $indices))>;
@@ -318,16 +318,16 @@ def LegalizeGatherV2 :
 //===----------------------------------------------------------------------===//
 
 class SliceDenseIntElementsAttrColumn2D<string column> : NativeCodeCall<
-  "SliceDenseIntElementsAttrColumn2D($0, " # column # " )">;
+  "SliceDenseIntElementsAttrColumn2D($0.cast<ElementsAttr>(), " # column # " )">;
 
 class SliceDenseIntElementsAttr<string index, string axis> : NativeCodeCall<
-  "SliceDenseIntElementsAttr($0, " # index # ", " # axis # ")">;
+  "SliceDenseIntElementsAttr($0.cast<ElementsAttr>(), " # index # ", " # axis # ")">;
 
 // Interior padding attribute based on the TF padding.
 def GetInteriorPadding : NativeCodeCall <
-  "GetInteriorPadding($0)">;
+  "GetInteriorPadding($0.cast<ElementsAttr>())">;
 
-def : Pat<(TF_PadV2Op $input, (TF_ConstOp $padding), $c),
+def : Pat<(TF_PadV2Op $input, (ConstantLikeMatcher ElementsAttr:$padding), $c),
           (HLO_PadOp $input, $c,
            (SliceDenseIntElementsAttrColumn2D<"0"> $padding),
            (SliceDenseIntElementsAttrColumn2D<"1"> $padding),
@@ -365,7 +365,8 @@ class getIntegerAttr<string x>: NativeCodeCall<
   "$_builder.getI64IntegerAttr(" # x # ")">;
 
 class GetDimensionSizeFromEnd<string dimFromEnd>: NativeCodeCall<
-  "$_builder.getI64IntegerAttr(GetDimensionSizeFromEnd($0, " # dimFromEnd # "))"
+  "$_builder.getIntegerAttr(getElementTypeOrSelf($1.getType()), "
+  "                         GetDimensionSizeFromEnd($0, " # dimFromEnd # "))"
   >;
 
 // TODO(b/149615308): Enable IotaOp usage as a child operation in a pattern
@@ -373,7 +374,7 @@ class GetDimensionSizeFromEnd<string dimFromEnd>: NativeCodeCall<
 // cannot be inferred.
 class createIotaOp<string dim>: NativeCodeCall<
   "$_builder.create<mhlo::IotaOp>($0.getOwner()->getLoc(), "
-  "Get2DTensorType($1), $_builder.getI64IntegerAttr(" # dim # "))">;
+  "Get2DTensorType($1, $2), $_builder.getI64IntegerAttr(" # dim # "))">;
 
 // This op needs to be created in C++ because the generated Convert Op has no
 // way to specify shape information as an input. In the MatrixBandPart op
@@ -396,9 +397,10 @@ def createConvertOp: NativeCodeCall<
 //   return (indicator ? input : zero_matrix)
 //
 // TODO(b/149961547): Support dynamic shaped `input` in MatrixBandPartOp.
-def : Pattern<(TF_MatrixBandPartOp:$op AnyRankedTensor:$input, $num_lower, $num_upper),
-         [(HLO_ConstOp:$m_dim (GetDimensionSizeFromEnd<"0"> $input)),
-          (HLO_ConstOp:$n_dim (GetDimensionSizeFromEnd<"1"> $input)),
+def : Pattern<(TF_MatrixBandPartOp:$op AnyStaticShapeTensor:$input, $num_lower,
+               $num_upper),
+         [(HLO_ConstOp:$m_dim (GetDimensionSizeFromEnd<"1"> $input, $num_lower)),
+          (HLO_ConstOp:$n_dim (GetDimensionSizeFromEnd<"0"> $input, $num_upper)),
           (HLO_SelectOp:$num_lower_or_m
            (HLO_CompareOp
             $num_lower, (HLO_ConstOp:$zero (ConstantSplat<"0"> $num_lower)),
@@ -414,22 +416,17 @@ def : Pattern<(TF_MatrixBandPartOp:$op AnyRankedTensor:$input, $num_lower, $num_
            $n_dim,
            $num_upper
           ),
-          (HLO_SelectOp
+          (TF_SelectV2Op
            (HLO_AndOp
             (HLOClient_BroadcastCompareOp
-             (HLO_NegOp
-              (createConvertOp $op, $num_lower_or_m, $input)
-             ),
+             (HLO_NegOp $num_lower_or_m),
              (HLO_SubOp:$offset
-              (createIotaOp<"1"> $op, $input), (createIotaOp<"0"> $op, $input)
+              (createIotaOp<"1"> $op, $input, $num_lower),
+              (createIotaOp<"0"> $op, $input, $num_lower)
              ),
              (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LE
             ),
-            (HLOClient_BroadcastCompareOp
-             $offset,
-             (createConvertOp
-              $op, $num_upper_or_n, $input
-             ),
+            (HLOClient_BroadcastCompareOp $offset, $num_upper_or_n,
              (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LE
             )
            ),
@@ -528,7 +525,7 @@ def TFSliceSizes2HLOSliceSizes : NativeCodeCall<
     "&$_builder)">;
 
 def : Pat<(TF_SliceOp:$op HLO_Tensor:$input, HLO_Tensor:$starting_indices,
-           (TF_ConstOp $slice_sizes)),
+           (ConstantLikeMatcher AnyAttr:$slice_sizes)),
           (HLO_DynamicSliceOp $input,
            (CastToI64AndUnpackTensor $op, $starting_indices),
            (TFSliceSizes2HLOSliceSizes $input, $starting_indices, $slice_sizes)),
@@ -560,9 +557,9 @@ def : Pat<(TF_LegacyCallOp:$op $args, FlatSymbolRefAttr:$f, $attr),
 //===----------------------------------------------------------------------===//
 
 // Handles axis conversion for TF reverse.
-def ConvertAxisAttr : NativeCodeCall<"ConvertAxisAttr($0, $1, &$_builder)">;
+def ConvertAxisAttr : NativeCodeCall<"ConvertAxisAttr($0, $1.cast<ElementsAttr>(), &$_builder)">;
 
-def : Pat<(TF_ReverseV2Op AnyRankedTensor:$values, (TF_ConstOp $axis)),
+def : Pat<(TF_ReverseV2Op AnyRankedTensor:$values, (ConstantLikeMatcher ElementsAttr:$axis)),
     (HLO_ReverseOp $values, (ConvertAxisAttr $values, $axis))>;
 
 //===----------------------------------------------------------------------===//
@@ -603,7 +600,7 @@ foreach Mapping = [
 def : Pat<(TF_CastOp HLO_Tensor:$arg, ConstBoolAttrFalse),
           (HLO_ConvertOp $arg)>;
 
-def : Pat<(TF_TransposeOp:$res $arg, (TF_ConstOp $permutation)),
+def : Pat<(TF_TransposeOp:$res $arg, (ConstantLikeMatcher ElementsAttr:$permutation)),
           (HLO_TransposeOp $arg, (CastElementsToI64Elements $permutation))>;
 
 // Result of the following ops changing tensor shape needs to have static
@@ -707,7 +704,7 @@ def ToGatherDimNumsAttr : NativeCodeCall<"GetGatherDimNumsAttr($0, &$_builder)">
 
 def HasValidGatherDims : Constraint<CPred<"HasValidGatherDims($0)">>;
 
-def : Pat<(TF_XlaGatherOp $operand, $start_indices, (TF_ConstOp $slice_sizes),
+def : Pat<(TF_XlaGatherOp $operand, $start_indices, (ConstantLikeMatcher ElementsAttr:$slice_sizes),
                           $dimension_numbers, $indices_are_sorted),
           (HLO_GatherOp $operand, $start_indices,
                         (ToGatherDimNumsAttr $dimension_numbers),

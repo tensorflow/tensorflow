@@ -148,7 +148,7 @@ void RegisterBitcastOpKernel() {
         << "Error while registering bitcast kernel";
   }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   {
     auto* builder = TF_NewKernelBuilder("Bitcast", tensorflow::DEVICE_GPU,
                                         &BitcastOp_Create, &BitcastOp_Compute,

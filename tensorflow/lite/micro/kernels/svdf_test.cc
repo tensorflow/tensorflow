@@ -565,13 +565,13 @@ void TestSVDF(const int batch_size, const int num_units, const int input_size,
 
   const int tensor_count = 6;  // 5 inputs, 1 output
   TfLiteTensor tensors[] = {
-      CreateFloatTensor(input_data, input_dims),
-      CreateFloatTensor(feature_weights_data, feature_weights_dims),
-      CreateFloatTensor(time_weights_data, time_weights_dims),
-      CreateFloatTensor(bias_data, bias_dims),
-      CreateFloatTensor(activation_state_data, activation_state_dims,
-                        /*is_variable=*/true),
-      CreateFloatTensor(output_data, output_dims),
+      CreateTensor(input_data, input_dims),
+      CreateTensor(feature_weights_data, feature_weights_dims),
+      CreateTensor(time_weights_data, time_weights_dims),
+      CreateTensor(bias_data, bias_dims),
+      CreateTensor(activation_state_data, activation_state_dims,
+                   /*is_variable=*/true),
+      CreateTensor(output_data, output_dims),
   };
 
   ValidateSVDFGoldens(batch_size, num_units, input_size, rank, tensors,
@@ -640,12 +640,10 @@ inline void TestIntegerSVDF(
       CreateQuantizedTensor(output_data, output_dims, output_scale,
                             output_zero_point)};
 
-  tflite::AsymmetricQuantize(golden_output, golden_output_quantized,
-                             golden_output_len, output_scale,
-                             output_zero_point);
-  tflite::AsymmetricQuantize(input_sequences_data, input_sequences_quantized,
-                             input_sequences_len, input_scale,
-                             input_zero_point);
+  tflite::Quantize(golden_output, golden_output_quantized, golden_output_len,
+                   output_scale, output_zero_point);
+  tflite::Quantize(input_sequences_data, input_sequences_quantized,
+                   input_sequences_len, input_scale, input_zero_point);
 
   ValidateSVDFGoldens(batch_size, num_units, input_size, rank, tensors,
                       tensor_count, activation, input_sequences_quantized,

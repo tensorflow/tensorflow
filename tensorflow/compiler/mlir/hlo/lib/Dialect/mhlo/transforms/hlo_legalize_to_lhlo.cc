@@ -42,7 +42,7 @@ namespace mhlo {
 namespace {
 
 template <typename T>
-using BaseOpConversion = BufferizeOpConversionPattern<T>;
+using BaseOpConversion = OpConversionPattern<T>;
 
 Value InsertDynamicAllocAndDealloc(Location loc, Value result,
                                    Value shape_operand,
@@ -623,7 +623,7 @@ void populateHLOToLHLOConversionPattern(MLIRContext* context,
       HloToLhloReturnOpConverter,
       HloToLhloTensorLoadOpConverter,
       HloToLhloTensorStoreOpConverter
-  >(context, *converter);
+  >(context);
   // clang-format on
 }
 

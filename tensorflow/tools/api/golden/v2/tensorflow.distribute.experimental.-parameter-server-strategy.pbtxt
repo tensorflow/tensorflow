@@ -1,6 +1,6 @@
 path: "tensorflow.distribute.experimental.ParameterServerStrategy"
 tf_class {
-  is_instance: "<class \'tensorflow.python.distribute.parameter_server_strategy.ParameterServerStrategy\'>"
+  is_instance: "<class \'tensorflow.python.distribute.parameter_server_strategy_v2.ParameterServerStrategyV2\'>"
   is_instance: "<class \'tensorflow.python.distribute.distribute_lib.Strategy\'>"
   is_instance: "<class \'tensorflow.python.distribute.distribute_lib.StrategyBase\'>"
   is_instance: "<type \'object\'>"
@@ -18,7 +18,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'cluster_resolver\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'cluster_resolver\', \'variable_partitioner\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "colocate_vars_with"
@@ -51,6 +51,10 @@ tf_class {
   member_method {
     name: "experimental_run"
     argspec: "args=[\'self\', \'fn\', \'input_iterator\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "gather"
+    argspec: "args=[\'self\', \'value\', \'axis\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "group"

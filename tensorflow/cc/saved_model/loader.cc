@@ -404,10 +404,12 @@ Status RestoreSession(const RunOptions& run_options,
   const uint64 read_start_microseconds = Env::Default()->NowMicros();
   std::vector<AssetFileDef> asset_file_defs;
   TF_RETURN_IF_ERROR(internal::GetAssetFileDefs(meta_graph, &asset_file_defs));
-  TF_RETURN_IF_ERROR(RunRestore(run_options, export_dir,
-                                meta_graph.saver_def().restore_op_name(),
-                                meta_graph.saver_def().filename_tensor_name(),
-                                asset_file_defs, session->get()));
+  if (meta_graph.has_saver_def()) {
+    TF_RETURN_IF_ERROR(RunRestore(run_options, export_dir,
+                                  meta_graph.saver_def().restore_op_name(),
+                                  meta_graph.saver_def().filename_tensor_name(),
+                                  asset_file_defs, session->get()));
+  }
   // Record walltime spent in restoring graph from disk, but postpone metric
   // increments until graph init finishes.
   const uint64 restore_graph_walltime =

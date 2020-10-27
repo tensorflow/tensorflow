@@ -22,10 +22,7 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-void PostProcessSingleHostXSpace(XSpace* space, uint64 start_time_ns) {
-  VLOG(3) << "Post processing local profiler XSpace.";
-  // Post processing the collected XSpace without hold profiler lock.
-  // 1. Merge plane of host events with plane of CUPTI driver api.
+void MergeHostPlanes(XSpace* space) {
   const XPlane* cupti_driver_api_plane =
       FindPlaneWithName(*space, kCuptiDriverApiPlaneName);
   const XPlane* python_tracer_plane =
@@ -40,15 +37,20 @@ void PostProcessSingleHostXSpace(XSpace* space, uint64 start_time_ns) {
       MergePlanes(*python_tracer_plane, host_plane);
     }
     SortXLinesBy(host_plane, XLinesComparatorByName());
-    // NOTE: RemovePlaneWithName might invalidate plane pointers. so do these
-    // at the last step.
     if (cupti_driver_api_plane) {
-      RemovePlaneWithName(space, kCuptiDriverApiPlaneName);
+      RemovePlane(space, cupti_driver_api_plane);
     }
     if (python_tracer_plane) {
-      RemovePlaneWithName(space, kPythonTracerPlaneName);
+      RemovePlane(space, python_tracer_plane);
     }
   }
+}
+
+void PostProcessSingleHostXSpace(XSpace* space, uint64 start_time_ns) {
+  VLOG(3) << "Post processing local profiler XSpace.";
+  // Post processing the collected XSpace without hold profiler lock.
+  // 1. Merge plane of host events with plane of CUPTI driver api.
+  MergeHostPlanes(space);
 
   // 2. Normalize all timestamps by shifting timeline to profiling start time.
   // NOTE: this have to be done before sorting XSpace due to timestamp overflow.

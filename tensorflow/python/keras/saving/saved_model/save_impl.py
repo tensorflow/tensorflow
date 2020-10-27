@@ -31,7 +31,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_spec
-from tensorflow.python.keras.mixed_precision.experimental import autocast_variable
+from tensorflow.python.keras.mixed_precision import autocast_variable
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.saving.saved_model import constants
 from tensorflow.python.keras.saving.saved_model import load as keras_load
@@ -628,7 +628,9 @@ def _wrap_activity_regularizer(layer):
   return def_function.Function(
       layer._activity_regularizer,
       '{}_activity_regularizer'.format(layer.name),
-      input_signature=[tensor_spec.TensorSpec(None, layer.dtype or K.floatx())])
+      input_signature=[
+          tensor_spec.TensorSpec(None, layer._compute_dtype or K.floatx())
+      ])
   # pylint: enable=protected-access
 
 

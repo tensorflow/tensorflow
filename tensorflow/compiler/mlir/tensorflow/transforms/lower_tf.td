@@ -273,13 +273,14 @@ def CreateTFShapeOp : NativeCodeCall<
 
 // TODO(hinsu): Support inputs of TensorList types.
 def LowerZerosLikeOp :
-  Pat<(TF_ZerosLikeOp:$src_op TensorOf<[AnySignlessInteger, AnyFloat]>:$input),
+  Pat<(TF_ZerosLikeOp:$src_op
+       TensorOf<[AnyInteger, AnyFloat, AnyComplex]>:$input),
       (TF_BroadcastToOp (TF_ConstOp (GetScalarOfType<0> $input)),
                         (CreateTFShapeOp $src_op, $input, /*use 32bit*/ConstBoolAttrFalse))>;
 
 def LowerScatterNdOp :
   Pat<(TF_ScatterNdOp $indices,
-       TensorOf<[AnySignlessInteger, AnyFloat]>:$updates, $shape),
-      (TF_TensorScatterUpdateOp
+       TensorOf<[AnyInteger, AnyFloat, AnyComplex]>:$updates, $shape),
+      (TF_TensorScatterAddOp
        (TF_FillOp $shape, (TF_ConstOp (GetScalarOfType<0> $updates))),
        $indices, $updates)>;

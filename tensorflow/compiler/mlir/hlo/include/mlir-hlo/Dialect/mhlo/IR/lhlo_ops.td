@@ -602,11 +602,8 @@ def LHLO_GatherOp: LHLO_Op<"gather", []>, BASE_HLO_GatherOp {
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$operand,
     Arg<LHLO_IntBuffer, "", [MemRead]>:$start_indices,
-    I64Attr:$index_vector_dim,
-    I64ElementsAttr:$offset_dims,
+    GatherDimensionNumbers:$dimension_numbers,
     I64ElementsAttr:$slice_sizes,
-    I64ElementsAttr:$collapsed_slice_dims,
-    I64ElementsAttr:$start_index_map,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output
   );
 }

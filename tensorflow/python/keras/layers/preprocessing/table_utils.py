@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import os
 import numpy as np
 
 from tensorflow.python.framework import dtypes
@@ -165,7 +166,7 @@ def get_vocabulary_from_file(vocabulary_path, encoding="utf-8"):
         token = text
       elif isinstance(text, bytes):
         token = text.decode(encoding, "ignore")
-      token = token.strip()
+      token = token.rstrip(os.linesep)
       vocab.append(token)
   return vocab
 

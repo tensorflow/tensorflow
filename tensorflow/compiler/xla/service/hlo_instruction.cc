@@ -515,11 +515,23 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       break;
     }
     case HloOpcode::kReduceWindow:
+      TF_RET_CHECK(proto.operand_ids_size() % 2 == 0)
+          << "Reduce window should have an even number of operands but "
+             "sees "
+          << proto.operand_ids_size();
       TF_RET_CHECK(proto.called_computation_ids_size() == 1)
           << "ReduceWindow should have 1 called computation but sees "
           << proto.called_computation_ids_size();
-      instruction = CreateReduceWindow(shape, operands(0), operands(1),
-                                       proto.window(), computations(0));
+      {
+        const auto reduce_operands = all_operands();
+        auto inputs = absl::MakeSpan(reduce_operands)
+                          .subspan(0, reduce_operands.size() / 2);
+        auto init_values =
+            absl::MakeSpan(reduce_operands)
+                .subspan(reduce_operands.size() / 2, reduce_operands.size());
+        instruction = CreateReduceWindow(shape, inputs, init_values,
+                                         proto.window(), computations(0));
+      }
       break;
     case HloOpcode::kSelectAndScatter:
       TF_RET_CHECK(proto.called_computation_ids_size() == 2)
@@ -1273,6 +1285,13 @@ HloInstruction::CreateBitcastConvert(const Shape& shape,
       shape, operand, init_value, window, reduce_computation);
 }
 
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReduceWindow(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    absl::Span<HloInstruction* const> init_values, const Window& window,
+    HloComputation* reduce_computation) {
+  return absl::make_unique<HloReduceWindowInstruction>(
+      shape, operands, init_values, window, reduce_computation);
+}
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateBatchNormTraining(const Shape& shape,
                                         HloInstruction* operand,

@@ -114,8 +114,9 @@ def linspace_nd(start, stop, num, name=None, axis=0):
 
   A sequence of `num` evenly-spaced values are generated beginning at `start`
   along a given `axis`.
-  If `num > 1`, the values in the sequence increase by `stop - start / num - 1`,
-  so that the last one is exactly `stop`. If `num <= 0`, `ValueError` is raised.
+  If `num > 1`, the values in the sequence increase by
+  `(stop - start) / (num - 1)`, so that the last one is exactly `stop`.
+  If `num <= 0`, `ValueError` is raised.
 
   Matches
   [np.linspace](https://docs.scipy.org/doc/numpy/reference/generated/numpy.linspace.html)'s

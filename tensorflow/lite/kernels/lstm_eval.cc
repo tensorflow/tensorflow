@@ -1412,8 +1412,10 @@ inline void LstmStepInteger8x8_16(
     TFLITE_DCHECK(input_to_input_effective_bias);
     TFLITE_DCHECK(recurrent_to_input_effective_bias);
   }
-  TFLITE_DCHECK(projection_effective_bias);
-
+  const bool use_projection = (projection_weight_ptr != nullptr);
+  if (use_projection) {
+    TFLITE_DCHECK(projection_effective_bias);
+  }
   if (!use_cifg) {
     // Calculate the input gate. (If not CIFG.)
     CalculateLstmGateInteger8x8_16(
@@ -1479,7 +1481,7 @@ inline void LstmStepInteger8x8_16(
       quantized_proj_clip, output_state_ptr, context, scratch0, scratch4,
       scratch5);
   // Copy output state to the output. Note that unlike float or hybrid, output
-  // is always contigous.
+  // is always contiguous.
   std::copy_n(output_state_ptr, n_batch * n_output, output_ptr);
 }
 
@@ -2177,7 +2179,7 @@ TfLiteStatus EvalInteger8x8_16(
     const TfLiteTensor* input_gate_bias, const TfLiteTensor* forget_gate_bias,
     const TfLiteTensor* cell_gate_bias, const TfLiteTensor* output_gate_bias,
     const TfLiteTensor* projection_weights, const TfLiteTensor* projection_bias,
-    const TfLiteLSTMParams* params,
+    const TfLiteLSTMParams* params, bool forward_sequence, bool time_major,
     const lstm_eval::IntegerLstmParameter* integer_lstm_param,
     TfLiteTensor* output_state, TfLiteTensor* cell_state, TfLiteTensor* output,
     TfLiteTensor* scratch0, TfLiteTensor* scratch1, TfLiteTensor* scratch2,
@@ -2190,8 +2192,8 @@ TfLiteStatus EvalInteger8x8_16(
     max_time = 1;
     n_batch = input->dims->data[0];
   } else {
-    max_time = input->dims->data[0];
-    n_batch = input->dims->data[1];
+    max_time = (time_major) ? input->dims->data[0] : input->dims->data[1];
+    n_batch = (time_major) ? input->dims->data[1] : input->dims->data[0];
   }
 
   // n_cell and n_output will be the same size when there is no projection.
@@ -2204,90 +2206,193 @@ TfLiteStatus EvalInteger8x8_16(
   // Get params for time/batch/sequence.
   const int output_batch_leading_dim =
       output->dims->data[output->dims->size - 1];
-  const int input_step = n_batch * n_input;
-  const int output_step = n_batch * output_batch_leading_dim;
 
-  for (int t = 0; t < max_time; t++) {
-    const int t_rel = t;
-    int8_t* output_ptr = GetTensorData<int8_t>(output) + t_rel * output_step;
-    const int8_t* input_ptr = GetTensorData<int8_t>(input) + t_rel * input_step;
-    LstmStepInteger8x8_16(
-        input_ptr, GetTensorData<int8_t>(input_to_input_weights),
-        integer_lstm_param->effective_input_to_input_scale_a,
-        integer_lstm_param->effective_input_to_input_scale_b,
-        GetTensorData<int8_t>(input_to_forget_weights),
-        integer_lstm_param->effective_input_to_forget_scale_a,
-        integer_lstm_param->effective_input_to_forget_scale_b,
-        GetTensorData<int8_t>(input_to_cell_weights),
-        integer_lstm_param->effective_input_to_cell_scale_a,
-        integer_lstm_param->effective_input_to_cell_scale_b,
-        GetTensorData<int8_t>(input_to_output_weights),
-        integer_lstm_param->effective_input_to_output_scale_a,
-        integer_lstm_param->effective_input_to_output_scale_b,
-        GetTensorData<int8_t>(recurrent_to_input_weights),
-        integer_lstm_param->effective_recurrent_to_input_scale_a,
-        integer_lstm_param->effective_recurrent_to_input_scale_b,
-        GetTensorData<int8_t>(recurrent_to_forget_weights),
-        integer_lstm_param->effective_recurrent_to_forget_scale_a,
-        integer_lstm_param->effective_recurrent_to_forget_scale_b,
-        GetTensorData<int8_t>(recurrent_to_cell_weights),
-        integer_lstm_param->effective_recurrent_to_cell_scale_a,
-        integer_lstm_param->effective_recurrent_to_cell_scale_b,
-        GetTensorData<int8_t>(recurrent_to_output_weights),
-        integer_lstm_param->effective_recurrent_to_output_scale_a,
-        integer_lstm_param->effective_recurrent_to_output_scale_b,
-        GetTensorData<int16_t>(cell_to_input_weights),
-        integer_lstm_param->effective_cell_to_input_scale_a,
-        integer_lstm_param->effective_cell_to_input_scale_b,
-        GetTensorData<int16_t>(cell_to_forget_weights),
-        integer_lstm_param->effective_cell_to_forget_scale_a,
-        integer_lstm_param->effective_cell_to_forget_scale_b,
-        GetTensorData<int16_t>(cell_to_output_weights),
-        integer_lstm_param->effective_cell_to_output_scale_a,
-        integer_lstm_param->effective_cell_to_output_scale_b,
-        GetTensorData<int8_t>(projection_weights),
-        integer_lstm_param->effective_proj_scale_a,
-        integer_lstm_param->effective_proj_scale_b,
-        integer_lstm_param->hidden_zp,
-        integer_lstm_param->effective_hidden_scale_a,
-        integer_lstm_param->effective_hidden_scale_b,
-        GetTensorData<int16_t>(input_layer_norm_coefficients),
-        integer_lstm_param->layer_norm_input_scale_a,
-        integer_lstm_param->layer_norm_input_scale_b,
-        GetTensorData<int16_t>(forget_layer_norm_coefficients),
-        integer_lstm_param->layer_norm_forget_scale_a,
-        integer_lstm_param->layer_norm_forget_scale_b,
-        GetTensorData<int16_t>(cell_layer_norm_coefficients),
-        integer_lstm_param->layer_norm_cell_scale_a,
-        integer_lstm_param->layer_norm_cell_scale_b,
-        GetTensorData<int16_t>(output_layer_norm_coefficients),
-        integer_lstm_param->layer_norm_output_scale_a,
-        integer_lstm_param->layer_norm_output_scale_b,
-        GetTensorData<int32_t>(input_gate_bias),
-        GetTensorData<int32_t>(forget_gate_bias),
-        GetTensorData<int32_t>(cell_gate_bias),
-        GetTensorData<int32_t>(output_gate_bias),
-        integer_lstm_param->quantized_cell_clip,
-        integer_lstm_param->quantized_proj_clip, integer_lstm_param->cell_scale,
-        integer_lstm_param->input_variance_guard,
-        integer_lstm_param->forget_variance_guard,
-        integer_lstm_param->cell_variance_guard,
-        integer_lstm_param->output_variance_guard,
-        integer_lstm_param->input_to_forget_effective_bias.get(),
-        integer_lstm_param->recurrent_to_forget_effective_bias.get(),
-        integer_lstm_param->input_to_cell_effective_bias.get(),
-        integer_lstm_param->recurrent_to_cell_effective_bias.get(),
-        integer_lstm_param->input_to_output_effective_bias.get(),
-        integer_lstm_param->recurrent_to_output_effective_bias.get(),
-        integer_lstm_param->input_to_input_effective_bias.get(),
-        integer_lstm_param->recurrent_to_input_effective_bias.get(),
-        integer_lstm_param->projection_effective_bias.get(), n_batch, n_cell,
-        n_input, n_output, GetTensorData<int8_t>(output_state), output_state_zp,
-        GetTensorData<int16_t>(cell_state), output_ptr,
-        GetTensorData<int16_t>(scratch0), GetTensorData<int16_t>(scratch1),
-        GetTensorData<int16_t>(scratch2), GetTensorData<int16_t>(scratch3),
-        GetTensorData<int8_t>(scratch4), GetTensorData<int32_t>(scratch5),
-        context);
+  if (time_major) {
+    const int input_step = n_batch * n_input;
+    const int output_step = n_batch * output_batch_leading_dim;
+    for (int t = 0; t < max_time; t++) {
+      const int t_rel = t;
+      int8_t* output_ptr = GetTensorData<int8_t>(output) + t_rel * output_step;
+      const int8_t* input_ptr =
+          GetTensorData<int8_t>(input) + t_rel * input_step;
+      LstmStepInteger8x8_16(
+          input_ptr, GetTensorData<int8_t>(input_to_input_weights),
+          integer_lstm_param->effective_input_to_input_scale_a,
+          integer_lstm_param->effective_input_to_input_scale_b,
+          GetTensorData<int8_t>(input_to_forget_weights),
+          integer_lstm_param->effective_input_to_forget_scale_a,
+          integer_lstm_param->effective_input_to_forget_scale_b,
+          GetTensorData<int8_t>(input_to_cell_weights),
+          integer_lstm_param->effective_input_to_cell_scale_a,
+          integer_lstm_param->effective_input_to_cell_scale_b,
+          GetTensorData<int8_t>(input_to_output_weights),
+          integer_lstm_param->effective_input_to_output_scale_a,
+          integer_lstm_param->effective_input_to_output_scale_b,
+          GetTensorData<int8_t>(recurrent_to_input_weights),
+          integer_lstm_param->effective_recurrent_to_input_scale_a,
+          integer_lstm_param->effective_recurrent_to_input_scale_b,
+          GetTensorData<int8_t>(recurrent_to_forget_weights),
+          integer_lstm_param->effective_recurrent_to_forget_scale_a,
+          integer_lstm_param->effective_recurrent_to_forget_scale_b,
+          GetTensorData<int8_t>(recurrent_to_cell_weights),
+          integer_lstm_param->effective_recurrent_to_cell_scale_a,
+          integer_lstm_param->effective_recurrent_to_cell_scale_b,
+          GetTensorData<int8_t>(recurrent_to_output_weights),
+          integer_lstm_param->effective_recurrent_to_output_scale_a,
+          integer_lstm_param->effective_recurrent_to_output_scale_b,
+          GetTensorData<int16_t>(cell_to_input_weights),
+          integer_lstm_param->effective_cell_to_input_scale_a,
+          integer_lstm_param->effective_cell_to_input_scale_b,
+          GetTensorData<int16_t>(cell_to_forget_weights),
+          integer_lstm_param->effective_cell_to_forget_scale_a,
+          integer_lstm_param->effective_cell_to_forget_scale_b,
+          GetTensorData<int16_t>(cell_to_output_weights),
+          integer_lstm_param->effective_cell_to_output_scale_a,
+          integer_lstm_param->effective_cell_to_output_scale_b,
+          GetTensorData<int8_t>(projection_weights),
+          integer_lstm_param->effective_proj_scale_a,
+          integer_lstm_param->effective_proj_scale_b,
+          integer_lstm_param->hidden_zp,
+          integer_lstm_param->effective_hidden_scale_a,
+          integer_lstm_param->effective_hidden_scale_b,
+          GetTensorData<int16_t>(input_layer_norm_coefficients),
+          integer_lstm_param->layer_norm_input_scale_a,
+          integer_lstm_param->layer_norm_input_scale_b,
+          GetTensorData<int16_t>(forget_layer_norm_coefficients),
+          integer_lstm_param->layer_norm_forget_scale_a,
+          integer_lstm_param->layer_norm_forget_scale_b,
+          GetTensorData<int16_t>(cell_layer_norm_coefficients),
+          integer_lstm_param->layer_norm_cell_scale_a,
+          integer_lstm_param->layer_norm_cell_scale_b,
+          GetTensorData<int16_t>(output_layer_norm_coefficients),
+          integer_lstm_param->layer_norm_output_scale_a,
+          integer_lstm_param->layer_norm_output_scale_b,
+          GetTensorData<int32_t>(input_gate_bias),
+          GetTensorData<int32_t>(forget_gate_bias),
+          GetTensorData<int32_t>(cell_gate_bias),
+          GetTensorData<int32_t>(output_gate_bias),
+          integer_lstm_param->quantized_cell_clip,
+          integer_lstm_param->quantized_proj_clip,
+          integer_lstm_param->cell_scale,
+          integer_lstm_param->input_variance_guard,
+          integer_lstm_param->forget_variance_guard,
+          integer_lstm_param->cell_variance_guard,
+          integer_lstm_param->output_variance_guard,
+          integer_lstm_param->input_to_forget_effective_bias.get(),
+          integer_lstm_param->recurrent_to_forget_effective_bias.get(),
+          integer_lstm_param->input_to_cell_effective_bias.get(),
+          integer_lstm_param->recurrent_to_cell_effective_bias.get(),
+          integer_lstm_param->input_to_output_effective_bias.get(),
+          integer_lstm_param->recurrent_to_output_effective_bias.get(),
+          integer_lstm_param->input_to_input_effective_bias.get(),
+          integer_lstm_param->recurrent_to_input_effective_bias.get(),
+          integer_lstm_param->projection_effective_bias.get(), n_batch, n_cell,
+          n_input, n_output, GetTensorData<int8_t>(output_state),
+          output_state_zp, GetTensorData<int16_t>(cell_state), output_ptr,
+          GetTensorData<int16_t>(scratch0), GetTensorData<int16_t>(scratch1),
+          GetTensorData<int16_t>(scratch2), GetTensorData<int16_t>(scratch3),
+          GetTensorData<int8_t>(scratch4), GetTensorData<int32_t>(scratch5),
+          context);
+    }
+  } else {
+    for (int b = 0; b < n_batch; b++) {
+      const int input_step = n_input;
+      const int output_step = output_batch_leading_dim;
+      for (int t = 0; t < max_time; t++) {
+        // If this is the forward_sequence, step forward, otherwise step
+        // backwards.
+        const int t_rel = forward_sequence ? t : max_time - t - 1;
+        const int time_offset = b * max_time + t_rel;
+        const int8_t* input_ptr =
+            GetTensorData<int8_t>(input) + time_offset * input_step;
+        int8_t* output_ptr =
+            GetTensorData<int8_t>(output) + time_offset * output_step;
+
+        // Offset the {output,cell}_state pointers to the right batch.
+        int8_t* output_state_ptr =
+            GetTensorData<int8_t>(output_state) + b * output_batch_leading_dim;
+        int16_t* cell_state_ptr =
+            GetTensorData<int16_t>(cell_state) + b * n_cell;
+
+        LstmStepInteger8x8_16(
+            input_ptr, GetTensorData<int8_t>(input_to_input_weights),
+            integer_lstm_param->effective_input_to_input_scale_a,
+            integer_lstm_param->effective_input_to_input_scale_b,
+            GetTensorData<int8_t>(input_to_forget_weights),
+            integer_lstm_param->effective_input_to_forget_scale_a,
+            integer_lstm_param->effective_input_to_forget_scale_b,
+            GetTensorData<int8_t>(input_to_cell_weights),
+            integer_lstm_param->effective_input_to_cell_scale_a,
+            integer_lstm_param->effective_input_to_cell_scale_b,
+            GetTensorData<int8_t>(input_to_output_weights),
+            integer_lstm_param->effective_input_to_output_scale_a,
+            integer_lstm_param->effective_input_to_output_scale_b,
+            GetTensorData<int8_t>(recurrent_to_input_weights),
+            integer_lstm_param->effective_recurrent_to_input_scale_a,
+            integer_lstm_param->effective_recurrent_to_input_scale_b,
+            GetTensorData<int8_t>(recurrent_to_forget_weights),
+            integer_lstm_param->effective_recurrent_to_forget_scale_a,
+            integer_lstm_param->effective_recurrent_to_forget_scale_b,
+            GetTensorData<int8_t>(recurrent_to_cell_weights),
+            integer_lstm_param->effective_recurrent_to_cell_scale_a,
+            integer_lstm_param->effective_recurrent_to_cell_scale_b,
+            GetTensorData<int8_t>(recurrent_to_output_weights),
+            integer_lstm_param->effective_recurrent_to_output_scale_a,
+            integer_lstm_param->effective_recurrent_to_output_scale_b,
+            GetTensorData<int16_t>(cell_to_input_weights),
+            integer_lstm_param->effective_cell_to_input_scale_a,
+            integer_lstm_param->effective_cell_to_input_scale_b,
+            GetTensorData<int16_t>(cell_to_forget_weights),
+            integer_lstm_param->effective_cell_to_forget_scale_a,
+            integer_lstm_param->effective_cell_to_forget_scale_b,
+            GetTensorData<int16_t>(cell_to_output_weights),
+            integer_lstm_param->effective_cell_to_output_scale_a,
+            integer_lstm_param->effective_cell_to_output_scale_b,
+            GetTensorData<int8_t>(projection_weights),
+            integer_lstm_param->effective_proj_scale_a,
+            integer_lstm_param->effective_proj_scale_b,
+            integer_lstm_param->hidden_zp,
+            integer_lstm_param->effective_hidden_scale_a,
+            integer_lstm_param->effective_hidden_scale_b,
+            GetTensorData<int16_t>(input_layer_norm_coefficients),
+            integer_lstm_param->layer_norm_input_scale_a,
+            integer_lstm_param->layer_norm_input_scale_b,
+            GetTensorData<int16_t>(forget_layer_norm_coefficients),
+            integer_lstm_param->layer_norm_forget_scale_a,
+            integer_lstm_param->layer_norm_forget_scale_b,
+            GetTensorData<int16_t>(cell_layer_norm_coefficients),
+            integer_lstm_param->layer_norm_cell_scale_a,
+            integer_lstm_param->layer_norm_cell_scale_b,
+            GetTensorData<int16_t>(output_layer_norm_coefficients),
+            integer_lstm_param->layer_norm_output_scale_a,
+            integer_lstm_param->layer_norm_output_scale_b,
+            GetTensorData<int32_t>(input_gate_bias),
+            GetTensorData<int32_t>(forget_gate_bias),
+            GetTensorData<int32_t>(cell_gate_bias),
+            GetTensorData<int32_t>(output_gate_bias),
+            integer_lstm_param->quantized_cell_clip,
+            integer_lstm_param->quantized_proj_clip,
+            integer_lstm_param->cell_scale,
+            integer_lstm_param->input_variance_guard,
+            integer_lstm_param->forget_variance_guard,
+            integer_lstm_param->cell_variance_guard,
+            integer_lstm_param->output_variance_guard,
+            integer_lstm_param->input_to_forget_effective_bias.get(),
+            integer_lstm_param->recurrent_to_forget_effective_bias.get(),
+            integer_lstm_param->input_to_cell_effective_bias.get(),
+            integer_lstm_param->recurrent_to_cell_effective_bias.get(),
+            integer_lstm_param->input_to_output_effective_bias.get(),
+            integer_lstm_param->recurrent_to_output_effective_bias.get(),
+            integer_lstm_param->input_to_input_effective_bias.get(),
+            integer_lstm_param->recurrent_to_input_effective_bias.get(),
+            integer_lstm_param->projection_effective_bias.get(), /*n_batch=*/1,
+            n_cell, n_input, n_output, output_state_ptr, output_state_zp,
+            cell_state_ptr, output_ptr, GetTensorData<int16_t>(scratch0),
+            GetTensorData<int16_t>(scratch1), GetTensorData<int16_t>(scratch2),
+            GetTensorData<int16_t>(scratch3), GetTensorData<int8_t>(scratch4),
+            GetTensorData<int32_t>(scratch5), context);
+      }
+    }
   }
 
   return kTfLiteOk;

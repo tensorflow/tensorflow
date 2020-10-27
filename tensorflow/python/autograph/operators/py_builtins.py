@@ -429,8 +429,7 @@ def map_(fn, *iterables):
 
 
 def _tf_dataset_map(fn, *iterables):
-  zipped_dataset = dataset_ops.DatasetV2.zip(iterables)
-  return zipped_dataset.map(fn, num_parallel_calls=dataset_ops.AUTOTUNE)
+  return dataset_ops.DatasetV2.zip(iterables).map(fn)
 
 
 def _py_map(fn, *iterables):

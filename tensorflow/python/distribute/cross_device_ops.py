@@ -803,7 +803,10 @@ class AllReduceCrossDeviceOps(CrossDeviceOps):
   def reduce_implementation(self, reduce_op, per_replica_value, destinations,
                             options):
     del options  # Unused.
-    if _devices_match(per_replica_value, destinations):
+    # To use NCCL or all-reduce, source and destination devices should match,
+    # and none of the devices should be CPU.
+    if (_devices_match(per_replica_value, destinations) and
+        not any("cpu" in d.lower() for d in get_devices_from(destinations))):
       return self._batch_all_reduce(reduce_op, [per_replica_value])[0]
     else:
       return self._simple_cross_replica_ops.reduce(reduce_op, per_replica_value,
@@ -975,8 +978,8 @@ class HierarchicalCopyAllReduce(AllReduceCrossDeviceOps):
 
 
 # TODO(crccw): remove after migrating all callers.
-CollectiveCommunication = collective_util.CommunicationImplemenation
-CommunicationImplemenation = collective_util.CommunicationImplemenation
+CollectiveCommunication = collective_util.CommunicationImplementation
+CommunicationImplementation = collective_util.CommunicationImplementation
 
 
 # TODO(yuefengz): support in-graph collective all-reduce.
@@ -1119,9 +1122,9 @@ class CollectiveAllReduce(CrossDeviceOps):
     # TODO(b/132575814): switch to NCCL for all collectives when communication
     # is NCCL if and only if we can order collectives deterministically.
     # is NCCL.
-    if (options.implementation == CommunicationImplemenation.NCCL and
+    if (options.implementation == CommunicationImplementation.NCCL and
         batch_size == 1):
-      implementation = CommunicationImplemenation.AUTO.value
+      implementation = CommunicationImplementation.AUTO.value
 
     # Reverse the lists so that there's better chance that values follows
     # the order in which they are calculated (e.g. when they're gradients), so
@@ -1179,9 +1182,9 @@ class CollectiveAllReduce(CrossDeviceOps):
     # For now, we use NCCL only when batch_size > 1.
     # TODO(b/132575814): switch to NCCL for all collectives when implementation
     # is NCCL.
-    if options.implementation == CommunicationImplemenation.NCCL and len(
+    if options.implementation == CommunicationImplementation.NCCL and len(
         per_replica_values) == 1:
-      implementation = CommunicationImplemenation.AUTO.value
+      implementation = CommunicationImplementation.AUTO.value
 
     gathered_values = []
     with self._lock:
@@ -1241,9 +1244,9 @@ class CollectiveAllReduce(CrossDeviceOps):
     # For now, we use NCCL only when batch_size > 1.
     # TODO(b/132575814): switch to NCCL for all collectives when implementation
     # is NCCL.
-    if (options.implementation == CommunicationImplemenation.NCCL and
+    if (options.implementation == CommunicationImplementation.NCCL and
         batch_size == 1):
-      implementation = CommunicationImplemenation.AUTO.value
+      implementation = CommunicationImplementation.AUTO.value
 
     logging.log_first_n(
         logging.INFO, "Collective batch_all_gather: %d all-gathers, "

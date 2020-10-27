@@ -32,7 +32,6 @@ tf_py_test(
     size = "small",
     srcs = ["compat_test.py"],
     tags = ["nofwdcompat"],
-    tfrt_enabled = True,
     deps = [
         ":compat",
         "//tensorflow/python:client_testlib",
@@ -43,7 +42,6 @@ tf_py_test(
     name = "disable_v2_behavior_test",
     size = "small",
     srcs = ["disable_v2_behavior_test.py"],
-    tfrt_enabled = True,
     deps = [
         ":v2_compat",
         "//tensorflow/python:client_testlib",

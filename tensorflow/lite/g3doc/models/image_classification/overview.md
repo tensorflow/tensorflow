@@ -24,7 +24,7 @@ started.
 You can leverage the out-of-box API from TensorFlow Lite Task Library to
 [integrate image classification models](../../inference_with_metadata/task_library/image_classifier)
 in just a few lines of code. You can also
-[build your own custom inference pipleline](../../inference_with_metadata/lite_support)
+[build your own custom inference pipeline](../../inference_with_metadata/lite_support)
 using the TensorFlow Lite Support Library.
 
 The Android example below demonstrates the implementation for both methods as

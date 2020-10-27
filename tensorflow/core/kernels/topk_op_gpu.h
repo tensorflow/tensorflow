@@ -94,7 +94,6 @@ struct IndirectLinearData {
   Entry* const backing_data;
 };
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <typename T>
 struct StridedData {
   typedef impl::Entry<T> Entry;
@@ -108,7 +107,6 @@ struct StridedData {
 
   Entry* const data;
 };
-#endif  // GOOGLE_CUDA
 
 // A heap of Entry<T> that can either work as a min-heap or as a max-heap.
 template <HeapType heapType, PreferIndices preferIndices,
@@ -458,8 +456,8 @@ Status LaunchSortKernel(OpKernelContext* ctx, const T* input, int num_rows,
   const auto& cu_stream = GetGpuStream(ctx);
   size_t temp_storage_bytes = -1;
 
-  // TODO(ebrevdo): Once cub supports iterators for ValueT replace that tensor
-  // with an iterator that directly returns the correct value.
+  // TODO(ebrevdo): Once gpuprim supports iterators for ValueT replace that
+  // tensor with an iterator that directly returns the correct value.
   Tensor input_indices;
   TF_RETURN_IF_ERROR(ctx->allocate_temp(
       DT_INT32, TensorShape({num_rows, num_cols}), &input_indices));
@@ -469,7 +467,7 @@ Status LaunchSortKernel(OpKernelContext* ctx, const T* input, int num_rows,
 
   gpuprim::CountingInputIterator<int> counting_iter(0);
   gpuprim::TransformInputIterator<int, SegmentOffsetCreator,
-                              gpuprim::CountingInputIterator<int>>
+                                  gpuprim::CountingInputIterator<int>>
       segment_offsets_t(counting_iter, SegmentOffsetCreator(num_cols));
 
   Tensor temp_values;
@@ -562,8 +560,8 @@ struct TopKFunctor<GPUDevice, T> {
           const int64 num_cols, typename TTypes<T, 2>::Tensor values,
           typename TTypes<int, 2>::Tensor indices) {
     // For small k, use the heap implementation.  For larger k, use
-    // the in-place cub sort.  For k == num_cols, always use the
-    // in-place cub sort.  The thresholds for n and k were determined
+    // the in-place gpuprim sort.  For k == num_cols, always use the
+    // in-place gpuprim sort.  The thresholds for n and k were determined
     // empirically.
     if (num_cols <= 1000 || k == num_cols || k >= 100) {
       return impl::LaunchSortKernel(context, input.data(), num_rows, num_cols,

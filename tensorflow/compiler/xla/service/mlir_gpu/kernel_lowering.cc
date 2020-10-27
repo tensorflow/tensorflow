@@ -70,7 +70,8 @@ Status LowerLHLOToGPU(mlir::ModuleOp module, LowerLHLOToGPUOptions options) {
   // Legalize from HLO to LHLO.
   pm.addPass(::mlir::mhlo::createLegalizeToLhloPass());
   // Moving `AllocOp`s and inserting missing `DeallocOp`s
-  pm.addPass(::mlir::createBufferPlacementPass());
+  pm.addPass(::mlir::createBufferHoistingPass());
+  pm.addPass(::mlir::createBufferDeallocationPass());
   // Next, we can strip the outer fusion operation.
   pm.addPass(createFusionOpRemoverPass());
   // Remove unnecessary LHLO copies.

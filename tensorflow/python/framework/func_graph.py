@@ -107,6 +107,7 @@ def convert_structure_to_signature(structure, arg_names=None):
         int,
         float,
         bool,
+        str,
         type(None),
         dtypes.DType,
         tensor_spec.TensorSpec,

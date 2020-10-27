@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 
 namespace xla {
@@ -25,7 +26,7 @@ static const char kCpuPlatformName[] = "cpu";
 
 CpuDevice::CpuDevice(int id,
                      std::unique_ptr<LocalDeviceState> local_device_state)
-    : PjRtDevice(id, std::move(local_device_state), kCpuPlatformName,
+    : PjRtDevice(id, std::move(local_device_state),
                  /*device_kind=*/kCpuPlatformName) {}
 
 StatusOr<std::unique_ptr<PjRtClient>> GetCpuClient(bool asynchronous) {
@@ -57,7 +58,7 @@ StatusOr<std::unique_ptr<PjRtClient>> GetCpuClient(bool asynchronous) {
   }
 
   return std::make_unique<PjRtClient>(
-      kCpuPlatformName, client, std::move(devices), /*host_id=*/0,
+      kCpuName, client, std::move(devices), /*host_id=*/0,
       /*allocator=*/nullptr, /*host_memory_allocator=*/nullptr,
       /*should_stage_host_to_device_transfers=*/false,
       /*gpu_run_options=*/nullptr);
