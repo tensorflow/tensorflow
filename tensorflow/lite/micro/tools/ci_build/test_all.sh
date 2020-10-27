@@ -37,11 +37,10 @@ echo "Starting to run micro tests at `date`"
 echo "Running x86 tests at `date`"
 tensorflow/lite/micro/tools/ci_build/test_x86.sh PRESUBMIT
 
+# First testing targets that do not need CMSIS to be patched
+# (i.e. in the CMSIS_PATCH_EXCLUSION_LIST in tensorflow/lite/micro/make/Makefile).
 echo "Running bluepill tests at `date`"
 tensorflow/lite/micro/tools/ci_build/test_bluepill.sh PRESUBMIT
-
-echo "Running mbed tests at `date`"
-tensorflow/lite/micro/tools/ci_build/test_mbed.sh PRESUBMIT
 
 echo "Running Sparkfun tests at `date`"
 tensorflow/lite/micro/tools/ci_build/test_sparkfun.sh
@@ -49,10 +48,16 @@ tensorflow/lite/micro/tools/ci_build/test_sparkfun.sh
 echo "Running stm32f4 tests at `date`"
 tensorflow/lite/micro/tools/ci_build/test_stm32f4.sh PRESUBMIT
 
-echo "Running Arduino tests at `date`"
-tensorflow/lite/micro/tools/ci_build/test_arduino.sh
-
 echo "Running cortex_m_generic tests at `date`"
 tensorflow/lite/micro/tools/ci_build/test_cortex_m_generic.sh
+
+# We delete the downloaded and unpatched CMSIS to force another download (this time with patching).
+rm -rf tensorflow/lite/micro/tools/make/downloads/cmsis
+
+echo "Running mbed tests at `date`"
+tensorflow/lite/micro/tools/ci_build/test_mbed.sh PRESUBMIT
+
+echo "Running Arduino tests at `date`"
+tensorflow/lite/micro/tools/ci_build/test_arduino.sh
 
 echo "Finished all micro tests at `date`"
