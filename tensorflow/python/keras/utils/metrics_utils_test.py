@@ -288,7 +288,7 @@ class FilterTopKTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     def _filter_top_k(x):
       # This loses the static shape.
-      x = script_ops.py_func_common(_identity, (x,), dtypes.float32)
+      x = script_ops.numpy_function(_identity, (x,), dtypes.float32)
 
       return metrics_utils._filter_top_k(x=x, k=2)
 
