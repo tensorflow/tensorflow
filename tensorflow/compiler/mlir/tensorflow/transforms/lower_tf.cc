@@ -241,13 +241,19 @@ class LowerAddNOp : public RewritePattern {
 //     : (tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>,
 //        tensor<2xf32>, tensor<i64>) -> tensor<5x2xf32>
 //
-class LowerDynamicStitchOp : public OpRewritePattern<DynamicStitchOp> {
+class LowerDynamicStitchOp : public RewritePattern {
  public:
   explicit LowerDynamicStitchOp(MLIRContext *context)
-      : OpRewritePattern<DynamicStitchOp>(context) {}
+      : RewritePattern(
+            DynamicStitchOp::getOperationName(),
+            {ConstOp::getOperationName(), ReshapeOp::getOperationName(),
+             UnpackOp::getOperationName(), PackOp::getOperationName()},
+            1, context) {}
 
-  LogicalResult matchAndRewrite(DynamicStitchOp op,
+  LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
+    auto op = cast<DynamicStitchOp>(src_op);
+
     // Static output type is used to compute intermediate values. Note that the
     // output type doesn't have to be static but if input types and indices are
     // constant, then the output type can be statically determined.
@@ -315,12 +321,20 @@ class LowerDynamicStitchOp : public OpRewritePattern<DynamicStitchOp> {
 // 1. Computing proper quantized bounds. This involves nudging the input bounds.
 // 2. Converting the input bounds to quantized space, rounding values.
 // 3. Convert back into floating point space.
-class ConvertFakeQuantWithMinMaxVarsOp
-    : public OpRewritePattern<FakeQuantWithMinMaxVarsOp> {
-  using OpRewritePattern<FakeQuantWithMinMaxVarsOp>::OpRewritePattern;
+class ConvertFakeQuantWithMinMaxVarsOp : public RewritePattern {
+ public:
+  explicit ConvertFakeQuantWithMinMaxVarsOp(MLIRContext *context)
+      : RewritePattern(FakeQuantWithMinMaxVarsOp::getOperationName(),
+                       {SubOp::getOperationName(), ConstOp::getOperationName(),
+                        MulOp::getOperationName(), FloorOp::getOperationName(),
+                        ClipByValueOp::getOperationName(),
+                        DivOp::getOperationName(), RoundOp::getOperationName()},
+                       1, context) {}
 
-  LogicalResult matchAndRewrite(FakeQuantWithMinMaxVarsOp op,
+  LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
+    auto op = cast<FakeQuantWithMinMaxVarsOp>(src_op);
+
     auto input = op.inputs();
     auto input_ty = input.getType().cast<ShapedType>();
     auto element_ty = input_ty.getElementType();
@@ -435,13 +449,20 @@ class ConvertFakeQuantWithMinMaxVarsOp
 //   "tf.TensorScatterUpdate"(%x, %indices, %updates) :
 //     (tensor<5xi32>, tensor<5x1xi32>, tensor<5xi32>) -> tensor<5xi32>
 //
-class LowerInvertPermutationOp : public OpRewritePattern<InvertPermutationOp> {
+class LowerInvertPermutationOp : public RewritePattern {
  public:
   explicit LowerInvertPermutationOp(MLIRContext *context)
-      : OpRewritePattern<InvertPermutationOp>(context) {}
+      : RewritePattern(
+            InvertPermutationOp::getOperationName(),
+            {ConstOp::getOperationName(), RangeOp::getOperationName(),
+             ReshapeOp::getOperationName(),
+             TensorScatterUpdateOp::getOperationName()},
+            1, context) {}
 
-  LogicalResult matchAndRewrite(InvertPermutationOp op,
+  LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
+    auto op = cast<InvertPermutationOp>(src_op);
+
     Location loc = op.getLoc();
     auto x_type = op.x().getType().dyn_cast<RankedTensorType>();
     // x input must have static shape.
@@ -494,12 +515,36 @@ static constexpr std::array<double, 8> kLanczosCoefficients = {
     12.507343278686904814458936853,     -0.13857109526572011689554707,
     9.984369578019570859563e-6,         1.50563273514931155834e-7};
 
-class LowerLgammaOp : public OpRewritePattern<LgammaOp> {
+class LowerLgammaOp : public RewritePattern {
  public:
-  using OpRewritePattern<LgammaOp>::OpRewritePattern;
+  explicit LowerLgammaOp(MLIRContext *context)
+      : RewritePattern(LgammaOp::getOperationName(),
+                       {
+                           CastOp::getOperationName(),
+                           ConstOp::getOperationName(),
+                           NegOp::getOperationName(),
+                           SubOp::getOperationName(),
+                           SelectV2Op::getOperationName(),
+                           LessOp::getOperationName(),
+                           AddV2Op::getOperationName(),
+                           DivOp::getOperationName(),
+                           SubOp::getOperationName(),
+                           LogOp::getOperationName(),
+                           Log1pOp::getOperationName(),
+                           IsInfOp::getOperationName(),
+                           MulOp::getOperationName(),
+                           FloorOp::getOperationName(),
+                           AbsOp::getOperationName(),
+                           GreaterOp::getOperationName(),
+                           SinOp::getOperationName(),
+                           IsFiniteOp::getOperationName(),
+                       },
+                       1, context) {}
 
-  LogicalResult matchAndRewrite(LgammaOp op,
+  LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
+    auto op = cast<LgammaOp>(src_op);
+
     Location loc = op.getLoc();
     Value input = op.x();
     TensorType original_tensor_type = op.x().getType().cast<TensorType>();
@@ -683,13 +728,19 @@ class LowerLgammaOp : public OpRewritePattern<LgammaOp> {
 //   %inp1 = "tf.ExpandDims"(%operand1, %axis): tensor<2xf32> -> tensor<2x1xf32>
 //   %result = "tf.ConcatV2"(%operand0, %operand1, %axis) { N = 2 : i64 }:
 //
-class LowerPackOp : public OpRewritePattern<PackOp> {
+class LowerPackOp : public RewritePattern {
  public:
   explicit LowerPackOp(MLIRContext *context)
-      : OpRewritePattern<PackOp>(context) {}
+      : RewritePattern(
+            PackOp::getOperationName(),
+            {ConstOp::getOperationName(), ConcatV2Op::getOperationName(),
+             ExpandDimsOp::getOperationName()},
+            1, context) {}
 
-  LogicalResult matchAndRewrite(PackOp op,
+  LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
+    auto op = cast<PackOp>(src_op);
+
     Location loc = op.getLoc();
     auto axis_value = rewriter.create<ConstOp>(
         loc,
@@ -744,12 +795,29 @@ class LowerPackOp : public OpRewritePattern<PackOp> {
 //     [batch * product(block_shape)]
 //     + [padded.shape[1]/block_shape[0], ..., padded.shape[M]/block_shape[M-1]]
 //     + remaining_shape
-class LowerSpaceToBatchNDOp : public OpRewritePattern<SpaceToBatchNDOp> {
+class LowerSpaceToBatchNDOp : public RewritePattern {
  public:
-  using OpRewritePattern<SpaceToBatchNDOp>::OpRewritePattern;
+  explicit LowerSpaceToBatchNDOp(MLIRContext *context)
+      : RewritePattern(SpaceToBatchNDOp::getOperationName(),
+                       {
+                           CastOp::getOperationName(),
+                           ConstOp::getOperationName(),
+                           ConcatV2Op::getOperationName(),
+                           AddOp::getOperationName(),
+                           PadOp::getOperationName(),
+                           SumOp::getOperationName(),
+                           SplitOp::getOperationName(),
+                           DivOp::getOperationName(),
+                           MulOp::getOperationName(),
+                           ReshapeOp::getOperationName(),
+                           TransposeOp::getOperationName(),
+                       },
+                       1, context) {}
 
-  LogicalResult matchAndRewrite(SpaceToBatchNDOp op,
+  LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
+    auto op = cast<SpaceToBatchNDOp>(src_op);
+
     Location loc = op.getLoc();
     auto input_type = op.input().getType().cast<TensorType>();
     if (!input_type.hasStaticShape()) {
@@ -903,12 +971,18 @@ class LowerSpaceToBatchNDOp : public OpRewritePattern<SpaceToBatchNDOp> {
 // since we currently don't have an implementation that can use this
 // information. Adds appropriate casts where necessary to align element types
 // of operands and result for `MatMulOp`.
-class LowerSparseMatMulOp : public OpRewritePattern<SparseMatMulOp> {
+class LowerSparseMatMulOp : public RewritePattern {
  public:
-  using OpRewritePattern<SparseMatMulOp>::OpRewritePattern;
+  explicit LowerSparseMatMulOp(MLIRContext *context)
+      : RewritePattern(
+            SparseMatMulOp::getOperationName(),
+            {CastOp::getOperationName(), MatMulOp::getOperationName()}, 1,
+            context) {}
 
-  LogicalResult matchAndRewrite(SparseMatMulOp op,
+  LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
+    auto op = cast<SparseMatMulOp>(src_op);
+
     // Result type must be f32 for applying the pattern (currently this is
     // required by the op anyway but this might change).
     if (!op.product().getType().cast<TensorType>().getElementType().isF32()) {
