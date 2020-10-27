@@ -25,7 +25,6 @@ namespace {
 TEST(LookupOpsTest, LookupTableFindV2_ShapeFn) {
   ShapeInferenceTestOp op("LookupTableFindV2");
   INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[?];?;?");
-  INFER_ERROR("Shape must be at most rank 1 but is rank 2", op, "[];?;[1,1]");
   TF_ASSERT_OK(NodeDefBuilder("test", "LookupTableFindV2")
                    .Input({"table_handle", 0, DT_RESOURCE})
                    .Input({"keys", 0, DT_INT64})
