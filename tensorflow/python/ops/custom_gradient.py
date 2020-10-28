@@ -514,7 +514,6 @@ def recompute_grad(f):
     current_var_scope = variable_scope.get_variable_scope()
     with tape_lib.stop_recording():
       result = f(*args, **kwargs)
-
     def grad_wrapper(*wrapper_args, **grad_kwargs):
       """Wrapper function to accomodate lack of kwargs in graph mode decorator."""
 
@@ -524,7 +523,7 @@ def recompute_grad(f):
         # Gradient calculation for reverse mode autodiff.
         variables = grad_kwargs.get("variables")
         with backprop.GradientTape() as t:
-          id_args = [gen_array_ops.identity(x) for x in args]
+          id_args = nest.map_structure(gen_array_ops.identity, args)
           t.watch(id_args)
           if variables is not None:
             t.watch(variables)
