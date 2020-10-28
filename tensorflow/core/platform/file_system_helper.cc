@@ -15,15 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/platform/file_system_helper.h"
 
-#include <condition_variable>
 #include <deque>
-#include <mutex>
 #include <string>
 #include <vector>
 
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/status.h"
@@ -92,10 +91,10 @@ Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
   std::deque<std::pair<string, int>> next_dir_q;
   dir_q.emplace_back(std::make_pair(dirs[0], 0));
   Status ret;  // Status to return.
-  std::mutex results_mutex;
-  std::condition_variable results_cond;
-  std::mutex next_que_mutex;
-  std::condition_variable next_que_cond;
+  mutex results_mutex;
+  condition_variable results_cond;
+  mutex next_que_mutex;
+  condition_variable next_que_cond;
   while (!dir_q.empty()) {
     next_dir_q.clear();
     std::vector<Status> new_rets(dir_q.size());
@@ -146,11 +145,11 @@ Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
         }
         if (children_dir_status[j].ok()) {
           if (dir_index != dirs.size() - 1) {
-            std::lock_guard<std::mutex> lk(next_que_mutex);
+            mutex_lock lk(next_que_mutex);
             next_dir_q.emplace_back(std::make_pair(child_path, dir_index));
             next_que_cond.notify_one();
           } else {
-            std::lock_guard<std::mutex> lk(results_mutex);
+            mutex_lock lk(results_mutex);
             results->emplace_back(child_path);
             results_cond.notify_one();
           }
