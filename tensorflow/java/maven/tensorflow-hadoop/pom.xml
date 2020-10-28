@@ -16,7 +16,7 @@
         <maven.compiler.target>1.6</maven.compiler.target>
         <hadoop.version>2.6.0</hadoop.version>
         <protobuf.version>3.5.1</protobuf.version>
-        <junit.version>4.11</junit.version>
+        <junit.version>4.13.1</junit.version>
     </properties>
 
     <licenses>
