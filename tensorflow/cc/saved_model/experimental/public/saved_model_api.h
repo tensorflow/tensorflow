@@ -84,7 +84,7 @@ class SavedModelAPI {
   SignatureDefFunction* GetSignatureDefFunction(
       const std::string& function_path, Status* status);
 
-  // Lists all Conrete Functions available from the SavedModel.
+  // Lists all Concrete Functions available from the SavedModel.
   std::vector<ConcreteFunction*> ListFunctions();
 
   // SavedModelAPI is movable, but not copyable.
