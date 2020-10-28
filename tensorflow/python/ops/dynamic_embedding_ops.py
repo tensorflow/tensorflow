@@ -37,8 +37,9 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.platform import tf_logging
 from tensorflow.python.training.tracking import tracking as trackable
+from tensorflow.python.util.tf_export import tf_export
 
 
 def _partition(data, partition_index, shard_num):
@@ -279,10 +280,14 @@ class Variable(trackable.TrackableResource):
     if self.initializer is None:
       return None
     try:
-      vals_shape = keys.get_shape().concatenate(self.dim)
+      keys_shape = array_ops.shape(array_ops.reshape(keys, [-1]))
+      vals_shape = [keys_shape[0], self.dim]
       init_op = self.initializer(vals_shape)
-    except Exception:  # constant.initializer
+    except Exception as e:  # constant.initializer
       init_op = self.initializer([self.dim])
+      tf_logging.warn(
+          "Variable [{}] is not running on full-size initialization mode: {}".
+          format(str(self.name), str(e)))
     return init_op
 
   def lookup(self, keys, name=None):

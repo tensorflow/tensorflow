@@ -33,6 +33,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import initializers as keras_init_ops
+from tensorflow.python.keras import optimizer_v2
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import init_ops
@@ -60,7 +62,6 @@ from tensorflow.python.training import server_lib
 from tensorflow.python.training import training_util
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util as trackable_utils
-from tensorflow.python.keras import optimizer_v2
 from tensorflow.python.util import compat
 from tensorflow.python.ops import dynamic_embedding_ops as deo
 
@@ -1414,6 +1415,41 @@ class EmbeddingLookupTest(test.TestCase):
     self.assertTrue("/job:ps/task:0" in p1._tables[0].resource_handle.device)
     self.assertTrue("/job:ps/task:1" in p1._tables[1].resource_handle.device)
 
+  def test_embedding_lookup_sparse_with_initializer(self):
+    id = 0
+    embed_dim = 8
+    elements_num = 262144
+    for initializer, target_mean, target_stddev in [
+        (init_ops.random_normal_initializer(0.0, 0.001), 0.0, 0.001),
+        (init_ops.truncated_normal_initializer(0.0, 0.001), 0.0, 0.00088),
+        (keras_init_ops.RandomNormalV2(mean=0.0, stddev=0.001), 0.0, 0.001),
+    ]:
+      with self.session(config=default_config,
+                        use_gpu=test_util.is_gpu_available()):
+        id += 1
+        embedding_weights = deo.get_variable('emb-init-bugfix-' + str(id),
+                                             key_dtype=dtypes.int64,
+                                             value_dtype=dtypes.float32,
+                                             devices=_get_devices() * 3,
+                                             initializer=initializer,
+                                             dim=embed_dim)
+
+        ids = np.random.randint(-0x7FFFFFFFFFFFFFFF,
+                                0x7FFFFFFFFFFFFFFF,
+                                elements_num,
+                                dtype=np.int64)
+        ids = np.unique(ids)
+        ids = constant_op.constant(ids, dtypes.int64)
+        vals_op = (deo.embedding_lookup(embedding_weights, ids, None).eval())
+
+        mean = self.evaluate(math_ops.reduce_mean(vals_op))
+        stddev = self.evaluate(math_ops.reduce_std(vals_op))
+        rtol = 2e-5
+        atol = rtol
+        self.assertTrue(not (list(vals_op[0]) == list(vals_op[1])))
+        self.assertAllClose(target_mean, mean, rtol, atol)
+        self.assertAllClose(target_stddev, stddev, rtol, atol)
+
 
 @test_util.deprecated_graph_mode_only
 class EmbeddingLookupSparseTest(test.TestCase):
@@ -1740,6 +1776,64 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
                (embedding_weights_values[0] + embedding_weights_values[1]) /
                2.0, [0] * 4
            ]])
+
+  def test_safe_embedding_lookup_sparse_with_initializer(self):
+    id = 0
+    embed_dim = 8
+    dense_shape = np.array([64, 128, 32])
+    total_space = 64 * 128 * 32
+    elements_num = int(total_space * 0.50)
+    for initializer, target_mean, target_stddev in [
+        (init_ops.random_normal_initializer(0.0, 0.001), 0.0, 0.00029),
+        (init_ops.truncated_normal_initializer(0.0, 0.001), 0.0, 0.00029),
+        (keras_init_ops.RandomNormalV2(mean=0.0, stddev=0.001), 0.0, 0.00029),
+    ]:
+      with self.session(config=default_config,
+                        use_gpu=test_util.is_gpu_available()):
+        id += 1
+        embedding_weights = deo.get_variable('safe-init-bugfix-' + str(id),
+                                             key_dtype=dtypes.int64,
+                                             value_dtype=dtypes.float32,
+                                             devices=_get_devices() * 3,
+                                             initializer=initializer,
+                                             dim=embed_dim)
+
+        indices_1d = np.random.randint(0, total_space, elements_num)
+        indices_1d = np.unique(indices_1d)
+        indices_1d.sort()
+        indices_3d = []
+        for _i in range(indices_1d.size):
+          a_indice = []
+          quotient = int(indices_1d[_i] / (128 * 32))
+          remainder = indices_1d[_i] % (128 * 32)
+          a_indice.append(quotient)
+          quotient = int(remainder / 32)
+          remainder = remainder % 32
+          a_indice.extend([quotient, remainder])
+          indices_3d.extend([a_indice])
+        indices_3d = np.array(indices_3d)
+
+        ids = np.random.randint(-0x7FFFFFFFFFFFFFFF,
+                                0x7FFFFFFFFFFFFFFF,
+                                indices_1d.size,
+                                dtype=np.int64)
+
+        sparse_ids = sparse_tensor.SparseTensor(
+            constant_op.constant(indices_3d, dtypes.int64),
+            constant_op.constant(ids, dtypes.int64),
+            constant_op.constant(dense_shape, dtypes.int64))
+        vals_op = (deo.safe_embedding_lookup_sparse(embedding_weights,
+                                                    sparse_ids,
+                                                    None,
+                                                    combiner="mean").eval())
+
+        mean = self.evaluate(math_ops.reduce_mean(vals_op))
+        stddev = self.evaluate(math_ops.reduce_std(vals_op))
+        rtol = 2e-4
+        atol = rtol
+        self.assertTrue(not (vals_op[0][0][0] == vals_op[0][0][1]))
+        self.assertAllClose(target_mean, mean, rtol, atol)
+        self.assertAllClose(target_stddev, stddev, rtol, atol)
 
   def test_safe_embedding_lookup_sparse_shape_checking(self):
     with self.cached_session():
