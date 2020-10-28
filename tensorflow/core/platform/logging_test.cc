@@ -97,3 +97,149 @@ TEST(InternalLogString, Basic) {
 }
 
 }  // namespace tensorflow
+
+#if defined(__linux__) && !defined(PLATFORM_POSIX_ANDROID)
+
+#define _GNU_SOURCE
+
+#include <fcntl.h>
+#include <sstream>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <vector>
+
+namespace tensorflow {
+
+class LogSinkTest : public ::testing::Test {
+ protected:
+  static const size_t kBufLen = 1024;
+
+  void SetUp() override {
+    ASSERT_EQ(pipe(out_pipe_), 0);
+
+    auto flags = fcntl(out_pipe_[0], F_GETFL); 
+    flags |= O_NONBLOCK; 
+    fcntl(out_pipe_[0], F_SETFL, flags);
+
+    saved_stderr_ = dup(STDERR_FILENO);
+    ASSERT_NE(saved_stderr_, -1);
+
+    ASSERT_NE(dup2(out_pipe_[1], STDERR_FILENO), -1);
+    ASSERT_EQ(close(out_pipe_[1]), 0);
+
+    auto sinks = TFGetLogSinks();
+#ifndef NO_DEFAULT_LOGGER
+    ASSERT_EQ(sinks.size(), 1);
+#else
+    ASSERT_EQ(sinks.size(), 0);
+#endif
+
+    for(auto sink : TFGetLogSinks()) {
+      TFRemoveLogSink(sink);
+    }
+
+    TFAddLogSink(&default_sink_);
+  }
+
+  void TearDown() override {
+    ASSERT_NE(dup2(saved_stderr_, STDERR_FILENO), -1);
+    saved_stderr_ = out_pipe_[0] = out_pipe_[1] = -1;
+
+    for(auto sink : TFGetLogSinks()) {
+      TFRemoveLogSink(sink);
+    }
+#ifndef NO_DEFAULT_LOGGER
+    TFAddLogSink(&default_sink_);
+#endif
+  }
+
+  std::string GetStdErr() {
+    fflush(stderr);
+
+    ssize_t len = read(out_pipe_[0], (void*)buf_, kBufLen);
+    
+    std::string ret;
+    if(len > 0) {
+      ret.assign(buf_, buf_ + len);
+    }
+    
+    return ret;
+  }
+
+  static std::vector<std::string> SplitLines(const std::string& str) {
+    size_t cur = 0, next = 0;
+
+    std::vector<std::string> lines;
+    while(cur != std::string::npos) {
+      next = str.find_first_of('\n', cur);
+      if(next != std::string::npos) {
+        if(next > cur) {
+          lines.emplace_back(str.substr(cur, next - cur));
+        }
+        if(next + 1 == str.size()) {
+          cur = std::string::npos;
+        } else {
+          cur = next + 1;
+        }
+      } else {
+        lines.emplace_back(str.substr(cur));
+        cur = next;
+      }
+    }
+
+    return lines;
+  }
+
+ private:
+  int saved_stderr_ = -1;
+  int out_pipe_[2] = { -1, -1 };
+  char buf_[kBufLen + 1] = { '/0' };
+  static TFDefaultLogSink default_sink_;
+};
+
+TFDefaultLogSink LogSinkTest::default_sink_;
+
+struct TestSink : public TFLogSink {
+  std::stringstream ss;
+
+  void Send(const TFLogEntry& entry) override {
+    ss << entry.ToString() << std::endl;
+  }
+};
+
+TEST_F(LogSinkTest, testLogSinks) {
+  // First log into the default log sink
+  LOG(INFO) << "Foo";
+  LOG(INFO) << "Bar";
+
+  auto lines = SplitLines(GetStdErr());
+  ASSERT_EQ(lines.size(), 2);
+  ASSERT_NE(lines[0].find_first_of("Foo"), std::string::npos);
+  ASSERT_NE(lines[1].find_first_of("Bar"), std::string::npos);
+
+  // Remove the default log sink
+  auto sinks = TFGetLogSinks();
+  ASSERT_EQ(sinks.size(), 1);
+
+  TFRemoveLogSink(sinks[0]);
+  sinks = TFGetLogSinks();
+  ASSERT_EQ(sinks.size(), 0);
+
+  LOG(INFO) << "Foo";
+  ASSERT_TRUE(GetStdErr().empty());
+
+  static TestSink sink;
+  TFAddLogSink(&sink);
+  sinks = TFGetLogSinks();
+  ASSERT_EQ(sinks.size(), 1);
+
+  ASSERT_EQ(sink.ss.str(), "Foo\n");
+
+  LOG(INFO) << "Bar";
+  ASSERT_EQ(sink.ss.str(), "Foo\nBar\n");
+}
+
+}  // namespace tensorflow
+
+#endif // defined(__linux__) && !defined(PLATFORM_POSIX_ANDROID)

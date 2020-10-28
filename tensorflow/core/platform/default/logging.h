@@ -23,6 +23,7 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <sstream>
+#include <vector>
 
 #include "absl/base/log_severity.h"
 #include "absl/strings/string_view.h"
@@ -532,6 +533,7 @@ class TFDefaultLogSink : public TFLogSink {
 // Add or remove a `LogSink` as a consumer of logging data.  Thread-safe.
 void TFAddLogSink(TFLogSink* sink);
 void TFRemoveLogSink(TFLogSink* sink);
+std::vector<TFLogSink*> TFGetLogSinks();
 
 }  // namespace tensorflow
 

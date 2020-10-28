@@ -35,7 +35,6 @@ limitations under the License.
 #include <algorithm>
 #include <queue>
 #include <unordered_map>
-#include <vector>
 
 namespace tensorflow {
 namespace internal {
@@ -58,6 +57,9 @@ class TFLogSinks {
     // to the sink becomes invalid after this call.
     void Remove(TFLogSink* sink);
 
+    // Gets the currently registered log sinks.
+    std::vector<TFLogSink*> GetSinks() const;
+
     // Sends a log message to all registered log sinks. 
     //
     // If there are no log sinks are registered:
@@ -73,19 +75,14 @@ class TFLogSinks {
     void Send(const TFLogEntry& entry);
 
   private:
-    TFLogSinks() = default;
-    std::vector<std::unique_ptr<TFLogSink>>::iterator FindSink(TFLogSink* sink);
+    TFLogSinks();
     void SendToSink(TFLogSink& sink, const TFLogEntry& entry);
 
-#ifndef NO_DEFAULT_LOGGER
-    TFDefaultLogSink default_;
-#else
     std::queue<TFLogEntry> log_entry_queue_;
     static const size_t KMaxLogEntryQueueSize = 128;
-#endif // NO_DEFAULT_LOGGER
 
-    tensorflow::mutex mutex_;
-    std::vector<std::unique_ptr<TFLogSink>> sinks_;
+    mutable tensorflow::mutex mutex_;
+    std::vector<TFLogSink*> sinks_;
 }; // class TFLogSinks
   
 namespace {
@@ -367,6 +364,14 @@ bool LogEveryNSecState::ShouldLog(double seconds) {
   return true;
 }
 
+TFLogSinks::TFLogSinks()
+{
+#ifndef NO_DEFAULT_LOGGER
+  static TFDefaultLogSink default_sink;
+  sinks_.push_back(&default_sink);
+#endif
+}
+
 TFLogSinks& TFLogSinks::Instance() {
   static TFLogSinks instance;
   return instance;
@@ -376,9 +381,19 @@ void TFLogSinks::Add(TFLogSink* sink) {
   assert(sink != nullptr && "The sink must not be a nullptr");
 
   tensorflow::mutex_lock lock(mutex_);
-  auto it = FindSink(sink);
+  auto it = std::find(sinks_.begin(), sinks_.end(), sink);
   if(it == sinks_.end()) {
-    sinks_.emplace_back(sink);
+    sinks_.push_back(sink);
+
+    // If this is the only sink log all the queued up messages to this sink
+    if(sinks_.size() == 1) {
+      while(!log_entry_queue_.empty()) {
+        for(const auto& sink : sinks_) {
+          SendToSink(*sink, log_entry_queue_.front());
+        }
+        log_entry_queue_.pop();
+      }
+    }
   }
 }
 
@@ -386,25 +401,21 @@ void TFLogSinks::Remove(TFLogSink* sink) {
   assert(sink != nullptr && "The sink must not be a nullptr");
 
   tensorflow::mutex_lock lock(mutex_);
-  auto it = FindSink(sink);
+  auto it = std::find(sinks_.begin(), sinks_.end(), sink);
   if(it != sinks_.end()) {
     sinks_.erase(it);
   }
 }
 
+std::vector<TFLogSink*> TFLogSinks::GetSinks() const
+{
+  tensorflow::mutex_lock lock(mutex_);
+  return sinks_;
+}
+
 void TFLogSinks::Send(const TFLogEntry& entry) {
   tensorflow::mutex_lock lock(mutex_);
-#ifndef NO_DEFAULT_LOGGER
-  // If we don't have any sinks registered, just dump everything to stderr
-  if(sinks_.empty()) {
-    SendToSink(default_, entry);
-    return;
-  }
-  // ... otherwise send to all the registered sinks
-  for(const auto& sink : sinks_) {
-    SendToSink(*sink, entry);
-  }
-#else
+
   // If we don't have any sinks registered, queue them up
   if(sinks_.empty()) {
     // If we've exceeded the maximum queue size, drop the oldest entries
@@ -427,14 +438,7 @@ void TFLogSinks::Send(const TFLogEntry& entry) {
   for(const auto& sink : sinks_) {
     SendToSink(*sink, entry);
   }
-#endif // NO_DEFAULT_LOGGER
 } // TFLogSinks::Send
-
-std::vector<std::unique_ptr<TFLogSink>>::iterator TFLogSinks::FindSink(TFLogSink* sink) {
-  return std::find_if(sinks_.begin(), sinks_.end(), [sink] (const std::unique_ptr<TFLogSink>& s) -> bool {
-    return sink == s.get();
-  });
-}
 
 void TFLogSinks::SendToSink(TFLogSink& sink, const TFLogEntry& entry) {
   sink.Send(entry);
@@ -449,6 +453,10 @@ void TFAddLogSink(TFLogSink* sink) {
 
 void TFRemoveLogSink(TFLogSink* sink) {
   internal::TFLogSinks::Instance().Remove(sink);
+}
+
+std::vector<TFLogSink*> TFGetLogSinks() {
+  return internal::TFLogSinks::Instance().GetSinks();
 }
 
 void TFDefaultLogSink::Send(const TFLogEntry& entry) {
