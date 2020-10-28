@@ -35,7 +35,7 @@
         <java.version>1.8</java.version>
         <spark.version>2.3.1</spark.version>
         <yarn.api.version>2.7.3</yarn.api.version>
-        <junit.version>4.11</junit.version>
+        <junit.version>4.13.1</junit.version>
     </properties>
 
     <build>
