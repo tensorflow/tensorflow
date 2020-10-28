@@ -80,7 +80,7 @@ class ExtractVolumePatchesGradTest(test.TestCase, parameterized.TestCase):
         self.assertLess(err, 1e-4)
 
   @parameterized.parameters(set((True, context.executing_eagerly())))
-  def _testConstructGradientWithLargeVolumes(self, use_tape):
+  def testConstructGradientWithLargeVolumes(self, use_tape):
     with test_util.AbstractGradientTape(use_tape=use_tape) as tape:
       batch_size = 4
       planes = 8
