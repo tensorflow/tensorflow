@@ -484,9 +484,9 @@ def cumsum(a, axis=None, dtype=None):  # pylint: disable=missing-docstring
 
 @np_utils.np_doc('imag')
 def imag(val):
+  if isinstance(val, (int, float, complex)):
+    return val.imag
   val = asarray(val)
-  # TODO(srbs): np.imag returns a scalar if `val` is a scalar, whereas we always
-  # return an ndarray.
   return np_utils.tensor_to_ndarray(math_ops.imag(val.data))
 
 
@@ -708,9 +708,9 @@ setattr(np_arrays.ndarray, 'ravel', ravel)
 
 @np_utils.np_doc('real')
 def real(val):
+  if isinstance(val, (int, float, complex)):
+    return val.real
   val = asarray(val)
-  # TODO(srbs): np.real returns a scalar if val is a scalar, whereas we always
-  # return an ndarray.
   return np_utils.tensor_to_ndarray(math_ops.real(val.data))
 
 
