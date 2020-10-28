@@ -91,7 +91,8 @@ TfOpRoofLineCostEstimator::OpRoofLineStats TfOpRoofLineCostEstimator::Predict(
   event.ForEachStat([&](const XStatVisitor& stat) {
     if (!stat.Type().has_value()) return;
     switch (stat.Type().value()) {
-      case StatType::kLevel0:
+      case StatType::kTfOp:
+      case StatType::kLevel0:  // old way to deliver tf_op info.
         tf_op = ParseTfOpFullname(stat.StrOrRefValue());
         break;
       case StatType::kTensorShapes:
