@@ -39,6 +39,7 @@ using testing::Test;
 using NodeAndType = std::pair<std::string, tensorflow::DataType>;
 
 namespace tensorflow {
+namespace {
 
 REGISTER_OP("MyAddN")
     .Input("inputs: N * T")
@@ -57,8 +58,6 @@ REGISTER_OP("RiscAdd")
         "T: {bfloat16, half, float, double, uint8, int8, int16, int32, int64, "
         "complex64, complex128, string}")
     .SetShapeFn(shape_inference::UnchangedShape);
-
-namespace {
 
 constexpr char tfr_raw_text[] = R"(
 
