@@ -572,7 +572,7 @@ def size(x, axis=None):  # pylint: disable=missing-docstring
     return 1
   x = asarray(x).data
   if x.shape.is_fully_defined():
-    return np.prod(x.shape.as_list())
+    return np.prod(x.shape.as_list(), dtype=int)
   else:
     return np_utils.tensor_to_ndarray(array_ops.size_v2(x))
 
