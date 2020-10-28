@@ -25,8 +25,10 @@ import functools
 
 import six
 
+from tensorflow.python.distribute import central_storage_strategy
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
 from tensorflow.python.distribute import parameter_server_strategy
+from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute import values as ds_values
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -615,9 +617,12 @@ class OptimizerV2(trackable.Trackable):
             "context.")
 
       strategy = distribute_ctx.get_strategy()
-      if (not experimental_aggregate_gradients and strategy and isinstance(
-          strategy.extended,
-          parameter_server_strategy.ParameterServerStrategyExtended)):
+      if (not experimental_aggregate_gradients and strategy and
+          isinstance(strategy,
+                     (parameter_server_strategy.ParameterServerStrategyV1,
+                      parameter_server_strategy_v2.ParameterServerStrategyV2,
+                      central_storage_strategy.CentralStorageStrategy,
+                      central_storage_strategy.CentralStorageStrategyV1))):
         raise NotImplementedError(
             "`experimental_aggregate_gradients=False is not supported for "
             "ParameterServerStrategy and CentralStorageStrategy")

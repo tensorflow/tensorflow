@@ -35,6 +35,7 @@ from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy
+from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import tpu_strategy
@@ -527,8 +528,11 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
 
   @ds_combinations.generate(all_strategy_combinations())
   def test_calling_model_with_mixed_precision(self, distribution):
-    if isinstance(distribution.extended,
-                  parameter_server_strategy.ParameterServerStrategyExtended):
+    if isinstance(distribution,
+                  (parameter_server_strategy.ParameterServerStrategyV1,
+                   parameter_server_strategy_v2.ParameterServerStrategyV2,
+                   central_storage_strategy.CentralStorageStrategy,
+                   central_storage_strategy.CentralStorageStrategyV1)):
       self.skipTest('b/152097775')
     if _is_tpu_strategy(distribution):
       policy_name = 'mixed_bfloat16'
@@ -576,8 +580,11 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
     # AutoCastVariable to a tensor on a TPU, where the variable was the LHS of
     # the '+' operator, used to cause the gradient w.r.t. the variable to be
     # None.
-    if isinstance(distribution.extended,
-                  parameter_server_strategy.ParameterServerStrategyExtended):
+    if isinstance(distribution,
+                  (parameter_server_strategy.ParameterServerStrategyV1,
+                   parameter_server_strategy_v2.ParameterServerStrategyV2,
+                   central_storage_strategy.CentralStorageStrategy,
+                   central_storage_strategy.CentralStorageStrategyV1)):
       self.skipTest('b/152097775')
 
     if _is_tpu_strategy(distribution):
