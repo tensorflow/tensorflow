@@ -88,7 +88,7 @@
   * Added gradients for `RaggedTensorToVariant` and `RaggedTensorFromVariant`.
   * Improve shape inference of nested function calls by supporting constant folding across Arg nodes which makes more static values available to shape               inference functions.
 * `tf.debugging`:
-  * `tf.debugging.assert_shapes()` now works on `SparseTensor`s (Fixes #36268).
+  * `tf.debugging.assert_shapes()` now works on `SparseTensor`s (Fixes [#36268](https://github.com/tensorflow/tensorflow/issues/36268)).
 * GPU
   * Adds Support for [TensorFloat-32](https://blogs.nvidia.com/blog/2020/05/14/tensorfloat-32-precision-format/) on Ampere based GPUs. 
     TensorFloat-32, or TF32 for short, is a math mode for NVIDIA Ampere based GPUs which causes certain float32 ops, such as matrix 
