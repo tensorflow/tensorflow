@@ -216,7 +216,7 @@
     * [CVE-2020-15213](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-15213),
     * [CVE-2020-15214](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-15214)
   * Fixes a segfault in `tf.quantization.quantize_and_dequantize`, [CVE-2020-15265](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-15265)
-  * Fixes an undefined behavior float cast causing a crash, [CVE-2020-15266](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-15266)
+  * Fixes an undefined behavior float cast causing a crash, ([CVE-2020-15266](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-15266))
     
 ### Other:
   * We have replaced uses of "whitelist" and "blacklist" with "allowlist" and "denylist" where possible. Please see [this list](https://developers.google.com/style/word-list#blacklist) for more context.
