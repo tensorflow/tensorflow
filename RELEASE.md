@@ -18,6 +18,11 @@
 * <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 * <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
 
+* TPU embedding support
+  * Added `profile_data_directory` to `EmbeddingConfigSpec` in
+    `_tpu_estimator_embedding.py`. This allows embedding lookup statistics
+    gathered at runtime to be used in embedding layer partitioning decisions.
+
 ## Bug Fixes and Other Changes
 
 *   <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
