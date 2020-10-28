@@ -341,6 +341,14 @@ class GroupByWindowTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = self.getNext(dataset)
     self.evaluate(get_next())
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testGroupByWindowCardinality(self):
+    dataset = dataset_ops.Dataset.range(1).repeat().apply(
+        grouping.group_by_window(
+            lambda x: x % 2,
+            lambda key, window: dataset_ops.Dataset.from_tensors(key), 4))
+    self.assertEqual(self.evaluate(dataset.cardinality()), dataset_ops.INFINITE)
+
 
 if __name__ == "__main__":
   test.main()
