@@ -6,8 +6,6 @@
 
 * [`MultiWorkerMirroredStrategy`](https://www.tensorflow.org/api_docs/python/tf/distribute/MultiWorkerMirroredStrategy) is now a stable API and is no longer considered experimental. Some of the major improvements involve handling peer failure and many bug fixes. Please check out the detailed tutorial on [Multi-worker training with Keras](https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras). 
 
-* TF Profiler now supports profiling multiple workers using the [sampling mode API](https://www.tensorflow.org/guide/profiler#profiling_apis).
-
 * Introduces experimental support for a new module named [`tf.experimental.numpy`](https://www.tensorflow.org/api_docs/python/tf/experimental/numpy) which is a NumPy-compatible API for writing TF programs. See the [detailed guide](https://www.tensorflow.org/guide/tf_numpy) to learn more. Additional details below. 
 
 * Adds Support for
@@ -16,6 +14,8 @@
 * A major refactoring of the internals of the Keras Functional API has been completed, that should improve the reliability, stability, and performance of constructing Functional models.
 
 * Keras mixed precision API [`tf.keras.mixed_precision`](https://www.tensorflow.org/api_docs/python/tf/keras/mixed_precision?version=nightly) is no longer experimental and allows the use of 16-bit floating point formats during training, improving performance by up to 3x on GPUs and 60% on TPUs.
+
+* TF Profiler now supports profiling multiple workers using the [sampling mode API](https://www.tensorflow.org/guide/profiler#profiling_apis).
 
 * TFLite Profiler for Android is available. See the detailed [guide](https://www.tensorflow.org/lite/performance/measurement#trace_tensorflow_lite_internals_in_android) to learn more.
 
