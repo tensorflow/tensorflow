@@ -48,7 +48,7 @@ def reduce_fn(state, values, epsilon=EPSILON):
   return (discretization.merge_summaries(state_, summary, epsilon),)
 
 
-class BenchmarkAdapt(benchmark.Benchmark):
+class BenchmarkAdapt(benchmark.TensorFlowBenchmark):
   """Benchmark adapt."""
 
   def run_dataset_implementation(self, num_elements, batch_size):
