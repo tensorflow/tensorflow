@@ -171,7 +171,7 @@ class ProcessFunctionLibraryRuntime {
                         bool* is_cross_process) const;
 
   // Delegates to the local FLR that owns state corresponding to `handle` and
-  // tells it to release it. If the `handle` isn't' needed at all, the local FLR
+  // tells it to release it. If the `handle` isn't needed at all, the local FLR
   // might call RemoveHandle on this to get rid of the state owned by the Proc
   // FLR.
   // For multi-device functions, calls ReleaseHandle on local FLRs for each
