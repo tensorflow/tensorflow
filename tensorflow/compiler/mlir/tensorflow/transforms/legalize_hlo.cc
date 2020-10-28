@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/broadcast_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
@@ -680,20 +681,6 @@ class LegalizeHloToTf : public PassWrapper<LegalizeHloToTf, FunctionPass> {
   /// Performs the legalization to the TF dialect.
   void runOnFunction() override;
 };
-
-// Returns whether the two values are guaranteed to be broadcastable to the
-// same shape, this broadcasts size 1 tensors up to any rank.
-// TODO(jpienaar): Move this to more general location.
-static bool AreBroadcastCompatible(Value x, Value y) {
-  auto x_ranked = x.getType().dyn_cast<RankedTensorType>();
-  auto y_ranked = y.getType().dyn_cast<RankedTensorType>();
-  if (!x_ranked || !y_ranked) {
-    return true;
-  }
-  SmallVector<int64_t, 4> resultShape;
-  return OpTrait::util::getBroadcastedShape(x_ranked.getShape(),
-                                            y_ranked.getShape(), resultShape);
-}
 
 // Returns the shape of the given value in a Constant Op.
 ConstantOp ShapeToConst(PatternRewriter &rewriter, Value value) {

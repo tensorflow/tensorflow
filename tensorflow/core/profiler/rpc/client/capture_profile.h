@@ -40,7 +40,7 @@ Status Monitor(const std::string& service_addr, int duration_ms,
 // in the given logdir. If no trace was collected, retries tracing for
 // num_tracing_attempts. Assumes that options have been validated.
 Status Trace(const std::string& logdir, int num_tracing_attempts,
-             const RemoteProfilerSessionManagerOptions& opts,
+             RemoteProfilerSessionManagerOptions& opts,
              bool is_cloud_tpu_session);
 
 }  // namespace profiler

@@ -247,7 +247,7 @@ TEST_F(DequantizeOpTest, DequantizeScaledQint8Axis3) {
 }
 
 template <typename T>
-static void BM_DequantizeMinCombinedCpu(int iters) {
+static void BM_DequantizeMinCombinedCpu(::testing::benchmark::State& state) {
   auto root = Scope::NewRootScope().ExitOnError();
   const int64 num_values = 1500 * 250;
   std::vector<T> inputs;
@@ -262,25 +262,26 @@ static void BM_DequantizeMinCombinedCpu(int iters) {
   Graph* g = new Graph(OpRegistry::Global());
   TF_CHECK_OK(root.ToGraph(g));
 
-  test::Benchmark("cpu", g).Run(iters);
-  testing::BytesProcessed(iters * num_values * (sizeof(float) + sizeof(T)));
-  testing::ItemsProcessed(iters);
+  test::Benchmark("cpu", g, /*old_benchmark_api*/ false).Run(state);
+  state.SetBytesProcessed(state.iterations() * num_values *
+                          (sizeof(float) + sizeof(T)));
+  state.SetItemsProcessed(state.iterations());
 }
 
-static void BM_DequantizeMinCombinedCpuQuint16(int iters) {
-  BM_DequantizeMinCombinedCpu<quint16>(iters);
+void BM_DequantizeMinCombinedCpuQuint16(::testing::benchmark::State& state) {
+  BM_DequantizeMinCombinedCpu<quint16>(state);
 }
 
-static void BM_DequantizeMinCombinedCpuQint16(int iters) {
-  BM_DequantizeMinCombinedCpu<qint16>(iters);
+void BM_DequantizeMinCombinedCpuQint16(::testing::benchmark::State& state) {
+  BM_DequantizeMinCombinedCpu<qint16>(state);
 }
 
-static void BM_DequantizeMinCombinedCpuQuint8(int iters) {
-  BM_DequantizeMinCombinedCpu<quint8>(iters);
+void BM_DequantizeMinCombinedCpuQuint8(::testing::benchmark::State& state) {
+  BM_DequantizeMinCombinedCpu<quint8>(state);
 }
 
-static void BM_DequantizeMinCombinedCpuQint8(int iters) {
-  BM_DequantizeMinCombinedCpu<qint8>(iters);
+void BM_DequantizeMinCombinedCpuQint8(::testing::benchmark::State& state) {
+  BM_DequantizeMinCombinedCpu<qint8>(state);
 }
 
 BENCHMARK(BM_DequantizeMinCombinedCpuQuint16);
@@ -289,7 +290,8 @@ BENCHMARK(BM_DequantizeMinCombinedCpuQuint8);
 BENCHMARK(BM_DequantizeMinCombinedCpuQint8);
 
 template <typename T>
-static void BM_DequantizeBfloat16MinCombinedCpu(int iters) {
+static void BM_DequantizeBfloat16MinCombinedCpu(
+    ::testing::benchmark::State& state) {
   auto root = Scope::NewRootScope().ExitOnError();
   const int64 num_values = 1500 * 250;
   std::vector<T> inputs;
@@ -304,25 +306,30 @@ static void BM_DequantizeBfloat16MinCombinedCpu(int iters) {
   Graph* g = new Graph(OpRegistry::Global());
   TF_CHECK_OK(root.ToGraph(g));
 
-  test::Benchmark("cpu", g).Run(iters);
-  testing::BytesProcessed(iters * num_values * (sizeof(bfloat16) + sizeof(T)));
-  testing::ItemsProcessed(iters);
+  test::Benchmark("cpu", g, /*old_benchmark_api=*/false).Run(state);
+  state.SetBytesProcessed(state.iterations() * num_values *
+                          (sizeof(bfloat16) + sizeof(T)));
+  state.SetItemsProcessed(state.iterations());
 }
 
-static void BM_DequantizeBfloat16MinCombinedCpuQuint16(int iters) {
-  BM_DequantizeBfloat16MinCombinedCpu<quint16>(iters);
+void BM_DequantizeBfloat16MinCombinedCpuQuint16(
+    ::testing::benchmark::State& state) {
+  BM_DequantizeBfloat16MinCombinedCpu<quint16>(state);
 }
 
-static void BM_DequantizeBfloat16MinCombinedCpuQint16(int iters) {
-  BM_DequantizeBfloat16MinCombinedCpu<qint16>(iters);
+void BM_DequantizeBfloat16MinCombinedCpuQint16(
+    ::testing::benchmark::State& state) {
+  BM_DequantizeBfloat16MinCombinedCpu<qint16>(state);
 }
 
-static void BM_DequantizeBfloat16MinCombinedCpuQuint8(int iters) {
-  BM_DequantizeBfloat16MinCombinedCpu<quint8>(iters);
+void BM_DequantizeBfloat16MinCombinedCpuQuint8(
+    ::testing::benchmark::State& state) {
+  BM_DequantizeBfloat16MinCombinedCpu<quint8>(state);
 }
 
-static void BM_DequantizeBfloat16MinCombinedCpuQint8(int iters) {
-  BM_DequantizeBfloat16MinCombinedCpu<qint8>(iters);
+void BM_DequantizeBfloat16MinCombinedCpuQint8(
+    ::testing::benchmark::State& state) {
+  BM_DequantizeBfloat16MinCombinedCpu<qint8>(state);
 }
 
 BENCHMARK(BM_DequantizeBfloat16MinCombinedCpuQuint16);

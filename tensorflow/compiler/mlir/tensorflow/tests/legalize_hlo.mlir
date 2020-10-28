@@ -69,6 +69,13 @@ func @broadcast_multi_dim_add(%arg0: tensor<4x1x1xi32>, %arg1: tensor<4x4x4x4xi3
   return %0 : tensor<4x4x4x4xi32>
 }
 
+// CHECK-LABEL:   func @unsupported_broadcast_add
+// CHECK: chlo.broadcast_add
+func @unsupported_broadcast_add(%arg0: tensor<4x1x1xi32>, %arg1: tensor<4x4x4x4xi32>) -> tensor<4x4x4x4xi32> {
+  %0 = "chlo.broadcast_add"(%arg0, %arg1) {broadcast_dimensions = dense<[0, 1, 2]> : tensor<3xi64>} : (tensor<4x1x1xi32>, tensor<4x4x4x4xi32>) -> tensor<4x4x4x4xi32>
+  return %0 : tensor<4x4x4x4xi32>
+}
+
 // CHECK-LABEL:   func @div(
 // CHECK-SAME:              %[[VAL_0:.*]]: tensor<2xi32>) -> tensor<2xi32> {
 // CHECK:           %[[VAL_1:.*]] = "tf.Div"(%[[VAL_0]], %[[VAL_0]]) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>

@@ -74,20 +74,16 @@ def TFFramework_TFAllocOp : TFFramework_Op<"alloc",
   let results = (outs Res<AnyMemRef, "", [MemAlloc<DefaultResource>]>:$result);
 
   let builders = [
-    OpBuilder<[{
-      OpBuilder &builder, OperationState &result, MemRefType memref_type,
-      Value ctx
-    }], [{
-      result.addOperands(ctx);
-      result.types.push_back(memref_type);
+    OpBuilderDAG<(ins "MemRefType":$memref_type, "Value":$ctx),
+    [{
+      $_state.addOperands(ctx);
+      $_state.types.push_back(memref_type);
     }]>,
-
-    OpBuilder<[{
-      OpBuilder &builder, OperationState &result, MemRefType memref_type,
-      Value ctx, ValueRange dyn_sizes
-    }], [{
-      build(builder, result, memref_type, ctx);
-      result.addOperands(dyn_sizes);
+    OpBuilderDAG<(ins "MemRefType":$memref_type, "Value":$ctx,
+      "ValueRange":$dyn_sizes),
+    [{
+      build($_builder, $_state, memref_type, ctx);
+      $_state.addOperands(dyn_sizes);
     }]>];
 
   let extraClassDeclaration = [{

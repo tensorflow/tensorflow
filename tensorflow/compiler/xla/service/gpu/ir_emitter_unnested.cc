@@ -2346,9 +2346,8 @@ IrEmitterUnnested::BuildKernelThunkFromBufferSlices(
   for (const BufferAllocation& alloc : buffer_assn.Allocations()) {
     if (alloc.IsPreallocatedTempBuffer()) {
       if (!temp_buffer.has_value()) {
+        // Retrieve the first seen temp buffer.
         temp_buffer = &alloc;
-      } else {
-        LOG(FATAL) << "Multiple temp buffers found, but only one is allowed!";
       }
     }
   }

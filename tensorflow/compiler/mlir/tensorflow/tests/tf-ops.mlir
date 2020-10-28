@@ -185,7 +185,7 @@ func @testBroadcastGradientArgsIncompatibleBroadcastShape() -> (tensor<1xi32>, t
 func @testBroadcastGradientArgsInvalidS0Rank() -> (tensor<2x2xi32>, tensor<0xi32>) {
   %s0 = "tf.Const"() {value = dense<[[4, 1], [2, 3]]> : tensor<2x2xi32>} : () -> tensor<2x2xi32>
   %s1 = "tf.Const"() {value = dense<[2, 4]> : tensor<2xi32>} : () -> tensor<2xi32>
-  // expected-error @+1 {{requires 's0' to be a rank 1 tensor, but got rank 2}}
+  // expected-error @+1 {{failed to verify that operand 0 is 1-D}}
   %r0, %r1 = "tf.BroadcastGradientArgs"(%s0, %s1) : (tensor<2x2xi32>, tensor<2xi32>) -> (tensor<1xi32>, tensor<0xi32>)
   return %r0, %r1 : tensor<1xi32>, tensor<0xi32>
 }
@@ -195,7 +195,7 @@ func @testBroadcastGradientArgsInvalidS0Rank() -> (tensor<2x2xi32>, tensor<0xi32
 func @testBroadcastGradientArgsInvalidS1Rank() -> (tensor<2xi32>, tensor<i32>) {
   %s0 = "tf.Const"() {value = dense<[4, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
   %s1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
-  // expected-error @+1 {{requires 's1' to be a rank 1 tensor, but got rank 0}}
+  // expected-error @+1 {{failed to verify that operand 1 is 1-D}}
   %r0, %r1 = "tf.BroadcastGradientArgs"(%s0, %s1) : (tensor<2xi32>, tensor<i32>) -> (tensor<1xi32>, tensor<0xi32>)
   return %r0, %r1 : tensor<1xi32>, tensor<0xi32>
 }
@@ -205,7 +205,7 @@ func @testBroadcastGradientArgsInvalidS1Rank() -> (tensor<2xi32>, tensor<i32>) {
 func @testBroadcastGradientArgsInvalidR0Rank() -> (tensor<2x2xi32>, tensor<0xi32>) {
   %s0 = "tf.Const"() {value = dense<[4, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
   %s1 = "tf.Const"() {value = dense<[4, 4]> : tensor<2xi32>} : () -> tensor<2xi32>
-  // expected-error @+1 {{requires 'r0' to be a rank 1 tensor, but got rank 2}}
+  // expected-error @+1 {{failed to verify that result 0 is 1-D}}
   %r0, %r1 = "tf.BroadcastGradientArgs"(%s0, %s1) : (tensor<2xi32>, tensor<2xi32>) -> (tensor<2x2xi32>, tensor<0xi32>)
   return %r0, %r1 : tensor<2x2xi32>, tensor<0xi32>
 }
@@ -213,7 +213,7 @@ func @testBroadcastGradientArgsInvalidR0Rank() -> (tensor<2x2xi32>, tensor<0xi32
 // -----
 
 func @testBroadcastGradientArgsInvalidR1Rank(%s0: tensor<4xi32>, %s1: tensor<4xi32>) -> (tensor<1xi32>, tensor<i32>) {
-  // expected-error @+1 {{requires 'r1' to be a rank 1 tensor, but got rank 0}}
+  // expected-error @+1 {{failed to verify that result 1 is 1-D}}
   %r0, %r1 = "tf.BroadcastGradientArgs"(%s0, %s1) : (tensor<4xi32>, tensor<4xi32>) -> (tensor<1xi32>, tensor<i32>)
   return %r0, %r1 : tensor<1xi32>, tensor<i32>
 }

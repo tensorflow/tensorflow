@@ -61,7 +61,6 @@ from tensorflow.python.saved_model import save_options as save_options_lib
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training.saving import checkpoint_options as checkpoint_options_lib
 from tensorflow.python.util import nest
-from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
@@ -2609,7 +2608,7 @@ class CSVLogger(Callback):
       is_zero_dim_ndarray = isinstance(k, np.ndarray) and k.ndim == 0
       if isinstance(k, six.string_types):
         return k
-      elif isinstance(k, collections_abc.Iterable) and not is_zero_dim_ndarray:
+      elif isinstance(k, collections.Iterable) and not is_zero_dim_ndarray:
         return '"[%s]"' % (', '.join(map(str, k)))
       else:
         return k

@@ -3170,14 +3170,15 @@ Status AlgebraicSimplifierVisitor::HandleCompare(HloInstruction* compare) {
   CHECK(Match(compare, m::Compare(m::Op(&lhs), m::Op(&rhs))));
   {
     // compare(broadcast(a) + x, broadcast(b)) ==>
-    //   compare(x, broadcast(b-a))
+    //   compare(x, broadcast(b-a)), only enabled for integral types.
     HloInstruction *x, *a, *b;
     if (Match(compare,
               m::Compare(
                   m::AddAnyOrder(m::Op(&x), m::Broadcast(m::Op(&a).WithShape(
                                                 m::Shape().IsScalar()))),
                   m::Broadcast(m::Op(&b).WithShape(m::Shape().IsScalar()))))) {
-      if (ShapeUtil::ElementIsSigned(x->shape())) {
+      if (ShapeUtil::ElementIsSigned(x->shape()) &&
+          ShapeUtil::ElementIsIntegral(x->shape())) {
         HloInstruction* sub =
             computation_->AddInstruction(HloInstruction::CreateBinary(
                 b->shape(), HloOpcode::kSubtract, b, a));

@@ -21,11 +21,11 @@ from __future__ import print_function
 import os
 
 import numpy as np
+from tensorflow import keras
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.lite.python import tflite_convert
 from tensorflow.lite.python.convert import register_custom_opdefs
-from tensorflow.python import keras
 from tensorflow.python import tf2
 from tensorflow.python.client import session
 from tensorflow.python.eager import def_function

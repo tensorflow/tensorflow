@@ -165,6 +165,7 @@ macos_unit_test(
     minimum_os_version = "10.13",
     tags = [
         "local",
+        "no_mac",  # TODO(b/171882133)
     ],
     deps = [":conv_test_lib"],
 )

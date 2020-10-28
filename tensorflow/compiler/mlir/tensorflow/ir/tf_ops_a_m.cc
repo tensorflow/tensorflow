@@ -546,8 +546,8 @@ OpFoldResult BroadcastToOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 
 namespace {
-// Returns `true` if both s0 & s1 is defined via constant op, and fills s0_shape
-// & s1_shape.
+// Returns `true` if both s0 & s1 are defined via constant op, and fills
+// s0_shape & s1_shape.
 bool ExtractInputConstShape(BroadcastGradientArgsOp op,
                             DenseIntElementsAttr &s0, DenseIntElementsAttr &s1,
                             SmallVectorImpl<int64_t> &s0_shape,
@@ -594,37 +594,11 @@ void GetOutputShapeForBroadcastGradientArgs(ArrayRef<int64_t> bcasted_shape,
 }  // namespace
 
 // Verifies that,
-// * all inputs/outputs rank is 1.
-// For cases where static shape can be extracted from inputs, verifies that,
 // * Broadcast compatability for input shapes.
 // * Output shape dimension matches the expected dimension size for input
 // shapes.
 static LogicalResult Verify(BroadcastGradientArgsOp op) {
-  // Check rank = 1 for input/outputs.
-  RankedTensorType s0_ty = GetRankedTensorTypeForOperand(op.s0());
-  RankedTensorType s1_ty = GetRankedTensorTypeForOperand(op.s1());
-  RankedTensorType r0_ty = GetRankedTensorTypeForOperand(op.r0());
-  RankedTensorType r1_ty = GetRankedTensorTypeForOperand(op.r1());
-  if (s0_ty && s0_ty.getRank() != 1)
-    return op.emitOpError()
-           << "requires 's0' to be a rank 1 tensor, but got rank "
-           << s0_ty.getRank();
-  if (s1_ty && s1_ty.getRank() != 1)
-    return op.emitOpError()
-           << "requires 's1' to be a rank 1 tensor, but got rank "
-           << s1_ty.getRank();
-  if (r0_ty && r0_ty.getRank() != 1)
-    return op.emitOpError()
-           << "requires 'r0' to be a rank 1 tensor, but got rank "
-           << r0_ty.getRank();
-  if (r1_ty && r1_ty.getRank() != 1)
-    return op.emitOpError()
-           << "requires 'r1' to be a rank 1 tensor, but got rank "
-           << r1_ty.getRank();
-
-  SmallVector<int64_t, 4> s0_shape;
-  SmallVector<int64_t, 4> s1_shape;
-
+  SmallVector<int64_t, 4> s0_shape, s1_shape;
   DenseIntElementsAttr s0, s1;
   if (!ExtractInputConstShape(op, s0, s1, s0_shape, s1_shape)) return success();
 
@@ -635,11 +609,12 @@ static LogicalResult Verify(BroadcastGradientArgsOp op) {
                                "for 's0' and 's1', but got "
                             << s0 << " and " << s1;
 
-  SmallVector<int64_t, 4> r0;
-  SmallVector<int64_t, 4> r1;
+  SmallVector<int64_t, 4> r0, r1;
   GetOutputShapeForBroadcastGradientArgs(bcasted_shape, s0_shape, s1_shape, r0,
                                          r1);
 
+  RankedTensorType r0_ty = GetRankedTensorTypeForOperand(op.r0());
+  RankedTensorType r1_ty = GetRankedTensorTypeForOperand(op.r1());
   if (r0_ty && r0_ty.hasStaticShape() && r0_ty.getShape()[0] != r0.size())
     return op.emitOpError() << "requires dimension 0 size of 'r0' to be "
                             << r0.size() << " but got " << r0_ty.getShape()[0];
@@ -652,9 +627,8 @@ static LogicalResult Verify(BroadcastGradientArgsOp op) {
 
 LogicalResult BroadcastGradientArgsOp::fold(
     ArrayRef<Attribute> operands, SmallVectorImpl<OpFoldResult> &results) {
+  SmallVector<int64_t, 4> s0_shape, s1_shape;
   DenseIntElementsAttr s0, s1;
-  SmallVector<int64_t, 4> s0_shape;
-  SmallVector<int64_t, 4> s1_shape;
   if (!ExtractInputConstShape(*this, s0, s1, s0_shape, s1_shape))
     return failure();
 
@@ -667,8 +641,7 @@ LogicalResult BroadcastGradientArgsOp::fold(
   assert(bcast_compatible);
   (void)bcast_compatible;
 
-  SmallVector<int64_t, 4> r0;
-  SmallVector<int64_t, 4> r1;
+  SmallVector<int64_t, 4> r0, r1;
   GetOutputShapeForBroadcastGradientArgs(bcasted_shape, s0_shape, s1_shape, r0,
                                          r1);
 
