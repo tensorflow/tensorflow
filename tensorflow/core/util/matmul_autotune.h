@@ -22,7 +22,6 @@ namespace tensorflow {
 
 bool MatmulAutotuneEnable();
 bool MatmulDoFP32ComputationFP16Input();
-int MatmulMaxAutotuneAlgorithmCount();
 
 }  // namespace tensorflow
 
