@@ -3349,7 +3349,8 @@ tf.math.equal(x, y) ==> array([True,  True])
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"Value x, Value y, BoolAttr incompatible_shape_error">
+    OpBuilderDAG<(ins "Value":$x, "Value":$y,
+      "BoolAttr":$incompatible_shape_error)>
   ];
 
   let verifier = [{
@@ -3495,7 +3496,7 @@ size 1.
   TF_DerivedOperandTypeAttr Tdim = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilder<"Value condition, Value dim">
+    OpBuilderDAG<(ins "Value":$condition, "Value":$dim)>
   ];
 }
 
@@ -3855,7 +3856,7 @@ fill([2, 3], 9) ==> [[9, 9, 9]
   let hasFolder = 1;
 
   let builders = [
-    OpBuilder<"Value dims, Value value">
+    OpBuilderDAG<(ins "Value":$dims, "Value":$value)>
   ];
 }
 
@@ -6736,7 +6737,8 @@ retained with length 1.
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilder<"Value input, Value reduction_indices, BoolAttr keep_dims">
+    OpBuilderDAG<(ins "Value":$input, "Value":$reduction_indices,
+      "BoolAttr":$keep_dims)>
   ];
 }
 
@@ -7549,7 +7551,8 @@ def TF_NotEqualOp : TF_Op<"NotEqual", [Commutative, NoSideEffect]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"Value x, Value y, BoolAttr incompatible_shape_error">
+    OpBuilderDAG<(ins "Value":$x, "Value":$y,
+      "BoolAttr":$incompatible_shape_error)>
   ];
 
   let verifier = [{
@@ -7667,8 +7670,8 @@ output =
   TF_DerivedOperandTypeAttr TI = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"Value indices, Value depth, Value on_value, Value off_value, "
-              "IntegerAttr axis">
+    OpBuilderDAG<(ins "Value":$indices, "Value":$depth, "Value":$on_value,
+      "Value":$off_value, "IntegerAttr":$axis)>
   ];
 
   let verifier = [{
@@ -8527,7 +8530,7 @@ tf.range(start, limit, delta) ==> [3, 6, 9, 12, 15]
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"Value start, Value limit, Value delta">
+    OpBuilderDAG<(ins "Value":$start, "Value":$limit, "Value":$delta)>
   ];
 }
 
@@ -8580,7 +8583,7 @@ of the tensor. Rank is also known as "order", "degree", or "ndims."
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"Value input">
+    OpBuilderDAG<(ins "Value":$input)>
   ];
 
   let hasFolder = 1;
@@ -8849,7 +8852,7 @@ reshape(t, []) ==> 7
   TF_DerivedOperandTypeAttr Tshape = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilder<"Value tensor, Value shape">
+    OpBuilderDAG<(ins "Value":$tensor, "Value":$shape)>
   ];
 
   let verifier = [{
@@ -10636,7 +10639,7 @@ def TF_SelectV2Op : TF_Op<"SelectV2", [NoSideEffect, ResultsBroadcastableShape]>
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilder<"Value condition, Value e, Value t">
+    OpBuilderDAG<(ins "Value":$condition, "Value":$e, "Value":$t)>
   ];
 }
 
@@ -10762,7 +10765,7 @@ shape(t) ==> [2, 2, 3]
   }];
 
   let builders = [
-    OpBuilder<"Value input, BoolAttr use32Bit">
+    OpBuilderDAG<(ins "Value":$input, "BoolAttr":$use32Bit)>
   ];
 
   let hasFolder = 1;
@@ -12491,7 +12494,8 @@ retained with length 1.
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilder<"Value input, Value reduction_indices, BoolAttr keep_dims">
+    OpBuilderDAG<(ins "Value":$input, "Value":$reduction_indices,
+      "BoolAttr":$keep_dims)>
   ];
 }
 
@@ -13637,9 +13641,8 @@ On GPU, if an out of bound index is found, the index is ignored.
   let verifier = [{ return Verify(*this); }];
 
   let builders = [
-    OpBuilder<"Value tensor, Value indices, Value updates",
-      [{build($_builder, $_state, tensor.getType(), tensor, indices, updates);}]
-    >
+    OpBuilderDAG<(ins "Value":$tensor, "Value":$indices, "Value":$updates),
+    [{build($_builder, $_state, tensor.getType(), tensor, indices, updates);}]>
   ];
 }
 
@@ -13782,7 +13785,7 @@ The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:
   TF_DerivedOperandTypeAttr Tperm = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilder<"Value x, Value perm">
+    OpBuilderDAG<(ins "Value":$x, "Value":$perm)>
   ];
 
   let verifier = [{

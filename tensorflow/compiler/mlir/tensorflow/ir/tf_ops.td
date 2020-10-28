@@ -200,10 +200,8 @@ def TF_ConstOp : TF_Op<"Const", [ConstantLike, NoSideEffect,
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 
   let builders = [
-    OpBuilder<
-      "OpBuilder &builder, OperationState &result, Attribute value">,
-    OpBuilder<
-      "OpBuilder &builder, OperationState &result, Type type, Attribute value">,
+    OpBuilderDAG<(ins "Attribute":$value)>,
+    OpBuilderDAG<(ins "Type":$type, "Attribute":$value)>,
   ];
 
   let hasFolder = 1;
@@ -390,10 +388,13 @@ else_branch: A region that computes the outputs of the op if cond = false.
     return Verify(*this);
   }];
 
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, TypeRange resultTypes, ValueRange operands, llvm::ArrayRef<::mlir::NamedAttribute> attributes, unsigned numRegions", [{
+  let builders = [
+    OpBuilderDAG<(ins "TypeRange":$resultTypes, "ValueRange":$operands,
+      "llvm::ArrayRef<::mlir::NamedAttribute>":$attributes,
+      "unsigned":$numRegions),
+    [{
       assert(numRegions == 2u && "mismatched number of regions");
-      build(builder, result, resultTypes, operands, attributes);
+      build($_builder, $_state, resultTypes, operands, attributes);
     }]>];
 
   let hasCanonicalizer = 1;
@@ -1132,9 +1133,10 @@ as true/false for a branch condition.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, Value value", [{
-      build(builder, result, RankedTensorType::get({}, builder.getI1Type()),
+  let builders = [
+    OpBuilderDAG<(ins "Value":$value),
+    [{
+      build($_builder, $_state, RankedTensorType::get({}, $_builder.getI1Type()),
             value);
     }]>];
 

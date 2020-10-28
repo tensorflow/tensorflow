@@ -265,7 +265,8 @@ def TFR_ConstOp : TFR_Op<"constant", [ConstantLike, NoSideEffect]> {
 
   let hasFolder = 1;
 
-  let builders = [OpBuilder<"Attribute value",
+  let builders = [
+    OpBuilderDAG<(ins "Attribute":$value),
     [{
       auto* ctx = value.getContext();
       $_state.addAttribute("value", value);
@@ -399,8 +400,8 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
   let skipDefaultBuilders = 1;
 
   let builders = [
-    OpBuilder<"StringRef name, FunctionType type, "
-              "ArrayRef<NamedAttribute> attrs = {}">
+    OpBuilderDAG<(ins "StringRef":$name, "FunctionType":$type,
+      CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>
   ];
 
   let extraClassDeclaration = [{
