@@ -42,8 +42,8 @@ ZlibOutputBuffer::~ZlibOutputBuffer() {
 }
 
 Status ZlibOutputBuffer::Init() {
-  // Output buffer size should be greater than 1 because deflation needs atleast
-  // one byte for book keeping etc.
+  // Output buffer size should be greater than 1 because deflation needs at
+  // least one byte for book keeping etc.
   if (output_buffer_capacity_ <= 1) {
     return errors::InvalidArgument(
         "output_buffer_bytes should be greater than "

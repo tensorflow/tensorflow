@@ -1414,7 +1414,7 @@ class MklDnnData {
   /// for reorder. Otherwise, it will return memory primitive for user memory.
   ///
   /// E.g., Conv2D(I, F) is a primitive with I and F being inputs. Then to
-  /// execute Conv2D, we need memory primitive for I and F. Buf if reorder is
+  /// execute Conv2D, we need memory primitive for I and F. But if reorder is
   /// required for I and F (say I_r is reorder primitive for I; F_r is reorder
   /// primitive for F), then we need I_r and F_r to perform Conv2D.
   inline const memory& GetOpMem() const {
@@ -2010,7 +2010,7 @@ inline bool IsConv1x1StrideNot1(memory::dims filter_dims,
 }  // namespace tensorflow
 
 /////////////////////////////////////////////////////////////////////
-// Macros for handling registeration for various types
+// Macros for handling registration for various types
 /////////////////////////////////////////////////////////////////////
 
 #define REGISTER_TEST_FLOAT32(TEST) REGISTER_TEST(TEST, DT_FLOAT, Float32Input);

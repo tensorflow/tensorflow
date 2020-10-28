@@ -191,7 +191,7 @@ EIGEN_ALWAYS_INLINE PerCacheLineParameters<T1> CalculatePerCacheLineParameters(
   } else if (in_y >= resized_height) {
     in_y = (resized_height * 2.0f) - (in_y + 1.0f + pad_offset);
   }
-  // Here's where do do the actual resize.
+  // Here's where to do the actual resize.
   in_y *= st.height_scale;
   const int64 top_y_index = static_cast<int64>(std::floor(in_y));
   const int64 bottom_y_index =

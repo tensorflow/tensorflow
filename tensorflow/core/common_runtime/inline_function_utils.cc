@@ -786,7 +786,7 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   if (output_control_node && output_control_node->in_edges().empty()) {
     if (input_control_node) {
       VLOG(4)
-          << "Add add a control edge between input and output control nodes: "
+          << "Add a control edge between input and output control nodes: "
           << input_control_node->name() << " to "
           << output_control_node->name();
       g->AddControlEdge(input_control_node, output_control_node,
