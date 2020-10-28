@@ -86,6 +86,7 @@ py_library(
         ":lite",
         "//tensorflow/lite/toco/logging:gen_html",
         "//tensorflow/lite/toco/logging:toco_conversion_log_proto_py",
+        "//tensorflow/python:util",
         "@six_archive//:six",
     ],
 )
@@ -111,6 +112,7 @@ py_test(
     deps = [
         ":convert",
         ":tflite_convert",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
