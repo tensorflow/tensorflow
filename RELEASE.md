@@ -218,7 +218,7 @@
   * Fixes a segfault in `tf.quantization.quantize_and_dequantize`, [CVE-2020-15265](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-15265)
   * Fixes an undefined behavior float cast causing a crash, [CVE-2020-15266](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-15266)
     
-* Other:
+### Other:
   * We have replaced uses of "whitelist" and "blacklist" with "allowlist" and "denylist" where possible. Please see [this list](https://developers.google.com/style/word-list#blacklist) for more context.
   * Add `tf.config.experimental.mlir_bridge_rollout` which will help us rollout the new MLIR TPU bridge.
   * Added `tf.experimental.register_filesystem_plugin` to load modular filesystem plugins from Python
