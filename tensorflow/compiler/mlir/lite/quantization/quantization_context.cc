@@ -83,7 +83,7 @@ LogicalResult QuantizeContext::Handle(
   auto spec = target_spec_.GetKernelSpec(op.logical_kernel(), signature);
   if (!spec.hasValue()) {
     op.emitWarning(
-        "Couldn't find kernel from the registeration for quantization.");
+        "Couldn't find kernel from the registration for quantization.");
     return success();
   }
   switch (spec->type) {
@@ -189,7 +189,7 @@ void QuantizeContext::DumpStates(QuantizeRegionOp current_op) {
 //   - use the first one in the collection,
 // - use the single input if it is ready, or,
 // - use the single output if it is ready, or,
-// - use use the first ready one in the collection.
+// - use the first ready one in the collection.
 QuantParams QuantizeContext::GetQuantParamsForSameScaleConstraint(
     Operation *op) {
   // Two vector to collect Non-empty operands and results states.

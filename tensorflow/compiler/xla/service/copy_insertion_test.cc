@@ -1468,7 +1468,7 @@ TEST_F(WhileCopyInsertionTest, InitPointsToNonDistinctUsedByTwoWhileLoops) {
   auto loop_init = builder.AddInstruction(
       HloInstruction::CreateTuple({iter_param, data_param, data_param}));
 
-  // Two while loops shares the same loop init tuple.
+  // Two while loops share the same loop init tuple.
   auto while_hlo1 = builder.AddInstruction(HloInstruction::CreateWhile(
       loop_state_shape, condition1, body1, loop_init));
   auto while_hlo2 = builder.AddInstruction(HloInstruction::CreateWhile(

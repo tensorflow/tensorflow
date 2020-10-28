@@ -741,7 +741,7 @@ static LogicalResult Verify(BroadcastInDimOp op) {
     if (dimIndex >= resultRank) {
       return op.emitOpError(
           llvm::formatv("broadcast_dimensions contains invalid value {0} for "
-                        "result result with rank {1}",
+                        "result with rank {1}",
                         dimIndex, resultRank));
     }
 
@@ -828,7 +828,7 @@ static LogicalResult Verify(DynamicBroadcastInDimOp op) {
     if (dimIndex >= resultRank) {
       return op.emitOpError(
           llvm::formatv("broadcast_dimensions contains invalid value {0} for "
-                        "result result with rank {1}",
+                        "result with rank {1}",
                         dimIndex, resultRank));
     }
 

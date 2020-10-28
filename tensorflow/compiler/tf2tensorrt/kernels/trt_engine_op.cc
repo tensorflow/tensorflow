@@ -554,7 +554,7 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
   // * Logic in TF 2.0:
   //   - During conversion: similar to 1.x.
   //   - During inference: calibration_data will still be empty, but cache will
-  //     contain the the calibrated engine, so it won't trigger calibration.
+  //     contain the calibrated engine, so it won't trigger calibration.
   //
   // TODO(laigd): consider the following alternatives:
   // 1. Serialize the state (calibration or inference) using

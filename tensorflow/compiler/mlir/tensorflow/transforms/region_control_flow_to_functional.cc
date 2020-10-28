@@ -333,7 +333,7 @@ LogicalResult RegionControlFlowToFunctional::ConvertWhileOp(
     WhileRegionOp while_region) {
   // For While, the arguments of the calls in the body and cond regions match
   // if they are region arguments with the same region argument numbers. If the
-  // 2 calls have the same value (an extern value) used an an argument, we
+  // 2 calls have the same value (an extern value) used as an argument, we
   // cannot do a trivial transformation because post transform, we will need to
   // pass this extern value as an argument to the function, so we cannot use the
   // existing function as is.
