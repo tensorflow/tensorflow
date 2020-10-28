@@ -1,22 +1,38 @@
 # Segmentation
 
-<img src="../images/segmentation.png" class="attempt-right" />
+Image segmentation is the process of partitioning a digital image into multiple
+segments (sets of pixels, also known as image objects). The goal of segmentation
+is to simplify and/or change the representation of an image into something that
+is more meaningful and easier to analyze.
+
+The following image shows the output of the image segmentation model on Android.
+The model will create a mask over the target objects with high accuracy.
+
+<img src="images/segmentation.gif" class="attempt-right" />
 
 ## Get started
 
-_DeepLab_ is a state-of-art deep learning model for semantic image segmentation,
-where the goal is to assign semantic labels (e.g. person, dog, cat) to every
-pixel in the input image.
-
-If you are new to TensorFlow Lite and are working with Android or iOS, we
-recommend exploring the following example applications that can help you get
+If you are new to TensorFlow Lite and are working with Android or iOS, it is
+recommended you explore the following example applications that can help you get
 started.
 
-<a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/image_segmentation/android">Android
-example</a>
+You can leverage the out-of-box API from
+[TensorFlow Lite Task Library](../../inference_with_metadata/task_library/image_segmenter)
+to integrate image segmentation models within just a few lines of code. You can
+also integrate the model using the
+[TensorFlow Lite Interpreter Java API](../../guide/inference#load_and_run_a_model_in_java).
 
-<a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/image_segmentation/ios">iOS
-example</a>
+The Android example below demonstrates the implementation for both methods as
+[lib_task_api](https://github.com/tensorflow/examples/tree/master/lite/examples/image_segmentation/android/lib_task_api)
+and
+[lib_interpreter](https://github.com/tensorflow/examples/tree/master/lite/examples/image_segmentation/android/lib_interpreter),
+respectively.
+
+<a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/image_segmentation/android">View
+Android example</a>
+
+<a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/image_segmentation/ios">View
+iOS example</a>
 
 If you are using a platform other than Android or iOS, or you are already
 familiar with the
@@ -26,7 +42,13 @@ APIs</a>, you can download our starter image segmentation model.
 <a class="button button-primary" href="https://tfhub.dev/tensorflow/lite-model/deeplabv3/1/metadata/2?lite-format=tflite">Download
 starter model</a>
 
-## How it works
+## Model description
+
+_DeepLab_ is a state-of-art deep learning model for semantic image segmentation,
+where the goal is to assign semantic labels (e.g. person, dog, cat) to every
+pixel in the input image.
+
+### How it works
 
 Semantic image segmentation predicts whether each pixel of an image is
 associated with a certain class. This is in contrast to
@@ -85,13 +107,7 @@ Performance benchmark numbers are generated with the tool
 
 \*\* 2 threads used on iPhone for the best performance result.
 
-## Example output
-
-The model will create a mask over the target objects with high accuracy.
-
-<img alt="Animation showing image segmentation" src="images/segmentation.gif" />
-
-## Read more about segmentation
+## Further reading and resources
 
 <ul>
   <li><a href="https://ai.googleblog.com/2018/03/semantic-image-segmentation-with.html">Semantic Image Segmentation with DeepLab in TensorFlow</a></li>

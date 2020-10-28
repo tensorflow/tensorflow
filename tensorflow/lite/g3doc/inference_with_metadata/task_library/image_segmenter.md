@@ -36,6 +36,10 @@ API.
 
 ## Run inference in Java
 
+See the
+[Image Segmentation reference app](https://github.com/tensorflow/examples/tree/master/lite/examples/image_segmentation/android/)
+for an example of how to use `ImageSegmenter` in an Android app.
+
 ### Step 1: Import Gradle dependency and other settings
 
 Copy the `.tflite` model file to the assets directory of the Android module
