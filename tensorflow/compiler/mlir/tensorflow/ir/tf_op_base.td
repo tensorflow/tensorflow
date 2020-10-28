@@ -101,6 +101,30 @@ class TF_AllTypesMatch<list<string> names> :
             !foreach(n, names, !subst("$_self", "$" # n, "$_self.getType()"))>>;
 
 //===----------------------------------------------------------------------===//
+// Rank/Shape helpers.
+//===----------------------------------------------------------------------===//
+
+class TF_OperandIsUnrankedPred<int n> :
+  CPred<"$_op.getOperand(" # n # ").getType().isa<UnrankedTensorType>()">;
+
+class TF_ResultIsUnrankedPred<int n> :
+  CPred<"$_op.getResult(" # n # ").getType().isa<UnrankedTensorType>()">;
+
+// Returns true if the n-th operand has unknown rank or has rank m.
+class TF_OperandHasRank<int n, int m> :
+  PredOpTrait<"operand " # n # " is " # m # "-D",
+    Or<[TF_OperandIsUnrankedPred<n>,
+      CPred<"$_op.getOperand(" # n #
+      ").getType().cast<ShapedType>().getRank() == " # m>]>>;
+
+// Returns true if the n-th result has unknown rank or has rank m.
+class TF_ResultHasRank<int n, int m> :
+  PredOpTrait<"result " # n # " is " # m # "-D",
+    Or<[TF_ResultIsUnrankedPred<n>,
+      CPred<"$_op.getResult(" # n #
+      ").getType().cast<ShapedType>().getRank() == " # m>]>>;
+
+//===----------------------------------------------------------------------===//
 // TensorFlow op side effects
 //===----------------------------------------------------------------------===//
 
