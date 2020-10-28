@@ -474,6 +474,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
     int64 windowed_operand;
     bool windowed_in_contracting_dims;
     bool windowed_in_batch_dims;
+    bool operands_sharded_at_contracting_dims;
   };
 
  private:

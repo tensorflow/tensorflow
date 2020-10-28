@@ -3675,6 +3675,163 @@ ENTRY entry {
                     op::Shape("f32[32,24,19648]")));
 }
 
+TEST_F(SpmdPartitioningTest,
+       EinsumRHSWindowedInContractingOutNonContractingPartitioned) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = f32[32,25,64,128] parameter(0)
+  %lhs.copy = f32[32,25,64,128] copy(%lhs), sharding={devices=[1,1,4,1]0,1,2,3}
+  %rhs = f32[32,39296,64,128] parameter(1)
+  %rhs.copy = f32[32,39296,64,128] copy(%rhs),
+    sharding={devices=[1,1,4,1]0,1,2,3}
+  ROOT %dot = f32[32,25,39296] dot(%lhs.copy, %rhs.copy),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={2,3}, rhs_contracting_dims={2,3},
+    sharding={devices=[1,4,1]0,1,2,3}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  auto root = module->entry_computation()->root_instruction();
+  auto lhs = AllOf(
+      op::Copy(op::DynamicSlice(op::Parameter(0), op::Constant(),
+                                op::Constant(), op::Reshape(), op::Constant())),
+      op::Shape("f32[32,25,16,128]"));
+  auto rhs = AllOf(
+      op::Copy(op::DynamicSlice(op::Parameter(1), op::Constant(),
+                                op::Constant(), op::Reshape(), op::Constant())),
+      op::Shape("f32[32,39296,16,128]"));
+  EXPECT_THAT(root, AllOf(op::GetTupleElement(op::While(op::Tuple(
+                              lhs, rhs, op::Broadcast(), op::Constant()))),
+                          op::Shape("f32[32,7,39296]")));
+
+  auto while_loop = root->operand(0);
+  // Check loop condition.
+  EXPECT_THAT(
+      while_loop->while_condition()->root_instruction(),
+      op::Compare(op::GetTupleElement(op::Parameter(0)), op::Constant()));
+
+  // Check loop body.
+  auto next_i = op::Add(op::GetTupleElement(op::Parameter(0)), op::Constant());
+  auto ds =
+      AllOf(op::DynamicSlice(
+                op::Pad(op::GetTupleElement(op::Parameter(0)), op::Constant()),
+                op::Constant(), op::Multiply(), op::Constant(), op::Constant()),
+            op::Shape("f32[32,7,16,128]"));
+  auto partial_output =
+      AllOf(op::Add(op::GetTupleElement(op::Parameter(0)),
+                    op::Dot(ds, op::GetTupleElement(op::Parameter(0)))),
+            op::Shape("f32[32,7,39296]"));
+  auto window = op::Conditional(op::Compare(next_i, op::Constant()),
+                                partial_output, partial_output);
+  EXPECT_THAT(while_loop->while_body()->root_instruction(),
+              op::Tuple(op::GetTupleElement(op::Parameter(0)),
+                        op::GetTupleElement(op::Parameter(0)), window, next_i));
+
+  // Check the conditional that contains the collective permute.
+  auto cp_conditional =
+      while_loop->while_body()->root_instruction()->operand(2);
+  EXPECT_THAT(cp_conditional->true_computation()->root_instruction(),
+              op::CollectivePermute(op::Parameter(0)));
+  EXPECT_THAT(cp_conditional->false_computation()->root_instruction(),
+              op::Parameter(0));
+}
+
+TEST_F(SpmdPartitioningTest,
+       EinsumRHSWindowedInContractingOutNonContractingFromBroadcast) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %constant.1 = f32[] constant(2)
+  %broadcast = f32[32,25,64,128] broadcast(%constant.1), dimensions={},
+    sharding={devices=[1,1,4,1]0,1,2,3}
+  %add = f32[32,25,64,128] add(%broadcast, %broadcast),
+    sharding={devices=[1,1,4,1]0,1,2,3}
+  %rhs = f32[32,39296,64,128] parameter(0)
+  %rhs.copy = f32[32,39296,64,128] copy(%rhs),
+    sharding={devices=[1,1,4,1]0,1,2,3}
+  ROOT %dot = f32[32,25,39296] dot(%add, %rhs.copy),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={2,3}, rhs_contracting_dims={2,3},
+    sharding={devices=[1,4,1]0,1,2,3}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, PartitionComputation(hlo_string,
+                                                            /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  // Involves loop code motion, skips pattern matching.
+}
+
+TEST_F(SpmdPartitioningTest,
+       EinsumLHSWindowedInContractingOutNonContractingPartitioned) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = f32[16,1024,16384] parameter(0)
+  %lhs.copy = f32[16,1024,16384] copy(%lhs),
+    sharding={devices=[2,1,4]0,1,2,3,4,5,6,7}
+  %rhs = f32[16384,67,128] parameter(1)
+  %rhs.copy = f32[16384,67,128] copy(%rhs),
+    sharding={devices=[4,1,1,2]0,4,1,5,2,6,3,7 last_tile_dim_replicate}
+  ROOT %dot = f32[16,1024,67,128] dot(%lhs.copy, %rhs.copy),
+    lhs_batch_dims={}, rhs_batch_dims={},
+    lhs_contracting_dims={2}, rhs_contracting_dims={0},
+    sharding={devices=[2,1,4,1]0,1,2,3,4,5,6,7}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+
+  auto root = module->entry_computation()->root_instruction();
+  auto lhs = AllOf(op::Copy(op::DynamicSlice(op::Parameter(0), op::Reshape(),
+                                             op::Constant(), op::Reshape())),
+                   op::Shape("f32[8,1024,4096]"));
+  auto rhs = AllOf(op::Copy(op::DynamicSlice(op::Parameter(1), op::Reshape(),
+                                             op::Constant(), op::Constant())),
+                   op::Shape("f32[4096,67,128]"));
+  EXPECT_THAT(root, AllOf(op::GetTupleElement(op::While(op::Tuple(
+                              lhs, rhs, op::Broadcast(), op::Constant()))),
+                          op::Shape("f32[8,1024,17,128]")));
+
+  auto while_loop = root->operand(0);
+  // Check loop condition.
+  EXPECT_THAT(
+      while_loop->while_condition()->root_instruction(),
+      op::Compare(op::GetTupleElement(op::Parameter(0)), op::Constant()));
+
+  // Check loop body.
+  auto next_i = op::Add(op::GetTupleElement(op::Parameter(0)), op::Constant());
+  auto ds =
+      AllOf(op::DynamicSlice(
+                op::Pad(op::GetTupleElement(op::Parameter(0)), op::Constant()),
+                op::Constant(), op::Multiply(), op::Constant()),
+            op::Shape("f32[4096,17,128]"));
+  auto partial_output =
+      AllOf(op::Add(op::GetTupleElement(op::Parameter(0)),
+                    op::Dot(op::GetTupleElement(op::Parameter(0)), ds)),
+            op::Shape("f32[8,1024,17,128]"));
+  auto window = op::Conditional(op::Compare(next_i, op::Constant()),
+                                partial_output, partial_output);
+  EXPECT_THAT(while_loop->while_body()->root_instruction(),
+              op::Tuple(op::GetTupleElement(op::Parameter(0)),
+                        op::GetTupleElement(op::Parameter(0)), window, next_i));
+
+  // Check the conditional that contains the collective permute.
+  auto cp_conditional =
+      while_loop->while_body()->root_instruction()->operand(2);
+  EXPECT_THAT(cp_conditional->true_computation()->root_instruction(),
+              op::CollectivePermute(op::Parameter(0)));
+  EXPECT_THAT(cp_conditional->false_computation()->root_instruction(),
+              op::Parameter(0));
+}
+
 TEST_F(SpmdPartitioningTest, EinsumRHSWindowedNonContracting) {
   const char* const hlo_string = R"(
 HloModule module
