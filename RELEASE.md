@@ -110,7 +110,6 @@
   * When restoring, `save_path` can be a path to a SavedModel. The function will automatically find the checkpoint in the SavedModel.
   
 ### `tf.data`:
-  * tf.data service:
     * Adds new `tf.data.experimental.service.register_dataset` and `tf.data.experimental.service.from_dataset_id` APIs to enable one
       process to register a dataset with the tf.data service, and another process to consume data from the dataset.
     * Adds support for dispatcher fault tolerance. To enable fault tolerance, configure a `work_dir` when running your dispatcher server and set
