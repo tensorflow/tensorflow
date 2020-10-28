@@ -63,7 +63,7 @@ message ProfileOptions {
 }
 
 // Options for remote profiler session manager.
-// Next ID: 5
+// Next ID: 6
 message RemoteProfilerSessionManagerOptions {
   // Options for each local profiler.
   ProfileOptions profiler_options = 1;
@@ -79,4 +79,7 @@ message RemoteProfilerSessionManagerOptions {
   // continues until interrupted. Otherwise, value must be greater than
   // profiler_options.duration_ms.
   uint64 max_session_duration_ms = 4;
+
+  // Start of profiling is delayed by this much (in milliseconds).
+  uint64 delay_ms = 5;
 }
