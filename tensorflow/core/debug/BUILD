@@ -230,7 +230,6 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:functional_ops_op_lib",
         "//tensorflow/core:lib",
-        "//tensorflow/core:master_proto_cc",
         "//tensorflow/core:math_ops_op_lib",
         "//tensorflow/core:nn_ops_op_lib",
         "//tensorflow/core:no_op_op_lib",
@@ -244,6 +243,7 @@ tf_cc_test(
         "//tensorflow/core/distributed_runtime/rpc:grpc_testlib",
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/protobuf:master_proto_cc",
     ],
 )
 

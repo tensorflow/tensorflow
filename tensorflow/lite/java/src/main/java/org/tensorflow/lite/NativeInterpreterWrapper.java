@@ -218,10 +218,6 @@ final class NativeInterpreterWrapper implements AutoCloseable {
 
   private static native long allocateTensors(long interpreterHandle, long errorHandle);
 
-  void setUseNNAPI(boolean useNNAPI) {
-    useNNAPI(interpreterHandle, useNNAPI);
-  }
-
   void setNumThreads(int numThreads) {
     numThreads(interpreterHandle, numThreads);
   }
@@ -455,8 +451,6 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   private static native String[] getInputNames(long interpreterHandle);
 
   private static native String[] getOutputNames(long interpreterHandle);
-
-  private static native void useNNAPI(long interpreterHandle, boolean state);
 
   private static native void numThreads(long interpreterHandle, int numThreads);
 

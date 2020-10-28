@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
+#include "tensorflow/lite/delegates/gpu/cl/serialization_generated.h"
 #include "tensorflow/lite/delegates/gpu/common/access_type.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -34,30 +35,25 @@ namespace cl {
 struct GPUImage2DDescriptor {
   DataType data_type;
   AccessType access_type;
-  cl_mem memory;
 };
 
 struct GPUImage3DDescriptor {
   DataType data_type;
   AccessType access_type;
-  cl_mem memory;
 };
 
 struct GPUImage2DArrayDescriptor {
   DataType data_type;
   AccessType access_type;
-  cl_mem memory;
 };
 
 struct GPUImageBufferDescriptor {
   DataType data_type;
   AccessType access_type;
-  cl_mem memory;
 };
 
 struct GPUCustomMemoryDescriptor {
   std::string type_name;
-  cl_mem memory;
 };
 
 enum class MemoryType { GLOBAL, CONSTANT, LOCAL };
@@ -70,7 +66,6 @@ struct GPUBufferDescriptor {
   int element_size;
   MemoryType memory_type = MemoryType::GLOBAL;
   std::vector<std::string> attributes;
-  cl_mem memory;
 };
 
 struct GPUResources {
@@ -154,16 +149,16 @@ class GPUObjectDescriptor {
   }
   virtual GPUResources GetGPUResources() const { return GPUResources(); }
 
-  virtual absl::Status CreateGPUObject(
-      CLContext* context, std::unique_ptr<GPUObject>* result) const {
-    return absl::OkStatus();
-  }
   virtual void Release() {}
 
   void SetAccess(AccessType access_type) { access_type_ = access_type; }
   AccessType GetAccess() const { return access_type_; }
 
  protected:
+  friend flatbuffers::Offset<data::GPUObjectDescriptor> Encode(
+      const GPUObjectDescriptor& desc, flatbuffers::FlatBufferBuilder* builder);
+  friend void Decode(const data::GPUObjectDescriptor* fb_obj,
+                     GPUObjectDescriptor* obj);
   mutable std::map<std::string, std::string> state_vars_;
   AccessType access_type_;
 };

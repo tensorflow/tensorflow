@@ -27,8 +27,8 @@ from tensorflow.python.util.tf_export import tf_export
 class AutoShardPolicy(enum.IntEnum):
   """Represents the type of auto-sharding we enable.
 
-  Please see the DistributeOptions.auto_shard_policy documentation for more
-  information on each type of autosharding.
+  See the `tf.data.experimental.DistributeOptions.auto_shard_policy`
+  documentation for more information.
   """
   OFF = -1
   AUTO = 0
@@ -36,7 +36,13 @@ class AutoShardPolicy(enum.IntEnum):
   DATA = 2
 
 
+@tf_export("data.experimental.ExternalStatePolicy")
 class ExternalStatePolicy(enum.Enum):
+  """Represents how to handle external state during serialization.
+
+  See the `tf.data.Options.experimental_external_state_policy` documentation
+  for more information.
+  """
   WARN = 0
   IGNORE = 1
   FAIL = 2

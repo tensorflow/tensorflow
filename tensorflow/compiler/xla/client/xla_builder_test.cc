@@ -19,6 +19,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -871,11 +873,53 @@ TEST_F(XlaBuilderTest, DynamicReduceWindow) {
   ReduceWindow(gte, init, sum, /*window_dimensions=*/{1, 2, 4},
                /*window_strides=*/{1, 1, 1}, Padding::kValid);
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  VLOG(2) << module->entry_computation()->root_instruction()->ToString()
+          << "\n";
   const Shape& result_shape =
       module->entry_computation()->root_instruction()->shape();
   EXPECT_TRUE(
       ContainersEqual(result_shape.dynamic_dimensions(), {true, false, false}))
       << result_shape;
+}
+
+TEST_F(XlaBuilderTest, VariadicDynamicReduceWindow) {
+  XlaBuilder b(TestName());
+  Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {2, 4, 8}, {true, false, false}),
+       ShapeUtil::MakeShape(U32, {})});
+  auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
+  auto p1 = Parameter(&b, 1, tuple_param_shape, "p1");
+  ASSERT_IS_OK(b.SetDynamicBinding(/*dynamic_size_param_num=*/0,
+                                   /*dynamic_size_param_index=*/{1},
+                                   /*target_param_num=*/0,
+                                   /*target_param_index=*/{0},
+                                   /*target_dim_num=*/0));
+  auto gte0 = GetTupleElement(p0, 0);
+  auto gte1 = GetTupleElement(p1, 0);
+  std::vector<XlaOp> input_operands = {gte0, gte1};
+  XlaBuilder bsum(TestName());
+  auto p2 = Parameter(&bsum, 0, ShapeUtil::MakeShape(F32, {}), "x0");
+  auto p3 = Parameter(&bsum, 1, ShapeUtil::MakeShape(F32, {}), "x1");
+  auto p4 = Parameter(&bsum, 2, ShapeUtil::MakeShape(F32, {}), "y0");
+  auto p5 = Parameter(&bsum, 3, ShapeUtil::MakeShape(F32, {}), "y1");
+  std::vector<XlaOp> output_operands = {Add(p2, p4), Add(p3, p5)};
+  Tuple(&bsum, absl::MakeSpan(output_operands));
+  TF_ASSERT_OK_AND_ASSIGN(auto sum, bsum.Build());
+  auto init = ConstantR0<float>(&b, 0.f);
+  ReduceWindow(input_operands, {init, init}, sum,
+               /*window_dimensions=*/{1, 2, 4},
+               /*window_strides=*/{1, 1, 1}, Padding::kValid);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  VLOG(2) << module->entry_computation()->root_instruction()->ToString()
+          << "\n";
+  const Shape& result_shape =
+      module->entry_computation()->root_instruction()->shape();
+  EXPECT_TRUE(ContainersEqual(result_shape.tuple_shapes(0).dynamic_dimensions(),
+                              {true, false, false}))
+      << result_shape.tuple_shapes(0);
+  EXPECT_TRUE(ContainersEqual(result_shape.tuple_shapes(1).dynamic_dimensions(),
+                              {true, false, false}))
+      << result_shape.tuple_shapes(1);
 }
 
 TEST_F(XlaBuilderTest, DynamicSelectAndScatter) {
@@ -1203,5 +1247,16 @@ TEST_F(XlaBuilderTest, AddFrontendAttribute) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   ExpectInstructionsAttributesMatch(*module, expected);
 }
+
+TEST_F(XlaBuilderTest, ComparisonType) {
+  XlaBuilder b(TestName());
+  (void)Le(ConstantR0<int32>(&b, 1), ConstantR0<int32>(&b, 2));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto root = module->entry_computation()->root_instruction();
+  ASSERT_THAT(root, op::Compare(op::Constant(), op::Constant()));
+  EXPECT_EQ(Comparison::Type::kSigned,
+            DynCast<HloCompareInstruction>(root)->type());
+}
+
 }  // namespace
 }  // namespace xla

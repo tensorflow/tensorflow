@@ -90,7 +90,9 @@ bool HasSingleUse(FuncOp func) {
   // Inspect function uses in the containing module and all parent
   // modules.
   bool use_seen = false;
-  for (; module; module = module.getParentOfType<ModuleOp>()) {
+  for (; module; module = func.isPrivate()
+                              ? nullptr
+                              : module.getParentOfType<ModuleOp>()) {
     auto func_uses_optional =
         SymbolTable::getSymbolUses(func, &module.getBodyRegion());
     // Found an unknown use.
@@ -105,12 +107,33 @@ bool HasSingleUse(FuncOp func) {
 
     // This is the first use seen.
     use_seen = true;
-
-    // If the function is private, no need to inspect parent modules.
-    if (func.isPrivate()) break;
   }
 
   // No multiple uses seen.
+  return true;
+}
+
+// Returns true if the caller ops can be inlined.
+bool HasInlinableUsers(FuncOp func) {
+  // Return false if unexpected IR structure seen.
+  ModuleOp module = func.getParentOfType<ModuleOp>();
+  if (!module) return false;
+
+  // Inspect function uses in the containing module and all parent
+  // modules.
+  for (; module; module = func.isPrivate()
+                              ? nullptr
+                              : module.getParentOfType<ModuleOp>()) {
+    auto func_uses_optional =
+        SymbolTable::getSymbolUses(func, &module.getBodyRegion());
+    // Found an unknown use.
+    if (!func_uses_optional) return false;
+
+    for (auto &use : func_uses_optional.getValue())
+      if (isa<TPUPartitionedCallOp>(use.getUser())) return false;
+  }
+
+  // All caller ops that can be inlined.
   return true;
 }
 
@@ -153,11 +176,14 @@ struct TFInlinerInterface : public DialectInlinerInterface {
                        BlockAndValueMapping &) const final {
     // An op is legal to inline if either of the following conditions is true:
     // (a) Its legal to duplicate the Op.
-    // (a) The Op is inside a single use function. If that function is inlined,
+    // (b) The Op is inside a single use function. If that function is inlined,
     //     post inlining, the function will be dead and eliminated from the IR.
     //     So there won't be any code duplication.
+    // plus the function caller op can be replaced by inlined ops.
     FuncOp func = op->getParentOfType<FuncOp>();
-    return !func || TensorFlowDialect::CanDuplicate(op) || HasSingleUse(func);
+    if (!func) return true;
+    if (!HasInlinableUsers(func)) return false;
+    return TensorFlowDialect::CanDuplicate(op) || HasSingleUse(func);
   }
 
   //===--------------------------------------------------------------------===//
@@ -221,8 +247,11 @@ bool TensorFlowDialect::CanHaveSideEffects(Operation *op) {
 }
 
 std::vector<TensorFlowDialect::AdditionalOpFunction>
-    *TensorFlowDialect::additional_operation_hooks_ =
-        new std::vector<TensorFlowDialect::AdditionalOpFunction>();
+    *TensorFlowDialect::GetAdditionalOperationHooks() {
+  static auto *const additional_operation_hooks =
+      new std::vector<TensorFlowDialect::AdditionalOpFunction>();
+  return additional_operation_hooks;
+}
 
 TensorFlowDialect::ConstantFoldHook TensorFlowDialect::constant_fold_hook_;
 TensorFlowDialect::DecodeConstantHook TensorFlowDialect::decode_constant_hook_;
@@ -250,7 +279,7 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
   // registered.
   allowUnknownOperations();
 
-  for (const auto &hook : *TensorFlowDialect::additional_operation_hooks_) {
+  for (const auto &hook : *GetAdditionalOperationHooks()) {
     hook(*this);
   }
 }

@@ -24,8 +24,10 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Interfaces/ViewLikeInterface.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/FoldUtils.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
 namespace lmhlo {
@@ -73,6 +75,24 @@ class LhloFuseLinalgPass
         result_buffers.insert(operand);
       }
     }
+    // Resolve aliasing operations (like casts) on the result to identify
+    // results. This only handles escaping results.
+    // TODO(herhut): Use BufferizeAliasAnalysis for this.
+    llvm::SmallVector<Value, 4> worklist(result_buffers.begin(),
+                                         result_buffers.end());
+    while (!worklist.empty()) {
+      Value result = worklist.pop_back_val();
+      auto definingOp = result.getDefiningOp();
+      if (!definingOp) {
+        continue;
+      }
+      if (auto viewLike = dyn_cast<ViewLikeOpInterface>(definingOp)) {
+        auto alias = viewLike.getViewSource();
+        if (result_buffers.insert(alias).second) {
+          worklist.push_back(alias);
+        }
+      }
+    }
     MLIRContext* ctx = func.getContext();
     OpBuilder b(func);
     OperationFolder folder(ctx);
@@ -92,7 +112,7 @@ class LhloFuseLinalgPass
       }
     });
     auto patterns = linalg::getLinalgTilingCanonicalizationPatterns(ctx);
-    applyPatternsAndFoldGreedily(func, patterns);
+    applyPatternsAndFoldGreedily(func, std::move(patterns));
 
     // Fuse producers of tiled linalg ops.
     llvm::SmallDenseSet<Operation*> erase_set;
@@ -102,7 +122,7 @@ class LhloFuseLinalgPass
       for (unsigned id = 0, e = LinalgOp(op).getNumInputs(); id < e; ++id) {
         linalg::Aliases aliases;
         linalg::LinalgDependenceGraph graph(aliases, linalg_ops);
-        if (auto info = fuseProducerOf(b, op, id, graph, &folder)) {
+        if (auto info = fuseProducerOfBuffer(b, op, id, graph, &folder)) {
           auto originalOp = info->originalProducer.getOperation();
           erase_set.insert(originalOp);
           auto originalOpInLinalgOpsVector = std::find_if(
@@ -113,7 +133,7 @@ class LhloFuseLinalgPass
       }
 
       auto patterns = linalg::getLinalgTilingCanonicalizationPatterns(ctx);
-      applyPatternsAndFoldGreedily(func, patterns);
+      applyPatternsAndFoldGreedily(func, std::move(patterns));
     }
     for (auto* e : erase_set) e->erase();
   }

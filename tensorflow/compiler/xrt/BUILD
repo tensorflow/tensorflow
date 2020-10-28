@@ -9,8 +9,7 @@ load(
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
 load(
     "//tensorflow/core/platform:build_config.bzl",
-    "tf_proto_library_cc",
-    "tf_proto_library_py",
+    "tf_proto_library",
 )
 
 package(
@@ -21,7 +20,7 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "xrt_proto",
     srcs = ["xrt.proto"],
     cc_api_version = 2,
@@ -31,12 +30,6 @@ tf_proto_library_cc(
         "//tensorflow/compiler/xla:xla_proto",
         "//tensorflow/compiler/xla/service:hlo_proto",
     ],
-    visibility = ["//visibility:public"],
-)
-
-tf_proto_library_py(
-    name = "xrt_proto",  # bzl adds a _py suffix
-    srcs = ["xrt.proto"],
     visibility = ["//visibility:public"],
 )
 
@@ -81,7 +74,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:regexp_internal",
+        "//tensorflow/core/platform:regexp",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/stream_executor",
         "//tensorflow/stream_executor:device_memory_allocator",

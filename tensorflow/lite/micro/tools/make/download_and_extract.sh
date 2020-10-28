@@ -72,6 +72,7 @@ patch_am_sdk() {
 patch_kissfft() {
   sed -i -E $'s@#ifdef FIXED_POINT@// Patched automatically by download_dependencies.sh so default is 16 bit.\\\n#ifndef FIXED_POINT\\\n#define FIXED_POINT (16)\\\n#endif\\\n// End patch.\\\n\\\n#ifdef FIXED_POINT@g' tensorflow/lite/micro/tools/make/downloads/kissfft/kiss_fft.h
 
+  sed -i -E '/^#include <sys\/types.h>/d' tensorflow/lite/micro/tools/make/downloads/kissfft/kiss_fft.h
   # Fix for https://github.com/mborgerding/kissfft/issues/20
   sed -i -E $'s@#ifdef FIXED_POINT@#ifdef FIXED_POINT\\\n#include <stdint.h> /* Patched. */@g' tensorflow/lite/micro/tools/make/downloads/kissfft/kiss_fft.h
 
@@ -90,29 +91,44 @@ patch_cmsis() {
   # custom include paths.
   # These include changes were found through trial and error while trying to get the Arduino
   # library compiling with the CMSIS-NN kernels included.
-  find tensorflow/lite/micro/tools/make/downloads/cmsis \
-    -iname '*.c' -exec \
-    sed -i -E $'s@#include "arm_nnfunctions.h"@#include "cmsis/CMSIS/NN/Include/arm_nnfunctions.h"@g' {} \;
 
+  dspfiles="arm_math.h"
+  dspfiles+="\|arm_math_types.h"
+  dspfiles+="\|arm_math_memory.h"
+  dspfiles+="\|arm_common_tables.h"
+  dspfiles+="\|dsp/basic_math_functions.h"
+  dspfiles+="\|dsp/bayes_functions.h"
+  dspfiles+="\|dsp/complex_math_functions.h"
+  dspfiles+="\|dsp/controller_functions.h"
+  dspfiles+="\|dsp/distance_functions.h"
+  dspfiles+="\|dsp/fast_math_functions.h"
+  dspfiles+="\|dsp/filtering_functions.h"
+  dspfiles+="\|dsp/interpolation_functions.h"
+  dspfiles+="\|dsp/matrix_functions.h"
+  dspfiles+="\|dsp/none.h"
+  dspfiles+="\|dsp/statistics_functions.h"
+  dspfiles+="\|dsp/support_functions.h"
+  dspfiles+="\|dsp/svm_functions.h"
+  dspfiles+="\|dsp/svm_defines.h"
+  dspfiles+="\|dsp/transform_functions.h"
+  dspfiles+="\|dsp/utils.h"
+  dspfiles+="\|dsp/arm_helium_utils.h"
   find tensorflow/lite/micro/tools/make/downloads/cmsis \
-    -iname '*.c' -exec \
-    sed -i -E $'s@#include "arm_nnsupportfunctions.h"@#include "cmsis/CMSIS/NN/Include/arm_nnsupportfunctions.h"@g' {} \; 
+    \( -name *.c -or -name *.h -or -name *.cpp \) -exec \
+    sed -i "s@#include \"\($dspfiles\)\"@#include \"cmsis/CMSIS/DSP/Include/\1\"@g" {} \;
 
+  nnfiles="arm_nn_tables.h"
+  nnfiles+="\|arm_nnfunctions.h"
+  nnfiles+="\|arm_nnsupportfunctions.h"
+  nnfiles+="\|arm_nn_types.h"
   find tensorflow/lite/micro/tools/make/downloads/cmsis \
-    -iname '*.c' -exec \
-    sed -i -E $'s@#include "arm_nn_types.h"@#include "cmsis/CMSIS/NN/Include/arm_nn_types.h"@g' {} \;
+    \( -name *.c -or -name *.h -or -name *.cpp \) -exec \
+    sed -i "s@#include \"\($nnfiles\)\"@#include \"cmsis/CMSIS/NN/Include/\1\"@g" {} \;
 
+  corefiles="cmsis_compiler.h"
   find tensorflow/lite/micro/tools/make/downloads/cmsis \
-    -iname '*.*' -exec \
-    sed -i -E $'s@#include "arm_math.h"@#include "cmsis/CMSIS/DSP/Include/arm_math.h"@g' {} \;
-
-  find tensorflow/lite/micro/tools/make/downloads/cmsis \
-    -iname '*.*' -exec \
-    sed -i -E $'s@#include "arm_common_tables.h"@#include "cmsis/CMSIS/DSP/Include/arm_common_tables.h"@g' {} \;
-
-  find tensorflow/lite/micro/tools/make/downloads/cmsis \
-    -iname '*.*' -exec \
-    sed -i -E $'s@#include "arm_nn_tables.h"@#include "cmsis/CMSIS/NN/Include/arm_nn_tables.h"@g' {} \;
+    \( -name *.c -or -name *.h -or -name *.cpp \) -exec \
+    sed -i "s@#include \"\($corefiles\)\"@#include \"cmsis/CMSIS/Core/Include/\1\"@g" {} \;
 
   # Until the fix for https://github.com/ARMmbed/mbed-os/issues/12568 is
   # rolled into Mbed version used on the Arduino IDE, we have to replace
@@ -223,6 +239,7 @@ download_and_extract() {
     fi
   else
     echo "Error unsupported archive type. Failed to extract tool after download."
+    exit 1
   fi
   rm -rf ${tempdir2} ${tempdir}
 

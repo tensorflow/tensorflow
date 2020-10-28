@@ -343,6 +343,7 @@ py_strict_library(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:lib",
+        "//tensorflow/python:platform",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:tf_export",
@@ -358,6 +359,7 @@ py_strict_library(
         "//tensorflow/python/training/tracking:base",
         "//tensorflow/python/training/tracking:graph_view",
         "//tensorflow/python/training/tracking:util",
+        "@absl_py//absl/logging",
     ],
 )
 
@@ -560,7 +562,6 @@ py_strict_library(
         "//tensorflow/python:func_graph",
         "//tensorflow/python:function_def_to_graph",
         "//tensorflow/python:op_def_registry",
-        "//tensorflow/python:platform",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:tf_decorator",
@@ -568,6 +569,7 @@ py_strict_library(
         "//tensorflow/python:util",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
+        "@absl_py//absl/logging",
     ],
 )
 

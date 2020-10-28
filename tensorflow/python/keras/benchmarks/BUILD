@@ -8,8 +8,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 filegroup(
     name = "all_py_srcs",
     srcs = glob(["*.py"]),
@@ -42,7 +40,10 @@ py_library(
 # This lib is mainly for running benchmarks on mlcompass infra.
 py_library(
     name = "profiler_lib",
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//learning/brain/contrib/keras_benchmark:__subpackages__",
+        "//tensorflow/python/keras:__subpackages__",
+    ],
 )
 
 COMMON_TAGS = [
@@ -75,6 +76,7 @@ cuda_py_test(
     deps = [
         ":profiler_lib",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/keras/utils:tf_inspect",
     ],
 )
 

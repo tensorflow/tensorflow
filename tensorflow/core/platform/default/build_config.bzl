@@ -1,7 +1,7 @@
 # Platform-specific build configurations.
 
 load("@com_google_protobuf//:protobuf.bzl", "proto_gen")
-load("//tensorflow:tensorflow.bzl", "clean_dep", "if_not_windows", "if_tpu")
+load("//tensorflow:tensorflow.bzl", "clean_dep", "if_libtpu", "if_not_windows")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
@@ -498,6 +498,7 @@ def tf_proto_library(
         visibility = None,
         testonly = 0,
         cc_libs = [],
+        cc_stubby_versions = None,
         cc_api_version = 2,
         cc_grpc_version = None,
         use_grpc_namespace = False,
@@ -505,6 +506,8 @@ def tf_proto_library(
         js_codegen = "jspb",
         create_service = False,
         create_java_proto = False,
+        create_go_proto = False,
+        create_grpc_library = False,
         make_default_target_header_only = False,
         exports = [],
         tags = []):
@@ -513,7 +516,15 @@ def tf_proto_library(
     # TODO(b/145545130): Add docstring explaining what rules this creates and how
     # opensource projects importing TF in bazel can use them safely (i.e. w/o ODR or
     # ABI violations).
-    _ignore = (js_codegen, exports, create_service, create_java_proto)
+    _ignore = (
+        js_codegen,
+        exports,
+        create_service,
+        create_java_proto,
+        create_grpc_library,
+        cc_stubby_versions,
+        create_go_proto,
+    )
 
     native.proto_library(
         name = name,
@@ -607,9 +618,6 @@ def tf_protos_profiler_service():
         clean_dep("//tensorflow/core/profiler:profiler_service_proto_cc_impl"),
         clean_dep("//tensorflow/core/profiler:profiler_service_monitor_result_proto_cc_impl"),
     ]
-
-def tf_profiler_client_deps():
-    return [clean_dep("//tensorflow/core/profiler/rpc/client:profiler_client_headers")]
 
 def tf_protos_grappler_impl():
     return [clean_dep("//tensorflow/core/grappler/costs:op_performance_data_cc_impl")]
@@ -805,4 +813,4 @@ def if_llvm_system_z_available(then, otherwise = []):
     })
 
 def tf_tpu_dependencies():
-    return if_tpu(["//tensorflow/core/tpu/kernels"])
+    return if_libtpu(["//tensorflow/core/tpu/kernels"])

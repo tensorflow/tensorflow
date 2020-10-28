@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 
 using llvm::Optional;
 using llvm::cl::opt;
@@ -95,7 +96,8 @@ Optional<std::unique_ptr<tflite::ModelT>> RemoveConstantOpInReshape(
   // Find the reshape ops and make it single operand.
   for (auto& sub_graph : model->subgraphs) {
     for (auto& op : sub_graph->operators) {
-      if (model->operator_codes[op->opcode_index]->builtin_code ==
+      if (tflite::GetBuiltinCode(
+              model->operator_codes[op->opcode_index].get()) ==
           tflite::BuiltinOperator_RESHAPE) {
         auto& output_tensor = sub_graph->tensors[op->outputs[0]];
         auto shape = output_tensor->shape;

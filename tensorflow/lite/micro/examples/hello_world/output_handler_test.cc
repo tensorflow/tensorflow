@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/lite/micro/examples/hello_world/output_handler.h"
 
 #include "tensorflow/lite/micro/testing/micro_test.h"
-#include "tensorflow/lite/micro/testing/test_utils.h"
 
 TF_LITE_MICRO_TESTS_BEGIN
 

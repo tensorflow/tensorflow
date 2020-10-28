@@ -72,7 +72,8 @@ static bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef,
 bool XlaKernelCreator::CanCreateKernel(
     const FunctionLibraryRuntime& flr,
     const std::shared_ptr<const NodeProperties>& props) const {
-  return CanCreateXlaKernel(props->node_def);
+  return CanCreateXlaKernel(props->node_def) &&
+         !XlaOpRegistry::IsCompilationDevice(flr.device()->device_type());
 }
 
 static Status CreateXlaKernel(FunctionLibraryRuntime* flr,
@@ -88,7 +89,8 @@ static Status CreateXlaKernel(FunctionLibraryRuntime* flr,
   XlaOpRegistry::RegisterCompilationKernels();
 
   // Only check for compilability if the MLIR bridge is not enabled.
-  if (!GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge) {
+  if (GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge !=
+      ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED) {
     RecursiveCompilabilityChecker::UncompilableNodesMap uncompilable_nodes_map;
     if (!IsCompilable(flr, node_def, &uncompilable_nodes_map)) {
       std::vector<RecursiveCompilabilityChecker::UncompilableNodeInfo>

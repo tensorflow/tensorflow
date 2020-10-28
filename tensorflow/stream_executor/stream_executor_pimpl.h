@@ -395,6 +395,21 @@ class StreamExecutor {
   // Get the list of supported algorithms for BLAS gemm.
   bool GetBlasGemmAlgorithms(std::vector<blas::AlgorithmType> *out_algorithms);
 
+  // Creates a backend-specific plan object for a blaslt matmul operation, which
+  // can then be passed to DoBlasLtMatmul(). When possible, plans should be
+  // created once and reused for multiple calls to DoBlasLtMatmul().
+  // Returns a null pointer on failure.
+  port::StatusOr<std::unique_ptr<blas::IBlasLtMatmulPlan>>
+  CreateBlasLtMatmulPlan(const blas::BlasLtMatmulPlanParams &params);
+
+  // Gets a list of supported algorithms for DoBlasLtMatmul. The algorithms are
+  // returned in the order of increasing estimated compute time according to an
+  // internal heuristic. The first returned algorithm can be used as the default
+  // algorithm if no autotuning is to be performed.
+  port::StatusOr<std::vector<std::unique_ptr<blas::IBlasLtMatmulAlgorithm>>>
+  GetBlasLtMatmulAlgorithms(const blas::IBlasLtMatmulPlan *plan,
+                            size_t max_workspace_size, int max_algorithm_count);
+
   // Create an RNN descriptor based on model shapes and configurations.
   // The caller retains the ownership of the descriptor.
   port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> createRnnDescriptor(

@@ -17,6 +17,21 @@ cc_library(
     includes = ["."],
 )
 
+filegroup(
+    name = "TestOpTdFiles",
+    srcs = [
+        "lib/Dialect/Test/TestOps.td",
+        "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:include/mlir/IR/OpAsmInterface.td",
+        "@llvm-project//mlir:include/mlir/IR/RegionKindInterface.td",
+        "@llvm-project//mlir:include/mlir/IR/SymbolInterfaces.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/CallInterfaces.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/ControlFlowInterfaces.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/SideEffectInterfaces.td",
+    ],
+)
+
 gentbl(
     name = "TestOpsIncGen",
     strip_include_prefix = "lib/Dialect/Test",
@@ -57,14 +72,7 @@ gentbl(
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "lib/Dialect/Test/TestOps.td",
     td_srcs = [
-        "@llvm-project//mlir:OpBaseTdFiles",
-        "@llvm-project//mlir:include/mlir/IR/OpAsmInterface.td",
-        "@llvm-project//mlir:include/mlir/IR/RegionKindInterface.td",
-        "@llvm-project//mlir:include/mlir/IR/SymbolInterfaces.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/CallInterfaces.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/ControlFlowInterfaces.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/SideEffectInterfaces.td",
+        ":TestOpTdFiles",
     ],
     test = True,
 )
@@ -90,11 +98,34 @@ gentbl(
     test = True,
 )
 
+gentbl(
+    name = "TestTypeDefsIncGen",
+    strip_include_prefix = "lib/Dialect/Test",
+    tbl_outs = [
+        (
+            "-gen-typedef-decls",
+            "lib/Dialect/Test/TestTypeDefs.h.inc",
+        ),
+        (
+            "-gen-typedef-defs",
+            "lib/Dialect/Test/TestTypeDefs.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "lib/Dialect/Test/TestTypeDefs.td",
+    td_srcs = [
+        ":TestOpTdFiles",
+    ],
+    test = True,
+)
+
 cc_library(
     name = "TestDialect",
     srcs = [
         "lib/Dialect/Test/TestDialect.cpp",
         "lib/Dialect/Test/TestPatterns.cpp",
+        "lib/Dialect/Test/TestTraits.cpp",
+        "lib/Dialect/Test/TestTypes.cpp",
     ],
     hdrs = [
         "lib/Dialect/Test/TestDialect.h",
@@ -106,6 +137,7 @@ cc_library(
     deps = [
         ":TestInterfacesIncGen",
         ":TestOpsIncGen",
+        ":TestTypeDefsIncGen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ControlFlowInterfaces",
         "@llvm-project//mlir:DerivedAttributeOpInterface",

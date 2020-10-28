@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_int8_calibrator.h"
@@ -91,6 +92,8 @@ struct EngineInfo {
   EngineInfo()
       : engine_type(EngineType::TRTStatic),
         max_workspace_size_bytes(0),
+        max_batch_size(absl::nullopt),
+        maximum_cached_engines(0),
         precision_mode(TrtPrecisionMode::FP32),
         use_calibration(true),
         allow_build_at_runtime(true) {}
@@ -107,6 +110,7 @@ struct EngineInfo {
   enum class EngineType { TRTStatic = 0, TRTDynamic = 1 };
   EngineType engine_type;
   int64 max_workspace_size_bytes;
+  absl::optional<int> max_batch_size;
   int maximum_cached_engines;
   TrtPrecisionMode precision_mode;
   bool use_calibration;
@@ -515,22 +519,15 @@ class Converter {
 
   // Transpose 'input_tensor' with given permutation 'order_with_batch_dim' to
   // 'output_tensor'. The permutation 'order_with_batch_dim' contains the batch
-  // dimension which should always be 0.
+  // dimension which should always be 0. If this is for adding a transpose layer
+  // to support the conversion of 'node_def', callers need to provide a
+  // non-empty 'sub_op_name' appended to the name of 'node_def' to avoid layer
+  // name conflicts.
   Status TransposeTensor(nvinfer1::ITensor* input_tensor,
                          const std::vector<int>& order_with_batch_dim,
-                         absl::string_view name,
-                         nvinfer1::ITensor** output_tensor);
-
-  // Converts 'input' into 'tensor' with shape specified by 'dims' (which
-  // doesn't contain the batch dimension).
-  //
-  // If validation_only is true, it doesn't do the conversion but only do some
-  // minimum validation for the eligibility of the conversion, and *tensor will
-  // be set to nullptr.
-  Status PrepareTensorForShape(const TRT_TensorOrWeights& input,
-                               const nvinfer1::Dims& dims,
-                               const bool validation_only,
-                               nvinfer1::ITensor** tensor);
+                         nvinfer1::ITensor** output_tensor,
+                         const NodeDef& node_def,
+                         absl::string_view sub_op_name = "");
 
   // Reshapes a dynamic shape tensor by removing or adding dimensions of size 1,
   // and/or permuting the dimensions. The new shape is derived from the shape of
@@ -575,12 +572,14 @@ class Converter {
   Status DynamicReshape(nvinfer1::ITensor* input,
                         std::vector<std::pair<int, int>> slices,
                         OpConverterParams* params, nvinfer1::ITensor** output,
-                        std::vector<int> size_for_added_dims = {});
+                        std::vector<int> size_for_added_dims = {},
+                        absl::optional<int> op_instance = absl::nullopt);
 
   // Inserts a singleton dimension at axis for a dynamic shape tensor.
   Status DynamicExpandDims(nvinfer1::ITensor* input, const nvinfer1::Dims& dims,
                            int axis, OpConverterParams* params,
-                           nvinfer1::ITensor** output);
+                           nvinfer1::ITensor** output,
+                           absl::optional<int> op_instance = absl::nullopt);
 
   // Helper function to add a squeeze op to the network.
   //
@@ -593,6 +592,10 @@ class Converter {
   // 'dims', and returns the output ITensor.
   nvinfer1::ITensor* CreateConstantLayer(const TRT_ShapedWeights& weights,
                                          const nvinfer1::Dims& dims);
+
+  // Gets the min and max value in a TRT_ShapedWeights
+  Status GetWeightRange(const TRT_ShapedWeights& weights, float* out_min,
+                        float* out_max) const;
 
  private:
   Converter(TrtPrecisionMode precision_mode, bool use_calibration,
@@ -617,10 +620,6 @@ class Converter {
   void RegisterOpConverters();
 
   void PropagateQuantizationRanges();
-
-  // Gets the min and max value in a TRT_ShapedWeights
-  Status GetWeightRange(const TRT_ShapedWeights& weights, float* out_min,
-                        float* out_max) const;
 
   // Registered op converters by op type.
   std::unordered_map<string, OpConverter> op_registry_;
@@ -667,9 +666,28 @@ class Converter {
   // acceptable by TRT.
   int batch_size_ = -1;
 
+  // Assign a ID to each constant layer we create, so that we can assign a
+  // unique name to the layer.
+  int next_constant_layer_id_ = 0;
+
   friend class ConverterTest;
   friend class OpConverterTest;
 };
+
+// Converts 'input' of 'node_def' into 'tensor' with shape specified by 'dims'
+// (which doesn't contain the batch dimension).
+//
+// If validation_only is true, it doesn't do the conversion but only do some
+// minimum validation for the eligibility of the conversion, and *tensor will
+// be set to nullptr.
+// If validation_only is false converter must not be nullptr.
+Status PrepareTensorForShape(Converter* converter,
+                             const TRT_TensorOrWeights& input,
+                             const nvinfer1::Dims& dims,
+                             const bool validation_only,
+                             nvinfer1::ITensor** tensor,
+                             const NodeDef& node_def,
+                             absl::optional<int> op_instance = absl::nullopt);
 
 // Return OK if the broadcast scheme is supported and compute the shapes after
 // broadcasting. check_feasibility can be set to false in cases where dimensions

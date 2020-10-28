@@ -23,8 +23,8 @@ import collections
 import contextlib
 import copy
 import weakref
-from absl import logging
 
+from absl import logging
 import numpy as np
 
 from tensorflow.compiler.xla.experimental.xla_sharding import xla_sharding
@@ -125,7 +125,7 @@ class TPUStrategyV2(distribute_lib.Strategy):
   `strategy.run` is called inside a `tf.function` if eager
   behavior is enabled. See more details in https://www.tensorflow.org/guide/tpu.
 
-  `experimental_distribute_datasets_from_function` and
+  `distribute_datasets_from_function` and
   `experimental_distribute_dataset` APIs can be used to distribute the dataset
   across the TPU workers when writing your own training loop. If you are using
   `fit` and `compile` methods available in `tf.keras.Model`, then Keras will
@@ -144,7 +144,7 @@ class TPUStrategyV2(distribute_lib.Strategy):
   ...   y = np.random.randint(2, size=(2, 1))
   ...   dataset = tf.data.Dataset.from_tensor_slices((x, y))
   ...   return dataset.repeat().batch(1, drop_remainder=True)
-  >>> dist_dataset = strategy.experimental_distribute_datasets_from_function(
+  >>> dist_dataset = strategy.distribute_datasets_from_function(
   ...     dataset_fn)
   >>> iterator = iter(dist_dataset)
 
@@ -190,7 +190,7 @@ class TPUStrategyV2(distribute_lib.Strategy):
   ...   # Add operation will be executed on logical device 0.
   ...   output = strategy.experimental_assign_to_logical_device(output, 0)
   ...   return output
-  >>> dist_dataset = strategy.experimental_distribute_datasets_from_function(
+  >>> dist_dataset = strategy.distribute_datasets_from_function(
   ...     dataset_fn)
   >>> iterator = iter(dist_dataset)
   >>> strategy.run(step_fn, args=(next(iterator),))
@@ -229,7 +229,7 @@ class TPUStrategyV2(distribute_lib.Strategy):
     `tf.distribute.DistributedValues`, such as those produced by a
     `tf.distribute.DistributedDataset` from
     `tf.distribute.Strategy.experimental_distribute_dataset` or
-    `tf.distribute.Strategy.experimental_distribute_datasets_from_function`,
+    `tf.distribute.Strategy.distribute_datasets_from_function`,
     when `fn` is executed on a particular replica, it will be executed with the
     component of `tf.distribute.DistributedValues` that correspond to that
     replica.
@@ -741,6 +741,9 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     # Flag to turn on VariablePolicy
     self._use_var_policy = False
 
+    # Flag to enable TF2 SPMD
+    self._use_spmd_for_xla_partitioning = False
+
   def _validate_colocate_with_variable(self, colocate_with_variable):
     distribute_utils. validate_colocate(colocate_with_variable, self)
 
@@ -752,7 +755,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         dataset,
         input_workers,
         self._container_strategy(),
-        split_batch_by=self._num_replicas_in_sync)
+        num_replicas_in_sync=self._num_replicas_in_sync)
 
   def _make_input_fn_iterator(
       self,
@@ -802,6 +805,13 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
             "distribution function.".format(path, type(spec)))
 
   def _experimental_distribute_dataset(self, dataset, options):
+    if (options and options.experimental_replication_mode ==
+        distribute_lib.InputReplicationMode.PER_REPLICA):
+      raise NotImplementedError(
+          "InputReplicationMode.PER_REPLICA "
+          "is only supported in "
+          "`experimental_distribute_datasets_from_function`."
+      )
     if options is None or options.experimental_prefetch_to_device:
       self._check_spec(dataset.element_spec)
 
@@ -809,10 +819,16 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         dataset,
         self._get_input_workers(options),
         self._container_strategy(),
-        split_batch_by=self._num_replicas_in_sync)
+        num_replicas_in_sync=self._num_replicas_in_sync)
 
-  def _experimental_distribute_datasets_from_function(self, dataset_fn,
-                                                      options):
+  def _distribute_datasets_from_function(self, dataset_fn, options):
+    if (options and options.experimental_replication_mode ==
+        distribute_lib.InputReplicationMode.PER_REPLICA):
+      raise NotImplementedError(
+          "InputReplicationMode.PER_REPLICA "
+          "is only supported in "
+          " `experimental_distribute_datasets_from_function` "
+          "of tf.distribute.MirroredStrategy")
     input_workers = self._get_input_workers(options)
     input_contexts = []
     num_workers = input_workers.num_workers
@@ -887,8 +903,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
           run_fn,
           replicate_inputs,
           device_assignment=self._device_assignment,
-          xla_options=tpu.XLAOptions(use_spmd_for_xla_partitioning=False))
-
+          xla_options=tpu.XLAOptions(use_spmd_for_xla_partitioning=self
+                                     ._use_spmd_for_xla_partitioning))
       # If run_fn has tensor outputs, tpu.replicate returns a list of list. We
       # will flatten it in this case. If run_fn has no tensor outputs,
       # tpu.replicate returns a list of no_ops, we will keep the output as it
@@ -1022,7 +1038,54 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         distribute_utils.TPU_VARIABLE_CLASS_MAPPING,
         distribute_utils.TPU_VARIABLE_POLICY_MAPPING, **kwargs)
 
-  def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
+  def _gather_to_implementation(self, value, destinations, axis, options):
+    if not isinstance(value, values.DistributedValues):
+      return value
+
+    value_list = value.values
+    # pylint: disable=protected-access
+    if isinstance(
+        value,
+        values.DistributedVariable) and value._packed_variable is not None:
+      value_list = tuple(
+          value._packed_variable.on_device(d)
+          for d in value._packed_variable.devices)
+    # pylint: enable=protected-access
+
+    # Currently XLA op by op mode has a limit for the number of inputs for a
+    # single op, thus we break one `add_n` op into a group of `add_n` ops to
+    # work around the constraint.
+    if len(value.values) <= _XLA_OP_BY_OP_INPUTS_LIMIT:
+      output = array_ops.concat(value_list, axis=axis)
+    else:
+      output = array_ops.concat(
+          value_list[:_XLA_OP_BY_OP_INPUTS_LIMIT], axis=axis)
+      for i in range(_XLA_OP_BY_OP_INPUTS_LIMIT, len(value_list),
+                     _XLA_OP_BY_OP_INPUTS_LIMIT - 1):
+        output = array_ops.concat(
+            [output] + value_list[i:i + _XLA_OP_BY_OP_INPUTS_LIMIT - 1],
+            axis=axis)
+
+    output = self._broadcast_output(destinations, output)
+    return output
+
+  def _broadcast_output(self, destinations, output):
+    devices = cross_device_ops_lib.get_devices_from(destinations)
+
+    if len(devices) == 1:
+      # If necessary, copy to requested destination.
+      dest_canonical = device_util.canonicalize(devices[0])
+      host_canonical = device_util.canonicalize(self._host_device)
+
+      if dest_canonical != host_canonical:
+        with ops.device(dest_canonical):
+          output = array_ops.identity(output)
+    else:
+      output = cross_device_ops_lib.simple_broadcast(output, destinations)
+
+    return output
+
+  def _reduce_to(self, reduce_op, value, destinations, options):
     if (isinstance(value, values.DistributedValues) or
         tensor_util.is_tensor(value)
        ) and tpu_values.enclosing_tpu_context() is not None:
@@ -1066,19 +1129,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     if reduce_op == reduce_util.ReduceOp.MEAN:
       output *= (1. / len(value_list))
 
-    devices = cross_device_ops_lib.get_devices_from(destinations)
-
-    if len(devices) == 1:
-      # If necessary, copy to requested destination.
-      dest_canonical = device_util.canonicalize(devices[0])
-      host_canonical = device_util.canonicalize(self._host_device)
-
-      if dest_canonical != host_canonical:
-        with ops.device(dest_canonical):
-          output = array_ops.identity(output)
-    else:
-      output = cross_device_ops_lib.simple_broadcast(output, destinations)
-
+    output = self._broadcast_output(destinations, output)
     return output
 
   def _update(self, var, fn, args, kwargs, group):
@@ -1313,7 +1364,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
             device_assignment=self._device_assignment,
             maximum_shapes=maximum_shapes,
             padding_spec=padding_spec,
-            xla_options=tpu.XLAOptions(use_spmd_for_xla_partitioning=False))
+            xla_options=tpu.XLAOptions(use_spmd_for_xla_partitioning=self
+                                       ._use_spmd_for_xla_partitioning))
 
       # Remove all no ops that may have been added during 'tpu.replicate()'
       if isinstance(result[0], list):
@@ -1346,6 +1398,9 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     # TPUStrategy.
     return False
 
+  def _get_local_replica_id(self, replica_id_in_sync_group):
+    return replica_id_in_sync_group
+
 
 class _TPUReplicaContext(distribute_lib.ReplicaContext):
   """Replication Context class for TPU Strategy."""
@@ -1371,6 +1426,65 @@ class _TPUReplicaContext(distribute_lib.ReplicaContext):
   def experimental_logical_device(self, logical_device_id):
     """Places variables and ops on the specified logical device."""
     return self.strategy.extended.experimental_logical_device(logical_device_id)
+
+  # TODO(wxinyi): Investigate whether to use cross_replica_sum to optimize it.
+  def all_gather(self, value, axis, experimental_hints=None):
+    del experimental_hints
+    for v in nest.flatten(value):
+      if isinstance(v, ops.IndexedSlices):
+        raise NotImplementedError("all_gather does not support IndexedSlices")
+
+    def _all_to_all(value, axis):
+      # The underlying AllToAllOp first do a split of the input value and then
+      # cross-replica communication and concatenation of the result. So we
+      # concatenate the local tensor here first.
+      inputs = array_ops.concat(
+          [value for _ in range(self.num_replicas_in_sync)], axis=0)
+      unordered_output = tpu_ops.all_to_all(
+          inputs,
+          concat_dimension=axis,
+          split_dimension=0,
+          split_count=self.num_replicas_in_sync)
+
+      # Re-order since xla.replica_id and ReplicaContext.replica_id mismatch.
+      # xla_id = xla.replica_id()
+      concat_replica_id = array_ops.concat([
+          array_ops.expand_dims_v2(self.replica_id_in_sync_group, 0)
+          for _ in range(self.num_replicas_in_sync)
+      ],
+                                           axis=0)
+      replica_ids = tpu_ops.all_to_all(
+          concat_replica_id,
+          concat_dimension=0,
+          split_dimension=0,
+          split_count=self.num_replicas_in_sync)
+
+      splited_unordered = array_ops.split(
+          unordered_output,
+          num_or_size_splits=self.num_replicas_in_sync,
+          axis=axis)
+      sorted_with_extra_dim = math_ops.unsorted_segment_sum(
+          array_ops.concat([
+              array_ops.expand_dims(replica, axis=0)
+              for replica in splited_unordered
+          ],
+                           axis=0),
+          replica_ids,
+          num_segments=self.num_replicas_in_sync)
+
+      splited_with_extra_dim = array_ops.split(
+          sorted_with_extra_dim,
+          num_or_size_splits=self.num_replicas_in_sync,
+          axis=0)
+      squeezed = [
+          array_ops.squeeze(replica, axis=0)
+          for replica in splited_with_extra_dim
+      ]
+      result = array_ops.concat(squeezed, axis=axis)
+      return result
+
+    ys = [_all_to_all(t, axis=axis) for t in nest.flatten(value)]
+    return nest.pack_sequence_as(value, ys)
 
 
 def _set_last_step_outputs(ctx, last_step_tensor_outputs):

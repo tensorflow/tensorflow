@@ -38,7 +38,7 @@ py_library(
         "//tensorflow/python/keras/datasets",
         "//tensorflow/python/keras/feature_column",
         "//tensorflow/python/keras/layers",
-        "//tensorflow/python/keras/mixed_precision/experimental:mixed_precision_experimental",
+        "//tensorflow/python/keras/mixed_precision:mixed_precision_experimental",
         "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/keras/premade",
         "//tensorflow/python/keras/preprocessing",
@@ -104,7 +104,9 @@ py_library(
     name = "backend_config",
     srcs = ["backend_config.py"],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow/python:util"],
+    deps = [
+        "//tensorflow/python:util",
+    ],
 )
 
 # TODO(scottzhu): Cleanup this target and point all the user to keras/engine.
@@ -128,6 +130,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":backend",
+        "//tensorflow/python/keras/layers:advanced_activations",
         "//tensorflow/python/keras/utils:engine_utils",
     ],
 )
@@ -150,7 +153,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":backend",
-        "//tensorflow/python/distribute:distributed_file_utils",
+        "//tensorflow/python/keras/distribute:distributed_file_utils",
         "//tensorflow/python/keras/distribute:worker_training_state",
         "//tensorflow/python/keras/protobuf:projector_config_proto_py",
         "//tensorflow/python/keras/utils:engine_utils",
@@ -287,6 +290,7 @@ py_library(
 py_library(
     name = "optimizers",
     srcs = [
+        "optimizer_v1.py",
         "optimizers.py",
     ],
     srcs_version = "PY2AND3",
@@ -454,6 +458,7 @@ tf_py_test(
     srcs = ["metrics_functional_test.py"],
     python_version = "PY3",
     deps = [
+        ":combinations",
         ":keras",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
@@ -641,4 +646,68 @@ tf_py_test(
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
+)
+
+py_library(
+    name = "expect_absl_installed",
+    # This is a dummy rule used as a absl dependency in open-source.
+    # We expect absl to already be installed on the system, e.g. via
+    # `pip install absl`
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "expect_h5py_installed",
+    # This is a dummy rule used as a h5 dependency in open-source.
+    # We expect h5py to already be installed on the system, e.g. via
+    # `pip install h5py'
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "expect_numpy_installed",
+    # This is a dummy rule used as a numpy dependency in open-source.
+    # We expect numpy to already be installed on the system, e.g. via
+    # `pip install numpy`
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "expect_pandas_installed",
+    # This is a dummy rule used as a pandas dependency in open-source.
+    # We expect h5py to already be installed on the system, e.g. via
+    # `pip install h5py'
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "expect_six_installed",
+    # This is a dummy rule used as a six dependency in open-source.
+    # We expect six to already be installed on the system, e.g. via
+    # `pip install six`
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "expect_tensorboard_installed",
+    # This is a dummy rule used as a tensorboard dependency in open-source.
+    # We expect tensorboard to already be installed on the system, e.g. via
+    # `pip install tensorboard`.
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "expect_tensorflow_installed",
+    # This is a dummy rule used as a tensorflow dependency in open-source.
+    # We expect tensorflow to already be installed on the system, e.g. via
+    # `pip install tensorflow` or `pip install tensorflow_gpu`
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "expect_tensorflow_estimator_installed",
+    # This is a dummy rule used as a estimator dependency in open-source.
+    # We expect tensorflow estimator to already be installed on the system, e.g. via
+    # `pip install tensorflow` or `pip install tensorflow_gpu`
+    visibility = ["//visibility:public"],
 )

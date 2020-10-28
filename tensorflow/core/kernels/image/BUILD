@@ -133,9 +133,9 @@ IMAGE_DEPS = [
     "//tensorflow/core:jpeg_internal",
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
-    "//tensorflow/core:png_internal",
+    "//tensorflow/core/lib/png:png_io",
     "//tensorflow/core:protos_all_cc",
-    "//tensorflow/core/kernels:bounds_check",
+    "//tensorflow/core/framework:bounds_check",
     "//tensorflow/core/kernels:eigen_helpers",
     "//tensorflow/core/util/tensor_bundle",
     "//tensorflow/core/util:image_resizer_state",
@@ -326,7 +326,6 @@ tf_cc_tests(
         "non_max_suppression_op_test.cc",
         "resize_area_op_test.cc",
         "resize_bicubic_op_test.cc",
-        "resize_nearest_neighbor_op_test.cc",
         "scale_and_translate_op_test.cc",
     ],
     linkopts = select({
@@ -349,9 +348,15 @@ tf_cc_test(
 )
 
 tf_cuda_cc_test(
-    name = "resize_bilinear_op_test",
-    srcs = ["resize_bilinear_op_test.cc"],
-    tags = ["no_cuda_on_cpu_tap"],
+    name = "resize_ops_test",
+    srcs = [
+        "resize_bilinear_op_test.cc",
+        "resize_nearest_neighbor_op_test.cc",
+    ],
+    tags = [
+        "no_cuda_asan",  # TODO(b/171334997): re-enable
+        "no_cuda_on_cpu_tap",
+    ],
     deps = [
         ":image",
         ":sampling_kernels",
@@ -385,7 +390,10 @@ tf_cuda_cc_test(
 tf_cuda_cc_test(
     name = "non_max_suppression_op_gpu_test",
     srcs = ["non_max_suppression_op_gpu_test.cc"],
-    tags = tf_cuda_tests_tags() + ["no_cuda_on_cpu_tap"],
+    tags = tf_cuda_tests_tags() + [
+        "no_cuda_asan",  # TODO(b/171263349): re-enable.
+        "no_cuda_on_cpu_tap",
+    ],
     deps = [
         ":image",
         "@com_google_absl//absl/strings",
@@ -416,10 +424,10 @@ cc_library(
     linkopts = ["-ldl"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:android_gif_internal",
-        "//tensorflow/core:android_jpeg_internal",
-        "//tensorflow/core:android_png_internal",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core:portable_jpeg_internal",
         "//tensorflow/core:portable_tensorflow_lib_lite",
+        "//tensorflow/core/lib/png:png_io",
     ],
     alwayslink = 1,
 )

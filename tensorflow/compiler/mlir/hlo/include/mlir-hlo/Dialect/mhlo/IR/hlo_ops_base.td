@@ -18,6 +18,13 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 
+def HLO_Dialect : Dialect {
+  let name = "mhlo";
+  let cppNamespace = "::mlir::mhlo";
+}
+
+include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.td"
+
 def HLO_Pred : TypeAlias<I1, "pred (AKA boolean or 1-bit integer)">;
 
 // TODO(hinsu): Use signed integers instead of signless integer which is being
@@ -45,9 +52,7 @@ def HLO_Token : Type<CPred<"$_self.isa<TokenType>()">, "token">;
 def HLO_IntTensor : TensorOf<[HLO_Int]>;
 
 // Any integer tensor type with rank 0 (i.e. representing a single integer).
-def HLO_ScalarIntTensor : ShapedContainerType<
-  [HLO_Int], And<[IsTensorTypePred, HasAnyRankOfPred<[0]>]>,
-  "a 0-dim integer tensor">;
+def HLO_ScalarIntTensor : 0DTensorOf<[HLO_Int]>;
 
 // Any floating-point tensor types
 def HLO_FpTensor : TensorOf<[AnyFloat]>;
@@ -67,10 +72,7 @@ def HLO_TensorOrTokenOrTuple : AnyTypeOf<[HLO_Tensor, HLO_Token, HLO_Tuple]>;
 def HLO_DimensionValue : AnyTypeOf<[Index, HLO_Pred, HLO_Int]>;
 
 // Dynamic representation of a shape vector as a tensor.
-def HLO_DimensionTensor : ShapedContainerType<
-    [HLO_DimensionValue],
-    And<[IsTensorTypePred, HasAnyRankOfPred<[1]>]>,
-    "a 1D tensor of dimensions">;
+def HLO_DimensionTensor : 1DTensorOf<[HLO_DimensionValue]>;
 
 // In general, static shaped tensor constraints should be avoided unless
 // it is for a legacy op which is only correct with static shapes.
@@ -126,6 +128,17 @@ class BASE_HLO_AbsOp {
 
   string description = [{
     Returns `abs(operand)` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
+class BASE_HLO_CbrtOp {
+  string summary = "Cubic root operator";
+
+  string description = [{
+    Returns element-wise cubic root of the operand.
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
@@ -608,15 +621,6 @@ class BASE_HLO_CaseOp {
 // XLA parallelism related op definitions.
 //===----------------------------------------------------------------------===//
 
-// Represents a unique identifier for each Send/Recv instruction pair or
-// optionally for collective instructions (AllReduce, CollectivePermute,
-// AllToAll). Non-positive channel_id handle is equivalent to no channel id.
-class ChannelHandle<Dialect dialect> : StructAttr<"ChannelHandle", dialect, [
-                StructFieldAttr<"handle", I64Attr>,
-                StructFieldAttr<"type", I64Attr>]> {
-  let description = "two 64-bit integers 'handle' and 'type'";
-}
-
 class BASE_HLO_ReplicaIdOp {
   string summary = "ReplicaId operator";
 
@@ -706,6 +710,7 @@ def HLO_PrecisionConfigAttr:
     OptionalAttr<
           TypedArrayAttrBase<HLO_PrecisionAttr, "Precision Config attribute">>;
 
+
 //===----------------------------------------------------------------------===//
 // Fast Fourier Transform Type enum definitions.
 //===----------------------------------------------------------------------===//
@@ -744,11 +749,30 @@ def HLO_ComparisonDirectionAttr : StrEnumAttr<"ComparisonDirection",
       HLO_COMPARISON_DIRECTION_LT
     ]>;
 
+def HLO_DEFAULT_COMPARISON_TYPE : NativeCodeCall<"StringAttr()">;
+def HLO_COMPARISON_TYPE_FLOAT : StrEnumAttrCase<"FLOAT">;
+def HLO_COMPARISON_TYPE_FLOAT_TOTAL_ORDER : StrEnumAttrCase<"TOTALORDER">;
+def HLO_COMPARISON_TYPE_SIGNED : StrEnumAttrCase<"SIGNED">;
+def HLO_COMPARISON_TYPE_UNSIGNED : StrEnumAttrCase<"UNSIGNED">;
+
+def HLO_ComparisonTypeAttr : StrEnumAttr<"ComparisonType",
+    "Which comparison type to use.",
+    [
+      HLO_COMPARISON_TYPE_FLOAT,
+      HLO_COMPARISON_TYPE_FLOAT_TOTAL_ORDER,
+      HLO_COMPARISON_TYPE_SIGNED,
+      HLO_COMPARISON_TYPE_UNSIGNED
+    ]>;
+
+
 class BASE_HLO_CompareOp {
   string summary = "Comparison operator";
 
   string description = [{
-    Compares `lhs` and `rhs` elementwise according to `comparison_direction`.
+    Compares `lhs` and `rhs` elementwise according to `comparison_direction`
+    and `compare_type`. If unspecified, `compare_type` is FLOAT for float element
+    types, SIGNED for signed element types and UNSIGNED for unsigned element
+    types.
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_comparison_operations.
@@ -1001,6 +1025,27 @@ class BASE_HLO_ConcatenateOp {
    }];
 }
 
+//===----------------------------------------------------------------------===//
+// Common convolution attributes
+//===----------------------------------------------------------------------===//
+
+class ConvolutionAttributes<Dialect dialect> {
+  dag attributes = (ins
+    // Default value: one for each of the spatial dimension.
+    OptionalAttr<I64ElementsAttr>:$window_strides,
+    // Default value: zero for each of the spatial dimension.
+    OptionalAttr<I64ElementsAttr>:$padding,
+    // Default value: one for each of the spatial dimension.
+    OptionalAttr<I64ElementsAttr>:$lhs_dilation,
+    // Default value: one for each of the spatial dimension.
+    OptionalAttr<I64ElementsAttr>:$rhs_dilation,
+    ConvDimensionNumbers:$dimension_numbers,
+    I64Attr:$feature_group_count,
+    I64Attr:$batch_group_count,
+    HLO_PrecisionConfigAttr:$precision_config
+  );
+}
+
 class BASE_HLO_ConvOp {
   string summary = "Convolution operator";
 
@@ -1120,15 +1165,6 @@ class BASE_HLO_ReshapeOp {
 
     See https://www.tensorflow.org/xla/operation_semantics#reshape.
   }];
-}
-
-class ScatterDimensionNumbers<Dialect dialect> : StructAttr<
-    "ScatterDimensionNumbers", dialect, [
-      StructFieldAttr<"update_window_dims", I64ElementsAttr>,
-      StructFieldAttr<"inserted_window_dims", I64ElementsAttr>,
-      StructFieldAttr<"scatter_dims_to_operand_dims", I64ElementsAttr>,
-      StructFieldAttr<"index_vector_dim", I64Attr>]> {
-  let description = "Structure of dimension information for scatter";
 }
 
 class BASE_HLO_ScatterOp {
@@ -1338,6 +1374,19 @@ class BASE_HLO_WhileOp {
     true.
 
     See https://www.tensorflow.org/xla/operation_semantics#while.
+  }];
+}
+
+class BASE_HLO_BitcastOp {
+  string summary = "Bitcast operator";
+
+  string description = [{
+    This op changes the shape of the input in the way that the physical
+    arrangement of elements are unchanged.
+
+    However, the op needs layout information to make sense of "physical
+    arrangement of elements". Layout support in MHLO is currently under
+    exploration.
   }];
 }
 

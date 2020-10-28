@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -56,6 +57,9 @@ Status RegisterGradients(GradientRegistry* registry) {
 }
 
 TEST_P(GradientCheckerTest, TestGradCheckMatMul) {
+  // Computing numerical gradients with TensorFloat-32 is numerically unstable
+  enable_tensor_float_32_execution(false);
+
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   AbstractContextPtr ctx;

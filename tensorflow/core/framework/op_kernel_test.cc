@@ -1152,5 +1152,18 @@ TEST(RegisteredKernels, GetRegisteredKernelsForOp) {
   EXPECT_EQ(kernel_list.kernel(0).device_type(), "CPU");
 }
 
+// EXTRACT_KERNEL_NAME_TO_STRING wraps TF_EXTRACT_KERNEL_NAME for testing
+// (it involves quite a bit of macro-magic).
+#define EXTRACT_KERNEL_NAME_TO_STRING_IMPL(name, kernel_builder, ...) name
+#define EXTRACT_KERNEL_NAME_TO_STRING(kernel_builder) \
+  TF_EXTRACT_KERNEL_NAME(EXTRACT_KERNEL_NAME_TO_STRING_IMPL, kernel_builder)
+
+TEST(RegisterKernelMacro, ExtractName) {
+  static constexpr char const* kName = "Foo";
+  static constexpr char const* kExtractedName =
+      EXTRACT_KERNEL_NAME_TO_STRING(Name(kName).Label("Label"));
+  EXPECT_THAT(kExtractedName, ::testing::StrEq(kName));
+}
+
 }  // namespace
 }  // namespace tensorflow

@@ -163,6 +163,16 @@ class DataServiceDispatcherImpl {
   void JobGcThread();
   // Scans for old jobs and marks them as finished.
   Status GcOldJobs() EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Gets a `DatasetDef` from `dataset_store_` for the given dataset id, and
+  // stores it in `dataset_def`.
+  Status GetDatasetDef(int64 dataset_id,
+                       std::shared_ptr<const DatasetDef>& dataset_def)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Gets a `DatasetDef` from `dataset_store_` for the given dataset, and
+  // stores it in `dataset_def`.
+  Status GetDatasetDef(const DispatcherState::Dataset& dataset,
+                       std::shared_ptr<const DatasetDef>& dataset_def)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   const experimental::DispatcherConfig& config_;
   Env* env_;

@@ -104,14 +104,6 @@ absl::Status TensorLinearDescriptor::PerformReadSelector(
   }
 }
 
-absl::Status TensorLinearDescriptor::CreateGPUObject(
-    CLContext* context, GPUObjectPtr* result) const {
-  LinearStorage gpu_storage;
-  RETURN_IF_ERROR(gpu_storage.CreateFromTensorLinearDescriptor(*this, context));
-  *result = absl::make_unique<LinearStorage>(std::move(gpu_storage));
-  return absl::OkStatus();
-}
-
 void TensorLinearDescriptor::UploadLinearData(
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src,
     int aligned_size) {
@@ -204,8 +196,9 @@ absl::Status LinearStorage::CreateFromTensorLinearDescriptor(
     return CreateCLBuffer(context->context(), depth_ * float4_size, read_only,
                           data_ptr, &memory_);
   } else {
-    return CreateFloatRGBAImage2D(context->context(), depth_, 1,
-                                  desc.element_type, data_ptr, &memory_);
+    return CreateRGBAImage2D(context->context(), depth_, 1,
+                             DataTypeToChannelType(desc.element_type), data_ptr,
+                             &memory_);
   }
 }
 

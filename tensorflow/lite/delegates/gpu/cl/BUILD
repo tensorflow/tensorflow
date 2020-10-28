@@ -52,38 +52,14 @@ cc_library(
     srcs = ["arguments.cc"],
     hdrs = ["arguments.h"],
     deps = [
-        ":cl_device",
         ":gpu_object",
-        ":opencl_wrapper",
-        ":tensor_type",
-        ":util",
+        ":serialization_cc_fbs",
         "//tensorflow/lite/delegates/gpu/common:access_type",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_test(
-    name = "arguments_test",
-    srcs = ["arguments_test.cc"],
-    linkstatic = True,
-    tags = tf_gpu_tests_tags() + [
-        "linux",
-        "local",
-    ],
-    deps = [
-        ":arguments",
-        ":buffer",
-        ":device_info",
-        ":gpu_object",
-        ":tensor",
-        ":tensor_type",
-        "//tensorflow/lite/delegates/gpu/common:data_type",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -128,6 +104,48 @@ cc_library(
         ":environment",
         ":opencl_wrapper",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "cl_arguments",
+    srcs = ["cl_arguments.cc"],
+    hdrs = ["cl_arguments.h"],
+    deps = [
+        ":arguments",
+        ":buffer",
+        ":cl_context",
+        ":device_info",
+        ":gpu_object",
+        ":linear_storage",
+        ":tensor",
+        ":tensor_type",
+        ":texture2d",
+        "//tensorflow/lite/delegates/gpu/common:access_type",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common:util",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_test(
+    name = "cl_arguments_test",
+    srcs = ["cl_arguments_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":arguments",
+        ":buffer",
+        ":cl_arguments",
+        ":device_info",
+        ":gpu_object",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -286,7 +304,7 @@ cc_library(
         ":cl_command_queue",
         ":cl_context",
         ":cl_device",
-        ":cl_kernel",
+        ":device_info",
         ":precision",
         ":program_cache",
         ":tensor",
@@ -358,6 +376,7 @@ cc_library(
     deps = [
         ":cl_context",
         ":opencl_wrapper",
+        ":serialization_cc_fbs",
         "//tensorflow/lite/delegates/gpu/common:access_type",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:status",
@@ -366,19 +385,30 @@ cc_library(
 
 cc_library(
     name = "inference_context",
-    srcs = ["inference_context.cc"],
-    hdrs = ["inference_context.h"],
+    srcs = [
+        "inference_context.cc",
+        "serialization.cc",
+    ],
+    hdrs = [
+        "inference_context.h",
+        "serialization.h",
+    ],
     deps = [
+        ":arguments",
         ":buffer",
         ":cl_command_queue",
+        ":cl_context",
         ":cl_device",
         ":environment",
         ":gpu_object",
+        ":linear_storage",
         ":model_hints",
         ":opencl_wrapper",
         ":precision",
+        ":serialization_cc_fbs",
         ":storage_type_util",
         ":tensor_type",
+        ":texture2d",
         "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
         "//tensorflow/lite/delegates/gpu/cl/selectors:operation_selector",
         "//tensorflow/lite/delegates/gpu/cl/selectors:special_selector",
@@ -396,6 +426,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/transformations:merge_padding_with",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -464,6 +495,14 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@farmhash_archive//:farmhash",
         "@flatbuffers",
+    ],
+)
+
+flatbuffer_cc_library(
+    name = "serialization_cc_fbs",
+    srcs = ["serialization.fbs"],
+    flatc_args = [
+        "--scoped-enums",
     ],
 )
 

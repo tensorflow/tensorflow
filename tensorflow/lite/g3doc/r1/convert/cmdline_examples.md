@@ -104,8 +104,8 @@ tflite_convert \
   --std_dev_values=127.7
 ```
 
-*If you're setting `--inference_type=QUANTIZED_UINT8` then update
-`--mean_values=128` and `--std_dev_values=127`*
+*If you're setting `--inference_type=UINT8` then update `--mean_values=128` and
+`--std_dev_values=127`*
 
 #### Convert a model with \"dummy-quantization\" into a quantized TensorFlow Lite model
 
@@ -134,8 +134,8 @@ tflite_convert \
   --default_ranges_max=6
 ```
 
-*If you're setting `--inference_type=QUANTIZED_UINT8` then update
-`--mean_values=128` and `--std_dev_values=127`*
+*If you're setting `--inference_type=UINT8` then update `--mean_values=128` and
+`--std_dev_values=127`*
 
 #### Convert a model with select TensorFlow operators.
 

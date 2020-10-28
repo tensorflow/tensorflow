@@ -1,6 +1,7 @@
 # Description:
 #    LLVM-based CPU backend for XLA.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/compiler/xla:xla.bzl", "ORC_JIT_MEMORY_MAPPER_TARGETS")
 load(
     "//third_party/mkl:build_defs.bzl",
@@ -9,9 +10,6 @@ load(
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_openmp_copts")
 load(":build_defs.bzl", "runtime_copts")
 load("//tensorflow/core/platform:build_config.bzl", "if_llvm_system_z_available")
@@ -47,8 +45,9 @@ cc_library(
 )
 
 filegroup(
-    name = "single_threaded_runtime_srcs",
+    name = "runtime_srcs",
     srcs = [
+        # Single-threaded support.
         "runtime_fp16.cc",
         "runtime_key_value_sort.cc",
         "runtime_pow.cc",
@@ -56,13 +55,20 @@ filegroup(
         "runtime_single_threaded_fft.cc",
         "runtime_single_threaded_matmul.cc",
         "runtime_topk.cc",
+    ] + [
+        # Multi-threaded support.
+        "runtime_conv2d.cc",
+        "runtime_fft.cc",
+        "runtime_matmul.cc",
+        "runtime_fork_join.cc",
     ],
     visibility = [":friends"],
 )
 
 filegroup(
-    name = "single_threaded_runtime_hdrs",
+    name = "runtime_hdrs",
     srcs = [
+        # Single-threaded support.
         "runtime_conv2d_impl.h",
         "runtime_fft_impl.h",
         "runtime_fp16.h",
@@ -72,6 +78,13 @@ filegroup(
         "runtime_single_threaded_fft.h",
         "runtime_single_threaded_matmul.h",
         "runtime_topk.h",
+    ] + [
+        # Multi-threaded support.
+        "runtime_conv2d.h",
+        "runtime_fft.h",
+        "runtime_fork_join.h",
+        "runtime_lightweight_check.h",
+        "runtime_matmul.h",
     ],
     visibility = [":friends"],
 )
@@ -93,7 +106,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:generic_transfer_manager",
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/stream_executor",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
@@ -206,7 +219,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:zero_sized_hlo_elimination",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Object",
         "@llvm-project//llvm:Support",
@@ -323,11 +336,11 @@ cc_library(
         "//tensorflow/compiler/xla/service:maybe_owning_device_memory",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:platform_port",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/stream_executor:device_memory_allocator",
@@ -489,7 +502,6 @@ cc_library(
         ":cpu_runtime",
         ":ir_emission_utils",
         ":mlir_emitter",
-        ":mlir_matmul_codegen_strategy",
         ":target_machine_features",
         ":tiled_dot_emitter",
         ":vector_support_library",
@@ -511,6 +523,7 @@ cc_library(
         "@llvm-project//mlir:EDSC",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgOps",
+        "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:StandardOps",
     ],
 )
@@ -554,6 +567,7 @@ cc_library(
         "@llvm-project//llvm:IPO",
         "@llvm-project//llvm:MC",
         "@llvm-project//llvm:Object",
+        "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
     ],
@@ -749,7 +763,6 @@ cc_library(
     name = "runtime_single_threaded_matmul",
     srcs = ["runtime_single_threaded_matmul.cc"],
     hdrs = ["runtime_single_threaded_matmul.h"],
-    compatible_with = get_compatible_with_cloud(),
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
@@ -1144,26 +1157,5 @@ cc_library(
         "@llvm-project//mlir:TargetLLVMIR",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorToLLVM",
-    ],
-)
-
-cc_library(
-    name = "mlir_matmul_codegen_strategy",
-    srcs = ["mlir_matmul_codegen_strategy.cc"],
-    hdrs = ["mlir_matmul_codegen_strategy.h"],
-    deps = [
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:Affine",
-        "@llvm-project//mlir:Analysis",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LinalgOps",
-        "@llvm-project//mlir:LinalgTransforms",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Transforms",
-        "@llvm-project//mlir:VectorOps",
-        "@llvm-project//mlir:VectorToSCF",
     ],
 )

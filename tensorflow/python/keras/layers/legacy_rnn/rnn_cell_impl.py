@@ -40,8 +40,8 @@ from tensorflow.python.keras import initializers
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.keras.layers.legacy_rnn import rnn_cell_wrapper_impl
+from tensorflow.python.keras.legacy_tf_layers import base as base_layer
 from tensorflow.python.keras.utils import tf_utils
-from tensorflow.python.layers import base as base_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import init_ops

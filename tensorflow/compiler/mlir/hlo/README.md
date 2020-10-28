@@ -22,7 +22,7 @@ upstream.
 
 ## QuickStart: building and testing
 
-These instructions work on Linux, you may have to adjust for your plaform.
+These instructions work on Linux, you may have to adjust for your platform.
 
 To build the code in this repository, you need a clone of the LLVM/MLIR git
 repository:
@@ -106,7 +106,7 @@ pipeline using MLIR:
 *   `mhlo`: "meta"-HLO dialect ; similar to `xla_hlo`, but with extensions for
     dynamic shape support.
 *   `lmhlo`: "late"-"meta"-HLO, it is the IR after buffer allocation is
-    performed. In XLA the buffer allocation is a side-datastructure which keeps
+    performed. In XLA the buffer allocation is a side-data structure which keeps
     track of these informations, while this separate dialect materializes it in
     the IR.
 
@@ -114,7 +114,7 @@ We describe these in more details below.
 
 ### HLO Client Dialect: `chlo`.
 
-*   It was originaly designed to map the
+*   It was originally designed to map the
     [XLA client APIs](https://www.tensorflow.org/xla/operation_semantics) (e.g.,
     ops supports implicit broadcast and roughly modeled on XlaBuilder API)
     modulo support for dynamic shapes and additional ops required to support

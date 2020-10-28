@@ -231,7 +231,8 @@ OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(
       absl::string_view tf_op_full_name;
       bool is_eager;
       event.ForEachStat([&](const XStatVisitor& stat) {
-        if (stat.Type() == StatType::kLevel0) {
+        if (stat.Type() == StatType::kLevel0 ||  // old way to deliver tf_op.
+            stat.Type() == StatType::kTfOp) {
           tf_op_full_name = stat.StrOrRefValue();
         } else if (stat.Type() == StatType::kIsEager) {
           is_eager = stat.IntValue();

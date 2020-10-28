@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/kernels/data/hash_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/path.h"
@@ -49,9 +50,21 @@ namespace data {
 
 namespace {
 // The name of the journal directory inside the dispatcher's working directory.
+// This name is load-bearing; do not change.
 constexpr char kJournalDir[] = "tf_data_dispatcher_journal";
 // The name of the datasets directory inside the dispatcher's working directory.
 constexpr char kDatasetsDir[] = "datasets";
+
+constexpr std::array<const char*, 8> kNodeNameSharingOps = {
+    "HashTable",
+    "HashTableV2",
+    "MutableHashTable",
+    "MutableHashTableV2",
+    "MutableDenseHashTable",
+    "MutableDenseHashTableV2",
+    "MutableHashTableOfTensors",
+    "MutableHashTableOfTensorsV2",
+};
 
 using Dataset = DispatcherState::Dataset;
 using Worker = DispatcherState::Worker;
@@ -81,6 +94,23 @@ Status CreateWorkerStub(const std::string& address, const std::string& protocol,
   auto channel = ::grpc::CreateCustomChannel(address, credentials, args);
   stub = WorkerService::NewStub(channel);
   return Status::OK();
+}
+
+void PrepareGraph(GraphDef* graph) {
+  for (NodeDef& node : *graph->mutable_node()) {
+    for (const auto& op : kNodeNameSharingOps) {
+      // Set `use_node_name_sharing` to `true` so that resources aren't deleted
+      // prematurely. Otherwise, resources may be deleted when their ops are
+      // deleted at the end of the GraphRunner::Run used by standalone::Dataset.
+      if (node.op() == op) {
+        (*node.mutable_attr())["use_node_name_sharing"].set_b(true);
+      }
+      if (!node.device().empty()) {
+        *node.mutable_device() = "";
+      }
+    }
+  }
+  StripDevicePlacement(graph->mutable_library());
 }
 }  // namespace
 
@@ -256,9 +286,8 @@ Status DataServiceDispatcherImpl::GetDatasetDef(
   mutex_lock l(mu_);
   std::shared_ptr<const Dataset> dataset;
   TF_RETURN_IF_ERROR(state_.DatasetFromId(request->dataset_id(), dataset));
-  std::string key = DatasetKey(dataset->dataset_id, dataset->fingerprint);
   std::shared_ptr<const DatasetDef> dataset_def;
-  TF_RETURN_IF_ERROR(dataset_store_->Get(key, dataset_def));
+  TF_RETURN_IF_ERROR(GetDatasetDef(*dataset, dataset_def));
   *response->mutable_dataset_def() = *dataset_def;
   return Status::OK();
 }
@@ -297,9 +326,8 @@ Status DataServiceDispatcherImpl::MakeSplitProvider(
     EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::shared_ptr<const Dataset> dataset;
   TF_RETURN_IF_ERROR(state_.DatasetFromId(dataset_id, dataset));
-  std::string key = DatasetKey(dataset->dataset_id, dataset->fingerprint);
   std::shared_ptr<const DatasetDef> dataset_def;
-  TF_RETURN_IF_ERROR(dataset_store_->Get(key, dataset_def));
+  TF_RETURN_IF_ERROR(GetDatasetDef(*dataset, dataset_def));
   standalone::Dataset::Params params;
   std::unique_ptr<standalone::Dataset> standalone_dataset;
   TF_RETURN_IF_ERROR(standalone::Dataset::FromGraph(
@@ -313,14 +341,17 @@ Status DataServiceDispatcherImpl::GetOrRegisterDataset(
     GetOrRegisterDatasetResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
   uint64 fingerprint;
-  const GraphDef& graph = request->dataset().graph();
-  TF_RETURN_IF_ERROR(HashGraph(graph, &fingerprint));
+  DatasetDef dataset_def = request->dataset();
+  GraphDef* graph = dataset_def.mutable_graph();
+  PrepareGraph(graph);
+  TF_RETURN_IF_ERROR(HashGraph(*graph, &fingerprint));
+
   mutex_lock l(mu_);
 #if defined(PLATFORM_GOOGLE)
   VLOG_LINES(4,
-             absl::StrCat("Registering dataset graph: ", graph.DebugString()));
+             absl::StrCat("Registering dataset graph: ", graph->DebugString()));
 #else
-  VLOG(4) << "Registering dataset graph: " << graph.DebugString();
+  VLOG(4) << "Registering dataset graph: " << graph->DebugString();
 #endif
   std::shared_ptr<const Dataset> dataset;
   Status s = state_.DatasetFromFingerprint(fingerprint, dataset);
@@ -335,7 +366,7 @@ Status DataServiceDispatcherImpl::GetOrRegisterDataset(
   }
 
   int64 id;
-  TF_RETURN_IF_ERROR(RegisterDataset(fingerprint, request->dataset(), id));
+  TF_RETURN_IF_ERROR(RegisterDataset(fingerprint, dataset_def, id));
   response->set_dataset_id(id);
   VLOG(3) << "Registered new dataset with id " << id;
   return Status::OK();
@@ -450,16 +481,6 @@ Status DataServiceDispatcherImpl::ValidateMatchingJob(
         "> but there is already an existing job with that name using "
         "processing mode <",
         actual, ">");
-  }
-  if (job->dataset_id != dataset_id) {
-    return errors::FailedPrecondition(
-        "Tried to create a job with name ", job_name, " for dataset ",
-        dataset_id,
-        ", but there is already an existing job with that name for dataset ",
-        job->dataset_id,
-        ". This either means that you are distributing two different datasets "
-        "under the same job_name, or that your dataset is being constructed "
-        "non-deterministically.");
   }
   return Status::OK();
 }
@@ -634,7 +655,14 @@ Status DataServiceDispatcherImpl::GetTasks(const GetTasksRequest* request,
   mutex_lock l(mu_);
   VLOG(3) << "Looking up tasks for job client id " << request->job_client_id();
   std::shared_ptr<const Job> job;
-  TF_RETURN_IF_ERROR(state_.JobForJobClientId(request->job_client_id(), job));
+  Status s = state_.JobForJobClientId(request->job_client_id(), job);
+  if (errors::IsNotFound(s) && !config_.fault_tolerant_mode()) {
+    return errors::NotFound(
+        "Unknown job client id ", request->job_client_id(),
+        ". The dispatcher is not configured to be fault tolerant, so this "
+        "could be caused by a dispatcher restart.");
+  }
+  TF_RETURN_IF_ERROR(s);
   std::vector<std::shared_ptr<const Task>> tasks;
   TF_RETURN_IF_ERROR(state_.TasksForJob(job->job_id, tasks));
   for (const auto& task : tasks) {
@@ -729,6 +757,21 @@ Status DataServiceDispatcherImpl::GcOldJobs() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     DCHECK(job->finished);
   }
   return Status::OK();
+}
+
+Status DataServiceDispatcherImpl::GetDatasetDef(
+    int64 dataset_id, std::shared_ptr<const DatasetDef>& dataset_def)
+    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  std::shared_ptr<const Dataset> dataset;
+  TF_RETURN_IF_ERROR(state_.DatasetFromId(dataset_id, dataset));
+  return GetDatasetDef(*dataset, dataset_def);
+}
+
+Status DataServiceDispatcherImpl::GetDatasetDef(
+    const Dataset& dataset, std::shared_ptr<const DatasetDef>& dataset_def)
+    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  std::string key = DatasetKey(dataset.dataset_id, dataset.fingerprint);
+  return dataset_store_->Get(key, dataset_def);
 }
 
 }  // namespace data

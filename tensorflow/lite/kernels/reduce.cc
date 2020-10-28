@@ -295,6 +295,11 @@ TfLiteStatus EvalMeanReferenceOps(TfLiteContext* context,
   op_params.axis_count = num_axis;
   ResolveAxis(GetTensorData<int>(op_context.axis), num_axis, &op_params);
   const TfLiteTensor* input = op_context.input;
+  // Return early when input shape has zero dim.
+  for (int i = 0; i < input->dims->size; ++i) {
+    if (input->dims->data[i] == 0) return kTfLiteOk;
+  }
+
   // TODO(b/139102329): Handle all the cases in the combined reference
   // method.
   if (op_context.params->keep_dims && NumDimensions(input) == 4 &&
@@ -371,14 +376,19 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_OK(context, ResizeTempSum(context, &op_context, temp_sum));
   }
 
+  // Return early when input shape has zero dim.
+  const TfLiteTensor* input = op_context.input;
+  for (int i = 0; i < input->dims->size; ++i) {
+    if (input->dims->data[i] == 0) return kTfLiteOk;
+  }
+
   if (kernel_type == kGenericOptimized) {
     // Use optimized ops if available.
-    switch (op_context.input->type) {
+    switch (input->type) {
       case kTfLiteInt8: {
         tflite::MeanParams op_params;
         op_params.axis_count = num_axis;
         ResolveAxis(GetTensorData<int>(op_context.axis), num_axis, &op_params);
-        const TfLiteTensor* input = op_context.input;
         if (op_context.params->keep_dims && NumDimensions(input) == 4 &&
             op_params.axis_count == 2 &&
             ((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
@@ -398,7 +408,6 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
         tflite::MeanParams op_params;
         op_params.axis_count = num_axis;
         ResolveAxis(GetTensorData<int>(op_context.axis), num_axis, &op_params);
-        const TfLiteTensor* input = op_context.input;
         if (op_context.params->keep_dims && NumDimensions(input) == 4 &&
             op_params.axis_count == 2 &&
             ((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
@@ -519,22 +528,28 @@ TfLiteStatus EvalLogic(TfLiteContext* context, TfLiteNode* node,
                       ResizeTempAxis(context, op_context, resolved_axis));
     TF_LITE_ENSURE_OK(context, ResizeOutputTensor(context, op_context));
   }
-  if (op_context->input->type == kTfLiteUInt8 ||
-      op_context->input->type == kTfLiteInt8) {
-    TF_LITE_ENSURE_EQ(context, op_context->input->params.scale,
+
+  const TfLiteTensor* input = op_context->input;
+  // Return early when input shape has zero dim.
+  for (int i = 0; i < input->dims->size; ++i) {
+    if (input->dims->data[i] == 0) return kTfLiteOk;
+  }
+
+  if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8) {
+    TF_LITE_ENSURE_EQ(context, input->params.scale,
                       op_context->output->params.scale);
-    TF_LITE_ENSURE_EQ(context, op_context->input->params.zero_point,
+    TF_LITE_ENSURE_EQ(context, input->params.zero_point,
                       op_context->output->params.zero_point);
   }
   TF_LITE_ENSURE(
       context,
       reference_ops::ReduceGeneric<T>(
-          GetTensorData<T>(op_context->input), op_context->input->dims->data,
-          op_context->input->dims->size, GetTensorData<T>(op_context->output),
-          op_context->output->dims->data, op_context->output->dims->size,
-          GetTensorData<int>(op_context->axis), num_axis,
-          op_context->params->keep_dims, GetTensorData<int>(temp_index),
-          GetTensorData<int>(resolved_axis), init_value, reducer));
+          GetTensorData<T>(input), input->dims->data, input->dims->size,
+          GetTensorData<T>(op_context->output), op_context->output->dims->data,
+          op_context->output->dims->size, GetTensorData<int>(op_context->axis),
+          num_axis, op_context->params->keep_dims,
+          GetTensorData<int>(temp_index), GetTensorData<int>(resolved_axis),
+          init_value, reducer));
   return kTfLiteOk;
 }
 
@@ -658,6 +673,11 @@ TfLiteStatus EvalSum(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_ENSURE_OK(context, ResizeOutputTensor(context, &op_context));
       TF_LITE_ENSURE_OK(context, ResizeTempSum(context, &op_context, temp_sum));
     }
+    // Return early when input shape has zero dim.
+    for (int i = 0; i < input->dims->size; ++i) {
+      if (input->dims->data[i] == 0) return kTfLiteOk;
+    }
+
     if (input->type == kTfLiteUInt8) {
       TF_LITE_ENSURE(
           context,

@@ -97,6 +97,8 @@ void CombineRunEnvironment(const RunEnvironment& src, RunEnvironment* dst) {
     dst->set_num_cores_per_replica(
         std::max(src.num_cores_per_replica(), dst->num_cores_per_replica()));
     *dst->mutable_topology() = src.topology();
+  } else if (dst->device_type().empty()) {
+    dst->set_device_type(src.device_type());
   }
   dst->set_task_count(src.task_count() + dst->task_count());
   (*dst->mutable_host_independent_job_info()) = src.host_independent_job_info();
@@ -157,6 +159,10 @@ void CombineOpStats(
 
   // Combine tf-function stats.
   CombineTfFunctionDb(src.tf_function_db(), dst->mutable_tf_function_db());
+
+  // Combine the mapping from core ID to details.
+  CombineCoreIdMap(src_host_id, src.core_id_to_details(),
+                   dst->mutable_core_id_to_details());
 }
 
 }  // namespace

@@ -38,6 +38,15 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "arguments",
+    srcs = ["arguments.cc"],
+    hdrs = ["arguments.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:status",
+    ],
+)
+
 objc_library(
     name = "buffer_convert",
     srcs = ["buffer_convert.mm"],
@@ -134,6 +143,7 @@ objc_library(
     deps = [
         ":common",
         ":compute_task_descriptor",
+        ":metal_arguments",
         ":runtime_options",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:shape",
@@ -149,6 +159,7 @@ objc_library(
     hdrs = ["compute_task_descriptor.h"],
     copts = DEFAULT_COPTS,
     deps = [
+        ":arguments",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:types",
@@ -211,6 +222,20 @@ ios_unit_test(
         "tflite_not_portable_android",
     ],
     deps = [":inference_context_test_lib"],
+)
+
+objc_library(
+    name = "metal_arguments",
+    srcs = ["metal_arguments.mm"],
+    hdrs = ["metal_arguments.h"],
+    copts = DEFAULT_COPTS,
+    sdk_frameworks = ["Metal"],
+    deps = [
+        ":arguments",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:util",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 cc_library(

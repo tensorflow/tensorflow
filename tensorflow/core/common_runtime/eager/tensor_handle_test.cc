@@ -39,7 +39,7 @@ TEST(TensorHandle_ShapeTest, AsyncShape) {
   auto ctx = new EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT, false,
-      false, &device_mgr, false, nullptr, nullptr, nullptr);
+      false, &device_mgr, false, nullptr, nullptr);
   TensorHandle* sync_th =
       TensorHandle::CreateLocalHandle(std::move(t), nullptr, nullptr, ctx);
   TensorHandle* async_th = TensorHandle::CreateEmptyLocalHandle(
@@ -108,7 +108,6 @@ class PackedTensorHandleTest : public ::testing::Test {
         /* async= */ false,
         /* lazy_copy_function_remote_inputs= */ false, device_mgr_,
         /* device_mgr_owned= */ false, /* rendezvous= */ nullptr,
-        /* custom_kernel_creator= */ nullptr,
         /* cluster_flr= */ nullptr);
   }
 
@@ -257,7 +256,7 @@ TEST(TensorHandle_ResourceDeviceTest, OnLocalDevice) {
   auto ctx = new EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT, false,
-      false, &local_device_mgr, false, nullptr, nullptr, nullptr);
+      false, &local_device_mgr, false, nullptr, nullptr);
 
   tensorflow::DataType dtype = DT_RESOURCE;
   TensorShape shape = {2};
@@ -289,7 +288,7 @@ TEST(TensorHandle_ResourceDeviceTest, OnRemoteDevice) {
   auto ctx = new EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT, false,
-      false, &local_device_mgr, false, nullptr, nullptr, nullptr);
+      false, &local_device_mgr, false, nullptr, nullptr);
 
   std::unique_ptr<Device> d0(
       CreateDevice("CPU", "/job:worker/task:0/device:CPU:0", false));
@@ -346,7 +345,6 @@ class RemoteTensorHandleTest : public ::testing::Test {
         /* async= */ false,
         /* lazy_copy_function_remote_inputs= */ false, device_mgr_,
         /* device_mgr_owned= */ false, /* rendezvous= */ nullptr,
-        /* custom_kernel_creator= */ nullptr,
         /* cluster_flr= */ nullptr);
   }
 
@@ -387,7 +385,6 @@ TEST_F(RemoteTensorHandleTest, UnknownRemoteDevice) {
       /* async= */ false,
       /* lazy_copy_function_remote_inputs= */ false, &device_mgr,
       /* device_mgr_owned= */ false, /* rendezvous= */ nullptr,
-      /* custom_kernel_creator= */ nullptr,
       /* cluster_flr= */ nullptr);
 
   tensorflow::DataType dtype = DT_FLOAT;
@@ -409,6 +406,65 @@ TEST_F(RemoteTensorHandleTest, UnknownRemoteDevice) {
   EXPECT_EQ(absl::get<Device*>(h->device()), d2);
   h->Unref();
   context->Unref();
+}
+
+TEST(TensorHandle_DeviceNameTest, OnLocalDevice) {
+  std::vector<std::unique_ptr<Device>> devices;
+  devices.emplace_back(
+      CreateDevice("CPU", "/job:localhost/replica:0/task:0/device:CPU:0"));
+  devices.emplace_back(
+      CreateDevice("GPU", "/job:localhost/replica:0/task:0/device:GPU:0"));
+  StaticDeviceMgr local_device_mgr(std::move(devices));
+  auto ctx = new EagerContext(
+      SessionOptions(),
+      tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT, false,
+      false, &local_device_mgr, false, nullptr, nullptr);
+
+  Device* dcpu = local_device_mgr.ListDevices()[0];
+  Device* dgpu = local_device_mgr.ListDevices()[1];
+  tensorflow::DataType dtype = DT_RESOURCE;
+  TensorShape shape = {2};
+  Tensor tcpu(dtype, shape);
+  Tensor tgpu(dtype, shape);
+  Status s;
+
+  TensorHandle* th_cpu =
+      TensorHandle::CreateLocalHandle(std::move(tcpu), dcpu, dcpu, dcpu, ctx);
+  const char* device_name = th_cpu->DeviceName(&s);
+  TF_EXPECT_OK(s);
+  ASSERT_TRUE(absl::StrContains(device_name, "CPU")) << device_name;
+  const char* backing_device_name = th_cpu->BackingDeviceName(&s);
+  TF_EXPECT_OK(s);
+  ASSERT_TRUE(absl::StrContains(backing_device_name, "CPU"))
+      << backing_device_name;
+  const char* device_type = th_cpu->DeviceType(&s);
+  TF_EXPECT_OK(s);
+  ASSERT_TRUE(absl::StrContains(device_type, "CPU")) << device_type;
+  int device_id = th_cpu->DeviceId(&s);
+  TF_EXPECT_OK(s);
+  ASSERT_EQ(0, device_id) << device_id;
+
+  TensorHandle* th_gpu =
+      TensorHandle::CreateLocalHandle(std::move(tgpu), dgpu, dgpu, dgpu, ctx);
+  device_name = th_gpu->DeviceName(&s);
+  TF_EXPECT_OK(s);
+  ASSERT_TRUE(absl::StrContains(device_name, "GPU")) << device_name;
+  backing_device_name = th_gpu->BackingDeviceName(&s);
+  TF_EXPECT_OK(s);
+  std::cout << "backing_device_name for GPU: " << backing_device_name
+            << std::endl;
+  ASSERT_TRUE(absl::StrContains(backing_device_name, "GPU"))
+      << backing_device_name;
+  device_type = th_gpu->DeviceType(&s);
+  TF_EXPECT_OK(s);
+  ASSERT_TRUE(absl::StrContains(device_type, "GPU")) << device_type;
+  device_id = th_gpu->DeviceId(&s);
+  TF_EXPECT_OK(s);
+  ASSERT_EQ(0, device_id) << device_id;
+
+  th_cpu->Unref();
+  th_gpu->Unref();
+  ctx->Unref();
 }
 
 }  // namespace tensorflow

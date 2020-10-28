@@ -21,10 +21,7 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files([
-    "LICENSE",
-    "loader.h",
-])
+exports_files(["loader.h"])
 
 cc_library(
     name = "constants",
@@ -45,13 +42,15 @@ cc_library(
     name = "reader",
     srcs = ["reader.cc"],
     hdrs = ["reader.h"],
-    deps = [":constants"] + if_not_mobile([
+    deps = [
+        ":constants",
+        "//tensorflow/core:protos_all_cc",
+    ] + if_not_mobile([
         # TODO(b/111634734): :lib and :protos_all contain dependencies that
         # cannot be built on mobile platforms. Instead, include the appropriate
         # tf_lib depending on the build platform.
         "@com_google_absl//absl/memory:memory",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
     ]),
 )
 
@@ -213,6 +212,7 @@ py_binary(
     srcs = ["testdata/generate_saved_models.py"],
     data = [
         ":saved_model_asset_data",
+        ":saved_model_static_hashtable_asset_data",
     ],
     python_version = "PY3",
     srcs_version = "PY3",
@@ -220,6 +220,7 @@ py_binary(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:lookup_ops",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:variables",
         "//tensorflow/python/compat:v2_compat",
@@ -243,6 +244,7 @@ filegroup(
         "testdata/half_plus_two_v2/**",
         "testdata/x_plus_y_v2_debuginfo/**",
         "testdata/CyclicModule/**",
+        "testdata/StaticHashTableModule/**",
         "testdata/VarsAndArithmeticObjectGraph/**",
         "testdata/fuzz_generated/**",
     ]),
@@ -257,6 +259,13 @@ filegroup(
     name = "saved_model_asset_data",
     srcs = [
         "testdata/test_asset.txt",
+    ],
+)
+
+filegroup(
+    name = "saved_model_static_hashtable_asset_data",
+    srcs = [
+        "testdata/static_hashtable_asset.txt",
     ],
 )
 

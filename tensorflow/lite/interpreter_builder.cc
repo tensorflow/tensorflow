@@ -21,6 +21,9 @@ limitations under the License.
 #include <sys/stat.h>
 #include <sys/types.h>
 
+#include <map>
+#include <string>
+
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
@@ -29,6 +32,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/profiling/platform_profiler.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/shared_library.h"
 #include "tensorflow/lite/util.h"
 #include "tensorflow/lite/version.h"
@@ -102,6 +106,20 @@ TfLiteStatus ParseSparseIndexVector(const DimensionMetadata* src,
   return kTfLiteError;
 }
 
+// Helper that returns std::map that corresponds to vector of TensorMap.
+std::map<std::string, uint32_t> GetMapFromTensorMap(
+    const flatbuffers::Vector<flatbuffers::Offset<tflite::TensorMap>>*
+        tensor_map) {
+  if (!tensor_map) return {};
+  std::map<std::string, uint32_t> result;
+  for (const auto tensor : *tensor_map) {
+    if (tensor != nullptr && tensor->name() != nullptr) {
+      result[tensor->name()->c_str()] = tensor->tensor_index();
+    }
+  }
+  return result;
+}
+
 }  // namespace
 
 const char* kEmptyTensorName = "";
@@ -165,7 +183,7 @@ TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
   }
   int num_custom_ops = 0;
   for (const OperatorCode* opcode : *opcodes) {
-    if (opcode->builtin_code() == BuiltinOperator_CUSTOM) {
+    if (GetBuiltinCode(opcode) == BuiltinOperator_CUSTOM) {
       num_custom_ops++;
     }
   }
@@ -175,7 +193,7 @@ TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
     status = GetRegistrationFromOpCode(opcode, op_resolver_, error_reporter_,
                                        &registration);
     if (status != kTfLiteOk) {
-      if (opcode->builtin_code() != BuiltinOperator_CUSTOM) {
+      if (GetBuiltinCode(opcode) != BuiltinOperator_CUSTOM) {
         return status;
       }
       // If it's an unresolved custom op, allow it for now. It might be resolved
@@ -434,6 +452,50 @@ TfLiteStatus InterpreterBuilder::ParseSparsity(
   return kTfLiteOk;
 }
 
+TfLiteStatus InterpreterBuilder::ParseSignatureDefs(
+    const flatbuffers::Vector<flatbuffers::Offset<SignatureDef>>*
+        signature_def_list,
+    Interpreter* interpreter) {
+  if (signature_def_list == nullptr || signature_def_list->size() == 0) {
+    return kTfLiteOk;
+  }
+  std::vector<Interpreter::SignatureDef> signature_defs;
+  signature_defs.reserve(signature_def_list->size());
+  for (const auto fb_signature_def : *signature_def_list) {
+    if (fb_signature_def == nullptr) {
+      TF_LITE_REPORT_ERROR(error_reporter_, "NULL SignatureDef in the model.");
+      return kTfLiteError;
+    }
+    if (fb_signature_def->method_name() == nullptr) {
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                           "Missing exported method name for SignatureDef");
+      return kTfLiteError;
+    }
+    if (fb_signature_def->inputs() == nullptr) {
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                           "NULL SignatureDef inputs for exported method %s",
+                           fb_signature_def->method_name()->c_str());
+      return kTfLiteError;
+    }
+    if (fb_signature_def->outputs() == nullptr) {
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                           "NULL SignatureDef outputs for exported method %s",
+                           fb_signature_def->method_name()->c_str());
+      return kTfLiteError;
+    }
+    signature_defs.resize(signature_defs.size() + 1);
+    auto& signature_def = signature_defs.back();
+    signature_def.inputs = GetMapFromTensorMap(fb_signature_def->inputs());
+    signature_def.outputs = GetMapFromTensorMap(fb_signature_def->outputs());
+    signature_def.method_name = fb_signature_def->method_name()->c_str();
+    if (fb_signature_def->key() != nullptr) {
+      signature_def.signature_def_key = fb_signature_def->key()->c_str();
+    }
+  }
+  interpreter->SetSignatureDef(std::move(signature_defs));
+  return kTfLiteOk;
+}
+
 TfLiteStatus InterpreterBuilder::ParseTensors(
     const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
     const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors,
@@ -664,6 +726,11 @@ TfLiteStatus InterpreterBuilder::operator()(
       }
     }
     modified_subgraph->SetVariables(std::move(variables));
+  }
+
+  if (ParseSignatureDefs(model_->signature_defs(), interpreter->get()) !=
+      kTfLiteOk) {
+    return cleanup_and_error();
   }
 
   if (num_fp32_tensors_ > 0) {

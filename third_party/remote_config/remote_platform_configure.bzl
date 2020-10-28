@@ -22,6 +22,8 @@ def _remote_platform_configure_impl(repository_ctx):
         cpu = "aarch64"
     elif machine_type.startswith("arm"):
         cpu = "arm"
+    elif machine_type.startswith("mips64"):
+        cpu = "mips64"
 
     exec_properties = repository_ctx.attr.platform_exec_properties
 

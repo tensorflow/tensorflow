@@ -396,25 +396,30 @@ PyTypeObject PyBfloat16_Type = {
 PyArray_ArrFuncs NPyBfloat16_ArrFuncs;
 
 PyArray_Descr NPyBfloat16_Descr = {
-    PyObject_HEAD_INIT(nullptr) & PyBfloat16_Type,  // typeobj
+    PyObject_HEAD_INIT(nullptr)  //
+                                 /*typeobj=*/
+    (&PyBfloat16_Type),
     // We must register bfloat16 with a kind other than "f", because numpy
     // considers two types with the same kind and size to be equal, but
     // float16 != bfloat16.
     // The downside of this is that NumPy scalar promotion does not work with
     // bfloat16 values.
-    'V',  // kind
+    /*kind=*/'V',
     // TODO(phawkins): there doesn't seem to be a way of guaranteeing a type
     // character is unique.
-    'E',                                                  // type
-    '=',                                                  // byteorder
-    NPY_NEEDS_PYAPI | NPY_USE_GETITEM | NPY_USE_SETITEM,  // hasobject
-    0,                                                    // type_num
-    sizeof(bfloat16),                                     // elsize
-    alignof(bfloat16),                                    // alignment
-    nullptr,                                              // subarray
-    nullptr,                                              // fields
-    nullptr,                                              // names
-    &NPyBfloat16_ArrFuncs,                                // f
+    /*type=*/'E',
+    /*byteorder=*/'=',
+    /*flags=*/NPY_NEEDS_PYAPI | NPY_USE_GETITEM | NPY_USE_SETITEM,
+    /*type_num=*/0,
+    /*elsize=*/sizeof(bfloat16),
+    /*alignment=*/alignof(bfloat16),
+    /*subarray=*/nullptr,
+    /*fields=*/nullptr,
+    /*names=*/nullptr,
+    /*f=*/&NPyBfloat16_ArrFuncs,
+    /*metadata=*/nullptr,
+    /*c_metadata=*/nullptr,
+    /*hash=*/-1,  // -1 means "not computed yet".
 };
 
 // Implementations of NumPy array methods.

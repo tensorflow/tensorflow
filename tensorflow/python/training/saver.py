@@ -26,7 +26,6 @@ from __future__ import print_function
 import collections
 import os.path
 import time
-import uuid
 
 import numpy as np
 from tensorflow.core.protobuf import meta_graph_pb2
@@ -255,7 +254,7 @@ class BaseSaverBuilder(object):
       _SHARDED_SUFFIX = array_ops.where(
           string_ops.regex_full_match(checkpoint_prefix, "^s3://.*"),
           constant_op.constant(".part"),
-          constant_op.constant("_temp_%s/part" % uuid.uuid4().hex))
+          constant_op.constant("_temp/part"))
       tmp_checkpoint_prefix = string_ops.string_join(
           [checkpoint_prefix, _SHARDED_SUFFIX])
 
@@ -1074,7 +1073,12 @@ class Saver(object):
     """
     checkpoints_with_mtimes = []
     for checkpoint_path in checkpoint_paths:
-      mtime = checkpoint_management.get_checkpoint_mtimes([checkpoint_path])
+      try:
+        mtime = checkpoint_management.get_checkpoint_mtimes([checkpoint_path])
+      except errors.NotFoundError:
+        # It's fine if some other thread/process is deleting some older
+        # checkpoint concurrently.
+        continue
       if mtime:
         checkpoints_with_mtimes.append((checkpoint_path, mtime[0]))
     self.set_last_checkpoints_with_time(checkpoints_with_mtimes)

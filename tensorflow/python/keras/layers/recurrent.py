@@ -183,10 +183,7 @@ class StackedRNNCells(Layer):
   def get_config(self):
     cells = []
     for cell in self.cells:
-      cells.append({
-          'class_name': cell.__class__.__name__,
-          'config': cell.get_config()
-      })
+      cells.append(generic_utils.serialize_keras_object(cell))
     config = {'cells': cells}
     base_config = super(StackedRNNCells, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
@@ -977,11 +974,7 @@ class RNN(Layer):
     if self.zero_output_for_mask:
       config['zero_output_for_mask'] = self.zero_output_for_mask
 
-    cell_config = self.cell.get_config()
-    config['cell'] = {
-        'class_name': self.cell.__class__.__name__,
-        'config': cell_config
-    }
+    config['cell'] = generic_utils.serialize_keras_object(self.cell)
     base_config = super(RNN, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
@@ -1575,7 +1568,6 @@ class SimpleRNN(RNN):
     self.input_spec = [InputSpec(ndim=3)]
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
-    self._maybe_reset_cell_dropout_mask(self.cell)
     return super(SimpleRNN, self).call(
         inputs, mask=mask, training=training, initial_state=initial_state)
 
@@ -2110,7 +2102,6 @@ class GRU(RNN):
     self.input_spec = [InputSpec(ndim=3)]
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
-    self._maybe_reset_cell_dropout_mask(self.cell)
     return super(GRU, self).call(
         inputs, mask=mask, training=training, initial_state=initial_state)
 
@@ -2785,7 +2776,6 @@ class LSTM(RNN):
     self.input_spec = [InputSpec(ndim=3)]
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
-    self._maybe_reset_cell_dropout_mask(self.cell)
     return super(LSTM, self).call(
         inputs, mask=mask, training=training, initial_state=initial_state)
 
@@ -3046,7 +3036,8 @@ def _caching_device(rnn_cell):
                  'consider updating your code to remove tf.while_loop if '
                  'possible.')
     return None
-  if rnn_cell._dtype_policy.should_cast_variables:
+  if (rnn_cell._dtype_policy.compute_dtype !=
+      rnn_cell._dtype_policy.variable_dtype):
     logging.warn('Variable read device caching has been disabled since it '
                  'doesn\'t work with the mixed precision API. This is '
                  'likely to cause a slowdown for RNN training due to '

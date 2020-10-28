@@ -24,6 +24,10 @@ class GetScalarOfType<int value> : NativeCodeCall<
 class GetScalarOfFloatType<string value> : NativeCodeCall<
   "GetScalarOfFloatType(getElementTypeOrSelf($0)," # value # ")">;
 
+def GetScalarInfOfType : NativeCodeCall<
+  "GetScalarOfFloatType(getElementTypeOrSelf($0), "
+  "std::numeric_limits<double>::infinity())">;
+
 def GetScalarNanOfType : NativeCodeCall<
   "GetScalarOfFloatType(getElementTypeOrSelf($0), "
   "std::numeric_limits<double>::quiet_NaN())">;
@@ -155,12 +159,21 @@ def LowerFillOp : Pat<(TF_FillOp $dims, $value),
                       (TF_BroadcastToOp $value, $dims)>;
 
 //===----------------------------------------------------------------------===//
+// Inf op patterns.
+//===----------------------------------------------------------------------===//
+
+def LowerIsInfOp : Pat<(TF_IsInfOp $x),
+                       (TF_EqualOp (TF_AbsOp:$abs $x),
+                        (TF_ConstOp:$inf (GetScalarInfOfType $x)),
+                        /*incompatible_shape_error*/ConstBoolAttrTrue)>;
+
+//===----------------------------------------------------------------------===//
 // NaN op patterns.
 //===----------------------------------------------------------------------===//
 
 def LowerIsNanOp : Pat<(TF_IsNanOp $x),
-                     (TF_EqualOp $x, (TF_ConstOp:$nan (GetScalarNanOfType $x)),
-                      /*incompatible_shape_error*/ConstBoolAttrTrue)>;
+                       (TF_NotEqualOp $x, $x,
+                        /*incompatible_shape_error*/ConstBoolAttrTrue)>;
 
 //===----------------------------------------------------------------------===//
 // L2Loss op patterns.
@@ -199,6 +212,25 @@ def LowerReciprocal : Pat<(TF_ReciprocalOp $x),
                           (TF_DivOp (TF_ConstOp (GetScalarOfType<1> $x)), $x)>;
 
 //===----------------------------------------------------------------------===//
+// Round op patterns.
+//===----------------------------------------------------------------------===//
+
+
+// Rounds on integers should just be bypassed.
+def : Pat<(TF_RoundOp:$res TF_IntTensor:$input), (TF_IdentityOp $input)>;
+
+// Implements TF Round on floats using basic operations.
+def : Pat<(TF_RoundOp:$res TF_FloatTensor:$input),
+          (TF_SelectOp
+           (TF_LessOp
+            (TF_SubOp $input, (TF_FloorOp:$floor $input)),
+            (TF_ConstOp (GetScalarOfFloatType<"0.5"> $input))),
+           $floor,
+           (TF_AddOp
+            (TF_ConstOp (GetScalarOfType<1> $input)), $floor))>;
+
+
+//===----------------------------------------------------------------------===//
 // Rsqrt op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -222,22 +254,36 @@ def LowerTanhGradOp :
                 (TF_SubOp (TF_ConstOp (GetScalarOfType<1> $y)),
                           (TF_SquareOp $y)))>;
 
+
 //===----------------------------------------------------------------------===//
+// LowerFakeQuantWithMinMaxArgs op patterns.
+//===----------------------------------------------------------------------===//
+
+def LowerFakeQuantWithMinMaxArgs :
+  Pat<(TF_FakeQuantWithMinMaxArgsOp TF_FloatTensor: $input,
+       $min, $max, $bits, $narrow_range),
+      (TF_FakeQuantWithMinMaxVarsOp $input,
+         (TF_ConstOp $min), (TF_ConstOp $max), $bits, $narrow_range)>;
+
 // ZerosLike op patterns.
 //===----------------------------------------------------------------------===//
 
 def CreateTFShapeOp : NativeCodeCall<
     "$_builder.create<TF::ShapeOp>($0.getLoc(), $1, $2)">;
 
-// TODO(hinsu): Support inputs of TensorList types.
-def LowerZerosLikeOp :
-  Pat<(TF_ZerosLikeOp:$src_op TensorOf<[AnySignlessInteger, AnyFloat]>:$input),
-      (TF_BroadcastToOp (TF_ConstOp (GetScalarOfType<0> $input)),
-                        (CreateTFShapeOp $src_op, $input, /*use 32bit*/ConstBoolAttrFalse))>;
+class LowerInitializationOp<Op FromOp, int initial_val>
+  : Pat<(FromOp:$src_op
+         TensorOf<[AnyInteger, AnyFloat, AnyComplex]>:$input),
+        (TF_BroadcastToOp (TF_ConstOp (GetScalarOfType<initial_val> $input)),
+                          (CreateTFShapeOp $src_op, $input,
+                                           /*use 32bit*/ConstBoolAttrFalse))>;
+
+def LowerZerosLikeOp : LowerInitializationOp<TF_ZerosLikeOp, 0>;
+def LowerOnesLikeOp : LowerInitializationOp<TF_OnesLikeOp, 1>;
 
 def LowerScatterNdOp :
   Pat<(TF_ScatterNdOp $indices,
-       TensorOf<[AnySignlessInteger, AnyFloat]>:$updates, $shape),
-      (TF_TensorScatterUpdateOp
+       TensorOf<[AnyInteger, AnyFloat, AnyComplex]>:$updates, $shape),
+      (TF_TensorScatterAddOp
        (TF_FillOp $shape, (TF_ConstOp (GetScalarOfType<0> $updates))),
        $indices, $updates)>;

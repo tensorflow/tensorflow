@@ -77,4 +77,14 @@ PYBIND11_MODULE(_pywrap_toco_api, m) {
       R"pbdoc(
       Returns a sparsified model.
     )pbdoc");
+  m.def(
+      "RegisterCustomOpdefs",
+      [](py::object custom_opdefs_txt_raw) {
+        return tensorflow::PyoOrThrow(
+            toco::RegisterCustomOpdefs(custom_opdefs_txt_raw.ptr()));
+      },
+      py::arg("custom_opdefs_txt_raw"),
+      R"pbdoc(
+      Registers the given custom opdefs to the TensorFlow global op registry.
+    )pbdoc");
 }

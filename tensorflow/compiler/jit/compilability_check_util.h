@@ -24,11 +24,11 @@ limitations under the License.
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/device_util.h"
 #include "tensorflow/compiler/jit/flags.h"
-#include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/service/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/union_find.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -124,6 +124,10 @@ class RecursiveCompilabilityChecker {
     // Whether ops known to have numerical accuracy issues should be considered
     // compilable..
     bool allow_inaccurate_ops = false;
+
+    // Require the function to be always compilable, regardless whether some
+    // control flow branches might be dead for a given input.
+    bool require_always_compilable = false;
   };
 
   RecursiveCompilabilityChecker(OperationFilter op_filter,
@@ -210,6 +214,14 @@ class RecursiveCompilabilityChecker {
                          std::vector<StackFrameView>* stack_trace,
                          NameAttrList* encapsulating_function,
                          UncompilableNodesMap* uncompilable_nodes) const;
+
+  // Tests whether 'case_node' is compilable. Every operator in all branches
+  // must be compilable.
+  bool IsCompilableCase(const Node& case_node,
+                        FunctionLibraryRuntime* lib_runtime,
+                        std::vector<StackFrameView>* stack_trace,
+                        NameAttrList* encapsulating_function,
+                        UncompilableNodesMap* uncompilable_nodes) const;
 
   // Returns compilability of node def retrieved from `node`'s attribute with
   // name `attr_name`.

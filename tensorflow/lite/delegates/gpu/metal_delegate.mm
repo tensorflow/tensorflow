@@ -177,10 +177,7 @@ class Delegate {
     if (options) {
       options_ = *options;
     } else {
-      // Default options.
-      options_.allow_precision_loss = false;
-      options_.enable_quantization = false;
-      options_.wait_type = TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypePassive;
+      options_ = TFLGpuDelegateOptionsDefault();
     }
     metal_device_ = MTLCreateSystemDefaultDevice();
     command_queue_ = [metal_device_ newCommandQueue];
@@ -731,4 +728,13 @@ bool TFLGpuDelegateSetCommandEncoder(
   if (!metal_delegate) return false;
   metal_delegate->SetCommandEncoder(encoder, control_encoder);
   return true;
+}
+
+TFLGpuDelegateOptions TFLGpuDelegateOptionsDefault() {
+  TFLGpuDelegateOptions options = {
+      .allow_precision_loss = false,
+      .wait_type = TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypePassive,
+      .enable_quantization = true,
+  };
+  return options;
 }

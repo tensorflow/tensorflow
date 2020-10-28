@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/nccl/collective_communicator.h"
 
+#include "tensorflow/core/framework/cancellation.h"
+
 #if TENSORFLOW_USE_NCCL && (GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
 
 #include "absl/memory/memory.h"
@@ -69,22 +71,40 @@ void NcclCommunicator::Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
                                StatusCallback done) {
   const CollectiveParams& col_params = col_ctx->col_params;
   const int num_global_devices = col_params.group.group_size;
-  const int num_local_devices = col_params.instance.num_devices_per_task.at(
-      col_params.instance.task_names[col_params.default_rank]);
+  const int num_local_devices = col_params.group.num_devices_per_task.at(
+      col_params.group.task_names[col_params.default_rank]);
   const string nccl_collective_key =
       NcclCollectiveKey(col_ctx->exec_key, col_ctx->step_id);
   auto* compute_stream = col_ctx->op_ctx->op_device_context()->stream();
   auto* gpu_info = col_ctx->op_ctx->device()->tensorflow_gpu_device_info();
   auto participant = absl::make_unique<NcclManager::Participant>(
       compute_stream->parent(), compute_stream, gpu_info, col_ctx->input,
-      col_ctx->output, col_ctx->col_params.default_rank, std::move(done));
+      col_ctx->output, col_ctx->col_params.default_rank,
+      /*done_callback=*/nullptr);
+  CancellationManager* cancel_mgr = col_ctx->op_ctx->cancellation_manager();
+  if (cancel_mgr == nullptr) {
+    participant->done_callback = std::move(done);
+  } else {
+    CancellationToken cancel_token = cancel_mgr->get_cancellation_token();
+    cancel_mgr->RegisterCallback(cancel_token, [this]() {
+      nccl_manager_.StartAbort(errors::Cancelled("op cancelled"));
+      nccl_manager_.Reset();
+    });
+    participant->done_callback = [cancel_mgr, cancel_token,
+                                  done = std::move(done)](const Status& s) {
+      // Do not block on deregistration since this can be invoked by
+      // NcclManager::StartAbort() in the cancellation callback.
+      cancel_mgr->TryDeregisterCallback(cancel_token);
+      done(s);
+    };
+  }
   NcclManager::Context context(
       nccl_collective_key, num_local_devices, num_global_devices,
       col_params.group.runtime_details.communicator_key,
       col_params.source_rank);
   VLOG(1) << "NcclCommunicator::Enqueue type " << col_params.instance.type
           << " num_tasks " << col_params.group.num_tasks << " current task "
-          << col_params.instance.task_names[col_params.default_rank]
+          << col_params.group.task_names[col_params.default_rank]
           << " num local devices " << num_local_devices
           << " num global devices " << num_global_devices << " device "
           << col_ctx->device_name << " instance "

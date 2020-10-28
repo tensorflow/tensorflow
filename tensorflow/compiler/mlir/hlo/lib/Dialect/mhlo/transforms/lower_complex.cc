@@ -29,15 +29,14 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
-#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassRegistry.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 using mlir::FunctionPass;
 using mlir::OwningRewritePatternList;
-using mlir::PassRegistration;
 using mlir::PassWrapper;
 
 namespace {
@@ -60,7 +59,7 @@ namespace {
 
 void PopulateComplexLoweringPatterns(MLIRContext* context,
                                      OwningRewritePatternList* patterns) {
-  populateWithGenerated(context, patterns);
+  populateWithGenerated(context, *patterns);
 }
 }  // end namespace mhlo
 }  // end namespace mlir
@@ -71,7 +70,7 @@ void LowerComplexPass::runOnFunction() {
   OwningRewritePatternList patterns;
   mlir::mhlo::PopulateComplexLoweringPatterns(&getContext(), &patterns);
 
-  applyPatternsAndFoldGreedily(getFunction(), patterns);
+  applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
 }
 
 std::unique_ptr<FunctionPass> mlir::mhlo::createLowerComplexPass() {

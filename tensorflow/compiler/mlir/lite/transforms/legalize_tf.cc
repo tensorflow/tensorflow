@@ -50,6 +50,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -118,14 +119,11 @@ bool HasSameStaticShapes(Operation* op) {
 }
 
 // Util that casts 'val' to Int32 by adding a cast Op.
-Value CreateCastToInt32(Attribute val, Location loc,
-                        PatternRewriter& rewriter) {
+Value CreateCastToInt32(Value val, Location loc, PatternRewriter& rewriter) {
   auto shape = val.getType().dyn_cast<RankedTensorType>().getShape();
   IntegerType new_ele_type = rewriter.getIntegerType(32);
   ShapedType new_type = RankedTensorType::get(shape, new_ele_type);
-  return rewriter.create<TF::CastOp>(loc, new_type,
-                                     rewriter.create<TF::ConstOp>(loc, val),
-                                     rewriter.getBoolAttr(false));
+  return rewriter.create<TFL::CastOp>(loc, new_type, val);
 }
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_legalize_tf.inc"
@@ -664,8 +662,11 @@ void LegalizeTF::runOnFunction() {
   auto* context = &getContext();
   auto func = getFunction();
 
+  // Add TF->TF lowering patterns.
+  TF::PopulateLoweringTFPatterns(context, &patterns);
+
   // Add the generated patterns to the list.
-  populateWithGenerated(context, &patterns);
+  populateWithGenerated(context, patterns);
   patterns
       .insert<ConvertTFConcatV2Op, ConvertTFMatMulOp, ConvertTFMatrixDiagV2Op,
               ConvertTFMatrixDiagV3Op, ConvertTFPackOp, ConvertTFReshapeOp,
@@ -676,6 +677,7 @@ void LegalizeTF::runOnFunction() {
   // Ophint python converter converted tf node pattern.
   patterns.insert<LegalizeUnidirectionalSequenceLstm,
                   LegalizeUnidirectionalSequenceRnn>(context);
+  FrozenRewritePatternList frozenPatterns(std::move(patterns));
 
   ConversionTarget target(*context);
   // It is legal to have TF ops in the graph still which can be
@@ -715,7 +717,7 @@ void LegalizeTF::runOnFunction() {
   // Currently unit-test doesn't do multiple tries, so we need this.
   const int max_iterations = 15;
   for (int i = 0; i < max_iterations; ++i) {
-    if (failed(applyPartialConversion(func, target, patterns))) {
+    if (failed(applyPartialConversion(func, target, frozenPatterns))) {
       return;
     }
   }

@@ -15,11 +15,14 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/collective_param_resolver_distributed.h"
 
 #include "absl/strings/escaping.h"
+#include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/distributed_runtime/cancellable_call.h"
 #include "tensorflow/core/distributed_runtime/device_resolver_distributed.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -197,27 +200,20 @@ void CollectiveParamResolverDistributed::CompleteInstanceAsync(
   };
   CompleteInstanceDistributed(
       request->device(), gr, cp, cancel_mgr,
-      [this, gr, cp, response, done_and_cleanup](const Status& ci_status) {
-        if (ci_status.ok()) {
-          // Now source_rank should be known, so
-          // retrieve it.
-          FindInstanceRec(
-              gr, cp,
-              [cp, response, done_and_cleanup](const Status& fi_status,
-                                               InstanceRec* ir) {
-                if (fi_status.ok()) {
-                  mutex_lock l(ir->out_mu);
-                  ir->WaitForOutMu(l);
-                  response->set_instance_key(cp->instance.instance_key);
-                  response->set_source_rank(ir->source_rank);
-                  done_and_cleanup(fi_status);
-                } else {
-                  done_and_cleanup(fi_status);
-                }
-              });
-        } else {
-          done_and_cleanup(ci_status);
+      [this, gr, cp, response, done_and_cleanup](Status status) {
+        if (status.ok()) {
+          // Now source_rank should be known, so retrieve it.
+          InstanceRec* ir = GetOrCreateInstanceRec(gr, cp);
+          {
+            mutex_lock l(ir->mu);
+            status = ir->status;
+            if (ir->status.ok()) {
+              response->set_instance_key(cp->instance.instance_key);
+              response->set_source_rank(ir->source_rank);
+            }
+          }
         }
+        done_and_cleanup(status);
       });
 }
 
@@ -254,27 +250,32 @@ Status CollectiveParamResolverDistributed::UpdateGroupCache(
       gr->devices[device.name()] = device;
     }
     gr->group.runtime_details.communicator_key = resp.communicator_key();
+    FinishGroup(gr.get());
   }
+  GroupRec* previous_gr = nullptr;
   {
     // Group membership should never change. Once a record is in group_table_
     // it never gets removed.
     mutex_lock l(group_mu_);
-    auto it = group_table_.find(gr->group.group_key);
+    auto it = group_table_.find(resp.group_key());
     if (it == group_table_.end()) {
       VLOG(2) << "UpdateGroupCache: communicator_key="
-              << absl::CEscape(gr->group.runtime_details.communicator_key);
+              << absl::CEscape(resp.communicator_key());
       group_table_[gr->group.group_key] = std::move(gr);
     } else {
-      auto& previous_gr = group_table_[gr->group.group_key];
-      if (previous_gr->group.runtime_details.communicator_key !=
-          gr->group.runtime_details.communicator_key) {
-        return errors::Internal(
-            "UpdateGroupCache: CompleteGroupResponse for group ",
-            gr->group.group_key, " gives communicator_key=",
-            absl::CEscape(gr->group.runtime_details.communicator_key),
-            " but cache already holds communicator_key=",
-            absl::CEscape(previous_gr->group.runtime_details.communicator_key));
-      }
+      previous_gr = it->second.get();
+    }
+  }
+  if (previous_gr != nullptr) {
+    mutex_lock grl(previous_gr->mu);
+    if (previous_gr->group.runtime_details.communicator_key !=
+        resp.communicator_key()) {
+      return errors::Internal(
+          "UpdateGroupCache: CompleteGroupResponse for group ",
+          resp.group_key(),
+          " gives communicator_key=", absl::CEscape(resp.communicator_key()),
+          " but cache already holds communicator_key=",
+          absl::CEscape(previous_gr->group.runtime_details.communicator_key));
     }
   }
   return Status::OK();
@@ -294,19 +295,30 @@ void CollectiveParamResolverDistributed::CompleteGroupDistributed(
     CompleteGroupCall* call =
         new CompleteGroupCall(cp->group, device, cp->instance.type, cancel_mgr,
                               group_leader_, worker_cache_);
-    call->Start([this, device, cp, call, done](const Status& s) {
-      if (s.ok()) {
-        Status status = UpdateGroupCache(call->resp_);
-        if (status.ok()) {
-          CompleteGroupLocal(device, cp, done);
-        } else {
-          done(status, nullptr);
-        }
-      } else {
-        done(s, nullptr);
-      }
+    CancellationToken abortion_token =
+        abortion_cancel_mgr_.get_cancellation_token();
+    bool already_aborted = !abortion_cancel_mgr_.RegisterCallback(
+        abortion_token, [call] { call->Cancel(); });
+    if (already_aborted) {
+      done(errors::Cancelled("collective ops already aborted"), nullptr);
       delete call;
-    });
+      return;
+    }
+    call->Start(
+        [this, device, cp, call, abortion_token, done](const Status& s) {
+          abortion_cancel_mgr_.DeregisterCallback(abortion_token);
+          if (s.ok()) {
+            Status status = UpdateGroupCache(call->resp_);
+            if (status.ok()) {
+              CompleteGroupLocal(device, cp, done);
+            } else {
+              done(status, nullptr);
+            }
+          } else {
+            done(s, nullptr);
+          }
+          delete call;
+        });
     return;
   } else {
     return CompleteGroupLocal(device, cp, done);
@@ -324,62 +336,40 @@ bool CollectiveParamResolverDistributed::InstanceIsCached(int32 group_key,
   return instance_it != group_it->second.end();
 }
 
-void CollectiveParamResolverDistributed::UpdateInstanceCache(
+Status CollectiveParamResolverDistributed::UpdateInstanceCache(
     const GroupRec* gr, CollectiveParams* cp,
-    const CompleteInstanceResponse& resp, const StatusCallback& done) {
-  using InstanceRecPointer = InstanceRec*;
-  InstanceRecPointer* irp = new InstanceRecPointer(nullptr);
+    const CompleteInstanceResponse& resp) {
   int32 source_rank = resp.source_rank();
-
-  auto continue_with_ir = [cp, irp, source_rank, done](const Status& s) {
-    if (!s.ok()) {
-      done(s);
-      delete irp;
-      return;
+  InstanceRec* ir = GetOrCreateInstanceRec(gr, cp);
+  mutex_lock l(ir->mu);
+  if (!ir->status.ok()) {
+    return ir->status;
+  }
+  if (ir->source_rank != source_rank) {
+    if (ir->source_rank >= 0) {
+      ir->status = errors::Internal(
+          "UpdateInstanceCache: CompleteInstanceResponse for instance ",
+          cp->instance.instance_key, " gives source_rank=", source_rank,
+          " but cache already holds value=", ir->source_rank);
+      return ir->status;
     }
-    Status status;
-    InstanceRec* ir = *irp;
-    do {
-      mutex_lock l(ir->out_mu);
-      ir->WaitForOutMu(l);
-      if (ir->source_rank != source_rank) {
-        if (ir->source_rank >= 0) {
-          ir->status = errors::Internal(
-              "UpdateInstanceCache: CompleteInstanceResponse for instance ",
-              cp->instance.instance_key, " gives source_rank=", source_rank,
-              " but cache already holds value=", ir->source_rank);
-          status = ir->status;
-          break;
-        }
-        ir->source_rank = source_rank;
-      }
-      if (ir->known_count < cp->group.group_size) {
-        ir->known_count = cp->group.group_size;
-        const int ir_known_size = ir->known.size();
-        if (ir_known_size != cp->group.group_size) {
-          ir->status = errors::Internal(
-              "UpdateInstanceCache:: CompleteInstanceResponse for instance ",
-              cp->instance.instance_key, " has known.size()=", ir->known.size(),
-              " < group_size=", cp->group.group_size);
-          status = ir->status;
-          break;
-        }
-        for (int i = 0; i < ir_known_size; ++i) {
-          ir->known[i] = true;
-        }
-      }
-      status = ir->status;
-    } while (false);
-    // Callback outside of lock.
-    done(status);
-    delete irp;
-  };
-
-  FindInstanceRec(gr, cp,
-                  [irp, continue_with_ir](const Status s, InstanceRec* irec) {
-                    *irp = irec;
-                    continue_with_ir(s);
-                  });
+    ir->source_rank = source_rank;
+  }
+  if (ir->known_count < cp->group.group_size) {
+    ir->known_count = cp->group.group_size;
+    const int ir_known_size = ir->known.size();
+    if (ir_known_size != cp->group.group_size) {
+      ir->status = errors::Internal(
+          "UpdateInstanceCache:: CompleteInstanceResponse for instance ",
+          cp->instance.instance_key, " has known.size()=", ir->known.size(),
+          " < group_size=", cp->group.group_size);
+      return ir->status;
+    }
+    for (int i = 0; i < ir_known_size; ++i) {
+      ir->known[i] = true;
+    }
+  }
+  return ir->status;
 }
 
 void CollectiveParamResolverDistributed::CompleteInstanceDistributed(
@@ -388,22 +378,28 @@ void CollectiveParamResolverDistributed::CompleteInstanceDistributed(
   if (group_leader_.empty()) {
     // This is the group leader so resolution is local.
     return CompleteInstanceLocal(device, gr, cp, cp->is_source, done);
-  } else if (InstanceIsCached(gr->group.group_key, cp->instance.instance_key)) {
+  } else if (InstanceIsCached(cp->group.group_key, cp->instance.instance_key)) {
     return CompleteInstanceLocal(device, gr, cp, cp->is_source, done);
   } else {
     CompleteInstanceCall* call = new CompleteInstanceCall(
         cp->group, cp->instance, cp->name, device, cp->is_source, cancel_mgr,
         group_leader_, worker_cache_);
-    call->Start([this, device, gr, cp, call, done](const Status& s) {
+    CancellationToken abortion_token =
+        abortion_cancel_mgr_.get_cancellation_token();
+    bool already_aborted = !abortion_cancel_mgr_.RegisterCallback(
+        abortion_token, [call] { call->Cancel(); });
+    if (already_aborted) {
+      done(errors::Cancelled("collective ops already aborted"));
+      delete call;
+      return;
+    }
+    call->Start([this, device, gr, cp, call, abortion_token, done](Status s) {
+      abortion_cancel_mgr_.DeregisterCallback(abortion_token);
       if (s.ok()) {
-        UpdateInstanceCache(
-            gr, cp, call->resp_, [this, device, gr, cp, done](const Status& s) {
-              if (!s.ok()) {
-                done(s);
-              } else {
-                CompleteInstanceLocal(device, gr, cp, cp->is_source, done);
-              }
-            });
+        s = UpdateInstanceCache(gr, cp, call->resp_);
+      }
+      if (s.ok()) {
+        CompleteInstanceLocal(device, gr, cp, cp->is_source, done);
       } else {
         done(s);
       }
@@ -411,6 +407,21 @@ void CollectiveParamResolverDistributed::CompleteInstanceDistributed(
     });
     return;
   }
+}
+
+void CollectiveParamResolverDistributed::StartAbort(const Status& s) {
+  {
+    mutex_lock l(status_mu_);
+    if (!status_.ok()) {
+      VLOG(2) << "CollectiveParamResolverDistributed already aborted. Ignoring "
+                 "subsequent abortion with status: "
+              << s;
+      return;
+    }
+    status_ = s;
+  }
+  StartAbortLocal(s);
+  abortion_cancel_mgr_.StartCancel();
 }
 
 }  // namespace tensorflow

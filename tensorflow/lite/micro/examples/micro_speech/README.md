@@ -69,7 +69,7 @@ generate_micro_speech_mock_make_project
 ```
 
 Note that `TAGS=reduce_codesize` applies example specific changes of code to
-reduce total size of application. It can be ommited.
+reduce total size of application. It can be omitted.
 
 ### Build and Run Example
 
@@ -220,7 +220,7 @@ generate_micro_speech_esp_project`
 
 ### Building the example
 
-Go the the example project directory `cd
+Go to the example project directory `cd
 tensorflow/lite/micro/tools/make/gen/esp_xtensa-esp32/prj/micro_speech/esp-idf`
 
 Then build with `idf.py` `idf.py build`
@@ -688,9 +688,9 @@ The following instructions will help you build and deploy the sample to the
 5.  Build the project:
     /tensorflow/lite/micro/tools/make/gen/ceva_bx1/prj/micro_speech/make$ make
 6.  This should build the project and create a file called micro_speech.elf.
-7.  The supplied configuarion reads input from a files and expects a file called
-    input.wav (easily changed in audio_provider.cc) to be placed in the same
-    directory of the .elf file
+7.  The supplied configuration reads input from a files and expects a file
+    called input.wav (easily changed in audio_provider.cc) to be placed in the
+    same directory of the .elf file
 8.  We used Google's speech command dataset: V0.0.2:
     http://download.tensorflow.org/data/speech_commands_v0.02.tar.gz V0.0.1:
     http://download.tensorflow.org/data/speech_commands_v0.01.tar.gz

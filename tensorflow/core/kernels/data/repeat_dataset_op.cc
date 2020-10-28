@@ -246,6 +246,9 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
         if (!*end_of_sequence) {
           return s;
         } else {
+          if (ctx->split_provider()) {
+            TF_RETURN_IF_ERROR(ctx->split_provider()->Reset());
+          }
           input_impl_.reset();
           first_call_ = true;
         }

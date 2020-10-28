@@ -53,7 +53,7 @@ class FakeWorker : public TestWorkerInterface {
              CollectiveParamResolverDistributed* cpres)
       : name_(name), device_mgr_(dev_mgr), param_resolver_(cpres) {}
 
-  void GetStatusAsync(const GetStatusRequest* request,
+  void GetStatusAsync(CallOptions* opts, const GetStatusRequest* request,
                       GetStatusResponse* response, bool fail_fast,
                       StatusCallback done) override {
     std::vector<DeviceAttributes> dev_attr;
@@ -253,18 +253,18 @@ class DeviceResDistTest : public ::testing::Test {
         int idx = wi * num_devices + di;
         TF_ASSERT_OK(status_[device_name]);
         EXPECT_EQ(cp_[device_name].default_rank, idx);
-        EXPECT_EQ(cp_[device_name].instance.device_names.size(), dev_count);
-        EXPECT_EQ(cp_[device_name].instance.device_names[idx], device_name);
-        EXPECT_EQ(cp_[device_name].instance.task_names[idx], task_name);
+        EXPECT_EQ(cp_[device_name].group.device_names.size(), dev_count);
+        EXPECT_EQ(cp_[device_name].group.device_names[idx], device_name);
+        EXPECT_EQ(cp_[device_name].group.task_names[idx], task_name);
         ValidateDeviceResolver(cp_[device_name], task_name);
         if (idx > 0) {
           EXPECT_EQ(cp_[dev0].group.runtime_details.communicator_key,
                     cp_[device_name].group.runtime_details.communicator_key);
           for (int i = 0; i < dev_count; ++i) {
-            EXPECT_EQ(cp_[dev0].instance.device_names[i],
-                      cp_[device_name].instance.device_names[i]);
-            EXPECT_EQ(cp_[dev0].instance.task_names[i],
-                      cp_[device_name].instance.task_names[i]);
+            EXPECT_EQ(cp_[dev0].group.device_names[i],
+                      cp_[device_name].group.device_names[i]);
+            EXPECT_EQ(cp_[dev0].group.task_names[i],
+                      cp_[device_name].group.task_names[i]);
           }
         }
       }
@@ -272,7 +272,7 @@ class DeviceResDistTest : public ::testing::Test {
   }
 
   void ValidateDeviceResolver(const CollectiveParams& cp, const string& task) {
-    for (const string& device_name : cp.instance.device_names) {
+    for (const string& device_name : cp.group.device_names) {
       DeviceAttributes attributes;
       TF_ASSERT_OK(
           dev_resolvers_[task]->GetDeviceAttributes(device_name, &attributes));

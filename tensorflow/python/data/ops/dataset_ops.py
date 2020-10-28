@@ -373,10 +373,15 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
         dataset = _PrivateThreadPoolDataset(dataset,
                                             t_options.private_threadpool_size)
 
-    # (2) Apply graph rewrite options
+    # (2) Apply autotune options
+    autotune, algorithm, cpu_budget, ram_budget = options._autotune_settings()  # pylint: disable=protected-access
+    if autotune:
+      dataset = _ModelDataset(dataset, algorithm, cpu_budget, ram_budget)
+
+    # (3) Apply graph rewrite options
     # pylint: disable=protected-access
     graph_rewrites = options._graph_rewrites()
-    graph_rewrite_configs = options._graph_rewrite_configs()
+    graph_rewrite_configs = options._graph_rewrite_configs(autotune)
     # pylint: enable=protected-access
     if self._has_captured_ref():
       if graph_rewrites.enabled or graph_rewrites.default:
@@ -392,12 +397,6 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       dataset = _OptimizeDataset(dataset, graph_rewrites.enabled,
                                  graph_rewrites.disabled,
                                  graph_rewrites.default, graph_rewrite_configs)
-
-    # (3) Apply autotune options
-    autotune, algorithm, cpu_budget, ram_budget = options._autotune_settings()  # pylint: disable=protected-access
-
-    if autotune:
-      dataset = _ModelDataset(dataset, algorithm, cpu_budget, ram_budget)
 
     # (4) Apply stats aggregator options
     if options.experimental_stats and options.experimental_stats.aggregator:  # pylint: disable=line-too-long
@@ -419,7 +418,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       RuntimeError: If not inside of tf.function and not executing eagerly.
     """
     if context.executing_eagerly() or ops.inside_function():
-      with ops.device(self._variant_tensor.device):
+      with ops.colocate_with(self._variant_tensor):
         return iterator_ops.OwnedIterator(self)
     else:
       raise RuntimeError("__iter__() is only supported inside of tf.function "
@@ -834,13 +833,19 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       output_signature = nest.map_structure_up_to(output_types,
                                                   tensor_spec.TensorSpec,
                                                   output_shapes, output_types)
+    if all([
+        isinstance(x, tensor_spec.TensorSpec)
+        for x in nest.flatten(output_signature)
+    ]):
+      output_types = nest.pack_sequence_as(
+          output_signature, [x.dtype for x in nest.flatten(output_signature)])
+      output_shapes = nest.pack_sequence_as(
+          output_signature, [x.shape for x in nest.flatten(output_signature)])
 
     if args is None:
       args = ()
     else:
       args = tuple(ops.convert_n_to_tensor(args, name="args"))
-
-    flat_output_types = structure.get_flat_tensor_types(output_signature)
 
     generator_state = DatasetV2._GeneratorState(generator)
 
@@ -873,38 +878,112 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       Returns:
         The next element to generate from the iterator.
       """
+      if output_types and output_shapes:
+        flattened_types = [
+            dtypes.as_dtype(dt) for dt in nest.flatten(output_types)
+        ]
+        flattened_shapes = nest.flatten(output_shapes)
 
-      def generator_py_func(iterator_id):
-        """A `py_func` that will be called to invoke the iterator."""
-        # `next()` raises `StopIteration` when there are no more
-        # elements remaining to be generated.
-        values = next(generator_state.get_iterator(iterator_id.numpy()))
+        def generator_py_func(iterator_id):
+          """A `py_func` that will be called to invoke the iterator."""
+          # `next()` raises `StopIteration` when there are no more
+          # elements remaining to be generated.
+          values = next(generator_state.get_iterator(iterator_id))
 
-        try:
-          values = structure.normalize_element(values, output_signature)
-        except (TypeError, ValueError):
-          six.reraise(
-              TypeError,
-              TypeError(
-                  "`generator` yielded an element that did not match the "
-                  "expected structure. The expected structure was %s, but the "
-                  "yielded element was %s." % (output_signature, values)),
-              sys.exc_info()[2])
+          # Use the same _convert function from the py_func() implementation to
+          # convert the returned values to arrays early, so that we can inspect
+          # their values.
+          try:
+            flattened_values = nest.flatten_up_to(output_types, values)
+          except (TypeError, ValueError):
+            six.reraise(
+                TypeError,
+                TypeError(
+                    "`generator` yielded an element that did not match the "
+                    "expected structure. The expected structure was %s, but "
+                    "the yielded element was %s." % (output_types, values)),
+                sys.exc_info()[2])
+          ret_arrays = []
+          for ret, dtype in zip(flattened_values, flattened_types):
+            try:
+              ret_arrays.append(
+                  script_ops.FuncRegistry._convert(  # pylint: disable=protected-access
+                      ret,
+                      dtype=dtype.as_numpy_dtype))
+            except (TypeError, ValueError):
+              six.reraise(
+                  TypeError,
+                  TypeError(
+                      "`generator` yielded an element that could not be "
+                      "converted to the expected type. The expected type was "
+                      "%s, but the yielded element was %s." %
+                      (dtype.name, ret)),
+                  sys.exc_info()[2])
 
-        values_spec = structure.type_spec_from_value(values)
+          # Additional type and shape checking to ensure that the components of
+          # the generated element match the `output_types` and `output_shapes`
+          # arguments.
+          for (ret_array, expected_dtype,
+               expected_shape) in zip(ret_arrays, flattened_types,
+                                      flattened_shapes):
+            if ret_array.dtype != expected_dtype.as_numpy_dtype:
+              raise TypeError(
+                  "`generator` yielded an element of type %s where an element "
+                  "of type %s was expected." %
+                  (ret_array.dtype, expected_dtype.as_numpy_dtype))
+            if not expected_shape.is_compatible_with(ret_array.shape):
+              raise ValueError(
+                  "`generator` yielded an element of shape %s where an element "
+                  "of shape %s was expected." %
+                  (ret_array.shape, expected_shape))
 
-        if not structure.are_compatible(values_spec, output_signature):
-          raise TypeError(
-              "`generator` yielded an element of %s where an element "
-              "of %s was expected." % (values_spec, output_signature))
+          return ret_arrays
 
-        return structure.to_tensor_list(output_signature, values)
+        flat_values = script_ops.numpy_function(generator_py_func,
+                                                [iterator_id_t],
+                                                flattened_types)
 
-      return script_ops._eager_py_func(  # pylint: disable=protected-access
-          generator_py_func,
-          inp=[iterator_id_t],
-          Tout=flat_output_types,
-          use_tape_cache=False)
+        # The `py_func()` op drops the inferred shapes, so we add them back in
+        # here.
+        if output_shapes is not None:
+          for ret_t, shape in zip(flat_values, flattened_shapes):
+            ret_t.set_shape(shape)
+
+        return nest.pack_sequence_as(output_types, flat_values)
+      else:
+        flat_output_types = structure.get_flat_tensor_types(output_signature)
+
+        def generator_py_func(iterator_id):
+          """A `py_func` that will be called to invoke the iterator."""
+          # `next()` raises `StopIteration` when there are no more
+          # elements remaining to be generated.
+          values = next(generator_state.get_iterator(iterator_id.numpy()))
+
+          try:
+            values = structure.normalize_element(values, output_signature)
+          except (TypeError, ValueError):
+            six.reraise(
+                TypeError,
+                TypeError(
+                    "`generator` yielded an element that did not match the "
+                    "expected structure. The expected structure was %s, but "
+                    "the yielded element was %s." % (output_signature, values)),
+                sys.exc_info()[2])
+
+          values_spec = structure.type_spec_from_value(values)
+
+          if not structure.are_compatible(values_spec, output_signature):
+            raise TypeError(
+                "`generator` yielded an element of %s where an element "
+                "of %s was expected." % (values_spec, output_signature))
+
+          return structure.to_tensor_list(output_signature, values)
+
+        return script_ops._eager_py_func(  # pylint: disable=protected-access
+            generator_py_func,
+            inp=[iterator_id_t],
+            Tout=flat_output_types,
+            use_tape_cache=False)
 
     def finalize_fn(iterator_id_t):
       """Releases host-side state for the iterator with ID `iterator_id_t`."""
@@ -1991,7 +2070,7 @@ name=None))
         stride of the input elements in the sliding window. Must be positive.
         The default value of 1 means "retain every input element".
       drop_remainder: (Optional.) A `tf.bool` scalar `tf.Tensor`, representing
-        whether the last window should be dropped if its size is smaller than
+        whether the last windows should be dropped if their size is smaller than
         `size`.
 
     Returns:
@@ -2274,7 +2353,7 @@ class DatasetV1(DatasetV2):
 
   def _make_one_shot_iterator(self):  # pylint: disable=missing-docstring
     if context.executing_eagerly():
-      with ops.device(self._variant_tensor.device):
+      with ops.colocate_with(self._variant_tensor):
         return iterator_ops.OwnedIterator(self)
 
     _ensure_same_dataset_graph(self)
@@ -2317,7 +2396,7 @@ class DatasetV1(DatasetV2):
       else:
         six.reraise(ValueError, err)
 
-    with ops.device(self._variant_tensor.device):
+    with ops.colocate_with(self._variant_tensor):
       # pylint: disable=protected-access
       return iterator_ops.Iterator(
           gen_dataset_ops.one_shot_iterator(
@@ -2384,7 +2463,7 @@ class DatasetV1(DatasetV2):
     if shared_name is None:
       shared_name = ""
 
-    with ops.device(self._variant_tensor.device):
+    with ops.colocate_with(self._variant_tensor):
       iterator_resource = gen_dataset_ops.iterator_v2(
           container="", shared_name=shared_name, **self._flat_structure)
 
@@ -2941,9 +3020,9 @@ class Options(options_lib.OptionsBase):
       docstring="This option can be used to override the default policy for "
       "how to handle external state when serializing a dataset or "
       "checkpointing its iterator. There are three settings available - "
-      "IGNORE: in which we completely ignore any state; WARN: We warn the "
-      "user that some state might be thrown away; FAIL: We fail if any state "
-      "is being captured.")
+      "IGNORE: External state is ignored without a warning; WARN: External "
+      "state is ignored and a warning is logged; FAIL: External state results "
+      "in an error.")
 
   def _graph_rewrites(self):
     """Produces lists of enabled, disabled, default static graph rewrites.
@@ -2980,11 +3059,12 @@ class Options(options_lib.OptionsBase):
                           disabled=list(set(result.disabled)),
                           default=list(set(result.default)))
 
-  def _graph_rewrite_configs(self):
+  def _graph_rewrite_configs(self, autotune):
     """Produces the list of configurations for enabled graph optimizations."""
     result = []
     if self.experimental_optimization:
-      result.extend(self.experimental_optimization._graph_rewrite_configs())  # pylint: disable=protected-access
+      result.extend(
+          self.experimental_optimization._graph_rewrite_configs(autotune))  # pylint: disable=protected-access
 
     if self.experimental_slack:
       num_devices = self.experimental_distribute.num_devices
@@ -4389,7 +4469,7 @@ class PrefetchDataset(UnaryUnchangedStructureDataset):
     # pylint: disable=protected-access
     # We colocate the prefetch dataset with its input as this collocation only
     # happens automatically in graph mode.
-    with ops.device(input_dataset._variant_tensor.device):
+    with ops.colocate_with(input_dataset._variant_tensor):
       variant_tensor = gen_dataset_ops.prefetch_dataset(
           input_dataset._variant_tensor,
           buffer_size=self._buffer_size,

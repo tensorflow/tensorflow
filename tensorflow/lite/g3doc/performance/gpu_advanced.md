@@ -285,12 +285,10 @@ While it is convenient to use `nullptr`, we recommend that you explicitly set
 the options, to avoid any unexpected behavior if default values are changed in
 the future.
 
-### Running quantized models (Experimental)
+### Running quantized models on GPU
 
-The GPU delegate already supports
-[float16 quantized](https://www.tensorflow.org/lite/performance/post_training_float16_quant)
-models. There is experimental support on Android and iOS to run 8-bit quantized
-as well. This includes all flavors of quantization, including:
+This section explains how the GPU delegate accelerates 8-bit quantized models.
+This includes all flavors of quantization, including:
 
 *   Models trained with
     [Quantization-aware training](https://www.tensorflow.org/lite/convert/quantization)
@@ -322,12 +320,13 @@ This feature can be enabled using delegate options as follows:
 
 #### Android
 
+Android APIs support quantized models by default. To disable, do the following:
+
 **C++ API**
 
 ```c++
-// NEW: Prepare custom options with feature enabled.
 TfLiteGpuDelegateOptionsV2 options = TfLiteGpuDelegateOptionsV2Default();
-options.experimental_flags |= TFLITE_GPU_EXPERIMENTAL_FLAGS_ENABLE_QUANT;
+options.experimental_flags = TFLITE_GPU_EXPERIMENTAL_FLAGS_NONE;
 
 auto* delegate = TfLiteGpuDelegateV2Create(options);
 if (interpreter->ModifyGraphWithDelegate(delegate) != kTfLiteOk) return false;
@@ -336,32 +335,28 @@ if (interpreter->ModifyGraphWithDelegate(delegate) != kTfLiteOk) return false;
 **Java API**
 
 ```java
-// NEW: Prepare GPU delegate with feature turned on.
-GpuDelegate delegate = new GpuDelegate(new GpuDelegate.Options().setQuantizedModelsAllowed(true));
+GpuDelegate delegate = new GpuDelegate(new GpuDelegate.Options().setQuantizedModelsAllowed(false));
 
 Interpreter.Options options = (new Interpreter.Options()).addDelegate(delegate);
 ```
 
 #### iOS
 
+iOD APIs support quantized models by default. To disable, do the following:
+
 **Swift API**
 
 ```swift
-// NEW: Prepare custom options with feature enabled.
 var options = MetalDelegate.Options()
-options.isQuantizationEnabled = true
+options.isQuantizationEnabled = false
 let delegate = MetalDelegate(options: options)
 ```
 
 **C API (also used for Objective-C)**
 
 ```c
-
-// THIS:
-// NEW: Prepare custom options with feature enabled.
-const TFLGpuDelegateOptions options = {
-  .enable_quantization = true,
-};
+TFLGpuDelegateOptions options = TFLGpuDelegateOptionsDefault();
+options.enable_quantization = false;
 
 auto* delegate = TFLGpuDelegateCreate(options);
 ```

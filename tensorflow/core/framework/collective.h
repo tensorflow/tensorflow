@@ -63,6 +63,17 @@ struct CollGroupParams {
   int32 group_key;
   int32 group_size;
   DeviceType device_type;
+  // Fully qualified name of device for each member, in default rank order.
+  std::vector<string> device_names;
+  // Task name prefix of corresponding device name.
+  std::vector<string> task_names;
+  // True if every task has the same number of devices.
+  bool same_num_devices_per_task = false;
+  // Task -> number of devices on that task.
+  std::unordered_map<string, int32> num_devices_per_task;
+  // If passed in to GPUOptions in ConfigProto, defines a good ring order for
+  // GPUs.  Assumes same GPU configuration at each worker.
+  string gpu_ring_order = "";
   int32 num_tasks;  // number of distinct tasks in group
   CollGroupRuntimeDetails runtime_details;
   string ToString() const;
@@ -98,17 +109,6 @@ struct CollInstanceParams {
   CollectiveType type = UNDEFINED_COLLECTIVE;
   DataType data_type = DT_FLOAT;
   TensorShape shape = {0};
-  // Fully qualified name of device for each member, in default rank order.
-  std::vector<string> device_names;
-  // Task name prefix of corresponding device name.
-  std::vector<string> task_names;
-  // True if every task has the same number of devices.
-  bool same_num_devices_per_task = false;
-  // Task -> number of devices on that task.
-  std::unordered_map<string, int32> num_devices_per_task;
-  // If passed in to GPUOptions in ConfigProto, defines a good ring order for
-  // GPUs.  Assumes same GPU configuration at each worker.
-  string gpu_ring_order = "";
   CollImplDetails impl_details;
   string ToString() const;
   CollInstanceParams& operator=(const struct CollInstanceParams& other);
@@ -143,8 +143,8 @@ struct CollectiveParams {
   int source_rank = -1;    // broadcast only
   // Rank of this device in each subdivision permutation.
   std::vector<int> subdiv_rank;
-  std::unique_ptr<OpKernel> merge_op;  // reduction only
-  std::unique_ptr<OpKernel> final_op;  // reduction only
+  OpKernel* merge_op = nullptr;  // reduction only
+  OpKernel* final_op = nullptr;  // reduction only
   string ToString() const;
 };
 
@@ -268,6 +268,7 @@ class CollectiveRemoteAccess {
                             Tensor* to_tensor,
                             const DeviceLocality& client_locality,
                             int dev_to_dev_stream_index,
+                            CancellationManager* cancellation_manager,
                             const StatusCallback& done) = 0;
 
   virtual void PostToPeer(const string& peer_device, const string& peer_task,
@@ -276,12 +277,13 @@ class CollectiveRemoteAccess {
                           const AllocatorAttributes& from_alloc_attr,
                           const Tensor* from_tensor,
                           const DeviceLocality& client_locality,
+                          CancellationManager* cancellation_manager,
                           const StatusCallback& done) = 0;
 
   // Checks the health of a collective peer. It probes the peer to see if it is
   // alive. Note that if a peer has restarted, it's considered a different one,
   // so CheckPeerHealth fails.
-  virtual void CheckPeerHealth(const string& peer_task,
+  virtual void CheckPeerHealth(const string& peer_task, int64 timeout_in_ms,
                                const StatusCallback& done) = 0;
 
   virtual BufRendezvous* buf_rendezvous() = 0;

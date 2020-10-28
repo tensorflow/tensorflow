@@ -453,6 +453,20 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2
 
 )"
 },
+// convolution dynamic
+{
+"ConvolutionDynamic",
+R"(HloModule Convolve1D1Window_0_module
+
+ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2,1] {
+  %input = f32[1,2,1]{2,1,0} parameter(0)
+  %copy = f32[1,2,1]{2,0,1} copy(f32[1,2,1]{2,1,0} %input)
+  %filter = f32[1,1,1]{2,1,0} parameter(1)
+  ROOT %custom-call.52 = f32[1,2,1]{2,0,1} custom-call(f32[1,2,1]{2,0,1} %copy, f32[1,1,1]{2,1,0} %filter), window={size=1}, dim_labels=b0f_0io->b0f, operand_precision={high,default}, custom_call_target="DynamicConvolutionForward", metadata={op_type="Conv2D" op_name="conv1d"}
+}
+
+)"
+},
 // convolution rank 2
 {
 "ConvolutionR2",
@@ -989,6 +1003,19 @@ ENTRY %CustomCallWithHasSideEffect (p0: (f32[2,2], f32[42,2,3]), p1: f32[123,4])
   %p0 = (f32[2,2]{0,1}, f32[42,2,3]{0,1,2}) parameter(0)
   %p1 = f32[123,4]{0,1} parameter(1)
   ROOT %custom-call = (f32[1,2,3]{0,2,1}, f32[1,2,3]{1,2,0}) custom-call((f32[2,2]{0,1}, f32[42,2,3]{0,1,2}) %p0, f32[123,4]{0,1} %p1), custom_call_target="baz", custom_call_has_side_effect=true
+}
+
+)"
+},
+// CustomCallWithAliasing
+{
+"CustomCallWithAliasing",
+R"(HloModule CustomCallWithAliasing
+
+ENTRY %CustomCallWithAliasing (p0: (f32[2,2], f32[42,2,3]), p1: f32[123,4]) -> (f32[123,4], f32[2,2], f32[1,2,3]) {
+  %p0 = (f32[2,2]{0,1}, f32[42,2,3]{0,1,2}) parameter(0)
+  %p1 = f32[123,4]{0,1} parameter(1)
+  ROOT %custom-call = (f32[123,4]{0,1}, f32[2,2]{0,1}, f32[1,2,3]{0,1,2}) custom-call((f32[2,2]{0,1}, f32[42,2,3]{0,1,2}) %p0, f32[123,4]{0,1} %p1), custom_call_target="baz", output_to_operand_aliasing={{0}: (1, {}), {1}: (0, {0})}
 }
 
 )"
@@ -2104,6 +2131,19 @@ ENTRY %ShortConstant.v4 () -> f32[67,89] {
 )";
   auto result = ParseAndReturnVerifiedModule(original);
   TF_EXPECT_OK(result.status());
+  EXPECT_EQ(result.ValueOrDie()->ToString(HloPrintOptions()), original);
+}
+
+TEST_F(HloParserTest, NegativeNan) {
+  const string original = R"(HloModule NegativeNan_module
+
+ENTRY %NegativeNan () -> bf16[2] {
+  ROOT %constant = bf16[2]{0} constant({-nan, -nan})
+}
+
+)";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_EQ(Status::OK(), result.status());
   EXPECT_EQ(result.ValueOrDie()->ToString(HloPrintOptions()), original);
 }
 

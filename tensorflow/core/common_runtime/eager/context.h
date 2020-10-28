@@ -79,27 +79,6 @@ namespace eager {
 class RemoteMgr;
 }  // namespace eager
 
-// LINT.IfChange
-// Note: Keep in sync with exported copy of enum in eager/c_api.h.
-enum ContextDevicePlacementPolicy {
-  // Running operations with input tensors on the wrong device will fail.
-  DEVICE_PLACEMENT_EXPLICIT = 0,
-  // Copy the tensor to the right device but log a warning.
-  DEVICE_PLACEMENT_WARN = 1,
-  // Silently copy the tensor, which has a performance cost since the operation
-  // will be blocked till the copy completes. This is the default policy.
-  DEVICE_PLACEMENT_SILENT = 2,
-  // Placement policy which silently copies int32 tensors but not other dtypes.
-  DEVICE_PLACEMENT_SILENT_FOR_INT32 = 3,
-};
-// LINT.ThenChange(//tensorflow/c/eager/c_api.h)
-
-class RunMetadataListener {
- public:
-  virtual ~RunMetadataListener() {}
-  virtual void BeforeClearRunMetadata() = 0;
-};
-
 class TensorHandle;
 class EagerOperation;
 
@@ -140,7 +119,6 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
                bool async, const bool lazy_copy_function_remote_inputs,
                const DeviceMgr* device_mgr, bool device_mgr_owned,
                Rendezvous* rendezvous,
-               const CustomKernelCreator* custom_kernel_creator,
                DistributedFunctionLibraryRuntime* cluster_flr = nullptr);
 
   void Release() override { Unref(); }
@@ -187,7 +165,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   std::function<void(std::function<void()>)>* runner() { return &runner_; }
 
   // Specify a executor for this thread.
-  void SetExecutorForThread(EagerExecutor* executor);
+  void SetExecutorForThread(EagerExecutor* executor) override;
 
   const std::shared_ptr<std::vector<DeviceType>> prioritized_device_type_list()
       const {
@@ -196,15 +174,16 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   }
 
   // Clear pending nodes in thread executors and kernel caches.
-  void ClearCachesAndThreadExecutors();
+  void ClearCachesAndThreadExecutors() override;
   // Clear pending nodes in default executor and kernel caches.
   void ClearCachesAndDefaultExecutor();
 
   // Sets the device placement policy for the current thread.
-  void SetThreadLocalDevicePlacementPolicy(ContextDevicePlacementPolicy policy);
+  void SetThreadLocalDevicePlacementPolicy(
+      ContextDevicePlacementPolicy policy) override;
 
   // Returns the device placement policy for the current thread.
-  ContextDevicePlacementPolicy GetDevicePlacementPolicy() const;
+  ContextDevicePlacementPolicy GetDevicePlacementPolicy() const override;
 
   // Select an appropriate device for an operation.
   //
@@ -228,16 +207,19 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   Status FindFunctionOpData(const string& name,
                             const tensorflow::OpRegistrationData** op_data);
 
-  const FunctionDef* FindFunctionDef(const string& name);
+  const FunctionDef* FindFunctionDef(const string& name) const override;
 
   Device* HostCPU() const { return host_cpu_device_; }
   Device* CanonicalDevice(Device* d) const {
     return HostCPU() == d ? nullptr : d;
   }
+  const DeviceNameUtils::ParsedName& HostCPUParsedName() const override {
+    return HostCPU()->parsed_name();
+  }
 
   GraphCollector* GetGraphCollector() { return &graph_collector_; }
 
-  EagerExecutor& Executor();
+  EagerExecutor& Executor() override;
 
   // Add the given `fdef` to the local FunctionLibraryDefinition. And add an
   // entry to the KernelAndDevice cache for it if it's not exist.
@@ -268,9 +250,13 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   void AddKernelToCache(Fprint128 cache_key, KernelAndDevice* kernel);
 
   bool LogDevicePlacement() const { return log_device_placement_; }
-  void SetLogDevicePlacement(bool enable) { log_device_placement_ = enable; }
+  void SetLogDevicePlacement(bool enable) override {
+    log_device_placement_ = enable;
+  }
   bool AllowSoftPlacement() const { return allow_soft_placement_; }
-  void SetAllowSoftPlacement(bool enable) { allow_soft_placement_ = enable; }
+  void SetAllowSoftPlacement(bool enable) override {
+    allow_soft_placement_ = enable;
+  }
   bool LogMemory() const { return log_memory_; }
 
   Rendezvous* GetRendezvous() const { return rendezvous_; }
@@ -317,9 +303,12 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // TODO(apassos) clean up RunMetadata storage.
   mutex* MetadataMu() TF_LOCK_RETURNED(metadata_mu_) { return &metadata_mu_; }
   bool ShouldStoreGraphs() TF_LOCKS_EXCLUDED(metadata_mu_);
-  void SetShouldStoreGraphs(bool value);
-  RunMetadata* RunMetadataProto() { return &run_metadata_; }
-  void ClearRunMetadata() TF_EXCLUSIVE_LOCKS_REQUIRED(metadata_mu_);
+  void SetShouldStoreGraphs(bool value) override;
+  RunMetadata* RunMetadataProto() TF_EXCLUSIVE_LOCKS_REQUIRED(metadata_mu_) {
+    return run_metadata_.get();
+  }
+  std::unique_ptr<RunMetadata> ExportRunMetadata() override
+      TF_LOCKS_EXCLUDED(metadata_mu_);
 
   void StartStep() override;
   void EndStep() override;
@@ -495,8 +484,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
                  const FunctionLibraryDefinition* lib_def,
                  const OptimizerOptions& optimizer_options,
                  thread::ThreadPool* thread_pool = nullptr,
-                 DistributedFunctionLibraryRuntime* cluster_flr = nullptr,
-                 const CustomKernelCreator* custom_kernel_creator = nullptr);
+                 DistributedFunctionLibraryRuntime* cluster_flr = nullptr);
 
   void ResetClusterFLR(DistributedFunctionLibraryRuntime* cluster_flr);
 
@@ -570,8 +558,6 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   std::unique_ptr<thread::ThreadPool> thread_pool_;
 
-  const CustomKernelCreator* const custom_kernel_creator_;
-
   // EagerContext owns the DistributedFunctionLibraryRuntime(
   // EagerClusterFunctionLibraryRuntime) if using EagerService for remote
   // function execution (lazy_copy_function_remote_inputs_=true).
@@ -598,7 +584,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // Whether we should compute RunMetadata.
   std::atomic<bool> should_store_graphs_{false};
   mutex metadata_mu_;
-  RunMetadata run_metadata_ TF_GUARDED_BY(metadata_mu_);
+  std::unique_ptr<RunMetadata> run_metadata_ TF_GUARDED_BY(metadata_mu_);
   GraphCollector graph_collector_;
   std::atomic<bool> log_device_placement_;
   std::atomic<bool> allow_soft_placement_;

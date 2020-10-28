@@ -30,12 +30,12 @@ limitations under the License.
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/device_util.h"
 #include "tensorflow/compiler/jit/flags.h"
-#include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/service/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/union_find.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -1196,10 +1196,14 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
       continue;
     }
 
-    if (!RecursiveCompilabilityChecker{
-            CreateOperationFilter(*registration),
-            DeviceType{registration->compilation_device_name}}
-             .IsCompilableNode(*node, lib_runtime)) {
+    RecursiveCompilabilityChecker::OperationFilter filter =
+        CreateOperationFilter(*registration);
+    filter.require_always_compilable = true;
+
+    RecursiveCompilabilityChecker checker(
+        filter, DeviceType{registration->compilation_device_name});
+
+    if (!checker.IsCompilableNode(*node, lib_runtime)) {
       continue;
     }
 
@@ -2057,11 +2061,13 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "XlaSelfAdjointEig",
                                      "XlaSend",
                                      "XlaSetBound",
+                                     "XlaSetDynamicDimensionSize",
                                      "XlaSharding",
                                      "XlaSort",
                                      "XlaSpmdFullToShardShape",
                                      "XlaSpmdShardToFullShape",
                                      "XlaSvd",
+                                     "XlaVariadicReduce",
                                      "XlaWhile",
                                      "Zeta",
                                      "_Arg",

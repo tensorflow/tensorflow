@@ -51,7 +51,7 @@ cc_library(
         "//tensorflow/lite/tools/evaluation/proto:preprocessing_steps_cc_proto",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_jpeg_internal",
+            "//tensorflow/core:portable_jpeg_internal",
         ],
         "//conditions:default": [
             "//tensorflow/core:jpeg_internal",

@@ -87,10 +87,10 @@ void Permuter::DispatchSend(int src_rank, int target_rank, const Tensor* tensor,
           << " target_rank=" << target_rank << " src_rank=" << src_rank;
   col_ctx_->col_exec->remote_access()->PostToPeer(
       col_params_->instance.devices[target_rank],
-      col_params_->instance.task_names[target_rank], send_buf_key,
+      col_params_->group.task_names[target_rank], send_buf_key,
       col_ctx_->device, col_ctx_->op_ctx->op_device_context(),
       col_ctx_->op_ctx->output_alloc_attr(0), tensor, col_ctx_->device_locality,
-      done);
+      col_ctx_->op_ctx->cancellation_manager(), done);
 }
 
 void Permuter::DispatchRecv(int src_rank, int target_rank, Tensor* tensor,
@@ -103,11 +103,11 @@ void Permuter::DispatchRecv(int src_rank, int target_rank, Tensor* tensor,
           << " target_rank=" << target_rank << " src_rank=" << src_rank;
   col_ctx_->col_exec->remote_access()->RecvFromPeer(
       col_params_->instance.devices[src_rank],
-      col_params_->instance.task_names[src_rank],
+      col_params_->group.task_names[src_rank],
       col_params_->task.is_local[src_rank], recv_buf_key, col_ctx_->device,
       col_ctx_->op_ctx->op_device_context(),
       col_ctx_->op_ctx->output_alloc_attr(0), tensor, col_ctx_->device_locality,
-      0, done);
+      0, col_ctx_->op_ctx->cancellation_manager(), done);
 }
 namespace {
 REGISTER_COLLECTIVE(Permute, Permuter);

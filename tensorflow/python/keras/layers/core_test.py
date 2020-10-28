@@ -30,7 +30,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.layers import core
-from tensorflow.python.keras.mixed_precision.experimental import policy
+from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
@@ -557,6 +557,21 @@ class CoreLayersTest(keras_parameterized.TestCase):
       layer = keras.layers.Concatenate()
       x, y = np.ones((10, 10)), np.ones((10, 10))
       self.assertAllEqual(np.ones((10, 20)), layer([x, y]))
+
+
+@keras_parameterized.run_all_keras_modes
+class TFOpLambdaTest(keras_parameterized.TestCase):
+
+  def test_non_tf_symbol(self):
+    def dummy_func(a, b):
+      return a + b
+
+    layer = core.TFOpLambda(dummy_func)
+    self.assertIsNone(layer.symbol)
+    self.assertEqual(layer.name, 'dummy_func')
+
+    with self.assertRaisesRegex(ValueError, 'was generated from .*dummy_func'):
+      layer.get_config()
 
 
 if __name__ == '__main__':

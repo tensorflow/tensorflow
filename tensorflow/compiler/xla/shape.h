@@ -39,6 +39,15 @@ class Shape {
   // Construct a shape from a ShapeProto.
   explicit Shape(const ShapeProto& shape_proto);
 
+  Shape(PrimitiveType element_type, absl::Span<const int64> dimensions,
+        absl::Span<const bool> dynamic_dimensions,
+        std::vector<Shape> tuple_shapes)
+      : element_type_(element_type),
+        dimensions_(dimensions.begin(), dimensions.end()),
+        dynamic_dimensions_(dynamic_dimensions.begin(),
+                            dynamic_dimensions.end()),
+        tuple_shapes_(std::move(tuple_shapes)) {}
+
   // Returns a ShapeProto representation of the Shape.
   ShapeProto ToProto() const;
 

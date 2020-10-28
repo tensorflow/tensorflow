@@ -16,8 +16,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 filegroup(
     name = "all_py_srcs",
     srcs = glob(["*.py"]),
@@ -49,13 +47,23 @@ py_library(
     name = "discretization",
     srcs = [
         "discretization.py",
+        "discretization_v1.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:boosted_trees_ops",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python/keras/engine:base_layer",
+        "//tensorflow/python:resources",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:tf_export",
+        "//tensorflow/python/keras/engine",
+        "//tensorflow/python/keras/utils:tf_utils",
         "//tensorflow/python/ops/parallel_for:control_flow_ops",
+        "//tensorflow/python/ops/ragged:ragged_functional_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -66,12 +74,19 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:lookup_ops",
+        "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
-        "//tensorflow/python/keras/engine:base_layer",
+        "//tensorflow/python:tf_export",
+        "//tensorflow/python/keras/engine",
+        "//tensorflow/python/keras/utils:tf_utils",
+        "//tensorflow/python/ops/ragged:ragged_array_ops",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -84,10 +99,18 @@ py_library(
     deps = [
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:lookup_ops",
+        "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:string_ops",
+        "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
-        "//tensorflow/python/keras/engine:base_layer",
+        "//tensorflow/python:tensor_util",
+        "//tensorflow/python:tf_export",
+        "//tensorflow/python/keras/engine",
+        "//tensorflow/python/keras/utils:tf_utils",
+        "//tensorflow/python/ops/ragged:ragged_functional_ops",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -108,9 +131,16 @@ py_library(
         "//tensorflow/python:stateful_random_ops",
         "//tensorflow/python:stateless_random_ops",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_util",
+        "//tensorflow/python:tf_export",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/compat",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/keras:backend",
-        "//tensorflow/python/keras/engine:base_layer",
-        "//tensorflow/python/keras/utils:tf_utils",
+        "//tensorflow/python/keras/engine",
+        "//tensorflow/python/keras/engine:input_spec",
+        "//tensorflow/python/keras/utils:control_flow_util",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -123,20 +153,14 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":table_utils",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:string_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:util",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/keras:backend",
-        "//tensorflow/python/keras/engine:base_preprocessing_layer",
-        "//tensorflow/python/ops/ragged",
+        "//tensorflow/python/keras/engine",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -150,11 +174,15 @@ py_library(
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tf_export",
         "//tensorflow/python:util",
         "//tensorflow/python/keras:backend",
-        "//tensorflow/python/keras/engine:base_preprocessing_layer",
+        "//tensorflow/python/keras/engine",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -169,6 +197,8 @@ py_library(
         ":index_lookup",
         ":table_utils",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:tf_export",
+        "//tensorflow/python/keras/engine",
     ],
 )
 
@@ -180,19 +210,17 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:lookup_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
-        "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:tensor_spec",
-        "//tensorflow/python:util",
-        "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/keras:backend",
-        "//tensorflow/python/keras/engine:base_preprocessing_layer",
-        "//tensorflow/python/ops/ragged",
+        "//tensorflow/python/keras/utils:tf_utils",
+        "//tensorflow/python/ops/ragged:ragged_functional_ops",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -210,16 +238,18 @@ py_library(
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:lookup_ops",
-        "//tensorflow/python:math_ops",
         "//tensorflow/python:string_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
-        "//tensorflow/python:util",
+        "//tensorflow/python:tf_export",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/keras:backend",
-        "//tensorflow/python/keras/engine:base_preprocessing_layer",
-        "//tensorflow/python/ops/ragged",
+        "//tensorflow/python/keras/engine",
+        "//tensorflow/python/keras/utils:layer_utils",
+        "//tensorflow/python/keras/utils:tf_utils",
+        "//tensorflow/python/ops/ragged:ragged_functional_ops",
+        "//tensorflow/python/ops/ragged:ragged_string_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -232,19 +262,23 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:bincount_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:lookup_ops",
+        "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:string_ops",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:tf_export",
         "//tensorflow/python:util",
-        "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/keras:backend",
-        "//tensorflow/python/keras/engine:base_preprocessing_layer",
-        "//tensorflow/python/ops/ragged",
+        "//tensorflow/python/keras/engine",
+        "//tensorflow/python/keras/engine:input_spec",
+        "//tensorflow/python/keras/utils:layer_utils",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -255,8 +289,9 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python/keras:backend",
+        "//tensorflow/python:platform",
         "//tensorflow/python/keras/engine:base_layer",
     ],
 )
@@ -272,6 +307,8 @@ py_library(
         ":index_lookup",
         ":table_utils",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:tf_export",
+        "//tensorflow/python/keras/engine",
     ],
 )
 
@@ -283,9 +320,11 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/keras:engine",
-        "//tensorflow/python/keras/engine:base_preprocessing_layer",
+        "//tensorflow/python/keras/engine",
+        "//tensorflow/python/keras/utils:tf_utils",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -295,6 +334,8 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:util",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -309,9 +350,20 @@ cuda_py_test(
     ],
     deps = [
         ":category_crossing",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/keras:testing_utils",
+        "//tensorflow/python/keras/engine",
+        "//tensorflow/python/ops/ragged:ragged_factory_ops",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
         "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -345,8 +397,15 @@ distribute_py_test(
     ],
     deps = [
         ":category_encoding",
+        ":preprocessing_test_utils",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:config",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_test_combinations_lib",
+        "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/distribute:tpu_strategy",
         "//tensorflow/python/keras",
     ],
 )
@@ -364,8 +423,15 @@ distribute_py_test(
     ],
     deps = [
         ":category_crossing",
+        ":preprocessing_test_utils",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:config",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_test_combinations_lib",
+        "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/distribute:tpu_strategy",
         "//tensorflow/python/keras",
     ],
 )
@@ -380,7 +446,12 @@ distribute_py_test(
     ],
     tpu_tags = ["no_oss"],
     deps = [
-        ":category_crossing",
+        ":image_preprocessing",
+        ":preprocessing_test_utils",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_test_combinations_lib",
+        "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/keras",
@@ -392,11 +463,13 @@ tf_py_test(
     size = "small",
     srcs = ["discretization_test.py"],
     python_version = "PY3",
+    shard_count = 4,
     tags = ["no_rocm"],
     deps = [
         ":discretization",
         ":preprocessing_test_utils",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -406,9 +479,15 @@ distribute_py_test(
     srcs = ["discretization_distribution_test.py"],
     main = "discretization_distribution_test.py",
     python_version = "PY3",
-    tags = ["multi_and_single_gpu"],
+    tags = [
+        "multi_and_single_gpu",
+    ],
     deps = [
         ":discretization",
+        ":preprocessing_test_utils",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:config",
+        "//tensorflow/python:framework_test_combinations_lib",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/keras",
@@ -424,8 +503,16 @@ cuda_py_test(
     deps = [
         ":hashing",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/keras:testing_utils",
+        "//tensorflow/python/keras/engine",
+        "//tensorflow/python/ops/ragged:ragged_factory_ops",
         "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -484,7 +571,18 @@ cuda_py_test(
     deps = [
         ":image_preprocessing",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:image_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:stateful_random_ops",
+        "//tensorflow/python:stateless_random_ops",
+        "//tensorflow/python/compat",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/keras",
         "//tensorflow/python/keras:testing_utils",
+        "//tensorflow/python/keras/engine",
+        "//tensorflow/python/keras/utils:generic_utils",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -495,10 +593,15 @@ tf_py_test(
     size = "small",
     srcs = ["normalization_test.py"],
     python_version = "PY3",
+    tags = [
+        "broken",  # b/170974360
+        "noasan",  # TODO(b/337374867) fails with -fsanitize=null
+    ],
     deps = [
         ":normalization",
         ":preprocessing_test_utils",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -524,11 +627,18 @@ distribute_py_test(
     srcs = ["normalization_distribution_test.py"],
     main = "normalization_distribution_test.py",
     python_version = "PY3",
-    tags = ["no_oss"],
+    tags = [
+        "no_oss",
+    ],
     deps = [
         ":normalization",
+        ":preprocessing_test_utils",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_combinations_lib",
+        "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/keras",
     ],
 )
@@ -553,9 +663,6 @@ tf_py_test(
     srcs = ["text_vectorization_test.py"],
     python_version = "PY3",
     shard_count = 4,
-    tags = [
-        "noasan",  #TODO(b/161376526): Enable when bug fix lands.
-    ],
     deps = [
         ":preprocessing_test_utils",
         ":text_vectorization",
@@ -579,10 +686,16 @@ distribute_py_test(
         "no_oss",  # b/155502591
     ],
     deps = [
+        ":preprocessing_test_utils",
         ":text_vectorization",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:config",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_test_combinations_lib",
+        "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
-        "//tensorflow/python/eager:test",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/keras",
     ],
 )
@@ -591,9 +704,11 @@ tf_py_test(
     name = "reduction_test",
     srcs = ["reduction_test.py"],
     python_version = "PY3",
+    tags = ["notsan"],  # TODO(b/170783154)
     deps = [
         ":reduction",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
         "@absl_py//absl/testing:parameterized",
     ],
 )

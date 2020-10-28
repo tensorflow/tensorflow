@@ -2,13 +2,13 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_tpu",
+    "if_libtpu",
     "tf_cc_binary",
     "tf_cc_test",
 )
 load(
     "//tensorflow/core/platform:build_config.bzl",
-    "tf_proto_library_cc",
+    "tf_proto_library",
 )
 load(
     "//tensorflow/compiler/xla:xla.bzl",
@@ -20,7 +20,7 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "xla_service_proto",
     srcs = ["xla_service.proto"],
     has_services = 1,
@@ -57,7 +57,7 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         tf_grpc_cc_dependency(),
-    ] + if_tpu(
+    ] + if_libtpu(
         if_false = ["//tensorflow/compiler/xla/service:cpu_plugin"],
         if_true = [],
     ),

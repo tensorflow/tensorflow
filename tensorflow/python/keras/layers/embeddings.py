@@ -194,7 +194,7 @@ class Embedding(Layer):
       out = embedding_ops.embedding_lookup_v2(self.embeddings.variables, inputs)
     else:
       out = embedding_ops.embedding_lookup_v2(self.embeddings, inputs)
-    if self._dtype_policy.should_cast_variables:
+    if self._dtype_policy.compute_dtype != self._dtype_policy.variable_dtype:
       # Instead of casting the variable as in most layers, cast the output, as
       # this is mathematically equivalent but is faster.
       out = math_ops.cast(out, self._dtype_policy.compute_dtype)
