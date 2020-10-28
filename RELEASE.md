@@ -4,7 +4,9 @@
 
 * `tf.distribute` introduces experimental support for asynchronous training of Keras models via the [`tf.distribute.experimental.ParameterServerStrategy`](https://www.tensorflow.org/api_docs/python/tf/distribute/experimental/ParameterServerStrategy?version=nightly) API. Please see below for additional details.
 
-* [`MultiWorkerMirroredStrategy`](https://www.tensorflow.org/api_docs/python/tf/distribute/MultiWorkerMirroredStrategy) is now a stable API and is no longer considered experimental. Some of the major improvements involve handling peer failure and many bug fixes. Please check out the detailed tutorial on [Multi-worker training with Keras](https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras). In addition, TF Profiler now supports profiling multiple workers using the [sampling mode API](https://www.tensorflow.org/guide/profiler#profiling_apis).
+* [`MultiWorkerMirroredStrategy`](https://www.tensorflow.org/api_docs/python/tf/distribute/MultiWorkerMirroredStrategy) is now a stable API and is no longer considered experimental. Some of the major improvements involve handling peer failure and many bug fixes. Please check out the detailed tutorial on [Multi-worker training with Keras](https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras). 
+
+* TF Profiler now supports profiling multiple workers using the [sampling mode API](https://www.tensorflow.org/guide/profiler#profiling_apis).
 
 * Introduces experimental support for a new module named [`tf.experimental.numpy`](https://www.tensorflow.org/api_docs/python/tf/experimental/numpy) which is a NumPy-compatible API for writing TF programs. See the [detailed guide](https://www.tensorflow.org/guide/tf_numpy) to learn more. Additional details below. 
 
