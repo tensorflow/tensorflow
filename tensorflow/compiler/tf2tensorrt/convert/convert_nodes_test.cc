@@ -1643,27 +1643,34 @@ class OpConverterTest : public ::testing::Test {
 
   // Helper method to run both validation and conversion, and check the output
   // shape.
-  void RunValidationAndConversion(const NodeDef& node_def, const Status& status,
-                                  const char* output_name,
-                                  const std::vector<int>& exp_out_dims) {
+  void RunValidationAndConversion(
+      const NodeDef& node_def, const Status& status, const char* output_name,
+      const std::vector<std::vector<int>>& exp_out_dims) {
     RunValidationAndConversion(node_def, status.code(),
                                status.error_message().c_str(), true);
     if (status.ok()) {
-      TRT_TensorOrWeights output;
-      TF_EXPECT_OK(GetTensorOrWeights(output_name, &output));
-      ASSERT_TRUE(output.is_tensor());
-      if (converter_->use_implicit_batch() && !exp_out_dims.empty()) {
-        // We only check output shape implicit batch mode. In dynamic shape
-        // mode we need to wait for the concrate input shapes to be defined
-        // (by setBindingDimensions before enqueue) before we can check
-        // whether the output dims are equal.
-        //
-        // TODO(tamas) enable this check in explicit_batch_mode
+      if (converter_->use_implicit_batch()) {
+        for (int i = 0; i < exp_out_dims.size(); i++) {
+          TRT_TensorOrWeights output;
+          string name = i == 0 ? output_name : StrCat(output_name, ":", i);
+          TF_EXPECT_OK(GetTensorOrWeights(name.c_str(), &output));
+          ASSERT_TRUE(output.is_tensor());
+          if (!exp_out_dims[i].empty()) {
+            // We only check output shape implicit batch mode. In dynamic shape
+            // mode we need to wait for the concrate input shapes to be defined
+            // (by setBindingDimensions before enqueue) before we can check
+            // whether the output dims are equal.
+            //
+            // TODO(tfeher): Enable this check in explicit_batch_mode.
 
-        // Removing batch dim
-        auto out_dims =
-            std::vector<int>(exp_out_dims.begin() + 1, exp_out_dims.end());
-        ExpectTrtDimsEqualsArray(out_dims, output.tensor()->getDimensions());
+            // Removing batch dim
+            auto out_dims = std::vector<int>(exp_out_dims[i].begin() + 1,
+                                             exp_out_dims[i].end());
+            VLOG(2) << "Testing output shape for tensor " << name;
+            ExpectTrtDimsEqualsArray(out_dims,
+                                     output.tensor()->getDimensions());
+          }
+        }
       }
     }
   }
@@ -1829,7 +1836,7 @@ class ParameterizedOpConverterTestBase
     for (int i = 0; i < n_output; i++) {
       TF_EXPECT_OK(
           TensorShapeUtils::MakeShape(expected_output_dims[i], &shape));
-      string out_name = (n_output == 1) ? name : StrCat(name, ":", i);
+      string out_name = (i == 0) ? name : StrCat(name, ":", i);
       DataType out_tf_type =
           out_tf_types.size() > i ? out_tf_types[i] : tf_type_;
       InputOutputData data{
@@ -1857,6 +1864,24 @@ class ParameterizedOpConverterTestBase
   }
 
   // Runs validation and conversion. If conversion is successfull then builds
+  // the TRT network, executes it and checks the output. Handles multiple output
+  // tensors.
+  void TestOpConverterMultiOut(
+      const string& name, const NodeDef node_def,
+      const std::vector<std::vector<int>>& expected_output_dims,
+      const Status& expected_conversion_status,
+      const Status& expected_runtime_status,
+      const std::vector<Matcher<std::vector<float>>>& matcher,
+      const std::vector<DataType>& out_tf_type = {}) {
+    RunValidationAndConversion(node_def, expected_conversion_status,
+                               name.c_str(), expected_output_dims);
+    if (expected_conversion_status.ok()) {
+      BuildAndRun(name, expected_output_dims, expected_runtime_status, matcher,
+                  out_tf_type);
+    }
+  }
+
+  // Runs validation and conversion. If conversion is successfull then builds
   // the TRT network, executes it and checks the output.
   void TestOpConverter(const string& name, const NodeDef node_def,
                        const std::vector<int>& expected_output_dims,
@@ -1864,8 +1889,9 @@ class ParameterizedOpConverterTestBase
                        const Status& expected_runtime_status,
                        const Matcher<std::vector<float>>& matcher,
                        const std::vector<DataType>& out_tf_types = {}) {
-    RunValidationAndConversion(node_def, expected_conversion_status,
-                               name.c_str(), expected_output_dims);
+    RunValidationAndConversion(
+        node_def, expected_conversion_status, name.c_str(),
+        std::vector<std::vector<int>>({expected_output_dims}));
     if (expected_conversion_status.ok()) {
       BuildAndRun(name, std::vector<std::vector<int>>({expected_output_dims}),
                   expected_runtime_status,
@@ -3011,22 +3037,25 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertSquare) {
                   ArrayFloatNear(expected_outputs, 0));
 }
 
-#if IS_TRT_VERSION_GE(5, 1, 0, 0)
-TEST_F(OpConverterTest, ConvertCombinedNMS) {
+#if IS_TRT_VERSION_GE(7, 1, 3, 0)
+TEST_P(OpConverter_FP32_Test, ConvertCombinedNMS) {
   // Get the NodeDef for CombinedNMS.
-  auto get_nms_nodedef = []() -> NodeDef {
+  auto get_nms_nodedef = [](DataType tf_type, bool clip_boxes = true,
+                            bool pad_per_class = false) -> NodeDef {
     Scope s = Scope::NewRootScope();
-    auto boxes_tensor = ops::Placeholder(s.WithOpName("boxes"), DT_FLOAT);
-    auto scores_tensor = ops::Placeholder(s.WithOpName("scores"), DT_FLOAT);
+    auto boxes_tensor = ops::Placeholder(s.WithOpName("boxes"), tf_type);
+    auto scores_tensor = ops::Placeholder(s.WithOpName("scores"), tf_type);
     auto max_output_size_per_class =
         ops::Placeholder(s.WithOpName("max_output_size_per_class"), DT_INT32);
     auto max_total_size =
         ops::Placeholder(s.WithOpName("max_total_size"), DT_INT32);
     auto iou_threshold =
-        ops::Placeholder(s.WithOpName("iou_threshold"), DT_FLOAT);
+        ops::Placeholder(s.WithOpName("iou_threshold"), tf_type);
     auto score_threshold =
-        ops::Placeholder(s.WithOpName("score_threshold"), DT_FLOAT);
-    auto nms_attrs = ops::CombinedNonMaxSuppression::Attrs().PadPerClass(false);
+        ops::Placeholder(s.WithOpName("score_threshold"), tf_type);
+    auto nms_attrs = ops::CombinedNonMaxSuppression::Attrs()
+                         .PadPerClass(pad_per_class)
+                         .ClipBoxes(clip_boxes);
 
     auto nms_op = ops::CombinedNonMaxSuppression(
         s.WithOpName("my_nms"), boxes_tensor, scores_tensor,
@@ -3036,78 +3065,158 @@ TEST_F(OpConverterTest, ConvertCombinedNMS) {
   };
 
   struct TestParams {
+    const std::string description;
     const std::vector<int32> boxes_tensor_dims;
     const std::vector<int32> scores_tensor_dims;
+    const std::vector<float> boxes_values;
+    const std::vector<float> scores_values;
     const int32 max_output_size_per_class;
     const int32 max_total_size;
     const float iou_threshold;
     const float score_threshold;
-    const std::vector<int32> expected_nmsed_boxes_dims;
-    const std::vector<int32> expected_nmsed_scores_dims;
-    const std::vector<int32> expected_nmsed_classes_dims;
+    bool pad_per_class;
+    bool clip_boxes;
+    const std::vector<std::vector<int32>> expected_output_dims;
+    const std::vector<float> exp_boxes;
+    const std::vector<float> exp_scores;
+    const std::vector<float> exp_classes;
+    const std::vector<float> exp_num_detections;
+    Status conversion_status;
+    Status runtime_status;
   };
 
-  // Ok.
-  std::vector<TestParams> ok_params = {
+  Status conv_status =
+      trt_mode_ == TrtTestMode::kDynamicShape
+          ? errors::Unimplemented(
+                "TensorRT BatchedNMS Plugin requires input with static shape")
+          : Status::OK();
+
+  std::vector<TestParams> params = {
       // TODO(aaroey): there is a bug in TRT's CombinedNonMaxSuppression
       // implementation that, the extra output classes that are outside of the
       // range specified by valid_detections[i] are not zeros but -1s.
-      TestParams{{1, 1, 4}, {1, 3}, 3, 2, .5f, 0, {2, 4}, {2}, {2}}};
+      TestParams{
+          "Test 1: Original test",
+          {1, 1, 3, 4},                                      // boxes dims
+          {1, 1, 3},                                         // scores dims
+          {0, 0, 0.3, 0.4, 0, 0, 0.3, 0.4, 0, 0, 0.3, 0.4},  // boxes values
+          {0.4, 0.7, 0.3},                                   // scores values
+          3,                                 // max_output_size_per_class
+          2,                                 // max_total_size
+          .5f,                               // IOU threshold
+          0,                                 // score_threshold
+          false,                             // pad_per_class
+          true,                              // clip_boxes
+          {{1, 2, 4},                        // expected_nmsed_boxes_dims
+           {1, 2},                           // expected_nmsed_scores_dims
+           {1, 2},                           // expected_nmsed_classes_dims
+           {1}},                             // expected_valid_detections_dims
+          {0, 0, 0.3, 0.4, 0, 0, 0.3, 0.4},  // exp_boxes_values
+          {0.7, 0.4},                        // exp_scores
+          {1, 0},                            // exp_classes
+          {2},                               // exp_num_detections
+          conv_status},
+      // Test with clip_boxes = False
+      TestParams{
+          "Test 2: clip_boxes",
+          {1, 5, 1, 4},  // boxes dims
+          {1, 5, 1},     // scores dims
+          // boxes values:
+          {0, 0, 5, 10, 0, 4, 5, 14, 8, 0, 12, 4, 6, 2, 10, 6, 8, 9, 11, 12},
+          {5, 4, 3, 2, 1},  // scores values
+          4,                // max_output_size_per_class
+          4,                // max_total_size
+          0.1,              // IOU threshold
+          0,                // score threshold
+          false,            // pad_per_class
+          false,            // clip_boxes
+          {{1, 4, 4},       // expected nmsed_boxes_dims
+           {1, 4},          // expected nmsed_scores_dims
+           {1, 4},          // expected_nmsed_classes_dims
+           {1}},            // expected_valid_detections_dims
+                            // exp_boxes_values:
+          {0, 0, 5, 10, 8, 0, 12, 4, 8, 9, 11, 12, 0, 0, 0, 0},
+          {5, 3, 1, 0},   // exp_scores
+          {0, 0, 0, -1},  // exp_classes
+          {3},            // exp_num_detections
+          conv_status},
+      // Test with clip_boxes = False, and nonzero score threshold
+      TestParams{
+          "Test 3: score threshold",
+          {1, 5, 1, 4},  // boxes dims
+          {1, 5, 1},     // scores dims
+          // boxes values:
+          {0, 0, 5, 10, 0, 4, 5, 14, 8, 0, 12, 4, 6, 2, 10, 6, 8, 9, 11, 12},
+          {5, 4, 3, 2, 1},  // scores values
+          4,                // max_output_size_per_class
+          4,                // max_total_size
+          0.1,              // IOU threshold
+          2,                // score threshold
+          false,            // pad_per_class
+          false,            // clip_boxes
+          {{1, 4, 4},       // expected nmsed_boxes_dims
+           {1, 4},          // expected nmsed_scores_dims
+           {1, 4},          // expected_nmsed_classes_dims
+           {1}},            // expected_valid_detections_dims
+                            // exp_boxes_values:
+          {0, 0, 5, 10, 8, 0, 12, 4, 0, 0, 0, 0, 0, 0, 0, 0},
+          {5, 3, 0, 0},    // exp_scores
+          {0, 0, -1, -1},  // exp_classes
+          {2},             // exp_num_detections
+          conv_status},
+      // Test where the boxes are defined as with max value first for the box
+      // coordinates. This test fails before TRT 7.1.3.
+      TestParams{
+          "Test 4: max coord first",
+          {1, 5, 1, 4},  // boxes dims
+          {1, 5, 1},     // scores dims
+                         // boxes values:
+          {5, 10, 0, 0, 5, 14, 0, 4, 12, 4, 8, 0, 10, 6, 6, 2, 11, 12, 8, 9},
+          {5, 4, 3, 2, 1},  // scores values
+          4,                // max_output_size_per_class
+          4,                // max_total_size
+          0.1,              // IOU threshold
+          0,                // score threshold
+          false,            // pad_per_class
+          false,            // clip_boxes
+          {{1, 4, 4},       // expected nmsed_boxes_dims
+           {1, 4},          // expected nmsed_scores_dims
+           {1, 4},          // expected_nmsed_classes_dims
+           {1}},            // expected_valid_detections_dims
+                            // exp_boxes_values:
+          {5, 10, 0, 0, 12, 4, 8, 0, 11, 12, 8, 9, 0, 0, 0, 0},
+          {5, 3, 1, 0},   // exp_scores
+          {0, 0, 0, -1},  // exp_classes
+          {3},            // exp_num_detections
+          conv_status},
+  };
 
-  for (int i = 0; i < ok_params.size(); ++i) {
+  for (auto p : params) {
     Reset();
-
-    AddTestTensor("boxes", ok_params[i].boxes_tensor_dims);
-    AddTestTensor("scores", ok_params[i].scores_tensor_dims);
+    SCOPED_TRACE(p.description);
+    AddTestTensor("boxes", p.boxes_tensor_dims, p.boxes_values);
+    AddTestTensor("scores", p.scores_tensor_dims, p.scores_values);
     AddTestWeights<int32>("max_output_size_per_class", {1},
-                          {ok_params[i].max_output_size_per_class});
-    AddTestWeights<int32>("max_total_size", {1}, {ok_params[i].max_total_size});
-    AddTestWeights<float>("iou_threshold", {1}, {ok_params[i].iou_threshold});
-    AddTestWeights<float>("score_threshold", {1},
-                          {ok_params[i].score_threshold});
+                          {p.max_output_size_per_class});
+    AddTestWeights<int32>("max_total_size", {1}, {p.max_total_size});
+    AddTestWeights<float>("iou_threshold", {1}, {p.iou_threshold}, tf_type_);
+    AddTestWeights<float>("score_threshold", {1}, {p.score_threshold},
+                          tf_type_);
 
-    RunValidationAndConversion(get_nms_nodedef());
+    auto node_def = get_nms_nodedef(tf_type_, p.clip_boxes, p.pad_per_class);
 
-    TRT_TensorOrWeights nmsed_boxes;
-    TRT_TensorOrWeights nmsed_scores;
-    TRT_TensorOrWeights nmsed_classes;
-    TRT_TensorOrWeights valid_detections;
-
-    TF_EXPECT_OK(GetTensorOrWeights("my_nms", &nmsed_boxes));
-    TF_EXPECT_OK(GetTensorOrWeights("my_nms:1", &nmsed_scores));
-    TF_EXPECT_OK(GetTensorOrWeights("my_nms:2", &nmsed_classes));
-    TF_EXPECT_OK(GetTensorOrWeights("my_nms:3", &valid_detections));
-
-    ASSERT_TRUE(nmsed_boxes.is_tensor());
-    ASSERT_TRUE(nmsed_scores.is_tensor());
-    ASSERT_TRUE(nmsed_classes.is_tensor());
-    ASSERT_TRUE(valid_detections.is_tensor());
-
-    ExpectTrtDimsEqualsArray(ok_params[i].expected_nmsed_boxes_dims,
-                             nmsed_boxes.tensor()->getDimensions());
-    ExpectTrtDimsEqualsArray(ok_params[i].expected_nmsed_scores_dims,
-                             nmsed_scores.tensor()->getDimensions());
-    ExpectTrtDimsEqualsArray(ok_params[i].expected_nmsed_classes_dims,
-                             nmsed_classes.tensor()->getDimensions());
-    ExpectTrtDimsEqualsArray({}, valid_detections.tensor()->getDimensions());
-
-    DataVec output_data{
-        {"my_nms", ConstructTensor<float>(8)},
-        {"my_nms:1", ConstructTensor<float>(2)},
-        {"my_nms:2", ConstructTensor<float>(2)},
-        {"my_nms:3", ConstructTensor<int32>(1)},
-    };
-    const DataVec input_data{{"boxes", AsTensor<float>({0, 0, 0.3, 0.4})},
-                             {"scores", AsTensor<float>({0.4, 0.7, 0.3})}};
-    TF_EXPECT_OK(BuildAndRun(input_data, &output_data));
-    EXPECT_THAT(GetSpanForData<float>(output_data[0]),
-                ElementsAre(0, 0, 0.3, 0.4, 0, 0, 0.3, 0.4));
-    EXPECT_THAT(GetSpanForData<float>(output_data[1]), ElementsAre(0.7, 0.4));
-    EXPECT_THAT(GetSpanForData<float>(output_data[2]), ElementsAre(1, 0));
-    EXPECT_THAT(GetSpanForData<int32>(output_data[3]), ElementsAre(2));
+    TestOpConverterMultiOut("my_nms", node_def, p.expected_output_dims,
+                            p.conversion_status, p.runtime_status,
+                            {
+                                ElementsAreArray(p.exp_boxes),
+                                ElementsAreArray(p.exp_scores),
+                                ElementsAreArray(p.exp_classes),
+                                ElementsAreArray(p.exp_num_detections),
+                            },
+                            {tf_type_, tf_type_, tf_type_, DT_INT32});
   }
 }
-#endif  // IS_TRT_VERSION_GE(5, 1, 0, 0)
+#endif  // IS_TRT_VERSION_GE(7, 1, 3, 0)
 
 template <typename T>
 NodeDef CreateUnaryOp(DataType tf_type) {
