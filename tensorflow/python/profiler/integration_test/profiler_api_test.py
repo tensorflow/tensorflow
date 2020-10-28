@@ -116,15 +116,6 @@ class ProfilerApiTest(test_util.TensorFlowTestCase):
     thread_worker.join(120)
     self._check_xspace_pb_exist(logdir)
 
-  def test_single_worker_sampling_mode_short_delay(self):
-    """Test single worker sampling mode with a short delay.
-
-    Expect that requested delayed start time will arrive late, and a subsequent
-    retry will issue an immediate start.
-    """
-
-    self.test_single_worker_sampling_mode(delay_ms=1)
-
   def test_single_worker_sampling_mode_long_delay(self):
     """Test single worker sampling mode with a long delay."""
 
