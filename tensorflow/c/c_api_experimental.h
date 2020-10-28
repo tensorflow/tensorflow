@@ -86,7 +86,7 @@ TF_CAPI_EXPORT void TF_SetXlaConstantFoldingDisabled(
 
 // Create a serialized tensorflow.ConfigProto proto, where:
 //
-// a) ConfigProto.optimizer_options.global_jit_level is set to to ON_1 if
+// a) ConfigProto.optimizer_options.global_jit_level is set to ON_1 if
 // `enable_xla_compilation` is non-zero, and OFF otherwise.
 // b) ConfigProto.gpu_options.allow_growth is set to `gpu_memory_allow_growth`.
 // c) ConfigProto.device_count is set to `num_cpu_devices`.
