@@ -361,8 +361,7 @@ func @send_recv(%arg0: tensor<2x!tf.string>) {
 // -----
 
 // Tests functional control flow functions with replica variant ops reachable
-// from a replicate region is cloned and remapped. Only the branches reachable
-// with replica variant ops are cloned.
+// from a replicate region is cloned and remapped.
 
 // CHECK-LABEL: func @control_flow_with_replicate_variant_ops
 func @control_flow_with_replicate_variant_ops(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f32>, %arg3: tensor<2x!tf.string>) {
@@ -380,17 +379,15 @@ func @control_flow_with_replicate_variant_ops(%arg0: tensor<i1>, %arg1: tensor<f
 }
 
 // CHECK: "tf.If"
-// CHECK-SAME: else_branch = @cond_false
+// CHECK-SAME: else_branch = [[COND_FALSE_REPLICA_0:@[a-z0-9_]+]]
 // CHECK-SAME: then_branch = [[COND_TRUE_REPLICA_0:@[a-z0-9_]+]]
 // CHECK: "tf.If"
-// CHECK-SAME: else_branch = @cond_false
+// CHECK-SAME: else_branch = [[COND_FALSE_REPLICA_1:@[a-z0-9_]+]]
 // CHECK-SAME: then_branch = [[COND_TRUE_REPLICA_1:@[a-z0-9_]+]]
 
 func @cond_false(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<2x!tf.string>) -> tensor<f32> {
   return %arg0 : tensor<f32>
 }
-
-// CHECK-NOT: func @cond_false.+(
 
 func @cond_true(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<2x!tf.string>) -> tensor<f32> {
   "tf._XlaSendFromHost"(%arg1, %arg2) {_xla_has_host_transfer = true, device_ordinal = 0 : i64, key = "host_compute_channel_recv_0"} : (tensor<f32>, tensor<2x!tf.string>) -> ()
@@ -398,11 +395,15 @@ func @cond_true(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<2x!tf.stri
   return %0 : tensor<f32>
 }
 
+// CHECK: func [[COND_FALSE_REPLICA_0]]
+
 // CHECK: func [[COND_TRUE_REPLICA_0]]
 // CHECK: "tf._XlaSendFromHost"
 // CHECK-SAME: device_ordinal = 1
 // CHECK: "tf._XlaRecvAtHost"
 // CHECK-SAME: device_ordinal = 1
+
+// CHECK: func [[COND_FALSE_REPLICA_1]]
 
 // CHECK: func [[COND_TRUE_REPLICA_1]]
 // CHECK: "tf._XlaSendFromHost"
@@ -413,7 +414,7 @@ func @cond_true(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<2x!tf.stri
 // -----
 
 // Tests function with no replica variant ops reachable from a replicate region
-// is not cloned.
+// is cloned.
 
 // CHECK-LABEL: func @no_replicate_variant_ops
 func @no_replicate_variant_ops(%arg0: tensor<f32>, %arg1: tensor<2x!tf.string>) {
@@ -431,11 +432,17 @@ func @no_replicate_variant_ops(%arg0: tensor<f32>, %arg1: tensor<2x!tf.string>) 
 }
 
 // CHECK: "tf.StatefulPartitionedCall"
-// CHECK-SAME: f = @send_recv
+// CHECK-SAME: f = [[CALLEE_REPLICA_0:@[a-z0-9_]+]]
+// CHECK: "tf.StatefulPartitionedCall"
+// CHECK-SAME: f = [[CALLEE_REPLICA_1:@[a-z0-9_]+]]
 
 func @send_recv(%arg0: tensor<2x!tf.string>) {
   "tf.NoOp"() : () -> ()
   return
 }
 
-// CHECK-NOT: @send_recv.+(
+// CHECK: func [[CALLEE_REPLICA_0]]
+// CHECK: "tf.NoOp"
+
+// CHECK: func [[CALLEE_REPLICA_1]]
+// CHECK: "tf.NoOp"
