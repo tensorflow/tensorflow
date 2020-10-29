@@ -407,13 +407,14 @@ def _sort_function_defs(library, library_function_names):
   return [reverse[x] for x in output]
 
 
-def fix_node_def(node_def, functions, shared_name_suffix, debug_name):
+def _check_op_has_custom_gradients(node_def):
+  """Returns True if op has custom gradients."""
+  return ("_gradient_op_type" in node_def.attr and
+          node_def.op not in ["StatefulPartitionedCall", "PartitionedCall"])
+
+
+def fix_node_def(node_def, functions, shared_name_suffix):
   """Replace functions calls and shared names in `node_def`."""
-  if ("_gradient_op_type" in node_def.attr and
-      node_def.op not in ["StatefulPartitionedCall", "PartitionedCall"]):
-    logging.warning(
-        "Importing a function (%s) with ops with custom gradients. Will likely "
-        "fail if a gradient is requested.", debug_name)
   if node_def.op in functions:
     node_def.op = functions[node_def.op].name
   for _, attr_value in node_def.attr.items():
@@ -471,8 +472,16 @@ def _fix_fdef(orig_fdef, functions, shared_name_suffix):
   """
   fdef = function_pb2.FunctionDef()
   fdef.CopyFrom(orig_fdef)
+  contains_custom_gradients = False
+
   for node_def in fdef.node_def:
-    fix_node_def(node_def, functions, shared_name_suffix, fdef.signature.name)
+    fix_node_def(node_def, functions, shared_name_suffix)
+    if not contains_custom_gradients:
+      contains_custom_gradients = _check_op_has_custom_gradients(node_def)
+  if contains_custom_gradients:
+    logging.warning(
+        "Importing a function (%s) with ops with custom gradients. Will likely "
+        "fail if a gradient is requested.", fdef.signature.name)
 
   fdef.signature.name = _clean_function_name(fdef.signature.name)
   return fdef
