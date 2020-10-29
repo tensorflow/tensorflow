@@ -43,6 +43,13 @@ void ReplaceAllWords(const std::string& old_word, const std::string& new_word,
     position = str->find(old_word, position + new_word.size());
   }
 }
+
+void AppendArgument(const std::string& arg, std::string* args) {
+  if (!args->empty()) {
+    absl::StrAppend(args, ",\n");
+  }
+  absl::StrAppend(args, arg);
+}
 }  // namespace
 
 // Static
@@ -51,7 +58,6 @@ constexpr char MetalArguments::kArgsPrefix[];
 absl::Status MetalArguments::Init(int buffer_offset, Arguments* args, std::string* code) {
   args->GetActiveArguments(*code);
   std::string struct_desc = "struct uniforms_buffer {\n";
-  std::string struct_decl;
   int pos = 0;
   for (auto& fvalue : args->float_values_) {
     auto& new_val = float_values_[fvalue.first];
@@ -76,7 +82,6 @@ absl::Status MetalArguments::Init(int buffer_offset, Arguments* args, std::strin
     }
   }
   if (pos != 0) {
-    struct_decl = "constant uniforms_buffer& U[[buffer(" + std::to_string(buffer_offset) + ")]],\n";
     int aligned_pos = AlignByN(pos, 4);
     for (int i = pos; i < aligned_pos; i++) {
       struct_desc += "  int dummy" + std::to_string(i - pos) + ";\n";
@@ -97,9 +102,8 @@ absl::Status MetalArguments::Init(int buffer_offset, Arguments* args, std::strin
     }
   } else {
     struct_desc = "";
-    struct_decl = "";
   }
-  *code = absl::Substitute(*code, struct_desc, struct_decl);
+  *code = absl::Substitute(*code, struct_desc, GetListOfArgs(buffer_offset));
   return absl::OkStatus();
 }
 
@@ -134,6 +138,61 @@ void MetalArguments::Encode(id<MTLComputeCommandEncoder> encoder, int buffer_off
   if (!const_data_.empty()) {
     [encoder setBytes:const_data_.data() length:const_data_.size() atIndex:buffer_offset];
   }
+}
+
+std::string MetalArguments::GetListOfArgs(int buffer_offset) {
+  std::string result;
+  for (auto& t : buffers_) {
+    std::string attributes;
+    for (const auto& attr : t.second.desc.attributes) {
+      attributes += absl::StrCat("  __attribute__((", attr, "))");
+    }
+    AppendArgument(
+        absl::StrCat(
+            MemoryTypeToMetalType(t.second.desc.memory_type), " ",
+            ToMetalDataType(t.second.desc.data_type, t.second.desc.element_size),
+            "* ", t.first, "[[buffer(", buffer_offset, ")]]", attributes),
+        &result);
+    buffer_offset++;
+  }
+  if (!const_data_.empty()) {
+    AppendArgument(
+        absl::StrCat("constant uniforms_buffer& U[[buffer(", buffer_offset, ")]]"),
+        &result);
+    buffer_offset++;
+  }
+  if (!result.empty()) {
+    result += ",\n";
+  }
+  return result;
+}
+
+absl::Status MetalArguments::SetGPUResources(
+    const std::string& name, const GPUResourcesWithValue& resources) {
+  for (const auto& r : resources.ints) {
+    RETURN_IF_ERROR(SetInt(absl::StrCat(name, "_", r.first), r.second));
+  }
+  for (const auto& r : resources.floats) {
+    RETURN_IF_ERROR(SetFloat(absl::StrCat(name, "_", r.first), r.second));
+  }
+  for (const auto& r : resources.buffers) {
+    RETURN_IF_ERROR(SetBuffer(absl::StrCat(name, "_", r.first), r.second));
+  }
+  return absl::OkStatus();
+}
+
+void MetalArguments::AddBuffer(const std::string& name, const GPUBufferDescriptor& desc) {
+  buffers_[name].desc = desc;
+}
+
+absl::Status MetalArguments::SetBuffer(const std::string& name, id<MTLBuffer> handle) {
+  auto it = buffers_.find(name);
+  if (it == buffers_.end()) {
+    return absl::NotFoundError(
+        absl::StrCat("No buffer argument with name - ", name));
+  }
+  it->second.handle = handle;
+  return absl::OkStatus();
 }
 
 }  // namespace metal
