@@ -829,7 +829,7 @@ class StrategyBase(object):
     >>> with strategy.scope():
     ...   mirrored_variable = tf.Variable(1.)
     >>> mirrored_variable
-    MirroredVariable:{
+    DistributedVariable(AutoPolicy):{
       0: <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=1.0>,
       1: <tf.Variable 'Variable/replica_1:0' shape=() dtype=float32, numpy=1.0>
     }
@@ -2257,7 +2257,7 @@ class StrategyExtendedV2(object):
     ...     return v
     >>>
     >>> run(tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"]))
-    MirroredVariable:{
+    DistributedVariable(AutoPolicy):{
       0: <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=2.0>,
       1: <tf.Variable 'Variable/replica_1:0' shape=() dtype=float32, numpy=2.0>
     }
@@ -2340,7 +2340,7 @@ class StrategyExtendedV2(object):
     ...     return v
     >>>
     >>> run(tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"]))
-    MirroredVariable:{
+    DistributedVariable(AutoPolicy):{
       0: <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=2.0>,
       1: <tf.Variable 'Variable/replica_1:0' shape=() dtype=float32, numpy=2.0>
     }

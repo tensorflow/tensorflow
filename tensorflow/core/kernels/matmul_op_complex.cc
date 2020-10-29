@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/kernels/batch_matmul_op_impl.h"
+#include "tensorflow/core/kernels/matmul_op_impl.h"
 
 namespace tensorflow {
 

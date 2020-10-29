@@ -160,9 +160,15 @@ struct TFInlinerInterface : public DialectInlinerInterface {
   // Analysis Hooks
   //===--------------------------------------------------------------------===//
 
+  // Allow all call operations to be inlined.
+  bool isLegalToInline(Operation *call, Operation *callable,
+                       bool wouldBeCloned) const final {
+    return true;
+  }
+
   // Returns if its legal to inline 'src' region into the 'dest' region
   // attached to a TF operation.
-  bool isLegalToInline(Region *dest, Region *src,
+  bool isLegalToInline(Region *dest, Region *src, bool wouldBeCloned,
                        BlockAndValueMapping &valueMapping) const final {
     // Allow inlining in regions attached to region based control flow
     // operations only if the src region is a single block region
@@ -172,7 +178,7 @@ struct TFInlinerInterface : public DialectInlinerInterface {
 
   // Returns true if its legal to inline a TF operation `op` into the `dest`
   // region.
-  bool isLegalToInline(Operation *op, Region *dest,
+  bool isLegalToInline(Operation *op, Region *dest, bool wouldBeCloned,
                        BlockAndValueMapping &) const final {
     // An op is legal to inline if either of the following conditions is true:
     // (a) Its legal to duplicate the Op.

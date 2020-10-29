@@ -36,6 +36,7 @@ py_library(
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/keras/applications",
         "//tensorflow/python/keras/datasets",
+        "//tensorflow/python/keras/distribute",
         "//tensorflow/python/keras/feature_column",
         "//tensorflow/python/keras/layers",
         "//tensorflow/python/keras/mixed_precision:mixed_precision_experimental",

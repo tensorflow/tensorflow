@@ -110,64 +110,13 @@ Status FusedIrEmitter::HandleConstant(const HloInstruction* constant) {
 
 Status FusedIrEmitter::HandleGetTupleElement(
     const HloInstruction* get_tuple_element) {
-  auto emit_tuple_element_ptr = [=]() -> StatusOr<llvm::Value*> {
-    const HloInstruction* tuple_operand = get_tuple_element->operand(0);
-    llvm::Value* tuple_ptr;
-    if (tuple_operand->opcode() == HloOpcode::kGetTupleElement) {
-      TF_ASSIGN_OR_RETURN(tuple_ptr, non_indexed_generators_[tuple_operand]());
-    } else {
-      if (tuple_operand->opcode() != HloOpcode::kParameter) {
-        return Unimplemented(
-            "GetTupleElement fusion currently only supports parameter or "
-            "nested"
-            "GetTupleElement as tuple operand, found an exception: %s",
-            tuple_operand->name());
-      }
-      tuple_ptr =
-          GetBasePointerForFusedParameter(tuple_operand->parameter_number());
-    }
-
-    // Lookup tuple element pointer.
-    return llvm_ir::EmitGetTupleElement(get_tuple_element->shape(),
-                                        get_tuple_element->tuple_index(),
-                                        /*alignment=*/1, tuple_ptr, b_);
-  };
-
-  if (!get_tuple_element->shape().IsTuple()) {
-    indexed_generators_[get_tuple_element] =
-        [=](const IrArray::Index& index) -> StatusOr<llvm::Value*> {
-      // TODO(b/34080002) Add aliasing information to tuple element IrArray.
-      TF_ASSIGN_OR_RETURN(llvm::Value * tuple_element_ptr,
-                          emit_tuple_element_ptr());
-      return IrArray(tuple_element_ptr, get_tuple_element->shape())
-          .EmitReadArrayElement(index, b_);
-    };
-  } else {
-    non_indexed_generators_[get_tuple_element] = emit_tuple_element_ptr;
-  }
-  return Status::OK();
+  return InternalError("Tuple parameters are not supported for fusion");
 }
 
 Status FusedIrEmitter::HandleParameter(const HloInstruction* parameter) {
-  indexed_generators_[parameter] =
-      [=](const IrArray::Index& index) -> llvm::Value* {
-    int64 param_num = parameter->parameter_number();
-    if (param_shmem_buffers_.size() > param_num) {
-      if (llvm::Value* param_tile_buffer = param_shmem_buffers_[param_num]) {
-        // TODO(jlebar): Add AA metadata to this load.  Tile buffers are global
-        // variables, so LLVM's points-to analysis doesn't help us much.  And we
-        // want the AA info to be present before address spaces are inferred
-        // (which is pretty late in the pipeline), so even if we had
-        // address-space-based AA in LLVM, it wouldn't help us much here.
-        return b_->CreateLoad(
-            b_->CreateGEP(param_tile_buffer, {index.GetConstantWithIndexType(0),
-                                              thread_id_x_, thread_id_y_}),
-            "tiled_buffer");
-      }
-    }
-    return GetIrArrayForFusedParameter(param_num).EmitReadArrayElement(index,
-                                                                       b_);
-  };
+  if (indexed_generators_.find(parameter) == indexed_generators_.end()) {
+    return InvalidArgument("Unbound parameter: %s", parameter->ToString());
+  }
   return Status::OK();
 }
 
@@ -190,17 +139,6 @@ Status FusedIrEmitter::HandleTuple(const HloInstruction* tuple) {
     return ret;
   };
   return Status::OK();
-}
-
-Status FusedIrEmitter::FinishVisit(const HloInstruction* root) {
-  fused_root_ = root;
-  return Status::OK();
-}
-
-FusedIrEmitter::IndexedGenerator FusedIrEmitter::GetRootGenerator() const {
-  CHECK_NE(nullptr, fused_root_)
-      << "GetRootGenerator should be called after Accept.";
-  return indexed_generators_.at(fused_root_);
 }
 
 FusedIrEmitter::IndexedGenerator FusedIrEmitter::GetGenerator(

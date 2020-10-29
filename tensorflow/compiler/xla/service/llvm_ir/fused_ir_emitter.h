@@ -55,21 +55,9 @@ class FusedIrEmitter : public ConstDfsHloVisitorWithDefault {
  public:
   using IndexedGenerator = llvm_ir::ElementGenerator;
   using NonIndexedGenerator = std::function<StatusOr<llvm::Value*>()>;
-  using GeneratorForOperandIrArrays =
-      std::function<std::vector<llvm_ir::IrArray>()>;
 
-  FusedIrEmitter(GeneratorForOperandIrArrays operand_arrays_generator,
-                 ElementalIrEmitter* elemental_emitter,
-                 llvm::Value* thread_id_x = nullptr,
-                 llvm::Value* thread_id_y = nullptr,
-                 absl::Span<llvm::Value* const> param_shmem_buffers = {})
-      : operand_arrays_(),
-        operand_arrays_generator_(std::move(operand_arrays_generator)),
-        thread_id_x_(thread_id_x),
-        thread_id_y_(thread_id_y),
-        param_shmem_buffers_(param_shmem_buffers.begin(),
-                             param_shmem_buffers.end()),
-        elemental_emitter_(elemental_emitter),
+  explicit FusedIrEmitter(ElementalIrEmitter* elemental_emitter)
+      : elemental_emitter_(elemental_emitter),
         b_(elemental_emitter->b()),
         module_(elemental_emitter->module()) {}
 
@@ -85,10 +73,14 @@ class FusedIrEmitter : public ConstDfsHloVisitorWithDefault {
   // Emits the ir value for each element in the tuple.
   Status HandleTuple(const HloInstruction* tuple) override;
 
-  Status FinishVisit(const HloInstruction* root) override;
+  void BindGenerator(const HloInstruction* hlo,
+                     llvm_ir::ElementGenerator generator) {
+    indexed_generators_[hlo] = std::move(generator);
+  }
 
-  // Returns the generator function for the root of the fused computation.
-  IndexedGenerator GetRootGenerator() const;
+  Status PrepareGeneratorRecursively(const HloInstruction* root) {
+    return root->Accept(this);
+  }
 
   // Returns the generator function for the given instruction.
   IndexedGenerator GetGenerator(const HloInstruction* instruction) const;
@@ -101,39 +93,8 @@ class FusedIrEmitter : public ConstDfsHloVisitorWithDefault {
   static bool IsFusedIrEmitterInefficient(const HloInstruction* consumer,
                                           const HloInstruction* producer);
 
- protected:
-  // Returns the IrArrays for the fusion instruction operands.
-  llvm_ir::IrArray& GetIrArrayForFusedParameter(int64 parameter_number) {
-    if (!operand_arrays_.has_value()) {
-      operand_arrays_ = operand_arrays_generator_();
-    }
-    return operand_arrays_.value()[parameter_number];
-  }
-
-  llvm::Value* GetBasePointerForFusedParameter(int64 parameter_number) {
-    return GetIrArrayForFusedParameter(parameter_number).GetBasePointer();
-  }
-
  private:
-  // IrArrays for the fusion instruction operands, whose base addresses are the
-  // base address of the corresponding parameters in the fused computation.
-  absl::optional<std::vector<llvm_ir::IrArray>> operand_arrays_;
-  GeneratorForOperandIrArrays operand_arrays_generator_;
-
-  // The x coordinate within a tile.
-  llvm::Value* thread_id_x_;
-
-  // The y coordinate within a tile.
-  llvm::Value* thread_id_y_;
-
-  // Param_buffers_[i] stores the tile buffer for the ith parameter or nullptr
-  // if the parameter is not tiled.
-  std::vector<llvm::Value*> param_shmem_buffers_;
-
   ElementalIrEmitter* elemental_emitter_;
-
-  // This member will be set by FinishVisit and used in GetRootGenerator.
-  const HloInstruction* fused_root_ = nullptr;
 
   // Borrowed
   llvm::IRBuilder<>* b_;
@@ -144,12 +105,6 @@ class FusedIrEmitter : public ConstDfsHloVisitorWithDefault {
   // instruction produces non-tuple result.
   std::unordered_map<const HloInstruction*, IndexedGenerator>
       indexed_generators_;
-
-  // Map from tuple-result-producing GetTupleELement instructions to functions
-  // that generate the base pointers for the output elements. This is used to
-  // support the translation of nested GetTupleElement instructions.
-  std::unordered_map<const HloInstruction*, NonIndexedGenerator>
-      non_indexed_generators_;
 
   // Cache of generated values, lest we regenerate an element of a node with
   // multiple outgoing edges

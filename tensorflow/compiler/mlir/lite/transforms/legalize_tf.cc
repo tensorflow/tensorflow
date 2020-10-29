@@ -150,7 +150,6 @@ DECL_CONVERT_OP(Split);
 DECL_CONVERT_OP(SplitV);
 DECL_CONVERT_OP(StridedSlice);
 DECL_CONVERT_OP(Unpack);
-DECL_CONVERT_OP(Reciprocal);
 DECL_CONVERT_OP(RandomUniform);
 
 #undef DECL_CONVERT_OP
@@ -509,26 +508,6 @@ LogicalResult ConvertTFAssertOp::matchAndRewrite(
   return success();
 }
 
-LogicalResult ConvertTFReciprocalOp::matchAndRewrite(
-    Operation* op, PatternRewriter& rewriter) const {
-  auto tf_reciprocal_op = cast<TF::ReciprocalOp>(op);
-
-  auto status_or_const_op = CreateConstOpWithSingleValue(
-      &rewriter, op->getLoc(),
-      tf_reciprocal_op.x().getType().cast<ShapedType>(), 1);
-  if (!status_or_const_op.ok()) {
-    return failure();
-  }
-
-  StringAttr fused_activation_function =
-      StringAttr::get("NONE", rewriter.getContext());
-
-  rewriter.replaceOpWithNewOp<TFL::DivOp>(op, status_or_const_op.ValueOrDie(),
-                                          tf_reciprocal_op.x(),
-                                          fused_activation_function);
-  return success();
-}
-
 // Legalize unidirectional sequence lstm.
 struct LegalizeUnidirectionalSequenceLstm : public RewritePattern {
   explicit LegalizeUnidirectionalSequenceLstm(MLIRContext* context)
@@ -671,8 +650,8 @@ void LegalizeTF::runOnFunction() {
       .insert<ConvertTFConcatV2Op, ConvertTFMatMulOp, ConvertTFMatrixDiagV2Op,
               ConvertTFMatrixDiagV3Op, ConvertTFPackOp, ConvertTFReshapeOp,
               ConvertTFSplitOp, ConvertTFSplitVOp, ConvertTFStridedSliceOp,
-              ConvertTFUnpackOp, ConvertTFAssertOp, ConvertTFReciprocalOp,
-              ConvertTFRandomUniformOp>(context);
+              ConvertTFUnpackOp, ConvertTFAssertOp, ConvertTFRandomUniformOp>(
+          context);
 
   // Ophint python converter converted tf node pattern.
   patterns.insert<LegalizeUnidirectionalSequenceLstm,
