@@ -56,9 +56,13 @@ static Graph* OneHot(int batch_size, int num_classes, int axis) {
 }
 
 #define BM_OneHot(BATCH, CLASS, AXIS, DEVICE)                                \
-  static void BM_OneHot##_##BATCH##_##CLASS##_##AXIS##_##DEVICE(int iters) { \
-    testing::ItemsProcessed(static_cast<int64>(iters) * BATCH * CLASS);      \
-    test::Benchmark(#DEVICE, OneHot(BATCH, CLASS, AXIS)).Run(iters);         \
+  static void BM_OneHot##_##BATCH##_##CLASS##_##AXIS##_##DEVICE(             \
+      ::testing::benchmark::State& state) {                                  \
+    test::Benchmark(#DEVICE, OneHot(BATCH, CLASS, AXIS),                     \
+                    /*old_benchmark_api*/ false)                             \
+        .Run(state);                                                         \
+    state.SetItemsProcessed(static_cast<int64>(state.iterations()) * BATCH * \
+                            CLASS);                                          \
   }                                                                          \
   BENCHMARK(BM_OneHot##_##BATCH##_##CLASS##_##AXIS##_##DEVICE);
 

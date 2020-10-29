@@ -199,7 +199,7 @@ TCASE(T3, 128,   4,     3,            2.0f, 1.0f,  1.0f)
 
 #undef TCASE
 
-static Graph* BM_LRNGrad(int batches, int rows, int cols, int depth,
+static Graph* MakeRNGrad(int batches, int rows, int cols, int depth,
                          int depth_radius) {
   Graph* g = new Graph(OpRegistry::Global());
   Tensor grads(DT_FLOAT, TensorShape({batches, rows, cols, depth}));
@@ -223,12 +223,15 @@ static Graph* BM_LRNGrad(int batches, int rows, int cols, int depth,
   return g;
 }
 
-#define BM_LRNGradDev(DEVICE, B, R, C, D, DR)                                 \
-  static void BM_LRNGrad_##DEVICE##_##B##_##R##_##C##_##D##_##DR(int iters) { \
-    testing::ItemsProcessed(static_cast<int64>(iters) * B * R * C * D * DR *  \
-                            4);                                               \
-    test::Benchmark(#DEVICE, BM_LRNGrad(B, R, C, D, DR)).Run(iters);          \
-  }                                                                           \
+#define BM_LRNGradDev(DEVICE, B, R, C, D, DR)                                \
+  static void BM_LRNGrad_##DEVICE##_##B##_##R##_##C##_##D##_##DR(            \
+      ::testing::benchmark::State& state) {                                  \
+    test::Benchmark(#DEVICE, MakeRNGrad(B, R, C, D, DR),                     \
+                    /*old_benchmark_api*/ false)                             \
+        .Run(state);                                                         \
+    state.SetItemsProcessed(static_cast<int64>(state.iterations()) * B * R * \
+                            C * D * DR * 4);                                 \
+  }                                                                          \
   BENCHMARK(BM_LRNGrad_##DEVICE##_##B##_##R##_##C##_##D##_##DR)
 
 BM_LRNGradDev(cpu, 128, 12, 12, 64, 4);
