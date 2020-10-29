@@ -53,13 +53,17 @@ class Tensor;
 //     result size to cache.
 //   disable_constant_propagation - if true, only Const node values will be
 //     returned.
+//   outer_context - optional. The InferenceContext for the call node if inside
+//     a nested function. This is useful for doing constant propagation across
+//     Arg nodes.
 Status EvaluateConstantTensor(
     OutputTensor tensor, const ShapeRefiner& refiner,
     const OpRegistryInterface& ops, int32 graph_def_version, bool* evaluated,
     Tensor* result, GraphRunner* graph_runner = nullptr,
     std::unordered_map<string, Tensor>* cached_values = nullptr,
     int64 max_cached_value_size = 1024,
-    bool disable_constant_propagation = false);
+    bool disable_constant_propagation = false,
+    shape_inference::InferenceContext* outer_context = nullptr);
 
 }  // namespace tensorflow
 

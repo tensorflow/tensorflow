@@ -49,6 +49,24 @@ class InterpreterTest : public ::testing::Test {
  protected:
   TfLiteContext* GetInterpreterContext() { return interpreter_.context_; }
 
+  std::vector<Interpreter::TfLiteDelegatePtr>*
+  mutable_lazy_delegate_providers() {
+    return &interpreter_.lazy_delegate_providers_;
+  }
+
+  bool HasDelegates() { return interpreter_.HasDelegates(); }
+
+  void BuildSignature(const std::string& method_name, const std::string& key,
+                      const std::map<std::string, uint32_t>& inputs,
+                      const std::map<std::string, uint32_t>& outputs) {
+    Interpreter::SignatureDef signature;
+    signature.inputs = inputs;
+    signature.outputs = outputs;
+    signature.method_name = method_name;
+    signature.signature_def_key = key;
+    interpreter_.SetSignatureDef({signature});
+  }
+
   Interpreter interpreter_;
 };
 
@@ -967,17 +985,6 @@ TEST(BasicInterpreter, TestOverflow) {
   }
 }
 
-TEST(BasicInterpreter, TestUseNNAPI) {
-  TestErrorReporter reporter;
-  Interpreter interpreter(&reporter);
-  interpreter.UseNNAPI(true);
-  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
-  ASSERT_EQ(interpreter.Invoke(), kTfLiteOk);
-  interpreter.UseNNAPI(false);
-  ASSERT_EQ(reporter.error_messages(),
-            "Attempting to disable NNAPI delegate after it's applied.");
-}
-
 TEST(BasicInterpreter, TestUnsupportedDelegateFunctions) {
   Interpreter interpreter;
   ASSERT_EQ(interpreter.AddTensors(2), kTfLiteOk);
@@ -1780,6 +1787,143 @@ TEST_F(TestCustomAllocation, ResizeTensorsWithEnoughMemory) {
 
   ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
   VerifyInvoke();
+}
+
+// Tests related to lazy delegate providers that are primarily used for applying
+// TfLite delegates by default.
+class TestLazyDelegateProvider : public InterpreterTest {
+ protected:
+  struct DummyLazyDelegateProvider : public TfLiteDelegate {
+    explicit DummyLazyDelegateProvider(int64_t support_flags) {
+      data_ = static_cast<void*>(this);
+      flags = support_flags;
+      Prepare = [](TfLiteContext*, TfLiteDelegate* delegate) -> TfLiteStatus {
+        return kTfLiteOk;
+      };
+    }
+  };
+
+  void InitWithLazyDelegate(int64_t delegate_flags,
+                            bool create_dyanmic_tensor = false,
+                            bool return_error = false) {
+    TfLiteRegistration reg = {nullptr};
+    if (return_error) {
+      reg.prepare = [](TfLiteContext* context, TfLiteNode* node) {
+        return kTfLiteError;
+      };
+    }
+    ASSERT_EQ(interpreter_.AddTensors(2), kTfLiteOk);
+    interpreter_.SetInputs({0});
+    interpreter_.SetOutputs({1});
+    interpreter_.AddNodeWithParameters({0}, {1}, nullptr, 0, nullptr, &reg);
+
+    Interpreter::TfLiteDelegatePtr delegate(
+        new DummyLazyDelegateProvider(delegate_flags),
+        [](TfLiteDelegate* delegate) {
+          auto* dummy =
+              static_cast<DummyLazyDelegateProvider*>(delegate->data_);
+          delete dummy;
+        });
+    mutable_lazy_delegate_providers()->push_back(std::move(delegate));
+
+    if (create_dyanmic_tensor) {
+      // Mark the output as dynamic tensor.
+      interpreter_.tensor(1)->data.raw = nullptr;
+      interpreter_.tensor(1)->allocation_type = kTfLiteDynamic;
+    }
+  }
+};
+
+TEST_F(TestLazyDelegateProvider, ApplicationSuccess) {
+  InitWithLazyDelegate(kTfLiteDelegateFlagsNone);
+  EXPECT_EQ(kTfLiteOk, interpreter_.AllocateTensors());
+  // We clear Interpreter::lazy_delegate_providers_ after they are tried out.
+  EXPECT_TRUE(mutable_lazy_delegate_providers()->empty());
+  EXPECT_TRUE(HasDelegates());
+}
+
+TEST_F(TestLazyDelegateProvider, ApplicationFailure) {
+  InitWithLazyDelegate(kTfLiteDelegateFlagsNone,
+                       false /* create_dyanmic_tensor */,
+                       true /* return_error */);
+  EXPECT_EQ(kTfLiteError, interpreter_.AllocateTensors());
+  // We clear Interpreter::lazy_delegate_providers_ after they are tried out.
+  EXPECT_TRUE(mutable_lazy_delegate_providers()->empty());
+  EXPECT_FALSE(HasDelegates());
+}
+
+TEST_F(TestLazyDelegateProvider, ApplicationSkipped) {
+  InitWithLazyDelegate(kTfLiteDelegateFlagsNone,
+                       true /* create_dyanmic_tensor */);
+  EXPECT_EQ(kTfLiteOk, interpreter_.AllocateTensors());
+  EXPECT_TRUE(mutable_lazy_delegate_providers()->empty());
+  // As the delegate doesn't allow dynamic tensor, the delegate won't be applied
+  // and the interpreter doesn't have any delegate applied.
+  EXPECT_FALSE(HasDelegates());
+}
+
+TEST_F(InterpreterTest, SingleSignature_get_signatures) {
+  const char kMethodName[] = "test_method";
+  const char kSignatureDefKey[] = "test_key";
+  BuildSignature(kMethodName, kSignatureDefKey, {{"Input1", 0}, {"Input2", 1}},
+                 {{"Output1", 5}});
+  auto results = interpreter_.signature_def_names();
+  ASSERT_EQ(1, results.size());
+  EXPECT_EQ(kMethodName, *results[0]);
+}
+
+TEST_F(InterpreterTest, SingleSignature_get_inputs) {
+  const char kMethodName[] = "test_method";
+  const char kSignatureDefKey[] = "test_key";
+  const std::map<std::string, uint32_t> inputs = {{"Input1", 0}, {"Input2", 1}};
+  const std::map<std::string, uint32_t> outputs = {{"Output1", 5}};
+  BuildSignature(kMethodName, kSignatureDefKey, inputs, outputs);
+  EXPECT_THAT(interpreter_.signature_inputs(kMethodName), testing::Eq(inputs));
+  EXPECT_THAT(interpreter_.signature_outputs(kMethodName),
+              testing::Eq(outputs));
+}
+
+TEST_F(InterpreterTest, SingleSignature_validate_get_tensor) {
+  const char kMethodName[] = "test_method";
+  const char kSignatureDefKey[] = "test_key";
+  const std::map<std::string, uint32_t> inputs = {{"Input1", 0}, {"Input2", 1}};
+  const std::map<std::string, uint32_t> outputs = {{"Output1", 5}};
+
+  BuildSignature(kMethodName, kSignatureDefKey, inputs, outputs);
+  ASSERT_EQ(interpreter_.AddTensors(6), kTfLiteOk);
+  ASSERT_EQ(interpreter_.SetInputs({0, 1}), kTfLiteOk);
+  ASSERT_EQ(interpreter_.SetOutputs({5}), kTfLiteOk);
+  ASSERT_EQ(interpreter_.SetTensorParametersReadWrite(
+                0, kTfLiteFloat32, "", {3}, TfLiteQuantizationParams()),
+            kTfLiteOk);
+  ASSERT_EQ(interpreter_.SetTensorParametersReadWrite(
+                1, kTfLiteFloat32, "", {3}, TfLiteQuantizationParams()),
+            kTfLiteOk);
+  ASSERT_EQ(interpreter_.ResizeInputTensor(interpreter_.inputs()[0], {1, 2, 3}),
+            kTfLiteOk);
+  ASSERT_EQ(interpreter_.ResizeInputTensor(interpreter_.inputs()[1], {1, 2, 3}),
+            kTfLiteOk);
+  ASSERT_EQ(interpreter_.AllocateTensors(), kTfLiteOk);
+
+  EXPECT_TRUE(interpreter_.input_tensor_by_signature_name(
+                  "Input1", kMethodName) != nullptr);
+  EXPECT_TRUE(interpreter_.input_tensor_by_signature_name(
+                  "Input2", kMethodName) != nullptr);
+  EXPECT_TRUE(interpreter_.output_tensor_by_signature_name(
+                  "Output1", kMethodName) != nullptr);
+
+  // Invalid tensor
+  EXPECT_EQ(interpreter_.input_tensor_by_signature_name("Input3", kMethodName),
+            nullptr);
+  EXPECT_EQ(interpreter_.output_tensor_by_signature_name("Input3", kMethodName),
+            nullptr);
+  // Invalid method
+  EXPECT_EQ(
+      interpreter_.input_tensor_by_signature_name("Input1", "InvalidMethod"),
+      nullptr);
+  EXPECT_EQ(
+      interpreter_.output_tensor_by_signature_name("Output1", "InvalidMethod"),
+      nullptr);
 }
 
 }  // namespace

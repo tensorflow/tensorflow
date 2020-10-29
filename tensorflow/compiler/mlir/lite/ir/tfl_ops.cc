@@ -243,12 +243,17 @@ struct TensorFlowLiteInlinerInterface : public DialectInlinerInterface {
   // Analysis Hooks
   //===--------------------------------------------------------------------===//
 
-  bool isLegalToInline(Operation *op, Region *dest,
+  // Allow all call operations to be inlined.
+  bool isLegalToInline(Operation *call, Operation *callable,
+                       bool wouldBeCloned) const final {
+    return true;
+  }
+  bool isLegalToInline(Operation *op, Region *dest, bool wouldBeCloned,
                        BlockAndValueMapping &) const final {
     // No TFLite op restricts inlining today, revise as needed in the future.
     return true;
   }
-  bool isLegalToInline(Region *dest, Region *src,
+  bool isLegalToInline(Region *dest, Region *src, bool wouldBeCloned,
                        BlockAndValueMapping &valueMapping) const final {
     return isa<WhileOp>(dest->getParentOp());
   }
@@ -1155,6 +1160,20 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
 void ReshapeOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                             MLIRContext *context) {
   results.insert<RemoveAdjacentReshape>(context);
+}
+
+static LogicalResult Verify(ReshapeOp op) {
+  auto shape = op.shape().getType().dyn_cast_or_null<mlir::RankedTensorType>();
+  if (!shape || !shape.hasRank()) return success();
+  if (shape.getNumDynamicDims() <= 1) return success();
+
+  op.emitError()
+      << "its shape value, " << shape
+      << ", is invalid because it has more than one dynamic dimensions. You "
+         "need to set up the unspecified size(s) to avoid this problem, for "
+         "example, setting batch size in keras model or setting unspecified "
+         "input size(s) with fixed ones.";
+  return failure();
 }
 
 //===----------------------------------------------------------------------===//

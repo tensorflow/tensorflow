@@ -121,6 +121,8 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     pass_manager->addPass(mlir::TFL::CreatePrepareCompositeFunctionsPass());
   }
 
+  pass_manager->addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
+
   pass_manager->addPass(mlir::createInlinerPass());
   pass_manager->addPass(mlir::createSymbolDCEPass());
 
@@ -138,8 +140,6 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     // Add a shape inference pass to optimize away the unnecessary casts.
     pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
   }
-
-  pass_manager->addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
 
   // Legalize while early to allow further constant folding.
   // TODO(jpienaar): This may not actually matter as we do canonicalization

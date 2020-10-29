@@ -731,6 +731,28 @@ LogicalResult ExportXlaOp(CaseOp op, OpLoweringContext ctx) {
   return success();
 }
 
+// Specialize CompareOp export to set broadcast_dimensions argument.
+mlir::LogicalResult ExportXlaOp(mlir::mhlo::CompareOp op,
+                                OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaOp lhs, rhs;
+  if (failed(GetXlaOp(op.lhs(), value_map, &lhs, op))) return mlir::failure();
+  if (failed(GetXlaOp(op.rhs(), value_map, &rhs, op))) return mlir::failure();
+  auto dir = Convert_comparison_direction(op.comparison_direction());
+  auto type_attr = op.compare_typeAttr();
+
+  xla::XlaOp xla_result;
+  if (type_attr) {
+    auto type =
+        xla::StringToComparisonType(type_attr.getValue().str()).ValueOrDie();
+    xla_result = xla::Compare(lhs, rhs, /*broadcast_dimensions=*/{}, dir, type);
+  } else {
+    xla_result = xla::Compare(lhs, rhs, dir);
+  }
+  value_map[op] = xla_result;
+  return mlir::success();
+}
+
 LogicalResult ExportXlaOp(ConstOp op, OpLoweringContext ctx) {
   return failure();
 }
@@ -1012,13 +1034,24 @@ LogicalResult ExportXlaOp(SortOp op, OpLoweringContext ctx) {
                                                      &comparator)))
     return failure();
 
-  auto tupled = xla::Sort(GetTuple(op.operands(), ctx), comparator,
+  auto sorted = xla::Sort(GetTuple(op.operands(), ctx), comparator,
                           op.dimension(), op.is_stable());
 
   auto& value_map = *ctx.values;
+  auto shape_or = sorted.builder()->GetShape(sorted);
+  if (!shape_or.ok()) {
+    return op.emitError(shape_or.status().ToString());
+  }
+
+  xla::Shape& shape = shape_or.ValueOrDie();
+  if (!shape.IsTuple()) {
+    value_map[op.getResult(0)] = sorted;
+    return success();
+  }
+
   // MLIR's sort supports multiple returns, untuple all the results of XLA's.
   for (auto it : llvm::enumerate(op.getResults())) {
-    value_map[it.value()] = xla::GetTupleElement(tupled, it.index());
+    value_map[it.value()] = xla::GetTupleElement(sorted, it.index());
   }
   return success();
 }
@@ -1169,9 +1202,9 @@ StatusOr<xla::Literal> CreateArrayLiteralFromAttr(ElementsAttr attr,
 }
 
 xla::Layout ExtractLayout(mlir::Operation* op, int rank) {
-  if (auto attr =
-          op->getAttrOfType<mlir::DenseIntElementsAttr>("minor_to_major")) {
+  if (auto attr = GetLayoutFromMlirHlo(op)) {
     llvm::SmallVector<int64, 4> minor_to_major;
+    DCHECK_EQ(rank, attr.size());
     minor_to_major.reserve(attr.size());
     for (const llvm::APInt& i : attr) {
       minor_to_major.push_back(i.getZExtValue());
@@ -1724,6 +1757,10 @@ Status ConvertMlirHloToHlo(
     return diag_handler.ConsumeStatus();
 
   return Status::OK();
+}
+
+DenseIntElementsAttr GetLayoutFromMlirHlo(mlir::Operation* op) {
+  return op->getAttrOfType<mlir::DenseIntElementsAttr>("minor_to_major");
 }
 
 }  // namespace mlir

@@ -85,7 +85,7 @@ def image_augmentation(inputs, batch_size):
   return img
 
 
-class BenchmarkLayer(benchmark.Benchmark):
+class BenchmarkLayer(benchmark.TensorFlowBenchmark):
   """Benchmark the layer forward pass."""
 
   def run_dataset_implementation(self, batch_size):

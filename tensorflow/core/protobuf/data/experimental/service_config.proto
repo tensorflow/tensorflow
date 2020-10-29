@@ -37,4 +37,7 @@ message WorkerConfig {
   string worker_address = 4;
   // How often the worker should heartbeat to the master.
   int64 heartbeat_interval_ms = 5;
+  // How long to retry requests to the dispatcher before giving up and reporting
+  // an error.
+  int64 dispatcher_timeout_ms = 6;
 }

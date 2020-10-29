@@ -47,6 +47,7 @@ py_library(
         "//tensorflow/python/distribute:central_storage_strategy",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:parameter_server_strategy",
+        "//tensorflow/python/distribute:parameter_server_strategy_v2",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/keras:backend",
@@ -92,7 +93,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["adagrad_test.py"],
     shard_count = 4,
-    tfrt_enabled = True,
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
@@ -113,7 +113,10 @@ cuda_py_test(
     size = "medium",
     srcs = ["adam_test.py"],
     shard_count = 4,
-    tags = ["no_rocm"],
+    tags = [
+        "no_rocm",
+        "no_windows",  # TODO(b/171384138)
+    ],
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
@@ -177,7 +180,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["ftrl_test.py"],
     shard_count = 4,
-    tfrt_enabled = True,
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
@@ -217,7 +219,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["nadam_test.py"],
     shard_count = 4,
-    tfrt_enabled = True,
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
@@ -264,7 +265,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["learning_rate_schedule_test.py"],
     shard_count = 4,
-    tfrt_enabled = True,
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
@@ -279,7 +279,6 @@ cuda_py_test(
     name = "legacy_learning_rate_decay_test",
     size = "medium",
     srcs = ["legacy_learning_rate_decay_test.py"],
-    tfrt_enabled = True,
     deps = [
         ":legacy_learning_rate_decay",
         "//tensorflow/python:framework_test_lib",
@@ -299,6 +298,9 @@ cuda_py_test(
     srcs = ["rmsprop_test.py"],
     shard_count = 2,
     tags = ["no_rocm"],
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     # TODO(b/168527439): invalid resource variable reference on GPU for TFRT.
     deps = [
         ":optimizer_v2",

@@ -74,7 +74,7 @@ class FakeWorker : public TestWorkerInterface {
   // worker is supposed to have.
   BufRendezvous* buf_rendezvous() { return &buf_rendezvous_; }
 
-  void GetStatusAsync(const GetStatusRequest* request,
+  void GetStatusAsync(CallOptions* opts, const GetStatusRequest* request,
                       GetStatusResponse* response, bool fail_fast,
                       StatusCallback done) override {
     if (is_failed_) {
@@ -126,7 +126,8 @@ class FakeWorker : public TestWorkerInterface {
           }
           done(s);
           if (h) BufRendezvous::DoneWithHook(h);
-        });
+        },
+        nullptr /*cancellation_manager*/);
   }
 
  private:
@@ -311,7 +312,8 @@ TEST_F(CollRMADistTest, ProdFirstOK) {
       [&producer_note, &producer_status](const Status& s) {
         producer_status.Update(s);
         producer_note.Notify();
-      });
+      },
+      nullptr /*cancellation_manager*/);
   Device* dst_device = nullptr;
   string dev_name = "CPU:0";
   TF_EXPECT_OK(device_mgrs_[0]->LookupDevice(dev_name, &dst_device));
@@ -322,6 +324,7 @@ TEST_F(CollRMADistTest, ProdFirstOK) {
       false,                                              // peer_is_local
       kBufKey, dst_device, to_device_ctx, alloc_attr_, &to_tensor_,
       device_locality_, 0 /*dev_to_dev_stream_index*/,
+      nullptr /*cancellation_manager*/,
       [&consumer_status, &consumer_note](const Status& s) {
         consumer_status = s;
         consumer_note.Notify();
@@ -351,6 +354,7 @@ TEST_F(CollRMADistTest, ConsFirstOK) {
       false,                                              // peer_is_local
       kBufKey, dst_device, to_device_ctx, alloc_attr_, &to_tensor_,
       device_locality_, 0 /*dev_to_dev_stream_index*/,
+      nullptr /*cancellation_manager*/,
       [&consumer_status, &consumer_note](const Status& s) {
         consumer_status = s;
         consumer_note.Notify();
@@ -361,7 +365,8 @@ TEST_F(CollRMADistTest, ConsFirstOK) {
       [&producer_note, &producer_status](const Status& s) {
         producer_status.Update(s);
         producer_note.Notify();
-      });
+      },
+      nullptr /*cancellation_manager*/);
   consumer_note.WaitForNotification();
   TF_EXPECT_OK(consumer_status);
   producer_note.WaitForNotification();
@@ -384,6 +389,7 @@ TEST_F(CollRMADistTest, ConsFirstAbort) {
       false,                                              // peer_is_local
       kBufKey, dst_device, to_device_ctx, alloc_attr_, &to_tensor_,
       device_locality_, 0 /*dev_to_dev_stream_index*/,
+      nullptr /*cancellation_manager*/,
       [&consumer_status, &consumer_note](const Status& s) {
         consumer_status = s;
         consumer_note.Notify();
@@ -411,6 +417,7 @@ TEST_F(CollRMADistTest, WorkerRestart) {
       false,                                              // peer_is_local
       buf_key, dst_device, to_device_ctx, alloc_attr_, &to_tensor_,
       device_locality_, 0 /*dev_to_dev_stream_index*/,
+      nullptr /*cancellation_manager*/,
       [&consumer_status, &consumer_note](const Status& s) {
         consumer_status = s;
         consumer_note.Notify();
@@ -421,7 +428,8 @@ TEST_F(CollRMADistTest, WorkerRestart) {
       [&producer_note, &producer_status](const Status& s) {
         producer_status.Update(s);
         producer_note.Notify();
-      });
+      },
+      nullptr /*cancellation_manager*/);
   consumer_note.WaitForNotification();
   TF_EXPECT_OK(consumer_status);
   producer_note.WaitForNotification();
@@ -437,6 +445,7 @@ TEST_F(CollRMADistTest, WorkerRestart) {
       false,                                              // peer_is_local
       buf_key, dst_device, to_device_ctx, alloc_attr_, &to_tensor_,
       device_locality_, 0 /*dev_to_dev_stream_index*/,
+      nullptr /*cancellation_manager*/,
       [&consumer_status, &post_restart_note](const Status& s) {
         consumer_status = s;
         post_restart_note.Notify();
@@ -450,7 +459,7 @@ TEST_F(CollRMADistTest, CheckHealthOKWithCachedAttr) {
   Status check_health_status;
   Notification check_health_done;
   rma_->CheckPeerHealth(
-      "/job:worker/replica:0/task:1",
+      "/job:worker/replica:0/task:1", /*timeout_in_ms=*/0,
       [&check_health_status, &check_health_done](const Status s) {
         check_health_status = s;
         check_health_done.Notify();
@@ -463,7 +472,7 @@ TEST_F(CollRMADistTest, CheckHealthOKWithoutCachedAttr) {
   Status check_health_status;
   Notification check_health_done;
   rma_->CheckPeerHealth(
-      "/job:worker/replica:0/task:1",
+      "/job:worker/replica:0/task:1", /*timeout_in_ms=*/0,
       [&check_health_status, &check_health_done](const Status s) {
         check_health_status = s;
         check_health_done.Notify();
@@ -479,7 +488,7 @@ TEST_F(CollRMADistTest, CheckHealthRestarted) {
   Status check_health_status;
   Notification check_health_done;
   rma_->CheckPeerHealth(
-      "/job:worker/replica:0/task:1",
+      "/job:worker/replica:0/task:1", /*timeout_in_ms=*/0,
       [&check_health_status, &check_health_done](const Status s) {
         check_health_status = s;
         check_health_done.Notify();
@@ -496,7 +505,7 @@ TEST_F(CollRMADistTest, CheckHealthFailedPeer) {
   Status check_health_status;
   Notification check_health_done;
   rma_->CheckPeerHealth(
-      "/job:worker/replica:0/task:1",
+      "/job:worker/replica:0/task:1", /*timeout_in_ms=*/0,
       [&check_health_status, &check_health_done](const Status s) {
         check_health_status = s;
         check_health_done.Notify();
@@ -511,7 +520,7 @@ TEST_F(CollRMADistTest, CheckHealthRestartedWithDifferentDevices) {
   Status check_health_status;
   Notification check_health_done;
   rma_->CheckPeerHealth(
-      "/job:worker/replica:0/task:1",
+      "/job:worker/replica:0/task:1", /*timeout_in_ms=*/0,
       [&check_health_status, &check_health_done](const Status s) {
         check_health_status = s;
         check_health_done.Notify();

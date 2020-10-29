@@ -114,7 +114,6 @@ tf_py_test(
     name = "dataset_spec_test",
     size = "small",
     srcs = ["dataset_spec_test.py"],
-    tfrt_enabled = True,
     deps = [
         ":test_base",
         "//tensorflow/python:client_testlib",
@@ -226,7 +225,6 @@ tf_py_test(
     name = "from_sparse_tensor_slices_test",
     size = "small",
     srcs = ["from_sparse_tensor_slices_test.py"],
-    tfrt_enabled = True,
     deps = [
         ":test_base",
         "//tensorflow/core:protos_all_py",
@@ -318,7 +316,6 @@ tf_py_test(
         "no_oss",  # Test flaky due to port collisions.
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":test_base",
         "//tensorflow/core:protos_all_py",
@@ -611,6 +608,9 @@ cuda_py_test(
     name = "reduce_test",
     size = "small",
     srcs = ["reduce_test.py"],
+    tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         ":test_base",
         "//tensorflow/python:array_ops",

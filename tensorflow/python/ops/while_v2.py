@@ -639,22 +639,19 @@ def _create_grad_func(ys, xs, grads, cond_graph, body_graph, name, while_op,
   # tensors. We capture 3 types of tensors when building the grad fn:
   # 1. Accumulators for forward graph intermediates which are not loop
   #    invariants. The outputs corresponding to these are populated in
-  #    `popped_tensor_lists` by `_WhileBodyGradFuncGraph`.
+  #    `internal_capture_to_output` by `_WhileBodyGradFuncGraph`.
   # 2. Resources, which are output as is.
   # 3. Forward graph loop invariants, which are output as is.
   for external_capture, internal_capture in grad_func_graph.captures:
-    if ops.tensor_id(internal_capture) in grad_func_graph.popped_tensor_lists:
-      new_output = grad_func_graph.popped_tensor_lists[ops.tensor_id(
+    if (ops.tensor_id(internal_capture)
+        in grad_func_graph.internal_capture_to_output):
+      new_output = grad_func_graph.internal_capture_to_output[ops.tensor_id(
           internal_capture)]
-    elif (internal_capture.dtype == dtypes.resource or _is_loop_invariant(
-        external_capture, body_graph_inputs, body_graph_outputs)):
-      new_output = internal_capture
     else:
-      raise ValueError("Tensor %s which captures %s is in list of "
-                       "internal_captures but is not a resource, is not in "
-                       "popped_tensor_lists and does not capture a loop "
-                       "invariant." %
-                       (str(internal_capture), str(external_capture)))
+      raise ValueError(
+          "Tensor %s which captures %s is in list of "
+          "internal_captures but not in internal_capture_to_output." %
+          (str(internal_capture), str(external_capture)))
     grad_func_graph.outputs.append(new_output)
     grad_func_graph.structured_outputs.append(new_output)
 
@@ -719,13 +716,12 @@ def _resolve_grad_captures(body_graph, body_grad_graph, while_op):
 
   Returns:
     A list of input tensors to be passed as the captured inputs to
-      `body_grad_graph`.
+    `body_grad_graph`.
   """
   new_capture_inputs = []
   for t in body_grad_graph.external_captures:
-    # All values captured by gradient computation should be from the forward
-    # graph or a captured resource variable (note that input gradients are
-    # regular non-captured inputs).
+    # Resolve tensors captured from the forward graph to the outputs of the
+    # forward while_op.
     if t.graph == body_graph:
       # Captured accumulator or loop invariant.
       for i, output in enumerate(t.graph.outputs):
@@ -737,9 +733,6 @@ def _resolve_grad_captures(body_graph, body_grad_graph, while_op):
       # correctly capture the tensors in `body_graph.outer_graph`. Both cond_v2
       # and while_v2 handle this while building their gradient functions.
       assert t.graph == body_graph.outer_graph
-    else:
-      # Captured resource variable
-      assert t.dtype == dtypes.resource
 
     new_capture_inputs.append(t)
   return new_capture_inputs
@@ -872,10 +865,10 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
      c. Pop a value from the captured placeholder and use it as the captured
         value for the forward pass tensor.
 
-  This only allows capturing tensors in the forward graph. A ValueError is
-  raised if an attempt is made to capture a tensor not in the forward graph.
-  To manually capture capture a tensor that is not in the forward graph, call
-  `capture` with `allowlisted=True`.
+  Tensors not in the forward graph are captured directly and become loop
+  invariants in the gradient graph, by adding the captured placeholder to the
+  list of outputs. This path is used, for instance, when custom_gradient
+  functions refer to tensors outside the loop body.
 
   Note: The `captures` dict does not contain the forward tensor since it is not
   directly captured. It contains the accumulator corresponding to this forward
@@ -888,9 +881,13 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
     extra_inputs: list of EmptyTensorList tensors to be used as initial input to
     the new accumulators in the forward graph. It may also contain external
     captures of the custom gradient function.
-    popped_tensor_lists: dict from the captured accumulator placeholder to the
-      TensorList obtained after popping the intermediate tensor from it. The
-      values of this dict need to be added to the list of outputs.
+    internal_capture_to_output: dict from a tensor_id(captured placeholder) to
+      the corresponding tensor that needs to be added to the list of outputs.
+      For instance, when capturing an accumulator TensorList this contains the
+      TensorList obtained after popping a tensor from the list. Other entries
+      in this dict are expected, though not enforced, to be identities.
+      This dict is needed because these output tensors need to be added to
+      FuncGraph.outputs "after" the tensors returned from the gradient function.
   """
 
   def __init__(self, name, forward_cond_graph, forward_body_graph,
@@ -898,18 +895,13 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
                body_graph_outputs):
     super(_WhileBodyGradFuncGraph, self).__init__(name)
     self.extra_inputs = []
-    self.popped_tensor_lists = {}
+    self.internal_capture_to_output = {}
     # FuncGraph for the body of the forward While op.
     self._forward_graph = forward_body_graph
     # FuncGraph for the cond of the forward While op.
     self._forward_cond_graph = forward_cond_graph
     self._maximum_iterations = maximum_iterations
     self._forward_while_op = forward_while_op
-    # Only for use in `_is_loop_invariant`. These are not updated when
-    # additional tensors are added to `forward_body_graph.inputs` and
-    # `forward_body_graph.outputs` in `_capture_helper`.
-    self._forward_graph_inputs = body_graph_inputs
-    self._forward_graph_outputs = body_graph_outputs
     # Dict from forward intermediate tensor to its indirectly captured tensor
     # in this graph. Indirect capturing happens in two ways:
     # 1. For non-resource tensors we capture their accumulators from the forward
@@ -978,43 +970,23 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
         op_def=op_def,
         compute_device=compute_device)
 
-  def capture(self, tensor, name=None, allowlisted=False):
-    """Selectively captures external tensors.
-
-    If `allowlisted` is False only allows capturing tensors in the
-    `_forward_graph`.
-
-    Args:
-      tensor: Tensor. May be from this FuncGraph or a different graph.
-      name: Optional name if a placeholder is created.
-      allowlisted: If False (default), only allows capturing tensors from the
-        forward graph.
-
-    Returns:
-      The placeholder in this graph for the tensor.
-
-    Raises:
-      ValueError: If attempting to capture an external tensor not in the forward
-        graph with `allowlisted` set to False.
-    """
-    if not allowlisted and (isinstance(tensor, ops.EagerTensor) or
-                            (tensor.graph is not self and
-                             tensor.graph != self._forward_graph)):
-      with self._forward_cond_graph.as_default():
-        self._forward_cond_graph.capture(tensor)
-      with self._forward_graph.as_default():
-        already_captured = self._forward_graph.captured(tensor)
-        if not already_captured:
-          self.extra_inputs.append(tensor)
-        tensor = self._forward_graph.capture(tensor)
-        if not already_captured:
-          self._forward_graph.outputs.append(tensor)
-
-    return super(_WhileBodyGradFuncGraph, self).capture(tensor, name)
-
   def _capture_helper(self, tensor, name):
+    """Implements the capturing described in the class docstring."""
+    captured_tensor = self._indirect_captures.get(ops.tensor_id(tensor))
+    if captured_tensor is not None:
+      return captured_tensor
+
     if tensor.graph is not self._forward_graph:
-      return super(_WhileBodyGradFuncGraph, self)._capture_helper(tensor, name)
+      already_captured = self.captured(tensor)
+      captured_tensor = super(_WhileBodyGradFuncGraph, self)._capture_helper(
+          tensor, name)
+      if not already_captured:
+        # Adds the captured tensor to the list of outputs so that the input
+        # and output signatures match.
+        self.internal_capture_to_output[ops.tensor_id(
+            captured_tensor)] = captured_tensor
+        self._indirect_captures[ops.tensor_id(tensor)] = captured_tensor
+      return captured_tensor
 
     while tensor.op.type == "Identity":
       # We do not accumulate the output of identity nodes so we try to capture
@@ -1025,15 +997,17 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
     if captured_tensor is not None:
       return captured_tensor
 
-    # Do not accumulate loop invariants.
-    if (any(tensor is t for t in self._forward_graph.inputs) and
-        any(tensor is t for t in self._forward_graph.outputs)):
+    # No need to accumulate loop invariants. Capture them directly.
+    # The captured tensor gets resolved to the corresponding while output in
+    # `_resolve_grad_captures`.
+    if _is_loop_invariant(tensor, self._forward_graph.inputs,
+                          self._forward_graph.outputs):
       captured_tensor = super(_WhileBodyGradFuncGraph,
                               self)._capture_helper(tensor, name)
-      # Add to `popped_tensor_lists` so that this gets added to the list of
-      # outputs.
-      # TODO(srbs): Rename popped_tensor_lists.
-      self.popped_tensor_lists[ops.tensor_id(captured_tensor)] = captured_tensor
+      # Add to `internal_capture_to_output` so that this gets added to the list
+      # of outputs.
+      self.internal_capture_to_output[ops.tensor_id(
+          captured_tensor)] = captured_tensor
       self._indirect_captures[ops.tensor_id(tensor)] = captured_tensor
       return captured_tensor
 
@@ -1051,15 +1025,6 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
     # Resource tensors are not accumulated and handled specially.
     if tensor.dtype == dtypes.resource:
       return self._resource_capture_helper(tensor)
-
-    # No need to accumulate loop invariants. Capture them directly.
-    # The captured tensor gets resolved to the corresponding while output in
-    # `_resolve_grad_captures`.
-    if _is_loop_invariant(tensor, self._forward_graph_inputs,
-                          self._forward_graph_outputs):
-      captured_tensor = super(_WhileBodyGradFuncGraph,
-                              self)._capture_helper(tensor, name)
-      return captured_tensor
 
     # Create or find an existing accumulator output for `tensor` in the forward
     # graph, and fetch from this accumulator in the gradient graph to get the
@@ -1112,7 +1077,7 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
         captured_accumulator, element_dtype=tensor.dtype)
 
     self._indirect_captures[ops.tensor_id(tensor)] = captured_tensor
-    self.popped_tensor_lists[ops.tensor_id(
+    self.internal_capture_to_output[ops.tensor_id(
         captured_accumulator)] = new_tensor_list
     return captured_tensor
 
@@ -1146,7 +1111,7 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
         "Resource tensors must be loop invariants %s." % tensor_in_outer_graph)
 
     self._indirect_captures[ops.tensor_id(tensor)] = self.capture(
-        tensor_in_outer_graph, allowlisted=True)
+        tensor_in_outer_graph)
     return self._indirect_captures[ops.tensor_id(tensor)]
 
 
@@ -1282,7 +1247,8 @@ def _build_accumulator_name(tensor):
 
 
 def _is_loop_invariant(tensor, inputs, outputs):
-  return tensor in inputs and tensor in outputs
+  return (any(tensor is t for t in inputs) and
+          any(tensor is t for t in outputs))
 
 
 class _OperationWithOutputs(ops.Operation):

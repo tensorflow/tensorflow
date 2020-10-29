@@ -34,6 +34,15 @@ except ImportError:
 @keras_export('keras.models.model_from_config')
 def model_from_config(config, custom_objects=None):
   """Instantiates a Keras model from its config.
+ 
+  Usage:
+  ```
+  # for a Functional API model
+  tf.keras.Model().from_config(model.get_config())
+
+  # for a Sequential model
+  tf.keras.Sequential().from_config(model.get_config())
+  ```
 
   Arguments:
       config: Configuration dictionary.

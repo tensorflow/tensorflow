@@ -946,7 +946,7 @@ class SymbolicSupportTest(keras_parameterized.TestCase):
 
     tmp_dir = self.get_temp_dir()
     writer = summary_ops_v2.create_file_writer_v2(tmp_dir)
-    with writer.as_default(), summary_ops_v2.always_record_summaries():
+    with writer.as_default(), summary_ops_v2.record_if(True):
       my_layer = MyLayer()
       x = array_ops.ones((10, 10))
 
@@ -1437,8 +1437,7 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
     if testing_utils.should_run_eagerly():
       model.fit(x, y, epochs=2, batch_size=5)
     else:
-      with self.assertRaisesRegex(errors_impl.InaccessibleTensorError,
-                                  'ActivityRegularizer'):
+      with self.assertRaisesRegex(ValueError, 'ActivityRegularizer'):
         model.fit(x, y, epochs=2, batch_size=5)
 
   def test_conditional_activity_regularizer_with_wrappers_in_call(self):
@@ -1469,8 +1468,7 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
     if testing_utils.should_run_eagerly():
       model.fit(x, y, epochs=2, batch_size=5)
     else:
-      with self.assertRaisesRegex(errors_impl.InaccessibleTensorError,
-                                  'ActivityRegularizer'):
+      with self.assertRaisesRegex(ValueError, 'ActivityRegularizer'):
         model.fit(x, y, epochs=2, batch_size=5)
 
 
@@ -1502,7 +1500,7 @@ class IdentityLayer(base_layer.Layer):
 class DTypeTest(keras_parameterized.TestCase):
 
   # This class only have tests relating to layer.dtype. Tests for dtype policies
-  # are in mixed_precision/experimental/keras_test.py
+  # are in mixed_precision/keras_test.py
 
   # TODO(reedwm): Maybe have a separate test file for input casting tests.
 

@@ -13,7 +13,15 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "compute_dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "dtype_policy"
     mtype: "<type \'property\'>"
   }
   member {
@@ -122,6 +130,10 @@ tf_class {
   }
   member {
     name: "updates"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "variable_dtype"
     mtype: "<type \'property\'>"
   }
   member {

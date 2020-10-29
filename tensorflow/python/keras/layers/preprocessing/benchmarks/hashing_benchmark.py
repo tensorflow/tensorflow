@@ -47,7 +47,7 @@ def word_gen():
     yield "".join(random.choice(string.ascii_letters) for i in range(2))
 
 
-class BenchmarkLayer(benchmark.Benchmark):
+class BenchmarkLayer(benchmark.TensorFlowBenchmark):
   """Benchmark the layer forward pass."""
 
   def run_dataset_implementation(self, batch_size):

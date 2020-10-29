@@ -220,8 +220,8 @@ cc_test(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:util",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/schema:schema_utils",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -319,6 +319,7 @@ cc_library(
     hdrs = ["list_flex_ops.h"],
     deps = [
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/schema:schema_utils",
         "@jsoncpp_git//:jsoncpp",
     ],
 )

@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -43,6 +44,11 @@ class CppGradients
     TF_SetTracingImplementation(std::get<0>(GetParam()), status.get());
     Status s = StatusFromTF_Status(status.get());
     CHECK_EQ(errors::OK, s.code()) << s.error_message();
+
+    // Computing numerical gradients with TensorFloat-32 is numerically
+    // unstable. Some forward pass tests also fail with TensorFloat-32 due to
+    // low tolerances
+    enable_tensor_float_32_execution(false);
   }
 };
 

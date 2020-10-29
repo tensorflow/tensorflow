@@ -23,9 +23,12 @@ import abc
 import math
 import typing
 from typing import Any, Dict, Callable, List, Optional, Text, Tuple, TypeVar, Union
+
+from absl import logging
 import six
 
 from tensorflow.core.protobuf.tpu import optimization_parameters_pb2
+from tensorflow.core.protobuf.tpu import tpu_embedding_configuration_pb2
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import init_ops_v2
@@ -731,3 +734,18 @@ class FeatureConfig(object):
             max_sequence_length=self.max_sequence_length,
             name=self.name)
     )
+
+
+def log_tpu_embedding_configuration(
+    config: tpu_embedding_configuration_pb2.TPUEmbeddingConfiguration) -> None:
+  """Logs a TPUEmbeddingConfiguration proto across multiple statements.
+
+  Args:
+    config: TPUEmbeddingConfiguration proto to log.  Necessary because
+      logging.info has a maximum length to each log statement, which
+      particularly large configs can exceed.
+  """
+  logging.info("Beginning log of TPUEmbeddingConfiguration.")
+  for line in str(config).splitlines():
+    logging.info(line)
+  logging.info("Done with log of TPUEmbeddingConfiguration.")

@@ -31,6 +31,7 @@ import six
 from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.eager import context
@@ -523,9 +524,11 @@ class CompositeTensorDataAdapter(DataAdapter):
       flat_inputs += nest.flatten(y)
 
     def _is_composite(v):
-      # Dataset inherits from CompositeTensor but shouldn't be handled here.
+      # Dataset/iterator inherits from CompositeTensor but should be handled
+      # by DatasetAdapter and GeneratorAdapter.
       if (tf_utils.is_extension_type(v) and
-          not isinstance(v, dataset_ops.DatasetV2)):
+          not isinstance(v, (dataset_ops.DatasetV2,
+                             iterator_ops.IteratorBase))):
         return True
       # Support Scipy sparse tensors if scipy is installed
       if scipy_sparse is not None and scipy_sparse.issparse(v):
@@ -1539,7 +1542,4 @@ def _scipy_sparse_to_sparse_tensor(t):
 
 
 def _is_distributed_dataset(ds):
-  # TODO(b/151165986): Use public APIs.
-  return isinstance(
-      ds,
-      (input_lib.DistributedDataset, input_lib.DistributedDatasetsFromFunction))
+  return isinstance(ds, input_lib.DistributedDatasetInterface)

@@ -51,7 +51,8 @@ from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import compile_utils
 from tensorflow.python.keras.engine import data_adapter
 from tensorflow.python.keras.engine import training_utils
-from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer as lso
+from tensorflow.python.keras.mixed_precision import loss_scale_optimizer as lso
+from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.keras.saving import hdf5_format
 from tensorflow.python.keras.saving import save
 from tensorflow.python.keras.saving.saved_model import json_utils
@@ -549,12 +550,25 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
 
   def _get_optimizer(self, optimizer):
     """Wraps `optimizer` in `LossScaleOptimizer` if necessary."""
+    # The deprecated PolicyV1 has a loss_scale, which we use for backwards
+    # compatibility to match TF 2.3 behavior. The new Policy does not have a
+    # loss_scale, so we use dynamic loss scaling if the mixed_float16 policy is
+    # used.
+    if isinstance(self._dtype_policy, policy.PolicyV1):
+      loss_scale = self._dtype_policy.loss_scale
+    elif self._dtype_policy.name == 'mixed_float16':
+      loss_scale = 'dynamic'
+    else:
+      loss_scale = None
 
     def _get_single_optimizer(opt):
       opt = optimizers.get(opt)
-      if (self._dtype_policy.loss_scale is not None and
+      if (loss_scale is not None and
           not isinstance(opt, lso.LossScaleOptimizer)):
-        opt = lso.LossScaleOptimizer(opt, self._dtype_policy.loss_scale)
+        if loss_scale == 'dynamic':
+          opt = lso.LossScaleOptimizer(opt)
+        else:
+          opt = lso.LossScaleOptimizerV1(opt, loss_scale)
       return opt
 
     return nest.map_structure(_get_single_optimizer, optimizer)
@@ -954,7 +968,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
             form of datasets, generators, or `keras.utils.Sequence` instances
             (since they generate batches).
         validation_freq: Only relevant if validation data is provided. Integer
-            or `collections_abc.Container` instance (e.g. list, tuple, etc.).
+            or `collections.abc.Container` instance (e.g. list, tuple, etc.).
             If an integer, specifies how many training epochs to run before a
             new validation run is performed, e.g. `validation_freq=2` runs
             validation every 2 epochs. If a Container, specifies the epochs on
@@ -2732,7 +2746,7 @@ def _collective_all_reduce_multi_worker(strategy):
 # for all strategies
 def _multi_worker_concat(v, strategy):
   """Order PerReplica objects for CollectiveAllReduceStrategy and concat."""
-  replicas = strategy._gather(v, axis=0)  # pylint: disable=protected-access
+  replicas = strategy.gather(v, axis=0)  # pylint: disable=protected-access
   # TODO(b/170435030): We now need to make sure these run after the iterator
   # GetNext, so that we don't trigger aborting collective ops in the case of
   # EOF. Remove after the issue is fixed.
@@ -2744,10 +2758,10 @@ def _multi_worker_concat(v, strategy):
           for single_value in v.values
       ],
                                 axis=0)
-      all_shapes = strategy._gather(shapes, axis=0)  # pylint: disable=protected-access
+      all_shapes = strategy.gather(shapes, axis=0)
     else:
       # v is a tensor. This may happen when, say, we have 2x1 multi-worker.
-      all_shapes = strategy._gather(  # pylint: disable=protected-access
+      all_shapes = strategy.gather(
           array_ops.expand_dims_v2(array_ops.shape(v)[0], axis=0),
           axis=0)
 

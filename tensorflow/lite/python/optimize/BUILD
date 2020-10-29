@@ -16,6 +16,7 @@ cc_library(
         "//tensorflow/lite/python/interpreter_wrapper:numpy",
         "//tensorflow/lite/python/interpreter_wrapper:python_error_reporter",
         "//tensorflow/lite/python/interpreter_wrapper:python_utils",
+        "//tensorflow/lite/tools/optimize:quantization_wrapper_utils",
         "//tensorflow/lite/tools/optimize:quantize_model",
         "//tensorflow/lite/tools/optimize/calibration:calibration_reader",
         "//tensorflow/lite/tools/optimize/calibration:calibrator_lib",

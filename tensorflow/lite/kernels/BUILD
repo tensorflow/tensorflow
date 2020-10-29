@@ -190,8 +190,8 @@ cc_library(
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/nnapi:nnapi_implementation",
+        "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/schema:schema_utils",
         "//tensorflow/lite/testing:util",
         "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:logging",
@@ -549,6 +549,7 @@ BUILTIN_KERNEL_SRCS = [
     "comparisons.cc",
     "concatenation.cc",
     "conv.cc",
+    "cumsum.cc",
     "densify.cc",
     "depth_to_space.cc",
     "depthwise_conv.cc",
@@ -717,7 +718,6 @@ cc_library(
     name = "custom_ops",
     srcs = [
         "complex_support.cc",
-        "cumsum.cc",
         "multinomial.cc",
         "random_standard_normal.cc",
         "rfft2d.cc",
@@ -2341,16 +2341,15 @@ cc_test(
 
 cc_test(
     name = "cumsum_test",
+    size = "small",
     srcs = ["cumsum_test.cc"],
     deps = [
-        ":custom_ops",
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
-        "@flatbuffers",
     ],
 )
 

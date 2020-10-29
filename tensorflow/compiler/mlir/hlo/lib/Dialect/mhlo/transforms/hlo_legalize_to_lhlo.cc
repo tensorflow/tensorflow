@@ -42,7 +42,7 @@ namespace mhlo {
 namespace {
 
 template <typename T>
-using BaseOpConversion = BufferizeOpConversionPattern<T>;
+using BaseOpConversion = OpConversionPattern<T>;
 
 Value InsertDynamicAllocAndDealloc(Location loc, Value result,
                                    Value shape_operand,
@@ -541,10 +541,6 @@ struct HloLegalizeToLhlo
       return std::all_of(op.operand_type_begin(), op.operand_type_end(),
                          isMemRefType);
     });
-    target.addDynamicallyLegalOp<shape::AssumingOp>([&](shape::AssumingOp op) {
-      return std::all_of(op.result_type_begin(), op.result_type_end(),
-                         isMemRefType);
-    });
 
     auto kind = results_escape_function
                     ? BufferizeTypeConverter::KeepAsFunctionResult
@@ -557,8 +553,10 @@ struct HloLegalizeToLhlo
     populateWithBufferizeOpConversionPatterns<mlir::ReturnOp, mlir::ReturnOp,
                                               lmhlo::CopyOp>(
         &context, converter, patterns);
-    populateShapeTypeConversionPatterns(&context, converter, patterns);
-    if (failed(applyPartialConversion(getOperation(), target, patterns)))
+    populateShapeStructuralTypeConversionsAndLegality(&context, converter,
+                                                      patterns, target);
+    if (failed(applyPartialConversion(getOperation(), target,
+                                      std::move(patterns))))
       signalPassFailure();
   }
 
@@ -623,7 +621,7 @@ void populateHLOToLHLOConversionPattern(MLIRContext* context,
       HloToLhloReturnOpConverter,
       HloToLhloTensorLoadOpConverter,
       HloToLhloTensorStoreOpConverter
-  >(context, *converter);
+  >(context);
   // clang-format on
 }
 

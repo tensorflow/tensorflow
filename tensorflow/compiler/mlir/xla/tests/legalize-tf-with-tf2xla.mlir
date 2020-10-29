@@ -126,7 +126,7 @@ func @constant(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 
 // CHECK-LABEL: func @greater
 func @greater(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
-  // CHECK-NEXT:  "mhlo.compare"(%arg0, %arg1) {comparison_direction = "GT"}
+  // CHECK-NEXT:  "mhlo.compare"(%arg0, %arg1) {compare_type = "SIGNED", comparison_direction = "GT"}
   %0 = "tf.Greater"(%arg0, %arg1) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
   return %0: tensor<2xi1>
 }

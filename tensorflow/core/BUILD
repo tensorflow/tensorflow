@@ -418,7 +418,9 @@ tf_cuda_library(
         "//tensorflow/core/framework:control_flow.h",  # TODO(josh11b): Make internal?
         "//tensorflow/core/framework:dataset.h",
         "//tensorflow/core/framework:dataset_stateful_op_allowlist.h",
+        "//tensorflow/core/framework:device.h",
         "//tensorflow/core/framework:device_base.h",
+        "//tensorflow/core/framework:device_factory.h",
         "//tensorflow/core/framework:function.h",
         "//tensorflow/core/framework:function_handle_cache.h",
         "//tensorflow/core/framework:graph_def_util.h",
@@ -446,6 +448,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:reader_op_kernel.h",
         "//tensorflow/core/framework:register_types.h",
         "//tensorflow/core/framework:register_types_traits.h",
+        "//tensorflow/core/framework:registration_options.h",
         "//tensorflow/core/framework:resource_mgr.h",
         "//tensorflow/core/framework:resource_op_kernel.h",
         "//tensorflow/core/framework:rng_alg.h",
@@ -1460,28 +1463,9 @@ cc_library(
     ],
 )
 
-cc_library(
+alias(
     name = "jpeg_internal",
-    srcs = [
-        "lib/jpeg/jpeg_handle.cc",
-        "lib/jpeg/jpeg_mem.cc",
-        "//tensorflow/core/platform:jpeg_hdrs",
-    ],
-    hdrs = [
-        "lib/jpeg/jpeg_handle.h",
-        "lib/jpeg/jpeg_mem.h",
-    ],
-    copts = tf_copts(),
-    linkopts = select({
-        "//tensorflow:freebsd": [],
-        "//tensorflow:windows": [],
-        "//conditions:default": ["-ldl"],
-    }),
-    deps = [
-        ":lib",
-        ":lib_internal",
-        "//tensorflow/core/platform:jpeg",
-    ],
+    actual = "//tensorflow/core/lib/jpeg:jpeg_internal",
 )
 
 cc_library(
@@ -1506,32 +1490,9 @@ cc_library(
     ],
 )
 
-cc_library(
+alias(
     name = "portable_jpeg_internal",
-    srcs = if_mobile([
-        "lib/jpeg/jpeg_handle.cc",
-        "lib/jpeg/jpeg_mem.cc",
-        "//tensorflow/core/platform:jpeg_hdrs",
-    ]),
-    hdrs = [
-        "lib/jpeg/jpeg_handle.h",
-        "lib/jpeg/jpeg_mem.h",
-        "//tensorflow/core/lib/core:legacy_lib_core_stringpiece_header",
-        "//tensorflow/core/platform:jpeg_internal_hdrs",
-        "//tensorflow/core/platform/default:integral_types.h",
-        "//tensorflow/core/platform/default:logging.h",
-    ],
-    copts = tf_copts(),
-    linkopts = if_android(["-ldl"]),
-    deps = [
-        ":core_stringpiece",
-        "//tensorflow/core/platform:dynamic_annotations",
-        "//tensorflow/core/platform:jpeg",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:stringpiece",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/strings",
-    ],
+    actual = "//tensorflow/core/lib/jpeg:portable_jpeg_internal",
 )
 
 cc_library(
@@ -1581,6 +1542,7 @@ filegroup(
         "//tensorflow/core/example:feature_util.h",
         "//tensorflow/core/framework:framework_internal_private_hdrs",
         "//tensorflow/core/graph:framework_internal_private_headers",
+        "//tensorflow/core/public:session_options.h",
         "//tensorflow/core/util:framework_internal_private_hdrs",
         "//tensorflow/core/util:memmapped_file_system_hdrs",
         "//tensorflow/core/util/sparse:framework_internal_private_headers_group",
@@ -1639,7 +1601,7 @@ cc_header_only_library(
         ":lib",
         ":lib_internal",
         ":version_lib",
-        "//tensorflow/core/kernels:bounds_check",
+        "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/platform/default/build_config:platformlib",
     ],
 )
@@ -1691,6 +1653,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:attr_value_proto_text",
         "//tensorflow/core/framework:attr_value_util",
         "//tensorflow/core/framework:bfloat16",
+        "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/framework:common_shape_fns",
         "//tensorflow/core/framework:kernel_shape_util",
         "//tensorflow/core/framework:node_def_util",
@@ -1704,7 +1667,6 @@ tf_cuda_library(
         "//tensorflow/core/framework:shape_inference",
         "//tensorflow/core/framework:tensor",
         "//tensorflow/core/framework:tensor_shape",
-        "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core/platform:env_impl",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/profiler/lib:annotated_traceme",
@@ -1802,7 +1764,7 @@ tf_cuda_library(
         ":function_ops_op_lib",
         ":functional_grad",
         ":functional_ops_op_lib",
-        "//tensorflow/core/kernels:bounds_check",
+        "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/kernels:required",
     ]),
     alwayslink = 1,
@@ -1914,20 +1876,6 @@ tf_cc_test(
         ":test",
         ":test_main",
         "//third_party/eigen3",
-    ],
-)
-
-tf_cc_test(
-    name = "lib_jpeg_jpeg_mem_unittest",
-    srcs = ["lib/jpeg/jpeg_mem_unittest.cc"],
-    data = glob(["lib/jpeg/testdata/*.jpg"]),
-    deps = [
-        ":jpeg_internal",
-        ":lib",
-        ":lib_internal",
-        ":test",
-        ":test_main",
-        "@com_google_absl//absl/base",
     ],
 )
 
@@ -2108,23 +2056,12 @@ filegroup(
         "//tensorflow/core/lib/ssim:testdata",
         "//tensorflow/core/lib/psnr:testdata",
         # JPEG data
-        "lib/jpeg/testdata/jpeg_merge_test1.jpg",
-        "lib/jpeg/testdata/jpeg_merge_test1_cmyk.jpg",
-        # JPEG data for jpeg benchmark.
-        "lib/jpeg/testdata/small.jpg",
-        "lib/jpeg/testdata/medium.jpg",
-        # Corrupted JPEG files for tests
-        "lib/jpeg/testdata/bad_huffman.jpg",
-        "lib/jpeg/testdata/corrupt.jpg",
-        # -- hand-edited variant: stops at line 0
-        "lib/jpeg/testdata/corrupt34_2.jpg",
-        # -- hand-edited variant: stops at line 4
-        "lib/jpeg/testdata/corrupt34_3.jpg",
-        # -- hand-edited variant: stops after a restart marker
-        "lib/jpeg/testdata/corrupt34_4.jpg",
+        "//tensorflow/core/lib/jpeg/testdata",
         # GIF data
         "lib/gif/testdata/lena.gif",
         "lib/gif/testdata/scan.gif",
+        "lib/gif/testdata/red_black.gif",
+        "lib/gif/testdata/squares.gif",
         # GIF data with optimization
         "lib/gif/testdata/optimized.gif",
         # BMP data

@@ -60,7 +60,7 @@ def reduce_fn(state, values):
   return (k, n + batch_size, ex, ex2)
 
 
-class BenchmarkAdapt(benchmark.Benchmark):
+class BenchmarkAdapt(benchmark.TensorFlowBenchmark):
   """Benchmark adapt."""
 
   def run_dataset_implementation(self, num_elements, batch_size):

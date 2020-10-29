@@ -37,6 +37,7 @@ TARGET := $(HOST_OS)
 TARGET_ARCH := $(HOST_ARCH)
 
 # Default compiler and tool names:
+TOOLCHAIN:=gcc
 CXX_TOOL := g++
 CC_TOOL := gcc
 AR_TOOL := ar
@@ -123,15 +124,21 @@ CXXFLAGS := \
   -fno-threadsafe-statics \
   $(COMMON_FLAGS)
 
-CCFLAGS  := \
-	-std=c11 \
-	$(COMMON_FLAGS)
+CCFLAGS := \
+  -std=c11 \
+  $(COMMON_FLAGS)
 
 ARFLAGS := -r
 
-LDFLAGS += \
-  -Wl,--fatal-warnings \
-  -Wl,--gc-sections
+ifeq ($(TOOLCHAIN), gcc)
+  ifneq ($(TARGET), osx)
+    # GCC on MacOS uses an LLVM backend so we avoid the additional linker flags
+    # that are unsupported with LLVM.
+    LDFLAGS += \
+      -Wl,--fatal-warnings \
+      -Wl,--gc-sections
+  endif
+endif
 
 # override these in the makefile.inc for specific compiler targets
 TARGET_TOOLCHAIN_PREFIX :=
@@ -225,6 +232,7 @@ tensorflow/lite/core/api/op_resolver.cc \
 tensorflow/lite/core/api/tensor_utils.cc \
 tensorflow/lite/kernels/internal/quantization_util.cc \
 tensorflow/lite/kernels/kernel_util.cc \
+tensorflow/lite/schema/schema_conversion_utils.cc \
 tensorflow/lite/schema/schema_utils.cc
 
 MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_TEST_SRCS), $(MICROLITE_CC_BASE_SRCS))
@@ -301,6 +309,7 @@ tensorflow/lite/kernels/op_macros.h \
 tensorflow/lite/kernels/padding.h \
 tensorflow/lite/portable_type_to_tflitetype.h \
 tensorflow/lite/schema/schema_generated.h \
+tensorflow/lite/schema/schema_conversion_utils.h \
 tensorflow/lite/schema/schema_utils.h \
 tensorflow/lite/version.h
 

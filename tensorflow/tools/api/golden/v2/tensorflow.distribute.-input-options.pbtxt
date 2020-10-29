@@ -4,7 +4,15 @@ tf_class {
   is_instance: "<class \'tensorflow.python.distribute.distribute_lib.InputOptions\'>"
   is_instance: "<type \'tuple\'>"
   member {
+    name: "experimental_place_dataset_on_device"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "experimental_prefetch_to_device"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "experimental_replication_mode"
     mtype: "<type \'property\'>"
   }
   member_method {

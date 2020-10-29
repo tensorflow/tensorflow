@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "json/json.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/tools/list_flex_ops.h"
 
 namespace tflite {
@@ -40,7 +41,7 @@ void AddFlexOpsFromModel(const tflite::Model* model, OpKernelSet* flex_ops) {
     for (int i = 0; i < operators->size(); ++i) {
       const tflite::Operator* op = operators->Get(i);
       const tflite::OperatorCode* opcode = opcodes->Get(op->opcode_index());
-      if (opcode->builtin_code() != tflite::BuiltinOperator_CUSTOM ||
+      if (tflite::GetBuiltinCode(opcode) != tflite::BuiltinOperator_CUSTOM ||
           !tflite::IsFlexOp(opcode->custom_code()->c_str())) {
         continue;
       }

@@ -9226,6 +9226,24 @@ func FilterByLastComponentDataset(scope *Scope, input_dataset tf.Output, output_
 	return op.Output(0)
 }
 
+// Make a static dimension into a xla bounded dynamic dimension.
+//
+//         The current static dimension size will become the bound and the second
+//         operand becomes the dynamic size of the dimension.
+func XlaSetDynamicDimensionSize(scope *Scope, input tf.Output, dim_index tf.Output, size tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "XlaSetDynamicDimensionSize",
+		Input: []tf.Input{
+			input, dim_index, size,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // PrefetchDatasetAttr is an optional argument to PrefetchDataset.
 type PrefetchDatasetAttr func(optionalAttr)
 
@@ -16066,6 +16084,12 @@ func DecodeImageExpandAnimations(value bool) DecodeImageAttr {
 // PNG files. Alternately, set the expand_animations argument of this function to
 // False, in which case the op will return 3-dimensional tensors and will truncate
 // animated GIF files to the first frame.
+//
+// *NOTE*: If the first frame of an animated GIF does not occupy the entire
+// canvas (maximum frame width x maximum frame height), then it fills the
+// unoccupied areas (in the first frame) with zeros (black). For frames after the
+// first frame that does not occupy the entire canvas, it uses the previous
+// frame to fill the unoccupied areas.
 //
 // Arguments:
 //	contents: 0-D. The encoded image bytes.

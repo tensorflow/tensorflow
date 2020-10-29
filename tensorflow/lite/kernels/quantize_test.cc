@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <cstdint>
 #include <initializer_list>
+#include <limits>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -456,6 +457,60 @@ TEST(QuantizeOpTest, Int16Int8SmallerScaleNeonPath) {
   EXPECT_THAT(m.GetOutput<int8_t>(),
               ElementsAreArray({1,  3,  5,  7,  9,  11, 13, 15, 17, 19,
                                 19, 17, 15, 13, 11, 9,  7,  5,  3,  1}));
+}
+
+// Input scale 1.0, output scale 1.0, input zeropoint 0, output zeropoint 0
+TEST(QuantizeOpTest, Int16Int32SameScale) {
+  QuantizeOpModel m({TensorType_INT16,
+                     {1, 1, 2, 5},
+                     std::numeric_limits<int16_t>::min(),
+                     std::numeric_limits<int16_t>::max()},
+                    {TensorType_INT32,
+                     {1, 1, 2, 5},
+                     std::numeric_limits<int32_t>::min(),
+                     std::numeric_limits<int32_t>::max()});
+
+  // Input will quantized to {1,3,5,7,9,11,13,15,17,19}.
+  m.SetInputAndQuantize<int16_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput<int32_t>(),
+              ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8, 9, 10}));
+}
+
+// Input scale 0.500000, output scale 1.000000, input zeropoint -1, output
+// zeropoint 0
+TEST(QuantizeOpTest, Int16Int32LargerScale) {
+  QuantizeOpModel m({TensorType_INT16,
+                     {1, 1, 2, 5},
+                     std::numeric_limits<int16_t>::min() / 2.0,
+                     std::numeric_limits<int16_t>::max() / 2.0},
+                    {TensorType_INT32,
+                     {1, 1, 2, 5},
+                     std::numeric_limits<int32_t>::min(),
+                     std::numeric_limits<int32_t>::max()});
+
+  m.SetInputAndQuantize<int16_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput<int32_t>(),
+              ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8, 9, 10}));
+}
+
+// Input scale 1.000000, output scale 0.500000, input zeropoint -1, output
+// zeropoint 0
+TEST(QuantizeOpTest, Int16Int32SmallerScale) {
+  QuantizeOpModel m({TensorType_INT16,
+                     {1, 1, 2, 5},
+                     std::numeric_limits<int16_t>::min(),
+                     std::numeric_limits<int16_t>::max()},
+                    {TensorType_INT32,
+                     {1, 1, 2, 5},
+                     std::numeric_limits<int32_t>::min() / 2.0,
+                     std::numeric_limits<int32_t>::max() / 2.0});
+
+  m.SetInputAndQuantize<int16_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput<int32_t>(),
+              ElementsAreArray({2, 4, 6, 8, 10, 12, 14, 16, 18, 20}));
 }
 
 }  // namespace

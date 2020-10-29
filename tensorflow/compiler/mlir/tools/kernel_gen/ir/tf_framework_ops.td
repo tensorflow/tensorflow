@@ -49,38 +49,41 @@ class TFFramework_Op<string mnemonic, list<OpTrait> traits = []> :
 }
 
 //===----------------------------------------------------------------------===//
-// AllocRawOp
+// TFAllocOp
 //===----------------------------------------------------------------------===//
-def TFFramework_AllocRawOp : TFFramework_Op<"alloc_raw",
+def TFFramework_TFAllocOp : TFFramework_Op<"alloc",
     [MemoryEffects<[MemAlloc<DefaultResource>]>]> {
   let summary = "allocation of tensors that uses TF Framework";
   let description = [{
     Allocation of tensors during kernel execution in the Compute method.
 
-    This should be used to allocate any temporary or output memref.
-    Corresponds to `Allocator::AllocateRaw` in
-    tensorflow/core/framework/allocator.h.
+    This should be used to allocate any temporary or output memref. If
+    `output_index` and `input_indices` are given, attempts to forward one of
+    the input tensors to the output by calling `OpKernelContext::forward_input`.
+
+    If the attributes are missing or the forwarding fails, calls
+    `Allocator::AllocateRaw` in tensorflow/core/framework/allocator.h.
   }];
 
-  let arguments = (ins TFFramework_OpKernelContextType:$ctx,
-                   Variadic<Index>:$dyn_sizes);
+  let arguments = (ins
+    TFFramework_OpKernelContextType:$ctx,
+    Variadic<Index>:$dyn_sizes,
+    OptionalAttr<I32ArrayAttr>:$input_indices,
+    OptionalAttr<I32Attr>:$output_index
+  );
   let results = (outs Res<AnyMemRef, "", [MemAlloc<DefaultResource>]>:$result);
 
   let builders = [
-    OpBuilder<[{
-      OpBuilder &builder, OperationState &result, MemRefType memref_type,
-      Value ctx
-    }], [{
-      result.addOperands(ctx);
-      result.types.push_back(memref_type);
+    OpBuilderDAG<(ins "MemRefType":$memref_type, "Value":$ctx),
+    [{
+      $_state.addOperands(ctx);
+      $_state.types.push_back(memref_type);
     }]>,
-
-    OpBuilder<[{
-      OpBuilder &builder, OperationState &result, MemRefType memref_type,
-      Value ctx, ValueRange dyn_sizes
-    }], [{
-      build(builder, result, memref_type, ctx);
-      result.addOperands(dyn_sizes);
+    OpBuilderDAG<(ins "MemRefType":$memref_type, "Value":$ctx,
+      "ValueRange":$dyn_sizes),
+    [{
+      build($_builder, $_state, memref_type, ctx);
+      $_state.addOperands(dyn_sizes);
     }]>];
 
   let extraClassDeclaration = [{
@@ -92,16 +95,16 @@ def TFFramework_AllocRawOp : TFFramework_Op<"alloc_raw",
 }
 
 //===----------------------------------------------------------------------===//
-// DeallocRawOp
+// TFDeallocOp
 //===----------------------------------------------------------------------===//
-def TFFramework_DeallocRawOp : TFFramework_Op<"dealloc_raw",
+def TFFramework_TFDeallocOp : TFFramework_Op<"dealloc",
     [MemoryEffects<[MemFree]>]> {
   let summary = "deallocation of tensors that uses TF Framework";
   let description = [{
     Deallocation of tensors during kernel execution in the Compute method.
 
     This should be used to deallocate any temporary memref that was allocated
-    with `tf_framework.alloc_raw`.
+    with `tf_framework.alloc`.
     Corresponds to `Allocator::DeallocateRaw` in
     tensorflow/core/framework/allocator.h.
   }];

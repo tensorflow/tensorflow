@@ -39,7 +39,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.platform import build_info
+from tensorflow.python.platform import sysconfig
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import keras_export
 
@@ -67,7 +67,7 @@ _CUDNN_NOT_AVAILABLE_MSG = ('Layer %s will not use cuDNN kernel since it '
 
 
 def _use_new_code():
-  return True
+  return False
 
 
 # TODO(b/169707691): The wrapper can be removed if TFLite doesn't need to rely
@@ -650,7 +650,7 @@ def gpu_gru(inputs, init_h, kernel, recurrent_kernel, bias, mask, time_major,
   # (6 * units)
   bias = array_ops.split(K.flatten(bias), 6)
 
-  if build_info.build_info['is_cuda_build']:
+  if sysconfig.get_build_info()['is_cuda_build']:
     # Note that the gate order for CuDNN is different from the canonical format.
     # canonical format is [z, r, h], whereas CuDNN is [r, z, h]. The swap need
     # to be done for kernel, recurrent_kernel, input_bias, recurrent_bias.
@@ -680,8 +680,8 @@ def gpu_gru(inputs, init_h, kernel, recurrent_kernel, bias, mask, time_major,
       # expected_output = [0, 0, 6, 5 ,4]
       inputs = array_ops.reverse_sequence_v2(
           inputs, sequence_lengths, seq_axis=seq_axis, batch_axis=batch_axis)
-    outputs, h, _, _, _ = gen_cudnn_rnn_ops.cudnn_rnnv3(
-        inputs,
+    outputs, h, _, _, _ = gen_cudnn_rnn_ops.CudnnRNNV3(
+        input=inputs,
         input_h=init_h,
         input_c=0,
         params=params,
@@ -1454,7 +1454,7 @@ def gpu_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias, mask,
   # so that mathematically it is same as the canonical LSTM implementation.
   full_bias = array_ops.concat((array_ops.zeros_like(bias), bias), 0)
 
-  if build_info.build_info['is_rocm_build']:
+  if sysconfig.get_build_info()['is_rocm_build']:
     # ROCm MIOpen's weight sequence for LSTM is different from both canonical
     # and Cudnn format
     # MIOpen: [i, f, o, c] Cudnn/Canonical: [i, f, c, o]

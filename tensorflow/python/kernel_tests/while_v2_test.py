@@ -171,6 +171,27 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
 
       self.assertAllEqual(fnWithLoop(), 4.0)
 
+  def testDeviceLabelsInherited(self):
+    def _LoopBody(i, y):
+      result = math_ops.cos(y)
+      self.assertIn("CPU:10", result.device)
+      with ops.device("CPU:11"):
+        result = array_ops.identity(result)
+      self.assertIn("CPU:11", result.device)
+      return i + 1, result
+
+    @def_function.function
+    def _FunctionWithWhileLoop():
+      x = constant_op.constant(1.)
+      with ops.device("CPU:10"):
+        _, z = while_loop_v2(
+            lambda i, _: i < 2,
+            _LoopBody,
+            [0, x])
+      return z
+    # The test assertion runs at trace time.
+    _FunctionWithWhileLoop.get_concrete_function()
+
   def testExternalControlDependencies(self):
     with ops.Graph().as_default(), self.test_session():
       v = variables.Variable(1.)

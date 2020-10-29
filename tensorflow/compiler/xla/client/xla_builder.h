@@ -560,6 +560,45 @@ class XlaBuilder {
                            int64 batch_group_count = 1,
                            const PrecisionConfig* precision_config = nullptr);
 
+  XlaOp DynamicConvForward(XlaOp lhs, XlaOp rhs,
+                           absl::Span<const int64> window_strides,
+                           absl::Span<const std::pair<int64, int64>> padding,
+                           absl::Span<const int64> lhs_dilation,
+                           absl::Span<const int64> rhs_dilation,
+                           const ConvolutionDimensionNumbers& dimension_numbers,
+                           int64 feature_group_count, int64 batch_group_count,
+                           const PrecisionConfig* precision_config,
+                           PaddingType padding_type);
+
+  XlaOp DynamicConvInputGrad(
+      XlaOp input_sizes, XlaOp lhs, XlaOp rhs,
+      absl::Span<const int64> window_strides,
+      absl::Span<const std::pair<int64, int64>> padding,
+      absl::Span<const int64> lhs_dilation,
+      absl::Span<const int64> rhs_dilation,
+      const ConvolutionDimensionNumbers& dimension_numbers,
+      int64 feature_group_count, int64 batch_group_count,
+      const PrecisionConfig* precision_config, PaddingType padding_type);
+
+  XlaOp DynamicConvKernelGrad(
+      XlaOp activations, XlaOp gradients,
+      absl::Span<const int64> window_strides,
+      absl::Span<const std::pair<int64, int64>> padding,
+      absl::Span<const int64> lhs_dilation,
+      absl::Span<const int64> rhs_dilation,
+      const ConvolutionDimensionNumbers& dimension_numbers,
+      int64 feature_group_count, int64 batch_group_count,
+      const PrecisionConfig* precision_config, PaddingType padding_type);
+
+  StatusOr<HloInstructionProto> DynamicConvInstruction(
+      XlaOp lhs, XlaOp rhs, absl::Span<const int64> window_strides,
+      absl::Span<const std::pair<int64, int64>> padding,
+      absl::Span<const int64> lhs_dilation,
+      absl::Span<const int64> rhs_dilation,
+      const ConvolutionDimensionNumbers& dimension_numbers,
+      int64 feature_group_count, int64 batch_group_count,
+      const PrecisionConfig* precision_config, PaddingType padding_type);
+
   virtual StatusOr<XlaOp> ConvGeneralDilatedInternal(
       const Shape& shape, XlaOp lhs, XlaOp rhs, const Window& window,
       absl::Span<const int64> window_strides,
@@ -648,18 +687,28 @@ class XlaBuilder {
                      absl::Span<const int64> window_dimensions,
                      absl::Span<const int64> window_strides, Padding padding);
 
+  XlaOp ReduceWindow(absl::Span<const XlaOp> operands,
+                     absl::Span<const XlaOp> init_values,
+                     const XlaComputation& computation,
+                     absl::Span<const int64> window_dimensions,
+                     absl::Span<const int64> window_strides, Padding padding);
+
   XlaOp ReduceWindowWithGeneralPadding(
-      XlaOp operand, XlaOp init_value, const XlaComputation& computation,
+      absl::Span<const XlaOp> operands, absl::Span<const XlaOp> init_values,
+      const XlaComputation& computation,
       absl::Span<const int64> window_dimensions,
       absl::Span<const int64> window_strides,
       absl::Span<const int64> base_dilations,
       absl::Span<const int64> window_dilations,
       absl::Span<const std::pair<int64, int64>> padding);
-
+  StatusOr<XlaOp> ReduceWindowInternal(const Shape& shape,
+                                       absl::Span<const XlaOp> operands,
+                                       absl::Span<const XlaOp> init_values,
+                                       const XlaComputation& computation,
+                                       Window window);
   virtual StatusOr<XlaOp> ReduceWindowInternal(
       const Shape& shape, XlaOp operand, XlaOp init_value,
       const XlaComputation& computation, Window window);
-
   XlaOp CrossReplicaSum(XlaOp operand,
                         absl::Span<const ReplicaGroup> replica_groups = {});
 
@@ -842,9 +891,10 @@ class XlaBuilder {
                  absl::optional<ComparisonDirection> direction = absl::nullopt,
                  absl::optional<Comparison::Type> type = absl::nullopt);
 
+  StatusOr<XlaOp> Compare(const Shape& shape, XlaOp lhs, XlaOp rhs,
+                          ComparisonDirection direction);
+
   // Internal helper method for binary op compare without broadcast dimensions.
-  virtual StatusOr<XlaOp> Compare(const Shape& shape, XlaOp lhs, XlaOp rhs,
-                                  ComparisonDirection direction);
   virtual StatusOr<XlaOp> Compare(const Shape& shape, XlaOp lhs, XlaOp rhs,
                                   ComparisonDirection direction,
                                   Comparison::Type type);
@@ -1046,13 +1096,49 @@ class XlaBuilder {
       XlaOp lhs, XlaOp rhs, absl::Span<const int64> window_strides,
       Padding padding, const ConvolutionDimensionNumbers& dimension_numbers,
       int64 feature_group_count, int64 batch_group_count,
-      const PrecisionConfig* precision_config);
+      const PrecisionConfig* precision_confige);
   friend XlaOp ConvGeneral(XlaOp lhs, XlaOp rhs,
                            absl::Span<const int64> window_strides,
                            absl::Span<const std::pair<int64, int64>> padding,
                            const ConvolutionDimensionNumbers& dimension_numbers,
                            int64 feature_group_count, int64 batch_group_count,
                            const PrecisionConfig* precision_config);
+  friend XlaOp DynamicConvForward(
+      XlaOp lhs, XlaOp rhs, absl::Span<const int64> window_strides,
+      absl::Span<const std::pair<int64, int64>> padding,
+      absl::Span<const int64> lhs_dilation,
+      absl::Span<const int64> rhs_dilation,
+      const ConvolutionDimensionNumbers& dimension_numbers,
+      int64 feature_group_count, int64 batch_group_count,
+      const PrecisionConfig* precision_config, PaddingType padding_type);
+  friend XlaOp DynamicConvKernelGrad(
+      XlaOp activations, XlaOp gradients,
+      absl::Span<const int64> window_strides,
+      absl::Span<const std::pair<int64, int64>> padding,
+      absl::Span<const int64> lhs_dilation,
+      absl::Span<const int64> rhs_dilation,
+      const ConvolutionDimensionNumbers& dimension_numbers,
+      int64 feature_group_count, int64 batch_group_count,
+      const PrecisionConfig* precision_config, PaddingType padding_type);
+  friend XlaOp DynamicConvInputGrad(
+      XlaOp input_sizes, XlaOp lhs, XlaOp rhs,
+      absl::Span<const int64> window_strides,
+      absl::Span<const std::pair<int64, int64>> padding,
+      absl::Span<const int64> lhs_dilation,
+      absl::Span<const int64> rhs_dilation,
+      const ConvolutionDimensionNumbers& dimension_numbers,
+      int64 feature_group_count, int64 batch_group_count,
+      const PrecisionConfig* precision_config, PaddingType padding_type);
+
+  friend XlaOp ConvKernelGrad(
+      XlaOp lhs, XlaOp rhs, absl::Span<const int64> window_strides,
+      absl::Span<const std::pair<int64, int64>> padding,
+      absl::Span<const int64> lhs_dilation,
+      absl::Span<const int64> rhs_dilation,
+      const ConvolutionDimensionNumbers& dimension_numbers,
+      int64 feature_group_count, int64 batch_group_count,
+      const PrecisionConfig* precision_config);
+
   friend XlaOp ConvGeneralDilated(
       XlaOp lhs, XlaOp rhs, absl::Span<const int64> window_strides,
       absl::Span<const std::pair<int64, int64>> padding,
@@ -1133,6 +1219,12 @@ class XlaBuilder {
   friend XlaOp ReduceAll(XlaOp operand, XlaOp init_value,
                          const XlaComputation& computation);
   friend XlaOp ReduceWindow(XlaOp operand, XlaOp init_value,
+                            const XlaComputation& computation,
+                            absl::Span<const int64> window_dimensions,
+                            absl::Span<const int64> window_strides,
+                            Padding padding);
+  friend XlaOp ReduceWindow(absl::Span<const XlaOp> operands,
+                            absl::Span<const XlaOp> init_values,
                             const XlaComputation& computation,
                             absl::Span<const int64> window_dimensions,
                             absl::Span<const int64> window_strides,
@@ -1744,6 +1836,34 @@ XlaOp ConvGeneralDilated(XlaOp lhs, XlaOp rhs,
                          int64 batch_group_count = 1,
                          const PrecisionConfig* precision_config = nullptr);
 
+XlaOp DynamicConvForward(XlaOp lhs, XlaOp rhs,
+                         absl::Span<const int64> window_strides,
+                         absl::Span<const std::pair<int64, int64>> padding,
+                         absl::Span<const int64> lhs_dilation,
+                         absl::Span<const int64> rhs_dilation,
+                         const ConvolutionDimensionNumbers& dimension_numbers,
+                         int64 feature_group_count, int64 batch_group_count,
+                         const PrecisionConfig* precision_config,
+                         PaddingType padding_type);
+
+XlaOp DynamicConvInputGrad(XlaOp input_sizes, XlaOp lhs, XlaOp rhs,
+                           absl::Span<const int64> window_strides,
+                           absl::Span<const std::pair<int64, int64>> padding,
+                           absl::Span<const int64> lhs_dilation,
+                           absl::Span<const int64> rhs_dilation,
+                           const ConvolutionDimensionNumbers& dimension_numbers,
+                           int64 feature_group_count, int64 batch_group_count,
+                           const PrecisionConfig* precision_config,
+                           PaddingType padding_type);
+
+XlaOp DynamicConvKernelGrad(
+    XlaOp activations, XlaOp gradients, absl::Span<const int64> window_strides,
+    absl::Span<const std::pair<int64, int64>> padding,
+    absl::Span<const int64> lhs_dilation, absl::Span<const int64> rhs_dilation,
+    const ConvolutionDimensionNumbers& dimension_numbers,
+    int64 feature_group_count, int64 batch_group_count,
+    const PrecisionConfig* precision_config, PaddingType padding_type);
+
 // Enqueues an FFT instruction onto the computation, of the given type and
 // with the given FFT length.
 XlaOp Fft(XlaOp operand, FftType fft_type, absl::Span<const int64> fft_length);
@@ -1961,6 +2081,12 @@ XlaOp ReduceAll(XlaOp operand, XlaOp init_value,
 
 // Enqueues a windowed reduce instruction onto the computation.
 XlaOp ReduceWindow(XlaOp operand, XlaOp init_value,
+                   const XlaComputation& computation,
+                   absl::Span<const int64> window_dimensions,
+                   absl::Span<const int64> window_strides, Padding padding);
+
+XlaOp ReduceWindow(absl::Span<const XlaOp> operands,
+                   absl::Span<const XlaOp> init_values,
                    const XlaComputation& computation,
                    absl::Span<const int64> window_dimensions,
                    absl::Span<const int64> window_strides, Padding padding);

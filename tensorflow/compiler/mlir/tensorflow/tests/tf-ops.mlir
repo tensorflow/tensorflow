@@ -155,6 +155,91 @@ func @testBiasAddGrad(%arg0: tensor<2x3xf32>) -> tensor<3xf32> {
 
 // -----
 
+// Test valid tf.BroadcastGradientArgs
+// CHECK-LABEL: func @testBroadcastGradientArgs
+func @testBroadcastGradientArgs(%s0: tensor<4xi32>, %s1: tensor<4xi32>) -> (tensor<1xi32>, tensor<0xi32>) {
+  %r0, %r1 = "tf.BroadcastGradientArgs"(%s0, %s1) : (tensor<4xi32>, tensor<4xi32>) -> (tensor<1xi32>, tensor<0xi32>)
+  return %r0, %r1 : tensor<1xi32>, tensor<0xi32>
+}
+
+// -----
+
+func @testBroadcastGradientArgsIncompatibleInputType(%s0: tensor<4xi32>, %s1: tensor<4xi64>) -> (tensor<1xi32>, tensor<0xi32>) {
+  // expected-error @+1 {{requires the same element type for all operands and results}}
+  %r0, %r1 = "tf.BroadcastGradientArgs"(%s0, %s1) : (tensor<4xi32>, tensor<4xi64>) -> (tensor<1xi32>, tensor<0xi32>)
+  return %r0, %r1 : tensor<1xi32>, tensor<0xi32>
+}
+
+// -----
+
+func @testBroadcastGradientArgsIncompatibleBroadcastShape() -> (tensor<1xi32>, tensor<0xi32>) {
+  %s0 = "tf.Const"() {value = dense<[4, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+  %s1 = "tf.Const"() {value = dense<[2, 4]> : tensor<2xi32>} : () -> tensor<2xi32>
+  // expected-error @+1 {{requires broadcast compatible shape tensors for 's0' and 's1', but got dense<[4, 1]> : tensor<2xi32> and dense<[2, 4]> : tensor<2xi32>}}
+  %r0, %r1 = "tf.BroadcastGradientArgs"(%s0, %s1) : (tensor<2xi32>, tensor<2xi32>) -> (tensor<1xi32>, tensor<0xi32>)
+  return %r0, %r1 : tensor<1xi32>, tensor<0xi32>
+}
+
+// -----
+
+func @testBroadcastGradientArgsInvalidS0Rank() -> (tensor<2x2xi32>, tensor<0xi32>) {
+  %s0 = "tf.Const"() {value = dense<[[4, 1], [2, 3]]> : tensor<2x2xi32>} : () -> tensor<2x2xi32>
+  %s1 = "tf.Const"() {value = dense<[2, 4]> : tensor<2xi32>} : () -> tensor<2xi32>
+  // expected-error @+1 {{failed to verify that operand 0 is 1-D}}
+  %r0, %r1 = "tf.BroadcastGradientArgs"(%s0, %s1) : (tensor<2x2xi32>, tensor<2xi32>) -> (tensor<1xi32>, tensor<0xi32>)
+  return %r0, %r1 : tensor<1xi32>, tensor<0xi32>
+}
+
+// -----
+
+func @testBroadcastGradientArgsInvalidS1Rank() -> (tensor<2xi32>, tensor<i32>) {
+  %s0 = "tf.Const"() {value = dense<[4, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+  %s1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  // expected-error @+1 {{failed to verify that operand 1 is 1-D}}
+  %r0, %r1 = "tf.BroadcastGradientArgs"(%s0, %s1) : (tensor<2xi32>, tensor<i32>) -> (tensor<1xi32>, tensor<0xi32>)
+  return %r0, %r1 : tensor<1xi32>, tensor<0xi32>
+}
+
+// -----
+
+func @testBroadcastGradientArgsInvalidR0Rank() -> (tensor<2x2xi32>, tensor<0xi32>) {
+  %s0 = "tf.Const"() {value = dense<[4, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+  %s1 = "tf.Const"() {value = dense<[4, 4]> : tensor<2xi32>} : () -> tensor<2xi32>
+  // expected-error @+1 {{failed to verify that result 0 is 1-D}}
+  %r0, %r1 = "tf.BroadcastGradientArgs"(%s0, %s1) : (tensor<2xi32>, tensor<2xi32>) -> (tensor<2x2xi32>, tensor<0xi32>)
+  return %r0, %r1 : tensor<2x2xi32>, tensor<0xi32>
+}
+
+// -----
+
+func @testBroadcastGradientArgsInvalidR1Rank(%s0: tensor<4xi32>, %s1: tensor<4xi32>) -> (tensor<1xi32>, tensor<i32>) {
+  // expected-error @+1 {{failed to verify that result 1 is 1-D}}
+  %r0, %r1 = "tf.BroadcastGradientArgs"(%s0, %s1) : (tensor<4xi32>, tensor<4xi32>) -> (tensor<1xi32>, tensor<i32>)
+  return %r0, %r1 : tensor<1xi32>, tensor<i32>
+}
+
+// -----
+
+func @testBroadcastGradientArgsInvalidR0Size() -> (tensor<0xi32>, tensor<0xi32>) {
+  %s0 = "tf.Const"() {value = dense<[4, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+  %s1 = "tf.Const"() {value = dense<[4, 4]> : tensor<2xi32>} : () -> tensor<2xi32>
+  // expected-error @+1 {{requires dimension 0 size of 'r0' to be 1 but got 0}}
+  %r0, %r1 = "tf.BroadcastGradientArgs"(%s0, %s1) : (tensor<2xi32>, tensor<2xi32>) -> (tensor<0xi32>, tensor<0xi32>)
+  return %r0, %r1 : tensor<0xi32>, tensor<0xi32>
+}
+
+// -----
+
+func @testBroadcastGradientArgsInvalidR1Size() -> (tensor<0xi32>, tensor<3xi32>) {
+  %s0 = "tf.Const"() {value = dense<[4, 4]> : tensor<2xi32>} : () -> tensor<2xi32>
+  %s1 = "tf.Const"() {value = dense<[1, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+  // expected-error @+1 {{requires dimension 0 size of 'r1' to be 2 but got 3}}
+  %r0, %r1 = "tf.BroadcastGradientArgs"(%s0, %s1) : (tensor<2xi32>, tensor<2xi32>) -> (tensor<0xi32>, tensor<3xi32>)
+  return %r0, %r1 : tensor<0xi32>, tensor<3xi32>
+}
+
+// -----
+
 // Test valid tf.BroadcastTo
 // CHECK-LABEL: func @testBroadcastTo(%arg0: tensor<16xf32>)
 func @testBroadcastTo(%arg0: tensor<16xf32>) -> tensor<16x16x16x16xf32> {

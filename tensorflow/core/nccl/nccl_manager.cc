@@ -115,7 +115,7 @@ struct NcclManager::Communicator {
       : num_devices(members.size()), members(std::move(members)), key(key) {}
 
   const int num_devices;
-  const std::vector<CommunicatorMember> members;
+  std::vector<CommunicatorMember> members;
   const string key;
 };
 
@@ -304,7 +304,7 @@ Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
     // Launching of kernels must be serialized so that, given collectives A and
     // B, and an order of them (e.g., A before B), then for each comm_stream
     // involved, the kernel for A is launched before the kernel for B. This is
-    // guaranteed currently be a global mutex controlling additions of the
+    // guaranteed currently by a global mutex controlling additions of the
     // kernels to per-stream launch queues.  The launch queues are processed by
     // LoopKernelLaunches.
     for (auto& comm : communicators_) {
@@ -739,6 +739,7 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
 
         VLOG(2) << "call NcclAllReduce collective_key "
                 << collective->collective_key << " participant " << p_idx
+                << " num_participants " << collective->participants.size()
                 << " sendbuff " << sendbuff << " recvbuff " << recvbuff
                 << " nccl_comm " << nccl_comm << " comm_stream " << comm_stream
                 << " cuda_stream " << cu_stream;
@@ -849,10 +850,8 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
 }
 
 void NcclManager::StartAbort(const Status& s) {
-  VLOG(1) << "NcclManager StartAbort";
   absl::flat_hash_map<string, Collective*> collectives;
-  // After status_ is set to a non-OK one, there should be no further
-  // modifications to collectives_.
+  std::vector<std::unique_ptr<Communicator>> communicators;
   {
     mutex_lock l(mu_);
     if (!status_.ok()) {
@@ -863,7 +862,11 @@ void NcclManager::StartAbort(const Status& s) {
     }
     status_ = s;
     collectives.swap(collectives_);
+    communicators.swap(communicators_);
   }
+  VLOG(2) << "Aborted NcclManager " << this << " with " << collectives.size()
+          << " collectives and " << communicators.size()
+          << " comms with status " << s;
   // collectives_ contains pending launches that haven't been dispatched to
   // kernel launch threads, so we can simply invoke the done callbacks of them.
   for (const auto& item : collectives) {
@@ -872,26 +875,34 @@ void NcclManager::StartAbort(const Status& s) {
     }
     item.second->Unref();
   }
-  // Abort ncclComm. Note that there could be multiple ncclComm per device, and
-  // ncclCommAbort contains cuda calls that requires device synchronization.
-  // That is a collective on nccl_comm_0 can block ncclCommAbort(nccl_comm_1),
-  // so we need to abort all ncclComm in a concurrent fashion. This assumes that
-  // there's only one active NcclManager at a time.
+  // Abort ncclComm. Note that there could be multiple ncclComm per device,
+  // and ncclCommAbort contains cuda calls that requires device
+  // synchronization. That is a collective on nccl_comm_0 can block
+  // ncclCommAbort(nccl_comm_1), so we need to abort all ncclComm in a
+  // concurrent fashion. This assumes that there's only one active NcclManager
+  // at a time.
   UnboundedWorkQueue queue(Env::Default(), "nccl_abort");
   int num_comms = 0;
-  for (std::unique_ptr<Communicator>& communicator : communicators_) {
+  for (std::unique_ptr<Communicator>& communicator : communicators) {
     num_comms += communicator->members.size();
   }
   BlockingCounter pending(num_comms);
-  for (std::unique_ptr<Communicator>& communicator : communicators_) {
-    for (const CommunicatorMember& member : communicator->members) {
+  for (std::unique_ptr<Communicator>& communicator : communicators) {
+    for (CommunicatorMember& member : communicator->members) {
       queue.Schedule([&member, &pending]() {
         ncclCommAbort(member.nccl_comm);
+        member.nccl_comm = nullptr;
         pending.DecrementCount();
       });
     }
   }
   pending.Wait();
+}
+
+void NcclManager::Reset() {
+  mutex_lock l(mu_);
+  status_ = Status();
+  VLOG(2) << "Reset NcclManager " << this;
 }
 
 }  // namespace tensorflow

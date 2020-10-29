@@ -1,5 +1,6 @@
 path: "tensorflow.distribute.experimental.MultiWorkerMirroredStrategy"
 tf_class {
+  is_instance: "<class \'tensorflow.python.distribute.collective_all_reduce_strategy._CollectiveAllReduceStrategyExperimental\'>"
   is_instance: "<class \'tensorflow.python.distribute.collective_all_reduce_strategy.CollectiveAllReduceStrategy\'>"
   is_instance: "<class \'tensorflow.python.distribute.distribute_lib.Strategy\'>"
   is_instance: "<class \'tensorflow.python.distribute.distribute_lib.StrategyBase\'>"
@@ -18,7 +19,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'communication\', \'cluster_resolver\'], varargs=None, keywords=None, defaults=[\'CollectiveCommunication.AUTO\', \'None\'], "
+    argspec: "args=[\'self\', \'communication\', \'cluster_resolver\'], varargs=None, keywords=None, defaults=[\'CommunicationImplementation.AUTO\', \'None\'], "
   }
   member_method {
     name: "colocate_vars_with"
@@ -51,6 +52,10 @@ tf_class {
   member_method {
     name: "experimental_run"
     argspec: "args=[\'self\', \'fn\', \'input_iterator\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "gather"
+    argspec: "args=[\'self\', \'value\', \'axis\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "group"

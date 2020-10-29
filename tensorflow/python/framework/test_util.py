@@ -108,7 +108,7 @@ except Exception:  # pylint: disable=broad-except
 # Uses the same mechanism as above to selectively enable/disable MLIR
 # compilation.
 def is_mlir_bridge_enabled():
-  return False
+  return None
 
 
 try:
@@ -1977,6 +1977,9 @@ def matmul_without_tf32(a, b, *args, **kwargs):
   If a matmul itself is being tested, or some other op which uses matmul, use
   `run_without_tensor_float_32` instead.
 
+  This also casts complex64 inputs to complex128, since TensorFloat-32 can also
+  be used with complex64
+
   Args:
     a: First input to tf.linalg.matmul
     b: Second input to tf.linalg.matmul
@@ -1989,6 +1992,11 @@ def matmul_without_tf32(a, b, *args, **kwargs):
   if config.tensor_float_32_execution_enabled() and a.dtype == "float32":
     a = math_ops.cast(a, "float64")
     b = math_ops.cast(b, "float64")
+    ret = math_ops.matmul(a, b, *args, **kwargs)
+    return math_ops.cast(ret, a.dtype)
+  elif config.tensor_float_32_execution_enabled() and a.dtype == "complex64":
+    a = math_ops.cast(a, "complex128")
+    b = math_ops.cast(b, "complex128")
     ret = math_ops.matmul(a, b, *args, **kwargs)
     return math_ops.cast(ret, a.dtype)
   else:
@@ -2022,8 +2030,13 @@ class TensorFlowTestCase(googletest.TestCase):
       # disable it here.
       pywrap_tf_session.TF_SetXlaConstantFoldingDisabled(True)
 
+    # Check if the mlir bridge has been explicitly enabled or disabled. If
+    # is_mlir_bridge_enabled() returns None, the user did not explictly enable
+    # or disable the bridge so do not update enable_mlir_bridge.
     if is_mlir_bridge_enabled():
       context.context().enable_mlir_bridge = True
+    elif is_mlir_bridge_enabled() is not None:
+      context.context().enable_mlir_bridge = False
 
     self._threads = []
     self._tempdir = None

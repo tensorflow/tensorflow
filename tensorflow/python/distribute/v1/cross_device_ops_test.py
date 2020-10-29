@@ -432,7 +432,7 @@ class SingleWorkerCrossDeviceOpsTest(CrossDeviceOpsTestBase):
 
 NUM_WORKERS = 3
 
-CollectiveCommunication = cross_device_ops_lib.CollectiveCommunication
+CollectiveCommunication = collective_util.CollectiveCommunication
 
 
 class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
@@ -470,15 +470,15 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
         devices = ["/device:CPU:0"]
 
       if use_strategy_object:
+        comm_options = collective_util.Options(implementation=communication)
         strategy = (mwms_lib.CollectiveAllReduceStrategy
-                    ._from_local_devices(devices, communication=communication))  # pylint: disable=protected-access
+                    ._from_local_devices(devices, comm_options))  # pylint: disable=protected-access
         return strategy, devices, ""
       else:
         collective_all_reduce_ops = cross_device_ops_lib.CollectiveAllReduce(
             devices=devices,
             group_size=len(devices),
-            collective_keys=collective_keys,
-            communication=communication)
+            collective_keys=collective_keys)
         return collective_all_reduce_ops, devices, ""
     else:
       # NCCL requires physical GPUs for every replica, which we can't do with
@@ -501,16 +501,16 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
             task_type=task_type,
             task_id=task_id,
             num_accelerators={"GPU": num_gpus})
+        comm_options = collective_util.Options(implementation=communication)
         strategy = mwms_lib.CollectiveAllReduceStrategy(
-            cluster_resolver=resolver, communication=communication)
+            communication_options=comm_options, cluster_resolver=resolver)
         return (strategy, devices,
                 "grpc://" + self._cluster_spec[task_type][task_id])
       else:
         collective_all_reduce_ops = cross_device_ops_lib.CollectiveAllReduce(
             devices=devices,
             group_size=len(devices) * NUM_WORKERS,
-            collective_keys=collective_keys,
-            communication=communication)
+            collective_keys=collective_keys)
         return (collective_all_reduce_ops, devices,
                 "grpc://" + self._cluster_spec[task_type][task_id])
 

@@ -58,9 +58,8 @@ def HLO_ConstOp : HLO_Op<"constant",
     HLO_StaticShapeTensor:$output
   );
 
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, Attribute value"
-  >];
+  let builders = [
+    OpBuilderDAG<(ins "Attribute":$value)>];
 
   let assemblyFormat = "attr-dict $value";
 
@@ -147,9 +146,8 @@ class HLO_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
 def HLO_AbsOp: HLO_UnaryElementwiseOp<"abs",
     [NoSideEffect, SameOperandsAndResultShape],
      TensorOf<[HLO_SInt, AnyFloat, HLO_Complex]>>, BASE_HLO_AbsOp {
-  let builders = [OpBuilder<
-    "Value operand"
-  >];
+  let builders = [
+    OpBuilderDAG<(ins "Value":$operand)>];
 }
 
 def HLO_CbrtOp: HLO_UnaryElementwiseOp<"cbrt",
@@ -162,9 +160,8 @@ def HLO_ConvertOp : HLO_UnaryElementwiseOp<
     "convert", [NoSideEffect, SameOperandsAndResultShape], HLO_Tensor>,
     BASE_HLO_ConvertOp {
 
-  let builders = [OpBuilder<
-    "Value operand, Type result_element_ty"
-  >];
+  let builders = [
+    OpBuilderDAG<(ins "Value":$operand, "Type":$result_element_ty)>];
 
   let hasFolder = 1;
 
@@ -241,7 +238,9 @@ def HLO_RealOp: HLO_UnaryElementwiseOp<"real",
 }
 
 def HLO_RoundOp: HLO_UnaryElementwiseOp<"round_nearest_afz",
-    [NoSideEffect, SameOperandsAndResultType], HLO_FpTensor>, BASE_HLO_RoundOp;
+    [NoSideEffect, SameOperandsAndResultType], HLO_FpTensor>, BASE_HLO_RoundOp {
+  let hasFolder = 1;
+}
 
 def HLO_RsqrtOp: HLO_UnaryElementwiseOp<"rsqrt",
     [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor>,
@@ -616,10 +615,9 @@ def HLO_ReduceOp: HLO_Op<"reduce", [
 
   let results = (outs Variadic<HLO_TensorOrTuple>);
 
-  let builders = [OpBuilder<
-    "OpBuilder &, OperationState &state, ValueRange operands, "
-    "ValueRange init_values, DenseIntElementsAttr dimensions"
-  >];
+  let builders = [
+    OpBuilderDAG<(ins "ValueRange":$operands, "ValueRange":$init_values,
+      "DenseIntElementsAttr":$dimensions)>];
 
   let extraClassDeclaration = [{
     bool isFusibleWithConsumer() {
@@ -655,18 +653,16 @@ def HLO_GetTupleElementOp: HLO_Op<"get_tuple_element", [NoSideEffect]>, BASE_HLO
 
   let hasFolder = 1;
 
-  let builders = [OpBuilder<
-                  "OpBuilder &builder, OperationState &results, "
-                  "Value  value, int32_t index">];
+  let builders = [
+    OpBuilderDAG<(ins "Value":$value, "int32_t":$index)>];
 }
 
 def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]>, BASE_HLO_TupleOp {
   let arguments = (ins Variadic<HLO_TensorOrTokenOrTuple>:$val);
   let results = (outs HLO_Tuple);
 
-  let builders = [OpBuilder<
-                  "OpBuilder &builder, OperationState &results, "
-                  "ValueRange values">];
+  let builders = [
+    OpBuilderDAG<(ins "ValueRange":$values)>];
 
   let hasCanonicalizer = 1;
 }
@@ -678,16 +674,19 @@ def HLO_CompareOp: HLO_Op<"compare", [NoSideEffect, SameTypeOperands,
   let arguments = (ins
     HLO_Tensor:$lhs,
     HLO_Tensor:$rhs,
-    HLO_ComparisonDirectionAttr:$comparison_direction
+    HLO_ComparisonDirectionAttr:$comparison_direction,
+    OptionalAttr<HLO_ComparisonTypeAttr>:$compare_type
   );
   let results = (outs HLO_PredTensor);
 
   let hasFolder = 1;
 
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, Value lhs, Value rhs, "
-    "StringAttr comparison_direction"
-  >];
+  let builders = [
+    OpBuilderDAG<(ins "Value":$lhs, "Value":$rhs,
+      "StringAttr":$comparison_direction, CArg<"StringAttr", "{}">:$compare_type)>,
+  ];
+
+  let hasCustomHLOConverter = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -697,7 +696,8 @@ def HLO_CompareOp: HLO_Op<"compare", [NoSideEffect, SameTypeOperands,
 def HLO_SliceOp: HLO_Op<
       "slice",
       [NoSideEffect, SameOperandsAndResultElementType,
-       AllTypesMatch<["start_indices", "limit_indices", "strides"]>]> {
+       AllTypesMatch<["start_indices", "limit_indices", "strides"]>,
+       DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let arguments = (ins
     HLO_Tensor:$operand,
     I64ElementsAttr:$start_indices,
@@ -709,21 +709,6 @@ def HLO_SliceOp: HLO_Op<
 
   let hasCanonicalizer = 1;
   let hasFolder = 1;
-
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, Value operand, "
-    "DenseIntElementsAttr start_indices, DenseIntElementsAttr limit_indices, "
-    "DenseIntElementsAttr strides"
-  >];
-
-  let extraClassDeclaration = [{
-    // Infers output type for given operand and attributes. Result type is
-    // unranked if any of the attributes is illegal.
-    static Type InferOutputTypes(Builder *builder, Value operand,
-                                 DenseIntElementsAttr start_indices,
-                                 DenseIntElementsAttr limit_indices,
-                                 DenseIntElementsAttr strides);
-  }];
 }
 
 def HLO_DynamicSliceOp: HLO_Op<"dynamic-slice",
@@ -1160,10 +1145,9 @@ def HLO_SortOp : HLO_Op<"sort", [RecursiveSideEffects, SameOperandsAndResultShap
 
   let regions = (region SizedRegion<1>:$comparator);
 
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &state, ValueRange operands, "
-    "int64_t dimension = -1, bool is_stable = false"
-  >];
+  let builders = [
+    OpBuilderDAG<(ins "ValueRange":$operands, CArg<"int64_t", "-1">:$dimension,
+      CArg<"bool", "false">:$is_stable)>];
 
   // TODO(b/129422361): SortOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
@@ -1199,6 +1183,8 @@ def HLO_PadOp: HLO_Op<"pad",
 
   // TODO(b/129422361): PadOp has a custom constructor for HLO.
   let hasCustomHLOConverter = 1;
+
+  let hasFolder = 1;
 }
 
 def HLO_TraceOp: HLO_Op<"trace", []>, BASE_HLO_TraceOp {

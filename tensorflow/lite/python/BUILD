@@ -86,6 +86,7 @@ py_library(
         ":lite",
         "//tensorflow/lite/toco/logging:gen_html",
         "//tensorflow/lite/toco/logging:toco_conversion_log_proto_py",
+        "//tensorflow/python:util",
         "@six_archive//:six",
     ],
 )
@@ -111,6 +112,7 @@ py_test(
     deps = [
         ":convert",
         ":tflite_convert",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -165,7 +167,6 @@ py_test(
     shard_count = 4,
     srcs_version = "PY2AND3",
     tags = [
-        "no_mac",  # b/170882617
         "no_windows",
     ],
     deps = [
@@ -234,6 +235,7 @@ py_library(
     deps = [
         ":op_hint",
         ":schema_py",
+        ":schema_util",
         "//tensorflow/lite/toco:toco_flags_proto_py",
         "//tensorflow/python:convert_to_constants",
         "//tensorflow/python:dtypes",
@@ -401,4 +403,14 @@ sh_test(
     name = "convert_file_to_c_source_test",
     srcs = ["convert_file_to_c_source_test.sh"],
     data = [":convert_file_to_c_source"],
+)
+
+py_library(
+    name = "schema_util",
+    srcs = ["schema_util.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow/lite/schema:utils_friends"],
+    deps = [
+        "//tensorflow/python:util",
+    ],
 )

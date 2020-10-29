@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/lite/micro/micro_op_resolver.h"
 #include "tensorflow/lite/micro/simple_memory_allocator.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 
 namespace tflite {
 
@@ -229,21 +230,6 @@ TfLiteStatus AllocationInfoBuilder::AddTensors(const SubGraph* subgraph,
     for (size_t n = 0; n < op->inputs()->size(); ++n) {
       const int tensor_index = op->inputs()->Get(n);
       AllocationInfo* current = &info_[tensor_index];
-
-      // TODO(b/166484865): Figure out a more general solution.
-      // This workaround is needed to handle situations where subgraph input !=
-      // operator input.
-      // In case operator input(s) are not in subgraph inputs initialize them.
-      if (current->first_created == 0) {
-        for (size_t op_input = 0; op_input < op->inputs()->size(); ++op_input) {
-          const int op_tensor_index = op->inputs()->Get(op_input);
-          AllocationInfo* op_current = &info_[op_tensor_index];
-          if (op_current->needs_allocating && op_current->first_created == -1) {
-            op_current->first_created = i;
-          }
-        }
-      }
-
       if (((current->last_used == -1) || (current->last_used < i))) {
         current->last_used = i;
       }
@@ -257,16 +243,15 @@ TfLiteStatus AllocationInfoBuilder::AddTensors(const SubGraph* subgraph,
     }
   }
 
-  // Work out which tensors need to be allocated.
+  // Sanity check for valid tensor lifetime.
   for (size_t i = 0; i < tensor_count_; ++i) {
     AllocationInfo* current = &info_[i];
-    const bool is_read_only =
+    // Even though tensor appears to be read only it may still need to be
+    // allocated.
+    const bool appears_read_only =
         (current->first_created == -1) && (current->last_used != -1);
-    if (is_read_only) {
-      current->needs_allocating = false;
-    }
     const bool has_partial_lifetime =
-        !is_read_only &&
+        !appears_read_only &&
         ((current->first_created == -1) || (current->last_used == -1));
     if (has_partial_lifetime && current->needs_allocating) {
       TF_LITE_REPORT_ERROR(
@@ -621,13 +606,6 @@ MicroAllocator::~MicroAllocator() {}
 MicroAllocator* MicroAllocator::Create(uint8_t* tensor_arena, size_t arena_size,
                                        ErrorReporter* error_reporter) {
   uint8_t* aligned_arena = AlignPointerUp(tensor_arena, kBufferAlignment);
-  if (aligned_arena != tensor_arena) {
-    TF_LITE_REPORT_ERROR(
-        error_reporter,
-        "%d bytes lost due to alignment. To avoid this loss, please make sure "
-        "the tensor_arena is 16 bytes aligned.",
-        aligned_arena - tensor_arena);
-  }
   size_t aligned_arena_size = tensor_arena + arena_size - aligned_arena;
   return Create(SimpleMemoryAllocator::Create(error_reporter, aligned_arena,
                                               aligned_arena_size),
@@ -820,7 +798,7 @@ TfLiteStatus MicroAllocator::PrepareNodeAndRegistrationDataFromFlatbuffer(
     if (status != kTfLiteOk) {
       TF_LITE_REPORT_ERROR(error_reporter_,
                            "Failed to get registration from op code %s\n ",
-                           EnumNameBuiltinOperator(opcode->builtin_code()));
+                           EnumNameBuiltinOperator(GetBuiltinCode(opcode)));
       return status;
     }
     const auto* registration = node_and_registrations[i].registration;

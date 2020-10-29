@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <functional>
-#include <utility>
 
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Value.h"
@@ -44,32 +43,37 @@ using llvm_ir::IrArray;
 Status FusedIrEmitter::DefaultAction(const HloInstruction* hlo) {
   indexed_generators_[hlo] =
       [=](const IrArray::Index& index) -> StatusOr<llvm::Value*> {
-    auto cache = generated_value_cache_.find(hlo);
-    if (cache != generated_value_cache_.end()) {
-      auto key = std::make_pair(b_->GetInsertBlock(), index.multidim());
-      if (llvm::Value* generated_value =
-              FindOrDefault(cache->second, key, nullptr)) {
+    if (llvm::Value* generated_value = FindOrDefault(
+            generated_value_cache_[hlo], index.multidim(), nullptr)) {
+      llvm::BasicBlock* generated_value_bb = nullptr;
+      if (auto* generated_instruction =
+              llvm::dyn_cast<llvm::Instruction>(generated_value)) {
+        generated_value_bb = generated_instruction->getParent();
+      }
+      // Ideally, we should be able to reuse the cached generated value if it
+      // dominates the current insertion block. However, the check for dominance
+      // can be expensive and unreliable when the function is being constructed.
+      //
+      // It's also worth experimenting what if we don't do caching at all.
+      // LLVM's CSE or GVN should be able to easily merge common subexpressions
+      // that would be regenerated without caching. But this might increase the
+      // JIT compilation time.
+      if (generated_value_bb == nullptr ||
+          generated_value_bb == b_->GetInsertBlock()) {
         VLOG(3) << "The cached generated value is reused.";
         return generated_value;
       }
-      auto null_key = std::make_pair(nullptr, index.multidim());
-      if (llvm::Value* generated_value =
-              FindOrDefault(cache->second, null_key, nullptr)) {
-        VLOG(3) << "The cached generated value is reused.";
-        return generated_value;
-      }
+      VLOG(3) << "The cached generated value can't be reused, because it is in "
+                 "a different BB ("
+              << generated_value_bb->getName().str()
+              << ") from the current insertion block ("
+              << b_->GetInsertBlock()->getName().str() << ").";
     }
 
     TF_ASSIGN_OR_RETURN(llvm::Value* const generated_value,
                         elemental_emitter_->MakeElementGenerator(
                             hlo, indexed_generators_)(index));
-    llvm::BasicBlock* generated_value_bb = nullptr;
-    if (auto* generated_instruction =
-            llvm::dyn_cast<llvm::Instruction>(generated_value)) {
-      generated_value_bb = generated_instruction->getParent();
-    }
-    generated_value_cache_[hlo][std::make_pair(
-        generated_value_bb, index.multidim())] = generated_value;
+    generated_value_cache_[hlo][index.multidim()] = generated_value;
     return generated_value;
   };
   return Status::OK();
@@ -106,42 +110,7 @@ Status FusedIrEmitter::HandleConstant(const HloInstruction* constant) {
 
 Status FusedIrEmitter::HandleGetTupleElement(
     const HloInstruction* get_tuple_element) {
-  auto emit_tuple_element_ptr = [=]() -> StatusOr<llvm::Value*> {
-    const HloInstruction* tuple_operand = get_tuple_element->operand(0);
-    llvm::Value* tuple_ptr;
-    if (tuple_operand->opcode() == HloOpcode::kGetTupleElement) {
-      TF_ASSIGN_OR_RETURN(tuple_ptr, non_indexed_generators_[tuple_operand]());
-    } else {
-      if (tuple_operand->opcode() != HloOpcode::kParameter) {
-        return Unimplemented(
-            "GetTupleElement fusion currently only supports parameter or "
-            "nested"
-            "GetTupleElement as tuple operand, found an exception: %s",
-            tuple_operand->name());
-      }
-      tuple_ptr =
-          GetBasePointerForFusedParameter(tuple_operand->parameter_number());
-    }
-
-    // Lookup tuple element pointer.
-    return llvm_ir::EmitGetTupleElement(get_tuple_element->shape(),
-                                        get_tuple_element->tuple_index(),
-                                        /*alignment=*/1, tuple_ptr, b_);
-  };
-
-  if (!get_tuple_element->shape().IsTuple()) {
-    indexed_generators_[get_tuple_element] =
-        [=](const IrArray::Index& index) -> StatusOr<llvm::Value*> {
-      // TODO(b/34080002) Add aliasing information to tuple element IrArray.
-      TF_ASSIGN_OR_RETURN(llvm::Value * tuple_element_ptr,
-                          emit_tuple_element_ptr());
-      return IrArray(tuple_element_ptr, get_tuple_element->shape())
-          .EmitReadArrayElement(index, b_);
-    };
-  } else {
-    non_indexed_generators_[get_tuple_element] = emit_tuple_element_ptr;
-  }
-  return Status::OK();
+  return InternalError("Tuple parameters are not supported for fusion");
 }
 
 Status FusedIrEmitter::HandleParameter(const HloInstruction* parameter) {
