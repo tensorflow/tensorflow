@@ -104,7 +104,7 @@ void UploadWeightsForConvConstants(const tflite::gpu::Tensor<OHWI, T>& weights,
                                      absl::MakeSpan(ptr, float_count / 4));
   }
 
-  op->args_.AddObject("weigths",
+  op->args_.AddObject("weights",
                       absl::make_unique<BufferDescriptor>(std::move(desc)));
 }
 

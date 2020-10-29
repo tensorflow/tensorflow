@@ -170,7 +170,7 @@ std::string GenerateConvolutionConstantCode(const OperationDef& op_def,
         }
         for (int d = 0; d < out_z; ++d) {
           c += "    " + s_conv + "(r[" + std::to_string(d) +
-               "], src, args.weigths.GetPtr(),";
+               "], src, args.weights.GetPtr(),";
           c += " " + std::to_string(filters_counter) + ");\n";
           filters_counter += ch_count;
         }
@@ -201,7 +201,7 @@ bool IsConvConstantsSupported(const DeviceInfo& device_info,
   if (device_info.IsAMD() &&
       definition.precision != CalculationsPrecision::F32 &&
       definition.src_tensors[0].storage_type != TensorStorageType::BUFFER) {
-    // BUG, some AMD gpus crashe without it
+    // BUG, some AMD GPUs crash without it
     return false;
   }
 
