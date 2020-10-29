@@ -232,7 +232,7 @@ TEST_F(SegmentTest, WithDeviceAssignments) {
   }
 
   {
-    // Assigning the operations to two compatibile GPU devices resulting in
+    // Assigning the operations to two compatible GPU devices resulting in
     // one cluster with all operations.
     constexpr char kGpuAny[] = "/device:GPU:*";
     add3.node()->set_assigned_device_name(kGpuAny);
