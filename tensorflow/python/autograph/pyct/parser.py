@@ -339,7 +339,7 @@ def parse(src, preamble_len=0, single_node=True):
     nodes = nodes[preamble_len:]
   if single_node:
     if len(nodes) != 1:
-      raise ValueError('expected exactly one node node, found {}'.format(nodes))
+      raise ValueError('expected exactly one node, found {}'.format(nodes))
     return nodes[0]
   return nodes
 
@@ -370,7 +370,7 @@ def unparse(node, indentation=None, include_encoding_marker=True):
     node: The code to compile, as an AST object.
     indentation: Unused, deprecated. The returning code will always be indented
       at 4 spaces.
-    include_encoding_marker: Bool, thether to include a comment on the first
+    include_encoding_marker: Bool, whether to include a comment on the first
       line to explicitly specify UTF-8 encoding.
 
   Returns:

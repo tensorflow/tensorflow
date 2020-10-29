@@ -35,7 +35,7 @@ the same way with eager and graph execution.
 
   The tutorials cover how to use `tf.distribute.Strategy` to do distributed
   training with native Keras APIs, custom training loops,
-  and Esitmator APIs. They also cover how to save/load model when using
+  and Estimator APIs. They also cover how to save/load model when using
   `tf.distribute.Strategy`.
 
 *Glossary*
@@ -80,7 +80,7 @@ the same way with eager and graph execution.
   parameters/variables, used by some strategies (right now just
   `tf.distribute.experimental.ParameterServerStrategy`). All replicas that want
   to operate on a variable retrieve it at the beginning of a step and send an
-  update to be applied at the end of the step. These can in priniciple support
+  update to be applied at the end of the step. These can in principle support
   either sync or async training, but right now we only have support for async
   training with parameter servers. Compare to
   `tf.distribute.experimental.CentralStorageStrategy`, which puts all variables
@@ -442,7 +442,7 @@ class InputReplicationMode(enum.Enum):
     Replicas will dequeue from the local Dataset on their worker.
     `tf.distribute.Strategy` doesn't manage any state sharing between such
     separate input pipelines.
-  * `PER_REPLICA`: The input function will be called on each replica seperately.
+  * `PER_REPLICA`: The input function will be called on each replica separately.
     `tf.distribute.Strategy` doesn't manage any state sharing between such
     separate input pipelines.
   """
@@ -686,7 +686,7 @@ class StrategyBase(object):
   See [the guide](https://www.tensorflow.org/guide/distributed_training)
   for overview and examples. See `tf.distribute.StrategyExtended` and
   [`tf.distribute`](https://www.tensorflow.org/api_docs/python/tf/distribute)
-  for a glossory of concepts mentioned on this page such as "per-replica",
+  for a glossary of concepts mentioned on this page such as "per-replica",
   _replica_, and _reduce_.
 
   In short:
@@ -1253,7 +1253,7 @@ class StrategyBase(object):
 
     with self.scope():
       # tf.distribute supports Eager functions, so AutoGraph should not be
-      # applied when when the caller is also in Eager mode.
+      # applied when the caller is also in Eager mode.
       fn = autograph.tf_convert(
           fn, autograph_ctx.control_status_ctx(), convert_by_default=False)
       return self._extended.call_for_each_replica(fn, args=args, kwargs=kwargs)
@@ -2566,7 +2566,7 @@ class StrategyExtendedV2(object):
     Multi-worker training refers to the setup where the training is
     distributed across multiple workers, as opposed to the case where
     only a local process performs the training. This function is
-    used by higher-level apis such as Keras' `model.fit()` to infer
+    used by higher-level APIs such as Keras' `model.fit()` to infer
     for example whether or not a distribute coordinator should be run,
     and thus TensorFlow servers should be started for communication
     with other servers in the cluster, or whether or not saving/restoring
@@ -2878,7 +2878,7 @@ class ReplicaContextBase(object):
       raise ValueError(
           "replica_id_in_sync_group can only be an integer, a Tensor or None.")
     self._replica_id_in_sync_group = replica_id_in_sync_group
-    # We need this check becaused TPUContext extends from ReplicaContext and
+    # We need this check because TPUContext extends from ReplicaContext and
     # does not pass a strategy object since it is used by TPUEstimator.
     if strategy:
       self._local_replica_id = strategy.extended._get_local_replica_id(

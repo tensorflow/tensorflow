@@ -126,7 +126,7 @@ class Policy(object):
   ...     tf.keras.layers.Dense(10),
   ...     tf.keras.layers.Activation('softmax')
   ... ])
-  >>> # Optionaly set policy back to float32 if any other models use float32
+  >>> # Optionally set policy back to float32 if any other models use float32
   >>> tf.keras.mixed_precision.experimental.set_policy('float32')
 
   ### How a layer uses its policy's compute dtype
@@ -357,9 +357,8 @@ class Policy(object):
       dtype = dtypes.as_dtype(name).name
     except TypeError:
       error = ("Cannot convert value %s to a mixed precision Policy. "
-               "Valid policies include include 'mixed_float16', "
-               "'mixed_bfloat16', and the name of any dtype such as "
-               "'float32'." % (name,))
+               "Valid policies include 'mixed_float16', 'mixed_bfloat16', "
+               "and the name of any dtype such as 'float32'." % (name,))
       # six.raise_from suppresses the original TypeError from being raised
       six.raise_from(ValueError(error), None)
     return dtype, dtype
@@ -437,7 +436,7 @@ class PolicyV1(Policy):
   The difference between this class and the non-experimental class is that this
   class has a `loss_scale` field and the non-experimental class does not. The
   loss scale is only used by `tf.keras.Model.compile`, which automatically wraps
-  the optimizer with a `LossScaleOptimizer` if the optimzier is not already a
+  the optimizer with a `LossScaleOptimizer` if the optimizer is not already a
   `LossScaleOptimizer`. For the non-experimental Policy class, `Model.compile`
   instead wraps the optimizer with a `LossScaleOptimizer` if `Policy.name` is
   "mixed_float16".
@@ -446,7 +445,7 @@ class PolicyV1(Policy):
   `tf.keras.utils.deserialize_keras_object`, the policy will be deserialized as
   the non-experimental `tf.keras.mixed_precision.Policy`, and the loss scale
   will silently be dropped. This is so that SavedModels that are generated
-  with an expeirmental policy can be restored after the experimental policy is
+  with an experimental policy can be restored after the experimental policy is
   removed.
   """
 
@@ -654,7 +653,7 @@ def _policy_equivalent_to_dtype(policy):
   Returns:
     True, if the policy is equivalent to a single dtype.
   """
-  # We use type() instead of isinstance because a sublcass of Policy is never
+  # We use type() instead of isinstance because a subclass of Policy is never
   # equivalent to a dtype.
   return (type(policy) == Policy and  # pylint: disable=unidiomatic-typecheck
           list(policy.get_config().keys()) == ['name'] and

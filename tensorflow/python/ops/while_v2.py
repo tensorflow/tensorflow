@@ -874,8 +874,8 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
 
   This only allows capturing tensors in the forward graph. A ValueError is
   raised if an attempt is made to capture a tensor not in the forward graph.
-  To manually capture capture a tensor that is not in the forward graph, call
-  `capture` with `allowlisted=True`.
+  To manually capture a tensor that is not in the forward graph, call `capture`
+  with `allowlisted=True`.
 
   Note: The `captures` dict does not contain the forward tensor since it is not
   directly captured. It contains the accumulator corresponding to this forward
@@ -933,8 +933,8 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
       attrs=None,
       op_def=None,
       compute_device=True):
-    # For a reduction op, if op is in in the gradient body graph and its input
-    # is from the forward graph, moving op to the forward graph means we would
+    # For a reduction op, if op is in the gradient body graph and its input is
+    # from the forward graph, moving op to the forward graph means we would
     # store the tensor after the reduction as opposed to the tensor before
     # reduction, and therefore could significantly reduce memory consumption.
     # For now, we do this only for a few ops.

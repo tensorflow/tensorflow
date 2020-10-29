@@ -786,7 +786,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       if not isinstance(s, tensor_spec.TensorSpec):
         raise TypeError(
             'Only TensorSpec signature types are supported, '
-            'but saw signature signature entry: {}.'.format(s))
+            'but saw signature entry: {}.'.format(s))
       return s.shape
     input_shape = nest.map_structure(check_type_return_shape, input_signature)
     output_shape = self.compute_output_shape(input_shape)
@@ -864,7 +864,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           keras_tensor.keras_tensor_from_tensor, outputs)
 
     if hasattr(self, '_set_inputs') and not self.inputs:
-      # TODO(kaftan): figure out if we ned to do this at all
+      # TODO(kaftan): figure out if we need to do this at all
       # Subclassed network: explicitly set metadata normally set by
       # a call to self._set_inputs().
       self._set_inputs(inputs, outputs)

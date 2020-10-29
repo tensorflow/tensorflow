@@ -96,10 +96,10 @@ class TableConfig(
         `optimization_parameters` in `TPUEmbedding` constructor will be used.
         `learning_rate_fn` must be `None` if `learning_rate` is not `None.
       learning_rate_fn: string, use dynamic learning rate given by the function.
-        This function function will be passed the current global step. If
-        learning_rate and learning_rate_fn are both `None`, static learning rate
-        as specified in `optimization_parameters` is used. `learning_rate` must
-        be `None` if `learning_rate_fn` is not `None.
+        This function will be passed the current global step. If learning_rate
+        and learning_rate_fn are both `None`, static learning rate as specified
+        in `optimization_parameters` is used. `learning_rate` must be `None` if
+        `learning_rate_fn` is not `None.
       optimization_parameters: `AdagradParameters`, `AdamParameters`,
         `Stochasticgradientdescentparameters`. Specifies table level optimizer.
         If it's `None` global optimizer in `TPUEmbedding` constructor is used.

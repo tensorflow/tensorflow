@@ -897,7 +897,7 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
         feature = data["feature"]
         label = data["label"]
 
-        # Asser the shapes are still staic from all replicas.
+        # Assert the shapes are still static from all replicas.
         for replica_id in range(len(distribution.extended.worker_devices)):
           self.assertEqual([per_replica_batch_size, 10],
                            feature[replica_id].shape)

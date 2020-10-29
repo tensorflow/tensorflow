@@ -2881,7 +2881,7 @@ def group(*inputs, **kwargs):
 
   When operating in a v1-style graph context, ops are not executed in the same
   order as specified in the code; TensorFlow will attempt to execute ops in
-  parallel or in an order convienient to the result it is computing.  `tf.group`
+  parallel or in an order convenient to the result it is computing.  `tf.group`
   allows you to request that one or more results finish before execution
   continues.
 
