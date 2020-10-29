@@ -1029,7 +1029,7 @@ func @sort(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
 // -----
 
 func @sort_no_operands() {
-  // expected-error @+1 {{expected named operation to have at least 1 result}}
+  // expected-error @+1 {{expected named operation to have atleast 1 result}}
   %0:0 = "mhlo.sort"() ( {
   ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>, %arg3: tensor<i32>, %arg4: tensor<i32>):
     %7 = "mhlo.compare"(%arg1, %arg2) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
