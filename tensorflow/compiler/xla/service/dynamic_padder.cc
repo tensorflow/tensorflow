@@ -27,8 +27,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/dynamic_dimension_inference.h"
+#include "tensorflow/compiler/xla/service/dynamic_window_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
@@ -37,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
@@ -122,9 +125,9 @@ StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst,
     case HloOpcode::kSlice:
     case HloOpcode::kDomain:
       return nullptr;
-    // Assume that custom calls created by the client are valid with padded
-    // dynamic dimensions.
     case HloOpcode::kCustomCall:
+      // Assume that custom calls created by the client are valid with padded
+      // dynamic dimensions.
       return nullptr;
     default:
       return UnimplementedStrCat("Unimplemented padding for instruction: ",
@@ -719,6 +722,262 @@ Status RewriteDynamicReshapeSingleGroup(
   // Shouldn't get here;
   TF_RET_CHECK(false);
   return Status::OK();
+}
+
+HloInstruction* RewriteInputWithDynamicPadding(
+    HloInstruction* conv, HloInstruction* input,
+    absl::Span<HloInstruction*> padding_before, Window* input_window) {
+  HloComputation* comp = conv->parent();
+  auto dnums = conv->convolution_dimension_numbers();
+  HloInstruction* zero_s32 = comp->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::Zero(S32)));
+  Shape padded_grad_shape = input->shape();
+  PaddingConfig padding_configs;
+  for (int64 i = 0; i < input->shape().rank(); ++i) {
+    PaddingConfig::PaddingConfigDimension padding_dim;
+    *padding_configs.add_dimensions() = padding_dim;
+  }
+  std::vector<HloInstruction*> start_indices(input->shape().rank(), zero_s32);
+  for (int64 spatial_dim_index = 0;
+       spatial_dim_index < dnums.input_spatial_dimensions_size();
+       ++spatial_dim_index) {
+    int64 input_spatial_dim = dnums.input_spatial_dimensions(spatial_dim_index);
+    if (padding_before[spatial_dim_index] == nullptr) {
+      continue;
+    }
+    WindowDimension* window_dim =
+        input_window->mutable_dimensions(spatial_dim_index);
+    auto* padding_dim = padding_configs.mutable_dimensions(input_spatial_dim);
+    const int64 dilated_window_size = window_util::DilatedBound(
+        window_dim->size(), window_dim->window_dilation());
+    // Chosoe dilated window size as low padding and static padding_high +
+    // padding_low as high padding to make sure the following dynamic slice is
+    // valid.
+    //
+    // See go/xla-dynamic-spatial-dim for more details.
+    padding_dim->set_edge_padding_low(dilated_window_size);
+    padding_dim->set_edge_padding_high(window_dim->padding_high() +
+                                       window_dim->padding_low());
+    padding_dim->set_interior_padding(window_dim->base_dilation() - 1);
+    HloInstruction* slicing_start =
+        comp->AddInstruction(HloInstruction::CreateBinary(
+            ShapeUtil::MakeScalarShape(S32), HloOpcode::kSubtract,
+            comp->AddInstruction(HloInstruction::CreateConstant(
+                LiteralUtil::CreateR0<int32>(padding_dim->edge_padding_low()))),
+            padding_before[spatial_dim_index]));
+    start_indices[input_spatial_dim] = slicing_start;
+
+    padded_grad_shape.mutable_dimensions()[input_spatial_dim] =
+        window_dim->padding_low() +
+        window_util::DilatedBound(
+            padded_grad_shape.dimensions(input_spatial_dim),
+            window_dim->base_dilation()) +
+        window_dim->padding_high();
+    window_dim->clear_padding_high();
+    window_dim->clear_padding_low();
+    window_dim->set_base_dilation(1);
+    input->mutable_shape()->set_dynamic_dimension(input_spatial_dim, false);
+  }
+  // Reconstruct dynamic padding using pad and dynamic slice.
+  HloInstruction* pad =
+      MakePadHlo(input,
+                 comp->AddInstruction(HloInstruction::CreateConstant(
+                     LiteralUtil::Zero(conv->shape().element_type()))),
+                 padding_configs)
+          .ValueOrDie();
+  input = comp->AddInstruction(HloInstruction::CreateDynamicSlice(
+      padded_grad_shape, pad, start_indices, padded_grad_shape.dimensions()));
+  return input;
+}
+
+StatusOr<bool> RewriteDynamicConvolutionInputGrad(
+    HloInstruction* custom_call_conv,
+    DynamicDimensionInference* dynamic_dimension_inference) {
+  HloInstruction* grad = custom_call_conv->mutable_operand(1);
+  HloInstruction* kernel = custom_call_conv->mutable_operand(2);
+  TF_RET_CHECK(kernel->shape().is_static());
+  auto dnums = custom_call_conv->convolution_dimension_numbers();
+  HloComputation* comp = custom_call_conv->parent();
+  Window window = custom_call_conv->window();
+  HloInstruction* zero = comp->AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::Zero(custom_call_conv->shape().element_type())));
+  std::vector<HloInstruction*> padding_before(
+      dnums.input_spatial_dimensions_size(), nullptr);
+  for (int64 spatial_dim_index = 0;
+       spatial_dim_index < dnums.input_spatial_dimensions_size();
+       ++spatial_dim_index) {
+    int64 input_spatial_dim = dnums.input_spatial_dimensions(spatial_dim_index);
+    HloInstruction* operand_dynamic_size =
+        dynamic_dimension_inference->GetDynamicSize(
+            custom_call_conv->mutable_operand(1), {}, input_spatial_dim);
+    if (operand_dynamic_size == nullptr) {
+      continue;
+    }
+    grad = PadWithScalar(grad, input_spatial_dim, operand_dynamic_size, zero);
+    HloInstruction* slice = comp->AddInstruction(HloInstruction::CreateSlice(
+        ShapeUtil::MakeShape(S32, {1}), custom_call_conv->mutable_operand(0),
+        {input_spatial_dim}, {input_spatial_dim + 1}, {1}));
+    HloInstruction* dynamic_input_size = comp->AddInstruction(
+        HloInstruction::CreateReshape(ShapeUtil::MakeScalarShape(S32), slice));
+    const WindowDimension& window_dim = window.dimensions(spatial_dim_index);
+    // Window stride of forward prop is same as base dilation of backward prop.
+    DynamicWindowDims dynamic_window_dims = GetWindowedInputGradSize(
+        dynamic_input_size, /*window_size=*/window_dim.size(),
+        /*window_dilation=*/window_dim.window_dilation(),
+        /*window_stride=*/window_dim.base_dilation(),
+        custom_call_conv->padding_type());
+    padding_before[spatial_dim_index] = dynamic_window_dims.padding_before;
+  }
+
+  if (custom_call_conv->padding_type() == PaddingType::PADDING_SAME) {
+    grad = RewriteInputWithDynamicPadding(
+        custom_call_conv, grad, absl::MakeSpan(padding_before), &window);
+  }
+
+  PrecisionConfig precision_config;
+  if (custom_call_conv->precision_config().operand_precision_size() == 3) {
+    // We are not interested in the precision config of the first operand, which
+    // is the input_sizes.
+    *precision_config.mutable_operand_precision() = {
+        custom_call_conv->precision_config().operand_precision().begin() + 1,
+        custom_call_conv->precision_config().operand_precision().end()};
+  }
+  HloInstruction* static_conv = comp->AddInstruction(
+      HloInstruction::CreateConvolve(
+          custom_call_conv->shape(), grad, kernel,
+          custom_call_conv->feature_group_count(),
+          custom_call_conv->batch_group_count(), window,
+          custom_call_conv->convolution_dimension_numbers(),
+          custom_call_conv->precision_config()),
+      "ConvBackwardInput");
+  TF_RETURN_IF_ERROR(custom_call_conv->ReplaceAllUsesWith(static_conv));
+  TF_RETURN_IF_ERROR(dynamic_dimension_inference->ForwardDynamicSize(
+      custom_call_conv, static_conv, {}));
+  return true;
+}
+
+StatusOr<bool> RewriteDynamicConvolutionForward(
+    HloInstruction* custom_call_conv,
+    DynamicDimensionInference* dynamic_dimension_inference) {
+  HloInstruction* input = custom_call_conv->mutable_operand(0);
+  HloInstruction* kernel = custom_call_conv->mutable_operand(1);
+  TF_RET_CHECK(kernel->shape().is_static());
+  TF_RET_CHECK(input->shape().is_dynamic());
+  HloComputation* comp = custom_call_conv->parent();
+  Window window = custom_call_conv->window();
+  auto dnums = custom_call_conv->convolution_dimension_numbers();
+  HloInstruction* zero = comp->AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::Zero(custom_call_conv->shape().element_type())));
+  std::vector<HloInstruction*> padding_before(
+      dnums.input_spatial_dimensions_size(), nullptr);
+  for (int64 spatial_dim_index = 0;
+       spatial_dim_index < dnums.input_spatial_dimensions_size();
+       ++spatial_dim_index) {
+    int64 input_spatial_dim = dnums.input_spatial_dimensions(spatial_dim_index);
+    HloInstruction* operand_dynamic_size =
+        dynamic_dimension_inference->GetDynamicSize(
+            custom_call_conv->mutable_operand(0), {}, input_spatial_dim);
+    if (operand_dynamic_size == nullptr) {
+      continue;
+    }
+
+    input = PadWithScalar(input, input_spatial_dim, operand_dynamic_size, zero);
+    const WindowDimension& window_dim = window.dimensions(spatial_dim_index);
+    DynamicWindowDims dynamic_window_dims = GetWindowedOutputSize(
+        operand_dynamic_size, window_dim.size(), window_dim.window_dilation(),
+        window_dim.stride(), custom_call_conv->padding_type());
+    padding_before[spatial_dim_index] = dynamic_window_dims.padding_before;
+  }
+
+  if (custom_call_conv->padding_type() == PaddingType::PADDING_SAME) {
+    input = RewriteInputWithDynamicPadding(
+        custom_call_conv, input, absl::MakeSpan(padding_before), &window);
+  }
+
+  HloInstruction* static_conv = comp->AddInstruction(
+      HloInstruction::CreateConvolve(
+          custom_call_conv->shape(), input, kernel,
+          custom_call_conv->feature_group_count(),
+          custom_call_conv->batch_group_count(), window,
+          custom_call_conv->convolution_dimension_numbers(),
+          custom_call_conv->precision_config()),
+      "ConvForward");
+  TF_RETURN_IF_ERROR(custom_call_conv->ReplaceAllUsesWith(static_conv));
+  TF_RETURN_IF_ERROR(dynamic_dimension_inference->ForwardDynamicSize(
+      custom_call_conv, static_conv, {}));
+  return true;
+}
+
+StatusOr<bool> RewriteDynamicConvolutionKernelGrad(
+    HloInstruction* custom_call_conv,
+    DynamicDimensionInference* dynamic_dimension_inference) {
+  HloInstruction* activations = custom_call_conv->mutable_operand(0);
+  HloInstruction* gradients = custom_call_conv->mutable_operand(1);
+  TF_RET_CHECK(activations->shape().is_dynamic());
+  TF_RET_CHECK(gradients->shape().is_dynamic());
+  HloComputation* comp = custom_call_conv->parent();
+  Window window = custom_call_conv->window();
+  auto dnums = custom_call_conv->convolution_dimension_numbers();
+  HloInstruction* zero = comp->AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::Zero(custom_call_conv->shape().element_type())));
+  std::vector<HloInstruction*> padding_before(
+      dnums.input_spatial_dimensions_size(), nullptr);
+  for (int64 spatial_dim_index = 0;
+       spatial_dim_index < dnums.input_spatial_dimensions_size();
+       ++spatial_dim_index) {
+    int64 input_spatial_dim = dnums.input_spatial_dimensions(spatial_dim_index);
+    int64 kernel_spatial_dim =
+        dnums.kernel_spatial_dimensions(spatial_dim_index);
+    HloInstruction* activations_dynamic_size =
+        dynamic_dimension_inference->GetDynamicSize(
+            custom_call_conv->mutable_operand(0), {}, input_spatial_dim);
+    if (activations_dynamic_size != nullptr) {
+      activations = PadWithScalar(activations, input_spatial_dim,
+                                  activations_dynamic_size, zero);
+    }
+
+    HloInstruction* gradients_dynamic_size =
+        dynamic_dimension_inference->GetDynamicSize(
+            custom_call_conv->mutable_operand(1), {}, kernel_spatial_dim);
+    if (gradients_dynamic_size != nullptr) {
+      gradients = PadWithScalar(gradients, kernel_spatial_dim,
+                                gradients_dynamic_size, zero);
+    }
+    if (activations_dynamic_size == nullptr ||
+        gradients_dynamic_size == nullptr) {
+      TF_RET_CHECK(activations_dynamic_size == nullptr &&
+                   gradients_dynamic_size == nullptr);
+      continue;
+    }
+    int64 output_spatial_dim =
+        dnums.output_spatial_dimensions(spatial_dim_index);
+    const WindowDimension& window_dim = window.dimensions(spatial_dim_index);
+    DynamicWindowDims dynamic_window_dims = GetWindowedOutputSize(
+        activations_dynamic_size, /*window_size=*/
+        custom_call_conv->shape().dimensions(output_spatial_dim),
+        /*window_dilation=*/window_dim.stride(),
+        /*window_stride=*/window_dim.window_dilation(),
+        custom_call_conv->padding_type());
+    padding_before[spatial_dim_index] = dynamic_window_dims.padding_before;
+  }
+
+  if (custom_call_conv->padding_type() == PaddingType::PADDING_SAME) {
+    activations = RewriteInputWithDynamicPadding(
+        custom_call_conv, activations, absl::MakeSpan(padding_before), &window);
+  }
+
+  HloInstruction* static_conv = comp->AddInstruction(
+      HloInstruction::CreateConvolve(
+          custom_call_conv->shape(), activations, gradients,
+          custom_call_conv->feature_group_count(),
+          custom_call_conv->batch_group_count(), window,
+          custom_call_conv->convolution_dimension_numbers(),
+          custom_call_conv->precision_config()),
+      "ConvBackwardGrad");
+  TF_RETURN_IF_ERROR(custom_call_conv->ReplaceAllUsesWith(static_conv));
+  TF_RETURN_IF_ERROR(dynamic_dimension_inference->ForwardDynamicSize(
+      custom_call_conv, static_conv, {}));
+  return true;
 }
 
 StatusOr<bool> RewriteDynamicConcat(
@@ -1323,6 +1582,23 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
             inst, static_reshape, {}));
         continue;
       }
+      if (inst->IsCustomCall("DynamicConvolutionInputGrad")) {
+        TF_ASSIGN_OR_RETURN(changed, RewriteDynamicConvolutionInputGrad(
+                                         inst, &dynamic_dimension_inference));
+        continue;
+      }
+
+      if (inst->IsCustomCall("DynamicConvolutionForward")) {
+        TF_ASSIGN_OR_RETURN(changed, RewriteDynamicConvolutionForward(
+                                         inst, &dynamic_dimension_inference));
+        continue;
+      }
+
+      if (inst->IsCustomCall("DynamicConvolutionKernelGrad")) {
+        TF_ASSIGN_OR_RETURN(changed, RewriteDynamicConvolutionKernelGrad(
+                                         inst, &dynamic_dimension_inference));
+        continue;
+      }
       for (int64 operand_num = 0; operand_num < inst->operand_count();
            ++operand_num) {
         HloInstruction* original_operand = inst->mutable_operand(operand_num);
@@ -1398,9 +1674,9 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
       changed = changed || replaced_set_bound;
     }
   }
-
   HloDCE dce;
   TF_ASSIGN_OR_RETURN(changed, dce.Run(module));
+
   VLOG(2) << "Post DynamicPadder HLO:";
   XLA_VLOG_LINES(2, module->ToString());
   dynamic_padding_gauge->GetCell()->Set(changed);

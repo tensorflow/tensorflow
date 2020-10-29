@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/api/tensor_utils.h"
-#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -991,13 +990,6 @@ TfLiteStatus Subgraph::Invoke() {
     return kTfLiteError;
   }
 
-  // This is only needed for UseNNAPI(true);
-  if (should_apply_nnapi_delegate_ && !applied_nnapi_delegate_) {
-    TF_LITE_ENSURE_OK(&context_, ModifyGraphWithDelegate(NnApiDelegate()));
-    // only need to modify the graph once upon the first invocation.
-    applied_nnapi_delegate_ = true;
-  }
-
   // Invocations are always done in node order.
   // Note that calling Invoke repeatedly will cause the original memory plan to
   // be reused, unless either ResizeInputTensor() or AllocateTensors() has been
@@ -1333,16 +1325,6 @@ TfLiteStatus Subgraph::ResizeTensorImpl(TfLiteTensor* tensor,
     return kTfLiteError;
   }
   return kTfLiteOk;
-}
-
-void Subgraph::UseNNAPI(bool enable) {
-  // Note that there is no way to disable the delegate once it modified the
-  // graph.
-  if (applied_nnapi_delegate_ && !enable) {
-    ReportError("Attempting to disable NNAPI delegate after it's applied.");
-  } else {
-    should_apply_nnapi_delegate_ = enable;
-  }
 }
 
 void Subgraph::SwitchToDelegateContext() {

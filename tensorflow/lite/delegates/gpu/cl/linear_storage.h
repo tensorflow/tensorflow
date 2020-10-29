@@ -63,8 +63,6 @@ struct TensorLinearDescriptor : public GPUObjectDescriptor {
   absl::Status PerformReadSelector(const std::vector<std::string>& args,
                                    std::string* result) const;
 
-  absl::Status CreateGPUObject(CLContext* context,
-                               GPUObjectPtr* result) const override;
   void Release() override;
 };
 

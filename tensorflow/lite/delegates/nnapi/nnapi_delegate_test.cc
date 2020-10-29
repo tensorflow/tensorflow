@@ -47,11 +47,17 @@ MATCHER(QuantizedNear, "") {
 
 class SingleOpModelWithNNAPI : public SingleOpModel {
  public:
-  SingleOpModelWithNNAPI() { SetDelegate(NnApiDelegate()); }
+  SingleOpModelWithNNAPI() {
+    options_.disallow_nnapi_cpu = false;
+    stateful_delegate_.reset(new StatefulNnApiDelegate(options_));
+    SetDelegate(stateful_delegate_.get());
+  }
 
   explicit SingleOpModelWithNNAPI(
       const StatefulNnApiDelegate::Options& options) {
-    stateful_delegate_.reset(new StatefulNnApiDelegate(options));
+    options_ = options;
+    options_.disallow_nnapi_cpu = false;
+    stateful_delegate_.reset(new StatefulNnApiDelegate(options_));
     SetDelegate(stateful_delegate_.get());
   }
 
@@ -107,6 +113,7 @@ class SingleOpModelWithNNAPI : public SingleOpModel {
  private:
   // Stateful NNAPI delegate. This is valid only if the state-ful constructor is
   // used.
+  StatefulNnApiDelegate::Options options_;
   std::unique_ptr<StatefulNnApiDelegate> stateful_delegate_;
 };
 

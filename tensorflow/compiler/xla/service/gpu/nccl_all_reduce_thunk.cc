@@ -586,16 +586,8 @@ Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
       params.profiler->MakeScopedInstructionProfiler(profile_index());
 
   int64 local_device_ordinal = params.stream->parent()->device_ordinal();
-  GlobalDeviceId global_device_id;
-  if (params.gpu_global_device_ids) {
-    TF_RET_CHECK(0 <= local_device_ordinal &&
-                 local_device_ordinal < params.gpu_global_device_ids->size());
-    global_device_id = (*params.gpu_global_device_ids)[local_device_ordinal];
-  } else {
-    // No local -> global mapping was provided; assume the identity mapping.
-    global_device_id = GlobalDeviceId(local_device_ordinal);
-  }
-
+  TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
+                      params.GetGlobalDeviceId());
   // Determines the set of global and local devices that are participating in
   // the same collective group as the caller.
   TF_ASSIGN_OR_RETURN(

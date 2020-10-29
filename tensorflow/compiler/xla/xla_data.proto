@@ -536,6 +536,12 @@ message ConvolutionDimensionNumbers {
   // Next = 13
 }
 
+enum PaddingType {
+  PADDING_INVALID = 0;
+  PADDING_VALID = 1;  // Only valid portion of the base are covered.
+  PADDING_SAME = 2;  // Extra is added to produce same output size as the input.
+}
+
 enum FftType {
   FFT = 0;    // Forward FFT; complex in, complex out.
   IFFT = 1;   // Inverse FFT; complex in, complex out.

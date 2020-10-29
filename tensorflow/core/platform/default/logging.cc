@@ -229,7 +229,7 @@ void LogMessage::GenerateLogMessage() {
   __android_log_write(android_log_level, "native", ss.str().c_str());
 
   // Also log to stderr (for standalone Android apps).
-  std::cerr << "native : " << ss.str() << std::endl;
+  fprintf(stderr, "native : %s\n", ss.str().c_str());
 
   // Android logging at level FATAL does not terminate execution, so abort()
   // is still required to stop the program.

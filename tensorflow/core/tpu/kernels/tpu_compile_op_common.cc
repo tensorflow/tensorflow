@@ -634,8 +634,9 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
   }
 
   const TpuCompilationCacheKey key = CreateCompilationCacheKey(
-      function_.name(), metadata_.function_library_fingerprint(), mlir_module_,
-      guaranteed_constants, dynamic_shapes, metadata_, *mesh_state);
+      function_.name(), metadata_.function_library_fingerprint(),
+      mlir_module_fingerprint_, guaranteed_constants, dynamic_shapes, metadata_,
+      *mesh_state);
 
   // Process-wide cache of TPU executables.
   TpuCompilationCacheInterface* cache;

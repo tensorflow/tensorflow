@@ -1366,6 +1366,8 @@ class HloInstruction {
   // instruction.
   bool IsFusible() const;
 
+  bool IsCustomCall(absl::string_view target) const;
+
   // Returns the sharding applied to this operator.
   // REQUIRES: has_sharding() is true.
   const HloSharding& sharding() const {
@@ -1842,6 +1844,9 @@ class HloInstruction {
   // Delegates to HloPadInstruction::padding_config.
   const PaddingConfig& padding_config() const;
   PaddingConfig* mutable_padding_config();
+
+  // Delegates to HloConvolutionInstruction::padding_type.
+  PaddingType padding_type() const;
 
   // Delegates to HloDynamicSliceInstruction::slice_sizes.
   int64 slice_sizes(int64 dimension) const;

@@ -488,7 +488,9 @@ TfLiteStatus InterpreterBuilder::ParseSignatureDefs(
     signature_def.inputs = GetMapFromTensorMap(fb_signature_def->inputs());
     signature_def.outputs = GetMapFromTensorMap(fb_signature_def->outputs());
     signature_def.method_name = fb_signature_def->method_name()->c_str();
-    signature_def.signature_def_key = fb_signature_def->key()->c_str();
+    if (fb_signature_def->key() != nullptr) {
+      signature_def.signature_def_key = fb_signature_def->key()->c_str();
+    }
   }
   interpreter->SetSignatureDef(std::move(signature_defs));
   return kTfLiteOk;

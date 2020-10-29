@@ -34,6 +34,7 @@ from tensorflow.python.client import session
 from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import get_single_element
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -47,7 +48,6 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_image_ops
-from tensorflow.python.ops import gradients
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import image_ops_impl
 from tensorflow.python.ops import io_ops
@@ -5453,7 +5453,6 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
     """Returns an image or image batch with given shape."""
     return np.random.rand(*shape).astype(np.float32) * max_val
 
-  @test_util.run_deprecated_v1
   def testAgainstMatlab(self):
     """Tests against MS-SSIM computed with Matlab implementation.
 
@@ -5462,32 +5461,68 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
     img = self._LoadTestImages()
     expected = self._msssim[np.triu_indices(3)]
 
-    ph = [array_ops.placeholder(dtype=dtypes.float32) for _ in range(2)]
-    msssim = image_ops.ssim_multiscale(
-        *ph, max_val=1.0, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03)
+    def ssim_func(x):
+      return image_ops.ssim_multiscale(
+          *x, max_val=1.0, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03)
+
     with self.cached_session(use_gpu=True):
-      scores = [msssim.eval(dict(zip(ph, t)))
-                for t in itertools.combinations_with_replacement(img, 2)]
+      scores = [
+          self.evaluate(ssim_func(t))
+          for t in itertools.combinations_with_replacement(img, 2)
+      ]
 
     self.assertAllClose(expected, np.squeeze(scores), atol=1e-4)
 
-  @test_util.run_deprecated_v1
   def testUnweightedIsDifferentiable(self):
     img = self._LoadTestImages()
-    ph = [array_ops.placeholder(dtype=dtypes.float32) for _ in range(2)]
+
+    @def_function.function
+    def msssim_func(x1, x2, scalar):
+      return image_ops.ssim_multiscale(
+          x1 * scalar,
+          x2 * scalar,
+          max_val=1.0,
+          power_factors=(1, 1, 1, 1, 1),
+          filter_size=11,
+          filter_sigma=1.5,
+          k1=0.01,
+          k2=0.03)
+
     scalar = constant_op.constant(1.0, dtype=dtypes.float32)
-    scaled_ph = [x * scalar for x in ph]
-    msssim = image_ops.ssim_multiscale(
-        *scaled_ph,
-        max_val=1.0,
-        power_factors=(1, 1, 1, 1, 1),
-        filter_size=11,
-        filter_sigma=1.5,
-        k1=0.01,
-        k2=0.03)
-    grads = gradients.gradients(msssim, scalar)
-    with self.cached_session(use_gpu=True) as sess:
-      np_grads = sess.run(grads, feed_dict={ph[0]: img[0], ph[1]: img[1]})
+
+    with backprop.GradientTape() as tape:
+      tape.watch(scalar)
+      y = msssim_func(img[0], img[1], scalar)
+
+    grad = tape.gradient(y, scalar)
+    np_grads = self.evaluate(grad)
+    self.assertTrue(np.isfinite(np_grads).all())
+
+  def testUnweightedIsDifferentiableEager(self):
+    if not context.executing_eagerly():
+      self.skipTest("Eager mode only")
+
+    img = self._LoadTestImages()
+
+    def msssim_func(x1, x2, scalar):
+      return image_ops.ssim_multiscale(
+          x1 * scalar,
+          x2 * scalar,
+          max_val=1.0,
+          power_factors=(1, 1, 1, 1, 1),
+          filter_size=11,
+          filter_sigma=1.5,
+          k1=0.01,
+          k2=0.03)
+
+    scalar = constant_op.constant(1.0, dtype=dtypes.float32)
+
+    with backprop.GradientTape() as tape:
+      tape.watch(scalar)
+      y = msssim_func(img[0], img[1], scalar)
+
+    grad = tape.gradient(y, scalar)
+    np_grads = self.evaluate(grad)
     self.assertTrue(np.isfinite(np_grads).all())
 
   def testBatch(self):
@@ -5549,7 +5584,6 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
     self.assertTrue(np.all(msssim >= 0.0))
     self.assertTrue(np.all(msssim <= 1.0))
 
-  @test_util.run_deprecated_v1
   def testInt(self):
     img1 = self._RandomImage((1, 180, 240, 3), 255)
     img2 = self._RandomImage((1, 180, 240, 3), 255)
@@ -5563,7 +5597,7 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
         img1, img2, 1.0, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03)
     with self.cached_session(use_gpu=True):
       self.assertAllClose(
-          ssim_uint8.eval(), self.evaluate(ssim_float32), atol=0.001)
+          self.evaluate(ssim_uint8), self.evaluate(ssim_float32), atol=0.001)
 
   def testNumpyInput(self):
     """Test case for GitHub issue 28241."""

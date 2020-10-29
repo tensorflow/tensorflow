@@ -21,8 +21,12 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
+#include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
+#include "tensorflow/lite/delegates/gpu/cl/linear_storage.h"
+#include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
+#include "tensorflow/lite/delegates/gpu/cl/texture2d.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 
 namespace tflite {
@@ -158,6 +162,47 @@ std::string GetDefaultSamplers(const DeviceInfo& device_info) {
 
   return result;
 }
+
+absl::Status CreateCLObject(GPUObjectDescriptor* desc, CLContext* context,
+                            GPUObjectPtr* result) {
+  const auto* buffer_desc = dynamic_cast<const BufferDescriptor*>(desc);
+  if (buffer_desc) {
+    Buffer gpu_buffer;
+    RETURN_IF_ERROR(
+        gpu_buffer.CreateFromBufferDescriptor(*buffer_desc, context));
+    *result = absl::make_unique<Buffer>(std::move(gpu_buffer));
+    return absl::OkStatus();
+  }
+
+  const auto* texture_desc = dynamic_cast<const Texture2DDescriptor*>(desc);
+  if (texture_desc) {
+    Texture2D gpu_texture;
+    RETURN_IF_ERROR(
+        gpu_texture.CreateFromTexture2DDescriptor(*texture_desc, context));
+    *result = absl::make_unique<Texture2D>(std::move(gpu_texture));
+    return absl::OkStatus();
+  }
+
+  const auto* linear_desc = dynamic_cast<const TensorLinearDescriptor*>(desc);
+  if (linear_desc) {
+    LinearStorage gpu_storage;
+    RETURN_IF_ERROR(
+        gpu_storage.CreateFromTensorLinearDescriptor(*linear_desc, context));
+    *result = absl::make_unique<LinearStorage>(std::move(gpu_storage));
+    return absl::OkStatus();
+  }
+
+  const auto* tensor_desc = dynamic_cast<const TensorDescriptor*>(desc);
+  if (tensor_desc) {
+    Tensor gpu_tensor;
+    RETURN_IF_ERROR(gpu_tensor.CreateFromDescriptor(*tensor_desc, context));
+    *result = absl::make_unique<Tensor>(std::move(gpu_tensor));
+    return absl::OkStatus();
+  }
+
+  return absl::InvalidArgumentError("Unknown GPU descriptor.");
+}
+
 }  // namespace
 
 // Static
@@ -198,7 +243,7 @@ absl::Status CLArguments::AllocateObjects(const Arguments& args,
   objects_.resize(args.objects_.size());
   int i = 0;
   for (auto& t : args.objects_) {
-    RETURN_IF_ERROR(t.second->CreateGPUObject(context, &objects_[i]));
+    RETURN_IF_ERROR(CreateCLObject(t.second.get(), context, &objects_[i]));
     i++;
   }
   return absl::OkStatus();
@@ -435,31 +480,31 @@ void CLArguments::RenameArgumentsInCode(std::string* code) {
 
 void CLArguments::AddBuffer(const std::string& name,
                             const GPUBufferDescriptor& desc) {
-  buffers_[name] = desc;
+  buffers_[name].desc = desc;
 }
 void CLArguments::AddImage2D(const std::string& name,
                              const GPUImage2DDescriptor& desc) {
-  images2d_[name] = desc;
+  images2d_[name].desc = desc;
 }
 
 void CLArguments::AddImage2DArray(const std::string& name,
                                   const GPUImage2DArrayDescriptor& desc) {
-  image2d_arrays_[name] = desc;
+  image2d_arrays_[name].desc = desc;
 }
 
 void CLArguments::AddImage3D(const std::string& name,
                              const GPUImage3DDescriptor& desc) {
-  images3d_[name] = desc;
+  images3d_[name].desc = desc;
 }
 
 void CLArguments::AddImageBuffer(const std::string& name,
                                  const GPUImageBufferDescriptor& desc) {
-  image_buffers_[name] = desc;
+  image_buffers_[name].desc = desc;
 }
 
 void CLArguments::AddCustomMemory(const std::string& name,
                                   const GPUCustomMemoryDescriptor& desc) {
-  custom_memories_[name] = desc;
+  custom_memories_[name].desc = desc;
 }
 
 void CLArguments::AddGPUResources(const std::string& name,
@@ -643,39 +688,41 @@ std::string CLArguments::GetListOfArgs() {
   std::string result;
   for (auto& t : buffers_) {
     const std::string type_name =
-        t.second.data_type == DataType::FLOAT32 ? "float" : "half";
+        t.second.desc.data_type == DataType::FLOAT32 ? "float" : "half";
     std::string attributes;
-    for (const auto& attr : t.second.attributes) {
+    for (const auto& attr : t.second.desc.attributes) {
       attributes += absl::StrCat("  __attribute__((", attr, "))");
     }
     AppendArgument(
-        absl::StrCat(MemoryTypeToCLType(t.second.memory_type), " ",
-                     ToCLDataType(t.second.data_type, t.second.element_size),
-                     "* ", t.first, attributes),
+        absl::StrCat(
+            MemoryTypeToCLType(t.second.desc.memory_type), " ",
+            ToCLDataType(t.second.desc.data_type, t.second.desc.element_size),
+            "* ", t.first, attributes),
         &result);
   }
   for (auto& t : image_buffers_) {
-    AppendArgument(absl::StrCat(GetImageModifier(t.second.access_type),
+    AppendArgument(absl::StrCat(GetImageModifier(t.second.desc.access_type),
                                 " image1d_buffer_t ", t.first),
                    &result);
   }
   for (auto& t : images2d_) {
-    AppendArgument(absl::StrCat(GetImageModifier(t.second.access_type),
+    AppendArgument(absl::StrCat(GetImageModifier(t.second.desc.access_type),
                                 " image2d_t ", t.first),
                    &result);
   }
   for (auto& t : image2d_arrays_) {
-    AppendArgument(absl::StrCat(GetImageModifier(t.second.access_type),
+    AppendArgument(absl::StrCat(GetImageModifier(t.second.desc.access_type),
                                 " image2d_array_t ", t.first),
                    &result);
   }
   for (auto& t : images3d_) {
-    AppendArgument(absl::StrCat(GetImageModifier(t.second.access_type),
+    AppendArgument(absl::StrCat(GetImageModifier(t.second.desc.access_type),
                                 " image3d_t ", t.first),
                    &result);
   }
   for (auto& t : custom_memories_) {
-    AppendArgument(absl::StrCat(t.second.type_name, " ", t.first), &result);
+    AppendArgument(absl::StrCat(t.second.desc.type_name, " ", t.first),
+                   &result);
   }
   for (int i = 0; i < shared_int4s_data_.size() / 4; ++i) {
     AppendArgument(absl::StrCat("int4 shared_int4_", i), &result);

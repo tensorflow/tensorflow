@@ -89,10 +89,9 @@ class HLOClient_BroadcastBinaryElementwiseOp<
     OptionalAttr<BroadcastDimAttr>:$broadcast_dimensions
   );
 
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, Value left, Value  right, "
-    "DenseIntElementsAttr broadcast_dimensions"
-  >];
+  let builders = [
+    OpBuilderDAG<(ins "Value":$left, "Value":$right,
+      "DenseIntElementsAttr":$broadcast_dimensions)>];
 
   let results = (outs HLO_Tensor);
 
@@ -445,11 +444,10 @@ def HLOClient_BroadcastCompareOp : HLOClient_BroadcastBinaryElementwiseOp<
   );
   let results = (outs HLO_PredTensor);
 
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, Value lhs, Value rhs, "
-    "DenseIntElementsAttr broadcast_dimensions, "
-    "StringAttr comparison_direction, StringAttr compare_type = {}"
-  >];
+  let builders = [
+    OpBuilderDAG<(ins "Value":$lhs, "Value":$rhs,
+      "DenseIntElementsAttr":$broadcast_dimensions,
+      "StringAttr":$comparison_direction, CArg<"StringAttr", "{}">:$compare_type)>];
 }
 
 #endif  // CHLO_OPS

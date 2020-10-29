@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -129,7 +130,7 @@ struct TFOptimizePass : public PassWrapper<TFOptimizePass, FunctionPass> {
     auto func = getFunction();
     populateWithGenerated(&getContext(), patterns);
     patterns.insert<SimplifyBroadcastReshape>(&getContext());
-    applyPatternsAndFoldGreedily(func, patterns);
+    applyPatternsAndFoldGreedily(func, std::move(patterns));
   }
 };
 

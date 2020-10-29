@@ -181,6 +181,7 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "ReluGrad",
                                           "Rint",
                                           "Select",
+                                          "SelectV2",
                                           "Selu",
                                           "SeluGrad",
                                           "Shape",

@@ -63,7 +63,7 @@ def get_top_k(dataset, k):
   return sorted_vocab
 
 
-class BenchmarkAdapt(benchmark.Benchmark):
+class BenchmarkAdapt(benchmark.TensorFlowBenchmark):
   """Benchmark adapt."""
 
   def run_numpy_implementation(self, num_elements, batch_size, k):

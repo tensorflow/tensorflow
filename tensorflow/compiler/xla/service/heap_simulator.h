@@ -67,13 +67,22 @@ class HeapSimulator {
     }
   };
 
-  // Result represents the result of the heap simulation.
   template <typename BufferType>
-  struct Result {
+  struct HeapResult {
     // The assignment of buffers to chunks.
     absl::flat_hash_map<const BufferType*, Chunk> chunk_map;
 
     // The total size in bytes of the heap, containing all assigned chunks.
+    int64 heap_size = 0;
+  };
+  // Result represents the result of the heap simulation.
+  template <typename BufferType>
+  struct Result {
+    // Heap results.
+    std::vector<HeapResult<BufferType>> heap_results;
+
+    // The total size in bytes of the heaps.
+    // heap_size == sum([hr.heap_size for hr in heap_results]).
     int64 heap_size = 0;
 
     // The total size in bytes of heap fragmentation.
@@ -229,6 +238,7 @@ class HeapAlgorithm {
  public:
   using Chunk = HeapSimulator::Chunk;
   using Result = HeapSimulator::Result<BufferType>;
+  using HeapResult = HeapSimulator::HeapResult<BufferType>;
 
   virtual ~HeapAlgorithm() = default;
 
@@ -347,6 +357,7 @@ class BufferIntervalTree {
 template <typename BufferType>
 class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
  public:
+  using HeapResult = HeapSimulator::HeapResult<BufferType>;
   using Result = HeapSimulator::Result<BufferType>;
   using Chunk = HeapSimulator::Chunk;
 
@@ -415,6 +426,7 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
                                     int64 preferred_offset = -1) const;
   void CommitChunk(const BufferInterval& buffer_interval,
                    ChunkCandidate chunk_candidate);
+
   // Adds the buffer and the chunk to the result chunk map.
   virtual void AddToChunkMap(const BufferType* buffer, Chunk chunk);
 
@@ -426,7 +438,7 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   BufferIntervalCompare GetTemporalBufferIntervalCompare() const;
 
   absl::flat_hash_map<const BufferType*, BufferInterval> buffer_intervals_;
-  Result result_;
+  HeapResult result_;
   BufferIntervalCompare buffer_interval_compare_;
   BufferIntervalTree interval_tree_;
 
@@ -442,6 +454,41 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   // returns all three of them.
   absl::flat_hash_set<const BufferType*> GetTransitiveColocations(
       const BufferInterval& interval) const;
+};
+
+// This class implements an algorithm that will produce multiple heaps, where
+// each heap size is constrained by a given limit. Note that the constraint is
+// soft, meaning that a valid heap result is generated even if there are some
+// buffer sizes larger than the given constraint size.
+//
+// Pseudocode:
+//   while( `buffers` is not empty ) {
+//     create a new heap `h`
+//     for (each buffer `buf` in `buffers` in the size-decreasing order) {
+//       if (buf.size() is larger than the heap size limit &&
+//           `h` is empty) {
+//         h.place(buf)
+//         buffers.remove(buf)
+//       } else if (placing `buf` into `h` does not violate size
+//           constraint) {
+//         h.place(buf)
+//         buffers.remove(buf)
+//       }
+//     }
+//   }
+class ConstrainedGlobalDecreasingSizeBestFitHeap
+    : public GlobalDecreasingSizeBestFitHeap<HloValue> {
+ public:
+  explicit ConstrainedGlobalDecreasingSizeBestFitHeap(
+      uint64 size_limit_per_heap, int64 alignment, Type type = kSpatial)
+      : GlobalDecreasingSizeBestFitHeap<HloValue>(alignment, type),
+        size_limit_per_heap_(size_limit_per_heap) {}
+  ~ConstrainedGlobalDecreasingSizeBestFitHeap() override {}
+
+  Result Finish() override;
+
+ private:
+  uint64 size_limit_per_heap_;
 };
 
 // A heap algorithm that chooses the best results from other algorithms added to

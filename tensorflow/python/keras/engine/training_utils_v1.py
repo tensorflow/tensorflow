@@ -20,6 +20,7 @@ from __future__ import print_function
 import abc
 import atexit
 import collections
+import collections.abc as collections_abc
 import functools
 import multiprocessing.pool
 import threading
@@ -60,7 +61,6 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
-from tensorflow.python.util.compat import collections_abc
 
 
 def is_composite_or_composite_value(tensor):
@@ -1707,7 +1707,7 @@ def should_run_validation(validation_freq, epoch):
 
   if not isinstance(validation_freq, collections_abc.Container):
     raise ValueError('`validation_freq` must be an Integer or '
-                     '`collections_abc.Container` (e.g. list, tuple, etc.)')
+                     '`collections.abc.Container` (e.g. list, tuple, etc.)')
   return one_indexed_epoch in validation_freq
 
 

@@ -247,9 +247,11 @@ Status CollectivePermuteThunk::ExecuteOnStream(const ExecuteParams& params) {
   std::shared_ptr<Rendezvous> rendezvous =
       GlobalRendezvousMap().GetOrCreateIfAbsent(key, rendezvous_factory);
 
-  TF_ASSIGN_OR_RETURN(int64 replica_id,
-                      params.device_assn->ReplicaIdForDeviceOrdinal(
-                          params.stream->parent()->device_ordinal()));
+  TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
+                      params.GetGlobalDeviceId());
+  TF_ASSIGN_OR_RETURN(
+      int64 replica_id,
+      params.device_assn->ReplicaIdForDeviceOrdinal(global_device_id.value()));
 
   // Figure out which replicas our data is copied to.
   std::vector<int64> dest_replicas;

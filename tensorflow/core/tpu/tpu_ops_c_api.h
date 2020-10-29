@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <stddef.h>
 
+#include <cstdint>
+
 #include "tensorflow/core/tpu/libtftpu.h"
 #include "tensorflow/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"
@@ -61,7 +63,7 @@ struct CompilationCacheKeyProperty {
   const char* config_prefix;
   const char* shapes_prefix;
   const char* function_name;
-  const char* mlir_module;
+  uint64_t mlir_module_fingerprint;
   const int32_t* device_ids;
   size_t device_ids_size;
   int32_t guaranteed_constants_size;
@@ -89,7 +91,7 @@ typedef struct XLA_TpuNodeContext XLA_TpuNodeContext;
 // API respectively.
 TFTPU_CAPI_EXPORT void TpuCompile_CompileAndBuild(
     TpuSerializedProto compilation_request, const XLA_TpuMeshState* mesh_state,
-    XLA_TpuProgram** tpu_programs[], size_t* count, SE_Status* status);
+    XLA_TpuProgram** tpu_programs[], size_t* count, TF_Status* status);
 
 // Creates a new TPU mesh state object.
 TFTPU_CAPI_EXPORT XLA_TpuMeshState* TpuMeshState_Create();
@@ -107,7 +109,7 @@ TFTPU_CAPI_EXPORT void TpuExecutable_LoadProgramAndEnqueueToStream(
     size_t arguments_len, SE_DeviceMemoryBase* result,
     SE_DeviceMemoryBase* cross_program_prefetch_addr, int32_t rng_seed,
     XLA_DeviceAssignment* device_assignment, SE_Stream* stream,
-    SE_Status* status);
+    TF_Status* status);
 
 TFTPU_CAPI_EXPORT void HardwareLayout_HostShapeToDeviceShape(
     XLA_Shape* host_shape, XLA_Shape* device_shape);
@@ -118,7 +120,7 @@ TFTPU_CAPI_EXPORT int64_t HardwareLayout_ShapeSizeCompactRaw(XLA_Shape* shape);
 TFTPU_CAPI_EXPORT void TpuExecute_RuntimeInputToPaddedData(
     uint32_t* runtime_input_ptr, size_t runtime_input_size,
     int8_t* padded_data_ptr, size_t padded_data_size, XLA_Shape* runtime_shape,
-    XLA_Shape* compile_time_shape, SE_Status* status);
+    XLA_Shape* compile_time_shape, TF_Status* status);
 
 TFTPU_CAPI_EXPORT void ConfigureDistributedTpuOp_DoWork(
     const size_t num_cores_per_host_size, const int32_t* num_cores_per_host,
@@ -180,7 +182,7 @@ TFTPU_CAPI_EXPORT void TpuProgram_FreeArray(XLA_TpuProgram* tpu_program[]);
 // Unloads and destroys the `tpu_program`. Once the TPU program is unloaded and
 // destroyed, it is in an unusable state.
 TFTPU_CAPI_EXPORT void TpuProgram_UnloadAndDestroy(XLA_TpuProgram* tpu_program,
-                                                   SE_Status* status);
+                                                   TF_Status* status);
 
 // Gets TPU program size in bytes from the `tpu_program`.
 TFTPU_CAPI_EXPORT int64_t
@@ -193,17 +195,17 @@ TFTPU_CAPI_EXPORT bool TpuProgram_LogProgramMemorySummary(
 // Gets TPU program executable info from the `tpu_program`.
 TFTPU_CAPI_EXPORT void TpuProgram_GetExecutableInfo(
     const XLA_TpuProgram* tpu_program, TpuSerializedProto* executable_info,
-    SE_Status* status);
+    TF_Status* status);
 
 // Gets host transfer info proto.
 TFTPU_CAPI_EXPORT void TpuProgram_GetHostTransferInfo(
     const XLA_TpuProgram* tpu_program, TpuSerializedProto* host_transfer_info,
-    SE_Status* status);
+    TF_Status* status);
 
 // Gets HLO metadata proto.
 TFTPU_CAPI_EXPORT void TpuProgram_GetHloMetadata(
     const XLA_TpuProgram* tpu_program, TpuSerializedProto* hlo_metadata,
-    SE_Status* status);
+    TF_Status* status);
 
 // Gets may modify variables boolean value.
 TFTPU_CAPI_EXPORT void TpuProgram_GetMayModifyVariables(
@@ -221,17 +223,17 @@ TFTPU_CAPI_EXPORT XLA_TpuProgram* TpuProgram_GetTpuProgram(
 // Gets TPU executable proto from a `tpu_program`.
 TFTPU_CAPI_EXPORT void TpuProgram_SerializeTpuExecutable(
     const XLA_TpuProgram* tpu_program, TpuExecutableSerializedProto* executable,
-    SE_Status* status);
+    TF_Status* status);
 
 // Gets compilation metadata proto from a `tpu_program`.
 TFTPU_CAPI_EXPORT void TpuProgram_SerializeCompilerMetadata(
     const XLA_TpuProgram* tpu_program,
-    CompilerMetadataSerializedProto* compiler_metadata, SE_Status* status);
+    CompilerMetadataSerializedProto* compiler_metadata, TF_Status* status);
 
 // Deserializes the `GetTpuProgramResponse` proto into an `XLA_TpuProgram`.
 TFTPU_CAPI_EXPORT void TpuProgram_DeserializeFromGetTpuProgramResponseProto(
     TpuSerializedProto get_tpu_program_response, XLA_TpuProgram* tpu_program,
-    SE_Status* status);
+    TF_Status* status);
 
 // Checks if whether a TPU compilation is enabled.
 TFTPU_CAPI_EXPORT bool TpuCompile_IsTpuCompilationEnabled();
@@ -267,14 +269,14 @@ TFTPU_CAPI_EXPORT uint64_t TpuCompile_CreateGuaranteedConstFingerprint(
     uint64_t fingerprint, const char* data, size_t size);
 
 XLA_TpuNodeContext* TpuNodeContext_Create(int device_ordinal,
-                                          SE_Status* status);
+                                          TF_Status* status);
 void TpuNodeContext_Free(XLA_TpuNodeContext* node_context);
 
-void TpuNodeContext_StopChipHeartbeats(SE_Status* status);
+void TpuNodeContext_StopChipHeartbeats(TF_Status* status);
 
-void TpuNodeContext_CloseTpuHost(SE_Status* status);
+void TpuNodeContext_CloseTpuHost(TF_Status* status);
 
-void TpuNodeContext_Initialize(int device_ordinal, SE_Status* status);
+void TpuNodeContext_Initialize(int device_ordinal, TF_Status* status);
 
 struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_CompileAndBuild);

@@ -946,9 +946,7 @@ XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_INTERPRETER(InfeedOutfeedTest)) {
 
 // Benchmark that measures the overhead of the LocalClient API when running a
 // trivial computation
-void BM_LocalClientOverhead(int num_iters) {
-  tensorflow::testing::StopTiming();
-
+void BM_LocalClientOverhead(benchmark::State& state) {
   se::Platform* platform = PlatformUtil::GetDefaultPlatform().ValueOrDie();
   auto executors = PlatformUtil::GetStreamExecutors(platform).ValueOrDie();
   se::StreamExecutorMemoryAllocator allocator(platform, executors);
@@ -990,8 +988,7 @@ void BM_LocalClientOverhead(int num_iters) {
     ASSERT_IS_OK(result);
   }
 
-  tensorflow::testing::StartTiming();
-  for (int i = 0; i < num_iters; ++i) {
+  for (auto s : state) {
     auto result = executable->Run({&buffer}, run_options);
     ASSERT_IS_OK(result);
   }

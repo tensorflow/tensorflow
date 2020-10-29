@@ -70,7 +70,7 @@ section for instructions on toolchain installation.
 
 If you wish to use the MetaWare Debugger to debug your code, you need to also
 install the Digilent Adept 2 software, which includes the necessary drivers for
-connecting to the targets. This is available from oficial
+connecting to the targets. This is available from official
 [Digilent site](https://reference.digilentinc.com/reference/software/adept/start?redirect=1#software_downloads).
 You should install the “System” component, and Runtime. Utilities and SDK are
 NOT required.

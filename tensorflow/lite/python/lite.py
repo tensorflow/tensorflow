@@ -66,7 +66,6 @@ from tensorflow.lite.python.util import is_frozen_graph as _is_frozen_graph
 from tensorflow.lite.python.util import modify_model_io_type as _modify_model_io_type
 from tensorflow.lite.python.util import run_graph_optimizations as _run_graph_optimizations
 from tensorflow.lite.python.util import set_tensor_shapes as _set_tensor_shapes
-from tensorflow.python import keras as _keras
 from tensorflow.python.client import session as _session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function as _def_function
@@ -83,6 +82,7 @@ from tensorflow.python.saved_model import tag_constants as _tag_constants
 from tensorflow.python.saved_model.load import load as _load
 from tensorflow.python.saved_model.loader_impl import parse_saved_model_with_debug_info as _parse_saved_model_with_debug_info
 from tensorflow.python.util import deprecation as _deprecation
+from tensorflow.python.util import keras_deps
 from tensorflow.python.util.tf_export import tf_export as _tf_export
 
 
@@ -1466,10 +1466,8 @@ class TFLiteKerasModelConverter(TFLiteConverterBaseV1):
                          "with Eager mode. If your model requires any of these "
                          "parameters, please use disable_eager_execution().")
 
-      _keras.backend.set_learning_phase(False)
-      keras_model = _keras.models.load_model(model_file, custom_objects)
-
-      # TODO(b/169898786): Use the Keras public API when TFLite moves out of TF
+      keras_model = keras_deps.get_load_model_function()(
+          model_file, custom_objects)
       function = _keras_saving_utils.trace_model_call(keras_model)
       concrete_func = function.get_concrete_function()
 
@@ -1484,10 +1482,10 @@ class TFLiteKerasModelConverter(TFLiteConverterBaseV1):
       return
 
     # Handles Keras when Eager mode is disabled.
-    _keras.backend.clear_session()
-    _keras.backend.set_learning_phase(False)
-    keras_model = _keras.models.load_model(model_file, custom_objects)
-    sess = _keras.backend.get_session()
+    keras_deps.get_clear_session_function()()
+    keras_model = keras_deps.get_load_model_function()(
+        model_file, custom_objects)
+    sess = keras_deps.get_get_session_function()()
 
     # Get input and output tensors.
     if input_arrays:
@@ -1578,7 +1576,7 @@ class TFLiteFrozenGraphConverter(TFLiteConverterBaseV1):
       output_tensors: List of output tensors (only .name is used from this).
       input_arrays_with_shape: Tuple of strings representing input tensor names
         and list of integers representing input shapes
-        (e.g., [("foo" : [1, 16, 16, 3])]). Use only when graph cannot be loaded
+        (e.g., [("foo", [1, 16, 16, 3])]). Use only when graph cannot be loaded
           into TensorFlow and when `input_tensors` and `output_tensors` are
           None. (default None)
       output_arrays: List of output tensors to freeze graph with. Use only when
@@ -1604,6 +1602,15 @@ class TFLiteFrozenGraphConverter(TFLiteConverterBaseV1):
             "input_arrays_with_shape and output_arrays must be defined.")
       self._input_arrays_with_shape = input_arrays_with_shape
       self._output_arrays = output_arrays
+
+    if input_tensors is not None and input_arrays_with_shape is not None:
+      logging.warning("input_arrays_with_shape will be ignored when both the "
+                      "given input_tensors and input_arrays_with_shape are not "
+                      "None.")
+
+    if output_tensors is not None and output_arrays is not None:
+      logging.warning("output_arrays will be ignored when both the given "
+                      "output_tensors and output_arrays are not None.")
 
 
 @_tf_export(v1=["lite.TFLiteConverter"])

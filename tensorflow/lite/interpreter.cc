@@ -109,8 +109,6 @@ Interpreter::Interpreter(ErrorReporter* error_reporter)
   own_external_cpu_backend_context_.reset(new ExternalCpuBackendContext());
   external_contexts_[kTfLiteCpuBackendContext] =
       own_external_cpu_backend_context_.get();
-
-  primary_subgraph().UseNNAPI(false);
 }
 
 Interpreter::~Interpreter() {
@@ -342,13 +340,6 @@ TfLiteStatus Interpreter::SetTensorParametersReadWrite(
 
 TfLiteStatus Interpreter::SetExecutionPlan(const std::vector<int>& new_plan) {
   return primary_subgraph().SetExecutionPlan(new_plan);
-}
-
-void Interpreter::UseNNAPI(bool enable) {
-  TFLITE_LOG_PROD_ONCE(TFLITE_LOG_INFO,
-                       "Interpreter::UseNNAPI() is deprecated. Use "
-                       "tflite::NnApiDelegate() directly instead.");
-  primary_subgraph().UseNNAPI(enable);
 }
 
 TfLiteStatus Interpreter::SetNumThreads(int num_threads) {
