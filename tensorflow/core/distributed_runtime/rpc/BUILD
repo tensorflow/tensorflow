@@ -496,7 +496,6 @@ tf_cc_test(
     size = "small",
     srcs = ["grpc_tensor_coding_test.cc"],
     tags = [
-        "no_mac",
         "no_windows",
     ],
     deps = [
@@ -519,9 +518,6 @@ tf_cc_test(
     name = "grpc_util_test",
     size = "small",
     srcs = ["grpc_util_test.cc"],
-    tags = [
-        "no_mac",
-    ],
     deps = [
         ":grpc_util",
         "//tensorflow/core:test",
