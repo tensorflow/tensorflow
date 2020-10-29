@@ -1594,6 +1594,20 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(num_sin_ops_found, 2)
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testRecomputeGradWithDifferentShape(self):
+
+    @custom_gradient.recompute_grad
+    def outer(x):
+      return [x[0]+1, x[1]+1]
+
+    x = [variables.Variable([1.0, 2.0], name='x'),
+        variables.Variable(1.0, name='x')]
+    with backprop.GradientTape():
+      y = outer(x)
+      self.assertAllEqual(y[0], [2.0, 3.0])
+      self.assertAllEqual(y[1], 2.0)
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
   def testRecomputeGradWithNestedFunctionAndWhileLoop(self):
 
     @custom_gradient.recompute_grad
@@ -1605,7 +1619,7 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
 
         @def_function.function
         def inner(z):
-          return [z[0] + 1, z[1] + 1]
+          return z + 1
 
         i = constant_op.constant(0.0)
         c = lambda y, i: i < 10.
@@ -1618,12 +1632,10 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
 
     with MemoryChecker() as memory_checker:
       for _ in range(5):
-        x = [variables.Variable([1.0, 2.0], name='x'),
-             variables.Variable(1.0, name='x')]
+        x = variables.Variable(1.0, name='x')
         with backprop.GradientTape():
           y = outer(x)
-          self.assertAllEqual(y[0], [11.0, 12.0])
-          self.assertAllEqual(y[1], 11.0)
+          self.assertAllEqual(y, 11.0)
 
     memory_checker.report()
     memory_checker.assert_no_leak_if_all_possibly_except_one()
