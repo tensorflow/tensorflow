@@ -498,6 +498,25 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
     # variable.
     self._policy = var_policy
 
+  def __str__(self):
+
+    debug_str = ",\n".join(
+        "  %d: %s" % (i, v) for i, v in enumerate(self._values))
+    if self._policy:
+      return "%s(%s):{\n%s\n}" % (self.__class__.__name__,
+                                  self._policy.__class__.__name__,
+                                  debug_str)
+    return "%s:{\n%s\n}" % (self.__class__.__name__, debug_str)
+
+  def __repr__(self):
+    debug_repr = ",\n".join(
+        "  %d: %r" % (i, v) for i, v in enumerate(self._values))
+    if self._policy:
+      return "%s(%s):{\n%s\n}" % (self.__class__.__name__,
+                                  self._policy.__class__.__name__,
+                                  debug_repr)
+    return "%s:{\n%s\n}" % (self.__class__.__name__, debug_repr)
+
   def __deepcopy__(self, memo):
     """Perform a deepcopy of the `DistributedVariable`.
 
