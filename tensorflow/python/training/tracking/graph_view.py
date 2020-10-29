@@ -430,7 +430,7 @@ class ObjectGraphView(object):
               name=base.OBJECT_GRAPH_PROTO_KEY))
     return named_saveable_objects
 
-  def objects_ids_and_slot_variables(self):
+  def objects_ids_and_slot_variables_and_paths(self):
     """Traverse the object graph and list all accessible objects.
 
     Looks for `Trackable` objects which are dependencies of
@@ -439,7 +439,8 @@ class ObjectGraphView(object):
     (i.e. if they would be saved with a checkpoint).
 
     Returns:
-      A tuple of (trackable objects, object -> node id, slot variables)
+      A tuple of (trackable objects, paths from root for each object,
+                  object -> node id, slot variables)
     """
     trackable_objects, path_to_root = self._breadth_first_traversal()
     object_names = object_identity.ObjectIdentityDictionary()
@@ -452,6 +453,11 @@ class ObjectGraphView(object):
         trackable_objects=trackable_objects,
         node_ids=node_ids,
         object_names=object_names)
+    return trackable_objects, path_to_root, node_ids, slot_variables
+
+  def objects_ids_and_slot_variables(self):
+    trackable_objects, _, node_ids, slot_variables = (
+        self.objects_ids_and_slot_variables_and_paths())
     return trackable_objects, node_ids, slot_variables
 
   def list_objects(self):
