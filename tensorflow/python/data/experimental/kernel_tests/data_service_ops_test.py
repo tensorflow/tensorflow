@@ -448,6 +448,26 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
       self.assertGreater(results[i], elements_to_read / num_elements / 2)
 
   @combinations.generate(test_base.eager_only_combinations())
+  def testDistributeDistributedEpochForeverRepeatFewElements(self):
+    num_workers = 5
+    cluster = self.create_cluster(num_workers=num_workers)
+    # Less than the number of workers, so that some workers get zero elements on
+    # the first repetition.
+    num_elements = 1
+    ds = dataset_ops.Dataset.range(num_elements).repeat()
+    ds = self.make_distributed_dataset(
+        ds, cluster, processing_mode="distributed_epoch")
+    it = iter(ds)
+    for _ in range(100):
+      self.assertEqual(next(it).numpy(), 0)
+
+    # Stop all but one worker and check that we can still read.
+    for i in range(num_workers - 1):
+      cluster.workers[i]._stop()
+    for _ in range(100):
+      self.assertEqual(next(it).numpy(), 0)
+
+  @combinations.generate(test_base.eager_only_combinations())
   def testDistributeDistributedEpochShuffleAndRepeat(self):
     cluster = self.create_cluster(num_workers=2)
     num_repeats = 5

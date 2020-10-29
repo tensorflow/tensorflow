@@ -180,17 +180,20 @@ TfLiteStatus Interpreter::AllocateTensors() {
   // Apply the default delegate that TFLite will enable at this point to allow
   // other user-level delegates to be applied first.
   if (!lazy_delegate_providers_.empty()) {
+    // We only apply lazy delegate providers once.
+    std::vector<TfLiteDelegatePtr> delegate_providers;
+    delegate_providers.swap(lazy_delegate_providers_);
+
     TFLITE_LOG(TFLITE_LOG_INFO,
                "Applying %zu TensorFlow Lite delegate(s) lazily.",
-               lazy_delegate_providers_.size());
+               delegate_providers.size());
     // At the momement, XNNPACK delegate is the only one that might be applied
     // by default, in which case, the execution will fall back to default
     // implementation if the XNNPACK delegate fails to be applied. Therefore, we
     // ignore the return status here and let it fall through the rest of the
     // code.
-    for (size_t i = 0; i < lazy_delegate_providers_.size(); ++i) {
-      auto status =
-          ModifyGraphWithDelegate(std::move(lazy_delegate_providers_[i]));
+    for (size_t i = 0; i < delegate_providers.size(); ++i) {
+      auto status = ModifyGraphWithDelegate(std::move(delegate_providers[i]));
       switch (status) {
         case kTfLiteOk:
           TFLITE_LOG(TFLITE_LOG_INFO,
@@ -225,7 +228,6 @@ TfLiteStatus Interpreter::AllocateTensors() {
           return kTfLiteError;
       }
     }
-    lazy_delegate_providers_.clear();
   }
 
   return primary_subgraph().AllocateTensors();

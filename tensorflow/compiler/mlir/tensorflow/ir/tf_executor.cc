@@ -61,9 +61,14 @@ struct TensorFlowExecutorInlinerInterface : public DialectInlinerInterface {
   // Analysis Hooks
   //===--------------------------------------------------------------------===//
 
+  // Allow all call operations to be inlined.
+  bool isLegalToInline(Operation *call, Operation *callable,
+                       bool wouldBeCloned) const final {
+    return true;
+  }
   // Override the inlining hook to determine if 'src' can be inlined into
   // 'dest'.
-  bool isLegalToInline(Region *dest, Region *src,
+  bool isLegalToInline(Region *dest, Region *src, bool wouldBeCloned,
                        BlockAndValueMapping &value_mapping) const final {
     // Allow inlining into tf.island regions if the incoming region has a single
     // block.

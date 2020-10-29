@@ -128,6 +128,12 @@ bool CanFuseConvOrDepthwiseConvShapes(const ArrayRef<int64_t> filter_shape,
     return false;
   }
   auto elements_depth = elements_shape.empty() ? 1 : elements_shape.back();
+  // If elements depth equals 1 (i.e., scalar or tensor with 1 element), then we
+  // can let binary op to broadcast elements.
+  if (elements_depth == 1) {
+    return true;
+  }
+
   // In TFLite Conv2D uses OHWI format for filter, and 1HWO for Depthwise Conv.
   // For conv:
   // Check if last dimension in filter equals the first dimension

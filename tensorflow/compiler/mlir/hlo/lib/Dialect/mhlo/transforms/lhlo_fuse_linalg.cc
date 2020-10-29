@@ -26,7 +26,6 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Transforms/FoldUtils.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
@@ -95,7 +94,6 @@ class LhloFuseLinalgPass
     }
     MLIRContext* ctx = func.getContext();
     OpBuilder b(func);
-    OperationFolder folder(ctx);
     func.walk([&](linalg::GenericOp generic_op) {
       SmallVector<int64_t, 2> tile_sizes(tile_sizes_.begin(),
                                          tile_sizes_.end());
@@ -122,7 +120,7 @@ class LhloFuseLinalgPass
       for (unsigned id = 0, e = LinalgOp(op).getNumInputs(); id < e; ++id) {
         linalg::Aliases aliases;
         linalg::LinalgDependenceGraph graph(aliases, linalg_ops);
-        if (auto info = fuseProducerOfBuffer(b, op, id, graph, &folder)) {
+        if (auto info = fuseProducerOfBuffer(b, op, id, graph)) {
           auto originalOp = info->originalProducer.getOperation();
           erase_set.insert(originalOp);
           auto originalOpInLinalgOpsVector = std::find_if(
