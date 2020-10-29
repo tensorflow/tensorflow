@@ -114,25 +114,9 @@ Status FusedIrEmitter::HandleGetTupleElement(
 }
 
 Status FusedIrEmitter::HandleParameter(const HloInstruction* parameter) {
-  indexed_generators_[parameter] =
-      [=](const IrArray::Index& index) -> llvm::Value* {
-    int64 param_num = parameter->parameter_number();
-    if (param_shmem_buffers_.size() > param_num) {
-      if (llvm::Value* param_tile_buffer = param_shmem_buffers_[param_num]) {
-        // TODO(jlebar): Add AA metadata to this load.  Tile buffers are global
-        // variables, so LLVM's points-to analysis doesn't help us much.  And we
-        // want the AA info to be present before address spaces are inferred
-        // (which is pretty late in the pipeline), so even if we had
-        // address-space-based AA in LLVM, it wouldn't help us much here.
-        return b_->CreateLoad(
-            b_->CreateGEP(param_tile_buffer, {index.GetConstantWithIndexType(0),
-                                              thread_id_x_, thread_id_y_}),
-            "tiled_buffer");
-      }
-    }
-    return GetIrArrayForFusedParameter(param_num).EmitReadArrayElement(index,
-                                                                       b_);
-  };
+  if (indexed_generators_.find(parameter) == indexed_generators_.end()) {
+    return InvalidArgument("Unbound parameter: %s", parameter->ToString());
+  }
   return Status::OK();
 }
 
@@ -155,17 +139,6 @@ Status FusedIrEmitter::HandleTuple(const HloInstruction* tuple) {
     return ret;
   };
   return Status::OK();
-}
-
-Status FusedIrEmitter::FinishVisit(const HloInstruction* root) {
-  fused_root_ = root;
-  return Status::OK();
-}
-
-FusedIrEmitter::IndexedGenerator FusedIrEmitter::GetRootGenerator() const {
-  CHECK_NE(nullptr, fused_root_)
-      << "GetRootGenerator should be called after Accept.";
-  return indexed_generators_.at(fused_root_);
 }
 
 FusedIrEmitter::IndexedGenerator FusedIrEmitter::GetGenerator(
