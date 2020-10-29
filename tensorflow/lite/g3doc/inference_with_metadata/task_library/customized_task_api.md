@@ -110,7 +110,7 @@ To build an API object,you must provide the following information by extending
                                   std::vector<QaAnswer>, // OutputType
                                   const std::string&, const std::string& // InputTypes
                                   > {
-      // Convert API input into into tensors
+      // Convert API input into tensors
       absl::Status BertQuestionAnswerer::Preprocess(
         const std::vector<TfLiteTensor*>& input_tensors, // input tensors of the model
         const std::string& context, const std::string& query // InputType of the API
@@ -230,7 +230,7 @@ following information by extending
 [`BaseTaskApi`](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/java/src/java/org/tensorflow/lite/task/core/BaseTaskApi.java),
 which provides JNI handlings for all Java Task APIs.
 
-*   __Determine the API I/O__ - This usually mirriors the native interfaces. e.g
+*   __Determine the API I/O__ - This usually mirrors the native interfaces. e.g
     `BertQuestionAnswerer` takes `(String context, String question)` as input
     and outputs `List<QaAnswer>`. The implementation calls a private native
     function with similar signature, except it has an additional parameter `long

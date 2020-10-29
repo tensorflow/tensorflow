@@ -119,7 +119,7 @@ cd tensorflow_src && ./tensorflow/lite/tools/make/download_dependencies.sh
 
 You can use
 [ARM GCC toolchains](https://github.com/tensorflow/tensorflow/tree/master/third_party/toolchains/embedded/arm-linux)
-with Bazel to build an armhf shared library which is compatibile with Raspberry
+with Bazel to build an armhf shared library which is compatible with Raspberry
 Pi 2, 3 and 4.
 
 Note: The generated shared library requires glibc 2.28 or higher to run.
@@ -165,7 +165,7 @@ page for the detail.
 bazel build --config=elinux_armhf -c opt //tensorflow/lite:libtensorflowlite.so
 ```
 
-You can find a shared library library in:
+You can find a shared library in:
 `bazel-bin/tensorflow/lite/libtensorflowlite.so`.
 
 Currently, there is no straightforward way to extract all header files needed,

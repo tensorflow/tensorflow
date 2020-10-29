@@ -44,7 +44,7 @@ class VariableOpsTest : public ::testing::Test {
   }
 
   void ConstructGraph() {
-    // Construct a graph like ths:
+    // Construct a graph like this:
     //   Input: %0, %1, %2
     //   Output: %3
     //   variable_assign(%0, %2)

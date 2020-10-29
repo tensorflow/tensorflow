@@ -114,7 +114,7 @@ OR
 pod 'TensorFlowLiteSwift', '~> 0.0.1-nightly', :subspecs => ['Metal']
 ```
 
-You can do similiarly for `TensorFlowLiteC` if you want to use the C API.
+You can do similarly for `TensorFlowLiteC` if you want to use the C API.
 
 #### Step 3. Enable the GPU delegate
 
@@ -154,9 +154,9 @@ Lastly make sure to select Release-only builds on 64-bit architecture. Under
 
 ### Android
 
-Note: The TensorFlow Lite Interpreter must be created on the same thread as when
-is is run. Otherwise, `TfLiteGpuDelegate Invoke: GpuDelegate must run on the
-same thread where it was initialized.` may occur.
+Note: The TensorFlow Lite Interpreter must be created on the same thread as
+where it is run. Otherwise, `TfLiteGpuDelegate Invoke: GpuDelegate must run on
+the same thread where it was initialized.` may occur.
 
 Look at the demo to see how to add the delegate. In your application, add the
 AAR as above, import `org.tensorflow.lite.gpu.GpuDelegate` module, and use
