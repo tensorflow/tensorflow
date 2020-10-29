@@ -427,7 +427,7 @@ def get_matching_files_v2(pattern, num_threads=1):
     ]
 
   if not isinstance(num_threads, int):
-    raise TypeError("`max_parallel_num` must be a integer.")
+    raise TypeError("`num_threads` must be a integer.")
 
   if num_threads <= 1:
     return [
