@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <stddef.h>
 
+#include <cstdint>
+
 #include "tensorflow/core/tpu/libtftpu.h"
 #include "tensorflow/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"
@@ -61,7 +63,7 @@ struct CompilationCacheKeyProperty {
   const char* config_prefix;
   const char* shapes_prefix;
   const char* function_name;
-  const char* mlir_module;
+  uint64_t mlir_module_fingerprint;
   const int32_t* device_ids;
   size_t device_ids_size;
   int32_t guaranteed_constants_size;
