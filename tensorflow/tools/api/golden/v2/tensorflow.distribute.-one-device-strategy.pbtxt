@@ -49,12 +49,12 @@ tf_class {
     argspec: "args=[\'self\', \'value\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "experimental_make_numpy_dataset"
-    argspec: "args=[\'self\', \'numpy_input\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "experimental_run"
     argspec: "args=[\'self\', \'fn\', \'input_iterator\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "gather"
+    argspec: "args=[\'self\', \'value\', \'axis\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "group"

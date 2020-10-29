@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package tensorflow;
 
+// Next ID: 11
 message ProfileOptions {
   // Some default value of option are not proto3 default value. Use this version
   // to determine if we should use default option value instead of proto3
@@ -50,5 +51,35 @@ message ProfileOptions {
   // Whether serialize hlo_proto when XLA is used. (version >= 1)
   bool enable_hlo_proto = 7;
 
-  // next-field: 8
+  // The local profiler starts profiling at this Unix timestamp in nanoseconds.
+  uint64 start_timestamp_ns = 8;
+
+  // The local profiler collects `duration_ms` milliseconds of data. If the
+  // value is 0, profiling continues until interrupted.
+  uint64 duration_ms = 9;
+
+  // Directory to save profile data to. No-op when empty.
+  string repository_path = 10;
+}
+
+// Options for remote profiler session manager.
+// Next ID: 6
+message RemoteProfilerSessionManagerOptions {
+  // Options for each local profiler.
+  ProfileOptions profiler_options = 1;
+
+  // List of servers to profile. Supported formats: host:port.
+  repeated string service_addresses = 2;
+
+  // Unix timestamp of when the session was started.
+  uint64 session_creation_timestamp_ns = 3;
+
+  // Maximum time (in milliseconds) a profiling session manager waits for all
+  // profilers to finish after issuing gRPC request. If value is 0, session
+  // continues until interrupted. Otherwise, value must be greater than
+  // profiler_options.duration_ms.
+  uint64 max_session_duration_ms = 4;
+
+  // Start of profiling is delayed by this much (in milliseconds).
+  uint64 delay_ms = 5;
 }

@@ -22,10 +22,6 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
-namespace {
-const int64 kRetryTimeoutMicros = 1000LL * 1000 * 60 * 60;  // 60 minutes.
-}  // namespace
-
 Status DataServiceSplitProvider::GetNext(Tensor* split, bool* end_of_splits) {
   mutex_lock l(mu_);
   if (!dispatcher_) {
@@ -38,7 +34,8 @@ Status DataServiceSplitProvider::GetNext(Tensor* split, bool* end_of_splits) {
                                      *end_of_splits);
       },
       "get next split",
-      /*deadline_micros=*/Env::Default()->NowMicros() + kRetryTimeoutMicros);
+      /*deadline_micros=*/Env::Default()->NowMicros() +
+          (timeout_ms_ * EnvTime::kMillisToMicros));
 }
 
 Status DataServiceSplitProvider::Reset() {

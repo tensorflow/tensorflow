@@ -79,7 +79,7 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     // above. The NNAPI CPU typically performs less well than built-in TfLite
     // kernels, but allowing CPU allows partial acceleration of models. If this
     // is set to true, NNAPI is only used if the whole model is accelerated.
-    bool disallow_nnapi_cpu = false;
+    bool disallow_nnapi_cpu = true;
 
     // Specifies the max number of partitions to delegate. A value <= 0 means
     // no limit.

@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/device_util.h"
 #include "tensorflow/compiler/jit/flags.h"
-#include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
 #include "tensorflow/compiler/jit/xla_activity.pb.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
@@ -42,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/service/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/union_find.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -82,6 +82,23 @@ Status MakeCallNodeFromAttribute(const Node& node, const std::string& attr_name,
   node_def->set_op(name_attr->name());
   *(node_def->mutable_attr()) = name_attr->attr();
   return Status::OK();
+}
+
+xla::StatusOr<std::vector<NodeDef>> MakeCallNodesFromAttribute(
+    const Node& node, absl::string_view attr_name,
+    absl::string_view call_name) {
+  std::vector<NameAttrList> attr_lists;
+  TF_RETURN_IF_ERROR(GetNodeAttr(node.attrs(), attr_name, &attr_lists));
+
+  std::vector<NodeDef> out;
+  for (int i = 0; i < attr_lists.size(); i++) {
+    out.emplace_back();
+    NodeDef& inserted = out.back();
+    inserted.set_name(absl::StrCat(call_name, "_", i));
+    inserted.set_op(attr_lists[i].name());
+    *inserted.mutable_attr() = attr_lists[i].attr();
+  }
+  return out;
 }
 
 // Utility which searches for values in a sorted list by scanning over it once.
@@ -224,6 +241,30 @@ bool RecursiveCompilabilityChecker::IsCompilableIf(
       if_node, "else_branch", "if_else", encapsulating_function, lib_runtime,
       stack_trace, uncompilable_nodes);
 
+  return is_compilable;
+}
+
+bool RecursiveCompilabilityChecker::IsCompilableCase(
+    const Node& case_node, FunctionLibraryRuntime* lib_runtime,
+    std::vector<StackFrameView>* stack_trace,
+    NameAttrList* encapsulating_function,
+    RecursiveCompilabilityChecker::UncompilableNodesMap* uncompilable_nodes)
+    const {
+  xla::StatusOr<std::vector<NodeDef>> calls =
+      MakeCallNodesFromAttribute(case_node, "branches", "branch");
+  if (!calls.ok()) {
+    VLOG(2) << "Rejecting node " << case_node.name() << ": "
+            << "missing attribute 'branches'";
+    return false;
+  }
+
+  bool is_compilable = true;
+
+  for (const NodeDef& call : *calls) {
+    is_compilable &=
+        IsCompilableCall(call, lib_runtime, stack_trace, encapsulating_function,
+                         uncompilable_nodes);
+  }
   return is_compilable;
 }
 
@@ -414,6 +455,13 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
       !IsCompilableIf(node, lib_runtime, stack_trace, encapsulating_function,
                       uncompilable_nodes)) {
     LogNotCompilable(node, "unsupported if");
+    return false;
+  }
+
+  if (op_filter_.require_always_compilable && node.IsCaseNode() &&
+      !IsCompilableCase(node, lib_runtime, stack_trace, encapsulating_function,
+                        uncompilable_nodes)) {
+    LogNotCompilable(node, "unsupported case");
     return false;
   }
 

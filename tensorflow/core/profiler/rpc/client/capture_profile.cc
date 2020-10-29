@@ -21,6 +21,8 @@ limitations under the License.
 
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/status.h"
@@ -30,11 +32,15 @@ limitations under the License.
 #include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/core/profiler/profiler_service.pb.h"
 #include "tensorflow/core/profiler/rpc/client/profiler_client.h"
+#include "tensorflow/core/profiler/rpc/client/remote_profiler_session_manager.h"
 #include "tensorflow/core/profiler/rpc/client/save_profile.h"
 
 namespace tensorflow {
 namespace profiler {
 namespace {
+
+using ::tensorflow::profiler::RemoteProfilerSessionManager;
+using Response = ::tensorflow::profiler::RemoteProfilerSessionManager::Response;
 
 constexpr uint64 kMaxEvents = 1000000;
 const absl::string_view kXPlanePb = "xplane.pb";
@@ -48,17 +54,18 @@ MonitorRequest PopulateMonitorRequest(int duration_ms, int monitoring_level,
   return request;
 }
 
-ProfileRequest PopulateProfileRequest(int duration_ms,
-                                      const std::string& repository_root,
-                                      const std::string& session_id,
-                                      const std::string& host_name,
-                                      const ProfileOptions& opts) {
+ProfileRequest PopulateProfileRequest(
+    absl::string_view repository_root, absl::string_view session_id,
+    absl::string_view host_name,
+    const RemoteProfilerSessionManagerOptions& options) {
   ProfileRequest request;
-  request.set_duration_ms(duration_ms);
+  // TODO(b/169976117) Remove duration from request.
+  request.set_duration_ms(options.profiler_options().duration_ms());
   request.set_max_events(kMaxEvents);
-  request.set_repository_root(repository_root);
-  request.set_session_id(session_id);
-  request.set_host_name(host_name);
+  request.set_repository_root(repository_root.data(), repository_root.size());
+  request.set_session_id(session_id.data(), session_id.size());
+  request.set_host_name(host_name.data(), host_name.size());
+  // These tools are only used by TPU profiler.
   request.add_tools("trace_viewer");
   request.add_tools("op_profile");
   request.add_tools("input_pipeline");
@@ -68,21 +75,26 @@ ProfileRequest PopulateProfileRequest(int duration_ms,
   request.add_tools("overview_page");
   request.add_tools("pod_viewer");
   request.add_tools("tensorflow_stats");
-  *request.mutable_opts() = opts;
+  // XPlane tool is only used by OSS profiler and safely ignored by TPU
+  // profiler.
+  request.add_tools(kXPlanePb.data(), kXPlanePb.size());
+  *request.mutable_opts() = options.profiler_options();
   return request;
 }
 
 NewProfileSessionRequest PopulateNewProfileSessionRequest(
-    const std::string& service_addr, const std::string& repository_root,
-    const std::vector<string>& hostnames, int duration_ms,
-    const std::string& session_id, const ProfileOptions& opts) {
+    absl::string_view repository_root, absl::string_view session_id,
+    const RemoteProfilerSessionManagerOptions& opts) {
   NewProfileSessionRequest request;
-  std::vector<std::string> parts = absl::StrSplit(service_addr, ':');
-  *request.mutable_request() = PopulateProfileRequest(
-      duration_ms, repository_root, session_id, parts[0], opts);
-  request.set_repository_root(repository_root);
-  request.set_session_id(session_id);
-  for (const auto& hostname : hostnames) {
+  std::vector<absl::string_view> parts =
+      absl::StrSplit(opts.service_addresses(0), ':');
+  DCHECK(!parts.empty());
+
+  *request.mutable_request() =
+      PopulateProfileRequest(repository_root, session_id, parts[0], opts);
+  request.set_repository_root(repository_root.data(), repository_root.size());
+  request.set_session_id(session_id.data(), session_id.size());
+  for (const auto& hostname : opts.service_addresses()) {
     request.add_hosts(hostname);
   }
   return request;
@@ -99,44 +111,46 @@ inline bool ShouldRetryTracing(Status status) {
           status.error_message() == "Stream removed");
 }
 
-// If the ProfileResponse has single 'xplane.pb' tool, convert the xplane to
-// other tools and add in ProfileResponse. Otherwise, the ProfileResponse is
-// already converted, simply return.
-Status ConvertXSpaceToToolsInProfileResponse(const ProfileRequest& request,
-                                             ProfileResponse* response) {
-  if (response->tool_data_size() != 1) return Status::OK();
-  if (response->tool_data(0).name() != kXPlanePb) return Status::OK();
-  XSpace xspace;
-  xspace.ParseFromString(response->tool_data(0).data());
-  TF_RETURN_IF_ERROR(ConvertXSpaceToProfileResponse(xspace, request, response));
-  return Status::OK();
-}
+Status Profile(const std::string& repository_root,
+               const std::string& session_id,
+               const RemoteProfilerSessionManagerOptions& opts) {
+  Status status;
+  // Host name will be overwritten by RemoteProfilerSessionManager later.
+  ProfileRequest request = PopulateProfileRequest(repository_root, session_id,
+                                                  /*host_name=*/"", opts);
+  auto session = RemoteProfilerSessionManager::Create(opts, request, status);
+  TF_RETURN_IF_ERROR(status);
+  // Expect one or more service addresses.
+  DCHECK_GT(opts.service_addresses_size(), 0);
+  std::vector<Response> responses = session->WaitForCompletion();
+  // Expect responses to have the same size as clients.
+  DCHECK_EQ(responses.size(), opts.service_addresses_size());
 
-Status Profile(const std::string& service_addr,
-               const std::string& repository_root, int duration_ms,
-               const std::string& session_id, const ProfileOptions& opts) {
-  std::vector<std::string> parts = absl::StrSplit(service_addr, ':');
-  ProfileRequest request = PopulateProfileRequest(duration_ms, repository_root,
-                                                  session_id, parts[0], opts);
-  ProfileResponse response;
-  TF_RETURN_IF_ERROR(ProfileGrpc(service_addr, request, &response));
-
-  if (!response.empty_trace()) {
-    TF_RETURN_IF_ERROR(
-        ConvertXSpaceToToolsInProfileResponse(request, &response));
-    TF_RETURN_IF_ERROR(SaveProfile(repository_root, session_id,
-                                   request.host_name(), response, &std::cout));
-    // Print this at the end so that it's not buried in irrelevant LOG messages.
-    std::cout
-        << "NOTE: using the trace duration " << duration_ms << "ms.\n"
-        << "Set an appropriate duration (with --duration_ms) if you "
-           "don't see a full step in your trace or the captured trace is too "
-           "large."
-        << std::endl;
+  bool has_trace_data = false;
+  for (const auto& client_response : responses) {
+    ProfileResponse& response = *client_response.profile_response;
+    if (response.empty_trace()) {
+      LOG(WARNING) << "No trace event is collected from "
+                   << client_response.service_address;
+    } else {
+      has_trace_data = true;
+      // If server side returns tool data in the response, saves that into the
+      // repository. This improves backward compatibility by reducing assumption
+      // of what server side does.
+      TF_RETURN_IF_ERROR(SaveProfile(repository_root, session_id,
+                                     client_response.service_address, response,
+                                     &std::cout));
+    }
+    if (!client_response.status.ok()) {
+      LOG(WARNING) << client_response.service_address << " returned "
+                   << client_response.status;
+    }
   }
 
-  if (response.empty_trace()) {
-    return Status(error::Code::UNAVAILABLE, "No trace event is collected");
+  if (!has_trace_data) {
+    return Status(error::Code::UNAVAILABLE,
+                  "No trace event was collected because there were no responses"
+                  " from clients or the responses did not have trace data.");
   }
   return Status::OK();
 }
@@ -144,52 +158,55 @@ Status Profile(const std::string& service_addr,
 // Start a new profiling session that include all the hosts included in
 // hostnames, for the time interval of duration_ms. Possibly save the profiling
 // result in the directory specified by repository_root and session_id.
-Status NewSession(const std::string& service_addr,
-                  const std::string& repository_root,
-                  const std::vector<string>& hostnames, int duration_ms,
-                  const std::string& session_id, const ProfileOptions& opts) {
-  NewProfileSessionRequest request = PopulateNewProfileSessionRequest(
-      service_addr, repository_root, hostnames, duration_ms, session_id, opts);
+Status NewSession(absl::string_view repository_root,
+                  absl::string_view session_id,
+                  const RemoteProfilerSessionManagerOptions& opts) {
+  NewProfileSessionRequest request =
+      PopulateNewProfileSessionRequest(repository_root, session_id, opts);
   NewProfileSessionResponse response;
-  TF_RETURN_IF_ERROR(NewSessionGrpc(service_addr, request, &response));
+  TF_RETURN_IF_ERROR(
+      NewSessionGrpc(opts.service_addresses(0), request, &response));
 
   std::cout << "Profile session succeed for host(s):"
-            << absl::StrJoin(hostnames, ",") << std::endl;
+            << absl::StrJoin(opts.service_addresses(), ",") << std::endl;
   if (response.empty_trace()) {
-    return Status(error::Code::UNAVAILABLE, "No trace event is collected");
+    return errors::Unavailable("No trace event is collected");
   }
   return Status::OK();
 }
 
 }  // namespace
 
-// Starts tracing on a single or multiple hosts and saves the result in the
-// given logdir. If no trace was collected, retries tracing for
-// num_tracing_attempts.
-Status Trace(const std::string& service_addr, const std::string& logdir,
-             const std::string& workers_list, int duration_ms,
-             int num_tracing_attempts, const ProfileOptions& opts) {
+Status Trace(const std::string& logdir, int num_tracing_attempts,
+             RemoteProfilerSessionManagerOptions& opts,
+             bool is_cloud_tpu_session) {
+  DCHECK_GT(opts.profiler_options().duration_ms(), 0);
+  DCHECK(!opts.service_addresses().empty());
+
   // Use the current timestamp as the run name.
   std::string session_id = GetCurrentTimeStampAsString();
-  std::vector<std::string> hostnames;
-  if (!workers_list.empty()) {
-    hostnames = absl::StrSplit(workers_list, ',');
-  }
+  std::string repository_root = GetTensorBoardProfilePluginDir(logdir);
+  auto duration_ms = opts.profiler_options().duration_ms();
   TF_RETURN_IF_ERROR(MaybeCreateEmptyEventFile(logdir));
-  std::string repository_root =
-      profiler::GetTensorBoardProfilePluginDir(logdir);
 
-  Status status = Status::OK();
+  Status status;
   int remaining_attempts = num_tracing_attempts;
   while (true) {
+    auto start_timestamp = absl::Now() + absl::Milliseconds(opts.delay_ms());
+    opts.mutable_profiler_options()->set_start_timestamp_ns(
+        absl::ToUnixNanos(start_timestamp));
+    LOG(INFO) << "Profiler delay_ms was " << opts.delay_ms()
+              << ", start_timestamp_ns set to "
+              << opts.profiler_options().start_timestamp_ns() << " ["
+              << start_timestamp << "]";
+
     std::cout << "Starting to trace for " << duration_ms << " ms. "
               << "Remaining attempt(s): " << --remaining_attempts << std::endl;
-    if (hostnames.empty()) {
-      status =
-          Profile(service_addr, repository_root, duration_ms, session_id, opts);
+
+    if (is_cloud_tpu_session) {
+      status = NewSession(repository_root, session_id, opts);
     } else {
-      status = NewSession(service_addr, repository_root, hostnames, duration_ms,
-                          session_id, opts);
+      status = Profile(repository_root, session_id, opts);
     }
     if (remaining_attempts <= 0 || status.ok() || !ShouldRetryTracing(status))
       break;
@@ -223,11 +240,10 @@ Status ExportToTensorBoard(const XSpace& xspace, const std::string& logdir) {
 
   ProfileResponse response;
   ProfileRequest request = PopulateProfileRequest(
-      /*duration_ms=*/0, GetTensorBoardProfilePluginDir(logdir),
-      GetCurrentTimeStampAsString(), port::Hostname(), /*opts=*/{});
+      GetTensorBoardProfilePluginDir(logdir), GetCurrentTimeStampAsString(),
+      port::Hostname(), /*options=*/{});
   TF_RETURN_IF_ERROR(
       ConvertXSpaceToProfileResponse(xspace, request, &response));
-
   std::stringstream ss;  // Record LOG messages.
   TF_RETURN_IF_ERROR(SaveProfile(request.repository_root(),
                                  request.session_id(), request.host_name(),

@@ -39,7 +39,7 @@ limitations under the License.
 #include "tensorflow/c/eager/tfe_op_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "tensorflow/c/tf_tensor_internal.h"
-#if defined(PLATFORM_GOOGLE) && !defined(LIBTFTPU)
+#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE)
 #include "tensorflow/core/tfrt/eager/c_api_tfrt.h"
 #endif
 #include "tensorflow/core/common_runtime/device.h"
@@ -70,6 +70,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
+#include "tensorflow/core/distributed_runtime/worker_interface.h"
 #include "tensorflow/core/distributed_runtime/eager/cluster_function_library_runtime.h"
 #endif  // !IS_MOBILE_PLATFORM
 #include "tensorflow/core/framework/node_def_util.h"
@@ -729,7 +730,7 @@ void TFE_DeleteContextOptions(TFE_ContextOptions* options) { delete options; }
 
 TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
   if (opts->use_tfrt) {
-#if defined(PLATFORM_GOOGLE) && !defined(LIBTFTPU)
+#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE)
     return tensorflow::wrap(new tfrt::tf::ContextInterface(opts->async));
 #else
     status->status = tensorflow::errors::Unimplemented("TFRT is not supported");
@@ -855,41 +856,42 @@ TF_CAPI_EXPORT extern bool TFE_ContextCheckAlive(TFE_Context* ctx,
 #else   // !defined(IS_MOBILE_PLATFORM)
   tensorflow::EagerContext* context =
       tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  // TODO(yuefengz): support partially specified `worker_name`.
-  tensorflow::core::RefCountPtr<tensorflow::eager::EagerClient> eager_client;
-  status->status = context->GetClient(worker_name, &eager_client);
-  if (!status->status.ok()) {
+  tensorflow::GrpcServer* grpc_server =
+      dynamic_cast<tensorflow::GrpcServer*>(context->GetServer());
+  if (grpc_server == nullptr) {
+    status->status =
+        tensorflow::errors::Internal("Failed to get tensorflow::GrpcServer.");
+    return false;
+  }
+  tensorflow::WorkerInterface* wi =
+      grpc_server->master_env()->worker_cache->GetOrCreateWorker(worker_name);
+  if (wi == nullptr) {
+    status->status = tensorflow::errors::InvalidArgument(
+        "Unable to find worker interface corresponding to task ", worker_name);
     return false;
   }
 
-  // Send a rpc request to the worker to check aliveness.
-  tensorflow::eager::KeepAliveRequest request;
-  request.set_context_id(context->GetContextId());
-  tensorflow::eager::KeepAliveResponse response;
-
-  tensorflow::Status keep_alive_status;
+  tensorflow::GetStatusRequest request;
+  tensorflow::GetStatusResponse response;
+  tensorflow::Status remote_status;
   tensorflow::Notification done;
-  eager_client->KeepAliveAsync(
-      &request, &response,
-      [&keep_alive_status, &done](const tensorflow::Status& s) {
-        keep_alive_status = s;
-        done.Notify();
-      });
+  wi->GetStatusAsync(/*opts_=*/nullptr, &request, &response, /*fail_fast=*/true,
+                     [&remote_status, &done](const tensorflow::Status& s) {
+                       remote_status = s;
+                       done.Notify();
+                     });
   done.WaitForNotification();
 
+  // We set OK status so the call does not raise any exceptions. Instead, caller
+  // users the return value to tell if the remote worker is alive.
   status->status = tensorflow::Status::OK();
 
-  // If `context_id` doesn't exist on the remote worker, an InvalidArgument
-  // error will return. But this still indicates that the remote worker is
-  // alive.
-  if (keep_alive_status.ok() ||
-      keep_alive_status.code() == tensorflow::error::INVALID_ARGUMENT) {
+  if (remote_status.ok()) {
     return true;
-  } else {
-    LOG(INFO) << "Remote worker " << worker_name
-              << " is not alive: " << keep_alive_status.error_message();
-    return false;
   }
+  LOG(INFO) << "Remote worker " << worker_name
+            << " is not alive: " << remote_status.error_message();
+  return false;
 #endif  // !IS_MOBILE_PLATFORM
 }
 
@@ -1445,13 +1447,11 @@ TFE_TensorHandle* TFE_NewTensorHandle(const tensorflow::Tensor& t,
 
 void TFE_ContextExportRunMetadata(TFE_Context* ctx, TF_Buffer* buf,
                                   TF_Status* status) {
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  status->status = context->Executor().WaitForAllPendingNodes();
+  auto* context = tensorflow::unwrap(ctx);
+  status->status = context->AsyncWait();
   if (!status->status.ok()) return;
-  tensorflow::mutex_lock ml(*context->MetadataMu());
-  status->status = MessageToBuffer(*context->RunMetadataProto(), buf);
-  context->ClearRunMetadata();
+  auto run_metadata = context->ExportRunMetadata();
+  status->status = MessageToBuffer(*run_metadata, buf);
 }
 
 namespace {

@@ -153,7 +153,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     init_fn()
     self.assertEqual(state[0].numpy(), 2.0)
 
-  @test_util.disable_tfrt('Error in native condition op.')
   def testVariableInitializerNotConstant(self):
 
     state = []
@@ -385,7 +384,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
                                 'defined in another function or code block'):
       f(array_ops.zeros(shape=(8, 42, 3)))
 
-  @test_util.disable_tfrt('b/169375363: error code support')
   def testRuntimeErrorNotSticky(self):
 
     @def_function.function
@@ -581,10 +579,18 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
 
     self.assertIs(func_a, func_b)
 
-    with save_context.save_context(save_options.SaveOptions()):
+    with save_context.save_context(
+        save_options.SaveOptions(experimental_variable_policy=save_options
+                                 .VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES)):
       func_c = func.get_concrete_function(constant_op.constant(2.))
 
-    self.assertIs(func_a, func_c)
+    with save_context.save_context(
+        save_options.SaveOptions(
+            experimental_variable_policy=save_options.VariablePolicy.NONE)):
+      func_d = func.get_concrete_function(constant_op.constant(2.))
+
+    self.assertIsNot(func_a, func_c)
+    self.assertIsNot(func_a, func_d)
 
   def testInitializationInNestedCall(self):
     v_holder = []
@@ -913,6 +919,70 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
 
     self.assertLen(logs.output, 1)
     self.assertIn('Tracing is expensive', logs.output[0])
+
+  def test_experimental_get_tracing_count_function(self):
+
+    @def_function.function
+    def double(a):
+      return a + a
+
+    double(constant_op.constant(1))
+    double(constant_op.constant(2))
+    self.assertAllEqual(double.experimental_get_tracing_count(), 1)
+    double(constant_op.constant('a'))
+    self.assertAllEqual(double.experimental_get_tracing_count(), 2)
+
+  def test_experimental_get_tracing_count_method(self):
+
+    class TestClass():
+
+      @def_function.function
+      def testDouble(self, a):
+        return a + a
+
+    obj1 = TestClass()
+    obj1.testDouble(constant_op.constant(1))
+    obj1.testDouble(constant_op.constant(2))
+    obj1.testDouble(constant_op.constant(1.1))
+    self.assertAllEqual(obj1.testDouble.experimental_get_tracing_count(), 2)
+    obj2 = TestClass()
+    obj2.testDouble(constant_op.constant(1))
+    obj2.testDouble(constant_op.constant(1.1))
+    obj2.testDouble(constant_op.constant('a'))
+    self.assertAllEqual(obj2.testDouble.experimental_get_tracing_count(), 3)
+    self.assertAllEqual(obj1.testDouble.experimental_get_tracing_count(), 2)
+
+  def test_experimental_get_tracing_count_function(self):
+
+    @def_function.function
+    def double(a):
+      return a + a
+
+    double(constant_op.constant(1))
+    double(constant_op.constant(2))
+    self.assertAllEqual(double.experimental_get_tracing_count(), 1)
+    double(constant_op.constant('a'))
+    self.assertAllEqual(double.experimental_get_tracing_count(), 2)
+
+  def test_experimental_get_tracing_count_method(self):
+
+    class TestClass():
+
+      @def_function.function
+      def testDouble(self, a):
+        return a + a
+
+    obj1 = TestClass()
+    obj1.testDouble(constant_op.constant(1))
+    obj1.testDouble(constant_op.constant(2))
+    obj1.testDouble(constant_op.constant(1.1))
+    self.assertAllEqual(obj1.testDouble.experimental_get_tracing_count(), 2)
+    obj2 = TestClass()
+    obj2.testDouble(constant_op.constant(1))
+    obj2.testDouble(constant_op.constant(1.1))
+    obj2.testDouble(constant_op.constant('a'))
+    self.assertAllEqual(obj2.testDouble.experimental_get_tracing_count(), 3)
+    self.assertAllEqual(obj1.testDouble.experimental_get_tracing_count(), 2)
 
 
 if __name__ == '__main__':

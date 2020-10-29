@@ -143,10 +143,10 @@ def TfExecutor_FetchOp : TfExecutor_Op<"fetch",
     Variadic<AnyType>:$fetches
   );
 
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result",
+  let builders = [
+    OpBuilderDAG<(ins),
     [{
-      build(builder, result, {});
+      build($_builder, $_state, {});
     }]>
    ];
 
@@ -228,10 +228,10 @@ def TfExecutor_YieldOp : TfExecutor_Op<"yield",
     Variadic<AnyType>:$fetches
   );
 
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result",
+  let builders = [
+    OpBuilderDAG<(ins),
     [{
-      build(builder, result, {});
+      build($_builder, $_state, {});
     }]>
    ];
 
@@ -459,14 +459,14 @@ def TfExecutor_NextIterationSourceOp : TfExecutor_Op<"NextIteration.Source",
     TfeControlType:$control
   );
 
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, Type result_type, "
-    "ArrayRef<NamedAttribute> attributes = {}",
+  let builders = [
+    OpBuilderDAG<(ins "Type":$result_type,
+      CArg<"ArrayRef<NamedAttribute>", "{}">:$attributes),
     [{
-      Type token_type = TokenType::get(builder.getContext());
-      Type control_type = ControlType::get(builder.getContext());
-      result.types = { result_type, token_type, control_type };
-      result.attributes.append(attributes.begin(), attributes.end());
+      Type token_type = TokenType::get($_builder.getContext());
+      Type control_type = ControlType::get($_builder.getContext());
+      $_state.types = { result_type, token_type, control_type };
+      $_state.attributes.append(attributes.begin(), attributes.end());
     }]>
    ];
 
@@ -529,18 +529,22 @@ def TfExecutor_NextIterationSinkOp : TfExecutor_Op<"NextIteration.Sink",
     Variadic<TfeControlType>:$controlInputs
   );
 
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, Value token, "
-    "ArrayRef<Value> operands, ArrayRef<NamedAttribute> attributes = {}",
+  let builders = [
+    OpBuilderDAG<(ins "Value":$token, "ArrayRef<Value>":$operands,
+      CArg<"ArrayRef<NamedAttribute>", "{}">:$attributes),
     [{
       assert(operands.size() >= 1 && "tf_executor.NextIteration.Sink builder "
              "expects at least one operand");
-      result.operands.push_back(token);
-      result.operands.insert(result.operands.end(), operands.begin(),
+      $_state.operands.push_back(token);
+      $_state.operands.insert($_state.operands.end(), operands.begin(),
                               operands.end());
-      result.attributes.append(attributes.begin(), attributes.end());
+      $_state.attributes.append(attributes.begin(), attributes.end());
     }]>
    ];
+
+  let extraClassDeclaration = [{
+    NextIterationSourceOp GetSource();
+  }];
 
   let assemblyFormat = " `[` $token `]` $input (`,` $controlInputs^)? `:` type($input) attr-dict";
 
@@ -613,17 +617,17 @@ def TfExecutor_ControlTriggerOp : TfExecutor_Op<"ControlTrigger",
 
   let hasCanonicalizer = 1;
 
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, "
-    "ArrayRef<Value> operands, ArrayRef<NamedAttribute> attributes = {}",
+  let builders = [
+    OpBuilderDAG<(ins "ArrayRef<Value>":$operands,
+      CArg<"ArrayRef<NamedAttribute>", "{}">:$attributes),
     [{
       assert(operands.size() >= 1 && "tf_executor.ControlTrigger builder "
              "expects at least one operand");
-      result.operands.insert(result.operands.end(), operands.begin(),
+      $_state.operands.insert($_state.operands.end(), operands.begin(),
                               operands.end());
-      Type control_type = ControlType::get(builder.getContext());
-      result.types = {control_type};
-      result.attributes.append(attributes.begin(), attributes.end());
+      Type control_type = ControlType::get($_builder.getContext());
+      $_state.types = {control_type};
+      $_state.attributes.append(attributes.begin(), attributes.end());
     }]>
    ];
 

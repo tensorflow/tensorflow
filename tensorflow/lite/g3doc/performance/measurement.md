@@ -186,7 +186,7 @@ You can get nightly pre-built binaries for this tool as listed below:
 *   [android_aarch64](https://storage.googleapis.com/tensorflow-nightly-public/prod/tensorflow/release/lite/tools/nightly/latest/android_aarch64_benchmark_model_performance_options)
 *   [android_arm](https://storage.googleapis.com/tensorflow-nightly-public/prod/tensorflow/release/lite/tools/nightly/latest/android_arm_benchmark_model_performance_options)
 
-### iOS benchamark app
+### iOS benchmark app
 
 To run benchmarks on iOS device, you need to build the app from
 [source](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/benchmark/ios).
@@ -421,7 +421,7 @@ internal events.
 Some examples of events are:
 
 *   Operator invocation
-*   Graph modification by deleagate
+*   Graph modification by delegate
 *   Tensor allocation
 
 Among different options for capturing traces, this guide covers the Android

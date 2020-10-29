@@ -120,14 +120,6 @@ absl::Status Texture2DDescriptor::PerformReadSelector(
   return absl::OkStatus();
 }
 
-absl::Status Texture2DDescriptor::CreateGPUObject(CLContext* context,
-                                                  GPUObjectPtr* result) const {
-  Texture2D gpu_texture;
-  RETURN_IF_ERROR(gpu_texture.CreateFromTexture2DDescriptor(*this, context));
-  *result = absl::make_unique<Texture2D>(std::move(gpu_texture));
-  return absl::OkStatus();
-}
-
 Texture2D::Texture2D(cl_mem texture, int width, int height,
                      cl_channel_type type)
     : texture_(texture), width_(width), height_(height), channel_type_(type) {}

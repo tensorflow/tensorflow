@@ -127,6 +127,11 @@ message NNAPISettings {
   // dynamic dimensions of the model.
   // By default this is set to false.
   optional bool allow_dynamic_dimensions = 9;
+
+  // Whether to allow the NNAPI accelerator to optionally use lower-precision
+  // float16 (16-bit floating point) arithmetic when doing calculations on
+  // float32 (32-bit floating point).
+  optional bool allow_fp16_precision_for_fp32 = 10;
 }
 
 // Which GPU backend to select. Default behaviour on Android is to try OpenCL

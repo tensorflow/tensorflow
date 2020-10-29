@@ -274,7 +274,7 @@ void CreateConvertMlirToXlaHloPipeline(
     mlir::OpPassManager& pm, llvm::StringRef device_type,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes) {
-  pm.addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
+  pm.addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   pm.addPass(mlir::TF::CreateTensorListOpsDecompositionPass());
   pm.addPass(mlir::TF::CreateStackOpsDecompositionPass());
@@ -285,6 +285,10 @@ void CreateConvertMlirToXlaHloPipeline(
   // Guarantee all functions have one use, which enables shape inference.
   pm.addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+  // TODO(b/171426148): We cannot completely remove region to functional control
+  // flow conversion from this pipeline yet as it causes some unit tests to
+  // fail.
+  pm.addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
   // LegalizeTFControlFlow encapsulates arguments for control flow operations
   // with a tuple argument which break the assumption of resource lifting
   // inside PromoteResourcesToArgs.
@@ -324,7 +328,7 @@ Status ConvertMLIRToXlaComputation(
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes) {
   mlir::PassManager tf2xla(module_op.getContext());
-  SetCrashReproducer(tf2xla);
+  applyTensorflowAndCLOptions(tf2xla);
   CreateConvertMlirToXlaHloPipeline(tf2xla, device_type,
                                     custom_legalization_passes);
 
@@ -513,7 +517,7 @@ Status CompileGraphToXlaHlo(
   }
 
   mlir::PassManager pm(module_op.getContext());
-  SetCrashReproducer(pm);
+  applyTensorflowAndCLOptions(pm);
   mlir::TF::StandardPipelineOptions tf_options;
   mlir::TF::CreateTFStandardPipeline(pm, tf_options);
   {
@@ -530,8 +534,9 @@ Status CompileGraphToXlaHlo(
 
 Status CompileGraphToXlaHlo(
     const Graph& graph, llvm::ArrayRef<XlaArgument> args,
-    llvm::StringRef device_type, bool use_tuple_args,
-    const FunctionLibraryDefinition& flib_def, const GraphDebugInfo& debug_info,
+    llvm::ArrayRef<std::string> control_rets, llvm::StringRef device_type,
+    bool use_tuple_args, const FunctionLibraryDefinition& flib_def,
+    const GraphDebugInfo& debug_info,
     const XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
@@ -540,6 +545,7 @@ Status CompileGraphToXlaHlo(
   RegisterDialects(context.getDialectRegistry());
   GraphImportConfig config;
   config.graph_as_function = true;
+  config.control_outputs = control_rets;
   // Disable shape inference during import as some TensorFlow op fails during
   // shape inference with dynamic shaped operands. This in turn causes the
   // import to fail. Shape inference during import is going to be removed and

@@ -44,29 +44,35 @@ static Graph* BroadcastTo(int dim0, int dim1, InputShape input_shape) {
   return g;
 }
 
-#define BM_BroadcastTo_InnerDim(DIM0, DIM1, type)                          \
-  static void BM_BroadcastTo_Inner##_##type##_##DIM0##_##DIM1(int iters) { \
-    testing::UseRealTime();                                                \
-    testing::ItemsProcessed(static_cast<int64>(iters) * DIM0 * DIM1);      \
-    test::Benchmark(#type, BroadcastTo(DIM0, DIM1,                         \
-                                       [](int dim0, int dim1) {            \
-                                         return TensorShape({dim0, 1});    \
-                                       }))                                 \
-        .Run(iters);                                                       \
-  }                                                                        \
-  BENCHMARK(BM_BroadcastTo_Inner##_##type##_##DIM0##_##DIM1);
+#define BM_BroadcastTo_InnerDim(DIM0, DIM1, type)                           \
+  static void BM_BroadcastTo_Inner##_##type##_##DIM0##_##DIM1(              \
+      ::testing::benchmark::State& state) {                                 \
+    test::Benchmark(#type,                                                  \
+                    BroadcastTo(DIM0, DIM1,                                 \
+                                [](int dim0, int dim1) {                    \
+                                  return TensorShape({dim0, 1});            \
+                                }),                                         \
+                    /*old_benchmark_api=*/false)                            \
+        .Run(state);                                                        \
+    state.SetItemsProcessed(static_cast<int64>(state.iterations()) * DIM0 * \
+                            DIM1);                                          \
+  }                                                                         \
+  BENCHMARK(BM_BroadcastTo_Inner##_##type##_##DIM0##_##DIM1)->UseRealTime();
 
-#define BM_BroadcastTo_OuterDim(DIM0, DIM1, type)                          \
-  static void BM_BroadcastTo_Outer##_##type##_##DIM0##_##DIM1(int iters) { \
-    testing::UseRealTime();                                                \
-    testing::ItemsProcessed(static_cast<int64>(iters) * DIM0 * DIM1);      \
-    test::Benchmark(#type, BroadcastTo(DIM0, DIM1,                         \
-                                       [](int dim0, int dim1) {            \
-                                         return TensorShape({1, dim1});    \
-                                       }))                                 \
-        .Run(iters);                                                       \
-  }                                                                        \
-  BENCHMARK(BM_BroadcastTo_Outer##_##type##_##DIM0##_##DIM1);
+#define BM_BroadcastTo_OuterDim(DIM0, DIM1, type)                           \
+  static void BM_BroadcastTo_Outer##_##type##_##DIM0##_##DIM1(              \
+      ::testing::benchmark::State& state) {                                 \
+    test::Benchmark(#type,                                                  \
+                    BroadcastTo(DIM0, DIM1,                                 \
+                                [](int dim0, int dim1) {                    \
+                                  return TensorShape({1, dim1});            \
+                                }),                                         \
+                    /*old_benchmark_api=*/false)                            \
+        .Run(state);                                                        \
+    state.SetItemsProcessed(static_cast<int64>(state.iterations()) * DIM0 * \
+                            DIM1);                                          \
+  }                                                                         \
+  BENCHMARK(BM_BroadcastTo_Outer##_##type##_##DIM0##_##DIM1)->UseRealTime();
 
 BM_BroadcastTo_InnerDim(64, 64, cpu);
 BM_BroadcastTo_InnerDim(128, 128, cpu);

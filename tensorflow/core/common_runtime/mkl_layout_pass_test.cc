@@ -3394,6 +3394,37 @@ TEST_F(MklLayoutPassTest, NodeRewrite_FusedBatchNormV2_Negative) {
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormV3_Positive);
 #undef REGISTER_TEST
 
+#define REGISTER_TEST(NAME, T, INPUT)                                                \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                            \
+    InitGraph(                                                                       \
+      "node { name: 'A' op: '" #INPUT "'}"                                           \
+      "node { name: 'B' op: 'Float32Input'}"                                         \
+      "node { name: 'C' op: 'Float32Input'}"                                         \
+      "node { name: 'D' op: 'Float32Input'}"                                         \
+      "node { name: 'E' op: 'Float32Input'}"                                         \
+      "node { name: 'F' op: 'FusedBatchNormV3'"                                      \
+      " attr { key: 'T'            value { type: " #T " } }"                         \
+      " attr { key: 'U'            value { type: DT_FLOAT } }"                       \
+      " attr { key: 'data_format'  value { s: " DATA_FORMAT " } }"                   \
+      " attr { key: 'epsilon'      value { f: 0.0001 } }"                            \
+      " attr { key: 'is_training'  value { b: true } }"                              \
+      " input: ['A', 'B', 'C', 'D', 'E'] }"                                          \
+      "node { name: 'G' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"         \
+      " input: ['A', 'F'] }");                                                       \
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                           \
+            "A(" #INPUT ");B(Float32Input);C(Float32Input);"                         \
+            "D(Float32Input);E(Float32Input);F(FusedBatchNormV3);G(Zeta)"            \
+            "|A->F;A->G;B->F:1;C->F:2;D->F:3;E->F:4;F->G:1");                        \
+}
+#define DATA_FORMAT "'NCDHW'"
+REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormV3_5D_Negative_1);
+
+#define DATA_FORMAT "'NDHWC'"
+REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormV3_5D_Negative_2);
+
+#undef DATA_FORMAT
+#undef REGISTER_TEST
+
 TEST_F(MklLayoutPassTest, NodeRewrite_FusedBatchNormV3_Negative) {
   DCHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
   InitGraph(
@@ -3416,6 +3447,38 @@ TEST_F(MklLayoutPassTest, NodeRewrite_FusedBatchNormV3_Negative) {
           "E(Float32Input);F(FusedBatchNormV3);G(Zeta)|A->F;A->G;"
           "B->F:1;C->F:2;D->F:3;E->F:4;F->G:1");
 }
+
+#define REGISTER_TEST(NAME, T, INPUT)                                                \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                            \
+    InitGraph(                                                                       \
+      "node { name: 'A' op: '" #INPUT "'}"                                           \
+      "node { name: 'B' op: '" #INPUT "'}"                                           \
+      "node { name: 'C' op: 'Float32Input'}"                                         \
+      "node { name: 'D' op: 'Float32Input'}"                                         \
+      "node { name: 'E' op: 'Float32Input'}"                                         \
+      "node { name: 'F' op: 'Float32Input'}"                                         \
+      "node { name: 'G' op: 'FusedBatchNormGradV3'"                                  \
+      " attr { key: 'T'            value { type: " #T " } }"                         \
+      " attr { key: 'U'            value { type: DT_FLOAT } }"                       \
+      " attr { key: 'data_format'  value { s: " DATA_FORMAT " } }"                   \
+      " attr { key: 'epsilon'      value { f: 0.0001 } }"                            \
+      " attr { key: 'is_training'  value { b: true } }"                              \
+      " input: ['A', 'B', 'C', 'D', 'E', 'F'] }"                                     \
+      "node { name: 'H' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"         \
+      " input: ['A', 'G'] }");                                                       \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                         \
+            "A(" #INPUT ");B(" #INPUT ");C(Float32Input);D(Float32Input);"           \
+            "E(Float32Input);F(Float32Input);G(FusedBatchNormGradV3);H(Zeta)"        \
+            "|A->G;A->H;B->G:1;C->G:2;D->G:3;E->G:4;F->G:5;G->H:1");                 \
+}
+#define DATA_FORMAT "'NCDHW'"
+REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormGradV3_5D_Negative_1);
+
+#define DATA_FORMAT "'NDHWC'"
+REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormGradV3_5D_Negative_2);
+
+#undef DATA_FORMAT
+#undef REGISTER_TEST
 
 #ifdef ENABLE_MKLDNN_V1
 #define REGISTER_TEST(NAME, T, INPUT)                                        \
@@ -4253,6 +4316,28 @@ TEST_F(MklLayoutPassTest, NodeRewrite_ConcatV2_DeviceTest) {
       "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['C', 'D'] }",
       kGPUDevice);
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Const);B(InputList);C(Input);D(ConcatV2);E(Zeta)|"
+            "A->D:2;B->D;B:1->D:1;C->E;D->E:1");
+}
+
+TEST_F(MklLayoutPassTest, NodeRewrite_ConcatV2_IndexTest) {
+  InitGraph(
+      "node { name: 'A' op: 'Const' "
+      " attr { key: 'dtype' value { type: DT_INT64 } }"
+      " attr { key: 'value' value { "
+      "    tensor { dtype: DT_INT32 tensor_shape { dim { size: 1 } } "
+      "    int_val: 0 } } } }"
+      "node { name: 'B' op: 'InputList'"
+      " attr { key: 'N'                value { i: 2 } }}"
+      "node { name: 'C' op: 'Input'}"
+      "node { name: 'D' op: 'ConcatV2'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'Tidx'             value { type: DT_INT64 } }"
+      " attr { key: 'N'                value { i: 2 } }"
+      " input: ['B:0', 'B:1', 'A']}"
+      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['C', 'D'] }");
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
             "A(Const);B(InputList);C(Input);D(ConcatV2);E(Zeta)|"
             "A->D:2;B->D;B:1->D:1;C->E;D->E:1");

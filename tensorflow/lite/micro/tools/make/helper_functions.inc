@@ -459,6 +459,7 @@ define microlite_test
 ifeq (,$(findstring _test, $(1)))
 	$(eval $(call generate_project_third_party_parsing))
 endif
+
 $(1)_LOCAL_SRCS := $(2)
 $(1)_LOCAL_SRCS := $$(call specialize,$$($(1)_LOCAL_SRCS))
 ALL_SRCS += $$($(1)_LOCAL_SRCS)
@@ -476,10 +477,23 @@ $(1)_bin: $$($(1)_BINARY).bin
 test_$(1): $$($(1)_BINARY)
 	@test -f $$(TEST_SCRIPT) || (echo 'Unable to find the test script. Is the software emulation available in $$(TARGET)?'; exit 1)
 	$$(TEST_SCRIPT) $$($(1)_BINARY) '~~~ALL TESTS PASSED~~~'
+
 ifneq (,$(findstring _test,$(1)))
   MICROLITE_TEST_TARGETS += test_$(1)
   MICROLITE_BUILD_TARGETS += $$($(1)_BINARY)
 endif
+
+# The ifneq can make is seem that the body of the if block is executed when
+# _benchmark is not found in $(1). Actually, the check is saying that if
+# findstring does not return empty, i.e. if _benchmark is found in $(1), we
+# should add something to the MICROLITE_BUILD_TARGETS.
+#
+# This ensures that a `make build` command will builds all the tests and
+# benchmarks, though `make test` will only run the tests.
+ifneq (,$(findstring _benchmark,$(1)))
+  MICROLITE_BUILD_TARGETS += $$($(1)_BINARY)
+endif
+
 $(eval $(call generate_microlite_projects,$(1),$(call specialize,$(2)),$(3)))
 endef
 

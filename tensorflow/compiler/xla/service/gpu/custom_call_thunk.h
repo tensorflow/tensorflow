@@ -41,16 +41,16 @@ class CustomCallThunk : public Thunk {
   CustomCallThunk(
       ThunkInfo thunk_info, void* call_target,
       std::vector<ShapeTree<BufferAllocation::Slice>> operand_slices,
-      ShapeTree<BufferAllocation::Slice> result_slices, std::string opaque);
+      ShapeTree<BufferAllocation::Slice> result_slices,
+      const std::string& opaque);
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
-  const HloInstruction* hlo_instruction_;
   void* call_target_;
   std::vector<ShapeTree<BufferAllocation::Slice>> operand_slices_;
   ShapeTree<BufferAllocation::Slice> result_slices_;
-  std::string opaque_;
+  const std::string opaque_;
 };
 
 }  // namespace gpu

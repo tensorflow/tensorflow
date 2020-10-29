@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/tpu/tpu_api.h"
 
-#if defined(LIBTFTPU)
+#if defined(LIBTPU_ON_GCE)
 #include "tensorflow/core/tpu/kernels/tpu_util.h"
 #else
 #include "tensorflow/core/tpu/kernels/tpu_util.h"  // copybara"
@@ -54,7 +54,7 @@ xla::StatusOr<std::unique_ptr<TpuCompilationCacheService>>
 ConstructCacheService(ResourceMgr* rmgr, int serving_port,
                       tpu::TpuCompilationCacheInterface* compilation_cache) {
   xla::StatusOr<std::unique_ptr<::grpc::ServerBuilder>> server_builder;
-#if defined(LIBTFTPU)
+#if defined(LIBTPU_ON_GCE)
   server_builder = tpu::CreateServerBuilder(serving_port);
 #else
   server_builder = tpu::CreateServerBuilderGoogle(serving_port);
@@ -74,12 +74,11 @@ Status GetServerAddressAndPort(std::string* server_address, int* serving_port) {
   char* server_address_output = nullptr;
   auto cleanup = xla::MakeCleanup([&status, &server_address_output]() {
     TF_DeleteStatus(status);
-    tpu::ConfigApiFn()->TpuConfigurationApi_FreeCharArrayFn(
-        server_address_output);
+    tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(server_address_output);
   });
   size_t server_address_output_size;
   *serving_port = -1;
-  tpu::ConfigApiFn()->TpuConfigurationApi_GetServerAddressAndPortFn(
+  tpu::OpsApiFn()->TpuConfigurationApi_GetServerAddressAndPortFn(
       &server_address_output_size, &server_address_output, serving_port,
       status);
   TF_RETURN_IF_ERROR(StatusFromTF_Status(status));
@@ -98,7 +97,7 @@ TpuPodState::~TpuPodState() {
     VLOG(1) << "Shutting down Compilation Cache Service.";
     if (cache_service_->Shutdown(20)) {
       if (service_port_ >= 0) {
-        tpu::UtilApiFn()->TpuNetUtil_RecycleUnusedPortFn(service_port_);
+        tpu::OpsApiFn()->TpuNetUtil_RecycleUnusedPortFn(service_port_);
       }
     } else {
       LOG(ERROR)
@@ -150,10 +149,10 @@ Status ConstructTpuPodState(
 
   char* host_config_output = nullptr;
   auto host_config_cleanup = xla::MakeCleanup([&host_config_output]() {
-    tpu::ConfigApiFn()->TpuConfigurationApi_FreeCharArrayFn(host_config_output);
+    tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(host_config_output);
   });
   size_t host_config_output_size;
-  tpu::ConfigApiFn()->ConfigureDistributedTpuOp_DoWorkFn(
+  tpu::OpsApiFn()->ConfigureDistributedTpuOp_DoWorkFn(
       num_devices_per_host.size(), num_devices_per_host.data(),
       server_address.size(), server_address.data(), &host_config_output_size,
       &host_config_output, status);

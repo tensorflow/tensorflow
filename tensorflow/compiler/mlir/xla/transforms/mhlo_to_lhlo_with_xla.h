@@ -16,11 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_MHLO_TO_LHLO_WITH_XLA_H_
 #define TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_MHLO_TO_LHLO_WITH_XLA_H_
 
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 
 namespace mlir {
@@ -43,10 +45,33 @@ class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
         i8_type_(builder_.getIntegerType(8)) {}
 
   ::xla::StatusOr<lmhlo::SortOp> EmitSortOp(::xla::HloInstruction* instr);
+  ::xla::StatusOr<lmhlo::FusionOp> EmitFusionOp(::xla::HloInstruction* instr);
+  ::xla::StatusOr<lmhlo::ScatterOp> EmitScatterOp(::xla::HloInstruction* instr);
+  ::xla::StatusOr<mhlo::ScatterDimensionNumbers> GetScatterDimensionNumbers(
+      ::xla::HloInstruction* instr);
+  ::xla::StatusOr<lmhlo::SelectAndScatterOp> EmitSelectAndScatterOp(
+      ::xla::HloInstruction* instr);
 
  private:
   template <typename OpType>
   ::xla::StatusOr<OpType> CreateOpWithoutAttrs(::xla::HloInstruction* instr);
+
+  template <typename T>
+  DenseIntElementsAttr GetI64DenseElementsAttr(const T& container) {
+    return builder_.getI64TensorAttr(
+        {container.data(), static_cast<size_t>(container.size())});
+  }
+
+  DenseIntElementsAttr GetWindowElements(
+      const ::xla::Window& window,
+      std::function<int64_t(const xla::WindowDimension& dim)> getter) {
+    llvm::SmallVector<int64_t, 4> elements;
+    elements.reserve(window.dimensions_size());
+    for (const ::xla::WindowDimension& dim : window.dimensions()) {
+      elements.push_back(getter(dim));
+    }
+    return GetI64DenseElementsAttr(elements);
+  }
 
   tensorflow::Status DefaultAction(::xla::HloInstruction* instr) final;
 
@@ -57,20 +82,32 @@ class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
   }
 
   tensorflow::Status HandleSort(::xla::HloInstruction* instr) final;
+  tensorflow::Status HandleFusion(::xla::HloInstruction* instr) final;
+  tensorflow::Status HandleScatter(::xla::HloInstruction* instr) final;
+  tensorflow::Status HandleSelectAndScatter(::xla::HloInstruction* instr) final;
 
   // Helper function that recursively visits the tuple structure in
   // `current_shape`, and reconstruct a matching lmhlo::TupleOp.
   // Each leaf node is converted to an std.view op with corresponding offsets.
   // If no tuple presents, it simply returns a view of the buffer.
-  tensorflow::Status CreateView(const ::xla::HloInstruction* instr,
-                                const ::xla::Shape& current_shape,
-                                ::xla::ShapeIndex* current_shape_index,
-                                SmallVectorImpl<Value>* values);
+  tensorflow::Status GetOrCreateViewImpl(const ::xla::HloInstruction* instr,
+                                         const ::xla::Shape& current_shape,
+                                         ::xla::ShapeIndex* current_shape_index,
+                                         SmallVectorImpl<Value>* values);
 
   // Helper function to create view/tuple of views to a buffer for a given
   // instruction result.
   tensorflow::Status GetOrCreateView(const ::xla::HloInstruction* instr,
                                      SmallVectorImpl<Value>* values);
+
+  ::xla::StatusOr<Value> GetOrCreateArrayView(
+      const ::xla::HloInstruction* instr, const ::xla::Shape& current_shape,
+      const ::xla::ShapeIndex& current_shape_index);
+
+  ::xla::StatusOr<Value> RewriteFusionOperand(const ::xla::HloInstruction* root,
+                                              const ::xla::Shape& shape,
+                                              ::xla::ShapeIndex* shape_index,
+                                              OpBuilder* b, Location loc);
 
   // Return an MLIR location for an HLO instruction.
   Location getLocation(::xla::HloInstruction* inst) {
@@ -102,7 +139,8 @@ class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
   //
   // `slices_` is populated lazily in the `GetOrCreateView()` helper as we
   // process every instruction.
-  llvm::DenseMap<const xla::HloInstruction*, llvm::SmallVector<Value, 1>>
+  absl::flat_hash_map<std::pair<const xla::HloInstruction*, xla::ShapeIndex>,
+                      Value>
       slices_;
 
   // The BufferAssignment computed by XLA ahead of time.

@@ -248,6 +248,8 @@ class NcclTestBase : public ::testing::Test {
       TF_CHECK_OK(parent_->dev_mgr_->LookupDevice(device_name_, &device_))
           << "Could not find device " << device_name_ << " existing devices "
           << parent_->dev_mgr_->DebugString();
+      merge_op_ = GetAdd(device_);
+      final_op_ = GetDiv(device_);
       col_params_.name = parent_->col_params_.name;
       col_params_.default_rank = rank;
       col_params_.group = parent_->col_params_.group;
@@ -414,6 +416,8 @@ class NcclTestBase : public ::testing::Test {
     Tensor output_;
     Device* device_;
     CollectiveParams col_params_;
+    std::unique_ptr<OpKernel> merge_op_;
+    std::unique_ptr<OpKernel> final_op_;
     Status status_;
   };
 
@@ -459,8 +463,8 @@ class NcclReducerTest : public NcclTestBase {
   }
 
   void InitDevice(DeviceInstance* di) override {
-    di->col_params_.merge_op = GetAdd(di->device_);
-    di->col_params_.final_op = GetDiv(di->device_);
+    di->col_params_.merge_op = di->merge_op_.get();
+    di->col_params_.final_op = di->final_op_.get();
   }
 
   void RunCollectiveOnDevice(DeviceInstance* di) override { di->RunReduce(); }

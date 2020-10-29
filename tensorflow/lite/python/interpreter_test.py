@@ -218,6 +218,18 @@ class InterpreterTest(test_util.TensorFlowTestCase):
     output_data = interpreter.get_tensor(output_details[0]['index'])
     self.assertTrue((expected_output == output_data).all())
 
+  def testStringZeroDim(self):
+    data = b'abcd' + bytes(16)
+    interpreter = interpreter_wrapper.Interpreter(
+        model_path=resource_loader.get_path_to_datafile(
+            'testdata/gather_string_0d.tflite'))
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    interpreter.set_tensor(input_details[0]['index'], np.array(data))
+    test_input_tensor = interpreter.get_tensor(input_details[0]['index'])
+    self.assertEqual(len(data), len(test_input_tensor.item(0)))
+
   def testPerChannelParams(self):
     interpreter = interpreter_wrapper.Interpreter(
         model_path=resource_loader.get_path_to_datafile('testdata/pc_conv.bin'))

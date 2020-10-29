@@ -123,15 +123,19 @@ endif
 
   CXXFLAGS := $(filter-out -std=c++11,$(CXXFLAGS))
   CCFLAGS := $(filter-out -std=c11,$(CCFLAGS))
+
+  ldflags_to_remove = -Wl,--fatal-warnings -Wl,--gc-sections
+  LDFLAGS := $(filter-out $(ldflags_to_remove),$(LDFLAGS))
+  
   MICROLITE_LIBS := $(filter-out -lm,$(MICROLITE_LIBS))
 
   CXXFLAGS += $(PLATFORM_FLAGS)
   CCFLAGS += $(PLATFORM_FLAGS)
   LDFLAGS += $(PLATFORM_LDFLAGS)
 
-
-
-
 endif # ARC_TOOLCHAIN
-endif  # TARGET_ARCH
 
+else
+  $(error "Only ARC target architecture supported (TARGET_ARCH=arc)")
+
+endif  # TARGET_ARCH

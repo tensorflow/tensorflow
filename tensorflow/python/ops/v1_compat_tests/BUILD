@@ -10,7 +10,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["gradient_checker_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

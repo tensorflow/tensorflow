@@ -265,12 +265,12 @@ def TFR_ConstOp : TFR_Op<"constant", [ConstantLike, NoSideEffect]> {
 
   let hasFolder = 1;
 
-  let builders = [OpBuilder<
-    "OpBuilder &, OperationState &state, Attribute value",
+  let builders = [
+    OpBuilderDAG<(ins "Attribute":$value),
     [{
       auto* ctx = value.getContext();
-      state.addAttribute("value", value);
-      state.addTypes(TFRAttrType::get(ctx));
+      $_state.addAttribute("value", value);
+      $_state.addTypes(TFRAttrType::get(ctx));
     }]>
   ];
 
@@ -288,8 +288,8 @@ def TFR_ConstantTensorOp : TFR_Op<"constant_tensor", [NoSideEffect]> {
     Example:
 
     ```mlir
-    %1 = tfr.contant_tensor(%0) : f32 -> tensor<f32>
-    %3 = tfr.contant_tensor(%2) : vector<1xf32> -> tensor<1xf32>
+    %1 = tfr.constant_tensor(%0) : f32 -> tensor<f32>
+    %3 = tfr.constant_tensor(%2) : vector<1xf32> -> tensor<1xf32>
     ```
   }];
 
@@ -400,8 +400,8 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
   let skipDefaultBuilders = 1;
 
   let builders = [
-    OpBuilder<"OpBuilder &builder, OperationState &result, StringRef name, "
-              "FunctionType type, ArrayRef<NamedAttribute> attrs = {}">
+    OpBuilderDAG<(ins "StringRef":$name, "FunctionType":$type,
+      CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>
   ];
 
   let extraClassDeclaration = [{

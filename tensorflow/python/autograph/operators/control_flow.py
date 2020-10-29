@@ -67,7 +67,6 @@ import numpy as np
 from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.autograph.operators import variables
 from tensorflow.python.autograph.utils import ag_logging
-from tensorflow.python.autograph.utils import compat_util
 from tensorflow.python.autograph.utils import misc
 from tensorflow.python.autograph.utils import tensors
 from tensorflow.python.data.experimental.ops import scan_ops
@@ -91,7 +90,7 @@ from tensorflow.python.util import nest
 
 PYTHON_MAX_ITERATIONS = 100000000  # Fails in about one minute for empty loops.
 WARN_INEFFICIENT_UNROLL = True
-INEFFICIENT_UNROLL_MIN_ITERATIONS = 3000
+INEFFICIENT_UNROLL_MIN_ITERATIONS = 50000
 INEFFICIENT_UNROLL_MIN_OPS = 1
 
 
@@ -114,6 +113,33 @@ def _is_none_or_undef(value):
   return ((value is None)
           or isinstance(value, variables.UndefinedReturnValue)
           or isinstance(value, variables.Undefined))
+
+
+def _verify_tf_condition(cond, tag):
+  """Ensures that the condition can be used in a TF control flow."""
+  extra_hint = 'to check for None, use `is not None`'
+  cond = ops.convert_to_tensor_v2(cond)
+
+  if cond.dtype != dtypes.bool:
+    raise ValueError(
+        'condition of {} expected to be `tf.bool` scalar, got {}'
+        '; to use as boolean Tensor, use `tf.cast`'
+        '; {}'.format(tag, cond, extra_hint))
+
+  if cond.shape is None or cond.shape.ndims is None:
+    # TODO(mdan): Consider a explicit size check, if not too slow.
+    cond = array_ops.reshape(cond, ())
+
+  elif cond.shape.ndims > 0:
+    known_dims = [d for d in cond.shape.as_list() if d is not None]
+    if np.prod(known_dims) > 1:
+      raise ValueError(
+          'condition of {} expected to be `tf.bool` scalar, got {}'
+          '; {}'.format(tag, cond, extra_hint))
+    else:
+      cond = array_ops.reshape(cond, ())
+
+  return cond
 
 
 def _verify_loop_init_vars(init_vars, symbol_names, first_iter_vars=None):
@@ -463,24 +489,26 @@ def _known_len_tf_for_stmt(
   ta = tensor_array_ops.TensorArray(iter_.dtype, size=n)
   iter_ = ta.unstack(iter_)
 
-  iterate_index = compat_util.BasicRef(0)
+  iterate_index = 0
 
   def aug_get_state():
-    return (iterate_index.value,) + get_state()
+    return (iterate_index,) + get_state()
 
   def aug_set_state(aug_loop_vars):
-    # TOOD(mdan): Use starred assignment once we can switch to Py3-only syntax.
-    iterate_index.value, loop_vars = aug_loop_vars[0], aug_loop_vars[1:]
+    nonlocal iterate_index
+    # TODO(b/171479293): Drop the lint override.
+    iterate_index, *loop_vars = aug_loop_vars  # pylint:disable=unused-variable
     # The iteration index is not "output" by the for loop. If the iterate
     # is used outside the loop, it will appear in the loop vars separately.
     set_state(loop_vars)
 
   def aug_body():
-    body(iter_.read(iterate_index.value))
-    iterate_index.value += 1
+    nonlocal iterate_index
+    body(iter_.read(iterate_index))
+    iterate_index += 1
 
   def aug_test():
-    main_test = iterate_index.value < n
+    main_test = iterate_index < n
     if extra_test is not None:
       return control_flow_ops.cond(main_test, extra_test, lambda: False)
     return main_test
@@ -509,24 +537,26 @@ def _tf_ragged_for_stmt(
   else:
     n = iter_.row_lengths()[0]
 
-  iterate_index = compat_util.BasicRef(0)
+  iterate_index = 0
 
   def aug_get_state():
-    return (iterate_index.value,) + get_state()
+    return (iterate_index,) + get_state()
 
   def aug_set_state(aug_loop_vars):
-    # TOOD(mdan): Use starred assignment once we can switch to Py3-only syntax.
-    iterate_index.value, loop_vars = aug_loop_vars[0], aug_loop_vars[1:]
+    nonlocal iterate_index
+    # TODO(b/171479293): Drop the lint override.
+    iterate_index, *loop_vars = aug_loop_vars  # pylint:disable=unused-variable
     # The iteration index is not "output" by the for loop. If the iterate
     # is used outside the loop, it will appear in the loop vars separately.
     set_state(loop_vars)
 
   def aug_body():
-    body(iter_[iterate_index.value])
-    iterate_index.value += 1
+    nonlocal iterate_index
+    body(iter_[iterate_index])
+    iterate_index += 1
 
   def aug_test():
-    main_test = iterate_index.value < n
+    main_test = iterate_index < n
     if extra_test is not None:
       return control_flow_ops.cond(main_test, extra_test, lambda: False)
     return main_test
@@ -547,7 +577,7 @@ def _tf_range_for_stmt(
   """Overload of for_stmt that iterates over a TF range (and elides it)."""
   start, limit, delta = iter_.op.inputs
 
-  iterate = compat_util.BasicRef(start)
+  iterate = start
 
   def _value_or(name, var, default):
     if (name == opts['iterate_names'] and isinstance(var, variables.Undefined)):
@@ -557,33 +587,35 @@ def _tf_range_for_stmt(
   def aug_get_state():
     state_vars = get_state()
     state_vars = tuple(
-        _value_or(name, var, iterate.value)
+        _value_or(name, var, iterate)
         for name, var in zip(symbol_names, state_vars))
-    return (iterate.value,) + state_vars
+    return (iterate,) + state_vars
 
   def aug_set_state(aug_loop_vars):
-    # TOOD(mdan): Use starred assignment once we can switch to Py3-only syntax.
-    iterate.value, loop_vars = aug_loop_vars[0], aug_loop_vars[1:]
+    nonlocal iterate
+    # TODO(b/171479293): Drop the lint override.
+    iterate, *loop_vars = aug_loop_vars  # pylint:disable=unused-variable
     # The iteration index is not "output" by the for loop. If the iterate
     # is used outside the loop, it will appear in the loop vars separately.
     set_state(loop_vars)
 
   def aug_body():
-    body(iterate.value)
-    iterate.value += delta
+    nonlocal iterate
+    body(iterate)
+    iterate += delta
 
   def aug_test():
     # TODO(b/159713842): Remove once constant folding works.
     const_delta = tensor_util.constant_value(delta)
     if const_delta is not None:
       if const_delta >= 0:
-        main_test = iterate.value < limit
+        main_test = iterate < limit
       else:
-        main_test = iterate.value > limit
+        main_test = iterate > limit
     else:
       main_test = math_ops.logical_or(
-          math_ops.logical_and(delta >= 0, iterate.value < limit),
-          math_ops.logical_and(delta < 0, iterate.value > limit))
+          math_ops.logical_and(delta >= 0, iterate < limit),
+          math_ops.logical_and(delta < 0, iterate > limit))
 
     if extra_test is not None:
       main_test = control_flow_ops.cond(main_test, extra_test, lambda: False)
@@ -606,14 +638,15 @@ def _tf_iterator_for_stmt(
     iter_, extra_test, body, get_state, set_state, symbol_names, opts):
   """Overload of for_stmt that iterates over TF Iterators. See for_loop."""
   symbol_names = ('<internal has_next>',) + symbol_names
-  has_next = compat_util.BasicRef(True)
+  has_next = True
 
   def aug_get_state():
-    return (has_next.value,) + get_state()
+    return (has_next,) + get_state()
 
   def aug_set_state(aug_loop_vars):
-    # TOOD(mdan): Use starred assignment once we can switch to Py3-only syntax.
-    has_next.value, loop_vars = aug_loop_vars[0], aug_loop_vars[1:]
+    nonlocal has_next
+    # TODO(b/171479293): Drop the lint override.
+    has_next, *loop_vars = aug_loop_vars  # pylint:disable=unused-variable
     set_state(loop_vars)
 
   init_vars = aug_get_state()
@@ -621,8 +654,9 @@ def _tf_iterator_for_stmt(
 
   def aug_body():
     """Main body passed to _tf_while_stmt."""
+    nonlocal has_next
     opt_iterate = iter_.get_next_as_optional()
-    has_next.value = opt_iterate.has_value()
+    has_next = opt_iterate.has_value()
     loop_vars = aug_get_state()  # updated by set_state() in _tf_while_loop.
 
     def main_path():
@@ -642,13 +676,13 @@ def _tf_iterator_for_stmt(
     # Calling set_state so that get_state() _tf_while_loop sees the conditional
     # tensors.
     aug_set_state(
-        control_flow_ops.cond(has_next.value, main_path, noop_path))
+        control_flow_ops.cond(has_next, main_path, noop_path))
 
   def aug_test():
     # This value takes a complicated path to get here:
     #   prev_iteration_body -> get_state -> tf.while_loop (as loop var)
-    #   -> current_iteration_body -> set_state -> has_next.value
-    main_test = has_next.value
+    #   -> current_iteration_body -> set_state -> has_next
+    main_test = has_next
     if extra_test is not None:
       return control_flow_ops.cond(main_test, extra_test, lambda: False)
     return main_test
@@ -1038,7 +1072,7 @@ def _tf_while_stmt(test, body, get_state, set_state, symbol_names, opts):
       loop_vars = loop_vars[1:]
 
     set_state(loop_vars)
-    return test()
+    return _verify_tf_condition(test(), 'while loop')
 
   def aug_body(*loop_vars):
     if require_one_iteration:
@@ -1141,6 +1175,8 @@ def if_stmt(cond, body, orelse, get_state, set_state, symbol_names, nouts):
 def _tf_if_stmt(
     cond, body, orelse, get_state, set_state, symbol_names, nouts):
   """Overload of if_stmt that stages a TF cond."""
+  cond = _verify_tf_condition(cond, 'if statement')
+
   if not nouts:
     prev_get_state, prev_set_state = get_state, set_state
     # Control flow V1 wants at least one output.
@@ -1187,6 +1223,3 @@ def _tf_if_stmt(
 def _py_if_stmt(cond, body, orelse):
   """Overload of if_stmt that executes a Python if statement."""
   return body() if cond else orelse()
-
-
-compat_util.deprecated_py2_support(__name__)

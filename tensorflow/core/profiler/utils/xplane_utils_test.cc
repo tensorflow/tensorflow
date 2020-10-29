@@ -51,23 +51,28 @@ TEST(XPlaneUtilsTest, IsNestedTest) {
   EXPECT_FALSE(IsNested(event, not_parent));
 }
 
-TEST(XPlaneUtilsTest, RemovePlaneWithName) {
+TEST(XPlaneUtilsTest, AddAndRemovePlanes) {
   XSpace space;
-  RemovePlaneWithName(&space, "non-exist");
-  EXPECT_EQ(space.planes_size(), 0);
 
-  space.add_planes()->set_name("p1");
-  space.add_planes()->set_name("p2");
-  space.add_planes()->set_name("p3");
-  RemovePlaneWithName(&space, "non-exist");
-  EXPECT_EQ(space.planes_size(), 3);
-  RemovePlaneWithName(&space, "p2");
+  auto* p1 = FindOrAddMutablePlaneWithName(&space, "p1");
+  EXPECT_EQ(p1, FindPlaneWithName(space, "p1"));
+  auto* p2 = FindOrAddMutablePlaneWithName(&space, "p2");
+  EXPECT_EQ(p2, FindPlaneWithName(space, "p2"));
+  auto* p3 = FindOrAddMutablePlaneWithName(&space, "p3");
+  EXPECT_EQ(p3, FindPlaneWithName(space, "p3"));
+
+  // Removing a plane does not invalidate pointers to other planes.
+
+  RemovePlane(&space, p2);
   EXPECT_EQ(space.planes_size(), 2);
-  RemovePlaneWithName(&space, "p1");
+  EXPECT_EQ(p1, FindPlaneWithName(space, "p1"));
+  EXPECT_EQ(p3, FindPlaneWithName(space, "p3"));
+
+  RemovePlane(&space, p1);
   EXPECT_EQ(space.planes_size(), 1);
-  RemovePlaneWithName(&space, "p1");
-  EXPECT_EQ(space.planes_size(), 1);
-  RemovePlaneWithName(&space, "p3");
+  EXPECT_EQ(p3, FindPlaneWithName(space, "p3"));
+
+  RemovePlane(&space, p3);
   EXPECT_EQ(space.planes_size(), 0);
 }
 

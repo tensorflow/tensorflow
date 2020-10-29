@@ -226,6 +226,36 @@ class Tests(test.TestCase):
 
   @test_util.assert_no_new_tensors
   @test_util.assert_no_garbage_created
+  def testFastPathExecute_VeryLargeOutputs(self):
+    split_dim = constant_op.constant(0, dtype=dtypes.int32)
+    value = constant_op.constant([0, 1, 2, 3], dtype=dtypes.float32)
+    ctx = context.context()
+    ctx.ensure_initialized()
+
+    with self.assertRaisesRegex(ValueError, "Number of outputs is too big"):
+      pywrap_tfe.TFE_Py_FastPathExecute(ctx, "Split", None, split_dim, value,
+                                        "num_split", 1000000000000)
+
+  @test_util.assert_no_new_tensors
+  @test_util.assert_no_garbage_created
+  def testSlowPathExecute_VeryLargeOutputs(self):
+    split_dim = constant_op.constant(0, dtype=dtypes.int32)
+    value = [0, 1, 2, 3]
+    ctx = context.context()
+    ctx.ensure_initialized()
+
+    with self.assertRaises(core._FallbackException):
+      pywrap_tfe.TFE_Py_FastPathExecute(ctx, "Split", None, split_dim, value,
+                                        "num_split", 1000000000000)
+
+    value = constant_op.constant(value)
+    attrs = ("num_splits", 1000000000000)
+    with self.assertRaisesRegex(ValueError, "Number of outputs is too big"):
+      pywrap_tfe.TFE_Py_Execute(ctx._handle, None, "Split", [value], attrs,
+                                1000000000000)
+
+  @test_util.assert_no_new_tensors
+  @test_util.assert_no_garbage_created
   def testInvalidNumOutputs(self):
     with self.assertRaisesRegex(
         Exception, r"Value for number_attr\(\) -1 < 0 \[Op:Split\]"):

@@ -33,6 +33,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
+from tensorflow.python.platform import test
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -880,6 +881,21 @@ class RangeTest(test_util.TensorFlowTestCase):
     tensor = ops.convert_to_tensor(values)
     self.assertAllEqual((5,), tensor.get_shape().as_list())
     self.assertAllEqual(values, self.evaluate(tensor))
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class ErfcinvTest(test_util.TensorFlowTestCase):
+
+  def testErfcinv(self):
+    if test.is_built_with_rocm():
+      # The implementation of erfcinv calls ndtri op,
+      # and the ROCm implementaion for ndtri op has a known bug in it
+      # whose fix will be in a forthcoming ROCm release (4.0 ?).
+      # Need to skip this unit-test until that ROCm release is out
+      self.skipTest("ndtri op implementation is buggy on ROCm")
+    values = np.random.uniform(0.1, 1.9, size=int(1e4)).astype(np.float32)
+    approx_id = math_ops.erfc(math_ops.erfcinv(values))
+    self.assertAllClose(values, self.evaluate(approx_id))
 
 
 if __name__ == "__main__":

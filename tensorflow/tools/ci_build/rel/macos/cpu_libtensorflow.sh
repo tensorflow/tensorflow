@@ -13,21 +13,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-echo "chmod go+w lib_package/*" >> tensorflow/tools/ci_build/linux/libtensorflow.sh
-echo "bazel clean --expunge" >> tensorflow/tools/ci_build/linux/libtensorflow.sh
 
-# Install latest bazel
-source tensorflow/tools/ci_build/release/common.sh
-install_bazelisk
+if [[ "$IS_NIGHTLY" -eq 1 ]]; then
+  echo "chmod go+w lib_package/*" >> tensorflow/tools/ci_build/linux/libtensorflow.sh
+  echo "bazel clean --expunge" >> tensorflow/tools/ci_build/linux/libtensorflow.sh
 
-# Pick a version of xcode
-export DEVELOPER_DIR=/Applications/Xcode_10.3.app/Contents/Developer
-sudo xcode-select -s "${DEVELOPER_DIR}"
+  # Install latest bazel
+  source tensorflow/tools/ci_build/release/common.sh
+  install_bazelisk
 
-# Update the version string to nightly
-./tensorflow/tools/ci_build/update_version.py --nightly
+  # Pick a version of xcode
+  export DEVELOPER_DIR=/Applications/Xcode_10.3.app/Contents/Developer
+  sudo xcode-select -s "${DEVELOPER_DIR}"
 
-tensorflow/tools/ci_build/osx/libtensorflow_cpu.sh
+  # Update the version string to nightly
+  ./tensorflow/tools/ci_build/update_version.py --nightly
 
-# Copy the nightly version update script
-cp tensorflow/tools/ci_build/builds/libtensorflow_nightly_symlink.sh lib_package
+  tensorflow/tools/ci_build/osx/libtensorflow_cpu.sh
+
+  # Copy the nightly version update script
+  cp tensorflow/tools/ci_build/builds/libtensorflow_nightly_symlink.sh lib_package
+
+else
+  set -ex
+  # Install latest bazel
+  source tensorflow/tools/ci_build/release/common.sh
+  install_bazelisk
+  tensorflow/tools/ci_build/osx/libtensorflow_cpu.sh
+fi

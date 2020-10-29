@@ -57,43 +57,7 @@ void SetRequestedDevice(TF_Graph* graph, TF_Operation* op, const char* device) {
 
 void UpdateEdge(TF_Graph* graph, TF_Output new_src, TF_Input dst,
                 TF_Status* status) {
-  mutex_lock l(graph->mu);
-  tensorflow::shape_inference::InferenceContext* ic =
-      graph->refiner.GetContext(&new_src.oper->node);
-
-  if (ic->num_outputs() <= new_src.index) {
-    status->status = tensorflow::errors::OutOfRange(
-        "Cannot update edge. Output index [", new_src.index,
-        "] is greater than the number of total outputs [", ic->num_outputs(),
-        "].");
-    return;
-  }
-  tensorflow::shape_inference::ShapeHandle shape = ic->output(new_src.index);
-
-  tensorflow::shape_inference::InferenceContext* ic_dst =
-      graph->refiner.GetContext(&dst.oper->node);
-  if (ic_dst->num_inputs() <= dst.index) {
-    status->status = tensorflow::errors::OutOfRange(
-        "Cannot update edge. Input index [", dst.index,
-        "] is greater than the number of total inputs [", ic_dst->num_inputs(),
-        "].");
-    return;
-  }
-  if (!ic_dst->MergeInput(dst.index, shape)) {
-    status->status = tensorflow::errors::InvalidArgument(
-        "Cannot update edge, incompatible shapes: ", ic_dst->DebugString(shape),
-        " and ", ic_dst->DebugString(ic_dst->input(dst.index)), ".");
-    return;
-  }
-  status->status = graph->graph.UpdateEdge(&new_src.oper->node, new_src.index,
-                                           &dst.oper->node, dst.index);
-
-  if (TF_GetCode(status) == TF_OK) {
-    // This modification only updates the destination node for
-    // the purposes of running this graph in a session. Thus, we don't
-    // record the source node as being modified.
-    RecordMutation(graph, *dst.oper, "updating input tensor");
-  }
+  TF_UpdateEdge(graph, new_src, dst, status);
 }
 
 void RemoveAllControlInputs(TF_Graph* graph, TF_Operation* op) {
@@ -136,6 +100,7 @@ std::string GetHandleShapeAndType(TF_Graph* graph, TF_Output output) {
       auto* out_shape_and_type = handle_data.add_shape_and_type();
       ic->ShapeHandleToProto(p.shape, out_shape_and_type->mutable_shape());
       out_shape_and_type->set_dtype(p.dtype);
+      out_shape_and_type->set_specialized_type(p.specialized_type);
     }
   }
   string result;
@@ -163,7 +128,8 @@ void SetHandleShapeAndType(TF_Graph* graph, TF_Output output, const void* proto,
     status->status =
         ic->MakeShapeFromShapeProto(shape_and_type_proto.shape(), &shape);
     if (TF_GetCode(status) != TF_OK) return;
-    shapes_and_types.emplace_back(shape, shape_and_type_proto.dtype());
+    shapes_and_types.emplace_back(shape, shape_and_type_proto.dtype(),
+                                  shape_and_type_proto.specialized_type());
   }
   ic->set_output_handle_shapes_and_types(output.index, shapes_and_types);
 }

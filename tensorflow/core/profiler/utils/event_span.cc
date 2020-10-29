@@ -162,7 +162,34 @@ EventType ClassifyDeviceCompute(absl::string_view event_name,
   }
 }
 
+constexpr int kNumGenericEventTypes = GenericEventType::kLastGenericEventType -
+                                      GenericEventType::kFirstGenericEventType +
+                                      1;
+
+using GenericEventTypeStrMap =
+    absl::flat_hash_map<GenericEventType, absl::string_view>;
+
+const GenericEventTypeStrMap& GetGenericEventTypeStrMap() {
+  static const auto* generic_event_type_str_map = new GenericEventTypeStrMap({
+      {kDeviceCompute, "Device compute"},
+      {kDeviceToDevice, "Device to device"},
+      {kDeviceCollectives, "Device collective communication"},
+      {kHostCompute, "Host compute"},
+      {kHostPrepare, "Kernel launch"},
+      {kInput, "Input"},
+      {kOutput, "Output"},
+      {kCompile, "Compilation"},
+      {kAllOthers, "All others"},
+  });
+  DCHECK_EQ(generic_event_type_str_map->size(), kNumGenericEventTypes);
+  return *generic_event_type_str_map;
+}
+
 }  // namespace
+
+absl::string_view GetGenericEventTypeStr(GenericEventType event_type) {
+  return GetGenericEventTypeStrMap().at(event_type);
+}
 
 EventType ClassifyGpuEvent(absl::string_view event_name,
                            absl::string_view tensor_shapes) {
@@ -210,6 +237,8 @@ std::string PrintEventType(EventType event_type) {
       return "host_to_device";
     case HOST_PREPARE:
       return "host_prepare";
+    case DEVICE_COLLECTIVES:
+      return "device_collectives";
     case HOST_WAIT_INPUT:
       return "host_wait_input";
     case DEVICE_TO_DEVICE:

@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/strings/str_format.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/framework/types.h"
@@ -153,7 +153,7 @@ MemoryProfile GenerateMemoryProfile(const XPlane* host_trace) {
         switch (stat.Type().value()) {
           case StatType::kIndexOnHost:
           case StatType::kDeviceOrdinal:
-            memory_id = absl::StrFormat("%d", stat.IntValue());
+            memory_id = absl::StrCat(stat.IntValue());
             break;
           case StatType::kAllocatorName:
             memory_id = std::string(stat.StrOrRefValue());

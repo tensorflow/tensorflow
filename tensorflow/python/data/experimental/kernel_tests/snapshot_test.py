@@ -325,10 +325,12 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
 
     dataset = dataset_ops.Dataset.zip((dataset1, dataset2, dataset3, dataset4))
     dataset = dataset.apply(snapshot.snapshot(self._snapshot_dir))
-    next1 = self.getNext(dataset)
-    for i in range(0, 1000):
-      self.assertEqual((i, i + 1000, i + 2000, i + 3000),
-                       self.evaluate(next1()))
+
+    expected = list(
+        zip(
+            range(0, 1000), range(1000, 2000), range(2000, 3000),
+            range(3000, 4000)))
+    self.assertDatasetProduces(dataset, expected)
     self.assertSnapshotDirectoryContains(
         self._snapshot_dir,
         num_fingerprints=1,

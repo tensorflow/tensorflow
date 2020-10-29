@@ -241,6 +241,19 @@ absl::Status CreateRGBAImage2D(cl_context context, int width, int height,
   return absl::OkStatus();
 }
 
+std::string MemoryTypeToCLType(MemoryType type) {
+  switch (type) {
+    case MemoryType::GLOBAL:
+      return "__global";
+    case MemoryType::CONSTANT:
+      return "__constant";
+      break;
+    case MemoryType::LOCAL:
+      return "__local";
+  }
+  return "";
+}
+
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

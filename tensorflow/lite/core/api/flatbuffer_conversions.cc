@@ -761,6 +761,16 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       *builtin_data = params.release();
       return kTfLiteOk;
     }
+    case BuiltinOperator_CUMSUM: {
+      auto params = safe_allocator.Allocate<TfLiteCumsumParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* cumsum_params = op->builtin_options_as_CumsumOptions()) {
+        params->exclusive = cumsum_params->exclusive();
+        params->reverse = cumsum_params->reverse();
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
     // Below are the ops with no builtin_data structure.
     case BuiltinOperator_BATCH_TO_SPACE_ND:
     // TODO(aselle): Implement call in BuiltinOptions, but nullptrs are
@@ -803,6 +813,8 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_DENSIFY:
     case BuiltinOperator_SEGMENT_SUM:
       return kTfLiteOk;
+    case BuiltinOperator_PLACEHOLDER_FOR_GREATER_OP_CODES:
+      return kTfLiteError;
   }
   return kTfLiteError;
 }  // NOLINT[readability/fn_size]
@@ -1429,9 +1441,6 @@ TfLiteStatus ParseReshape(const Operator* op, ErrorReporter* error_reporter,
 
   if (schema_params != nullptr) {
     const flatbuffers::Vector<int32_t>* new_shape = schema_params->new_shape();
-    // TODO(b/147203660): We need to figure out when dynamic reshape
-    // (new_shape is a tensor) happens, why the option is not a nullptr.
-    // But nonethless, we should only copy when new_shape is not a nullptr.
     if (new_shape != nullptr) {
       TF_LITE_ENSURE_STATUS(
           FlatBufferIntVectorToArray(sizeof(params->shape), new_shape,

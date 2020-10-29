@@ -283,7 +283,7 @@ struct ConvertUnrankedDynamicBroadcastBinaryOp
     auto if_op = rewriter.create<scf::IfOp>(
         loc, result_type, IsScalarTensor(rewriter, op, lhs), true);
     OpBuilder if_lhs_scalar_builder = if_op.getThenBodyBuilder();
-    Value reshaped_lhs = if_lhs_scalar_builder.create<mhlo::ReshapeOp>(
+    Value reshaped_lhs = if_lhs_scalar_builder.create<TensorCastOp>(
         loc, RankedTensorType::get({}, lhs_type.getElementType()), lhs);
     Value if_lhs_scalar_result = if_lhs_scalar_builder.create<ChloOpTy>(
         loc, ArrayRef<Type>{result_type}, ArrayRef<Value>{reshaped_lhs, rhs},
@@ -300,7 +300,7 @@ struct ConvertUnrankedDynamicBroadcastBinaryOp
     else_lhs_scalar_builder.create<scf::YieldOp>(loc,
                                                  if_rhs_scalar_op.getResult(0));
     OpBuilder if_rhs_scalar_builder = if_rhs_scalar_op.getThenBodyBuilder();
-    Value reshaped_rhs = if_rhs_scalar_builder.create<mhlo::ReshapeOp>(
+    Value reshaped_rhs = if_rhs_scalar_builder.create<TensorCastOp>(
         loc, RankedTensorType::get({}, lhs_type.getElementType()), rhs);
     Value if_rhs_scalar_result = if_rhs_scalar_builder.create<ChloOpTy>(
         loc, ArrayRef<Type>{result_type}, ArrayRef<Value>{lhs, reshaped_rhs},
@@ -505,9 +505,9 @@ struct HloCompareAdaptor {
   static mhlo::CompareOp CreateOp(BroadcastCompareOp from_op, Type result_type,
                                   Value broadcasted_lhs, Value broadcasted_rhs,
                                   OpBuilder &builder) {
-    return builder.create<mhlo::CompareOp>(from_op.getLoc(), result_type,
-                                           broadcasted_lhs, broadcasted_rhs,
-                                           from_op.comparison_direction());
+    return builder.create<mhlo::CompareOp>(
+        from_op.getLoc(), result_type, broadcasted_lhs, broadcasted_rhs,
+        from_op.comparison_direction(), from_op.compare_typeAttr());
   }
 };
 
@@ -516,7 +516,7 @@ struct HloCompareAdaptor {
 
 void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
                                        OwningRewritePatternList *patterns) {
-  populateWithGenerated(context, patterns);
+  populateWithGenerated(context, *patterns);
 
   // Instantiate conversion templates for conforming binary elementwise ops
   // that do not have different dtypes between operands and results and do

@@ -36,7 +36,7 @@ FLAGS = flags.FLAGS
 v2_compat.enable_v2_behavior()
 
 
-class BenchmarkLayer(benchmark.Benchmark):
+class BenchmarkLayer(benchmark.TensorFlowBenchmark):
   """Benchmark the layer forward pass."""
 
   def run_dataset_implementation(self, output_mode, batch_size, sequence_length,

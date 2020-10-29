@@ -24,6 +24,9 @@ cuda_py_test(
     name = "jit_test",
     size = "small",
     srcs = ["jit_test.py"],
+    tags = [
+        "no_windows",  # TODO(b/171385770)
+    ],
     xla_enabled = True,
     deps = [
         ":compiler_py",
@@ -99,7 +102,6 @@ cuda_py_test(
         "no_mac",
         "no_windows",
     ],
-    tfrt_enabled = True,
     xla_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",

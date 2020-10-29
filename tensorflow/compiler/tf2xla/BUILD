@@ -1,5 +1,5 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "if_tpu", "tf_cc_binary", "tf_cc_test", "tf_copts", "tf_cuda_cc_test", "tf_openmp_copts")
+load("//tensorflow:tensorflow.bzl", "if_libtpu", "tf_cc_binary", "tf_cc_test", "tf_copts", "tf_cuda_cc_test", "tf_openmp_copts")
 load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -13,9 +13,6 @@ load("//tensorflow/compiler/xla:xla.bzl", "xla_py_proto_library")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_portable_proto_library")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("//tensorflow/compiler/xla/service/cpu:build_defs.bzl", "runtime_copts")
 
@@ -79,19 +76,6 @@ tf_proto_library(
     srcs = ["tf2xla.proto"],
     cc_api_version = 2,
     protodeps = [
-        "//tensorflow/core:protos_all",
-    ],
-    visibility = ["//visibility:public"],
-)
-
-# A proto library that is minimal in size and dependencies for platforms like Android.
-tf_portable_proto_library(
-    name = "portable_tf2xla_proto",
-    config_string = "allow_all:true",
-    header_outs = ["//tensorflow/compiler/tf2xla/tf2xla.proto.h"],
-    portable_deps = ["//tensorflow/core:portable_proto_lib"],
-    proto_deps = [
-        ":tf2xla_proto",
         "//tensorflow/core:protos_all",
     ],
     visibility = ["//visibility:public"],
@@ -212,7 +196,7 @@ filegroup(
     srcs = [
         "xla_compiled_cpu_function.h",
         "//tensorflow/compiler/xla:cpu_runtime_hdrs",
-        "//tensorflow/compiler/xla/service/cpu:single_threaded_runtime_hdrs",
+        "//tensorflow/compiler/xla/service/cpu:runtime_hdrs",
         "//tensorflow/core/kernels:xla_cpu_runtime_hdrs",
         "//tensorflow/core/platform:xla_cpu_runtime_srcs",
     ],
@@ -224,7 +208,7 @@ filegroup(
     srcs = [
         "xla_compiled_cpu_function.cc",
         "//tensorflow/compiler/xla:cpu_runtime_srcs",
-        "//tensorflow/compiler/xla/service/cpu:single_threaded_runtime_srcs",
+        "//tensorflow/compiler/xla/service/cpu:runtime_srcs",
         "//tensorflow/core/kernels:xla_cpu_runtime_srcs",
         "//tensorflow/core/platform:xla_cpu_runtime_srcs",
     ],
@@ -265,6 +249,11 @@ cc_library(
         "//third_party/eigen3",
         "//tensorflow/core/framework:numeric_types",
         "//tensorflow/core/platform:bfloat16",
+    ] + [
+        # Extra dependencies required for multithreaded runtime objects.
+        "//tensorflow/core/platform:blocking_counter",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:mutex",
     ] + tf_additional_tensor_coding_deps(),
     alwayslink = 1,
 )
@@ -314,7 +303,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/stream_executor:platform",
-    ] + if_tpu(
+    ] + if_libtpu(
         if_false = [
             "//tensorflow/compiler/xla/service:cpu_plugin",
             "//tensorflow/compiler/xla/service/cpu:buffer_info_util",
@@ -385,7 +374,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
-    ] + if_tpu(
+    ] + if_libtpu(
         if_false = [
             "//tensorflow/compiler/mlir:array_container_utils",
             "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util_no_tf_dialect_passes",
@@ -465,8 +454,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",
-        "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core/common_runtime:core_cpu_internal",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
     ],
     alwayslink = 1,
 )
@@ -758,10 +747,10 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:tensor_testutil",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
@@ -884,7 +873,9 @@ cc_library(
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:device_util",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@llvm-project//llvm:Support",
     ],
@@ -893,13 +884,13 @@ cc_library(
 
 cc_library(
     name = "mlir_bridge_pass_registration",
-    srcs = if_tpu(
+    srcs = if_libtpu(
         if_false = [
             "mlir_bridge_pass_registration.cc",
         ],
         if_true = [],
     ),
-    deps = if_tpu(
+    deps = if_libtpu(
         if_false = [
             ":mlir_bridge_pass",
             "//tensorflow/compiler/mlir:mlir_graph_optimization_pass_registration",

@@ -81,38 +81,40 @@ XPlaneVisitor::XPlaneVisitor(const XPlane* plane,
                              const TypeGetterList& event_type_getter_list,
                              const TypeGetterList& stat_type_getter_list)
     : XStatsOwner<XPlane>(this, plane), plane_(plane) {
-  for (const auto& event_type_getter : event_type_getter_list) {
-    BuildEventTypeMap(plane, event_type_getter);
-  }
-  for (const auto& stat_type_getter : stat_type_getter_list) {
-    BuildStatTypeMap(plane, stat_type_getter);
-  }
+  BuildEventTypeMap(plane, event_type_getter_list);
+  BuildStatTypeMap(plane, stat_type_getter_list);
 }
 
-void XPlaneVisitor::BuildEventTypeMap(const XPlane* plane,
-                                      const TypeGetter& event_type_getter) {
+void XPlaneVisitor::BuildEventTypeMap(
+    const XPlane* plane, const TypeGetterList& event_type_getter_list) {
   for (const auto& event_metadata : plane->event_metadata()) {
     uint64 metadata_id = event_metadata.first;
     const auto& metadata = event_metadata.second;
-    absl::optional<int64> event_type = event_type_getter(metadata.name());
-    if (event_type.has_value()) {
-      auto result = event_metadata_id_map_.emplace(metadata_id, *event_type);
-      DCHECK(result.second);  // inserted
-      event_type_map_.emplace(*event_type, &metadata);
+    for (const auto& event_type_getter : event_type_getter_list) {
+      absl::optional<int64> event_type = event_type_getter(metadata.name());
+      if (event_type.has_value()) {
+        auto result = event_metadata_id_map_.emplace(metadata_id, *event_type);
+        DCHECK(result.second);  // inserted
+        event_type_map_.emplace(*event_type, &metadata);
+        break;
+      }
     }
   }
 }
 
-void XPlaneVisitor::BuildStatTypeMap(const XPlane* plane,
-                                     const TypeGetter& stat_type_getter) {
+void XPlaneVisitor::BuildStatTypeMap(
+    const XPlane* plane, const TypeGetterList& stat_type_getter_list) {
   for (const auto& stat_metadata : plane->stat_metadata()) {
     uint64 metadata_id = stat_metadata.first;
     const auto& metadata = stat_metadata.second;
-    absl::optional<int64> stat_type = stat_type_getter(metadata.name());
-    if (stat_type.has_value()) {
-      auto result = stat_metadata_id_map_.emplace(metadata_id, *stat_type);
-      DCHECK(result.second);  // inserted
-      stat_type_map_.emplace(*stat_type, &metadata);
+    for (const auto& stat_type_getter : stat_type_getter_list) {
+      absl::optional<int64> stat_type = stat_type_getter(metadata.name());
+      if (stat_type.has_value()) {
+        auto result = stat_metadata_id_map_.emplace(metadata_id, *stat_type);
+        DCHECK(result.second);  // inserted
+        stat_type_map_.emplace(*stat_type, &metadata);
+        break;
+      }
     }
   }
 }

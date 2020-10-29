@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/benchmarks/micro_benchmark.h"
 #include "tensorflow/lite/micro/examples/person_detection_experimental/model_settings.h"
 #include "tensorflow/lite/micro/examples/person_detection_experimental/no_person_image_data.h"
@@ -21,7 +22,6 @@ limitations under the License.
 #include "tensorflow/lite/micro/examples/person_detection_experimental/person_image_data.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
-#include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
 #include "tensorflow/lite/micro/micro_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
@@ -34,21 +34,31 @@ limitations under the License.
 
 namespace {
 
+using PersonDetectionExperimentalOpResolver = tflite::AllOpsResolver;
+using PersonDetectionExperimentalBenchmarkRunner = MicroBenchmarkRunner<int8_t>;
+
 // Create an area of memory to use for input, output, and intermediate arrays.
 // Align arena to 16 bytes to avoid alignment warnings on certain platforms.
 constexpr int kTensorArenaSize = 135 * 1024;
-alignas(16) uint8_t
-    tensor_arena[kTensorArenaSize + sizeof(MicroBenchmarkRunner<int8_t>)];
+alignas(16) uint8_t tensor_arena[kTensorArenaSize];
 
-MicroBenchmarkRunner<int8_t>* benchmark_runner = nullptr;
+uint8_t op_resolver_buffer[sizeof(PersonDetectionExperimentalOpResolver)];
+uint8_t
+    benchmark_runner_buffer[sizeof(PersonDetectionExperimentalBenchmarkRunner)];
+PersonDetectionExperimentalBenchmarkRunner* benchmark_runner = nullptr;
 
 // Initialize benchmark runner instance explicitly to avoid global init order
 // issues on Sparkfun. Use new since static variables within a method
 // are automatically surrounded by locking, which breaks bluepill and stm32f4.
 void CreateBenchmarkRunner() {
-  benchmark_runner = new (tensor_arena) MicroBenchmarkRunner<int8_t>(
-      g_person_detect_model_data,
-      &tensor_arena[sizeof(MicroBenchmarkRunner<int8_t>)], kTensorArenaSize);
+  // We allocate PersonDetectionExperimentalOpResolver from a global buffer
+  // because the object's lifetime must exceed that of the
+  // PersonDetectionBenchmarkRunner object.
+  benchmark_runner =
+      new (benchmark_runner_buffer) PersonDetectionExperimentalBenchmarkRunner(
+          g_person_detect_model_data,
+          new (op_resolver_buffer) PersonDetectionExperimentalOpResolver(),
+          tensor_arena, kTensorArenaSize);
 }
 
 void InitializeBenchmarkRunner() {

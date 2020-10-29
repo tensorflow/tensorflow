@@ -37,8 +37,8 @@ class DefFunctionCpuOnlyTest(test.TestCase, parameterized.TestCase):
     if test.is_built_with_rocm() or test_util.is_xla_enabled():
       return
 
-    with self.assertRaisesRegexp(errors.UnimplementedError,
-                                 'check target linkage'):
+    with self.assertRaisesRegex(errors.UnimplementedError,
+                                'check target linkage'):
 
       @def_function.function(experimental_compile=True)
       def fn(x):

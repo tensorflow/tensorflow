@@ -135,15 +135,7 @@ PyExecutable::ExecuteOnLocalDevices(
 
 StatusOr<std::vector<std::shared_ptr<HloModule>>> PyExecutable::HloModules()
     const {
-  std::vector<std::shared_ptr<HloModule>> modules;
-  modules.reserve(executable_->executables().size());
-  for (const auto& local_exec : executable_->executables()) {
-    if (!local_exec->executable()->has_module()) {
-      return InvalidArgument("Executable does not have HLO modules.");
-    }
-    modules.push_back(local_exec->executable()->shared_module());
-  }
-  return std::move(modules);
+  return executable_->GetHloModules();
 }
 
 }  // namespace xla

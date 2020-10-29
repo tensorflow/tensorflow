@@ -62,20 +62,19 @@ NASNET_LARGE_WEIGHT_PATH_NO_TOP = BASE_WEIGHTS_PATH + 'NASNet-large-no-top.h5'
 layers = VersionAwareLayers()
 
 
-def NASNet(
-    input_shape=None,
-    penultimate_filters=4032,
-    num_blocks=6,
-    stem_block_filters=96,
-    skip_reduction=True,
-    filter_multiplier=2,
-    include_top=True,
-    weights=None,
-    input_tensor=None,
-    pooling=None,
-    classes=1000,
-    default_size=None,
-    classifier_activation='softmax'):
+def NASNet(input_shape=None,
+           penultimate_filters=4032,
+           num_blocks=6,
+           stem_block_filters=96,
+           skip_reduction=True,
+           filter_multiplier=2,
+           include_top=True,
+           weights='imagenet',
+           input_tensor=None,
+           pooling=None,
+           classes=1000,
+           default_size=None,
+           classifier_activation='softmax'):
   """Instantiates a NASNet model.
 
   Reference:

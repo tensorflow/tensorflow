@@ -59,6 +59,11 @@ def _make_temp_log_dir(test_obj):
 
 class ProfilerApiTest(test_util.TensorFlowTestCase):
 
+  def setUp(self):
+    super().setUp()
+    self.worker_start = threading.Event()
+    self.profile_done = False
+
   def _check_tools_pb_exist(self, logdir):
     expected_files = [
         'overview_page.pb',
@@ -67,9 +72,14 @@ class ProfilerApiTest(test_util.TensorFlowTestCase):
         'kernel_stats.pb',
     ]
     for file in expected_files:
-      path = os.path.join(logdir, 'plugins/profile/*/*{}'.format(file))
+      path = os.path.join(logdir, 'plugins', 'profile', '*', '*{}'.format(file))
       self.assertEqual(1, len(glob.glob(path)),
                        'Expected one path match: ' + path)
+
+  def _check_xspace_pb_exist(self, logdir):
+    path = os.path.join(logdir, 'plugins', 'profile', '*', '*.xplane.pb')
+    self.assertEqual(1, len(glob.glob(path)),
+                     'Expected one path match: ' + path)
 
   def test_single_worker_no_profiling(self):
     """Test single worker without profiling."""
@@ -78,32 +88,61 @@ class ProfilerApiTest(test_util.TensorFlowTestCase):
 
     model.fit(x=train_ds, epochs=2, steps_per_epoch=steps)
 
-  def test_single_worker_sampling_mode(self):
+  def test_single_worker_sampling_mode(self, delay_ms=None):
     """Test single worker sampling mode."""
 
-    def on_worker(port):
+    def on_worker(port, worker_start):
       logging.info('worker starting server on {}'.format(port))
       profiler.start_server(port)
       _, steps, train_ds, model = _model_setup()
-      model.fit(x=train_ds, epochs=2, steps_per_epoch=steps)
+      worker_start.set()
+      while True:
+        model.fit(x=train_ds, epochs=2, steps_per_epoch=steps)
+        if self.profile_done:
+          break
 
-    port = portpicker.pick_unused_port()
-    thread = threading.Thread(target=on_worker, args=(port,))
-    thread.start()
-    # Request for 3 seconds of profile.
-    duration_ms = 3000
+    def on_profile(port, logdir, worker_start):
+      # Request for 30 milliseconds of profile.
+      duration_ms = 30
+
+      worker_start.wait()
+      options = profiler.ProfilerOptions(
+          host_tracer_level=2,
+          python_tracer_level=0,
+          device_tracer_level=1,
+          delay_ms=delay_ms,
+      )
+
+      profiler_client.trace('localhost:{}'.format(port), logdir, duration_ms,
+                            '', 100, options)
+
+      self.profile_done = True
+
     logdir = self.get_temp_dir()
+    port = portpicker.pick_unused_port()
+    thread_profiler = threading.Thread(
+        target=on_profile, args=(port, logdir, self.worker_start))
+    thread_worker = threading.Thread(
+        target=on_worker, args=(port, self.worker_start))
+    thread_worker.start()
+    thread_profiler.start()
+    thread_profiler.join()
+    thread_worker.join(120)
+    self._check_xspace_pb_exist(logdir)
 
-    options = profiler.ProfilerOptions(
-        host_tracer_level=2,
-        python_tracer_level=0,
-        device_tracer_level=1,
-    )
+  def test_single_worker_sampling_mode_short_delay(self):
+    """Test single worker sampling mode with a short delay.
 
-    profiler_client.trace('localhost:{}'.format(port), logdir, duration_ms, '',
-                          3, options)
-    thread.join(30)
-    self._check_tools_pb_exist(logdir)
+    Expect that requested delayed start time will arrive late, and a subsequent
+    retry will issue an immediate start.
+    """
+
+    self.test_single_worker_sampling_mode(delay_ms=1)
+
+  def test_single_worker_sampling_mode_long_delay(self):
+    """Test single worker sampling mode with a long delay."""
+
+    self.test_single_worker_sampling_mode(delay_ms=1000)
 
   def test_single_worker_programmatic_mode(self):
     """Test single worker programmatic mode."""
@@ -118,6 +157,7 @@ class ProfilerApiTest(test_util.TensorFlowTestCase):
     _, steps, train_ds, model = _model_setup()
     model.fit(x=train_ds, epochs=2, steps_per_epoch=steps)
     profiler.stop()
+    self._check_xspace_pb_exist(logdir)
     self._check_tools_pb_exist(logdir)
 
 

@@ -1,5 +1,5 @@
 #!/bin/bash -e
-# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,30 +27,49 @@
 declare -r ROOT_DIR=`pwd`
 declare -r TEST_TMPDIR=/tmp/test_bluepill_binary/
 declare -r MICRO_LOG_PATH=${TEST_TMPDIR}
-declare -r MICRO_LOG_FILENAME=${MICRO_LOG_PATH}/logs.txt
+declare -r MICRO_LOG_FILENAME=${MICRO_LOG_PATH}logs.txt
 mkdir -p ${MICRO_LOG_PATH}
 
-docker build -t renode_bluepill \
-  -f ${ROOT_DIR}/tensorflow/lite/micro/testing/Dockerfile.bluepill \
-  ${ROOT_DIR}/tensorflow/lite/micro/testing/
+declare -r RENODE_TEST_SCRIPT=${ROOT_DIR}/tensorflow/lite/micro/tools/make/downloads/renode/test.sh
+if [ ! -f "${RENODE_TEST_SCRIPT}" ]; then
+  echo "The renode test script: ${RENODE_TEST_SCRIPT} does not exist. Please " \
+       "make sure that you have correctly installed Renode for TFLM. See " \
+       "tensorflow/lite/micro/docs/renode.md for more details."
+  exit 1
+fi
+
+if ! ${RENODE_TEST_SCRIPT} &> /dev/null
+then
+  echo "The following command failed: ${RENODE_TEST_SCRIPT}. Please " \
+       "make sure that you have correctly installed Renode for TFLM. See " \
+       "tensorflow/lite/micro/docs/renode.md for more details."
+  exit 1
+fi
+
+
+# This check ensures that we only have a single $MICRO_LOG_FILENAME. Without it,
+# renode will do a log rotation and there will be multiple files such as
+# $MICRO_LOG_FILENAME.1 $MICRO_LOG_FILENAME.2 etc.
+if [ -e $MICRO_LOG_FILENAME ]; then
+    rm $MICRO_LOG_FILENAME &> /dev/null
+fi;
 
 exit_code=0
-# running in `if` to avoid setting +e
-if ! docker run \
-  --log-driver=none -a stdout -a stderr \
-  -v ${ROOT_DIR}:/workspace \
-  -v /tmp:/tmp \
-  -e BIN=/workspace/$1 \
-  -e SCRIPT=/workspace/tensorflow/lite/micro/testing/bluepill.resc \
-  -e EXPECTED="$2" \
-  -it renode_bluepill \
-  /bin/bash -c "/opt/renode/tests/test.sh /workspace/tensorflow/lite/micro/testing/bluepill.robot 2>&1 >${MICRO_LOG_FILENAME}"
+
+if ! BIN=${ROOT_DIR}/$1 \
+  SCRIPT=${ROOT_DIR}/tensorflow/lite/micro/testing/bluepill.resc \
+  LOGFILE=$MICRO_LOG_FILENAME \
+  EXPECTED="$2" \
+  ${RENODE_TEST_SCRIPT} \
+  ${ROOT_DIR}/tensorflow/lite/micro/testing/bluepill.robot \
+  -r $TEST_TMPDIR &> ${MICRO_LOG_PATH}robot_logs.txt
 then
   exit_code=1
 fi
 
 echo "LOGS:"
-cat ${MICRO_LOG_FILENAME}
+# Extract output from renode log
+cat ${MICRO_LOG_FILENAME} |grep 'uartSemihosting' |sed 's/^.*from start] *//g'
 if [ $exit_code -eq 0 ]
 then
   echo "$1: PASS"

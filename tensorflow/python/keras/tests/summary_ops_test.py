@@ -41,7 +41,7 @@ class SummaryOpsTest(test.TestCase):
 
   def keras_model(self, *args, **kwargs):
     logdir = self.get_temp_dir()
-    writer = summary_ops.create_file_writer(logdir)
+    writer = summary_ops.create_file_writer_v2(logdir)
     with writer.as_default():
       summary_ops.keras_model(*args, **kwargs)
     writer.close()

@@ -67,16 +67,39 @@ logger, with `WARNING` severity. To direct these warnings to `stdout`, use
 This exception is raised whenever a `tf.Tensor` is type-cast as a Python `bool`,
 in a context where eager execution is not active. The exception is only raised
 when graph execution is active, for example inside a `@tf.function` with
-AutoGraph turned off. It can be caused by using a `tf.Tensor` value as:
+AutoGraph turned off.
+
+**When AutoGraph is on**, it can be caused by:
+  * placing a Tensor-dependent `break`, `continue` or `return` inside a Python
+    loop (see example below)
+  * attempting to use a `tf.Tensor` in a list comprehension, by iterating over
+    it or using it in a condition)
+
+A typical example of mixing Python and TF control flow in an incompatible way
+is:
+
+```
+for i in range(3):  # Python loop
+  if i > tf.constant(0):  # TF conditional
+    break  # raises OperatorNotAllowedInGraphError
+```
+
+The way these errors are typically fixed is by ensuring all control flow is
+TF control flow:
+
+```
+for i in tf.range(3):  # TF loop
+  if i > tf.constant(0):  # TF conditional
+    break  # works
+```
+
+**When AutoGraph is off**, it can be caused by using a `tf.Tensor` value as:
 
   * the condition of an `if` or `while` statement: `if <tensor>:`
   * the argument in a logical expression: `tensor and another_tensor`
   * the argument to the `bool` built-in: `bool(tensor)`
 
 Note: These operations are allowed when executing eagerly.
-
-Within the context of AutoGraph, it usually indicates eager-style control
-flow that has not been converted by AutoGraph, for any reason.
 
 When encountering this error, make sure that the function is either decorated
 with `@tf.function`, or called from another function decorated in this way. Also

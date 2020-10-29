@@ -201,7 +201,7 @@ static void TFLInterpreterErrorReporter(void *user_data, const char *format, va_
     return NO;
   }
 
-  std::vector<int> cDimensions(self.inputTensorCount);
+  std::vector<int> cDimensions(shape.count);
   for (int dimIndex = 0; dimIndex < shape.count; ++dimIndex) {
     int dimension = shape[dimIndex].intValue;
     if (dimension <= 0) {

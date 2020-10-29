@@ -25,6 +25,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections.abc as collections_abc
 import json
 import numpy as np
 import wrapt
@@ -32,12 +33,6 @@ import wrapt
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util import serialization
-
-try:
-  # This import only works on python 3.3 and above.
-  import collections.abc as collections_abc  # pylint: disable=unused-import, g-import-not-at-top
-except ImportError:
-  import collections as collections_abc  # pylint: disable=unused-import, g-import-not-at-top
 
 
 class Encoder(json.JSONEncoder):

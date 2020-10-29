@@ -24,12 +24,10 @@ import numpy as np
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.distribute import collective_all_reduce_strategy
+from tensorflow.python.distribute import collective_all_reduce_strategy as mwms_lib
 from tensorflow.python.distribute import combinations as ds_combinations
-from tensorflow.python.distribute import cross_device_utils
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
-from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
@@ -43,8 +41,8 @@ from tensorflow.python.keras import layers
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training
-from tensorflow.python.keras.mixed_precision.experimental import policy
-from tensorflow.python.keras.mixed_precision.experimental import test_util as mp_test_util
+from tensorflow.python.keras.mixed_precision import policy
+from tensorflow.python.keras.mixed_precision import test_util as mp_test_util
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn
@@ -70,7 +68,7 @@ def create_test_objects(cluster_spec=None,
 
   if cluster_spec and task_type and task_id is not None:
     cluster_resolver = SimpleClusterResolver(
-        cluster_spec=multi_worker_util.normalize_cluster_spec(cluster_spec),
+        cluster_spec=ClusterSpec(cluster_spec),
         task_type=task_type,
         task_id=task_id,
         num_accelerators={'GPU': num_gpus})
@@ -80,7 +78,7 @@ def create_test_objects(cluster_spec=None,
         ClusterSpec({}), num_accelerators={'GPU': num_gpus})
     target = ''
 
-  strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy(
+  strategy = mwms_lib.CollectiveAllReduceStrategy(
       cluster_resolver=cluster_resolver)
   sess_config = strategy.update_config_proto(sess_config)
 
@@ -95,9 +93,7 @@ class CollectiveAllReduceStrategyTestBase(
   def setUp(self):
     # We use a different key_base for each test so that collective keys won't be
     # reused.
-    # TODO(yuefengz, ayushd): enable it to reuse collective keys in different
-    # tests.
-    CollectiveAllReduceStrategyTestBase.collective_key_base += 100000
+    mwms_lib.CollectiveAllReduceStrategy._collective_key_base += 100000
     super(CollectiveAllReduceStrategyTestBase, self).setUp()
 
   def _get_test_object(self, task_type, task_id, num_gpus=0):
@@ -106,18 +102,6 @@ class CollectiveAllReduceStrategyTestBase(
         task_type=task_type,
         task_id=task_id,
         num_gpus=num_gpus)
-
-    collective_keys = cross_device_utils.CollectiveKeys(
-        group_key_start=10 +
-        CollectiveAllReduceStrategyTestBase.collective_key_base,
-        op_instance_key_start=100 +
-        CollectiveAllReduceStrategyTestBase.collective_key_base,
-        variable_instance_key_start=10000 +
-        CollectiveAllReduceStrategyTestBase.collective_key_base)
-    strategy.extended._collective_keys = collective_keys
-    strategy.extended._cross_device_ops._collective_keys = collective_keys
-    strategy.extended._host_cross_device_ops._collective_keys = collective_keys
-
     return strategy, target, session_config
 
   def _test_complex_model(self, task_type, task_id, num_gpus):
@@ -344,13 +328,15 @@ class DistributedCollectiveAllReduceStrategyEagerTest(test.TestCase,
       return model
 
     def _get_dataset():
-      inputs = array_ops.expand_dims_v2(constant_op.constant(range(10)), axis=1)
+      inputs = array_ops.expand_dims_v2(
+          constant_op.constant(range(10)), axis=1)
       targets = array_ops.expand_dims_v2(
           constant_op.constant(range(10)), axis=1)
-      # Make global batch size 12 for 2 replicas and a non-repeated dataset with
-      # 10 elements so that we have partial batch
+      # Make global batch size 12 for 2 replicas and a non-repeated dataset
+      # with 10 elements so that we have partial batch
       dataset = dataset_ops.Dataset.from_tensor_slices(
-          (inputs, targets)).batch(12, drop_remainder=False)
+          (inputs, targets)).batch(
+              12, drop_remainder=False)
       return dataset
 
     with strategy.scope():
@@ -359,16 +345,14 @@ class DistributedCollectiveAllReduceStrategyEagerTest(test.TestCase,
       model = _model_fn()
       loss = 'mse'
       metrics = ['mae']
-      model.compile(
-          optimizer,
-          loss,
-          metrics=metrics)
+      model.compile(optimizer, loss, metrics=metrics)
     dataset = _get_dataset()
     kernel_before = model.get_weights()[0][0]
     model.fit(dataset, epochs=10)
     kernel_after = model.get_weights()[0][0]
     self.assertNotEqual(kernel_before, kernel_after)
-    self.assertGreater(abs(kernel_before-1), abs(kernel_after-1))
+    self.assertGreater(abs(kernel_before - 1), abs(kernel_after - 1))
+
 
 if __name__ == '__main__':
   v2_compat.enable_v2_behavior()

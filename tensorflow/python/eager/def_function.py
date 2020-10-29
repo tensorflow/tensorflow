@@ -38,6 +38,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
@@ -474,56 +475,12 @@ class Function(object):
     Args:
       python_function: the function to be wrapped.
       name: the name given to it.
-      input_signature: a possibly nested sequence of `TensorSpec` objects
-        specifying the input signature of this function. If `None`, a separate
-        function is instantiated for each inferred input signature.
-      autograph: whether `python_function` should be converted to graph mode.
-        See https://www.tensorflow.org/guide/autograph for more information.
-      experimental_implements: If provided, contains a name of a "known"
-        function this implements. For example "mycompany.my_recurrent_cell".
-        This is stored as an attribute in the serialized representation,
-        which can then be detected and manipulated when processing serialized
-        graph.
-        See
-        https://github.com/tensorflow/community/blob/master/rfcs/20190610-standardizing-composite_ops.md
-        for details.  For an example of utilizing this attribute see:
-        https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/mlir/lite/transforms/prepare_composite_functions_tf.cc
-        The code above automatically detects and substitutes function that
-        implements "embedded_matmul" and allows TFLite to substitute its own
-        implementations. For instance, a tensorflow user can use this
-         attribute to mark that their function also implements
-        `embedded_matmul``` (perhaps more efficiently!)
-        by specifying it using this flag.
-
-        ```python
-        @tf.function(
-            experimental_implements="lingvo.SimpleEmbeddingLayer.EmbMatmul")
-        def embedding_matmul(a, b):
-           # custom implementation here
-        ```
-        This can either be specified as just the string name of the function or
-        a NameAttrList corresponding to a list of key-value attributes
-        with the function name. The name of the function will be in the 'name'
-        field of the NameAttrList.
-      experimental_autograph_options: optional tuple of
-        tensorflow.autograph.Feature values. Allows enabling additional
-        conversion options when autograph is set to True.
-      experimental_relax_shapes: When true, argument shapes may be relaxed to
-        avoid unnecessary retracing.
-      experimental_compile: If `True`, compiles the function using XLA
-        (see https://tensorflow.org/xla). XLA performs compiler optimizations,
-        such as fusion, and attempts to emit more efficient code. This may
-        drastically improve the performance. If set to `True`,
-        the whole function needs to be compilable by XLA, or an
-        `errors.InvalidArgumentError` is thrown.
-        If `None` (default), compiles the function with XLA when running on TPU
-        and goes through the regular function execution path when running on
-        other devices.
-        If `False`, executes the function in a regular way (graph rewrite
-        passes are applied, kernels are dispatched one-by-one by the TensorFlow
-        executor). Set this value to `False` when directly running a
-        multi-device function on TPUs (e.g. two TPU cores, one TPU core and its
-        host CPU).
+      input_signature: See the documentation for `tf.function`.
+      autograph: See the documentation for `tf.function`.
+      experimental_implements: See the documentation for `tf.function`.
+      experimental_autograph_options: See the documentation for `tf.function`.
+      experimental_relax_shapes: See the documentation for `tf.function`.
+      experimental_compile: See the documentation for `tf.function`.
       experimental_follow_type_hints: See the documentation for `tf.function`.
 
     Raises:
@@ -778,7 +735,40 @@ class Function(object):
     self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
         self._python_function, self.input_signature)
 
+  # TODO: Remove this private method after updating all its uses
+  # A good moment to do this could be when the experimental label is removed
   def _get_tracing_count(self):
+    return self.experimental_get_tracing_count()
+
+  def experimental_get_tracing_count(self):
+    """Returns the number of times the function has been traced.
+
+    For more information on when a function is traced and when it is
+    traced multiple times see https://www.tensorflow.org/guide/function.
+    Example:
+
+    >>> @tf.function
+    ... def double(a):
+    ...   return a + a
+    >>> double(tf.constant(1))
+    >>> double(tf.constant(2))
+    >>> double.experimental_get_tracing_count()
+    1
+    >>> double(tf.constant("a"))
+    >>> double.experimental_get_tracing_count()
+    2
+
+
+    The first time experimental_get_tracing_count is called
+    it returns 1, as the function is traced the first
+    time it is called, and the second time the same graph is used
+    since we're calling it with a parameter of the same type.
+
+    The second time experimental_get_tracing_count is called
+    it returns 2, as we called double with a
+    different argument type, and so it was traced again.
+
+    """
     result = self._stateless_fn.tracing_count if self._stateless_fn else 0
     result += self._stateful_fn.tracing_count if self._stateful_fn else 0
     return result
@@ -789,11 +779,11 @@ class Function(object):
       with trace.Trace(self._name, tf_function_call="eager"):
         return self._python_function(*args, **kwds)
 
-    tracing_count = self._get_tracing_count()
+    tracing_count = self.experimental_get_tracing_count()
     with trace.Trace(self._name) as tm:
       result = self._call(*args, **kwds)
       compiler = "xla" if self._experimental_compile else "nonXla"
-      new_tracing_count = self._get_tracing_count()
+      new_tracing_count = self.experimental_get_tracing_count()
       without_tracing = (tracing_count == new_tracing_count)
       execution_mode = "notTraced" if without_tracing else "traced"
       tm.set_metadata(tf_function_call=execution_mode + "-" + compiler,
@@ -985,7 +975,7 @@ class Function(object):
     fn_name = concrete_fn.name
 
     # pylint: disable=protected-access
-    canon_args, _, _, _ = \
+    _, _, _, filtered_flat_args = \
         concrete_fn._function_spec.canonicalize_function_inputs(
             *args, **kwargs)
 
@@ -996,10 +986,14 @@ class Function(object):
         stage: Stage at which to return the IR. Allowed values are 'hlo' and
         'optimized_hlo'.
       """
+      # TODO(cheshire): This is a hack to get the current "preferred" device,
+      # there is no current API to get it otherwise.
+      device = random_ops.random_normal([]).device
       return context.context().get_compiler_ir(
+          device_name=device,
           stage=stage,
           function_name=fn_name,
-          args=list(canon_args) + concrete_fn.captured_inputs)
+          args=list(filtered_flat_args) + concrete_fn.captured_inputs)
 
     return compiler_ir_generator
 
@@ -1525,9 +1519,22 @@ def function(func=None,
       `tf.autograph.experimental.Feature` values.
     experimental_relax_shapes: When True, `tf.function` may generate fewer,
       graphs that are less specialized on input shapes.
-    experimental_compile: If True, the function is always compiled by
-      [XLA](https://www.tensorflow.org/xla). XLA may be more efficient in some
-      cases (e.g. TPU, XLA_GPU, dense tensor computations).
+    experimental_compile: If `True`, compiles the function using XLA
+      (see https://tensorflow.org/xla). XLA performs compiler optimizations,
+      such as fusion, and attempts to emit more efficient code. This may
+      drastically improve the performance. If set to `True`,
+      the whole function needs to be compilable by XLA, or an
+      `errors.InvalidArgumentError` is thrown.
+      If `None` (default), compiles the function with XLA when running on TPU
+      and goes through the regular function execution path when running on
+      other devices.
+      If `False`, executes the function in a regular way (graph rewrite
+      passes are applied, kernels are dispatched one-by-one by the TensorFlow
+      executor). Set this value to `False` when directly running a
+      multi-device function on TPUs (e.g. two TPU cores, one TPU core and its
+      host CPU).
+      Not all functions are compilable, see
+      https://tensorflow.org/xla/known_issues for a list of sharp corners.
     experimental_follow_type_hints: When True, the function may use type
       annotations from `func` to optimize the tracing performance. For example,
       arguments annotated with `tf.Tensor` will automatically be converted
