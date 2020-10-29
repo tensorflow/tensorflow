@@ -514,6 +514,7 @@ def recompute_grad(f):
     current_var_scope = variable_scope.get_variable_scope()
     with tape_lib.stop_recording():
       result = f(*args, **kwargs)
+
     def grad_wrapper(*wrapper_args, **grad_kwargs):
       """Wrapper function to accomodate lack of kwargs in graph mode decorator."""
 
