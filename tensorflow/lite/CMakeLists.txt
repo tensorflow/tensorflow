@@ -449,3 +449,13 @@ target_compile_options(benchmark_model
 target_link_libraries(benchmark_model
     ${TFLITE_BENCHMARK_LIBS}
 )
+
+# TFLite minimal example
+add_executable(minimal
+  EXCLUDE_FROM_ALL
+    ${TFLITE_SOURCE_DIR}/examples/minimal/minimal.cc
+)
+target_link_libraries(minimal
+  tensorflow-lite
+  ${CMAKE_DL_LIBS}
+)
