@@ -340,15 +340,15 @@ def write_string_to_file(filename, file_content):
 
 
 @tf_export(v1=["gfile.Glob"])
-def get_matching_files(filename, max_parallel_num=1):
+def get_matching_files(filename, num_threads=1):
   """Returns a list of files that match the given pattern(s).
 
   Args:
     filename: string or iterable of strings. The glob pattern(s).
-    max_parallel_num: int. If `filename` is iterable of strings and
-      `max_parallel_num` is greater than one, it will create a threadpool to
+    num_threads: int. If `filename` is iterable of strings and
+      `num_threads` is greater than one, it will create a threadpool to
       match all strings parallelly. The size of threadpool is
-      `min(max_parallel_num, len(list(filename)))`.
+      `min(num_threads, len(list(filename)))`.
 
   Returns:
     A list of strings containing filenames that match the given pattern(s).
@@ -358,11 +358,11 @@ def get_matching_files(filename, max_parallel_num=1):
   *  errors.NotFoundError: If pattern to be matched is an invalid directory.
   *  TypeError: If any argument does not have the expected type.
   """
-  return get_matching_files_v2(filename, max_parallel_num)
+  return get_matching_files_v2(filename, num_threads)
 
 
 @tf_export("io.gfile.glob")
-def get_matching_files_v2(pattern, max_parallel_num=1):
+def get_matching_files_v2(pattern, num_threads=1):
   r"""Returns a list of files that match the given pattern(s).
 
   The patterns are defined as strings. Supported patterns are defined
@@ -405,10 +405,10 @@ def get_matching_files_v2(pattern, max_parallel_num=1):
 
   Args:
     pattern: string or iterable of strings. The glob pattern(s).
-    max_parallel_num: int. If `pattern` is iterable of strings and
-      `max_parallel_num` is greater than one, it will create a threadpool to
+    num_threads: int. If `pattern` is iterable of strings and
+      `num_threads` is greater than one, it will create a threadpool to
       match all strings parallelly. The size of threadpool is
-      `min(max_parallel_num, len(list(pattern)))`.
+      `min(num_threads, len(list(pattern)))`.
 
   Returns:
     A list of strings containing filenames that match the given pattern(s).
@@ -426,10 +426,10 @@ def get_matching_files_v2(pattern, max_parallel_num=1):
             compat.as_bytes(pattern))
     ]
 
-  if not isinstance(max_parallel_num, int):
+  if not isinstance(num_threads, int):
     raise TypeError("`max_parallel_num` must be a integer.")
 
-  if max_parallel_num <= 1:
+  if num_threads <= 1:
     return [
         # Convert the filenames to string from bytes.
         compat.as_str_any(matching_filename)  # pylint: disable=g-complex-comprehension
@@ -447,8 +447,7 @@ def get_matching_files_v2(pattern, max_parallel_num=1):
     return partial_files
 
   patterns = list(copy.deepcopy(pattern))
-  pool = Pool(processes=min(max_parallel_num, 
-                            len(patterns)))
+  pool = Pool(processes=min(num_threads, len(patterns)))
   all_files = pool.map(handle_single_pattern, patterns)
   pool.close()
   pool.join()
