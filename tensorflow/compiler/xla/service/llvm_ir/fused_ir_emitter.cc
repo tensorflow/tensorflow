@@ -110,42 +110,7 @@ Status FusedIrEmitter::HandleConstant(const HloInstruction* constant) {
 
 Status FusedIrEmitter::HandleGetTupleElement(
     const HloInstruction* get_tuple_element) {
-  auto emit_tuple_element_ptr = [=]() -> StatusOr<llvm::Value*> {
-    const HloInstruction* tuple_operand = get_tuple_element->operand(0);
-    llvm::Value* tuple_ptr;
-    if (tuple_operand->opcode() == HloOpcode::kGetTupleElement) {
-      TF_ASSIGN_OR_RETURN(tuple_ptr, non_indexed_generators_[tuple_operand]());
-    } else {
-      if (tuple_operand->opcode() != HloOpcode::kParameter) {
-        return Unimplemented(
-            "GetTupleElement fusion currently only supports parameter or "
-            "nested"
-            "GetTupleElement as tuple operand, found an exception: %s",
-            tuple_operand->name());
-      }
-      tuple_ptr =
-          GetBasePointerForFusedParameter(tuple_operand->parameter_number());
-    }
-
-    // Lookup tuple element pointer.
-    return llvm_ir::EmitGetTupleElement(get_tuple_element->shape(),
-                                        get_tuple_element->tuple_index(),
-                                        /*alignment=*/1, tuple_ptr, b_);
-  };
-
-  if (!get_tuple_element->shape().IsTuple()) {
-    indexed_generators_[get_tuple_element] =
-        [=](const IrArray::Index& index) -> StatusOr<llvm::Value*> {
-      // TODO(b/34080002) Add aliasing information to tuple element IrArray.
-      TF_ASSIGN_OR_RETURN(llvm::Value * tuple_element_ptr,
-                          emit_tuple_element_ptr());
-      return IrArray(tuple_element_ptr, get_tuple_element->shape())
-          .EmitReadArrayElement(index, b_);
-    };
-  } else {
-    non_indexed_generators_[get_tuple_element] = emit_tuple_element_ptr;
-  }
-  return Status::OK();
+  return InternalError("Tuple parameters are not supported for fusion");
 }
 
 Status FusedIrEmitter::HandleParameter(const HloInstruction* parameter) {
