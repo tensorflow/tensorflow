@@ -25,7 +25,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
+import collections.abc as collections_abc
 import json
 import numpy as np
 import wrapt
@@ -117,7 +117,7 @@ def get_json_type(obj):
   if isinstance(obj, dtypes.DType):
     return obj.name
 
-  if isinstance(obj, collections.Mapping):
+  if isinstance(obj, collections_abc.Mapping):
     return dict(obj)
 
   if obj is Ellipsis:
