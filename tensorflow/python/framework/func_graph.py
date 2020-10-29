@@ -443,6 +443,11 @@ class FuncGraph(ops.Graph):
       return self._fallback_outer_graph
     return current
 
+  @outer_graph.setter
+  def outer_graph(self, new_outer_graph):
+    """Sets `outer_graph` to `new_outer_graph`."""
+    self._weak_outer_graph = weakref.ref(new_outer_graph)
+
   @property
   def output_types(self):
     return [t.dtype for t in self.outputs]
