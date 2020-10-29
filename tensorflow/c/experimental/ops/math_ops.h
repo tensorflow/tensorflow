@@ -59,6 +59,10 @@ Status SqrtGrad(AbstractContext* ctx,
                 absl::Span<AbstractTensorHandle* const> inputs,
                 absl::Span<AbstractTensorHandle*> outputs, const char* name);
 
+Status Log1p(AbstractContext* ctx,
+             absl::Span<AbstractTensorHandle* const> inputs,
+             absl::Span<AbstractTensorHandle*> outputs, const char* name);
+
 }  // namespace ops
 }  // namespace tensorflow
 

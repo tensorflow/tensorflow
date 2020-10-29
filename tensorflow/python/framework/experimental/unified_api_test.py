@@ -305,6 +305,99 @@ class UnifiedApiTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(eager_outputs[0].numpy(), [3., 4.])
       self.assertAllEqual(eager_outputs[1].numpy(), [1., 2.])
 
+  @parameterized.named_parameters([
+      ("Graph", False),
+      ("Mlir", True),
+  ])
+  def testLog1p(self, use_mlir):
+    if use_mlir:
+      SetTracingImplementation("mlir")
+
+    def model(a):
+      return unified_math_ops.log1p(a)
+
+    with context_lib.set_default(get_immediate_execution_context()):
+      a = TensorCastHelper(constant_op.constant([1.]))
+
+      func_output = def_function.function(model)(a)
+      self.assertArrayNear(func_output.numpy(), [0.69314], 0.001)
+
+      eager_output = model(a)
+      self.assertArrayNear(eager_output.numpy(), [0.69314], 0.001)
+
+  @parameterized.named_parameters([
+      ("Graph", False),
+      ("Mlir", True),
+  ])
+  def testLog1pGrad(self, use_mlir):
+    if use_mlir:
+      SetTracingImplementation("mlir")
+
+    def model(a):
+      with tape_lib.GradientTape() as tape:
+        tape.watch(a)
+        result = unified_math_ops.log1p(a)
+      grads = tape.gradient(result, a)
+      return grads
+
+    with context_lib.set_default(get_immediate_execution_context()):
+      a = TensorCastHelper(constant_op.constant([1.]))
+
+      func_outputs = def_function.function(model)(a)
+      self.assertArrayNear(func_outputs.numpy(), [0.5], 0.001)
+
+      eager_outputs = model(a)
+      self.assertArrayNear(eager_outputs.numpy(), [0.5], 0.001)
+
+  @parameterized.named_parameters([
+      ("Graph", False),
+      ("Mlir", True),
+  ])
+  def testDivNoNan(self, use_mlir):
+    if use_mlir:
+      SetTracingImplementation("mlir")
+
+    def model(a, b):
+      return unified_math_ops.div_no_nan(a, b)
+
+    with context_lib.set_default(get_immediate_execution_context()):
+      a = TensorCastHelper(constant_op.constant([2.]))
+      b = TensorCastHelper(constant_op.constant([4.]))
+
+      func_output = def_function.function(model)(a, b)
+      self.assertArrayNear(func_output.numpy(), [0.5], 0.001)
+
+      eager_output = model(a, b)
+      self.assertArrayNear(eager_output.numpy(), [0.5], 0.001)
+
+  @parameterized.named_parameters([
+      ("Graph", False),
+      ("Mlir", True),
+  ])
+  def testDivNoNanGrad(self, use_mlir):
+    if use_mlir:
+      SetTracingImplementation("mlir")
+
+    def model(a, b):
+      with tape_lib.GradientTape() as tape:
+        tape.watch(a)
+        tape.watch(b)
+        result = unified_math_ops.div_no_nan(a, b)
+      grads = tape.gradient(result, [a, b])
+      return grads
+
+    with context_lib.set_default(get_immediate_execution_context()):
+      a = TensorCastHelper(constant_op.constant([2.]))
+      b = TensorCastHelper(constant_op.constant([4.]))
+
+      func_outputs = def_function.function(model)(a, b)
+      self.assertArrayNear(func_outputs[0].numpy(), [0.25], 0.001)
+      self.assertArrayNear(func_outputs[1].numpy(), [-0.125], 0.001)
+
+      eager_outputs = model(a, b)
+      self.assertArrayNear(eager_outputs[0].numpy(), [0.25], 0.001)
+      self.assertArrayNear(eager_outputs[1].numpy(), [-0.125], 0.001)
+
 
 class UnifiedTapeBenchmark(test.Benchmark):
 
