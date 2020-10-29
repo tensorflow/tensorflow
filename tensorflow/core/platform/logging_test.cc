@@ -100,14 +100,15 @@ TEST(InternalLogString, Basic) {
 
 #if defined(__linux__) && !defined(PLATFORM_POSIX_ANDROID)
 
-#define _GNU_SOURCE
-
-#include <fcntl.h>
+#include "absl/strings/str_split.h"
+#include <vector>
 #include <sstream>
+
+#define _GNU_SOURCE
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <vector>
 
 namespace tensorflow {
 
@@ -167,30 +168,6 @@ class LogSinkTest : public ::testing::Test {
     return ret;
   }
 
-  static std::vector<std::string> SplitLines(const std::string& str) {
-    size_t cur = 0, next = 0;
-
-    std::vector<std::string> lines;
-    while(cur != std::string::npos) {
-      next = str.find_first_of('\n', cur);
-      if(next != std::string::npos) {
-        if(next > cur) {
-          lines.emplace_back(str.substr(cur, next - cur));
-        }
-        if(next + 1 == str.size()) {
-          cur = std::string::npos;
-        } else {
-          cur = next + 1;
-        }
-      } else {
-        lines.emplace_back(str.substr(cur));
-        cur = next;
-      }
-    }
-
-    return lines;
-  }
-
  private:
   int saved_stderr_ = -1;
   int out_pipe_[2] = { -1, -1 };
@@ -213,10 +190,11 @@ TEST_F(LogSinkTest, testLogSinks) {
   LOG(INFO) << "Foo";
   LOG(INFO) << "Bar";
 
-  auto lines = SplitLines(GetStdErr());
-  ASSERT_EQ(lines.size(), 2);
+  std::vector<std::string> lines = absl::StrSplit(GetStdErr(), '\n');
+  ASSERT_EQ(lines.size(), 3);
   ASSERT_NE(lines[0].find_first_of("Foo"), std::string::npos);
   ASSERT_NE(lines[1].find_first_of("Bar"), std::string::npos);
+  ASSERT_TRUE(lines[2].empty());
 
   // Remove the default log sink
   auto sinks = TFGetLogSinks();
