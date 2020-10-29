@@ -17,8 +17,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import re
 import types
+
+from google.protobuf import message
 
 from tensorflow.core.framework import versions_pb2
 from tensorflow.python.eager import context
@@ -38,6 +41,7 @@ from tensorflow.python.keras.saving.saved_model.serialized_attributes import Com
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import metrics_utils
 from tensorflow.python.keras.utils.generic_utils import LazyLoader
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import load as tf_load
 from tensorflow.python.saved_model import loader_impl
@@ -121,13 +125,26 @@ def load(path, compile=True, options=None):  # pylint: disable=redefined-builtin
   # TODO(kathywu): Add saving/loading of optimizer, compiled losses and metrics.
   # TODO(kathywu): Add code to load from objects that contain all endpoints
 
-  # The Keras metadata file is not yet saved, so create it from the SavedModel.
+  # Look for metadata file or parse the SavedModel
   metadata = saved_metadata_pb2.SavedMetadata()
   meta_graph_def = loader_impl.parse_saved_model(path).meta_graphs[0]
   object_graph_def = meta_graph_def.object_graph_def
-  # TODO(kathywu): When the keras metadata file is saved, load it directly
-  # instead of calling the _read_legacy_metadata function.
-  _read_legacy_metadata(object_graph_def, metadata)
+  path_to_metadata_pb = os.path.join(path, constants.SAVED_METADATA_PATH)
+  if gfile.Exists(path_to_metadata_pb):
+    try:
+      with gfile.GFile(path_to_metadata_pb, 'rb') as f:
+        file_content = f.read()
+      metadata.ParseFromString(file_content)
+    except message.DecodeError as e:
+      raise IOError('Cannot parse keras metadata {}: {}.'
+                    .format(path_to_metadata_pb, str(e)))
+  else:
+    logging.warning('SavedModel saved prior to TF 2.4 detected when loading '
+                    'Keras model. Please ensure that you are saving the model '
+                    'with model.save() or tf.keras.models.save_model(), *NOT* '
+                    'tf.saved_model.save(). To confirm, there should be a file '
+                    'named "keras_metadata.pb" in the SavedModel directory.')
+    _read_legacy_metadata(object_graph_def, metadata)
 
   if not metadata.nodes:
     # When there are no Keras objects, return the results from the core loader
