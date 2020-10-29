@@ -79,7 +79,7 @@ class ProfilerSession {
   bool active_ TF_GUARDED_BY(mutex_);
 
   tensorflow::Status status_ TF_GUARDED_BY(mutex_);
-  const uint64 start_time_ns_;
+  uint64 start_time_ns_;
   mutex mutex_;
   ProfileOptions options_;
 };
