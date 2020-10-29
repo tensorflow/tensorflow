@@ -41,6 +41,7 @@ from tensorflow.python.util.tf_export import tf_export
 _TF_INTERNAL_API_PREFIX = "__internal__.distribute.combinations."
 
 _did_connect_to_cluster = False
+_topology = None
 CollectiveAllReduceExtended = (
     collective_all_reduce_strategy.CollectiveAllReduceExtended)
 
@@ -76,6 +77,7 @@ def _get_tpu_strategy_creator(steps_per_run,
   def _create_tpu_strategy():
     FLAGS = flags.FLAGS  # pylint: disable=invalid-name
     global _did_connect_to_cluster
+    global _topology
 
     try:
       # Attempt to locally discover the TPU. This will fail for Cloud TPU, in
@@ -93,16 +95,16 @@ def _get_tpu_strategy_creator(steps_per_run,
       )
 
     # Only connect once per process, rather than per test method.
-    if getattr(FLAGS, "tpu", "") or did_automatically_resolve:
-      if not _did_connect_to_cluster:
+    if not _did_connect_to_cluster:
+      if getattr(FLAGS, "tpu", "") or did_automatically_resolve:
         remote.connect_to_cluster(resolver)
         _did_connect_to_cluster = True
+      _topology = tpu_strategy_util.initialize_tpu_system(resolver)
 
-    topology = tpu_strategy_util.initialize_tpu_system(resolver)
     device_assignment = None
     if use_single_core:
       device_assignment = device_assignment_lib.DeviceAssignment(
-          topology,
+          _topology,
           core_assignment=device_assignment_lib.SINGLE_CORE_ASSIGNMENT)
 
     # Steps per run is only supported in TF 1.x
