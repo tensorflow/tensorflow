@@ -43,6 +43,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -1712,6 +1713,35 @@ class JacobianTest(test.TestCase):
     dy_xx = g.batch_jacobian(dy_x, x)
     dy_xx_answer = [[[2., 0], [0, 2.]]] * 10
     self.assertAllClose(dy_xx_answer, self.evaluate(dy_xx))
+
+  def test_nested_batch_jacobian_foldl(self):
+    def _grad(f):
+      def _grad_function(primal):
+        with backprop.GradientTape() as tape:
+          tape.watch(primal)
+          primal_out = f(primal)
+        return tape.batch_jacobian(primal_out, primal)
+      return _grad_function
+
+    def _func(x):
+      return array_ops.reshape(
+          functional_ops.foldl_v2(lambda a, b: math_ops.cos(a + b),
+                                  array_ops.transpose(x)),
+          [1, 1])
+
+    f = _func
+    x = constant_op.constant([[1., 2.]])
+    for _ in range(2):
+      theoretical, numerical = gradient_checker_v2.compute_gradient(f, [x])
+      self.assertAllClose(theoretical, numerical, rtol=1e-3)
+      f = _grad(f)
+      expected_flat = array_ops.reshape(numerical, [-1])
+      self.assertAllClose(expected_flat,
+                          array_ops.reshape(f(x), [-1]),
+                          rtol=1e-3)
+      self.assertAllClose(expected_flat,
+                          array_ops.reshape(def_function.function(f)(x), [-1]),
+                          rtol=1e-3)
 
   @test_util.run_in_graph_and_eager_modes
   def test_indexed_slices(self):

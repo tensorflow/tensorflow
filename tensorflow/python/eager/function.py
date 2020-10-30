@@ -1387,6 +1387,7 @@ class _HigherOrderTapeGradientFunctions(_TapeGradientFunctions):
           gradients with respect to the inputs.
     """
     outputs = []
+    iteration_count = 0
     # First we need to figure out how many side outputs from the forward pass
     # will be required. We do this in a temporary graph to avoid actually
     # running multiple copies of the backward pass (one per _GradientsHelper
@@ -1401,15 +1402,42 @@ class _HigherOrderTapeGradientFunctions(_TapeGradientFunctions):
     # all of the forward op's outputs: symbolic gradients with tf.gradients
     # instead rely on regenerating backward functions when higher-order
     # gradients are requested.
-    while len(outputs) < len(self._func_graph.outputs):
+    while (len(outputs) < len(self._func_graph.outputs)
+           # It's possible for gradient generation to add new ops to the forward
+           # pass. If all of the new outputs are non-trainable, there's no
+           # reason to continue.
+           and any(backprop_util.IsTrainable(output)
+                   for output in self._func_graph.outputs[len(outputs):])):
+      iteration_count += 1
+      if iteration_count >= 20 and iteration_count % 5 == 0:
+        new_op_with_trainable_output = None
+        num_new_trainable_outputs = 0
+        for output in self._func_graph.outputs[len(outputs):]:
+          if backprop_util.IsTrainable(output):
+            num_new_trainable_outputs += 1
+            new_op_with_trainable_output = output.op
+        logging.warning(
+            ("Determining side outputs for the function '{}' is taking longer "
+             "than expected ({} iterations, typically this converges in 5 or "
+             "so). This could indicate that a gradient registration is adding "
+             "new ops to the forward pass every time gradients are generated. "
+             "{} new trainable output(s) were added this iteration, one from "
+             "the following op:\n {}\nThis may indicate a TensorFlow bug, or "
+             "an issue in a tf.custom_gradient.")
+            .format(
+                self._func_graph.name, iteration_count,
+                num_new_trainable_outputs, new_op_with_trainable_output))
       outputs = list(self._func_graph.outputs)
       self._build_functions_for_outputs(
           outputs, inference_args, input_tangents)
+
     (forward_function, forward_graph,
      backward_function, output_indices, num_output_tangents) = (
          self._build_functions_for_outputs(
              outputs, inference_args, input_tangents))
-    if len(self._func_graph.outputs) != len(outputs):
+    if (len(self._func_graph.outputs) > len(outputs)
+        and any(backprop_util.IsTrainable(output)
+                for output in self._func_graph.outputs[len(outputs):])):
       raise AssertionError(
           ("Unexpectedly added new outputs to the forward function when "
            "building the backward function: {}").format(

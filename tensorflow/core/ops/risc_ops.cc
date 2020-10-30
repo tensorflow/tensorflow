@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,14 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/kernels/batch_matmul_op_impl.h"
+#include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
 
-TF_CALL_COMPLEX_TYPES(REGISTER_BATCH_MATMUL_CPU);
-
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-TF_CALL_COMPLEX_TYPES(REGISTER_BATCH_MATMUL_GPU);
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+REGISTER_OP("RiscAdd")
+    .Input("x: T")
+    .Input("y: T")
+    .Output("z: T")
+    .Attr("T: {bfloat16, half, float, double}")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .SetIsAggregate()
+    .SetIsCommutative();
 
 }  // namespace tensorflow

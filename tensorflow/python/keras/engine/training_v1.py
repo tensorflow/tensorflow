@@ -504,7 +504,9 @@ class Model(training_lib.Model):
         return super(Model, self).metrics
       metrics += self._compile_metric_functions
     metrics.extend(self._metrics)
-    metrics.extend(_get_metrics_from_layers(self._layers))
+    metrics.extend(
+        _get_metrics_from_layers(
+            list(self._flatten_layers(include_self=False, recursive=False))))
     return metrics
 
   @property
@@ -1717,7 +1719,7 @@ class Model(training_lib.Model):
 
     # Avoids the override in Sequential.layers which filters Input layers.
     # (Which are often the very layers that we're after.)
-    layers = layer_utils.filter_empty_layer_containers(self._layers)
+    layers = self._flatten_layers(include_self=False, recursive=False)
     first_layer = next(layers, None)
     if first_layer:
       # The per-replica static batch size.

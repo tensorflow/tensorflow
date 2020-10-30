@@ -276,12 +276,8 @@ def while_loop(cond,
           body_graph,
           output_shapes=output_shapes,
           parallel_iterations=parallel_iterations,
-          name=scope)
-      # This is needed so we do not compute derivative wrt these extra outputs.
-      outputs[0].op._set_attr("_num_original_outputs",
-                              attr_value_pb2.AttrValue(i=num_original_outputs))
-    outputs[0].op._cond_graph = cond_graph
-    outputs[0].op._body_graph = body_graph
+          name=scope,
+          num_original_outputs=num_original_outputs)
     if not ops.get_default_graph().building_function:
       # In V1 graph mode, return identities for each output of the While op,
       # rather than the output of the While op directly. This makes pruning work
@@ -366,11 +362,18 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
     cond_graph.name += "_rewritten"
     body_graph.name += "_rewritten"
 
+    # `body_grad_graph.extra_inputs` here is equivalent to skimming off the new
+    # `body_graph.external_captures` added during `_create_grad_func`.
     new_inputs = body_grad_graph.extra_inputs
     new_outputs = body_graph.outputs[orig_num_params:]
 
     while_op._set_func_attr("cond", util.create_new_tf_function(cond_graph))
     while_op._set_func_attr("body", util.create_new_tf_function(body_graph))
+    if len(body_graph.output_types) != len(while_op.inputs) + len(new_inputs):
+      # Continuing leads to an invalid graph with disconnected inputs.
+      raise AssertionError(
+          "Inputs and outputs constructed for the forward op of a While "
+          "gradient don't match. This doesn't make sense, please file a bug.")
     while_op._set_type_list_attr("T", body_graph.output_types)
     while_op._set_shape_list_attr("output_shapes", body_graph.output_shapes)
     while_op._add_while_inputs(new_inputs)
@@ -408,7 +411,8 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
       body_grad_graph,
       output_shapes=[t.shape for t in body_grad_graph.outputs],
       parallel_iterations=parallel_iterations,
-      name="%s_grad" % while_op.name)
+      name="%s_grad" % while_op.name,
+      num_original_outputs=len(body_grad_graph.outputs))
 
   # See comment in while_loop.
   outputs = [array_ops.identity(t) for t in outputs]
@@ -416,7 +420,7 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
 
 
 def _build_while_op(loop_vars, cond_graph, body_graph, output_shapes,
-                    parallel_iterations, name):
+                    parallel_iterations, name, num_original_outputs):
   """Builds the functional StatelessWhile/While op."""
   cond_stateful_ops = [
       op for op in cond_graph.get_operations() if op._is_stateful
@@ -429,19 +433,30 @@ def _build_while_op(loop_vars, cond_graph, body_graph, output_shapes,
   else:
     op_fn = gen_functional_ops.stateless_while
 
-  outputs = op_fn(
-      loop_vars,
-      util.create_new_tf_function(cond_graph),
-      util.create_new_tf_function(body_graph),
-      output_shapes=output_shapes,
-      parallel_iterations=parallel_iterations,
-      name=name)
-  while_op = outputs[0].op
-  _copy_handle_data(body_graph.outputs, outputs)
-  util.maybe_set_lowering_attr(while_op)
-  util.maybe_propagate_compile_time_consts_in_xla(while_op)
-  _set_read_only_resource_inputs_attr(while_op, [cond_graph, body_graph])
-  return outputs
+  def _make_op(inputs):
+    while_op, tensors = util.get_op_and_outputs(op_fn(
+        inputs,
+        util.create_new_tf_function(cond_graph),
+        util.create_new_tf_function(body_graph),
+        output_shapes=output_shapes,
+        parallel_iterations=parallel_iterations,
+        name=name))
+    _copy_handle_data(body_graph.outputs, tensors)
+    util.maybe_set_lowering_attr(while_op)
+    util.maybe_propagate_compile_time_consts_in_xla(while_op)
+    _set_read_only_resource_inputs_attr(while_op, [cond_graph, body_graph])
+    # This is needed so we do not compute derivative wrt these extra outputs.
+    while_op._set_attr("_num_original_outputs",
+                       attr_value_pb2.AttrValue(i=num_original_outputs))
+    # The while op may be created inside a tf.function, in which case ops
+    # needs to capture "through" it when taking gradients; outer_graph is used
+    # as a sanity check that capturing only happens from parent to child.
+    cond_graph.outer_graph = ops.get_default_graph()
+    body_graph.outer_graph = ops.get_default_graph()
+    while_op._cond_graph = cond_graph
+    while_op._body_graph = body_graph
+    return tensors
+  return util.run_as_function_for_tape_gradients(_make_op, loop_vars)
 
 
 def _get_intermediates(func_graph):
@@ -815,7 +830,7 @@ def _get_accumulator(tensor):
     # tf.defun adds an Identity for each output, check whether that is the case.
     identity_op = t.consumers()[0]
     if (identity_op.type == "Identity" and
-        identity_op.outputs[0] in tensor.graph.outputs):
+        any(identity_op.outputs[0] is t for t in tensor.graph.outputs)):
       return identity_op.outputs[0]
     return None
 
@@ -938,10 +953,16 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
     # and popping from a TensorList removes the constant property of an op and
     # breaks XLA compilation, which requires certain inputs to be compile-time
     # constant for certain ops.
+    #
+    # This optimization is currently also disabled when under a persistent tape,
+    # since it leads to an unbounded number of side outputs. With caching it may
+    # be possible to re-enable it.
     if (op_type in {"Shape", "Size", "Rank"} and
         all(input.graph is self._forward_graph for input in inputs) and
         all(_get_accumulator(input) is None for input in inputs) and
-        not util_v1.GraphOrParentsInXlaContext(self._forward_graph)):
+        not util_v1.GraphOrParentsInXlaContext(self._forward_graph) and
+        not util.graph_wrapped_for_higher_order_tape_gradients(
+            self._forward_graph)):
       with self._forward_graph.as_default():
         # `name` was built using name_scope stack of gradient graph and may not
         # be unique in the forward graph. `Graph.create_op` does not uniquify

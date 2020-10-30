@@ -1315,6 +1315,26 @@ for dtype in dtype_list:
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_BoostedTreesBucketizeOp : TF_Op<"BoostedTreesBucketize", [NoSideEffect, SameVariadicOperandSize]> {
+  let summary = "Bucketize each feature based on bucket boundaries.";
+
+  let description = [{
+An op that returns a list of float tensors, where each tensor represents the
+bucketized values for a single feature.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Float32Tensor>:$float_values,
+    Variadic<TF_Float32Tensor>:$bucket_boundaries
+  );
+
+  let results = (outs
+    Variadic<TF_Int32Tensor>:$buckets
+  );
+
+  TF_DerivedOperandSizeAttr num_features = TF_DerivedOperandSizeAttr<0>;
+}
+
 def TF_BroadcastArgsOp : TF_Op<"BroadcastArgs", [NoSideEffect]> {
   let summary = "Return the shape of s0 op s1 with broadcast.";
 
@@ -1651,10 +1671,12 @@ Mutually reduces multiple tensors of identical type and shape.
     TF_Int32Tensor:$group_size,
     TF_Int32Tensor:$group_key,
     TF_Int32Tensor:$instance_key,
+    Variadic<TF_ResourceTensor>:$ordering_token,
 
     TF_AnyStrAttrOf<["Min", "Max", "Mul", "Add"]>:$merge_op,
     TF_AnyStrAttrOf<["Id", "Div"]>:$final_op,
-    DefaultValuedAttr<StrAttr, "auto">:$communication_hint
+    DefaultValuedAttr<StrAttr, "auto">:$communication_hint,
+    DefaultValuedAttr<F32Attr, "0.0f">:$timeout_seconds
   );
 
   let results = (outs
@@ -1662,6 +1684,7 @@ Mutually reduces multiple tensors of identical type and shape.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandSizeAttr Nordering_token = TF_DerivedOperandSizeAttr<4>;
 }
 
 def TF_ComplexOp : TF_Op<"Complex", [NoSideEffect, ResultsBroadcastableShape]> {
@@ -11502,6 +11525,56 @@ See `tf.sparse.segment_sum` for usage examples.
 
   let results = (outs
     TensorOf<[TF_Bfloat16, TF_Float32, TF_Float64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tsegmentids = TF_DerivedOperandTypeAttr<2>;
+  TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_SparseSegmentSumOp : TF_Op<"SparseSegmentSum", [NoSideEffect]> {
+  let summary = "Computes the sum along sparse segments of a tensor.";
+
+  let description = [{
+Read
+[the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+for an explanation of segments.
+
+Like `SegmentSum`, but `segment_ids` can have rank less than `data`'s first
+dimension, selecting a subset of dimension 0, specified by `indices`.
+
+For example:
+
+```python
+c = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])
+
+# Select two rows, one segment.
+tf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 0]))
+# => [[0 0 0 0]]
+
+# Select two rows, two segment.
+tf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 1]))
+# => [[ 1  2  3  4]
+#     [-1 -2 -3 -4]]
+
+# Select all rows, two segments.
+tf.sparse_segment_sum(c, tf.constant([0, 1, 2]), tf.constant([0, 0, 1]))
+# => [[0 0 0 0]
+#     [5 6 7 8]]
+
+# Which is equivalent to:
+tf.segment_sum(c, tf.constant([0, 0, 1]))
+```
+  }];
+
+  let arguments = (ins
+    TF_IntOrFpTensor:$data,
+    TF_I32OrI64Tensor:$indices,
+    TF_I32OrI64Tensor:$segment_ids
+  );
+
+  let results = (outs
+    TF_IntOrFpTensor:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;

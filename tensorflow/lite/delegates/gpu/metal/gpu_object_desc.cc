@@ -13,25 +13,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
+#include "tensorflow/lite/delegates/gpu/metal/gpu_object_desc.h"
 
 namespace tflite {
 namespace gpu {
-namespace cl {
+namespace metal {
 
-std::string MemoryTypeToCLType(MemoryType type) {
+std::string MemoryTypeToMetalType(MemoryType type) {
   switch (type) {
     case MemoryType::GLOBAL:
-      return "__global";
+      return "device";
     case MemoryType::CONSTANT:
-      return "__constant";
+      return "constant";
       break;
     case MemoryType::LOCAL:
-      return "__local";
+      return "threadgroup";
   }
   return "";
 }
 
-}  // namespace cl
+}  // namespace metal
 }  // namespace gpu
 }  // namespace tflite

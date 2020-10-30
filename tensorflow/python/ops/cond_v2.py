@@ -26,7 +26,6 @@ from __future__ import print_function
 import collections
 
 from tensorflow.python.eager import backprop_util
-from tensorflow.python.eager import function
 from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import auto_control_deps_utils as acd
 from tensorflow.python.framework import constant_op
@@ -193,37 +192,6 @@ def _IfGrad(op, *grads):  # pylint: disable=invalid-name
   return [None] + outputs
 
 
-def _run_as_function_for_tape_gradients(make_op, cond_inputs):
-  """Fix higher-order tape gradients by wrapping `make_op` in a function."""
-  # GradientTapes created inside a function currently don't work well with
-  # un-wrapped control flow ops in that same function. Wrapping in an extra
-  # layer of intermediate function means we run extra logic in the function
-  # gradient code to record the correct intermediates on the tape.
-  #
-  # The function attribute inputs to cond/case ops are not hashable, so we pass
-  # everything as a capture to bypass defun's caching.
-  if (gradients_util.PossibleTapeGradientTypes(cond_inputs)
-      == gradients_util.POSSIBLE_GRADIENT_TYPES_HIGHER_ORDER
-      # We only need one function between the tape and the cond; if we've
-      # already wrapped once, we stop wrapping to avoid infinite recursion.
-      and not (ops.get_default_graph().building_function
-               and "cond_gradient_wrapper" in ops.get_default_graph().name)):
-
-    op = None
-    def _run_make_and_extract_op():
-      # Post-processing happens on the cond op, not the function call op.
-      nonlocal op
-      tensors = make_op()
-      op, tensors = _get_op_and_outputs(tensors)  # pylint: disable=unused-variable
-      return tensors
-
-    return op, function.defun_with_attributes(
-        _run_make_and_extract_op,
-        attributes=dict(func_name="cond_gradient_wrapper"))()
-  else:
-    return _get_op_and_outputs(make_op())
-
-
 def _build_cond(pred,
                 true_graph,
                 false_graph,
@@ -300,28 +268,35 @@ def _build_cond(pred,
     else:
       op_fn = gen_functional_ops.stateless_if
 
-    def make_op():
-      return op_fn(
+    def _make_op(inputs):
+      if_op, tensors = util.get_op_and_outputs(op_fn(
           pred,
-          cond_inputs, [t.dtype for t in true_graph.outputs],
+          inputs, [t.dtype for t in true_graph.outputs],
           util.create_new_tf_function(true_graph),
           util.create_new_tf_function(false_graph),
           output_shapes=_get_output_shapes(true_graph.outputs,
                                            false_graph.outputs),
-          name=name)
-    if_op, tensors = _run_as_function_for_tape_gradients(make_op, cond_inputs)
+          name=name))
+      _copy_handle_data(tensors, true_graph.outputs, false_graph.outputs)
+      # `if_op` is None if this is a `StatelessIf` op with no outputs.
+      if if_op is not None:
+        # The true and false graphs have already been created, and we need that
+        # to happen before we know which tensors will be captured and so whether
+        # to wrap the cond in a tf.function. Post-hoc mutation of the branch
+        # `outer_graph` properties seems like the only option if we want to
+        # conditionally wrap in a function.
+        true_graph.outer_graph = ops.get_default_graph()
+        false_graph.outer_graph = ops.get_default_graph()
+        if_op._true_graph = true_graph
+        if_op._false_graph = false_graph
+        util.maybe_set_lowering_attr(if_op)
+        util.maybe_propagate_compile_time_consts_in_xla(if_op)
+        _set_read_only_resource_inputs_attr(if_op, [true_graph, false_graph])
+        # Prevent fetching since the variant outputs can't be fetched directly.
+        if_op.graph.prevent_fetching(if_op)
+      return tensors
+    tensors = util.run_as_function_for_tape_gradients(_make_op, cond_inputs)
 
-  # `if_op` is None if this is a `StatelessIf` op with no outputs.
-  if if_op is not None:
-    if_op._true_graph = true_graph
-    if_op._false_graph = false_graph
-    util.maybe_set_lowering_attr(if_op)
-    util.maybe_propagate_compile_time_consts_in_xla(if_op)
-    _set_read_only_resource_inputs_attr(if_op, [true_graph, false_graph])
-    # Prevent fetching since the variant outputs can't be fetched directly.
-    if_op.graph.prevent_fetching(if_op)
-
-  _copy_handle_data(tensors, true_graph.outputs, false_graph.outputs)
   # Return identities for each output of the If op, rather than the output of
   # the If op directly. This makes pruning work if the output of cond() is
   # fetched: the lowering pass converts the If outputs into IdentityN outputs,
@@ -716,15 +691,6 @@ def _make_indexed_slices_indices_types_match(op_type, branch_graphs):
   for branch_graph in branch_graphs:
     branch_graph.structured_outputs = _pack_sequence_as(
         branch_graph.structured_outputs, branch_graph.outputs)
-
-
-def _get_op_and_outputs(op_or_outputs):
-  if isinstance(op_or_outputs, ops.Operation):
-    return op_or_outputs, []
-  elif not op_or_outputs:  # Empty list.
-    return None, []
-  else:
-    return op_or_outputs[0].op, op_or_outputs
 
 
 def _pack_sequence_as(structured_outputs, op_outputs):
@@ -1190,24 +1156,23 @@ def _build_case(branch_index,
   with ops.control_dependencies(
       sum((list(bg.control_captures) for bg in branch_graphs), [])):
 
-    def _make_op():
-      return op_fn(
+    def _make_op(inputs):
+      case_op, tensors = util.get_op_and_outputs(op_fn(
           branch_index,
-          case_inputs, [t.dtype for t in branch_graphs[0].outputs],
+          inputs, [t.dtype for t in branch_graphs[0].outputs],
           [util.create_new_tf_function(g) for g in branch_graphs],
           output_shapes=_get_output_shapes(*[g.outputs for g in branch_graphs]),
-          name=name)
-    case_op, tensors = _run_as_function_for_tape_gradients(
-        _make_op, case_inputs)
+          name=name))
+      _copy_handle_data(tensors, *[g.outputs for g in branch_graphs])
+      if case_op is not None:
+        util.maybe_set_lowering_attr(case_op, lower_using_switch_merge)
+        util.maybe_propagate_compile_time_consts_in_xla(case_op)
+        _set_read_only_resource_inputs_attr(case_op, branch_graphs)
+        # Prevent fetching since the variant outputs can't be fetched directly.
+        case_op.graph.prevent_fetching(case_op)
+      return tensors
+    tensors = util.run_as_function_for_tape_gradients(_make_op, case_inputs)
 
-  if case_op is not None:
-    util.maybe_set_lowering_attr(case_op, lower_using_switch_merge)
-    util.maybe_propagate_compile_time_consts_in_xla(case_op)
-    _set_read_only_resource_inputs_attr(case_op, branch_graphs)
-    # Prevent fetching since the variant outputs can't be fetched directly.
-    case_op.graph.prevent_fetching(case_op)
-
-  _copy_handle_data(tensors, *[g.outputs for g in branch_graphs])
   # Return identities for each output of the Case op, rather than the output of
   # the Case op directly. This makes pruning work if the output of switch_case()
   # is fetched: the lowering pass converts the Case outputs into IdentityN

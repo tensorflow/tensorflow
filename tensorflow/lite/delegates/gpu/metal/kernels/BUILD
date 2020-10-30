@@ -370,6 +370,7 @@ ios_unit_test(
     minimum_os_version = "11.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = [
+        "no_mac",  # TODO(b/171882133)
         "notap",
         "tflite_not_portable_android",
     ],

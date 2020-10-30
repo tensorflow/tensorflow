@@ -3,7 +3,7 @@
 #   related to dist-strat used by Keras..
 
 load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
-load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
@@ -31,6 +31,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":sidecar_evaluator",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data",
         "//tensorflow/python/distribute:distribute_coordinator",
@@ -221,6 +222,7 @@ distribute_py_test(
     shard_count = 10,
     tags = [
         "multi_and_single_gpu",
+        "no_cuda_asan",  # times out
     ],
     deps = [
         ":optimizer_combinations",
@@ -819,6 +821,7 @@ distribute_py_test(
     shard_count = 7,
     tags = [
         "multi_and_single_gpu",
+        "no_cuda_asan",  # times out
         "no_rocm",
     ],
     xla_tags = [
@@ -840,6 +843,9 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_rocm",
+    ],
+    xla_tags = [
+        "no_cuda_asan",  # times out
     ],
     deps = [
         ":saved_model_test_base",
@@ -918,5 +924,33 @@ py_test(
     deps = [
         ":distributed_file_utils",
         "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_library(
+    name = "sidecar_evaluator",
+    srcs = ["sidecar_evaluator.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:summary_ops_v2",
+        "//tensorflow/python:tf_export",
+        "//tensorflow/python:training_lib",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/training/tracking:util",
+        "@absl_py//absl/logging",
+    ],
+)
+
+tf_py_test(
+    name = "sidecar_evaluator_test",
+    size = "small",
+    srcs = ["sidecar_evaluator_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":sidecar_evaluator",
+        "//tensorflow/python/compat:v2_compat",
     ],
 )

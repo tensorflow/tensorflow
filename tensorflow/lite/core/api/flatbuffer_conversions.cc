@@ -761,6 +761,16 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       *builtin_data = params.release();
       return kTfLiteOk;
     }
+    case BuiltinOperator_CALL_ONCE: {
+      auto params = safe_allocator.Allocate<TfLiteCallOnceParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* call_once_params =
+              op->builtin_options_as_CallOnceOptions()) {
+        params->init_subgraph_index = call_once_params->init_subgraph_index();
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
     case BuiltinOperator_CUMSUM: {
       auto params = safe_allocator.Allocate<TfLiteCumsumParams>();
       TF_LITE_ENSURE(error_reporter, params != nullptr);

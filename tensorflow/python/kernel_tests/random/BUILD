@@ -145,6 +145,9 @@ cuda_py_test(
     srcs = ["random_gamma_test.py"],
     shard_count = 4,
     tags = ["nozapfhahn"],
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         ":util",
         "//tensorflow/python:array_ops",

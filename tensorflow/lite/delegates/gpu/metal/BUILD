@@ -43,7 +43,34 @@ cc_library(
     srcs = ["arguments.cc"],
     hdrs = ["arguments.h"],
     deps = [
+        ":gpu_object_desc",
         "//tensorflow/lite/delegates/gpu/common:status",
+    ],
+)
+
+objc_library(
+    name = "buffer",
+    srcs = ["buffer.mm"],
+    hdrs = ["buffer.h"],
+    copts = DEFAULT_COPTS,
+    sdk_frameworks = ["Metal"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+objc_library(
+    name = "buffer_test_lib",
+    testonly = 1,
+    srcs = ["buffer_test.mm"],
+    sdk_frameworks = [
+        "XCTest",
+        "Metal",
+    ],
+    deps = [
+        ":buffer",
+        "//tensorflow/lite/delegates/gpu/common:types",
     ],
 )
 
@@ -183,6 +210,17 @@ objc_library(
     ],
 )
 
+cc_library(
+    name = "gpu_object_desc",
+    srcs = ["gpu_object_desc.cc"],
+    hdrs = ["gpu_object_desc.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:access_type",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:status",
+    ],
+)
+
 objc_library(
     name = "inference_context",
     srcs = ["inference_context.mm"],
@@ -232,6 +270,7 @@ objc_library(
     sdk_frameworks = ["Metal"],
     deps = [
         ":arguments",
+        ":gpu_object_desc",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:util",
         "@com_google_absl//absl/strings",
@@ -272,6 +311,7 @@ objc_library(
     name = "common_tests_lib",
     testonly = 1,
     srcs = [
+        "//tensorflow/lite/delegates/gpu/metal:buffer_test.mm",
         "//tensorflow/lite/delegates/gpu/metal:common_test.mm",
         "//tensorflow/lite/delegates/gpu/metal:compiled_model_test.mm",
         "//tensorflow/lite/delegates/gpu/metal:inference_context_test.mm",
@@ -280,6 +320,8 @@ objc_library(
     ],
     sdk_frameworks = ["XCTest"],
     deps = [
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/metal:buffer",
         "//tensorflow/lite/delegates/gpu/metal:common",
         "//tensorflow/lite/delegates/gpu/metal:environment",
         "//tensorflow/lite/delegates/gpu/metal:inference_context",

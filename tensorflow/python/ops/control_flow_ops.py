@@ -3616,6 +3616,7 @@ def switch_case(branch_index,
   return _indexed_case_helper(branch_fns, default, branch_index, name)
 
 
+@tf_export("__internal__.execute_fn_for_device", v1=[])
 def execute_fn_for_device(device_branch_fns, default_fn, name="execute_fn"):
   """Executes one of the provided callables based on the device placement.
 

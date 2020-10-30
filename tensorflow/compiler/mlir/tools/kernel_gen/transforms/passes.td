@@ -28,6 +28,11 @@ def EmbedTFFrameworkPass : Pass<"embed-tf-framework", "ModuleOp"> {
   let constructor = "tf_framework::CreateEmbedTFFrameworkPass()";
 }
 
+def BufferReusePass : FunctionPass<"buffer-reuse"> {
+  let summary = "Pass to find and annotate candidates for buffer reuse.";
+  let constructor = "transforms::CreateBufferReusePass()";
+}
+
 def ShapeToDescriptorsPass : Pass<"shape-to-descriptors", "ModuleOp"> {
   let summary = "Pass to transform shape computations to descriptors";
   let constructor = "transforms::CreateShapeToDescriptorsPass()";
@@ -74,6 +79,18 @@ def PropagateTensorFlowABIKnowledgePass
                "List of same shape args">,
   ];
   let constructor = "transforms::CreatePropagateTensorFlowABIKnowledgePass()";
+}
+
+def PropagateTfAbiKnowledgeToKernels
+    : FunctionPass<"propagate-tf-abi-knowledge-to-kernels"> {
+  let summary = "Pass to propagate tensorflow ABI knowledge to kernels";
+  let constructor = "transforms::CreatePropagateTfAbiKnowledgeToKernels()";
+}
+
+def PropagateShapeKnowledgeToKernels
+    : FunctionPass<"propagate-shape-knowledge-to-kernels"> {
+  let summary = "Pass to propagate shape information into kernels";
+  let constructor = "transforms::CreatePropagateShapeKnowledgeToKernels()";
 }
 
 #endif // TF_KERNEL_GEN_PASSES

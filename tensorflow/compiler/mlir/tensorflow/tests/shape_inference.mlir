@@ -440,6 +440,22 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     return %arg0 : tensor<2xi32>
   }
 
+  // Test not updating call site if a std.call is used.
+  // CHECK-LABEL: func @call_partitioned_call2(
+  // CHECK-SAME: -> tensor<*xi32>
+  func @call_partitioned_call2() -> tensor<*xi32> {
+    // CHECK: () -> tensor<*xi32>
+    %0 = call @partitioned_called_func2() : () -> tensor<*xi32>
+    return %0 : tensor<*xi32>
+  }
+  // CHECK-LABEL: func @partitioned_called_func2(
+  // CHECK-SAME: -> tensor<*xi32>
+  func @partitioned_called_func2() -> (tensor<*xi32>) {
+    %0 = "tf.Const"() {value = dense<-1> : tensor<1xi32>} : () -> tensor<1xi32>
+    %1 = tensor_cast %0 : tensor<1xi32> to tensor<*xi32>
+    return %1 : tensor<*xi32>
+  }
+
   // CHECK-LABEL: func @tensor_list_refine
   func @tensor_list_refine() {
     tf_executor.graph {
@@ -501,16 +517,16 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-LABEL: cast_at_end(%arg0:
   // CHECK-SAME: tensor<16x194x199x4xui8>, tensor<16x194x199x4xi8>, tensor<*xi8>
   func @cast_at_end(%arg0: tensor<16x194x199x4xf32>, %arg1: tensor<16x194x199x4xi8>) -> (tensor<*xui8>, tensor<*xi8>, tensor<*xi8>) {
-    // CHECK: %[[CAST_RESULT_0:.*]] = "tf.Cast"(%arg0)
-    // CHECK-SAME: (tensor<16x194x199x4xf32>) -> tensor<16x194x199x4xui8>
     %27 = "tf.Cast"(%arg0) {Truncate = false, device = ""} : (tensor<16x194x199x4xf32>) -> tensor<*xui8>
-    // CHECK: %[[CAST_RESULT_1:.*]] = "tf.Cast"(%arg0)
-    // CHECK-SAME: (tensor<16x194x199x4xf32>) -> tensor<16x194x199x4xi8>
-    // CHECK: %[[CAST_RESULT_2:.*]] = "tf.Cast"(%[[CAST_RESULT_1]])
-    // CHECK-SAME: (tensor<16x194x199x4xi8>) -> tensor<*xi8>
     %28 = "tf.Cast"(%arg0) {Truncate = false, device = ""} : (tensor<16x194x199x4xf32>) -> tensor<*xi8>
+    // CHECK: %[[CAST_RESULT_2:.*]] = "tf.Cast"(%arg0)
+    // CHECK-SAME: (tensor<16x194x199x4xf32>) -> tensor<*xi8>
     // CHECK: %[[ADDI:.*]] = addi %[[CAST_RESULT_2]], %[[CAST_RESULT_2]]
     %2 = addi %28, %28 : tensor<*xi8>
+    // CHECK: %[[CAST_RESULT_0:.*]] = "tf.Cast"(%arg0)
+    // CHECK-SAME: (tensor<16x194x199x4xf32>) -> tensor<16x194x199x4xui8>
+    // CHECK: %[[CAST_RESULT_1:.*]] = "tf.Cast"(%arg0)
+    // CHECK-SAME: (tensor<16x194x199x4xf32>) -> tensor<16x194x199x4xi8>
     // CHECK: return %[[CAST_RESULT_0]], %[[CAST_RESULT_1]], %[[ADDI]]
     return %27, %28, %2 : tensor<*xui8>, tensor<*xi8>, tensor<*xi8>
   }
