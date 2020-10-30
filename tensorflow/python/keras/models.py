@@ -594,7 +594,7 @@ def clone_and_build_model(
     optimizer_config=None):
   """Clone a `Model` and build/compile it with the same settings used before.
 
-  This function can be be run in the same graph or in a separate graph from the
+  This function can be run in the same graph or in a separate graph from the
   model. When using a separate graph, `in_place_reset` must be `False`.
 
   Note that, currently, the clone produced from this function may not work with
@@ -659,7 +659,7 @@ def clone_and_build_model(
                   model._build_input_shape, dtype=model.inputs[0].dtype))
     else:
       try:
-        # Prefer clonining the model if serial/deserial logic is implemented for
+        # Prefer cloning the model if serial/deserial logic is implemented for
         # subclassed model.
         clone = model.__class__.from_config(model.get_config())
       except NotImplementedError:

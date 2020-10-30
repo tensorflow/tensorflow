@@ -608,8 +608,8 @@ class Functional(training_lib.Model):
   def _conform_to_reference_input(self, tensor, ref_input):
     """Set shape and dtype based on `keras.Input`s."""
     if isinstance(tensor, ops.Tensor):
-      # Allow (None,) and (None, 1) Tensors to be passed interchangably. Use the
-      # shape specified by the `keras.Input`.
+      # Allow (None,) and (None, 1) Tensors to be passed interchangeably. Use
+      # the shape specified by the `keras.Input`.
       t_shape = tensor.shape
       t_rank = t_shape.rank
       ref_shape = ref_input.shape
@@ -1117,7 +1117,7 @@ def reconstruct_from_config(config, custom_objects=None, created_layers=None):
     custom_objects: Optional dictionary mapping names (strings) to custom
       classes or functions to be considered during deserialization.
     created_layers: Optional dictionary mapping names to Layer objects. Any
-      layer not in this dictionary will be be created and added to the dict.
+      layer not in this dictionary will be created and added to the dict.
       This function will add new nodes to all layers (excluding InputLayers),
       instead of re-using pre-existing nodes in the layers.
 
