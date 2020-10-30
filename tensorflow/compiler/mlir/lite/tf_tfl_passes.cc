@@ -211,6 +211,13 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     pass_manager->addPass(mlir::createSymbolDCEPass());
     pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
     pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
+
+    // Run quantization after all the floating point model conversion is
+    // completed.
+    if (pass_config.quant_specs.RunPropagationAndRewriteQuantizationPasses()) {
+      AddQuantizationPasses(pass_config.quant_specs, pass_manager);
+    }
+
     // This pass should be always at the end of the floating point model
     // conversion. Some TFL ops like unidirectional
     // sequence lstm will have stateful operands and some optimization passes
@@ -219,12 +226,6 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     // merged inputs until we have 1st class variable support or reuse
     // tf.variable to model this.
     pass_manager->addPass(mlir::TFL::CreateSplitMergedOperandsPass());
-
-    // Run quantization after all the floating point model conversion is
-    // completed.
-    if (pass_config.quant_specs.RunPropagationAndRewriteQuantizationPasses()) {
-      AddQuantizationPasses(pass_config.quant_specs, pass_manager);
-    }
   }
 }
 
