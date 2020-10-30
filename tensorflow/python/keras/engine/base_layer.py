@@ -397,10 +397,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     self._autocast = kwargs.get('autocast',
                                 base_layer_utils.v2_dtype_behavior_enabled())
 
-    # Dependencies tracked via attribute assignment.
-    # All layers in order of horizontal graph traversal.
-    # Entries are unique. For models includes input and output layers.
-    self._maybe_create_attribute('_layers', [])
+    # Tracks `TrackableDataStructure`s, `Module`s, and `Layer`s.
+    # Ordered by when the object was assigned as an attr.
+    # Entries are unique.
+    self._maybe_create_attribute('_self_tracked_trackables', [])
 
     # These lists will be filled via successive calls
     # to self._add_inbound_node().
@@ -1351,14 +1351,11 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
     Trainable weights are updated via gradient descent during training.
 
-    Note: This will not track the weights of nested `tf.Modules` that are not
-    themselves Keras layers.
-
     Returns:
       A list of trainable variables.
     """
     if self.trainable:
-      children_weights = self._gather_children_attribute('trainable_weights')
+      children_weights = self._gather_children_attribute('trainable_variables')
       return self._dedup_weights(self._trainable_weights + children_weights)
     else:
       return []
@@ -1370,18 +1367,15 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     Non-trainable weights are *not* updated during training. They are expected
     to be updated manually in `call()`.
 
-    Note: This will not track the weights of nested `tf.Modules` that are not
-    themselves Keras layers.
-
     Returns:
       A list of non-trainable variables.
     """
     if self.trainable:
       children_weights = self._gather_children_attribute(
-          'non_trainable_weights')
+          'non_trainable_variables')
       non_trainable_weights = self._non_trainable_weights + children_weights
     else:
-      children_weights = self._gather_children_attribute('weights')
+      children_weights = self._gather_children_attribute('variables')
       non_trainable_weights = (
           self._trainable_weights + self._non_trainable_weights +
           children_weights)
@@ -1390,9 +1384,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   @property
   def weights(self):
     """Returns the list of all layer variables/weights.
-
-    Note: This will not track the weights of nested `tf.Modules` that are not
-    themselves Keras layers.
 
     Returns:
       A list of variables.
@@ -1609,7 +1600,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   def _clear_losses(self):
     """Used every step in eager to reset losses."""
     # Set to thread local directly to avoid Layer.__setattr__ overhead.
-    if not getattr(self, '_layers', None):  # Fast path for single Layer.
+    if not getattr(self, '_self_tracked_trackables',
+                   None):  # Fast path for single Layer.
       self._thread_local._eager_losses = []
     else:
       for layer in self._flatten_layers():
@@ -2779,7 +2771,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       default_value: Object, the default value of the attribute.
     """
     if not hasattr(self, name):
-      super(Layer, self).__setattr__(name, default_value)
+      self.__setattr__(name, default_value)
 
   def __delattr__(self, name):
     # For any super.__delattr__() call, we will directly use the implementation
@@ -2813,8 +2805,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     if (isinstance(existing_value, Layer)
         or base_layer_utils.has_weights(existing_value)):
       super(tracking.AutoTrackable, self).__setattr__(
-          '_layers',
-          [l for l in self._layers if l is not existing_value])
+          '_self_tracked_trackables',
+          [l for l in self._self_tracked_trackables if l is not existing_value])
     if isinstance(existing_value, tf_variables.Variable):
       super(tracking.AutoTrackable, self).__setattr__(
           '_trainable_weights',
@@ -2837,7 +2829,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
              'different name.').format(name))
       return
 
-    # Keep track of trackable objects, for the needs of `Network.save_weights`.
+    # Wraps data structures in `Trackable`, unwraps `NoDependency` objects.
     value = data_structures.sticky_attribute_assignment(
         trackable=self, value=value, name=name)
 
@@ -2856,16 +2848,15 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       if isinstance(val, metrics_mod.Metric) and hasattr(self, '_metrics'):
         self._metrics.append(val)
 
-    # TODO(scottzhu): Need to track Module object as well for weight tracking.
-    # Be careful about metric if it becomes a Module in future.
-    # Append value to self._layers if relevant
+    # Append value to self._self_tracked_trackables if relevant
     if (getattr(self, '_auto_track_sub_layers', True) and
-        (isinstance(value, Layer) or base_layer_utils.has_weights(value))):
-      self._maybe_create_attribute('_layers', [])
+        (isinstance(value, module.Module) or
+         base_layer_utils.has_weights(value))):
+      self._maybe_create_attribute('_self_tracked_trackables', [])
       # We need to check object identity to avoid de-duplicating empty
       # container types which compare equal.
-      if not any((layer is value for layer in self._layers)):
-        self._layers.append(value)
+      if not any((layer is value for layer in self._self_tracked_trackables)):
+        self._self_tracked_trackables.append(value)
         if hasattr(value, '_use_resource_variables'):
           # Legacy layers (V1 tf.layers) must always use
           # resource variables.
@@ -2903,45 +2894,59 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
   def _gather_children_attribute(self, attribute):
     assert attribute in {
-        'weights', 'trainable_weights', 'non_trainable_weights'
+        'variables', 'trainable_variables', 'non_trainable_variables'
     }
-    if hasattr(self, '_layers'):
-      nested_layers = layer_utils.filter_empty_layer_containers(
-          self._layers)
+    if hasattr(self, '_self_tracked_trackables'):
+      nested_layers = self._flatten_modules(include_self=False, recursive=False)
       return list(
           itertools.chain.from_iterable(
               getattr(layer, attribute) for layer in nested_layers))
     return []
 
   def _flatten_layers(self, recursive=True, include_self=True):
+    for m in self._flatten_modules(
+        recursive=recursive, include_self=include_self):
+      if isinstance(m, Layer):
+        yield m
+
+  def _flatten_modules(self, recursive=True, include_self=True):
+    """Flattens `tf.Module` instances (excluding `Metrics`).
+
+    Arguments:
+      recursive: Whether to recursively flatten through submodules.
+      include_self: Whether to include this `Layer` instance.
+
+    Yields:
+      `tf.Module` instance tracked by this `Layer`.
+    """
     if include_self:
       yield self
 
     # Only instantiate set and deque if needed.
-    layers_or_containers = getattr(self, '_layers', None)
-    if layers_or_containers:
+    trackables = getattr(self, '_self_tracked_trackables', None)
+    if trackables:
       seen_object_ids = set()
-      deque = collections.deque(layers_or_containers)
+      deque = collections.deque(trackables)
       while deque:
-        layer_or_container = deque.popleft()
-
-        layer_or_container_id = id(layer_or_container)
-        if layer_or_container_id in seen_object_ids:
+        trackable_obj = deque.popleft()
+        trackable_id = id(trackable_obj)
+        if trackable_id in seen_object_ids:
           continue
-        seen_object_ids.add(layer_or_container_id)
+        seen_object_ids.add(trackable_id)
 
-        if (isinstance(layer_or_container, Layer) and
-            not isinstance(layer_or_container, metrics_mod.Metric)):
-          yield layer_or_container
+        # Metrics are not considered part of the Layer's topology.
+        if (isinstance(trackable_obj, module.Module) and
+            not isinstance(trackable_obj, metrics_mod.Metric)):
+          yield trackable_obj
           # Introspect recursively through sublayers.
           if recursive:
-            sublayers = getattr(layer_or_container, '_layers', None)
-            if sublayers:
-              deque.extendleft(reversed(sublayers))
-        elif isinstance(layer_or_container,
-                        data_structures.TrackableDataStructure):
+            subtrackables = getattr(trackable_obj, '_self_tracked_trackables',
+                                    None)
+            if subtrackables:
+              deque.extendleft(reversed(subtrackables))
+        elif isinstance(trackable_obj, data_structures.TrackableDataStructure):
           # Data structures are introspected even with `recursive=False`.
-          tracked_values = layer_or_container._values
+          tracked_values = trackable_obj._values
           if tracked_values:
             deque.extendleft(reversed(tracked_values))
 

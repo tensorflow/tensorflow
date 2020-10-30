@@ -204,9 +204,9 @@ class Functional(training_lib.Model):
         self.inputs, self.outputs)
     self._network_nodes = nodes
     self._nodes_by_depth = nodes_by_depth
-    self._layers = layers
+    self._self_tracked_trackables = layers
     self._layer_call_argspecs = {}
-    for layer in self._layers:
+    for layer in self._self_tracked_trackables:
       self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
 
     # Build self.input_names and self.output_names.
@@ -797,11 +797,11 @@ class Functional(training_lib.Model):
         self._nodes_by_depth[depth].append(node)
 
     # Insert layers and update other layer attrs.
-    layer_set = set(self._layers)
+    layer_set = set(self._self_tracked_trackables)
     deferred_layers = []
     for layer in layers:
       if layer not in layer_set:
-        self._layers.append(layer)
+        self._self_tracked_trackables.append(layer)
         deferred_layers.append(layer)
         self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
         layer_set.add(layer)
@@ -1089,7 +1089,8 @@ def _should_skip_first_node(layer):
   # the network config.
   return (isinstance(layer, Functional) and
           # Filter out Sequential models without an input shape.
-          isinstance(layer._layers[0], input_layer_module.InputLayer))
+          isinstance(layer._self_tracked_trackables[0],
+                     input_layer_module.InputLayer))
 
 
 def connect_ancillary_layers(model, created_layers):

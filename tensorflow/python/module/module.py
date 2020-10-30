@@ -176,6 +176,21 @@ class Module(tracking.AutoTrackable):
         self._flatten(predicate=_is_trainable_variable, expand_composites=True))
 
   @property
+  def non_trainable_variables(self):
+    """Sequence of non-trainable variables owned by this module and its submodules.
+
+    Note: this method uses reflection to find variables on the current instance
+    and submodules. For performance reasons you may wish to cache the result
+    of calling this method if you don't expect the return value to change.
+
+    Returns:
+      A sequence of variables for the current module (sorted by attribute
+      name) followed by variables from all submodules recursively (breadth
+      first).
+    """
+    return tuple(self._flatten(predicate=_is_non_trainable_variable))
+
+  @property
   def submodules(self):
     """Sequence of all sub-modules.
 
@@ -308,6 +323,10 @@ def _is_variable(obj):
 
 def _is_trainable_variable(obj):
   return _is_variable(obj) and getattr(obj, "trainable", False)
+
+
+def _is_non_trainable_variable(obj):
+  return _is_variable(obj) and not getattr(obj, "trainable", False)
 
 
 def _is_module(obj):
