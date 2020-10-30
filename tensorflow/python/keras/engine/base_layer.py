@@ -83,6 +83,7 @@ from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
+from tensorflow.python.util.tf_export import get_canonical_name_for_symbol
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
@@ -349,13 +350,15 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # Indicates whether `build` needs to be called upon layer call, to create
     # the layer's weights.
     self.built = False
+    # Provides information about which inputs are compatible with the layer.
+    self._input_spec = None
+
+    # SavedModel-related attributes.
     # Record the build input shape for loading purposes.
     # TODO(kathywu): Move this to Layer._set_save_spec once cl/290121460 is
     # submitted.
     self._build_input_shape = None
     self._saved_model_inputs_spec = None
-    # Provides information about which inputs are compatible with the layer.
-    self._input_spec = None
 
     # `Layer.compute_mask` will be called at the end of `Layer.__call__` if
     # `Layer.compute_mask` is overridden, or if the `Layer` subclass sets
@@ -3085,6 +3088,14 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   def _list_functions_for_serialization(self, serialization_cache):
     return (self._trackable_saved_model_saver
             .list_functions_for_serialization(serialization_cache))
+
+  @property
+  def _use_input_spec_as_call_signature(self):
+    # Whether input spec can be used as the call signature when tracing the
+    # Layer for SavedModel. By default, this is set to `True` for layers
+    # exported from the Keras library, because the layers more rigidly define
+    # the `input_specs` property (many custom layers only set the `ndims`)
+    return get_canonical_name_for_symbol(type(self)) is not None
 
   def __getstate__(self):
     # Override to support `copy.deepcopy` and pickling.
