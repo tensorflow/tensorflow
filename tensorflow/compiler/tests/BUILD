@@ -126,6 +126,7 @@ tf_xla_py_test(
     srcs = ["adagrad_da_test.py"],
     python_version = "PY3",
     tags = [
+        "no_cuda_asan",  # times out
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
     deps = [
@@ -143,6 +144,7 @@ tf_xla_py_test(
     srcs = ["adam_test.py"],
     python_version = "PY3",
     tags = [
+        "no_cuda_asan",  # times out
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
     deps = [
@@ -793,6 +795,7 @@ tf_xla_py_test(
     enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
+        "no_cuda_asan",  # times out
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
     deps = [
