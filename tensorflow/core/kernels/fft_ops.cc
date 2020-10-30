@@ -29,8 +29,8 @@ limitations under the License.
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/work_sharder.h"
 
-#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
-    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
+#if (GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+#include "tensorflow/core/kernels/gpu_utils.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -336,24 +336,9 @@ REGISTER_KERNEL_BUILDER(Name("RFFT3D").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("IRFFT3D").Device(DEVICE_CPU),
                         FFTCPU<false, true, 3>);
 
-#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
-    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
+#if (GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
 
 namespace {
-template <typename T>
-se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory) {
-  se::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory));
-  se::DeviceMemory<T> typed(wrapped);
-  return typed;
-}
-
-template <typename T>
-se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64 size) {
-  se::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory), size * sizeof(T));
-  se::DeviceMemory<T> typed(wrapped);
-  return typed;
-}
-
 // A class to provide scratch-space allocator for Stream-Executor Cufft
 // callback. Tensorflow is responsible for releasing the temporary buffers after
 // the kernel finishes.
@@ -529,10 +514,10 @@ class FFTGPUBase : public FFTBase {
                      se::fft::Plan* plan, const se::fft::Type fft_type,
                      const uint64 output_distance, const Tensor& in,
                      Tensor* out) {
-    auto src = AsDeviceMemory<InT>(in.flat<InT>().data());
-    auto dst = AsDeviceMemory<OutT>(out->flat<OutT>().data());
     const TensorShape& input_shape = in.shape();
     const TensorShape& output_shape = out->shape();
+    auto src = AsDeviceMemory<InT>(in.flat<InT>().data(), input_shape.num_elements());
+    auto dst = AsDeviceMemory<OutT>(out->flat<OutT>().data(), output_shape.num_elements());
     OP_REQUIRES(
         ctx, stream->ThenFft(plan, src, &dst).ok(),
         errors::Internal("fft failed : type=", static_cast<int>(fft_type),
