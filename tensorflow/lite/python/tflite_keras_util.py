@@ -13,7 +13,13 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Utility functions for TensorFlow models."""
+"""Keras functions required by TensorFlow Lite.
+
+The functions defined in this library have been copied over from Keras in order
+to remove the dependency from TensorFlow Lite to Keras. The functions which
+could not be copied over are accessed using the dependecy inversion principle.
+(for details, refer to tensorflow/python/util/keras_deps.py).
+"""
 
 from __future__ import absolute_import
 from __future__ import division
