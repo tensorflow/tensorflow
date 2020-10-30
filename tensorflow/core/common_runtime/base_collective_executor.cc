@@ -354,8 +354,11 @@ void BaseCollectiveExecutor::CompleteParamsAsync(
   // timeout callback executes, done_safe will become a no-op and the timeout
   // callback is responsible for invoking done() at the end.
   const auto is_callback_called = std::make_shared<std::atomic<bool>>(false);
-  auto done_safe = [this, is_callback_called, cancel_mgr,
+  auto trace_id =
+      profiler::TraceMe::ActivityStart("CollectiveExecutor::CompleteParams");
+  auto done_safe = [this, is_callback_called, cancel_mgr, trace_id,
                     done](const Status& s) {
+    profiler::TraceMe::ActivityEnd(trace_id);
     bool called = is_callback_called->exchange(true);
     if (!called) {
       if (!s.ok() && !IsCancelled(cancel_mgr)) {

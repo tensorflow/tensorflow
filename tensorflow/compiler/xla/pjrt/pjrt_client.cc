@@ -1994,7 +1994,7 @@ PjRtExecutable::ExecuteOnLocalDevices(
     if (!statusor.ok()) {
       return AppendStatus(
           statusor.status(),
-          absl::StrFormat("while running replica %d and partition %d of a"
+          absl::StrFormat("while running replica %d and partition %d of a "
                           "replicated computation (other "
                           "replicas may have failed as well).",
                           replica, partition));

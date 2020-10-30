@@ -58,8 +58,7 @@ class CLArguments : public ArgumentsBinder {
   absl::Status SetInt(const std::string& name, int value) override;
   absl::Status SetFloat(const std::string& name, float value) override;
   absl::Status SetHalf(const std::string& name, half value) override;
-  absl::Status SetObjectRef(const std::string& name,
-                            const GPUObject* object) override;
+  absl::Status SetObjectRef(const std::string& name, const GPUObject* object);
 
   absl::Status Bind(cl_kernel kernel, int offset = 0);
 

@@ -43,6 +43,7 @@ cc_library(
     srcs = ["arguments.cc"],
     hdrs = ["arguments.h"],
     deps = [
+        ":gpu_object_desc",
         "//tensorflow/lite/delegates/gpu/common:status",
     ],
 )
@@ -183,6 +184,17 @@ objc_library(
     ],
 )
 
+cc_library(
+    name = "gpu_object_desc",
+    srcs = ["gpu_object_desc.cc"],
+    hdrs = ["gpu_object_desc.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:access_type",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:status",
+    ],
+)
+
 objc_library(
     name = "inference_context",
     srcs = ["inference_context.mm"],
@@ -232,6 +244,7 @@ objc_library(
     sdk_frameworks = ["Metal"],
     deps = [
         ":arguments",
+        ":gpu_object_desc",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:util",
         "@com_google_absl//absl/strings",

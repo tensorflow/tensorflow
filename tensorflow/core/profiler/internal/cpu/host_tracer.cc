@@ -82,11 +82,15 @@ Status HostTracer::Start() {
   if (recording_) {
     return errors::Internal("TraceMeRecorder already started");
   }
+
+  // All TraceMe captured should have a timestamp greater or equal to
+  // start_timestamp_ns_ to prevent timestamp underflow in XPlane.
+  // Therefore this have to be done before TraceMeRecorder::Start.
+  start_timestamp_ns_ = EnvTime::NowNanos();
   recording_ = TraceMeRecorder::Start(host_trace_level_);
   if (!recording_) {
     return errors::Internal("Failed to start TraceMeRecorder");
   }
-  start_timestamp_ns_ = EnvTime::NowNanos();
   return Status::OK();
 }
 

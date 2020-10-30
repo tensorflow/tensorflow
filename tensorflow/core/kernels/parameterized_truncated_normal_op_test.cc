@@ -107,25 +107,34 @@ static Graph* PTruncatedNormalOneTail(int num_batches, int samples_per_batch) {
   return g;
 }
 
-#define BM_PTruncatedNormalDev(DEVICE, B, S)                        \
-  static void BM_PTruncatedNormal_##DEVICE##_##B##_##S(int iters) { \
-    test::Benchmark(#DEVICE, PTruncatedNormal(B, S)).Run(iters);    \
-    testing::ItemsProcessed(static_cast<int64>(B) * S * iters);     \
-  }                                                                 \
+#define BM_PTruncatedNormalDev(DEVICE, B, S)                                 \
+  static void BM_PTruncatedNormal_##DEVICE##_##B##_##S(                      \
+      ::testing::benchmark::State& state) {                                  \
+    test::Benchmark(#DEVICE, PTruncatedNormal(B, S),                         \
+                    /*old_benchmark_api*/ false)                             \
+        .Run(state);                                                         \
+    state.SetItemsProcessed(static_cast<int64>(B) * S * state.iterations()); \
+  }                                                                          \
   BENCHMARK(BM_PTruncatedNormal_##DEVICE##_##B##_##S);
 
-#define BM_PTruncatedNormalDev_2SD(DEVICE, B, S)                        \
-  static void BM_PTruncatedNormal_2SD_##DEVICE##_##B##_##S(int iters) { \
-    test::Benchmark(#DEVICE, PTruncatedNormal2SD(B, S)).Run(iters);     \
-    testing::ItemsProcessed(static_cast<int64>(B) * S * iters);         \
-  }                                                                     \
+#define BM_PTruncatedNormalDev_2SD(DEVICE, B, S)                             \
+  static void BM_PTruncatedNormal_2SD_##DEVICE##_##B##_##S(                  \
+      ::testing::benchmark::State& state) {                                  \
+    test::Benchmark(#DEVICE, PTruncatedNormal2SD(B, S),                      \
+                    /*old_benchmark_api*/ false)                             \
+        .Run(state);                                                         \
+    state.SetItemsProcessed(static_cast<int64>(B) * S * state.iterations()); \
+  }                                                                          \
   BENCHMARK(BM_PTruncatedNormal_2SD_##DEVICE##_##B##_##S);
 
-#define BM_PTruncatedNormalDev_OneTail(DEVICE, B, S)                        \
-  static void BM_PTruncatedNormal_OneTail_##DEVICE##_##B##_##S(int iters) { \
-    test::Benchmark(#DEVICE, PTruncatedNormalOneTail(B, S)).Run(iters);     \
-    testing::ItemsProcessed(static_cast<int64>(B) * S * iters);             \
-  }                                                                         \
+#define BM_PTruncatedNormalDev_OneTail(DEVICE, B, S)                         \
+  static void BM_PTruncatedNormal_OneTail_##DEVICE##_##B##_##S(              \
+      ::testing::benchmark::State& state) {                                  \
+    test::Benchmark(#DEVICE, PTruncatedNormalOneTail(B, S),                  \
+                    /*old_benchmark_api*/ false)                             \
+        .Run(state);                                                         \
+    state.SetItemsProcessed(static_cast<int64>(B) * S * state.iterations()); \
+  }                                                                          \
   BENCHMARK(BM_PTruncatedNormal_OneTail_##DEVICE##_##B##_##S);
 
 BM_PTruncatedNormalDev(cpu, 1000, 1000);
