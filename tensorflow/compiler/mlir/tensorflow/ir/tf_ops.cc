@@ -77,66 +77,6 @@ namespace TF {
 
 namespace {
 
-// Returns true of the given function has a single uses (within the scope
-// of the module containing it and all parent modules).
-bool HasSingleUse(FuncOp func) {
-  // Public function can have any number of external uses.
-  if (func.isPublic()) return false;
-
-  // Return false if unexpected IR structure seen.
-  ModuleOp module = func.getParentOfType<ModuleOp>();
-  if (!module) return false;
-
-  // Inspect function uses in the containing module and all parent
-  // modules.
-  bool use_seen = false;
-  for (; module; module = func.isPrivate()
-                              ? nullptr
-                              : module.getParentOfType<ModuleOp>()) {
-    auto func_uses_optional =
-        SymbolTable::getSymbolUses(func, &module.getBodyRegion());
-    // Found an unknown use.
-    if (!func_uses_optional) return false;
-
-    // If no uses in this scope, continue looking in parent module
-    SymbolTable::UseRange func_uses = func_uses_optional.getValue();
-    if (func_uses.empty()) continue;
-
-    // Check if multiple uses at this scope or another use already seen.
-    if (!llvm::hasSingleElement(func_uses) || use_seen) return false;
-
-    // This is the first use seen.
-    use_seen = true;
-  }
-
-  // No multiple uses seen.
-  return true;
-}
-
-// Returns true if the caller ops can be inlined.
-bool HasInlinableUsers(FuncOp func) {
-  // Return false if unexpected IR structure seen.
-  ModuleOp module = func.getParentOfType<ModuleOp>();
-  if (!module) return false;
-
-  // Inspect function uses in the containing module and all parent
-  // modules.
-  for (; module; module = func.isPrivate()
-                              ? nullptr
-                              : module.getParentOfType<ModuleOp>()) {
-    auto func_uses_optional =
-        SymbolTable::getSymbolUses(func, &module.getBodyRegion());
-    // Found an unknown use.
-    if (!func_uses_optional) return false;
-
-    for (auto &use : func_uses_optional.getValue())
-      if (isa<TPUPartitionedCallOp>(use.getUser())) return false;
-  }
-
-  // All caller ops that can be inlined.
-  return true;
-}
-
 struct TFConstantFoldInterface : public DialectFoldInterface {
   TFConstantFoldInterface(Dialect *dialect) : DialectFoldInterface(dialect) {}
   LogicalResult fold(Operation *op, ArrayRef<Attribute> operands,
@@ -160,10 +100,12 @@ struct TFInlinerInterface : public DialectInlinerInterface {
   // Analysis Hooks
   //===--------------------------------------------------------------------===//
 
-  // Allow all call operations to be inlined.
+  // Returns if it's legal to inline 'callable' into the 'call', where 'call' is
+  // a TF operation.
   bool isLegalToInline(Operation *call, Operation *callable,
                        bool wouldBeCloned) const final {
-    return true;
+    // Check that the TF call operation is one that is legal to inline.
+    return !isa<TPUPartitionedCallOp>(call);
   }
 
   // Returns if its legal to inline 'src' region into the 'dest' region
@@ -186,10 +128,7 @@ struct TFInlinerInterface : public DialectInlinerInterface {
     //     post inlining, the function will be dead and eliminated from the IR.
     //     So there won't be any code duplication.
     // plus the function caller op can be replaced by inlined ops.
-    FuncOp func = op->getParentOfType<FuncOp>();
-    if (!func) return true;
-    if (!HasInlinableUsers(func)) return false;
-    return TensorFlowDialect::CanDuplicate(op) || HasSingleUse(func);
+    return !wouldBeCloned || TensorFlowDialect::CanDuplicate(op);
   }
 
   //===--------------------------------------------------------------------===//
