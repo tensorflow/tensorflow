@@ -2,10 +2,11 @@
 Suite Setup                   Prepare Tests
 Suite Teardown                Teardown
 Test Setup                    Reset Emulation
-Test Teardown                 Test Teardown
+Test Teardown                 Teardown With Custom Message
 Resource                      ${RENODEKEYWORDS}
 
 *** Variables ***
+${CREATE_SNAPSHOT_ON_FAIL}    False
 ${UART}                       sysbus.cpu.uartSemihosting
 
 *** Keywords ***
@@ -18,6 +19,10 @@ Prepare Tests
     Set Suite Variable        ${EXPECTED}
     Set Suite Variable        ${LOGFILE}
     List All Test Binaries
+
+Teardown With Custom Message
+    Set Test Message          ${file} - FAILED
+    Test Teardown
 
 List All Test Binaries
     Setup
@@ -42,6 +47,7 @@ Should Run All Bluepill Tests
     FOR  ${BIN}  IN  @{binaries}
         Execute Command       $bin = @${BIN}
         ${_}  ${file} =       Split Path  ${BIN}
+        Set Test Variable     ${file}
         Test Binary
         Execute Command       Clear
 

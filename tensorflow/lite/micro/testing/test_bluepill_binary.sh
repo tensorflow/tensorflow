@@ -54,18 +54,17 @@ if ! BIN_DIR=${ROOT_DIR}/$1 \
   EXPECTED="$2" \
   ${RENODE_TEST_SCRIPT} \
   ${ROOT_DIR}/tensorflow/lite/micro/testing/bluepill.robot \
-  -r $TEST_TMPDIR &> ${MICRO_LOG_PATH}robot_logs.txt
+  -r $TEST_TMPDIR
 then
   exit_code=1
 fi
 
-echo "LOGS:"
-# Extract output from renode log
-cat ${MICRO_LOG_FILENAME} |grep 'uartSemihosting' |sed 's/^.*from start] *//g'
 if [ $exit_code -eq 0 ]
 then
-  echo "$1: PASS"
+  echo "PASS"
 else
-  echo "$1: FAIL - '$2' not found in logs."
+  echo "UART LOGS:"
+  # Extract output from renode log
+  cat ${MICRO_LOG_FILENAME} |grep 'uartSemihosting' |sed 's/^.*from start] *//g'
 fi
 exit $exit_code
