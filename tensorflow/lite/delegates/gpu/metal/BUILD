@@ -26,7 +26,7 @@ cc_library(
     deps = [
         ":compiled_model",
         ":compute_task_descriptor",
-        ":environment",
+        ":device_info",
         ":runtime_options",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:operations",
@@ -196,18 +196,10 @@ objc_library(
     ],
 )
 
-objc_library(
-    name = "environment",
-    srcs = ["environment.mm"],
-    hdrs = ["environment.h"],
-    copts = DEFAULT_COPTS,
-    sdk_frameworks = ["Metal"],
-    deps = [
-        ":common",
-        # TODO(b/152322289): The following dependency is not needed, but a Bazel
-        # bug causes a build failure without an additional dummy dependency.
-        "//tensorflow/lite/delegates/gpu/common:convert",
-    ],
+cc_library(
+    name = "device_info",
+    srcs = ["device_info.cc"],
+    hdrs = ["device_info.h"],
 )
 
 cc_library(
@@ -323,7 +315,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/metal:buffer",
         "//tensorflow/lite/delegates/gpu/metal:common",
-        "//tensorflow/lite/delegates/gpu/metal:environment",
+        "//tensorflow/lite/delegates/gpu/metal:device_info",
         "//tensorflow/lite/delegates/gpu/metal:inference_context",
         "//tensorflow/lite/delegates/gpu/metal:runtime_options",
         "//tensorflow/lite/delegates/gpu/metal/kernels:test_util",
