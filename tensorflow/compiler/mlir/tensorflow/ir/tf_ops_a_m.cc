@@ -542,6 +542,132 @@ OpFoldResult BroadcastToOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// BroadcastGradientArgsOp
+//===----------------------------------------------------------------------===//
+
+namespace {
+// Returns `true` if both s0 & s1 are defined via constant op, and fills
+// s0_shape & s1_shape.
+bool ExtractInputConstShape(BroadcastGradientArgsOp op,
+                            DenseIntElementsAttr &s0, DenseIntElementsAttr &s1,
+                            SmallVectorImpl<int64_t> &s0_shape,
+                            SmallVectorImpl<int64_t> &s1_shape) {
+  if (!matchPattern(op.s0(), m_Constant(&s0))) return false;
+  if (!matchPattern(op.s1(), m_Constant(&s1))) return false;
+
+  for (auto s : s0.getIntValues()) s0_shape.push_back(s.getSExtValue());
+  for (auto s : s1.getIntValues()) s1_shape.push_back(s.getSExtValue());
+
+  return true;
+}
+
+// Calculates r0 & r1 output based on inputs and calculated broadcasted shape.
+//
+// For given bcasted_shape, s0_shape and s1_shape, the broadcasted dimension is
+// calculated and push back to its corresponding result, r0 or r1. For example,
+// for s0_shape [1,4] and s1_shape [4, 4], bcasted_shape is computed to be
+// [4,4] - this leads to the result of r0 to be [0] as the first dimension of s0
+// is broadcasted, and r1 to be <> as no broadcasting is happening for s1.
+void GetOutputShapeForBroadcastGradientArgs(ArrayRef<int64_t> bcasted_shape,
+                                            ArrayRef<int64_t> s0_shape,
+                                            ArrayRef<int64_t> s1_shape,
+                                            SmallVectorImpl<int64_t> &r0,
+                                            SmallVectorImpl<int64_t> &r1) {
+  for (int i = bcasted_shape.size(); i > 0; --i) {
+    int idx = bcasted_shape.size() - i;
+    int s0_idx = i > s0_shape.size() ? -1 : s0_shape.size() - i;
+    int s1_idx = i > s1_shape.size() ? -1 : s1_shape.size() - i;
+    if (s0_idx == -1) {
+      r0.push_back(idx);
+      if (s1_shape[s1_idx] == 1) r1.push_back(idx);
+    } else if (s1_idx == -1) {
+      r1.push_back(idx);
+      if (s0_shape[s0_idx] == 1) r0.push_back(idx);
+    } else if (s0_shape[s0_idx] != s1_shape[s1_idx]) {
+      if (s0_shape[s0_idx] != bcasted_shape[idx])
+        r0.push_back(idx);
+      else
+        r1.push_back(idx);
+    }
+  }
+}
+}  // namespace
+
+// Verifies that,
+// * Broadcast compatability for input shapes.
+// * Output shape dimension matches the expected dimension size for input
+// shapes.
+static LogicalResult Verify(BroadcastGradientArgsOp op) {
+  SmallVector<int64_t, 4> s0_shape, s1_shape;
+  DenseIntElementsAttr s0, s1;
+  if (!ExtractInputConstShape(op, s0, s1, s0_shape, s1_shape)) return success();
+
+  // If both shape is known const, try to validate shape on them as well.
+  SmallVector<int64_t, 4> bcasted_shape;
+  if (!OpTrait::util::getBroadcastedShape(s0_shape, s1_shape, bcasted_shape))
+    return op.emitOpError() << "requires broadcast compatible shape tensors "
+                               "for 's0' and 's1', but got "
+                            << s0 << " and " << s1;
+
+  SmallVector<int64_t, 4> r0, r1;
+  GetOutputShapeForBroadcastGradientArgs(bcasted_shape, s0_shape, s1_shape, r0,
+                                         r1);
+
+  RankedTensorType r0_ty = GetRankedTensorTypeForOperand(op.r0());
+  RankedTensorType r1_ty = GetRankedTensorTypeForOperand(op.r1());
+  if (r0_ty && r0_ty.hasStaticShape() && r0_ty.getShape()[0] != r0.size())
+    return op.emitOpError() << "requires dimension 0 size of 'r0' to be "
+                            << r0.size() << " but got " << r0_ty.getShape()[0];
+  if (r1_ty && r1_ty.hasStaticShape() && r1_ty.getShape()[0] != r1.size())
+    return op.emitOpError() << "requires dimension 0 size of 'r1' to be "
+                            << r1.size() << " but got " << r1_ty.getShape()[0];
+
+  return success();
+}
+
+LogicalResult BroadcastGradientArgsOp::fold(
+    ArrayRef<Attribute> operands, SmallVectorImpl<OpFoldResult> &results) {
+  SmallVector<int64_t, 4> s0_shape, s1_shape;
+  DenseIntElementsAttr s0, s1;
+  if (!ExtractInputConstShape(*this, s0, s1, s0_shape, s1_shape))
+    return failure();
+
+  // Fold BroadcastGradientArgs into two constants if both of the inputs have
+  // known shape.
+  SmallVector<int64_t, 4> bcasted_shape;
+  // Verifier should already ensure the broadcast compatibility.
+  bool bcast_compatible =
+      OpTrait::util::getBroadcastedShape(s0_shape, s1_shape, bcasted_shape);
+  assert(bcast_compatible);
+  (void)bcast_compatible;
+
+  SmallVector<int64_t, 4> r0, r1;
+  GetOutputShapeForBroadcastGradientArgs(bcasted_shape, s0_shape, s1_shape, r0,
+                                         r1);
+
+  auto build_out_dense_element = [](SmallVectorImpl<int64_t> &shape,
+                                    Type input_type) {
+    Type element_type = input_type.cast<mlir::TensorType>().getElementType();
+    RankedTensorType type = RankedTensorType::get(
+        {static_cast<int64_t>(shape.size())}, element_type);
+    // Input could only be i32 or i64. For i32, downcast to int32_t array.
+    if (element_type.isInteger(32)) {
+      SmallVector<int32_t, 4> i32_shape;
+      for (auto s : shape) i32_shape.push_back(static_cast<int32_t>(s));
+      return DenseIntElementsAttr::get(type, i32_shape);
+    } else {
+      assert(element_type.isInteger(64));
+      return DenseIntElementsAttr::get(type, shape);
+    }
+  };
+
+  results.push_back(build_out_dense_element(r0, this->s0().getType()));
+  results.push_back(build_out_dense_element(r1, this->s1().getType()));
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // CaseOp
 //===----------------------------------------------------------------------===//
 

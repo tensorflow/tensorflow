@@ -49,7 +49,7 @@ bool IsHostEvent(const CuptiTracerEvent& event, int64* line_id) {
   if (event.stream_id != CuptiTracerEvent::kInvalidStreamId) {
     *line_id = event.stream_id;
     return false;
-  } else if (event.thread_id != CuptiTracerEvent::kInvalidStreamId &&
+  } else if (event.thread_id != CuptiTracerEvent::kInvalidThreadId &&
              event.thread_id != 0) {
     *line_id = event.thread_id;
     return true;
@@ -146,11 +146,9 @@ void CreateXEvent(const CuptiTracerEvent& event, XPlaneBuilder* plane,
       }
     }
   }
-  // TODO(profiler): we should get rid of kLevel0, it is based on the assumption
-  // that those op-related ScopedAnnotation are at the very TOP level.
   if (!annotation_stack.empty()) {
     xevent.AddStatValue(
-        *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kLevel0)),
+        *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kTfOp)),
         *plane->GetOrCreateStatMetadata(annotation_stack.begin()->name));
   }
 }

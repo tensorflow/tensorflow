@@ -243,12 +243,17 @@ struct TensorFlowLiteInlinerInterface : public DialectInlinerInterface {
   // Analysis Hooks
   //===--------------------------------------------------------------------===//
 
-  bool isLegalToInline(Operation *op, Region *dest,
+  // Allow all call operations to be inlined.
+  bool isLegalToInline(Operation *call, Operation *callable,
+                       bool wouldBeCloned) const final {
+    return true;
+  }
+  bool isLegalToInline(Operation *op, Region *dest, bool wouldBeCloned,
                        BlockAndValueMapping &) const final {
     // No TFLite op restricts inlining today, revise as needed in the future.
     return true;
   }
-  bool isLegalToInline(Region *dest, Region *src,
+  bool isLegalToInline(Region *dest, Region *src, bool wouldBeCloned,
                        BlockAndValueMapping &valueMapping) const final {
     return isa<WhileOp>(dest->getParentOp());
   }
@@ -297,6 +302,14 @@ inline bool IsTrailingDimensions(ArrayRef<int64_t> a, ArrayRef<int64_t> b) {
 inline bool IsF32ShapedType(Type t) {
   if (auto shaped_type = t.dyn_cast_or_null<ShapedType>()) {
     return shaped_type.getElementType().isF32();
+  }
+  return false;
+}
+
+// Returns true if it is a shaped type of bf16 elements.
+inline bool IsBF16ShapedType(Type t) {
+  if (auto shaped_type = t.dyn_cast_or_null<ShapedType>()) {
+    return shaped_type.getElementType().isBF16();
   }
   return false;
 }
@@ -493,7 +506,7 @@ Attribute ConstFoldBinaryOp(
 /// "tfl.logical_not".
 Attribute ConstFoldUnaryOp(Type result_type, Attribute operand,
                            llvm::function_ref<APFloat(APFloat)> calculate) {
-  assert(IsF32ShapedType(result_type));
+  assert(IsF32ShapedType(result_type) || IsBF16ShapedType(result_type));
   auto result_shape_type = result_type.cast<ShapedType>();
 
   if (auto dense_elements = operand.dyn_cast_or_null<DenseElementsAttr>()) {
@@ -1155,6 +1168,20 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
 void ReshapeOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                             MLIRContext *context) {
   results.insert<RemoveAdjacentReshape>(context);
+}
+
+static LogicalResult Verify(ReshapeOp op) {
+  auto shape = op.shape().getType().dyn_cast_or_null<mlir::RankedTensorType>();
+  if (!shape || !shape.hasRank()) return success();
+  if (shape.getNumDynamicDims() <= 1) return success();
+
+  op.emitError()
+      << "its shape value, " << shape
+      << ", is invalid because it has more than one dynamic dimensions. You "
+         "need to set up the unspecified size(s) to avoid this problem, for "
+         "example, setting batch size in keras model or setting unspecified "
+         "input size(s) with fixed ones.";
+  return failure();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1892,13 +1919,20 @@ OpFoldResult SqrtOp::fold(ArrayRef<Attribute> operands) {
 
 OpFoldResult RsqrtOp::fold(ArrayRef<Attribute> operands) {
   Type result_type = getType();
-  // Only constant fold for tensor of f32 is implemented.
-  if (!IsF32ShapedType(result_type)) return nullptr;
+  // Only constant fold for tensor of f32/bf16 is implemented.
+  if (!IsF32ShapedType(result_type) && !IsBF16ShapedType(result_type))
+    return nullptr;
 
   auto compute = [](APFloat value) -> APFloat {
+    bool loseInfo;
+    const llvm::fltSemantics &original_float_semantics = value.getSemantics();
+    value.convert(APFloat::IEEEsingle(), APFloat::rmNearestTiesToEven,
+                  &loseInfo);
     float f = value.convertToFloat();
-    float result = 1.f / std::sqrt(f);
-    return APFloat(result);
+    APFloat result(1.f / std::sqrt(f));
+    result.convert(original_float_semantics, APFloat::rmNearestTiesToEven,
+                   &loseInfo);
+    return result;
   };
   return ConstFoldUnaryOp(result_type, operands[0], compute);
 }

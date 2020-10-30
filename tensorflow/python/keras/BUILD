@@ -36,6 +36,7 @@ py_library(
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/keras/applications",
         "//tensorflow/python/keras/datasets",
+        "//tensorflow/python/keras/distribute",
         "//tensorflow/python/keras/feature_column",
         "//tensorflow/python/keras/layers",
         "//tensorflow/python/keras/mixed_precision:mixed_precision_experimental",
@@ -646,4 +647,68 @@ tf_py_test(
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
+)
+
+py_library(
+    name = "expect_absl_installed",
+    # This is a dummy rule used as a absl dependency in open-source.
+    # We expect absl to already be installed on the system, e.g. via
+    # `pip install absl`
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "expect_h5py_installed",
+    # This is a dummy rule used as a h5 dependency in open-source.
+    # We expect h5py to already be installed on the system, e.g. via
+    # `pip install h5py'
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "expect_numpy_installed",
+    # This is a dummy rule used as a numpy dependency in open-source.
+    # We expect numpy to already be installed on the system, e.g. via
+    # `pip install numpy`
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "expect_pandas_installed",
+    # This is a dummy rule used as a pandas dependency in open-source.
+    # We expect h5py to already be installed on the system, e.g. via
+    # `pip install h5py'
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "expect_six_installed",
+    # This is a dummy rule used as a six dependency in open-source.
+    # We expect six to already be installed on the system, e.g. via
+    # `pip install six`
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "expect_tensorboard_installed",
+    # This is a dummy rule used as a tensorboard dependency in open-source.
+    # We expect tensorboard to already be installed on the system, e.g. via
+    # `pip install tensorboard`.
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "expect_tensorflow_installed",
+    # This is a dummy rule used as a tensorflow dependency in open-source.
+    # We expect tensorflow to already be installed on the system, e.g. via
+    # `pip install tensorflow` or `pip install tensorflow_gpu`
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "expect_tensorflow_estimator_installed",
+    # This is a dummy rule used as a estimator dependency in open-source.
+    # We expect tensorflow estimator to already be installed on the system, e.g. via
+    # `pip install tensorflow` or `pip install tensorflow_gpu`
+    visibility = ["//visibility:public"],
 )

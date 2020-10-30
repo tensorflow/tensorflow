@@ -1335,7 +1335,7 @@ broadcasted shape. `s0`, `s1` and `r0` are all integer vectors.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_BroadcastGradientArgsOp : TF_Op<"BroadcastGradientArgs", [NoSideEffect]> {
+def TF_BroadcastGradientArgsOp : TF_Op<"BroadcastGradientArgs", [NoSideEffect, SameOperandsAndResultElementType, TF_OperandHasRank<0, 1>, TF_OperandHasRank<1, 1>, TF_ResultHasRank<0, 1>, TF_ResultHasRank<1, 1>]> {
   let summary = [{
 Return the reduction indices for computing gradients of s0 op s1 with broadcast.
   }];
@@ -1355,6 +1355,12 @@ This is typically used by gradient computations for a broadcasting operation.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
+
+  let hasFolder = 1;
 }
 
 def TF_BroadcastToOp : TF_Op<"BroadcastTo", [NoSideEffect]> {
@@ -1645,10 +1651,12 @@ Mutually reduces multiple tensors of identical type and shape.
     TF_Int32Tensor:$group_size,
     TF_Int32Tensor:$group_key,
     TF_Int32Tensor:$instance_key,
+    Variadic<TF_ResourceTensor>:$ordering_token,
 
     TF_AnyStrAttrOf<["Min", "Max", "Mul", "Add"]>:$merge_op,
     TF_AnyStrAttrOf<["Id", "Div"]>:$final_op,
-    DefaultValuedAttr<StrAttr, "auto">:$communication_hint
+    DefaultValuedAttr<StrAttr, "auto">:$communication_hint,
+    DefaultValuedAttr<F32Attr, "0.0f">:$timeout_seconds
   );
 
   let results = (outs
@@ -1656,6 +1664,7 @@ Mutually reduces multiple tensors of identical type and shape.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandSizeAttr Nordering_token = TF_DerivedOperandSizeAttr<4>;
 }
 
 def TF_ComplexOp : TF_Op<"Complex", [NoSideEffect, ResultsBroadcastableShape]> {
@@ -3343,7 +3352,8 @@ tf.math.equal(x, y) ==> array([True,  True])
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"Value x, Value y, BoolAttr incompatible_shape_error">
+    OpBuilderDAG<(ins "Value":$x, "Value":$y,
+      "BoolAttr":$incompatible_shape_error)>
   ];
 
   let verifier = [{
@@ -3489,7 +3499,7 @@ size 1.
   TF_DerivedOperandTypeAttr Tdim = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilder<"Value condition, Value dim">
+    OpBuilderDAG<(ins "Value":$condition, "Value":$dim)>
   ];
 }
 
@@ -3849,7 +3859,7 @@ fill([2, 3], 9) ==> [[9, 9, 9]
   let hasFolder = 1;
 
   let builders = [
-    OpBuilder<"Value dims, Value value">
+    OpBuilderDAG<(ins "Value":$dims, "Value":$value)>
   ];
 }
 
@@ -6730,7 +6740,8 @@ retained with length 1.
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilder<"Value input, Value reduction_indices, BoolAttr keep_dims">
+    OpBuilderDAG<(ins "Value":$input, "Value":$reduction_indices,
+      "BoolAttr":$keep_dims)>
   ];
 }
 
@@ -7543,7 +7554,8 @@ def TF_NotEqualOp : TF_Op<"NotEqual", [Commutative, NoSideEffect]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"Value x, Value y, BoolAttr incompatible_shape_error">
+    OpBuilderDAG<(ins "Value":$x, "Value":$y,
+      "BoolAttr":$incompatible_shape_error)>
   ];
 
   let verifier = [{
@@ -7661,8 +7673,8 @@ output =
   TF_DerivedOperandTypeAttr TI = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"Value indices, Value depth, Value on_value, Value off_value, "
-              "IntegerAttr axis">
+    OpBuilderDAG<(ins "Value":$indices, "Value":$depth, "Value":$on_value,
+      "Value":$off_value, "IntegerAttr":$axis)>
   ];
 
   let verifier = [{
@@ -8521,7 +8533,7 @@ tf.range(start, limit, delta) ==> [3, 6, 9, 12, 15]
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"Value start, Value limit, Value delta">
+    OpBuilderDAG<(ins "Value":$start, "Value":$limit, "Value":$delta)>
   ];
 }
 
@@ -8574,7 +8586,7 @@ of the tensor. Rank is also known as "order", "degree", or "ndims."
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"Value input">
+    OpBuilderDAG<(ins "Value":$input)>
   ];
 
   let hasFolder = 1;
@@ -8843,7 +8855,7 @@ reshape(t, []) ==> 7
   TF_DerivedOperandTypeAttr Tshape = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilder<"Value tensor, Value shape">
+    OpBuilderDAG<(ins "Value":$tensor, "Value":$shape)>
   ];
 
   let verifier = [{
@@ -10630,7 +10642,7 @@ def TF_SelectV2Op : TF_Op<"SelectV2", [NoSideEffect, ResultsBroadcastableShape]>
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilder<"Value condition, Value e, Value t">
+    OpBuilderDAG<(ins "Value":$condition, "Value":$e, "Value":$t)>
   ];
 }
 
@@ -10756,7 +10768,7 @@ shape(t) ==> [2, 2, 3]
   }];
 
   let builders = [
-    OpBuilder<"Value input, BoolAttr use32Bit">
+    OpBuilderDAG<(ins "Value":$input, "BoolAttr":$use32Bit)>
   ];
 
   let hasFolder = 1;
@@ -12485,7 +12497,8 @@ retained with length 1.
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilder<"Value input, Value reduction_indices, BoolAttr keep_dims">
+    OpBuilderDAG<(ins "Value":$input, "Value":$reduction_indices,
+      "BoolAttr":$keep_dims)>
   ];
 }
 
@@ -13631,9 +13644,8 @@ On GPU, if an out of bound index is found, the index is ignored.
   let verifier = [{ return Verify(*this); }];
 
   let builders = [
-    OpBuilder<"Value tensor, Value indices, Value updates",
-      [{build($_builder, $_state, tensor.getType(), tensor, indices, updates);}]
-    >
+    OpBuilderDAG<(ins "Value":$tensor, "Value":$indices, "Value":$updates),
+    [{build($_builder, $_state, tensor.getType(), tensor, indices, updates);}]>
   ];
 }
 
@@ -13776,7 +13788,7 @@ The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:
   TF_DerivedOperandTypeAttr Tperm = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilder<"Value x, Value perm">
+    OpBuilderDAG<(ins "Value":$x, "Value":$perm)>
   ];
 
   let verifier = [{

@@ -82,6 +82,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import moving_averages
 from tensorflow.python.training.tracking import util as tracking_util
 from tensorflow.python.util import dispatch
+from tensorflow.python.util import keras_deps
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import keras_export
@@ -317,6 +318,10 @@ def clear_session():
     _GRAPH_LEARNING_PHASES.setdefault(graph)
     _GRAPH_VARIABLES.pop(graph, None)
     _GRAPH_TF_OPTIMIZERS.pop(graph, None)
+
+# Inject the clear_session function to keras_deps to remove the dependency
+# from TFLite to Keras.
+keras_deps.register_clear_session_function(clear_session)
 
 
 @keras_export('keras.backend.manual_variable_initialization')
@@ -745,6 +750,9 @@ def get_session(op_input_list=()):
       _initialize_variables(session)
   return session
 
+# Inject the get_session function to keras_deps to remove the dependency
+# from TFLite to Keras.
+keras_deps.register_get_session_function(get_session)
 
 # Inject the get_session function to tracking_util to avoid the backward
 # dependency from TF to Keras.
@@ -6513,7 +6521,7 @@ def configure_and_create_distributed_session(distribution_strategy):
     dc.run_distribute_coordinator(
         _create_session,
         distribution_strategy,
-        mode=dc.CoordinatorMode.INDEPENDENT_WORKER)
+        mode='independent_worker')
   else:
     _create_session(distribution_strategy)
 

@@ -521,8 +521,7 @@ XLA_TEST_F(ConcatTest, ConcatDeeplyNested) {
   ComputeAndCompareR1<float>(&builder, expected, {a_data.get()});
 }
 
-// TODO(b/169314478): Enable the test when the slow compilation is fixed.
-XLA_TEST_F(ConcatTestHlo, DISABLED_ConcatWithBitcast) {
+XLA_TEST_F(ConcatTestHlo, ConcatWithBitcast) {
   auto module = ParseAndReturnVerifiedModule(R"(
 HloModule jit_broken.874
 
@@ -762,7 +761,7 @@ ENTRY jit_broken.874 {
   auto input_array = absl::make_unique<Array2D<float>>(4, 2);
   input_array->FillUnique(1.0f);
   auto input = LiteralUtil::CreateR2FromArray2D<float>(*input_array);
-  EXPECT_TRUE(RunAndCompare(std::move(module), {&input}, absl::nullopt));
+  EXPECT_TRUE(RunAndCompare(std::move(module), {&input}, error_spec_));
 }
 
 // Describes a binary rank-2 concatenation test.

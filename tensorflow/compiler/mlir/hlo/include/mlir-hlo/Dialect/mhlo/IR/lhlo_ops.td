@@ -341,7 +341,8 @@ def HLO_StaticMemRefCastOp: Op<LHLO_Dialect, "static_memref_cast",
   let arguments = (ins Arg<LHLO_Buffer, "", []>:$operand);
   let results = (outs Res<LHLO_Buffer, "", []>:$result);
 
-  let builders = [OpBuilder<"MemRefType resultType, Value operand",
+  let builders = [
+    OpBuilderDAG<(ins "MemRefType":$resultType, "Value":$operand),
     [{
       $_state.addOperands(operand);
       $_state.types.push_back(resultType);
@@ -387,8 +388,9 @@ def HLO_DynamicMemRefCastOp: Op<LHLO_Dialect, "dynamic_memref_cast",
   let results = (outs Res<LHLO_Buffer, "", []>:$result);
 
   let builders = [
-    OpBuilder<"MemRefType resultType, Value operand, ValueRange sizes, "
-              "ValueRange strides", [{
+    OpBuilderDAG<(ins "MemRefType":$resultType, "Value":$operand,
+      "ValueRange":$sizes, "ValueRange":$strides),
+    [{
       $_state.addOperands(operand);
       $_state.addOperands(sizes);
       $_state.addOperands(strides);
@@ -813,7 +815,7 @@ def FusionOp : LHLO_Op<"fusion", [SingleBlockImplicitTerminator<"TerminatorOp">]
 
   let skipDefaultBuilders = 1;
   let builders = [
-     OpBuilder<"ArrayRef<NamedAttribute> attributes">
+     OpBuilderDAG<(ins "ArrayRef<NamedAttribute>":$attributes)>
   ];
 }
 
@@ -823,9 +825,9 @@ def TerminatorOp :
   let description = [{
     Terminator operation for the LHLO dialect.
   }];
-  let builders = [OpBuilder<"ValueRange operands",
-    [{ build($_builder, $_state, llvm::None, operands, llvm::None); }]
-  >];
+  let builders = [
+    OpBuilderDAG<(ins "ValueRange":$operands),
+    [{ build($_builder, $_state, llvm::None, operands, llvm::None); }]>];
 }
 
 #endif // LHLO_OPS

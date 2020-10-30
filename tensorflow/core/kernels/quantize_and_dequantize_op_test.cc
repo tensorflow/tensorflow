@@ -759,15 +759,16 @@ TEST_F(QuantizeAndDequantizeTest, Invalid_range_given_V3) {
       << s;
 }
 
-#define BM_SIMPLE_QUAN_DEQUAN(DEVICE)                     \
-  static void BM_SIMPLE_QUAN_DEQUAN_##DEVICE(int iters) { \
-    auto root = Scope::NewRootScope().ExitOnError();      \
-    ops::QuantizeAndDequantizeV2(root, -3.5, -3.5, -3.5); \
-    TF_CHECK_OK(root.status());                           \
-    Graph* g = new Graph(OpRegistry::Global());           \
-    TF_CHECK_OK(root.ToGraph(g));                         \
-    test::Benchmark(#DEVICE, g).Run(iters);               \
-  }                                                       \
+#define BM_SIMPLE_QUAN_DEQUAN(DEVICE)                                    \
+  static void BM_SIMPLE_QUAN_DEQUAN_##DEVICE(                            \
+      ::testing::benchmark::State& state) {                              \
+    auto root = Scope::NewRootScope().ExitOnError();                     \
+    ops::QuantizeAndDequantizeV2(root, -3.5, -3.5, -3.5);                \
+    TF_CHECK_OK(root.status());                                          \
+    Graph* g = new Graph(OpRegistry::Global());                          \
+    TF_CHECK_OK(root.ToGraph(g));                                        \
+    test::Benchmark(#DEVICE, g, /*old_benchmark_api*/ false).Run(state); \
+  }                                                                      \
   BENCHMARK(BM_SIMPLE_QUAN_DEQUAN_##DEVICE);
 
 BM_SIMPLE_QUAN_DEQUAN(cpu);

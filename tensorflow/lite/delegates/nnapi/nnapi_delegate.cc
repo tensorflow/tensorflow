@@ -4421,7 +4421,8 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
     AddDequantizeOperatorsWhereNeeded(context, reg->builtin_code, node,
                                       node_index, &builder, nnapi_errno);
 
-    builder.FinalizeAddOperation(nn_op_type, node_index);
+    TF_LITE_ENSURE_OK(context_,
+                      builder.FinalizeAddOperation(nn_op_type, node_index));
   }
   return kTfLiteOk;
 }

@@ -125,6 +125,9 @@ cuda_py_test(
     size = "medium",
     srcs = ["stateless_random_ops_test.py"],
     shard_count = 10,
+    xla_tags = [
+        "no_cuda_asan",  # times-out
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

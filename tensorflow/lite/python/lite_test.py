@@ -39,6 +39,7 @@ from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import convert_to_constants
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -110,6 +111,112 @@ class FromConstructor(TestModels):
 
     converter = lite.TFLiteConverter(None, ['input_tensor'], ['output_tensor'])
     self.assertTrue(converter._has_valid_tensors())
+
+  def testRedundantArgumentsWarning(self):
+    """Test if the warning message when there are redundant arguments."""
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[None, 16, 16, 3], dtype=dtypes.float32, name='in_tensor')
+      out_tensor = math_ops.add(in_tensor, in_tensor, name='add')
+      sess = session.Session()
+
+    frozen_graph_def = (
+        convert_to_constants.convert_variables_to_constants_from_session_graph(
+            sess, sess.graph_def, ['add']))
+
+    # Convert model and ensure model is not None.
+    log = io.BytesIO() if six.PY2 else io.StringIO()
+    handler = logging.StreamHandler(log)
+    logging.root.addHandler(handler)
+    converter = lite.TFLiteConverter(frozen_graph_def, [in_tensor],
+                                     [out_tensor],
+                                     [('in_tensor', [2, 16, 16, 3])], ['add'])
+
+    input_warning_message = 'input_arrays_with_shape will be ignored'
+    output_warning_message = 'output_arrays will be ignored'
+
+    # Convert model and ensure model is not None.
+    tflite_model = converter.convert()
+    self.assertIsNotNone(tflite_model)
+    self.assertIn(input_warning_message, log.getvalue())
+    self.assertIn(output_warning_message, log.getvalue())
+    logging.root.removeHandler(handler)
+
+  def testShapeOverriding(self):
+    """Test a shape overriding case via the constructor."""
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[None, 16, 16, 3], dtype=dtypes.float32, name='in_tensor')
+      math_ops.add(in_tensor, in_tensor, name='add')
+      sess = session.Session()
+
+    frozen_graph_def = (
+        convert_to_constants.convert_variables_to_constants_from_session_graph(
+            sess, sess.graph_def, ['add']))
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverter(frozen_graph_def, None, None,
+                                     [('in_tensor', [2, 16, 16, 3])], ['add'])
+    tflite_model = converter.convert()
+    self.assertIsNotNone(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertLen(input_details, 1)
+    self.assertEqual('in_tensor', input_details[0]['name'])
+    self.assertEqual(np.float32, input_details[0]['dtype'])
+    self.assertAllEqual([2, 16, 16, 3], input_details[0]['shape'])
+    self.assertEqual((0., 0.), input_details[0]['quantization'])
+
+    output_details = interpreter.get_output_details()
+    self.assertLen(output_details, 1)
+    self.assertEqual('add', output_details[0]['name'])
+    self.assertEqual(np.float32, output_details[0]['dtype'])
+    self.assertAllEqual([2, 16, 16, 3], output_details[0]['shape'])
+    self.assertEqual((0., 0.), output_details[0]['quantization'])
+
+  def testPartialShapeOverriding(self):
+    """Test a partial shape overriding case via the constructor."""
+    with ops.Graph().as_default():
+      in_tensor_a = array_ops.placeholder(
+          shape=[None, 16, 16, 3], dtype=dtypes.float32, name='in_tensor_a')
+      in_tensor_b = array_ops.placeholder(
+          shape=[None, 16, 16, 3], dtype=dtypes.float32, name='in_tensor_b')
+      math_ops.add(in_tensor_a, in_tensor_b, name='add')
+      sess = session.Session()
+
+    frozen_graph_def = (
+        convert_to_constants.convert_variables_to_constants_from_session_graph(
+            sess, sess.graph_def, ['add']))
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverter(frozen_graph_def, None, None,
+                                     [('in_tensor_a', [2, 16, 16, 3])], ['add'])
+    # There is an unhandled Placeholder op.
+    with self.assertRaises(ConverterError):
+      converter.convert()
+
+  def testInvalidShapeOverriding(self):
+    """Test an invalid shape overriding case via the constructor."""
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[None, 16, 16, 3], dtype=dtypes.float32, name='in_tensor')
+      math_ops.add(in_tensor, in_tensor, name='add')
+      sess = session.Session()
+
+    frozen_graph_def = (
+        convert_to_constants.convert_variables_to_constants_from_session_graph(
+            sess, sess.graph_def, ['add']))
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverter(frozen_graph_def, None, None,
+                                     [('wrong_tensor', [2, 16, 16, 3])],
+                                     ['add'])
+    with self.assertRaises(ConverterError):
+      converter.convert()
 
 
 class FromSessionTest(TestModels, parameterized.TestCase):
@@ -1505,9 +1612,10 @@ class FromFrozenGraphFile(LiteTest):
     self.assertEqual((0., 0.), output_details[0]['quantization'])
 
   def testFloatWithShapesArray(self):
+    """Test a shape overriding case."""
     with ops.Graph().as_default():
       in_tensor = array_ops.placeholder(
-          shape=[1, 16, 16, 3], dtype=dtypes.float32)
+          shape=[None, 16, 16, 3], dtype=dtypes.float32)
       _ = in_tensor + in_tensor
       sess = session.Session()
 
@@ -1519,7 +1627,7 @@ class FromFrozenGraphFile(LiteTest):
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_frozen_graph(
         graph_def_file, ['Placeholder'], ['add'],
-        input_shapes={'Placeholder': [1, 16, 16, 3]})
+        input_shapes={'Placeholder': [2, 16, 16, 3]})
     tflite_model = converter.convert()
     self.assertIsNotNone(tflite_model)
 
@@ -1529,7 +1637,56 @@ class FromFrozenGraphFile(LiteTest):
 
     input_details = interpreter.get_input_details()
     self.assertLen(input_details, 1)
-    self.assertAllEqual([1, 16, 16, 3], input_details[0]['shape'])
+    self.assertAllEqual([2, 16, 16, 3], input_details[0]['shape'])
+
+  def testInvalidShapesArray(self):
+    """Test an invalid shape overriding case, which has a wrong input name."""
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[None, 16, 16, 3], dtype=dtypes.float32)
+      _ = in_tensor + in_tensor
+      sess = session.Session()
+
+    # Write graph to file.
+    graph_def_file = os.path.join(self.get_temp_dir(), 'model.pb')
+    write_graph(sess.graph_def, '', graph_def_file, False)
+    sess.close()
+
+    # Convert model and ensure model is not None.
+    with self.assertRaises(ValueError):
+      lite.TFLiteConverter.from_frozen_graph(
+          graph_def_file, ['Placeholder'], ['add'],
+          input_shapes={'wrong_input': [2, 16, 16, 3]})
+
+  def testPartialShapesArray(self):
+    """Test a shape overriding case, with the only one input among two."""
+    with ops.Graph().as_default():
+      a = array_ops.placeholder(
+          shape=[None, 16, 16, 3], dtype=dtypes.float32, name='a')
+      b = array_ops.placeholder(
+          shape=[None, 16, 16, 3], dtype=dtypes.float32, name='b')
+      _ = math_ops.add(a, b, name='add')
+      sess = session.Session()
+
+    # Write graph to file.
+    graph_def_file = os.path.join(self.get_temp_dir(), 'model.pb')
+    write_graph(sess.graph_def, '', graph_def_file, False)
+    sess.close()
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverter.from_frozen_graph(
+        graph_def_file, ['a', 'b'], ['add'], input_shapes={'a': [2, 16, 16, 3]})
+    tflite_model = converter.convert()
+    self.assertIsNotNone(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertLen(input_details, 2)
+    self.assertAllEqual([2, 16, 16, 3], input_details[0]['shape'])
+    self.assertAllEqual([1, 16, 16, 3], input_details[1]['shape'])
 
   def testFreezeGraph(self):
     with ops.Graph().as_default():
@@ -1856,7 +2013,54 @@ class FromSavedModelTest(TestModels):
     self.assertAllEqual([1, 16, 16, 3], output_details[0]['shape'])
     self.assertEqual((0., 0.), output_details[0]['quantization'])
 
-  def testSubsetInputArrays(self):
+  def testShapeOverriding(self):
+    """Test a SavedModel with the input_shapes arugment."""
+    saved_model_dir = self._createSavedModel(shape=[None, 16, 16, 3])
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverter.from_saved_model(
+        saved_model_dir,
+        input_shapes={
+            'inputA': [2, 16, 16, 3],
+            'inputB': [2, 16, 16, 3]
+        })
+    tflite_model = converter.convert()
+    self.assertIsNotNone(tflite_model)
+
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertLen(input_details, 2)
+    self.assertStartsWith(input_details[0]['name'], 'inputA')
+    self.assertEqual(np.float32, input_details[0]['dtype'])
+    self.assertAllEqual([2, 16, 16, 3], input_details[0]['shape'])
+    self.assertEqual((0., 0.), input_details[0]['quantization'])
+
+    self.assertStartsWith(input_details[1]['name'], 'inputB')
+    self.assertEqual(np.float32, input_details[1]['dtype'])
+    self.assertAllEqual([2, 16, 16, 3], input_details[1]['shape'])
+    self.assertEqual((0., 0.), input_details[1]['quantization'])
+
+    output_details = interpreter.get_output_details()
+    self.assertLen(output_details, 1)
+    self.assertStartsWith(output_details[0]['name'], 'add')
+    self.assertEqual(np.float32, output_details[0]['dtype'])
+    self.assertAllEqual([2, 16, 16, 3], output_details[0]['shape'])
+    self.assertEqual((0., 0.), output_details[0]['quantization'])
+
+  def testWrongInputShapes(self):
+    """Test a SavedModel with a wrong name in the input_shapes argument."""
+    saved_model_dir = self._createSavedModel(shape=[1, 16, 16, 3])
+
+    # Check case where input shape is given.
+    with self.assertRaises(ValueError):
+      lite.TFLiteConverter.from_saved_model(
+          saved_model_dir,
+          input_arrays=['inputA'],
+          input_shapes={'wrong_input': [1, 16, 16, 3]})
+
+  def testSubsetInputShaapes(self):
     """Test a SavedModel with a subset of the input array names of the model."""
     saved_model_dir = self._createSavedModel(shape=[1, 16, 16, 3])
 
@@ -2145,8 +2349,7 @@ class FromKerasFile(TestModels, parameterized.TestCase):
 
     np.testing.assert_almost_equal(tflite_result, keras_result, 5)
 
-  def testFunctionalModelMultipleInputs(self):
-    """Test a Functional tf.keras model with multiple inputs and outputs."""
+  def _getFunctionalModelMultipleInputs(self):
     a = keras.layers.Input(shape=(3,), name='input_a')
     b = keras.layers.Input(shape=(3,), name='input_b')
     dense = keras.layers.Dense(4, name='dense')
@@ -2173,6 +2376,10 @@ class FromKerasFile(TestModels, parameterized.TestCase):
       keras.models.save_model(model, self._keras_file)
     finally:
       os.close(fd)
+
+  def testFunctionalModelMultipleInputs(self):
+    """Test a Functional tf.keras model with multiple inputs and outputs."""
+    self._getFunctionalModelMultipleInputs()
 
     # Convert to TFLite model.
     converter = lite.TFLiteConverter.from_keras_model_file(self._keras_file)
@@ -2204,6 +2411,90 @@ class FromKerasFile(TestModels, parameterized.TestCase):
     self.assertEqual(np.float32, output_details[1]['dtype'])
     self.assertAllEqual([1, 4], output_details[1]['shape'])
     self.assertEqual((0., 0.), output_details[1]['quantization'])
+
+  def testShapeOverriding(self):
+    """Test a Functional tf.keras model with input shape overriding."""
+    self._getFunctionalModelMultipleInputs()
+
+    # Convert to TFLite model.
+    converter = lite.TFLiteConverter.from_keras_model_file(
+        self._keras_file, input_shapes={
+            'input_a': {2, 3},
+            'input_b': {2, 3}
+        })
+    tflite_model = converter.convert()
+    self.assertIsNotNone(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertLen(input_details, 2)
+    self.assertEndsWith(input_details[0]['name'], 'input_a')
+    self.assertEqual(np.float32, input_details[0]['dtype'])
+    self.assertAllEqual([2, 3], input_details[0]['shape'])
+    self.assertEqual((0., 0.), input_details[0]['quantization'])
+
+    self.assertEndsWith(input_details[1]['name'], 'input_b')
+    self.assertEqual(np.float32, input_details[1]['dtype'])
+    self.assertAllEqual([2, 3], input_details[1]['shape'])
+    self.assertEqual((0., 0.), input_details[1]['quantization'])
+
+    output_details = interpreter.get_output_details()
+    self.assertLen(output_details, 2)
+    self.assertEqual(np.float32, output_details[0]['dtype'])
+    self.assertAllEqual([2, 4], output_details[0]['shape'])
+    self.assertEqual((0., 0.), output_details[0]['quantization'])
+
+    self.assertEqual(np.float32, output_details[1]['dtype'])
+    self.assertAllEqual([2, 4], output_details[1]['shape'])
+    self.assertEqual((0., 0.), output_details[1]['quantization'])
+
+  def testPartialShapeOverriding(self):
+    """Test a Functional tf.keras model with parital input shape overriding."""
+    self._getFunctionalModelMultipleInputs()
+
+    # Convert to TFLite model.
+    converter = lite.TFLiteConverter.from_keras_model_file(
+        self._keras_file, input_shapes={'input_a': {2, 3}})
+    tflite_model = converter.convert()
+    self.assertIsNotNone(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertLen(input_details, 2)
+    self.assertEndsWith(input_details[0]['name'], 'input_a')
+    self.assertEqual(np.float32, input_details[0]['dtype'])
+    self.assertAllEqual([2, 3], input_details[0]['shape'])
+    self.assertEqual((0., 0.), input_details[0]['quantization'])
+
+    self.assertEndsWith(input_details[1]['name'], 'input_b')
+    self.assertEqual(np.float32, input_details[1]['dtype'])
+    self.assertAllEqual([1, 3], input_details[1]['shape'])
+    self.assertEqual((0., 0.), input_details[1]['quantization'])
+
+    output_details = interpreter.get_output_details()
+    self.assertLen(output_details, 2)
+    self.assertEqual(np.float32, output_details[0]['dtype'])
+    self.assertAllEqual([1, 4], output_details[0]['shape'])
+    self.assertEqual((0., 0.), output_details[0]['quantization'])
+
+    self.assertEqual(np.float32, output_details[1]['dtype'])
+    self.assertAllEqual([2, 4], output_details[1]['shape'])
+    self.assertEqual((0., 0.), output_details[1]['quantization'])
+
+  def testWrongShapeOverriding(self):
+    """Test a Functional tf.keras model with wrong input shape overriding."""
+    self._getFunctionalModelMultipleInputs()
+
+    # Convert to TFLite model.
+    with self.assertRaises(ValueError):
+      lite.TFLiteConverter.from_keras_model_file(
+          self._keras_file, input_shapes={'wrong_input': {2, 3}})
 
   def testFunctionalSequentialModel(self):
     """Test a Functional tf.keras model containing a Sequential model."""

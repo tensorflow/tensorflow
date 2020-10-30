@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
@@ -63,8 +64,6 @@ struct TensorLinearDescriptor : public GPUObjectDescriptor {
   absl::Status PerformReadSelector(const std::vector<std::string>& args,
                                    std::string* result) const;
 
-  absl::Status CreateGPUObject(CLContext* context,
-                               GPUObjectPtr* result) const override;
   void Release() override;
 };
 

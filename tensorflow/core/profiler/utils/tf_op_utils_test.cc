@@ -132,6 +132,22 @@ TEST(TfOpUtilsTest, JaxOpTest) {
   EXPECT_EQ(TfOpEventName(kName), "op_type");
 }
 
+TEST(TfOpUtilsTest, JaxOpNameTest) {
+  const absl::string_view kOpName = "namescope/add";
+  const absl::string_view kOpType = "add";
+  EXPECT_TRUE(IsJaxOpNameAndType(kOpName, kOpType));
+}
+
+TEST(TfOpUtilsTest, JaxOpNameWithMetadataTest) {
+  const absl::string_view kOpName =
+      "pmap(<unnamed wrapped function>)/gather[ "
+      "dimension_numbers=GatherDimensionNumbers(offset_dims=(2,), "
+      "collapsed_slice_dims=(0, 1), start_index_map=(0, 1))\n                  "
+      "                       slice_sizes=(1, 1, 81) ]:gather";
+  const absl::string_view kOpType = "gather";
+  EXPECT_TRUE(IsJaxOpNameAndType(kOpName, kOpType));
+}
+
 TEST(TfOpUtilsTest, OpWithoutTypeTest) {
   const absl::string_view kName = "OpName:";  // with trailing ':'
   TfOp tf_op = ParseTfOpFullname(kName);

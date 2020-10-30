@@ -2587,11 +2587,9 @@ TEST(DirectSessionTest,
 
 // A simple benchmark for the overhead of `DirectSession::Run()` calls
 // with varying numbers of feeds/fetches.
-void FeedFetchBenchmarkHelper(int iters, int num_feeds, bool use_make_callable,
-                              int inter_op_threads,
+void FeedFetchBenchmarkHelper(::testing::benchmark::State& state, int num_feeds,
+                              bool use_make_callable, int inter_op_threads,
                               bool use_single_threaded_executor) {
-  testing::StopTiming();
-
   Tensor value(DT_FLOAT, TensorShape());
   value.flat<float>()(0) = 37.0;
 
@@ -2643,13 +2641,11 @@ void FeedFetchBenchmarkHelper(int iters, int num_feeds, bool use_make_callable,
     }
     TF_CHECK_OK(session->MakeCallable(callable_options, &handle));
 
-    testing::StartTiming();
-    for (int i = 0; i < iters; ++i) {
+    for (auto s : state) {
       std::vector<Tensor> output_values;
       TF_CHECK_OK(
           session->RunCallable(handle, input_tensors, &output_values, nullptr));
     }
-    testing::StopTiming();
   } else {
     {
       // NOTE(mrry): Ignore the first run, which will incur the graph
@@ -2661,32 +2657,40 @@ void FeedFetchBenchmarkHelper(int iters, int num_feeds, bool use_make_callable,
       std::vector<Tensor> output_values;
       TF_CHECK_OK(session->Run(inputs, outputs, {}, &output_values));
     }
-    testing::StartTiming();
-    for (int i = 0; i < iters; ++i) {
+
+    for (auto s : state) {
       std::vector<Tensor> output_values;
       TF_CHECK_OK(session->Run(inputs, outputs, {}, &output_values));
     }
-    testing::StopTiming();
   }
 }
 
-void BM_FeedFetch(int iters, int num_feeds) {
-  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ false,
+void BM_FeedFetch(::testing::benchmark::State& state) {
+  const int num_feeds = state.range(0);
+
+  FeedFetchBenchmarkHelper(state, num_feeds, /* use_make_callable */ false,
                            /* inter_op_threads */ 0,
                            /* use_single_threaded_executor */ false);
 }
-void BM_FeedFetchCallable(int iters, int num_feeds) {
-  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ true,
+void BM_FeedFetchCallable(::testing::benchmark::State& state) {
+  const int num_feeds = state.range(0);
+
+  FeedFetchBenchmarkHelper(state, num_feeds, /* use_make_callable */ true,
                            /* inter_op_threads */ 0,
                            /* use_single_threaded_executor */ false);
 }
-void BM_FeedFetchCallableSingleThread(int iters, int num_feeds) {
-  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ true,
+void BM_FeedFetchCallableSingleThread(::testing::benchmark::State& state) {
+  const int num_feeds = state.range(0);
+
+  FeedFetchBenchmarkHelper(state, num_feeds, /* use_make_callable */ true,
                            /* inter_op_threads */ -1,
                            /* use_single_threaded_executor */ false);
 }
-void BM_FeedFetchCallableSingleThreadExecutor(int iters, int num_feeds) {
-  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ true,
+void BM_FeedFetchCallableSingleThreadExecutor(
+    ::testing::benchmark::State& state) {
+  const int num_feeds = state.range(0);
+
+  FeedFetchBenchmarkHelper(state, num_feeds, /* use_make_callable */ true,
                            /* inter_op_threads */ -1,
                            /* use_single_threaded_executor */ true);
 }

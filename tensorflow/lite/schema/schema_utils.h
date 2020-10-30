@@ -28,22 +28,6 @@ BuiltinOperator GetBuiltinCode(const OperatorCode *op_code);
 
 BuiltinOperator GetBuiltinCode(const OperatorCodeT *op_code);
 
-int8_t ConvertBuiltinCodeToDeprecatedBuiltinCode(
-    const BuiltinOperator builtin_code);
-
-// The following methods are for backward compatibility for the early version
-// three, which does not have an extended builtin code.
-flatbuffers::Offset<OperatorCode> CreateOperatorCode(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    BuiltinOperator builtin_code = BuiltinOperator_ADD,
-    flatbuffers::Offset<flatbuffers::String> custom_code = 0,
-    int32_t version = 1);
-
-flatbuffers::Offset<OperatorCode> CreateOperatorCodeDirect(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    BuiltinOperator builtin_code = BuiltinOperator_ADD,
-    const char *custom_code = nullptr, int32_t version = 1);
-
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_SCHEMA_SCHEMA_UTILS_H_

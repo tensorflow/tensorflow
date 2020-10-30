@@ -253,14 +253,6 @@ absl::Status CreateTensorShared(const CLContext& context, const BHWDC& shape,
 
 }  // namespace
 
-absl::Status TensorDescriptor::CreateGPUObject(CLContext* context,
-                                               GPUObjectPtr* result) const {
-  Tensor gpu_tensor;
-  RETURN_IF_ERROR(gpu_tensor.CreateFromDescriptor(*this, context));
-  *result = absl::make_unique<Tensor>(std::move(gpu_tensor));
-  return absl::OkStatus();
-}
-
 Tensor::Tensor(cl_mem memory, bool memory_owner, const BHWC& shape,
                const TensorDescriptor& descriptor)
     : memory_(memory),

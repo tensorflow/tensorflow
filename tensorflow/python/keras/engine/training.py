@@ -968,7 +968,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
             form of datasets, generators, or `keras.utils.Sequence` instances
             (since they generate batches).
         validation_freq: Only relevant if validation data is provided. Integer
-            or `collections_abc.Container` instance (e.g. list, tuple, etc.).
+            or `collections.abc.Container` instance (e.g. list, tuple, etc.).
             If an integer, specifies how many training epochs to run before a
             new validation run is performed, e.g. `validation_freq=2` runs
             validation every 2 epochs. If a Container, specifies the epochs on

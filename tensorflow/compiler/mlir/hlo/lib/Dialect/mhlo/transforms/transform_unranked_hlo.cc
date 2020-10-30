@@ -154,7 +154,8 @@ struct TransformUnrankedHloPass
     PopulateTransformUnrankedHloPatterns(&ctx, &patterns);
 
     // Apply transformation.
-    if (failed(applyPartialConversion(getFunction(), target, patterns)))
+    if (failed(
+            applyPartialConversion(getFunction(), target, std::move(patterns))))
       return signalPassFailure();
   }
 };

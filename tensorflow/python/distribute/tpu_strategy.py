@@ -739,7 +739,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       atexit.register(async_wait)
 
     # Flag to turn on VariablePolicy
-    self._use_var_policy = False
+    self._use_var_policy = True
 
     # Flag to enable TF2 SPMD
     self._use_spmd_for_xla_partitioning = False

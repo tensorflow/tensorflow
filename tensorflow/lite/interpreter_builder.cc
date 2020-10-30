@@ -47,6 +47,20 @@ limitations under the License.
 #endif
 #endif
 
+// TODO(b/139446230): Move to portable platform header.
+#if defined(__ANDROID__)
+#define TFLITE_IS_MOBILE_PLATFORM
+#endif  // defined(__ANDROID__)
+
+#if defined(__APPLE__)
+#include "TargetConditionals.h"
+#if TARGET_IPHONE_SIMULATOR
+#define TFLITE_IS_MOBILE_PLATFORM
+#elif TARGET_OS_IPHONE
+#define TFLITE_IS_MOBILE_PLATFORM
+#endif
+#endif  // defined(__APPLE__)
+
 namespace tflite {
 
 namespace {
@@ -129,9 +143,16 @@ const char* kEmptyTensorName = "";
 // For flex delegate, see also the strong override in
 // lite/delegates/flex/delegate.cc.
 TFLITE_ATTRIBUTE_WEAK Interpreter::TfLiteDelegatePtr AcquireFlexDelegate() {
-#if !defined(__ANDROID__)
-  // If _pywrap_tensorflow_internal.so is available, use
-  // TF_AcquireFlexDelegate() to initialize flex delegate.
+  auto acquire_flex_delegate_func =
+      reinterpret_cast<Interpreter::TfLiteDelegatePtr (*)()>(
+          SharedLibrary::GetSymbol("TF_AcquireFlexDelegate"));
+  if (acquire_flex_delegate_func) {
+    return acquire_flex_delegate_func();
+  }
+
+#if !defined(TFLITE_IS_MOBILE_PLATFORM)
+  // Load TF_AcquireFlexDelegate() from _pywrap_tensorflow_internal.so if it is
+  // available.
   const char* filename_pywrap_tensorflow_internal =
 #if defined(_WIN32)
       "_pywrap_tensorflow_internal.pyd";
@@ -143,15 +164,16 @@ TFLITE_ATTRIBUTE_WEAK Interpreter::TfLiteDelegatePtr AcquireFlexDelegate() {
   void* lib_tf_internal =
       SharedLibrary::LoadLibrary(filename_pywrap_tensorflow_internal);
   if (lib_tf_internal) {
-    auto TF_AcquireFlexDelegate =
+    acquire_flex_delegate_func =
         reinterpret_cast<Interpreter::TfLiteDelegatePtr (*)()>(
             SharedLibrary::GetLibrarySymbol(lib_tf_internal,
                                             "TF_AcquireFlexDelegate"));
-    if (TF_AcquireFlexDelegate) {
-      return TF_AcquireFlexDelegate();
+    if (acquire_flex_delegate_func) {
+      return acquire_flex_delegate_func();
     }
   }
-#endif
+#endif  // !defined(TFLITE_IS_MOBILE_PLATFORM)
+
   return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
 }
 
@@ -488,7 +510,9 @@ TfLiteStatus InterpreterBuilder::ParseSignatureDefs(
     signature_def.inputs = GetMapFromTensorMap(fb_signature_def->inputs());
     signature_def.outputs = GetMapFromTensorMap(fb_signature_def->outputs());
     signature_def.method_name = fb_signature_def->method_name()->c_str();
-    signature_def.signature_def_key = fb_signature_def->key()->c_str();
+    if (fb_signature_def->key() != nullptr) {
+      signature_def.signature_def_key = fb_signature_def->key()->c_str();
+    }
   }
   interpreter->SetSignatureDef(std::move(signature_defs));
   return kTfLiteOk;

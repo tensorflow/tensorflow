@@ -28,7 +28,6 @@ from tensorflow.python.distribute import collective_all_reduce_strategy as mwms_
 from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
-from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
@@ -69,7 +68,7 @@ def create_test_objects(cluster_spec=None,
 
   if cluster_spec and task_type and task_id is not None:
     cluster_resolver = SimpleClusterResolver(
-        cluster_spec=multi_worker_util.normalize_cluster_spec(cluster_spec),
+        cluster_spec=ClusterSpec(cluster_spec),
         task_type=task_type,
         task_id=task_id,
         num_accelerators={'GPU': num_gpus})

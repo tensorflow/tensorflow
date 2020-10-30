@@ -1382,7 +1382,7 @@ class BASE_HLO_BitcastOp {
 
   string description = [{
     This op changes the shape of the input in the way that the physical
-    arranggment of elements are unchanged.
+    arrangement of elements are unchanged.
 
     However, the op needs layout information to make sense of "physical
     arrangement of elements". Layout support in MHLO is currently under

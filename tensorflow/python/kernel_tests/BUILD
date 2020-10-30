@@ -3207,7 +3207,7 @@ cuda_py_test(
     name = "extract_image_patches_grad_test",
     size = "medium",
     srcs = ["extract_image_patches_grad_test.py"],
-    shard_count = 9,
+    shard_count = 3,
     tags = ["notap"],  # http://b/31080670
     deps = [
         "//tensorflow/python:array_ops",
@@ -3222,6 +3222,7 @@ cuda_py_test(
     name = "extract_volume_patches_grad_test",
     size = "medium",
     srcs = ["extract_volume_patches_grad_test.py"],
+    shard_count = 20,
     tags = [
         "no_pip",
         "nomac",  # http://b/139946976

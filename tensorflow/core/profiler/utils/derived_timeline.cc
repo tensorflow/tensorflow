@@ -174,7 +174,8 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
     event.ForEachStat([&](const XStatVisitor& stat) {
       if (stat.Type() == StatType::kGroupId) {
         group_id = stat.IntValue();
-      } else if (stat.Type() == StatType::kLevel0) {
+      } else if (stat.Type() == StatType::kLevel0 ||  // old way to carry tf_op
+                 stat.Type() == StatType::kTfOp) {
         tf_op_full_name = stat.StrOrRefValue();
       } else if (stat.Type() == StatType::kHloOp) {
         hlo_op_names =
