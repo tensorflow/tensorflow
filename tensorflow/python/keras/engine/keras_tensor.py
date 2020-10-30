@@ -25,11 +25,11 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec as type_spec_module
+from tensorflow.python.keras.utils import object_identity
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.ragged import ragged_operators  # pylint: disable=unused-import
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import nest
-from tensorflow.python.util import object_identity
 
 # pylint: disable=g-classes-have-attributes
 
