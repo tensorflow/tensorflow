@@ -83,6 +83,26 @@ const string& GetModelName(OpKernelContext* ctx) {
 
 }  // namespace
 
+std::unique_ptr<BatchResourceBase::BatchTask>
+BatchResourceBase::BatchTask::CreateSplitTask(
+    int split_index, AsyncOpKernel::DoneCallback done_callback) {
+  std::unique_ptr<BatchTask> task = CreateDerivedTask();
+
+  task->guid = this->guid;
+  task->propagated_context = Context(ContextKind::kThread);
+  task->inputs.reserve(this->inputs.size());
+  task->captured_inputs = this->captured_inputs;
+  task->context = this->context;
+  task->done_callback = done_callback;
+  task->split_index = split_index;
+  task->output = this->output;
+  task->status = this->status;
+  task->is_partial = true;
+  task->start_time = this->start_time;
+
+  return task;
+}
+
 using ::tensorflow::concat_split_util::Concat;
 using ::tensorflow::concat_split_util::Split;
 using TensorMatrix = std::vector<std::vector<Tensor>>;
@@ -317,20 +337,7 @@ Status BatchResourceBase::ConcatInputTensors(
 
   output_tasks->reserve(output_task_num);
   for (int i = 0; i < output_task_num; i++) {
-    auto task = absl::make_unique<BatchTask>();
-    task->guid = input_task.guid;
-    task->propagated_context = Context(ContextKind::kThread);
-    task->captured_inputs = input_task.captured_inputs;
-    task->context = input_task.context;
-    task->done_callback = barrier.Inc();
-    task->start_time = input_task.start_time;
-    task->split_index = i;
-    task->inputs.reserve(input_task.inputs.size());
-    task->is_partial = true;
-    task->status = input_task.status;
-
-    task->output = input_task.output;
-    output_tasks->push_back(std::move(task));
+    output_tasks->push_back(input_task.CreateSplitTask(i, barrier.Inc()));
   }
 
   const int num_input_tensors = input_task.inputs.size();
