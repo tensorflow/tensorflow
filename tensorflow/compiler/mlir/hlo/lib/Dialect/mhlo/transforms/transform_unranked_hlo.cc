@@ -377,9 +377,9 @@ struct ConvertUnrankedDynamicBroadcastBinaryOp
     Value rhs_shape =
         rewriter.create<shape::ShapeOfOp>(loc, extent_tensor_type, rhs);
     Value lhs_rank =
-        rewriter.create<RankOp>(loc, rewriter.getIndexType(), lhs_shape);
+        rewriter.create<shape::RankOp>(loc, rewriter.getIndexType(), lhs_shape);
     Value rhs_rank =
-        rewriter.create<RankOp>(loc, rewriter.getIndexType(), rhs_shape);
+        rewriter.create<shape::RankOp>(loc, rewriter.getIndexType(), rhs_shape);
     Value greater_rank_lhs =
         rewriter.create<CmpIOp>(loc, CmpIPredicate::sgt, lhs_rank, rhs_rank);
     Value greater_rank =
