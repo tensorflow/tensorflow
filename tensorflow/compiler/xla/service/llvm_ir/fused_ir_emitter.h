@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
@@ -51,36 +50,21 @@ namespace xla {
 // created produces an LLVM struct with N elements, one for each element of the
 // arrays in the tuple.  It follows that the arrays in the tuple must have the
 // same length.
-class FusedIrEmitter : public ConstDfsHloVisitorWithDefault {
+class FusedIrEmitter {
  public:
   using IndexedGenerator = llvm_ir::ElementGenerator;
-  using NonIndexedGenerator = std::function<StatusOr<llvm::Value*>()>;
 
   explicit FusedIrEmitter(ElementalIrEmitter* elemental_emitter)
       : elemental_emitter_(elemental_emitter),
         b_(elemental_emitter->b()),
         module_(elemental_emitter->module()) {}
 
-  Status DefaultAction(const HloInstruction* hlo) override;
-
-  Status HandleConstant(const HloInstruction* constant) override;
-
-  Status HandleGetTupleElement(
-      const HloInstruction* get_tuple_element) override;
-
-  Status HandleParameter(const HloInstruction* parameter) override;
-
-  // Emits the ir value for each element in the tuple.
-  Status HandleTuple(const HloInstruction* tuple) override;
-
   void BindGenerator(const HloInstruction* hlo,
                      llvm_ir::ElementGenerator generator) {
     indexed_generators_[hlo] = std::move(generator);
   }
 
-  Status PrepareGeneratorRecursively(const HloInstruction* root) {
-    return root->Accept(this);
-  }
+  Status PrepareGeneratorRecursively(const HloInstruction* root);
 
   // Returns the generator function for the given instruction.
   IndexedGenerator GetGenerator(const HloInstruction* instruction) const;
@@ -94,6 +78,17 @@ class FusedIrEmitter : public ConstDfsHloVisitorWithDefault {
                                           const HloInstruction* producer);
 
  private:
+  Status DefaultAction(const HloInstruction* hlo);
+
+  Status HandleConstant(const HloInstruction* constant);
+
+  Status HandleGetTupleElement(const HloInstruction* get_tuple_element);
+
+  Status HandleParameter(const HloInstruction* parameter);
+
+  // Emits the ir value for each element in the tuple.
+  Status HandleTuple(const HloInstruction* tuple);
+
   ElementalIrEmitter* elemental_emitter_;
 
   // Borrowed

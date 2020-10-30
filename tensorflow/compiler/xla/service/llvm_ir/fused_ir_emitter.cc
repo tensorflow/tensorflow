@@ -162,4 +162,38 @@ bool FusedIrEmitter::IsFusedIrEmitterInefficient(
   return eval_producer.MaxCodeDuplicationTooHigh();
 }
 
+Status FusedIrEmitter::PrepareGeneratorRecursively(const HloInstruction* root) {
+  std::vector<const HloInstruction*> stack;
+  stack.push_back(root);
+  while (!stack.empty()) {
+    const HloInstruction* instr = stack.back();
+    stack.pop_back();
+    if (indexed_generators_.count(instr)) {
+      continue;
+    }
+    for (const HloInstruction* operand : instr->operands()) {
+      stack.push_back(operand);
+    }
+    switch (instr->opcode()) {
+      case HloOpcode::kConstant:
+        TF_RETURN_IF_ERROR(HandleConstant(instr));
+        break;
+      case HloOpcode::kGetTupleElement:
+        TF_RETURN_IF_ERROR(HandleGetTupleElement(instr));
+        break;
+      case HloOpcode::kParameter:
+        TF_RETURN_IF_ERROR(HandleParameter(instr));
+        break;
+      case HloOpcode::kTuple:
+        TF_RETURN_IF_ERROR(HandleTuple(instr));
+        break;
+      default:
+        TF_RETURN_IF_ERROR(DefaultAction(instr));
+        break;
+    }
+    CHECK(indexed_generators_.count(instr));
+  }
+  return Status::OK();
+}
+
 }  // namespace xla
