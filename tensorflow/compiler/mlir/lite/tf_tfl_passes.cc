@@ -218,8 +218,8 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
       AddQuantizationPasses(pass_config.quant_specs, pass_manager);
     }
 
-    // This pass should be always at the end of the floating point model
-    // conversion. Some TFL ops like unidirectional
+    // This pass should be always at the end of the model
+    // conversion (even after quantization). Some TFL ops like unidirectional
     // sequence lstm will have stateful operands and some optimization passes
     // will merge those operands if they have identical values & types. However,
     // it's not desired by TFL. This pass serves as a "fix" pass to split the
