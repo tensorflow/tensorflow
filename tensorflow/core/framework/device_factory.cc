@@ -65,16 +65,17 @@ int32 DeviceFactory::DevicePriority(const string& device_type) {
 
 // static
 // If subdevice type is not found in the device factories, that means
-// device is not registered. In this case, device type will be used as
-// subdevice type.
-string DeviceFactory::SubDeviceType(const string& device_type) {
+// device is not registered. In this case, subdevice type will be an
+// empty string.
+const string& DeviceFactory::SubDeviceType(const string& device_type) {
   tf_shared_lock l(*get_device_factory_lock());
   std::unordered_map<string, FactoryItem>& factories = device_factories();
   auto iter = factories.find(device_type);
   if (iter != factories.end()) {
     return iter->second.subdevice_type;
   }
-  return device_type;
+  static const string& kEmptyString = *new string("");
+  return kEmptyString;
 }
 
 // static

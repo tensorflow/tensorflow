@@ -92,9 +92,8 @@ class DeviceFactory {
   static int32 DevicePriority(const std::string& device_type);
 
   // Return the "subdevice_type" string for a "device_type string".
-  static string SubDeviceType(const std::string& device_type);
+  static const string& SubDeviceType(const std::string& device_type);
 };
-
 namespace dfactory {
 
 template <class Factory>
@@ -130,10 +129,10 @@ class Registrar {
   // GPUCompatibleCPU: 70
   // ThreadPoolDevice: 60
   // Default: 50
-  // Subdevice type is the same as device type for those devices registered
-  // by Registrar (static initialization);
+  // Subdevice type is empty for those devices registered
+  // by Registrar (first party devices);
   explicit Registrar(const std::string& device_type, int priority = 50) {
-    DeviceFactory::Register(device_type, device_type, new Factory(), priority);
+    DeviceFactory::Register(device_type, string(""), new Factory(), priority);
   }
 };
 

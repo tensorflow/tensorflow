@@ -1257,11 +1257,9 @@ namespace kernel_factory {
 void OpKernelRegistrar::InitInternal(const KernelDef* kernel_def,
                                      StringPiece kernel_class_name,
                                      std::unique_ptr<OpKernelFactory> factory) {
-  // For those kernels register through static initialization, subdevice type is
-  // the same as the device type sice thery are kernels registered in proper.
   const string key =
       Key(kernel_def->op(), DeviceType(kernel_def->device_type()),
-          kernel_def->device_type(), kernel_def->label());
+          kernel_def->subdevice_type(), kernel_def->label());
 
   // To avoid calling LoadDynamicKernels DO NOT CALL GlobalKernelRegistryTyped
   // here.
@@ -1270,24 +1268,6 @@ void OpKernelRegistrar::InitInternal(const KernelDef* kernel_def,
   // before some file libraries can initialize, which in turn crashes the
   // program flakily. Until we get rid of static initializers in kernel
   // registration mechanism, we have this workaround here.
-  auto global_registry =
-      reinterpret_cast<KernelRegistry*>(GlobalKernelRegistry());
-  mutex_lock l(global_registry->mu);
-  global_registry->registry.emplace(
-      key,
-      KernelRegistration(*kernel_def, kernel_class_name, std::move(factory)));
-  delete kernel_def;
-}
-
-void OpKernelRegistrar::Register(const KernelDef* kernel_def,
-                                 StringPiece kernel_class_name,
-                                 std::unique_ptr<OpKernelFactory> factory) {
-  // OpKernelRegistrar::Register is intended to be used by Kernel C API for
-  // dynamic kernel registration. subdevice type is registered from plugin.
-  const string key =
-      Key(kernel_def->op(), DeviceType(kernel_def->device_type()),
-          kernel_def->subdevice_type(), kernel_def->label());
-
   auto global_registry =
       reinterpret_cast<KernelRegistry*>(GlobalKernelRegistry());
   mutex_lock l(global_registry->mu);
@@ -1368,8 +1348,7 @@ Status FindKernelRegistration(
   // default kernel.
   if (*reg == nullptr &&
       !IsSymbolicExecutionDevice(device_type.type_string())) {
-    const string default_key =
-        Key(node_op, DEVICE_DEFAULT, DEVICE_DEFAULT, label);
+    const string default_key = Key(node_op, DEVICE_DEFAULT, string(""), label);
     auto regs = typed_registry->registry.equal_range(default_key);
     for (auto iter = regs.first; iter != regs.second; ++iter) {
       // If there is a kernel registered for the op and device_type,

@@ -293,7 +293,6 @@ TEST(TestKernel, TestTypeConstraint) {
       }
     }
   }
-  subdevice_type: "FakeDeviceName1"
 }
 )str";
   ASSERT_EQ(expected_str, list.DebugString());
@@ -332,7 +331,6 @@ TEST(TestKernel, TestHostMemory) {
   device_type: "FakeDeviceName1"
   host_memory_arg: "input2"
   host_memory_arg: "output1"
-  subdevice_type: "FakeDeviceName1"
 }
 )str";
   ASSERT_EQ(expected_str, list.DebugString());
