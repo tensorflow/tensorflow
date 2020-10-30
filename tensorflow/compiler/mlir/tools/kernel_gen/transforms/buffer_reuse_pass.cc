@@ -40,6 +40,13 @@ static bool operator<(const Value &lhs, const Value &rhs) {
 }
 }  // namespace mlir
 
+constexpr llvm::StringRef
+    mlir::kernel_gen::tf_framework::TFAllocOp::kReuseOutputAttrName;
+constexpr llvm::StringRef
+    mlir::kernel_gen::tf_framework::TFAllocOp::kReuseInputCandidatesAttrName;
+constexpr llvm::StringRef
+    mlir::kernel_gen::tf_framework::TFFrameworkDialect::kTFEntryAttrName;
+
 namespace mlir {
 namespace kernel_gen {
 namespace transforms {
@@ -310,17 +317,16 @@ struct BufferReusePass : public BufferReusePassBase<BufferReusePass> {
 
     // Annotate IR with reuse candidates and output indices per allocation.
     Builder builder(&getContext());
-    auto reuse_output_attr_name = tf_framework::TFAllocOp::kReuseOutputAttrName;
-    auto reuse_input_candidates_attr_name =
-        tf_framework::TFAllocOp::kReuseInputCandidatesAttrName;
     getFunction().walk([&](AllocOp op) {
       if (auto output_index = analysis.get_output_index(op)) {
         auto attr = builder.getIndexAttr(*output_index);
-        op.getOperation()->setAttr(reuse_output_attr_name, attr);
+        op.getOperation()->setAttr(
+            tf_framework::TFAllocOp::kReuseOutputAttrName, attr);
       }
       if (auto reuse_candiates = analysis.get_reuse_candiates(op)) {
         auto attr = builder.getIndexArrayAttr(*reuse_candiates);
-        op.getOperation()->setAttr(reuse_input_candidates_attr_name, attr);
+        op.getOperation()->setAttr(
+            tf_framework::TFAllocOp::kReuseInputCandidatesAttrName, attr);
       }
     });
   }
