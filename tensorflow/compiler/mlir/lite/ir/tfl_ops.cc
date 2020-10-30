@@ -306,6 +306,14 @@ inline bool IsF32ShapedType(Type t) {
   return false;
 }
 
+// Returns true if it is a shaped type of bf16 elements.
+inline bool IsBF16ShapedType(Type t) {
+  if (auto shaped_type = t.dyn_cast_or_null<ShapedType>()) {
+    return shaped_type.getElementType().isBF16();
+  }
+  return false;
+}
+
 // Performs const folding `calculate` with broadcast behavior on the two
 // attributes `operand1` and `operand2` and returns the result if possible.
 // The two operands are expected to both be scalar values.
@@ -498,7 +506,7 @@ Attribute ConstFoldBinaryOp(
 /// "tfl.logical_not".
 Attribute ConstFoldUnaryOp(Type result_type, Attribute operand,
                            llvm::function_ref<APFloat(APFloat)> calculate) {
-  assert(IsF32ShapedType(result_type));
+  assert(IsF32ShapedType(result_type) || IsBF16ShapedType(result_type));
   auto result_shape_type = result_type.cast<ShapedType>();
 
   if (auto dense_elements = operand.dyn_cast_or_null<DenseElementsAttr>()) {
@@ -1911,13 +1919,20 @@ OpFoldResult SqrtOp::fold(ArrayRef<Attribute> operands) {
 
 OpFoldResult RsqrtOp::fold(ArrayRef<Attribute> operands) {
   Type result_type = getType();
-  // Only constant fold for tensor of f32 is implemented.
-  if (!IsF32ShapedType(result_type)) return nullptr;
+  // Only constant fold for tensor of f32/bf16 is implemented.
+  if (!IsF32ShapedType(result_type) && !IsBF16ShapedType(result_type))
+    return nullptr;
 
   auto compute = [](APFloat value) -> APFloat {
+    bool loseInfo;
+    const llvm::fltSemantics &original_float_semantics = value.getSemantics();
+    value.convert(APFloat::IEEEsingle(), APFloat::rmNearestTiesToEven,
+                  &loseInfo);
     float f = value.convertToFloat();
-    float result = 1.f / std::sqrt(f);
-    return APFloat(result);
+    APFloat result(1.f / std::sqrt(f));
+    result.convert(original_float_semantics, APFloat::rmNearestTiesToEven,
+                   &loseInfo);
+    return result;
   };
   return ConstFoldUnaryOp(result_type, operands[0], compute);
 }
