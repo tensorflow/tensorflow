@@ -141,11 +141,6 @@ Status FusedIrEmitter::HandleTuple(const HloInstruction* tuple) {
   return Status::OK();
 }
 
-FusedIrEmitter::IndexedGenerator FusedIrEmitter::GetGenerator(
-    const HloInstruction* instruction) const {
-  return indexed_generators_.at(instruction);
-}
-
 bool FusedIrEmitter::IsFusedIrEmitterInefficient(
     const HloInstruction* consumer, const HloInstruction* producer) {
   if (consumer->opcode() != HloOpcode::kFusion) {
@@ -162,9 +157,10 @@ bool FusedIrEmitter::IsFusedIrEmitterInefficient(
   return eval_producer.MaxCodeDuplicationTooHigh();
 }
 
-Status FusedIrEmitter::PrepareGeneratorRecursively(const HloInstruction* root) {
+StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::GetGenerator(
+    const HloInstruction* instruction) {
   std::vector<const HloInstruction*> stack;
-  stack.push_back(root);
+  stack.push_back(instruction);
   while (!stack.empty()) {
     const HloInstruction* instr = stack.back();
     stack.pop_back();
@@ -193,7 +189,7 @@ Status FusedIrEmitter::PrepareGeneratorRecursively(const HloInstruction* root) {
     }
     CHECK(indexed_generators_.count(instr));
   }
-  return Status::OK();
+  return indexed_generators_.at(instruction);
 }
 
 }  // namespace xla

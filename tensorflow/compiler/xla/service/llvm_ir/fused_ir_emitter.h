@@ -64,10 +64,8 @@ class FusedIrEmitter {
     indexed_generators_[hlo] = std::move(generator);
   }
 
-  Status PrepareGeneratorRecursively(const HloInstruction* root);
-
   // Returns the generator function for the given instruction.
-  IndexedGenerator GetGenerator(const HloInstruction* instruction) const;
+  StatusOr<IndexedGenerator> GetGenerator(const HloInstruction* instruction);
 
   // Evaluates whether fusing 'producer' into 'consumer' might cause exponential
   // behavior in FusedIrEmitter. We currently can have exponential time/memory

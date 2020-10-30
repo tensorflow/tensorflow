@@ -219,13 +219,14 @@ static Status EmitFusedDynamicUpdateSliceInPlaceImpl(
       LayoutUtil::CopyLayoutBetweenShapes(fusion->shape(), &update_shape));
 
   // Create element generators for update and start_indices.
-  TF_RETURN_IF_ERROR(
-      fused_emitter->PrepareGeneratorRecursively(dynamic_update_slice));
-  ElementGenerator update_array_generator = fused_emitter->GetGenerator(update);
+  TF_ASSIGN_OR_RETURN(ElementGenerator update_array_generator,
+                      fused_emitter->GetGenerator(update));
 
-  IndexGenerator start_indices_generator = [&](int64 index) {
-    ElementGenerator element_generator =
-        fused_emitter->GetGenerator(dynamic_update_slice->operand(2 + index));
+  IndexGenerator start_indices_generator =
+      [&](int64 index) -> StatusOr<llvm::Value*> {
+    TF_ASSIGN_OR_RETURN(
+        ElementGenerator element_generator,
+        fused_emitter->GetGenerator(dynamic_update_slice->operand(2 + index)));
     return element_generator(IrArray::Index(b->getInt64Ty()));
   };
   bool is_signed = ShapeUtil::ElementIsSigned(start_indices->shape());

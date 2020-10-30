@@ -2211,11 +2211,9 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
     CpuElementalIrEmitter elemental_emitter(hlo_module_config_, this, module_);
     FusedIrEmitter fused_emitter(&elemental_emitter);
     BindFusionArguments(fusion, &fused_emitter);
-    TF_RETURN_IF_ERROR(fused_emitter.PrepareGeneratorRecursively(
-        fusion->fused_expression_root()));
-
-    return EmitTargetElementLoop(
-        fusion, fused_emitter.GetGenerator(fusion->fused_expression_root()));
+    TF_ASSIGN_OR_RETURN(auto generator, fused_emitter.GetGenerator(
+                                            fusion->fused_expression_root()));
+    return EmitTargetElementLoop(fusion, generator);
   } else if (fusion->IsOutputFusion()) {
     VLOG(3) << "HandleFusion kOutput";
     int64 dot_op_index = root->operand(0)->opcode() == HloOpcode::kDot ? 0 : 1;
