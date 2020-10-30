@@ -83,8 +83,9 @@ class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
  public:
   LegalizeTF() = default;
   LegalizeTF(const LegalizeTF&) {}
-  explicit LegalizeTF(bool run_tfl_runtime_verification) {
+  LegalizeTF(bool run_tfl_runtime_verification, bool unfold_batch_matmul) {
     run_tfl_runtime_verification_ = run_tfl_runtime_verification;
+    unfold_batch_matmul_ = unfold_batch_matmul;
   }
 
   /// Performs the lowering to TFLite dialect.
@@ -94,6 +95,9 @@ class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
   Option<bool> run_tfl_runtime_verification_{
       *this, "run-tfl-runtime-verification",
       llvm::cl::desc("Allow tfl runtime verification."), llvm::cl::init(true)};
+  Option<bool> unfold_batch_matmul_{
+      *this, "unfold-batch-matmul",
+      llvm::cl::desc("Allow tfl batch matmul unfold."), llvm::cl::init(true)};
 };
 
 // Returns true if all tensor value in `values` has static shape and same shape.
@@ -641,6 +645,17 @@ void LegalizeTF::runOnFunction() {
   auto* context = &getContext();
   auto func = getFunction();
 
+  TFL::PopulatePrepareTfPatterns(ctx, &patterns);
+  if (unfold_batch_matmul_) {
+    patterns.insert<TF::ConvertTFBatchMatMulOp<TF::BatchMatMulOp>,
+                            TF::ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>>(
+        context);
+  }
+  patterns.insert<TF::ConvertTFEinsumOp, ConvertTFBroadcastTo,
+                          ConvertTFConv2D, ConvertTFDepthwiseConv2dNative,
+                          ConvertTFStridedSlice, ConvertRfftToRfft2d>(context);
+
+
   // Add TF->TF lowering patterns.
   TF::PopulateLoweringTFPatterns(context, &patterns);
 
@@ -706,8 +721,9 @@ void LegalizeTF::runOnFunction() {
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTF pass.
 std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeTFPass(
-    bool run_tfl_runtime_verification) {
-  return std::make_unique<LegalizeTF>(run_tfl_runtime_verification);
+    bool run_tfl_runtime_verification,
+    bool unfold_batch_matmul) {
+  return std::make_unique<LegalizeTF>(run_tfl_runtime_verification, unfold_batch_matmul);
 }
 
 static PassRegistration<LegalizeTF> pass(

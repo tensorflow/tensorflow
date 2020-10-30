@@ -182,8 +182,7 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
                                                layout_optimization_options);
     // Prepare for TFLite dialect, rerun canonicalization, and then legalize to
     // the TFLite dialect.
-    pass_manager->addPass(
-        mlir::TFL::CreatePrepareTFPass(pass_config.unfold_batch_matmul));
+    pass_manager->addPass(mlir::TFL::CreatePrepareTFPass());
     pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
     if (pass_config.shape_inference) {
       // Add a shape inference pass to optimize away the unnecessary casts.
@@ -200,8 +199,8 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     // This pass removes the asset file dependencies in hash table use cases.
     pass_manager->addPass(mlir::TF::CreateInitTextFileToImportPass());
 
-    pass_manager->addPass(
-        mlir::TFL::CreateLegalizeTFPass(pass_config.runtime_verification));
+    pass_manager->addPass(mlir::TFL::CreateLegalizeTFPass(
+        pass_config.runtime_verification, pass_config.unfold_batch_matmul));
     pass_manager->addPass(mlir::TFL::CreateOptimizePass());
     // This pass operates on TensorFlow ops but is triggered after legalization
     // so that it can target constants introduced once TensorFlow Identity ops
@@ -275,10 +274,11 @@ void CreateTFLStandardPipeline(OpPassManager& pm,
   pm.addPass(mlir::tf_saved_model::CreateFreezeGlobalTensorsPass());
 
   // TFLite dialect passes.
-  pm.addPass(mlir::TFL::CreatePrepareTFPass(true));
+  pm.addPass(mlir::TFL::CreatePrepareTFPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   pm.addPass(
-      mlir::TFL::CreateLegalizeTFPass(/*run_tfl_runtime_verification=*/true));
+      mlir::TFL::CreateLegalizeTFPass(/*run_tfl_runtime_verification=*/true,
+                                      /*unfold_batch_matmul=*/ = true));
   pm.addPass(mlir::TFL::CreateOptimizePass());
   pm.addPass(mlir::TFL::CreateOptimizeFunctionalOpsPass());
   pm.addPass(mlir::createSymbolDCEPass());

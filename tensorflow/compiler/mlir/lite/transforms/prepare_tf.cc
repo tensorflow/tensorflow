@@ -29,6 +29,8 @@ limitations under the License.
 // require access to the TFLite runtime for optimizations as required by the
 // TFLite team.
 
+#include "tensorflow/compiler/mlir/lite/transforms/prepare_tf.h"
+
 #include <climits>
 #include <cstdint>
 
@@ -1144,8 +1146,13 @@ struct ConvertRfftToRfft2d : public RewritePattern {
   }
 };
 
+void PopulatePrepareTfPatterns(MLIRContext *context,
+                               OwningRewritePatternList *patterns) {
+  TFL::populateWithGenerated(context, patterns);
+}
+
 void PrepareTFPass::runOnFunction() {
-  OwningRewritePatternList patterns, phase_2_patterns;
+  OwningRewritePatternList patterns;
   auto func = getFunction();
   MLIRContext *ctx = &getContext();
 
@@ -1177,34 +1184,20 @@ void PrepareTFPass::runOnFunction() {
   patterns.insert<ConvertTFDilatedConvOp<TF::Conv2DOp>, FusedBatchNormV3Pat,
                   ConvertTFDilatedConvOp<TF::DepthwiseConv2dNativeOp>>(ctx);
 
-  TFL::populateWithGenerated(ctx, patterns);
+  PopulatePrepareTfPatterns(ctx, &patterns);
   // TODO(karimnosseir): Split to separate pass probably after
   // deciding on long term plan for this optimization.
   // This will allow optimizing any TF_Mul->TF_Conv in the graph
   // and any expanded from FusedBatchNorm. We need to do this
   // before converting TF_Conv to TFL_Conv
   applyPatternsAndFoldGreedily(func, std::move(patterns));
-
-  // Load the generated pattern again, so new quantization pass-through
-  // will be applied.
-  TFL::populateWithGenerated(ctx, phase_2_patterns);
-  if (unfold_batch_matmul_) {
-    phase_2_patterns.insert<TF::ConvertTFBatchMatMulOp<TF::BatchMatMulOp>,
-                            TF::ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>>(
-        ctx);
-  }
-  phase_2_patterns.insert<TF::ConvertTFEinsumOp, ConvertTFBroadcastTo,
-                          ConvertTFConv2D, ConvertTFDepthwiseConv2dNative,
-                          ConvertTFStridedSlice, ConvertRfftToRfft2d>(ctx);
-  applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
 }
 
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
-std::unique_ptr<OperationPass<FuncOp>> CreatePrepareTFPass(
-    bool unfold_batch_matmul) {
-  return std::make_unique<PrepareTFPass>(unfold_batch_matmul);
+std::unique_ptr<OperationPass<FuncOp>> CreatePrepareTFPass() {
+  return std::make_unique<PrepareTFPass>();
 }
 
 static PassRegistration<PrepareTFPass> pass(
