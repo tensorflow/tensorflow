@@ -1,4 +1,5 @@
-// RUN: kernel-gen-opt %s -allow-unregistered-dialect -propagate-tf-abi-knowledge-to-kernels | FileCheck %s
+// RUN: kernel-gen-opt %s -allow-unregistered-dialect -propagate-tf-abi-knowledge-to-kernels | FileCheck %s --check-prefixes=CHECK,ABI
+// RUN: kernel-gen-opt %s -allow-unregistered-dialect -propagate-shape-knowledge-to-kernels | FileCheck %s --check-prefixes=CHECK,SHAPE
 
 // The input is taken from what is actually used in kernel generator lowering
 // for unary operations. This could be minimized but then we would not be
@@ -59,18 +60,21 @@ module attributes {gpu.container_module} {
     // CHECK-LABEL: @__nv_fabsf
     llvm.func @__nv_fabsf(!llvm.float) -> !llvm.float
     // CHECK-LABEL: @abs_kernel
-    // CHECK-SAME: %[[ARG0:.*]]: !llvm.ptr<float>, %[[ARG1:.*]]: !llvm.ptr<float> {llvm.align = 16 : index},
-    // CHECK-SAME: %[[ARG2:.*]]: !llvm.i64, %[[ARG3:.*]]: !llvm.i64, %[[ARG4:.*]]: !llvm.i64, %[[ARG5:.*]]: !llvm.ptr<float>, %[[ARG6:.*]]: !llvm.ptr<float> {llvm.align = 16 : index, llvm.noalias = true},
-    // CHECK-SAME: %[[ARG7:.*]]: !llvm.i64, %[[ARG8:.*]]: !llvm.i64, %[[ARG9:.*]]: !llvm.i64
+    // ABI-SAME: %[[ARG0:.*]]: !llvm.ptr<float>, %[[ARG1:.*]]: !llvm.ptr<float> {llvm.align = 16 : index},
+    // ABI-SAME: %[[ARG2:.*]]: !llvm.i64, %[[ARG3:.*]]: !llvm.i64, %[[ARG4:.*]]: !llvm.i64, %[[ARG5:.*]]: !llvm.ptr<float>, %[[ARG6:.*]]: !llvm.ptr<float> {llvm.align = 16 : index, llvm.noalias = true},
+    // ABI-SAME: %[[ARG7:.*]]: !llvm.i64, %[[ARG8:.*]]: !llvm.i64, %[[ARG9:.*]]: !llvm.i64
+    // SHAPE-SAME: %[[ARG0:.*]]: !llvm.ptr<float>, %[[ARG1:.*]]: !llvm.ptr<float>, %[[ARG2:.*]]: !llvm.i64, %[[ARG3:.*]]: !llvm.i64, %[[ARG4:.*]]: !llvm.i64, %[[ARG5:.*]]: !llvm.ptr<float>, %[[ARG6:.*]]: !llvm.ptr<float>, %[[ARG7:.*]]: !llvm.i64, %[[ARG8:.*]]: !llvm.i64, %[[ARG9:.*]]: !llvm.i64
     llvm.func @abs_kernel(%arg0: !llvm.ptr<float>, %arg1: !llvm.ptr<float>, %arg2: !llvm.i64, %arg3: !llvm.i64, %arg4: !llvm.i64, %arg5: !llvm.ptr<float>, %arg6: !llvm.ptr<float>, %arg7: !llvm.i64, %arg8: !llvm.i64, %arg9: !llvm.i64) attributes {gpu.kernel} {
-      // CHECK: %[[ZERO:.*]] = llvm.mlir.constant(0 : index)
+      // ABI: %[[ZERO:.*]] = llvm.mlir.constant(0 : index)
       // CHECK: llvm.mlir.undef
       %0 = llvm.mlir.undef : !llvm.struct<(ptr<float>, ptr<float>, i64, array<1 x i64>, array<1 x i64>)>
-      // CHECK-NEXT: llvm.insertvalue %[[ARG1]]
+      // ABI-NEXT: llvm.insertvalue %[[ARG1]]
+      // SHAPE-NEXT: llvm.insertvalue %[[ARG0]]
       %1 = llvm.insertvalue %arg0, %0[0] : !llvm.struct<(ptr<float>, ptr<float>, i64, array<1 x i64>, array<1 x i64>)>
       // CHECK-NEXT: llvm.insertvalue %[[ARG1]]
       %2 = llvm.insertvalue %arg1, %1[1] : !llvm.struct<(ptr<float>, ptr<float>, i64, array<1 x i64>, array<1 x i64>)>
-      // CHECK-NEXT: llvm.insertvalue %[[ZERO]]
+      // ABI-NEXT: llvm.insertvalue %[[ZERO]]
+      // SHAPE-NEXT: llvm.insertvalue %[[ARG2]]
       %3 = llvm.insertvalue %arg2, %2[2] : !llvm.struct<(ptr<float>, ptr<float>, i64, array<1 x i64>, array<1 x i64>)>
       // CHECK-NEXT: llvm.insertvalue %[[ARG3]]
       %4 = llvm.insertvalue %arg3, %3[3, 0] : !llvm.struct<(ptr<float>, ptr<float>, i64, array<1 x i64>, array<1 x i64>)>
@@ -78,15 +82,19 @@ module attributes {gpu.container_module} {
       %5 = llvm.insertvalue %arg4, %4[4, 0] : !llvm.struct<(ptr<float>, ptr<float>, i64, array<1 x i64>, array<1 x i64>)>
       // CHECK-NEXT: llvm.mlir.undef
       %6 = llvm.mlir.undef : !llvm.struct<(ptr<float>, ptr<float>, i64, array<1 x i64>, array<1 x i64>)>
-      // CHECK-NEXT: llvm.insertvalue %[[ARG6]]
+      // ABI-NEXT: llvm.insertvalue %[[ARG6]]
+      // SHAPE-NEXT: llvm.insertvalue %[[ARG5]]
       %7 = llvm.insertvalue %arg5, %6[0] : !llvm.struct<(ptr<float>, ptr<float>, i64, array<1 x i64>, array<1 x i64>)>
       // CHECK-NEXT: llvm.insertvalue %[[ARG6]]
       %8 = llvm.insertvalue %arg6, %7[1] : !llvm.struct<(ptr<float>, ptr<float>, i64, array<1 x i64>, array<1 x i64>)>
-      // CHECK-NEXT: llvm.insertvalue %[[ZERO]]
+      // ABI-NEXT: llvm.insertvalue %[[ZERO]]
+      // SHAPE-NEXT: llvm.insertvalue %[[ARG7]]
       %9 = llvm.insertvalue %arg7, %8[2] : !llvm.struct<(ptr<float>, ptr<float>, i64, array<1 x i64>, array<1 x i64>)>
-      // CHECK-NEXT: llvm.insertvalue %[[ARG8]]
+      // ABI-NEXT: llvm.insertvalue %[[ARG8]]
+      // SHAPE-NEXT: llvm.insertvalue %[[ARG3]]
       %10 = llvm.insertvalue %arg8, %9[3, 0] : !llvm.struct<(ptr<float>, ptr<float>, i64, array<1 x i64>, array<1 x i64>)>
-      // CHECK-NEXT: llvm.insertvalue %[[ARG9]]
+      // ABI-NEXT: llvm.insertvalue %[[ARG9]]
+      // SHAPE-NEXT: llvm.insertvalue %[[ARG4]]
       %11 = llvm.insertvalue %arg9, %10[4, 0] : !llvm.struct<(ptr<float>, ptr<float>, i64, array<1 x i64>, array<1 x i64>)>
       %12 = nvvm.read.ptx.sreg.ctaid.x : !llvm.i32
       %13 = llvm.sext %12 : !llvm.i32 to !llvm.i64

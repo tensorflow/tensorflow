@@ -75,6 +75,9 @@ std::unique_ptr<FunctionPass> CreateUnfuseBatchNormPass();
 // Pass to propagate tensorflow runtime ABI knowledge across kernel boundaries.
 std::unique_ptr<FunctionPass> CreatePropagateTfAbiKnowledgeToKernels();
 
+// Pass to propagate shape equalities across kernel boundaries.
+std::unique_ptr<FunctionPass> CreatePropagateShapeKnowledgeToKernels();
+
 }  // namespace transforms
 
 #define GEN_PASS_REGISTRATION
