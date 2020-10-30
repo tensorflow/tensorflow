@@ -1,5 +1,5 @@
 *** Settings ***
-Suite Setup                   Setup
+Suite Setup                   Prepare Tests
 Suite Teardown                Teardown
 Test Setup                    Reset Emulation
 Test Teardown                 Test Teardown
@@ -8,15 +8,25 @@ Resource                      ${RENODEKEYWORDS}
 *** Variables ***
 ${UART}                       sysbus.cpu.uartSemihosting
 
-*** Test Cases ***
-Should Run Bluepill Test
-    [Documentation]           Runs a Bluepill test and waits for a specific string on the semihosting UART
-    [Tags]                    bluepill  uart  tensorflow  arm
-    ${BIN} =                  Get Environment Variable    BIN
+*** Keywords ***
+Prepare Tests
+    Setup
     ${SCRIPT} =               Get Environment Variable    SCRIPT
     ${LOGFILE} =              Get Environment Variable    LOGFILE
     ${EXPECTED} =             Get Environment Variable    EXPECTED
-    Execute Command           $bin = @${BIN}
+    Set Suite Variable        ${SCRIPT}
+    Set Suite Variable        ${EXPECTED}
+    Set Suite Variable        ${LOGFILE}
+    List All Test Binaries
+
+List All Test Binaries
+    Setup
+    ${BIN_DIR} =              Get Environment Variable    BIN_DIR
+    @{binaries} =             List Files In Directory     ${BIN_DIR}   absolute=True
+    Set Suite Variable        @{binaries}
+
+Test Binary
+    Remove File               ${LOGFILE}
     Execute Command           $logfile = @${LOGFILE}
     Execute Script            ${SCRIPT}
 
@@ -24,3 +34,16 @@ Should Run Bluepill Test
     Start Emulation
 
     Wait For Line On Uart     ${EXPECTED}
+
+*** Test Cases ***
+Should Run All Bluepill Tests
+    [Documentation]           Runs Bluepill tests and waits for a specific string on the semihosting UART
+    [Tags]                    bluepill  uart  tensorflow  arm
+    FOR  ${BIN}  IN  @{binaries}
+        Execute Command       $bin = @${BIN}
+        ${_}  ${file} =       Split Path  ${BIN}
+        Test Binary
+        Execute Command       Clear
+
+        Log                   \t${file} - PASSED   console=True
+    END

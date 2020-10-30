@@ -46,17 +46,9 @@ then
   exit 1
 fi
 
-
-# This check ensures that we only have a single $MICRO_LOG_FILENAME. Without it,
-# renode will do a log rotation and there will be multiple files such as
-# $MICRO_LOG_FILENAME.1 $MICRO_LOG_FILENAME.2 etc.
-if [ -e $MICRO_LOG_FILENAME ]; then
-    rm $MICRO_LOG_FILENAME &> /dev/null
-fi;
-
 exit_code=0
 
-if ! BIN=${ROOT_DIR}/$1 \
+if ! BIN_DIR=${ROOT_DIR}/$1 \
   SCRIPT=${ROOT_DIR}/tensorflow/lite/micro/testing/bluepill.resc \
   LOGFILE=$MICRO_LOG_FILENAME \
   EXPECTED="$2" \
