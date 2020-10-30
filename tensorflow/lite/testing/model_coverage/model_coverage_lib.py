@@ -128,11 +128,11 @@ def _convert(converter, **kwargs):
 def _check_model_quantized_to_16x8(tflite_model):
   """Checks that the activations are quantized into int16.
 
-    Args:
-      tflite_model: Serialized TensorFlow Lite model.
+  Args:
+    tflite_model: Serialized TensorFlow Lite model.
 
-    Raises:
-      ValueError: Activations with int16 type are not found.
+  Raises:
+    ValueError: Activations with int16 type are not found.
   """
   interpreter = _get_tflite_interpreter(tflite_model)
   interpreter.allocate_tensors()
