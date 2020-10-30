@@ -88,6 +88,33 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "quantization_wrapper_utils_custom_test",
+    srcs = [
+        "quantization_wrapper_utils.cc",
+        "quantization_wrapper_utils.h",
+        "quantization_wrapper_utils_custom_test.cc",
+    ],
+    defines = [
+        "TFLITE_CUSTOM_LSTM",
+    ],
+    tags = [
+        "tflite_not_portable_android",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":operator_property",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_utils",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
 cc_library(
     name = "quantization_wrapper",
     srcs = ["quantization_wrapper.cc"],

@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/optimize/calibration/calibration_common.h"
 #include "tensorflow/lite/tools/optimize/calibration/calibration_logger.h"
 #include "tensorflow/lite/tools/optimize/calibration/calibration_reader.h"
+#include "tensorflow/lite/tools/optimize/calibration/custom_logging_ops/lstm.h"
 #include "tensorflow/lite/tools/optimize/calibration/logging_op.h"
 #include "tensorflow/lite/tools/optimize/calibration/logging_op_resolver.h"
 
@@ -177,8 +178,12 @@ logging_kernel_func_ptr GetLoggingEvalFunc(TfLiteContext* context,
                                            TfLiteNode* node,
                                            int builtin_op_code) {
   switch (builtin_op_code) {
-    case BuiltinOperator_LSTM:
+    case BuiltinOperator_LSTM: {
+      if (node->intermediates->size == 12) {
+        return tflite::optimize::calibration::custom::lstm_logging_kernel;
+      }
       return tflite::optimize::calibration::builtin::lstm_logging_kernel;
+    }
     case BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM:
       return tflite::optimize::calibration::builtin::
           unidirectional_sequence_lstm_logging_kernel;
