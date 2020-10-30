@@ -88,6 +88,9 @@ ZEPHYR_MD5 := "755622eb4812fde918a6382b65d50c3b"
 XTENSA_HIFI4_URL :="http://mirror.tensorflow.org/github.com/foss-xtensa/nnlib-hifi4/raw/master/archive/xa_nnlib_06_27.zip"
 XTENSA_HIFI4_MD5 :="45fdc1209a8da62ab568aa6040f7eabf"
 
+XTIME_URL := "https://www.xmos.com/download/Tools-15---Linux-64%2815.0.0_rc1%29.tgz?key=132D-9DC9-E913-0229-ECE6-D5AB-F511-2B19"
+XTIME_MD5 := "8f6543c8ac4af7583edf75e62df322a2"
+
 ETHOSU_URL := "https://git.mlplatform.org/ml/ethos-u/ethos-u-core-driver.git/snapshot/ethos-u-core-driver-2b201c340788ac582cec160b7217c2b5405b04f9.tar.gz"
 ETHOSU_MD5 := "0c148b90a1ee01de398892eb3a63e717"
 

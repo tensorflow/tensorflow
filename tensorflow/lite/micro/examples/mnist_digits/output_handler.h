@@ -1,8 +1,11 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
+
     http://www.apache.org/licenses/LICENSE-2.0
+
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -10,12 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/micro/debug_log.h"
+#ifndef TENSORFLOW_LITE_MICRO_EXAMPLES_MNIST_DIGITS_OUTPUT_HANDLER_H_
+#define TENSORFLOW_LITE_MICRO_EXAMPLES_MNIST_DIGITS_OUTPUT_HANDLER_H_
 
-#if (HAS_LIB_RTOS_SUPPORT == 1)
-#include "rtos_printf.h"
-extern "C" void DebugLog(const char* s) { rtos_printf("%s", s); }
-#else
-#include <cstdio>
-extern "C" void DebugLog(const char* s) { printf("%s", s); }
-#endif
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/micro/micro_error_reporter.h"
+
+// Called by the main loop to produce some output based on the x and y values
+void HandleOutput(tflite::ErrorReporter* error_reporter, float x_value,
+                  float y_value);
+
+#endif  // TENSORFLOW_LITE_MICRO_EXAMPLES_HELLO_WORLD_OUTPUT_HANDLER_H_
