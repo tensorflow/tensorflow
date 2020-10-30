@@ -3359,6 +3359,16 @@ tf_gen_op_wrapper_private_py(
     visibility = ["//tensorflow/python/ops/ragged:__pkg__"],
 )
 
+tf_gen_op_wrapper_private_py(
+    name = "risc_ops_gen",
+    visibility = [
+        "//tensorflow/python/ops/risc:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/core:risc_ops_op_lib",
+    ],
+)
+
 tf_gen_op_wrapper_private_py(name = "rnn_ops_gen")
 
 tf_gen_op_wrapper_private_py(
