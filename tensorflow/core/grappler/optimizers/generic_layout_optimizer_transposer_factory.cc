@@ -27,9 +27,6 @@ std::shared_ptr<Transposer> TransposerFactory::GetTransposer(
     return GetOrCreateIfNotFound<DefaultLayoutSensitiveOpTransposer>(
         "DefaultLayoutSensitiveOp");
   }
-  if (IsBiasAdd(node)) {
-    return GetOrCreateIfNotFound<BiasAddTransposer>("BiasAdd");
-  }
   if (IsAvgPoolGrad(node)) {
     return GetOrCreateIfNotFound<AvgPoolGradTransposer>("AvgPoolGrad");
   }
