@@ -33,6 +33,7 @@ def TFFramework_Dialect : Dialect {
 
   let extraClassDeclaration = [{
     static constexpr StringRef kTFEntryAttrName = "tf_entry";
+    static constexpr size_t kAllocationAlignment = 16;
   }];
 }
 

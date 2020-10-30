@@ -80,6 +80,7 @@ cc_library(
         "parallel_loops_to_sequential.cc",
         "propagate_tf_abi_knowledge_pass.cc",
         "shape_to_descriptors_pass.cc",
+        "tensorflow_abi_knowledge_propagation.cc",
         "tf_kernel_to_llvm_pass.cc",
         "unfuse_batch_norm_pass.cc",
     ],
