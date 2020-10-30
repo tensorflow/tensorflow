@@ -583,7 +583,11 @@ XlaComputationLaunchContext::BuildXlaCompilerArguments(
     XlaCompiler::Argument& arg = out[input_num];
     if (absl::c_binary_search(must_be_constant_idxs, input_num)) {
       // Handles compile-time constants.
-      TF_RET_CHECK(input->dtype() != DT_RESOURCE);
+
+      // TODO(b/157241314): Support constants located in resource variables.
+      TF_RET_CHECK(input->dtype() != DT_RESOURCE)
+          << "tf2xla bridge does not support must-be-constants located in "
+             "resource variables; try moving them to a tensor";
       arg.kind = XlaCompiler::Argument::kConstant;
       arg.type = input->dtype();
       arg.shape = input->shape();
