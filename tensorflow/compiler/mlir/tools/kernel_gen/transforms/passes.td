@@ -28,6 +28,11 @@ def EmbedTFFrameworkPass : Pass<"embed-tf-framework", "ModuleOp"> {
   let constructor = "tf_framework::CreateEmbedTFFrameworkPass()";
 }
 
+def BufferReusePass : FunctionPass<"buffer-reuse"> {
+  let summary = "Pass to find and annotate candidates for buffer reuse.";
+  let constructor = "transforms::CreateBufferReusePass()";
+}
+
 def ShapeToDescriptorsPass : Pass<"shape-to-descriptors", "ModuleOp"> {
   let summary = "Pass to transform shape computations to descriptors";
   let constructor = "transforms::CreateShapeToDescriptorsPass()";

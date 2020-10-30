@@ -37,6 +37,9 @@ std::unique_ptr<OperationPass<ModuleOp> > CreateEmbedTFFrameworkPass();
 
 namespace transforms {
 
+// Pass to find and annotate candidates for buffer reuse.
+std::unique_ptr<FunctionPass> CreateBufferReusePass();
+
 // Pass for applying LLVM legalization patterns.
 std::unique_ptr<OperationPass<ModuleOp> > CreateTFKernelToLLVMPass();
 

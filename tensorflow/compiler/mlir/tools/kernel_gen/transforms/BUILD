@@ -72,6 +72,7 @@ gentbl(
 cc_library(
     name = "passes",
     srcs = [
+        "buffer_reuse_pass.cc",
         "bufferize_pass.cc",
         "embed_tf_framework_pass.cc",
         "gpu_kernel_to_blob_pass.cc",
@@ -105,9 +106,12 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:LLVMTransforms",
+        "@llvm-project//mlir:LinalgTransforms",
+        "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:TargetNVVMIR",
         "@llvm-project//mlir:TargetROCDLIR",
         "@llvm-project//mlir:ShapeToStandard",
