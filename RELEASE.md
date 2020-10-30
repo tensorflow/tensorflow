@@ -164,12 +164,11 @@
     * Support optional flags `inference_input_type` and `inference_output_type` for full integer quantized models. This allows users to modify the model input         and output type to integer types (`tf.int8`, `tf.uint8`) instead of defaulting to float type (`tf.float32`). 
   * NNAPI
     * Adds NNAPI Delegation support for requantization use cases by converting the operation into a dequantize-quantize pair.
-    * Removes deprecated `Interpreter.setUseNNAPI(boolean)` Java API.
-    * Use `Interpreter.Options.setUseNNAPI` instead.
-    * Deprecates `Interpreter::UseNNAPI(bool)` C++ API.
-    * Use `NnApiDelegate()` and related delegate configuration methods directly.
-    * Deprecates `Interpreter::SetAllowFp16PrecisionForFp32(bool)` C++ API.
-    * Prefer controlling this via delegate options, e.g. `tflite::StatefulNnApiDelegate::Options::allow_fp16' or                     `TfLiteGpuDelegateOptionsV2::is_precision_loss_allowed`.
+    * Removes deprecated `Interpreter.setUseNNAPI(boolean)` Java API. Use `Interpreter.Options.setUseNNAPI` instead.
+    * Deprecates `Interpreter::UseNNAPI(bool)` C++ API. Use `NnApiDelegate()` and related delegate configuration methods directly.
+    * Deprecates `Interpreter::SetAllowFp16PrecisionForFp32(bool)` C++ API. Prefer controlling this via delegate options, e.g. `tflite::StatefulNnApiDelegate::Options::allow_fp16' or `TfLiteGpuDelegateOptionsV2::is_precision_loss_allowed`.
+  * GPU
+    * GPU acceleration now supports quantized models by default
   * `DynamicBuffer::AddJoinedString()` will now add a separator if the first string to be joined is empty.
   *  Adds support for cumulative sum (cumsum), both as builtin op and MLIR conversion.
   
