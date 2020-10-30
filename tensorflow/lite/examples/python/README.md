@@ -5,18 +5,16 @@ TensorFlow Lite model and use it to recognize objects in images. The Python
 script accepts arguments specifying the model to use, the corresponding labels
 file, and the image to process.
 
-**Tip:**
-If you're using a Raspberry Pi, instead try the [classify_picamera.py example](
-https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/raspberry_pi).
+**Tip:** If you're using a Raspberry Pi, instead try the
+[classify_picamera.py example](https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/raspberry_pi).
 
-Before you begin,
-make sure you [have TensorFlow installed](https://www.tensorflow.org/install).
-
+Before you begin, make sure you
+[have TensorFlow installed](https://www.tensorflow.org/install).
 
 ## Download sample model and image
 
-You can use any compatible model, but the following MobileNet v1 model offers
-a good demonstration of a model trained to recognize 1,000 different objects.
+You can use any compatible model, but the following MobileNet v1 model offers a
+good demonstration of a model trained to recognize 1,000 different objects.
 
 ```sh
 # Get photo
@@ -30,8 +28,6 @@ mv /tmp/mobilenet_v1_1.0_224/labels.txt /tmp/
 ```
 
 ## Run the sample
-
-Note: Instead use `python` if you're using Python 2.x.
 
 ```sh
 python3 label_image.py \
