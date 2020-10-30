@@ -378,6 +378,12 @@ Status EagerOperation::InferInputListAttrs(int num_inputs) {
   } else if (!input_def.type_attr().empty() &&
              !input_def.number_attr().empty()) {
     InferSingleTypeInputListAttrs(input_def, inputs_[start]->dtype, num_inputs);
+  } else if (!input_def.number_attr().empty()) {
+    if (inference_attrs_.find(input_def.number_attr()) ==
+        inference_attrs_.end()) {
+      MutableAttrs()->Set(input_def.number_attr(), num_inputs);
+      inference_attrs_.insert(input_def.number_attr());
+    }
   } else {
     return errors::InvalidArgument("Invalid input list definition");
   }

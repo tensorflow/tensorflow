@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/metal/gpu_object_desc.h"
 
 namespace tflite {
 namespace gpu {
@@ -36,6 +37,10 @@ class Arguments {
 
   void AddFloat(const std::string& name, float value = 0.0f);
   void AddInt(const std::string& name, int value = 0);
+  void AddObject(const std::string& name,
+                 GPUObjectDescriptorPtr&& descriptor_ptr);
+
+  void ReleaseCPURepresentation();
 
  private:
   friend class MetalArguments;
@@ -61,6 +66,8 @@ class Arguments {
     bool active = false;
   };
   std::map<std::string, FloatValue> float_values_;
+
+  std::map<std::string, GPUObjectDescriptorPtr> objects_;
 };
 
 class ArgumentsSetter {

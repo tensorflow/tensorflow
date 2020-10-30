@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,14 +13,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/kernels/batch_matmul_op_impl.h"
+#include "tensorflow/lite/delegates/gpu/metal/gpu_object_desc.h"
 
-namespace tensorflow {
+namespace tflite {
+namespace gpu {
+namespace metal {
 
-TF_CALL_COMPLEX_TYPES(REGISTER_BATCH_MATMUL_CPU);
+std::string MemoryTypeToMetalType(MemoryType type) {
+  switch (type) {
+    case MemoryType::GLOBAL:
+      return "device";
+    case MemoryType::CONSTANT:
+      return "constant";
+      break;
+    case MemoryType::LOCAL:
+      return "threadgroup";
+  }
+  return "";
+}
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-TF_CALL_COMPLEX_TYPES(REGISTER_BATCH_MATMUL_GPU);
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-}  // namespace tensorflow
+}  // namespace metal
+}  // namespace gpu
+}  // namespace tflite

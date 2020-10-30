@@ -216,8 +216,7 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
     # the GraphDef itself for consistency.
     for node_def in meta_graph_def.graph_def.node:
       function_deserialization.fix_node_def(node_def, functions,
-                                            load_shared_name_suffix,
-                                            debug_name="MetaGraph import")
+                                            load_shared_name_suffix)
 
     load_graph_returns = [None]
     wrapped = wrap_function.wrap_function(

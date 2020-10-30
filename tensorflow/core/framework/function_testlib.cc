@@ -346,10 +346,7 @@ FunctionDef WXPlusB() {
       {{{"mm"},
         "MatMul",
         {"w", "x"},
-        {{"T", "$T"},
-         {"transpose_a", false},
-         {"transpose_b", false},
-         {"_kernel", "eigen"}}},
+        {{"T", "$T"}, {"transpose_a", false}, {"transpose_b", false}}},
        {{"y"}, "Add", {"mm", "b"}, {{"T", "$T"}}}});
 }
 
