@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 import binascii
-import copy
 import functools
 import operator
 import os
@@ -446,7 +445,7 @@ def get_matching_files_v2(pattern, num_threads=1):
     ]
     return partial_files
 
-  patterns = list(copy.deepcopy(pattern))
+  patterns = list(pattern)
   pool = Pool(processes=min(num_threads, len(patterns)))
   all_files = pool.map(handle_single_pattern, patterns)
   pool.close()
