@@ -1330,13 +1330,23 @@ def parallel_stack(values, name="parallel_stack"):
 
       tf.parallel_stack([x, y, z]) = np.asarray([x, y, z])
 
+  @compatibility(eager)
+  parallel_stack is not compatible with eager execution.
+  @end_compatibility
+
   Args:
     values: A list of `Tensor` objects with the same shape and type.
     name: A name for this operation (optional).
 
   Returns:
     output: A stacked `Tensor` with the same type as `values`.
+
+  Raises:
+    RuntimeError: if executed in eager mode.
   """
+  if context.executing_eagerly():
+    raise RuntimeError("tf.parallel_stack() is not compatible with "
+                       "eager execution.")
   with ops.name_scope(name):
     value_t = ops.convert_to_tensor(values[0])
     value_shape = ops.convert_to_tensor(value_t).get_shape()

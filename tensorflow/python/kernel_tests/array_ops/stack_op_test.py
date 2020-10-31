@@ -64,27 +64,28 @@ class StackOpTest(test.TestCase):
               c = array_ops.stack(xs, axis=axis)
               self.assertAllEqual(c, data)
 
-  @test_util.run_deprecated_v1
   def testSimpleParallelCPU(self):
-    np.random.seed(7)
-    with self.session(use_gpu=False):
-      for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2), (100, 24, 24, 3):
-        with self.subTest(shape=shape):
-          data = self.randn(shape, np.float32)
-          xs = list(map(constant_op.constant, data))
-          c = array_ops.parallel_stack(xs)
-          self.assertAllEqual(c, data)
+    # tf.parallel_stack is only supported in graph mode.
+    with ops.Graph().as_default():
+      np.random.seed(7)
+      with test_util.device(use_gpu=False):
+        for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2), (100, 24, 24, 3):
+          with self.subTest(shape=shape):
+            data = self.randn(shape, np.float32)
+            xs = list(map(constant_op.constant, data))
+            c = array_ops.parallel_stack(xs)
+            self.assertAllEqual(c, data)
 
-  @test_util.run_deprecated_v1
   def testSimpleParallelGPU(self):
-    np.random.seed(7)
-    with self.session(use_gpu=True):
-      for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2), (100, 24, 24, 3):
-        with self.subTest(shape=shape):
-          data = self.randn(shape, np.float32)
-          xs = list(map(constant_op.constant, data))
-          c = array_ops.parallel_stack(xs)
-          self.assertAllEqual(c, data)
+    # tf.parallel_stack is only supported in graph mode.
+    with ops.Graph().as_default():
+      with test_util.device(use_gpu=True):
+        for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2), (100, 24, 24, 3):
+          with self.subTest(shape=shape):
+            data = self.randn(shape, np.float32)
+            xs = list(map(constant_op.constant, data))
+            c = array_ops.parallel_stack(xs)
+            self.assertAllEqual(c, data)
 
   @test_util.run_deprecated_v1
   def testConst(self):
@@ -113,37 +114,39 @@ class StackOpTest(test.TestCase):
               self.assertEqual(cl.op.type, "Const")
               self.assertAllEqual(cl, data)
 
-  @test_util.run_deprecated_v1
   def testConstParallelCPU(self):
-    np.random.seed(7)
-    with self.session(use_gpu=False):
-      for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2), (8, 2, 10):
-        with self.subTest(shape=shape):
-          data = self.randn(shape, np.float32)
-          if len(shape) == 1:
-            data_list = list(data)
-            cl = array_ops.parallel_stack(data_list)
-            self.assertAllEqual(cl, data)
+    # tf.parallel_stack is only supported in graph mode.
+    with ops.Graph().as_default():
+      np.random.seed(7)
+      with test_util.device(use_gpu=False):
+        for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2), (8, 2, 10):
+          with self.subTest(shape=shape):
+            data = self.randn(shape, np.float32)
+            if len(shape) == 1:
+              data_list = list(data)
+              cl = array_ops.parallel_stack(data_list)
+              self.assertAllEqual(cl, data)
 
-          data = self.randn(shape, np.float32)
-          c = array_ops.parallel_stack(data)
-          self.assertAllEqual(c, data)
+            data = self.randn(shape, np.float32)
+            c = array_ops.parallel_stack(data)
+            self.assertAllEqual(c, data)
 
-  @test_util.run_deprecated_v1
   def testConstParallelGPU(self):
-    np.random.seed(7)
-    with self.session(use_gpu=True):
-      for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):
-        with self.subTest(shape=shape):
-          data = self.randn(shape, np.float32)
-          if len(shape) == 1:
-            data_list = list(data)
-            cl = array_ops.parallel_stack(data_list)
-            self.assertAllEqual(cl, data)
+    # tf.parallel_stack is only supported in graph mode.
+    with ops.Graph().as_default():
+      np.random.seed(7)
+      with test_util.device(use_gpu=True):
+        for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):
+          with self.subTest(shape=shape):
+            data = self.randn(shape, np.float32)
+            if len(shape) == 1:
+              data_list = list(data)
+              cl = array_ops.parallel_stack(data_list)
+              self.assertAllEqual(cl, data)
 
-          data = self.randn(shape, np.float32)
-          c = array_ops.parallel_stack(data)
-          self.assertAllEqual(c, data)
+            data = self.randn(shape, np.float32)
+            c = array_ops.parallel_stack(data)
+            self.assertAllEqual(c, data)
 
   @test_util.run_deprecated_v1
   def testGradientsAxis0(self):
@@ -176,53 +179,57 @@ class StackOpTest(test.TestCase):
                                                         out_shape)
           self.assertLess(err, 1e-6)
 
-  @test_util.run_deprecated_v1
   def testZeroSizeCPU(self):
-    # Verify that stack doesn't crash for zero size inputs
-    with self.session(use_gpu=False):
-      for shape in (0,), (3, 0), (0, 3):
-        with self.subTest(shape=shape):
-          x = np.zeros((2,) + shape).astype(np.int32)
-          p = array_ops.stack(list(x)).eval()
-          self.assertAllEqual(p, x)
+    # tf.parallel_stack is only supported in graph mode.
+    with ops.Graph().as_default():
+      # Verify that stack doesn't crash for zero size inputs
+      with test_util.device(use_gpu=False):
+        for shape in (0,), (3, 0), (0, 3):
+          with self.subTest(shape=shape):
+            x = np.zeros((2,) + shape).astype(np.int32)
+            p = self.evaluate(array_ops.stack(list(x)))
+            self.assertAllEqual(p, x)
 
-          p = array_ops.parallel_stack(list(x)).eval()
-          self.assertAllEqual(p, x)
+            p = self.evaluate(array_ops.parallel_stack(list(x)))
+            self.assertAllEqual(p, x)
 
-  @test_util.run_deprecated_v1
   def testZeroSizeGPU(self):
-    # Verify that stack doesn't crash for zero size inputs
-    with self.session(use_gpu=True):
-      for shape in (0,), (3, 0), (0, 3):
-        with self.subTest(shape=shape):
-          x = np.zeros((2,) + shape).astype(np.int32)
-          p = array_ops.stack(list(x)).eval()
-          self.assertAllEqual(p, x)
+    # tf.parallel_stack is only supported in graph mode.
+    with ops.Graph().as_default():
+      # Verify that stack doesn't crash for zero size inputs
+      with test_util.device(use_gpu=True):
+        for shape in (0,), (3, 0), (0, 3):
+          with self.subTest(shape=shape):
+            x = np.zeros((2,) + shape).astype(np.int32)
+            p = self.evaluate(array_ops.stack(list(x)))
+            self.assertAllEqual(p, x)
 
-          p = array_ops.parallel_stack(list(x)).eval()
-          self.assertAllEqual(p, x)
+            p = self.evaluate(array_ops.parallel_stack(list(x)))
+            self.assertAllEqual(p, x)
 
-  @test_util.run_deprecated_v1
   def testAxis0DefaultCPU(self):
-    with self.session(use_gpu=False):
-      t = [constant_op.constant([1, 2, 3]), constant_op.constant([4, 5, 6])]
-      stacked = array_ops.stack(t).eval()
-      parallel_stacked = array_ops.parallel_stack(t).eval()
+    # tf.parallel_stack is only supported in graph mode.
+    with ops.Graph().as_default():
+      with test_util.device(use_gpu=False):
+        t = [constant_op.constant([1, 2, 3]), constant_op.constant([4, 5, 6])]
+        stacked = self.evaluate(array_ops.stack(t))
+        parallel_stacked = self.evaluate(array_ops.parallel_stack(t))
 
-    expected = np.array([[1, 2, 3], [4, 5, 6]])
-    self.assertAllEqual(stacked, expected)
-    self.assertAllEqual(parallel_stacked, expected)
+      expected = np.array([[1, 2, 3], [4, 5, 6]])
+      self.assertAllEqual(stacked, expected)
+      self.assertAllEqual(parallel_stacked, expected)
 
-  @test_util.run_deprecated_v1
   def testAxis0DefaultGPU(self):
-    with self.session(use_gpu=True):
-      t = [constant_op.constant([1, 2, 3]), constant_op.constant([4, 5, 6])]
-      stacked = array_ops.stack(t).eval()
-      parallel_stacked = array_ops.parallel_stack(t).eval()
+    # tf.parallel_stack is only supported in graph mode.
+    with ops.Graph().as_default():
+      with test_util.device(use_gpu=True):
+        t = [constant_op.constant([1, 2, 3]), constant_op.constant([4, 5, 6])]
+        stacked = self.evaluate(array_ops.stack(t))
+        parallel_stacked = self.evaluate(array_ops.parallel_stack(t))
 
-    expected = np.array([[1, 2, 3], [4, 5, 6]])
-    self.assertAllEqual(stacked, expected)
-    self.assertAllEqual(parallel_stacked, expected)
+      expected = np.array([[1, 2, 3], [4, 5, 6]])
+      self.assertAllEqual(stacked, expected)
+      self.assertAllEqual(parallel_stacked, expected)
 
   def testAgainstNumpy(self):
     # For 1 to 5 dimensions.
