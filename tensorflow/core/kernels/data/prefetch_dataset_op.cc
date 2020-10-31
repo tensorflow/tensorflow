@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -46,6 +47,8 @@ namespace data {
 /* static */ constexpr const char* const PrefetchDatasetOp::kSlackPeriod;
 /* static */ constexpr const char* const PrefetchDatasetOp::kLegacyAutotune;
 
+namespace {
+
 // Determines the fraction of slack time by which to delay prefetching of data.
 constexpr double kSleepFactor = 0.2;
 constexpr char kBuffer[] = "buffer";
@@ -53,6 +56,8 @@ constexpr char kStatus[] = "status";
 constexpr char kSizeSuffix[] = ".size";
 constexpr char kCodeSuffix[] = ".code";
 constexpr char kErrorMessageSuffix[] = ".error_message";
+
+}  // namespace
 
 class PrefetchDatasetOp::Dataset : public DatasetBase {
  public:
@@ -282,17 +287,26 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     }
 
     data::TraceMeMetadata GetTraceMeMetadata() const override {
-      int64 limit = -1;
+      int64 limit = -1, size = -1;
       // NOTE: We only set the parallelism value if the lock can be acquired
       // right away to avoid introducing tracing overhead.
       if (mu_->try_lock()) {
         limit = buffer_limit();
+        size = buffer_.size();
         mu_->unlock();
       }
       data::TraceMeMetadata result;
       result.push_back(std::make_pair(
           "buffer_limit",
           strings::Printf("%lld", static_cast<long long>(limit))));
+      result.push_back(std::make_pair(
+          "buffer_size",
+          strings::Printf("%lld", static_cast<long long>(size))));
+      result.push_back(std::make_pair(
+          "autotune",
+          dataset()->buffer_size_ == model::kAutotune ? "true" : "false"));
+      result.push_back(std::make_pair(
+          "autotune_mode", legacy_autotune_ ? "legacy" : "performance"));
       if (dataset()->slack_period_ > 0) {
         result.push_back(std::make_pair(
             "slack",

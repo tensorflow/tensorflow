@@ -81,6 +81,7 @@ static const char* param_structs[] = {"TfLiteAddParams",
                                       "TfLiteReverseSequenceParams",
                                       "TfLiteWhileParams",
                                       "TfLiteCumsumParams",
+                                      "TfLiteCallOnceParams",
                                       nullptr};
 }  // namespace
 

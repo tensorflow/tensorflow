@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/metal/environment.h"
+#include "tensorflow/lite/delegates/gpu/metal/device_info.h"
 
 #include <map>
 #include <string>
@@ -39,18 +39,13 @@ Vendor GetVendorFromString(const std::string& device_name) {
 
 AppleGPUInfo::AppleGPUInfo(const std::string& device_name) {
   const std::map<std::string, AppleGPU> kMapping = {
-    {"Apple A7 GPU", AppleGPU::kA7},
-    {"Apple A8 GPU", AppleGPU::kA8},
-    {"Apple A8X GPU", AppleGPU::kA8X},
-    {"Apple A9 GPU", AppleGPU::kA9},
-    {"Apple A9X GPU", AppleGPU::kA9X},
-    {"Apple A10 GPU", AppleGPU::kA10},
-    {"Apple A10X GPU", AppleGPU::kA10X},
-    {"Apple A11 GPU", AppleGPU::kA11},
-    {"Apple A12 GPU", AppleGPU::kA12},
-    {"Apple A12X GPU", AppleGPU::kA12X},
-    {"Apple A12Z GPU", AppleGPU::kA12Z},
-    {"Apple A13 GPU", AppleGPU::kA13},
+      {"Apple A7 GPU", AppleGPU::kA7},     {"Apple A8 GPU", AppleGPU::kA8},
+      {"Apple A8X GPU", AppleGPU::kA8X},   {"Apple A9 GPU", AppleGPU::kA9},
+      {"Apple A9X GPU", AppleGPU::kA9X},   {"Apple A10 GPU", AppleGPU::kA10},
+      {"Apple A10X GPU", AppleGPU::kA10X}, {"Apple A11 GPU", AppleGPU::kA11},
+      {"Apple A12 GPU", AppleGPU::kA12},   {"Apple A12X GPU", AppleGPU::kA12X},
+      {"Apple A12Z GPU", AppleGPU::kA12Z}, {"Apple A13 GPU", AppleGPU::kA13},
+      {"Apple A14 GPU", AppleGPU::kA14},
   };
   auto it = kMapping.find(device_name);
   if (it != kMapping.end()) {
@@ -67,11 +62,9 @@ bool AppleGPUInfo::IsLocalMemoryPreferredOverGlobal() const {
 }
 
 bool AppleGPUInfo::IsBionic() const {
-  return gpu_type == AppleGPU::kA11 ||
-         gpu_type == AppleGPU::kA12 ||
-         gpu_type == AppleGPU::kA12X ||
-         gpu_type == AppleGPU::kA12Z ||
-         gpu_type == AppleGPU::kA13;
+  return gpu_type == AppleGPU::kA11 || gpu_type == AppleGPU::kA12 ||
+         gpu_type == AppleGPU::kA12X || gpu_type == AppleGPU::kA12Z ||
+         gpu_type == AppleGPU::kA13 || gpu_type == AppleGPU::kA14;
 }
 
 bool AppleGPUInfo::IsRoundToNearestSupported() const {
@@ -108,12 +101,15 @@ int AppleGPUInfo::GetComputeUnitsCount() const {
       return 8;
     case AppleGPU::kA13:
       return 4;
+    case AppleGPU::kA14:
+      return 4;
     case AppleGPU::kUnknown:
       return 1;
   }
 }
 
-DeviceInfo::DeviceInfo(const std::string& device_name) : vendor(GetVendorFromString(device_name)) {
+DeviceInfo::DeviceInfo(const std::string& device_name)
+    : vendor(GetVendorFromString(device_name)) {
   if (vendor == Vendor::kApple) {
     apple_info = AppleGPUInfo(device_name);
   }

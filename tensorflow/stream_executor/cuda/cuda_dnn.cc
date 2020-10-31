@@ -291,6 +291,17 @@ port::Status GetLoadedCudnnVersion(CudnnVersion* version) {
   return port::Status::OK();
 }
 
+#if CUDNN_MAJOR >= 8 && (CUDNN_MINOR > 0 || CUDNN_PATCHLEVEL >= 4)
+void PreloadCudnnLibrary(cudnnStatus_t (*version_check_fn)(),
+                         absl::string_view sub_library) {
+  cudnnStatus_t status = version_check_fn();
+  if (status != CUDNN_STATUS_SUCCESS) {
+    VLOG(1) << "Could not pre-initialize cuDNN sub-library " << sub_library
+            << ".  Error: " << cudnnGetErrorString(status) << ".";
+  }
+}
+#endif
+
 }  // namespace
 
 CudnnSupport::CudnnSupport(GpuExecutor* parent) : parent_(parent) {}
@@ -320,12 +331,12 @@ port::Status CudnnSupport::Init() {
 
     // Preload sub libs for cudnn 8.0.4+
 #if CUDNN_MAJOR >= 8 && (CUDNN_MINOR > 0 || CUDNN_PATCHLEVEL >= 4)
-    cudnnOpsInferVersionCheck();
-    cudnnOpsTrainVersionCheck();
-    cudnnCnnInferVersionCheck();
-    cudnnCnnTrainVersionCheck();
-    cudnnAdvInferVersionCheck();
-    cudnnAdvTrainVersionCheck();
+    PreloadCudnnLibrary(cudnnOpsInferVersionCheck, "cudnn_ops_infer");
+    PreloadCudnnLibrary(cudnnOpsTrainVersionCheck, "cudnn_ops_train");
+    PreloadCudnnLibrary(cudnnCnnInferVersionCheck, "cudnn_cnn_infer");
+    PreloadCudnnLibrary(cudnnCnnTrainVersionCheck, "cudnn_cnn_train");
+    PreloadCudnnLibrary(cudnnAdvInferVersionCheck, "cudnn_adv_infer");
+    PreloadCudnnLibrary(cudnnAdvTrainVersionCheck, "cudnn_adv_train");
 #endif
 
     cudnn_.reset(new CudnnAccess(cudnn_handle));

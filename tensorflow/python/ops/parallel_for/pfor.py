@@ -424,7 +424,7 @@ class WhileOp(object):
     return inp, stacked
 
   def _maybe_stacked(self, cache, inp):
-    """Heuristic to figue out if the converting inp leads to a stacked value.
+    """Heuristic to figure out if the converting inp leads to a stacked value.
 
 
     Args:
@@ -1001,7 +1001,11 @@ def _create_op(op_type, inputs, op_dtypes, attrs=None):
   """Utility to create an op."""
   op = ops.get_default_graph().create_op(
       op_type, inputs, op_dtypes, attrs=attrs, compute_device=True)
-  flat_attrs = nest.flatten([(str(a), op.get_attr(str(a))) for a in attrs])
+  flat_attrs = []
+  # The tape expects an alternating flat list of names and attribute values.
+  for a in attrs:
+    flat_attrs.append(str(a))
+    flat_attrs.append(op.get_attr(str(a)))
   execute.record_gradient(op_type, op.inputs, tuple(flat_attrs), op.outputs[:])
   return op
 
@@ -1128,7 +1132,7 @@ class PForConfig(object):
     concrete_function = def_function.function(fn).get_concrete_function(
         *tensor_specs)
 
-    # Creates PlaceholderWithDefault and IdentityN nodes corresponding the the
+    # Creates PlaceholderWithDefault and IdentityN nodes corresponding the
     # reduction.
     pl_outputs = []
     with ops.control_dependencies(args):

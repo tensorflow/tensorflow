@@ -222,6 +222,7 @@ distribute_py_test(
     shard_count = 10,
     tags = [
         "multi_and_single_gpu",
+        "no_cuda_asan",  # times out
     ],
     deps = [
         ":optimizer_combinations",
@@ -788,29 +789,6 @@ py_library(
     ],
 )
 
-py_test(
-    name = "multi_worker_tutorial_test",
-    srcs = ["multi_worker_tutorial_test.py"],
-    python_version = "PY3",
-    shard_count = 5,
-    tags = [
-        "noasan",  # TODO(b/156029134)
-        "nomsan",  # TODO(b/156029134)
-        "notap",  # TODO(b/165865820): restore when not flaky
-        "notsan",  # TODO(b/156029134)
-    ],
-    deps = [
-        "//tensorflow/python:platform",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/distribute:collective_all_reduce_strategy",
-        "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:multi_process_runner",
-        "//tensorflow/python/distribute:multi_worker_test_base",
-        "//tensorflow/python/keras",
-        "//tensorflow/python/keras/optimizer_v2",
-    ],
-)
-
 distribute_py_test(
     name = "saved_model_save_load_test",
     size = "medium",
@@ -820,6 +798,7 @@ distribute_py_test(
     shard_count = 7,
     tags = [
         "multi_and_single_gpu",
+        "no_cuda_asan",  # times out
         "no_rocm",
     ],
     xla_tags = [
@@ -841,6 +820,9 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_rocm",
+    ],
+    xla_tags = [
+        "no_cuda_asan",  # times out
     ],
     deps = [
         ":saved_model_test_base",

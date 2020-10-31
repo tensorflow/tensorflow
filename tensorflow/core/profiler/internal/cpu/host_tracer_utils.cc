@@ -80,6 +80,7 @@ void ConvertCompleteEventsToXPlane(uint64 start_timestamp_ns,
     xline.ReserveEvents(thread.events.size());
     for (const auto& event : thread.events) {
       if (!IsCompleteEvent(event)) continue;
+      if (event.start_time < start_timestamp_ns) continue;
       Annotation annotation = ParseAnnotation(event.name);
       XEventMetadata* xevent_metadata =
           xplane.GetOrCreateEventMetadata(annotation.name);

@@ -901,7 +901,7 @@ class DistributedIterator(DistributedIteratorBase,
     # (whose batch dimension may also be None). This is because with partial
     # batching handling we could always produce empty batches.
     #
-    # TODO(b/163362689): avoid this once we have more elegent way to handle
+    # TODO(b/163362689): avoid this once we have more elegant way to handle
     # retracing and collectives.
     if (self._enable_get_next_as_optional and
         self._strategy.extended._in_multi_worker_mode()):  # pylint: disable=protected-access
@@ -1132,7 +1132,7 @@ class DistributedDataset(_IterableInput):
     # (whose batch dimension may also be None). This is because with partial
     # batching handling we could always produce empty batches.
     #
-    # TODO(b/163362689): avoid this once we have more elegent way to handle
+    # TODO(b/163362689): avoid this once we have more elegant way to handle
     # retracing and collectives.
     if (self._enable_get_next_as_optional and
         self._strategy.extended._in_multi_worker_mode()):  # pylint: disable=protected-access
@@ -1312,7 +1312,7 @@ class DistributedDatasetsFromFunction(_IterableInput):
     # (whose batch dimension may also be None). This is because with partial
     # batching handling we could always produce empty batches.
     #
-    # TODO(b/163362689): avoid this once we have more elegent way to handle
+    # TODO(b/163362689): avoid this once we have more elegant way to handle
     # retracing and collectives.
     if (self._enable_get_next_as_optional and
         self._strategy.extended._in_multi_worker_mode()):  # pylint: disable=protected-access
@@ -1369,7 +1369,7 @@ class DistributedDatasetsFromFunctionV1(DistributedDatasetsFromFunction):
                        "or when eager execution is enabled.")
 
 
-# TODO(anjalisridhar): This class will be soon be removed in favor of newer
+# TODO(anjalisridhar): This class will be soon removed in favor of newer
 # APIs.
 class InputFunctionIterator(DistributedIteratorV1):
   """Iterator created from input function."""
@@ -1596,7 +1596,7 @@ class _SingleWorkerDatasetIteratorBase(object):
     """Get next element from the underlying iterator.
 
     Runs the iterator get_next() within a device scope. Since this doesn't use
-    get_next_as_optional(), is is considerably faster than get_next_as_list()
+    get_next_as_optional(), it is considerably faster than get_next_as_list()
     (but can only be used when the shapes are static).
 
     Args:
@@ -2142,11 +2142,12 @@ def _enable_get_next_as_optional(strategy, dataset):
     return False
 
   if context.executing_eagerly():
-    # If the dataset is inifinite, we don't need to enable last partial batch
+    # If the dataset is infinite, we don't need to enable last partial batch
     # support. Currently the logic only applies to the case that distributed
     # dataset is created in eager mode, as we need to evaluate the dataset
     # cardinality.
-    return cardinality.cardinality(dataset).numpy() != cardinality.INFINITE
+    with ops.device(dataset._variant_tensor.device):  # pylint: disable=protected-access
+      return dataset.cardinality().numpy() != cardinality.INFINITE
 
   return not _is_statically_shaped(
       dataset.element_spec) or strategy.extended._in_multi_worker_mode()  # pylint: disable=protected-access
@@ -2181,7 +2182,7 @@ def _create_per_replica(value_list, strategy, get_next_as_optional):
   # (whose batch dimension may also be None). This is because with partial
   # batching handling we could always produce empty batches.
   #
-  # TODO(b/163362689): avoid this once we have more elegent way to handle
+  # TODO(b/163362689): avoid this once we have more elegant way to handle
   # retracing and collectives.
   if (get_next_as_optional and strategy.extended._in_multi_worker_mode()):  # pylint: disable=protected-access
     # Use expand_composites=False since we don't want to expand PerReplica,

@@ -26,7 +26,7 @@ cc_library(
     deps = [
         ":compiled_model",
         ":compute_task_descriptor",
-        ":environment",
+        ":device_info",
         ":runtime_options",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:operations",
@@ -45,6 +45,32 @@ cc_library(
     deps = [
         ":gpu_object_desc",
         "//tensorflow/lite/delegates/gpu/common:status",
+    ],
+)
+
+objc_library(
+    name = "buffer",
+    srcs = ["buffer.mm"],
+    hdrs = ["buffer.h"],
+    copts = DEFAULT_COPTS,
+    sdk_frameworks = ["Metal"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+objc_library(
+    name = "buffer_test_lib",
+    testonly = 1,
+    srcs = ["buffer_test.mm"],
+    sdk_frameworks = [
+        "XCTest",
+        "Metal",
+    ],
+    deps = [
+        ":buffer",
+        "//tensorflow/lite/delegates/gpu/common:types",
     ],
 )
 
@@ -170,18 +196,10 @@ objc_library(
     ],
 )
 
-objc_library(
-    name = "environment",
-    srcs = ["environment.mm"],
-    hdrs = ["environment.h"],
-    copts = DEFAULT_COPTS,
-    sdk_frameworks = ["Metal"],
-    deps = [
-        ":common",
-        # TODO(b/152322289): The following dependency is not needed, but a Bazel
-        # bug causes a build failure without an additional dummy dependency.
-        "//tensorflow/lite/delegates/gpu/common:convert",
-    ],
+cc_library(
+    name = "device_info",
+    srcs = ["device_info.cc"],
+    hdrs = ["device_info.h"],
 )
 
 cc_library(
@@ -285,6 +303,7 @@ objc_library(
     name = "common_tests_lib",
     testonly = 1,
     srcs = [
+        "//tensorflow/lite/delegates/gpu/metal:buffer_test.mm",
         "//tensorflow/lite/delegates/gpu/metal:common_test.mm",
         "//tensorflow/lite/delegates/gpu/metal:compiled_model_test.mm",
         "//tensorflow/lite/delegates/gpu/metal:inference_context_test.mm",
@@ -293,8 +312,10 @@ objc_library(
     ],
     sdk_frameworks = ["XCTest"],
     deps = [
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/metal:buffer",
         "//tensorflow/lite/delegates/gpu/metal:common",
-        "//tensorflow/lite/delegates/gpu/metal:environment",
+        "//tensorflow/lite/delegates/gpu/metal:device_info",
         "//tensorflow/lite/delegates/gpu/metal:inference_context",
         "//tensorflow/lite/delegates/gpu/metal:runtime_options",
         "//tensorflow/lite/delegates/gpu/metal/kernels:test_util",

@@ -386,10 +386,14 @@ This release contains contributions from many people at Google, as well as:
         True, the function may use type annotations to optimize the tracing
         performance.
     *   Added support for `iter(DistributedDataset)` in AutoGraph `for` loops.
-    *   AutoGraph now allows creating new symbols inside a TensorFLow loop, if
+    *   AutoGraph now allows creating new symbols inside a TensorFlow loop, if
         the values of these symbols at an iteration does not depend on the
         previous iteration. These types of loops must run at least one
         iteration, and will raise a runtime error otherwise.
+    *   Variables contained in `tf.Module`s that are set as attributes of
+        custom Keras `Layer`s and `Model`s are now tracked in
+        the properties `layer.trainable_variables` and
+        `layer.non_trainable_variables`.
 
     Example:
 

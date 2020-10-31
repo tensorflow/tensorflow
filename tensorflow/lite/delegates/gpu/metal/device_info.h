@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_METAL_ENVIRONMENT_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_METAL_ENVIRONMENT_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_METAL_DEVICE_INFO_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_METAL_DEVICE_INFO_H_
 
 #include <string>
 
@@ -43,6 +43,7 @@ enum class AppleGPU {
   kA12X,
   kA12Z,
   kA13,
+  kA14,
 };
 
 struct AppleGPUInfo {
@@ -88,4 +89,4 @@ struct DeviceInfo {
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_METAL_ENVIRONMENT_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_METAL_DEVICE_INFO_H_

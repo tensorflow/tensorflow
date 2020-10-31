@@ -417,6 +417,8 @@ def call_context():
   return call_ctx
 
 
+# Inject the call_context function to keras_deps to remove the dependency
+# from TFLite to Keras.
 keras_deps.register_call_context_function(call_context)
 
 

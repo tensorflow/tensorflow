@@ -291,11 +291,11 @@ class PerWorkerValues(object):
   """A container that holds a list of values, one value per worker.
 
   `tf.distribute.experimental.coordinator.PerWorkerValues` contains a collection
-  of values, where each of the value is located one worker respectively, and
-  upon being used as one of the `args` or `kwargs` of
+  of values, where each of the values is located on its corresponding worker,
+  and upon being used as one of the `args` or `kwargs` of
   `tf.distribute.experimental.coordinator.ClusterCoordinator.schedule()`, the
   value specific to a worker will be passed into the function being executed at
-  that particular worker.
+  that corresponding worker.
 
   Currently, the only supported path to create an object of
   `tf.distribute.experimental.coordinator.PerWorkerValues` is through calling
@@ -948,14 +948,13 @@ class ClusterCoordinator(object):
   failed worker, it will be added for function execution after datasets created
   by `create_per_worker_dataset` are re-built on it.
 
-  When a parameter server the coordinator fails, a
-  `tf.errors.UnavailableError` is raised by `schedule`, `join` or `done`. In
-  this case, in addition to bringing back the failed parameter server, users
-  should restart the coordinator to so that it reconnects to the parameter
-  server, re-creates the variables and loads checkpoints. If the coordinator
-  fails, users need to bring it back as well. The program will automatically
-  connect to the parameter servers and workers, and continue the progress from a
-  checkpoint.
+  When a parameter server fails, a `tf.errors.UnavailableError` is raised by
+  `schedule`, `join` or `done`. In this case, in addition to bringing back the
+  failed parameter server, users should restart the coordinator so that it
+  reconnects to workers and parameter servers, re-creates the variables, and
+  loads checkpoints. If the coordinator fails, after the user brings it back,
+  the program will automatically connect to workers and parameter servers, and
+  continue the progress from a checkpoint.
 
   It is thus essential that in user's program, a checkpoint file is periodically
   saved, and restored at the start of the program. If an
@@ -1137,7 +1136,7 @@ class ClusterCoordinator(object):
 
     def per_worker_dataset_fn():
       return strategy.distribute_datasets_from_function(
-          lambda x: tf.data.from_tensor_slices([3] * 3)
+          lambda x: tf.data.Dataset.from_tensor_slices([3] * 3))
 
     per_worker_dataset = coordinator.create_per_worker_dataset(
         per_worker_dataset_fn)

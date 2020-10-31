@@ -55,6 +55,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend_config
 from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.keras.utils import control_flow_util
+from tensorflow.python.keras.utils import object_identity
 from tensorflow.python.keras.utils import tf_contextlib
 from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.ops import array_ops
@@ -84,7 +85,6 @@ from tensorflow.python.training.tracking import util as tracking_util
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import keras_deps
 from tensorflow.python.util import nest
-from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
@@ -116,7 +116,7 @@ PER_GRAPH_OBJECT_NAME_UIDS = weakref.WeakKeyDictionary()
 
 
 # A global set tracking what object names have been seen so far.
-# Optionally used as an avoid-list when generaing names
+# Optionally used as an avoid-list when generating names
 OBSERVED_NAMES = set()
 
 
@@ -450,7 +450,7 @@ def deprecated_internal_set_learning_phase(value):
   This method is an internal-only version of `set_learning_phase` that
   does not raise a deprecation error. It is required because
   saved_model needs to keep working with user code that uses the deprecated
-  learning phase methods until those apis are fully removed from the public api.
+  learning phase methods until those APIs are fully removed from the public API.
 
   Specifically SavedModel saving needs to make sure the learning phase is 0
   during tracing even if users overwrote it to a different value.
@@ -516,7 +516,7 @@ def deprecated_internal_learning_phase_scope(value):
   with code that sets/gets the learning phase, but saved model
   saving itself shouldn't raise a deprecation warning.
 
-  We can get rid of this method and its usages when the public api is
+  We can get rid of this method and its usages when the public API is
   removed.
 
   Arguments:
@@ -894,7 +894,7 @@ def _is_current_explicit_device(device_type):
 
 
 def _get_available_gpus():
-  """Get a list of available gpu devices (formatted as strings).
+  """Get a list of available GPU devices (formatted as strings).
 
   Returns:
       A list of available GPU devices.
@@ -6582,9 +6582,9 @@ class ContextValueCache(weakref.WeakKeyDictionary):
 
   This class is similar to defaultdict, where values may be produced by the
   default factory specified during initialization. This class also has a default
-  value for the key (when key is `None`) -- the key is set to the the current
-  graph or eager context. The default factories for key and value are only used
-  in `__getitem__` and `setdefault`. The `.get()` behavior remains the same.
+  value for the key (when key is `None`) -- the key is set to the current graph
+  or eager context. The default factories for key and value are only used in
+  `__getitem__` and `setdefault`. The `.get()` behavior remains the same.
 
   This object will return the value of the current graph or closest parent graph
   if the current graph is a function. This is to reflect the fact that if a

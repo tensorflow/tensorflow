@@ -31,6 +31,6 @@ func @dealloc(%ctx: !tf_framework.op_kernel_context,
 
 // CHECK-LABEL: func @null_context
 func @null_context() {
-  tf_framework.null_context() : !tf_framework.op_kernel_context
+  tf_framework.null_context : !tf_framework.op_kernel_context
   return
 }

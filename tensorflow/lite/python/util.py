@@ -33,6 +33,7 @@ from tensorflow.core.protobuf import graph_debug_info_pb2
 from tensorflow.core.protobuf import meta_graph_pb2 as _meta_graph_pb2
 from tensorflow.lite.python import schema_py_generated as schema_fb
 from tensorflow.lite.python import schema_util
+from tensorflow.lite.python import tflite_keras_util as _tflite_keras_util
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs
 from tensorflow.lite.python.op_hint import find_all_hinted_output_nodes
 from tensorflow.lite.toco import types_pb2 as _types_pb2
@@ -43,6 +44,10 @@ from tensorflow.python.framework import error_interpolation as _error_interpolat
 from tensorflow.python.framework import graph_util as tf_graph_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.training.saver import export_meta_graph as _export_meta_graph
+
+# Keras functions used by TFLite
+model_input_signature = _tflite_keras_util.model_input_signature
+trace_model_call = _tflite_keras_util.trace_model_call
 
 # Map of tf.dtypes to TFLite types_flag_pb2.
 _MAP_TF_TO_TFLITE_TYPES = {

@@ -974,10 +974,9 @@ Status IrEmitterUnnested::EmitLoopFusionFromMlir(MlirEmitterInput input,
           return ir_array.EmitReadArrayElement(index, builder);
         });
   }
-  TF_RETURN_IF_ERROR(fused_emitter.PrepareGeneratorRecursively(
-      fused_computation->root_instruction()));
-  auto element_generator =
-      fused_emitter.GetGenerator(fused_computation->root_instruction());
+  TF_ASSIGN_OR_RETURN(
+      auto element_generator,
+      fused_emitter.GetGenerator(fused_computation->root_instruction()));
 
   Shape element_shape = TypeToShape(fusion_outputs[0].getType());
   LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
@@ -1030,11 +1029,12 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
               GetNestedComputer());
           FusedIrEmitter operand_fused_emitter(&operand_elemental_emitter);
           BindFusionArguments(fusion, &operand_fused_emitter);
-          TF_RETURN_IF_ERROR(operand_fused_emitter.PrepareGeneratorRecursively(
-              root->mutable_operand(0)));
+          TF_ASSIGN_OR_RETURN(
+              auto generator,
+              operand_fused_emitter.GetGenerator(root->operand(0)));
 
           TF_RETURN_IF_ERROR(EmitTargetElementLoopInThunk(
-              *fusion, operand_fused_emitter.GetGenerator(root->operand(0)),
+              *fusion, generator,
               static_cast<KernelThunk*>(thunks.back().get()),
               ComputeMaxUnrollFactor(fusion)));
         }
@@ -1051,8 +1051,6 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
               GetNestedComputer());
           FusedIrEmitter scatter_fused_emitter(&scatter_elemental_emitter);
           BindFusionArguments(fusion, &scatter_fused_emitter);
-          TF_RETURN_IF_ERROR(
-              scatter_fused_emitter.PrepareGeneratorRecursively(root));
           CHECK_EQ(root->parent()->FusionInstruction(), fusion);
 
           TF_ASSIGN_OR_RETURN(
@@ -1068,10 +1066,12 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
           desc.unique_indices = root->unique_indices();
           desc.update_computation = root->called_computations()[0];
           desc.output = GetIrArray(*fusion, *fusion);
-          desc.scatter_indices_gen =
-              scatter_fused_emitter.GetGenerator(root->operand(1));
-          desc.updates_gen =
-              scatter_fused_emitter.GetGenerator(root->operand(2));
+          TF_ASSIGN_OR_RETURN(
+              desc.scatter_indices_gen,
+              scatter_fused_emitter.GetGenerator(root->operand(1)));
+          TF_ASSIGN_OR_RETURN(
+              desc.updates_gen,
+              scatter_fused_emitter.GetGenerator(root->operand(2)));
           desc.get_index_type = [&](int64 launch_size) {
             return GetIndexTypeForKernel(root, launch_size, &b_);
           };
@@ -2605,13 +2605,12 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
 
     FusedIrEmitter fused_emitter(&elemental_emitter);
     BindFusionArguments(hlo, &fused_emitter);
-    TF_RETURN_IF_ERROR(
-        fused_emitter.PrepareGeneratorRecursively(init_value_operand));
-    TF_RETURN_IF_ERROR(
-        ParallelLoopEmitter(fused_emitter.GetGenerator(init_value_operand),
-                            GetIrArray(*hlo, *hlo, index), launch_dimensions,
-                            &b_)
-            .EmitLoop(IrName(hlo)));
+    TF_ASSIGN_OR_RETURN(auto generator,
+                        fused_emitter.GetGenerator(init_value_operand));
+    TF_RETURN_IF_ERROR(ParallelLoopEmitter(generator,
+                                           GetIrArray(*hlo, *hlo, index),
+                                           launch_dimensions, &b_)
+                           .EmitLoop(IrName(hlo)));
   } else {
     // In the unfused case the element is already there, just read from it.
     TF_RETURN_IF_ERROR(ParallelLoopEmitter(
@@ -3130,13 +3129,10 @@ void IrEmitterUnnested::EmitTileElementForFusion(
     }
     fused_emitter.BindGenerator(hlo->fused_parameter(i), std::move(gen));
   }
-  TF_CHECK_OK(
-      fused_emitter.PrepareGeneratorRecursively(hlo->fused_expression_root()));
-
   IrArray::Index untiled_index = GetUnnormalizedIndex(
       index, output_arrays[0].GetShape(), &b_, mapping_scheme);
-  const llvm_ir::ElementGenerator& output_generator =
-      fused_emitter.GetGenerator(hlo->fused_expression_root());
+  llvm_ir::ElementGenerator output_generator =
+      *fused_emitter.GetGenerator(hlo->fused_expression_root());
   llvm::Value* output_value = output_generator(untiled_index).ValueOrDie();
   if (hlo->IsMultiOutputFusion()) {
     DCHECK(output_value->getType()->isStructTy());
@@ -3194,12 +3190,10 @@ void IrEmitterUnnested::EmitPrologueForReduction(
     if (unnested_hlo->opcode() == HloOpcode::kFusion) {
       FusedIrEmitter fused_emitter(&elemental_emitter);
       BindFusionArguments(unnested_hlo, &fused_emitter);
-      TF_CHECK_OK(fused_emitter.PrepareGeneratorRecursively(init_value));
 
-      init_ir_value =
-          fused_emitter
-              .GetGenerator(init_value)(IrArray::Index(b_.getInt32Ty()))
-              .ValueOrDie();
+      init_ir_value = (*fused_emitter.GetGenerator(init_value))(
+                          IrArray::Index(b_.getInt32Ty()))
+                          .ValueOrDie();
     } else {
       init_ir_value =
           GetIrArray(*init_value, *unnested_hlo)
@@ -3544,17 +3538,15 @@ void IrEmitterUnnested::EmitTileElementForReduction(
   // the group of output instructions.
   if (unnested_hlo->opcode() == HloOpcode::kFusion) {
     BindFusionArguments(unnested_hlo, &fused_emitter);
-    TF_CHECK_OK(fused_emitter.PrepareGeneratorRecursively(
-        unnested_hlo->fused_expression_root()));
 
     for (int i = 0, e = output_instructions.size(); i != e; ++i) {
       const HloInstruction* inst = output_instructions[i];
       ShapeIndex idx =
           CreateShapeIndexForOutputInstruction(*unnested_hlo, *inst);
       if (IsReductionFromOrToContiguousDimensions(*inst)) {
-        input_gens.push_back(fused_emitter.GetGenerator(inst->operand(0)));
+        input_gens.push_back(*fused_emitter.GetGenerator(inst->operand(0)));
       } else {
-        extra_output_gens.emplace_back(fused_emitter.GetGenerator(inst),
+        extra_output_gens.emplace_back(*fused_emitter.GetGenerator(inst),
                                        std::move(idx));
       }
     }
@@ -4541,10 +4533,8 @@ void IrEmitterUnnested::EmitElementForInputFusibleSlices(
                                      GetNestedComputer());
   FusedIrEmitter fused_emitter(&elem_emitter);
   BindFusionArguments(unnested_hlo, &fused_emitter);
-  TF_CHECK_OK(fused_emitter.PrepareGeneratorRecursively(
-      unnested_hlo->fused_expression_root()));
   for (const HloInstruction* slice : slice_instructions) {
-    auto input_generator = fused_emitter.GetGenerator(slice->operand(0));
+    auto input_generator = *fused_emitter.GetGenerator(slice->operand(0));
     input_ir_values.push_back(input_generator(index).ValueOrDie());
   }
 

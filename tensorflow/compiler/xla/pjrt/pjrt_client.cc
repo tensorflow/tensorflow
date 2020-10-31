@@ -653,8 +653,8 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtClient::BufferFromHostBuffer(
     // memory that has already been allocated, and a possible Event
     // allocation.
 
-    ShapedBuffer buffer = device_buffer->AsShapedBuffer(
-        compact_shape, on_device_shape, local_client->platform());
+    ShapedBuffer buffer =
+        device_buffer->AsShapedBuffer(compact_shape, on_device_shape);
     // If applicable on the backend, stage the transfer via host memory
     // allocated via the host_memory_allocator. On GPU, this is pinned
     // memory.
@@ -753,8 +753,8 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtClient::BufferFromHostLiteral(
     // allocation.
 
     se::Stream* h2d_stream = local_device->host_to_device_stream();
-    ShapedBuffer buffer = device_buffer->AsShapedBuffer(
-        compact_shape, on_device_shape, local_client->platform());
+    ShapedBuffer buffer =
+        device_buffer->AsShapedBuffer(compact_shape, on_device_shape);
     TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
         h2d_stream, literal, buffer));
 
@@ -1099,8 +1099,8 @@ PjRtBuffer::CopyToHostAsyncInternal(bool discard_cached_copy,
     host_shape = on_host_shape_;
   }
   host_value->value = std::make_shared<Literal>(host_shape);
-  ShapedBuffer shaped_buffer = device_buffer->AsShapedBuffer(
-      host_shape, on_device_shape_, client_->client()->platform());
+  ShapedBuffer shaped_buffer =
+      device_buffer->AsShapedBuffer(host_shape, on_device_shape_);
   client_->client()->backend().transfer_manager()->TransferLiteralFromDevice(
       stream, shaped_buffer, host_value->value.get(),
       [host_value](Status done_status) {
@@ -1152,8 +1152,7 @@ StatusOr<ShapedBuffer> PjRtBuffer::AsShapedBuffer() const {
     return InvalidArgument(
         "Attempted to fetch value of invalid/deleted buffer.");
   }
-  return device_buffer_->AsShapedBuffer(on_host_shape_, on_device_shape_,
-                                        client_->client()->platform());
+  return device_buffer_->AsShapedBuffer(on_host_shape_, on_device_shape_);
 }
 
 PjRtBuffer::ScopedHold PjRtBuffer::GetBufferWithHold(ScopedHold::Type type) {
@@ -1188,8 +1187,8 @@ PjRtBuffer::CopyToDeviceHelper(
 
   ScopedHold dst_device_buffer(py_buffer->GetBufferWithUsageHold());
   CHECK(dst_device_buffer.ok());
-  ShapedBuffer dst_buffer = dst_device_buffer->AsShapedBuffer(
-      on_host_shape_, on_device_shape_, client_->client()->platform());
+  ShapedBuffer dst_buffer =
+      dst_device_buffer->AsShapedBuffer(on_host_shape_, on_device_shape_);
 
   // Copy the leaf buffers.
   StatusOr<std::shared_ptr<BufferSequencingEvent>> copy_event_or =

@@ -984,6 +984,7 @@ distribute_py_test(
     shard_count = 10,
     tags = [
         "multi_and_single_gpu",
+        "no_cuda_asan",  # times out
     ],
     deps = [
         ":collective_all_reduce_strategy",
@@ -1754,6 +1755,7 @@ distribute_py_test(
     shard_count = 4,
     tags = [
         "multi_and_single_gpu",
+        "no_cuda_asan",  # times out
         "notsan",  # TODO(b/160006974)
     ],
     xla_enable_strict_auto_jit = True,

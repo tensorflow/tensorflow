@@ -141,11 +141,6 @@ Status FusedIrEmitter::HandleTuple(const HloInstruction* tuple) {
   return Status::OK();
 }
 
-FusedIrEmitter::IndexedGenerator FusedIrEmitter::GetGenerator(
-    const HloInstruction* instruction) const {
-  return indexed_generators_.at(instruction);
-}
-
 bool FusedIrEmitter::IsFusedIrEmitterInefficient(
     const HloInstruction* consumer, const HloInstruction* producer) {
   if (consumer->opcode() != HloOpcode::kFusion) {
@@ -160,6 +155,41 @@ bool FusedIrEmitter::IsFusedIrEmitterInefficient(
   FusionNodeIndexingEvaluation eval_producer(
       producer, eval_consumer.EvaluateEmittedInstructions(producer));
   return eval_producer.MaxCodeDuplicationTooHigh();
+}
+
+StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::GetGenerator(
+    const HloInstruction* instruction) {
+  std::vector<const HloInstruction*> stack;
+  stack.push_back(instruction);
+  while (!stack.empty()) {
+    const HloInstruction* instr = stack.back();
+    stack.pop_back();
+    if (indexed_generators_.count(instr)) {
+      continue;
+    }
+    for (const HloInstruction* operand : instr->operands()) {
+      stack.push_back(operand);
+    }
+    switch (instr->opcode()) {
+      case HloOpcode::kConstant:
+        TF_RETURN_IF_ERROR(HandleConstant(instr));
+        break;
+      case HloOpcode::kGetTupleElement:
+        TF_RETURN_IF_ERROR(HandleGetTupleElement(instr));
+        break;
+      case HloOpcode::kParameter:
+        TF_RETURN_IF_ERROR(HandleParameter(instr));
+        break;
+      case HloOpcode::kTuple:
+        TF_RETURN_IF_ERROR(HandleTuple(instr));
+        break;
+      default:
+        TF_RETURN_IF_ERROR(DefaultAction(instr));
+        break;
+    }
+    CHECK(indexed_generators_.count(instr));
+  }
+  return indexed_generators_.at(instruction);
 }
 
 }  // namespace xla

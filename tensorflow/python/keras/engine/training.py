@@ -78,7 +78,6 @@ from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
-from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
@@ -1922,21 +1921,35 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
   @property
   def trainable_weights(self):
     self._assert_weights_created()
-    return self._dedup_weights(
-        trackable_layer_utils.gather_trainable_weights(
-            trainable=self.trainable,
-            sub_layers=self._layers,
-            extra_variables=self._trainable_weights))
+    if not self._trainable:
+      return []
+    trainable_variables = []
+    for trackable_obj in self._self_tracked_trackables:
+      trainable_variables += trackable_obj.trainable_variables
+    trainable_variables += self._trainable_weights
+    return self._dedup_weights(trainable_variables)
 
   @property
   def non_trainable_weights(self):
     self._assert_weights_created()
-    return self._dedup_weights(
-        trackable_layer_utils.gather_non_trainable_weights(
-            trainable=self.trainable,
-            sub_layers=self._layers,
-            extra_variables=self._non_trainable_weights +
-            self._trainable_weights))
+    non_trainable_variables = []
+    for trackable_obj in self._self_tracked_trackables:
+      non_trainable_variables += trackable_obj.non_trainable_variables
+
+    if not self._trainable:
+      # Return order is all trainable vars, then all non-trainable vars.
+      trainable_variables = []
+      for trackable_obj in self._self_tracked_trackables:
+        trainable_variables += trackable_obj.trainable_variables
+
+      non_trainable_variables = (
+          trainable_variables + self._trainable_weights +
+          non_trainable_variables + self._non_trainable_weights)
+    else:
+      non_trainable_variables = (
+          non_trainable_variables + self._non_trainable_weights)
+
+    return self._dedup_weights(non_trainable_variables)
 
   def get_weights(self):
     """Retrieves the weights of the model.
@@ -2349,8 +2362,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     """Returns the undeduplicated list of all layer variables/weights."""
     self._assert_weights_created()
     weights = []
-    for layer in self._layers:
-      weights += layer.weights
+    for layer in self._self_tracked_trackables:
+      weights += layer.variables
     weights += (self._trainable_weights + self._non_trainable_weights)
     return weights
 

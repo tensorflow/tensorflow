@@ -1136,6 +1136,9 @@ cuda_py_test(
         "no_windows",  # b/139083295: bfloat16 tests fail on Windows
         "notsan",
     ],
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         ":moving_averages",
         ":saver",

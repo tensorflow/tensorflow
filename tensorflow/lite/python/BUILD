@@ -149,7 +149,6 @@ py_library(
         "//tensorflow/lite/experimental/examples/lstm:tflite_lstm_ops",
         "//tensorflow/lite/experimental/microfrontend:audio_microfrontend_py",
         "//tensorflow/lite/experimental/tensorboard:ops_util",
-        "//tensorflow/lite/python/keras/saving:saving_utils",
         "//tensorflow/lite/python/optimize:calibrator",
         "//tensorflow/python:graph_util",
         "//tensorflow/python/keras",
@@ -236,6 +235,7 @@ py_library(
         ":op_hint",
         ":schema_py",
         ":schema_util",
+        "//tensorflow/lite/python:tflite_keras_util",
         "//tensorflow/lite/toco:toco_flags_proto_py",
         "//tensorflow/python:convert_to_constants",
         "//tensorflow/python:dtypes",
@@ -275,6 +275,18 @@ py_test(
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "tflite_keras_util",
+    srcs = [
+        "tflite_keras_util.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:util",
+        "//tensorflow/python/eager:def_function",
     ],
 )
 

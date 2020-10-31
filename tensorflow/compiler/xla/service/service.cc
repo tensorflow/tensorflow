@@ -245,17 +245,6 @@ Service::ResolveAndValidateArguments(
     CHECK_EQ(options_.number_of_replicas(), replicated_buffers.size());
     for (int replica = 0; replica < options_.number_of_replicas(); ++replica) {
       const ShapedBuffer* shaped_buffer = replicated_buffers[replica];
-      int replica_device_ordinal = stream_executors[replica]->device_ordinal();
-      // Verify allocation is same platform and device as the execution.
-      if (shaped_buffer->platform() != execute_backend_->platform() ||
-          shaped_buffer->device_ordinal() != replica_device_ordinal) {
-        return InvalidArgument(
-            "argument %lu is on device %s:%d but computation will be executed "
-            "on device %s",
-            i, shaped_buffer->platform()->Name(),
-            shaped_buffer->device_ordinal(),
-            execute_backend_->device_name(replica_device_ordinal));
-      }
       replicated_arguments[replica].push_back(shaped_buffer);
     }
   }

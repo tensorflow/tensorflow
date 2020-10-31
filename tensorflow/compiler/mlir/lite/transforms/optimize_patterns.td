@@ -24,6 +24,11 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 // Checks if the param passed is a F32 ElementsAttr.
 def F32ElementsAttr : ElementsAttrBase<
   CPred<"$_self.isa<ElementsAttr>() && $_self.cast<ElementsAttr>().getType().getElementType().isF32()">,
+        "32 bit float constant tensor">;
+
+// Checks if the param passed is a float ElementsAttr.
+def FloatElementsAttr : ElementsAttrBase<
+  CPred<"$_self.isa<ElementsAttr>() && $_self.cast<ElementsAttr>().getType().getElementType().isa<FloatType>()">,
         "float constant tensor">;
 
 // Checks if the param passed is of NoneType.
@@ -93,9 +98,9 @@ class CanFuseConvOrDepthwiseConv<string is_depthwise> : Constraint<
 multiclass FuseBinaryOpToPrecedingAffine<dag binaryOp> {
   def FuseBinaryOpWithConv#binaryOp : Pat<
     (binaryOp (TFL_Conv2DOp:$output $input, $filter,
-                (ConstantOp F32ElementsAttr:$bias), $h_factor, $w_factor,
+                (ConstantOp FloatElementsAttr:$bias), $h_factor, $w_factor,
                 TFL_AF_None, $padding, $stride_h, $stride_w),
-              (ConstantOp F32ElementsAttr:$value), $act_fn),
+              (ConstantOp FloatElementsAttr:$value), $act_fn),
     (TFL_Conv2DOp $input, $filter,
       (binaryOp (ConstantOp $bias),
          (ConstantOp $value), TFL_AF_None),
@@ -104,10 +109,10 @@ multiclass FuseBinaryOpToPrecedingAffine<dag binaryOp> {
      (HasOneUse $output)]>;
   def FuseBinaryOpWithDepthwiseConv#binaryOp : Pat<
     (binaryOp (TFL_DepthwiseConv2DOp:$output $input, $filter,
-                (ConstantOp F32ElementsAttr:$bias),
+                (ConstantOp FloatElementsAttr:$bias),
                 $h_factor, $w_factor, TFL_AF_None, $padding, $stride_h,
                 $stride_w, $multiplier),
-              (ConstantOp F32ElementsAttr:$value), $act_fn),
+              (ConstantOp FloatElementsAttr:$value), $act_fn),
     (TFL_DepthwiseConv2DOp $input, $filter,
       (binaryOp (ConstantOp $bias), (ConstantOp $value), TFL_AF_None),
       $h_factor, $w_factor, $act_fn, $padding, $stride_h, $stride_w,
@@ -116,9 +121,9 @@ multiclass FuseBinaryOpToPrecedingAffine<dag binaryOp> {
      (HasOneUse $output)]>;
    def FuseBinaryOpWithTransposeConv#binaryOp : Pat<
     (binaryOp (TFL_TransposeConvOp:$output $output_shape, $weights, $inputs,
-                (ConstantOp F32ElementsAttr:$bias), $padding,
+                (ConstantOp FloatElementsAttr:$bias), $padding,
                 $stride_h, $stride_w),
-              (ConstantOp F32ElementsAttr:$value), TFL_AF_None),
+              (ConstantOp FloatElementsAttr:$value), TFL_AF_None),
     (TFL_TransposeConvOp $output_shape, $weights, $inputs,
       (binaryOp (ConstantOp $bias),
          (ConstantOp $value), TFL_AF_None),
@@ -130,7 +135,7 @@ multiclass FuseBinaryOpToPrecedingAffine<dag binaryOp> {
     (binaryOp (TFL_TransposeConvOp:$output $output_shape, $weights, $inputs,
                 (ConstantOp $bias), $padding,
                 $stride_h, $stride_w),
-              (ConstantOp F32ElementsAttr:$value), TFL_AF_None),
+              (ConstantOp FloatElementsAttr:$value), TFL_AF_None),
     (TFL_TransposeConvOp $output_shape, $weights, $inputs,
       (ConstantOp $value),
       $padding, $stride_h, $stride_w),
@@ -155,11 +160,11 @@ def ExpandTo4DForDepthwiseConv: NativeCodeCall<
 multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<dag BinaryOp> {
   def FuseMulOrDivWithDepthwiseConv#BinaryOp : Pat<
     (BinaryOp (TFL_DepthwiseConv2DOp:$output $input,
-                (ConstantOp F32ElementsAttr:$filter),
-                (ConstantOp F32ElementsAttr:$bias),
+                (ConstantOp FloatElementsAttr:$filter),
+                (ConstantOp FloatElementsAttr:$bias),
                 $h_factor, $w_factor, TFL_AF_None, $padding, $stride_h,
                 $stride_w, $multiplier),
-              (ConstantOp F32ElementsAttr:$value), $act_fn),
+              (ConstantOp FloatElementsAttr:$value), $act_fn),
     (TFL_DepthwiseConv2DOp $input,
       (BinaryOp
         (ConstantOp $filter),
@@ -175,11 +180,11 @@ multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<dag BinaryOp> {
      (HasOneUse $output)]>;
   def FuseMulOrDivWithConv#BinaryOp : Pat<
     (BinaryOp (TFL_Conv2DOp:$conv_output $input,
-                (ConstantOp F32ElementsAttr:$filter),
-                (ConstantOp F32ElementsAttr:$bias),
+                (ConstantOp FloatElementsAttr:$filter),
+                (ConstantOp FloatElementsAttr:$bias),
                 $h_factor, $w_factor, TFL_AF_None,
                 $padding, $stride_h, $stride_w),
-              (ConstantOp F32ElementsAttr:$value), $act_fn),
+              (ConstantOp FloatElementsAttr:$value), $act_fn),
     (TFL_Conv2DOp $input,
       (BinaryOp (ConstantOp $filter),
         (ConstantOp (ExpandTo4DForConv $value)),
@@ -192,8 +197,8 @@ multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<dag BinaryOp> {
      (HasOneUse $conv_output)]>;
   def FuseMulOrDivWithTransposeConv#BinaryOp : Pat<
     (BinaryOp (TFL_TransposeConvOp:$output $output_shape,
-                (ConstantOp F32ElementsAttr:$weights), $input,
-                (ConstantOp F32ElementsAttr:$bias),
+                (ConstantOp FloatElementsAttr:$weights), $input,
+                (ConstantOp FloatElementsAttr:$bias),
                 $padding, $stride_h, $stride_w),
               (ConstantOp $value), TFL_AF_None),
     (TFL_TransposeConvOp $output_shape,
@@ -209,7 +214,7 @@ multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<dag BinaryOp> {
      (HasOneUse $output)]>;
   def FuseMulOrDivWithTransposeConvWithNoneBias#BinaryOp : Pat<
     (BinaryOp (TFL_TransposeConvOp:$output $output_shape,
-                (ConstantOp F32ElementsAttr:$weights), $input,
+                (ConstantOp FloatElementsAttr:$weights), $input,
                 (ConstantOp $bias),
                 $padding, $stride_h, $stride_w),
               (ConstantOp $value), TFL_AF_None),

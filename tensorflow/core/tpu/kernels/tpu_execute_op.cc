@@ -172,7 +172,7 @@ struct InputBuffers {
                                    int device_ordinal) {
     CHECK_NE(allocator, nullptr);
     xla::ShapedBuffer shaped_buffer(std::move(host_shape), buffers.shape(),
-                                    allocator->platform(), device_ordinal);
+                                    device_ordinal);
     shaped_buffer.set_buffers(buffers.Map<se::DeviceMemoryBase>(
         [](xla::MaybeOwningDeviceMemory* buffer) {
           CHECK(buffer);

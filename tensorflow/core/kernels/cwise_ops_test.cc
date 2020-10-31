@@ -184,7 +184,8 @@ Graph* CubeWithMulSquare(int num) {
   void BM_##DEVICE##_Cube_##Impl(::testing::benchmark::State& state) { \
     const int num = state.range(0);                                    \
                                                                        \
-    test::Benchmark(#DEVICE, Impl(num)).Run(state.iterations());       \
+    test::Benchmark(#DEVICE, Impl(num), /*old_benchmark_api*/ false)   \
+        .Run(state);                                                   \
     const int64 tot = static_cast<int64>(state.iterations()) * num;    \
     state.SetItemsProcessed(tot);                                      \
     state.SetBytesProcessed(tot * sizeof(float));                      \

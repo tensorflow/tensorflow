@@ -204,7 +204,7 @@ class MirroredStrategy(distribute_lib.Strategy):
   >>> with strategy.scope():
   ...   x = tf.Variable(1.)
   >>> x
-  DistributedVariable(AutoPolicy):{
+  MirroredVariable:{
     0: <tf.Variable ... shape=() dtype=float32, numpy=1.0>,
     1: <tf.Variable ... shape=() dtype=float32, numpy=1.0>
   }
@@ -226,7 +226,7 @@ class MirroredStrategy(distribute_lib.Strategy):
   >>> with strategy.scope():
   ...   _ = create_variable()
   ...   print(x[0])
-  DistributedVariable(AutoPolicy):{
+  MirroredVariable:{
     0: <tf.Variable ... shape=() dtype=float32, numpy=1.0>,
     1: <tf.Variable ... shape=() dtype=float32, numpy=1.0>
   }
@@ -322,7 +322,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       self.experimental_enable_get_next_as_optional = True
 
     # Flag to turn on VariablePolicy.
-    self._use_var_policy = True
+    self._use_var_policy = False
 
   def _initialize_strategy(self, devices):
     # The _initialize_strategy method is intended to be used by distribute
