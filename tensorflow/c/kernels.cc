@@ -45,8 +45,9 @@ TF_KernelBuilder* TF_NewKernelBuilder(
     void (*compute_func)(void*, TF_OpKernelContext*),
     void (*delete_func)(void*)) {
   TF_KernelBuilder* result = new TF_KernelBuilder;
-  const char* subdevice_name =
-      ::tensorflow::DeviceFactory::SubDeviceType(device_name).c_str();
+  const std::string subdevice_type =
+      ::tensorflow::DeviceFactory::SubDeviceType(device_name);
+  const char* subdevice_name = subdevice_type.c_str();
   result->cc_builder = new ::tensorflow::KernelDefBuilder(op_name);
   result->cc_builder->Device(device_name);
   result->cc_builder->SubDevice(subdevice_name);

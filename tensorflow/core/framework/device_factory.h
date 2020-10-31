@@ -92,7 +92,7 @@ class DeviceFactory {
   static int32 DevicePriority(const std::string& device_type);
 
   // Return the "subdevice_type" string for a "device_type string".
-  static const string& SubDeviceType(const std::string& device_type);
+  static string SubDeviceType(const std::string& device_type);
 };
 namespace dfactory {
 
@@ -132,7 +132,8 @@ class Registrar {
   // Subdevice type is empty for those devices registered
   // by Registrar (first party devices);
   explicit Registrar(const std::string& device_type, int priority = 50) {
-    DeviceFactory::Register(device_type, string(""), new Factory(), priority);
+    DeviceFactory::Register(/*device_type=*/device_type, /*subdevice_type=*/"",
+                            new Factory(), priority);
   }
 };
 
