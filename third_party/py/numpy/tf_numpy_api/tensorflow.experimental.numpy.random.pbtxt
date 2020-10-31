@@ -24,4 +24,8 @@ tf_module {
     name: "uniform"
     argspec: "args=[\'low\', \'high\', \'size\'], varargs=None, keywords=None, defaults=[\'0.0\', \'1.0\', \'None\'], "
   }
+  member_method {
+    name: "poisson"
+    argspec: "args=[\'lam\', \'size\'], varargs=None, keywords=None, defaults=[\'1.0\', \'None\'], "
+  }
 }
