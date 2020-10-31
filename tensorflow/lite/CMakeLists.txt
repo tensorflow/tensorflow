@@ -52,7 +52,7 @@ set(CMAKE_PREFIX_PATH
   ${CMAKE_PREFIX_PATH}
 )
 # b/168750039: To workaround absl module not found error on Android build.
-set(absl_DIR ${CMAKE_MODULE_PATH})
+set(absl_DIR "${TFLITE_SOURCE_DIR}/tools/cmake/modules")
 
 option(TFLITE_ENABLE_RUY "Enable experimental RUY integration" OFF)
 option(TFLITE_ENABLE_RESOURCE "Enable experimental support for resources" ON)
