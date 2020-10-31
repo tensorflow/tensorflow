@@ -81,6 +81,16 @@ def uniform(low=0.0, high=1.0, size=None):
           shape=size, minval=low, maxval=high, dtype=dtype))
 
 
+@np_utils.np_doc('random.poisson')
+def poisson(lam=1.0, size=None):
+  if size is None:
+    size = ()
+  elif np_utils.isscalar(size):
+    size = (size,)
+  return np_utils.tensor_to_ndarray(
+      random_ops.random_poisson(shape=size, lam=lam, dtype=np_dtypes.int_))
+
+
 @np_utils.np_doc('random.random')
 def random(size=None):
   return uniform(0., 1., size)
