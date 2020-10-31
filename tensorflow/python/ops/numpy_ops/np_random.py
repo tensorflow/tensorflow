@@ -62,11 +62,18 @@ def randn(*args):
   Returns:
     An ndarray with shape `args` and dtype `float64`.
   """
+  return standard_normal(size=args)
+
+
+@np_utils.np_doc('random.standard_normal')
+def standard_normal(size=None):
   # TODO(wangpeng): Use new stateful RNG
-  if np_utils.isscalar(args):
-    args = (args,)
+  if size is None:
+    size = ()
+  elif np_utils.isscalar(size):
+    size = (size,)
   dtype = np_dtypes.default_float_type()
-  return np_utils.tensor_to_ndarray(random_ops.random_normal(args, dtype=dtype))
+  return np_utils.tensor_to_ndarray(random_ops.random_normal(size, dtype=dtype))
 
 
 @np_utils.np_doc('random.uniform')

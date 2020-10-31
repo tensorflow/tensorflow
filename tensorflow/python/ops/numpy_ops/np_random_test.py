@@ -78,6 +78,18 @@ class RandNTest(RandomTestBase):
     self._test(*dims, allow_float64=False, onp_dtype=np.float32)
 
 
+class StandardNormalTest(RandomTestBase):
+
+  def setUp(self):
+    self.np_func = np.random.standard_normal
+    self.onp_func = onp.random.standard_normal
+    super(StandardNormalTest, self).setUp()
+
+  @parameterized.parameters((None,), ((),), ((1,),), ((1, 2),))
+  def test(self, size):
+    self._test(size)
+
+
 class UniformTest(RandomTestBase):
 
   def setUp(self):
