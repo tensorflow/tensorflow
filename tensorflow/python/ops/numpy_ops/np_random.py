@@ -54,7 +54,7 @@ def seed(s):
 def randn(*args):
   """Returns samples from a normal distribution.
 
-  Uses `tf.random_normal`.
+  Uses `tf.random.normal`.
 
   Args:
     *args: The shape of the output array.
@@ -71,6 +71,18 @@ def randn(*args):
 
 @np_utils.np_doc('random.uniform')
 def uniform(low=0.0, high=1.0, size=None):
+  """Returns samples from a uniform distribution.
+
+  Uses `tf.random.uniform`.
+
+  Args:
+    low: The lower bound on the range of random values to generate.
+    high: The higher bound on the range of random values to generate.
+    size: The shape of the output array.
+
+  Returns:
+    An ndarray with shape `size`.
+  """
   dtype = np_dtypes.default_float_type()
   low = np_array_ops.asarray(low, dtype=dtype)
   high = np_array_ops.asarray(high, dtype=dtype)
@@ -83,16 +95,49 @@ def uniform(low=0.0, high=1.0, size=None):
 
 @np_utils.np_doc('random.random')
 def random(size=None):
+  """Returns a samples between 0 and 1 from a uniform distribution.
+
+  Uses `tf.random.uniform`.
+
+  Args:
+    size: The shape of the output array.
+
+  Returns:
+    An ndarray with shape `size`.
+  """
   return uniform(0., 1., size)
 
 
 @np_utils.np_doc('random.rand')
 def rand(*size):
+  """Returns a samples between 0 and 1 from a uniform distribution.
+
+  Uses `tf.random.uniform`.
+
+  Args:
+    size: The shape of the output array.
+
+  Returns:
+    An ndarray with shape `*size`.
+  """
   return uniform(0., 1., size)
 
 
 @np_utils.np_doc('random.randint')
 def randint(low, high=None, size=None, dtype=onp.int):  # pylint: disable=missing-function-docstring
+  """Returns samples from a uniform distribution.
+
+  Uses `tf.random.uniform`.
+
+  Args:
+    low: The lower bound on the range of random values to generate.
+    high: The higher bound on the range of random values to generate.
+    size: The shape of the output array.
+    dtype: The data type of returns.
+
+  Returns:
+    An ndarray with shape `size` and `dtype`.
+  """
   low = int(low)
   if high is None:
     high = low
