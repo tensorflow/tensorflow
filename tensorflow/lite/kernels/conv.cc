@@ -738,11 +738,11 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
   ConvParams op_params;
   op_params.padding_type = RuntimePaddingType(params->padding);
   op_params.padding_values.width = data->padding.width;
-  op_params.padding_values.height = data->padding.width; //hijak padding
+  op_params.padding_values.height = data->padding.height; 
   op_params.stride_width = params->stride_width;
   op_params.stride_height = params->stride_height;
-  op_params.dilation_width_factor = params->dilation_width_factor;
-  op_params.dilation_height_factor = params->dilation_width_factor; //hijak dilation
+  op_params.dilation_width_factor = 1;
+  op_params.dilation_height_factor = 1; //hijak dilation
   op_params.float_activation_min = output_activation_min;
   op_params.float_activation_max = output_activation_max;
   switch (effective_kernel_type) {
@@ -758,14 +758,16 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
     case kCblasOptimized:
     case kGenericOptimized: {
       if(params->dilation_height_factor != 1) {
-        // TFLITE_LOG(INFO) << GetTensorShape(input).Dims(3) << "point dilate filt shape/bypass" << filter_shape.Dims(1) << " conv height " << params->dilation_height_factor;
-        // TFLITE_LOG(INFO) << "pad " << data->padding.height << " " << data->padding.width;
         RuntimeShape filter_shape = GetTensorShape(filter);
+        RuntimeShape input_shape = GetTensorShape(input);
+        RuntimeShape output_shape = GetTensorShape(output);
+        op_params.padding_values.width = tflite::ComputePadding(params->stride_width, 1, input_shape.Dims(2), filter_shape.Dims(2), output_shape.Dims(2));
+        op_params.padding_values.height = tflite::ComputePadding(params->stride_height, 1, input_shape.Dims(1), filter_shape.Dims(1), output_shape.Dims(1));
         filter_shape.SetDim(0, filter_shape.Dims(0) - params->dilation_height_factor);
-        optimized_ops::SpecialConv(op_params, GetTensorShape(input),
+        optimized_ops::SpecialConv(op_params, input_shape,
                           GetTensorData<float>(input), filter_shape,
                           GetTensorData<float>(filter), GetTensorShape(bias),
-                          GetTensorData<float>(bias), GetTensorShape(output),
+                          GetTensorData<float>(bias), output_shape,
                           GetTensorData<float>(output), GetTensorShape(im2col),
                           GetTensorData<float>(im2col),
                           CpuBackendContext::GetFromContext(context));
