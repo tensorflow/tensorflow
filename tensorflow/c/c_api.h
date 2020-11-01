@@ -1582,7 +1582,7 @@ TF_CAPI_EXPORT extern void TF_RegisterLogListener(
 // On success, place OK in status.
 // On failure, place an error status in status.
 TF_CAPI_EXPORT extern void TF_RegisterFilesystemPlugin(
-    const char* plugin_filename, TF_Status* status);
+    const char* plugin_filename, const char* plugin_function, TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

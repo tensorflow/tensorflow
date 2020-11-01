@@ -175,7 +175,8 @@ class ModularReadOnlyMemoryRegion final : public ReadOnlyMemoryRegion {
 };
 
 // Registers a filesystem plugin so that core TensorFlow can use it.
-Status RegisterFilesystemPlugin(const std::string& dso_path);
+Status RegisterFilesystemPlugin(const std::string& dso_path,
+                                const std::string& func_name);
 
 }  // namespace tensorflow
 

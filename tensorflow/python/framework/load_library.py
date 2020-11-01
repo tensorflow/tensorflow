@@ -160,12 +160,14 @@ def load_library(library_location):
 
 
 @tf_export('experimental.register_filesystem_plugin')
-def register_filesystem_plugin(plugin_location):
+def register_filesystem_plugin(plugin_location, plugin_function=None):
   """Loads a TensorFlow FileSystem plugin.
 
   Args:
     plugin_location: Path to the plugin. Relative or absolute filesystem plugin
       path to a dynamic library file.
+    plugin_function: Name of the function in the plugin to be loaded. Default
+      to `TF_InitPlugin`.
 
   Returns:
     None
@@ -175,7 +177,7 @@ def register_filesystem_plugin(plugin_location):
     RuntimeError: when unable to load the library.
   """
   if os.path.exists(plugin_location):
-    py_tf.TF_RegisterFilesystemPlugin(plugin_location)
+    py_tf.TF_RegisterFilesystemPlugin(plugin_location, plugin_function)
 
   else:
     raise OSError(errno.ENOENT,

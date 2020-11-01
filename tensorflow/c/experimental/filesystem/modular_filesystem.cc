@@ -457,16 +457,19 @@ Status ModularWritableFile::Tell(int64* position) {
   return StatusFromTF_Status(plugin_status.get());
 }
 
-Status RegisterFilesystemPlugin(const std::string& dso_path) {
+Status RegisterFilesystemPlugin(const std::string& dso_path,
+                                const std::string& func_name) {
   // Step 1: Load plugin
   Env* env = Env::Default();
   void* dso_handle;
   TF_RETURN_IF_ERROR(env->LoadDynamicLibrary(dso_path.c_str(), &dso_handle));
 
-  // Step 2: Load symbol for `TF_InitPlugin`
+  // Step 2: Load symbol for function,
+  // if function is not specified, use `TF_InitPlugin` as default.
+  const char* func = (func_name == "") ? "TF_InitPlugin" : func_name.c_str();
   void* dso_symbol;
   TF_RETURN_IF_ERROR(
-      env->GetSymbolFromLibrary(dso_handle, "TF_InitPlugin", &dso_symbol));
+      env->GetSymbolFromLibrary(dso_handle, func, &dso_symbol));
 
   // Step 3: Call `TF_InitPlugin`
   TF_FilesystemPluginInfo info;

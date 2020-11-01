@@ -1155,10 +1155,10 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
     return "TensorHandle";
   });
 
-  m.def("TF_RegisterFilesystemPlugin", [](const char* plugin_filename) {
+  m.def("TF_RegisterFilesystemPlugin", [](const char* plugin_filename, const char* plugin_function) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());
-    TF_RegisterFilesystemPlugin(plugin_filename, status.get());
+    TF_RegisterFilesystemPlugin(plugin_filename, plugin_function, status.get());
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
   });
 

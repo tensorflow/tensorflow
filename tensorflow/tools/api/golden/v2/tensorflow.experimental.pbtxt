@@ -30,6 +30,6 @@ tf_module {
   }
   member_method {
     name: "register_filesystem_plugin"
-    argspec: "args=[\'plugin_location\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'plugin_location\', \'plugin_function\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
 }

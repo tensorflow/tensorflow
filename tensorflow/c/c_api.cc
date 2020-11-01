@@ -2608,12 +2608,14 @@ void TF_RegisterLogListener(void (*listener)(const char*)) {
 }
 
 void TF_RegisterFilesystemPlugin(const char* plugin_filename,
+                                 const char* plugin_function,
                                  TF_Status* status) {
 #if defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
   status->status = tensorflow::errors::Unimplemented(
       "FileSystem plugin functionality is not supported on mobile");
 #else
-  status->status = tensorflow::RegisterFilesystemPlugin(plugin_filename);
+  status->status = tensorflow::RegisterFilesystemPlugin(
+      plugin_filename, plugin_function);
 #endif  // defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
 }
 
