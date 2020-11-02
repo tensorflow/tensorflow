@@ -8,7 +8,7 @@ This instruction provides a starting point for build TensorFlow ROCm port from s
 ## Install ROCm
 
 Follow steps at [Basic Installation](https://github.com/ROCmSoftwarePlatform/tensorflow-upstream/blob/develop-upstream/rocm_docs/tensorflow-install-basic.md#install-rocm) to install ROCm stack.
-*NOTE*: The ROCm3.1 release changes the installation directory structure. If your system has ROCm packages installed from ROCm3.0 or earlier, make sure the old packages are fully purged before upgrade.
+*NOTE*: ROCm install instructions recommend a purge and reinstall of ROCm rather than upgrading from previous release.
 For details of the ROCm instructions, please refer to the [ROCm QuickStart Installation Guide](https://rocmdocs.amd.com/en/latest/Installation_Guide/Installation-Guide.html).
 
 To build with ROCm3.9, set the following environment variables, and add those environment variables at the end of ~/.bashrc 
