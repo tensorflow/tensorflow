@@ -99,12 +99,18 @@ TEST(InternalLogString, Basic) {
   internal::LogString(__FILE__, __LINE__, INFO, "Hello there");
 }
 
-struct TestSink : public TFLogSink {
-  std::stringstream ss;
-
+class TestSink : public TFLogSink {
+ public:
   void Send(const TFLogEntry& entry) override {
     ss << entry.ToString() << std::endl;
   }
+
+  std::string Get() const {
+    return ss.str();
+  }
+
+ private:
+  std::stringstream ss;
 };
 
 }  // namespace tensorflow
@@ -213,10 +219,10 @@ TEST_F(LogSinkTest, testLogSinks) {
   sinks = TFGetLogSinks();
   ASSERT_EQ(sinks.size(), 1);
 
-  ASSERT_EQ(sink.ss.str(), "Foo\n");
+  ASSERT_EQ(sink.Get(), "Foo\n");
 
   LOG(INFO) << "Bar";
-  ASSERT_EQ(sink.ss.str(), "Foo\nBar\n");
+  ASSERT_EQ(sink.Get(), "Foo\nBar\n");
 }
 
 }  // namespace tensorflow
@@ -247,7 +253,7 @@ TEST(LogSinkTest, testLogSinks)
 
   LOG(INFO) << "Foo";
   LOG(INFO) << "Bar";
-  EXPECT_EQ(sink.ss.str(), "Foo\nBar\n");
+  EXPECT_EQ(sink.Get(), "Foo\nBar\n");
 
   TFRemoveLogSink(&sink);
   sinks = TFGetLogSinks();
