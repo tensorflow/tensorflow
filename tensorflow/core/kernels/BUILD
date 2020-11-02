@@ -84,7 +84,10 @@ package_group(
 
 package_group(
     name = "optimizer_helper_friends",
-    packages = ["//learning/brain/research/lather/..."],
+    packages = [
+        "//learning/brain/research/lather/...",
+        "//learning/clair/alise/...",
+    ],
 )
 
 config_setting(
