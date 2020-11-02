@@ -850,33 +850,24 @@ Status InstantiatedCapturedFunction::Run(
       profiler::TraceMeLevel::kInfo);
   if (collect_usage) {
     // Resource usage is for function execution is gathered from the executor.
-    // NOTE(mkuchnik): RecordStop and RecordStart have to be called around
-    // this function to prevent double-counting resource usage.
-    auto callback = std::bind(
-        [this, node, collect_usage](
-          IteratorContext* ctx,
-          const std::shared_ptr<SimpleStepStatsCollector>& stats_collector,
-          // Begin unbound arguments.
-          Status s) {
-      if (node) {
-        // TODO(b/129085499) Utilize the `node_name` which would be unique
-        // than the prefix for the function execution time statistics.
-        // prefix_with_func_name would then be node_name + func_name.
-        if (ctx->stats_aggregator()) {
-          string prefix_with_func_name =
-              strings::StrCat(node->name(), stats_utils::kDelimiter,
-                              captured_func_->func().name());
-          ctx->stats_aggregator()->AddToHistogram(
-              stats_utils::ExecutionTimeHistogramName(prefix_with_func_name),
-              {static_cast<float>(stats_collector->processing_time())},
-              node->num_elements());
-        }
-        node->add_processing_time(stats_collector->processing_time());
+    node->record_stop(EnvTime::NowNanos());
+    TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame));
+    node->record_start(EnvTime::NowNanos());
+    if (node) {
+      // TODO(b/129085499) Utilize the `node_name` which would be unique
+      // than the prefix for the function execution time statistics.
+      // prefix_with_func_name would then be node_name + func_name.
+      if (ctx->stats_aggregator()) {
+        string prefix_with_func_name =
+            strings::StrCat(node->name(), stats_utils::kDelimiter,
+                            captured_func_->func().name());
+        ctx->stats_aggregator()->AddToHistogram(
+            stats_utils::ExecutionTimeHistogramName(prefix_with_func_name),
+            {static_cast<float>(stats_collector->processing_time())},
+            node->num_elements());
       }
-    },
-    ctx, std::move(stats_collector), std::placeholders::_1);
-    TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame,
-          std::move(callback)));
+      node->add_processing_time(stats_collector->processing_time());
+    }
   } else {
     TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame));
   }

@@ -454,11 +454,10 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         RecordStop(ctx.get());
         (*ctx->runner())(
             [this, ctx, fn = std::move(fn), done = std::move(done)]() {
-              Status s = fn();
               RecordStart(ctx.get());
               auto cleanup =
                   gtl::MakeCleanup([this, ctx] { RecordStop(ctx.get()); });
-              done(s);
+              done(fn());
             });
         RecordStart(ctx.get());
       }

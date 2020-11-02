@@ -1613,44 +1613,11 @@ Status ProcessFunctionLibraryRuntime::RunSync(
 
 Status ProcessFunctionLibraryRuntime::RunSync(
     const FunctionLibraryRuntime::Options& opts,
-    FunctionLibraryRuntime::Handle handle, gtl::ArraySlice<Tensor> args,
-    std::vector<Tensor>* rets,
-    FunctionLibraryRuntime::DoneCallback done) const {
-  Notification n;
-  Status s;
-  Run(opts, handle, args, rets,
-      [&n, &s, done = std::move(done)](const Status& status) {
-    s.Update(status);
-    done(s);
-    n.Notify();
-  });
-  n.WaitForNotification();
-  return s;
-}
-
-Status ProcessFunctionLibraryRuntime::RunSync(
-    const FunctionLibraryRuntime::Options& opts,
     FunctionLibraryRuntime::Handle handle, CallFrameInterface* frame) const {
   Notification n;
   Status s;
   Run(opts, handle, frame, [&n, &s](const Status& status) {
     s.Update(status);
-    n.Notify();
-  });
-  n.WaitForNotification();
-  return s;
-}
-
-Status ProcessFunctionLibraryRuntime::RunSync(
-    const FunctionLibraryRuntime::Options& opts,
-    FunctionLibraryRuntime::Handle handle, CallFrameInterface* frame,
-    FunctionLibraryRuntime::DoneCallback done) const {
-  Notification n;
-  Status s;
-  Run(opts, handle, frame,
-      [&n, &s, done = std::move(done)](const Status& status) {
-    s.Update(status);
-    done(s);
     n.Notify();
   });
   n.WaitForNotification();

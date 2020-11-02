@@ -200,11 +200,9 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
         state_and_output.reserve(dataset()->state_types_.size() +
                                  output_dtypes().size());
 
-        RecordStop(ctx);
         Status s = instantiated_captured_func_->Run(ctx, std::move(args),
                                                     &state_and_output,
                                                     model_node());
-        RecordStart(ctx);
         DCHECK(state_and_output.size() <=
                dataset()->state_types_.size() + output_dtypes().size());
         if (s.ok()) {
