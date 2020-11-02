@@ -169,8 +169,14 @@ class FunctionLibraryRuntimeOverlay : public FunctionLibraryRuntime {
   Status RunSync(Options opts, Handle handle, gtl::ArraySlice<Tensor> args,
                  std::vector<Tensor>* rets) override;
 
+  Status RunSync(Options opts, Handle handle, gtl::ArraySlice<Tensor> args,
+                 std::vector<Tensor>* rets, DoneCallback done) override;
+
   Status RunSync(Options opts, Handle handle,
                  CallFrameInterface* frame) override;
+
+  Status RunSync(Options opts, Handle handle,
+                 CallFrameInterface* frame, DoneCallback done) override;
 
   Status CreateKernel(const std::shared_ptr<const NodeProperties>& props,
                       OpKernel** kernel) override;
@@ -249,8 +255,23 @@ Status FunctionLibraryRuntimeOverlay::RunSync(Options opts, Handle handle,
 }
 
 Status FunctionLibraryRuntimeOverlay::RunSync(Options opts, Handle handle,
+                                              gtl::ArraySlice<Tensor> args,
+                                              std::vector<Tensor>* rets,
+                                              DoneCallback done) {
+  return base_flr_->RunSync(std::move(opts), handle, args, rets,
+      std::move(done));
+}
+
+Status FunctionLibraryRuntimeOverlay::RunSync(Options opts, Handle handle,
                                               CallFrameInterface* call_frame) {
   return base_flr_->RunSync(std::move(opts), handle, call_frame);
+}
+
+Status FunctionLibraryRuntimeOverlay::RunSync(Options opts, Handle handle,
+                                              CallFrameInterface* call_frame,
+                                              DoneCallback done) {
+  return base_flr_->RunSync(std::move(opts), handle, call_frame,
+      std::move(done));
 }
 
 Status FunctionLibraryRuntimeOverlay::CreateKernel(
@@ -350,8 +371,12 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
            DoneCallback done) override;
   Status RunSync(Options opts, Handle handle, gtl::ArraySlice<Tensor> args,
                  std::vector<Tensor>* rets) override;
+  Status RunSync(Options opts, Handle handle, gtl::ArraySlice<Tensor> args,
+                 std::vector<Tensor>* rets, DoneCallback done) override;
   Status RunSync(Options opts, Handle handle,
                  CallFrameInterface* call_frame) override;
+  Status RunSync(Options opts, Handle handle,
+                 CallFrameInterface* call_frame, DoneCallback done) override;
 
   bool IsStateful(const string& function) const override;
 
@@ -1288,6 +1313,27 @@ Status FunctionLibraryRuntimeImpl::RunSync(Options opts, Handle handle,
 }
 
 Status FunctionLibraryRuntimeImpl::RunSync(Options opts, Handle handle,
+                                           gtl::ArraySlice<Tensor> args,
+                                           std::vector<Tensor>* rets,
+                                           DoneCallback done) {
+  Item* item = nullptr;
+  std::unique_ptr<PrivateIntraProcessRendezvous> rendezvous;
+  TF_RETURN_IF_ERROR(PrepareRunSync(handle, &opts, &item, &rendezvous));
+  if (item == nullptr) {
+    return parent_->RunSync(opts, handle, args, rets, done);
+  }
+
+  Executor::Args exec_args;
+  const FunctionBody* fbody = GetFunctionBody(handle);
+  FunctionCallFrame frame(fbody->arg_types, fbody->ret_types);
+  TF_RETURN_IF_ERROR(frame.SetArgs(args));
+  ExecutorArgsFromOptions(opts, &frame, &exec_args);
+
+  TF_RETURN_IF_ERROR(item->exec->Run(exec_args, done));
+  return frame.ConsumeRetvals(rets, opts.allow_dead_tensors);
+}
+
+Status FunctionLibraryRuntimeImpl::RunSync(Options opts, Handle handle,
                                            CallFrameInterface* call_frame) {
   Item* item = nullptr;
   std::unique_ptr<PrivateIntraProcessRendezvous> rendezvous;
@@ -1299,6 +1345,21 @@ Status FunctionLibraryRuntimeImpl::RunSync(Options opts, Handle handle,
   Executor::Args exec_args;
   ExecutorArgsFromOptions(opts, call_frame, &exec_args);
   return item->exec->Run(exec_args);
+}
+
+Status FunctionLibraryRuntimeImpl::RunSync(Options opts, Handle handle,
+                                           CallFrameInterface* call_frame,
+                                           DoneCallback done) {
+  Item* item = nullptr;
+  std::unique_ptr<PrivateIntraProcessRendezvous> rendezvous;
+  TF_RETURN_IF_ERROR(PrepareRunSync(handle, &opts, &item, &rendezvous));
+  if (item == nullptr) {
+    return parent_->RunSync(opts, handle, call_frame, done);
+  }
+
+  Executor::Args exec_args;
+  ExecutorArgsFromOptions(opts, call_frame, &exec_args);
+  return item->exec->Run(exec_args, done);
 }
 
 bool FunctionLibraryRuntimeImpl::IsStateful(const string& func) const {

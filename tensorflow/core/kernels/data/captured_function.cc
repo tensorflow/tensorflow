@@ -813,9 +813,9 @@ InstantiatedCapturedFunction::InstantiatedCapturedFunction(
       captured_func_(captured_func),
       is_multi_device_(is_multi_device) {}
 
-Status InstantiatedCapturedFunction::Run(IteratorContext* ctx,
-                                         std::vector<Tensor>&& args,
-                                         std::vector<Tensor>* rets) const {
+Status InstantiatedCapturedFunction::Run(
+    IteratorContext* ctx, std::vector<Tensor>&& args,
+    std::vector<Tensor>* rets, const std::shared_ptr<model::Node>& node) const {
   auto& info = captured_func_->short_circuit_info();
   if (!info.indices.empty()) {
     return RunShortCircuit(info, std::move(args), captured_func_, rets);
@@ -832,6 +832,14 @@ Status InstantiatedCapturedFunction::Run(IteratorContext* ctx,
   CancellationManager cancellation_manager(ctx->cancellation_manager());
   f_opts.cancellation_manager = &cancellation_manager;
 
+  std::shared_ptr<SimpleStepStatsCollector> stats_collector;
+  if (node || ctx->stats_aggregator()) {
+    stats_collector = std::make_shared<SimpleStepStatsCollector>();
+  }
+  const bool collect_usage =
+      node && ctx->model() && ctx->model()->collect_resource_usage();
+  f_opts.stats_collector = stats_collector.get();
+
   OwnedArgsCallFrame frame(std::move(args), &captured_func_->captured_inputs(),
                            ret_types_);
   profiler::TraceMe activity(
@@ -840,7 +848,38 @@ Status InstantiatedCapturedFunction::Run(IteratorContext* ctx,
             "InstantiatedCapturedFunction::Run#id=", f_opts.step_id, "#");
       },
       profiler::TraceMeLevel::kInfo);
-  TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame));
+  if (collect_usage) {
+    // Resource usage is for function execution is gathered from the executor.
+    // NOTE(mkuchnik): RecordStop and RecordStart have to be called around
+    // this function to prevent double-counting resource usage.
+    auto callback = std::bind(
+        [this, node, collect_usage](
+          IteratorContext* ctx,
+          const std::shared_ptr<SimpleStepStatsCollector>& stats_collector,
+          // Begin unbound arguments.
+          Status s) {
+      if (node) {
+        // TODO(b/129085499) Utilize the `node_name` which would be unique
+        // than the prefix for the function execution time statistics.
+        // prefix_with_func_name would then be node_name + func_name.
+        if (ctx->stats_aggregator()) {
+          string prefix_with_func_name =
+              strings::StrCat(node->name(), stats_utils::kDelimiter,
+                              captured_func_->func().name());
+          ctx->stats_aggregator()->AddToHistogram(
+              stats_utils::ExecutionTimeHistogramName(prefix_with_func_name),
+              {static_cast<float>(stats_collector->processing_time())},
+              node->num_elements());
+        }
+        node->add_processing_time(stats_collector->processing_time());
+      }
+    },
+    ctx, std::move(stats_collector), std::placeholders::_1);
+    TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame,
+          std::move(callback)));
+  } else {
+    TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame));
+  }
   return frame.ConsumeRetvals(rets);
 }
 

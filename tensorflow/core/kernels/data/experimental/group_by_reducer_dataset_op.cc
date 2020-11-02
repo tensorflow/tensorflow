@@ -243,8 +243,11 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
             if (states_.find(key) == states_.end()) {
               // Run the init function to create the initial state.
               std::vector<Tensor> init_func_output;
+              RecordStop(ctx);
               TF_RETURN_IF_ERROR(instantiated_init_func_->Run(
-                  ctx, std::move(key_func_output), &init_func_output));
+                  ctx, std::move(key_func_output), &init_func_output,
+                  model_node()));
+              RecordStart(ctx);
               states_[key] = init_func_output;
             }
 
@@ -257,8 +260,10 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
                       std::back_inserter(args));
 
             std::vector<Tensor> reduce_func_output;
+            RecordStop(ctx);
             TF_RETURN_IF_ERROR(instantiated_reduce_func_->Run(
-                ctx, std::move(args), &reduce_func_output));
+                ctx, std::move(args), &reduce_func_output, model_node()));
+            RecordStart(ctx);
             states_[key] = reduce_func_output;
           } else {
             keys_.resize(states_.size());

@@ -122,6 +122,20 @@ class Executor {
     n.WaitForNotification();
     return ret;
   }
+
+  // Synchronous wrapper for RunAsync() with callback support.
+  // Chains the callback to enable custom processing e.g., to collect stats.
+  virtual Status Run(const Args& args, DoneCallback done) {
+    Status ret;
+    Notification n;
+    RunAsync(args, [&ret, &n, done = std::move(done)](const Status& s) {
+      ret = s;
+      done(s);
+      n.Notify();
+    });
+    n.WaitForNotification();
+    return ret;
+  }
 };
 
 // Creates an Executor that computes the given "graph".

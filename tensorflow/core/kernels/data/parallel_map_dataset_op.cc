@@ -444,7 +444,8 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         auto fn = std::bind(
             [this, ctx, result](std::vector<Tensor> input_element) {
               return instantiated_captured_func_->Run(
-                  ctx.get(), std::move(input_element), &result->return_values);
+                  ctx.get(), std::move(input_element), &result->return_values,
+                  model_node());
             },
             std::move(input_element));
         // `ctx->runner()` may execute its logic synchronously so we wrap it in
@@ -453,10 +454,11 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         RecordStop(ctx.get());
         (*ctx->runner())(
             [this, ctx, fn = std::move(fn), done = std::move(done)]() {
+              Status s = fn();
               RecordStart(ctx.get());
               auto cleanup =
                   gtl::MakeCleanup([this, ctx] { RecordStop(ctx.get()); });
-              done(fn());
+              done(s);
             });
         RecordStart(ctx.get());
       }

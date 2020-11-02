@@ -254,8 +254,11 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
                 // Run the window size function on the key to identify its
                 // window size.
                 std::vector<Tensor> window_size_func_output;
+                RecordStop(ctx);
                 TF_RETURN_IF_ERROR(instantiated_window_size_func_->Run(
-                    ctx, std::move(key_func_output), &window_size_func_output));
+                    ctx, std::move(key_func_output), &window_size_func_output,
+                    model_node()));
+                RecordStart(ctx);
 
                 if (window_size_func_output.size() != 1 ||
                     window_size_func_output[0].dtype() != DT_INT64 ||
@@ -486,8 +489,11 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
         std::vector<Tensor> args(
             {std::move(key_arg), std::move(group_dataset_arg)});
         std::vector<Tensor> return_values;
+        RecordStop(ctx);
         TF_RETURN_IF_ERROR(instantiated_reduce_func_->Run(ctx, std::move(args),
-                                                          &return_values));
+                                                          &return_values,
+                                                          model_node()));
+        RecordStart(ctx);
 
         if (!(return_values.size() == 1 &&
               return_values[0].dtype() == DT_VARIANT &&

@@ -158,8 +158,11 @@ class MapDatasetOp::Dataset : public DatasetBase {
         return Status::OK();
       }
 
+      RecordStop(ctx);
       Status s =
-          instantiated_captured_func_->Run(ctx, std::move(args), out_tensors);
+          instantiated_captured_func_->Run(ctx, std::move(args), out_tensors,
+              model_node());
+      RecordStart(ctx);
       if (errors::IsOutOfRange(s)) {
         if (dataset()->preserve_cardinality_) {
           // To guarantee that the transformation preserves the cardinality of
