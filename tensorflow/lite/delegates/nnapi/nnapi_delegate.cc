@@ -735,6 +735,19 @@ class NNAPIOpBuilder {
         values, num_values, ANEURALNETWORKS_TENSOR_INT32, scale, zero_point);
   }
 
+  TfLiteStatus AddVectorInt16Operand(const int16_t* values,
+                                     uint32_t num_values) {
+    return AddVectorOperand<int16_t>(values, num_values,
+                                     ANEURALNETWORKS_TENSOR_QUANT16_SYMM,
+                                     /*scale=*/1.f, /*zero_point=*/0);
+  }
+
+  TfLiteStatus AddVectorInt8Operand(const int8_t* values, uint32_t num_values) {
+    return AddVectorOperand<int8_t>(values, num_values,
+                                    ANEURALNETWORKS_TENSOR_QUANT8_SYMM,
+                                    /*scale=*/1.f, /*zero_point=*/0);
+  }
+
   TfLiteStatus AddVectorFloat32Operand(const float* values,
                                        uint32_t num_values) {
     return AddVectorOperand<float>(values, num_values,
@@ -773,6 +786,24 @@ class NNAPIOpBuilder {
     return AddFloat32OutputTensor(
         tensor->dims->size, reinterpret_cast<uint32_t*>(tensor->dims->data),
         ann_tensor_index_out);
+  }
+
+  TfLiteStatus AddStateInt16Tensor(int tensor_index,
+                                   int* ann_tensor_index_out) {
+    TfLiteTensor* tensor = &context_->tensors[tensor_index];
+    return AddAdditionalOutputTensor(
+        tensor->dims->size, reinterpret_cast<uint32_t*>(tensor->dims->data),
+        ANEURALNETWORKS_TENSOR_QUANT16_SYMM, tensor->params.scale,
+        tensor->params.zero_point, ann_tensor_index_out);
+  }
+
+  TfLiteStatus AddStateInt8AsymTensor(int tensor_index,
+                                      int* ann_tensor_index_out) {
+    TfLiteTensor* tensor = &context_->tensors[tensor_index];
+    return AddAdditionalOutputTensor(
+        tensor->dims->size, reinterpret_cast<uint32_t*>(tensor->dims->data),
+        ANEURALNETWORKS_TENSOR_QUANT8_ASYMM_SIGNED, tensor->params.scale,
+        tensor->params.zero_point, ann_tensor_index_out);
   }
 
   // Add a constant tensor with a single element, intended for broadcast capable
@@ -2313,9 +2344,16 @@ bool NNAPIDelegateKernel::Validate(
                                      kMinSdkVersionForNNAPI12, &val_ctx);
         }
 
-        Expect(weight_type == kTfLiteFloat32 || weight_type == kTfLiteUInt8,
-               NNAPIValidationFailureType::kUnsupportedInputType,
-               "Weight has to be Float32 or UINT8", &val_ctx);
+        if (android_sdk_version >= kMinSdkVersionForNNAPI13) {
+          Expect(weight_type == kTfLiteFloat32 || weight_type == kTfLiteUInt8 ||
+                     weight_type == kTfLiteInt8,
+                 NNAPIValidationFailureType::kUnsupportedInputType,
+                 "Weight has to be Float32 or UINT8 or INT8", &val_ctx);
+        } else {
+          Expect(weight_type == kTfLiteFloat32 || weight_type == kTfLiteUInt8,
+                 NNAPIValidationFailureType::kUnsupportedInputType,
+                 "Weight has to be Float32 or UINT8", &val_ctx);
+        }
       }
     } break;
     case kTfLiteBuiltinMean: {
@@ -4053,6 +4091,101 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
     TfLiteRegistration* reg;
     TF_LITE_ENSURE_STATUS(
         context->GetNodeAndRegistration(context, node_index, &node, &reg));
+
+    // Fully quantized full LSTM.
+    if (target_sdk_version_ >= kMinSdkVersionForNNAPI13 &&
+        reg->builtin_code == kTfLiteBuiltinLstm && isLstmFullKernel(node) &&
+        context->tensors[node->inputs->data[0]].type == kTfLiteInt8) {
+      const auto quant8_full_lstm_op_code = ANEURALNETWORKS_QUANTIZED_LSTM;
+
+      constexpr int kInputTensor = 0;
+      constexpr int kInputToInputWeightsTensor = 1;
+      constexpr int kRecurrentToInputWeightsTensor = 5;
+      constexpr int kInputGateBiasTensor = 12;
+      constexpr int kForgetGateBiasTensor = 13;
+      constexpr int kCellGateBiasTensor = 14;
+      constexpr int kOutputGateBiasTensor = 15;
+      constexpr int kProjectionWeightsTensor = 16;
+      constexpr int kProjectionBiasTensor = 17;
+      constexpr int kPrevOutputTensor = 18;
+
+      // Add input tensors.
+      for (int input_pos = 0; input_pos < node->inputs->size; ++input_pos) {
+        const auto input_index = node->inputs->data[input_pos];
+        if (input_index == kTfLiteOptionalTensor) {
+          if (input_pos == kInputToInputWeightsTensor ||
+              input_pos == kRecurrentToInputWeightsTensor ||
+              input_pos == kProjectionWeightsTensor) {
+            TF_LITE_ENSURE_STATUS(builder.AddVectorInt8Operand(nullptr, 0));
+          } else if (input_pos == kInputGateBiasTensor ||
+                     input_pos == kForgetGateBiasTensor ||
+                     input_pos == kCellGateBiasTensor ||
+                     input_pos == kOutputGateBiasTensor ||
+                     input_pos == kProjectionBiasTensor) {
+            TF_LITE_ENSURE_STATUS(builder.AddVectorInt32Operand(nullptr, 0));
+          } else {  // cell-to-* and layer norm weights.
+            TF_LITE_ENSURE_STATUS(builder.AddVectorInt16Operand(nullptr, 0));
+          }
+        } else {
+          // Only input and previous output use INT8_ASYM_SIGNED.
+          int flags =
+              (input_pos == kInputTensor || input_pos == kPrevOutputTensor)
+                  ? NN_TENSOR_FLAG_USE_INT8_ASYMM_SIGNED
+                  : 0;
+          TF_LITE_ENSURE_STATUS(
+              builder.AddTensorInput(input_index, /*hybrid_op=*/false, flags));
+        }
+      }
+
+      // Add clip parameters.
+      auto builtin = reinterpret_cast<TfLiteLSTMParams*>(node->builtin_data);
+      TF_LITE_ENSURE_STATUS(
+          builder.AddScalarFloat32Operand(builtin->cell_clip));
+      TF_LITE_ENSURE_STATUS(
+          builder.AddScalarFloat32Operand(builtin->proj_clip));
+
+      // Add quantization parameters for intermediate tensors.
+      TF_LITE_ENSURE_EQ(context, node->intermediates->size, 5);
+      for (int intermediate_pos = 0;
+           intermediate_pos < node->intermediates->size; ++intermediate_pos) {
+        const auto intermediate_index =
+            node->intermediates->data[intermediate_pos];
+        const TfLiteTensor& tensor = context->tensors[intermediate_index];
+        TfLiteAffineQuantization* quantization_params =
+            static_cast<TfLiteAffineQuantization*>(tensor.quantization.params);
+        if (intermediate_pos == 4) {
+          TF_LITE_ENSURE_STATUS(builder.AddScalarInt32Operand(
+              quantization_params->zero_point->data[0]));
+        }
+        TF_LITE_ENSURE_STATUS(builder.AddScalarFloat32Operand(
+            quantization_params->scale->data[0]));
+      }
+
+      // Activation state output.
+      int ann_index;
+      builder.AddStateInt8AsymTensor(
+          node->inputs->data[/*kInputActivationStateTensor*/ 18], &ann_index);
+      model_state_outputs_.push_back(ann_index);
+      model_state_tfl_inputs_.push_back(
+          node->inputs->data[/*kInputActivationStateTensor*/ 18]);
+
+      // Cell state output.
+      builder.AddStateInt16Tensor(
+          node->inputs->data[/*kInputCellStateTensor*/ 19], &ann_index);
+      model_state_outputs_.push_back(ann_index);
+      model_state_tfl_inputs_.push_back(
+          node->inputs->data[/*kInputCellStateTensor*/ 19]);
+
+      // Add output tensors.
+      for (int output_pos = 0; output_pos < node->outputs->size; ++output_pos) {
+        const auto output_index = node->outputs->data[output_pos];
+        TF_LITE_ENSURE_STATUS(builder.AddTensorOutput(
+            output_index, NN_TENSOR_FLAG_USE_INT8_ASYMM_SIGNED));
+      }
+
+      builder.FinalizeAddOperation(quant8_full_lstm_op_code, node_index);
+      continue;
+    }
 
     const bool hybrid_op = IsHybridOperator(context, reg->builtin_code, node);
     const bool scalar_as_tensor = IsScalarInputSupported(reg->builtin_code);
