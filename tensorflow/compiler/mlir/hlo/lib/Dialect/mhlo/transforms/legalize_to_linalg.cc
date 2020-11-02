@@ -752,6 +752,96 @@ class ConstConverter : public OpConversionPattern<lmhlo::ConstOp> {
   }
 };
 
+class ReduceConverter : public OpConversionPattern<lmhlo::ReduceOp> {
+ public:
+  using OpConversionPattern<lmhlo::ReduceOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      lmhlo::ReduceOp reduce_op, ArrayRef<Value> args,
+      ConversionPatternRewriter& rewriter) const final {
+    auto loc = reduce_op.getLoc();
+    lmhlo::ReduceOp::Adaptor adaptor(args);
+    auto operand_shape =
+        adaptor.operands()[0].getType().template dyn_cast<ShapedType>();
+    if (!operand_shape || !operand_shape.hasRank()) {
+      emitError(loc, "lhlo to linalg conversion expects known-rank args");
+      return failure();
+    }
+
+    // First fill the output buffer with the init value.
+    Value init_value = rewriter.create<LoadOp>(loc, adaptor.init_values()[0]);
+    rewriter.create<linalg::FillOp>(loc, adaptor.out()[0], init_value);
+
+    DenseIntElementsAttr dimensions_attr = reduce_op.dimensions();
+    SmallVector<int, 4> reduction_dims;
+    for (const auto& dim : dimensions_attr.getIntValues()) {
+      reduction_dims.push_back(dim.getSExtValue());
+    }
+
+    SmallVector<AffineExpr, 2> src_exprs;
+    SmallVector<AffineExpr, 2> dst_exprs;
+    SmallVector<StringRef, 4> types;
+    for (int i = 0, rank = operand_shape.getRank(); i != rank; ++i) {
+      bool is_reduced = llvm::is_contained(reduction_dims, i);
+      types.push_back(is_reduced ? getReductionIteratorTypeName()
+                                 : getParallelIteratorTypeName());
+
+      src_exprs.push_back(mlir::getAffineDimExpr(i, rewriter.getContext()));
+      if (!is_reduced) {
+        dst_exprs.push_back(mlir::getAffineDimExpr(i, rewriter.getContext()));
+      }
+    }
+
+    auto maps = AffineMap::inferFromExprList({src_exprs, dst_exprs});
+
+    auto linalg_op = rewriter.create<linalg::GenericOp>(
+        loc, /*resultTensorTypes=*/ArrayRef<Type>{},
+        /*inputs=*/adaptor.operands(), /*outputBuffers=*/adaptor.out(),
+        /*initTensors=*/ValueRange{}, maps, types);
+    linalg_op.region().takeBody(reduce_op.body());
+    {
+      OpBuilder::InsertionGuard region_guard(rewriter);
+      Block* block = linalg_op.getBody();
+      rewriter.setInsertionPoint(&block->front());
+
+      // The incoming region is operating on buffers, while linalg.generic
+      // expects scalar SSA values. Add some allocs around the original op to
+      // make it compatible.
+      auto arg_type = block->getArgument(0).getType().cast<MemRefType>();
+      Value alloc_a = rewriter.create<AllocaOp>(loc, arg_type);
+      Value alloc_b = rewriter.create<AllocaOp>(loc, arg_type);
+      Value alloc_res = rewriter.create<AllocaOp>(loc, arg_type);
+
+      // Now turn the existing signature
+      //   (memref<X>, memref<X>, memref<X>) -> ()
+      // into
+      //   (X, X) -> X
+      TypeConverter::SignatureConversion signature_converter(3);
+      signature_converter.remapInput(0, alloc_a);
+      signature_converter.remapInput(1, alloc_b);
+      signature_converter.remapInput(2, alloc_res);
+      signature_converter.addInputs(
+          {arg_type.getElementType(), arg_type.getElementType()});
+      Block* entry_block = rewriter.applySignatureConversion(
+          &linalg_op.region(), signature_converter);
+
+      // Store the arguments into the newly allocated buffers.
+      rewriter.setInsertionPointAfter(alloc_res.getDefiningOp());
+      rewriter.create<StoreOp>(loc, entry_block->getArgument(0), alloc_a);
+      rewriter.create<StoreOp>(loc, entry_block->getArgument(1), alloc_b);
+      rewriter.replaceOp(entry_block->getTerminator(), {});
+
+      // Load & yield the result.
+      rewriter.setInsertionPointToEnd(entry_block);
+      auto load_res = rewriter.create<LoadOp>(loc, alloc_res);
+      rewriter.create<linalg::YieldOp>(loc, ValueRange{load_res});
+    }
+
+    rewriter.replaceOp(reduce_op, linalg_op.getOperation()->getResults());
+    return success();
+  }
+};
+
 // TODO(b/156787842): Support the lowering for dynamic shapes.
 template <typename OpTy, bool isLHLO = true>
 class ReverseConverter
@@ -853,9 +943,11 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                    PointwiseToLinalgConverter<lmhlo::SubOp>,
                    PointwiseToLinalgConverter<lmhlo::TanhOp>,
                    PointwiseToLinalgConverter<lmhlo::IsFiniteOp>,
+                   ReduceConverter,
                    ReshapeOpConverter<lmhlo::ReshapeOp>,
                    ReverseConverter<lmhlo::ReverseOp>,
                    ScalarPointwiseToStandardConverter<lmhlo::AddOp>,
+                   ScalarPointwiseToStandardConverter<lmhlo::MaxOp>,
                    SliceConverter,
                    TransposeConverter<lmhlo::TransposeOp>
                   >(context);

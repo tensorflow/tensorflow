@@ -378,6 +378,9 @@ cuda_py_test(
         "no_windows",  #TODO(b/139745667)
         "notsan",  #TODO(b/139745667)
     ],
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         ":backprop",
         ":context",

@@ -946,7 +946,7 @@ XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_INTERPRETER(InfeedOutfeedTest)) {
 
 // Benchmark that measures the overhead of the LocalClient API when running a
 // trivial computation
-void BM_LocalClientOverhead(benchmark::State& state) {
+void BM_LocalClientOverhead(::testing::benchmark::State& state) {
   se::Platform* platform = PlatformUtil::GetDefaultPlatform().ValueOrDie();
   auto executors = PlatformUtil::GetStreamExecutors(platform).ValueOrDie();
   se::StreamExecutorMemoryAllocator allocator(platform, executors);

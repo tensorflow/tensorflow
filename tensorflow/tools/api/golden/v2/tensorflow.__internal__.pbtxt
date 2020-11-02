@@ -24,4 +24,8 @@ tf_module {
     name: "tracking"
     mtype: "<type \'module\'>"
   }
+  member_method {
+    name: "execute_fn_for_device"
+    argspec: "args=[\'device_branch_fns\', \'default_fn\', \'name\'], varargs=None, keywords=None, defaults=[\'execute_fn\'], "
+  }
 }

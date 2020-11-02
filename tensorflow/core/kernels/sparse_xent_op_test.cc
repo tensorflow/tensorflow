@@ -41,11 +41,15 @@ static Graph* SparseXent(int batch_size, int num_classes) {
   return g;
 }
 
-#define BM_SparseXentDev(BATCH, CLASS, DEVICE)                          \
-  static void BM_SparseXent##_##BATCH##_##CLASS##_##DEVICE(int iters) { \
-    testing::ItemsProcessed(static_cast<int64>(iters) * BATCH * CLASS); \
-    test::Benchmark(#DEVICE, SparseXent(BATCH, CLASS)).Run(iters);      \
-  }                                                                     \
+#define BM_SparseXentDev(BATCH, CLASS, DEVICE)                               \
+  static void BM_SparseXent##_##BATCH##_##CLASS##_##DEVICE(                  \
+      ::testing::benchmark::State& state) {                                  \
+    test::Benchmark(#DEVICE, SparseXent(BATCH, CLASS),                       \
+                    /*old_benchmark_api*/ false)                             \
+        .Run(state);                                                         \
+    state.SetItemsProcessed(static_cast<int64>(state.iterations()) * BATCH * \
+                            CLASS);                                          \
+  }                                                                          \
   BENCHMARK(BM_SparseXent##_##BATCH##_##CLASS##_##DEVICE);
 
 /// The representative tests for ptb_word on GPU

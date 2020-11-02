@@ -352,7 +352,8 @@ enum BuiltinOperator : int32 {
   SEGMENT_SUM = 125,
   BATCH_MATMUL = 126,
   PLACEHOLDER_FOR_GREATER_OP_CODES = 127,
-  CUMSUM = 128
+  CUMSUM = 128,
+  CALL_ONCE = 129
 }
 
 
@@ -460,6 +461,7 @@ union BuiltinOptions {
   SegmentSumOptions,
   BatchMatMulOptions,
   CumsumOptions,
+  CallOnceOptions
 }
 
 enum Padding : byte { SAME, VALID }
@@ -953,6 +955,10 @@ table MatrixSetDiagOptions {
 table IfOptions {
   then_subgraph_index:int;
   else_subgraph_index:int;
+}
+
+table CallOnceOptions {
+  init_subgraph_index:int;
 }
 
 table WhileOptions {

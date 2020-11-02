@@ -699,7 +699,7 @@ def main():
       metavar='O',
       type=str,
       nargs='+',
-      help='If a single file is passed in, then we we assume it contains a '
+      help='If a single file is passed in, then we assume it contains a '
       'semicolon-separated list of Python files that we expect this script to '
       'output. If multiple files are passed in, then we assume output files '
       'are listed directly as arguments.')

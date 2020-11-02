@@ -579,7 +579,7 @@ def _Conv2DGrad(op, grad):
 
   # We call the gen_nn_ops backprop functions instead of nn_ops backprop
   # functions for performance reasons in Eager mode. gen_nn_ops functions take a
-  # `explicit_paddings` parameter, but nn_ops functions do not. So if were were
+  # `explicit_paddings` parameter, but nn_ops functions do not. So if we were
   # to use the nn_ops functions, we would have to convert `padding` and
   # `explicit_paddings` into a single `padding` parameter, increasing overhead
   # in Eager mode.

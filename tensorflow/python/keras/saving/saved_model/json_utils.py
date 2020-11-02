@@ -25,14 +25,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
+import collections.abc as collections_abc
 import json
 import numpy as np
 import wrapt
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.util import serialization
 
 
 class Encoder(json.JSONEncoder):
@@ -42,7 +41,7 @@ class Encoder(json.JSONEncoder):
     if isinstance(obj, tensor_shape.TensorShape):
       items = obj.as_list() if obj.rank is not None else None
       return {'class_name': 'TensorShape', 'items': items}
-    return serialization.get_json_type(obj)
+    return get_json_type(obj)
 
   def encode(self, obj):
     return super(Encoder, self).encode(_encode_tuple(obj))
@@ -117,7 +116,7 @@ def get_json_type(obj):
   if isinstance(obj, dtypes.DType):
     return obj.name
 
-  if isinstance(obj, collections.Mapping):
+  if isinstance(obj, collections_abc.Mapping):
     return dict(obj)
 
   if obj is Ellipsis:

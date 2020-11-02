@@ -50,12 +50,24 @@ void Arguments::AddInt(const std::string& name, int value) {
   int_values_[name].value = value;
 }
 
+void Arguments::AddObject(const std::string& name,
+                          GPUObjectDescriptorPtr&& descriptor_ptr) {
+  descriptor_ptr->SetAccess(AccessType::READ);
+  objects_[name] = {std::move(descriptor_ptr)};
+}
+
 void Arguments::GetActiveArguments(const std::string& code) {
   for (auto& float_val : float_values_) {
     float_val.second.active = HasWord(kArgsPrefix + float_val.first, code);
   }
   for (auto& int_val : int_values_) {
     int_val.second.active = HasWord(kArgsPrefix + int_val.first, code);
+  }
+}
+
+void Arguments::ReleaseCPURepresentation() {
+  for (auto& t : objects_) {
+    t.second->Release();
   }
 }
 
