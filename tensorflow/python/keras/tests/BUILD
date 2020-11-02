@@ -279,23 +279,6 @@ tf_py_test(
     ],
 )
 
-cuda_py_test(
-    name = "summary_ops_test",
-    size = "small",
-    srcs = ["summary_ops_test.py"],
-    deps = [
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:lib",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:summary_ops_v2",
-        "//tensorflow/python/keras:testing_utils",
-        "//tensorflow/python/keras/engine",
-        "//tensorflow/python/keras/layers:core",
-    ],
-)
-
 tf_py_test(
     name = "saved_model_test",
     size = "small",
