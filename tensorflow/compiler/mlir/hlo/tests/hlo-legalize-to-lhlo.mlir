@@ -208,7 +208,7 @@ func @dyn_broadcast(%operand: memref<?x?xf32>) {
   // BOTH: %[[TRANSFORMED_MEMREF:.*]] = lmhlo.dynamic_memref_cast
   // BOTH-SAME: %[[OPERAND]](%[[RESULT_DIM_1]], %[[RESULT_DIM_2]])
   // BOTH-SAME: {{\[}}%[[STRIDE_0]], %[[STRIDE_1]]]
-  // BOTH-SAME: : memref<?x?xf32> -> memref<?x?xf32, #map0>
+  // BOTH-SAME: : memref<?x?xf32> -> memref<?x?xf32, #map>
 
   // BOTH: "lmhlo.broadcast_in_dim"(%[[TRANSFORMED_MEMREF]], %[[RESULT]]) {
   // BOTH-SAME:   broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>
