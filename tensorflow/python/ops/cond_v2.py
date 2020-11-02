@@ -125,7 +125,7 @@ def _IfGrad(op, *grads):  # pylint: disable=invalid-name
   false_grad_graph = _create_grad_func(
       false_graph, grads, util.unique_grad_fn_name(false_graph.name))
 
-  # Replaces output None grads with zeros if atleast one branch has non-None
+  # Replaces output None grads with zeros if at least one branch has non-None
   # grad at that index.
   _create_zeros_for_none_grads([true_graph, false_graph],
                                [true_grad_graph, false_grad_graph])
@@ -206,7 +206,7 @@ def _build_cond(pred,
   computation.
 
   true_graph and false_graph need not have the same input types, but they must
-  have the same outpute types.
+  have the same output types.
 
   Args:
     pred: boolean Tensor
@@ -552,7 +552,7 @@ def _make_inputs_match(branch_graphs, branch_inputs):
 
 
 def _create_zeros_for_none_grads(forward_graphs, grad_graphs):
-  """Creates zeros for None out grads if atleast one branch has non-None grad.
+  """Creates zeros for None out grads if at least one branch has non-None grad.
 
   Args:
     forward_graphs: List of forward FuncGraphs.
@@ -932,7 +932,7 @@ class _CondGradFuncGraph(util.CondBranchFuncGraph):
     # If it is not a resource, we wrap it in an optional in the forward graph
     # and capture the optional normally. We then unwrap the captured optional
     # value in the gradient graph to get the raw intermediate value.
-    # If it is a resource, we trace the resource upto the input in the forward
+    # If it is a resource, we trace the resource up to the input in the forward
     # graph and capture that.
 
     if tensor.dtype == dtypes.resource:
@@ -1034,7 +1034,7 @@ def _CaseGrad(op, *grads):  # pylint: disable=invalid-name
     branch_grad_graphs.append(
         _create_grad_func(branch_graph, grads,
                           util.unique_grad_fn_name(branch_graph.name)))
-  # Replaces output None grads with zeros if atleast one branch has non-None
+  # Replaces output None grads with zeros if at least one branch has non-None
   # grad at that index.
   _create_zeros_for_none_grads(branch_graphs, branch_grad_graphs)
 
@@ -1120,7 +1120,7 @@ def _build_case(branch_index,
   computation.
 
   `branch_graphs` need not have the same input types, but they must
-  have the same outpute types.
+  have the same output types.
 
   Args:
     branch_index: integer Tensor

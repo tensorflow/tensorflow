@@ -338,8 +338,8 @@ class TPUStrategyV2(distribute_lib.Strategy):
     """Adds annotation that `tensor` will be split across logical devices.
 
     This adds an annotation to tensor `tensor` specifying that operations on
-    `tensor` will be be split among multiple logical devices. Tensor `tensor`
-    will be split across dimensions specified by `partition_dimensions`.
+    `tensor` will be split among multiple logical devices. Tensor `tensor` will
+    be split across dimensions specified by `partition_dimensions`.
     The dimensions of `tensor` must be divisible by corresponding value in
     `partition_dimensions`.
 
@@ -799,7 +799,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         raise ValueError(
             "Found tensor {} with spec {}. TPUStrategy does not support "
             "distributed datasets with device prefetch when using sparse or "
-            "ragged tensors. If you indend to use sparse or ragged tensors, "
+            "ragged tensors. If you intend to use sparse or ragged tensors, "
             "please pass a tf.distribute.InputOptions object with "
             "experimental_prefetch_to_device set to False to your dataset "
             "distribution function.".format(path, type(spec)))

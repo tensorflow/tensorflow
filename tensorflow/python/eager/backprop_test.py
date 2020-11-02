@@ -1595,6 +1595,35 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(num_sin_ops_found, 2)
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testRecomputeGradWithDifferentShape(self):
+
+    @custom_gradient.recompute_grad
+    def outer(x):
+      return [x[0] + 1, x[1] + 1]
+
+    x = [
+        variables.Variable([1.0, 2.0], name='a'),
+        variables.Variable(1.0, name='b')
+    ]
+    with backprop.GradientTape():
+      y = outer(x)
+      self.assertAllEqual(y[0], [2.0, 3.0])
+      self.assertAllEqual(y[1], 2.0)
+
+    @custom_gradient.recompute_grad
+    def outer_dict(x):
+      for key in x.keys():
+        x[key] = x[key] + 1
+      return x
+
+    x = {x[0].ref(): x[0], x[1].ref(): x[1]}
+    with backprop.GradientTape():
+      y = outer_dict(x)
+      y = list(y.values())
+      self.assertAllEqual(y[0], [2.0, 3.0])
+      self.assertAllEqual(y[1], 2.0)
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
   def testRecomputeGradWithNestedFunctionAndWhileLoop(self):
 
     @custom_gradient.recompute_grad
@@ -1742,6 +1771,31 @@ class JacobianTest(test.TestCase):
       self.assertAllClose(expected_flat,
                           array_ops.reshape(def_function.function(f)(x), [-1]),
                           rtol=1e-3)
+
+  def test_grad_jacobian_conv(self):
+    def _inner(x):
+      kernel = array_ops.ones([3, 3, 1, 9])
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = nn_ops.conv2d(x, kernel, strides=(1, 1), padding='SAME',
+                          data_format='NHWC')
+        reduced = math_ops.reduce_sum(y ** 2., axis=[2, 3])
+      return math_ops.reduce_sum(tape.batch_jacobian(reduced, x))
+
+    theoretical, numerical = gradient_checker_v2.compute_gradient(
+        def_function.function(_inner), [array_ops.ones([10, 4, 4, 1])])
+    self.assertAllClose(numerical, theoretical, rtol=1e-1)
+
+    @def_function.function
+    def _outer():
+      with backprop.GradientTape() as tape:
+        x = array_ops.ones([10, 4, 4, 1])
+        tape.watch(x)
+        y = _inner(x)
+      return tape.gradient(y, x)
+
+    self.assertAllClose(array_ops.reshape(numerical, [-1]),
+                        array_ops.reshape(_outer(), [-1]), rtol=1e-1)
 
   @test_util.run_in_graph_and_eager_modes
   def test_indexed_slices(self):

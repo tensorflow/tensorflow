@@ -185,7 +185,7 @@ class ObjectGraphView(object):
   def attached_dependencies(self):
     """Returns list of dependencies that should be saved in the checkpoint.
 
-    These dependencies are not tracked by root, but are in the the checkpoint.
+    These dependencies are not tracked by root, but are in the checkpoint.
     This is defined when the user creates a Checkpoint with both root and kwargs
     set.
 

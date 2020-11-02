@@ -35,8 +35,6 @@ from tensorflow.lite.toco import types_pb2 as _types_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras.layers import recurrent
-from tensorflow.python.keras.layers import recurrent_v2
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import save_options
@@ -1147,9 +1145,9 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
         expected = expected.c
       self.assertAllClose(expected, actual)
 
-  @parameterized.named_parameters(('LSTM', recurrent_v2.LSTM),
-                                  ('SimpleRNN', recurrent.SimpleRNN),
-                                  ('GRU', recurrent_v2.GRU))
+  @parameterized.named_parameters(('LSTM', tf.keras.layers.LSTM),
+                                  ('SimpleRNN', tf.keras.layers.SimpleRNN),
+                                  ('GRU', tf.keras.layers.GRU))
   @test_util.run_v2_only
   def testKerasRNN(self, rnn_layer):
     # This relies on TFLiteConverter to rewrite unknown batch size to 1. The
@@ -1171,9 +1169,9 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     expected_value = model.predict(input_data)
     self.assertAllClose(expected_value, actual_value, atol=1e-05)
 
-  @parameterized.named_parameters(('LSTM', recurrent_v2.LSTM),
-                                  ('SimpleRNN', recurrent.SimpleRNN),
-                                  ('GRU', recurrent_v2.GRU))
+  @parameterized.named_parameters(('LSTM', tf.keras.layers.LSTM),
+                                  ('SimpleRNN', tf.keras.layers.SimpleRNN),
+                                  ('GRU', tf.keras.layers.GRU))
   @test_util.run_v2_only
   def testKerasRNNMultiBatches(self, rnn_layer):
     input_data = tf.constant(
@@ -1200,7 +1198,7 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     model.add(tf.keras.layers.Input(batch_size=1, shape=(10, 10), name='input'))
     model.add(
         tf.keras.layers.Bidirectional(
-            recurrent_v2.LSTM(units=10, return_sequences=True),
+            tf.keras.layers.LSTM(units=10, return_sequences=True),
             input_shape=(10, 10)))
     model.add(tf.keras.layers.Flatten())
     model.add(tf.keras.layers.Dense(5))
@@ -1221,7 +1219,7 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
         np.array(np.random.random_sample((1, 10, 10)), dtype=np.float32))
     model = tf.keras.models.Sequential()
     model.add(tf.keras.layers.Input(batch_size=1, shape=(10, 10), name='input'))
-    model.add(tf.keras.layers.Bidirectional(recurrent_v2.LSTM(units=10)))
+    model.add(tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(units=10)))
     model.add(tf.keras.layers.Dense(5))
     model.add(tf.keras.layers.Activation('softmax'))
 

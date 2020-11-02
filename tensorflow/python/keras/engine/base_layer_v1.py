@@ -52,6 +52,7 @@ from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.keras.utils import object_identity
 from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils import tf_utils
 # A module that only depends on `keras.layers` import these from here.
@@ -68,7 +69,6 @@ from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import nest
-from tensorflow.python.util import object_identity
 from tensorflow.tools.docs import doc_controls
 
 
@@ -600,9 +600,8 @@ class Layer(base_layer.Layer):
     """
     def check_type_return_shape(s):
       if not isinstance(s, tensor_spec.TensorSpec):
-        raise TypeError(
-            'Only TensorSpec signature types are supported, '
-            'but saw signature signature entry: {}.'.format(s))
+        raise TypeError('Only TensorSpec signature types are supported, '
+                        'but saw signature entry: {}.'.format(s))
       return s.shape
     input_shape = nest.map_structure(check_type_return_shape, input_signature)
     output_shape = self.compute_output_shape(input_shape)
@@ -993,7 +992,7 @@ class Layer(base_layer.Layer):
     x = tf.keras.layers.Dense(10)(inputs)
     outputs = tf.keras.layers.Dense(1)(x)
     model = tf.keras.Model(inputs, outputs)
-    # Actvity regularization.
+    # Activity regularization.
     model.add_loss(tf.abs(tf.reduce_mean(x)))
     ```
 

@@ -426,7 +426,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
     ShapedBuffer buffer(
         xla::ShapeUtil::MakeTupleShape({nontuple_buffer.on_host_shape()}),
         xla::ShapeUtil::MakeTupleShape({nontuple_buffer.on_device_shape()}),
-        output.platform(), output.device_ordinal());
+        output.device_ordinal());
     buffer.buffers().CopySubtreeFrom(nontuple_buffer.buffers(),
                                      /*source_base_index=*/{},
                                      /*target_base_index=*/{0});

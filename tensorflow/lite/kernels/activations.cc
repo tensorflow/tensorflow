@@ -364,6 +364,12 @@ TfLiteStatus LeakyReluPrepare(TfLiteContext* context, TfLiteNode* node) {
     QuantizeMultiplier(identity_multiplier, &data->output_multiplier_identity,
                        &data->output_shift_identity);
   }
+
+  if (input->type == kTfLiteInt16 && output->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+  }
+
   return context->ResizeTensor(context, output,
                                TfLiteIntArrayCopy(input->dims));
 }
@@ -598,6 +604,7 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   }
 
   if (input->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
     TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
 
     data->params.exp_lut = data->exp_lut;
@@ -669,8 +676,7 @@ TfLiteStatus PreluPrepare(TfLiteContext* context, TfLiteNode* node) {
 
   output->type = input->type;
 
-  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8 ||
-      output->type == kTfLiteInt16) {
+  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8) {
     // prelu(x) = x if x >= 0 else x * alpha.
     // So if we translate that for quantized computation:
     //

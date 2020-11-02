@@ -444,8 +444,8 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
     input_shape = K.int_shape(inputs)
     timesteps = input_shape[0] if self.time_major else input_shape[1]
 
-    # TODO(b/156447398) Investigate why the cuDNN kernel kernel fails with
-    # ragged inputs.
+    # TODO(b/156447398) Investigate why the cuDNN kernel fails with ragged
+    # inputs.
     if is_ragged_input or not self._could_use_gpu_kernel:
       kwargs = {'training': training}
       self._maybe_reset_cell_dropout_mask(self.cell)
@@ -812,7 +812,7 @@ def gru_with_backend_selection(inputs, init_h, kernel, recurrent_kernel, bias,
         false_fn=standard_gru_fn)
 
   if _use_new_code():
-    # Chooses the implementation dynamicly based on the running device.
+    # Chooses the implementation dynamically based on the running device.
     (last_output, outputs, new_h,
      runtime) = control_flow_ops.execute_fn_for_device(
          {
@@ -1162,8 +1162,8 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
     input_shape = K.int_shape(inputs)
     timesteps = input_shape[0] if self.time_major else input_shape[1]
 
-    # TODO(b/156447398) Investigate why the cuDNN kernel kernel fails with
-    # ragged inputs.
+    # TODO(b/156447398) Investigate why the cuDNN kernel fails with ragged
+    # inputs.
     if is_ragged_input or not self._could_use_gpu_kernel:
       # Fall back to use the normal LSTM.
       kwargs = {'training': training}
@@ -1626,7 +1626,7 @@ def lstm_with_backend_selection(inputs, init_h, init_c, kernel,
         false_fn=stardard_lstm_fn)
 
   if _use_new_code():
-    # Chooses the implementation dynamicly based on the running device.
+    # Chooses the implementation dynamically based on the running device.
     (last_output, outputs, new_h, new_c,
      runtime) = control_flow_ops.execute_fn_for_device(
          {
@@ -1693,7 +1693,7 @@ def has_fully_masked_sequence(mask):
   # data. We walk around this issue by rerouting the computation to standard
   # kernel, until the issue on cudnn side has been fixed.
   # For a fully masked sequence, it will contain all Falses. To make it easy to
-  # check, we inverse the boolean, check if any of the seqence has all True.
+  # check, we inverse the boolean, check if any of the sequence has all True.
   return math_ops.reduce_any(
       math_ops.reduce_all(
           math_ops.logical_not(mask),

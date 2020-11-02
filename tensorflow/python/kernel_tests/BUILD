@@ -2310,23 +2310,6 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "stack_op_test",
-    size = "small",
-    srcs = ["stack_op_test.py"],
-    tags = [
-        "no_cuda_asan",  # times out
-    ],
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:variables",
-        "//third_party/py/numpy",
-    ],
-)
-
-cuda_py_test(
     name = "map_fn_test",
     size = "small",
     srcs = ["map_fn_test.py"],

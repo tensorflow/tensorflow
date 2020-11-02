@@ -128,8 +128,8 @@ def get_plugin_args(
     ]
 
 def _get_staged_proto_file(context, source_file):
-    if source_file.dirname == context.label.package or \
-       is_in_virtual_imports(source_file):
+    if (source_file.dirname == context.label.package or
+        is_in_virtual_imports(source_file)):
         return source_file
     else:
         copied_proto = context.actions.declare_file(source_file.basename)

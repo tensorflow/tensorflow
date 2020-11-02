@@ -50,7 +50,6 @@ from tensorflow.lite.python.convert import toco_convert_protos  # pylint: disabl
 from tensorflow.lite.python.convert_saved_model import freeze_saved_model as _freeze_saved_model
 from tensorflow.lite.python.interpreter import Interpreter  # pylint: disable=unused-import
 from tensorflow.lite.python.interpreter import load_delegate  # pylint: disable=unused-import
-from tensorflow.lite.python.keras.saving import saving_utils as _keras_saving_utils
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs  # pylint: disable=unused-import
 from tensorflow.lite.python.op_hint import is_ophint_converted as _is_ophint_converted
 from tensorflow.lite.python.op_hint import OpHint  # pylint: disable=unused-import
@@ -63,9 +62,11 @@ from tensorflow.lite.python.util import get_grappler_config as _get_grappler_con
 from tensorflow.lite.python.util import get_tensor_name as _get_tensor_name
 from tensorflow.lite.python.util import get_tensors_from_tensor_names as _get_tensors_from_tensor_names
 from tensorflow.lite.python.util import is_frozen_graph as _is_frozen_graph
+from tensorflow.lite.python.util import model_input_signature as _model_input_signature
 from tensorflow.lite.python.util import modify_model_io_type as _modify_model_io_type
 from tensorflow.lite.python.util import run_graph_optimizations as _run_graph_optimizations
 from tensorflow.lite.python.util import set_tensor_shapes as _set_tensor_shapes
+from tensorflow.lite.python.util import trace_model_call as _trace_model_call
 from tensorflow.python.client import session as _session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function as _def_function
@@ -839,12 +840,11 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
       # Pass `keep_original_batch_size=True` will ensure that we get an input
       # signature including the batch dimension specified by the user.
       # TODO(b/169898786): Use the Keras public API when TFLite moves out of TF
-      input_signature = _keras_saving_utils.model_input_signature(
+      input_signature = _model_input_signature(
           self._keras_model, keep_original_batch_size=True)
 
     # TODO(b/169898786): Use the Keras public API when TFLite moves out of TF
-    func = _keras_saving_utils.trace_model_call(
-        self._keras_model, input_signature)
+    func = _trace_model_call(self._keras_model, input_signature)
     concrete_func = func.get_concrete_function()
     self._funcs = [concrete_func]
 
@@ -1468,7 +1468,7 @@ class TFLiteKerasModelConverter(TFLiteConverterBaseV1):
 
       keras_model = keras_deps.get_load_model_function()(
           model_file, custom_objects)
-      function = _keras_saving_utils.trace_model_call(keras_model)
+      function = _trace_model_call(keras_model)
       concrete_func = function.get_concrete_function()
 
       frozen_func = _convert_to_constants.convert_variables_to_constants_v2(

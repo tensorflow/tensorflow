@@ -62,6 +62,7 @@ from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.keras.utils import object_identity
 from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils import version_utils
@@ -82,7 +83,6 @@ from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
-from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import get_canonical_name_for_symbol
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
@@ -792,9 +792,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     """
     def check_type_return_shape(s):
       if not isinstance(s, tensor_spec.TensorSpec):
-        raise TypeError(
-            'Only TensorSpec signature types are supported, '
-            'but saw signature signature entry: {}.'.format(s))
+        raise TypeError('Only TensorSpec signature types are supported, '
+                        'but saw signature entry: {}.'.format(s))
       return s.shape
     input_shape = nest.map_structure(check_type_return_shape, input_signature)
     output_shape = self.compute_output_shape(input_shape)
@@ -872,7 +871,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           keras_tensor.keras_tensor_from_tensor, outputs)
 
     if hasattr(self, '_set_inputs') and not self.inputs:
-      # TODO(kaftan): figure out if we ned to do this at all
+      # TODO(kaftan): figure out if we need to do this at all
       # Subclassed network: explicitly set metadata normally set by
       # a call to self._set_inputs().
       self._set_inputs(inputs, outputs)

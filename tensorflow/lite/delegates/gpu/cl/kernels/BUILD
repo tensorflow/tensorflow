@@ -1356,6 +1356,7 @@ test_suite(
         "conv_buffer_1x1_test",
         "conv_constants_test",
         "conv_powervr_test",
+        "convolution_transposed_3x3_test",
         "convolution_transposed_3x3_thin_test",
         "convolution_transposed_4x4_test",
         "convolution_transposed_test",

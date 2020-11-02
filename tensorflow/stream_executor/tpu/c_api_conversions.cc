@@ -34,10 +34,8 @@ xla::ShapedBuffer FromC(XLA_ShapedBuffer* c_buffer) {
     i++;
   }
 
-  xla::ShapedBuffer xla_shaped_buffer(
-      xla_on_device_shape,
-      tensorflow::tpu::TpuPlatformInterface::GetRegisteredPlatform(),
-      c_buffer->device_ordinal);
+  xla::ShapedBuffer xla_shaped_buffer(xla_on_device_shape,
+                                      c_buffer->device_ordinal);
   xla_shaped_buffer.set_buffers(xla_shape_tree);
   return xla_shaped_buffer;
 }

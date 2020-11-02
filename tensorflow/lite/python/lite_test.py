@@ -28,13 +28,13 @@ from absl.testing import parameterized
 import numpy as np
 import six
 from six.moves import range
+from tensorflow import keras
 
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_constants
 from tensorflow.lite.python.convert import ConverterError
 from tensorflow.lite.python.convert import mlir_quantize
 from tensorflow.lite.python.interpreter import Interpreter
-from tensorflow.python import keras
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function

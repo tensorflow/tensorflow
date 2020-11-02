@@ -536,15 +536,13 @@ StatusOr<HloInstruction*> PartitionBaseCase(
   }
   if (lhs_contracting_partitions == rhs_contracting_partitions &&
       lhs_contracting_partitions == num_partitions &&
-      output_sharding_dim > -1) {
-    if (output_lhs_non_contracting_partitions == num_partitions &&
-        ShapeSizeInBytes(rhs.base_shape()) >=
-            options.threshold_for_windowed_einsum_mib * 1024 * 1024) {
+      output_sharding_dim > -1 &&
+      ShapeSizeInBytes(output_base_shape) >=
+          options.threshold_for_windowed_einsum_mib * 1024 * 1024) {
+    if (output_lhs_non_contracting_partitions == num_partitions) {
       return emit_windowed_dot_general(0, 1, false, false, true);
     }
-    if (output_rhs_non_contracting_partitions == num_partitions &&
-        ShapeSizeInBytes(lhs.base_shape()) >=
-            options.threshold_for_windowed_einsum_mib * 1024 * 1024) {
+    if (output_rhs_non_contracting_partitions == num_partitions) {
       return emit_windowed_dot_general(1, 0, false, false, true);
     }
   }

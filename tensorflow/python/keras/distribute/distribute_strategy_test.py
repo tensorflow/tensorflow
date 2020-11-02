@@ -29,6 +29,7 @@ from tensorflow.python.data.experimental.ops.distribute_options import AutoShard
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.distribute import central_storage_strategy
+from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
@@ -1884,6 +1885,9 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
   @ds_combinations.generate(
       combinations.combine(distribution=all_strategies, mode=['eager']))
   def test_host_training_loop(self, distribution):
+    if isinstance(distribution,
+                  collective_all_reduce_strategy.CollectiveAllReduceStrategy):
+      self.skipTest('b/172032817')
     with distribution.scope():
       inputs = keras.Input((10, 10, 3))
       x = keras.layers.Conv2D(3, kernel_size=3)(inputs)
@@ -1910,6 +1914,9 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
   @ds_combinations.generate(
       combinations.combine(distribution=all_strategies, mode=['eager']))
   def test_host_training_loop_last_partial_execution(self, distribution):
+    if isinstance(distribution,
+                  collective_all_reduce_strategy.CollectiveAllReduceStrategy):
+      self.skipTest('b/172032817')
     with distribution.scope():
       inputs = keras.Input(10)
       outputs = keras.layers.Dense(1)(inputs)
@@ -1934,6 +1941,9 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
   @ds_combinations.generate(
       combinations.combine(distribution=all_strategies, mode=['eager']))
   def test_host_training_loop_dataset_unknown_size(self, distribution):
+    if isinstance(distribution,
+                  collective_all_reduce_strategy.CollectiveAllReduceStrategy):
+      self.skipTest('b/172032817')
     with distribution.scope():
       inputs = keras.Input(10)
       outputs = keras.layers.Dense(1)(inputs)
@@ -1970,6 +1980,9 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
   @ds_combinations.generate(
       combinations.combine(distribution=all_strategies, mode=['eager']))
   def test_host_training_loop_truncate_to_epoch(self, distribution):
+    if isinstance(distribution,
+                  collective_all_reduce_strategy.CollectiveAllReduceStrategy):
+      self.skipTest('b/172032817')
     with distribution.scope():
       inputs = keras.Input(10)
       outputs = keras.layers.Dense(1)(inputs)
