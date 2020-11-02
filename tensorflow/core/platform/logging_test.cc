@@ -16,6 +16,9 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 
+#include <sstream>
+#include <vector>
+
 namespace tensorflow {
 
 TEST(Logging, Log) {
@@ -96,13 +99,19 @@ TEST(InternalLogString, Basic) {
   internal::LogString(__FILE__, __LINE__, INFO, "Hello there");
 }
 
+struct TestSink : public TFLogSink {
+  std::stringstream ss;
+
+  void Send(const TFLogEntry& entry) override {
+    ss << entry.ToString() << std::endl;
+  }
+};
+
 }  // namespace tensorflow
 
 #if defined(__linux__) && !defined(PLATFORM_POSIX_ANDROID)
 
 #include "absl/strings/str_split.h"
-#include <vector>
-#include <sstream>
 
 #define _GNU_SOURCE
 #include <fcntl.h>
@@ -177,14 +186,6 @@ class LogSinkTest : public ::testing::Test {
 
 TFDefaultLogSink LogSinkTest::default_sink_;
 
-struct TestSink : public TFLogSink {
-  std::stringstream ss;
-
-  void Send(const TFLogEntry& entry) override {
-    ss << entry.ToString() << std::endl;
-  }
-};
-
 TEST_F(LogSinkTest, testLogSinks) {
   // First log into the default log sink
   LOG(INFO) << "Foo";
@@ -219,5 +220,45 @@ TEST_F(LogSinkTest, testLogSinks) {
 }
 
 }  // namespace tensorflow
+
+#else // defined(__linux__) && !defined(PLATFORM_POSIX_ANDROID)
+
+namespace tensorflow {
+
+TEST(LogSinkTest, testLogSinks)
+{
+  // Test the default log sink as much as we can, write a `stdout` interceptor for you OS to test it further.
+  auto sinks = TFGetLogSinks();
+#ifdef NO_DEFAULT_LOGGER
+  EXPECT_EQ(sinks.size(), 0);
+#else
+  EXPECT_EQ(sinks.size(), 1);
+#endif
+
+  static TestSink sink;
+  TFAddLogSink(&sink);
+  sinks = TFGetLogSinks();
+
+#ifdef NO_DEFAULT_LOGGER
+  EXPECT_EQ(sinks.size(), 1);
+#else
+  EXPECT_EQ(sinks.size(), 2);
+#endif
+
+  LOG(INFO) << "Foo";
+  LOG(INFO) << "Bar";
+  EXPECT_EQ(sink.ss.str(), "Foo\nBar\n");
+
+  TFRemoveLogSink(&sink);
+  sinks = TFGetLogSinks();
+
+#ifdef NO_DEFAULT_LOGGER
+  EXPECT_EQ(sinks.size(), 0);
+#else
+  EXPECT_EQ(sinks.size(), 1);
+#endif
+}
+
+} // namespace tensorflow
 
 #endif // defined(__linux__) && !defined(PLATFORM_POSIX_ANDROID)
