@@ -350,7 +350,11 @@ def make_zip_of_tests(options,
           "%s=%r" % z for z in sorted(zip(keys, curr))).replace(" ", ""))
       if label[0] == "/":
         label = label[1:]
-      zip_path_label = label_base_path.replace(".zip", "_") + str(i)
+
+      zip_path_label = label
+      if len(os.path.basename(zip_path_label)) > 245:
+        zip_path_label = label_base_path.replace(".zip", "_") + str(i)
+
       i += 1
       if label in processed_labels:
         # Do not populate data for the same label more than once. It will cause
@@ -493,7 +497,11 @@ def make_zip_of_tests(options,
           archive.writestr(zip_path_label + "_tests.txt",
                            example_fp2.getvalue(), zipfile.ZIP_DEFLATED)
 
-          zip_manifest.append(zip_path_label + " " + label + "\n")
+          zip_manifest_label = zip_path_label + " " + label
+          if zip_path_label == label:
+            zip_manifest_label = zip_path_label
+
+          zip_manifest.append(zip_manifest_label + "\n")
 
         return tflite_model_binary, report
 
