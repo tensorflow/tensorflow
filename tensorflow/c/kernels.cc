@@ -239,20 +239,22 @@ void TF_OpKernelContext_Failure(TF_OpKernelContext* ctx, TF_Status* status) {
   cc_ctx->CtxFailure(s);
 }
 
-TF_AttrMetadata TF_OpKernelConstruction_GetAttrMetadata(
-    TF_OpKernelConstruction* ctx, const char* attr_name, TF_Status* status) {
-  TF_AttrMetadata metadata;
+void TF_OpKernelConstruction_GetAttrListSize(TF_OpKernelConstruction* ctx,
+                                             const char* attr_name,
+                                             int32_t* list_size,
+                                             int32_t* total_size,
+                                             TF_Status* status) {
   const auto* attr = GetAttrValue(ctx, attr_name, status);
   if (!status->status.ok()) {
-    return metadata;
+    *list_size = -1;
+    *total_size = -1;
+    return;
   }
   switch (attr->value_case()) {
 #define SINGLE_CASE(kK, attr_type, size_expr) \
   case tensorflow::AttrValue::kK:             \
-    metadata.is_list = 0;                     \
-    metadata.list_size = -1;                  \
-    metadata.type = attr_type;                \
-    metadata.total_size = size_expr;          \
+    *list_size = -1;                          \
+    *total_size = size_expr;                  \
     break;
 
     SINGLE_CASE(kS, TF_ATTR_STRING, attr->s().length());
@@ -266,30 +268,28 @@ TF_AttrMetadata TF_OpKernelConstruction_GetAttrMetadata(
 #undef SINGLE_CASE
 
     case tensorflow::AttrValue::kList:
-      metadata.is_list = 1;
-      metadata.list_size = 0;
-      metadata.total_size = -1;
-#define LIST_CASE(field, attr_type, ...)              \
-  if (attr->list().field##_size() > 0) {              \
-    metadata.type = attr_type;                        \
-    metadata.list_size = attr->list().field##_size(); \
-    __VA_ARGS__;                                      \
-    break;                                            \
+      *list_size = 0;
+      *total_size = -1;
+#define LIST_CASE(field, attr_type, ...)      \
+  if (attr->list().field##_size() > 0) {      \
+    *list_size = attr->list().field##_size(); \
+    __VA_ARGS__;                              \
+    break;                                    \
   }
 
       LIST_CASE(
-          s, TF_ATTR_STRING, metadata.total_size = 0;
+          s, TF_ATTR_STRING, *total_size = 0;
           for (int i = 0; i < attr->list().s_size();
-               ++i) { metadata.total_size += attr->list().s(i).size(); });
+               ++i) { *total_size += attr->list().s(i).size(); });
       LIST_CASE(i, TF_ATTR_INT);
       LIST_CASE(f, TF_ATTR_FLOAT);
       LIST_CASE(b, TF_ATTR_BOOL);
       LIST_CASE(type, TF_ATTR_TYPE);
       LIST_CASE(
-          shape, TF_ATTR_SHAPE, metadata.total_size = 0;
+          shape, TF_ATTR_SHAPE, *total_size = 0;
           for (int i = 0; i < attr->list().shape_size(); ++i) {
             const auto& s = attr->list().shape(i);
-            metadata.total_size += s.unknown_rank() ? 0 : s.dim_size();
+            *total_size += s.unknown_rank() ? 0 : s.dim_size();
           });
       LIST_CASE(tensor, TF_ATTR_TENSOR);
       LIST_CASE(tensor, TF_ATTR_FUNC);
@@ -297,17 +297,13 @@ TF_AttrMetadata TF_OpKernelConstruction_GetAttrMetadata(
       break;
 
     case tensorflow::AttrValue::kPlaceholder:
-      metadata.is_list = 0;
-      metadata.list_size = -1;
-      metadata.type = TF_ATTR_PLACEHOLDER;
-      metadata.total_size = -1;
+      *list_size = -1;
+      *total_size = -1;
       break;
 
     case tensorflow::AttrValue::kFunc:
-      metadata.is_list = 0;
-      metadata.list_size = -1;
-      metadata.type = TF_ATTR_FUNC;
-      metadata.total_size = -1;
+      *list_size = -1;
+      *total_size = -1;
       break;
 
     case tensorflow::AttrValue::VALUE_NOT_SET:
@@ -315,8 +311,6 @@ TF_AttrMetadata TF_OpKernelConstruction_GetAttrMetadata(
           InvalidArgument("Attribute '", attr_name, "' has no value set");
       break;
   }
-
-  return metadata;
 }
 
 #define DEFINE_TF_GETATTR(func, c_type, cc_type, list_field)                   \
