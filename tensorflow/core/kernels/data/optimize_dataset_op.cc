@@ -84,7 +84,7 @@ void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
     // of the Borg jobs, the experiments will be randomly turned on.
     // clang-format off
     absl::flat_hash_map<string, uint64> live_experiments = {
-        {"enable_gradient_descent", 50},
+        {"enable_gradient_descent", 100},
         {"map_parallelization", 1}
     };
     // clang-format on
