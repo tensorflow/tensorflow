@@ -2729,12 +2729,6 @@ void MemorySpaceAssignment::Allocation::AddUse(HloUse use) {
 
 Status MemorySpaceAssignment::Allocation::Process(
     MemorySpaceAssignment* memory_space_assignment) {
-  // No need to do anything if this is an allocation in the default memory
-  // space. The calls below may insert redundant tuple/get-tuple-element
-  // instructions, unnecessarily increasing memory and compile time.
-  if (memory_space() == MemorySpace::kDefault) {
-    return Status::OK();
-  }
   HloInstruction* producing_instruction = AddGetTupleElements();
   HloComputation* computation = producing_instruction->parent();
   for (const HloUse& use : uses_) {
