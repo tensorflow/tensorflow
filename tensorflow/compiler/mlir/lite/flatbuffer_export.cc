@@ -599,7 +599,9 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensorFromType(
   BufferOffset<tflite::QuantizationParameters> q_params;
   auto qtype = element_type.dyn_cast<mlir::quant::UniformQuantizedType>();
   if (!qtype) {
-    return llvm::None;
+    return tflite::CreateTensor(builder_, builder_.CreateVector(shape),
+                                tflite_element_type,
+                                /*buffer=*/0, builder_.CreateString(name));
   }
   q_params = tflite::CreateQuantizationParameters(
       builder_, /*min=*/0, /*max=*/0,
@@ -1204,7 +1206,8 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
     std::vector<int32_t> intermediates;
     // Build intermediate tensors for tfl.lstm and insert these tensors into
     // flatbuffer.
-    if (llvm::isa<mlir::TFL::LSTMOp>(inst)) {
+    if (llvm::isa<mlir::TFL::LSTMOp, mlir::TFL::UnidirectionalSequenceLSTMOp>(
+            inst)) {
       std::vector<std::string> intermediate_names = {
           "input_to_input_intermediate", "input_to_forget_intermediate",
           "input_to_cell_intermediate", "input_to_output_intermediate",

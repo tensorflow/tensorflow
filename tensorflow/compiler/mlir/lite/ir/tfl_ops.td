@@ -3939,7 +3939,15 @@ def TFL_UnidirectionalSequenceLSTMOp :
     TFL_AFAttr:$fused_activation_function,
     Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$cell_clip,
     Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
-    BoolAttr:$time_major
+    BoolAttr:$time_major,
+
+    // Types of the optional intermediate tensors, which exist for fully
+    // quantized op and hold the ranges of the intermediate tensors.
+    OptionalAttr<TypeAttr>:$input_to_input_intermediate,
+    OptionalAttr<TypeAttr>:$input_to_forget_intermediate,
+    OptionalAttr<TypeAttr>:$input_to_cell_intermediate,
+    OptionalAttr<TypeAttr>:$input_to_output_intermediate,
+    OptionalAttr<TypeAttr>:$effective_hidden_scale_intermediate
   );
 
   let results = (outs TFL_TensorOf<[F32, QI8]>:$output);
