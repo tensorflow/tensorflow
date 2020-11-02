@@ -5986,10 +5986,11 @@ py_library(
     name = "pywrap_tensorflow",
     srcs = [
         "pywrap_tensorflow.py",
-        # modular TF need this file to load expose C API symbols
-        # in pywrap_tensorflow_internal.so
-        "pywrap_dlopen_global_flags.py",
-    ],
+    ] + if_static(
+        ["pywrap_dlopen_global_flags.py"],
+        # Import will fail, indicating no global dlopen flags
+        otherwise = [],
+    ),  # b/153585257
     srcs_version = "PY2AND3",
     deps = [":pywrap_tensorflow_internal"],
 )
