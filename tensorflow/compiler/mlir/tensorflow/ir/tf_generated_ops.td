@@ -1002,10 +1002,6 @@ reverse of SpaceToBatch.  See below for a precise description.
     TF_Tensor:$output
   );
 
-  let verifier = [{
-    return Verify(*this);
-  }];
-
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tcrops = TF_DerivedOperandTypeAttr<2>;
   TF_DerivedOperandTypeAttr Tblock_shape = TF_DerivedOperandTypeAttr<1>;
