@@ -347,6 +347,7 @@ cc_test(
     tags = [
         "linux",
         "local",
+        "no_mac",  # TODO(b/171880729)
     ],
     deps = [
         ":cl_test",
@@ -425,6 +426,7 @@ cc_test(
     tags = [
         "linux",
         "local",
+        "no_mac",  # TODO(b/171880729)
     ],
     deps = [
         ":cl_test",
