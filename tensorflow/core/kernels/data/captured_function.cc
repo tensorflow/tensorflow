@@ -853,21 +853,16 @@ Status InstantiatedCapturedFunction::Run(
     node->record_stop(EnvTime::NowNanos());
     TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame));
     node->record_start(EnvTime::NowNanos());
-    if (node) {
-      // TODO(b/129085499) Utilize the `node_name` which would be unique
-      // than the prefix for the function execution time statistics.
-      // prefix_with_func_name would then be node_name + func_name.
-      if (ctx->stats_aggregator()) {
-        string prefix_with_func_name =
-            strings::StrCat(node->name(), stats_utils::kDelimiter,
-                            captured_func_->func().name());
-        ctx->stats_aggregator()->AddToHistogram(
-            stats_utils::ExecutionTimeHistogramName(prefix_with_func_name),
-            {static_cast<float>(stats_collector->processing_time())},
-            node->num_elements());
-      }
-      node->add_processing_time(stats_collector->processing_time());
+    if (ctx->stats_aggregator()) {
+      string prefix_with_func_name =
+          strings::StrCat(node->name(), stats_utils::kDelimiter,
+                          captured_func_->func().name());
+      ctx->stats_aggregator()->AddToHistogram(
+          stats_utils::ExecutionTimeHistogramName(prefix_with_func_name),
+          {static_cast<float>(stats_collector->processing_time())},
+          node->num_elements());
     }
+    node->add_processing_time(stats_collector->processing_time());
   } else {
     TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame));
   }
