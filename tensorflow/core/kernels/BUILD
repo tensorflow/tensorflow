@@ -3240,11 +3240,7 @@ cc_library(
     deps = [
         ":aggregate_ops",
         ":argmax_op",
-<<<<<<< HEAD
-        ":batch_matmul_op",
         ":batch_gemm_op",
-=======
->>>>>>> google_upstream/master
         ":betainc_op",
         ":bincount_op",
         ":bucketize_op",
