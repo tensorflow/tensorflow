@@ -475,6 +475,7 @@ sh_test(
     ),
     args = if_xla_available(["$(location :aot_compiled_x_matmul_y_large.o)"]),
     data = if_xla_available([":aot_compiled_x_matmul_y_large.o"]),
+    tags = ["no_windows"],  # TODO(b/171875345)
 )
 
 sh_test(
@@ -491,6 +492,7 @@ sh_test(
     data = if_xla_available(
         [":aot_compiled_x_matmul_y_large_multithreaded.o"],
     ),
+    tags = ["no_windows"],  # TODO(b/171875345)
 )
 
 tf_cc_test(

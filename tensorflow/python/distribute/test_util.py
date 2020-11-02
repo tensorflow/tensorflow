@@ -82,8 +82,8 @@ def set_logical_devices_to_at_least(device, num):
           context.LogicalDeviceConfiguration(memory_limit=2048))
     else:
       logical_devices.append(context.LogicalDeviceConfiguration())
-  # Create logical devices from the the last device since sometimes the first
-  # GPU is the primary graphic card and may has less memory available.
+  # Create logical devices from the last device since sometimes the first GPU
+  # is the primary graphic card and may have less memory available.
   config.set_logical_device_configuration(physical_devices[-1], logical_devices)
 
 

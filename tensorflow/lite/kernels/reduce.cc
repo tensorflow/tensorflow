@@ -263,6 +263,12 @@ TfLiteStatus PrepareMeanOrSum(TfLiteContext* context, TfLiteNode* node) {
     QuantizeMultiplier(real_multiplier, &data->multiplier, &exponent);
     data->shift = exponent;
   }
+
+  if (op_context.input->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, op_context.input->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, op_context.output->params.zero_point, 0);
+  }
+
   TfLiteTensor* temp_sum;
   TF_LITE_ENSURE_OK(context,
                     GetTemporarySafe(context, node, /*index=*/2, &temp_sum));

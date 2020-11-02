@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections.abc as collections_abc
 import warnings
 
 import numpy as np
@@ -441,6 +442,16 @@ class RNN(Layer):
       if ds_context.has_strategy():
         raise ValueError('RNNs with stateful=True not yet supported with '
                          'tf.distribute.Strategy.')
+
+  @property
+  def _use_input_spec_as_call_signature(self):
+    if self.unroll:
+      # When the RNN layer is unrolled, the time step shape cannot be unknown.
+      # The input spec does not define the time step (because this layer can be
+      # called with any time step value, as long as it is not None), so it
+      # cannot be used as the call function signature when saving to SavedModel.
+      return False
+    return super(RNN, self)._use_input_spec_as_call_signature
 
   @property
   def states(self):

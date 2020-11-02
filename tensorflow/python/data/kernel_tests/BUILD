@@ -608,7 +608,7 @@ cuda_py_test(
     name = "reduce_test",
     size = "small",
     srcs = ["reduce_test.py"],
-    xla_tags = [
+    tags = [
         "no_cuda_asan",  # times out
     ],
     deps = [

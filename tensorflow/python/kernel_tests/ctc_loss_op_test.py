@@ -286,7 +286,7 @@ class CTCLossTest(test.TestCase):
     with self.session(use_gpu=False):
       loss = _ctc_loss_v2(
           inputs=inputs_t, labels=labels, sequence_length=seq_lens)
-      # Taking ths second gradient should fail, since it is not
+      # Taking this second gradient should fail, since it is not
       # yet supported.
       with self.assertRaisesRegex(LookupError, "explicitly disabled"):
         _ = gradients_impl._hessian_vector_product(loss, [inputs_t], v)

@@ -110,6 +110,7 @@ filegroup(
         "abstract_function.h",
         "abstract_operation.h",
         "abstract_tensor_handle.h",
+        "c_api.h",
         "c_api_experimental.h",
         "c_api_internal.h",
         "c_api_unified_experimental.h",

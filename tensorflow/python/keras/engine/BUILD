@@ -54,6 +54,7 @@ py_library(
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/distribute:parameter_server_strategy",
+        "//tensorflow/python/distribute:parameter_server_strategy_v2",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/keras:activations",
@@ -158,6 +159,7 @@ py_library(
         "//tensorflow/python/keras/saving",
         "//tensorflow/python/keras/utils:generic_utils",
         "//tensorflow/python/keras/utils:layer_utils",
+        "//tensorflow/python/keras/utils:object_identity",
         "//tensorflow/python/keras/utils:tf_utils",
         "//tensorflow/python/keras/utils:version_utils",
         "//tensorflow/python/module",
@@ -205,6 +207,7 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:lib",
         "//tensorflow/python:tensor_spec",
+        "//tensorflow/python/keras/utils:object_identity",
         "@six_archive//:six",
     ],
 )
@@ -301,6 +304,9 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564
+    ],
+    xla_tags = [
+        "no_cuda_asan",  # times out
     ],
     deps = [
         ":engine",

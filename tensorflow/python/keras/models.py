@@ -318,10 +318,10 @@ def _clone_sequential_model(model, input_tensors=None, layer_fn=_clone_layer):
 
   layers = []  # Layers needed to compute the model's outputs.
   layer_map = {}
-  # Use model._layers to ensure that all layers are cloned. The model's layers
+  # Ensure that all layers are cloned. The model's layers
   # property will exclude the initial InputLayer (if it exists) in the model,
   # resulting in a different Sequential model structure.
-  for layer in model._layers:
+  for layer in model._flatten_layers(include_self=False, recursive=False):
     if isinstance(layer, InputLayer) and input_tensors is not None:
       # If input tensors are provided, the original model's InputLayer is
       # overwritten with a different InputLayer.
@@ -460,9 +460,8 @@ def _in_place_subclassed_model_reset(model):
   # Retrieve all layers tracked by the model as well as their attribute names
   attributes_cache = {}
   for name in dir(model):
-    # Skip the check of methods in tf.Module since they basically
-    # recursively query all the other attributes within same module.
-    if name == 'submodules':
+    # Skip attrs that track other trackables.
+    if name == 'submodules' or name == '_self_tracked_trackables':
       continue
 
     try:
@@ -489,10 +488,11 @@ def _in_place_subclassed_model_reset(model):
 
   # Replace layers on the model with fresh layers
   layers_to_names = {value: key for key, value in attributes_cache.items()}
-  original_layers = model._layers[:]
+  original_layers = list(
+      model._flatten_layers(include_self=False, recursive=False))
   setattr_tracking = model._setattr_tracking
   model._setattr_tracking = False
-  model._layers = []
+  model._self_tracked_trackables = []
   for layer in original_layers:  # We preserve layer order.
     config = layer.get_config()
     # This will not work for nested subclassed models used as layers.
@@ -505,7 +505,7 @@ def _in_place_subclassed_model_reset(model):
     fresh_layer = layer.__class__.from_config(config)
     name = layers_to_names[layer]
     setattr(model, name, fresh_layer)
-    model._layers.append(fresh_layer)
+    model._self_tracked_trackables.append(fresh_layer)
 
   # Cache original model build attributes (in addition to layers)
   if (not hasattr(model, '_original_attributes_cache') or
@@ -576,11 +576,11 @@ def in_place_subclassed_model_state_restoration(model):
     # when they're constructed.
     setattr_tracking = model._setattr_tracking
     model._setattr_tracking = False
-    model._layers = []
+    model._self_tracked_trackables = []
     for name, value in model._original_attributes_cache.items():
       setattr(model, name, value)
       if isinstance(value, Layer):
-        model._layers.append(value)
+        model._self_tracked_trackables.append(value)
     model._original_attributes_cache = None
     model._setattr_tracking = setattr_tracking
   else:
@@ -594,7 +594,7 @@ def clone_and_build_model(
     optimizer_config=None):
   """Clone a `Model` and build/compile it with the same settings used before.
 
-  This function can be be run in the same graph or in a separate graph from the
+  This function can be run in the same graph or in a separate graph from the
   model. When using a separate graph, `in_place_reset` must be `False`.
 
   Note that, currently, the clone produced from this function may not work with
@@ -659,7 +659,7 @@ def clone_and_build_model(
                   model._build_input_shape, dtype=model.inputs[0].dtype))
     else:
       try:
-        # Prefer clonining the model if serial/deserial logic is implemented for
+        # Prefer cloning the model if serial/deserial logic is implemented for
         # subclassed model.
         clone = model.__class__.from_config(model.get_config())
       except NotImplementedError:

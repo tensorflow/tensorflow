@@ -180,7 +180,7 @@ class CuptiTraceCollector {
 
   // Consumer side functions (i.e. called by GPU tracer);
   virtual void Export(StepStats* step_stats) {}
-  virtual void Export(XSpace* space, uint64 end_gpu_ns) {}
+  virtual bool Export(XSpace* space, uint64 end_gpu_ns) { return true; }
   virtual std::string ReportNumEventsIfDropped() { return ""; }
 
   AnnotationMap* annotation_map() { return &annotation_map_; }

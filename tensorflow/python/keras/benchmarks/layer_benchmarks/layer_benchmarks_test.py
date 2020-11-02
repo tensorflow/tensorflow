@@ -26,6 +26,10 @@ from tensorflow.python.keras.benchmarks.layer_benchmarks import layer_benchmarks
 from tensorflow.python.platform import benchmark
 
 
+def _get_benchmark_name(name):
+  return name.split("__")[-1].split("_")
+
+
 def _layer_call_backward(layer, x):
   with tf.GradientTape() as tape:
     y = layer(x)
@@ -38,6 +42,10 @@ class KerasLayerBenchmarks(six.with_metaclass(
     benchmark.ParameterizedBenchmark,
     layer_benchmarks_test_base.LayerBenchmarksBase)):
 
+  # The parameter of each layer benchmark is a tuple, and the first one is
+  # the benchmark name. It must follow the convention of
+  # "{layer_name}_{small|normal|large}_shape" to make it compatible with
+  # `self.report_benchmark()` method.
   _benchmark_parameters = [
       ("Conv2D_small_shape", tf.keras.layers.Conv2D,
        {"filters": 1, "kernel_size": 1, "activation": "relu"},
@@ -56,7 +64,13 @@ class KerasLayerBenchmarks(six.with_metaclass(
     x = tf.ones(input_shape)
 
     fn = functools.partial(layer, x)
-    self.run_report(fn, num_iters)
+    name = _get_benchmark_name(self._get_name())
+    metadata = {
+        "model_name": "ideal_layers",
+        "implementation": name[0] + ".layer.call",
+        "parameters": name[1] + "_shape"
+    }
+    self.run_report(fn, num_iters, metadata)
 
   def benchmark_layer_call_with_function(
       self, layer_cls, layer_args, input_shape, num_iters):
@@ -65,7 +79,13 @@ class KerasLayerBenchmarks(six.with_metaclass(
     layer.call = tf.function(layer.call)
 
     fn = functools.partial(layer, x)
-    self.run_report(fn, num_iters)
+    name = _get_benchmark_name(self._get_name())
+    metadata = {
+        "model_name": "ideal_layers",
+        "implementation": name[0] + ".layer.call.function",
+        "parameters": name[1] + "_shape"
+    }
+    self.run_report(fn, num_iters, metadata)
 
   def benchmark_layer_call_with_xla(
       self, layer_cls, layer_args, input_shape, num_iters):
@@ -75,7 +95,13 @@ class KerasLayerBenchmarks(six.with_metaclass(
         layer.call, experimental_compile=True)
 
     fn = functools.partial(layer, x)
-    self.run_report(fn, num_iters)
+    name = _get_benchmark_name(self._get_name())
+    metadata = {
+        "model_name": "ideal_layers",
+        "implementation": name[0] + ".layer.call.xla",
+        "parameters": name[1] + "_shape"
+    }
+    self.run_report(fn, num_iters, metadata)
 
   def benchmark_layer_call_backward(
       self, layer_cls, layer_args, input_shape, num_iters):
@@ -83,7 +109,13 @@ class KerasLayerBenchmarks(six.with_metaclass(
     x = tf.ones(input_shape)
 
     fn = functools.partial(_layer_call_backward, layer, x)
-    self.run_report(fn, num_iters)
+    name = _get_benchmark_name(self._get_name())
+    metadata = {
+        "model_name": "ideal_layers",
+        "implementation": name[0] + ".layer.call.backward",
+        "parameters": name[1] + "_shape"
+    }
+    self.run_report(fn, num_iters, metadata)
 
   def benchmark_layer_call_backward_with_function(
       self, layer_cls, layer_args, input_shape, num_iters):
@@ -92,7 +124,13 @@ class KerasLayerBenchmarks(six.with_metaclass(
     layer.call = tf.function(layer.call)
 
     fn = functools.partial(_layer_call_backward, layer, x)
-    self.run_report(fn, num_iters)
+    name = _get_benchmark_name(self._get_name())
+    metadata = {
+        "model_name": "ideal_layers",
+        "implementation": name[0] + ".layer.call.backward.function",
+        "parameters": name[1] + "_shape"
+    }
+    self.run_report(fn, num_iters, metadata)
 
 
 class KerasLayerBenchmarksBackwardXLA(six.with_metaclass(
@@ -121,7 +159,13 @@ class KerasLayerBenchmarksBackwardXLA(six.with_metaclass(
         layer.call, experimental_compile=True)
 
     fn = functools.partial(_layer_call_backward, layer, x)
-    self.run_report(fn, num_iters)
+    name = _get_benchmark_name(self._get_name())
+    metadata = {
+        "model_name": "ideal_layers",
+        "implementation": name[0] + ".layer.call.backward.xla",
+        "parameters": name[1] + "_shape"
+    }
+    self.run_report(fn, num_iters, metadata)
 
 
 if __name__ == "__main__":

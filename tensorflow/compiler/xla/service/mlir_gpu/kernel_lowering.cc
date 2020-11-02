@@ -31,11 +31,11 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/Transforms.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Bufferize.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
@@ -76,13 +76,13 @@ Status LowerLHLOToGPU(mlir::ModuleOp module, LowerLHLOToGPUOptions options) {
   pm.addPass(createFusionOpRemoverPass());
   // Remove unnecessary LHLO copies.
   pm.addPass(::mlir::createCopyRemovalPass());
+  // Legalize reduce operations directly to GPU dialect.
+  pm.addPass(::mlir::lmhlo::createLegalizeToGpuPass());
   // Transform LHLO operations to LinAlg.
   pm.addPass(::mlir::lmhlo::createLegalizeLhloToLinalgPass());
   // Fuse linalg operations.
   pm.addPass(::mlir::lmhlo::createLhloFuseLinalgPass(
       /*use_parallel_loops=*/true, tiling_for_unrolling));
-  // Legalize reduce operations directly to GPU dialect.
-  pm.addPass(::mlir::lmhlo::createLegalizeToGpuPass());
   // Transform the Linalg operations inside of the loop nest into parallel
   // loops.
   pm.addPass(::mlir::createConvertLinalgToParallelLoopsPass());
@@ -170,7 +170,7 @@ class LowerToNVVMPass
     // TODO(csigg): Remove once we support replacing non-root ops.
     target.addLegalOp<::mlir::gpu::GPUModuleOp, ::mlir::gpu::ModuleEndOp,
                       ::mlir::gpu::YieldOp>();
-    if (failed(mlir::applyFullConversion(m, target, patterns))) {
+    if (failed(mlir::applyFullConversion(m, target, std::move(patterns)))) {
       signalPassFailure();
     }
   }
@@ -214,11 +214,13 @@ class LowerToROCDLPass
   void runOnOperation() override {
     ::mlir::gpu::GPUModuleOp m = getOperation();
 
-    ::mlir::OwningRewritePatternList patterns;
-    ::mlir::populateGpuRewritePatterns(m.getContext(), patterns);
-    ::mlir::applyPatternsAndFoldGreedily(m, patterns);
-    patterns.clear();
+    {
+      ::mlir::OwningRewritePatternList patterns;
+      ::mlir::populateGpuRewritePatterns(m.getContext(), patterns);
+      ::mlir::applyPatternsAndFoldGreedily(m, std::move(patterns));
+    }
 
+    ::mlir::OwningRewritePatternList patterns;
     ::mlir::LLVMTypeConverter converter(m.getContext());
     ::mlir::populateStdToLLVMConversionPatterns(converter, patterns);
     // TODO(b/145824979) Remove linalg once sliceop is in std.
@@ -239,7 +241,7 @@ class LowerToROCDLPass
     // TODO(csigg): Remove once we support replacing non-root ops.
     target.addLegalOp<::mlir::gpu::GPUModuleOp, ::mlir::gpu::ModuleEndOp,
                       ::mlir::gpu::YieldOp>();
-    if (failed(mlir::applyFullConversion(m, target, patterns))) {
+    if (failed(mlir::applyFullConversion(m, target, std::move(patterns)))) {
       signalPassFailure();
     }
   }

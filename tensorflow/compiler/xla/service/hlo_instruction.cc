@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -580,6 +581,12 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           std::max(static_cast<int64>(proto.batch_group_count()), int64{1}));
       custom_call_instr->set_custom_call_has_side_effect(
           proto.custom_call_has_side_effect());
+      custom_call_instr->set_padding_type(proto.padding_type());
+
+      PrecisionConfig precision_config = proto.precision_config();
+      precision_config.mutable_operand_precision()->Resize(
+          proto.operand_ids_size(), PrecisionConfig::DEFAULT);
+      *custom_call_instr->mutable_precision_config() = precision_config;
       std::vector<std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
           output_to_operand_aliasing;
       for (const auto& aliasing : proto.custom_call_output_operand_aliasing()) {
@@ -2951,6 +2958,10 @@ void HloInstruction::set_tracing(HloInstruction* trace_instruction) {
 
 bool HloInstruction::IsFused() const { return parent_->IsFusionComputation(); }
 
+bool HloInstruction::IsCustomCall(absl::string_view target) const {
+  return opcode() == HloOpcode::kCustomCall && custom_call_target() == target;
+}
+
 bool HloInstruction::IsInputFusion() const {
   return opcode() == HloOpcode::kFusion && fusion_kind() == FusionKind::kInput;
 }
@@ -3826,6 +3837,10 @@ const PrecisionConfig& HloInstruction::precision_config() const {
   if (auto* dot = DynCast<HloDotInstruction>(this)) {
     return dot->precision_config();
   }
+
+  if (auto* custom_call = DynCast<HloCustomCallInstruction>(this)) {
+    return custom_call->precision_config();
+  }
   LOG(FATAL) << "Unimplemented method.";
 }
 
@@ -4181,6 +4196,10 @@ const string& HloInstruction::custom_call_target() const {
 
 const PaddingConfig& HloInstruction::padding_config() const {
   return Cast<HloPadInstruction>(this)->padding_config();
+}
+
+PaddingType HloInstruction::padding_type() const {
+  return Cast<HloCustomCallInstruction>(this)->padding_type();
 }
 
 PaddingConfig* HloInstruction::mutable_padding_config() {

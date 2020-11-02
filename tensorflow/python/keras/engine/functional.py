@@ -204,9 +204,9 @@ class Functional(training_lib.Model):
         self.inputs, self.outputs)
     self._network_nodes = nodes
     self._nodes_by_depth = nodes_by_depth
-    self._layers = layers
+    self._self_tracked_trackables = layers
     self._layer_call_argspecs = {}
-    for layer in self._layers:
+    for layer in self._self_tracked_trackables:
       self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
 
     # Build self.input_names and self.output_names.
@@ -608,8 +608,8 @@ class Functional(training_lib.Model):
   def _conform_to_reference_input(self, tensor, ref_input):
     """Set shape and dtype based on `keras.Input`s."""
     if isinstance(tensor, ops.Tensor):
-      # Allow (None,) and (None, 1) Tensors to be passed interchangably. Use the
-      # shape specified by the `keras.Input`.
+      # Allow (None,) and (None, 1) Tensors to be passed interchangeably. Use
+      # the shape specified by the `keras.Input`.
       t_shape = tensor.shape
       t_rank = t_shape.rank
       ref_shape = ref_input.shape
@@ -797,11 +797,11 @@ class Functional(training_lib.Model):
         self._nodes_by_depth[depth].append(node)
 
     # Insert layers and update other layer attrs.
-    layer_set = set(self._layers)
+    layer_set = set(self._self_tracked_trackables)
     deferred_layers = []
     for layer in layers:
       if layer not in layer_set:
-        self._layers.append(layer)
+        self._self_tracked_trackables.append(layer)
         deferred_layers.append(layer)
         self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
         layer_set.add(layer)
@@ -1089,7 +1089,8 @@ def _should_skip_first_node(layer):
   # the network config.
   return (isinstance(layer, Functional) and
           # Filter out Sequential models without an input shape.
-          isinstance(layer._layers[0], input_layer_module.InputLayer))
+          isinstance(layer._self_tracked_trackables[0],
+                     input_layer_module.InputLayer))
 
 
 def connect_ancillary_layers(model, created_layers):
@@ -1116,7 +1117,7 @@ def reconstruct_from_config(config, custom_objects=None, created_layers=None):
     custom_objects: Optional dictionary mapping names (strings) to custom
       classes or functions to be considered during deserialization.
     created_layers: Optional dictionary mapping names to Layer objects. Any
-      layer not in this dictionary will be be created and added to the dict.
+      layer not in this dictionary will be created and added to the dict.
       This function will add new nodes to all layers (excluding InputLayers),
       instead of re-using pre-existing nodes in the layers.
 

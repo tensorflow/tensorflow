@@ -985,17 +985,6 @@ TEST(BasicInterpreter, TestOverflow) {
   }
 }
 
-TEST(BasicInterpreter, TestUseNNAPI) {
-  TestErrorReporter reporter;
-  Interpreter interpreter(&reporter);
-  interpreter.UseNNAPI(true);
-  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
-  ASSERT_EQ(interpreter.Invoke(), kTfLiteOk);
-  interpreter.UseNNAPI(false);
-  ASSERT_EQ(reporter.error_messages(),
-            "Attempting to disable NNAPI delegate after it's applied.");
-}
-
 TEST(BasicInterpreter, TestUnsupportedDelegateFunctions) {
   Interpreter interpreter;
   ASSERT_EQ(interpreter.AddTensors(2), kTfLiteOk);
@@ -1815,8 +1804,14 @@ class TestLazyDelegateProvider : public InterpreterTest {
   };
 
   void InitWithLazyDelegate(int64_t delegate_flags,
-                            bool create_dyanmic_tensor = false) {
-    TfLiteRegistration reg = {nullptr, nullptr, nullptr, nullptr};
+                            bool create_dyanmic_tensor = false,
+                            bool return_error = false) {
+    TfLiteRegistration reg = {nullptr};
+    if (return_error) {
+      reg.prepare = [](TfLiteContext* context, TfLiteNode* node) {
+        return kTfLiteError;
+      };
+    }
     ASSERT_EQ(interpreter_.AddTensors(2), kTfLiteOk);
     interpreter_.SetInputs({0});
     interpreter_.SetOutputs({1});
@@ -1845,6 +1840,16 @@ TEST_F(TestLazyDelegateProvider, ApplicationSuccess) {
   // We clear Interpreter::lazy_delegate_providers_ after they are tried out.
   EXPECT_TRUE(mutable_lazy_delegate_providers()->empty());
   EXPECT_TRUE(HasDelegates());
+}
+
+TEST_F(TestLazyDelegateProvider, ApplicationFailure) {
+  InitWithLazyDelegate(kTfLiteDelegateFlagsNone,
+                       false /* create_dyanmic_tensor */,
+                       true /* return_error */);
+  EXPECT_EQ(kTfLiteError, interpreter_.AllocateTensors());
+  // We clear Interpreter::lazy_delegate_providers_ after they are tried out.
+  EXPECT_TRUE(mutable_lazy_delegate_providers()->empty());
+  EXPECT_FALSE(HasDelegates());
 }
 
 TEST_F(TestLazyDelegateProvider, ApplicationSkipped) {

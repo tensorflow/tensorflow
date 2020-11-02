@@ -52,6 +52,7 @@ from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.keras.utils import object_identity
 from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils import tf_utils
 # A module that only depends on `keras.layers` import these from here.
@@ -68,7 +69,6 @@ from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import nest
-from tensorflow.python.util import object_identity
 from tensorflow.tools.docs import doc_controls
 
 
@@ -212,7 +212,7 @@ class Layer(base_layer.Layer):
     # Dependencies tracked via attribute assignment.
     # All layers in order of horizontal graph traversal.
     # Entries are unique. For models includes input and output layers.
-    self._maybe_create_attribute('_layers', [])
+    self._maybe_create_attribute('_self_tracked_trackables', [])
 
     # These lists will be filled via successive calls
     # to self._add_inbound_node().
@@ -600,9 +600,8 @@ class Layer(base_layer.Layer):
     """
     def check_type_return_shape(s):
       if not isinstance(s, tensor_spec.TensorSpec):
-        raise TypeError(
-            'Only TensorSpec signature types are supported, '
-            'but saw signature signature entry: {}.'.format(s))
+        raise TypeError('Only TensorSpec signature types are supported, '
+                        'but saw signature entry: {}.'.format(s))
       return s.shape
     input_shape = nest.map_structure(check_type_return_shape, input_signature)
     output_shape = self.compute_output_shape(input_shape)
@@ -881,7 +880,7 @@ class Layer(base_layer.Layer):
   @trainable.setter
   def trainable(self, value):
     self._trainable = value
-    for layer in getattr(self, '_layers', []):
+    for layer in getattr(self, '_self_tracked_trackables', []):
       layer.trainable = value
 
   @property
@@ -908,36 +907,6 @@ class Layer(base_layer.Layer):
         raise TypeError('Layer input_spec must be an instance of InputSpec. '
                         'Got: {}'.format(v))
     self._input_spec = value
-
-  @property
-  def trainable_weights(self):
-    if self.trainable:
-      children_weights = self._gather_children_attribute('trainable_weights')
-      return self._dedup_weights(self._trainable_weights + children_weights)
-    else:
-      return []
-
-  @property
-  def non_trainable_weights(self):
-    if self.trainable:
-      children_weights = self._gather_children_attribute(
-          'non_trainable_weights')
-      non_trainable_weights = self._non_trainable_weights + children_weights
-    else:
-      children_weights = self._gather_children_attribute('weights')
-      non_trainable_weights = (
-          self._trainable_weights + self._non_trainable_weights +
-          children_weights)
-    return self._dedup_weights(non_trainable_weights)
-
-  @property
-  def weights(self):
-    """Returns the list of all layer variables/weights.
-
-    Returns:
-      A list of variables.
-    """
-    return self.trainable_weights + self.non_trainable_weights
 
   @property
   def updates(self):
@@ -1023,7 +992,7 @@ class Layer(base_layer.Layer):
     x = tf.keras.layers.Dense(10)(inputs)
     outputs = tf.keras.layers.Dense(1)(x)
     model = tf.keras.Model(inputs, outputs)
-    # Actvity regularization.
+    # Activity regularization.
     model.add_loss(tf.abs(tf.reduce_mean(x)))
     ```
 
@@ -2137,21 +2106,20 @@ class Layer(base_layer.Layer):
     Returns:
       A dict mapping all sublayers to their `trainable` value.
     """
-    layers = layer_utils.filter_empty_layer_containers(self._layers)
-    # Keep track of each top-level layers' `trainable` as well as the
-    # state of all of its sublayers.
+    layers = self._flatten_layers(include_self=False, recursive=False)
     trainable_state = {self: self.trainable}
-    for layer in layers:
-      trainable_state.update(layer._get_trainable_state())
+    for l in layers:
+      trainable_state.update(l._get_trainable_state())
     return trainable_state
 
   def _set_trainable_state(self, trainable_state):
     """Set `trainable` state for each sublayer."""
-    layers = layer_utils.filter_empty_layer_containers(self._layers)
     if self in trainable_state:
       self.trainable = trainable_state[self]
-    for layer in layers:
-      layer._set_trainable_state(trainable_state)
+    layers = self._flatten_layers(include_self=False, recursive=False)
+    for l in layers:
+      if l in trainable_state:
+        l._set_trainable_state(trainable_state)
 
   @property
   def _obj_reference_counts(self):
@@ -2175,7 +2143,7 @@ class Layer(base_layer.Layer):
       default_value: Object, the default value of the attribute.
     """
     if not hasattr(self, name):
-      super(Layer, self).__setattr__(name, default_value)
+      self.__setattr__(name, default_value)
 
   def __delattr__(self, name):
     # For any super.__delattr__() call, we will directly use the implementation
@@ -2209,8 +2177,8 @@ class Layer(base_layer.Layer):
     if (isinstance(existing_value, Layer)
         or base_layer_utils.has_weights(existing_value)):
       super(tracking.AutoTrackable, self).__setattr__(
-          '_layers',
-          [l for l in self._layers if l is not existing_value])
+          '_self_tracked_trackables',
+          [l for l in self._self_tracked_trackables if l is not existing_value])
     if isinstance(existing_value, tf_variables.Variable):
       super(tracking.AutoTrackable, self).__setattr__(
           '_trainable_weights',
@@ -2258,11 +2226,11 @@ class Layer(base_layer.Layer):
     # Append value to self._layers if relevant
     if (getattr(self, '_auto_track_sub_layers', True) and
         (isinstance(value, Layer) or base_layer_utils.has_weights(value))):
-      self._maybe_create_attribute('_layers', [])
+      self._maybe_create_attribute('_self_tracked_trackables', [])
       # We need to check object identity to avoid de-duplicating empty
       # container types which compare equal.
-      if not any((layer is value for layer in self._layers)):
-        self._layers.append(value)
+      if not any((layer is value for layer in self._self_tracked_trackables)):
+        self._self_tracked_trackables.append(value)
         if hasattr(value, '_use_resource_variables'):
           # Legacy layers (V1 tf.layers) must always use
           # resource variables.
@@ -2297,18 +2265,6 @@ class Layer(base_layer.Layer):
     # Skip the auto trackable from tf.Module to keep status quo. See the comment
     # at __delattr__.
     super(tracking.AutoTrackable, self).__setattr__(name, value)
-
-  def _gather_children_attribute(self, attribute):
-    assert attribute in {
-        'weights', 'trainable_weights', 'non_trainable_weights'
-    }
-    if hasattr(self, '_layers'):
-      nested_layers = layer_utils.filter_empty_layer_containers(
-          self._layers)
-      return list(
-          itertools.chain.from_iterable(
-              getattr(layer, attribute) for layer in nested_layers))
-    return []
 
   # This is a hack so that the is_layer (within
   # training/trackable/layer_utils.py) check doesn't get the weights attr.

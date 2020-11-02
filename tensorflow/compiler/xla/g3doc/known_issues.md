@@ -30,3 +30,12 @@ random operations, such as `tf.random.normal`, or `tf.nn.dropout`.  XLA will
 behave as if the compilation was seeded with a new unique seed at each run. This
 limitation does not apply to stateless random ops.
 
+## TensorFlow while loops need to be bounded (or have backprop disabled)
+
+TF while [loops](https://www.tensorflow.org/api_docs/python/tf/while_loop)
+created using `tf.while_loop` support backpropagation by accumulating all
+intermediate results in a `TensorArray`.
+
+Since XLA only supports bounded `TensorArray`s, all compiled while loops need to
+either have `maximum_iterations` parameter set to a constant value known at
+compile time, or backpropagation disabled using `back_prop=False`.

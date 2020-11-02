@@ -143,10 +143,13 @@ def : Pat<(TF_FloorDivOp AnyRankedTensor:$l, AnyRankedTensor:$r),
         (HLO_SelectOp
          (HLOClient_BroadcastCompareOp
           (HLOClient_BroadcastCompareOp $l, (HLO_ConstOp (GetScalarOfType<0> $l)),
-           (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LT),
+           (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LT,
+           (HLO_DEFAULT_COMPARISON_TYPE)),
           (HLOClient_BroadcastCompareOp $r, (HLO_ConstOp (GetScalarOfType<0> $r)),
-           (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LT),
-          (BinBroadcastDimensions $l, $r), HLO_COMPARISON_DIRECTION_EQ),
+           (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LT,
+           (HLO_DEFAULT_COMPARISON_TYPE)),
+          (BinBroadcastDimensions $l, $r), HLO_COMPARISON_DIRECTION_EQ,
+          (HLO_DEFAULT_COMPARISON_TYPE)),
          (HLOClient_BroadcastDivOp $l, $r, (BinBroadcastDimensions $l, $r)),
          (HLOClient_BroadcastDivOp
           (HLO_NegOp:$neg (HLOClient_BroadcastAddOp (HLO_AbsOp $l),
@@ -170,14 +173,18 @@ def : Pat<(TF_FloorModOp AnyRankedTensor:$l, AnyRankedTensor:$r),
         (HLOClient_BroadcastCompareOp
          (HLOClient_BroadcastRemOp:$rem $l, $r, (BinBroadcastDimensions $l, $r)),
          (HLO_ConstOp:$l_zeros (GetScalarOfType<0> $l)),
-         (BinBroadcastDimensions $l, $rem), HLO_COMPARISON_DIRECTION_NE),
+         (BinBroadcastDimensions $l, $rem), HLO_COMPARISON_DIRECTION_NE,
+         (HLO_DEFAULT_COMPARISON_TYPE)),
         (HLOClient_BroadcastCompareOp
          (HLOClient_BroadcastCompareOp:$r_cmp $r,
           (HLO_ConstOp:$r_zeros (GetScalarOfType<0> $r)),
-          (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LT),
+          (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LT,
+          (HLO_DEFAULT_COMPARISON_TYPE)),
          (HLOClient_BroadcastCompareOp:$rem_cmp $rem, $r_zeros,
-          (BinBroadcastDimensions $rem, $r_zeros), HLO_COMPARISON_DIRECTION_LT),
-         (BinBroadcastDimensions $r_cmp, $rem_cmp), HLO_COMPARISON_DIRECTION_NE),
+          (BinBroadcastDimensions $rem, $r_zeros), HLO_COMPARISON_DIRECTION_LT,
+          (HLO_DEFAULT_COMPARISON_TYPE)),
+         (BinBroadcastDimensions $r_cmp, $rem_cmp), HLO_COMPARISON_DIRECTION_NE,
+         (HLO_DEFAULT_COMPARISON_TYPE)),
         (NullDenseIntElementsAttr)),
        (HLOClient_BroadcastAddOp $r,
         $rem, (BinBroadcastDimensions $r, $rem)), $rem)>;
@@ -204,7 +211,8 @@ foreach fromToBinPair = [[TF_LogicalAndOp, HLOClient_BroadcastAndOp],
 class DirectComparePat<Op FromOp, StrEnumAttrCase direction>
   : Pat<(FromOp AnyRankedTensor:$l, AnyRankedTensor:$r),
         (HLOClient_BroadcastCompareOp
-           $l, $r, (BinBroadcastDimensions $l, $r), direction)>;
+           $l, $r, (BinBroadcastDimensions $l, $r), direction,
+           (HLO_DEFAULT_COMPARISON_TYPE))>;
 
 def : DirectComparePat<TF_GreaterOp, HLO_COMPARISON_DIRECTION_GT>;
 def : DirectComparePat<TF_GreaterEqualOp, HLO_COMPARISON_DIRECTION_GE>;
@@ -215,7 +223,8 @@ class EqualityPat<Op FromOp, StrEnumAttrCase direction>
     : Pat<(FromOp AnyRankedTensor:$l, AnyRankedTensor:$r,
            TrueBoolAttr:$incompatible_shape_error),
         (HLOClient_BroadcastCompareOp
-         $l, $r, (BinBroadcastDimensions $l, $r), direction),
+         $l, $r, (BinBroadcastDimensions $l, $r), direction,
+         (HLO_DEFAULT_COMPARISON_TYPE)),
         [(AreBroadcastCompatible $l, $r)]>;
 
 def : EqualityPat<TF_EqualOp, HLO_COMPARISON_DIRECTION_EQ>;
@@ -404,14 +413,15 @@ def : Pattern<(TF_MatrixBandPartOp:$op AnyStaticShapeTensor:$input, $num_lower,
           (HLO_SelectOp:$num_lower_or_m
            (HLO_CompareOp
             $num_lower, (HLO_ConstOp:$zero (ConstantSplat<"0"> $num_lower)),
-            HLO_COMPARISON_DIRECTION_LT
+            HLO_COMPARISON_DIRECTION_LT, (HLO_DEFAULT_COMPARISON_TYPE)
            ),
            $m_dim,
            $num_lower
           ),
           (HLO_SelectOp:$num_upper_or_n
            (HLO_CompareOp
-            $num_upper, $zero, HLO_COMPARISON_DIRECTION_LT
+            $num_upper, $zero, HLO_COMPARISON_DIRECTION_LT,
+            (HLO_DEFAULT_COMPARISON_TYPE)
            ),
            $n_dim,
            $num_upper
@@ -424,10 +434,12 @@ def : Pattern<(TF_MatrixBandPartOp:$op AnyStaticShapeTensor:$input, $num_lower,
               (createIotaOp<"1"> $op, $input, $num_lower),
               (createIotaOp<"0"> $op, $input, $num_lower)
              ),
-             (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LE
+             (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LE,
+             (HLO_DEFAULT_COMPARISON_TYPE)
             ),
             (HLOClient_BroadcastCompareOp $offset, $num_upper_or_n,
-             (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LE
+             (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LE,
+             (HLO_DEFAULT_COMPARISON_TYPE)
             )
            ),
            $input,
@@ -452,7 +464,7 @@ def : Pat<(TF_EluOp AnyRankedTensor:$features),
               $features,
               (HLO_ConstOp:$zero (GetScalarOfType<0> $features)),
               (BinBroadcastDimensions $zero, $features),
-              HLO_COMPARISON_DIRECTION_GT),
+              HLO_COMPARISON_DIRECTION_GT, (HLO_DEFAULT_COMPARISON_TYPE)),
            $features,
            (HLO_Expm1Op $features))>;
 
@@ -462,7 +474,7 @@ def : Pat<(TF_EluGradOp AnyStaticShapeTensor:$gradients, AnyRankedTensor:$featur
               $features,
               (HLO_ConstOp:$zero (GetScalarOfType<0> $features)),
               (BinBroadcastDimensions $zero, $features),
-              HLO_COMPARISON_DIRECTION_GT),
+              HLO_COMPARISON_DIRECTION_GT, (HLO_DEFAULT_COMPARISON_TYPE)),
             $gradients,
             (HLO_MulOp
              $gradients,
@@ -507,7 +519,8 @@ def : Pat<(TF_ReluGradOp AnyStaticShapeTensor:$gradients, AnyRankedTensor:$featu
           (HLO_SelectOp
             (HLOClient_BroadcastCompareOp $features,
               (HLO_ConstOp (GetScalarOfType<0> $features)),
-              (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_GT),
+              (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_GT,
+              (HLO_DEFAULT_COMPARISON_TYPE)),
             $gradients, (HLO_ConstOp (ConstantSplat<"0"> $gradients)))>;
 
 //===----------------------------------------------------------------------===//
@@ -679,7 +692,8 @@ def : Pattern<(TF_SoftplusOp AnyTensor:$features),
                   $features,
                   (HLO_NegOp $threshold),
                   (NullDenseIntElementsAttr),
-                  HLO_COMPARISON_DIRECTION_GT
+                  HLO_COMPARISON_DIRECTION_GT,
+                  (HLO_DEFAULT_COMPARISON_TYPE)
                  ),
                  $features,
                  (HLO_SelectOp
@@ -687,7 +701,8 @@ def : Pattern<(TF_SoftplusOp AnyTensor:$features),
                    $features,
                    $threshold,
                    (NullDenseIntElementsAttr),
-                   HLO_COMPARISON_DIRECTION_LT
+                   HLO_COMPARISON_DIRECTION_LT,
+                   (HLO_DEFAULT_COMPARISON_TYPE)
                   ),
                   $features_exp,
                   (HLO_Log1pOp $features_exp)

@@ -470,6 +470,10 @@ typedef struct {
   bool reverse;
 } TfLiteCumsumParams;
 
+typedef struct {
+  int init_subgraph_index;
+} TfLiteCallOnceParams;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

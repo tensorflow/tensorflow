@@ -1250,7 +1250,10 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
   VLOG(3) << allocation_info_str_;
   DumpDebugStringsIfEnabled();
 
-  return result_;
+  HeapSimulator::Result<HloValue> result;
+  result.heap_size = result_.heap_size;
+  result.heap_results.emplace_back(std::move(result_));
+  return result;
 }
 
 void AlternateMemoryBestFitHeap::AddRequiredAssignmentsForColocatedIntervals(
@@ -2726,6 +2729,12 @@ void MemorySpaceAssignment::Allocation::AddUse(HloUse use) {
 
 Status MemorySpaceAssignment::Allocation::Process(
     MemorySpaceAssignment* memory_space_assignment) {
+  // No need to do anything if this is an allocation in the default memory
+  // space. The calls below may insert redundant tuple/get-tuple-element
+  // instructions, unnecessarily increasing memory and compile time.
+  if (memory_space() == MemorySpace::kDefault) {
+    return Status::OK();
+  }
   HloInstruction* producing_instruction = AddGetTupleElements();
   HloComputation* computation = producing_instruction->parent();
   for (const HloUse& use : uses_) {

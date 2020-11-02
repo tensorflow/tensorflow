@@ -14,14 +14,15 @@ Host Tools (i.e analysis tools etc.)
 
 #### Step 1. Install CMake tool
 
-It requires CMake 3.16 or higher. On Ubunutu, you can simply run the following
+It requires CMake 3.16 or higher. On Ubuntu, you can simply run the following
 command.
 
 ```sh
 sudo apt-get install cmake
 ```
 
-Or you can follow [the offcial cmake installation guide](https://cmake.org/install/)
+Or you can follow
+[the official cmake installation guide](https://cmake.org/install/)
 
 #### Step 2. Clone TensorFlow repository
 

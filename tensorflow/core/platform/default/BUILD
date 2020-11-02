@@ -580,6 +580,7 @@ package_group(
     name = "core_and_platform_packages",
     packages = [
         "//tensorflow/core",
+        "//tensorflow/core/lib/jpeg",
         "//tensorflow/core/platform",
     ],
 )

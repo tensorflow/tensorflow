@@ -429,15 +429,6 @@ class Interpreter {
   /// Returns status of success or failure.
   TfLiteStatus Invoke();
 
-  /// Enable or disable NNAPI (true to enable). Disabled by default.
-  ///
-  /// WARNING: NNAPI cannot be disabled after the graph has been prepared
-  /// (via `AllocateTensors`) with NNAPI enabled.
-  ///
-  /// WARNING: This API is deprecated, prefer using the NNAPI delegate directly.
-  /// This method will be removed in a future release.
-  void UseNNAPI(bool enable);
-
   /// Set the number of threads available to the interpreter.
   ///
   /// NOTE: num_threads should be >= -1.

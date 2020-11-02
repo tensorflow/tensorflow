@@ -471,6 +471,16 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     _test_gradients(self, op_fn, [constant_op.constant(value)], order=3)
 
   def testFusedBatchNormGradsInference(self):
+<<<<<<< HEAD
+=======
+
+    if test.is_built_with_rocm():
+      # This test was added recently and has been failing on the ROCm
+      # platform, since it was added.
+      # TODO(rocm): do root cause analysis of test failure and fix it.
+      self.skipTest("Test fails on ROCm platform, needs further analysis")
+
+>>>>>>> google_upstream/master
     x_shape = [4, 10, 10, 2]
     increment = 3. / math_ops.reduce_prod(
         constant_op.constant(x_shape, dtype=dtypes.float32))
@@ -753,7 +763,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
       [("ForwardPropFirst", True),
        ("TapeFirst", False)])
   def testForwardOverBackwardMemoryEfficiency(self, forward_prop_first):
-    # Watching depends depends on nesting, not creation order
+    # Watching depends on nesting, not creation order
     c = constant_op.constant(1.)
     if forward_prop_first:
       forward_accumulator = forwardprop.ForwardAccumulator(c, .1)
@@ -786,7 +796,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
        ("TapeFirst", False)])
   def testBackwardOverForward(self, forward_prop_first):
     c = constant_op.constant(1.)
-    # Watching depends depends on nesting, not creation order
+    # Watching depends on nesting, not creation order
     if forward_prop_first:
       forward_accumulator = forwardprop.ForwardAccumulator(c, .1)
       gradient_tape = backprop.GradientTape()

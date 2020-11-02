@@ -296,6 +296,9 @@ std::string GetSuggestion(BottleneckType type) {
       "data_performance#parallelizing_data_transformation";
   constexpr absl::string_view kTfGuideCacheLink =
       "https://www.tensorflow.org/guide/data_performance#caching";
+  constexpr absl::string_view kTfDataServiceLink =
+      "https://www.tensorflow.org/api_docs/python/tf/data/experimental/"
+      "service?version=nightly";
   switch (type) {
     case BottleneckType::kSlowSource:
       return absl::StrFormat(
@@ -306,6 +309,14 @@ std::string GetSuggestion(BottleneckType type) {
           "more details.<br/>",
           AnchorElement(kPlaybookSourceDatasetLink, "here"),
           AnchorElement(kTfGuideParallelDataExtractionLink, "here"));
+    case BottleneckType::kSlowDataService:
+      return absl::StrFormat(
+          "1. Fetching data from tf.data service took a while. Profile the "
+          "tf.data service worker to analyze the issue further.<br/>"
+          "2. See %s for more details on tf.data service.<br/>"
+          "3. See %s for other suggestions.",
+          AnchorElement(kTfDataServiceLink, "this"),
+          AnchorElement(kPlaybookLink, "this"));
     case BottleneckType::kSlowRemoteSource:
       return absl::StrFormat(
           "1. The remote data source is slow. Profile its host to analyze the "
@@ -399,10 +410,11 @@ BottleneckType GetBottleneckType(absl::string_view bottleneck_iterator_name) {
        {"TensorSlice", BottleneckType::kSlowSource},
        {"Generator", BottleneckType::kSlowSource},
        {"SyntheticDatasetOp", BottleneckType::kSlowSource},
+       // tf.data service.
+       {"DataService", BottleneckType::kSlowDataService},
        // Read from remote memory.
        {"GuzzlerDataGuzzlerRemoteDataset", BottleneckType::kSlowRemoteSource},
        {"ReverbDataset", BottleneckType::kSlowRemoteSource},
-       {"DatasetService", BottleneckType::kSlowRemoteSource},
        {"DatasetSampleGame", BottleneckType::kSlowRemoteSource},
        {"Courier", BottleneckType::kSlowRemoteSource},
        {"ReverbEpisodeDataset", BottleneckType::kSlowRemoteSource},

@@ -103,6 +103,16 @@ tf_py_test(
     ],
 )
 
+tf_py_test(
+    name = "discretization_adapt_benchmark",
+    srcs = ["discretization_adapt_benchmark.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python/keras/layers/preprocessing:discretization",
+    ],
+)
+
 cuda_py_test(
     name = "image_preproc_benchmark",
     srcs = ["image_preproc_benchmark.py"],

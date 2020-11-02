@@ -400,3 +400,6 @@ tensorflow::TensorHandle::Tensor
 
 [python_api_dispatcher] # python_api_dispatcher
 tensorflow::PythonAPIDispatcher
+
+[python_tensor_converter] # python_tensor_converter
+tensorflow::PythonTensorConverter

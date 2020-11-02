@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/lite/delegates/gpu/cl/arguments.h"
+#include "tensorflow/lite/delegates/gpu/cl/cl_arguments.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_errors.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
@@ -44,8 +45,9 @@ class OpenClConverterImpl : public TensorObjectConverter {
   absl::Status DispatchKernel(cl_mem buffer_mem, Tensor* tensor) {
     kernel_.ResetBindingCounter();
     RETURN_IF_ERROR(kernel_.SetMemoryAuto(buffer_mem));
-    RETURN_IF_ERROR(args_.SetObjectRef("tensor", tensor));
-    RETURN_IF_ERROR(args_.Bind(kernel_.kernel(), kernel_.GetBindingCounter()));
+    RETURN_IF_ERROR(cl_args_.SetObjectRef("tensor", tensor));
+    RETURN_IF_ERROR(
+        cl_args_.Bind(kernel_.kernel(), kernel_.GetBindingCounter()));
     const int3 grid = int3(tensor->Width() * tensor->Batch(), tensor->Height(),
                            tensor->Slices());
     const int3 work_group_size = {16, 8, 1};
@@ -53,7 +55,7 @@ class OpenClConverterImpl : public TensorObjectConverter {
     return queue_->Dispatch(kernel_, work_groups_count, work_group_size);
   }
 
-  Arguments args_;
+  CLArguments cl_args_;
   BHWC shape_;
   CLKernel kernel_;
   TensorDescriptor tensor_descriptor_;
@@ -115,7 +117,8 @@ class TensorToTensorConverter : public OpenClConverterImpl {
     src_tensor_descriptor_.storage_type = ToTensorStorageType(
         input_def.object_def.object_type, input_def.object_def.data_layout);
     src_tensor_descriptor_.data_type = input_def.object_def.data_type;
-    args_.AddObjectRef(
+    Arguments args;
+    args.AddObjectRef(
         "src_tensor", AccessType::READ,
         absl::make_unique<TensorDescriptor>(src_tensor_descriptor_));
 
@@ -123,7 +126,7 @@ class TensorToTensorConverter : public OpenClConverterImpl {
     dst_tensor_descriptor_.storage_type = ToTensorStorageType(
         output_def.object_def.object_type, output_def.object_def.data_layout);
     dst_tensor_descriptor_.data_type = output_def.object_def.data_type;
-    args_.AddObjectRef(
+    args.AddObjectRef(
         "dst_tensor", AccessType::WRITE,
         absl::make_unique<TensorDescriptor>(dst_tensor_descriptor_));
 
@@ -152,8 +155,8 @@ class TensorToTensorConverter : public OpenClConverterImpl {
     context_ = &environment->context();
     shape_ = BHWC(input_def.dimensions.b, input_def.dimensions.h,
                   input_def.dimensions.w, input_def.dimensions.c);
-    RETURN_IF_ERROR(
-        args_.TransformToCLCode(environment->device().info_, {}, &shader_src));
+    RETURN_IF_ERROR(cl_args_.Init(environment->device().GetInfo(), {}, nullptr,
+                                  &args, &shader_src));
     return environment->program_cache()->GetOrCreateCLKernel(
         shader_src, "tensor_to_tensor", environment->context(),
         environment->device(), &kernel_);
@@ -172,9 +175,9 @@ class TensorToTensorConverter : public OpenClConverterImpl {
     Tensor dst_tensor;
     RETURN_IF_ERROR(CreateSharedTensor(*context_, out_memory, shape_,
                                        dst_tensor_descriptor_, &dst_tensor));
-    RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", &src_tensor));
-    RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", &dst_tensor));
-    RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
+    RETURN_IF_ERROR(cl_args_.SetObjectRef("src_tensor", &src_tensor));
+    RETURN_IF_ERROR(cl_args_.SetObjectRef("dst_tensor", &dst_tensor));
+    RETURN_IF_ERROR(cl_args_.Bind(kernel_.kernel()));
     const int3 grid = int3(dst_tensor.Width() * dst_tensor.Batch(),
                            dst_tensor.Height(), dst_tensor.Slices());
     const int3 work_group_size = {16, 8, 1};
@@ -203,8 +206,9 @@ class TensorToBHWCBufferConverter : public OpenClConverterImpl {
     tensor_descriptor_.layout = Layout::BHWC;
     tensor_descriptor_.storage_type = src_tensor_type;
     tensor_descriptor_.data_type = input_def.object_def.data_type;
-    args_.AddObjectRef("tensor", AccessType::READ,
-                       absl::make_unique<TensorDescriptor>(tensor_descriptor_));
+    Arguments args;
+    args.AddObjectRef("tensor", AccessType::READ,
+                      absl::make_unique<TensorDescriptor>(tensor_descriptor_));
 
     const bool need_fp16_support =
         input_def.object_def.data_type == DataType::FLOAT16 ||
@@ -244,8 +248,8 @@ class TensorToBHWCBufferConverter : public OpenClConverterImpl {
     context_ = &environment->context();
     shape_ = BHWC(input_def.dimensions.b, input_def.dimensions.h,
                   input_def.dimensions.w, input_def.dimensions.c);
-    RETURN_IF_ERROR(
-        args_.TransformToCLCode(environment->device().info_, {}, &shader_src));
+    RETURN_IF_ERROR(cl_args_.Init(environment->device().GetInfo(), {}, nullptr,
+                                  &args, &shader_src));
     return environment->program_cache()->GetOrCreateCLKernel(
         shader_src, "tensor_to_bhwc", environment->context(),
         environment->device(), &kernel_);
@@ -300,8 +304,9 @@ class BHWCBufferToTensorConverter : public OpenClConverterImpl {
     tensor_descriptor_.layout = Layout::BHWC;
     tensor_descriptor_.storage_type = dst_tensor_type;
     tensor_descriptor_.data_type = output_def.object_def.data_type;
-    args_.AddObjectRef("tensor", AccessType::WRITE,
-                       absl::make_unique<TensorDescriptor>(tensor_descriptor_));
+    Arguments args;
+    args.AddObjectRef("tensor", AccessType::WRITE,
+                      absl::make_unique<TensorDescriptor>(tensor_descriptor_));
 
     const bool need_fp16_support =
         input_def.object_def.data_type == DataType::FLOAT16 ||
@@ -338,8 +343,8 @@ class BHWCBufferToTensorConverter : public OpenClConverterImpl {
     context_ = &environment->context();
     shape_ = BHWC(output_def.dimensions.b, output_def.dimensions.h,
                   output_def.dimensions.w, output_def.dimensions.c);
-    RETURN_IF_ERROR(
-        args_.TransformToCLCode(environment->device().info_, {}, &shader_src));
+    RETURN_IF_ERROR(cl_args_.Init(environment->device().GetInfo(), {}, nullptr,
+                                  &args, &shader_src));
     return environment->program_cache()->GetOrCreateCLKernel(
         shader_src, "bhwc_to_tensor", environment->context(),
         environment->device(), &kernel_);

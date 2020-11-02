@@ -52,39 +52,14 @@ cc_library(
     srcs = ["arguments.cc"],
     hdrs = ["arguments.h"],
     deps = [
-        ":cl_device",
-        ":gpu_object",
-        ":opencl_wrapper",
+        ":gpu_object_desc",
         ":serialization_cc_fbs",
-        ":tensor_type",
-        ":util",
         "//tensorflow/lite/delegates/gpu/common:access_type",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_test(
-    name = "arguments_test",
-    srcs = ["arguments_test.cc"],
-    linkstatic = True,
-    tags = tf_gpu_tests_tags() + [
-        "linux",
-        "local",
-    ],
-    deps = [
-        ":arguments",
-        ":buffer",
-        ":device_info",
-        ":gpu_object",
-        ":tensor",
-        ":tensor_type",
-        "//tensorflow/lite/delegates/gpu/common:data_type",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -129,6 +104,48 @@ cc_library(
         ":environment",
         ":opencl_wrapper",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "cl_arguments",
+    srcs = ["cl_arguments.cc"],
+    hdrs = ["cl_arguments.h"],
+    deps = [
+        ":arguments",
+        ":buffer",
+        ":cl_context",
+        ":device_info",
+        ":gpu_object",
+        ":linear_storage",
+        ":tensor",
+        ":tensor_type",
+        ":texture2d",
+        "//tensorflow/lite/delegates/gpu/common:access_type",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common:util",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_test(
+    name = "cl_arguments_test",
+    srcs = ["cl_arguments_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":arguments",
+        ":buffer",
+        ":cl_arguments",
+        ":device_info",
+        ":gpu_object",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -354,11 +371,21 @@ cc_library(
 
 cc_library(
     name = "gpu_object",
-    srcs = ["gpu_object.cc"],
     hdrs = ["gpu_object.h"],
     deps = [
-        ":cl_context",
+        ":gpu_object_desc",
         ":opencl_wrapper",
+        ":serialization_cc_fbs",
+        "//tensorflow/lite/delegates/gpu/common:access_type",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:status",
+    ],
+)
+
+cc_library(
+    name = "gpu_object_desc",
+    hdrs = ["gpu_object_desc.h"],
+    deps = [
         ":serialization_cc_fbs",
         "//tensorflow/lite/delegates/gpu/common:access_type",
         "//tensorflow/lite/delegates/gpu/common:data_type",
@@ -418,6 +445,7 @@ cc_library(
     srcs = ["linear_storage.cc"],
     hdrs = ["linear_storage.h"],
     deps = [
+        ":cl_context",
         ":gpu_object",
         ":opencl_wrapper",
         ":tensor_type",
@@ -550,9 +578,11 @@ cc_library(
     srcs = ["tensor_type.cc"],
     hdrs = ["tensor_type.h"],
     deps = [
-        ":gpu_object",
+        ":gpu_object_desc",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
+        "//tensorflow/lite/delegates/gpu/common:util",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -606,6 +636,7 @@ cc_library(
     srcs = ["util.cc"],
     hdrs = ["util.h"],
     deps = [
+        ":gpu_object_desc",
         ":opencl_wrapper",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:status",

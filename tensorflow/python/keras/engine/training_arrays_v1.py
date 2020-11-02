@@ -94,7 +94,7 @@ def model_iteration(model,
         validation from data tensors). Ignored with the default value of
         `None`.
       validation_freq: Only relevant if validation data is provided. Integer or
-        `collections_abc.Container` instance (e.g. list, tuple, etc.). If an
+        `collections.abc.Container` instance (e.g. list, tuple, etc.). If an
         integer, specifies how many training epochs to run before a new
         validation run is performed, e.g. `validation_freq=2` runs
         validation every 2 epochs. If a Container, specifies the epochs on

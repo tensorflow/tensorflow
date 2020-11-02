@@ -204,6 +204,13 @@ TFE_OutputTensorHandles InputTFE_OutputTensorHandles(
 #else
   long sz = PyLong_AsLong(num_outputs.ptr());  // NOLINT
 #endif
+  // We can't handle more than int32 sizes for number of outputs.
+  if (static_cast<long>(static_cast<int32>(sz)) != sz) {  // NOLINT
+    PyErr_SetString(PyExc_ValueError, tensorflow::strings::StrCat(
+                                          "Number of outputs is too big: ", sz)
+                                          .c_str());
+    throw py::error_already_set();
+  }
   if (sz > 0) {
 #if PY_MAJOR_VERSION < 3
     output_tensor_handles.resize(PyInt_AsLong(num_outputs.ptr()), nullptr);
