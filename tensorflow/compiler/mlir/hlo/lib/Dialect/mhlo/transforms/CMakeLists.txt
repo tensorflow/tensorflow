@@ -67,6 +67,7 @@ add_mlir_library(MhloPasses
   DEPENDS
   MLIRhlo_opsIncGen
   MLIRMhloLowerComplexIncGen
+  MLIRMhloPassIncGen
 
   LINK_COMPONENTS
   Core
