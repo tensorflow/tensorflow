@@ -316,8 +316,10 @@ class LoadDatasetOp::Dataset : public DatasetBase {
       std::vector<Tensor> reader_output;
       reader_input.push_back(std::move(input_dataset_tensor));
 
+      // NOTE: We intentionally ignore resource modeling outside GetNext().
       TF_RETURN_IF_ERROR(instantiated_captured_func_->Run(
-          ctx, std::move(reader_input), &reader_output, model_node()));
+          ctx, std::move(reader_input), &reader_output,
+          std::shared_ptr<model::Node>(nullptr)));
       if (reader_output.size() != 1) {
         return errors::InvalidArgument(
             "reader_func returns more than one argument.");
