@@ -211,11 +211,26 @@ class InstantiatedCapturedFunction {
   // Runs the instantiated captured function. This method takes ownership of
   // the tensors in `args`, in order to be able to deallocate them as early as
   // possible. Use `RunWithBorrowedArgs()` if the caller needs to retain
+  // ownership of the `args`.
+  Status Run(IteratorContext* ctx, std::vector<Tensor>&& args,
+             std::vector<Tensor>* rets) const;
+
+  // Runs the instantiated captured function. This method takes ownership of
+  // the tensors in `args`, in order to be able to deallocate them as early as
+  // possible. Use `RunWithBorrowedArgs()` if the caller needs to retain
   // ownership of the `args`. Pass non-null `node` to record processing time
   // for modeling Iterator's GetNext() resource usage.
   Status Run(IteratorContext* ctx, std::vector<Tensor>&& args,
              std::vector<Tensor>* rets,
-             const std::shared_ptr<model::Node>& node = nullptr) const;
+             const std::shared_ptr<model::Node>& node) const;
+
+  // Synchronously runs the captured function on the given `args`, and stores
+  // the results in `*rets`. Prefer to use `Run()` or `RunAsync()` when
+  // possible.
+  Status RunWithBorrowedArgs(
+      IteratorContext* ctx,
+      const std::vector<Tensor>& args,
+      std::vector<Tensor>* rets) const;
 
   // Synchronously runs the captured function on the given `args`, and stores
   // the results in `*rets`. Prefer to use `Run()` or `RunAsync()` when
@@ -225,7 +240,7 @@ class InstantiatedCapturedFunction {
       IteratorContext* ctx,
       const std::vector<Tensor>& args,
       std::vector<Tensor>* rets,
-      const std::shared_ptr<model::Node>& node = nullptr) const;
+      const std::shared_ptr<model::Node>& node) const;
 
   // Synchronously runs the captured function on the given `args`, and stores
   // the results in `*rets`. Prefer to use `Run()` or `RunAsync()` when

@@ -816,6 +816,12 @@ InstantiatedCapturedFunction::InstantiatedCapturedFunction(
 
 Status InstantiatedCapturedFunction::Run(
     IteratorContext* ctx, std::vector<Tensor>&& args,
+    std::vector<Tensor>* rets) const {
+  return Run(ctx, std::move(args), rets, /*node=*/nullptr);
+}
+
+Status InstantiatedCapturedFunction::Run(
+    IteratorContext* ctx, std::vector<Tensor>&& args,
     std::vector<Tensor>* rets, const std::shared_ptr<model::Node>& node) const {
   auto& info = captured_func_->short_circuit_info();
   if (!info.indices.empty()) {
@@ -870,6 +876,12 @@ Status InstantiatedCapturedFunction::Run(
     TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame));
   }
   return frame.ConsumeRetvals(rets);
+}
+
+Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
+    IteratorContext* ctx, const std::vector<Tensor>& args,
+    std::vector<Tensor>* ret) const {
+  return RunWithBorrowedArgs(ctx, args, ret, /*node=*/nullptr);
 }
 
 Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
