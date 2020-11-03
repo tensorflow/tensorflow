@@ -49,7 +49,8 @@ void TestConcatenateTwoInputs(const int* input1_dims_data,
 
   TfLiteConcatenationParams builtin_data = {
       .axis = axis,
-      .activation = kTfLiteActNone  // Only activation supported in this impl
+      .activation = kTfLiteActNone,  // Only activation supported in this impl
+      .fixed_point_scaling = false
   };
 
   const TfLiteRegistration registration =
