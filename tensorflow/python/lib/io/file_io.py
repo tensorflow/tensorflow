@@ -339,7 +339,7 @@ def write_string_to_file(filename, file_content):
 
 
 @tf_export(v1=["gfile.Glob"])
-def get_matching_files(filename, num_threads=1):
+def get_matching_files(filename, num_threads=None):
   """Returns a list of files that match the given pattern(s).
 
   Args:
@@ -361,7 +361,7 @@ def get_matching_files(filename, num_threads=1):
 
 
 @tf_export("io.gfile.glob")
-def get_matching_files_v2(pattern, num_threads=1):
+def get_matching_files_v2(pattern, num_threads=None):
   r"""Returns a list of files that match the given pattern(s).
 
   The patterns are defined as strings. Supported patterns are defined
