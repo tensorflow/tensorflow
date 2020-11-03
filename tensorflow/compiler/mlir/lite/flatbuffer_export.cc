@@ -195,6 +195,22 @@ static bool IsConst(Operation* op) {
              tfl::SparseConstOp, tfl::SparseQConstOp>(op);
 }
 
+static bool IsTFResourceOp(Operation* op) {
+  for (const auto& operand : op->getOperands()) {
+    auto elementType = getElementTypeOrSelf(operand.getType());
+    if (elementType.isa<mlir::TF::ResourceType>()) {
+      return true;
+    }
+  }
+  for (const auto& result : op->getResults()) {
+    auto elementType = getElementTypeOrSelf(result.getType());
+    if (elementType.isa<mlir::TF::ResourceType>()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 template <typename T>
 static bool HasValidTFLiteType(Value value, T& error_handler) {
   // None type is allowed to represent unspecified operands.
@@ -246,8 +262,18 @@ static bool IsValidTFLiteMlirModule(ModuleOp module) {
     auto& bb = fn.front();
 
     for (auto arg : bb.getArguments()) {
-      if (!HasValidTFLiteType(arg, fn))
+      if (!HasValidTFLiteType(arg, fn)) {
+        auto elementType = getElementTypeOrSelf(arg.getType());
+        if (elementType.isa<mlir::TF::VariantType>()) {
+          return fn.emitError(
+                     "function argument uses variant type. Currently, the "
+                     "variant type is not natively supported in TFLite. Please "
+                     "consider not using the variant type: ")
+                     << arg.getType(),
+                 false;
+        }
         return fn.emitError("invalid TFLite type: ") << arg.getType(), false;
+      }
     }
 
     // Verify that all operations except the terminator have exactly one
@@ -256,9 +282,20 @@ static bool IsValidTFLiteMlirModule(ModuleOp module) {
       if (inst.isKnownTerminator()) break;
 
       for (auto result : inst.getResults()) {
-        if (!HasValidTFLiteType(result, inst))
+        if (!HasValidTFLiteType(result, inst)) {
+          auto elementType = getElementTypeOrSelf(result.getType());
+          if (elementType.isa<mlir::TF::VariantType>()) {
+            return inst.emitError(
+                       "operand result uses variant type. Currently, the "
+                       "variant type is not natively supported in TFLite. "
+                       "Please "
+                       "consider not using the variant type: ")
+                       << result.getType(),
+                   false;
+          }
           return fn.emitError("invalid TFLite type: ") << result.getType(),
                  false;
+        }
       }
     }
   }
@@ -521,6 +558,9 @@ class Translator {
   // The failed ops during legalization.
   std::set<std::string> failed_flex_ops_;
   std::set<std::string> failed_custom_ops_;
+
+  // Resource ops to provide warning messages.
+  std::set<std::string> resource_ops_;
 
   // Set of saved model tags, if any.
   const std::unordered_set<std::string> saved_model_tags_;
@@ -1021,6 +1061,10 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
     auto node_def = GetTensorFlowNodeDef(inst);
     if (!node_def) {
       return llvm::None;
+    }
+
+    if (IsTFResourceOp(inst)) {
+      resource_ops_.insert(node_def->op());
     }
 
     // Flex op case
@@ -1536,6 +1580,15 @@ Optional<std::string> Translator::TranslateInternal() {
     } else {
       subgraphs.push_back(*subgraph_or);
     }
+  }
+
+  if (!resource_ops_.empty()) {
+    std::string resource_ops_list = absl::StrJoin(resource_ops_, ", ");
+    LOG(WARNING) << "Graph contains " << resource_ops_list
+                 << " op(s), that use(s) resource type. Currently, the "
+                    "resource type is not natively supported in TFLite. Please "
+                    "consider not using the resource type if there are issues "
+                    "with either TFLite converter or TFLite runtime.";
   }
 
   if (first_failed_func != -1) {
