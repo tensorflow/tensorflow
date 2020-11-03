@@ -512,20 +512,6 @@ define add_third_party_download
 THIRD_PARTY_DOWNLOADS += $(1)!$(2)!tensorflow/lite/micro/tools/make/downloads/$(3)!$(4)!$(5)
 endef
 
-# Helper function
-call_download_script = $(or $(shell $(DOWNLOAD_SCRIPT) $(1) $(2) $(MAKEFILE_DIR)/downloads/$(3) $(4) $(5) >&2 && echo SUCCESS), $(error $(DOWNLOAD_SCRIPT) failed))
-
-# Same as add_third_party_download except it immediately calls download script,
-# which is needed when using recursive_find on downloaded third party.
-# 1 - URL to download archive file from (can be .zip, .tgz, or .bz).
-# 2 - MD5 sum of archive, to check integrity. Use md5sum tool to generate.
-# 3 - Folder name to unpack library into, inside tf/l/x/m/t/downloads root.
-# 4 - Optional patching action, must match clause in download_and_extract.sh.
-# 5 - Optional patching action parameter
-define download_third_party_download
-download_third_party = $(if $(shell test -d $(MAKEFILE_DIR)/downloads/$(3) || echo NEED_DOWNLOAD), $(call call_download_script,$(1),$(2),$(3),$(4),$(5)))
-endef
-
 # Unpacks an entry in a list of strings created by add_third_party_download, and
 # defines a dependency rule to download the library. The download_and_extract.sh
 # script is used to handle to downloading and unpacking.
