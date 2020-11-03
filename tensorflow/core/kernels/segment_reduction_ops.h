@@ -87,7 +87,7 @@ struct UnsortedSegmentFunctor {
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-// atomic reduction functors for the gpu
+// Atomic reduction functors for the gpu.
 template <typename T>
 struct SumAtomicOpGpu {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(T* dest,
@@ -120,7 +120,7 @@ struct MinAtomicOpGpu {
   }
 };
 
-// reduction functors for the gpu
+// Reduction functors for the gpu.
 template <typename T>
 struct SumOpGpu {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(T* dest,
@@ -155,7 +155,7 @@ struct MinOpGpu {
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-// initial value functors
+// Initial value functors.
 template <typename T>
 struct Zero {
   EIGEN_STRONG_INLINE T operator()() const { return T(0); }
