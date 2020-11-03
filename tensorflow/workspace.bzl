@@ -654,7 +654,7 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "com_github_grpc_grpc",
         sha256 = "a21c3a70eb356e0be2d989fdface89633421f2eddb95a1ede1f10a4804d7860b",
-        strip_prefix = "grpc-ee5b762f33a42170144834f5ab7efda9d76c480b"
+        strip_prefix = "grpc-ee5b762f33a42170144834f5ab7efda9d76c480b",
         system_build_file = clean_dep("//third_party/systemlibs:grpc.BUILD"),
         patch_file = clean_dep("//third_party/grpc:generate_cc_env_fix.patch"),
         system_link_files = {
