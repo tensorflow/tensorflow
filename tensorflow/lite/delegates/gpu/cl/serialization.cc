@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/cl/texture2d.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_object_desc.h"
 
 namespace tflite {
 namespace gpu {
@@ -274,23 +275,7 @@ CompilerOptions ToEnum(data::CompilerOptions type) {
 }
 
 }  // namespace
-
-flatbuffers::Offset<data::Int2> Encode(
-    const int2& v, flatbuffers::FlatBufferBuilder* builder) {
-  data::Int2Builder int2_builder(*builder);
-  int2_builder.add_x(v.x);
-  int2_builder.add_y(v.y);
-  return int2_builder.Finish();
-}
-
-flatbuffers::Offset<data::Int3> Encode(
-    const int3& v, flatbuffers::FlatBufferBuilder* builder) {
-  data::Int3Builder int3_builder(*builder);
-  int3_builder.add_x(v.x);
-  int3_builder.add_y(v.y);
-  int3_builder.add_z(v.z);
-  return int3_builder.Finish();
-}
+}  // namespace cl
 
 flatbuffers::Offset<tflite::gpu::data::GPUObjectDescriptor> Encode(
     const GPUObjectDescriptor& desc, flatbuffers::FlatBufferBuilder* builder) {
@@ -307,18 +292,37 @@ flatbuffers::Offset<tflite::gpu::data::GPUObjectDescriptor> Encode(
   auto state_vars_fb_vec = builder->CreateVector(state_vars_fb);
   tflite::gpu::data::GPUObjectDescriptorBuilder obj_builder(*builder);
   obj_builder.add_state_vars(state_vars_fb_vec);
-  obj_builder.add_access_type(ToFB(desc.access_type_));
+  obj_builder.add_access_type(cl::ToFB(desc.access_type_));
   return obj_builder.Finish();
 }
 
 void Decode(const tflite::gpu::data::GPUObjectDescriptor* fb_obj,
             GPUObjectDescriptor* obj) {
-  obj->access_type_ = ToEnum(fb_obj->access_type());
+  obj->access_type_ = cl::ToEnum(fb_obj->access_type());
   for (auto state_fb : *fb_obj->state_vars()) {
     std::string key(state_fb->key()->c_str(), state_fb->key()->size());
     std::string value(state_fb->value()->c_str(), state_fb->value()->size());
     obj->state_vars_[key] = value;
   }
+}
+
+namespace cl {
+
+flatbuffers::Offset<data::Int2> Encode(
+    const int2& v, flatbuffers::FlatBufferBuilder* builder) {
+  data::Int2Builder int2_builder(*builder);
+  int2_builder.add_x(v.x);
+  int2_builder.add_y(v.y);
+  return int2_builder.Finish();
+}
+
+flatbuffers::Offset<data::Int3> Encode(
+    const int3& v, flatbuffers::FlatBufferBuilder* builder) {
+  data::Int3Builder int3_builder(*builder);
+  int3_builder.add_x(v.x);
+  int3_builder.add_y(v.y);
+  int3_builder.add_z(v.z);
+  return int3_builder.Finish();
 }
 
 flatbuffers::Offset<data::BufferDescriptor> Encode(

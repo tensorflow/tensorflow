@@ -6,6 +6,19 @@ package(
 )
 
 cc_library(
+    name = "buffer_desc",
+    srcs = ["buffer_desc.cc"],
+    hdrs = ["buffer_desc.h"],
+    deps = [
+        ":gpu_object_desc",
+        ":util",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "gpu_object_desc",
     hdrs = ["gpu_object_desc.h"],
     deps = [
@@ -21,5 +34,14 @@ flatbuffer_cc_library(
     srcs = ["serialization_base.fbs"],
     flatc_args = [
         "--scoped-enums",
+    ],
+)
+
+cc_library(
+    name = "util",
+    srcs = ["util.cc"],
+    hdrs = ["util.h"],
+    deps = [
+        ":gpu_object_desc",
     ],
 )

@@ -28,7 +28,6 @@ limitations under the License.
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 
 struct GPUImage2DDescriptor {
   DataType data_type;
@@ -142,7 +141,6 @@ class GPUObjectDescriptor {
 
 using GPUObjectDescriptorPtr = std::unique_ptr<GPUObjectDescriptor>;
 
-}  // namespace cl
 }  // namespace gpu
 }  // namespace tflite
 
