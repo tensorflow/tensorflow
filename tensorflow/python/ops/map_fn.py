@@ -526,7 +526,8 @@ def map_fn(fn,
       varscope.set_caching_device(None)
 
     result_flat = _result_batchable_to_flat(result_batchable,
-                                            result_flat_signature)
+                                            result_flat_signature,
+                                            n_static)
     result = result_unflatten(result_flat)
     return result
 
@@ -608,7 +609,8 @@ def _result_value_flat_to_batchable(result_value_flat, result_flat_signature):
   return result_value_batchable
 
 
-def _result_batchable_to_flat(result_batchable, result_flat_signature):
+def _result_batchable_to_flat(result_batchable, result_flat_signature,
+                              batch_size):
   """Converts result_batchable -> result_flat."""
   result_flat = []
   i = 0
@@ -616,7 +618,7 @@ def _result_batchable_to_flat(result_batchable, result_flat_signature):
     # pylint: disable=protected-access
     num_tensors = len(spec._flat_tensor_specs)
     result_flat.append(
-        spec._batch(None)._from_compatible_tensor_list(
+        spec._batch(batch_size)._from_compatible_tensor_list(
             result_batchable[i:i + num_tensors]))
     i += num_tensors
   assert i == len(result_batchable)

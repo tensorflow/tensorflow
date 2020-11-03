@@ -1,12 +1,23 @@
 # Experimental extensions to the C API for eager execution of kernels.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_libtpu",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_cc_test",
     "tf_cuda_library",
 )
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "internal_tfrt_deps")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_kernel_tests_linkstatic",
@@ -86,8 +97,9 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime:remote_device",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/distributed_runtime:worker_env",
+        "//tensorflow/core/distributed_runtime:worker_interface",
         "//tensorflow/core:gpu_runtime",
-    ],
+    ] + internal_tfrt_deps(),
     alwayslink = 1,
 )
 
@@ -98,6 +110,7 @@ filegroup(
         "abstract_function.h",
         "abstract_operation.h",
         "abstract_tensor_handle.h",
+        "c_api.h",
         "c_api_experimental.h",
         "c_api_internal.h",
         "c_api_unified_experimental.h",
@@ -108,7 +121,6 @@ filegroup(
         "immediate_execution_context.h",
         "immediate_execution_operation.h",
         "immediate_execution_tensor_handle.h",
-        "mnist_gradients_testutil.h",
         "tape.h",
         "tfe_cancellation_manager_internal.h",
         "tfe_context_internal.h",
@@ -170,6 +182,24 @@ cc_library(
 )
 
 cc_library(
+    name = "tracing_utils",
+    srcs = ["tracing_utils.cc"],
+    hdrs = [
+        "tracing_utils.h",
+    ],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        ":abstract_operation",
+        ":c_api_unified_internal",
+        "//tensorflow/c/experimental/gradients/tape:tape_operation",
+        "//tensorflow/core/lib/llvm_rtti",
+        "//tensorflow/core/platform:errors",
+    ],
+)
+
+cc_library(
     name = "gradients_internal",
     srcs = [
         "gradients.cc",
@@ -204,6 +234,7 @@ tf_cuda_cc_test(
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["nomac"],
     deps = [
+        ":abstract_context",
         ":abstract_tensor_handle",
         ":c_api_experimental",
         ":c_api_test_util",
@@ -214,7 +245,8 @@ tf_cuda_cc_test(
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/experimental/gradients:array_grad",
         "//tensorflow/c/experimental/gradients:math_grad",
-        "//tensorflow/c/experimental/ops:array_ops",
+        "//tensorflow/c/experimental/gradients/tape:tape_context",
+        "//tensorflow/c/experimental/ops",
         "//tensorflow/cc/profiler",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/core:lib",
@@ -248,22 +280,24 @@ cc_library(
         ":c_api_unified_internal",
         ":gradients_internal",
         ":tape",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "//tensorflow/c:c_api",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/experimental/ops:array_ops",
         "//tensorflow/c/experimental/ops:math_ops",
         "//tensorflow/c/experimental/ops:nn_ops",
         "//tensorflow/cc/profiler",
-        "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/lib/llvm_rtti",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-    ],
+    ] + if_libtpu(
+        if_false = ["//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration"],
+        if_true = [],
+    ),
 )
 
 cc_library(
@@ -284,6 +318,7 @@ cc_library(
         ":gradients_internal",
         ":gradients_util",
         ":tape",
+        "//tensorflow/c/experimental/gradients/tape:tape_context",
         "//tensorflow/c/experimental/ops:array_ops",
         "//tensorflow/c/experimental/ops:math_ops",
         "//tensorflow/c/experimental/ops:nn_ops",
@@ -311,6 +346,8 @@ cc_library(
         ":c_api_unified_internal",
         ":gradients_internal",
         ":gradients_util",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "//tensorflow/c:c_api",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/experimental/gradients:math_grad",
@@ -319,13 +356,13 @@ cc_library(
         "//tensorflow/c/experimental/ops:math_ops",
         "//tensorflow/c/experimental/ops:nn_ops",
         "//tensorflow/cc/profiler",
-        "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/lib/llvm_rtti",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-    ],
+    ] + if_libtpu(
+        if_false = ["//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration"],
+        if_true = [],
+    ),
 )
 
 tf_cuda_cc_test(
@@ -606,6 +643,19 @@ cc_library(
     ],
 )
 
+cc_header_only_library(
+    name = "tfe_tensorhandle_internal_hdrs_only",
+    extra_deps = [
+        "@com_google_absl//absl/strings",
+    ],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        ":tfe_tensorhandle_internal",
+    ],
+)
+
 tf_cuda_library(
     name = "c_api_test_util",
     testonly = 1,
@@ -619,6 +669,8 @@ tf_cuda_library(
         ":c_api",
         ":c_api_experimental",
         "//tensorflow/c:c_test_util",
+        "//tensorflow/c:tf_datatype",
+        "//tensorflow/c:tf_tensor",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -1023,6 +1075,8 @@ filegroup(
             "gradients.cc",  # Uses RTTI.
             "gradients_util.cc",
             "gradients_util.h",
+            "tracing_utils.h",
+            "tracing_utils.cc",
             "*test*",
             "*dlpack*",
         ],

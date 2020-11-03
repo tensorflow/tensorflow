@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -511,6 +512,7 @@ Status MlirFunction::GetFunctionDef(tensorflow::FunctionDef** f) {
     return Status::OK();
   }
   PassManager pm(func_.getContext());
+  ::tensorflow::applyTensorflowAndCLOptions(pm);
   pm.addNestedPass<FuncOp>(CreateFunctionalToExecutorDialectConversionPass());
   pm.addPass(CreateBreakUpIslandsPass());
 
@@ -653,9 +655,8 @@ Status MlirFunctionContext::Finalize(OutputList* outputs,
   }
   builder_.create<ReturnOp>(func_.getLoc(), ret_operands);
 
-  auto arg_types = llvm::to_vector<8>(body.getArgumentTypes());
-  auto result_types =
-      llvm::to_vector<8>(body.getTerminator()->getOperandTypes());
+  auto arg_types = body.getArgumentTypes();
+  auto result_types = body.getTerminator()->getOperandTypes();
   func_.setType(FunctionType::get(arg_types, result_types, func_.getContext()));
   *f = new MlirFunction(std::move(context_), std::move(module_), func_);
   return Status::OK();

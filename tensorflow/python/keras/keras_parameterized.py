@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections.abc as collections_abc
 import functools
 import itertools
 import unittest
@@ -31,7 +32,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
-from tensorflow.python.util.compat import collections_abc
 
 try:
   import h5py  # pylint:disable=g-import-not-at-top
@@ -113,7 +113,6 @@ def run_with_all_saved_model_formats(
     tf.test.main()
   ```
 
-
   Args:
     test_or_class: test method or class to be annotated. If None,
       this method returns a decorator that can be applied to a test method or
@@ -134,7 +133,7 @@ def run_with_all_saved_model_formats(
   # Exclude h5 save format if H5py isn't available.
   if h5py is None:
     exclude_formats.append(['h5'])
-  saved_model_formats = ['h5', 'tf']
+  saved_model_formats = ['h5', 'tf', 'tf_no_traces']
   params = [('_%s' % saved_format, saved_format)
             for saved_format in saved_model_formats
             if saved_format not in nest.flatten(exclude_formats)]
@@ -150,6 +149,8 @@ def run_with_all_saved_model_formats(
         _test_h5_saved_model_format(f, self, *args, **kwargs)
       elif saved_format == 'tf':
         _test_tf_saved_model_format(f, self, *args, **kwargs)
+      elif saved_format == 'tf_no_traces':
+        _test_tf_saved_model_format_no_traces(f, self, *args, **kwargs)
       else:
         raise ValueError('Unknown model type: %s' % (saved_format,))
     return decorated
@@ -165,6 +166,18 @@ def _test_h5_saved_model_format(f, test_or_class, *args, **kwargs):
 def _test_tf_saved_model_format(f, test_or_class, *args, **kwargs):
   with testing_utils.saved_model_format_scope('tf'):
     f(test_or_class, *args, **kwargs)
+
+
+def _test_tf_saved_model_format_no_traces(f, test_or_class, *args, **kwargs):
+  with testing_utils.saved_model_format_scope('tf', save_traces=False):
+    f(test_or_class, *args, **kwargs)
+
+
+def run_with_all_weight_formats(test_or_class=None, exclude_formats=None):
+  """Runs all tests with the supported formats for saving weights."""
+  exclude_formats = exclude_formats or []
+  exclude_formats.append('tf_no_traces')  # Only applies to saving models
+  return run_with_all_saved_model_formats(test_or_class, exclude_formats)
 
 
 # TODO(kaftan): Possibly enable 'subclass_custom_build' when tests begin to pass

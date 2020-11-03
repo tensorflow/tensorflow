@@ -234,6 +234,11 @@ class HloTestBase : public ManifestCheckingTest {
                                  ExecutionProfile* profile = nullptr,
                                  string backend_config = "") TF_MUST_USE_RESULT;
 
+  // Executes an hlo module with fake inputs on multiple replicas.
+  ::testing::AssertionResult RunReplicated(
+      const absl::string_view hlo_string, bool run_hlo_passes = true,
+      int64 num_replicas = 1, string backend_config = "") TF_MUST_USE_RESULT;
+
   // If assert_determinism is true, the assertion will fail unless all runs
   // produce exactly the same output.
   ::testing::AssertionResult RunMultipleTimes(

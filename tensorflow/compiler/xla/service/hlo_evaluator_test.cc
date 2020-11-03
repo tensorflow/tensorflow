@@ -2545,8 +2545,7 @@ TEST_F(HloEvaluatorPreciseReduceTest, AddReductionPrecisionTest) {
 
 // Reducing many numbers should be fast because it doesn't create
 // intermediate Literals; the microbenchmark should finish in < 1 msec.
-void BM_ReducePrecisely(int num_iters) {
-  tensorflow::testing::StopTiming();
+void BM_ReducePrecisely(::testing::benchmark::State& state) {
   HloComputation::Builder b("BM_ReducePrecisely");
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsFromFlags());
@@ -2574,10 +2573,11 @@ void BM_ReducePrecisely(int num_iters) {
                                    /*dimensions_to_reduce=*/{0}, add_func));
   module.AddEntryComputation(b.Build());
 
-  HloEvaluator hlo_eval;
-  tensorflow::testing::StartTiming();
-  hlo_eval.Evaluate(reduce_instruction).ConsumeValueOrDie();
-  tensorflow::testing::StopTiming();
+  // Benchmark loop
+  for (auto s : state) {
+    HloEvaluator hlo_eval;
+    hlo_eval.Evaluate(reduce_instruction).ConsumeValueOrDie();
+  }
 }
 
 BENCHMARK(BM_ReducePrecisely);

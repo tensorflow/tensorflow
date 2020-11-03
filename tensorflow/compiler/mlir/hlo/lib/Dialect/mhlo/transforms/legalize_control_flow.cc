@@ -32,8 +32,6 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/LogicalResult.h"
 
-using mlir::PassRegistration;
-
 namespace mlir {
 namespace mhlo {
 namespace {

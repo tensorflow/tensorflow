@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt --mhlo-test-chlo-legalize-to-hlo --split-input-file %s | FileCheck %s
+// RUN: mlir-hlo-opt --chlo-legalize-to-hlo --split-input-file %s | FileCheck %s
 
 // Lower statically shaped `constant_like` to constant.
 // CHECK-LABEL: @constant_like_static_shape

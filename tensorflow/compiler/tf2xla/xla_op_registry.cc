@@ -134,6 +134,13 @@ XlaOpRegistry::~XlaOpRegistry() = default;
   result.first->second.op_filter = op_filter;
 }
 
+/* static */ bool XlaOpRegistry::IsCompilationDevice(
+    const string& device_name) {
+  XlaOpRegistry& registry = Instance();
+  mutex_lock lock(registry.mutex_);
+  return registry.backends_.find(device_name) != registry.backends_.end();
+}
+
 /* static */ bool XlaOpRegistry::GetCompilationDevice(
     const string& device_name, const DeviceRegistration** registration) {
   XlaOpRegistry& registry = Instance();

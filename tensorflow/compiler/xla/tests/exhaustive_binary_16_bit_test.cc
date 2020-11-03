@@ -123,7 +123,7 @@ BINARY_TEST_16BIT(Min, {
 })
 
 // TODO(bixia): Pow fails with bfloat16 on CPU.
-BINARY_TEST_16BIT(DISABLED_ON_CPU(Pow), {
+BINARY_TEST_16BIT(DISABLED_ON_GPU(DISABLED_ON_CPU(Pow)), {
   // See b/162664705.
   known_incorrect_fn_ = [](int64 val) {
     Eigen::bfloat16 f;

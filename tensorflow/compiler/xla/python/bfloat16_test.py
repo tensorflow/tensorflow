@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import copy
 import itertools
 import math
 
@@ -253,6 +254,15 @@ class Bfloat16NumPyTest(parameterized.TestCase):
 
   def testDtype(self):
     self.assertEqual(bfloat16, np.dtype(bfloat16))
+
+  def testDeepCopyDoesNotAlterHash(self):
+    # For context, see https://github.com/google/jax/issues/4651. If the hash
+    # value of the type descriptor is not initialized correctly, a deep copy
+    # can change the type hash.
+    dtype = np.dtype(bfloat16)
+    h = hash(dtype)
+    _ = copy.deepcopy(dtype)
+    self.assertEqual(h, hash(dtype))
 
   def testArray(self):
     x = np.array([[1, 2, 3]], dtype=bfloat16)

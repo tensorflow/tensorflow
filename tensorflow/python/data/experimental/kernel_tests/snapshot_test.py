@@ -133,6 +133,27 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     self.assertDatasetProduces(dataset2, expected)
 
   @combinations.generate(test_base.default_test_combinations())
+  def testReadSnapshotDatasetAutoWriteSnappyRead(self):
+    self.createTFRecords()
+    filenames = self._test_filenames
+    expected = [
+        b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
+        for f in range(0, 10)
+        for r in range(0, 100)
+    ]
+
+    dataset = core_readers._TFRecordDataset(filenames)
+    dataset = dataset.apply(
+        snapshot.snapshot(self._snapshot_dir, compression="AUTO"))
+    self.assertDatasetProduces(dataset, expected)
+
+    self.removeTFRecords()
+    dataset2 = core_readers._TFRecordDataset(filenames)
+    dataset2 = dataset2.apply(
+        snapshot.snapshot(self._snapshot_dir, compression="SNAPPY"))
+    self.assertDatasetProduces(dataset2, expected)
+
+  @combinations.generate(test_base.default_test_combinations())
   def testReadSnapshotDatasetCustomShardFn(self):
     self.createTFRecords()
     filenames = self._test_filenames
@@ -304,10 +325,12 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
 
     dataset = dataset_ops.Dataset.zip((dataset1, dataset2, dataset3, dataset4))
     dataset = dataset.apply(snapshot.snapshot(self._snapshot_dir))
-    next1 = self.getNext(dataset)
-    for i in range(0, 1000):
-      self.assertEqual((i, i + 1000, i + 2000, i + 3000),
-                       self.evaluate(next1()))
+
+    expected = list(
+        zip(
+            range(0, 1000), range(1000, 2000), range(2000, 3000),
+            range(3000, 4000)))
+    self.assertDatasetProduces(dataset, expected)
     self.assertSnapshotDirectoryContains(
         self._snapshot_dir,
         num_fingerprints=1,

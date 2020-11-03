@@ -1,5 +1,7 @@
 # Cloud test data files.
 
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
 package(
     licenses = ["notice"],  # Apache 2.0
 )

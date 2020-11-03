@@ -55,7 +55,8 @@ class EagerOpRewriteRegistry {
   // Phases at which the Eager op rewrite pass should run.
   // For now we only added PRE_EXECUTION. Expand as needed.
   enum Phase {
-    PRE_EXECUTION = 0  // right before executing an eager op
+    PRE_EXECUTION = 0,  // right before executing an eager op
+    POST_PLACEMENT = 1  // after device placement
   };
 
   // Add a rewrite pass to the registry.
@@ -70,7 +71,7 @@ class EagerOpRewriteRegistry {
   static EagerOpRewriteRegistry* Global();
 
  private:
-  static constexpr int32 kNumPhases = 1;
+  static constexpr int32 kNumPhases = 2;
   // Holds all the registered Eager op rewrites.
   std::array<std::unique_ptr<EagerOpRewrite>, kNumPhases> rewrites_;
 };

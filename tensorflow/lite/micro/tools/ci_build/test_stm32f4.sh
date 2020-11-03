@@ -33,6 +33,7 @@ readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile TAGS=${TAGS} TARGET=${TARGET} third_party_downloads
 
 # First make sure that the release build succeeds.
+readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
 readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile BUILD_TYPE=release TAGS=${TAGS} TARGET=${TARGET} build
 
 # Next, build w/o release so that we can run the tests and get additional

@@ -18,8 +18,8 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/profiler/internal/profiler_factory.h"
-#include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/profiler/lib/profiler_factory.h"
+#include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -103,9 +103,12 @@ Status PythonTracer::CollectData(XSpace* space) {
 // Not in anonymous namespace for testing purposes.
 std::unique_ptr<ProfilerInterface> CreatePythonTracer(
     const ProfileOptions& options) {
+  if (options.python_tracer_level() == 0 && options.host_tracer_level() == 0) {
+    return nullptr;
+  }
   PythonHooksOptions pyhooks_options;
   pyhooks_options.enable_trace_python_function = options.python_tracer_level();
-  pyhooks_options.enable_python_traceme = options.host_tracer_level() != 0;
+  pyhooks_options.enable_python_traceme = options.host_tracer_level();
   return absl::make_unique<PythonTracer>(pyhooks_options);
 }
 

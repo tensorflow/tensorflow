@@ -17,9 +17,28 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/util/device_name_utils.h"
+
+namespace {
+
+// Checks if the module has any TPU devices in its device list.
+bool HasTPUDevice(mlir::ModuleOp op) {
+  mlir::TF::RuntimeDevices devices;
+  if (failed(tensorflow::GetDevicesFromOp(op.getOperation(), &devices)))
+    return false;
+
+  for (const auto& device : devices.device_names()) {
+    llvm::errs() << "Device: " << device.type << "\n";
+    if (device.has_type && device.type == "TPU") return true;
+  }
+  return false;
+}
+}  // namespace
 
 namespace tensorflow {
 
@@ -38,9 +57,15 @@ auto* mlir_bridge_gauge_v2 = monitoring::Gauge<bool, 0>::New(
 // encapsulated graph to a particular device.
 Status MlirBridgePass::Run(const ConfigProto& config_proto,
                            mlir::ModuleOp module) {
-  if (!config_proto.experimental().enable_mlir_bridge()) {
+  if (!IsEnabled(config_proto)) {
     VLOG(0) << "Skipping MLIR TPU Bridge, session flag not enabled";
     mlir_bridge_gauge_v2->GetCell()->Set(false);
+    return Status::OK();
+  }
+
+  // Skip MLIR TPU Bridge if no TPU devices found.
+  if (!HasTPUDevice(module)) {
+    VLOG(0) << "Skipping MLIR TPU Bridge, no TPU devices found";
     return Status::OK();
   }
 
@@ -59,6 +84,12 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
   if (!IsEnabled(options.session_options->config)) {
     VLOG(0) << "Skipping MLIR TPU Bridge V1 Compat, session flag not enabled";
     mlir_bridge_gauge_v1->GetCell()->Set(false);
+    return Status::OK();
+  }
+
+  // Skip MLIR TPU Bridge if no TPU devices found.
+  if (!HasTPUDevice(module)) {
+    VLOG(0) << "Skipping MLIR TPU Bridge V1 Compat, no TPU devices found";
     return Status::OK();
   }
 

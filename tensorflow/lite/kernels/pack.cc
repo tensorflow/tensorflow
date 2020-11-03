@@ -38,7 +38,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), data->values_count);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  const TfLiteTensor* input0 = GetInput(context, node, 0);
+  const TfLiteTensor* input0;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input0));
   const int dimension_size = NumDimensions(input0) + 1;
   if (data->axis < 0) {
     data->axis += dimension_size;
@@ -55,7 +56,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   }
   // Make sure all inputs have the same shape and type.
   for (int i = 1; i < data->values_count; ++i) {
-    const TfLiteTensor* input = GetInput(context, node, i);
+    const TfLiteTensor* input;
+    TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, i, &input));
     TF_LITE_ENSURE(context, HaveSameShapes(input0, input));
     TF_LITE_ENSURE_TYPES_EQ(context, input0->type, input->type);
   }
@@ -72,13 +74,16 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
   }
 
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
   TF_LITE_ENSURE_TYPES_EQ(context, output->type, input0->type);
 
   // Guarantee input/output quantization params match as we do not support
   // packing quantized tensors.
   for (int i = 0; i < data->values_count; i++) {
-    const TfLiteTensor* input = GetInput(context, node, i);
+    const TfLiteTensor* input;
+    TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, i, &input));
     TF_LITE_ENSURE_EQ(context, input->params.zero_point,
                       output->params.zero_point);
     TF_LITE_ENSURE_EQ(context, input->params.scale, output->params.scale);
@@ -106,7 +111,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLitePackParams* data =
       reinterpret_cast<TfLitePackParams*>(node->builtin_data);
 
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
   switch (output->type) {
     case kTfLiteFloat32: {
       return PackImpl<float>(context, node, output, data->values_count,

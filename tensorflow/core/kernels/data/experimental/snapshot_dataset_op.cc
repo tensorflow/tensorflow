@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/experimental/snapshot_util.h"
+#include "tensorflow/core/kernels/data/hash_utils.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/raw_coding.h"
@@ -64,6 +65,7 @@ namespace data {
 namespace experimental {
 
 /* static */ constexpr const char* const SnapshotDatasetV2Op::kCompression;
+/* static */ constexpr const char* const SnapshotDatasetV2Op::kCompressionAuto;
 /* static */ constexpr const char* const SnapshotDatasetV2Op::kReaderFunc;
 /* static */ constexpr const char* const SnapshotDatasetV2Op::kShardFunc;
 /* static */ constexpr const char* const
@@ -106,6 +108,7 @@ class SnapshotDatasetV2Op::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, const DatasetBase* input, uint64 hash,
           const std::string& path, const std::string& compression,
+          const std::string& reader_prefix, const std::string& writer_prefix,
           std::unique_ptr<CapturedFunction> reader_func,
           std::unique_ptr<CapturedFunction> shard_func);
 
@@ -136,6 +139,8 @@ class SnapshotDatasetV2Op::Dataset : public DatasetBase {
   const uint64 hash_;
   const tstring path_;
   const std::string compression_;
+  const std::string reader_prefix_;
+  const std::string writer_prefix_;
 
   std::unique_ptr<CapturedFunction> reader_func_;
   std::unique_ptr<CapturedFunction> shard_func_;
@@ -292,13 +297,17 @@ class SnapshotDatasetV2Op::Dataset::Iterator::Passthrough
 SnapshotDatasetV2Op::Dataset::Dataset(
     OpKernelContext* ctx, const DatasetBase* input, uint64 hash,
     const std::string& path, const std::string& compression,
+    const std::string& reader_prefix, const std::string& writer_prefix,
     std::unique_ptr<CapturedFunction> reader_func,
     std::unique_ptr<CapturedFunction> shard_func)
     : DatasetBase(DatasetContext(ctx)),
       input_(input),
       hash_(hash),
       path_(path),
-      compression_(compression),
+      compression_(compression == kCompressionAuto ? io::compression::kSnappy
+                                                   : compression),
+      reader_prefix_(reader_prefix),
+      writer_prefix_(writer_prefix),
       reader_func_(std::move(reader_func)),
       shard_func_(std::move(shard_func)) {
   input_->Ref();
@@ -360,6 +369,12 @@ Status SnapshotDatasetV2Op::Dataset::AsGraphDefInternal(
   AttrValue compression_attr;
   b->BuildAttrValue(compression_, &compression_attr);
 
+  AttrValue reader_prefix_attr;
+  b->BuildAttrValue(reader_prefix_, &reader_prefix_attr);
+
+  AttrValue writer_prefix_attr;
+  b->BuildAttrValue(writer_prefix_, &writer_prefix_attr);
+
   AttrValue reader_func_attr;
   b->BuildAttrValue(reader_func_->func(), &reader_func_attr);
 
@@ -383,6 +398,8 @@ Status SnapshotDatasetV2Op::Dataset::AsGraphDefInternal(
        std::make_pair(3, shard_func_other_args)},
       /*attrs=*/
       {{kCompression, compression_attr},
+       {kReaderPrefix, reader_prefix_attr},
+       {kWriterPrefix, writer_prefix_attr},
        {kReaderFunc, reader_func_attr},
        {kShardFunc, shard_func_attr},
        {kReaderFuncTarguments, reader_func_arguments_types_attr},
@@ -398,7 +415,8 @@ SnapshotDatasetV2Op::Dataset::Iterator::Iterator(const Params& params)
 
 Status SnapshotDatasetV2Op::Dataset::Iterator::Initialize(
     IteratorContext* ctx) {
-  return ctx->env()->RecursivelyCreateDir(hash_dir_);
+  return ctx->env()->RecursivelyCreateDir(
+      io::JoinPath(dataset()->writer_prefix_, hash_dir_));
 }
 
 Status SnapshotDatasetV2Op::Dataset::Iterator::SaveInternal(
@@ -457,7 +475,8 @@ Status SnapshotDatasetV2Op::Dataset::Iterator::InitializeIterator(
     experimental::SnapshotMetadataRecord metadata;
     bool file_exists;
     TF_RETURN_IF_ERROR(snapshot_util::ReadMetadataFile(
-        ctx->env(), hash_dir_, &metadata, &file_exists));
+        ctx->env(), io::JoinPath(dataset()->reader_prefix_, hash_dir_),
+        &metadata, &file_exists));
     if (!file_exists) {
       return errors::DataLoss("Snapshot metadata file in ", hash_dir_,
                               " does not exist any more.");
@@ -473,7 +492,8 @@ Status SnapshotDatasetV2Op::Dataset::Iterator::InitializeIterator(
     experimental::SnapshotMetadataRecord metadata;
     bool file_exists;
     TF_RETURN_IF_ERROR(snapshot_util::ReadMetadataFile(
-        ctx->env(), hash_dir_, &metadata, &file_exists));
+        ctx->env(), io::JoinPath(dataset()->reader_prefix_, hash_dir_),
+        &metadata, &file_exists));
 
     // `pending_snapshot_expiry_seconds` is a legacy option where we would not
     // write snapshots that we think were still on-going. We decided that this
@@ -519,8 +539,9 @@ Status SnapshotDatasetV2Op::Dataset::Iterator::Reader::Initialize(
   TF_RETURN_IF_ERROR(
       dataset()->reader_func_->Instantiate(ctx, &instantiated_reader_func_));
 
-  auto hash_dir =
-      snapshot_util::HashDirectory(dataset()->path_, dataset()->hash_);
+  auto hash_dir = snapshot_util::HashDirectory(
+      io::JoinPath(dataset()->reader_prefix_, dataset()->path_),
+      dataset()->hash_);
   bool metadata_file_exists;
   experimental::SnapshotMetadataRecord metadata;
   TF_RETURN_IF_ERROR(snapshot_util::ReadMetadataFile(
@@ -621,8 +642,9 @@ Status SnapshotDatasetV2Op::Dataset::Iterator::Writer::WriteMetadataFile(
     metadata.add_dtype(output_dtype);
   }
   metadata.set_finalized(finalized);
-  tstring hash_directory =
-      snapshot_util::HashDirectory(dataset()->path_, dataset()->hash_);
+  tstring hash_directory = io::JoinPath(
+      dataset()->writer_prefix_,
+      snapshot_util::HashDirectory(dataset()->path_, dataset()->hash_));
 
   return snapshot_util::WriteMetadataFile(env, hash_directory, &metadata);
 }
@@ -675,7 +697,9 @@ Status SnapshotDatasetV2Op::Dataset::Iterator::Writer::GetNextInternal(
 
       // Creates the run directory.
       run_dir_ = snapshot_util::RunDirectory(
-          snapshot_util::HashDirectory(dataset()->path_, dataset()->hash_),
+          snapshot_util::HashDirectory(
+              io::JoinPath(dataset()->writer_prefix_, dataset()->path_),
+              dataset()->hash_),
           run_id_);
       TF_RETURN_IF_ERROR(ctx->env()->RecursivelyCreateDir(run_dir_));
       TF_RETURN_IF_ERROR(WriteMetadataFile(ctx->env(), /*finalized=*/false));
@@ -754,7 +778,9 @@ Status SnapshotDatasetV2Op::Dataset::Iterator::Writer::RestoreInternal(
 
   run_id_ = static_cast<uint64>(run_id_signed);
   run_dir_ = snapshot_util::RunDirectory(
-      snapshot_util::HashDirectory(dataset()->path_, dataset()->hash_),
+      snapshot_util::HashDirectory(
+          io::JoinPath(dataset()->writer_prefix_, dataset()->path_),
+          dataset()->hash_),
       run_id_);
   current_checkpoint_id_ = static_cast<uint64>(current_checkpoint_id);
 
@@ -795,6 +821,14 @@ SnapshotDatasetV2Op::SnapshotDatasetV2Op(OpKernelConstruction* ctx)
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kCompression, &compression_));
 
+  if (ctx->HasAttr(kReaderPrefix)) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kReaderPrefix, &reader_prefix_));
+  }
+
+  if (ctx->HasAttr(kWriterPrefix)) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kWriterPrefix, &writer_prefix_));
+  }
+
   OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, kReaderFunc, reader_params,
                                                &reader_func_metadata_));
   OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, kShardFunc, shard_params,
@@ -818,6 +852,9 @@ void SnapshotDatasetV2Op::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
       ctx, AsGraphDef(ctx, input, SerializationContext(params), &graph_def));
   OP_REQUIRES_OK(ctx, HashGraph(graph_def, &graph_hash));
 
+  // Different compression modes should result in different graph hashes.
+  graph_hash = Hash64Combine(graph_hash, Hash64(compression_));
+
   std::unique_ptr<CapturedFunction> reader_func;
   OP_REQUIRES_OK(ctx,
                  CapturedFunction::Create(ctx, reader_func_metadata_,
@@ -828,8 +865,8 @@ void SnapshotDatasetV2Op::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                           kShardFuncOtherArgs, &shard_func));
 
   *output = new SnapshotDatasetV2Op::Dataset(
-      ctx, input, graph_hash, path, compression_, std::move(reader_func),
-      std::move(shard_func));
+      ctx, input, graph_hash, path, compression_, reader_prefix_,
+      writer_prefix_, std::move(reader_func), std::move(shard_func));
 }
 
 namespace {

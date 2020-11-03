@@ -164,10 +164,16 @@ class ShapeInference {
   static StatusOr<Shape> InferReduceWindowShape(
       const Shape& operand_shape, const Shape& init_value, const Window& window,
       const ProgramShape& to_apply_shape);
-
   static StatusOr<Shape> InferReduceWindowShape(const Shape& operand_shape,
                                                 const Shape& init_value,
                                                 const Window& window);
+  static StatusOr<Shape> InferReduceWindowShape(
+      absl::Span<const Shape*> operands, absl::Span<const Shape*> init_values,
+      const Window& window, const ProgramShape& to_apply_shape);
+
+  static StatusOr<Shape> InferReduceWindowShape(
+      absl::Span<const Shape*> operands, absl::Span<const Shape*> init_values,
+      const Window& window);
 
   // Infers the shape produced by scattering the given source shape to the
   // selected indices of each window on the operand shape.

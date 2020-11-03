@@ -122,7 +122,8 @@ class HloComputation {
 
   // Add an instruction to the computation. The computation takes ownership of
   // the instruction.
-  HloInstruction* AddInstruction(std::unique_ptr<HloInstruction> instruction);
+  HloInstruction* AddInstruction(std::unique_ptr<HloInstruction> instruction,
+                                 const std::string& new_name = "");
 
   // Remove the param_no'th parameter from the computation.
   // Note this is only applicatable to the computation for the fusion

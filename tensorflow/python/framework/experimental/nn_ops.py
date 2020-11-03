@@ -20,20 +20,14 @@ from __future__ import print_function
 
 from tensorflow.python.framework.experimental import _nn_ops
 from tensorflow.python.framework.experimental import context_stack as context
-from tensorflow.python.framework.experimental import gradient_registry
-from tensorflow.python.framework.experimental import tape_stack
 
 
 def relu(a, name=None):
   ctx = context.get_default()
-  tape = tape_stack.get_default()
-  grad_registry = gradient_registry.get_global_registry()
-  return _nn_ops.relu(ctx, a, name, tape, grad_registry)
+  return _nn_ops.relu(ctx, a, name)
 
 
 def sparse_softmax_cross_entropy_with_logits(logits, labels, name=None):
   ctx = context.get_default()
-  tape = tape_stack.get_default()
-  grad_registry = gradient_registry.get_global_registry()
   return _nn_ops.sparse_softmax_cross_entropy_with_logits(
-      ctx, logits, labels, name, tape, grad_registry)
+      ctx, logits, labels, name)

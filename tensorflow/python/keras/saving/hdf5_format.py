@@ -26,7 +26,7 @@ import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.keras import backend as K
-from tensorflow.python.keras import optimizers
+from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras.saving import model_config as model_config_lib
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.saving.saved_model import json_utils
@@ -127,7 +127,7 @@ def save_model_to_hdf5(model, filepath, overwrite=True, include_optimizer=True):
     # TODO(b/128683857): Add integration tests between tf.keras and external
     # Keras, to avoid breaking TF.js users.
     if (include_optimizer and model.optimizer and
-        not isinstance(model.optimizer, optimizers.TFOptimizer)):
+        not isinstance(model.optimizer, optimizer_v1.TFOptimizer)):
       save_optimizer_weights_to_hdf5_group(f, model.optimizer)
 
     f.flush()

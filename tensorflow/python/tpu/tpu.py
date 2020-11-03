@@ -288,6 +288,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     self._outer_device_function_stack = None
     self._oc_dev_fn_stack = None
     self._outside_compilation_cluster = None
+    self._outside_compilation_v2_context = None
     self._outside_compilation_counter = 0
     self._in_gradient_colocation = None
     self._gradient_colocation_stack = []
@@ -379,6 +380,21 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
 
   def EnterGradientColocation(self, op, gradient_uid):
     if op is not None:
+      if ops.get_default_graph()._control_flow_context is None:  # pylint: disable=protected-access
+        # If we are in TF 2 functions (control flow V2 functions, or
+        # tf.function()), we need to attach _xla_outside_compilation attribute
+        # directly because we are not in TPUReplicateContext.
+        try:
+          outside_attr = op.get_attr(_OUTSIDE_COMPILATION_ATTR).decode("ascii")
+        except ValueError:
+          # The attr was not present: do nothing.
+          return
+        parts = outside_attr.split(".")
+        cluster = parts[0] + "." + gradient_uid
+        self._outside_compilation_v2_context = OutsideCompilationV2Context(
+            cluster)
+        self._outside_compilation_v2_context.Enter()
+        return
       self._gradient_colocation_stack.append(op)
       if not self._outside_compilation_cluster:
         try:
@@ -418,6 +434,17 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
 
   def ExitGradientColocation(self, op, gradient_uid):
     if op is not None:
+      if ops.get_default_graph()._control_flow_context is None:  # pylint: disable=protected-access
+        # Inside a TF2 tf.function or control flow graph and `op` was not
+        # marked to be outside compiled.
+        assert self._outside_compilation_v2_context is None
+        return
+      if self._outside_compilation_v2_context is not None:
+        # Inside a TF2 tf.function or control flow graph and `op` was
+        # marked to be outside compiled.
+        self._outside_compilation_v2_context.Exit()
+        self._outside_compilation_v2_context = None
+        return
       if not self._gradient_colocation_stack:
         raise errors.InternalError(
             op.node_def, op,

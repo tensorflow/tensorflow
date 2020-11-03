@@ -1041,23 +1041,50 @@ TEST_F(ArithmeticOptimizerTest, RemoveRedundantReshapeCombineReshapes) {
       ops::Const(s.WithOpName("flatten_shape"), {8, 28 * 28 * 12}, {2}));
   Output outputs = ops::Identity(s.WithOpName("outputs"), flatten);
 
-  GrapplerItem item;
-  item.fetch = {"outputs"};
-  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  GraphDef graph;
+  TF_CHECK_OK(s.ToGraphDef(&graph));
   auto x_t = GenerateRandomTensor<DT_INT8>(TensorShape({8, 3, 28, 28, 4}));
-  item.feed = {{"nchw_vect_c", x_t}};
-  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
-  ASSERT_EQ(tensors_expected.size(), 1);
+  auto eval = EvaluateNodes(graph, {"outputs", "nhwc"}, {{"nchw_vect_c", x_t}});
 
-  GraphDef output;
-  ArithmeticOptimizer optimizer;
-  EnableOnlyRemoveRedundantReshape(&optimizer);
-  OptimizeTwiceAndPrune(&optimizer, &item, &output);
+  ASSERT_EQ(eval.size(), 2);
+  auto expected_output_t = eval[0];
+  auto nhwc_t = eval[1];
 
-  EXPECT_EQ(CountOpNodes(output, "Reshape"), 1);
-  auto tensors = EvaluateNodes(output, item.fetch, item.feed);
-  ASSERT_EQ(tensors.size(), 1);
-  test::ExpectTensorEqual<int8>(tensors[0], tensors_expected[0]);
+  {
+    GrapplerItem item;
+    item.graph = graph;
+    item.fetch = {"outputs"};
+    item.feed = {{"nchw_vect_c", x_t}};
+
+    GraphDef output;
+    ArithmeticOptimizer optimizer;
+    EnableOnlyRemoveRedundantReshape(&optimizer);
+    OptimizeTwiceAndPrune(&optimizer, &item, &output);
+
+    EXPECT_EQ(CountOpNodes(output, "Reshape"), 1);
+    auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+    ASSERT_EQ(tensors.size(), 1);
+    test::ExpectTensorEqual<int8>(tensors[0], expected_output_t);
+  }
+
+  // Test when the first reshape node output is the feed tensor.
+  // (Expected no reshape removal to happen.)
+  {
+    GrapplerItem item;
+    item.graph = graph;
+    item.fetch = {"outputs"};
+    item.feed = {{"nhwc", nhwc_t}};
+
+    GraphDef output;
+    ArithmeticOptimizer optimizer;
+    EnableOnlyRemoveRedundantReshape(&optimizer);
+    OptimizeTwiceAndPrune(&optimizer, &item, &output);
+
+    EXPECT_EQ(CountOpNodes(output, "Reshape"), 2);
+    auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+    ASSERT_EQ(tensors.size(), 1);
+    test::ExpectTensorEqual<int8>(tensors[0], expected_output_t);
+  }
 }
 
 TEST_F(ArithmeticOptimizerTest, ReorderTransposeCastProducerIsCast) {

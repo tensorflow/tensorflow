@@ -18,7 +18,6 @@ limitations under the License.
 #include "tensorflow/c/eager/abstract_context.h"
 #include "tensorflow/c/eager/abstract_operation.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
-#include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 
 namespace tensorflow {
 namespace ops {
@@ -26,6 +25,10 @@ namespace ops {
 Status Identity(AbstractContext* ctx,
                 absl::Span<AbstractTensorHandle* const> inputs,
                 absl::Span<AbstractTensorHandle*> outputs, const char* name);
+
+Status IdentityN(AbstractContext* ctx,
+                 absl::Span<AbstractTensorHandle* const> inputs,
+                 absl::Span<AbstractTensorHandle*> outputs, const char* name);
 
 Status ZerosLike(AbstractContext* ctx,
                  absl::Span<AbstractTensorHandle* const> inputs,

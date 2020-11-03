@@ -1,3 +1,6 @@
+load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
 # Library of gradient functions.
 package(
     licenses = ["notice"],  # Apache 2.0
@@ -76,6 +79,7 @@ cc_library(
         ":array_grad",
         ":math_grad",
         ":nn_grad",
+        "//tensorflow/c/eager:gradients_internal",
     ],
 )
 

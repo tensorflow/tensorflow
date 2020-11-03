@@ -33,10 +33,6 @@ from tensorflow.python.autograph.pyct.static_analysis import annos
 from tensorflow.python.autograph.pyct.static_analysis import liveness
 from tensorflow.python.autograph.pyct.static_analysis import reaching_definitions
 from tensorflow.python.autograph.pyct.static_analysis import reaching_fndefs
-from tensorflow.python.autograph.utils import compat_util
-
-
-# TODO(mdan): Refactor functions to make them smaller.
 
 
 class _Function(object):
@@ -419,6 +415,3 @@ def transform(node, ctx):
 
   node = ControlFlowTransformer(ctx).visit(node)
   return node
-
-
-compat_util.deprecated_py2_support(__name__)

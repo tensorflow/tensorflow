@@ -113,15 +113,18 @@ class DispatcherState {
 
   struct Task {
     explicit Task(int64 task_id, int64 job_id, int64 dataset_id,
+                  ProcessingMode processing_mode,
                   const std::string& worker_address)
         : task_id(task_id),
           job_id(job_id),
           dataset_id(dataset_id),
+          processing_mode(processing_mode),
           worker_address(worker_address) {}
 
     const int64 task_id;
     const int64 job_id;
     const int64 dataset_id;
+    const ProcessingMode processing_mode;
     const std::string worker_address;
     bool finished = false;
   };

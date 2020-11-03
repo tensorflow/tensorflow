@@ -271,7 +271,7 @@ def convert_to_list(values, sparse_default_value=None):
         values, default_value=sparse_default_value)
     values = K.get_value(dense_tensor)
 
-  if isinstance(values, (ops.EagerTensor, ops.Tensor)):
+  if isinstance(values, ops.Tensor):
     values = K.get_value(values)
 
   # We may get passed a ndarray or the code above may give us a ndarray.

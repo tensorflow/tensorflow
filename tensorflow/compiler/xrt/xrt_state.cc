@@ -585,7 +585,7 @@ void XRTTupleAllocation::InitializeFromShapedBuffer(
 
 xla::StatusOr<xla::ShapedBuffer> XRTTupleAllocation::ToShapedBuffer() {
   xla::ShapedBuffer shaped_buffer(on_host_shape(), on_device_shape(),
-                                  allocator_->platform(), device_ordinal_);
+                                  device_ordinal_);
   for (const auto& index_buffer : buffers_) {
     if (index_buffer.second == nullptr ||
         (index_buffer.second->allocation().is_null() &&

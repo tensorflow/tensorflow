@@ -47,7 +47,7 @@ class TestLhloToLLVMPass
     target.addLegalOp<ModuleOp, ModuleTerminatorOp>();
     target.addIllegalDialect<LmhloDialect>();
 
-    if (failed(applyFullConversion(m, target, patterns))) {
+    if (failed(applyFullConversion(m, target, std::move(patterns)))) {
       signalPassFailure();
     }
   }

@@ -226,6 +226,7 @@ pytype_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform",
         "//tensorflow/python:platform_analytics",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tpu_ops_gen",
@@ -501,6 +502,7 @@ pytype_library(
     srcs = ["tpu_embedding_v2_utils.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/python:init_ops_v2",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/distribute:device_util",
         "//tensorflow/python/distribute:sharded_variable",
@@ -625,6 +627,7 @@ tpu_py_test(
         "tpu_outside_compilation_test.py",
     ],
     disable_experimental = True,
+    disable_mlir_bridge = False,
     python_version = "PY3",
     tags = ["no_oss"],
     deps = [

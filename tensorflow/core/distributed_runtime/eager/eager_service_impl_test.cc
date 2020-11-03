@@ -780,7 +780,7 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
         remote_device_mgr_.get(), Env::Default(), /*config=*/
         nullptr, TF_GRAPH_DEF_VERSION, &func_lib_def_, OptimizerOptions(),
         /*thread_pool=*/nullptr, eager_cluster_flr_.get(),
-        /*custom_kernel_creator=*/nullptr, /*session_metadata=*/nullptr,
+        /*session_metadata=*/nullptr,
         Rendezvous::Factory{[this](const int64 step_id,
                                    const DeviceMgr* device_mgr,
                                    Rendezvous** r) {
@@ -954,6 +954,7 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
       /*composite_devices=*/{}, /*input_resource_dtypes_and_shapes=*/{},
       /*runner=*/nullptr,
       /*collective_executor=*/nullptr, local_device, fdef_.signature().name(),
+      /*outputs_on_op_device=*/false,
       [ctx](const int64 step_id) { return ctx->CreateRendezvous(step_id); },
       [=]() { return op_id; }));
 
@@ -1001,6 +1002,7 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncAsyncTest) {
       /*composite_devices=*/{}, /*input_resource_dtypes_and_shapes=*/{},
       /*runner=*/nullptr,
       /*collective_executor=*/nullptr, local_device, fdef_.signature().name(),
+      /*outputs_on_op_device=*/false,
       [ctx](const int64 step_id) { return ctx->CreateRendezvous(step_id); },
       [=]() { return op_id; }));
 
@@ -1220,7 +1222,7 @@ TEST_F(EagerServiceImplTest, RequestsToMasterTest) {
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
       /*async=*/false,
       /*lazy_copy_function_remote_inputs=*/false, device_mgr_.get(), false,
-      rendezvous, GetDefaultCustomKernelCreator());
+      rendezvous);
   const uint64 context_id = random::New64();
 
   // Set RemoteMgr to ctx.
@@ -1246,7 +1248,7 @@ TEST_F(EagerServiceImplTest, RequestsToMasterTest) {
   // Unable to handle the request since there is no eager context.
   Status status = eager_service_impl.Enqueue(nullptr, &remote_enqueue_request,
                                              &remote_enqueue_response);
-  EXPECT_EQ(error::INVALID_ARGUMENT, status.code());
+  EXPECT_EQ(error::UNAVAILABLE, status.code());
   EXPECT_TRUE(absl::StrContains(
       status.error_message(),
       "Unable to find a context_id matching the specified one"));
@@ -1283,7 +1285,7 @@ TEST_F(EagerServiceImplTest, KeepAliveTest) {
   Status status =
       eager_service_impl.KeepAlive(&keep_alive_request, &keep_alive_response);
 
-  EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
+  EXPECT_EQ(status.code(), error::UNAVAILABLE);
   EXPECT_PRED_FORMAT2(::testing::IsSubstring, "Unable to find a context_id",
                       status.error_message());
 

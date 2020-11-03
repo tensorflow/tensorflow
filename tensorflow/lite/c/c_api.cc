@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/error_reporter.h"
@@ -43,6 +44,44 @@ class CallbackErrorReporter : public tflite::ErrorReporter {
  private:
   TfLiteErrorReporterCallback callback_;
 };
+
+/// `CallbackOpResolver` is a (C++) `tflite::OpResolver` that forwards the
+/// methods to (C ABI) callback functions from a `TfLiteOpResolverCallbacks`
+/// struct.
+///
+/// The SetCallbacks method must be called before calling any of the FindOp
+/// methods.
+class CallbackOpResolver : public ::tflite::OpResolver {
+ public:
+  CallbackOpResolver() {}
+  void SetCallbacks(
+      const struct TfLiteOpResolverCallbacks& op_resolver_callbacks) {
+    op_resolver_callbacks_ = op_resolver_callbacks;
+  }
+  const TfLiteRegistration* FindOp(tflite::BuiltinOperator op,
+                                   int version) const override {
+    if (op_resolver_callbacks_.find_builtin_op == nullptr) {
+      return nullptr;
+    }
+    return op_resolver_callbacks_.find_builtin_op(
+        op_resolver_callbacks_.user_data,
+        static_cast<TfLiteBuiltinOperator>(op), version);
+  }
+  const TfLiteRegistration* FindOp(const char* op, int version) const override {
+    if (op_resolver_callbacks_.find_custom_op == nullptr) {
+      return nullptr;
+    }
+    return op_resolver_callbacks_.find_custom_op(
+        op_resolver_callbacks_.user_data, op, version);
+  }
+
+ private:
+  CallbackOpResolver(const CallbackOpResolver&) = delete;
+  CallbackOpResolver& operator=(const CallbackOpResolver&) = delete;
+
+  struct TfLiteOpResolverCallbacks op_resolver_callbacks_ = {};
+};
+
 }  // namespace
 
 // LINT.IfChange
@@ -210,14 +249,28 @@ TfLiteInterpreter* InterpreterCreateWithOpResolver(
         new CallbackErrorReporter(optional_options->error_reporter_callback));
   }
 
+  // By default, we use the provided mutable_op_resolver, adding any builtin or
+  // custom ops registered with `TfLiteInterpreterOptionsAddBuiltinOp` and/or
+  // `TfLiteInterpreterOptionsAddCustomOp`.
+  tflite::OpResolver* op_resolver = mutable_resolver;
   if (optional_options) {
-    mutable_resolver->AddAll(optional_options->op_resolver);
+    mutable_resolver->AddAll(optional_options->mutable_op_resolver);
+  }
+  // However, if `TfLiteInterpreterOptionsSetOpResolver` has been called with
+  // a non-null callback parameter, then we instead use a
+  // `CallbackOpResolver` that will forward to the callbacks provided there.
+  CallbackOpResolver callback_op_resolver;
+  if (optional_options &&
+      (optional_options->op_resolver_callbacks.find_builtin_op != nullptr ||
+       optional_options->op_resolver_callbacks.find_custom_op != nullptr)) {
+    callback_op_resolver.SetCallbacks(optional_options->op_resolver_callbacks);
+    op_resolver = &callback_op_resolver;
   }
 
   tflite::ErrorReporter* error_reporter = optional_error_reporter
                                               ? optional_error_reporter.get()
                                               : tflite::DefaultErrorReporter();
-  tflite::InterpreterBuilder builder(model->impl->GetModel(), *mutable_resolver,
+  tflite::InterpreterBuilder builder(model->impl->GetModel(), *op_resolver,
                                      error_reporter);
 
   std::unique_ptr<tflite::Interpreter> interpreter;

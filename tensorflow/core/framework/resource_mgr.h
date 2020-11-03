@@ -498,8 +498,6 @@ class ResourceHandlesOp : public OpKernel {
   std::atomic<bool> initialized_{false};
 };
 
-Status ResourceHandlesShape(shape_inference::InferenceContext* c);
-
 // Registers a kernel for an op which produces a handle to a resource of the
 // specified type.
 #define REGISTER_RESOURCE_HANDLE_KERNEL(Type)                        \

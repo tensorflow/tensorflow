@@ -115,9 +115,8 @@ struct TPUSpaceToDepthPass
 
 // Updates func argument type to have the updated input shape.
 void UpdateFuncType(FuncOp func) {
-  auto arg_types = llvm::to_vector<8>(func.front().getArgumentTypes());
-  auto result_types =
-      llvm::to_vector<4>(func.front().getTerminator()->getOperandTypes());
+  auto arg_types = func.front().getArgumentTypes();
+  auto result_types = func.front().getTerminator()->getOperandTypes();
   func.setType(FunctionType::get(arg_types, result_types, func.getContext()));
 }
 

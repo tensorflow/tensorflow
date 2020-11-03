@@ -139,8 +139,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
     proc_flr_.reset(new ProcessFunctionLibraryRuntime(
         device_mgr_.get(), Env::Default(), /*config=*/nullptr,
         TF_GRAPH_DEF_VERSION, lib_def_.get(), opts,
-        /*thread_pool=*/nullptr, cluster_flr_.get(),
-        /*custom_kernel_creator=*/nullptr, session_metadata,
+        /*thread_pool=*/nullptr, cluster_flr_.get(), session_metadata,
         Rendezvous::Factory{
             [this](const int64 step_id, const DeviceMgr* device_mgr,
                    Rendezvous** r) {

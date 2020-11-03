@@ -486,18 +486,6 @@ public final class Interpreter implements AutoCloseable {
   }
 
   /**
-   * Turns on/off Android NNAPI for hardware acceleration when it is available.
-   *
-   * @deprecated Prefer using {@link Options#setUseNNAPI(boolean)} directly for enabling NN API.
-   *     This method will be removed in a future release.
-   */
-  @Deprecated
-  public void setUseNNAPI(boolean useNNAPI) {
-    checkNotClosed();
-    wrapper.setUseNNAPI(useNNAPI);
-  }
-
-  /**
    * Sets the number of threads to be used for ops that support multi-threading.
    *
    * @deprecated Prefer using {@link Options#setNumThreads(int)} directly for controlling thread

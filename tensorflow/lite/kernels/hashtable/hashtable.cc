@@ -80,9 +80,9 @@ TfLiteStatus PrepareHashtable(TfLiteContext* context, TfLiteNode* node) {
                               (params->key_dtype == kTfLiteString &&
                                params->value_dtype == kTfLiteInt64));
 
-  TfLiteTensor* resource_handle_tensor =
-      GetOutput(context, node, kResourceHandleTensor);
-  TF_LITE_ENSURE(context, resource_handle_tensor != nullptr);
+  TfLiteTensor* resource_handle_tensor;
+  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, kResourceHandleTensor,
+                                           &resource_handle_tensor));
   TF_LITE_ENSURE_EQ(context, resource_handle_tensor->type, kTfLiteInt32);
   TfLiteIntArray* outputSize = TfLiteIntArrayCreate(1);
   outputSize->data[0] = 1;
@@ -97,8 +97,9 @@ TfLiteStatus EvalHashtable(TfLiteContext* context, TfLiteNode* node) {
   // The resource id is generated based on the given table name.
   const int resource_id = std::hash<std::string>{}(params->table_name);
 
-  TfLiteTensor* resource_handle_tensor =
-      GetOutput(context, node, kResourceHandleTensor);
+  TfLiteTensor* resource_handle_tensor;
+  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, kResourceHandleTensor,
+                                           &resource_handle_tensor));
   auto* resource_handle_data =
       GetTensorData<std::int32_t>(resource_handle_tensor);
   resource_handle_data[0] = resource_id;

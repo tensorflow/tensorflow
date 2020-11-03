@@ -14,6 +14,7 @@
 
 #import <Foundation/Foundation.h>
 
+#import "TFLDelegate.h"
 #import "TFLInterpreter.h"
 #import "TFLInterpreterOptions.h"
 #import "TFLQuantizationParameters.h"

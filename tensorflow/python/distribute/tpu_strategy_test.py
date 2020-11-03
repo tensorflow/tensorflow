@@ -132,6 +132,28 @@ class TPUTest(test.TestCase):
       result = bar() + 1
       self.assertAllEqual(result, 2)
 
+  def test_tpu_output_device(self):
+
+    def foo():
+      return 1 + 1
+
+    func1 = function.defun_with_attributes(
+        foo, attributes={"_XlaMustCompile": False})
+    func2 = function.defun_with_attributes(
+        foo, attributes={
+            "_OutputsOnOpDevice": True,
+            "_XlaMustCompile": False
+        })
+
+    with ops.device("/device:TPU:0"):
+      ret1 = func1()
+      ret2 = func2()
+
+    self.assertAllEqual(ret1.backing_device,
+                        "/job:localhost/replica:0/task:0/device:CPU:0")
+    self.assertAllEqual(ret2.backing_device,
+                        "/job:localhost/replica:0/task:0/device:TPU:0")
+
   def test_on_demand_op_with_dynamic_output(self):
     with ops.device("/device:TPU:0"):
       where_output = array_ops.where([True, False, True])
@@ -157,7 +179,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
     with ops.device("/device:TPU:0"):
       self.assertAllEqual(func(), 2.0)
 
-  def test_sequential_experimental_runs(self, enable_packed_var):
+  def test_sequential_runs(self, enable_packed_var):
     resolver = get_tpu_cluster_resolver()
     remote.connect_to_cluster(resolver)
     topology = tpu_strategy_util.initialize_tpu_system(resolver)
@@ -232,8 +254,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
 
       return strategy.run(computation)
 
-    with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                "TPU compilation failed"):
+    with self.assertRaises(errors.OpError):
       compilation_failure_run()
 
     @def_function.function
@@ -454,7 +475,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(expected_result, run(input_iterator))
     self.assertAllEqual((0.,), w.read_value())
 
-  def test_experimental_run_output_on_device(self, enable_packed_var):
+  def test_run_output_on_device(self, enable_packed_var):
     strategy = get_tpu_strategy(enable_packed_var)
 
     def computation(x):
@@ -509,10 +530,9 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
       return dataset.map(make_sparse)
 
     dataset = iter(
-        strategy.experimental_distribute_datasets_from_function(
+        strategy.distribute_datasets_from_function(
             dataset_fn,
-            distribute_lib.InputOptions(
-                experimental_prefetch_to_device=False)))
+            distribute_lib.InputOptions(experimental_prefetch_to_device=False)))
 
     sparse, result = sparse_lookup(dataset)
 
@@ -560,10 +580,9 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
       return dataset.map(make_sparse)
 
     dataset = iter(
-        strategy.experimental_distribute_datasets_from_function(
+        strategy.distribute_datasets_from_function(
             dataset_fn,
-            distribute_lib.InputOptions(
-                experimental_prefetch_to_device=False)))
+            distribute_lib.InputOptions(experimental_prefetch_to_device=False)))
 
     output = sparse_lookup(dataset)
 
@@ -616,7 +635,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
       return dataset.map(make_sparse)
 
     dataset = iter(
-        strategy.experimental_distribute_datasets_from_function(
+        strategy.distribute_datasets_from_function(
             dataset_fn,
             options=distribute_lib.InputOptions(
                 experimental_prefetch_to_device=False)))
@@ -730,7 +749,7 @@ class TPUStrategyDataPrefetchTest(test.TestCase):
       return dataset.batch(strategy.num_replicas_in_sync)
 
     with self.assertRaisesRegex(ValueError, "TPUStrategy does not support"):
-      iter(strategy.experimental_distribute_datasets_from_function(dataset_fn))
+      iter(strategy.distribute_datasets_from_function(dataset_fn))
 
   def test_prefetch_to_device_ragged_dataset_fn(self):
     strategy = get_tpu_strategy()
@@ -745,7 +764,7 @@ class TPUStrategyDataPrefetchTest(test.TestCase):
       return dataset.batch(strategy.num_replicas_in_sync)
 
     with self.assertRaisesRegex(ValueError, "TPUStrategy does not support"):
-      iter(strategy.experimental_distribute_datasets_from_function(dataset_fn))
+      iter(strategy.distribute_datasets_from_function(dataset_fn))
 
 
 class TPUStrategyDistributionTest(

@@ -728,9 +728,7 @@ class MinReductionTest(test.TestCase):
 
   def _compareAll(self, x, reduction_axes):
     self._compare(x, reduction_axes, False, use_gpu=True)
-    self._compare(x, reduction_axes, False, use_gpu=False)
     self._compare(x, reduction_axes, True, use_gpu=True)
-    self._compare(x, reduction_axes, True, use_gpu=False)
 
   def testAxesType(self):
     for dtype in [dtypes.int64, dtypes.int32]:
@@ -739,13 +737,12 @@ class MinReductionTest(test.TestCase):
         tf_v = self.evaluate(v)
       self.assertAllEqual(tf_v, 0)
 
-  @test_util.run_deprecated_v1
-  def testInfinity(self):
+  def testSpecialValues(self):
     for dtype in [np.float32, np.float64]:
-      for special_value_x in [-np.inf, np.inf]:
-        for special_value_y in [-np.inf, np.inf]:
-          np_arr = np.array([special_value_x, special_value_y]).astype(dtype)
-          self._compareAll(np_arr, None)
+      for size in range(1, 4):
+        for arr in itertools.product([-np.inf, 1., np.nan, np.inf],
+                                     repeat=size):
+          self._compareAll(np.array(arr, dtype=dtype), None)
 
   def testFloatReduce3D(self):
     # Create a 3D array of floats and reduce across all possible
@@ -847,9 +844,7 @@ class MaxReductionTest(test.TestCase):
 
   def _compareAll(self, x, reduction_axes):
     self._compare(x, reduction_axes, False, use_gpu=True)
-    self._compare(x, reduction_axes, False, use_gpu=False)
     self._compare(x, reduction_axes, True, use_gpu=True)
-    self._compare(x, reduction_axes, True, use_gpu=False)
 
   def testAxesType(self):
     for dtype in [dtypes.int64, dtypes.int32]:
@@ -858,13 +853,12 @@ class MaxReductionTest(test.TestCase):
         tf_v = self.evaluate(v)
       self.assertAllEqual(tf_v, 0)
 
-  @test_util.run_deprecated_v1
-  def testInfinity(self):
+  def testSpecialValues(self):
     for dtype in [np.float32, np.float64]:
-      for special_value_x in [-np.inf, np.inf]:
-        for special_value_y in [-np.inf, np.inf]:
-          np_arr = np.array([special_value_x, special_value_y]).astype(dtype)
-          self._compareAll(np_arr, None)
+      for size in range(1, 4):
+        for arr in itertools.product([-np.inf, 1., np.nan, np.inf],
+                                     repeat=size):
+          self._compareAll(np.array(arr, dtype=dtype), None)
 
   def testInt64Reduce3D(self):
     # Create a 3D array of int64s and reduce across all possible

@@ -37,8 +37,8 @@ namespace {
 // For the benchmark, we set up two 2-dimensional tensors, each kDim1 x 'dim'
 // in size, and concat them together along "concat_dimension"
 template <typename T>
-static void SliceHelper(int iters, int size) {
-  testing::StopTiming();
+static void SliceHelper(::testing::benchmark::State& state) {
+  const int size = state.range(0);
   Graph* g = new Graph(OpRegistry::Global());
   DataType dt = DataTypeToEnum<T>::v();
   int kDim = 100;
@@ -65,26 +65,24 @@ static void SliceHelper(int iters, int size) {
                   .Finalize(g, &node));
   FixupSourceAndSinkEdges(g);
 
-  testing::BytesProcessed(static_cast<int64>(iters) * kDim * size * sizeof(T));
-  testing::StartTiming();
   test::Benchmark("cpu", g, nullptr, nullptr, nullptr,
-                  "SINGLE_THREADED_EXECUTOR")
-      .Run(iters);
-
-  testing::UseRealTime();
+                  "SINGLE_THREADED_EXECUTOR", /*old_benchmark_api*/ false)
+      .Run(state);
+  state.SetBytesProcessed(static_cast<int64>(state.iterations()) * kDim * size *
+                          sizeof(T));
 }
 
-static void BM_SliceFloat(int iters, int dim2) {
-  SliceHelper<float>(iters, dim2);
+void BM_SliceFloat(::testing::benchmark::State& state) {
+  SliceHelper<float>(state);
 }
 
-BENCHMARK(BM_SliceFloat)->Arg(100)->Arg(1000)->Arg(10000);
+BENCHMARK(BM_SliceFloat)->UseRealTime()->Arg(100)->Arg(1000)->Arg(10000);
 
-static void BM_SliceBFloat16(int iters, int dim2) {
-  SliceHelper<bfloat16>(iters, dim2);
+void BM_SliceBFloat16(::testing::benchmark::State& state) {
+  SliceHelper<bfloat16>(state);
 }
 
-BENCHMARK(BM_SliceBFloat16)->Arg(100)->Arg(1000)->Arg(10000);
+BENCHMARK(BM_SliceBFloat16)->UseRealTime()->Arg(100)->Arg(1000)->Arg(10000);
 
 }  // namespace
 }  // namespace tensorflow

@@ -24,6 +24,8 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_launch_util.h"
 #include "tensorflow/compiler/jit/xla_platform_info.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
+#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
+#include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -31,10 +33,23 @@ limitations under the License.
 
 namespace tensorflow {
 
+static xla::StatusOr<xla::LocalExecutable*> GetLocalExecutable(
+    const XlaCompiler::Options& options,
+    const XlaCompiler::CompileOptions& compile_options,
+    const NameAttrList& function, XlaCompilationCache* cache,
+    absl::Span<XlaCompiler::Argument const> args, const XlaCompiler& compiler) {
+  const XlaCompiler::CompilationResult* compilation_result = nullptr;
+  xla::LocalExecutable* executable = nullptr;
+  TF_RETURN_IF_ERROR(cache->Compile(options, function, args, compile_options,
+                                    XlaCompilationCache::CompileMode::kStrict,
+                                    &compilation_result, &executable));
+  return executable;
+}
+
 xla::StatusOr<std::string> GetCompilerIr(
     IrExportStage stage, ProcessFunctionLibraryRuntime* pflr,
-    absl::string_view func_name, Device* dev,
-    absl::Span<const Tensor* const> inputs) {
+    absl::string_view func_name, Device* dev, EagerContext* context,
+    absl::Span<const TensorHandle* const> inputs_handles) {
   NameAttrList function;
   function.set_name(std::string{func_name});
 
@@ -50,6 +65,25 @@ xla::StatusOr<std::string> GetCompilerIr(
   MemoryTypeVector input_memory_types =
       GetInputMemoryTypes(fbody, constant_arg_indices, resource_arg_indices);
   MemoryTypeVector output_memory_types = GetOutputMemoryTypes(fbody);
+
+  std::deque<Tensor> inputs_storage;
+  std::vector<const Tensor*> inputs;
+  inputs.reserve(inputs_handles.size());
+  for (int i = 0; i < inputs_handles.size(); i++) {
+    const TensorHandle* th = inputs_handles[i];
+    const Tensor* t;
+    // Handle owns the tensor.
+    TF_RETURN_IF_ERROR(th->Tensor(&t));
+    if (absl::c_binary_search(constant_arg_indices, i)) {
+      // Need to make sure it's on the host.
+      inputs_storage.emplace_back(t->dtype(), t->shape());
+      TF_RETURN_IF_ERROR(
+          th->CopyToDevice(*context, /*d=*/nullptr, &inputs_storage.back()));
+      inputs.push_back(&inputs_storage.back());
+    } else {
+      inputs.push_back(t);
+    }
+  }
 
   std::vector<VariableInfo> variable_infos;
   TF_RETURN_IF_ERROR(GetVariableInfosFromInputs(
@@ -100,13 +134,23 @@ xla::StatusOr<std::string> GetCompilerIr(
       return new_module->ToString();
     }
     case IrExportStage::OPTIMIZED_HLO: {
-      const XlaCompiler::CompilationResult* compilation_result = nullptr;
-      xla::LocalExecutable* executable = nullptr;
-      TF_RETURN_IF_ERROR(
-          cache->Compile(options, function, *args, compile_options,
-                         XlaCompilationCache::CompileMode::kStrict,
-                         &compilation_result, &executable));
-      return executable->executable()->module().ToString();
+      xla::StatusOr<xla::LocalExecutable*> executable = GetLocalExecutable(
+          options, compile_options, function, cache, *args, compiler);
+      TF_RETURN_IF_ERROR(executable.status());
+      return (*executable)->executable()->module().ToString();
+    }
+    case IrExportStage::OPTIMIZED_HLO_DOT: {
+      xla::StatusOr<xla::LocalExecutable*> executable = GetLocalExecutable(
+          options, compile_options, function, cache, *args, compiler);
+      TF_RETURN_IF_ERROR(executable.status());
+      xla::StatusOr<std::string> graph = xla::RenderGraph(
+          *(*executable)->executable()->module().entry_computation(),
+          "Visualization",
+          /*debug_options=*/{}, xla::RenderedGraphFormat::kDot,
+          /*hlo_execution_profile=*/nullptr,
+          /*hlo_render_options=*/{});
+      TF_RETURN_IF_ERROR(graph.status());
+      return *graph;
     }
   }
 }

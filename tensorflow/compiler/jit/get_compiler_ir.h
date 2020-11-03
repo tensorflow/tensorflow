@@ -24,15 +24,17 @@ namespace tensorflow {
 class ProcessFunctionLibraryRuntime;
 class Device;
 class Tensor;
+class TensorHandle;
+class EagerContext;
 
-enum class IrExportStage { HLO, OPTIMIZED_HLO };
+enum class IrExportStage { HLO, OPTIMIZED_HLO, OPTIMIZED_HLO_DOT };
 
 // Returns HLO text for a given function `func_name` using library runtime
 // `runtime` on a device `dev` with given `inputs`.
 xla::StatusOr<std::string> GetCompilerIr(
     IrExportStage stage, ProcessFunctionLibraryRuntime* pflr,
-    absl::string_view func_name, Device* dev,
-    absl::Span<const Tensor* const> inputs);
+    absl::string_view func_name, Device* dev, EagerContext* context,
+    absl::Span<const TensorHandle* const> inputs);
 
 }  // namespace tensorflow
 

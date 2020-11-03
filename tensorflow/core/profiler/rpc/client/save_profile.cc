@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
 #include "absl/time/clock.h"
@@ -115,10 +116,13 @@ Status MaybeCreateEmptyEventFile(const std::string& logdir) {
 Status SaveProfile(const std::string& repository_root, const std::string& run,
                    const std::string& host, const ProfileResponse& response,
                    std::ostream* os) {
+  if (response.tool_data().empty()) return Status::OK();
   std::string run_dir;
   TF_RETURN_IF_ERROR(GetOrCreateRunDir(repository_root, run, &run_dir, os));
+  // Windows file names do not support colons.
+  std::string hostname = absl::StrReplaceAll(host, {{":", "_"}});
   for (const auto& tool_data : response.tool_data()) {
-    TF_RETURN_IF_ERROR(DumpToolData(run_dir, host, tool_data, os));
+    TF_RETURN_IF_ERROR(DumpToolData(run_dir, hostname, tool_data, os));
   }
   return Status::OK();
 }

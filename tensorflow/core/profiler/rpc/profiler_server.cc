@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/profiler_service.grpc.pb.h"
-#include "tensorflow/core/profiler/rpc/grpc.h"
 #include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
 
 namespace tensorflow {
@@ -53,6 +52,7 @@ ProfilerServer::~ProfilerServer() {
   if (server_) {
     server_->Shutdown();
     server_->Wait();
+    LOG(INFO) << "Profiler server was shut down";
   }
 }
 

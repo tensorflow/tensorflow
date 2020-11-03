@@ -29,7 +29,7 @@ namespace cl {
 namespace {
 
 std::string GetVectorReduceCode() {
-  return R"(static inline float reduce_vector(float4 v) {
+  return R"(float reduce_vector(float4 v) {
   return dot(v, (float4)(1.0f));
 })";
 }
@@ -55,7 +55,7 @@ std::string GetReduceCode() {
 #ifdef __opencl_c_work_group_collective_functions
 #define local_reduce(item, tmp) work_group_reduce_add(item)
 #else  // !defined(__opencl_c_work_group_collective_functions)
-static inline float local_reduce(float item, __local float* tmp) {
+float local_reduce(float item, __local float* tmp) {
   const int local_id = get_local_id(0);
   tmp[local_id] = item;
   barrier(CLK_LOCAL_MEM_FENCE);
@@ -79,7 +79,7 @@ static inline float local_reduce(float item, __local float* tmp) {
 
 std::string GetFilterCode() {
   return R"(
-static inline float4 filter_outside_tensor(float4 x, int num_channels, int slice) {
+float4 filter_outside_tensor(float4 x, int num_channels, int slice) {
   return select(x, (float4)(0.0f), slice * 4 + (int4)(0, 1, 2, 3) >= num_channels);
 }
 )";
@@ -97,11 +97,39 @@ MeanStdDevNormalization::MeanStdDevNormalization(const OperationDef& definition,
   // larger than the number of tensor slices.
   int desired_work_group_size =
       std::min(tensor_slices, device_info.max_work_group_size_x);
-  if (device_info.IsMali() && desired_work_group_size > 64) {
+  if (device_info.IsMali()) {
     // Don't use more than 64 work items per work group on ARM Mali. They
     // implement local memory using the global memory, larger workgroups have
     // severe performance penalty.
     desired_work_group_size = 64;
+  }
+  if (device_info.IsAdreno()) {
+    AdrenoInfo info = device_info.adreno_info;
+    if (device_info.IsAdreno3xx()) {
+      if (info.gpu_version < 320) {
+        desired_work_group_size = 64;
+      } else {
+        desired_work_group_size = 128;
+      }
+    } else if (device_info.IsAdreno4xx()) {
+      if (info.gpu_version < 430) {
+        desired_work_group_size = 128;
+      } else {
+        desired_work_group_size = 256;
+      }
+    } else if (device_info.IsAdreno5xx()) {
+      if (info.gpu_version < 530) {
+        desired_work_group_size = 128;
+      } else {
+        desired_work_group_size = 256;
+      }
+    }
+  }
+  if (device_info.IsPowerVR()) {
+    desired_work_group_size = 64;
+  }
+  while (desired_work_group_size >= tensor_slices * 2) {
+    desired_work_group_size /= 2;
   }
   work_group_size_.x = desired_work_group_size;
   work_group_size_.y = 1;  // Required

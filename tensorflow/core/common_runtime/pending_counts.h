@@ -81,13 +81,19 @@ class PendingCounts {
   // Create a new PendingCounts object that can hold the state of
   // all the Handles allocated from "final_allocator".
   explicit PendingCounts(Layout layout)
-      : num_bytes_(layout.next_offset_), bytes_(new char[num_bytes_]) {}
+      : num_bytes_(layout.next_offset_), bytes_(new char[num_bytes_]) {
+    if (num_bytes_ >= sizeof(LargeCounts)) {
+      CHECK_EQ(uintptr_t(bytes_) % alignof(LargeCounts), 0);
+    }
+  }
 
   // Create a new PendingCounts object with the same layout and counts
   // as "other".
   explicit PendingCounts(const PendingCounts& other)
       : num_bytes_(other.num_bytes_), bytes_(new char[num_bytes_]) {
-    CHECK_EQ(uintptr_t(bytes_) % alignof(LargeCounts), 0);
+    if (num_bytes_ >= sizeof(LargeCounts)) {
+      CHECK_EQ(uintptr_t(bytes_) % alignof(LargeCounts), 0);
+    }
     memcpy(bytes_, other.bytes_, other.num_bytes_);
   }
 

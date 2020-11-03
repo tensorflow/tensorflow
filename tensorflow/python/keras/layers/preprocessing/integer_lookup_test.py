@@ -426,6 +426,21 @@ class IntegerLookupVocabularyTest(
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
 
+  def test_int_output_explicit_vocab_from_file_via_setter(self):
+    vocab_list = [42, 1138, 725, 1729]
+    vocab_path = self._write_to_temp_file("vocab_file", vocab_list)
+
+    input_array = np.array([[42, 1138, 725, 1729], [1729, 725, 42, 203]])
+    expected_output = [[2, 3, 4, 5], [5, 4, 2, 1]]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int64)
+    layer = get_layer_class()()
+    layer.set_vocabulary(vocab_path)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
   def test_non_unique_vocab_fails(self):
     vocab_data = [42, 1138, 725, 1729, 1729]
     with self.assertRaisesRegex(ValueError, ".*repeated term.*1729.*"):

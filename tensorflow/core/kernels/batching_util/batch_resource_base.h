@@ -87,9 +87,19 @@ class BatchResourceBase : public ResourceBase {
 
     bool is_partial = false;
 
+    uint64 start_time;
+
     size_t size() const override { return inputs[0].shape().dim_size(0); }
 
-    uint64 start_time;
+    // Create a split task from this one. The caller needs to setup the inputs
+    // of the new task
+    std::unique_ptr<BatchTask> CreateSplitTask(
+        int split_index, AsyncOpKernel::DoneCallback done_callback);
+
+   protected:
+    virtual std::unique_ptr<BatchTask> CreateDerivedTask() {
+      return std::make_unique<BatchTask>();
+    }
   };
 
   // Appending a T suffix to make the type alias different to those in

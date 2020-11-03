@@ -25,11 +25,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/eigen_contraction_kernel.h"
 #endif
 
-#ifdef __HIP_DEVICE_COMPILE__
-// Provide ldexp float overload for HIP, it's missing in their headers.
-__device__ inline float ldexp(float x, int exp) { return ldexpf(x, exp); }
-#endif
-
 namespace tensorflow {
 class OpKernelContext;
 namespace functor {

@@ -45,7 +45,7 @@ def int_gen():
     yield (np.random.randint(0, 5, (1,)), np.random.randint(0, 7, (1,)))
 
 
-class BenchmarkLayer(benchmark.Benchmark):
+class BenchmarkLayer(benchmark.TensorFlowBenchmark):
   """Benchmark the layer forward pass."""
 
   def run_dataset_implementation(self, batch_size):

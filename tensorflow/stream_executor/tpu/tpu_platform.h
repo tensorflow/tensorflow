@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
 
 namespace tensorflow {
+namespace tpu {
 
 class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
  public:
@@ -147,6 +148,7 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
 
 bool RegisterTpuPlatform();
 
+}  // namespace tpu
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_PLATFORM_H_

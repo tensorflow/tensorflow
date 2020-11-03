@@ -74,7 +74,7 @@ class MultiWorkerContinuousRunTest(test.TestCase, parameterized.TestCase):
     def worker_step_fn(worker_id):
       strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy()
       # Make sure the processeses are in sync after updating the cluster
-      multi_process_runner.barrier().wait()
+      multi_process_runner.get_barrier().wait()
 
       @def_function.function
       def run_reduce():
@@ -107,7 +107,7 @@ class MultiWorkerContinuousRunTest(test.TestCase, parameterized.TestCase):
     def worker_step_fn(worker_id, num_dims):
       strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy()
       # Make sure the processeses are in sync after updating the cluster
-      multi_process_runner.barrier().wait()
+      multi_process_runner.get_barrier().wait()
       tensor_shape = [2] * num_dims
 
       def variable_fn():

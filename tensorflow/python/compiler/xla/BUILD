@@ -24,6 +24,9 @@ cuda_py_test(
     name = "jit_test",
     size = "small",
     srcs = ["jit_test.py"],
+    tags = [
+        "no_windows",  # TODO(b/171385770)
+    ],
     xla_enabled = True,
     deps = [
         ":compiler_py",

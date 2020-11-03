@@ -150,6 +150,7 @@ cc_library(
         ":tensor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "//tensorflow/lite/delegates:utils",
         "//tensorflow/lite:kernel_api",

@@ -47,7 +47,7 @@ class PrefetchWithSlackTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = multi_device_iterator._dataset  # pylint: disable=protected-access
     self.assertIn("slack", dataset.options()._graph_rewrites().enabled)
     self.assertIn("slack:slack_period:2",
-                  dataset.options()._graph_rewrite_configs())
+                  dataset.options()._graph_rewrite_configs(autotune=True))
 
     config = config_pb2.ConfigProto(device_count={"CPU": 3})
     with self.test_session(config=config):
@@ -71,7 +71,7 @@ class PrefetchWithSlackTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.with_options(options)
     self.assertIn("slack", dataset.options()._graph_rewrites().enabled)
     self.assertIn("slack:slack_period:1",
-                  dataset.options()._graph_rewrite_configs())
+                  dataset.options()._graph_rewrite_configs(autotune=True))
     self.assertDatasetProduces(dataset, range(10))
 
   @combinations.generate(test_base.default_test_combinations())

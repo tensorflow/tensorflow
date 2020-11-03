@@ -47,6 +47,7 @@ from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import save
@@ -287,6 +288,30 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     model.f = def_function.function(lambda: 3.)
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
     save.save(model, save_dir)
+
+  def test_save_function_no_trace(self):
+
+    class ObjWithFunction(module.Module):
+
+      @def_function.function
+      def foo(self, a):
+        return a
+
+      @def_function.function
+      def bar(self, a):
+        return a + 1
+
+    root = ObjWithFunction()
+    root.bar(1)
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    with self.assertLogs(level="WARNING") as logs:
+      save.save(root, save_dir)
+
+    expected_message = (
+        "WARNING:absl:Found untraced functions such as foo while saving "
+        "(showing 1 of 1). These functions will not be directly callable after "
+        "loading.")
+    self.assertIn(expected_message, logs.output)
 
   def test_find_default_save_function(self):
 
@@ -551,10 +576,16 @@ class SaveTest(test.TestCase, parameterized.TestCase):
       self.assertEmpty(v1.device)
 
   @parameterized.named_parameters(
-      ("_ExpandDistributedVariables",
-       save_options.VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES),
-      ("_DiscardDistributedVariables", save_options.VariablePolicy.NONE))
-  def test_expand_distributed_variables(self, expand_strategy):
+      ("_ExpandDistributedVariablesWithPolicy",
+       save_options.VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES, True),
+      ("_ExpandDistributedVariablesWithoutPolicy",
+       save_options.VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES, False),
+      ("_DiscardDistributedVariablesWithPolicy",
+       save_options.VariablePolicy.NONE, True),
+      ("_DiscardDistributedVariablesWithoutPolicy",
+       save_options.VariablePolicy.NONE, False))
+  def test_expand_distributed_variables(self, expand_strategy, policy):
+    # 1. Create a context with both CPU:0 and CPU:1.
     context._reset_context()
     cpus = context.context().list_physical_devices("CPU")
     if len(cpus) == 1:
@@ -565,8 +596,11 @@ class SaveTest(test.TestCase, parameterized.TestCase):
           ])
     context.ensure_initialized()
 
+    # 2. Create and save a model under a mirrored strategy.
     file_name = os.path.join(self.get_temp_dir(), "saved_model.pb")
-    with mirrored_strategy.MirroredStrategy(["CPU:0", "CPU:1"]).scope():
+    strategy = mirrored_strategy.MirroredStrategy(["CPU:0", "CPU:1"])
+    strategy.extended._use_var_policy = policy
+    with strategy.scope():
       root = tracking.AutoTrackable()
       root.v = variables.Variable([1., 1.], name="v")
 
@@ -581,35 +615,76 @@ class SaveTest(test.TestCase, parameterized.TestCase):
           filename=file_name,
           options=save_options.SaveOptions(
               experimental_variable_policy=expand_strategy))
-    graph_def = meta_graph.read_meta_graph_file(file_name).graph_def
-    v0 = next((n for n in graph_def.node if n.name == "v"), None)
-    v1 = next((n for n in graph_def.node if n.name == "v/replica_1"), None)
-    self.assertIsNotNone(v0)
+
+    # 3. Read the output file and test behavior.
+    meta_graph_def = meta_graph.read_meta_graph_file(file_name)
+    object_graph = meta_graph_def.object_graph_def
+    graph_def = meta_graph_def.graph_def
+    v = next((n.variable
+              for n in object_graph.nodes
+              if n.HasField("variable") and n.variable.name == "v"), None)
     saved_function = next((f for f in graph_def.library.function
                            if "inference_f_" in f.signature.name), None)
     self.assertIsNotNone(saved_function)
     if (expand_strategy ==
         save_options.VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES):
-      self.assertIsNotNone(v1)
       # experimental_save_variable_devices should have been automatically set.
+      self.assertIn("CPU:0", v.device)
+      components = v.experimental_distributed_variable_components
+      self.assertLen(components, 2)
+      v0 = next((x for x in components if x.name == "v"), None)
+      v1 = next((x for x in components if x.name == "v/replica_1"), None)
+      self.assertIsNotNone(v0)
+      self.assertIsNotNone(v1)
       self.assertIn("CPU:0", v0.device)
       self.assertIn("CPU:1", v1.device)
       self.assertLen(saved_function.signature.input_arg, 2)
     else:
-      self.assertIsNone(v1)
-      self.assertEmpty(v0.device)
+      self.assertEmpty(v.device)
+      self.assertEmpty(v.experimental_distributed_variable_components)
       self.assertLen(saved_function.signature.input_arg, 1)
 
-  def test_expand_distributed_variables_not_allowed(self):
+  def test_save_uninitialized_variable(self):
     root = tracking.AutoTrackable()
-    with self.assertRaisesRegex(NotImplementedError,
-                                "not implemented in saved_model.save"):
-      save.save(
-          obj=root,
-          export_dir="",
-          options=save_options.SaveOptions(
-              experimental_variable_policy=save_options.VariablePolicy
-              .EXPAND_DISTRIBUTED_VARIABLES))
+    root.uninitialized_variable = resource_variable_ops.UninitializedVariable(
+        name="uninitialized_variable", dtype=dtypes.float32)
+    root.initialized_variable = variables.Variable(
+        1.0, name="initialized_variable")
+
+    # TODO(b/149594077): Python loading does not work now partly because it
+    # shouldn't, as the public API and semantics of uninitialized variables
+    # are not properly defined, and officially supporting loading would end up
+    # defining semantics "by usage." We should only allow loading once the API
+    # is made official.
+    export_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(root, export_dir)
+    with self.assertRaisesRegex(FileNotFoundError,
+                                "Key uninitialized_variable"):
+      load.load(export_dir)
+    with ops.Graph().as_default(), session_lib.Session() as session:
+      # The final ValueError here (with "no variables to save") is confusing,
+      # but errors upstream give the user the correct information (a
+      # NotFoundError stating that the uninitalized_variable was not found in
+      # the checkpoint).
+      with self.assertRaises(ValueError):
+        loader.load(session, [tag_constants.SERVING], export_dir)
+
+  def test_concrete_function_with_set_shape(self,):
+    # Serialized concrete function should retain the shape from the TensorSpec,
+    # instead of using the shape of the inputs (which are changed by set_shape).
+    @def_function.function
+    def f(x):
+      x.set_shape((5, 1))
+      return x
+
+    root = tracking.AutoTrackable()
+    path = os.path.join(self.get_temp_dir(), "saved_model")
+    concrete = f.get_concrete_function(
+        tensor_spec.TensorSpec((None, 1), name="name"))
+    save.save(root, path, signatures={"key": concrete})
+    imported = load.load(path)
+    self.assertEqual(imported.signatures["key"].structured_input_signature[1],
+                     {"name": tensor_spec.TensorSpec((None, 1), name="name")})
 
 
 class VariablePolicyEnumTest(test.TestCase):
@@ -718,7 +793,6 @@ class SavingOptionsTest(test.TestCase):
     root.f = def_function.function(
         lambda x: 2. * x,
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
-    root.f(constant_op.constant(1.))
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
     options = save_options.SaveOptions(function_aliases={
         "my_func": root.f,
@@ -820,8 +894,7 @@ class AssetTests(test.TestCase):
         key_index=lookup_ops.TextFileIndex.WHOLE_LINE,
         value_dtype=dtypes.int64,
         value_index=lookup_ops.TextFileIndex.LINE_NUMBER)
-    table = lookup_ops.HashTable(
-        initializer, default_value=-1)
+    table = lookup_ops.HashTable(initializer, default_value=-1)
     root.table_user = def_function.function(
         table.lookup,
         input_signature=[tensor_spec.TensorSpec(None, dtypes.string)])

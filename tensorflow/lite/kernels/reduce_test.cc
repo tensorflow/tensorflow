@@ -53,6 +53,24 @@ class BaseOpModel : public SingleOpModel {
   int Input() { return input_; }
 
  protected:
+  TensorData& SymmetricInt16Scaling(TensorData& tensor) {
+    // Symmetric range and null zero-point is required for INT16 tensors. As
+    // SingleOpModel::QuantizationParams calculates the scale on an asymmetric
+    // base [int_type::min, int_type::max], manually calculate the scale on a
+    // symmetric range [int_type::min+1, int_type::max] to ensure a null
+    // zero-point.
+    if (tensor.type == TensorType_INT16) {
+      CHECK_EQ(std::abs(tensor.min), tensor.max);
+      tensor.scale = tensor.max / std::numeric_limits<int16_t>::max();
+      tensor.zero_point = 0;
+      tensor.min = 0;
+      tensor.max = 0;
+    }
+
+    return tensor;
+  }
+
+ protected:
   int input_;
   int axis_;
   int output_;
@@ -61,12 +79,12 @@ class BaseOpModel : public SingleOpModel {
 // Model for the tests case where axis is a const tensor.
 class MeanOpConstModel : public BaseOpModel {
  public:
-  MeanOpConstModel(const TensorData& input, const TensorData& output,
+  MeanOpConstModel(TensorData input, TensorData output,
                    std::initializer_list<int> axis_shape,
                    std::initializer_list<int> axis, bool keep_dims) {
-    input_ = AddInput(input);
+    input_ = AddInput(SymmetricInt16Scaling(input));
     axis_ = AddConstInput(TensorType_INT32, axis, axis_shape);
-    output_ = AddOutput(output);
+    output_ = AddOutput(SymmetricInt16Scaling(output));
     SetBuiltinOp(BuiltinOperator_MEAN, BuiltinOptions_ReducerOptions,
                  CreateReducerOptions(builder_, keep_dims).Union());
     BuildInterpreter({GetShape(input_)});
@@ -267,6 +285,17 @@ TEST(ConstFloatMeanOpTest, KeepDims) {
   EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray(ArrayFloatNear({10.5, 12.5, 14.5})));
 }
+
+TEST(ConstFloatMeanOpTest, ZeroInputDim) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  MeanOpConstModel m({TensorType_FLOAT32, {4, 0, 2}}, {TensorType_FLOAT32, {3}},
+                     {2}, {0, 2}, true);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 0, 1}));
+}
+
 // Uses a set of reduction conditions that trigger the specialized 4D version
 // of Mean.
 TEST(ConstFloatMeanOpTest, KeepDims4DMean) {
@@ -439,14 +468,10 @@ TEST(ConstUint8MeanOpTest, KeepDims) {
 
 template <typename integer_type, TensorType tensor_dtype>
 void MeanOpConstModelTest() {
-  float kQuantizedTolerance = GetTolerance<integer_type>(-5.0, 5.0);
+  float kQuantizedTolerance = GetTolerance<integer_type>(-255.0, 255.0);
   std::vector<float> data = {105.0, 71.0, 233.0, 92.0, 227.0, 11.0, 14.0, 43.0};
-
-  float scale = tensor_dtype == TensorType_INT16 ? 255 / 32767.0f : 0.0f;
-
-  MeanOpConstModel m({tensor_dtype, {1, 1, 2, 4}, 0.0, 255.0, scale, 0},
-                     {tensor_dtype, {1, 2, 4}, 0.0, 255.0, scale, 0}, {1}, {1},
-                     false);
+  MeanOpConstModel m({tensor_dtype, {1, 1, 2, 4}, -255.0, 255.0},
+                     {tensor_dtype, {1, 2, 4}, -255, 255.0}, {1}, {1}, false);
   m.QuantizeAndPopulate<integer_type>(m.Input(), data);
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 4}));
@@ -468,12 +493,8 @@ template <typename integer_type, TensorType tensor_dtype>
 void ConstMeanOpTestNonSameScale() {
   float kQuantizedTolerance = GetTolerance<integer_type>(-5.0, 5.0);
   std::vector<float> data = {0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8};
-
-  float scale = tensor_dtype == TensorType_INT16 ? 1 / 32767.f : 0.0f;
-
-  MeanOpConstModel m({tensor_dtype, {1, 1, 2, 4}, -1.0, 1.0, scale, 0},
-                     {tensor_dtype, {1, 2}, -5.0, 5.0, scale, 0}, {2}, {1, 3},
-                     false);
+  MeanOpConstModel m({tensor_dtype, {1, 1, 2, 4}, -1.0, 1.0},
+                     {tensor_dtype, {1, 2}, -5.0, 5.0}, {2}, {1, 3}, false);
   m.QuantizeAndPopulate<integer_type>(m.Input(), data);
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
@@ -495,16 +516,12 @@ TEST_F(ConstMeanOpTestNonSameScale, NonSpecialAxisNonSameScaleInt16) {
 template <typename integer_type, TensorType tensor_dtype>
 void MeanOpTestQuantizedSameScale() {
   float kQuantizedTolerance = GetTolerance<integer_type>(-5.0, 5.0);
-
-  float scale = tensor_dtype == TensorType_INT16 ? 1 / 32767.f : 0.0f;
-
   std::vector<float> data = {0.1, 0.2, 0.3, 0.4, 0.2, 0.3, 0.4, 0.5, 0.1,
                              0.1, 0.1, 0.1, 0.4, 0.2, 0.2, 0.2, 0.9, 0.9,
                              0.9, 0.9, 0.2, 0.3, 0.7, 0.7, 0.1, 0.1, 0.3,
                              0.3, 0.1, 0.2, 0.3, 0.4, 0.1, 0.2, 0.3, 0.4};
-  MeanOpConstModel m({tensor_dtype, {1, 2, 2, 9}, -1.0, 1.0, scale, 0},
-                     {tensor_dtype, {2}, -1.0, 1.0, scale, 0}, {2}, {1, 2},
-                     true);
+  MeanOpConstModel m({tensor_dtype, {1, 2, 2, 9}, -1.0, 1.0},
+                     {tensor_dtype, {2}, -1.0, 1.0}, {2}, {1, 2}, true);
   m.QuantizeAndPopulate<integer_type>(m.Input(), data);
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 1, 9}));
@@ -527,16 +544,12 @@ TEST_F(MeanOpTestQuantizedSameScale, QuantizedSameScaleInt16) {
 template <typename integer_type, TensorType tensor_dtype>
 void MeanOpTestQuantizedDifferentScale() {
   float kQuantizedTolerance = GetTolerance<integer_type>(-5.0, 5.0);
-
-  float scale = tensor_dtype == TensorType_INT16 ? 1 / 32767.f : 0.0f;
-
   std::vector<float> data = {0.1, 0.2, 0.3, 0.4, 0.2, 0.3, 0.4, 0.5, 0.1,
                              0.1, 0.1, 0.1, 0.4, 0.2, 0.2, 0.2, 0.9, 0.9,
                              0.9, 0.9, 0.2, 0.3, 0.7, 0.7, 0.1, 0.1, 0.3,
                              0.3, 0.1, 0.2, 0.3, 0.4, 0.1, 0.2, 0.3, 0.4};
-  MeanOpConstModel m({tensor_dtype, {1, 2, 2, 9}, -1.0, 1.0, scale, 0},
-                     {tensor_dtype, {2}, -4.0, 4.0, scale, 0}, {2}, {1, 2},
-                     true);
+  MeanOpConstModel m({tensor_dtype, {1, 2, 2, 9}, -1.0, 1.0},
+                     {tensor_dtype, {2}, -4.0, 4.0}, {2}, {1, 2}, true);
   m.QuantizeAndPopulate<integer_type>(m.Input(), data);
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 1, 9}));
@@ -661,6 +674,16 @@ TEST(ConstFloatSumOpTest, KeepDims) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3, 1}));
   EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray(ArrayFloatNear({84, 100, 116})));
+}
+
+TEST(ConstFloatSumOpTest, ZeroInputDim) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  SumOpConstModel m({TensorType_FLOAT32, {4, 0, 2}}, {TensorType_FLOAT32, {3}},
+                    {2}, {0, 2}, true);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 0, 1}));
 }
 
 TEST(DynamicFloatSumOpTest, NotKeepDims) {
@@ -842,6 +865,16 @@ TEST(ConstFloatProdOpTest, KeepDims) {
                   ArrayFloatNear({7.74592e+06, 1.197504e+08, 6.6889152e+08})));
 }
 
+TEST(ConstFloatProdOpTest, ZeroInputDim) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  ProdOpConstModel m({TensorType_FLOAT32, {4, 0, 2}}, {TensorType_FLOAT32, {3}},
+                     {2}, {0, 2}, true);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 0, 1}));
+}
+
 TEST(DynamicFloatProdOpTest, NotKeepDims) {
   std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
                              9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
@@ -913,6 +946,16 @@ TEST(ConstFloatMaxOpTest, KeepDims) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3, 1}));
   EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray(ArrayFloatNear({20, 22, 24})));
+}
+
+TEST(ConstFloatMaxOpTest, ZeroInputDim) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  MaxOpConstModel m({TensorType_FLOAT32, {4, 0, 2}}, {TensorType_FLOAT32, {3}},
+                    {2}, {0, 2}, true);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 0, 1}));
 }
 
 TEST(DynamicFloatMaxOpTest, NotKeepDims) {
@@ -1128,6 +1171,16 @@ TEST(ConstFloatMinOpTest, KeepDims) {
               ElementsAreArray(ArrayFloatNear({1, 3, 5})));
 }
 
+TEST(ConstFloatMinOpTest, ZeroInputDim) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  MinOpConstModel m({TensorType_FLOAT32, {4, 0, 2}}, {TensorType_FLOAT32, {3}},
+                    {2}, {0, 2}, true);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 0, 1}));
+}
+
 TEST(DynamicFloatMinOpTest, NotKeepDims) {
   std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
                              9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
@@ -1336,6 +1389,16 @@ TEST(ConstAnyOpTest, KeepDims) {
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3, 1}));
   EXPECT_THAT(m.GetOutput<bool>(), ElementsAreArray({true, false, true}));
+}
+
+TEST(ConstAnyOpTest, ZeroInputDim) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  AnyOpConstModel m({TensorType_BOOL, {2, 0, 2}}, {TensorType_BOOL, {3}}, {2},
+                    {0, 2}, true);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 0, 1}));
 }
 
 TEST(DynamicAnyOpTest, NotKeepDims) {

@@ -46,8 +46,17 @@ extern "C" {
 
 typedef enum TfLiteStatus {
   kTfLiteOk = 0,
+
+  // Generally referring to an error in the runtime (i.e. interpreter)
   kTfLiteError = 1,
+
+  // Generally referring to an error from a TfLiteDelegate itself.
   kTfLiteDelegateError = 2,
+
+  // Generally referring to an error in applying a delegate due to
+  // incompatibility between runtime and delegate, e.g., this error is returned
+  // when trying to apply a TfLite delegate onto a model graph that's already
+  // immutable.
   kTfLiteApplicationError = 3
 } TfLiteStatus;
 
@@ -224,6 +233,17 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
                          TfLiteTypeGetName(b));                            \
       return kTfLiteError;                                                 \
     }                                                                      \
+  } while (0)
+
+#define TF_LITE_ENSURE_NEAR(context, a, b, epsilon)                          \
+  do {                                                                       \
+    auto delta = ((a) > (b)) ? ((a) - (b)) : ((b) - (a));                    \
+    if (delta > epsilon) {                                                   \
+      TF_LITE_KERNEL_LOG((context), "%s:%d %s not near %s (%f != %f)",       \
+                         __FILE__, __LINE__, #a, #b, static_cast<double>(a), \
+                         static_cast<double>(b));                            \
+      return kTfLiteError;                                                   \
+    }                                                                        \
   } while (0)
 
 #define TF_LITE_ENSURE_OK(context, status) \
@@ -410,7 +430,7 @@ typedef struct TfLiteCustomAllocation {
   size_t bytes;
 } TfLiteCustomAllocation;
 
-// An tensor in the interpreter system which is a wrapper around a buffer of
+// A tensor in the interpreter system which is a wrapper around a buffer of
 // data including a dimensionality (or NULL if not currently defined).
 #ifndef TF_LITE_STATIC_MEMORY
 typedef struct TfLiteTensor {

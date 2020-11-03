@@ -17,7 +17,8 @@ limitations under the License.
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
 
 #if defined(PLATFORM_GOOGLE)
-REGISTER_MODULE_INITIALIZER(tpu_platform, tensorflow::RegisterTpuPlatform());
+REGISTER_MODULE_INITIALIZER(tpu_platform,
+                            tensorflow::tpu::RegisterTpuPlatform());
 
 DECLARE_MODULE_INITIALIZER(multi_platform_manager);
 DECLARE_MODULE_INITIALIZER(multi_platform_manager_listener);

@@ -416,6 +416,8 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(
         np.array(memoryview(t)), np.array([0.0], dtype=np.float32))
 
+  @test_util.disable_tfrt("b/169877776: ResourceVariable is not initialized "
+                          "properly in TFRT")
   def testResourceTensorCopy(self):
     if not test_util.is_gpu_available():
       self.skipTest("GPU only")

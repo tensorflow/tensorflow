@@ -33,4 +33,5 @@ module attributes {
 // CHECK-NEXT:   name: "min_runtime_version",
 // CHECK-NEXT:   buffer: 6
 // CHECK-NEXT: } ]
+// CHECK-NEXT: signature_defs: [ ]
 // CHECK-NEXT: }

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -48,6 +49,11 @@ absl::Status ShaderCodegen::Build(CompiledNodeAttributes attr,
 
   const auto add_uniform_parameter = [&](Variable&& variable) {
     const std::string name = variable.name;
+    const Variable& const_ref = variable;
+    if (variable_accessor.IsEmptyVariableLength(const_ref)) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Empty uniform vector value \"", name, "\""));
+    }
     if (!variable_accessor.AddUniformParameter(std::move(variable))) {
       return absl::AlreadyExistsError(
           absl::StrCat("Uniform parameter \"", name, "\""));

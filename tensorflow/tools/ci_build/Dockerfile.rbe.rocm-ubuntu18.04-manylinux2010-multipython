@@ -44,9 +44,11 @@ COPY install/install_deb_packages.sh /install/
 RUN /install/install_deb_packages.sh
 
 # Install additional packages needed for this image:
+# - bsdmainutils (hexdump) for MLIR generated GPU kernels
 # - dependencies to build Python from source
 # - patchelf, as it is required by auditwheel
 RUN apt-get update && apt-get install -y \
+    bsdmainutils \
     libbz2-dev \
     libffi-dev \
     libgdbm-dev \

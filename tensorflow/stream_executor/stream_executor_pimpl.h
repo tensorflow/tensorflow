@@ -35,11 +35,12 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/rng.h"
-#include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 #include "tensorflow/stream_executor/trace_listener.h"
 
 namespace stream_executor {
+
+class Stream;
 
 // Structure used for device memory leak checking.
 struct AllocRecord {
@@ -393,6 +394,21 @@ class StreamExecutor {
 
   // Get the list of supported algorithms for BLAS gemm.
   bool GetBlasGemmAlgorithms(std::vector<blas::AlgorithmType> *out_algorithms);
+
+  // Creates a backend-specific plan object for a blaslt matmul operation, which
+  // can then be passed to DoBlasLtMatmul(). When possible, plans should be
+  // created once and reused for multiple calls to DoBlasLtMatmul().
+  // Returns a null pointer on failure.
+  port::StatusOr<std::unique_ptr<blas::IBlasLtMatmulPlan>>
+  CreateBlasLtMatmulPlan(const blas::BlasLtMatmulPlanParams &params);
+
+  // Gets a list of supported algorithms for DoBlasLtMatmul. The algorithms are
+  // returned in the order of increasing estimated compute time according to an
+  // internal heuristic. The first returned algorithm can be used as the default
+  // algorithm if no autotuning is to be performed.
+  port::StatusOr<std::vector<std::unique_ptr<blas::IBlasLtMatmulAlgorithm>>>
+  GetBlasLtMatmulAlgorithms(const blas::IBlasLtMatmulPlan *plan,
+                            size_t max_workspace_size, int max_algorithm_count);
 
   // Create an RNN descriptor based on model shapes and configurations.
   // The caller retains the ownership of the descriptor.
@@ -862,32 +878,6 @@ DeviceMemory<T> StreamExecutor::GetSubBuffer(DeviceMemory<T> *parent,
     return DeviceMemory<T>{};
   }
   return DeviceMemory<T>(DeviceMemoryBase(opaque, sizeof(T) * element_count));
-}
-
-template <typename... Params, typename... Args>
-inline Stream &Stream::ThenLaunch(ThreadDim thread_dims, BlockDim block_dims,
-                                  const TypedKernel<Params...> &kernel,
-                                  Args... args) {
-  KernelInvocationChecker<std::tuple<Params...>,
-                          std::tuple<Args...>>::CheckAllStaticAssert();
-  if (ok()) {
-    // This is the core that allows type-safe kernel launching.
-    // Since the platforms take kernel arguments as tuples of (void *, size),
-    // we pack the variadic parameters passed as ...args into the desired
-    // tuple form and pass that packed form to the StreamExecutor::Launch()
-    // implementation.
-    KernelArgsArray<sizeof...(args)> kernel_args;
-    kernel.PackParams(&kernel_args, args...);
-    DCHECK(parent_ != nullptr);
-    bool ok =
-        parent_->Launch(this, thread_dims, block_dims, kernel, kernel_args)
-            .ok();
-    if (!ok) {
-      SetError();
-      LOG(WARNING) << "parent failed to launch kernel: " << &kernel;
-    }
-  }
-  return *this;
 }
 
 }  // namespace stream_executor

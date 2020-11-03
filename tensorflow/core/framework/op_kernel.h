@@ -1416,16 +1416,35 @@ class Name : public KernelDefBuilder {
 
 }  // namespace register_kernel
 
+// Kernel registration appears as:
+//   REGISTER_KERNEL_BUILDER(Name("OpName").Device(DEVICE_CPU)..., OpImpl)
+// We'd like to have "OpName" as a constant-expression, without requiring that
+// of the overall KernelDefBuilder expression (beginning with the
+// register_kernel::Name constructor above).
+//
+// So, we pull the "OpName" part to a separate macro-level argument. This
+// involves treating Name("OpName") as a macro call, via token-pasting (e.g.
+// M_## =>  M_Name("OpName")), and having it expand to '"OpName",
+// Name("OpName")' which is then usable as two arguments.
+#define TF_EXTRACT_KERNEL_NAME_Name(name_str) \
+  name_str, ::tensorflow::register_kernel::Name(name_str)
+#define TF_EXTRACT_KERNEL_NAME_IMPL(m, ...) m(__VA_ARGS__)
+#define TF_EXTRACT_KERNEL_NAME(m, kernel_builder, ...)                    \
+  TF_EXTRACT_KERNEL_NAME_IMPL(m, TF_EXTRACT_KERNEL_NAME_##kernel_builder, \
+                              __VA_ARGS__)
+
+// REGISTER_KERNEL_BUILDER_IMPL_2, with a unique 'ctr' as the first argument.
 // TODO(dodgen): There are some uses of this macro inside functions, where
 // kernel_builder refers to (non-const) locals (they should be fixed). To
 // accommodate those, kernel_builder.Build() appears as an argument to an
 // immediately-called lambda (not in the lambda itself).
-#define REGISTER_KERNEL_BUILDER_IMPL(ctr, kernel_builder, is_system_kernel, \
-                                     ...)                                   \
+#define REGISTER_KERNEL_BUILDER_IMPL_3(ctr, op_name, kernel_builder_expr,   \
+                                       is_system_kernel, ...)               \
   static ::tensorflow::InitOnStartupMarker const register_kernel_##ctr      \
       TF_ATTRIBUTE_UNUSED =                                                 \
           TF_INIT_ON_STARTUP_IF(is_system_kernel ||                         \
-                                SHOULD_REGISTER_OP_KERNEL(#__VA_ARGS__))    \
+                                (SHOULD_REGISTER_OP_KERNEL(#__VA_ARGS__) && \
+                                 SHOULD_REGISTER_OP(op_name)))              \
           << ([](::tensorflow::KernelDef const* kernel_def) {               \
                ::tensorflow::kernel_factory::OpKernelRegistrar registrar(   \
                    kernel_def, #__VA_ARGS__,                                \
@@ -1435,21 +1454,31 @@ class Name : public KernelDefBuilder {
                    });                                                      \
                (void)registrar;                                             \
                return ::tensorflow::InitOnStartupMarker{};                  \
-             })(::tensorflow::register_kernel::kernel_builder.Build());
+             })(kernel_builder_expr.Build());
 
-#define REGISTER_KERNEL_BUILDER(kernel_builder, ...)                      \
-  TF_ATTRIBUTE_ANNOTATE("tf:kernel")                                      \
-  TF_NEW_ID_FOR_INIT(REGISTER_KERNEL_BUILDER_IMPL, kernel_builder, false, \
-                     __VA_ARGS__)
+// REGISTER_KERNEL_BUILDER_IMPL, but with kernel_builder split to op_name,
+// kernel_builder_expr.
+#define REGISTER_KERNEL_BUILDER_IMPL_2(op_name, kernel_builder_expr, \
+                                       is_system_kernel, ...)        \
+  TF_NEW_ID_FOR_INIT(REGISTER_KERNEL_BUILDER_IMPL_3, op_name,        \
+                     kernel_builder_expr, is_system_kernel, __VA_ARGS__)
+
+// REGISTER_KERNEL_BUILDER, but with is_system_kernel bound.
+#define REGISTER_KERNEL_BUILDER_IMPL(kernel_builder, is_system_kernel, ...) \
+  TF_EXTRACT_KERNEL_NAME(REGISTER_KERNEL_BUILDER_IMPL_2, kernel_builder,    \
+                         is_system_kernel, __VA_ARGS__)
+
+#define REGISTER_KERNEL_BUILDER(kernel_builder, ...) \
+  TF_ATTRIBUTE_ANNOTATE("tf:kernel")                 \
+  REGISTER_KERNEL_BUILDER_IMPL(kernel_builder, false, __VA_ARGS__)
 
 // The `REGISTER_SYSTEM_KERNEL_BUILDER()` macro acts as
 // `REGISTER_KERNEL_BUILDER()` except that the kernel is registered
 // unconditionally even when selective registration is used.
-#define REGISTER_SYSTEM_KERNEL_BUILDER(kernel_builder, ...)              \
-  TF_ATTRIBUTE_ANNOTATE("tf:kernel")                                     \
-  TF_ATTRIBUTE_ANNOTATE("tf:kernel:system")                              \
-  TF_NEW_ID_FOR_INIT(REGISTER_KERNEL_BUILDER_IMPL, kernel_builder, true, \
-                     __VA_ARGS__)
+#define REGISTER_SYSTEM_KERNEL_BUILDER(kernel_builder, ...) \
+  TF_ATTRIBUTE_ANNOTATE("tf:kernel")                        \
+  TF_ATTRIBUTE_ANNOTATE("tf:kernel:system")                 \
+  REGISTER_KERNEL_BUILDER_IMPL(kernel_builder, true, __VA_ARGS__)
 
 // Checks whether a given kernel is registered on device_type.
 bool KernelDefAvailable(const DeviceType& device_type, const NodeDef& node_def);

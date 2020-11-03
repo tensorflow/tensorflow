@@ -4,7 +4,7 @@
 /tensorflow/core/common_runtime/eager @qqfish @kkimdev
 /tenosrflow/core/debug @caisq
 /tensorflow/core/nccl/ @azaks2 @chsigg
-/tensorflow/core/platform/windows/ @gunan @mihaimaruseac
+/tensorflow/core/platform/windows/ @mihaimaruseac
 /tensorflow/lite/experimental/micro @petewarden @advaitjain
 /tensorflow/python/autograph/ @mdanatg @kkimdev
 /tensorflow/python/debug @caisq

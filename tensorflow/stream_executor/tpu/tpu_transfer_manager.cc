@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
 
 namespace tensorflow {
+namespace tpu {
 
 using Status = stream_executor::port::Status;
 template <typename T>
@@ -162,11 +163,11 @@ Status TpuTransferManager::ResetDevices(
 
 struct TransferFromDeviceState {
   std::atomic<int64_t> remaining_transfers;
-  SE_Status* overall_status =
+  TF_Status* overall_status =
       tpu::ExecutorApiFn()->TpuStatus_NewFn();  // OK or the first error
   std::function<void(Status)> done;
 
-  void TransferFinished(SE_Status* status) {
+  void TransferFinished(TF_Status* status) {
     if (!tpu::ExecutorApiFn()->TpuStatus_OkFn(status) &&
         tpu::ExecutorApiFn()->TpuStatus_OkFn(overall_status)) {
       std::swap(overall_status, status);
@@ -181,7 +182,7 @@ struct TransferFromDeviceState {
   }
 };
 
-void TransferLiteralFromDeviceTrampoline(void* ctx, SE_Status* status) {
+void TransferLiteralFromDeviceTrampoline(void* ctx, TF_Status* status) {
   reinterpret_cast<TransferFromDeviceState*>(ctx)->TransferFinished(status);
 }
 
@@ -319,4 +320,5 @@ Status TpuTransferManager::LinearizeToBuffers(
   return status.status();
 }
 
+}  // namespace tpu
 }  // namespace tensorflow

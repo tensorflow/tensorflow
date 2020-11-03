@@ -33,8 +33,7 @@ limitations under the License.
 namespace tensorflow {
 
 FlatTensorFunction::FlatTensorFunction(
-    const std::string& name,
-    std::vector<ImmediateExecutionTensorHandle*> captures,
+    const std::string& name, std::vector<ImmediateTensorHandlePtr> captures,
     ImmediateExecutionContext* ctx)
     : name_(name), captures_(std::move(captures)), ctx_(ctx) {}
 
@@ -51,8 +50,15 @@ Status FlatTensorFunction::Create(
     std::vector<ImmediateExecutionTensorHandle*> captures,
     ImmediateExecutionContext* ctx, std::unique_ptr<FlatTensorFunction>* out) {
   TF_RETURN_IF_ERROR(ctx->AddFunctionDef(*function_def));
+  std::vector<ImmediateTensorHandlePtr> owned_captures;
+  owned_captures.reserve(captures.size());
+  for (ImmediateExecutionTensorHandle* capture : captures) {
+    capture->Ref();
+    owned_captures.push_back(ImmediateTensorHandlePtr(capture));
+  }
+
   out->reset(new FlatTensorFunction(function_def->signature().name(),
-                                    std::move(captures), ctx));
+                                    std::move(owned_captures), ctx));
   return Status();
 }
 

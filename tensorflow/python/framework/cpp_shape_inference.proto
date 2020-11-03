@@ -11,6 +11,10 @@ message CppShapeInferenceResult {
   message HandleShapeAndType {
     TensorShapeProto shape = 1;
     DataType dtype = 2;
+    // For dtype==DT_VARIANT, specialized_type may indicate a more specific
+    // type. For other dtypes or when the information is unavailable it is set
+    // to ST_INVALID.
+    SpecializedType specialized_type = 3;
   }
   message HandleData {
     bool is_set = 1;
