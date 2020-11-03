@@ -417,13 +417,16 @@ def get_matching_files_v2(pattern, num_threads=1):
     errors.NotFoundError: If pattern to be matched is an invalid directory.
     TypeError: If any argument does not have the expected type.
   """
-  if isinstance(pattern, six.string_types):
+  def handle_single_pattern(single_pattern):
     return [
-        # Convert the filenames to string from bytes.
-        compat.as_str_any(matching_filename)
-        for matching_filename in _pywrap_file_io.GetMatchingFiles(
-            compat.as_bytes(pattern))
+      # Convert the filenames to string from bytes.
+      compat.as_str_any(matching_filename)
+      for matching_filename in _pywrap_file_io.GetMatchingFiles(
+          compat.as_bytes(single_pattern))
     ]
+
+  if isinstance(pattern, six.string_types):
+    return handle_single_pattern(pattern)
 
   if not isinstance(num_threads, int):
     raise TypeError("`num_threads` must be a integer.")
@@ -436,14 +439,6 @@ def get_matching_files_v2(pattern, num_threads=1):
         for matching_filename in _pywrap_file_io.GetMatchingFiles(
             compat.as_bytes(single_filename))
     ]
-
-  def handle_single_pattern(single_pattern):
-    partial_files = [
-      compat.as_str_any(matching_filename)
-      for matching_filename in _pywrap_file_io.GetMatchingFiles(
-          compat.as_bytes(single_pattern))
-    ]
-    return partial_files
 
   patterns = list(pattern)
   pool = Pool(processes=min(num_threads, len(patterns)))
