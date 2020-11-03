@@ -283,8 +283,7 @@ tf_device::ReplicateOp AddInputsToReplicateOp(
              ->getSecond()
              .size() == num_replicas);
 
-  llvm::SmallVector<std::pair<llvm::ArrayRef<Value>, Type>, 8>
-      new_replicated_inputs;
+  llvm::SmallVector<std::pair<ValueRange, Type>, 8> new_replicated_inputs;
   llvm::SmallVector<Value, 8> new_packed_inputs;
   llvm::SmallVector<llvm::SmallVector<Value, 8>, 8> replicated_inputs;
   replicated_inputs.reserve(replicate.GetNumReplicatedBlockArguments());
@@ -310,8 +309,7 @@ tf_device::ReplicateOp AddInputsToReplicateOp(
   auto new_replicate = builder.create<tf_device::ReplicateOp>(
       replicate.getLoc(), num_replicas, devices, new_replicated_inputs,
       new_packed_inputs,
-      llvm::to_vector<8>(
-          replicate.GetBody().getTerminator()->getOperandTypes()));
+      replicate.GetBody().getTerminator()->getOperandTypes());
   for (auto arg : replicate.GetBody().getArguments()) {
     if (replicate.IsReplicatedBlockArgument(arg)) {
       arg.replaceAllUsesWith(
@@ -464,8 +462,7 @@ void HandleReplicateOp(TF::WhileRegionOp while_op,
 
   // Build the replicated unformat op after the loop. First prepare building the
   // replicate op.
-  llvm::SmallVector<std::pair<llvm::ArrayRef<Value>, Type>, 8>
-      unformat_replicate_operands;
+  llvm::SmallVector<std::pair<ValueRange, Type>, 8> unformat_replicate_operands;
   llvm::SmallVector<Value, 8> unformat_packed_operands;
   for (const auto& entry : execute_arg_to_outer_args) {
     if (entry.second.size() > 1) {
@@ -495,7 +492,7 @@ void HandleReplicateOp(TF::WhileRegionOp while_op,
   // With all replicated inputs, now build the replicate op.
   auto unformat_replicate = builder.create<tf_device::ReplicateOp>(
       while_op.getLoc(), num_replicas, devices, unformat_replicate_operands,
-      unformat_packed_operands, ArrayRef<Type>{});
+      unformat_packed_operands, TypeRange{});
   // Then build the unformat op in the replicate op.
   builder.setInsertionPointToEnd(&unformat_replicate.GetBody());
   llvm::SmallVector<Value, 8> unformat_operands;

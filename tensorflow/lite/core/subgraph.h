@@ -25,15 +25,11 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/macros.h"
-#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {
-
-// Forward declare since NNAPIDelegate uses Interpreter.
-class NNAPIDelegate;
 
 class Subgraph {
  public:
@@ -246,8 +242,6 @@ class Subgraph {
 
   // Entry point for C node plugin API to report an error.
   void ReportError(const char* format, ...);
-
-  void UseNNAPI(bool enable);
 
   // Return the subgraph specific context.
   TfLiteContext* context() { return &context_; }
@@ -567,7 +561,8 @@ class Subgraph {
   // delegate*. The Subgraph has been restored to its pre-delegation state.
   // NOTE: This reverts all delegates previously applied to the Subgraph.
   // 3. kTfLiteApplicationError : Delegation failed to be applied due to the
-  // state that the TfLite runtime is in. However, the Subgraph is still in a
+  // incompatibility with the TfLite runtime, e.g., the model graph is already
+  // immutable when applying the delegate. However, the Subgraph is still in a
   // invokable state.
   // 4. kTfLiteError: Unexpected/runtime failure.
   TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
@@ -702,10 +697,6 @@ class Subgraph {
 
   // Used by PreviewDelegateParitioning.
   std::vector<TfLiteDelegateParams> partitioning_preview_cache_;
-
-  // Whether to use delegate to modify the graph.
-  bool should_apply_nnapi_delegate_ = false;
-  bool applied_nnapi_delegate_ = false;
 
   std::unique_ptr<MemoryPlanner> memory_planner_;
 

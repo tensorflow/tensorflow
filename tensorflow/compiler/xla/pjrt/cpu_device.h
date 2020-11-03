@@ -28,7 +28,7 @@ class CpuDevice : public PjRtDevice {
   CpuDevice(int id, std::unique_ptr<LocalDeviceState> local_device_state);
 };
 
-StatusOr<std::shared_ptr<PjRtClient>> GetCpuClient(bool asynchronous);
+StatusOr<std::unique_ptr<PjRtClient>> GetCpuClient(bool asynchronous);
 
 }  // namespace xla
 

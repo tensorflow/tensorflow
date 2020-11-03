@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/nccl/collective_communicator.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
@@ -41,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #if !defined(IS_MOBILE_PLATFORM)
@@ -106,6 +108,8 @@ EagerContext::EagerContext(
   runner_ = [this](std::function<void()> closure) {
     this->thread_pool_->Schedule(std::move(closure));
   };
+
+  run_metadata_ = std::make_unique<RunMetadata>();
 
 #if !defined(IS_MOBILE_PLATFORM)
   context_id_ = kInvalidContextId;
@@ -572,11 +576,16 @@ Status EagerContext::FindFunctionOpData(
   return func_lib_def_.LookUp(name, op_data);
 }
 
-const FunctionDef* EagerContext::FindFunctionDef(const string& name) {
+const FunctionDef* EagerContext::FindFunctionDef(const string& name) const {
   return func_lib_def_.Find(name);
 }
 
-void EagerContext::ClearRunMetadata() { run_metadata_.Clear(); }
+std::unique_ptr<RunMetadata> EagerContext::ExportRunMetadata() {
+  mutex_lock ml(metadata_mu_);
+  auto result = std::make_unique<RunMetadata>();
+  run_metadata_.swap(result);
+  return result;
+}
 
 bool EagerContext::UsesTFRT() { return false; }
 
@@ -718,6 +727,22 @@ Status EagerContext::AddFunctionDef(const FunctionDef& fdef,
       gtl::InsertOrUpdate(&registered_functions_, fdef.signature().name(),
                           registered_function);
     } else {
+      // The function has been registered before. If the function is the same,
+      // then we take a Ref() otherwise we error out.
+      const FunctionDef* prev_fdef =
+          func_lib_def_.Find(fdef.signature().name());
+      if (prev_fdef == nullptr) {
+        return errors::Internal("Function: ", fdef.signature().name(),
+                                " is in the cache but not in the library");
+      }
+      if (!FunctionDefsEqual(fdef, *prev_fdef)) {
+        return errors::InvalidArgument(
+            "Attempting to add a duplicate function with name: ",
+            fdef.signature().name(), " where the previous and current ",
+            "definitions differ. Previous definiton: ",
+            prev_fdef->DebugString(),
+            " and current definition: ", fdef.DebugString());
+      }
       registered_function->Ref();
     }
     is_first_ref = registered_function->RefCountIsOne();
@@ -841,7 +866,7 @@ void EagerContext::SetShouldStoreGraphs(bool value) {
   mutex_lock ml(metadata_mu_);
   should_store_graphs_.store(value);
   if (!value) {
-    run_metadata_.Clear();
+    run_metadata_.reset(new RunMetadata);
   }
 }
 

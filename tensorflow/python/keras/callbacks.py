@@ -21,6 +21,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import collections.abc as collections_abc
 import copy
 import csv
 import io
@@ -32,15 +33,18 @@ import time
 import numpy as np
 import six
 
+from tensorflow.core.framework import summary_pb2
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import distribute_lib
-from tensorflow.python.distribute import distributed_file_utils
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.distribute import distributed_file_utils
 from tensorflow.python.keras.distribute import worker_training_state
 from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 from tensorflow.python.keras.utils import generic_utils
@@ -61,7 +65,6 @@ from tensorflow.python.saved_model import save_options as save_options_lib
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training.saving import checkpoint_options as checkpoint_options_lib
 from tensorflow.python.util import nest
-from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
@@ -184,7 +187,7 @@ def set_callback_parameters(callback_list,
 def _is_generator_like(data):
   """Checks if data is a generator, Sequence, or Iterator."""
   return (hasattr(data, '__next__') or hasattr(data, 'next') or isinstance(
-      data, (Sequence, iterator_ops.Iterator, iterator_ops.OwnedIterator)))
+      data, (Sequence, iterator_ops.Iterator, iterator_ops.IteratorBase)))
 
 
 def make_logs(model, logs, outputs, mode, prefix=''):
@@ -264,7 +267,7 @@ class CallbackList(object):
 
     if self._progbar is None and add_progbar:
       self._progbar = ProgbarLogger(count_mode='steps')
-      self.callbacks.append(self._progbar)
+      self.callbacks.insert(0, self._progbar)
 
     if self._history is None and add_history:
       self._history = History()
@@ -1143,15 +1146,22 @@ class ModelCheckpoint(Callback):
     the end of every epoch, or after a fixed number of training batches.
   - Whether only weights are saved, or the whole model is saved.
 
+  Note: If you get `WARNING:tensorflow:Can save best model only with <name>
+  available, skipping` see the description of the `monitor` argument for
+  details on how to get this right.
+
   Example:
 
   ```python
+  model.compile(loss=..., optimizer=...,
+                metrics=['accuracy'])
+
   EPOCHS = 10
   checkpoint_filepath = '/tmp/checkpoint'
   model_checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
       filepath=checkpoint_filepath,
       save_weights_only=True,
-      monitor='val_acc',
+      monitor='val_accuracy',
       mode='max',
       save_best_only=True)
 
@@ -1170,18 +1180,32 @@ class ModelCheckpoint(Callback):
         `filepath` is `weights.{epoch:02d}-{val_loss:.2f}.hdf5`, then the model
         checkpoints will be saved with the epoch number and the validation loss
         in the filename.
-      monitor: quantity to monitor.
+      monitor: The metric name to monitor. Typically the metrics are set by the
+        `Model.compile` method. Note:
+
+        * Prefix the name with `"val_`" to monitor validation metrics.
+        * Use `"loss"` or "`val_loss`" to monitor the model's total loss.
+        * If you specify metrics as strings, like `"accuracy"`, pass the same
+          string (with or without the `"val_"` prefix).
+        * If you pass `metrics.Metric` objects, `monitor` should be set to
+          `metric.name`
+        * If you're not sure about the metric names you can check the contents
+          of the `history.history` dictionary returned by
+          `history = model.fit()`
+        * Multi-output models set additional prefixes on the metric names.
+
       verbose: verbosity mode, 0 or 1.
-      save_best_only: if `save_best_only=True`, the latest best model according
-        to the quantity monitored will not be overwritten.
-        If `filepath` doesn't contain formatting options like `{epoch}` then
-        `filepath` will be overwritten by each new better model.
-      mode: one of {auto, min, max}. If `save_best_only=True`, the decision to
-        overwrite the current save file is made based on either the maximization
-        or the minimization of the monitored quantity. For `val_acc`, this
-        should be `max`, for `val_loss` this should be `min`, etc. In `auto`
-        mode, the direction is automatically inferred from the name of the
-        monitored quantity.
+      save_best_only: if `save_best_only=True`, it only saves when the model
+        is considered the "best" and the latest best model according to the
+        quantity monitored will not be overwritten. If `filepath` doesn't
+        contain formatting options like `{epoch}` then `filepath` will be
+        overwritten by each new better model.
+      mode: one of {'auto', 'min', 'max'}. If `save_best_only=True`, the
+        decision to overwrite the current save file is made based on either
+        the maximization or the minimization of the monitored quantity.
+        For `val_acc`, this should be `max`, for `val_loss` this should be
+        `min`, etc. In `auto` mode, the direction is automatically inferred
+        from the name of the monitored quantity.
       save_weights_only: if True, then only the model's weights will be saved
         (`model.save_weights(filepath)`), else the full model is saved
         (`model.save(filepath)`).
@@ -1899,6 +1923,51 @@ class LearningRateScheduler(Callback):
     logs['lr'] = K.get_value(self.model.optimizer.lr)
 
 
+def keras_model_summary(name, data, step=None):
+  """Writes a Keras model as JSON to as a Summary.
+
+  Writing the Keras model configuration allows the TensorBoard graph plugin to
+  render a conceptual graph, as opposed to graph of ops. In case the model fails
+  to serialize as JSON, it ignores and returns False.
+
+  Args:
+    name: A name for this summary. The summary tag used for TensorBoard will be
+      this name prefixed by any active name scopes.
+    data: A Keras Model to write.
+    step: Explicit `int64`-castable monotonic step value for this summary. If
+      omitted, this defaults to `tf.summary.experimental.get_step()`, which must
+      not be None.
+
+  Returns:
+    True on success, or False if no summary was written because no default
+    summary writer was available.
+
+  Raises:
+    ValueError: if a default writer exists, but no step was provided and
+      `tf.summary.experimental.get_step()` is None.
+  """
+  summary_metadata = summary_pb2.SummaryMetadata()
+  # Hard coding a plugin name. Please refer to go/tb-plugin-name-hardcode for
+  # the rationale.
+  summary_metadata.plugin_data.plugin_name = 'graph_keras_model'
+  # version number = 1
+  summary_metadata.plugin_data.content = b'1'
+
+  try:
+    json_string = data.to_json()
+  except Exception as exc:  # pylint: disable=broad-except
+    # An exception should not break a model code.
+    logging.warn('Model failed to serialize as JSON. Ignoring... %s', exc)
+    return False
+
+  with summary_ops_v2.summary_scope(name, 'graph_keras_model',
+                                    [data, step]) as (tag, _):
+    with ops.device('cpu:0'):
+      tensor = constant_op.constant(json_string, dtype=dtypes.string)
+    return summary_ops_v2.write(
+        tag=tag, tensor=tensor, step=step, metadata=summary_metadata)
+
+
 @keras_export('keras.callbacks.TensorBoard', v1=[])
 class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
   # pylint: disable=line-too-long
@@ -1922,30 +1991,6 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
 
   You can find more information about TensorBoard
   [here](https://www.tensorflow.org/get_started/summaries_and_tensorboard).
-
-  Example (Basic):
-
-  ```python
-  tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir="./logs")
-  model.fit(x_train, y_train, epochs=2, callbacks=[tensorboard_callback])
-  # run the tensorboard command to view the visualizations.
-  ```
-
-  Example (Profile):
-
-  ```python
-  # profile a single batch, e.g. the 5th batch.
-  tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir='./logs',
-                                                        profile_batch=5)
-  model.fit(x_train, y_train, epochs=2, callbacks=[tensorboard_callback])
-  # Now run the tensorboard command to view the visualizations (profile plugin).
-
-  # profile a range of batches, e.g. from 10 to 20.
-  tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir='./logs',
-                                                        profile_batch='10,20')
-  model.fit(x_train, y_train, epochs=2, callbacks=[tensorboard_callback])
-  # Now run the tensorboard command to view the visualizations (profile plugin).
-  ```
 
   Arguments:
       log_dir: the path of the directory where to save the log files to be
@@ -1978,8 +2023,72 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
         about metadata files format. In case if the same metadata file is
         used for all embedding layers, string can be passed.
 
-  Raises:
-      ValueError: If histogram_freq is set and no validation data is provided.
+  Examples:
+
+  Basic usage:
+
+  ```python
+  tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir="./logs")
+  model.fit(x_train, y_train, epochs=2, callbacks=[tensorboard_callback])
+  # Then run the tensorboard command to view the visualizations.
+  ```
+
+  Custom batch-level summaries in a subclassed Model:
+
+  ```python
+  class MyModel(tf.keras.Model):
+
+    def build(self, _):
+      self.dense = tf.keras.layers.Dense(10)
+
+    def call(self, x):
+      outputs = self.dense(x)
+      tf.summary.histogram('outputs', outputs)
+      return outputs
+
+  model = MyModel()
+  model.compile('sgd', 'mse')
+
+  # Make sure to set `update_freq=N` to log a batch-level summary every N batches.
+  # In addition to any `tf.summary` contained in `Model.call`, metrics added in
+  # `Model.compile` will be logged every N batches.
+  tb_callback = tf.keras.callbacks.TensorBoard('./logs', update_freq=1)
+  model.fit(x_train, y_train, callbacks=[tb_callback])
+  ```
+
+  Custom batch-level summaries in a Functional API Model:
+
+  ```python
+  def my_summary(x):
+    tf.summary.histogram('x', x)
+    return x
+
+  inputs = tf.keras.Input(10)
+  x = tf.keras.layers.Dense(10)(inputs)
+  outputs = tf.keras.layers.Lambda(my_summary)(x)
+  model = tf.keras.Model(inputs, outputs)
+  model.compile('sgd', 'mse')
+
+  # Make sure to set `update_freq=N` to log a batch-level summary every N batches.
+  # In addition to any `tf.summary` contained in `Model.call`, metrics added in
+  # `Model.compile` will be logged every N batches.
+  tb_callback = tf.keras.callbacks.TensorBoard('./logs', update_freq=1)
+  model.fit(x_train, y_train, callbacks=[tb_callback])
+  ```
+
+  Profiling:
+
+  ```python
+  # Profile a single batch, e.g. the 5th batch.
+  tensorboard_callback = tf.keras.callbacks.TensorBoard(
+      log_dir='./logs', profile_batch=5)
+  model.fit(x_train, y_train, epochs=2, callbacks=[tensorboard_callback])
+
+  # Profile a range of batches, e.g. from 10 to 20.
+  tensorboard_callback = tf.keras.callbacks.TensorBoard(
+      log_dir='./logs', profile_batch=(10,20))
+  model.fit(x_train, y_train, epochs=2, callbacks=[tensorboard_callback])
+  ```
   """
 
   # pylint: enable=line-too-long
@@ -2089,7 +2198,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
   def _write_keras_model_train_graph(self):
     """Writes Keras model train_function graph to TensorBoard."""
     with self._train_writer.as_default():
-      with summary_ops_v2.always_record_summaries():
+      with summary_ops_v2.record_if(True):
         train_fn = self.model.train_function
         # If the train_function is a `tf.function`, we can write out a graph
         if hasattr(train_fn, 'function_spec'):
@@ -2098,12 +2207,12 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
   def _write_keras_model_summary(self):
     """Writes Keras graph network summary to TensorBoard."""
     with self._train_writer.as_default():
-      with summary_ops_v2.always_record_summaries():
+      with summary_ops_v2.record_if(True):
         summary_writable = (
             self.model._is_graph_network or  # pylint: disable=protected-access
             self.model.__class__.__name__ == 'Sequential')  # pylint: disable=protected-access
         if summary_writable:
-          summary_ops_v2.keras_model('keras', self.model, step=0)
+          keras_model_summary('keras', self.model, step=0)
 
   def _configure_embeddings(self):
     """Configure the Projector for embeddings."""
@@ -2290,7 +2399,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     if batch is None:
       batch = self._stop_batch
     with self._train_writer.as_default():
-      with summary_ops_v2.always_record_summaries():
+      with summary_ops_v2.record_if(True):
         # TODO(b/126388999): Remove step info in the summary name.
         summary_ops_v2.trace_export(name='batch_%d' % batch, step=batch)
     profiler.stop()
@@ -2316,7 +2425,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     val_logs = {k: v for k, v in logs.items() if k.startswith('val_')}
     train_logs = self._collect_learning_rate(train_logs)
 
-    with summary_ops_v2.always_record_summaries():
+    with summary_ops_v2.record_if(True):
       if train_logs:
         with self._train_writer.as_default():
           for name, value in train_logs.items():
@@ -2330,7 +2439,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
   def _log_weights(self, epoch):
     """Logs the weights of the Model to TensorBoard."""
     with self._train_writer.as_default():
-      with summary_ops_v2.always_record_summaries():
+      with summary_ops_v2.record_if(True):
         for layer in self.model.layers:
           for weight in layer.weights:
             weight_name = weight.name.replace(':', '_')
@@ -2589,8 +2698,8 @@ class LambdaCallback(Callback):
   r"""Callback for creating simple, custom callbacks on-the-fly.
 
   This callback is constructed with anonymous functions that will be called
-  at the appropriate time. Note that the callbacks expects positional
-  arguments, as:
+  at the appropriate time (during `Model.{fit | evaluate | predict}`).
+  Note that the callbacks expects positional arguments, as:
 
   - `on_epoch_begin` and `on_epoch_end` expect two positional arguments:
     `epoch`, `logs`

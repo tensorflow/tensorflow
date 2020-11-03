@@ -1,6 +1,6 @@
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_tpu",
+    "if_libtpu",
     "tf_cc_test",
     "tf_cc_test_mkl",
     "tf_cc_tests",
@@ -93,7 +93,7 @@ cc_library(
     deps = [
         ":core_cpu",
         "//tensorflow/core/common_runtime/gpu:gpu_runtime",
-    ] + if_tpu(["//tensorflow/core/tpu:tpu_runtime"]),
+    ] + if_libtpu(["//tensorflow/core/tpu:tpu_runtime"]),
 )
 
 filegroup(
@@ -499,28 +499,19 @@ cc_library(
 
 cc_library(
     name = "device",
-    srcs = ["device.cc"],
     hdrs = ["device.h"],
     copts = tf_copts(),
     deps = [
         "//tensorflow/core:framework_internal",
-        "//tensorflow/core:graph",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
     ],
 )
 
 cc_library(
     name = "device_factory",
-    srcs = ["device_factory.cc"],
     hdrs = ["device_factory.h"],
     copts = tf_copts(),
     deps = [
-        ":device",
-        ":session_options",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:framework_internal",
     ],
 )
 
@@ -1549,6 +1540,7 @@ cc_library(
         ":local_device",
         ":scoped_allocator",
         ":session_options",
+        "@com_google_absl//absl/base",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
@@ -1739,7 +1731,6 @@ tf_cuda_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_experimental",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/debug:debug_graph_utils",
@@ -2226,11 +2217,10 @@ tf_cc_test(
 
 tf_cuda_cc_test(
     name = "direct_session_test",
-    size = "small",
+    size = "medium",
     srcs = ["direct_session_test.cc"],
     args = [] + if_cuda(["--heap_check=local"]),  # The GPU tracer leaks memory
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = ["notsan"],  # b/168317266
     deps = [
         ":core_cpu",
         ":core_cpu_internal",
@@ -2270,12 +2260,8 @@ tf_cuda_cc_test(
 # enables support for TensorFlow Debugger (tfdbg).
 tf_cc_test(
     name = "direct_session_with_debug_test",
-    size = "small",
     srcs = ["direct_session_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = [
-        "notsan",  #b/168811551
-    ],
     deps = [
         ":core",
         ":core_cpu",
@@ -2531,10 +2517,13 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tf_cc_test_gpu(
     name = "lower_if_op_test",
     size = "small",
     srcs = ["lower_if_op_test.cc"],
+    tags = tf_cuda_tests_tags() + [
+        "no_cuda_asan",  # TODO(b/171575050): re-enable once fixed.
+    ],
     deps = [
         ":core_cpu",
         ":core_cpu_internal",

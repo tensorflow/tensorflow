@@ -66,6 +66,7 @@ objc_library(
         "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/delegates/gpu:metal_delegate",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        "//tensorflow/lite/experimental/delegates/coreml:coreml_delegate",
     ],
     alwayslink = 1,
 )

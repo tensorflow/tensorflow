@@ -35,13 +35,13 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -128,6 +128,12 @@ bool CanFuseConvOrDepthwiseConvShapes(const ArrayRef<int64_t> filter_shape,
     return false;
   }
   auto elements_depth = elements_shape.empty() ? 1 : elements_shape.back();
+  // If elements depth equals 1 (i.e., scalar or tensor with 1 element), then we
+  // can let binary op to broadcast elements.
+  if (elements_depth == 1) {
+    return true;
+  }
+
   // In TFLite Conv2D uses OHWI format for filter, and 1HWO for Depthwise Conv.
   // For conv:
   // Check if last dimension in filter equals the first dimension
@@ -416,6 +422,10 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
 
   LogicalResult matchAndRewrite(TFL::MulOp mul_op,
                                 PatternRewriter &rewriter) const override {
+    // If we are broadcasting on the lhs then don't fold the multiply as it
+    // would increase the amount of compute done by the fully connected op.
+    if (mul_op.lhs().getType() != mul_op.getType()) return failure();
+
     // Mul.
     DenseElementsAttr cst;
     Value constant_val = mul_op.rhs();
@@ -794,21 +804,27 @@ void Optimize::runOnFunction() {
   // Potentially the binary ops might be fused together, like hard_swish, thus
   // we explore these potentially first and then fuse the binary ops with the
   // following ops in a second pattern match.
-  TFL::populateWithGenerated(ctx, &patterns);
+  TFL::populateWithGenerated(ctx, patterns);
   patterns.insert<FuseFullyConnectedAndAdd,
                   FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
                   FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
                   FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>,
                   FuseFullyConnectedAndMul>(ctx);
-  applyPatternsAndFoldGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   // Fuse the binary ops with the following ops.
-  patterns.insert<
-      FuseBinaryOpToFollowingConv2D, FuseBinaryOpToFollowingDepthwiseConv2D,
+  OwningRewritePatternList phase_2_patterns;
+  TFL::populateWithGenerated(ctx, phase_2_patterns);
+  phase_2_patterns.insert<
+      FuseFullyConnectedAndAdd, FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
+      FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
+      FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>,
+      FuseFullyConnectedAndMul, FuseBinaryOpToFollowingConv2D,
+      FuseBinaryOpToFollowingDepthwiseConv2D,
       FuseBinaryOpToFollowingFullyConnected, FuseConv2DAndMulWithQDQs,
       FuseDepthwiseConv2DAndMulWithQDQs, ConvertTrivialTransposeOpToReshapeOp>(
       ctx);
-  applyPatternsAndFoldGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
 }
 
 }  // namespace

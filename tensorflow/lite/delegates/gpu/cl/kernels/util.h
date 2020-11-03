@@ -213,6 +213,8 @@ int3 GetFirstSuitableWorkGroup(const std::vector<int3>& wgs, int max_wg_size);
 int GetRecommendedBlockSizeForConv(const DeviceInfo& device,
                                    CalculationsPrecision precision,
                                    int task_size);
+
+int3 GetWorkGroupsCount(const int3& grid_size, const int3& work_group_size);
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

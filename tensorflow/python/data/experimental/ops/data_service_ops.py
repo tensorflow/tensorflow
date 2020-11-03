@@ -238,13 +238,9 @@ def _from_dataset_id(processing_mode,
       job_name=job_name,
       max_outstanding_requests=max_outstanding_requests,
       task_refresh_interval_hint_ms=task_refresh_interval_hint_ms)
-  # TODO(b/157105111): Make this an autotuned parallel map when we have a way
-  # to limit memory usage.
-  # The value 16 is chosen based on experience with pipelines that require
-  # more than 8 parallel calls to prevent this stage from being a bottleneck.
   dataset = dataset.map(
       lambda x: compression_ops.uncompress(x, output_spec=element_spec),
-      num_parallel_calls=16)
+      num_parallel_calls=dataset_ops.AUTOTUNE)
 
   # Disable autosharding for shared jobs.
   if job_name:
@@ -375,35 +371,43 @@ def distribute(processing_mode,
   before the `apply` transformation executes within the tf.data service, while
   the operations after `apply` happen within the local process.
 
-  ```
-  dataset = tf.data.Dataset.range(5)
-  dataset = dataset.map(lambda x: x*x)
-  dataset = dataset.apply(
-      tf.data.experimental.service.distribute("parallel_epochs",
-                                              "grpc://dataservice:5000"))
-  dataset = dataset.map(lambda x: x+1)
+  >>> dispatcher = tf.data.experimental.service.DispatchServer()
+  >>> dispatcher_address = dispatcher.target.split("://")[1]
+  >>> workers = [
+  ...     tf.data.experimental.service.WorkerServer(
+  ...         tf.data.experimental.service.WorkerConfig(
+  ...             dispatcher_address=dispatcher_address)) for _ in range(2)
+  ... ]
+  >>> dataset = tf.data.Dataset.range(5)
+  >>> dataset = dataset.map(lambda x: x*x)
+  >>> dataset = dataset.apply(
+  ...    tf.data.experimental.service.distribute("parallel_epochs",
+  ...                                            dispatcher.target))
+  >>> dataset = dataset.map(lambda x: x+1)
+  >>> print(sorted(list(dataset.as_numpy_iterator())))
+  [1, 1, 2, 2, 5, 5, 10, 10, 17, 17]
 
-  for element in dataset:
-    print(element)  # prints { 1, 2, 5, 10, 17 }
-  ```
-
-  In the above example, the first two lines (before the call to `distribute`)
-  will be executed on tf.data workers, and the elements provided over
-  RPC. The remaining transformations (after the call to `distribute`) will be
-  executed locally.
+  In the above example, the dataset operations (before applying the `distribute`
+  function on the elements) will be executed on the tf.data workers,
+  and the elements are provided over RPC. The remaining transformations
+  (after the call to `distribute`) will be executed locally. The dispatcher
+  and the workers will bind to usused free ports (which are chosen at random),
+  in order to communicate with each other. However, to bind them to specific
+  ports, the `port` parameter can be passed.
 
   The `job_name` argument allows jobs to be shared across multiple
   datasets. Instead of each dataset creating its own job, all
   datasets with the same `job_name` will consume from the same job. A new job
   will be created for each iteration of the dataset (with each repetition of
-  `Dataset.repeat` counting as a new iteration). Suppose two training workers
-  (in either a single client or multi-client setup) iterate over the below
-  dataset, and there is a single tf.data worker:
+  `Dataset.repeat` counting as a new iteration). Suppose the `DispatchServer`
+  is serving on `localhost:5000` and two training workers (in either a single
+  client or multi-client setup) iterate over the below dataset, and there is a
+  single tf.data worker:
 
   ```
   range5_dataset = tf.data.Dataset.range(5)
   dataset = range5_dataset.apply(tf.data.experimental.service.distribute(
-      "parallel_epochs", "grpc://dataservice:5000", job_name="my_job_name"))
+      "parallel_epochs", "grpc://localhost:5000", job_name="my_job_name"))
   for iteration in range(3):
     print(list(dataset))
   ```
@@ -529,11 +533,7 @@ def register_dataset(service, dataset):
   dataset = dataset.map(
       lambda *x: compression_ops.compress(x),
       num_parallel_calls=dataset_ops.AUTOTUNE)
-  # Prefetch one compressed element to reduce latency when requesting data
-  # from tf.data workers.
-  # TODO(b/157105111): Set this to autotune when we have a way to limit
-  # memory usage
-  dataset = dataset.prefetch(1)
+  dataset = dataset.prefetch(dataset_ops.AUTOTUNE)
   # Apply options so that the dataset executed in the tf.data service will
   # be optimized and support autotuning.
   dataset = dataset._apply_options()  # pylint: disable=protected-access

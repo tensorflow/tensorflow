@@ -61,10 +61,10 @@ LogicalResult Verify(OpTy op) {
 }
 
 //===----------------------------------------------------------------------===//
-// AllocRawOp
+// TFAllocOp
 //===----------------------------------------------------------------------===//
 template <>
-LogicalResult Verify<AllocRawOp>(AllocRawOp op) {
+LogicalResult Verify<TFAllocOp>(TFAllocOp op) {
   // Check that the total number of operands matches the number of dynamic
   // dimensions specified in the memref type.
   unsigned result_dyn_dims = op.getType().getNumDynamicDims();

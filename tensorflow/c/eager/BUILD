@@ -3,12 +3,15 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_tpu",
+    "if_libtpu",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_cc_test",
     "tf_cuda_library",
 )
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")
@@ -94,6 +97,7 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime:remote_device",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/distributed_runtime:worker_env",
+        "//tensorflow/core/distributed_runtime:worker_interface",
         "//tensorflow/core:gpu_runtime",
     ] + internal_tfrt_deps(),
     alwayslink = 1,
@@ -106,6 +110,7 @@ filegroup(
         "abstract_function.h",
         "abstract_operation.h",
         "abstract_tensor_handle.h",
+        "c_api.h",
         "c_api_experimental.h",
         "c_api_internal.h",
         "c_api_unified_experimental.h",
@@ -116,7 +121,6 @@ filegroup(
         "immediate_execution_context.h",
         "immediate_execution_operation.h",
         "immediate_execution_tensor_handle.h",
-        "mnist_gradients_testutil.h",
         "tape.h",
         "tfe_cancellation_manager_internal.h",
         "tfe_context_internal.h",
@@ -290,7 +294,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/lib/llvm_rtti",
-    ] + if_tpu(
+    ] + if_libtpu(
         if_false = ["//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration"],
         if_true = [],
     ),
@@ -314,6 +318,7 @@ cc_library(
         ":gradients_internal",
         ":gradients_util",
         ":tape",
+        "//tensorflow/c/experimental/gradients/tape:tape_context",
         "//tensorflow/c/experimental/ops:array_ops",
         "//tensorflow/c/experimental/ops:math_ops",
         "//tensorflow/c/experimental/ops:nn_ops",
@@ -354,7 +359,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/lib/llvm_rtti",
-    ] + if_tpu(
+    ] + if_libtpu(
         if_false = ["//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration"],
         if_true = [],
     ),
@@ -635,6 +640,19 @@ cc_library(
     deps = [
         ":immediate_execution_tensor_handle",
         "//tensorflow/c:conversion_macros",
+    ],
+)
+
+cc_header_only_library(
+    name = "tfe_tensorhandle_internal_hdrs_only",
+    extra_deps = [
+        "@com_google_absl//absl/strings",
+    ],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        ":tfe_tensorhandle_internal",
     ],
 )
 

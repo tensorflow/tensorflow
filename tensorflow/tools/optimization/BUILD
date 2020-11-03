@@ -13,8 +13,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 tf_cuda_library(
     name = "optimization_pass_runner_lib",
     srcs = ["optimization_pass_runner.cc"],

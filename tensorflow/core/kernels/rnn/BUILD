@@ -32,9 +32,9 @@ tf_gpu_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor",
         "//tensorflow/core/kernels:eigen_contraction_kernel",
         "//tensorflow/core/kernels:eigen_helpers",
+        "//tensorflow/core/platform:stream_executor",
         "//third_party/eigen3",
     ],
 )

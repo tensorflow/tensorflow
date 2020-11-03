@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/optimize_dataset_op.h"
 
+// On mobile we do not provide optimize dataset op because not all of its
+// dependencies are available there. The op is replaced with a no-op.
+#if !defined(IS_MOBILE_PLATFORM)
 #include <map>
 
 #include "tensorflow/core/framework/partial_tensor_shape.h"
@@ -26,9 +29,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
-
-// See documentation in ../../ops/dataset_ops.cc for a high-level
-// description of the following op.
 
 /* static */ constexpr const char* const OptimizeDatasetOp::kDatasetType;
 /* static */ constexpr const char* const OptimizeDatasetOp::kInputDataset;
@@ -83,7 +83,10 @@ void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
     // The map that stores the live experiment names and for how much percentage
     // of the Borg jobs, the experiments will be randomly turned on.
     // clang-format off
-    absl::flat_hash_map<string, uint64> live_experiments;
+    absl::flat_hash_map<string, uint64> live_experiments = {
+        {"enable_gradient_descent", 100},
+        {"map_parallelization", 5}
+    };
     // clang-format on
     auto hash_func = [](const string& str) { return Hash64(str); };
     optimizations = SelectOptimizations(
@@ -112,15 +115,13 @@ void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   std::vector<string> graduated_experiments = {"disable_intra_op_parallelism"};
   // clang-format on
 
-  // Add the graduated experiments to the optimization list. Also log and
-  // record.
+  // Add the graduated experiments to the optimization list and log them.
   for (auto& experiment : graduated_experiments) {
     if (std::find(optimizations.begin(), optimizations.end(), experiment) ==
         optimizations.end()) {
       optimizations.push_back(experiment);
     }
     VLOG(1) << "The graduated experiment \"" << experiment << "\" is applied.";
-    metrics::RecordTFDataExperiment(experiment);
   }
 
   // If there are no optimizations to be applied, directly return the input.
@@ -178,3 +179,25 @@ REGISTER_KERNEL_BUILDER(Name("OptimizeDatasetV2").Device(DEVICE_CPU),
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow
+#else  // !IS_MOBILE_PLATFORM
+namespace tensorflow {
+namespace data {
+
+OptimizeDatasetOp::OptimizeDatasetOp(OpKernelConstruction* ctx)
+    : UnaryDatasetOpKernel(ctx) {}
+
+void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
+                                    DatasetBase** output) {
+  input->Ref();
+  *output = input;
+}
+
+namespace {
+REGISTER_KERNEL_BUILDER(Name("OptimizeDataset").Device(DEVICE_CPU),
+                        OptimizeDatasetOp);
+REGISTER_KERNEL_BUILDER(Name("OptimizeDatasetV2").Device(DEVICE_CPU),
+                        OptimizeDatasetOp);
+}  // namespace
+}  // namespace data
+}  // namespace tensorflow
+#endif  // !IS_MOBILE_PLATFORM

@@ -29,8 +29,8 @@ package](https://www.tensorflow.org/install/).
 To install, run `pip3 install` and pass it the appropriate Python wheel URL from
 the following table.
 
-For example, if you have Raspberry Pi that's running Raspbian Buster (which has
-Python 3.7), install the Python wheel as follows:
+For example, if you have a Raspberry Pi that's running Raspberry Pi OS 10 (which
+has Python 3.7), install the Python wheel as follows:
 
 <pre class="devsite-terminal devsite-click-to-copy">
 pip3 install https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp37-cp37m-linux_armv7l.whl

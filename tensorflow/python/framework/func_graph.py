@@ -107,6 +107,7 @@ def convert_structure_to_signature(structure, arg_names=None):
         int,
         float,
         bool,
+        str,
         type(None),
         dtypes.DType,
         tensor_spec.TensorSpec,
@@ -441,6 +442,11 @@ class FuncGraph(ops.Graph):
     if current is None:
       return self._fallback_outer_graph
     return current
+
+  @outer_graph.setter
+  def outer_graph(self, new_outer_graph):
+    """Sets `outer_graph` to `new_outer_graph`."""
+    self._weak_outer_graph = weakref.ref(new_outer_graph)
 
   @property
   def output_types(self):
@@ -1205,7 +1211,8 @@ def _get_defun_inputs(args, names, structure, flat_shapes=None):
       # Tensor or not.  For non-tensor entries it should be None.
       shape = next(shapes_iter)
       if isinstance(arg, (ops.Tensor, tensor_spec.TensorSpec)):
-        if isinstance(arg, tensor_spec.TensorSpec) and arg.name:
+        arg_is_spec = isinstance(arg, tensor_spec.TensorSpec)
+        if arg_is_spec and arg.name:
           requested_name = arg.name
         else:
           requested_name = name
@@ -1218,6 +1225,8 @@ def _get_defun_inputs(args, names, structure, flat_shapes=None):
           # Sometimes parameter names are not valid op names, so fall back to
           # unnamed placeholders.
           placeholder = graph_placeholder(arg.dtype, placeholder_shape)
+        if not arg_is_spec:
+          custom_gradient.copy_handle_data(arg, placeholder)
         if name is not None:
           # Record the requested/user-specified name in case it's different than
           # the uniquified name, for validation when exporting signatures.

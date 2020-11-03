@@ -9,8 +9,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 tf_proto_library(
     name = "tpu_embedding_configuration_proto",
     srcs = [
@@ -30,6 +28,7 @@ tf_proto_library(
         "optimization_parameters.proto",
     ],
     cc_api_version = 2,
+    protodeps = ["//tensorflow/compiler/xla/service:hlo_proto"],
     visibility = ["//visibility:public"],
 )
 

@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/stream_executor/tpu/tpu_node_context.h"
 
 #include "tensorflow/core/tpu/tpu_api.h"
+#include "tensorflow/core/tpu/tpu_ops_c_api.h"
 #include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
-#include "tensorflow/stream_executor/tpu/tpu_node_context_c_api.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -30,40 +30,38 @@ StatusOr<std::unique_ptr<TpuNodeContext>> TpuNodeContext::Create(
     int device_ordinal) {
   StatusHelper status;
   XLA_TpuNodeContext* node_context =
-      tpu::NodeContextApiFn()->TpuNodeContext_CreateFn(device_ordinal,
-                                                       status.c_status);
+      tpu::OpsApiFn()->TpuNodeContext_CreateFn(device_ordinal, status.c_status);
   if (!status.status().ok()) {
     // TpuNodeContext_CreateFn allocates a new XLA_TpuNodeContext regardless of
     // status. It needs to be freed if it's not given to a TpuNodeContext below.
-    tpu::NodeContextApiFn()->TpuNodeContext_FreeFn(node_context);
+    tpu::OpsApiFn()->TpuNodeContext_FreeFn(node_context);
     return status.status();
   }
   return std::make_unique<TpuNodeContext>(device_ordinal, node_context);
 }
 
 TpuNodeContext::~TpuNodeContext() {
-  tpu::NodeContextApiFn()->TpuNodeContext_FreeFn(node_context_);
+  tpu::OpsApiFn()->TpuNodeContext_FreeFn(node_context_);
 }
 
 /* static */
 Status TpuNodeContext::StopChipHeartbeats() {
   StatusHelper status;
-  tpu::NodeContextApiFn()->TpuNodeContext_StopChipHeartbeatsFn(status.c_status);
+  tpu::OpsApiFn()->TpuNodeContext_StopChipHeartbeatsFn(status.c_status);
   return status.status();
 }
 
 /* static */
 Status TpuNodeContext::CloseTpuHost() {
   StatusHelper status;
-  tpu::NodeContextApiFn()->TpuNodeContext_CloseTpuHostFn(status.c_status);
+  tpu::OpsApiFn()->TpuNodeContext_CloseTpuHostFn(status.c_status);
   return status.status();
 }
 
 /* static */
 Status TpuNodeContext::Initialize(int device_ordinal) {
   StatusHelper status;
-  tpu::NodeContextApiFn()->TpuNodeContext_InitializeFn(device_ordinal,
-                                                       status.c_status);
+  tpu::OpsApiFn()->TpuNodeContext_InitializeFn(device_ordinal, status.c_status);
   return status.status();
 }
 

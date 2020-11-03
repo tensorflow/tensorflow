@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/internal/reference/softmax.h"
 
-#include "cmsis/CMSIS/NN/Include/arm_nnfunctions.h"
+#include "CMSIS/NN/Include/arm_nnfunctions.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
@@ -25,9 +25,6 @@ limitations under the License.
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 namespace tflite {
-namespace ops {
-namespace micro {
-namespace activations {
 namespace {
 
 // Softmax parameter data that persists in user_data
@@ -91,8 +88,6 @@ TfLiteStatus CalculateSoftmaxParams(TfLiteContext* context,
   }
   return kTfLiteOk;
 }
-
-}  // namespace
 
 void* SoftmaxInit(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
@@ -221,19 +216,17 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
   }
 }
 
-}  // namespace activations
+}  // namespace
 
 TfLiteRegistration Register_SOFTMAX() {
-  return {/*init=*/activations::SoftmaxInit,
+  return {/*init=*/SoftmaxInit,
           /*free=*/nullptr,
-          /*prepare=*/activations::SoftmaxPrepare,
-          /*invoke=*/activations::SoftmaxEval,
+          /*prepare=*/SoftmaxPrepare,
+          /*invoke=*/SoftmaxEval,
           /*profiling_string=*/nullptr,
           /*builtin_code=*/0,
           /*custom_name=*/nullptr,
           /*version=*/0};
 }
 
-}  // namespace micro
-}  // namespace ops
 }  // namespace tflite

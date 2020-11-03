@@ -86,11 +86,6 @@ inline float GradientAccumulatorInitialValue() {
   return absl::bit_cast<float, uint32>(1);
 }
 
-// Returns whether an optimization algorithm is only supported internally.
-// Returns an error if the algorithm is not recognized at all.
-Status IsOptimizationAlgorithmInternal(OptimizationAlgorithm alg,
-                                       bool *internal);
-
 // Generic shape function for per-optimization-algorithm load ops.
 class LoadOpShapeFunction {
  public:

@@ -73,6 +73,7 @@ class CLDevice {
   bool SupportsOneLayerTextureArray() const;
   void DisableOneLayerTextureArray();
 
+  const DeviceInfo& GetInfo() const { return info_; }
   // We update device info during context creation, so as supported texture
   // formats can be requested from context only.
   mutable DeviceInfo info_;

@@ -1,3 +1,5 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
 licenses(["notice"])  # Apache 2.0
 
 package(default_visibility = [":friends"])

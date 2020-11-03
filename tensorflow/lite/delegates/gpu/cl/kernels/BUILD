@@ -240,50 +240,6 @@ cc_test(
 )
 
 cc_library(
-    name = "conv_texture",
-    srcs = ["conv_texture.cc"],
-    hdrs = ["conv_texture.h"],
-    deps = [
-        ":gpu_operation",
-        ":util",
-        ":work_group_picking",
-        "//tensorflow/lite/delegates/gpu/cl:cl_command_queue",
-        "//tensorflow/lite/delegates/gpu/cl:cl_context",
-        "//tensorflow/lite/delegates/gpu/cl:linear_storage",
-        "//tensorflow/lite/delegates/gpu/cl:precision",
-        "//tensorflow/lite/delegates/gpu/cl:tensor",
-        "//tensorflow/lite/delegates/gpu/cl:tensor_type",
-        "//tensorflow/lite/delegates/gpu/cl:texture2d",
-        "//tensorflow/lite/delegates/gpu/cl:util",
-        "//tensorflow/lite/delegates/gpu/common:data_type",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common:tensor",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/common:winograd_util",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_test(
-    name = "conv_texture_test",
-    srcs = ["conv_texture_test.cc"],
-    linkstatic = True,
-    tags = tf_gpu_tests_tags() + [
-        "linux",
-        "local",
-    ],
-    deps = [
-        ":cl_test",
-        ":conv_texture",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:status",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_library(
     name = "conv_weights_converter",
     srcs = ["conv_weights_converter.cc"],
     hdrs = ["conv_weights_converter.h"],
@@ -307,6 +263,7 @@ cc_library(
         ":util",
         "//tensorflow/lite/delegates/gpu:spi",
         "//tensorflow/lite/delegates/gpu/cl:arguments",
+        "//tensorflow/lite/delegates/gpu/cl:cl_arguments",
         "//tensorflow/lite/delegates/gpu/cl:cl_command_queue",
         "//tensorflow/lite/delegates/gpu/cl:cl_errors",
         "//tensorflow/lite/delegates/gpu/cl:environment",
@@ -390,6 +347,7 @@ cc_test(
     tags = [
         "linux",
         "local",
+        "no_mac",  # TODO(b/171880729)
     ],
     deps = [
         ":cl_test",
@@ -468,6 +426,7 @@ cc_test(
     tags = [
         "linux",
         "local",
+        "no_mac",  # TODO(b/171880729)
     ],
     deps = [
         ":cl_test",
@@ -687,6 +646,7 @@ cc_library(
         ":work_group_picking",
         "//tensorflow/lite/delegates/gpu/cl:arguments",
         "//tensorflow/lite/delegates/gpu/cl:buffer",
+        "//tensorflow/lite/delegates/gpu/cl:cl_arguments",
         "//tensorflow/lite/delegates/gpu/cl:cl_command_queue",
         "//tensorflow/lite/delegates/gpu/cl:cl_context",
         "//tensorflow/lite/delegates/gpu/cl:cl_device",
@@ -695,6 +655,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/cl:device_info",
         "//tensorflow/lite/delegates/gpu/cl:precision",
         "//tensorflow/lite/delegates/gpu/cl:program_cache",
+        "//tensorflow/lite/delegates/gpu/cl:serialization_cc_fbs",
         "//tensorflow/lite/delegates/gpu/cl:tensor",
         "//tensorflow/lite/delegates/gpu/cl:tensor_type",
         "//tensorflow/lite/delegates/gpu/common:access_type",
@@ -1397,7 +1358,7 @@ test_suite(
         "conv_buffer_1x1_test",
         "conv_constants_test",
         "conv_powervr_test",
-        "conv_texture_test",
+        "convolution_transposed_3x3_test",
         "convolution_transposed_3x3_thin_test",
         "convolution_transposed_4x4_test",
         "convolution_transposed_test",

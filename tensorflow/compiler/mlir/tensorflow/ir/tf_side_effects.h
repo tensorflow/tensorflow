@@ -53,6 +53,10 @@ struct DatasetMemoryCache
   StringRef getName() final { return "DatasetMemoryCache"; }
 };
 
+struct DatasetIterator : ::mlir::SideEffects::Resource::Base<DatasetIterator> {
+  StringRef getName() final { return "DatasetIterator"; }
+};
+
 }  // namespace ResourceEffects
 }  // namespace TF
 }  // namespace mlir

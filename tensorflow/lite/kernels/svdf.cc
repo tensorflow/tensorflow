@@ -304,9 +304,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   switch (weights_feature->type) {
     case kTfLiteFloat32: {
-      reference_ops::EvalFloatSVDF(context, node, input, weights_feature,
-                                   weights_time, bias, params, scratch, state,
-                                   output);
+      reference_ops::EvalFloatSVDF(
+          params, GetTensorShape(input), GetTensorData<float>(input),
+          GetTensorShape(weights_feature),
+          GetTensorData<float>(weights_feature), GetTensorShape(weights_time),
+          GetTensorData<float>(weights_time), GetTensorShape(bias),
+          GetTensorData<float>(bias), GetTensorData<float>(scratch),
+          GetTensorData<float>(state), GetTensorShape(output),
+          GetTensorData<float>(output));
       return kTfLiteOk;
       break;
     }
@@ -346,10 +351,24 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           op_data->float_weights_time_initialized = true;
         }
 
+        int32_t* zero_points_ptr = nullptr;
+        int32_t* row_sums_ptr = nullptr;
+        if (params->asymmetric_quantize_inputs && row_sums != nullptr) {
+          zero_points_ptr = GetTensorData<int32_t>(zero_points);
+          row_sums_ptr = GetTensorData<int32_t>(row_sums);
+        }
+
         reference_ops::EvalHybridSVDF(
-            context, node, input, weights_feature, float_weights_time, bias,
-            params, scratch, scaling_factors, input_quantized, state, output,
-            zero_points, row_sums, &op_data->compute_row_sums);
+            params, GetTensorShape(input), GetTensorData<float>(input),
+            GetTensorShape(weights_feature),
+            GetTensorData<int8_t>(weights_feature),
+            weights_feature->params.scale, GetTensorShape(float_weights_time),
+            GetTensorData<float>(float_weights_time), GetTensorShape(bias),
+            GetTensorData<float>(bias), GetTensorData<float>(scratch),
+            GetTensorData<float>(scaling_factors),
+            GetTensorData<int8_t>(input_quantized), GetTensorData<float>(state),
+            GetTensorShape(output), GetTensorData<float>(output),
+            zero_points_ptr, row_sums_ptr, &op_data->compute_row_sums);
         return kTfLiteOk;
       } else {
         auto* input_params = reinterpret_cast<TfLiteAffineQuantization*>(
@@ -363,9 +382,16 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         // Currently supports only ReLU.
         // TODO(jianlijianli): support other activations.
         TF_LITE_ENSURE_EQ(context, params->activation, kTfLiteActRelu);
+
         reference_ops::EvalIntegerSVDF(
-            context, node, input, weights_feature, weights_time, bias, params,
-            state, output, scratch, output_temp, op_data->effective_scale_1_a,
+            params, GetTensorShape(input), GetTensorData<int8_t>(input),
+            GetTensorShape(weights_feature),
+            GetTensorData<int8_t>(weights_feature),
+            GetTensorShape(weights_time), GetTensorData<int16_t>(weights_time),
+            GetTensorShape(bias), GetTensorData<int32_t>(bias),
+            GetTensorData<int16_t>(state), GetTensorShape(output),
+            GetTensorData<int8_t>(output), GetTensorData<int32_t>(scratch),
+            GetTensorData<int32_t>(output_temp), op_data->effective_scale_1_a,
             op_data->effective_scale_1_b, op_data->effective_scale_2_a,
             op_data->effective_scale_2_b, input_params->zero_point->data[0],
             output_params->zero_point->data[0]);

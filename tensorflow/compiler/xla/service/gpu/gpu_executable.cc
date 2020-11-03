@@ -450,8 +450,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
   HloInstruction* root = hlo_module_->entry_computation()->root_instruction();
   const Shape& root_shape = root->shape();
   auto device_ordinal = executor->device_ordinal();
-  ExecutionOutput result(/*on_host_shape=*/root->shape(),
-                         /*on_device_shape=*/root->shape(), memory_allocator,
+  ExecutionOutput result(/*on_device_shape=*/root->shape(), memory_allocator,
                          device_ordinal);
 
   TF_ASSIGN_OR_RETURN(BufferAllocations buffer_allocations,

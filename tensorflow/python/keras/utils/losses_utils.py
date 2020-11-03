@@ -31,8 +31,8 @@ from tensorflow.python.util.tf_export import keras_export
 
 # TODO(joshl/psv): Update references to ReductionV2 to point to its
 # new location.
-ReductionV2 = keras_export(  # pylint: disable=invalid-name
-    'keras.losses.Reduction', v1=[])(loss_reduction.ReductionV2)
+ReductionV2 = loss_reduction.ReductionV2
+keras_export('keras.losses.Reduction', v1=[])(loss_reduction.ReductionV2)
 
 
 def remove_squeezable_dimensions(

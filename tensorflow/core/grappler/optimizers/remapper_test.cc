@@ -451,8 +451,10 @@ class RemapperFuseMatMulWithBiasTest : public RemapperTest {
     ASSERT_EQ(tensors_expected.size(), 1);
     auto tensors = EvaluateNodes(output, item.fetch, item.feed);
     ASSERT_EQ(tensors.size(), 1);
-    typedef typename EnumToDataType<DTYPE>::Type T;
-    test::ExpectTensorNear<T>(tensors[0], tensors_expected[0], 1e-6);
+    if (DTYPE == DT_BFLOAT16)
+      test::ExpectClose(tensors[0], tensors_expected[0], 1e-2, 1e-2);
+    else
+      test::ExpectClose(tensors[0], tensors_expected[0], 1e-6);
   }
 };
 
@@ -704,8 +706,10 @@ class RemapperFuseMatMulWithBiasAndActivationTest : public RemapperTest {
       ASSERT_EQ(tensors_expected.size(), 1);
       auto tensors = EvaluateNodes(output, item.fetch, item.feed);
       ASSERT_EQ(tensors.size(), 1);
-      typedef typename EnumToDataType<DTYPE>::Type T;
-      test::ExpectTensorNear<T>(tensors[0], tensors_expected[0], 1e-6);
+      if (DTYPE == DT_BFLOAT16)
+        test::ExpectClose(tensors[0], tensors_expected[0], 1e-2, 1e-2);
+      else
+        test::ExpectClose(tensors[0], tensors_expected[0], 1e-6);
     }
   }
 };

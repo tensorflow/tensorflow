@@ -255,7 +255,6 @@ struct RandomBinomialFunctor<CPUDevice, T, U> {
           }
         } else if (prob > T(0.5)) {
           T q = T(1) - prob;
-          double dcount = static_cast<double>(count);
           double dq = static_cast<double>(q);
           if (count * q >= T(10)) {
             for (int64 sample_idx = output_idx % samples_per_batch;

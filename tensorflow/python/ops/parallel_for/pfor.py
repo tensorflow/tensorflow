@@ -28,6 +28,7 @@ import numpy as np
 import six
 
 from tensorflow.compiler.tf2xla.python import xla
+from tensorflow.core.framework import types_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import execute
@@ -42,6 +43,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_image_ops
@@ -59,6 +61,7 @@ from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import parsing_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops import tensor_array_ops
@@ -75,6 +78,29 @@ flags.DEFINE_bool(
     "DEPRECATED: Flag is ignored.")
 
 
+def _variant_handle_data(t):
+  """Fetches handle data for a variant tensor `t`, or None if unavailable."""
+  handle_data = resource_variable_ops.get_eager_safe_handle_data(t)
+  if not handle_data.is_set:
+    return None
+  if len(handle_data.shape_and_type) != 1:
+    raise ValueError("Expected handle data of length 1, got {!r} of length {}"
+                     .format(handle_data, len(handle_data.shape_and_type)))
+  return handle_data.shape_and_type[0]
+
+
+def _is_tensor_list(t):
+  """True if `t` is a TensorList, False if it isn't, None if unknown."""
+  if t.dtype != dtypes.variant:
+    return False
+  shape_and_type = _variant_handle_data(t)
+  if shape_and_type is None:
+    # TODO(b/169968286): Identify all variant tensors (e.g. optionals) and we
+    # can make this an error instead of assuming TensorLists have handle data.
+    return None  # Presumed not a TensorList
+  return shape_and_type.specialized_type == types_pb2.ST_TENSOR_LIST
+
+
 def _stack(t, length):
   """stacks `t` `length` times."""
   # Note that this stacking may currently be triggered, for example, when a
@@ -82,14 +108,24 @@ def _stack(t, length):
   # produces a loop dependent output. Simply stacking the variants may not be
   # suitable since operations on stacked handles may expect a vectorized version
   # of the variant.
-  # Given that variant types are generic, we are currently unable to figure out
-  # which particular variant type is being considered here and hence it may not
-  # be safe to allow stacking it.
   if t.dtype == dtypes.variant:
-    raise NotImplementedError(
-        "Vectorization tried to stack variant tensor %s. "
-        "This is likely because vectorization of that variant "
-        "is not fully supported yet." % t)
+    shape_and_type = _variant_handle_data(t)
+    if shape_and_type is None:
+      raise ValueError("Required handle data not set for {!r}".format(t))
+    if shape_and_type.specialized_type == types_pb2.ST_TENSOR_LIST:
+      return wrap(
+          _stack_tensor_list(t, shape_and_type.dtype, length),
+          True)
+    else:
+      if shape_and_type.specialized_type != types_pb2.ST_INVALID:
+        raise ValueError(
+            ("Attempted to stack an unhandled variant-dtype tensor of "
+             "type {!r} ({!r})").format(
+                 shape_and_type.specialized_type, t))
+      else:
+        raise ValueError(
+            "Attempted to stack a variant-dtype tensor with no type set ({!r})"
+            .format(t))
   ones = array_ops.ones_like(array_ops.shape(t))
   ones = array_ops.reshape(ones, [-1])
   length = array_ops.reshape(length, [-1])
@@ -388,7 +424,7 @@ class WhileOp(object):
     return inp, stacked
 
   def _maybe_stacked(self, cache, inp):
-    """Heuristic to figue out if the converting inp leads to a stacked value.
+    """Heuristic to figure out if the converting inp leads to a stacked value.
 
 
     Args:
@@ -735,20 +771,30 @@ class _PforInput(object):
     self._op = op
     self._inputs = inputs
 
-  def stack_inputs(self, stack_indices=None):
+  def stack_inputs(self, stack_indices=None, tile_variants=False):
     """Stacks unstacked inputs at `stack_indices`.
 
     Args:
       stack_indices: indices of inputs at which stacking is done. If None,
         stacking is done at all indices.
+      tile_variants: If True, affected indices which have a variant dtype will
+        be tiled after this operation to match the expected shape of a
+        vectorized tensor. Variants generally need to be un-tiled when they are
+        inputs to operations and tiled when returned.
     """
     if stack_indices is None:
       stack_indices = range(len(self._inputs))
     length = self.pfor.loop_len_vector
     for i in stack_indices:
       inp = self._inputs[i]
+      is_variant = inp.t.dtype == dtypes.variant
       if not inp.is_stacked:
         self._inputs[i] = _stack(inp.t, length)
+        if tile_variants and is_variant:
+          self._inputs[i] = wrap(
+              _tile_variant_with_length(self._inputs[i].t, length), True)
+      elif not tile_variants and is_variant:
+        self._inputs[i] = wrap(_untile_variant(self._inputs[i].t), True)
 
   def expanddim_inputs_for_broadcast(self):
     """Reshapes stacked inputs to prepare them for broadcast.
@@ -955,7 +1001,11 @@ def _create_op(op_type, inputs, op_dtypes, attrs=None):
   """Utility to create an op."""
   op = ops.get_default_graph().create_op(
       op_type, inputs, op_dtypes, attrs=attrs, compute_device=True)
-  flat_attrs = nest.flatten([(str(a), op.get_attr(str(a))) for a in attrs])
+  flat_attrs = []
+  # The tape expects an alternating flat list of names and attribute values.
+  for a in attrs:
+    flat_attrs.append(str(a))
+    flat_attrs.append(op.get_attr(str(a)))
   execute.record_gradient(op_type, op.inputs, tuple(flat_attrs), op.outputs[:])
   return op
 
@@ -992,6 +1042,12 @@ def wrap(tensor, is_stacked=True, is_sparse_stacked=False):
                                                "conversion, it must also be "
                                                "stacked.")
   return WrappedTensor(tensor, is_stacked, is_sparse_stacked)
+
+
+def _wrap_and_tile_variants(tensor, length):
+  if tensor.dtype == dtypes.variant:
+    tensor = _tile_variant_with_length(tensor, length)
+  return wrap(tensor)
 
 
 def _fallback_converter(pfor_input, warn=True):
@@ -1076,7 +1132,7 @@ class PForConfig(object):
     concrete_function = def_function.function(fn).get_concrete_function(
         *tensor_specs)
 
-    # Creates PlaceholderWithDefault and IdentityN nodes corresponding the the
+    # Creates PlaceholderWithDefault and IdentityN nodes corresponding the
     # reduction.
     pl_outputs = []
     with ops.control_dependencies(args):
@@ -1377,13 +1433,13 @@ class PFor(object):
     return [wrap(output, False) for output in nest.flatten(outputs)]
 
   def _convert_helper(self, op_or_tensor):
-    stack = [op_or_tensor]
+    stack = collections.deque([op_or_tensor])
     while stack:
       y = stack[0]
       if y in self._conversion_map:
         assert isinstance(self._conversion_map[y],
                           (WrappedTensor, ops.Operation))
-        stack.pop(0)
+        stack.popleft()
         continue
       if isinstance(y, ops.Operation):
         assert not y.outputs, (
@@ -1420,7 +1476,7 @@ class PFor(object):
 
       def _add_to_stack(x):
         if x not in self._conversion_map:
-          stack.insert(0, x)
+          stack.appendleft(x)
           return True
         else:
           return False
@@ -1496,7 +1552,10 @@ class PFor(object):
           if y is y_op:
             new_outputs = new_op
           else:
-            new_outputs = [wrap(x, False) for x in new_op.outputs]
+            new_outputs = []
+            for old_output, new_output in zip(y_op.outputs, new_op.outputs):
+              custom_gradient.copy_handle_data(old_output, new_output)
+              new_outputs.append(wrap(new_output, False))
         else:
           # Either some inputs are not loop invariant or op is stateful.
           if hasattr(y_op, "pfor_converter"):
@@ -1570,9 +1629,12 @@ class PFor(object):
                 else:
                   batch_dim = tensor_shape.TensorShape(loop_len)
                 output_shape = batch_dim.concatenate(output_shape)
-              new_output.t.set_shape(output_shape)
+              if _is_tensor_list(new_output.t):
+                new_output.t.set_shape([])
+              else:
+                new_output.t.set_shape(output_shape)
             self._add_conversion(old_output, new_output)
-        stack.pop(0)
+        stack.popleft()
 
     return self._conversion_map[op_or_tensor]
 
@@ -2888,8 +2950,10 @@ def _convert_rank(pfor_input):
 @RegisterPFor("AddN")
 def _convert_addn(pfor_input):
   # AddN does not support broadcasting.
-  pfor_input.stack_inputs()
-  return wrap(math_ops.add_n([x.t for x in pfor_input.inputs]), True)
+  pfor_input.stack_inputs(tile_variants=False)
+  return _wrap_and_tile_variants(
+      math_ops.add_n([x.t for x in pfor_input.inputs]),
+      pfor_input.pfor.loop_len_vector)
 
 
 @RegisterPFor("Cross")
@@ -3518,8 +3582,7 @@ def _convert_tensor_array_grad_v3(pfor_input):
   return [wrap(grad_handle, False), wrap(flow_out, True)]
 
 
-def _stack_tensor_list_shape(shape, pfor_input):
-  first_dim = pfor_input.pfor.loop_len_vector
+def _stack_tensor_list_shape(shape, first_dim):
   shape_value = tensor_util.constant_value(shape)
   # Note that negative values in the shape are used to signify unknown shapes
   # and are handled in a special way.
@@ -3537,15 +3600,35 @@ def _stack_tensor_list_shape(shape, pfor_input):
         lambda: array_ops.concat([first_dim, shape], axis=0))
 
 
-def _tile_variant(t, pfor_input):
+def _tile_variant_with_length(t, length):
   """stacks `t` `length` times."""
+  if _is_tensor_list(t):
+    # The content of TensorLists is vectorized, not the variant itself.
+    return t
+  original_tensor = t
   t.set_shape([])
   t = array_ops.reshape(t, [-1])
   with ops.device("CPU:0"):
-    return array_ops.tile(t, pfor_input.pfor.loop_len_vector)
+    result = array_ops.tile(t, length)
+    # TODO(b/169968286): Should regular shape functions do handle data
+    # propagation here?
+    custom_gradient.copy_handle_data(original_tensor, result)
+    return result
+
+
+def _tile_variant(t, pfor_input):
+  """stacks `t` according to its loop context."""
+  return _tile_variant_with_length(t, pfor_input.pfor.loop_len_vector)
 
 
 def _untile_variant(t):
+  if _is_tensor_list(t):
+    # The content of TensorLists is vectorized, not the variant itself.
+    if not t.shape.is_compatible_with([]):
+      raise AssertionError(
+          "Unexpectedly saw a TensorList with non-scalar shape: {!r}"
+          .format(t))
+    return t
   return array_ops.gather(t, 0)
 
 
@@ -3556,7 +3639,8 @@ def _convert_tensor_list_reserve(pfor_input):
   element_dtype = pfor_input.get_attr("element_dtype")
 
   # Prepend a dimension to element_shape.
-  element_shape = _stack_tensor_list_shape(element_shape, pfor_input)
+  element_shape = _stack_tensor_list_shape(element_shape,
+                                           pfor_input.pfor.loop_len_vector)
   handle = list_ops.tensor_list_reserve(
       element_shape, num_elements, element_dtype=element_dtype)
 
@@ -3579,16 +3663,16 @@ def _convert_tensor_list_length(pfor_input):
   return wrap(list_ops.tensor_list_length(handle), False)
 
 
-def _stack_tensor_list(handle, dtype, pfor_input, element_shape=None):
+def _stack_tensor_list(handle, dtype, loop_len_vector, element_shape=None):
   if element_shape is None:
     element_shape = list_ops.tensor_list_element_shape(handle, dtypes.int32)
   length = list_ops.tensor_list_length(handle)
   new_handle = list_ops.tensor_list_reserve(
-      _stack_tensor_list_shape(element_shape, pfor_input), length, dtype)
+      _stack_tensor_list_shape(element_shape, loop_len_vector), length, dtype)
 
   def _body_fn(i, h):
     elem = list_ops.tensor_list_get_item(handle, i, dtype, element_shape)
-    elem = _stack(elem, pfor_input.pfor.loop_len_vector).t
+    elem = _stack(elem, loop_len_vector).t
     return i + 1, list_ops.tensor_list_set_item(h, i, elem)
 
   return control_flow_ops.while_loop(lambda i, _: i < length, _body_fn,
@@ -3604,7 +3688,8 @@ def _convert_tensor_list_get_item(pfor_input):
 
   if handle_stacked:
     handle = _untile_variant(handle)
-    element_shape = _stack_tensor_list_shape(element_shape, pfor_input)
+    element_shape = _stack_tensor_list_shape(element_shape,
+                                             pfor_input.pfor.loop_len_vector)
     if index_stacked:
       # We use a sequential loop since that may be more efficient than first
       # gathering and concatenating all the element corresponding to `index`,
@@ -3650,7 +3735,8 @@ def _convert_tensor_array_set_item(pfor_input):
       return wrap(
           list_ops.tensor_list_scatter(item, index, input_handle=handle), False)
     else:
-      handle = _stack_tensor_list(handle, item.dtype, pfor_input)
+      handle = _stack_tensor_list(handle, item.dtype,
+                                  pfor_input.pfor.loop_len_vector)
   else:
     handle = _untile_variant(handle)
 
@@ -3664,6 +3750,42 @@ def _convert_tensor_array_set_item(pfor_input):
       item = _stack(item, pfor_input.pfor.loop_len_vector).t
     handle = list_ops.tensor_list_set_item(handle, index, item)
     return wrap(_tile_variant(handle, pfor_input), True)
+
+
+@RegisterPFor("TensorListPushBack")
+def _convert_tensor_list_push_back(pfor_input):
+  handle, handle_stacked, _ = pfor_input.input(0)
+  tensor, tensor_stacked, _ = pfor_input.input(1)
+  if handle_stacked:
+    handle = _untile_variant(handle)
+  else:
+    handle = _stack_tensor_list(handle, tensor.dtype,
+                                pfor_input.pfor.loop_len_vector)
+  if not tensor_stacked:
+    tensor = _stack(tensor, pfor_input.pfor.loop_len_vector).t
+  handle = list_ops.tensor_list_push_back(handle, tensor)
+  return wrap(_tile_variant(handle, pfor_input), True)
+
+
+@RegisterPFor("TensorListPopBack")
+def _convert_tensor_array_push_back(pfor_input):
+  handle = pfor_input.stacked_input(0)
+  element_shape = pfor_input.unstacked_input(1)
+  handle = _untile_variant(handle)
+
+  if element_shape.shape.ndims == 0:
+    # Default / unspecified
+    vectorized_shape = -1
+  else:
+    # PopBack has an element shape set when it's the gradient of PushBack, only
+    # used when the list is uninitialized.
+    vectorized_shape = array_ops.concat(
+        [pfor_input.pfor.loop_len_vector, element_shape], axis=0)
+
+  output_handle, tensor = gen_list_ops.tensor_list_pop_back(
+      input_handle=handle, element_dtype=pfor_input.get_attr("element_dtype"),
+      element_shape=vectorized_shape)
+  return wrap(output_handle, True), wrap(tensor, True)
 
 
 @RegisterPFor("TensorListConcatV2")
@@ -3714,7 +3836,8 @@ def _convert_tensor_list_stack(pfor_input):
   num_elements = pfor_input.get_attr("num_elements")
 
   handle = _untile_variant(handle)
-  input_shape = _stack_tensor_list_shape(input_shape, pfor_input)
+  input_shape = _stack_tensor_list_shape(input_shape,
+                                         pfor_input.pfor.loop_len_vector)
   output = list_ops.tensor_list_stack(
       handle,
       element_dtype,
@@ -3733,7 +3856,8 @@ def _convert_tensor_list_gather(pfor_input):
 
   if handle_stacked:
     handle = _untile_variant(handle)
-    element_shape = _stack_tensor_list_shape(element_shape, pfor_input)
+    element_shape = _stack_tensor_list_shape(element_shape,
+                                             pfor_input.pfor.loop_len_vector)
     if index_stacked:
       # We use a sequential loop since that may be more efficient than first
       # gathering and concatenating all the element corresponding to `index`,
@@ -3776,7 +3900,8 @@ def _convert_tensor_list_scatter(pfor_input):
   if handle_stacked:
     handle = _untile_variant(handle)
   else:
-    handle = _stack_tensor_list(handle, item.dtype, pfor_input)
+    handle = _stack_tensor_list(handle, item.dtype,
+                                pfor_input.pfor.loop_len_vector)
 
   item = _transpose_first_two_dims(item)
   handle = list_ops.tensor_list_scatter(item, indices, input_handle=handle)
@@ -3788,7 +3913,8 @@ def _convert_tensor_list_from_tensor(pfor_input):
   tensor = pfor_input.stacked_input(0)
   element_shape = pfor_input.unstacked_input(1)
   tensor = _transpose_first_two_dims(tensor)
-  element_shape = _stack_tensor_list_shape(element_shape, pfor_input)
+  element_shape = _stack_tensor_list_shape(element_shape,
+                                           pfor_input.pfor.loop_len_vector)
   handle = list_ops.tensor_list_from_tensor(tensor, element_shape)
   return wrap(_tile_variant(handle, pfor_input), True)
 
@@ -4048,7 +4174,7 @@ def _outputs_for_branch(func_name, indices, pfor_input, inputs):
   stacked_outputs = []
   for out in outputs:
     if not out.is_stacked:
-      stacked_outputs.append(_stack(out.t, array_ops.size(indices)).t)
+      stacked_outputs.append(_stack(out.t, [array_ops.size(indices)]).t)
     else:
       stacked_outputs.append(out.t)
   return stacked_outputs
@@ -4147,8 +4273,12 @@ class WhileV2(object):
       shapes = [tensor_shape.TensorShape(shape) for shape in shapes]
     for i, shape in enumerate(shapes):
       shape = shape.merge_with(output_shapes[i])
-      if self._pfor_input.input(i).is_stacked:
-        shape = tensor_shape.TensorShape([None]).concatenate(shape)
+      pfor_input = self._pfor_input.input(i)
+      if pfor_input.is_stacked:
+        if _is_tensor_list(pfor_input.t):
+          shape = tensor_shape.TensorShape([]).concatenate(shape)
+        else:
+          shape = tensor_shape.TensorShape([None]).concatenate(shape)
       output_shapes[i] = shape
     assert len(output_shapes) == self._pfor_input.num_inputs
     return output_shapes
@@ -4258,7 +4388,12 @@ class WhileV2(object):
           if out.is_stacked != inp.is_stacked:
             stacking_mismatch = True
             mismatching_stacked_indices.append(i)
-            wrapped_inputs[i] = _stack(inp.t, [array_ops.size(new_indices)])
+            stacked = _stack(inp.t, [array_ops.size(new_indices)])
+            if inp.t.dtype == dtypes.variant:
+              stacked = wrap(
+                  _tile_variant_with_length(stacked.t,
+                                            [array_ops.size(new_indices)]))
+            wrapped_inputs[i] = stacked
         if not stacking_mismatch:
           if mismatching_stacked_indices:
             # We needed to stack some inputs. This code will be abandoned and
@@ -4413,7 +4548,8 @@ class WhileV2(object):
     _ = while_fn.get_concrete_function()
     if indices_to_stack:
       # Need to abandon the current conversion, stack some inputs and restart.
-      self._pfor_input.stack_inputs(stack_indices=indices_to_stack)
+      self._pfor_input.stack_inputs(
+          stack_indices=indices_to_stack, tile_variants=True)
       # Note that this call will recurse at most one time. The first call will
       # do the required stacking, based on the iterative procedure in
       # _process_body, and the next invocation to __call__ should not need to do

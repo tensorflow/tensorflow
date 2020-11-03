@@ -90,6 +90,11 @@ else:
     return _convert_maybe_argspec_to_fullargspec(getargspec(target))
 
 
+def currentframe():
+  """TFDecorator-aware replacement for inspect.currentframe."""
+  return _inspect.stack()[1][0]
+
+
 def getargspec(obj):
   """TFDecorator-aware replacement for `inspect.getargspec`.
 

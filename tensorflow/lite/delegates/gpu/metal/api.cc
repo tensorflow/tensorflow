@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compiled_model.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
-#include "tensorflow/lite/delegates/gpu/metal/environment.h"
+#include "tensorflow/lite/delegates/gpu/metal/device_info.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/add.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/concat.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/conv.h"
@@ -267,6 +267,11 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
           device_info, options);
       break;
     case OperationType::DEPTHWISE_CONVOLUTION:
+      if (graph.FindInputs(node->id).size() != 1) {
+        return absl::UnimplementedError(
+            "DepthWise Convolution does not support more than 1 runtime "
+            "tensor");
+      }
       *tasks =
           SelectDepthWiseConv(node_id, inputs[0], outputs[0],
                               absl::any_cast<DepthwiseConvolution2DAttributes>(

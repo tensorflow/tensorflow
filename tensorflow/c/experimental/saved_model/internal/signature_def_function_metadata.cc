@@ -16,5 +16,18 @@ limitations under the License.
 #include "tensorflow/c/experimental/saved_model/public/signature_def_function_metadata.h"
 
 #include "tensorflow/c/experimental/saved_model/internal/signature_def_function_metadata_type.h"
+#include "tensorflow/c/experimental/saved_model/internal/signature_def_param_list_type.h"
 
-// TODO(bmzhao): Add getter functions here as necessary.
+extern "C" {
+
+extern const TF_SignatureDefParamList* TF_SignatureDefFunctionMetadataArgs(
+    const TF_SignatureDefFunctionMetadata* list) {
+  return tensorflow::wrap(&tensorflow::unwrap(list)->arguments());
+}
+
+extern const TF_SignatureDefParamList* TF_SignatureDefFunctionMetadataReturns(
+    const TF_SignatureDefFunctionMetadata* list) {
+  return tensorflow::wrap(&tensorflow::unwrap(list)->returns());
+}
+
+}  // end extern "C"

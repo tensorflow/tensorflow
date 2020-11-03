@@ -173,6 +173,7 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:graph_topology_view",
         "//tensorflow/core/grappler/utils:traversal",
@@ -202,9 +203,9 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/kernels:function_ops",
         "//third_party/eigen3",
         "@com_google_absl//absl/strings",
@@ -540,6 +541,7 @@ tf_cc_test(
 tf_kernel_library(
     name = "model_dataset_op",
     srcs = ["model_dataset_op.cc"],
+    hdrs = ["model_dataset_op.h"],
     deps = [
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
@@ -803,6 +805,7 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -1444,15 +1447,11 @@ filegroup(
             "*.h",
         ],
         exclude = [
-            "dataset_ops*",  # includes grappler dependency, which isn't supported on mobile.
-            "optimize_dataset_op.*",  # includes grappler dependency, which isn't supported on mobile.
-            "model_dataset_op.*",  # not supported on mobile.
-            "rewrite_utils*",  # includes grappler dependency, which isn't supported on mobile.
+            "dataset_test_base.*",
             "*test.cc",
-            "*test.h",
-            "*_test_*",
         ],
     ),
+    visibility = ["//tensorflow:__subpackages__"],
 )
 
 tf_kernel_library(

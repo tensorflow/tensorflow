@@ -13,8 +13,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 filegroup(
     name = "all_py_srcs",
     srcs = glob(["*.py"]),
@@ -31,6 +29,7 @@ py_library(
         ":sequence",
         ":text",
         ":timeseries",
+        "//tensorflow/python/keras/utils:all_utils",
     ],
 )
 
@@ -115,7 +114,6 @@ tf_py_test(
     size = "small",
     srcs = ["sequence_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":sequence",
         "//tensorflow/python:client_testlib",
@@ -128,7 +126,6 @@ tf_py_test(
     size = "small",
     srcs = ["text_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":text",
         "//tensorflow/python:client_testlib",

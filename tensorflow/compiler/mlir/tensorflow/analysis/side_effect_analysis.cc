@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdint>
 #include <initializer_list>
 
-#include "absl/strings/str_cat.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/Optional.h"

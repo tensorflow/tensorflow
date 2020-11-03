@@ -92,7 +92,8 @@ def make_gradient_clipnorm_fn(clipnorm):
   def gradient_clipnorm_fn(grads_and_vars):
 
     if isinstance(distribute_ctx.get_strategy(),
-                  central_storage_strategy.CentralStorageStrategy):
+                  (central_storage_strategy.CentralStorageStrategy,
+                   central_storage_strategy.CentralStorageStrategyV1)):
       raise ValueError(
           "`clipnorm` is not supported with `CenteralStorageStrategy`")
 
@@ -112,7 +113,8 @@ def make_global_gradient_clipnorm_fn(clipnorm):
   def gradient_clipnorm_fn(grads_and_vars):
 
     if isinstance(distribute_ctx.get_strategy(),
-                  central_storage_strategy.CentralStorageStrategy):
+                  (central_storage_strategy.CentralStorageStrategy,
+                   central_storage_strategy.CentralStorageStrategyV1)):
       raise ValueError(
           "`global_clipnorm` is not supported with `CenteralStorageStrategy`")
 
@@ -132,7 +134,8 @@ def make_gradient_clipvalue_fn(clipvalue):
   def gradient_clipvalue_fn(grads_and_vars):
 
     if isinstance(distribute_ctx.get_strategy(),
-                  central_storage_strategy.CentralStorageStrategy):
+                  (central_storage_strategy.CentralStorageStrategy,
+                   central_storage_strategy.CentralStorageStrategyV1)):
       raise ValueError(
           "`clipvalue` is not supported with `CenteralStorageStrategy`")
 

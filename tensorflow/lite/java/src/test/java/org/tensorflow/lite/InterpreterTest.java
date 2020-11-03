@@ -394,6 +394,7 @@ public final class InterpreterTest {
   }
 
   @Test
+  // setAllowFp16PrecisionForFp32 is deprecated, suppress the warning to allow testing.
   @SuppressWarnings("deprecation")
   public void testTurnOnNNAPI() throws Exception {
     Interpreter interpreter =

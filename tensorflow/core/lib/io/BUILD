@@ -8,6 +8,7 @@ package(
     default_visibility = [
         "//tensorflow/c/experimental/filesystem:__pkg__",
         "//tensorflow/c/experimental/filesystem/plugins/posix:__pkg__",
+        "//tensorflow/core/lib/io/snappy:__pkg__",
         # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
         "//tensorflow/core:__pkg__",
     ],
@@ -183,56 +184,24 @@ cc_library(
     alwayslink = True,
 )
 
-cc_library(
+alias(
     name = "snappy_inputbuffer",
-    srcs = ["snappy/snappy_inputbuffer.cc"],
-    hdrs = ["snappy/snappy_inputbuffer.h"],
-    deps = [
-        ":inputstream_interface",
-        "//tensorflow/core/lib/core:status",
-        "//tensorflow/core/platform:env",
-        "//tensorflow/core/platform:macros",
-        "//tensorflow/core/platform:platform_port",
-        "//tensorflow/core/platform:types",
-    ],
-    alwayslink = True,
+    actual = "//tensorflow/core/lib/io/snappy:snappy_inputbuffer",
 )
 
-cc_library(
-    name = "snappy_outputbuffer",
-    srcs = ["snappy/snappy_outputbuffer.cc"],
-    hdrs = ["snappy/snappy_outputbuffer.h"],
-    deps = [
-        "//tensorflow/core/lib/core:status",
-        "//tensorflow/core/platform",
-        "//tensorflow/core/platform:env",
-        "//tensorflow/core/platform:macros",
-        "//tensorflow/core/platform:platform_port",
-        "//tensorflow/core/platform:types",
-    ],
-    alwayslink = True,
-)
-
-cc_library(
+alias(
     name = "snappy_inputstream",
-    srcs = ["snappy/snappy_inputstream.cc"],
-    hdrs = ["snappy/snappy_inputstream.h"],
-    deps = [
-        ":inputstream_interface",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:platform_port",
-        "@com_google_absl//absl/memory",
-    ],
-    alwayslink = True,
+    actual = "//tensorflow/core/lib/io/snappy:snappy_inputstream",
 )
 
-cc_library(
+alias(
+    name = "snappy_outputbuffer",
+    actual = "//tensorflow/core/lib/io/snappy:snappy_outputbuffer",
+)
+
+alias(
     name = "snappy_compression_options",
-    hdrs = ["snappy/snappy_compression_options.h"],
-    deps = [
-        "//tensorflow/core/platform:types",
-    ],
-    alwayslink = True,
+    actual = "//tensorflow/core/lib/io/snappy:snappy_compression_options",
 )
 
 cc_library(
@@ -350,9 +319,6 @@ filegroup(
         "random_inputstream.h",
         "record_reader.cc",
         "record_reader.h",
-        "snappy/snappy_compression_options.h",
-        "snappy/snappy_inputstream.cc",
-        "snappy/snappy_inputstream.h",
         "table.cc",
         "table.h",
         "table_builder.cc",
@@ -364,6 +330,9 @@ filegroup(
         "zlib_compression_options.h",
         "zlib_inputstream.cc",
         "zlib_inputstream.h",
+        "//tensorflow/core/lib/io/snappy:snappy_compression_options.h",
+        "//tensorflow/core/lib/io/snappy:snappy_inputstream.cc",
+        "//tensorflow/core/lib/io/snappy:snappy_inputstream.h",
     ],
 )
 
@@ -383,10 +352,6 @@ filegroup(
         "random_inputstream.h",
         "record_reader.h",
         "record_writer.h",
-        "snappy/snappy_compression_options.h",
-        "snappy/snappy_inputbuffer.h",
-        "snappy/snappy_inputstream.h",
-        "snappy/snappy_outputbuffer.h",
         "table.h",
         "table_builder.h",
         "table_options.h",
@@ -394,6 +359,10 @@ filegroup(
         "zlib_compression_options.h",
         "zlib_inputstream.h",
         "zlib_outputbuffer.h",
+        "//tensorflow/core/lib/io/snappy:snappy_compression_options.h",
+        "//tensorflow/core/lib/io/snappy:snappy_inputbuffer.h",
+        "//tensorflow/core/lib/io/snappy:snappy_inputstream.h",
+        "//tensorflow/core/lib/io/snappy:snappy_outputbuffer.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -409,9 +378,9 @@ filegroup(
         "random_inputstream_test.cc",
         "record_reader_writer_test.cc",
         "recordio_test.cc",
-        "snappy/snappy_test.cc",
         "table_test.cc",
         "zlib_buffers_test.cc",
+        "//tensorflow/core/lib/io/snappy:snappy_test.cc",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -440,13 +409,13 @@ filegroup(
     srcs = [
         "inputbuffer.h",
         "iterator.h",
-        "snappy/snappy_compression_options.h",
-        "snappy/snappy_inputbuffer.h",
-        "snappy/snappy_inputstream.h",
-        "snappy/snappy_outputbuffer.h",
         "zlib_compression_options.h",
         "zlib_inputstream.h",
         "zlib_outputbuffer.h",
+        "//tensorflow/core/lib/io/snappy:snappy_compression_options.h",
+        "//tensorflow/core/lib/io/snappy:snappy_inputbuffer.h",
+        "//tensorflow/core/lib/io/snappy:snappy_inputstream.h",
+        "//tensorflow/core/lib/io/snappy:snappy_outputbuffer.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

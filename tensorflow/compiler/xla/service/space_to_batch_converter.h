@@ -26,7 +26,8 @@ namespace xla {
 // batch.
 class ConvolutionSpaceToBatchConverter : public HloModulePass {
  public:
-  ConvolutionSpaceToBatchConverter() = default;
+  explicit ConvolutionSpaceToBatchConverter(int64 limit_on_batch_size = 1)
+      : limit_on_batch_size_(limit_on_batch_size) {}
 
   absl::string_view name() const override {
     return "convolution-space-to-batch-converter";
@@ -35,6 +36,8 @@ class ConvolutionSpaceToBatchConverter : public HloModulePass {
   // Run convolution rewriting on the given computation. Returns whether the
   // computation was changed.
   StatusOr<bool> Run(HloModule* module) override;
+
+  int64 limit_on_batch_size_;
 };
 
 }  // namespace xla

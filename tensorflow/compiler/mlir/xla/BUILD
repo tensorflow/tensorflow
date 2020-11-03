@@ -1,5 +1,7 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//third_party/mlir:tblgen.bzl", "gentbl")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_native_cc_binary")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 package(
     default_visibility = [":friends"],
@@ -28,6 +30,7 @@ package_group(
 
 gentbl(
     name = "xla_legalize_tf_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         ("-gen-rewriters", "transforms/generated_legalize_tf.inc"),
     ],
@@ -121,6 +124,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
     ],
     alwayslink = 1,
 )
@@ -133,6 +137,7 @@ cc_library(
         ":hlo_module_importer",
         ":hlo_utils",
         ":mlir_hlo_to_hlo",
+        ":translate_cl_options",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:lhlo",
         "//tensorflow/compiler/xla:debug_options_flags",
@@ -296,6 +301,7 @@ cc_library(
         ":hlo_utils",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:status_macros",
@@ -373,6 +379,7 @@ tf_native_cc_binary(
 
 gentbl(
     name = "operator_writer_inc",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [("", "operator_writers.inc")],
     tblgen = ":operator_writer_gen",
     td_file = "//tensorflow/compiler/mlir/hlo:include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td",
@@ -423,8 +430,8 @@ tf_cc_binary(
     name = "xla-opt",
     deps = [
         ":all_xla_passes_for_testing",
-        "//tensorflow/compiler/jit:xla_cpu_jit",
-        "//tensorflow/compiler/jit:xla_gpu_jit",
         "//tensorflow/compiler/mlir:tf_mlir_opt_main",
+        "//tensorflow/compiler/xla/service:cpu_plugin",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
     ],
 )

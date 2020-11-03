@@ -57,6 +57,10 @@ absl::Status SelectConcat(const ConcatAttributes& attr,
                           const DeviceInfo& device_info,
                           std::unique_ptr<GPUOperation>* ptr);
 
+std::unique_ptr<GPUOperation> SelectDWConvolutionDynamicWeights(
+    const DepthwiseConvolution2DAttributes& attr, const DeviceInfo& device_info,
+    const OperationDef& op_def);
+
 void SelectReshape(int src_channels, int dst_channels,
                    const OperationDef& op_def,
                    std::unique_ptr<GPUOperation>* ptr);

@@ -77,8 +77,6 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     total = math_ops.add_n([three, four])
     self.assertAllEqual(7, total)
 
-  @test_util.disable_tfrt('b/163564975: TFRT MatMul Kernel is partially '
-                          'implemented.')
   def testExecuteBoolAttr(self):
     three = constant_op.constant([[3]])
     five = constant_op.constant([[5]])
@@ -396,7 +394,6 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   @parameterized.named_parameters(
       ('Tensor', lambda: constant_op.constant(1.3+1j)),
       ('Variable', lambda: resource_variable_ops.ResourceVariable(1.3+1j)))
-  @test_util.disable_tfrt('cannot create complex tensor in TFRT.')
   def testCastToPrimitiveTypesFrom(self, value_fn):
     x = value_fn()
     self.assertIsInstance(int(x), int)
@@ -484,8 +481,8 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertIs(weak_x(), None)
     self.assertIs(weak_y(), None)
 
-  @test_util.disable_tfrt('TFE_ContextGetExecutorForThread not implemented '
-                          'b/156188669')
+  @test_util.disable_tfrt(
+      'b/153697193: tfrt cannot decode python stacktrace yet')
   def testAsyncExceptionStackTrace(self):
     config.set_synchronous_execution(False)
 
@@ -504,6 +501,18 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     context.async_clear_error()
     config.set_synchronous_execution(True)
 
+  def testCrossContextTensorCache(self):
+    old_context = context.context()
+    old_x = constant_op.constant(9.5)
+    context._set_context(context.Context())
+
+    try:
+      new_x = constant_op.constant(9.5)
+      self.assertEqual(new_x.numpy(), 9.5)
+    finally:
+      context._set_context(old_context)
+
+    self.assertEqual(old_x.numpy(), 9.5)
 
 if __name__ == '__main__':
   test.main()

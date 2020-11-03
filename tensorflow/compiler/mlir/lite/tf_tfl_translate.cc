@@ -143,6 +143,7 @@ int main(int argc, char **argv) {
   mlir::SourceMgrDiagnosticHandler sourceMgrHandler(source_mgr, &context);
 
   StatusOr<mlir::OwningModuleRef> module;
+  std::unordered_set<std::string> tags;
 
   tensorflow::GraphImportConfig specs;
   specs.upgrade_legacy = upgrade_legacy;
@@ -161,8 +162,7 @@ int main(int argc, char **argv) {
       module = tensorflow::errors::InvalidArgument(
           "Importing saved model should not have input_mlir set");
 
-    std::unordered_set<std::string> tags =
-        absl::StrSplit(saved_model_tags, ',');
+    tags = absl::StrSplit(saved_model_tags, ',');
     std::vector<std::string> exported_names_vector =
         absl::StrSplit(saved_model_exported_names, ',', absl::SkipEmpty());
     absl::Span<std::string> exported_names(exported_names_vector);
@@ -241,7 +241,7 @@ int main(int argc, char **argv) {
   std::string result;
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(
       module.ValueOrDie().get(), output_mlir, emit_builtin_tflite_ops,
-      emit_select_tf_ops, emit_custom_ops, quant_specs, &result, &pm);
+      emit_select_tf_ops, emit_custom_ops, quant_specs, tags, &result, &pm);
   if (!status.ok()) return kTrFailure;
 
   std::string error_msg;

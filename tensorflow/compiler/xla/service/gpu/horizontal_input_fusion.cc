@@ -117,8 +117,7 @@ StatusOr<bool> HorizontalInputFusionImpl::Run() {
   // Using def-to-use order is sound since we do not modify users.
   std::vector<HloInstruction*> def_to_use_order =
       computation_->MakeInstructionPostOrder();
-  for (size_t i = 0; i < def_to_use_order.size(); ++i) {
-    auto consumer = def_to_use_order[i];
+  for (auto consumer : def_to_use_order) {
     auto candidates = FindAndSortFusionCandidates(consumer);
     if (candidates.empty()) {
       continue;

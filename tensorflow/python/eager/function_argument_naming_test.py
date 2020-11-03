@@ -26,7 +26,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
@@ -39,8 +38,6 @@ from tensorflow.python.platform import test
 class ArgumentNamingTests(test.TestCase, parameterized.TestCase):
   """Tests for recognizable export signatures from concrete functions."""
 
-  @test_util.disable_tfrt('b/168618526: design proper method to copy tensors'
-                          'for function.')
   def testBasic(self, function_decorator):
     @function_decorator
     def fn(a, b):
@@ -65,8 +62,6 @@ class ArgumentNamingTests(test.TestCase, parameterized.TestCase):
         [3., 2.],
         fn_op(a=constant_op.constant(1.), b=constant_op.constant(2.)))
 
-  @test_util.disable_tfrt('b/168618526: design proper method to copy tensors'
-                          'for function.')
   def testVariable(self, function_decorator):
     @function_decorator
     def fn(a, b):
@@ -85,8 +80,6 @@ class ArgumentNamingTests(test.TestCase, parameterized.TestCase):
         [inp.op.get_attr('_user_specified_name') for inp in fn_op.inputs])
     self.assertEqual(2, len(fn_op.graph.structured_outputs))
 
-  @test_util.disable_tfrt('b/168618526: design proper method to copy tensors'
-                          'for function.')
   def testDictReturned(self, function_decorator):
     @function_decorator
     def fn(x, z=(1., 2.), y=3.):
@@ -204,8 +197,6 @@ class ArgumentNamingTests(test.TestCase, parameterized.TestCase):
         [b'y'],
         [inp.op.get_attr('_user_specified_name') for inp in method_op2.inputs])
 
-  @test_util.disable_tfrt('b/168618526: design proper method to copy tensors'
-                          'for function.')
   def testVariadic(self, function_decorator):
     @function_decorator
     def variadic_fn(x, *args, **kwargs):
@@ -228,8 +219,6 @@ class ArgumentNamingTests(test.TestCase, parameterized.TestCase):
         [b'x', b'y', b'args_1', b'second_variadic', b'z', b'cust'],
         [inp.op.get_attr('_user_specified_name') for inp in variadic_op.inputs])
 
-  @test_util.disable_tfrt('b/168618526: design proper method to copy tensors'
-                          'for function.')
   def testVariadicInputSignature(self, function_decorator):
     @function_decorator(
         input_signature=(

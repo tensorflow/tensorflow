@@ -58,7 +58,13 @@ Status MapParallelization::OptimizeAndCollectStats(Cluster* cluster,
                                                    GraphDef* output,
                                                    OptimizationStats* stats) {
   *output = item.graph;
+  if (!autotune_) {
+    VLOG(1) << "The optimization map_parallelization is not applied if "
+               "autotune is off.";
+    return Status::OK();
+  }
   MutableGraphView graph(output);
+
   absl::flat_hash_set<string> nodes_to_delete;
   FunctionLibraryDefinition function_library(OpRegistry::Global(),
                                              item.graph.library());

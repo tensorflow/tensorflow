@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/core/lib/monitoring/gauge.h"
 
 namespace mlir {
 namespace TFDevice {
@@ -36,6 +37,11 @@ namespace {
 
 constexpr char kXlaOutsideCompilationAttr[] = "_xla_outside_compilation";
 constexpr char kAllowSoftPlacementAttr[] = "allow_soft_placement";
+
+auto* auto_outside_compilation_gauge =
+    tensorflow::monitoring::Gauge<bool, 0>::New(
+        "/tensorflow/core/use_auto_outside_compilation",
+        "Tracks if auto outside compilation is enabled");
 
 // This pass marks unsupported ops in a device cluster with
 // `_xla_outside_compilation` attribute so the operations will run on the host
@@ -118,16 +124,30 @@ void AddRewrittenCompositeOps(MLIRContext* context,
   supported_ops->insert(allowlist_ops.begin(), allowlist_ops.end());
 }
 
+bool IsStringType(Type type) {
+  if (type.isa<TF::StringType>()) return true;
+
+  auto sub_type = type.dyn_cast<TF::TensorFlowTypeWithSubtype>();
+  if (!sub_type) return false;
+
+  bool has_string = llvm::any_of(sub_type.GetSubtypes(), [](TensorType type) {
+    return type.getElementType().isa<TF::StringType>();
+  });
+  return has_string;
+}
+
 bool HasStringOperand(Operation& op) {
   for (auto operand : op.getOperands()) {
-    if (getElementTypeOrSelf(operand).isa<TF::StringType>()) return true;
+    auto operand_type = getElementTypeOrSelf(operand);
+    if (IsStringType(operand_type)) return true;
   }
   return false;
 }
 
 bool HasStringResult(Operation& op) {
   for (auto result : op.getResults()) {
-    if (getElementTypeOrSelf(result).isa<TF::StringType>()) return true;
+    auto result_type = getElementTypeOrSelf(result);
+    if (IsStringType(result_type)) return true;
   }
   return false;
 }
@@ -185,18 +205,10 @@ LogicalResult MarkUncompilableOps(
               op->getContext()));
       outside_compiled_cluster_counter++;
     }
-    if (llvm::isa<TF::IfRegionOp, TF::WhileRegionOp>(op)) {
-      if (HasCapturedStringOperand(op)) {
-        op->setAttr(
-            kXlaOutsideCompilationAttr,
-            StringAttr::get(
-                llvm::formatv("auto{0}", outside_compiled_cluster_counter)
-                    .str(),
-                op->getContext()));
-        outside_compiled_cluster_counter++;
-      }
-    }
   });
+  if (outside_compiled_cluster_counter > 0) {
+    auto_outside_compilation_gauge->GetCell()->Set(true);
+  }
   return success();
 }
 

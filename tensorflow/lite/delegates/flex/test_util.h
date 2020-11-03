@@ -28,6 +28,8 @@ enum TfOpType {
   kIdentity,
   kAdd,
   kMul,
+  kRfft,
+  kImag,
   // Represents an op that does not exist in TensorFlow.
   kNonExistent,
   // Represents an valid TensorFlow op where the NodeDef is incompatible.
@@ -91,6 +93,11 @@ class FlexModelTest : public ::testing::Test {
   void AddTensors(int num_tensors, const std::vector<int>& inputs,
                   const std::vector<int>& outputs, TfLiteType type,
                   const std::vector<int>& dims);
+
+  // Set a constant tensor of the given shape, type and buffer at the given
+  // index.
+  void SetConstTensor(int tensor_index, const std::vector<int>& values,
+                      TfLiteType type, const char* buffer, size_t bytes);
 
   // Adds a TFLite Mul op. `inputs` contains the indices of the input tensors
   // and `outputs` contains the indices of the output tensors.

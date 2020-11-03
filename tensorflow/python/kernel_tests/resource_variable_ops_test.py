@@ -57,8 +57,6 @@ from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
 
 
-@test_util.disable_tfrt(
-    "Trying to assign variable with wrong dtype. b/156200342")
 @test_util.with_control_flow_v2
 class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
                               parameterized.TestCase):
@@ -336,7 +334,6 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     g = gradients_impl.gradients(c, [b], unconnected_gradients="zero")[0]
     self.assertAllEqual(g.shape.as_list(), [1, 2])
 
-  @test_util.disable_tfrt("Graph is not supported yet. b/156187905")
   @test_util.run_deprecated_v1
   def testGradientCondInWhileLoop(self):
     v = resource_variable_ops.ResourceVariable(initial_value=1.0)
@@ -1013,7 +1010,6 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
           assign = var.assign(np.zeros(shape=[2, 2]))
           self.evaluate(assign)
 
-  @test_util.disable_tfrt("Graph is not supported yet. b/156187905")
   @test_util.disable_xla("XLA doesn't allow changing shape at assignment, as "
                          "dictated by tf2xla/xla_resource.cc:SetTypeAndShape")
   @test_util.run_in_graph_and_eager_modes
@@ -1387,7 +1383,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
 
   # TODO(ebrevdo): Add run_in_graph_and_eager_modes once we can create
   # EagerTensor constants with TensorProto inputs.
-  @test_util.disable_tfrt("Graph is not supported yet. b/156187905")
+  @test_util.disable_tfrt("Does not support tf.Const in lowering.")
   @test_util.run_in_graph_and_eager_modes()
   def testVariantInitializer(self):
     variant_shape_and_type_data = self.create_variant_shape_and_type_data()

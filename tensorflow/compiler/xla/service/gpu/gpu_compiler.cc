@@ -92,7 +92,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/logistic_expander.h"
+#include "tensorflow/compiler/xla/service/loop_schedule_linearizer.h"
 #include "tensorflow/compiler/xla/service/qr_expander.h"
+#include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/rng_bit_generator_expander.h"
 #include "tensorflow/compiler/xla/service/rng_expander.h"
 #include "tensorflow/compiler/xla/service/slice_sinker.h"
@@ -230,6 +232,7 @@ Status GpuCompiler::OptimizeHloModule(
       // pass.AddPass<SliceSinker>();
 
       pass.AddPass<HloDCE>();
+      pass.AddPass<ReshapeMover>();
       pass.AddPass<HloConstantFolding>();
       pass.AddPass<ConditionalSimplifier>();
     }
@@ -305,7 +308,10 @@ Status GpuCompiler::OptimizeHloModule(
 
     HloPassPipeline horizontal_fusion("horizontal_fusion");
     horizontal_fusion.AddPass<GpuHorizontalLoopFusion>();
-    horizontal_fusion.AddPass<GpuHorizontalInputFusion>();
+    // The code generated for fusions created by GpuHorizontalInputFusion has
+    // been observed to fail with CUDA_ERROR_ILLEGAL_ADDRESS errors.
+    // TODO(b/171227713): Re-enable once the emitters are fixed.
+    // horizontal_fusion.AddPass<GpuHorizontalInputFusion>();
     horizontal_fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
                                       /*only_fusion_computations=*/true);
     horizontal_fusion.AddPass<HloDCE>();
@@ -357,6 +363,7 @@ Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   if (hlo_module->config().alias_passthrough_params()) {
     pipeline.AddPass<AliasPassthroughParams>();
   }
+  pipeline.AddPass<LoopScheduleLinearizer>(GetCanShareBuffer());
   pipeline.AddPass<GpuCopyInsertion>(GetCanShareBuffer());
   pipeline.AddPass<GpuSanitizeConstantNames>();
   return pipeline.Run(hlo_module).status();
@@ -475,6 +482,47 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get()));
 
   return std::move(module);
+}
+
+static absl::optional<bool> DummyCanShareBufferFunction(const HloInstruction*,
+                                                        const HloInstruction*,
+                                                        const ShapeIndex&) {
+  return absl::nullopt;
+}
+
+StatusOr<
+    std::tuple<std::unique_ptr<HloModule>, std::unique_ptr<BufferAssignment>>>
+GpuCompiler::RunHloPassesAndBufferAssignement(
+    std::unique_ptr<HloModule> hlo_module, se::StreamExecutor* executor,
+    se::DeviceMemoryAllocator* device_allocator, bool optimize) {
+  if (optimize) {
+    TF_ASSIGN_OR_RETURN(hlo_module, RunHloPasses(std::move(hlo_module),
+                                                 executor, device_allocator));
+  }
+
+  std::unique_ptr<StreamAssignment> stream_assignment =
+      AssignStreams(*hlo_module);
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<GpuHloSchedule> hlo_schedule,
+      GpuHloSchedule::Build(*hlo_module, *stream_assignment, pointer_size_));
+
+  auto buffer_size_bytes_function =
+      [this](const BufferValue& buffer_value) -> int64 {
+    return GpuCompiler::GetSizeOfShape(buffer_value.shape(), pointer_size_);
+  };
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<BufferAssignment> assignment,
+      BufferAssigner::Run(
+          hlo_module.get(), hlo_schedule->ConsumeHloOrdering(),
+          buffer_size_bytes_function,
+          /*color_alignment=*/
+          [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; },
+          /*allocate_buffers_for_constants=*/true,
+          /*colorer=*/BufferAssigner::DefaultColorer(),
+          /*must_not_live_out=*/{}, DummyCanShareBufferFunction));
+
+  return std::make_tuple(std::move(hlo_module), std::move(assignment));
 }
 
 // The order of `thunk_sequence` corresponds to
@@ -619,6 +667,9 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
       stream_exec->GetDeviceDescription().threads_per_warp();
   gpu_device_info.shared_memory_per_block =
       stream_exec->GetDeviceDescription().shared_memory_per_block();
+  gpu_device_info.threads_per_core_limit =
+      stream_exec->GetDeviceDescription().threads_per_core_limit();
+  gpu_device_info.core_count = stream_exec->GetDeviceDescription().core_count();
 
   absl::optional<CudaComputeCapability> cuda_compute_capability =
       [&]() -> absl::optional<CudaComputeCapability> {
@@ -717,12 +768,6 @@ StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                                 const AotCompilationOptions& options) {
   return Unimplemented("not yet implemented: GpuCompiler::CompileAheadOfTime");
-}
-
-static absl::optional<bool> DummyCanShareBufferFunction(const HloInstruction*,
-                                                        const HloInstruction*,
-                                                        const ShapeIndex&) {
-  return absl::nullopt;
 }
 
 StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(

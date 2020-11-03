@@ -10,8 +10,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 filegroup(
     name = "weighted_quantiles_hdrs",
     srcs = [

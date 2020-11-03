@@ -319,5 +319,35 @@ void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
   }
 }
 
+StatusOr<se::dnn::ConvolutionKind> GetDNNConvKindFromCudnnConvKind(
+    CudnnConvKind kind) {
+  switch (kind) {
+    case CudnnConvKind::kBackwardFilter:
+      return se::dnn::BACKWARD_FILTER;
+    case CudnnConvKind::kBackwardInput:
+      return se::dnn::BACKWARD_DATA;
+    case CudnnConvKind::kForward:
+      return se::dnn::FORWARD;
+    default:
+      break;
+  }
+  return InternalError("Unexpected convolution kind");
+}
+
+StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(
+    PrimitiveType type) {
+  switch (type) {
+    case F16:
+      return se::dnn::ToDataType<Eigen::half>::value;
+    case F32:
+      return se::dnn::ToDataType<float>::value;
+    case F64:
+      return se::dnn::ToDataType<double>::value;
+    default:
+      break;
+  }
+  return InternalError("Unsupported convolution datatype");
+}
+
 }  // namespace gpu
 }  // namespace xla

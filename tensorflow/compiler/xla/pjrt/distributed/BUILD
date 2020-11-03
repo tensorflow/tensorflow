@@ -1,5 +1,5 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library_cc")
+load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
@@ -7,7 +7,7 @@ licenses(["notice"])
 
 package(default_visibility = ["//tensorflow:internal"])
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "protocol_proto",
     srcs = ["protocol.proto"],
     has_services = 1,

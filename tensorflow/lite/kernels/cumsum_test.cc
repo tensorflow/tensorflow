@@ -17,18 +17,14 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/custom_ops_register.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
 namespace ops {
-namespace custom {
-
-TfLiteRegistration* Register_CUMSUM();
+namespace builtin {
 
 namespace {
 
@@ -42,13 +38,8 @@ class CumsumOpModel : public SingleOpModel {
 
     output_ = AddOutput(output);
 
-    flexbuffers::Builder fbb;
-    fbb.Map([&]() {
-      fbb.Bool("exclusive", exclusive);
-      fbb.Bool("reverse", reverse);
-    });
-    fbb.Finish();
-    SetCustomOp("Cumsum", fbb.GetBuffer(), Register_CUMSUM);
+    SetBuiltinOp(BuiltinOperator_CUMSUM, BuiltinOptions_CumsumOptions,
+                 CreateCumsumOptions(builder_, exclusive, reverse).Union());
 
     BuildInterpreter({GetShape(input_), GetShape(axis_)});
   }
@@ -75,6 +66,23 @@ TEST(CumsumOpTest, SimpleIntTest) {
 
   EXPECT_THAT(m.GetOutput(),
               testing::ElementsAreArray({1, 3, 6, 10, 5, 11, 18, 26}));
+}
+
+TEST(CumsumOpTest, SimpleInt64Test) {
+  CumsumOpModel<int64_t> m({TensorType_INT64, {2, 4}}, {TensorType_INT64, {}},
+                           false, false);
+
+  m.PopulateTensor<int64_t>(
+      m.input(), {100000000001l, 100000000002l, 100000000003l, 100000000004l,
+                  100000000005l, 100000000006l, 100000000007l, 100000000008l});
+  m.PopulateTensor<int>(m.axis(), {1});
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput(), testing::ElementsAreArray(
+                                 {100000000001l, 200000000003l, 300000000006l,
+                                  400000000010l, 100000000005l, 200000000011l,
+                                  300000000018l, 400000000026l}));
 }
 
 TEST(CumsumOpTest, SimpleIntAxis0Test) {
@@ -143,6 +151,6 @@ TEST(CumsumOpTest, SimpleFloatTest) {
 }
 
 }  // namespace
-}  // namespace custom
+}  // namespace builtin
 }  // namespace ops
 }  // namespace tflite

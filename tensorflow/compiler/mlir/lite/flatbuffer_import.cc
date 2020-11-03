@@ -75,6 +75,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 
 using llvm::ArrayRef;
 using mlir::Builder;
@@ -91,6 +92,7 @@ using mlir::UnrankedTensorType;
 using mlir::Value;
 using mlir::quant::QuantizedType;
 using tflite::TensorT;
+using xla::Status;
 using xla::StatusOr;
 
 namespace errors = tensorflow::errors;
@@ -271,18 +273,18 @@ StatusOr<std::string> GetMlirOpName(const tflite::OperatorT& op,
     return std::string("tfl.basic_lstm");
   }
 
-  if (op_code.builtin_code == tflite::BuiltinOperator_CUSTOM) {
+  auto builtin_code = tflite::GetBuiltinCode(&op_code);
+  if (builtin_code == tflite::BuiltinOperator_CUSTOM) {
     return std::string("tfl.custom");
   }
-  if (op_code.builtin_code == tflite::BuiltinOperator_IF) {
+  if (builtin_code == tflite::BuiltinOperator_IF) {
     return std::string("tf.If");
   }
-  if (op_code.builtin_code == tflite::BuiltinOperator_WHILE) {
+  if (builtin_code == tflite::BuiltinOperator_WHILE) {
     return std::string("tf.While");
   }
 
-  llvm::StringRef op_name(
-      tflite::EnumNameBuiltinOperator(op_code.builtin_code));
+  llvm::StringRef op_name(tflite::EnumNameBuiltinOperator(builtin_code));
   return llvm::Twine("tfl.", op_name.lower()).str();
 }
 
@@ -526,6 +528,34 @@ llvm::SmallVector<mlir::NamedAttribute, 4> ConvertSubgraphIdxsToFunctionAttrs(
   return {};
 }
 
+Status AddOpIntermediatesForLstm(
+    const tflite::OperatorT& op,
+    const std::vector<mlir::TensorType>& intermediate_types,
+    OperationState& op_state, Location loc, OpBuilder& builder) {
+  if (!op.intermediates.empty()) {
+    if (op.intermediates.size() != 5) {
+      auto err = errors::InvalidArgument(
+          "operator has intermediate tensors but the number of them is not "
+          "five.");
+      return emitError(loc, err.ToString()), err;
+    }
+    // Create intermediate value
+
+    const llvm::SmallVector<llvm::StringRef, 5> kIntermediateNames = {
+        "input_to_input_intermediate", "input_to_forget_intermediate",
+        "input_to_cell_intermediate", "input_to_output_intermediate",
+        "effective_hidden_scale_intermediate"};
+    for (auto type_and_name :
+         llvm::zip(intermediate_types, kIntermediateNames)) {
+      mlir::TypeAttr type_attr =
+          mlir::TypeAttr::get(std::get<0>(type_and_name));
+      auto named_attr =
+          builder.getNamedAttr(std::get<1>(type_and_name), type_attr);
+      op_state.addAttribute(named_attr.first, named_attr.second);
+    }
+  }
+  return Status::OK();
+}
 
 // TODO(krzysd) Handle function calls
 StatusOr<Operation*> ConvertOp(
@@ -612,32 +642,17 @@ StatusOr<Operation*> ConvertOp(
   if (op_name == "tfl.lstm") {
     // TODO(b/147587779): add the right region if region is empty.
     op_state.addRegion();
-    if (!op.intermediates.empty()) {
-      if (op.intermediates.size() != 5) {
-        auto err = errors::InvalidArgument(
-            "operator has intermediate tensors but the number of them is not "
-            "five.");
-        return emitError(loc, err.ToString()), err;
-      }
-      // Create intermediate value
-
-      const llvm::SmallVector<llvm::StringRef, 5> kIntermediateNames = {
-          "input_to_input_intermediate", "input_to_forget_intermediate",
-          "input_to_cell_intermediate", "input_to_output_intermediate",
-          "effective_hidden_scale_intermediate"};
-      for (auto type_and_name :
-           llvm::zip(intermediate_types, kIntermediateNames)) {
-        mlir::TypeAttr type_attr =
-            mlir::TypeAttr::get(std::get<0>(type_and_name));
-        auto named_attr =
-            builder.getNamedAttr(std::get<1>(type_and_name), type_attr);
-        op_state.addAttribute(named_attr.first, named_attr.second);
-      }
-    }
+    TF_CHECK_OK(AddOpIntermediatesForLstm(op, intermediate_types, op_state, loc,
+                                          builder));
+  }
+  if (op_name == "tfl.unidirectional_sequence_lstm") {
+    TF_CHECK_OK(AddOpIntermediatesForLstm(op, intermediate_types, op_state, loc,
+                                          builder));
   }
 
   llvm::SmallVector<mlir::NamedAttribute, 2> attrs;
-  if (op_code.builtin_code == tflite::BuiltinOperator_CUSTOM) {
+  auto builtin_code = tflite::GetBuiltinCode(&op_code);
+  if (builtin_code == tflite::BuiltinOperator_CUSTOM) {
     auto status = mlir::CustomOptionsToAttributes(
         op_code.custom_code, op.custom_options, builder, loc, &attrs);
     if (!status.ok()) {

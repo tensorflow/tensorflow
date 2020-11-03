@@ -22,16 +22,15 @@ import os
 import tempfile
 
 import numpy as np
+from tensorflow import keras
 
 from tensorflow.lite.python import lite
 from tensorflow.lite.testing.model_coverage import model_coverage_lib as model_coverage
-from tensorflow.python import keras
 from tensorflow.python.client import session
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -196,8 +195,8 @@ class EvaluateKerasModel(test.TestCase):
     """Returns single input Sequential tf.keras model."""
     keras.backend.clear_session()
 
-    xs = [-1, 0, 1, 2, 3, 4]
-    ys = [-3, -1, 1, 3, 5, 7]
+    xs = np.array([-1, 0, 1, 2, 3, 4])
+    ys = np.array([-3, -1, 1, 3, 5, 7])
 
     model = keras.Sequential([keras.layers.Dense(units=1, input_shape=[1])])
     model.compile(optimizer='sgd', loss='mean_squared_error')
@@ -207,26 +206,23 @@ class EvaluateKerasModel(test.TestCase):
   def _saveKerasModel(self, model):
     try:
       fd, keras_file = tempfile.mkstemp('.h5')
-      keras.models.save_model(model, keras_file)
+      model.save(keras_file)
     finally:
       os.close(fd)
     return keras_file
 
-  @test_util.run_v1_only('Keras test fails under v2, see b/157266669')
   def testFloat(self):
     model = self._getSingleInputKerasModel()
     keras_file = self._saveKerasModel(model)
 
     model_coverage.test_keras_model(keras_file)
 
-  @test_util.run_v1_only('Keras test fails under v2, see b/157266669')
   def testPostTrainingQuantize(self):
     model = self._getSingleInputKerasModel()
     keras_file = self._saveKerasModel(model)
 
     model_coverage.test_keras_model(keras_file, post_training_quantize=True)
 
-  @test_util.run_v1_only('Keras test fails under v2, see b/157266669')
   def testTargetOps(self):
     model = self._getSingleInputKerasModel()
     keras_file = self._saveKerasModel(model)

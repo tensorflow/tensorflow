@@ -52,11 +52,11 @@ void RemoveDeadLocalVariables(Block &block) {
     }
   }
   for (auto local_var : local_vars) {
-    if (llvm::all_of(local_var.resource().getUsers(),
-                     [](const Operation *user) {
-                       return isa<TF::AssignVariableOp>(user);
-                     })) {
-      for (auto user : local_var.resource().getUsers()) user->erase();
+    auto users = local_var.resource().getUsers();
+    if (llvm::all_of(users, [](const Operation *user) {
+          return isa<TF::AssignVariableOp>(user);
+        })) {
+      for (auto user : llvm::make_early_inc_range(users)) user->erase();
       local_var.erase();
     }
   }

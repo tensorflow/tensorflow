@@ -533,6 +533,12 @@ TfLiteStatus DelegateKernel::ValidateOutputTensorShapeConsistency(
     for (int i = 0; i < num_inputs; ++i) {
       const auto input_tensor_index = node_data->inputs().TfLiteIndex(i);
       TfLiteTensor* tfl_tensor = &context->tensors[input_tensor_index];
+      // Provide constant input tensors since some op ("RFFT") needs it to
+      // calculate the output shape.
+      if (IsConstantTensor(tfl_tensor)) {
+        input_tensors_vector[i] =
+            op_data_->buffer_map->GetTensorPtr(input_tensor_index);
+      }
       const auto dims_array = tfl_tensor->dims;
       std::vector<DimensionHandle> dims(dims_array->size);
       for (int j = 0; j < dims_array->size; ++j) {
@@ -540,6 +546,7 @@ TfLiteStatus DelegateKernel::ValidateOutputTensorShapeConsistency(
       }
       c.SetInput(i, c.MakeShape(dims));
     }
+    c.set_input_tensors(input_tensors_vector);
 
     tensorflow::Status status = c.construction_status();
     if (!status.ok()) {

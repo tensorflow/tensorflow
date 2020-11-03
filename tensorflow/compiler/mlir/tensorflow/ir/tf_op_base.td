@@ -73,6 +73,9 @@ def TF_LayoutAgnostic : NativeOpTrait<"TF::LayoutAgnostic">;
 // certain state around within their implementations.
 def TF_CannotDuplicate : NativeOpTrait<"TF::CannotDuplicate">;
 
+// Trait to indicate an operation cannot be constant folded.
+def TF_NoConstantFold : NativeOpTrait<"TF::NoConstantFold">;
+
 // Coefficient wise binary operation with implicit broadcasting support, for
 // example tf.Sub operation.
 def TF_CwiseBinary : NativeOpTrait<"TF::CwiseBinary">;
@@ -98,6 +101,30 @@ class TF_AllTypesMatch<list<string> names> :
             !foreach(n, names, !subst("$_self", "$" # n, "$_self.getType()"))>>;
 
 //===----------------------------------------------------------------------===//
+// Rank/Shape helpers.
+//===----------------------------------------------------------------------===//
+
+class TF_OperandIsUnrankedPred<int n> :
+  CPred<"$_op.getOperand(" # n # ").getType().isa<UnrankedTensorType>()">;
+
+class TF_ResultIsUnrankedPred<int n> :
+  CPred<"$_op.getResult(" # n # ").getType().isa<UnrankedTensorType>()">;
+
+// Returns true if the n-th operand has unknown rank or has rank m.
+class TF_OperandHasRank<int n, int m> :
+  PredOpTrait<"operand " # n # " is " # m # "-D",
+    Or<[TF_OperandIsUnrankedPred<n>,
+      CPred<"$_op.getOperand(" # n #
+      ").getType().cast<ShapedType>().getRank() == " # m>]>>;
+
+// Returns true if the n-th result has unknown rank or has rank m.
+class TF_ResultHasRank<int n, int m> :
+  PredOpTrait<"result " # n # " is " # m # "-D",
+    Or<[TF_ResultIsUnrankedPred<n>,
+      CPred<"$_op.getResult(" # n #
+      ").getType().cast<ShapedType>().getRank() == " # m>]>>;
+
+//===----------------------------------------------------------------------===//
 // TensorFlow op side effects
 //===----------------------------------------------------------------------===//
 
@@ -112,6 +139,7 @@ def TF_SummaryResource : TF_ResourceBase<"Summary">;
 def TF_LookupTableResource : TF_ResourceBase<"LookupTable">;
 def TF_DatasetSeedGeneratorResource : TF_ResourceBase<"DatasetSeedGenerator">;
 def TF_DatasetMemoryCacheResource : TF_ResourceBase<"DatasetMemoryCache">;
+def TF_DatasetIteratorResource : TF_ResourceBase<"DatasetIterator">;
 
 def TF_VariableRead : MemRead<TF_VariableResource>;
 def TF_StackRead : MemRead<TF_StackResource>;
@@ -119,6 +147,7 @@ def TF_TensorArrayRead : MemRead<TF_TensorArrayResource>;
 def TF_LookupTableRead : MemRead<TF_LookupTableResource>;
 def TF_DatasetSeedGeneratorRead : MemRead<TF_DatasetSeedGeneratorResource>;
 def TF_DatasetMemoryCacheRead : MemRead<TF_DatasetMemoryCacheResource>;
+def TF_DatasetIteratorRead : MemRead<TF_DatasetIteratorResource>;
 
 def TF_VariableWrite : MemWrite<TF_VariableResource>;
 def TF_StackWrite : MemWrite<TF_StackResource>;
@@ -127,6 +156,7 @@ def TF_SummaryWrite : MemWrite<TF_SummaryResource>;
 def TF_LookupTableWrite : MemWrite<TF_LookupTableResource>;
 def TF_DatasetSeedGeneratorWrite : MemWrite<TF_DatasetSeedGeneratorResource>;
 def TF_DatasetMemoryCacheWrite : MemWrite<TF_DatasetMemoryCacheResource>;
+def TF_DatasetIteratorWrite : MemWrite<TF_DatasetIteratorResource>;
 
 def TF_VariableAlloc : MemAlloc<TF_VariableResource>;
 def TF_StackAlloc : MemAlloc<TF_StackResource>;
@@ -135,12 +165,14 @@ def TF_SummaryAlloc : MemAlloc<TF_SummaryResource>;
 def TF_LookupTableAlloc : MemAlloc<TF_LookupTableResource>;
 def TF_DatasetSeedGeneratorAlloc : MemAlloc<TF_DatasetSeedGeneratorResource>;
 def TF_DatasetMemoryCacheAlloc : MemAlloc<TF_DatasetMemoryCacheResource>;
+def TF_DatasetIteratorAlloc : MemAlloc<TF_DatasetIteratorResource>;
 
 def TF_StackFree : MemFree<TF_StackResource>;
 def TF_TensorArrayFree : MemFree<TF_TensorArrayResource>;
 def TF_SummaryFree : MemFree<TF_SummaryResource>;
 def TF_DatasetSeedGeneratorFree : MemFree<TF_DatasetSeedGeneratorResource>;
 def TF_DatasetMemoryCacheFree : MemFree<TF_DatasetMemoryCacheResource>;
+def TF_DatasetIteratorFree : MemFree<TF_DatasetIteratorResource>;
 
 //===----------------------------------------------------------------------===//
 // TensorFlow op definitions
@@ -524,7 +556,7 @@ class TF_DerivedResultShapeListAttr<int idx> : DerivedAttr<
 // A derived attribute that returns the shape of the first result type.
 def TF_DerivedResultShapeAttr : DerivedAttr<"ShapedType",
   "return (*getOperation()->result_type_begin()).cast<ShapedType>();",
-  [{ TypeAttr::get($_self) }]>;
+  [{ mlir::TF::ShapeAttr::get($_ctx, $_self) }]>;
 
 // A derived attribute that returns the element type of the tensor held by a
 // named resource-type operand or result.
@@ -544,7 +576,7 @@ class TF_DerivedOperandOrResultHandleShapeAttr<string name> : DerivedAttr<
   "  .cast<TF::ResourceType>();\n"
   "assert(!resource_type.getSubtypes().empty() && \"unknown shape\");\n"
   "return resource_type.getSubtypes().begin()->cast<ShapedType>();",
-  [{ TypeAttr::get($_self) }]>;
+  [{ mlir::TF::ShapeAttr::get($_ctx, $_self) }]>;
 
 def TF_IntTypeAttr : TypeAttrBase<"IntegerType", "integer type"> {
   let returnType = "Type";
@@ -557,42 +589,40 @@ def TF_IntTypeAttr : TypeAttrBase<"IntegerType", "integer type"> {
 // Mixin class defining a builder for binary ops supporting broadcast
 // behavior. The result type has the same element type as both operands.
 class WithBroadcastableBinOpBuilder {
-  list<OpBuilder> builders = [OpBuilder<
-"OpBuilder &builder, OperationState &result, Value  x, Value  y",
-[{
+  list<OpBuilderDAG> builders = [
+    OpBuilderDAG<(ins "Value":$x, "Value":$y),
+    [{
   auto resultType =
       OpTrait::util::getBroadcastedType(x.getType(), y.getType());
   if (!resultType)
-    mlir::emitError(result.location, "non-broadcastable operands");
-  return build(builder, result, resultType, x, y);
-}]
-  >];
+    mlir::emitError($_state.location, "non-broadcastable operands");
+  return build($_builder, $_state, resultType, x, y);
+}]>];
 }
 
 // Mixin class defining a builder for comparison ops supporting broadcast
 // behavior. The result type has bool element type.
 class WithBroadcastableCmpOpBuilder {
-  list<OpBuilder> builders = [OpBuilder<
-"OpBuilder &builder, OperationState &result, Value  x, Value  y",
-[{
+  list<OpBuilderDAG> builders = [
+    OpBuilderDAG<(ins "Value":$x, "Value":$y),
+    [{
   Type resultType;
   if (x.getType().isa<UnrankedTensorType>() ||
       y.getType().isa<UnrankedTensorType>()) {
-    resultType = UnrankedTensorType::get(builder.getI1Type());
+    resultType = UnrankedTensorType::get($_builder.getI1Type());
   } else {
     SmallVector<int64_t, 4> resultShape;
     if (!OpTrait::util::getBroadcastedShape(
             x.getType().cast<ShapedType>().getShape(),
             y.getType().cast<ShapedType>().getShape(), resultShape)) {
-      mlir::emitError(result.location,
+      mlir::emitError($_state.location,
                       "operands have no broadcastable shapes");
     }
 
-    resultType = RankedTensorType::get(resultShape, builder.getI1Type());
+    resultType = RankedTensorType::get(resultShape, $_builder.getI1Type());
   }
-  return build(builder, result, resultType, x, y);
-}]
-  >];
+  return build($_builder, $_state, resultType, x, y);
+}]>];
 }
 
 #endif // TF_OP_BASE

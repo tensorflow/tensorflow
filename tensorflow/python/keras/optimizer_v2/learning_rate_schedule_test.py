@@ -32,7 +32,7 @@ from tensorflow.python.keras import combinations
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 from tensorflow.python.ops import variables
-from tensorflow.python.platform import googletest
+from tensorflow.python.platform import test
 
 
 def _maybe_serialized(lr_decay, serialize_and_deserialize):
@@ -510,4 +510,4 @@ class NoisyLinearCosineDecayTestV2(test_util.TensorFlowTestCase,
       self.evaluate(decayed_lr(step))
 
 if __name__ == "__main__":
-  googletest.main()
+  test.main()

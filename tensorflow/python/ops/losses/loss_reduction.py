@@ -44,7 +44,7 @@ class ReductionV2(object):
        loss_obj = tf.keras.losses.CategoricalCrossentropy(
            reduction=tf.keras.losses.Reduction.NONE)
        ....
-       loss = tf.reduce_sum(loss_object(labels, predictions)) *
+       loss = tf.reduce_sum(loss_obj(labels, predictions)) *
            (1. / global_batch_size)
      ```
 

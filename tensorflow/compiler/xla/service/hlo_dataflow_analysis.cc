@@ -432,6 +432,23 @@ bool HloDataflowAnalysis::UpdateSendValueSet(HloInstruction* send) {
   return changed;
 }
 
+bool HloDataflowAnalysis::UpdateCustomCallValueSet(
+    HloInstruction* custom_call) {
+  CHECK_EQ(custom_call->opcode(), HloOpcode::kCustomCall);
+  bool changed = false;
+  for (const auto& aliasing : Cast<HloCustomCallInstruction>(custom_call)
+                                  ->output_to_operand_aliasing()) {
+    const HloValueSet& operand_value_set = GetValueSet(
+        custom_call->operand(aliasing.second.first), aliasing.second.second);
+    HloValueSet& value_set = GetValueSet(custom_call, aliasing.first);
+    if (value_set != operand_value_set) {
+      value_set = operand_value_set;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 bool HloDataflowAnalysis::UpdateCopyStartValueSet(HloInstruction* copy_start) {
   CHECK_EQ(copy_start->opcode(), HloOpcode::kCopyStart);
   bool changed = false;
@@ -757,6 +774,8 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
       return UpdateAddDependencyValueSet(instruction);
     case HloOpcode::kBitcast:
       return UpdateBitcastValueSet(instruction);
+    case HloOpcode::kCustomCall:
+      return UpdateCustomCallValueSet(instruction);
     case HloOpcode::kSetDimensionSize:
       return UpdateSetDimensionSizeValueSet(instruction);
     case HloOpcode::kDomain:
@@ -1018,6 +1037,22 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           define_value_at(/*index=*/{1});
           define_value_at(/*index=*/{2});
           break;
+        case HloOpcode::kCustomCall: {
+          absl::flat_hash_set<ShapeIndex> aliasing_indices;
+          for (const auto& aliasing :
+               Cast<HloCustomCallInstruction>(instruction)
+                   ->output_to_operand_aliasing()) {
+            aliasing_indices.insert(aliasing.first);
+          }
+          ShapeUtil::ForEachSubshape(
+              instruction->shape(),
+              [&](const Shape& /*subshape*/, const ShapeIndex& index) {
+                if (!aliasing_indices.contains(index)) {
+                  define_value_at(index);
+                }
+              });
+          break;
+        }
         default:
           define_all_values();
           break;

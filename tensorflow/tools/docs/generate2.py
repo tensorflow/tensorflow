@@ -173,7 +173,7 @@ def build_docs(output_dir, code_url_prefix, search_hints, gen_report):
     if not name.startswith("_"):
       doc_controls.hide_from_search(obj)
 
-  for cls in [tf.Module, tf.keras.layers.Layer]:
+  for cls in [tf.Module, tf.keras.layers.Layer, tf.keras.optimizers.Optimizer]:
     doc_controls.decorate_all_class_attributes(
         decorator=doc_controls.do_not_doc_in_subclasses,
         cls=cls,

@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import os
 import warnings
 
 from absl.testing import parameterized
@@ -207,6 +208,26 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.with_options(options)
     self.assertDatasetProduces(dataset, expected_output=[[0]])
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testOptimizationDoubleOptimizeDatasetNested(self):
+    def flat_map_fn(_):
+      dataset = dataset_ops.Dataset.from_tensors(0)
+      dataset = dataset.apply(testing.assert_next(["MapAndBatch"]))
+      dataset = dataset.skip(0)
+      # Should be fused by map and batch fusion
+      dataset = dataset.map(lambda x: x)
+      dataset = dataset.batch(1)
+      return dataset
+
+    dataset = dataset_ops.Dataset.from_tensors(0)
+    dataset = dataset.flat_map(flat_map_fn)
+    dataset = dataset_ops._OptimizeDataset(dataset, ["map_and_batch_fusion"],
+                                           [], [])
+    dataset = dataset_ops._OptimizeDataset(dataset, ["noop_elimination"], [],
+                                           [])
+
+    self.assertDatasetProduces(dataset, expected_output=[[0]])
+
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
@@ -223,6 +244,92 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       dataset = dataset.with_options(options)
 
     self.assertDatasetProduces(dataset, expected_output=expected_output)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(autotune=False, autotune_buffers=False) +
+          combinations.combine(autotune=True, autotune_buffers=False) +
+          combinations.combine(autotune=True, autotune_buffers=True),
+          combinations.combine(set_env=[False, True])))
+  def testOptimizationEnableGradientDescent(self, autotune, autotune_buffers,
+                                            set_env):
+    if set_env:
+      os.environ["TF_DATA_EXPERIMENT_OPT_IN"] = "enable_gradient_descent"
+      os.environ["TF_JOB_NAME"] = "test_job"
+
+    dataset = dataset_ops.Dataset.range(5)
+    dataset = dataset.prefetch(buffer_size=-1)
+    dataset = dataset.map(lambda x: x + 1, num_parallel_calls=2)
+    dataset = dataset.map(lambda x: x + 1, num_parallel_calls=-1)
+    dataset = dataset.prefetch(buffer_size=3)
+    dataset = dataset.map(lambda x: x + 1, num_parallel_calls=-1)
+    dataset = dataset.prefetch(buffer_size=1)
+
+    options = dataset_ops.Options()
+    options.experimental_optimization.autotune = autotune
+    options.experimental_optimization.autotune_buffers = autotune_buffers
+    dataset = dataset.with_options(options)
+
+    self.assertDatasetProduces(dataset, expected_output=list(range(3, 8)))
+
+    if set_env:
+      del os.environ["TF_DATA_EXPERIMENT_OPT_IN"]
+      del os.environ["TF_JOB_NAME"]
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(autotune=[True, False]),
+          combinations.combine(set_env=[True, False])))
+  def testOptimizationMapParallelization(self, autotune, set_env):
+    if set_env:
+      os.environ["TF_DATA_EXPERIMENT_OPT_IN"] = "map_parallelization"
+      os.environ["TF_JOB_NAME"] = "test_job"
+
+    dataset = dataset_ops.Dataset.range(5)
+    if autotune and set_env:
+      dataset = dataset.apply(testing.assert_next(["ParallelMap"]))
+    else:
+      dataset = dataset.apply(testing.assert_next(["Map"]))
+    dataset = dataset.map(lambda x: x + 1)
+
+    options = dataset_ops.Options()
+    options.experimental_optimization.autotune = autotune
+    dataset = dataset.with_options(options)
+
+    self.assertDatasetProduces(dataset, expected_output=list(range(1, 6)))
+
+    if set_env:
+      del os.environ["TF_DATA_EXPERIMENT_OPT_IN"]
+      del os.environ["TF_JOB_NAME"]
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(autotune=False, autotune_buffers=False) +
+          combinations.combine(autotune=True, autotune_buffers=False) +
+          combinations.combine(autotune=True, autotune_buffers=True),
+          combinations.combine(first_buffer_sizes=[(1, -1, -1, 4),
+                                                   (2, -1, 3, -1),
+                                                   (2, 1, -1, -1)]),
+          combinations.combine(second_buffer_sizes=[(1, -1, -1, 4),
+                                                    (2, -1, 3, -1),
+                                                    (2, 1, -1, -1)]))
+  )
+  def testOptimizationAutotuneBuffers(self, autotune, autotune_buffers,
+                                      first_buffer_sizes, second_buffer_sizes):
+    dataset = dataset_ops.Dataset.range(10)
+    for buffer_size in first_buffer_sizes:
+      dataset = dataset.prefetch(buffer_size=buffer_size)
+    dataset = dataset.map(lambda x: x + 1)
+    for buffer_size in second_buffer_sizes:
+      dataset = dataset.prefetch(buffer_size=buffer_size)
+    options = dataset_ops.Options()
+    options.experimental_optimization.autotune = autotune
+    options.experimental_optimization.autotune_buffers = autotune_buffers
+    dataset = dataset.with_options(options)
+    self.assertDatasetProduces(dataset, expected_output=list(range(1, 11)))
 
   @combinations.generate(test_base.default_test_combinations())
   def testOptimizationThreadPoolDataset(self):
@@ -366,6 +473,7 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         "make_sloppy",
         "latency_all_edges",
         "slack",
+        "disable_prefetch_legacy_autotune",
     ]
     expected_optimizations_disabled = []
     expected_optimizations_default = []
@@ -414,6 +522,7 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         "make_sloppy",
         "latency_all_edges",
         "slack",
+        "disable_prefetch_legacy_autotune",
     ]
     expected_optimizations_default = []
     graph_rewrites = options._graph_rewrites()
@@ -443,12 +552,16 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     options.experimental_optimization.autotune_ram_budget = 999999999
     options.experimental_optimization.autotune_buffers = True
     self.assertIn("autotune_buffer_sizes", options._graph_rewrites().enabled)
+    self.assertIn("disable_prefetch_legacy_autotune",
+                  options._graph_rewrites().enabled)
+
     autotune, algorithm, cpu_budget, ram_budget = options._autotune_settings()
     self.assertTrue(autotune)
     self.assertEqual(algorithm,
                      optimization_options._AutotuneAlgorithm.GRADIENT_DESCENT)
     self.assertEqual(cpu_budget, 1000)
     self.assertEqual(ram_budget, 999999999)
+
 
 if __name__ == "__main__":
   test.main()

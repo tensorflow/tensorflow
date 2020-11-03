@@ -581,13 +581,11 @@ class FillTest(test.TestCase):
     tf_ans = array_ops.fill([2, 3], np_ans[0][0], name="fill").numpy()
     self.assertAllEqual(np_ans, tf_ans)
 
-  @test_util.disable_tfrt("support error code in TFRT.")
   def testFillNegative(self):
     for shape in (-1,), (2, -1), (-1, 2), (-2), (-3):
       with self.assertRaises(errors_impl.InvalidArgumentError):
         array_ops.fill(shape, 7)
 
-  @test_util.disable_tfrt("support error code in TFRT.")
   def testShapeFunctionEdgeCases(self):
     # Non-vector dimensions.
     with self.assertRaises(errors_impl.InvalidArgumentError):

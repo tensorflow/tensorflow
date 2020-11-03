@@ -133,9 +133,14 @@ struct DimensionOrConstant {
 struct ShapeAndType {
   ShapeAndType() {}
   ShapeAndType(ShapeHandle s, DataType t) : shape(s), dtype(t) {}
+  ShapeAndType(ShapeHandle s, DataType t, SpecializedType specialized_t)
+      : shape(s), dtype(t), specialized_type(specialized_t) {}
 
   ShapeHandle shape;
   DataType dtype = DT_INVALID;
+  // The type of a variant-dtype tensor sometimes affects graph building
+  // (e.g. for vectorization), and needs to be know statically in such cases.
+  SpecializedType specialized_type = ST_INVALID;
 };
 
 // Shape inference functions registered on ops in REGISTER_OP implement
@@ -263,13 +268,29 @@ class InferenceContext {
   // not available at the time of shape inference.
   const Tensor* input_tensor(int idx) {
     // Mark that this idx was requested.
-    requested_input_tensor_[idx] = true;
+    request_input_tensor(idx);
     return input_tensors_[idx];
   }
+
+  // Notifies the shape refiner that the value of the tensor at index <idx>
+  // is needed. The shape refiner tries to statically compute this tensor,
+  // and if successful re-runs the  shape function with this tensor available
+  // in the call to 'input_tensor(idx)'.
+  void request_input_tensor(int idx) { requested_input_tensor_[idx] = true; }
 
   // Returns true iff input_tensor(idx) was called by the shape function.
   bool requested_input_tensor(int idx) const {
     return requested_input_tensor_[idx];
+  }
+
+  // Notifies the shape refiner that the value of the tensor at index <idx>
+  // as a partial shape is needed. The shape refiner tries to statically compute
+  // this, and if successful re-runs the  shape function with the
+  // computed PartialTensorShape available in the call to
+  // 'MakeShapeFromShapeTensor(idx, handle)' or
+  // 'MakeShapeFromShapeTensorTreatScalarAsUnknownShape(idx, handle)'.
+  void request_input_tensor_as_partial_shape(int idx) {
+    requested_input_tensor_as_partial_shape_[idx] = true;
   }
 
   // Returns true if MakeShapeFromInputTensor was called but the constant

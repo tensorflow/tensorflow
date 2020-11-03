@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/flex/delegate.h"
 
+#include <cstdint>
+#include <vector>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/delegates/flex/test_util.h"
@@ -306,7 +309,7 @@ TEST_F(DelegateTest, MultiThreaded) {
 TEST_F(DelegateTest, TF_AcquireFlexDelegate) {
   auto TF_AcquireFlexDelegate =
       reinterpret_cast<Interpreter::TfLiteDelegatePtr (*)()>(
-          SharedLibrary::GetLibrarySymbol(nullptr, "TF_AcquireFlexDelegate"));
+          SharedLibrary::GetSymbol("TF_AcquireFlexDelegate"));
   ASSERT_TRUE(TF_AcquireFlexDelegate);
   auto delegate_ptr = TF_AcquireFlexDelegate();
   ASSERT_TRUE(delegate_ptr != nullptr);
@@ -341,6 +344,31 @@ TEST_F(DelegateTest, StaticOutput) {
   ASSERT_EQ(GetType(6), kTfLiteFloat32);
   // Since shapes are consistent, static output tensor is used.
   ASSERT_FALSE(IsDynamicTensor(6));
+}
+
+TEST_F(DelegateTest, StaticOutputRFFT) {
+  // Define the graph with input, output shapes of [3, 257].
+  AddTensors(4, {0, 1}, {3}, kTfLiteFloat32, {3, 257});
+  int32_t rfft_length[] = {512};
+  SetConstTensor(1, {1}, kTfLiteInt32,
+                 reinterpret_cast<const char*>(&rfft_length),
+                 sizeof(rfft_length));
+
+  AddTfOp(testing::kRfft, {0, 1}, {2});
+  AddTfOp(testing::kImag, {2}, {3});
+
+  // Apply the delegate.
+  ConfigureDelegate();
+
+  // Define inputs.
+  SetShape(0, {3, 512});
+  SetValues(0, std::vector<float>(3 * 512, 1.0f));
+
+  ASSERT_TRUE(Invoke());
+
+  ASSERT_EQ(GetType(3), kTfLiteFloat32);
+  // Since shapes are consistent, static output tensor is used.
+  ASSERT_FALSE(IsDynamicTensor(3));
 }
 
 TEST_F(DelegateTest, DynamicOutputAfterReshape) {

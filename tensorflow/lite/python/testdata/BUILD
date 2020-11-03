@@ -1,4 +1,4 @@
-load("//tensorflow/lite:build_def.bzl", "tf_to_tflite")
+load("//tensorflow/lite:build_def.bzl", "DEPRECATED_tf_to_tflite")
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
 
 package(
@@ -8,7 +8,7 @@ package(
 
 exports_files(glob(["*.pb"]))
 
-tf_to_tflite(
+DEPRECATED_tf_to_tflite(
     name = "permute_float",
     src = "permute.pbtxt",
     out = "permute_float.tflite",
@@ -18,7 +18,7 @@ tf_to_tflite(
     ],
 )
 
-tf_to_tflite(
+DEPRECATED_tf_to_tflite(
     name = "permute_uint8",
     src = "permute.pbtxt",
     out = "permute_uint8.tflite",
@@ -33,10 +33,20 @@ tf_to_tflite(
     ],
 )
 
-tf_to_tflite(
+DEPRECATED_tf_to_tflite(
     name = "gather_string",
     src = "gather.pbtxt",
     out = "gather_string.tflite",
+    options = [
+        "--input_arrays=input,indices",
+        "--output_arrays=output",
+    ],
+)
+
+DEPRECATED_tf_to_tflite(
+    name = "gather_string_0d",
+    src = "gather_0d.pbtxt",
+    out = "gather_string_0d.tflite",
     options = [
         "--input_arrays=input,indices",
         "--output_arrays=output",
@@ -48,6 +58,7 @@ filegroup(
     srcs = [
         "pc_conv.bin",
         ":gather_string",
+        ":gather_string_0d",
         ":permute_float",
         ":permute_uint8",
     ],

@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {
@@ -87,7 +88,7 @@ void AddFlexOpsFromModel(const tflite::Model* model, OpKernelSet* flex_ops) {
     for (int i = 0; i < operators->size(); ++i) {
       const tflite::Operator* op = operators->Get(i);
       const tflite::OperatorCode* opcode = opcodes->Get(op->opcode_index());
-      if (opcode->builtin_code() != tflite::BuiltinOperator_CUSTOM ||
+      if (tflite::GetBuiltinCode(opcode) != tflite::BuiltinOperator_CUSTOM ||
           !tflite::IsFlexOp(opcode->custom_code()->c_str())) {
         continue;
       }

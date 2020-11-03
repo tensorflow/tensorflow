@@ -100,24 +100,6 @@ using TestTypes =
 TYPED_TEST_SUITE(MultinomialTest, TestTypes);
 
 TYPED_TEST(MultinomialTest, TestMultiBatch) {
-  std::default_random_engine rng;
-  std::uniform_real_distribution<float> dist(0, 10);
-  std::vector<float> results;
-  for (int i = 0; i < 1000; ++i) {
-    results.push_back(dist(rng));
-  }
-  double sum = 0;
-  for (auto f : results) {
-    sum += f;
-  }
-  double avg = sum / results.size();
-  double min = *std::min_element(results.begin(), results.end());
-  double max = *std::max_element(results.begin(), results.end());
-  EXPECT_GT(avg, 4.8);
-  EXPECT_LT(avg, 5.2);
-  EXPECT_LT(min, 0.5);
-  EXPECT_GT(max, 9.5);
-
   const int kNumSamples = 1000;
   using Float = typename TestFixture::FloatType;
   using Int = typename TestFixture::IntegralType;

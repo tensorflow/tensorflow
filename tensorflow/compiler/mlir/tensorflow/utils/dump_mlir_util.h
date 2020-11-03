@@ -72,6 +72,15 @@ std::string DumpRawStringToFile(llvm::StringRef name, llvm::StringRef content,
 // Files" by looking up the environment to infer the directory path.
 void SetCrashReproducer(mlir::PassManager& pm, llvm::StringRef dir_path = "");
 
+// This applies both the PassManagerCLOptions provided by MLIR along with any
+// tensorflow specific options.
+//
+// Note that this function should be in a more appropriate file, but it is
+// unclear what a proper file would be as no other functions would currently be
+// in the file also.
+void applyTensorflowAndCLOptions(mlir::PassManager& pm,
+                                 llvm::StringRef dir_path = "");
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_DUMP_MLIR_UTIL_H_
