@@ -68,11 +68,12 @@ void TestConcatenateTwoInputs(const int* input1_dims_data,
 }
 
 void TestConcatenateQuantizedTwoInputs(
-    const int* input1_dims_data, const uint8_t* input1_data, float input1_min,
-    float input1_max, const int* input2_dims_data, const uint8_t* input2_data,
-    float input2_min, float input2_max, int axis, bool fixed_point_scaling,
-    const int* output_dims_data, const uint8_t* expected_output_data,
-    float output_min, float output_max, uint8_t* output_data) {
+    const int* input1_dims_data, const uint8_t* input1_data, float input1_scale,
+    int input1_zero_point, const int* input2_dims_data,
+    const uint8_t* input2_data, float input2_scale, int input2_zero_point,
+    int axis, bool fixed_point_scaling, const int* output_dims_data,
+    const uint8_t* expected_output_data, float output_scale,
+    int output_zero_point, uint8_t* output_data) {
   TfLiteIntArray* input1_dims = IntArrayFromInts(input1_dims_data);
   TfLiteIntArray* input2_dims = IntArrayFromInts(input2_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
@@ -81,18 +82,12 @@ void TestConcatenateQuantizedTwoInputs(
   constexpr int output_size = 1;
   constexpr int tensors_size = input_size + output_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateQuantizedTensor(
-          input1_data, input1_dims,
-          ScaleFromMinMax<uint8_t>(input1_min, input1_max),
-          ZeroPointFromMinMax<uint8_t>(input1_min, input1_max)),
-      CreateQuantizedTensor(
-          input2_data, input2_dims,
-          ScaleFromMinMax<uint8_t>(input2_min, input2_max),
-          ZeroPointFromMinMax<uint8_t>(input2_min, input2_max)),
-      CreateQuantizedTensor(
-          output_data, output_dims,
-          ScaleFromMinMax<uint8_t>(output_min, output_max),
-          ZeroPointFromMinMax<uint8_t>(output_min, output_max))};
+      CreateQuantizedTensor(input1_data, input1_dims, input1_scale,
+                            input1_zero_point),
+      CreateQuantizedTensor(input2_data, input2_dims, input2_scale,
+                            input2_zero_point),
+      CreateQuantizedTensor(output_data, output_dims, output_scale,
+                            output_zero_point)};
 
   int inputs_array_data[] = {2, 0, 1};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
@@ -166,93 +161,67 @@ TF_LITE_MICRO_TEST(TwoInputsAllAxesCombinations) {
 }
 
 TF_LITE_MICRO_TEST(TwoInputsQuantizedUint8) {
-  using tflite::testing::F2Q;
-
   const int axis = 2;
   const bool fixed_point_scaling = false;
   const int input_shape[] = {3, 2, 1, 2};
   const int output_shape[] = {3, 2, 1, 4};
 
-  const float input_min = -12.7f;
-  const float input_max = 12.8f;
-  const float output_min = -12.7f;
-  const float output_max = 12.8f;
+  const float input1_scale = 0.1f;
+  const int input1_zero_point = 127;
+  const float input2_scale = 0.1f;
+  const int input2_zero_point = 127;
+  const float output_scale = 0.1f;
+  const int output_zero_point = 127;
 
-  const uint8_t input1_values[] = {
-      F2Q(1.0, input_min, input_max),
-      F2Q(3.0, input_min, input_max),
-      F2Q(4.0, input_min, input_max),
-      F2Q(7.0, input_min, input_max),
-  };
+  const uint8_t input1_values[] = {137, 157, 167, 197};
 
-  const uint8_t input2_values[] = {
-      F2Q(1.1, input_min, input_max),
-      F2Q(3.1, input_min, input_max),
-      F2Q(4.1, input_min, input_max),
-      F2Q(7.1, input_min, input_max),
-  };
+  const uint8_t input2_values[] = {138, 158, 168, 198};
 
-  const uint8_t output_values[] = {
-      F2Q(1.0, output_min, output_max), F2Q(3.0, output_min, output_max),
-      F2Q(1.1, output_min, output_max), F2Q(3.1, output_min, output_max),
-      F2Q(4.0, output_min, output_max), F2Q(7.0, output_min, output_max),
-      F2Q(4.1, output_min, output_max), F2Q(7.1, output_min, output_max),
+  const uint8_t output_value[] = {
+      137, 157, 138, 158, 167, 197, 168, 198,
   };
 
   uint8_t output_data[8];
   tflite::testing::TestConcatenateQuantizedTwoInputs(
-      input_shape, input1_values, input_min, input_max, input_shape,
-      input2_values, input_min, input_max, axis, fixed_point_scaling,
-      output_shape, output_values, output_min, output_max, output_data);
+      input_shape, input1_values, input1_scale, input1_zero_point, input_shape,
+      input2_values, input2_scale, input2_zero_point, axis, fixed_point_scaling,
+      output_shape, output_value, output_scale, output_zero_point, output_data);
 }
 
-TF_LITE_MICRO_TEST(TwoInputsQuantizedUint8MixedRange) {
-  using tflite::testing::F2Q;
-
+TF_LITE_MICRO_TEST(TwoInputsQuantizedUint8MixedScale) {
   const int axis = 2;
   const int input_shape[] = {3, 2, 1, 2};
   const int output_shape[] = {3, 2, 1, 4};
 
-  const float input1_min = -12.7f;
-  const float input1_max = 12.8f;
-  const float input2_min = -7.1f;
-  const float input2_max = 7.2f;
-  const float output_min = -12.7f;
-  const float output_max = 12.8f;
+  const float input1_scale = 0.1f;
+  const int input1_zero_point = 127;
+  const float input2_scale = 0.2f;
+  const int input2_zero_point = 1;
+  const float output_scale = 0.1f;
+  const int output_zero_point = 127;
 
-  const uint8_t input1_values[] = {
-      F2Q(1.0, input1_min, input1_max),
-      F2Q(3.0, input1_min, input1_max),
-      F2Q(4.0, input1_min, input1_max),
-      F2Q(7.0, input1_min, input1_max),
-  };
+  const uint8_t input1_values[] = {137, 157, 167, 197};
 
-  const uint8_t input2_values[] = {
-      F2Q(1.1, input2_min, input2_max),
-      F2Q(3.1, input2_min, input2_max),
-      F2Q(4.1, input2_min, input2_max),
-      F2Q(7.1, input2_min, input2_max),
-  };
+  const uint8_t input2_values[] = {10, 15, 27, 31};
 
-  const uint8_t output_values[] = {
-      F2Q(1.0, output_min, output_max), F2Q(3.0, output_min, output_max),
-      F2Q(1.1, output_min, output_max), F2Q(3.1, output_min, output_max),
-      F2Q(4.0, output_min, output_max), F2Q(7.0, output_min, output_max),
-      F2Q(4.1, output_min, output_max), F2Q(7.1, output_min, output_max),
+  // Concatenated intput2 are calculated as
+  // (input2 - input2_zero_point) * (input2_scale / output_scale) +
+  // output_zero_point
+  const uint8_t output_value[] = {
+      137, 157, 9 * 2 + 127, 14 * 2 + 127, 167, 197, 26 * 2 + 127, 30 * 2 + 127,
   };
 
   uint8_t output_data[8];
   tflite::testing::TestConcatenateQuantizedTwoInputs(
-      input_shape, input1_values, input1_min, input1_max, input_shape,
-      input2_values, input2_min, input2_max, axis,
-      false /* fixed_point_scaling */, output_shape, output_values, output_min,
-      output_max, output_data);
-
+      input_shape, input1_values, input1_scale, input1_zero_point, input_shape,
+      input2_values, input2_scale, input2_zero_point, axis,
+      false /* fixed_point_scaling */, output_shape, output_value, output_scale,
+      output_zero_point, output_data);
   tflite::testing::TestConcatenateQuantizedTwoInputs(
-      input_shape, input1_values, input1_min, input1_max, input_shape,
-      input2_values, input2_min, input2_max, axis,
-      true /* fixed_point_scaling */, output_shape, output_values, output_min,
-      output_max, output_data);
+      input_shape, input1_values, input1_scale, input1_zero_point, input_shape,
+      input2_values, input2_scale, input2_zero_point, axis,
+      true /* fixed_point_scaling */, output_shape, output_value, output_scale,
+      output_zero_point, output_data);
 }
 
 TF_LITE_MICRO_TEST(ThreeDimensionalTwoInputsDifferentShapes) {

@@ -105,7 +105,17 @@ class QuantizedConcatenationOpModel : public BaseConcatenationOpModel {
 
 class BoolConcatenationOpModel : public BaseConcatenationOpModel {
  public:
-  using BaseConcatenationOpModel::BaseConcatenationOpModel;
+  BoolConcatenationOpModel(const std::vector<TensorData>& input_template,
+                           int axis, int num_inputs,
+                           const TensorData& output_template)
+      : BaseConcatenationOpModel(input_template, axis,
+                                 /*fixed_point_scaling=*/false, num_inputs,
+                                 output_template) {}
+  BoolConcatenationOpModel(const TensorData& input_template, int axis,
+                           int num_inputs)
+      : BoolConcatenationOpModel(
+            std::vector<TensorData>(num_inputs, input_template), axis,
+            num_inputs, input_template) {}
   void SetInput(int index, std::initializer_list<bool> data) {
     PopulateTensor(index, data);
   }
