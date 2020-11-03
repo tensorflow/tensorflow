@@ -573,8 +573,7 @@ Status SnapshotDatasetV2Op::Dataset::Iterator::Reader::Initialize(
 
   // NOTE: We intentionally ignore resource modeling outside GetNext().
   TF_RETURN_IF_ERROR(instantiated_reader_func_->Run(
-      ctx, std::move(reader_input), &reader_output,
-      std::shared_ptr<model::Node>(nullptr)));
+      ctx, std::move(reader_input), &reader_output, /*node=*/nullptr));
   if (reader_output.size() != 1) {
     return errors::InvalidArgument(
         "reader_func returns more than one argument.");

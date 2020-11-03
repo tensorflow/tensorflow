@@ -749,8 +749,7 @@ class ReduceDatasetOp : public HybridAsyncOpKernel {
 
       std::vector<Tensor> reduce_func_output;
       TF_RETURN_IF_ERROR(instantiated_captured_func->Run(
-          &iter_ctx, std::move(args), &reduce_func_output,
-          std::shared_ptr<model::Node>(nullptr)));
+          &iter_ctx, std::move(args), &reduce_func_output, /*node=*/nullptr));
       if (reduce_func_output.size() != state.size()) {
         return errors::InvalidArgument(
             "The number of components of the initial state and the "

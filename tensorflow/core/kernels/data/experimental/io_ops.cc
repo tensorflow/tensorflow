@@ -147,9 +147,8 @@ Status SaveDatasetOp::GetShardIndex(IteratorContext* ctx,
     return Status::OK();
   }
   std::vector<Tensor> output_tensors;
-  TF_RETURN_IF_ERROR(
-      function->RunWithBorrowedArgs(ctx, element, &output_tensors,
-        std::shared_ptr<model::Node>(nullptr)));
+  TF_RETURN_IF_ERROR(function->RunWithBorrowedArgs(
+        ctx, element, &output_tensors, /*node=*/nullptr));
 
   if (output_tensors.size() != 1 || output_tensors[0].dtype() != DT_INT64 ||
       output_tensors[0].NumElements() != 1) {
@@ -318,8 +317,7 @@ class LoadDatasetOp::Dataset : public DatasetBase {
 
       // NOTE: We intentionally ignore resource modeling outside GetNext().
       TF_RETURN_IF_ERROR(instantiated_captured_func_->Run(
-          ctx, std::move(reader_input), &reader_output,
-          std::shared_ptr<model::Node>(nullptr)));
+          ctx, std::move(reader_input), &reader_output, /*node=*/nullptr));
       if (reader_output.size() != 1) {
         return errors::InvalidArgument(
             "reader_func returns more than one argument.");
