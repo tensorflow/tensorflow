@@ -21,7 +21,6 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import collections.abc as collections_abc
 import copy
 import csv
 import io
@@ -2657,7 +2656,7 @@ class CSVLogger(Callback):
       is_zero_dim_ndarray = isinstance(k, np.ndarray) and k.ndim == 0
       if isinstance(k, six.string_types):
         return k
-      elif isinstance(k, collections_abc.Iterable) and not is_zero_dim_ndarray:
+      elif isinstance(k, collections.abc.Iterable) and not is_zero_dim_ndarray:
         return '"[%s]"' % (', '.join(map(str, k)))
       else:
         return k

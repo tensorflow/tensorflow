@@ -924,12 +924,13 @@ py_library(
 
 tf_py_test(
     name = "sidecar_evaluator_test",
-    size = "small",
+    size = "medium",
     srcs = ["sidecar_evaluator_test.py"],
     python_version = "PY3",
     deps = [
         ":sidecar_evaluator",
         "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/keras",
     ],
 )
 
