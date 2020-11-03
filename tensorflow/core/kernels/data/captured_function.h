@@ -215,16 +215,17 @@ class InstantiatedCapturedFunction {
   // for modeling Iterator's GetNext() resource usage.
   Status Run(IteratorContext* ctx, std::vector<Tensor>&& args,
              std::vector<Tensor>* rets,
-             const std::shared_ptr<model::Node>& node) const;
+             const std::shared_ptr<model::Node>& node = nullptr) const;
 
   // Synchronously runs the captured function on the given `args`, and stores
   // the results in `*rets`. Prefer to use `Run()` or `RunAsync()` when
   // possible. Pass non-null `node` to record processing time for modeling
   // Iterator's GetNext() resource usage.
-  Status RunWithBorrowedArgs(IteratorContext* ctx,
-                             const std::vector<Tensor>& args,
-                             std::vector<Tensor>* rets,
-                             const std::shared_ptr<model::Node>& node) const;
+  Status RunWithBorrowedArgs(
+      IteratorContext* ctx,
+      const std::vector<Tensor>& args,
+      std::vector<Tensor>* rets,
+      const std::shared_ptr<model::Node>& node = nullptr) const;
 
   // Synchronously runs the captured function on the given `args`, and stores
   // the results in `*rets`. Prefer to use `Run()` or `RunAsync()` when
