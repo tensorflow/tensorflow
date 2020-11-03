@@ -429,12 +429,12 @@ def get_matching_files_v2(pattern, num_threads=None):
     return handle_single_pattern(pattern)
 
   patterns = list(pattern)
-  if num_threads is None:
-    # If user didn't supply any, use the length of pattern list
-    num_threads = len(patterns)
-  else:
-    if not isinstance(num_threads, int) or num_threads < 1:
-      raise TypeError("`num_threads` must be a integer and not less than 1.")
+  if not patterns:
+    return []
+  # If user didn't supply any, use the length of pattern list
+  num_threads = num_threads or len(patterns)
+  if not isinstance(num_threads, int) or num_threads < 1:
+    raise TypeError("`num_threads` must be a integer and not less than 1.")
   
   pool = Pool(processes=min(num_threads, len(patterns)))
   all_files = pool.map(handle_single_pattern, patterns)
