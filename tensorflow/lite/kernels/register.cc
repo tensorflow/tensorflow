@@ -152,7 +152,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_SPLIT_V, Register_SPLIT_V(),
              /* min_version = */ 1,
              /* max_version = */ 2);
-  AddBuiltin(BuiltinOperator_SQUEEZE, Register_SQUEEZE());
+  AddBuiltin(BuiltinOperator_SQUEEZE, Register_SQUEEZE(),
+             /* min_version = */ 1,
+             /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_STRIDED_SLICE, Register_STRIDED_SLICE(),
              /* min_version = */ 1,
              /* max_version = */ 4);

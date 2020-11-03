@@ -447,7 +447,12 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       if (op_sig.input_types.at(0) == TensorType_STRING) {
         return 2;
       }
+      return 1;
 
+    case BuiltinOperator_SQUEEZE:
+      if (op_sig.input_types.at(0) == TensorType_STRING) {
+        return 2;
+      }
       return 1;
 
     case BuiltinOperator_SPACE_TO_BATCH_ND:
