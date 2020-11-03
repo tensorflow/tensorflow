@@ -560,6 +560,11 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           instruction = CreateCustomCall(shape, all_operands(), computations(0),
                                          proto.custom_call_target(),
                                          proto.backend_config());
+        } else if (proto.called_computation_ids_size() > 1) {
+          instruction = CreateCustomCall(
+              shape, all_operands(), all_computations(),
+              proto.custom_call_target(), proto.backend_config());
+
         } else {
           instruction = CreateCustomCall(shape, all_operands(),
                                          proto.custom_call_target(),
@@ -1562,6 +1567,15 @@ bool HloInstruction::HasSideEffect() const {
     string opaque) {
   return absl::make_unique<HloCustomCallInstruction>(
       shape, operands, to_apply, custom_call_target, std::move(opaque));
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCustomCall(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    absl::Span<HloComputation* const> called_computations,
+    absl::string_view custom_call_target, string opaque) {
+  return absl::make_unique<HloCustomCallInstruction>(
+      shape, operands, called_computations, custom_call_target,
+      std::move(opaque));
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCustomCall(
@@ -2802,6 +2816,17 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
                opcode() == HloOpcode::kSort) {
       extra.push_back(
           StrCat("to_apply=", PrintNameInternal(to_apply()->name(), options)));
+    } else if (opcode() == HloOpcode::kCustomCall) {
+      if (!called_computations().empty()) {
+        extra.push_back(StrCat(
+            "called_computations={",
+            StrJoin(called_computations(), ", ",
+                    [&](string* out, const HloComputation* computation) {
+                      StrAppend(
+                          out, PrintNameInternal(computation->name(), options));
+                    }),
+            "}"));
+      }
     } else if (!called_computations().empty()) {
       extra.push_back(StrCat(
           "calls=",
