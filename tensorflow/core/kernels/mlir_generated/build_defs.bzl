@@ -71,6 +71,7 @@ def _gen_mlir_op_impl(ctx):
                 ctx.outputs.out.path,
             )
         ),
+        use_default_shell_env = True,
     )
 
 _gen_mlir_op_rule = rule(
