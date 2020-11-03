@@ -46,7 +46,8 @@ Status MakeIteratorFromInputElement(
     IteratorContext* ctx, const IteratorBase* parent,
     const std::vector<Tensor>& input_element, int64 thread_index,
     const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
-    std::unique_ptr<IteratorBase>* out_iterator);
+    std::unique_ptr<IteratorBase>* out_iterator,
+    const std::shared_ptr<model::Node>& node);
 
 // Determines whether the given node is stateful.
 Status IsNodeStateful(const FunctionLibraryDefinition& library,

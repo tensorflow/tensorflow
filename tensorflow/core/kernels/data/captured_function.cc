@@ -447,12 +447,12 @@ Status MakeIteratorFromInputElement(
     IteratorContext* ctx, const IteratorBase* parent,
     const std::vector<Tensor>& input_element, int64 thread_index,
     const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
-    std::unique_ptr<IteratorBase>* out_iterator) {
+    std::unique_ptr<IteratorBase>* out_iterator,
+    const std::shared_ptr<model::Node>& node) {
   std::vector<Tensor> return_values;
 
   TF_RETURN_IF_ERROR(inst_captured_func.RunWithBorrowedArgs(
-        ctx, input_element, &return_values,
-        std::shared_ptr<model::Node>(nullptr)));
+        ctx, input_element, &return_values, node));
 
   if (!(return_values.size() == 1 && return_values[0].dtype() == DT_VARIANT &&
         TensorShapeUtils::IsScalar(return_values[0].shape()))) {
