@@ -2349,7 +2349,7 @@ class FunctionSpec(object):
                                   input_signature,
                                   is_pure=False,
                                   experimental_follow_type_hints=False,
-                                  experimental_compile=None):
+                                  jit_compile=None):
     """Create a FunctionSpec instance given a python function and signature.
 
     Args:
@@ -2358,7 +2358,7 @@ class FunctionSpec(object):
       is_pure: if True all input arguments (including variables and constants)
       will be converted to tensors and no variable changes allowed.
       experimental_follow_type_hints: see `tf.function`
-      experimental_compile: see `tf.function`
+      jit_compile: see `tf.function`
 
     Returns:
       instance of FunctionSpec
@@ -2440,7 +2440,7 @@ class FunctionSpec(object):
         is_method,
         input_signature,
         is_pure=is_pure,
-        experimental_compile=experimental_compile,
+        jit_compile=jit_compile,
         experimental_follow_type_hints=experimental_follow_type_hints,
         name=name)
 
@@ -2451,7 +2451,7 @@ class FunctionSpec(object):
                is_pure=False,
                experimental_follow_type_hints=False,
                name=None,
-               experimental_compile=None):
+               jit_compile=None):
     """Constructs a FunctionSpec describing a python function.
 
     Args:
@@ -2462,12 +2462,12 @@ class FunctionSpec(object):
         will be converted to tensors and no variable changes allowed.
       experimental_follow_type_hints: see `tf.function`.
       name: Name of the function
-      experimental_compile: see `tf.function`.
+      jit_compile: see `tf.function`.
     """
     self._fullargspec = fullargspec
     self._is_method = is_method
     self._is_pure = is_pure
-    self._experimental_compile = experimental_compile
+    self._jit_compile = jit_compile
     self._experimental_follow_type_hints = experimental_follow_type_hints
 
     # TODO(edloper): Include name when serializing for SavedModel?
@@ -2538,8 +2538,8 @@ class FunctionSpec(object):
     return self._is_pure
 
   @property
-  def experimental_compile(self):
-    return self._experimental_compile
+  def jit_compile(self):
+    return self._jit_compile
 
   @property
   def arg_names(self):
@@ -2904,7 +2904,7 @@ class Function(object):
                autograph_options=None,
                experimental_relax_shapes=False,
                capture_by_value=None,
-               experimental_compile=None,
+               jit_compile=None,
                experimental_follow_type_hints=False):
     """Initializes a `Function`.
 
@@ -2927,8 +2927,8 @@ class Function(object):
       capture_by_value: Experimental. Whether to capture resource variables by
         value or reference. If None, will inherit from a parent context or
         default to False.
-      experimental_compile: Force-compile the function with XLA, cf.
-        def_function.Function doc on experimental_compile.
+      jit_compile: Force-compile the function with XLA, cf.
+        def_function.Function doc on jit_compile.
       experimental_follow_type_hints: See the documentation for `tf.function`.
 
     Raises:
@@ -2959,7 +2959,7 @@ class Function(object):
     # `Function`, used to make sure defun-decorated methods create different
     # functions for each instance.
     self._descriptor_cache = weakref.WeakKeyDictionary()
-    self._experimental_compile = experimental_compile
+    self._jit_compile = jit_compile
     self._experimental_follow_type_hints = experimental_follow_type_hints
 
   def __call__(self, *args, **kwargs):
@@ -3774,7 +3774,7 @@ def defun_with_attributes(func=None,
                           attributes=None,
                           autograph=True,
                           experimental_autograph_options=None,
-                          experimental_compile=None,
+                          jit_compile=None,
                           experimental_relax_shapes=False,
                           experimental_follow_type_hints=False):
   """Compiles a Python function into a callable TensorFlow graph.
@@ -3796,7 +3796,7 @@ def defun_with_attributes(func=None,
     autograph: same as defun()'s autograph.
     experimental_autograph_options: same as defun()'s
       experimental_autograph_options.
-    experimental_compile: same as defun()'s experimental_compile.
+    jit_compile: same as defun()'s jit_compile.
     experimental_relax_shapes: same as defun()'s experimental_relax_shapes
     experimental_follow_type_hints: see `tf.function`.
 
@@ -3825,7 +3825,7 @@ def defun_with_attributes(func=None,
             attributes=attributes,
             autograph=autograph,
             autograph_options=experimental_autograph_options,
-            experimental_compile=experimental_compile,
+            jit_compile=jit_compile,
             experimental_relax_shapes=experimental_relax_shapes,
             experimental_follow_type_hints=experimental_follow_type_hints))
 
@@ -3925,7 +3925,7 @@ def class_method_to_instance_method(original_function, instance):
       autograph=original_function._autograph,
       input_signature=original_function.input_signature,
       experimental_relax_shapes=original_function._experimental_relax_shapes,
-      experimental_compile=original_function._experimental_compile)
+      jit_compile=original_function._jit_compile)
   # pylint: enable=protected-access
 
   # And we wrap the function with tf_decorator so inspection works correctly

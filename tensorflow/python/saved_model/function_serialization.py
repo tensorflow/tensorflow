@@ -47,12 +47,12 @@ def _serialize_function_spec(function_spec, coder):
   proto.input_signature.CopyFrom(
       coder.encode_structure(function_spec.input_signature))
 
-  # See `tf.function` and the ExperimentalCompile proto for details.
-  proto.experimental_compile = {
-      None: saved_object_graph_pb2.FunctionSpec.ExperimentalCompile.DEFAULT,
-      True: saved_object_graph_pb2.FunctionSpec.ExperimentalCompile.ON,
-      False: saved_object_graph_pb2.FunctionSpec.ExperimentalCompile.OFF,
-  }.get(function_spec.experimental_compile)
+  # See `tf.function` and the JitCompile proto for details.
+  proto.jit_compile = {
+      None: saved_object_graph_pb2.FunctionSpec.JitCompile.DEFAULT,
+      True: saved_object_graph_pb2.FunctionSpec.JitCompile.ON,
+      False: saved_object_graph_pb2.FunctionSpec.JitCompile.OFF,
+  }.get(function_spec.jit_compile)
 
   return proto
 

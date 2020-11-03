@@ -1695,10 +1695,11 @@ class Strategy(StrategyBase):
 
     Given a `tf.distribute.DistributedValues` or `tf.Tensor`-like
     object `value`, this API gathers and concatenates `value` across replicas
-    along the `axis`-th dimension. The result is copied to the "current" device
-    - which would typically be the CPU of the worker on which the program is
+    along the `axis`-th dimension. The result is copied to the "current" device,
+    which would typically be the CPU of the worker on which the program is
     running. For `tf.distribute.TPUStrategy`, it is the first TPU host. For
-    multi-client `MultiWorkerMirroredStrategy`, this is CPU of each worker.
+    multi-client `tf.distribute.MultiWorkerMirroredStrategy`, this is the CPU of
+    each worker.
 
     This API can only be called in the cross-replica context. For a counterpart
     in the replica context, see `tf.distribute.ReplicaContext.all_gather`.
@@ -3209,11 +3210,13 @@ class ReplicaContext(ReplicaContextBase):
     `value` as a nested structure consisting of two items to all-gather, `a` and
     `b`.
 
-      On Replica 0, `value` is {'a': [0], 'b': [[0, 1]]}
-      On Replica 1, `value` is {'a': [1], 'b': [[2, 3], [4, 5]]}
+      On Replica 0, `value` is `{'a': [0], 'b': [[0, 1]]}`.
 
-      Result for `all_gather` with `axis`=0: (on each of the replicas):
-      {'a': [1, 2], 'b': [[0, 1], [2, 3], [4, 5]]}
+      On Replica 1, `value` is `{'a': [1], 'b': [[2, 3], [4, 5]]}`.
+
+      Result for `all_gather` with `axis`=0 (on each of the replicas) is:
+
+      ```{'a': [1, 2], 'b': [[0, 1], [2, 3], [4, 5]]}```
 
     Args:
       value: a nested structure of `tf.Tensor` which `tf.nest.flatten` accepts,

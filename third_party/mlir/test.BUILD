@@ -268,6 +268,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SPIRVDialect",
+        "@llvm-project//mlir:SPIRVLinking",
         "@llvm-project//mlir:SPIRVLowering",
     ],
 )

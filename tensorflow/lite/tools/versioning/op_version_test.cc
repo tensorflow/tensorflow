@@ -165,6 +165,12 @@ TEST(OpVersionTest, VersioningUnpackTest) {
 TEST(OpVersionTest, VersioningReluTest) {
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_RELU,
+      .input_types = std::vector<TensorType>{TensorType_INT16},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_RELU,
       .input_types = std::vector<TensorType>{TensorType_INT8},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
@@ -356,7 +362,7 @@ TEST(OpVersionTest, VersioningSelectTest) {
 }
 
 TEST(OpVersionTest, VersioningRelu6Test) {
-  SimpleVersioningTest(BuiltinOperator_RELU6);
+  SimpleVersioningTestExtended(BuiltinOperator_RELU6);
 }
 
 TEST(OpVersionTest, VersioningFullyConnectedTest) {

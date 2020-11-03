@@ -1330,13 +1330,23 @@ def parallel_stack(values, name="parallel_stack"):
 
       tf.parallel_stack([x, y, z]) = np.asarray([x, y, z])
 
+  @compatibility(eager)
+  parallel_stack is not compatible with eager execution.
+  @end_compatibility
+
   Args:
     values: A list of `Tensor` objects with the same shape and type.
     name: A name for this operation (optional).
 
   Returns:
     output: A stacked `Tensor` with the same type as `values`.
+
+  Raises:
+    RuntimeError: if executed in eager mode.
   """
+  if context.executing_eagerly():
+    raise RuntimeError("tf.parallel_stack() is not compatible with "
+                       "eager execution.")
   with ops.name_scope(name):
     value_t = ops.convert_to_tensor(values[0])
     value_shape = ops.convert_to_tensor(value_t).get_shape()
@@ -3993,7 +4003,7 @@ def batch_to_space_v2(input, block_shape, crops, name=None):  # pylint: disable=
 
   Examples:
 
-  (1) For the following input of shape `[4, 1, 1, 1]`,
+  1. For the following input of shape `[4, 1, 1, 1]`,
      `block_shape = [2, 2]`, and `crops = [[0, 0], [0, 0]]`:
 
      ```python
@@ -4010,7 +4020,7 @@ def batch_to_space_v2(input, block_shape, crops, name=None):  # pylint: disable=
          [[3], [4]]]]
      ```
 
-  (2) For the following input of shape `[4, 1, 1, 3]`,
+  2. For the following input of shape `[4, 1, 1, 3]`,
      `block_shape = [2, 2]`, and `crops = [[0, 0], [0, 0]]`:
 
      ```python
@@ -4027,7 +4037,7 @@ def batch_to_space_v2(input, block_shape, crops, name=None):  # pylint: disable=
            [[7, 8, 9], [10, 11, 12]]]]
      ```
 
-  (3) For the following
+  3. For the following
      input of shape `[4, 2, 2, 1]`,
      `block_shape = [2, 2]`, and `crops = [[0, 0], [0, 0]]`:
 
@@ -4047,7 +4057,7 @@ def batch_to_space_v2(input, block_shape, crops, name=None):  # pylint: disable=
           [[13], [14], [15], [16]]]
      ```
 
-   (4) For the following input of shape
+  4. For the following input of shape
       `[8, 1, 3, 1]`,
       `block_shape = [2, 2]`, and `crops = [[0, 0], [2, 0]]`:
 

@@ -19,9 +19,9 @@ limitations under the License.
 #include <cstddef>
 #include <string>
 
-#include "tensorflow/lite/delegates/gpu/cl/gpu_object_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_object_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 namespace tflite {

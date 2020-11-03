@@ -33,12 +33,15 @@ import time
 import numpy as np
 import six
 
+from tensorflow.core.framework import summary_pb2
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.distribute import distributed_file_utils
@@ -1920,6 +1923,51 @@ class LearningRateScheduler(Callback):
     logs['lr'] = K.get_value(self.model.optimizer.lr)
 
 
+def keras_model_summary(name, data, step=None):
+  """Writes a Keras model as JSON to as a Summary.
+
+  Writing the Keras model configuration allows the TensorBoard graph plugin to
+  render a conceptual graph, as opposed to graph of ops. In case the model fails
+  to serialize as JSON, it ignores and returns False.
+
+  Args:
+    name: A name for this summary. The summary tag used for TensorBoard will be
+      this name prefixed by any active name scopes.
+    data: A Keras Model to write.
+    step: Explicit `int64`-castable monotonic step value for this summary. If
+      omitted, this defaults to `tf.summary.experimental.get_step()`, which must
+      not be None.
+
+  Returns:
+    True on success, or False if no summary was written because no default
+    summary writer was available.
+
+  Raises:
+    ValueError: if a default writer exists, but no step was provided and
+      `tf.summary.experimental.get_step()` is None.
+  """
+  summary_metadata = summary_pb2.SummaryMetadata()
+  # Hard coding a plugin name. Please refer to go/tb-plugin-name-hardcode for
+  # the rationale.
+  summary_metadata.plugin_data.plugin_name = 'graph_keras_model'
+  # version number = 1
+  summary_metadata.plugin_data.content = b'1'
+
+  try:
+    json_string = data.to_json()
+  except Exception as exc:  # pylint: disable=broad-except
+    # An exception should not break a model code.
+    logging.warn('Model failed to serialize as JSON. Ignoring... %s', exc)
+    return False
+
+  with summary_ops_v2.summary_scope(name, 'graph_keras_model',
+                                    [data, step]) as (tag, _):
+    with ops.device('cpu:0'):
+      tensor = constant_op.constant(json_string, dtype=dtypes.string)
+    return summary_ops_v2.write(
+        tag=tag, tensor=tensor, step=step, metadata=summary_metadata)
+
+
 @keras_export('keras.callbacks.TensorBoard', v1=[])
 class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
   # pylint: disable=line-too-long
@@ -2164,7 +2212,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
             self.model._is_graph_network or  # pylint: disable=protected-access
             self.model.__class__.__name__ == 'Sequential')  # pylint: disable=protected-access
         if summary_writable:
-          summary_ops_v2.keras_model('keras', self.model, step=0)
+          keras_model_summary('keras', self.model, step=0)
 
   def _configure_embeddings(self):
     """Configure the Projector for embeddings."""

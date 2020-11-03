@@ -328,7 +328,9 @@ struct ConvertTFConvOp : public RewritePattern {
     // tensor, for setting depth_multiplier attribute, etc.).
     auto filter = tf_op.filter();
     auto filter_type = filter.getType().template dyn_cast<RankedTensorType>();
-    if (!filter_type || filter_type.getRank() != 4) return failure();
+    if (!filter_type || filter_type.getRank() != 4 ||
+        !filter_type.hasStaticShape())
+      return failure();
 
     // TensorFlow convolution op only has two inputs, while the TFLite one has
     // three, with the bias vector marked as optional. However, TOCO has a

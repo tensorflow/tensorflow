@@ -2373,6 +2373,26 @@ HloCustomCallInstruction::HloCustomCallInstruction(
 
 HloCustomCallInstruction::HloCustomCallInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
+    absl::Span<HloComputation* const> called_computations,
+    absl::string_view custom_call_target, string opaque)
+    : HloInstruction(HloOpcode::kCustomCall, shape),
+      custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
+      feature_group_count_(1),
+      batch_group_count_(1),
+      layout_constrained_(false),
+      padding_type_(PaddingType::PADDING_INVALID),
+      custom_call_has_side_effect_(false) {
+  set_raw_backend_config_string(std::move(opaque));
+  for (auto operand : operands) {
+    AppendOperand(operand);
+  }
+  for (auto comp : called_computations) {
+    AppendComputation(comp);
+  }
+}
+
+HloCustomCallInstruction::HloCustomCallInstruction(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
     absl::string_view custom_call_target, string opaque,
     absl::Span<const Shape> operand_shapes_with_layout)
     : HloInstruction(HloOpcode::kCustomCall, shape),
@@ -2531,6 +2551,17 @@ bool HloCustomCallInstruction::IdenticalSlowPath(
                                      casted_other.precision_config())) {
     return false;
   }
+
+  if (called_computations().size() != other.called_computations().size()) {
+    return false;
+  }
+  for (int64 i = 0; i < called_computations().size(); ++i) {
+    if (!eq_computations(called_computations()[i],
+                         other.called_computations()[i])) {
+      return false;
+    }
+  }
+
   // Note: backend_config comparison is done in Identical, which is the
   // intended/exposed way to compare computations, and so not repeated here.
   return custom_call_target_ == casted_other.custom_call_target_;

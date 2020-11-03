@@ -27,7 +27,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-class ExperimentalCompileTest(test.TestCase):
+class JitCompileTest(test.TestCase):
 
   def testBasic(self):
     with ops.Graph().as_default() as g:
@@ -35,7 +35,7 @@ class ExperimentalCompileTest(test.TestCase):
       def fn(x, a):
         return x + a
 
-      xla_func = def_function.function(fn, experimental_compile=True)
+      xla_func = def_function.function(fn, jit_compile=True)
       inputs = array_ops.placeholder(dtypes.float32, [5])
       # XLA support is not yet enabled for TF ROCm
       if not test.is_built_with_rocm():
@@ -55,7 +55,7 @@ class ExperimentalCompileTest(test.TestCase):
       return 2 * x + a
 
     with ops.Graph().as_default() as g:
-      xla_func = def_function.function(fn, experimental_compile=True)
+      xla_func = def_function.function(fn, jit_compile=True)
       with backprop.GradientTape() as tape:
         inputs = array_ops.placeholder(dtypes.float32, [5])
         tape.watch(inputs)
@@ -79,7 +79,7 @@ class ExperimentalCompileTest(test.TestCase):
       def fn(x, a):
         return x + a
 
-      xla_func = def_function.function(fn, experimental_compile=True)
+      xla_func = def_function.function(fn, jit_compile=True)
       inputs = array_ops.placeholder(dtypes.int32, [5])
       # XLA support is not yet enabled for TF ROCm
       if not test.is_built_with_rocm():
@@ -98,7 +98,7 @@ class ExperimentalCompileTest(test.TestCase):
       def fn(x):
         return array_ops.unique(x).y  # Unique is not supported by XLA
 
-      xla_func = def_function.function(fn, experimental_compile=True)
+      xla_func = def_function.function(fn, jit_compile=True)
       inputs = array_ops.placeholder(dtypes.float32, [5])
       x = xla_func(inputs)
       # XLA support is not yet enabled for TF ROCm

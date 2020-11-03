@@ -347,6 +347,7 @@ cc_test(
     tags = [
         "linux",
         "local",
+        "no_mac",  # TODO(b/171880729)
     ],
     deps = [
         ":cl_test",
@@ -425,6 +426,7 @@ cc_test(
     tags = [
         "linux",
         "local",
+        "no_mac",  # TODO(b/171880729)
     ],
     deps = [
         ":cl_test",
@@ -1356,6 +1358,7 @@ test_suite(
         "conv_buffer_1x1_test",
         "conv_constants_test",
         "conv_powervr_test",
+        "convolution_transposed_3x3_test",
         "convolution_transposed_3x3_thin_test",
         "convolution_transposed_4x4_test",
         "convolution_transposed_test",

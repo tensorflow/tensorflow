@@ -47,6 +47,12 @@ void Buffer::Release() {
   }
 }
 
+absl::Status Buffer::GetGPUResources(const GPUObjectDescriptor* obj_ptr,
+                                     GPUResourcesWithValue* resources) const {
+  resources->buffers.push_back({"buffer", buffer_});
+  return absl::OkStatus();
+}
+
 absl::Status CreateBuffer(size_t size_in_bytes, const void* data,
                                   id<MTLDevice> device, Buffer* result) {
   id<MTLBuffer> buffer;

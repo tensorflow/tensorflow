@@ -22,10 +22,10 @@ import os
 import tempfile
 
 import numpy as np
+from tensorflow import keras
 
 from tensorflow.lite.python import lite
 from tensorflow.lite.testing.model_coverage import model_coverage_lib as model_coverage
-from tensorflow.python import keras
 from tensorflow.python.client import session
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op

@@ -124,11 +124,7 @@ py_library(
 
 [proto_library(
     name = proto[0] + "_proto",
-    name = proto[0] + "_proto",
-    srcs = [proto[1][0]],
     srcs = [proto[1][0]],
     visibility = ["//visibility:public"],
-    visibility = ["//visibility:public"],
-    deps = [dep + "_proto" for dep in proto[1][1]],
     deps = [dep + "_proto" for dep in proto[1][1]],
 ) for proto in WELL_KNOWN_PROTO_MAP.items()]

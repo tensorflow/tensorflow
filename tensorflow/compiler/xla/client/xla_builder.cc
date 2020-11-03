@@ -1071,6 +1071,18 @@ XlaOp XlaBuilder::Pad(XlaOp operand, XlaOp padding_value,
   });
 }
 
+XlaOp XlaBuilder::PadInDim(XlaOp operand, XlaOp padding_value, int64 dimno,
+                           int64 pad_lo, int64 pad_hi) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape* shape, GetShapePtr(operand));
+    PaddingConfig padding_config = MakeNoPaddingConfig(shape->rank());
+    auto* dims = padding_config.mutable_dimensions(dimno);
+    dims->set_edge_padding_low(pad_lo);
+    dims->set_edge_padding_high(pad_hi);
+    return Pad(operand, padding_value, padding_config);
+  });
+}
+
 StatusOr<XlaOp> XlaBuilder::PadInternal(const Shape& shape, XlaOp operand,
                                         XlaOp padding_value,
                                         const PaddingConfig& padding_config) {
@@ -3775,6 +3787,12 @@ XlaOp Copy(const XlaOp operand) {
 XlaOp Pad(const XlaOp operand, const XlaOp padding_value,
           const PaddingConfig& padding_config) {
   return operand.builder()->Pad(operand, padding_value, padding_config);
+}
+
+XlaOp PadInDim(XlaOp operand, XlaOp padding_value, int64 dimno, int64 pad_lo,
+               int64 pad_hi) {
+  return operand.builder()->PadInDim(operand, padding_value, dimno, pad_lo,
+                                     pad_hi);
 }
 
 XlaOp Reshape(const XlaOp operand, absl::Span<const int64> dimensions,
