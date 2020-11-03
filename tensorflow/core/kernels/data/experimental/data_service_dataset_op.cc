@@ -482,7 +482,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           VLOG(1) << "Failed to get element from worker "
                   << task_to_process->address << ": " << s;
           task_to_process->in_use = false;
-          status_ = s;
+          status_ = Status(
+              s.code(),
+              absl::StrCat("Failed to get element from worker ",
+                           task_to_process->address, ": ", s.error_message()));
           get_next_cv_.notify_all();
           return;
         }

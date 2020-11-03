@@ -22,6 +22,7 @@ import weakref
 from tensorflow.python.util.compat import collections_abc
 
 
+# LINT.IfChange
 class _ObjectIdentityWrapper(object):
   """Wraps an object, mapping __eq__ on wrapper to "is" on wrapped.
 
@@ -244,3 +245,4 @@ class ObjectIdentityWeakSet(ObjectIdentitySet):
         self.discard(key)
       else:
         yield unwrapped
+# LINT.ThenChange(//tensorflow/python/keras/utils/object_identity.py)

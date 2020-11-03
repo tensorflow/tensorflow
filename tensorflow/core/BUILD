@@ -346,6 +346,7 @@ cc_library(
         ":lib_internal",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -982,6 +983,7 @@ filegroup(
         "random_ops_op_lib",
         "remote_fused_graph_ops_op_lib",
         "resource_variable_ops_op_lib",
+        "risc_ops_op_lib",
         "rnn_ops_op_lib",
         "rpc_ops_op_lib",
         "scoped_allocator_ops_op_lib",

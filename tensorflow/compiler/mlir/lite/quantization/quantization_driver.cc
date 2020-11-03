@@ -288,32 +288,59 @@ class QuantizationDriver {
 
   void DumpStates(Operation *current_op) {
     if (current_op) {
-      llvm::errs() << "\n\n\n" << current_op->getName() << "\n";
+      llvm::dbgs() << "\n\n\n" << current_op->getName() << "\n";
     }
     fn_.walk([&](Operation *op) {
-      if (llvm::isa<quant::QuantizeCastOp, quant::DequantizeCastOp, ConstantOp>(
+      if (op->isKnownTerminator() ||
+          op->hasTrait<OpTrait::quant::NoQuantizableResult>() ||
+          llvm::isa<quant::QuantizeCastOp, quant::DequantizeCastOp, ConstantOp>(
               op))
         return;
-      if (current_op == op) llvm::errs() << "===>>>";
-      llvm::errs() << op->getName() << " : (";
+      if (current_op == op) llvm::dbgs() << "===>>>";
+      llvm::dbgs() << op->getName() << " : (";
+      if (llvm::isa<FuncOp>(op)) {
+        for (auto &arg : fn_.getArguments()) {
+          if (auto params = GetArgQuantState(arg).params) {
+            params.print(llvm::dbgs());
+            auto requantize_state = GetArgRequantizeState(arg);
+            if (requantize_state.pos != RequantizeState::NO_REQUANTIZE) {
+              llvm::dbgs() << "+";
+              requantize_state.params.print(llvm::dbgs());
+            }
+          }
+          llvm::dbgs() << ",";
+        }
+      }
       for (int i = 0, e = op->getNumOperands(); i < e; ++i) {
-        if (auto params = GetOperandQuantState(op, i).params)
-          params.print(llvm::errs());
-        else
+        if (auto params = GetOperandQuantState(op, i).params) {
+          params.print(llvm::dbgs());
+          auto requantize_state = GetOperandRequantizeState(op, i);
+          if (requantize_state.pos != RequantizeState::NO_REQUANTIZE) {
+            llvm::dbgs() << "+";
+            requantize_state.params.print(llvm::dbgs());
+          }
+        } else {
           op->getOperand(i).getType().cast<ShapedType>().getElementType().print(
-              llvm::errs());
-        llvm::errs() << ",";
+              llvm::dbgs());
+        }
+        llvm::dbgs() << ",";
       }
-      llvm::errs() << ") -> (";
+      llvm::dbgs() << ") -> (";
       for (int i = 0, e = op->getNumResults(); i < e; ++i) {
-        if (auto params = GetResultQuantState(op, i).params)
-          params.print(llvm::errs());
-        else
+        if (auto params = GetResultQuantState(op, i).params) {
+          params.print(llvm::dbgs());
+          auto requantize_state = GetResultRequantizeState(op, i);
+          if (requantize_state.pos != RequantizeState::NO_REQUANTIZE) {
+            llvm::dbgs() << "+";
+            requantize_state.params.print(llvm::dbgs());
+          }
+        } else {
           op->getResult(i).getType().cast<ShapedType>().getElementType().print(
-              llvm::errs());
-        llvm::errs() << ",";
+              llvm::dbgs());
+        }
+        llvm::dbgs() << ",";
       }
-      llvm::errs() << ")\n";
+      llvm::dbgs() << ")\n";
     });
   }
 
@@ -821,6 +848,10 @@ bool QuantizationDriver::PropagateParams() {
       changed |= SetOperandParams(op, it.first, params);
     }
   }
+
+  LLVM_DEBUG(llvm::dbgs() << "\n\n\n");
+  LLVM_DEBUG(DumpStates(nullptr));
+
   return changed;
 }
 

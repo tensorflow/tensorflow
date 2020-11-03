@@ -31,10 +31,12 @@ from tensorflow.python.distribute import test_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops as _collective_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
 
 
@@ -66,6 +68,19 @@ device_combination = (
     combinations.combine(device='CPU', communication='RING', required_gpus=0) +
     combinations.combine(
         device='GPU', communication=['RING', 'NCCL'], required_gpus=2))
+
+
+collective_op_combinations = combinations.times(
+    combinations.combine(
+        collective_op=[
+            combinations.NamedObject('all_reduce', CollectiveOpsV1.all_reduce),
+            combinations.NamedObject('all_reduce_v2',
+                                     CollectiveOpsV2.all_reduce),
+            combinations.NamedObject('all_gather', CollectiveOpsV1.all_gather),
+            combinations.NamedObject('all_gather_v2',
+                                     CollectiveOpsV2.all_gather),
+        ],
+        mode='eager'), device_combination)
 
 
 @combinations.generate(
@@ -283,20 +298,7 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
     run_and_assert(group_size=3, group_key=2)
 
 
-@combinations.generate(
-    combinations.times(
-        combinations.combine(
-            collective_op=[
-                combinations.NamedObject('all_reduce',
-                                         CollectiveOpsV1.all_reduce),
-                combinations.NamedObject('all_reduce_v2',
-                                         CollectiveOpsV2.all_reduce),
-                combinations.NamedObject('all_gather',
-                                         CollectiveOpsV1.all_gather),
-                combinations.NamedObject('all_gather_v2',
-                                         CollectiveOpsV2.all_gather),
-            ],
-            mode='eager'), device_combination))
+@combinations.generate(collective_op_combinations)
 class AbortCollectiveOpsTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
@@ -647,20 +649,7 @@ class OpCancellationTest(test.TestCase, parameterized.TestCase):
     collective_fn()
 
 
-@combinations.generate(
-    combinations.times(
-        combinations.combine(
-            collective_op=[
-                combinations.NamedObject('all_reduce',
-                                         CollectiveOpsV1.all_reduce),
-                combinations.NamedObject('all_reduce_v2',
-                                         CollectiveOpsV2.all_reduce),
-                combinations.NamedObject('all_gather',
-                                         CollectiveOpsV1.all_gather),
-                combinations.NamedObject('all_gather_v2',
-                                         CollectiveOpsV2.all_gather),
-            ],
-            mode='eager'), device_combination))
+@combinations.generate(collective_op_combinations)
 class TimeoutTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
@@ -783,6 +772,94 @@ class TimeoutTest(test.TestCase, parameterized.TestCase):
             group_key=group_key,
             instance_key=instance_key,
             communication_hint=communication)
+
+
+@combinations.generate(
+    combinations.times(
+        combinations.combine(
+            collective_op=[
+                combinations.NamedObject('all_reduce_v2',
+                                         CollectiveOpsV2.all_reduce),
+                combinations.NamedObject('all_gather_v2',
+                                         CollectiveOpsV2.all_gather),
+            ],
+            mode='eager'), device_combination))
+class OrderingTest(test.TestCase, parameterized.TestCase):
+
+  def setUp(self):
+    _setup_context()
+    super().setUp()
+
+  def testOrdering(self, collective_op, device, communication):
+    dev0 = '/device:%s:0' % device
+    dev1 = '/device:%s:1' % device
+    group_size = 2
+    group_key = 100
+    instance_key = 100
+    in_tensor = constant_op.constant([1.])
+
+    with ops.device(dev0):
+      token0 = resource_variable_ops.ResourceVariable(0.)
+    with ops.device(dev1):
+      token1 = resource_variable_ops.ResourceVariable(0.)
+
+    @def_function.function
+    def f():
+      # Launch the first collective with token.
+      with ops.device(dev0):
+        collective_op(
+            in_tensor,
+            group_size,
+            group_key,
+            instance_key,
+            ordering_token=token0.handle)
+      with ops.device(dev1):
+        collective_op(
+            in_tensor,
+            group_size,
+            group_key,
+            instance_key,
+            ordering_token=token1.handle)
+      # Launch the second collective without token.
+      with ops.device(dev0):
+        collective_op(in_tensor, group_size, group_key, instance_key)
+      with ops.device(dev1):
+        collective_op(in_tensor, group_size, group_key, instance_key)
+      # Launch the third collective with token.
+      with ops.device(dev0):
+        collective_op(
+            in_tensor,
+            group_size,
+            group_key,
+            instance_key,
+            ordering_token=token0.handle)
+      with ops.device(dev1):
+        collective_op(
+            in_tensor,
+            group_size,
+            group_key,
+            instance_key,
+            ordering_token=token1.handle)
+
+    graph = f.get_concrete_function().graph
+    for device in [dev0, dev1]:
+      # Try to find the third collective, which should have the first collective
+      # as a control input.
+      third = None
+      for op in graph.get_operations():
+        if (op.type.startswith('Collective') and op.device.endswith(device) and
+            op.control_inputs and
+            op.control_inputs[0].type.startswith('Collective')):
+          self.assertIsNone(third)
+          third = op
+      self.assertIsNotNone(third)
+      # Verify it's not the second collective by looking at the inputs.
+      self.assertTrue(any(v.dtype == dtypes.resource for v in third.inputs))
+      first = third.control_inputs[0]
+      self.assertEqual(third.device, first.device)
+      # Verify it's not the second collective by looking at the inputs.
+      self.assertTrue(any(v.dtype == dtypes.resource for v in first.inputs))
+      self.assertEmpty(first.control_inputs)
 
 
 def _setup_context():

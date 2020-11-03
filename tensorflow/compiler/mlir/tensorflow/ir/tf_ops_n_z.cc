@@ -1314,7 +1314,7 @@ LogicalResult SpaceToBatchNDOp::inferReturnTypes(
   SmallVector<int64_t, 4> return_shape(input_rank, ShapedType::kDynamicSize);
 
   // The return has all dimension sizes unknown when block_rank is unknown.
-  if (block_rank == -1) {
+  if (block_rank == ShapedType::kDynamicSize) {
     inferredReturnTypes.assign(
         {RankedTensorType::get(return_shape, input_type.getElementType())});
     return success();
@@ -1333,6 +1333,14 @@ LogicalResult SpaceToBatchNDOp::inferReturnTypes(
       matchPattern(paddings_val, m_Constant(&paddings_attr))) {
     int64_t return_batch = input_shape[0];
     for (uint64_t i = 0; i < block_rank; ++i) {
+      // Propagate dynamic dimension.
+      if (input_shape[i + 1] == ShapedType::kDynamicSize) {
+        return_batch = ShapedType::kDynamicSize;
+      }
+      if (return_batch == ShapedType::kDynamicSize) {
+        return_shape[1 + i] = ShapedType::kDynamicSize;
+        continue;
+      }
       int64_t paddings_sum =
           paddings_attr.getValue({i, 0}).cast<IntegerAttr>().getInt() +
           paddings_attr.getValue({i, 1}).cast<IntegerAttr>().getInt();

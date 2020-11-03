@@ -51,7 +51,6 @@ ALL_TAGS := $(TAGS) $(TARGET)
 # include directories from one source.
 INCLUDES := \
 -I. \
--I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(MAKEFILE_DIR)/downloads/flatbuffers/include \
 -I$(MAKEFILE_DIR)/downloads/ruy
@@ -232,7 +231,6 @@ tensorflow/lite/core/api/op_resolver.cc \
 tensorflow/lite/core/api/tensor_utils.cc \
 tensorflow/lite/kernels/internal/quantization_util.cc \
 tensorflow/lite/kernels/kernel_util.cc \
-tensorflow/lite/schema/schema_conversion_utils.cc \
 tensorflow/lite/schema/schema_utils.cc
 
 MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_TEST_SRCS), $(MICROLITE_CC_BASE_SRCS))
@@ -309,7 +307,6 @@ tensorflow/lite/kernels/op_macros.h \
 tensorflow/lite/kernels/padding.h \
 tensorflow/lite/portable_type_to_tflitetype.h \
 tensorflow/lite/schema/schema_generated.h \
-tensorflow/lite/schema/schema_conversion_utils.h \
 tensorflow/lite/schema/schema_utils.h \
 tensorflow/lite/version.h
 

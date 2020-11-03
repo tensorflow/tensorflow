@@ -76,13 +76,13 @@ Status LowerLHLOToGPU(mlir::ModuleOp module, LowerLHLOToGPUOptions options) {
   pm.addPass(createFusionOpRemoverPass());
   // Remove unnecessary LHLO copies.
   pm.addPass(::mlir::createCopyRemovalPass());
+  // Legalize reduce operations directly to GPU dialect.
+  pm.addPass(::mlir::lmhlo::createLegalizeToGpuPass());
   // Transform LHLO operations to LinAlg.
   pm.addPass(::mlir::lmhlo::createLegalizeLhloToLinalgPass());
   // Fuse linalg operations.
   pm.addPass(::mlir::lmhlo::createLhloFuseLinalgPass(
       /*use_parallel_loops=*/true, tiling_for_unrolling));
-  // Legalize reduce operations directly to GPU dialect.
-  pm.addPass(::mlir::lmhlo::createLegalizeToGpuPass());
   // Transform the Linalg operations inside of the loop nest into parallel
   // loops.
   pm.addPass(::mlir::createConvertLinalgToParallelLoopsPass());

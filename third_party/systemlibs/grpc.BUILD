@@ -7,25 +7,47 @@ filegroup(
 
 cc_library(
     name = "grpc",
-    linkopts = ["-lgrpc"],
+    linkopts = [
+        "-lgrpc",
+        "-lgpr",
+    ],
     visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "grpc++",
-    linkopts = ["-lgrpc++"],
+    linkopts = [
+        "-lgrpc++",
+        "-lgpr",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "grpc++_public_hdrs",
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "grpc++_codegen_proto",
     visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "grpc_unsecure",
-    linkopts = ["-lgrpc_unsecure"],
+    linkopts = [
+        "-lgrpc_unsecure",
+        "-lgpr",
+    ],
     visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "grpc++_unsecure",
-    linkopts = ["-lgrpc++_unsecure"],
+    linkopts = [
+        "-lgrpc++_unsecure",
+        "-lgpr",
+    ],
     visibility = ["//visibility:public"],
 )
 

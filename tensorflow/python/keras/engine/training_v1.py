@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import collections.abc as collections_abc
 import warnings
 
 import numpy as np
@@ -503,7 +504,9 @@ class Model(training_lib.Model):
         return super(Model, self).metrics
       metrics += self._compile_metric_functions
     metrics.extend(self._metrics)
-    metrics.extend(_get_metrics_from_layers(self._layers))
+    metrics.extend(
+        _get_metrics_from_layers(
+            list(self._flatten_layers(include_self=False, recursive=False))))
     return metrics
 
   @property
@@ -745,7 +748,7 @@ class Model(training_lib.Model):
             the dataset at each epoch. This ensures that the same validation
             samples are used every time.
         validation_freq: Only relevant if validation data is provided. Integer
-            or `collections.Container` instance (e.g. list, tuple, etc.).
+            or `collections.abc.Container` instance (e.g. list, tuple, etc.).
             If an integer, specifies how many training epochs to run before a
             new validation run is performed, e.g. `validation_freq=2` runs
             validation every 2 epochs. If a Container, specifies the epochs on
@@ -1207,7 +1210,7 @@ class Model(training_lib.Model):
     # at this point.
     if self.run_eagerly or self._distribution_strategy:
       inputs = training_utils_v1.cast_if_floating_dtype(inputs)
-      if isinstance(inputs, collections.Sequence):
+      if isinstance(inputs, collections_abc.Sequence):
         # Unwrap lists with only one input, as we do when training on batch
         if len(inputs) == 1:
           inputs = inputs[0]
@@ -1716,7 +1719,7 @@ class Model(training_lib.Model):
 
     # Avoids the override in Sequential.layers which filters Input layers.
     # (Which are often the very layers that we're after.)
-    layers = layer_utils.filter_empty_layer_containers(self._layers)
+    layers = self._flatten_layers(include_self=False, recursive=False)
     first_layer = next(layers, None)
     if first_layer:
       # The per-replica static batch size.

@@ -20,10 +20,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
 #include "tensorflow/lite/delegates/gpu/cl/serialization_generated.h"
 #include "tensorflow/lite/delegates/gpu/common/access_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_object_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 
@@ -36,8 +36,6 @@ class ArgumentsBinder {
   virtual absl::Status SetInt(const std::string& name, int value) = 0;
   virtual absl::Status SetFloat(const std::string& name, float value) = 0;
   virtual absl::Status SetHalf(const std::string& name, half value) = 0;
-  virtual absl::Status SetObjectRef(const std::string& name,
-                                    const GPUObject* object) = 0;
   virtual ~ArgumentsBinder() = default;
 };
 

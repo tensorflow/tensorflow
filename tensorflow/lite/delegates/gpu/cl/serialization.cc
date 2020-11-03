@@ -33,16 +33,16 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 namespace {
-data::AccessType ToFB(AccessType type) {
+tflite::gpu::data::AccessType ToFB(AccessType type) {
   switch (type) {
     case AccessType::READ:
-      return data::AccessType::READ;
+      return tflite::gpu::data::AccessType::READ;
     case AccessType::WRITE:
-      return data::AccessType::WRITE;
+      return tflite::gpu::data::AccessType::WRITE;
     case AccessType::READ_WRITE:
-      return data::AccessType::READ_WRITE;
+      return tflite::gpu::data::AccessType::READ_WRITE;
     default:
-      return data::AccessType::READ_WRITE;
+      return tflite::gpu::data::AccessType::READ_WRITE;
   }
 }
 
@@ -165,13 +165,13 @@ DataType ToEnum(data::DataType type) {
   }
 }
 
-AccessType ToEnum(data::AccessType type) {
+AccessType ToEnum(tflite::gpu::data::AccessType type) {
   switch (type) {
-    case data::AccessType::READ:
+    case tflite::gpu::data::AccessType::READ:
       return AccessType::READ;
-    case data::AccessType::WRITE:
+    case tflite::gpu::data::AccessType::WRITE:
       return AccessType::WRITE;
-    case data::AccessType::READ_WRITE:
+    case tflite::gpu::data::AccessType::READ_WRITE:
       return AccessType::READ_WRITE;
   }
 }
@@ -292,25 +292,27 @@ flatbuffers::Offset<data::Int3> Encode(
   return int3_builder.Finish();
 }
 
-flatbuffers::Offset<data::GPUObjectDescriptor> Encode(
+flatbuffers::Offset<tflite::gpu::data::GPUObjectDescriptor> Encode(
     const GPUObjectDescriptor& desc, flatbuffers::FlatBufferBuilder* builder) {
-  std::vector<flatbuffers::Offset<data::StateVariable>> state_vars_fb;
+  std::vector<flatbuffers::Offset<tflite::gpu::data::StateVariable>>
+      state_vars_fb;
   for (auto& v0 : desc.state_vars_) {
     auto key_fb = builder->CreateString(v0.first);
     auto value_fb = builder->CreateString(v0.second);
-    data::StateVariableBuilder state_builder(*builder);
+    tflite::gpu::data::StateVariableBuilder state_builder(*builder);
     state_builder.add_key(key_fb);
     state_builder.add_value(value_fb);
     state_vars_fb.push_back(state_builder.Finish());
   }
   auto state_vars_fb_vec = builder->CreateVector(state_vars_fb);
-  data::GPUObjectDescriptorBuilder obj_builder(*builder);
+  tflite::gpu::data::GPUObjectDescriptorBuilder obj_builder(*builder);
   obj_builder.add_state_vars(state_vars_fb_vec);
   obj_builder.add_access_type(ToFB(desc.access_type_));
   return obj_builder.Finish();
 }
 
-void Decode(const data::GPUObjectDescriptor* fb_obj, GPUObjectDescriptor* obj) {
+void Decode(const tflite::gpu::data::GPUObjectDescriptor* fb_obj,
+            GPUObjectDescriptor* obj) {
   obj->access_type_ = ToEnum(fb_obj->access_type());
   for (auto state_fb : *fb_obj->state_vars()) {
     std::string key(state_fb->key()->c_str(), state_fb->key()->size());

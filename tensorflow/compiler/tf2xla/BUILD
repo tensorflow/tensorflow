@@ -351,6 +351,7 @@ cc_library(
         ":xla_op_registry",
         ":xla_resource",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",

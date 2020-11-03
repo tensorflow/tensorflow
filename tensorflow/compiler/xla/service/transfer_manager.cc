@@ -169,7 +169,7 @@ Status TransferManager::TransferArrayToDeviceAsync(
         "%d < %d",
         dest.size(), GetByteSizeRequirement(on_device_shape));
   }
-  ShapedBuffer shaped_buffer(on_device_shape, stream->parent()->platform(),
+  ShapedBuffer shaped_buffer(on_device_shape,
                              stream->parent()->device_ordinal());
   shaped_buffer.set_buffer(dest, /*index=*/{});
   return TransferLiteralToDevice(stream, literal, shaped_buffer,
@@ -193,8 +193,7 @@ void TransferManager::TransferArrayFromDevice(
                            "%d < %d",
                            source.size(), GetByteSizeRequirement(shape)));
   }
-  ShapedBuffer shaped_buffer(shape, stream->parent()->platform(),
-                             stream->parent()->device_ordinal());
+  ShapedBuffer shaped_buffer(shape, stream->parent()->device_ordinal());
   shaped_buffer.set_buffer(source, /*index=*/{});
   return TransferLiteralFromDevice(stream, shaped_buffer, literal,
                                    std::move(done), transfer_metadata);

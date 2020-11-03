@@ -627,7 +627,11 @@ PYBIND11_MODULE(xla_extension, m) {
   traceback.def_property_readonly("frames", &Traceback::Frames);
   traceback.def("__str__", &Traceback::ToString);
 
-  py::class_<PyBuffer, std::unique_ptr<PyBuffer>> buffer(m, "Buffer");
+  py::class_<DeviceArrayBase> device_array_base(m, "DeviceArrayBase");
+  device_array_base.def(py::init<>());
+
+  py::class_<PyBuffer, DeviceArrayBase, std::unique_ptr<PyBuffer>> buffer(
+      m, "Buffer");
   // TODO(phawkins): alias for backward compatibility. Remove after JAX no
   // longer uses this name.
   m.add_object("PyLocalBuffer", buffer);
@@ -636,28 +640,27 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("block_host_until_ready", &PyBuffer::BlockHostUntilReady)
       .def("copy_to_host_async", &PyBuffer::CopyToHostAsync,
            py::call_guard<py::gil_scoped_release>())
-      .def(
-          "to_py",
-          [](py::object buffer_obj) -> StatusOr<py::object> {
-            GlobalPyRefManager()->CollectGarbage();
-            PyBuffer* buffer = buffer_obj.cast<PyBuffer*>();
-            if (buffer->buffer()->IsOnCpu() &&
-                buffer->buffer()->on_device_shape().IsArray() &&
-                buffer->buffer()->on_device_shape().element_type() != BF16) {
-              py::object out = py::reinterpret_steal<py::object>(
-                  PyArray_FROM_O(buffer_obj.ptr()));
-              CHECK(out.ptr() != nullptr)
-                  << buffer->buffer()->on_host_shape().ToString(
-                         /*print_layout=*/true);
-              return out;
-            }
-            std::shared_ptr<Literal> literal;
-            {
-              py::gil_scoped_release gil_release;
-              TF_ASSIGN_OR_RETURN(literal, buffer->buffer()->ToLiteral());
-            }
-            return LiteralToPython(std::move(literal));
-          })
+      .def("to_py",
+           [](py::object buffer_obj) -> StatusOr<py::object> {
+             GlobalPyRefManager()->CollectGarbage();
+             PyBuffer* buffer = buffer_obj.cast<PyBuffer*>();
+             if (buffer->buffer()->IsOnCpu() &&
+                 buffer->buffer()->on_device_shape().IsArray() &&
+                 buffer->buffer()->on_device_shape().element_type() != BF16) {
+               py::object out = py::reinterpret_steal<py::object>(
+                   PyArray_FROM_O(buffer_obj.ptr()));
+               CHECK(out.ptr() != nullptr)
+                   << buffer->buffer()->on_host_shape().ToString(
+                          /*print_layout=*/true);
+               return out;
+             }
+             std::shared_ptr<Literal> literal;
+             {
+               py::gil_scoped_release gil_release;
+               TF_ASSIGN_OR_RETURN(literal, buffer->buffer()->ToLiteral());
+             }
+             return LiteralToPython(std::move(literal));
+           })
       .def("shape", &PyBuffer::shape)
       .def_property_readonly("client", &PyBuffer::client)
       .def("device", &PyBuffer::device)

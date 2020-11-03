@@ -125,7 +125,6 @@ py_test(
         "//tensorflow/python:session",
         "//tensorflow/python:tf2",
         "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/keras",
         "//tensorflow/python/saved_model",
         "//tensorflow/python/saved_model:save",
         "//tensorflow/python/training:training_util",
@@ -149,10 +148,8 @@ py_library(
         "//tensorflow/lite/experimental/examples/lstm:tflite_lstm_ops",
         "//tensorflow/lite/experimental/microfrontend:audio_microfrontend_py",
         "//tensorflow/lite/experimental/tensorboard:ops_util",
-        "//tensorflow/lite/python/keras/saving:saving_utils",
         "//tensorflow/lite/python/optimize:calibrator",
         "//tensorflow/python:graph_util",
-        "//tensorflow/python/keras",
         "//tensorflow/python/saved_model:constants",
         "//tensorflow/python/saved_model:loader",
         "@six_archive//:six",
@@ -171,6 +168,7 @@ py_test(
     ],
     deps = [
         ":lite",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "@six_archive//:six",
@@ -236,6 +234,7 @@ py_library(
         ":op_hint",
         ":schema_py",
         ":schema_util",
+        "//tensorflow/lite/python:tflite_keras_util",
         "//tensorflow/lite/toco:toco_flags_proto_py",
         "//tensorflow/python:convert_to_constants",
         "//tensorflow/python:dtypes",
@@ -275,6 +274,18 @@ py_test(
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "tflite_keras_util",
+    srcs = [
+        "tflite_keras_util.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:util",
+        "//tensorflow/python/eager:def_function",
     ],
 )
 
@@ -380,7 +391,6 @@ py_test(
         "//tensorflow/python:nn",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:session",
-        "//tensorflow/python/keras",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model",
     ],

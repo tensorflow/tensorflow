@@ -863,7 +863,28 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
     auto full_paddings = rewriter.create<ConcatV2Op>(
         loc, full_paddings_type, full_paddings_list, zero_i64);
 
-    SmallVector<int64_t, 4> padded_shape(input_rank, ShapedType::kDynamicSize);
+    // Compute the result type here instead of using shape inference because the
+    // full_paddings won't be available as a constant for shape inference.
+    ElementsAttr block_shape;
+    ElementsAttr paddings;
+    auto padded_shape = llvm::to_vector<4>(input_shape);
+    if (matchPattern(op.block_shape(), m_Constant(&block_shape)) &&
+        matchPattern(op.paddings(), m_Constant(&paddings))) {
+      for (uint64_t i = 0; i < block_rank; i++) {
+        int64_t paddings_sum =
+            paddings.getValue({i, 0}).cast<IntegerAttr>().getInt() +
+            paddings.getValue({i, 1}).cast<IntegerAttr>().getInt();
+        int64_t block_shape_i =
+            block_shape.getValue({i}).cast<IntegerAttr>().getInt();
+        padded_shape[i + 1] =
+            (paddings_sum + padded_shape[i + 1]) / block_shape_i;
+      }
+    } else {
+      for (int i = 0; i < block_rank; i++) {
+        padded_shape[i + 1] = ShapedType::kDynamicSize;
+      }
+    }
+
     auto padded_type =
         RankedTensorType::get(padded_shape, rewriter.getF32Type());
     // padded = pad(input, full_paddings)

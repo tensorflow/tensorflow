@@ -234,7 +234,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
         }
         Status s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
         DCHECK(!*end_of_sequence || out_tensors->empty());
-        if (first_call_ && *end_of_sequence) {
+        if (first_call_ && *end_of_sequence && !ctx->split_provider()) {
           // If the first call to GetNext() fails because the end
           // of sequence has been reached, we terminate the
           // iteration immediately. (Otherwise, this iterator

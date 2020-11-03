@@ -177,6 +177,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::MatrixSolveOp>(),
     TypeID::get<TF::MatrixTriangularSolveOp>(),
     TypeID::get<TF::MirrorPadOp>(),
+    TypeID::get<TF::MirrorPadGradOp>(),
     TypeID::get<TF::MulOp>(),
     TypeID::get<TF::MultinomialOp>(),
     TypeID::get<TF::NegOp>(),

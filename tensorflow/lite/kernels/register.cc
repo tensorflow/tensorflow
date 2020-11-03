@@ -152,7 +152,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_SPLIT_V, Register_SPLIT_V(),
              /* min_version = */ 1,
              /* max_version = */ 2);
-  AddBuiltin(BuiltinOperator_SQUEEZE, Register_SQUEEZE());
+  AddBuiltin(BuiltinOperator_SQUEEZE, Register_SQUEEZE(),
+             /* min_version = */ 1,
+             /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_STRIDED_SLICE, Register_STRIDED_SLICE(),
              /* min_version = */ 1,
              /* max_version = */ 4);
@@ -295,6 +297,8 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* min_version = */ 1,
              /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_CUMSUM, Register_CUMSUM());
+  AddBuiltin(BuiltinOperator_CALL_ONCE,
+             tflite::ops::builtin::Register_CALL_ONCE());
   AddCustom("NumericVerify", tflite::ops::custom::Register_NUMERIC_VERIFY());
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.

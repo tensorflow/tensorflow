@@ -518,6 +518,15 @@ cc_library(
 )
 
 cc_library(
+    name = "map_chlo_to_hlo_op",
+    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/map_chlo_to_hlo_op.h"],
+    deps = [
+        ":hlo",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
     name = "map_hlo_to_lhlo_op",
     hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/map_hlo_to_lhlo_op.h"],
     deps = [
@@ -606,9 +615,11 @@ cc_library(
     ],
     deps = [
         ":hlo",
+        ":map_chlo_to_hlo_op",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Transforms",
@@ -893,6 +904,7 @@ cc_library(
     deps = [
         ":chlo_legalize_to_hlo_inc_gen",
         ":hlo",
+        ":map_chlo_to_hlo_op",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Shape",

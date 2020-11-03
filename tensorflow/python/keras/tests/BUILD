@@ -279,41 +279,6 @@ tf_py_test(
     ],
 )
 
-cuda_py_test(
-    name = "op_callbacks_test",
-    srcs = ["op_callbacks_test.py"],
-    python_version = "PY3",
-    xla_enable_strict_auto_jit = False,
-    deps = [
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:op_callbacks",
-        "//tensorflow/python:script_ops",
-        "//tensorflow/python:util",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras",
-        "//tensorflow/python/keras:combinations",
-    ],
-)
-
-cuda_py_test(
-    name = "summary_ops_test",
-    size = "small",
-    srcs = ["summary_ops_test.py"],
-    deps = [
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:lib",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:summary_ops_v2",
-        "//tensorflow/python/keras:testing_utils",
-        "//tensorflow/python/keras/engine",
-        "//tensorflow/python/keras/layers:core",
-    ],
-)
-
 tf_py_test(
     name = "saved_model_test",
     size = "small",

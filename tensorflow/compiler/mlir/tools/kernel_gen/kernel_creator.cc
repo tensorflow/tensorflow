@@ -81,18 +81,19 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
         mlir::kernel_gen::transforms::CreateMaterializeBroadcastsPass());
     pm.addNestedPass<mlir::FuncOp>(
         mlir::kernel_gen::transforms::CreateUnfuseBatchNormPass());
-    pm.addPass(mlir::mhlo::createLegalizeToLhloPass(
-        /*results_escape_functions=*/true));
+    pm.addPass(mlir::mhlo::createLegalizeToLhloPass());
     // Moving `AllocOp`s and inserting missing `DeallocOp`s
     pm.addPass(::mlir::createBufferHoistingPass());
     pm.addPass(::mlir::createBufferDeallocationPass());
     pm.addNestedPass<mlir::FuncOp>(mlir::createCopyRemovalPass());
+    pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(mlir::kernel_gen::transforms::CreateShapeToDescriptorsPass());
   } else {
     pm.addPass(mlir::mhlo::createLegalizeTFPass(
         /*allow_partial_conversion=*/false, /*legalize_chlo=*/false));
     pm.addPass(mlir::createTransformUnrankedHloPass());
     pm.addPass(mlir::mhlo::createChloLegalizeToHloPass());
+    pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(mlir::kernel_gen::transforms::CreateShapeToDescriptorsPass());
     // Clean up the IR created above. In particular, operations on descriptors
     // are simplified here.

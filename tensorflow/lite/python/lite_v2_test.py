@@ -35,8 +35,6 @@ from tensorflow.lite.toco import types_pb2 as _types_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras.layers import recurrent
-from tensorflow.python.keras.layers import recurrent_v2
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import save_options
@@ -888,6 +886,31 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
 
     self.assertTrue(tflite_model)
 
+  @test_util.run_v2_only
+  def testNonStatefulConvLSTM2D(self):
+    """Test saved model with non stateful ConvLSTM2D keras layer."""
+    # Create keras model
+    model = tf.keras.Sequential([
+        tf.keras.layers.ConvLSTM2D(
+            32, (3, 3),
+            padding='same',
+            return_sequences=True,
+            stateful=False,
+            batch_input_shape=(1, 1, 10, 10, 1))
+    ])
+    model.compile()
+
+    # Export the keras model to saved model.
+    saved_model_dir = os.path.join(self.get_temp_dir(), 'conv_lstm_2d')
+    model.save(saved_model_dir, save_format='tf', include_optimizer=False)
+
+    converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS
+    ]
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
 
 class FromKerasModelTest(lite_v2_test_util.ModelTest):
 
@@ -1122,9 +1145,9 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
         expected = expected.c
       self.assertAllClose(expected, actual)
 
-  @parameterized.named_parameters(('LSTM', recurrent_v2.LSTM),
-                                  ('SimpleRNN', recurrent.SimpleRNN),
-                                  ('GRU', recurrent_v2.GRU))
+  @parameterized.named_parameters(('LSTM', tf.keras.layers.LSTM),
+                                  ('SimpleRNN', tf.keras.layers.SimpleRNN),
+                                  ('GRU', tf.keras.layers.GRU))
   @test_util.run_v2_only
   def testKerasRNN(self, rnn_layer):
     # This relies on TFLiteConverter to rewrite unknown batch size to 1. The
@@ -1146,9 +1169,9 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     expected_value = model.predict(input_data)
     self.assertAllClose(expected_value, actual_value, atol=1e-05)
 
-  @parameterized.named_parameters(('LSTM', recurrent_v2.LSTM),
-                                  ('SimpleRNN', recurrent.SimpleRNN),
-                                  ('GRU', recurrent_v2.GRU))
+  @parameterized.named_parameters(('LSTM', tf.keras.layers.LSTM),
+                                  ('SimpleRNN', tf.keras.layers.SimpleRNN),
+                                  ('GRU', tf.keras.layers.GRU))
   @test_util.run_v2_only
   def testKerasRNNMultiBatches(self, rnn_layer):
     input_data = tf.constant(
@@ -1175,7 +1198,7 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     model.add(tf.keras.layers.Input(batch_size=1, shape=(10, 10), name='input'))
     model.add(
         tf.keras.layers.Bidirectional(
-            recurrent_v2.LSTM(units=10, return_sequences=True),
+            tf.keras.layers.LSTM(units=10, return_sequences=True),
             input_shape=(10, 10)))
     model.add(tf.keras.layers.Flatten())
     model.add(tf.keras.layers.Dense(5))
@@ -1196,7 +1219,7 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
         np.array(np.random.random_sample((1, 10, 10)), dtype=np.float32))
     model = tf.keras.models.Sequential()
     model.add(tf.keras.layers.Input(batch_size=1, shape=(10, 10), name='input'))
-    model.add(tf.keras.layers.Bidirectional(recurrent_v2.LSTM(units=10)))
+    model.add(tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(units=10)))
     model.add(tf.keras.layers.Dense(5))
     model.add(tf.keras.layers.Activation('softmax'))
 

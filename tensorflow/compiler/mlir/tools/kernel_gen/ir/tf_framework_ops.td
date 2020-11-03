@@ -30,6 +30,11 @@ def TFFramework_Dialect : Dialect {
     TensorFlow C++ Framework.
   }];
   let cppNamespace = "::mlir::kernel_gen::tf_framework";
+
+  let extraClassDeclaration = [{
+    static constexpr StringRef kTFEntryAttrName = "tf_entry";
+    static constexpr size_t kAllocationAlignment = 16;
+  }];
 }
 
 def TFFramework_OpKernelContextType : DialectType<TFFramework_Dialect,
@@ -88,6 +93,9 @@ def TFFramework_TFAllocOp : TFFramework_Op<"alloc",
 
   let extraClassDeclaration = [{
     MemRefType getType() { return getResult().getType().cast<MemRefType>(); }
+    static constexpr StringRef kReuseOutputAttrName = "reuse_output";
+    static constexpr StringRef kReuseInputCandidatesAttrName =
+        "reuse_input_candidates";
   }];
   let assemblyFormat = [{
     `(` $ctx (`,` $dyn_sizes^ )? `)` attr-dict `:` type($result)
@@ -122,7 +130,7 @@ def TFFramework_NullContextOp : TFFramework_Op<"null_context",
   let summary = "Creates a fake TF context that will be lowered to nullptr";
   let description = [{Needed for testing}];
   let results = (outs TFFramework_OpKernelContextType:$result);
-  let assemblyFormat = "`(` `)` attr-dict `:` type($result)";
+  let assemblyFormat = "attr-dict `:` type($result)";
 }
 
 #endif // TF_FRAMEWORK_OPS

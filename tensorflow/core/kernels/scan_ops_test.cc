@@ -67,79 +67,120 @@ static Graph* ThreeDYCumsum(int num_y, int num_z, bool reverse = false) {
 }
 
 template <typename T>
-static void LargeOneDimensional(int iters, const string& device, int num_x,
+static void LargeOneDimensional(::testing::benchmark::State& state,
+                                const string& device, int num_x,
                                 bool reverse = false) {
-  testing::ItemsProcessed(static_cast<int64>(iters) * num_x);
-  testing::BytesProcessed(static_cast<int64>(iters) * num_x * sizeof(T));
-  test::Benchmark(device, LargeOneDCumsum<T>(num_x, reverse)).Run(iters);
+  test::Benchmark(device, LargeOneDCumsum<T>(num_x, reverse),
+                  /*old_benchmark_api*/ false)
+      .Run(state);
+  state.SetItemsProcessed(static_cast<int64>(state.iterations()) * num_x);
+  state.SetBytesProcessed(static_cast<int64>(state.iterations()) * num_x *
+                          sizeof(T));
 }
 
-static void DoRowCumsum(int iters, const string& device, int num_x, int num_y,
+static void DoRowCumsum(::testing::benchmark::State& state,
+                        const string& device, int num_x, int num_y,
                         bool reverse = false) {
-  testing::ItemsProcessed(static_cast<int64>(iters) * num_x * num_y);
-  testing::BytesProcessed(static_cast<int64>(iters) * num_x * num_y *
-                          sizeof(float));
-  test::Benchmark(device, RowCumsum(num_x, num_y, reverse)).Run(iters);
+  test::Benchmark(device, RowCumsum(num_x, num_y, reverse),
+                  /*old_benchmark_api*/ false)
+      .Run(state);
+  state.SetItemsProcessed(static_cast<int64>(state.iterations()) * num_x *
+                          num_y);
+  state.SetBytesProcessed(static_cast<int64>(state.iterations()) * num_x *
+                          num_y * sizeof(float));
 }
 
-static void DoColCumsum(int iters, const string& device, int num_x, int num_y,
+static void DoColCumsum(::testing::benchmark::State& state,
+                        const string& device, int num_x, int num_y,
                         bool reverse = false) {
-  testing::ItemsProcessed(static_cast<int64>(iters) * num_x * num_y);
-  testing::BytesProcessed(static_cast<int64>(iters) * num_x * num_y *
-                          sizeof(float));
-  test::Benchmark(device, ColCumsum(num_x, num_y, reverse)).Run(iters);
+  test::Benchmark(device, ColCumsum(num_x, num_y, reverse),
+                  /*old_benchmark_api*/ false)
+      .Run(state);
+  state.SetItemsProcessed(static_cast<int64>(state.iterations()) * num_x *
+                          num_y);
+  state.SetBytesProcessed(static_cast<int64>(state.iterations()) * num_x *
+                          num_y * sizeof(float));
 }
 
-static void Do3DYCumsum(int iters, const string& device, int num_x, int num_y,
+static void Do3DYCumsum(::testing::benchmark::State& state,
+                        const string& device, int num_x, int num_y,
                         bool reverse = false) {
-  testing::ItemsProcessed(static_cast<int64>(iters) * num_x * num_y);
-  testing::BytesProcessed(static_cast<int64>(iters) * num_x * num_y *
-                          sizeof(float));
-  test::Benchmark(device, ThreeDYCumsum(num_x, num_y, reverse)).Run(iters);
+  test::Benchmark(device, ThreeDYCumsum(num_x, num_y, reverse),
+                  /*old_benchmark_api*/ false)
+      .Run(state);
+  state.SetItemsProcessed(static_cast<int64>(state.iterations()) * num_x *
+                          num_y);
+  state.SetBytesProcessed(static_cast<int64>(state.iterations()) * num_x *
+                          num_y * sizeof(float));
 }
 
-static void BM_OneDCumsumGPU(int iters, int num_x) {
-  LargeOneDimensional<float>(iters, "gpu", num_x);
+static void BM_OneDCumsumGPU(::testing::benchmark::State& state) {
+  const int num_x = state.range(0);
+
+  LargeOneDimensional<float>(state, "gpu", num_x);
 }
 BENCHMARK(BM_OneDCumsumGPU)->Range(1, 1 << 21);
 
-static void BM_OneDCumsumGPUHalf(int iters, int num_x) {
-  LargeOneDimensional<Eigen::half>(iters, "gpu", num_x);
+static void BM_OneDCumsumGPUHalf(::testing::benchmark::State& state) {
+  const int num_x = state.range(0);
+
+  LargeOneDimensional<Eigen::half>(state, "gpu", num_x);
 }
 BENCHMARK(BM_OneDCumsumGPUHalf)->Range(1, 1 << 21);
 
-static void BM_Sum2DRowCumsumGPU(int iters, int num_x, int num_y) {
-  DoRowCumsum(iters, "gpu", num_x, num_y);
+static void BM_Sum2DRowCumsumGPU(::testing::benchmark::State& state) {
+  const int num_x = state.range(0);
+  const int num_y = state.range(1);
+
+  DoRowCumsum(state, "gpu", num_x, num_y);
 }
 BENCHMARK(BM_Sum2DRowCumsumGPU)->RangePair(1, 8192, 1, 8192);
 
-static void BM_Sum2DColumnCumsumGPU(int iters, int num_x, int num_y) {
-  DoColCumsum(iters, "gpu", num_x, num_y);
+static void BM_Sum2DColumnCumsumGPU(::testing::benchmark::State& state) {
+  const int num_x = state.range(0);
+  const int num_y = state.range(1);
+
+  DoColCumsum(state, "gpu", num_x, num_y);
 }
 BENCHMARK(BM_Sum2DColumnCumsumGPU)->RangePair(1, 8192, 1, 8192);
 
-static void BM_Sum3DYCumsumGPU(int iters, int num_x, int num_y) {
-  Do3DYCumsum(iters, "gpu", num_x, num_y);
+static void BM_Sum3DYCumsumGPU(::testing::benchmark::State& state) {
+  const int num_x = state.range(0);
+  const int num_y = state.range(1);
+
+  Do3DYCumsum(state, "gpu", num_x, num_y);
 }
 BENCHMARK(BM_Sum3DYCumsumGPU)->RangePair(64, 4096, 64, 4096);
 
-static void BM_OneDCumsumGPU_reverse(int iters, int num_x) {
-  LargeOneDimensional<float>(iters, "gpu", num_x, true);
+static void BM_OneDCumsumGPU_reverse(::testing::benchmark::State& state) {
+  const int num_x = state.range(0);
+
+  LargeOneDimensional<float>(state, "gpu", num_x, true);
 }
 BENCHMARK(BM_OneDCumsumGPU_reverse)->Range(1, 1 << 21);
 
-static void BM_Sum2DRowCumsumGPU_reverse(int iters, int num_x, int num_y) {
-  DoRowCumsum(iters, "gpu", num_x, num_y, true);
+static void BM_Sum2DRowCumsumGPU_reverse(::testing::benchmark::State& state) {
+  const int num_x = state.range(0);
+  const int num_y = state.range(1);
+
+  DoRowCumsum(state, "gpu", num_x, num_y, true);
 }
 BENCHMARK(BM_Sum2DRowCumsumGPU_reverse)->RangePair(1, 8192, 1, 8192);
 
-static void BM_Sum2DColumnCumsumGPU_reverse(int iters, int num_x, int num_y) {
-  DoColCumsum(iters, "gpu", num_x, num_y, true);
+static void BM_Sum2DColumnCumsumGPU_reverse(
+    ::testing::benchmark::State& state) {
+  const int num_x = state.range(0);
+  const int num_y = state.range(1);
+
+  DoColCumsum(state, "gpu", num_x, num_y, true);
 }
 BENCHMARK(BM_Sum2DColumnCumsumGPU_reverse)->RangePair(1, 8192, 1, 8192);
 
-static void BM_Sum3DYCumsumGPU_reverse(int iters, int num_x, int num_y) {
-  Do3DYCumsum(iters, "gpu", num_x, num_y, true);
+static void BM_Sum3DYCumsumGPU_reverse(::testing::benchmark::State& state) {
+  const int num_x = state.range(0);
+  const int num_y = state.range(1);
+
+  Do3DYCumsum(state, "gpu", num_x, num_y, true);
 }
 BENCHMARK(BM_Sum3DYCumsumGPU_reverse)->RangePair(32, 2048, 32, 2048);
 

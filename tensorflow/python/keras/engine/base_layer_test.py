@@ -48,6 +48,7 @@ from tensorflow.python.keras.engine import training as training_lib
 from tensorflow.python.keras.legacy_tf_layers import core as legacy_core
 from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.keras.utils import control_flow_util
+from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
@@ -840,6 +841,58 @@ class BaseLayerTest(keras_parameterized.TestCase):
     layer = MyLayer(activity_regularizer='l2')
     self.assertIsInstance(layer.activity_regularizer, regularizers.L2)
 
+  def test_tf_module_tracking(self):
+
+    class MyModule(module.Module):
+
+      def __init__(self):
+        super(MyModule, self).__init__()
+        self.v1 = variables.Variable(1., trainable=True, name='v1')
+        self.v2 = variables.Variable(2., trainable=False, name='v2')
+
+      def __call__(self, x):
+        return x * self.v1 * self.v2
+
+    class MyLayer(base_layer.Layer):
+
+      def __init__(self, **kwargs):
+        super(MyLayer, self).__init__(self, **kwargs)
+        self.my_modules = {}
+        self.my_modules['a'] = MyModule()
+
+      def call(self, x):
+        return self.my_modules['a'](x)
+
+    layer = MyLayer()
+    self.assertLen(layer.variables, 2)
+    self.assertLen(layer.trainable_variables, 1)
+    self.assertLen(layer.non_trainable_variables, 1)
+
+    layer.trainable = False
+    self.assertLen(layer.variables, 2)
+    self.assertLen(layer.trainable_variables, 0)
+    self.assertLen(layer.non_trainable_variables, 2)
+
+    class MyModel(training_lib.Model):
+
+      def __init__(self):
+        super(MyModel, self).__init__()
+        self.my_modules = []
+        self.my_modules.append(MyModule())
+
+      def call(self, x):
+        return self.my_modules[0](x)
+
+    model = MyModel()
+    self.assertLen(model.variables, 2)
+    self.assertLen(model.trainable_variables, 1)
+    self.assertLen(model.non_trainable_variables, 1)
+
+    model.trainable = False
+    self.assertLen(model.variables, 2)
+    self.assertLen(model.trainable_variables, 0)
+    self.assertLen(model.non_trainable_variables, 2)
+
 
 class SymbolicSupportTest(keras_parameterized.TestCase):
 
@@ -1078,12 +1131,13 @@ class NestedTrackingTest(test.TestCase):
     del l.c
     l.d = last_assignment
     del l.d
-    self.assertEqual([last_assignment], l._layers)
+    sublayers = list(l._flatten_layers(include_self=False, recursive=False))
+    self.assertEqual([last_assignment], sublayers)
     self.assertEqual([], l.trainable_weights)
     self.assertEqual([], l.non_trainable_weights)
     self.assertEqual([], l.weights)
     del l.a
-    self.assertEqual([], l._layers)
+    self.assertEqual([], l._self_tracked_trackables)
 
   def test_assign_op_not_tracked_as_variable(self):
 

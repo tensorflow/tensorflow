@@ -548,6 +548,9 @@ cuda_py_test(
     tags = [
         "no_windows_gpu",
     ],
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",

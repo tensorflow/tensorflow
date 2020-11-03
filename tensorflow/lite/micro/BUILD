@@ -52,6 +52,7 @@ cc_library(
         "//tensorflow/lite/micro/memory_planner",
         "//tensorflow/lite/micro/memory_planner:greedy_memory_planner",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_utils",
         "@flatbuffers//:runtime_cc",
     ],
 )

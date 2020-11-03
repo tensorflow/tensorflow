@@ -53,7 +53,6 @@ void AddGraphExportLoweringPasses(OpPassManager &pm) {
   add_pass(TFDevice::CreateParallelExecuteToIslandsPass());
   pm.addPass(TFDevice::CreateLaunchToDeviceAttributePass());
   pm.addPass(CreateBreakUpIslandsPass());
-  pm.addNestedPass<FuncOp>(CreateTPUDevicePropagationPass());
   pm.addPass(createSymbolDCEPass());
 }
 
