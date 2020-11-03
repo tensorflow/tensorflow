@@ -7035,6 +7035,47 @@ pad(t, paddings) ==> [[2, 1, 1, 2, 3, 3, 2]
   TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_MirrorPadGradOp : TF_Op<"MirrorPadGrad", [NoSideEffect]> {
+  let summary = [{
+Gradient op for `MirrorPad` op. This op folds a mirror-padded tensor.
+  }];
+
+  let description = [{
+This operation folds the padded areas of `input` by `MirrorPad` according to the
+`paddings` you specify. `paddings` must be the same as `paddings` argument
+given to the corresponding `MirrorPad` op.
+
+The folded size of each dimension D of the output is:
+
+`input.dim_size(D) - paddings(D, 0) - paddings(D, 1)`
+
+For example:
+
+```
+# 't' is [[1, 2, 3], [4, 5, 6], [7, 8, 9]].
+# 'paddings' is [[0, 1]], [0, 1]].
+# 'mode' is SYMMETRIC.
+# rank of 't' is 2.
+pad(t, paddings) ==> [[ 1,  5]
+                      [11, 28]]
+```
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input,
+    TF_I32OrI64Tensor:$paddings,
+
+    TF_AnyStrAttrOf<["REFLECT", "SYMMETRIC"]>:$mode
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<1>;
+}
+
 def TF_MlirLocalVarOp : TF_Op<"MlirLocalVarOp", []> {
   let summary = "Creates a handle to an in-scope variable.";
 
