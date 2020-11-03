@@ -66,9 +66,6 @@ __global__ void SortedSegmentReductionCustomKernel(
     T reduce_res = initial_value;
     Index first_segment_id = segment_ids[input_outer_dim_index_base];
     Index last_output_segment_id = output_outer_dim_size;
-    bool is_first_has_race = input_outer_dim_index_base > 0 \
-        && first_segment_id == segment_ids[input_outer_dim_index_base - 1] \
-        ? true : false;
 
     const Index actual_stripe_height =
         min(Index(OuterDimTileSize),
@@ -85,7 +82,7 @@ __global__ void SortedSegmentReductionCustomKernel(
             last_output_segment_id * inner_dim_size + segment_offset;
         // decide whether to write result to global memory using atomic
         // operations
-        if (last_output_segment_id == first_segment_id && is_first_has_race) {
+        if (last_output_segment_id == first_segment_id) {
           SegmentAtomicReductionF()(output + output_index, reduce_res);
         } else {
           SegmentReductionF()(output + output_index, reduce_res);
@@ -100,20 +97,9 @@ __global__ void SortedSegmentReductionCustomKernel(
     // For the last result in a strip, always write using atomic operations
     // due to possible race conditions with threads computing
     // the following strip.
-    Index last_input_outer_dim_index =
-        input_outer_dim_index_base + actual_stripe_height - 1;
-    bool is_last_has_race =
-        last_input_outer_dim_index < input_outer_dim_size - 1 \
-          && segment_ids[last_input_outer_dim_index] == \
-             segment_ids[last_input_outer_dim_index + 1] \
-          ? true : false;
     const Index output_index =
         last_output_segment_id * inner_dim_size + segment_offset;
-    if (is_last_has_race) {
-      SegmentAtomicReductionF()(output + output_index, reduce_res);
-    } else {
-      SegmentReductionF()(output + output_index, reduce_res);
-    }
+    SegmentAtomicReductionF()(output + output_index, reduce_res);
   }
 }
 
