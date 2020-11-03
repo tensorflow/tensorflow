@@ -46,6 +46,15 @@ Status MakeIteratorFromInputElement(
     IteratorContext* ctx, const IteratorBase* parent,
     const std::vector<Tensor>& input_element, int64 thread_index,
     const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
+    std::unique_ptr<IteratorBase>* out_iterator);
+
+// Creates an iterator for a dataset which is created by applying the given
+// function to the given input element. Pass non-null `node` to record
+// processing time for modeling Iterator's GetNext() resource usage.
+Status MakeIteratorFromInputElement(
+    IteratorContext* ctx, const IteratorBase* parent,
+    const std::vector<Tensor>& input_element, int64 thread_index,
+    const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
     std::unique_ptr<IteratorBase>* out_iterator,
     const std::shared_ptr<model::Node>& node);
 

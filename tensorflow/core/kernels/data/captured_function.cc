@@ -447,6 +447,16 @@ Status MakeIteratorFromInputElement(
     IteratorContext* ctx, const IteratorBase* parent,
     const std::vector<Tensor>& input_element, int64 thread_index,
     const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
+    std::unique_ptr<IteratorBase>* out_iterator) {
+  return MakeIteratorFromInputElement(
+      ctx, parent, input_element, thread_index, inst_captured_func, prefix,
+      /*node=*/nullptr);
+}
+
+Status MakeIteratorFromInputElement(
+    IteratorContext* ctx, const IteratorBase* parent,
+    const std::vector<Tensor>& input_element, int64 thread_index,
+    const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
     std::unique_ptr<IteratorBase>* out_iterator,
     const std::shared_ptr<model::Node>& node) {
   std::vector<Tensor> return_values;
