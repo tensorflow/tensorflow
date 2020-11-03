@@ -375,7 +375,6 @@ cc_library(
     deps = [
         ":gpu_object_desc",
         ":opencl_wrapper",
-        ":serialization_cc_fbs",
         "//tensorflow/lite/delegates/gpu/common:access_type",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:status",
