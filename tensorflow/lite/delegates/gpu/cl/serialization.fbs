@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+include "tensorflow/lite/delegates/gpu/common/task/serialization_base.fbs";
+
 namespace tflite.gpu.cl.data;
 
 table Int4 {
@@ -36,28 +38,18 @@ table IntValue {
   name:string;
   value:int32;
   active:bool;
-  offset:uint32;
 }
 
 table FloatValue {
   name:string;
   value:float;
   active:bool;
-  offset:uint32;
 }
 
 table HalfValue {
   name:string;
   value:float;
   active:bool;
-  store_as_f32:bool;
-  offset:uint32;
-}
-
-enum AccessType : byte {
-  READ = 0,
-  WRITE = 1,
-  READ_WRITE = 2,
 }
 
 enum DataType : byte {
@@ -72,18 +64,8 @@ enum MemoryType : byte {
   LOCAL = 2,
 }
 
-table StateVariable {
-  key:string;
-  value:string;
-}
-
-table GPUObjectDescriptor {
-  state_vars:[StateVariable];
-  access_type:AccessType;
-}
-
 table BufferDescriptor {
-  base_obj:GPUObjectDescriptor;
+  base_obj:tflite.gpu.data.GPUObjectDescriptor;
   element_type:DataType;
   element_size:int32;
   memory_type:MemoryType;
@@ -93,7 +75,7 @@ table BufferDescriptor {
 }
 
 table Texture2DDescriptor {
-  base_obj:GPUObjectDescriptor;
+  base_obj:tflite.gpu.data.GPUObjectDescriptor;
   element_type:DataType;
   normalized:bool;
   normalized_type:DataType;
@@ -107,7 +89,7 @@ enum LinearStorageType : byte {
 }
 
 table TensorLinearDescriptor {
-  base_obj:GPUObjectDescriptor;
+  base_obj:tflite.gpu.data.GPUObjectDescriptor;
   storage_type:LinearStorageType;
   element_type:DataType;
   memory_type:MemoryType;
@@ -142,7 +124,7 @@ table BHWDC {
 }
 
 table TensorDescriptor {
-  base_obj:GPUObjectDescriptor;
+  base_obj:tflite.gpu.data.GPUObjectDescriptor;
   data_type:DataType;
   storage_type:TensorStorageType;
   layout:Layout;
@@ -172,13 +154,8 @@ table TensorDescriptorMapValue {
 
 table Arguments {
   int_values:[IntValue];
-  shared_int4s:[int32];
-
   float_values:[FloatValue];
-  shared_float4s:[float];
-
   half_values:[HalfValue];
-  shared_half4s:[float];
 
   buffer_refs:[BufferDescriptorMapValue];
   texture2d_refs:[Texture2DDescriptorMapValue];

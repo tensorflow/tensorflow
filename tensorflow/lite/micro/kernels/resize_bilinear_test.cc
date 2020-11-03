@@ -24,7 +24,7 @@ namespace testing {
 namespace {
 
 TfLiteTensor TestCreateTensor(const float* data, TfLiteIntArray* dims) {
-  return CreateFloatTensor(data, dims);
+  return CreateTensor(data, dims);
 }
 
 TfLiteTensor TestCreateTensor(const uint8_t* data, TfLiteIntArray* dims) {
@@ -77,7 +77,7 @@ void TestResizeBilinear(const int* input_dims_data, const T* input_data,
   const int output_dims_count = ElementCount(*output_dims);
 
   // Hack to pass ConstantTensor check in prepare
-  TfLiteTensor t = CreateInt32Tensor(expected_size_data, expected_size_dims);
+  TfLiteTensor t = CreateTensor(expected_size_data, expected_size_dims);
   t.allocation_type = kTfLiteMmapRo;
 
   constexpr int tensors_size = 3;

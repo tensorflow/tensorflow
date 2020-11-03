@@ -263,6 +263,7 @@ cc_library(
         ":util",
         "//tensorflow/lite/delegates/gpu:spi",
         "//tensorflow/lite/delegates/gpu/cl:arguments",
+        "//tensorflow/lite/delegates/gpu/cl:cl_arguments",
         "//tensorflow/lite/delegates/gpu/cl:cl_command_queue",
         "//tensorflow/lite/delegates/gpu/cl:cl_errors",
         "//tensorflow/lite/delegates/gpu/cl:environment",
@@ -346,6 +347,7 @@ cc_test(
     tags = [
         "linux",
         "local",
+        "no_mac",  # TODO(b/171880729)
     ],
     deps = [
         ":cl_test",
@@ -424,6 +426,7 @@ cc_test(
     tags = [
         "linux",
         "local",
+        "no_mac",  # TODO(b/171880729)
     ],
     deps = [
         ":cl_test",
@@ -643,6 +646,7 @@ cc_library(
         ":work_group_picking",
         "//tensorflow/lite/delegates/gpu/cl:arguments",
         "//tensorflow/lite/delegates/gpu/cl:buffer",
+        "//tensorflow/lite/delegates/gpu/cl:cl_arguments",
         "//tensorflow/lite/delegates/gpu/cl:cl_command_queue",
         "//tensorflow/lite/delegates/gpu/cl:cl_context",
         "//tensorflow/lite/delegates/gpu/cl:cl_device",
@@ -1354,6 +1358,7 @@ test_suite(
         "conv_buffer_1x1_test",
         "conv_constants_test",
         "conv_powervr_test",
+        "convolution_transposed_3x3_test",
         "convolution_transposed_3x3_thin_test",
         "convolution_transposed_4x4_test",
         "convolution_transposed_test",

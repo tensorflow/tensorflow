@@ -77,10 +77,14 @@ class MklRequantizationRangePerChannelOp : public OpKernel {
     float out_min_max = std::numeric_limits<float>::min();
 
 #ifndef ENABLE_MKLDNN_THREADPOOL
+#ifdef _MSC_VER
+#pragma omp parallel for
+#else
 #pragma omp parallel for reduction(max : out_min_max)
+#endif
 #endif  // !ENABLE_MKLDNN_THREADPOOL
     // TODO: Add eigen parallel_for
-    for (size_t i = 0; i < depth; ++i) {
+    for (int64_t i = 0; i < depth; ++i) {
       Eigen::Tensor<qint32, 0, Eigen::RowMajor> min =
           transposed_input.chip<0>(i).minimum();
       Eigen::Tensor<qint32, 0, Eigen::RowMajor> max =

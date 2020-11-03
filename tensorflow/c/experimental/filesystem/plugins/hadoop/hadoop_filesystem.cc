@@ -182,9 +182,8 @@ hdfsFS Connect(tf_hadoop_filesystem::HadoopFile* hadoop_file,
   ParseHadoopPath(path, &scheme, &namenode, &hdfs_path);
 
   std::string cacheKey(scheme);
-  hdfsBuilder* builder = libhdfs->hdfsNewBuilder();
   if (scheme == "file") {
-    libhdfs->hdfsBuilderSetNameNode(builder, nullptr);
+    namenode = "";
   } else if (scheme == "viewfs") {
     char* defaultFS = nullptr;
     libhdfs->hdfsConfGetStr("fs.defaultFS", &defaultFS);
@@ -200,24 +199,27 @@ hdfsFS Connect(tf_hadoop_filesystem::HadoopFile* hadoop_file,
     // The default NameNode configuration will be used (from the XML
     // configuration files). See:
     // https://github.com/tensorflow/tensorflow/blob/v1.0.0/third_party/hadoop/hdfs.h#L259
-    libhdfs->hdfsBuilderSetNameNode(builder, "default");
+    namenode = "default";
   } else if (scheme == "har") {
     std::string path_har = path;
     SplitArchiveNameAndPath(&path_har, &namenode, status);
     if (TF_GetCode(status) != TF_OK) return nullptr;
-    libhdfs->hdfsBuilderSetNameNode(builder, namenode.c_str());
-    cacheKey += namenode;
   } else {
-    libhdfs->hdfsBuilderSetNameNode(
-        builder, namenode.empty() ? "default" : namenode.c_str());
-    cacheKey += namenode;
+    if (namenode.empty()) {
+      namenode = "default";
+    }
   }
+  cacheKey += namenode;
+
   absl::MutexLock l(&hadoop_file->connection_cache_lock);
   if (hadoop_file->connection_cache.find(cacheKey) ==
       hadoop_file->connection_cache.end()) {
+    hdfsBuilder* builder = libhdfs->hdfsNewBuilder();
+    libhdfs->hdfsBuilderSetNameNode(
+        builder, namenode.empty() ? nullptr : namenode.c_str());
     auto cacheFs = libhdfs->hdfsBuilderConnect(builder);
     if (cacheFs == nullptr) {
-      TF_SetStatusFromIOError(status, TF_NOT_FOUND, strerror(errno));
+      TF_SetStatusFromIOError(status, TF_ABORTED, strerror(errno));
       return cacheFs;
     }
     hadoop_file->connection_cache[cacheKey] = cacheFs;

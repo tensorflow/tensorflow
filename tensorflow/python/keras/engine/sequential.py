@@ -192,7 +192,8 @@ class Sequential(functional.Functional):
 
     self.built = False
     set_inputs = False
-    if not self._layers:
+    self._maybe_create_attribute('_self_tracked_trackables', [])
+    if not self._self_tracked_trackables:
       if isinstance(layer, input_layer.InputLayer):
         # Case where the user passes an Input or InputLayer layer via `add`.
         set_inputs = True
@@ -230,7 +231,7 @@ class Sequential(functional.Functional):
       self._init_graph_network(self.inputs, self.outputs)
       self._graph_initialized = True
     else:
-      self._layers.append(layer)
+      self._self_tracked_trackables.append(layer)
       self._handle_deferred_layer_dependencies([layer])
 
     self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
@@ -245,7 +246,7 @@ class Sequential(functional.Functional):
     if not self.layers:
       raise TypeError('There are no layers in the model.')
 
-    layer = self._layers.pop()
+    layer = self._self_tracked_trackables.pop()
     self._layer_call_argspecs.pop(layer)
     if not self.layers:
       self.outputs = None
@@ -466,8 +467,8 @@ class Sequential(functional.Functional):
     layer_configs = []
     for layer in super(Sequential, self).layers:
       # `super().layers` include the InputLayer if available (it is filtered out
-      # of `self.layers`). Note that `self._layers` is managed by the
-      # tracking infrastructure and should not be used.
+      # of `self.layers`). Note that `self._self_tracked_trackables` is managed
+      # by the tracking infrastructure and should not be used.
       layer_configs.append(generic_utils.serialize_keras_object(layer))
     config = {
         'name': self.name,

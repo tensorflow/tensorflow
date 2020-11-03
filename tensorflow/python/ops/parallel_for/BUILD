@@ -111,9 +111,9 @@ py_library(
 cuda_py_test(
     name = "control_flow_ops_test",
     srcs = ["control_flow_ops_test.py"],
+    shard_count = 16,
     tags = [
         "no_rocm",
-        "notsan",  # TODO(b/170901706): Flaky
     ],
     deps = [
         ":control_flow_ops",
@@ -157,6 +157,9 @@ cuda_py_test(
 cuda_py_test(
     name = "array_test",
     srcs = ["array_test.py"],
+    tags = [
+        "notsan",  # TODO(b/170999669): Data race
+    ],
     deps = [
         ":control_flow_ops",
         ":test_util",

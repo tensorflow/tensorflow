@@ -19,12 +19,10 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/map_lmhlo_to_scalar_op.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
-#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Location.h"
-#include "mlir/IR/MLIRContext.h"
-#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
 namespace lmhlo {
@@ -56,6 +54,20 @@ struct DotOpConverter : public OpRewritePattern<DotOp> {
     ArrayRef<int64_t> shape_rhs = rhs_type.getShape();
 
     if ((lhs_type.getRank() != 2) || (rhs_type.getRank() != 2)) {
+      return failure();
+    }
+
+    // We don't currently support batching dimensions, or multiple contraction
+    // dimensions.
+    mhlo::DotDimensionNumbers dot_dimension_numbers =
+        op.dot_dimension_numbers();
+    if (dot_dimension_numbers.lhs_batching_dimensions().size() > 0 ||
+        dot_dimension_numbers.rhs_batching_dimensions().size() > 0)
+      return failure();
+    if (dot_dimension_numbers.lhs_contracting_dimensions().size() != 1 ||
+        *dot_dimension_numbers.lhs_contracting_dimensions().begin() != 1 ||
+        dot_dimension_numbers.rhs_contracting_dimensions().size() != 1 ||
+        *dot_dimension_numbers.rhs_contracting_dimensions().begin() != 0) {
       return failure();
     }
 
@@ -146,7 +158,7 @@ struct LhloLegalizeToAffinePass
     OwningRewritePatternList patterns;
     auto func = getFunction();
     populateLHLOToAffineConversionPattern(func.getContext(), &patterns);
-    applyPatternsAndFoldGreedily(func, patterns);
+    applyPatternsAndFoldGreedily(func, std::move(patterns));
   }
 };
 

@@ -20,20 +20,25 @@ limitations under the License.
 
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_input_pipeline_analysis.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_overview_page.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_pod_viewer.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_tf_stats.h"
 #include "tensorflow/core/profiler/convert/xplane_to_memory_profile.h"
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
+#include "tensorflow/core/profiler/convert/xplane_to_tf_data_stats.h"
 #include "tensorflow/core/profiler/convert/xplane_to_trace_events.h"
 #include "tensorflow/core/profiler/protobuf/input_pipeline.pb.h"
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/overview_page.pb.h"
 #include "tensorflow/core/profiler/protobuf/pod_viewer.pb.h"
+#include "tensorflow/core/profiler/protobuf/tf_data_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/utils/xplane_schema.h"
+#include "tensorflow/core/profiler/utils/xplane_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -168,8 +173,45 @@ std::pair<std::string, bool> ConvertMultiXSpacesToPodViewer(
                  << status.error_message();
     return std::make_pair("", false);
   }
-  return std::make_pair(
-      ConvertOpStatsToPodViewer(combined_op_stats).SerializeAsString(), true);
+
+  std::string json_output;
+  protobuf::util::JsonPrintOptions opts;
+  opts.always_print_primitive_fields = true;
+  auto encode_status = protobuf::util::MessageToJsonString(
+      ConvertOpStatsToPodViewer(combined_op_stats), &json_output, opts);
+  if (!encode_status.ok()) {
+    LOG(WARNING) << "Could not convert pod viewer proto to json. Error: "
+                 << encode_status.message();
+    return std::make_pair("", false);
+  }
+  return std::make_pair(json_output, true);
+}
+
+std::pair<std::string, bool> ConvertMultiXSpacesToTfDataBottleneckAnalysis(
+    const std::vector<std::string>& xspace_paths) {
+  CombinedTfDataStats combined_tf_data_stats;
+  CombinedTfDataStatsBuilder builder(&combined_tf_data_stats);
+  for (const std::string& xspace_path : xspace_paths) {
+    XSpace xspace;
+    Status status = ReadBinaryProto(Env::Default(), xspace_path, &xspace);
+    if (!status.ok()) {
+      LOG(WARNING) << "Could not read XSpace for tf data stats: "
+                   << xspace_path;
+      return std::make_pair("", false);
+    }
+    XPlane* host_plane =
+        FindMutablePlaneWithName(&xspace, kHostThreadsPlaneName);
+    if (host_plane == nullptr) {
+      LOG(WARNING) << "Could not find host XPlane for tf data stats: "
+                   << xspace_path;
+      return std::make_pair("", false);
+    }
+    absl::string_view host_name =
+        xspace.hostnames_size() ? xspace.hostnames(0) : xspace_path;
+    builder.Add(host_name, host_plane);
+  }
+  builder.Finalize();
+  return std::make_pair(combined_tf_data_stats.SerializeAsString(), true);
 }
 
 }  // namespace
@@ -191,6 +233,8 @@ std::pair<std::string, bool> ConvertMultiXSpacesToToolData(
     return ConvertXSpaceToMemoryProfile(xspace_paths);
   } else if (tool_name == "pod_viewer") {
     return ConvertMultiXSpacesToPodViewer(xspace_paths);
+  } else if (tool_name == "tf_data_bottleneck_analysis") {
+    return ConvertMultiXSpacesToTfDataBottleneckAnalysis(xspace_paths);
   } else {
     LOG(WARNING) << "Can not find tool: " << tool_name << ". Please update to "
                  << "the latest version of Tensorflow.";

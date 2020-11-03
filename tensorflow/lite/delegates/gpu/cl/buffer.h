@@ -57,8 +57,6 @@ struct BufferDescriptor : public GPUObjectDescriptor {
       const std::vector<std::string>& args,
       const std::vector<std::string>& template_args, std::string* result) const;
 
-  absl::Status CreateGPUObject(CLContext* context,
-                               GPUObjectPtr* result) const override;
   void Release() override;
 };
 

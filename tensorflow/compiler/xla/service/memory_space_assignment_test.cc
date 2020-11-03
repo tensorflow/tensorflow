@@ -4136,10 +4136,12 @@ class FakeMemorySpaceAssignmentRepacker : public MemorySpaceAssignmentRepacker {
  public:
   explicit FakeMemorySpaceAssignmentRepacker(
       absl::flat_hash_map<std::pair<int64, int64>, int64>& repack_map,
-      std::function<void(absl::Span<AllocationBlock*>)> check_fun = nullptr)
+      std::function<void(absl::Span<AllocationBlock*>)> check_fun = nullptr,
+      bool always_return_modified = false)
       : MemorySpaceAssignmentRepacker(/*max_size=*/128, /*alignment=*/8),
         repack_map_(repack_map),
-        check_fun_(check_fun) {}
+        check_fun_(check_fun),
+        always_return_modified_(always_return_modified) {}
 
   StatusOr<bool> Repack(absl::Span<AllocationBlock*> allocations) override {
     bool modified = false;
@@ -4173,13 +4175,14 @@ class FakeMemorySpaceAssignmentRepacker : public MemorySpaceAssignmentRepacker {
       check_fun_(allocations);
     }
 
-    return modified;
+    return always_return_modified_ || modified;
   }
 
  private:
   // A map from (start_time, offset) to new_offset.
   absl::flat_hash_map<std::pair<int64, int64>, int64> repack_map_;
   std::function<void(absl::Span<AllocationBlock*>)> check_fun_;
+  bool always_return_modified_;
 };
 
 TEST_P(MemorySpaceAssignmentTest, Repack) {
@@ -4416,6 +4419,66 @@ TEST_P(MemorySpaceAssignmentTest, RepackExportsAliasedOffsets) {
   AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
                     buffer_interval_compare, &prefetch_interval_picker,
                     options);
+}
+
+TEST_P(MemorySpaceAssignmentTest,
+       RepackShouldntEraseRequiredAssignmentForConditionalOutput) {
+  // This is a test case for b/171040271. Repacks erase the required assignments
+  // (since some required assignments are inserted conditionally based on
+  // allocation decisions), including the fact that conditional outputs are
+  // always required to get assignments in the default memory. After repacking,
+  // this required assignment was never added back, causing conditionals to get
+  // alternate-memory allocations.
+  absl::string_view hlo_string = R"(
+  HloModule CondAllocation, is_scheduled=true
+
+  true_computation {
+    p0 = (f32[3]) parameter(0)
+    gte = f32[3] get-tuple-element(p0), index=0
+    neg1 = f32[3] negate(gte)
+    ROOT tuple1 = (f32[3]) tuple(neg1)
+  }
+
+  false_computation {
+    p0 = (f32[3]) parameter(0)
+    gte = f32[3] get-tuple-element(p0), index=0
+    neg2 = f32[3] negate(gte)
+    ROOT tuple2 = (f32[3]) tuple(neg2)
+  }
+
+  ENTRY entry {
+    p0 = f32[3] parameter(0)
+    p1 = pred[] parameter(1)
+    copy = f32[3] copy(p0)
+    tuple = (f32[3]) tuple(copy)
+    conditional = (f32[3]) conditional(p1, tuple, tuple), true_computation=true_computation, false_computation=false_computation
+    ROOT gte = f32[3] get-tuple-element(conditional), index=0
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  absl::flat_hash_map<std::pair<int64, int64>, int64> repack_map;
+  FakeMemorySpaceAssignmentRepacker repacker =
+      FakeMemorySpaceAssignmentRepacker(repack_map, nullptr,
+                                        /*always_return_modified=*/true);
+  MemorySpaceAssignment::Options options;
+  options.max_size_in_bytes = 128;
+  options.alignment_in_bytes = 8;
+  options.verify = true;
+  options.max_repacks = 10;
+  options.repacker = &repacker;
+  options.repack_after_every_allocation = true;
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 10);
+  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
+                    /*buffer_interval_compare=*/{}, &prefetch_interval_picker,
+                    options);
+  // Make sure the root of the entry computation is in the default memory space.
+  EXPECT_EQ(module->entry_computation()
+                ->root_instruction()
+                ->shape()
+                .layout()
+                .memory_space(),
+            kDefaultMemorySpace);
 }
 
 TEST_P(MemorySpaceAssignmentTest, Determinism) {

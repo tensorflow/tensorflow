@@ -70,3 +70,15 @@ func @transposeFusedBatchNormV3(
 
   return %y : tensor<1x64x28x28xf32>
 }
+
+// CHECK-LABEL: bias_add_nchw
+func @bias_add_nchw(%arg0: tensor<1x256x150x150xf32>, %arg1: tensor<256xf32>) -> tensor<1x256x150x150xf32> {
+  // CHECK: (%[[ARG0:.*]]: tensor<1x256x150x150xf32>, %[[ARG1:.*]]: tensor<256xf32>)
+  // CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<[0, 2, 3, 1]> : tensor<4xi64>}
+  // CHECK: %[[R0:.*]] = "tf.Transpose"(%[[ARG0]], %[[CST]])
+  // CHECK: %[[R1:.*]] = "tf.BiasAdd"(%[[R0]], %[[ARG1]]) {data_format = "NHWC", device = ""}
+  // CHECK: %[[CST_0:.*]] = "tf.Const"() {value = dense<[0, 3, 1, 2]> : tensor<4xi64>}
+  // CHECK: "tf.Transpose"(%[[R1]], %[[CST_0]])
+  %0 = "tf.BiasAdd"(%arg0, %arg1) {data_format = "NCHW", device = ""} : (tensor<1x256x150x150xf32>, tensor<256xf32>) -> tensor<1x256x150x150xf32>
+  return %0 : tensor<1x256x150x150xf32>
+}

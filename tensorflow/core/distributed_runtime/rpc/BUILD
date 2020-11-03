@@ -94,6 +94,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/distributed_runtime:call_options",
         "//tensorflow/core/distributed_runtime:tensor_coding",
         "//tensorflow/core/distributed_runtime:worker_cache_logger",
         "//tensorflow/core/distributed_runtime:worker_interface",
@@ -495,6 +496,7 @@ tf_cc_test(
     size = "small",
     srcs = ["grpc_tensor_coding_test.cc"],
     tags = [
+        "no_mac",
         "no_windows",
     ],
     deps = [
@@ -517,6 +519,9 @@ tf_cc_test(
     name = "grpc_util_test",
     size = "small",
     srcs = ["grpc_util_test.cc"],
+    tags = [
+        "no_mac",
+    ],
     deps = [
         ":grpc_util",
         "//tensorflow/core:test",

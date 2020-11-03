@@ -67,7 +67,7 @@ _NAME_KEY = "_tpu_embedding_layer"
 # sharded variables that can be used in the PSStrategy with optimizers.
 # We implement just enough of the of a tf.Variable so that this could be passed
 # to an optimizer.
-class TPUShardedVariable(sharded_variable.ShardedVariable):
+class TPUShardedVariable(sharded_variable.ShardedVariableMixin):
   """A ShardedVariable class for TPU."""
 
   @property
@@ -372,8 +372,9 @@ class TPUEmbedding(tracking.AutoTrackable):
 
       self._config_proto = self._create_config_proto()
 
-      logging.info("Initializing TPU Embedding engine with config: %s",
-                   self._config_proto)
+      logging.info("Initializing TPU Embedding engine.")
+      tpu_embedding_v2_utils.log_tpu_embedding_configuration(self._config_proto)
+
       @def_function.function
       def load_config():
         tpu.initialize_system_for_tpu_embedding(self._config_proto)
@@ -986,8 +987,8 @@ class TPUEmbedding(tracking.AutoTrackable):
 
     # In the following loop we insert casts so that everything is either int32
     # or float32. This is because op inputs which are lists of tensors must be
-    # of the same type within the list. Moreover the CPU implementions of these
-    # ops cast to these types anyway, so we don't lose any data by casting
+    # of the same type within the list. Moreover the CPU implementations of
+    # these ops cast to these types anyway, so we don't lose any data by casting
     # early.
     for inp, weight, (path, feature) in zip(
         flat_inputs, flat_weights, flat_features):
@@ -1466,8 +1467,8 @@ def cpu_embedding_lookup(inputs, weights, tables, feature_config):
   Note that TPU specific options (such as `max_sequence_length`) in the
   configuration objects will be ignored.
 
-  In the following example we take take a trained model (see the documentation
-  for `tf.tpu.experimental.embedding.TPUEmbedding` for the context) and create a
+  In the following example we take a trained model (see the documentation for
+  `tf.tpu.experimental.embedding.TPUEmbedding` for the context) and create a
   saved model with a serving function that will perform the embedding lookup and
   pass the results to your model:
 

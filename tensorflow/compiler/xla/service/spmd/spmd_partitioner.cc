@@ -1000,13 +1000,6 @@ PartitionedHlo::ReshardFromPartialReplicateWithDynamicSlice(
         target.tile_assignment().dimensions().back());
   }
 
-  // Get per_group partitioner state.
-  std::vector<int64> group_dims(sharding().tile_assignment().num_dimensions() -
-                                1);
-  std::iota(group_dims.begin(), group_dims.end(), 0);
-  auto sharding_grouped = GroupShardingOnDims(sharding(), group_dims);
-  auto per_group_partitioner_state = CreatePerGroupPartitioningState(
-      state_, sharding_grouped.device_groups, state_.b);
   // 2. Get the padded_hlo, do right halo exchange if needed.
   auto padded_hlo = PadFromPartialReplicateShape(
       hlo_, base_shape_, sharding(), temp_target_sharding, expand_tile_dims,
@@ -1017,20 +1010,24 @@ PartitionedHlo::ReshardFromPartialReplicateWithDynamicSlice(
   }
   // 3. Slice out the tile from replicate ones.
   auto shard_shape = MakePartitionedShape(base_shape_, temp_target_sharding);
-  // device assignment within each group is sorted in
-  // HloSharding::PartialTile, thus partiton_id within each group can be
-  // matched with the order in tile_assignment.
-  Array<int64> tiling_assignment(tiling_dim_factors);
-  tiling_assignment.FillIota(0);
+  // Since we are just slicing, we can just use the differences between the new
+  // and old offsets in the full shape as the dynamic-slice offsets.
+  auto padded_base_shape = shard_shape;
+  for (int64 i = 0; i < padded_base_shape.rank(); ++i) {
+    padded_base_shape.set_dimensions(
+        i, padded_base_shape.dimensions(i) *
+               temp_target_sharding.tile_assignment().dim(i));
+  }
+  auto offsets = MakePartitionOffsets(padded_base_shape, temp_target_sharding,
+                                      state_.partition_id, state_.b);
+  auto old_offsets = MakePartitionOffsets(padded_base_shape, sharding(),
+                                          state_.partition_id, state_.b);
+  for (int64 i = 0; i < offsets.size(); ++i) {
+    offsets[i] = state_.b->AddInstruction(HloInstruction::CreateBinary(
+        offsets[i]->shape(), HloOpcode::kSubtract, offsets[i], old_offsets[i]));
+  }
   auto slice = state_.b->AddInstruction(HloInstruction::CreateDynamicSlice(
-      shard_shape, padded_hlo.value(),
-      MakePartitionOffsets(padded_hlo.value()->shape(),
-                           target.ReplicateOnLastTileDim()
-                               ? HloSharding::PartialTile(tiling_assignment)
-                               : HloSharding::Tile(tiling_assignment),
-                           per_group_partitioner_state.partition_id,
-                           per_group_partitioner_state.b),
-      shard_shape.dimensions()));
+      shard_shape, padded_hlo.value(), offsets, shard_shape.dimensions()));
   slice->set_sharding(temp_target_sharding);
   auto result = PartitionedHlo(slice, base_shape_, state_);
   // If temp_target_sharding's device assignment is different from target,
@@ -2403,15 +2400,141 @@ Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(HloInstruction* hlo) {
   if (hlo->sharding().IsTileMaximal()) {
     return DefaultAction(hlo);
   }
+
+  std::vector<int64> partitioned_slice_dims;
+  std::vector<int64> slice_dims;
+  std::vector<int64> partitioned_non_slice_dims;
+  std::vector<int64> partitioned_slice_offsets;
   for (int64 i = 0; i < hlo->shape().rank(); ++i) {
-    if (hlo->sharding().tile_assignment().dim(i) != 1 &&
-        (hlo->operand(1)->shape().dimensions(i) != hlo->shape().dimensions(i) ||
-         !hlo->operand(i + 2)->IsConstant() ||
-         !hlo->operand(i + 2)->literal().IsZero({}))) {
-      // We currently do not partition the sliced dimensions.
-      return DefaultAction(hlo);
+    if (hlo->operand(1)->shape().dimensions(i) != hlo->shape().dimensions(i)) {
+      slice_dims.push_back(i);
+      if (hlo->sharding().tile_assignment().dim(i) != 1) {
+        if (!hlo->operand(i + 2)->IsConstant()) {
+          return DefaultAction(hlo);
+        }
+        partitioned_slice_dims.push_back(i);
+        partitioned_slice_offsets.push_back(
+            hlo->operand(i + 2)->literal().Get<int>({}));
+      }
+    } else if (hlo->sharding().tile_assignment().dim(i) != 1) {
+      if (!hlo->operand(i + 2)->IsConstant() ||
+          !hlo->operand(i + 2)->literal().IsZero({})) {
+        return DefaultAction(hlo);
+      }
+      partitioned_non_slice_dims.push_back(i);
     }
   }
+
+  // Handle when there is slice dim partitioned.
+  if (!partitioned_slice_dims.empty()) {
+    auto add_hlo = [&](std::unique_ptr<HloInstruction> to_add) {
+      return b_.AddInstruction(std::move(to_add));
+    };
+    std::vector<HloInstruction*> new_indices(hlo->shape().rank());
+    for (int64 i = 0; i < new_indices.size(); ++i) {
+      // Replicate the indices.
+      new_indices[i] = GetPartitionedHlo(hlo->operand(i + 2))
+                           .Reshard(HloSharding::Replicate())
+                           .hlo();
+    }
+
+    // Get partitioned input.
+    const auto& dus_sharding = hlo->sharding();
+    const auto& partitioned_input =
+        GetPartitionedHlo(hlo->operand(0)).Reshard(dus_sharding).hlo();
+
+    // Get replicate update.
+    auto update_sharding = HloSharding::Replicate();
+    if (!partitioned_non_slice_dims.empty()) {
+      // Do partial replicate for update if non slice dims are partitioned.
+      update_sharding =
+          hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(dus_sharding,
+                                                                   slice_dims);
+    }
+    HloInstruction* replicate_update =
+        GetPartitionedHlo(hlo->operand(1)).Reshard(update_sharding).hlo();
+
+    const auto& update_shape = replicate_update->shape();
+    const auto& partitioned_shape = partitioned_input->shape();
+    auto partition_ordinals =
+        MakeTiledPartitionOrdinals(hlo->sharding(), partition_id_, &b_);
+    HloInstruction* all_dims_within_partition = add_hlo(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
+
+    for (int i = 0; i < partitioned_slice_dims.size(); ++i) {
+      int dim = partitioned_slice_dims[i];
+      // Calculate per partition size.
+      const int64 per_partition_size = partitioned_shape.dimensions(dim);
+
+      // Only update within a single partition is supported.
+      if ((partitioned_slice_offsets[i] / per_partition_size) !=
+          ((partitioned_slice_offsets[i] + update_shape.dimensions(dim) - 1) /
+           per_partition_size)) {
+        return DefaultAction(hlo);
+      }
+
+      // within_partition = (offset >= partition_id * per_partition_size) &&
+      //                    (offset < (partition_id + 1) * per_partition_size)
+      const Shape& compare_shape =
+          ShapeUtil::ChangeElementType(partition_id_->shape(), PRED);
+      auto per_partition_size_hlo = add_hlo(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR0<int>(per_partition_size)));
+      const Shape& offset_shape = per_partition_size_hlo->shape();
+      auto partition_offset = add_hlo(HloInstruction::CreateBinary(
+          offset_shape, HloOpcode::kMultiply, partition_ordinals[dim],
+          per_partition_size_hlo));
+      // offset >= partition_id * per_partition_size
+      auto offset_ge = add_hlo(HloInstruction::CreateCompare(
+          compare_shape, new_indices[dim], partition_offset,
+          ComparisonDirection::kGe));
+      // offset < (partition_id + 1) * per_partition_size
+      auto offset_lt = add_hlo(HloInstruction::CreateCompare(
+          compare_shape, new_indices[dim],
+          add_hlo(HloInstruction::CreateBinary(
+              offset_shape, HloOpcode::kMultiply,
+              add_hlo(HloInstruction::CreateBinary(
+                  offset_shape, HloOpcode::kAdd, partition_ordinals[dim],
+                  add_hlo(HloInstruction::CreateConstant(
+                      LiteralUtil::CreateR0<int>(1))))),
+              per_partition_size_hlo)),
+          ComparisonDirection::kLt));
+      auto update_within_partition = add_hlo(HloInstruction::CreateBinary(
+          compare_shape, HloOpcode::kAnd, offset_ge, offset_lt));
+
+      all_dims_within_partition = add_hlo(HloInstruction::CreateBinary(
+          compare_shape, HloOpcode::kAnd, all_dims_within_partition,
+          update_within_partition));
+
+      // Calculate offset.
+      // slice dim offset =
+      //  within_partition ?
+      //  offset - partition_id * per_partition_size : 0
+      new_indices[dim] = add_hlo(HloInstruction::CreateTernary(
+          new_indices[dim]->shape(), HloOpcode::kSelect,
+          update_within_partition,
+          add_hlo(HloInstruction::CreateBinary(
+              new_indices[dim]->shape(), HloOpcode::kSubtract, new_indices[dim],
+              partition_offset)),
+          add_hlo(
+              HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(0)))));
+    }
+
+    // Create dynamic update slice.
+    auto dus = add_hlo(HloInstruction::CreateDynamicUpdateSlice(
+        partitioned_shape, partitioned_input, replicate_update, new_indices));
+    SetPartitionedHlo(hlo, [&]() {
+      // Select if update is needed.
+      return add_hlo(HloInstruction::CreateTernary(
+          dus->shape(), HloOpcode::kSelect,
+          add_hlo(HloInstruction::CreateBroadcast(
+              ShapeUtil::ChangeElementType(dus->shape(), PRED),
+              all_dims_within_partition, {})),
+          dus, partitioned_input));
+    });
+    return Status::OK();
+  }
+
+  // Partition non slice dims only.
   std::vector<HloInstruction*> new_indices(hlo->shape().rank());
   auto new_input =
       GetPartitionedHlo(hlo->operand(0)).Reshard(hlo->sharding()).hlo();

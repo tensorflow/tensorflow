@@ -2102,10 +2102,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
               forget_layer_norm_coefficients, cell_layer_norm_coefficients,
               output_layer_norm_coefficients, input_gate_bias, forget_gate_bias,
               cell_gate_bias, output_gate_bias, projection_weights,
-              projection_bias, params, &op_data->integer_lstm_param,
-              output_state, cell_state, output, scratch0, scratch1, scratch2,
-              scratch3, scratch4, scratch5,
-              CpuBackendContext::GetFromContext(context));
+              projection_bias, params, /*forward_sequence=*/true,
+              /*time_major=*/true, &op_data->integer_lstm_param, output_state,
+              cell_state, output, scratch0, scratch1, scratch2, scratch3,
+              scratch4, scratch5, CpuBackendContext::GetFromContext(context));
         } else {
           TfLiteTensor* scratch0;
           TF_LITE_ENSURE_OK(context,

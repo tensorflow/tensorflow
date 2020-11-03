@@ -250,6 +250,7 @@ enum ProfileType {
   INVALID = 0;
   WINDOW = 1;
   FLAG = 2;
+  INTEGER = 3;
 }
 
 // Symbolization metadata for HLO Instructions.
@@ -533,6 +534,12 @@ message ConvolutionDimensionNumbers {
   repeated int64 output_spatial_dimensions = 12;
 
   // Next = 13
+}
+
+enum PaddingType {
+  PADDING_INVALID = 0;
+  PADDING_VALID = 1;  // Only valid portion of the base are covered.
+  PADDING_SAME = 2;  // Extra is added to produce same output size as the input.
 }
 
 enum FftType {

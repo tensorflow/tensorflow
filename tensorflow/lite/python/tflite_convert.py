@@ -31,10 +31,10 @@ from tensorflow.lite.python import lite
 from tensorflow.lite.python.convert import register_custom_opdefs
 from tensorflow.lite.toco import toco_flags_pb2 as _toco_flags_pb2
 from tensorflow.lite.toco.logging import gen_html
-from tensorflow.python import keras
 from tensorflow.python import tf2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.platform import app
+from tensorflow.python.util import keras_deps
 
 
 def _parse_array(values, type_fn=str):
@@ -234,7 +234,7 @@ def _convert_tf2_model(flags):
   if flags.saved_model_dir:
     converter = lite.TFLiteConverterV2.from_saved_model(flags.saved_model_dir)
   elif flags.keras_model_file:
-    model = keras.models.load_model(flags.keras_model_file)
+    model = keras_deps.get_load_model_function()(flags.keras_model_file)
     converter = lite.TFLiteConverterV2.from_keras_model(model)
 
   if flags.experimental_new_converter is not None:

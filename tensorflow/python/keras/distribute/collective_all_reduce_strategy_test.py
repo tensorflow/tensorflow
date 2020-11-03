@@ -28,7 +28,6 @@ from tensorflow.python.distribute import collective_all_reduce_strategy as mwms_
 from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
-from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
@@ -42,8 +41,8 @@ from tensorflow.python.keras import layers
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training
-from tensorflow.python.keras.mixed_precision.experimental import policy
-from tensorflow.python.keras.mixed_precision.experimental import test_util as mp_test_util
+from tensorflow.python.keras.mixed_precision import policy
+from tensorflow.python.keras.mixed_precision import test_util as mp_test_util
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn
@@ -69,7 +68,7 @@ def create_test_objects(cluster_spec=None,
 
   if cluster_spec and task_type and task_id is not None:
     cluster_resolver = SimpleClusterResolver(
-        cluster_spec=multi_worker_util.normalize_cluster_spec(cluster_spec),
+        cluster_spec=ClusterSpec(cluster_spec),
         task_type=task_type,
         task_id=task_id,
         num_accelerators={'GPU': num_gpus})
@@ -329,13 +328,15 @@ class DistributedCollectiveAllReduceStrategyEagerTest(test.TestCase,
       return model
 
     def _get_dataset():
-      inputs = array_ops.expand_dims_v2(constant_op.constant(range(10)), axis=1)
+      inputs = array_ops.expand_dims_v2(
+          constant_op.constant(range(10)), axis=1)
       targets = array_ops.expand_dims_v2(
           constant_op.constant(range(10)), axis=1)
-      # Make global batch size 12 for 2 replicas and a non-repeated dataset with
-      # 10 elements so that we have partial batch
+      # Make global batch size 12 for 2 replicas and a non-repeated dataset
+      # with 10 elements so that we have partial batch
       dataset = dataset_ops.Dataset.from_tensor_slices(
-          (inputs, targets)).batch(12, drop_remainder=False)
+          (inputs, targets)).batch(
+              12, drop_remainder=False)
       return dataset
 
     with strategy.scope():
@@ -344,16 +345,14 @@ class DistributedCollectiveAllReduceStrategyEagerTest(test.TestCase,
       model = _model_fn()
       loss = 'mse'
       metrics = ['mae']
-      model.compile(
-          optimizer,
-          loss,
-          metrics=metrics)
+      model.compile(optimizer, loss, metrics=metrics)
     dataset = _get_dataset()
     kernel_before = model.get_weights()[0][0]
     model.fit(dataset, epochs=10)
     kernel_after = model.get_weights()[0][0]
     self.assertNotEqual(kernel_before, kernel_after)
-    self.assertGreater(abs(kernel_before-1), abs(kernel_after-1))
+    self.assertGreater(abs(kernel_before - 1), abs(kernel_after - 1))
+
 
 if __name__ == '__main__':
   v2_compat.enable_v2_behavior()

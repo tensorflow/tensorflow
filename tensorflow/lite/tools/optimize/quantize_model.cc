@@ -825,16 +825,20 @@ TfLiteStatus QuantizeIntemediateTensors(ModelT* model,
           if (input.second.number_of_bits == 8 &&
               input.second.symmetric == false) {
             TensorT* tensor = subgraph->tensors[index_global].get();
+            if (tensor->quantization == nullptr) {
+              continue;
+            }
             if (utils::HasMinMax(tensor)) {
               utils::QuantizeActivation(tensor, activations_type,
                                         error_reporter);
             } else {
-              TF_LITE_REPORT_ERROR(
-                  error_reporter,
-                  "Unable to find min/max value for output %d in %s in "
-                  "subgraph %d, node: %d",
-                  tensor, EnumNameBuiltinOperator(op_code), subgraph_idx,
-                  op_idx);
+              TF_LITE_REPORT_ERROR(error_reporter,
+                                   "Unable to find min/max value for "
+                                   "intermediate tensor %d in %s in "
+                                   "subgraph %d, node: %d",
+                                   index_local,
+                                   EnumNameBuiltinOperator(op_code),
+                                   subgraph_idx, op_idx);
               return kTfLiteError;
             }
           } else if (input.second.number_of_bits == 16 &&

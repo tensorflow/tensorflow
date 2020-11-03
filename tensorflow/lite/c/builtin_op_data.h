@@ -465,6 +465,15 @@ typedef struct {
   int body_subgraph_index;
 } TfLiteWhileParams;
 
+typedef struct {
+  bool exclusive;
+  bool reverse;
+} TfLiteCumsumParams;
+
+typedef struct {
+  int init_subgraph_index;
+} TfLiteCallOnceParams;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

@@ -40,10 +40,9 @@ namespace transforms {
 namespace {
 
 class TensorFromElementsOpConverter
-    : public BufferizeOpConversionPattern<TensorFromElementsOp> {
+    : public OpConversionPattern<TensorFromElementsOp> {
  public:
-  using BufferizeOpConversionPattern<
-      TensorFromElementsOp>::BufferizeOpConversionPattern;
+  using OpConversionPattern<TensorFromElementsOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
       TensorFromElementsOp op, ArrayRef<Value> operands,
@@ -64,10 +63,9 @@ class TensorFromElementsOpConverter
 };
 
 class DynamicTensorFromElementsOpConverter
-    : public BufferizeOpConversionPattern<DynamicTensorFromElementsOp> {
+    : public OpConversionPattern<DynamicTensorFromElementsOp> {
  public:
-  using BufferizeOpConversionPattern<
-      DynamicTensorFromElementsOp>::BufferizeOpConversionPattern;
+  using OpConversionPattern<DynamicTensorFromElementsOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
       DynamicTensorFromElementsOp op, ArrayRef<Value> operands,
@@ -115,11 +113,9 @@ class DynamicTensorFromElementsOpConverter
   }
 };
 
-class TensorLoadOpConversion
-    : public BufferizeOpConversionPattern<TensorLoadOp> {
+class TensorLoadOpConversion : public OpConversionPattern<TensorLoadOp> {
  public:
-  using BufferizeOpConversionPattern<
-      TensorLoadOp>::BufferizeOpConversionPattern;
+  using OpConversionPattern<TensorLoadOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
       TensorLoadOp op, ArrayRef<Value> operands,
@@ -131,10 +127,9 @@ class TensorLoadOpConversion
 };
 
 class ExtractElementOpConversion
-    : public BufferizeOpConversionPattern<ExtractElementOp> {
+    : public OpConversionPattern<ExtractElementOp> {
  public:
-  using BufferizeOpConversionPattern<
-      ExtractElementOp>::BufferizeOpConversionPattern;
+  using OpConversionPattern<ExtractElementOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
       ExtractElementOp op, ArrayRef<Value> operands,
@@ -152,25 +147,22 @@ class ExtractElementOpConversion
 };
 
 template <typename OpTy>
-class SimpleOpResultConversion : public BufferizeOpConversionPattern<OpTy> {
+class SimpleOpResultConversion : public OpConversionPattern<OpTy> {
  public:
-  using BufferizeOpConversionPattern<OpTy>::BufferizeOpConversionPattern;
-  using BufferizeOpConversionPattern<OpTy>::converter;
+  using OpConversionPattern<OpTy>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
       OpTy op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const final {
-    rewriter.replaceOpWithNewOp<OpTy>(op, converter.convertType(op.getType()),
-                                      operands);
+    rewriter.replaceOpWithNewOp<OpTy>(
+        op, this->getTypeConverter()->convertType(op.getType()), operands);
     return success();
   }
 };
 
-class TensorCastOpConverter
-    : public BufferizeOpConversionPattern<TensorCastOp> {
+class TensorCastOpConverter : public OpConversionPattern<TensorCastOp> {
  public:
-  using BufferizeOpConversionPattern<
-      TensorCastOp>::BufferizeOpConversionPattern;
+  using OpConversionPattern<TensorCastOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
       TensorCastOp op, ArrayRef<Value> operands,
@@ -178,7 +170,7 @@ class TensorCastOpConverter
     Value arg = operands.front();
     if (!arg.getType().isa<BaseMemRefType>()) return failure();
 
-    auto result_ty = converter.convertType(op.getType());
+    auto result_ty = getTypeConverter()->convertType(op.getType());
     rewriter.replaceOpWithNewOp<MemRefCastOp>(op, arg, result_ty);
 
     return success();
@@ -193,7 +185,7 @@ void populateStandardBufferizePattern(MLIRContext *context,
   patterns->insert<ExtractElementOpConversion, TensorFromElementsOpConverter,
                    DynamicTensorFromElementsOpConverter,
                    SimpleOpResultConversion<SelectOp>, TensorLoadOpConversion,
-                   TensorCastOpConverter>(context, *converter);
+                   TensorCastOpConverter>(*converter, context);
 }
 
 }  // namespace transforms

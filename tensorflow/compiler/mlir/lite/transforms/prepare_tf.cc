@@ -46,12 +46,12 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
@@ -328,7 +328,9 @@ struct ConvertTFConvOp : public RewritePattern {
     // tensor, for setting depth_multiplier attribute, etc.).
     auto filter = tf_op.filter();
     auto filter_type = filter.getType().template dyn_cast<RankedTensorType>();
-    if (!filter_type || filter_type.getRank() != 4) return failure();
+    if (!filter_type || filter_type.getRank() != 4 ||
+        !filter_type.hasStaticShape())
+      return failure();
 
     // TensorFlow convolution op only has two inputs, while the TFLite one has
     // three, with the bias vector marked as optional. However, TOCO has a
@@ -740,31 +742,6 @@ struct ConvertTFBroadcastTo : public RewritePattern {
   }
 };
 
-struct ConvertFusedBatchNorm : public OpRewritePattern<TF::FusedBatchNormOp> {
-  explicit ConvertFusedBatchNorm(MLIRContext *context)
-      : OpRewritePattern<TF::FusedBatchNormOp>(context) {}
-
-  LogicalResult matchAndRewrite(TF::FusedBatchNormOp tf_fused_batch_norm_op,
-                                PatternRewriter &rewriter) const override {
-    auto new_result_types =
-        llvm::to_vector<6>(tf_fused_batch_norm_op.getResultTypes());
-    // reserve_space_3
-    new_result_types.push_back(
-        UnrankedTensorType::get(FloatType::getF32(rewriter.getContext())));
-
-    OperationState new_state(tf_fused_batch_norm_op.getLoc(),
-                             TF::FusedBatchNormV3Op::getOperationName(),
-                             tf_fused_batch_norm_op.getOperands(),
-                             new_result_types,
-                             tf_fused_batch_norm_op.getAttrs());
-    Operation *tf_fused_batch_norm_op_v3 = rewriter.createOperation(new_state);
-
-    rewriter.replaceOp(tf_fused_batch_norm_op,
-                       tf_fused_batch_norm_op_v3->getResults().drop_back());
-    return success();
-  }
-};
-
 // The below pattern is equivalent to the DRR rule below
 // The checks are dependent on generated values, so we can't add
 // the checks on intermediate values, ideally we should find equivalent
@@ -1070,7 +1047,7 @@ LogicalResult ConvertTf2XlaOps(FuncOp func, MLIRContext *context) {
   TF::PopulateLegalizeHloToTfPatterns(&patterns, context);
   mhlo::GatherOp::getCanonicalizationPatterns(patterns, context);
 
-  return applyPartialConversion(func, target, patterns);
+  return applyPartialConversion(func, target, std::move(patterns));
 }
 
 // Convert rfft to rfft2d.
@@ -1170,7 +1147,7 @@ struct ConvertRfftToRfft2d : public RewritePattern {
 };
 
 void PrepareTFPass::runOnFunction() {
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns, phase_2_patterns;
   auto func = getFunction();
   MLIRContext *ctx = &getContext();
 
@@ -1202,27 +1179,26 @@ void PrepareTFPass::runOnFunction() {
   patterns.insert<ConvertTFDilatedConvOp<TF::Conv2DOp>, FusedBatchNormV3Pat,
                   ConvertTFDilatedConvOp<TF::DepthwiseConv2dNativeOp>>(ctx);
 
-  patterns.insert<ConvertFusedBatchNorm>(ctx);
   TFL::populateWithGenerated(ctx, patterns);
   // TODO(karimnosseir): Split to separate pass probably after
   // deciding on long term plan for this optimization.
   // This will allow optimizing any TF_Mul->TF_Conv in the graph
   // and any expanded from FusedBatchNorm. We need to do this
   // before converting TF_Conv to TFL_Conv
-  applyPatternsAndFoldGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   // Load the generated pattern again, so new quantization pass-through
   // will be applied.
-  patterns.clear();
-  TFL::populateWithGenerated(ctx, patterns);
+  TFL::populateWithGenerated(ctx, phase_2_patterns);
   if (unfold_batch_matmul_) {
-    patterns.insert<TF::ConvertTFBatchMatMulOp<TF::BatchMatMulOp>,
-                    TF::ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>>(ctx);
+    phase_2_patterns.insert<TF::ConvertTFBatchMatMulOp<TF::BatchMatMulOp>,
+                            TF::ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>>(
+        ctx);
   }
-  patterns.insert<TF::ConvertTFEinsumOp, ConvertTFBroadcastTo, ConvertTFConv2D,
-                  ConvertTFDepthwiseConv2dNative, ConvertTFStridedSlice,
-                  ConvertRfftToRfft2d>(ctx);
-  applyPatternsAndFoldGreedily(func, patterns);
+  phase_2_patterns.insert<TF::ConvertTFEinsumOp, ConvertTFBroadcastTo,
+                          ConvertTFConv2D, ConvertTFDepthwiseConv2dNative,
+                          ConvertTFStridedSlice, ConvertRfftToRfft2d>(ctx);
+  applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
 }
 
 }  // namespace

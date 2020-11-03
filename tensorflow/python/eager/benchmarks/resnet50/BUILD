@@ -46,7 +46,6 @@ cuda_py_test(
         "oss_serial",
         "v1only",
     ],
-    tfrt_enabled = True,
     deps = [
         ":resnet50",
         ":resnet50_test_util",

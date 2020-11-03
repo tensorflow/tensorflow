@@ -241,9 +241,9 @@ TF_CAPI_EXPORT extern void TFE_AbortCollectiveOps(TFE_Context* ctx,
 // Checks the health of collective ops peers. Explicit health check is needed in
 // multi worker collective ops to detect failures in the cluster.  If a peer is
 // down, collective ops may hang.
-TF_CAPI_EXPORT extern void TFE_CollectiveOpsCheckPeerHealth(TFE_Context* ctx,
-                                                            const char* task,
-                                                            TF_Status* status);
+TF_CAPI_EXPORT extern void TFE_CollectiveOpsCheckPeerHealth(
+    TFE_Context* ctx, const char* task, int64_t timeout_in_ms,
+    TF_Status* status);
 
 // Information about the shape of a Tensor and its type.
 struct TF_ShapeAndType {

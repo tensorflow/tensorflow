@@ -284,7 +284,8 @@ def LHLO_CompareOp: LHLO_Op<"compare", []>, BASE_HLO_CompareOp {
     Arg<LHLO_Buffer, "", [MemRead]>:$rhs,
     Arg<LHLO_PredBuffer, "", [MemWrite]>:$out,
     OptionalAttr<BroadcastDimAttr>:$broadcast_dimensions,
-    HLO_ComparisonDirectionAttr:$comparison_direction
+    HLO_ComparisonDirectionAttr:$comparison_direction,
+    OptionalAttr<HLO_ComparisonTypeAttr>:$compare_type
   );
 }
 
@@ -340,7 +341,8 @@ def HLO_StaticMemRefCastOp: Op<LHLO_Dialect, "static_memref_cast",
   let arguments = (ins Arg<LHLO_Buffer, "", []>:$operand);
   let results = (outs Res<LHLO_Buffer, "", []>:$result);
 
-  let builders = [OpBuilder<"MemRefType resultType, Value operand",
+  let builders = [
+    OpBuilderDAG<(ins "MemRefType":$resultType, "Value":$operand),
     [{
       $_state.addOperands(operand);
       $_state.types.push_back(resultType);
@@ -386,8 +388,9 @@ def HLO_DynamicMemRefCastOp: Op<LHLO_Dialect, "dynamic_memref_cast",
   let results = (outs Res<LHLO_Buffer, "", []>:$result);
 
   let builders = [
-    OpBuilder<"MemRefType resultType, Value operand, ValueRange sizes, "
-              "ValueRange strides", [{
+    OpBuilderDAG<(ins "MemRefType":$resultType, "Value":$operand,
+      "ValueRange":$sizes, "ValueRange":$strides),
+    [{
       $_state.addOperands(operand);
       $_state.addOperands(sizes);
       $_state.addOperands(strides);
@@ -592,6 +595,7 @@ def LHLO_DotOp: LHLO_Op<"dot", []>, BASE_HLO_DotOp {
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$lhs,
     Arg<LHLO_Buffer, "", [MemRead]>:$rhs,
+    DotDimensionNumbers:$dot_dimension_numbers,
     HLO_PrecisionConfigAttr:$precision_config,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output
   );
@@ -601,11 +605,8 @@ def LHLO_GatherOp: LHLO_Op<"gather", []>, BASE_HLO_GatherOp {
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$operand,
     Arg<LHLO_IntBuffer, "", [MemRead]>:$start_indices,
-    I64Attr:$index_vector_dim,
-    I64ElementsAttr:$offset_dims,
+    GatherDimensionNumbers:$dimension_numbers,
     I64ElementsAttr:$slice_sizes,
-    I64ElementsAttr:$collapsed_slice_dims,
-    I64ElementsAttr:$start_index_map,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output
   );
 }
@@ -623,7 +624,7 @@ def LHLO_ScatterOp: LHLO_Op<"scatter", []>, BASE_HLO_ScatterOp {
     Arg<LHLO_Buffer, "", [MemRead]>:$scatter_indices,
     Arg<LHLO_Buffer, "", [MemRead]>:$updates,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output,
-    ScatterDimensionNumbers<LHLO_Dialect>:$scatter_dimension_numbers,
+    ScatterDimensionNumbers:$scatter_dimension_numbers,
     DefaultValuedAttr<BoolAttr, "false">:$indices_are_sorted,
     DefaultValuedAttr<BoolAttr, "false">:$unique_indices
   );
@@ -699,7 +700,7 @@ def LHLO_AllReduceOp : LHLO_Op<"all_reduce", [SameTypeOperands]>,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output,
     I64ElementsAttr:$replica_groups,
     DefaultValuedAttr<BoolAttr, "false">:$constrain_layout,
-    OptionalAttr<ChannelHandle<LHLO_Dialect>>:$channel_id,
+    OptionalAttr<ChannelHandle>:$channel_id,
     DefaultValuedAttr<BoolAttr, "false">:$use_global_device_ids
   );
   let regions = (region SizedRegion<1>:$computation);
@@ -712,7 +713,7 @@ def LHLO_CollectivePermuteOp: LHLO_Op<"collective_permute", [SameTypeOperands]>,
     Arg<LHLO_Buffer, "", [MemRead]>:$operand,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output,
     I64ElementsAttr:$source_target_pairs,
-    OptionalAttr<ChannelHandle<LHLO_Dialect>>:$channel_id
+    OptionalAttr<ChannelHandle>:$channel_id
   );
 }
 
@@ -814,7 +815,7 @@ def FusionOp : LHLO_Op<"fusion", [SingleBlockImplicitTerminator<"TerminatorOp">]
 
   let skipDefaultBuilders = 1;
   let builders = [
-     OpBuilder<"ArrayRef<NamedAttribute> attributes">
+     OpBuilderDAG<(ins "ArrayRef<NamedAttribute>":$attributes)>
   ];
 }
 
@@ -824,9 +825,9 @@ def TerminatorOp :
   let description = [{
     Terminator operation for the LHLO dialect.
   }];
-  let builders = [OpBuilder<"ValueRange operands",
-    [{ build($_builder, $_state, llvm::None, operands, llvm::None); }]
-  >];
+  let builders = [
+    OpBuilderDAG<(ins "ValueRange":$operands),
+    [{ build($_builder, $_state, llvm::None, operands, llvm::None); }]>];
 }
 
 #endif // LHLO_OPS

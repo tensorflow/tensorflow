@@ -1,7 +1,7 @@
 # Tensorflow default + linux implementations of tensorflow/core/platform libraries.
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//tensorflow:tensorflow.bzl", "filegroup")
-load("//tensorflow:tensorflow.bzl", "if_not_windows", "tf_copts")
+load("//tensorflow:tensorflow.bzl", "if_not_windows", "tf_cc_test", "tf_copts")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -41,6 +41,7 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
+    deps = ["@com_google_absl//absl/strings:cord"],
 )
 
 cc_library(
@@ -429,9 +430,25 @@ cc_library(
     deps = [
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/util:reporter",
+    ],
+)
+
+tf_cc_test(
+    name = "test_benchmark_test",
+    srcs = ["test_benchmark_test.cc"],
+    tags = [
+        "nobuilder",
+        "notap",
+    ],
+    deps = [
+        ":test_benchmark",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
     ],
 )
 
@@ -564,6 +581,7 @@ package_group(
     name = "core_and_platform_packages",
     packages = [
         "//tensorflow/core",
+        "//tensorflow/core/lib/jpeg",
         "//tensorflow/core/platform",
     ],
 )

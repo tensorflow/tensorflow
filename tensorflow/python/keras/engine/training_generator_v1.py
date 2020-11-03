@@ -412,7 +412,7 @@ def _validate_arguments(is_sequence, is_dataset, use_multiprocessing, workers,
 
   val_gen = (
       data_utils.is_generator_or_sequence(validation_data) or
-      isinstance(validation_data, iterator_ops.OwnedIterator))
+      isinstance(validation_data, iterator_ops.IteratorBase))
   if (val_gen and not isinstance(validation_data, data_utils.Sequence) and
       not validation_steps):
     raise ValueError('Please specify the `validation_steps` argument.')
@@ -455,7 +455,7 @@ def convert_to_generator_like(data,
         ele for ele in data if not all(e is None for e in nest.flatten(ele)))
 
   if data_utils.is_generator_or_sequence(data) or isinstance(
-      data, iterator_ops.OwnedIterator):
+      data, iterator_ops.IteratorBase):
     if isinstance(data, data_utils.Sequence):
       if steps_per_epoch is None:
         steps_per_epoch = len(data)

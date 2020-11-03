@@ -14,3 +14,10 @@ tf_proto_library(
     srcs = ["projector_config.proto"],
     cc_api_version = 2,
 )
+
+tf_proto_library(
+    name = "saved_metadata_proto",
+    srcs = ["saved_metadata.proto"],
+    cc_api_version = 2,
+    protodeps = ["//tensorflow/core:protos_all"],
+)

@@ -1,10 +1,17 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_py_test")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
+load("//tensorflow/compiler/mlir/tfr:build_defs.bzl", "gen_op_libraries")
 load(
     "//third_party/mlir:tblgen.bzl",
     "gentbl",
 )
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = [
@@ -37,10 +44,12 @@ filegroup(
         "@llvm-project//mlir:include/mlir/Interfaces/ControlFlowInterfaces.td",
         "@llvm-project//mlir:include/mlir/Interfaces/SideEffectInterfaces.td",
     ],
+    compatible_with = get_compatible_with_cloud(),
 )
 
 gentbl(
     name = "tfr_ops_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             "-gen-op-decls",
@@ -114,7 +123,9 @@ cc_library(
         ":tfr",
         ":utils",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -219,6 +230,7 @@ cc_library(
     deps = [
         ":tfr_decompose_ctx",
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
+        "//tensorflow/core:lib",
         "//tensorflow/stream_executor/lib",
         "@llvm-project//mlir:IR",
     ],
@@ -248,6 +260,7 @@ cc_library(
     hdrs = ["integration/node_expansion_pass.h"],
     deps = [
         ":tfr_decompose_ctx",
+        "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime/eager:core",
         "//tensorflow/core/common_runtime/eager:eager_op_rewrite_registry",
         "//tensorflow/stream_executor/lib",
@@ -305,10 +318,6 @@ py_library(
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/compiler/mlir/tfr:tfr_wrapper",
-        "//tensorflow/python:op_def_registry",
-        "//tensorflow/python/autograph/pyct",
-        "//tensorflow/python/autograph/pyct/static_analysis",
-        "@gast_archive//:gast",
     ],
 )
 
@@ -324,7 +333,6 @@ tf_py_test(
         "//tensorflow/compiler/mlir/python/mlir_wrapper:filecheck_wrapper",
         "//tensorflow/compiler/mlir/tfr/resources:test_ops",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python:math_ops",
     ],
 )
@@ -335,9 +343,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:op_def_registry",
-        "//tensorflow/python/autograph/pyct",
-        "@gast_archive//:gast",
     ],
 )
 
@@ -346,11 +351,24 @@ py_test(
     size = "small",
     srcs = ["python/op_reg_gen_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
     deps = [
         ":composite",
         ":op_reg_gen",
         "//tensorflow/compiler/mlir/python/mlir_wrapper:filecheck_wrapper",
-        "//tensorflow/python:client_testlib",
     ],
+)
+
+py_library(
+    name = "test_utils",
+    srcs = ["python/test_utils.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+gen_op_libraries(
+    name = "one_op",
+    src = "define_op_template.py",
 )

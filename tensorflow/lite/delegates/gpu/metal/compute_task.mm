@@ -218,8 +218,36 @@ struct UniformBuffer {
   return absl::OkStatus();
 }
 
-- (void)encodeWithEncoder:(id<MTLComputeCommandEncoder>)encoder
-       inputOutputBuffers:(const std::map<ValueId, id<MTLBuffer>>&)inputOutputBuffers {
+- (bool)hasInOutIds:(const std::set<::tflite::gpu::ValueId>&)ids {
+  for (auto& buffer : _inputBuffers) {
+    if (ids.count(buffer.uid)) {
+      return true;
+    }
+  }
+  for (auto& buffer : _outputBuffers) {
+    if (ids.count(buffer.uid)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+- (void)updateBuffers:(const std::map<::tflite::gpu::ValueId, id<MTLBuffer>>&)inputOutputBuffers {
+  for (auto& buffer : _inputBuffers) {
+    const auto externalBuffer = inputOutputBuffers.find(buffer.uid);
+    if (externalBuffer != inputOutputBuffers.end()) {
+      buffer.metalHandle = externalBuffer->second;
+    }
+  }
+  for (auto& buffer : _outputBuffers) {
+    const auto externalBuffer = inputOutputBuffers.find(buffer.uid);
+    if (externalBuffer != inputOutputBuffers.end()) {
+      buffer.metalHandle = externalBuffer->second;
+    }
+  }
+}
+
+- (void)encodeWithEncoder:(id<MTLComputeCommandEncoder>)encoder {
   // The dispatch call is intended to be skipped.
   if (_groupsCount.x * _groupsCount.y * _groupsCount.z == 0) {
     return;
@@ -228,24 +256,12 @@ struct UniformBuffer {
   [encoder setComputePipelineState:_program];
 
   int bindIndex = 0;
-  for (auto& buffer : _outputBuffers) {
-    const auto externalBuffer = inputOutputBuffers.find(buffer.uid);
-    if (externalBuffer == inputOutputBuffers.end()) {
-      [encoder setBuffer:buffer.metalHandle offset:0 atIndex:bindIndex];
-    } else {
-      // the buffer is input or output
-      [encoder setBuffer:externalBuffer->second offset:0 atIndex:bindIndex];
-    }
+  for (const auto& buffer : _outputBuffers) {
+    [encoder setBuffer:buffer.metalHandle offset:0 atIndex:bindIndex];
     bindIndex++;
   }
-  for (auto& buffer : _inputBuffers) {
-    const auto externalBuffer = inputOutputBuffers.find(buffer.uid);
-    if (externalBuffer == inputOutputBuffers.end()) {
-      [encoder setBuffer:buffer.metalHandle offset:0 atIndex:bindIndex];
-    } else {
-      // the buffer is input or output
-      [encoder setBuffer:externalBuffer->second offset:0 atIndex:bindIndex];
-    }
+  for (const auto& buffer : _inputBuffers) {
+    [encoder setBuffer:buffer.metalHandle offset:0 atIndex:bindIndex];
     bindIndex++;
   }
   for (auto& immutable : _immutableBuffers) {

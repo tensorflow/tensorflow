@@ -35,6 +35,10 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 
+#include "tensorflow/core/framework/registration_options.h"
+
+#if !TF_OPTION_REGISTRATION_V2()
+
 #ifdef SELECTIVE_REGISTRATION
 
 // Experimental selective registration support to reduce binary size.
@@ -66,11 +70,19 @@ limitations under the License.
      !defined(SHOULD_REGISTER_OP_KERNEL))
 static_assert(false, "ops_to_register.h must define SHOULD_REGISTER macros");
 #endif
-#else
+#else  // SELECTIVE_REGISTRATION
 #define SHOULD_REGISTER_OP(op) true
 #define SHOULD_REGISTER_OP_GRADIENT true
 #define SHOULD_REGISTER_OP_KERNEL(clz) true
+#endif  // SELECTIVE_REGISTRATION
+
+#else  // ! TF_OPTION_REGISTRATION_V2()
+
+#ifdef SELECTIVE_REGISTRATION
+#error TF_OPTION_REGISTRATION_V2(): Compile-time selective registration is not supported
 #endif
+
+#endif  // ! TF_OPTION_REGISTRATION_V2()
 
 namespace tensorflow {
 

@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
-#include "tensorflow/compiler/tf2tensorrt/segment/union_find.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
@@ -239,12 +238,6 @@ SimpleGraph::~SimpleGraph() {
 struct SimpleEdgePtrCompare {
   bool operator()(const SimpleEdge* lhs, const SimpleEdge* rhs) const {
     return lhs->id() < rhs->id();
-  }
-};
-
-struct NodePtrCompare {
-  bool operator()(const Node* lhs, const Node* rhs) const {
-    return lhs->name() < rhs->name();
   }
 };
 
@@ -646,10 +639,18 @@ ClusterBatchSize GetClusterBatchSizeForNode(
     return cluster_batch_size;
   }
 
+  const NodeDef& node_def = node->def();
+  if (node_def.attr().count(kTftrtOpMaxBatchSizeAttr)) {
+    cluster_batch_size.SetMaxBatchSize(
+        node_def.attr().at(kTftrtOpMaxBatchSizeAttr).i());
+  }
+
+  // As shape inference cannot provide any useful information about the batch
+  // size, we keep it as missing.
   if (!graph_properties ||
       !graph_properties->HasInputProperties(node->name())) {
     VLOG(3) << "doesn't have input property";
-    return cluster_batch_size.SetBatchSize(-1);
+    return cluster_batch_size;
   }
 
   const std::vector<OpInfo::TensorProperties>& input_properties =
@@ -658,8 +659,8 @@ ClusterBatchSize GetClusterBatchSizeForNode(
       FindLeadingShape(GetInputsToDeterminateBatchSize(node, input_properties));
   DCHECK(optional_leading_shape.has_value());
   const TensorShapeProto* leading_shape = optional_leading_shape.value();
-
   DCHECK(!leading_shape->unknown_rank() && leading_shape->dim_size() >= 2);
+  VLOG(3) << "set batch size as " << leading_shape->dim(0).size();
   return cluster_batch_size.SetBatchSize(leading_shape->dim(0).size());
 }
 
@@ -676,21 +677,6 @@ void AddSegmentForNode(const grappler::GraphProperties* graph_properties,
   segments->emplace_back(node, std::move(property));
 }
 
-bool OpBatchSizeExceedMaximumBatchSize(
-    const grappler::GraphProperties* graph_properties, const Node* node,
-    bool use_implicit_batch, absl::optional<int> maximum_batch_size) {
-  ClusterBatchSize cluster_batch_size =
-      GetClusterBatchSizeForNode(graph_properties, node, use_implicit_batch);
-  if (cluster_batch_size.HasStaticBatchSize() &&
-      maximum_batch_size.has_value() &&
-      cluster_batch_size.GetStaticBatchSize() > maximum_batch_size.value()) {
-    VLOG(2) << "OP batch size " << cluster_batch_size.GetStaticBatchSize()
-            << "  max_batch_size " << maximum_batch_size.value();
-    return true;
-  }
-  return false;
-}
-
 }  // namespace
 
 Status SegmentGraph(const Graph* tf_graph,
@@ -698,8 +684,7 @@ Status SegmentGraph(const Graph* tf_graph,
                     const std::function<Status(const Node*)>& candidate_fn,
                     const std::function<bool(const Edge*)>& input_candidate_fn,
                     const std::function<bool(const Edge*)>& output_candidate_fn,
-                    const SegmentOptions& options,
-                    SegmentNodesVector* segments) {
+                    const SegmentOptions& options, SegmentVector* segments) {
   if (!options.use_implicit_batch && !options.allow_dynamic_non_batch_dim) {
     return errors::Internal(
         "Explicit batch mode should allow dynamic non-batch dimensions");
@@ -787,14 +772,6 @@ Status SegmentGraph(const Graph* tf_graph,
             << "(Op type: " << node->tf_node()->type_string() << "), "
             << "(Op name: " << node->name() << ")";
         exclude_node("Denylisted with the env var TF_TRT_OP_DENYLIST");
-      } else if (OpBatchSizeExceedMaximumBatchSize(
-                     graph_properties, node->tf_node(),
-                     options.use_implicit_batch, options.maximum_batch_size)) {
-        LOG_WARNING_WITH_PREFIX
-            << "Implicit batch mode requires OP batch size not larger than "
-            << "the converter maximum batch size: "
-            << "(Op name: " << node->name() << ")";
-        exclude_node("OP batch size too large");
       } else {
         VLOG(2) << "Accepted as a TF-TRT candidate, "
                 << "(Op type: " << node->tf_node()->type_string() << "), "
@@ -943,18 +920,21 @@ Status SegmentGraph(const Graph* tf_graph,
 
   // A map from the segment identifier (currently the name of the root node of
   // the segment tree) to the segment nodes set.
-  std::map<string, std::set<const Node*, NodePtrCompare>> sg_map;
+  std::map<string, Segment> sg_map;
 
   for (auto& u : node_segments) {
     if ((u.Value() != nullptr) && (u.ParentValue() != nullptr)) {
-      sg_map[u.ParentValue()->name()].insert(u.Value()->tf_node());
+      sg_map[u.ParentValue()->name()].nodes.insert(u.Value()->tf_node());
+    }
+    if ((u.Value() != nullptr) && (u.ParentValue() == u.Value())) {
+      sg_map[u.Value()->name()].property = u.Property();
     }
   }
 
   // --------------------------------- Step 2 ---------------------------------
   // Remove ineligible input/output nodes.
   for (auto& itr : sg_map) {
-    std::set<const Node*, NodePtrCompare>& segment_nodes = itr.second;
+    std::set<const Node*, NodePtrCompare>& segment_nodes = itr.second.nodes;
     VLOG(1) << "Segment original size: " << segment_nodes.size();
     while (true) {
       std::deque<const Node*> in_nodes_que, out_nodes_que;
@@ -1042,7 +1022,8 @@ Status SegmentGraph(const Graph* tf_graph,
   for (const auto& itr : sg_map) {
     const string& segment_root = itr.first;
     // Return format does not require set comparator.
-    std::set<const Node*> segment_nodes(itr.second.begin(), itr.second.end());
+    std::set<const Node*, NodePtrCompare> segment_nodes(
+        itr.second.nodes.begin(), itr.second.nodes.end());
     if (VLOG_IS_ON(1) && !segment_nodes.empty()) {
       string s;
       for (auto node : segment_nodes) {
@@ -1066,8 +1047,7 @@ Status SegmentGraph(const Graph* tf_graph,
               << num_effective_nodes << " effective nodes, dropping";
       continue;
     }
-
-    segments->emplace_back(segment_nodes);
+    segments->emplace_back(itr.second.property, segment_nodes);
   }
 
   return Status::OK();

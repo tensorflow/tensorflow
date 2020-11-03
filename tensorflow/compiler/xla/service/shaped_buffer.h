@@ -43,12 +43,10 @@ class ShapedBuffer {
   // both the on-host and on-device shape are required. The on-device shape
   // determines the number of device allocations (DeviceMemoryBase) held by the
   // ShapedBuffer.
-  ShapedBuffer(Shape on_device_shape, const se::Platform* platform,
-               int device_ordinal);
+  ShapedBuffer(Shape on_device_shape, int device_ordinal);
 
   // TODO(b/170310047): remove this overload.
-  ShapedBuffer(Shape on_host_shape, Shape on_device_shape,
-               const se::Platform* platform, int device_ordinal);
+  ShapedBuffer(Shape on_host_shape, Shape on_device_shape, int device_ordinal);
 
   // Movable, but not copyable.
   ShapedBuffer(ShapedBuffer&& s);
@@ -70,7 +68,6 @@ class ShapedBuffer {
   // ShapedBuffer.
   const Shape& on_device_shape() const { return on_device_shape_; }
 
-  const se::Platform* platform() const { return platform_; }
   int device_ordinal() const { return device_ordinal_; }
 
   // Return the root buffer of the shape (shape index {}).
@@ -131,9 +128,6 @@ class ShapedBuffer {
 
   // The shape of the data on the device.
   Shape on_device_shape_;
-
-  // The platform the memory is allocated on.
-  const se::Platform* platform_;
 
   // The device the memory is allocated on.
   int device_ordinal_;

@@ -44,7 +44,8 @@ const OpVariant GetOperatorVariant(const ModelT* model, int subgraph_index,
       model->subgraphs.at(subgraph_index)->operators[op_index].get();
   op_variant.op_code =
       GetBuiltinCode(model->operator_codes[op->opcode_index].get());
-  if (op_variant.op_code == BuiltinOperator_LSTM) {
+  if (op_variant.op_code == BuiltinOperator_LSTM ||
+      op_variant.op_code == BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM) {
     if (op->inputs.size() == 5) {
       // The 5 input ("basic") LSTM is not supported in this tooling (yet).
       op_variant.is_quantizable = false;
@@ -230,7 +231,8 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.version = 2;
       break;
     }
-    case BuiltinOperator_LSTM: {
+    case BuiltinOperator_LSTM:
+    case BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM: {
       if (!op_variant.is_quantizable) {
         // Early exist for 5 input LSTM.
         // It is not supported in this tooling yet.

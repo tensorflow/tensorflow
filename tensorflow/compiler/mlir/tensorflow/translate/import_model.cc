@@ -104,6 +104,7 @@ limitations under the License.
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/grappler/utils/transitive_fanin.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/path.h"
@@ -129,6 +130,10 @@ using mlir::tf_saved_model::SessionInitializerOp;
 using stream_executor::port::StatusOr;
 
 namespace {
+
+auto* reference_variable_gauge = tensorflow::monitoring::Gauge<bool, 0>::New(
+    "/tensorflow/core/uses_reference_variables",
+    "Tracks if reference variables are used anywhere in the graph");
 
 constexpr char kTpuReplicateAttr[] = "_tpu_replicate";
 
@@ -2057,6 +2062,11 @@ class GraphDefImporter : public ImporterBase {
       llvm::StringRef func_name);
 
  private:
+  // Checks if a Module contains any ref variables in any operation operands
+  // or results, including checking Block arguments and operations within
+  // regions.
+  static bool ModuleContainsRefType(mlir::ModuleOp module);
+
   explicit GraphDefImporter(
       const FunctionLibraryDefinition& flib, const GraphDebugInfo& debug_info,
       const GraphImportConfig& specs, mlir::ModuleOp module,
@@ -2092,6 +2102,38 @@ class GraphDefImporter : public ImporterBase {
       absl::InlinedVector<Node*, 4>* control_ret_nodes);
 };
 
+bool IsTensorFlowRefType(mlir::Type ty) {
+  return mlir::getElementTypeOrSelf(ty).isa<mlir::TF::TensorFlowRefType>();
+}
+
+bool OpHasRefTypeOperandOrResult(mlir::Operation* op) {
+  // Check op operands.
+  for (mlir::Type ty : op->getOperandTypes())
+    if (IsTensorFlowRefType(ty)) return true;
+  // Check op results.
+  for (mlir::Type ty : op->getResultTypes())
+    if (IsTensorFlowRefType(ty)) return true;
+  // Check all block arguments within any regions the op has.
+  for (mlir::Region& region : op->getRegions())
+    for (mlir::Block& block : region)
+      for (auto& arg : block.getArguments())
+        if (IsTensorFlowRefType(arg.getType())) return true;
+  return false;
+}
+
+bool GraphDefImporter::ModuleContainsRefType(mlir::ModuleOp module) {
+  // If walk is interrupted at any point, that means a ref variable was found.
+  // At this point, we've confirmed existence of a ref variable and don't need
+  // to continue looking.
+  return module
+      .walk([&](mlir::Operation* op) {
+        if (OpHasRefTypeOperandOrResult(op))
+          return mlir::WalkResult::interrupt();
+        return mlir::WalkResult::advance();
+      })
+      .wasInterrupted();
+}
+
 StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
     mlir::MLIRContext* context, const Graph& graph,
     const GraphDebugInfo& debug_info, const FunctionLibraryDefinition& flib_def,
@@ -2126,28 +2168,27 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
     TF_RETURN_IF_ERROR(importer.GetControlRetsFromGraph(specs.control_outputs,
                                                         &control_ret_nodes));
 
-    if (!arg_nodes.empty() || !ret_nodes.empty() ||
-        !control_ret_nodes.empty()) {
-      mlir::Builder b(context);
-      std::string s;
-      llvm::raw_string_ostream ss(s);
-      auto node_name = [&](const OutputTensor& tensor) {
-        ss << tensor.node->name();
-      };
-      llvm::interleave(arg_nodes, ss, node_name, ",");
-      auto inputs = b.getNamedAttr("inputs", b.getStringAttr(ss.str()));
-      s.clear();
-      llvm::interleave(ret_nodes, ss, node_name, ",");
-      auto outputs = b.getNamedAttr("outputs", b.getStringAttr(ss.str()));
-      s.clear();
-      llvm::interleave(specs.control_outputs, ss, ",");
-      auto control_outputs =
-          b.getNamedAttr("control_outputs", b.getStringAttr(ss.str()));
+    mlir::Builder b(context);
+    std::string s;
+    llvm::raw_string_ostream ss(s);
+    auto node_name = [&](const OutputTensor& tensor) {
+      ss << tensor.node->name();
+    };
+    llvm::interleave(arg_nodes, ss, node_name, ",");
+    auto inputs = b.getNamedAttr("inputs", b.getStringAttr(ss.str()));
+    s.clear();
+    llvm::interleave(ret_nodes, ss, node_name, ",");
+    auto outputs = b.getNamedAttr("outputs", b.getStringAttr(ss.str()));
+    s.clear();
+    llvm::interleave(specs.control_outputs, ss, ",");
+    auto control_outputs =
+        b.getNamedAttr("control_outputs", b.getStringAttr(ss.str()));
 
-      attrs.push_back(b.getNamedAttr(
-          "tf.entry_function",
-          b.getDictionaryAttr({inputs, outputs, control_outputs})));
-    }
+    // Under `graph_as_function` mode, `tf.entry_function` is always set as it
+    // is assumed feed, fetch, and target nodes are set correctly.
+    attrs.push_back(b.getNamedAttr(
+        "tf.entry_function",
+        b.getDictionaryAttr({inputs, outputs, control_outputs})));
   } else {
     // Collects the argument and return nodes by looking up the node names
     // specified by the user.
@@ -2189,6 +2230,13 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
 
   TF_RETURN_IF_ERROR(importer.ImporterBase::Convert(
       func_name, func_type, arg_nodes, ret_nodes, control_ret_nodes, attrs));
+
+  // Check if there are any reference variables in the module.
+  bool contains_ref_var = ModuleContainsRefType(*module);
+  reference_variable_gauge->GetCell()->Set(contains_ref_var);
+  if (contains_ref_var) {
+    VLOG(1) << "Graph contains one or more reference variables";
+  }
 
   // Mark main function public, others private.
   for (auto function : module.get().getOps<mlir::FuncOp>()) {

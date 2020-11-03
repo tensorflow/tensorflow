@@ -181,7 +181,7 @@ Status CompileImpl(
   }
   xla::Literal alg_literal;
   TF_RETURN_IF_ERROR(ctx->ConstantInput(alg_input_idx, &alg_literal));
-  Algorithm alg = Algorithm(alg_literal.Get<int>({}));
+  Algorithm alg = Algorithm(alg_literal.Get<int64>({}));
   if (!(alg == RNG_ALG_THREEFRY || alg == RNG_ALG_PHILOX)) {
     return errors::InvalidArgument("Unsupported algorithm id: ", alg);
   }

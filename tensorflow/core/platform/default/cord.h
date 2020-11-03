@@ -16,6 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_DEFAULT_CORD_H_
 #define TENSORFLOW_CORE_PLATFORM_DEFAULT_CORD_H_
 
-// TODO(ebrevdo): Fill this in.
+#include "absl/strings/cord.h"
 
 #endif  // TENSORFLOW_CORE_PLATFORM_DEFAULT_CORD_H_

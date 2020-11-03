@@ -27,7 +27,7 @@ using uint8_t = std::uint8_t;
 using int32_t = std::int32_t;
 
 TfLiteTensor TestCreateTensor(const float* data, TfLiteIntArray* dims) {
-  return CreateFloatTensor(data, dims);
+  return CreateTensor(data, dims);
 }
 
 TfLiteTensor TestCreateTensor(const uint8_t* data, TfLiteIntArray* dims) {
@@ -59,7 +59,7 @@ void TestResizeNearestNeighbor(const int* input_dims_data, const T* input_data,
   constexpr int tensors_size = 3;
   TfLiteTensor tensors[tensors_size] = {
       TestCreateTensor(input_data, input_dims),
-      CreateInt32Tensor(expected_size_data, expected_size_dims),
+      CreateTensor(expected_size_data, expected_size_dims),
       TestCreateTensor(output_data, output_dims),
   };
 

@@ -27,7 +27,6 @@ namespace mlir {
 class LLVMTypeConverter;
 class LowerToLLVMOptions;
 class OwningRewritePatternList;
-class BufferAssignmentPlacer;
 
 // Populates a collection of rewrite patterns to realize element-wise operations
 // on ranked tensors where possible.

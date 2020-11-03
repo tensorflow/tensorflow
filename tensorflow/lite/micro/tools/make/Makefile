@@ -37,6 +37,7 @@ TARGET := $(HOST_OS)
 TARGET_ARCH := $(HOST_ARCH)
 
 # Default compiler and tool names:
+TOOLCHAIN:=gcc
 CXX_TOOL := g++
 CC_TOOL := gcc
 AR_TOOL := ar
@@ -50,7 +51,6 @@ ALL_TAGS := $(TAGS) $(TARGET)
 # include directories from one source.
 INCLUDES := \
 -I. \
--I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(MAKEFILE_DIR)/downloads/flatbuffers/include \
 -I$(MAKEFILE_DIR)/downloads/ruy
@@ -123,15 +123,21 @@ CXXFLAGS := \
   -fno-threadsafe-statics \
   $(COMMON_FLAGS)
 
-CCFLAGS  := \
-	-std=c11 \
-	$(COMMON_FLAGS)
+CCFLAGS := \
+  -std=c11 \
+  $(COMMON_FLAGS)
 
 ARFLAGS := -r
 
-LDFLAGS += \
-  -Wl,--fatal-warnings \
-  -Wl,--gc-sections
+ifeq ($(TOOLCHAIN), gcc)
+  ifneq ($(TARGET), osx)
+    # GCC on MacOS uses an LLVM backend so we avoid the additional linker flags
+    # that are unsupported with LLVM.
+    LDFLAGS += \
+      -Wl,--fatal-warnings \
+      -Wl,--gc-sections
+  endif
+endif
 
 # override these in the makefile.inc for specific compiler targets
 TARGET_TOOLCHAIN_PREFIX :=

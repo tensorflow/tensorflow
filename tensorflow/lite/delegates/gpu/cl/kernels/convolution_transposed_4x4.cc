@@ -80,10 +80,6 @@ std::string ConvolutionTransposed4x4::GenerateConvolutionTransposedCode(
 
   args_.AddInt("filter_offset");
 
-  const auto src_tensor_type = op_def.src_tensors[0].storage_type;
-  const bool manual_clamp = src_tensor_type == TensorStorageType::BUFFER ||
-                            src_tensor_type == TensorStorageType::IMAGE_BUFFER;
-
   const bool need_local_mem =
       weights_upload_type ==
           ConvolutionTransposed4x4::WeightsUploadType::LOCAL_MEM_BY_THREADS ||
@@ -150,24 +146,42 @@ std::string ConvolutionTransposed4x4::GenerateConvolutionTransposedCode(
       ConvolutionTransposed4x4::WeightsUploadType::LOCAL_MEM_BY_THREADS) {
     c += "  int local_id = (int)(get_local_id(1) * 8 + get_local_id(0));\n";
   }
-  if (manual_clamp) {
-    const std::string prev_x = "X - " + pixel_stride;
+  const std::string prev_x = "X - " + pixel_stride;
+  if (!src_desc.SupportsZeroClamp(Axis::WIDTH)) {
     c += "  bool in_x0 = " + prev_x + " >= 0 && " + prev_x +
          " < args.src_tensor.Width();\n";
     c += "  bool in_x1 = X >= 0 && X < args.src_tensor.Width();\n";
+  }
+  if (!src_desc.SupportsZeroClamp(Axis::HEIGHT)) {
     c += "  bool in_y0 = Y - 1 >= 0 && Y - 1 < args.src_tensor.Height();\n";
     c += "  bool in_y1 = Y >= 0 && Y < args.src_tensor.Height();\n";
-    if (src_tensor_type == TensorStorageType::IMAGE_BUFFER) {
-      c += "  int addr_0 = select(-1, (Y - 1) * args.src_tensor.Width() + " +
-           prev_x + ", (in_x0 && in_y0));\n";
-      c += "  int addr_1 = select(-1, (Y - 1) * args.src_tensor.Width() + X, "
-           "(in_x1 && "
-           "in_y0));\n";
-      c += "  int addr_2 = select(-1, Y * args.src_tensor.Width() + " + prev_x +
-           ", (in_x0 && in_y1));\n";
-      c += "  int addr_3 = select(-1, Y * args.src_tensor.Width() + X, (in_x1 "
-           "&& "
-           "in_y1));\n";
+  }
+  auto generate_check = [&](int x, int y) {
+    std::string check;
+    const std::vector<Axis> axes{Axis::WIDTH, Axis::HEIGHT};
+    const std::vector<std::string> names{"in_x" + std::to_string(x),
+                                         "in_y" + std::to_string(y)};
+    for (int i = 0; i < axes.size(); ++i) {
+      const auto& axis = axes[i];
+      if (src_desc.HasAxis(axis) && !src_desc.SupportsZeroClamp(axis)) {
+        if (!check.empty()) {
+          check += " && ";
+        }
+        check += names[i];
+      }
+    }
+    return check;
+  };
+  if (src_desc.IsLinear()) {
+    if (src_desc.ReturnsZeroForNegOneRead()) {
+      c += "  args.src_tensor.GetAddress(addr_0, " + prev_x + ", Y - 1, 0);\n";
+      c += "  args.src_tensor.GetAddress(addr_1, X, Y - 1, 0);\n";
+      c += "  args.src_tensor.GetAddress(addr_2, " + prev_x + ", Y, 0);\n";
+      c += "  args.src_tensor.GetAddress(addr_3, X, Y, 0);\n";
+      c += "  addr_0 = select(-1, addr_0, (in_x0 && in_y0));\n";
+      c += "  addr_1 = select(-1, addr_1, (in_x1 && in_y0));\n";
+      c += "  addr_2 = select(-1, addr_2, (in_x0 && in_y1));\n";
+      c += "  addr_3 = select(-1, addr_3, (in_x1 && in_y1));\n";
       c += "  int dz_0 = select(0, args.src_tensor.SliceStride(), (in_x0 && "
            "in_y0));\n";
       c += "  int dz_1 = select(0, args.src_tensor.SliceStride(), (in_x1 && "
@@ -176,25 +190,24 @@ std::string ConvolutionTransposed4x4::GenerateConvolutionTransposedCode(
            "in_y1));\n";
       c += "  int dz_3 = select(0, args.src_tensor.SliceStride(), (in_x1 && "
            "in_y1));\n";
-    }
-    if (src_tensor_type == TensorStorageType::BUFFER) {
+    } else {
       c += "  int xc0 = clamp(" + prev_x +
            ", 0, args.src_tensor.Width() - 1);\n";
       c += "  int xc1 = clamp(X, 0, args.src_tensor.Width() - 1);\n";
       c += "  int yc0 = clamp(Y - 1, 0, args.src_tensor.Height() - 1);\n";
       c += "  int yc1 = clamp(Y, 0, args.src_tensor.Height() - 1);\n";
-      c += "  int addr_0 = yc0 * args.src_tensor.Width() + xc0;\n";
-      c += "  int addr_1 = yc0 * args.src_tensor.Width() + xc1;\n";
-      c += "  int addr_2 = yc1 * args.src_tensor.Width() + xc0;\n";
-      c += "  int addr_3 = yc1 * args.src_tensor.Width() + xc1;\n";
+      c += "  args.src_tensor.GetAddress(addr_0, xc0, yc0, 0);\n";
+      c += "  args.src_tensor.GetAddress(addr_1, xc1, yc0, 0);\n";
+      c += "  args.src_tensor.GetAddress(addr_2, xc0, yc1, 0);\n";
+      c += "  args.src_tensor.GetAddress(addr_3, xc1, yc1, 0);\n";
       c += "  int dz = args.src_tensor.SliceStride();\n";
     }
   }
   auto read_src = [&](int x, int y) {
-    if (manual_clamp) {
+    if (src_desc.IsLinear()) {
       const std::string id = std::to_string(y * 2 + x);
       const std::string addr = "addr_" + std::to_string(y * 2 + x);
-      if (src_tensor_type == TensorStorageType::IMAGE_BUFFER) {
+      if (src_desc.ReturnsZeroForNegOneRead()) {
         return "args.src_tensor.Read(" + addr + "); " + addr + " += dz_" + id +
                ";";
       } else {
@@ -203,8 +216,13 @@ std::string ConvolutionTransposed4x4::GenerateConvolutionTransposedCode(
                addr + " += dz;";
       }
     } else {
+      std::string check = generate_check(x, y);
+      if (!check.empty()) {
+        check = " * (FLT)(" + check + ")";
+      }
       return "args.src_tensor.Read(X + " + std::to_string(x - 1) + " * " +
-             pixel_stride + ", Y + " + std::to_string(y - 1) + ", s);";
+             pixel_stride + ", Y + " + std::to_string(y - 1) + ", s)" + check +
+             ";";
     }
   };
   c += "  for (int s = 0; s < args.src_tensor.Slices(); ++s) {\n";

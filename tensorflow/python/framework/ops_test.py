@@ -326,7 +326,6 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
 
     self.assertAllEqual(z, [False, False, False, True])
 
-  @test_util.disable_tfrt("b/169375363: error code support")
   @test_util.run_in_graph_and_eager_modes
   def testBitwiseAndErrors(self):
     x_int = constant_op.constant(0)
@@ -368,7 +367,6 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
 
     self.assertAllEqual(z, [False, True, True, True])
 
-  @test_util.disable_tfrt("b/169375363: error code support")
   @test_util.run_in_graph_and_eager_modes
   def testBitwiseOrErrors(self):
     x_int = constant_op.constant(0)
@@ -410,7 +408,6 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
 
     self.assertAllEqual(z, [False, True, True, False])
 
-  @test_util.disable_tfrt("b/169375363: error code support")
   @test_util.run_in_graph_and_eager_modes
   def testBitwiseXorErrors(self):
     x_int = constant_op.constant(0)
@@ -450,7 +447,6 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
 
     self.assertAllEqual(y, [True, False])
 
-  @test_util.disable_tfrt("b/169375363: error code support")
   @test_util.run_in_graph_and_eager_modes
   def testBitwiseNotErrors(self):
     if context.executing_eagerly():  # :(

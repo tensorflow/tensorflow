@@ -33,7 +33,7 @@ class PjRtTpuDevice : public PjRtDevice {
                 int host_id, const std::array<int, 3>& coords,
                 std::string device_kind)
       : PjRtDevice(core.Id(), std::move(local_device_state),
-                   /*platform_name=*/"tpu", std::move(device_kind), host_id),
+                   std::move(device_kind), host_id),
         core_(core),
         coords_(coords) {}
 

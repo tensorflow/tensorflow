@@ -1,7 +1,5 @@
 # Object detection
 
-<img src="../images/detection.png" class="attempt-right">
-
 Given an image or a video stream, an object detection model can identify which
 of a known set of objects might be present and provide information about their
 positions within the image.
@@ -14,18 +12,13 @@ annotated:
 
 ## Get started
 
-If you are new to TensorFlow Lite and are working with Android or iOS, download
-the following example applications to get started.
-
-<a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/object_detection/android">Android
-example</a>
-<a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/object_detection/ios">iOS
-example</a>
+To learn how to use object detection in a mobile app, explore the
+<a href="#example_applications_and_guides">Example applications and guides</a>.
 
 If you are using a platform other than Android or iOS, or if you are already
 familiar with the
 <a href="https://www.tensorflow.org/api_docs/python/tf/lite">TensorFlow Lite
-APIs</a>, you can download the starter object detection model and the
+APIs</a>, you can download our starter object detection model and the
 accompanying labels.
 
 <a class="button button-primary" href="https://tfhub.dev/tensorflow/lite-model/ssd_mobilenet_v1/1/metadata/1?lite-format=tflite">Download
@@ -44,6 +37,38 @@ For the following use cases, you should use a different type of model:
   <li>Predicting which single label the image most likely represents (see <a href="../image_classification/overview.md">image classification</a>)</li>
   <li>Predicting the composition of an image, for example subject versus background (see <a href="../segmentation/overview.md">segmentation</a>)</li>
 </ul>
+
+### Example applications and guides
+
+If you are new to TensorFlow Lite and are working with Android or iOS, we
+recommend exploring the following example applications that can help you get
+started.
+
+#### Android
+
+You can leverage the out-of-box API from
+[TensorFlow Lite Task Library](../../inference_with_metadata/task_library/object_detector)
+to integrate object detection models in just a few lines of code. You can also
+build your own custom inference pipeline using the
+[TensorFlow Lite Interpreter Java API](../../guide/inference#load_and_run_a_model_in_java).
+
+The Android example below demonstrates the implementation for both methods as
+[lib_task_api](https://github.com/tensorflow/examples/tree/master/lite/examples/object_detection/android/lib_task_api)
+and
+[lib_interpreter](https://github.com/tensorflow/examples/tree/master/lite/examples/object_detection/android/lib_interpreter),
+respectively.
+
+<a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/object_detection/android">View
+Android example</a>
+
+#### iOS
+
+You can integrate the model using the
+[TensorFlow Lite Interpreter Swift API](../../guide/inference#load_and_run_a_model_in_swift).
+See the iOS example below.
+
+<a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/object_detection/ios">View
+iOS example</a>
 
 ## Model description
 

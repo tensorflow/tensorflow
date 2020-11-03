@@ -19,7 +19,6 @@ cuda_py_test(
     srcs = ["profiler_api_test.py"],
     python_version = "PY3",
     tags = [
-        "external",  # So that test suite reruns unconditionally.
         "no_pip",
         "no_rocm",
     ],

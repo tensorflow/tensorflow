@@ -114,6 +114,7 @@ def toco_convert(options, graph_def, input_tensors, output_tensors, **kwargs):
       converter = tf.compat.v1.lite.TFLiteConverter.from_frozen_graph(
           graphdef_file.name, input_arrays, output_tensors, input_shapes)
 
+      converter.experimental_new_converter = options.use_experimental_converter
       converter.optimizations = [tf.lite.Optimize.DEFAULT]
 
       if fully_quantize:

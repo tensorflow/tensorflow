@@ -3375,6 +3375,71 @@ class MutableHashTableOpTest(test.TestCase):
     result = self.evaluate(output)
     self.assertAllEqual([[0, 1], [-1, -1]], result)
 
+  def testMutableHashTableFindWithInvalidShapeDefaultValue(self):
+    default_val = [-1, -1]
+    table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
+                                        default_val)
+
+    input_string = constant_op.constant([["brain", "salad"], ["tank",
+                                                              "tarkus"]])
+
+    invalid_default_val = constant_op.constant(
+        [[-2, -3], [-4, -5], [-6, -7], [-8, -9]], dtypes.int64)
+
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError),
+        "Expected shape \[2\] or \[2,2,2\] for default value, got \[4,2]"):
+      self.evaluate(table.lookup(input_string, invalid_default_val))
+
+    invalid_default_val = constant_op.constant([[[-2, -3], [-4, -5]]],
+                                               dtypes.int64)
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError),
+        "Expected shape \[2\] or \[2,2,2\] for default value, got \[1,2,2\]"):
+      self.evaluate(table.lookup(input_string, invalid_default_val))
+
+  def testMutableHashTableFindHighRankScalarWithDynamicDefaultValue(self):
+    default_val = -1
+    keys = constant_op.constant(["brain", "salad", "surgery"])
+    values = constant_op.constant([0, 1, 2], dtypes.int64)
+    table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
+                                        default_val)
+
+    self.evaluate(table.insert(keys, values))
+    self.assertAllEqual(3, self.evaluate(table.size()))
+
+    input_string = constant_op.constant([["brain", "salad"], ["tank",
+                                                              "tarkus"]])
+
+    dynamic_default_val = constant_op.constant([[-2, -3], [-4, -5]],
+                                               dtypes.int64)
+    output = table.lookup(input_string, dynamic_default_val)
+    self.assertAllEqual([2, 2], output.get_shape())
+
+    result = self.evaluate(output)
+    self.assertAllEqual([[0, 1], [-4, -5]], result)
+
+  def testMutableHashTableFindHighRankVectorWithDynamicDefaultValue(self):
+    default_val = [-1, -1]
+    keys = constant_op.constant(["brain", "salad", "surgery"])
+    values = constant_op.constant([[0, 1], [2, 3], [4, 5]], dtypes.int64)
+    table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
+                                        default_val)
+
+    self.evaluate(table.insert(keys, values))
+    self.assertAllEqual(3, self.evaluate(table.size()))
+
+    input_string = constant_op.constant([["brain", "salad"], ["tank",
+                                                              "tarkus"]])
+
+    dynamic_default_val = constant_op.constant(
+        [[[-2, -3], [-4, -5]], [[-6, -7], [-8, -9]]], dtypes.int64)
+    output = table.lookup(input_string, dynamic_default_val)
+    self.assertAllEqual([2, 2, 2], output.get_shape())
+
+    result = self.evaluate(output)
+    self.assertAllEqual([[[0, 1], [2, 3]], [[-6, -7], [-8, -9]]], result)
+
   def testMutableHashTableInsertHighRank(self):
     default_val = -1
     keys = constant_op.constant([["brain", "salad"], ["surgery", "tank"]])

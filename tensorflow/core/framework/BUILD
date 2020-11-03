@@ -10,6 +10,7 @@ load(
     "tf_cc_tests",
     "tf_copts",
     "tf_cuda_library",
+    "tf_gen_options_header",
 )
 
 # buildifier: disable=same-origin-load
@@ -50,7 +51,9 @@ exports_files(
         "control_flow.h",
         "dataset.h",
         "dataset_stateful_op_allowlist.h",
+        "device.h",
         "device_base.h",
+        "device_factory.h",
         "function.h",
         "function_handle_cache.h",
         "graph_def_util.h",
@@ -153,6 +156,7 @@ exports_files(
         "op.h",
         "op_def_builder.h",
         "op_def_util.h",
+        "registration_options",
         "selective_registration.h",
         "shape_inference.h",
     ],
@@ -178,7 +182,9 @@ filegroup(
         "control_flow.h",
         "dataset.h",
         "dataset_stateful_op_allowlist.h",
+        "device.h",
         "device_base.h",
+        "device_factory.h",
         "function.h",
         "function_handle_cache.h",
         "graph_def_util.h",
@@ -212,6 +218,7 @@ filegroup(
         "reader_op_kernel.h",
         "register_types.h",
         "register_types_traits.h",
+        "registration_options.h",
         "rendezvous.h",
         "resource_handle.h",
         "resource_mgr.h",
@@ -251,7 +258,9 @@ filegroup(
         "cancellation.cc",
         "collective.cc",
         "dataset.cc",
+        "device.cc",
         "device_base.cc",
+        "device_factory.cc",
         "function.cc",
         "function_handle_cache.cc",
         "graph_def_util.cc",
@@ -342,8 +351,12 @@ filegroup(
         "dataset.cc",
         "dataset.h",
         "dataset_stateful_op_allowlist.h",
+        "device.cc",
+        "device.h",
         "device_base.cc",
         "device_base.h",
+        "device_factory.cc",
+        "device_factory.h",
         "function.cc",
         "function.h",
         "function_handle_cache.cc",
@@ -390,6 +403,7 @@ filegroup(
         "queue_interface.h",
         "reader_interface.h",
         "register_types_traits.h",
+        "registration_options.h",
         "rendezvous.cc",
         "rendezvous.h",
         "resource_mgr.cc",
@@ -957,9 +971,21 @@ cc_library(
     ],
 )
 
+tf_gen_options_header(
+    name = "gen_registration_options",
+    build_settings = {
+        "//tensorflow:enable_registration_v2": "REGISTRATION_V2",
+    },
+    output_header = "registration_options.h",
+    template = "registration_options.h.tpl",
+)
+
 cc_library(
     name = "selective_registration",
-    hdrs = ["selective_registration.h"],
+    hdrs = [
+        "registration_options.h",
+        "selective_registration.h",
+    ],
     deps = tf_selective_registration_deps(),
 )
 

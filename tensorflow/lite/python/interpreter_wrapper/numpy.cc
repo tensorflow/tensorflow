@@ -153,6 +153,11 @@ bool FillStringBufferWithPyArray(PyObject* value,
     case NPY_OBJECT:
     case NPY_STRING:
     case NPY_UNICODE: {
+      if (PyArray_NDIM(array) == 0) {
+        dynamic_buffer->AddString(static_cast<char*>(PyArray_DATA(array)),
+                                  PyArray_NBYTES(array));
+        return true;
+      }
       UniquePyObjectRef iter(PyArray_IterNew(value));
       while (PyArray_ITER_NOTDONE(iter.get())) {
         UniquePyObjectRef item(PyArray_GETITEM(

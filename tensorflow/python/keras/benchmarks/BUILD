@@ -73,7 +73,6 @@ cuda_py_test(
     tags = COMMON_TAGS + [
         "no_oss_py38",  # TODO(b/162044699)
     ],
-    tfrt_enabled = True,
     deps = [
         ":profiler_lib",
         "//tensorflow:tensorflow_py",
@@ -85,7 +84,6 @@ cuda_py_test(
     name = "model_components_benchmarks_test",
     srcs = ["model_components_benchmarks_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":profiler_lib",
         "//tensorflow:tensorflow_py",
@@ -107,7 +105,6 @@ cuda_py_test(
     srcs = ["keras_examples_benchmarks/bidirectional_lstm_benchmark_test.py"],
     python_version = "PY3",
     tags = COMMON_TAGS,
-    tfrt_enabled = True,
     deps = [
         ":benchmark_util",
         ":profiler_lib",
@@ -120,7 +117,6 @@ cuda_py_test(
     srcs = ["keras_examples_benchmarks/text_classification_transformer_benchmark_test.py"],
     python_version = "PY3",
     tags = COMMON_TAGS,
-    tfrt_enabled = True,
     deps = [
         ":benchmark_util",
         "//tensorflow:tensorflow_py",
@@ -132,7 +128,6 @@ cuda_py_test(
     srcs = ["keras_examples_benchmarks/antirectifier_benchmark_test.py"],
     python_version = "PY3",
     tags = COMMON_TAGS,
-    tfrt_enabled = True,
     deps = [
         ":benchmark_util",
         "//tensorflow:tensorflow_py",
@@ -144,7 +139,6 @@ cuda_py_test(
     srcs = ["keras_examples_benchmarks/mnist_conv_benchmark_test.py"],
     python_version = "PY3",
     tags = COMMON_TAGS,
-    tfrt_enabled = True,
     deps = [
         ":benchmark_util",
         "//tensorflow:tensorflow_py",
@@ -157,7 +151,6 @@ cuda_py_test(
     srcs = ["keras_examples_benchmarks/mnist_hierarchical_rnn_benchmark_test.py"],
     python_version = "PY3",
     tags = COMMON_TAGS,
-    tfrt_enabled = True,
     deps = [
         ":benchmark_util",
         "//tensorflow:tensorflow_py",
@@ -169,7 +162,6 @@ cuda_py_test(
     srcs = ["keras_examples_benchmarks/mnist_irnn_benchmark_test.py"],
     python_version = "PY3",
     tags = COMMON_TAGS,
-    tfrt_enabled = True,
     deps = [
         ":benchmark_util",
         "//tensorflow:tensorflow_py",
@@ -181,7 +173,6 @@ cuda_py_test(
     srcs = ["keras_examples_benchmarks/reuters_mlp_benchmark_test.py"],
     python_version = "PY3",
     tags = COMMON_TAGS,
-    tfrt_enabled = True,
     deps = [
         ":benchmark_util",
         "//tensorflow:tensorflow_py",
@@ -194,7 +185,6 @@ cuda_py_test(
     srcs = ["keras_examples_benchmarks/cifar10_cnn_benchmark_test.py"],
     python_version = "PY3",
     tags = COMMON_TAGS,
-    tfrt_enabled = True,
     deps = [
         ":benchmark_util",
         "//tensorflow:tensorflow_py",
@@ -206,7 +196,6 @@ cuda_py_test(
     srcs = ["keras_examples_benchmarks/mnist_conv_custom_training_benchmark_test.py"],
     python_version = "PY3",
     tags = COMMON_TAGS,
-    tfrt_enabled = True,
     deps = [
         ":distribution_util",
         "//tensorflow:tensorflow_py",

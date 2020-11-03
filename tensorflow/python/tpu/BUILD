@@ -337,7 +337,6 @@ tf_py_test(
         "no_oss",  # TODO(b/131157871): Reenable in OSS when fixed
         "no_windows",  # TODO: needs investigation on Windows
     ],
-    tfrt_enabled = True,
     deps = [
         ":tpu",
         "//tensorflow/python:client_testlib",
@@ -351,7 +350,6 @@ tf_py_test(
     name = "tpu_sharding_test",
     size = "small",
     srcs = ["tpu_sharding_test.py"],
-    tfrt_enabled = True,
     deps = [
         ":tpu",
         "//tensorflow/python:client_testlib",
@@ -363,7 +361,6 @@ tf_py_test(
     name = "bfloat16_test",
     size = "small",
     srcs = ["bfloat16_test.py"],
-    tfrt_enabled = True,
     deps = [
         ":tpu",
         "//tensorflow/python:client_testlib",
@@ -375,7 +372,6 @@ tf_py_test(
     name = "tpu_infeed_test",
     size = "small",
     srcs = ["tpu_infeed_test.py"],
-    tfrt_enabled = True,
     deps = [
         ":tpu",
         "//tensorflow/python:framework",
@@ -387,7 +383,6 @@ tf_py_test(
     name = "topology_test",
     size = "medium",
     srcs = ["topology_test.py"],
-    tfrt_enabled = True,
     deps = [
         ":tpu",
         "//tensorflow/python:framework_test_lib",
@@ -464,7 +459,6 @@ tf_py_test(
         "feature_column_test.py",
     ],
     main = "feature_column_test.py",
-    tfrt_enabled = True,
     deps = [
         ":feature_column",
         "//tensorflow/python:client_testlib",
@@ -487,7 +481,6 @@ tf_py_test(
         "feature_column_v2_test.py",
     ],
     main = "feature_column_v2_test.py",
-    tfrt_enabled = True,
     deps = [
         ":feature_column_v2",
         "//tensorflow/python:client_testlib",
@@ -622,7 +615,6 @@ tf_py_test(
     ],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    tfrt_enabled = True,
     deps = [
         ":tpu_embedding_v2",
         "//tensorflow/python/compat:v2_compat",

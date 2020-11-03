@@ -168,8 +168,29 @@ class _BenchmarkRegistrar(type):
     return newclass
 
 
+@tf_export("__internal__.test.ParameterizedBenchmark", v1=[])
 class ParameterizedBenchmark(_BenchmarkRegistrar):
-  """Metaclass to generate parameterized benchmarks."""
+  """Metaclass to generate parameterized benchmarks.
+
+  Use this class as a metaclass and override the `_benchmark_parameters` to
+  generate multiple benchmark test cases. For example:
+
+  class FooBenchmark(metaclass=tf.test.ParameterizedBenchmark,
+                     tf.test.Benchmark):
+    # The `_benchmark_parameters` is expected to be a list with test cases.
+    # Each of the test case is a tuple, with the first time to be test case
+    # name, followed by any number of the parameters needed for the test case.
+    _benchmark_parameters = [
+      ('case_1', Foo, 1, 'one'),
+      ('case_2', Bar, 2, 'two'),
+    ]
+
+    def benchmark_test(self, target_class, int_param, string_param):
+      # benchmark test body
+
+  The example above will generate two benchmark test cases:
+  "benchmark_test__case_1" and "benchmark_test__case_2".
+  """
 
   def __new__(mcs, clsname, base, attrs):
     param_config_list = attrs["_benchmark_parameters"]

@@ -414,10 +414,10 @@ class Context(object):
       raise ValueError(
           "execution_mode should be None/SYNC/ASYNC. Got %s" % execution_mode)
     if execution_mode is None:
-      execution_mode = ASYNC if tfrt_utils.enabled() else SYNC
+      execution_mode = SYNC
     self._default_is_async = execution_mode == ASYNC
     self._lazy_remote_inputs_copy = None
-    self._use_tfrt = tfrt_utils.enabled()
+    self._use_tfrt = is_tfrt_enabled()
     self._server_def = server_def
     self._collective_ops_server_def = None
     self._collective_leader = None
@@ -633,7 +633,7 @@ class Context(object):
     """Sync both local executors and the ones on remote workers.
 
     In async execution mode, local function calls can return before the
-    coresponding remote op/function execution requests are completed. Calling
+    corresponding remote op/function execution requests are completed. Calling
     this method creates a synchronization barrier for remote executors. It only
     returns when all remote pending nodes are finished, potentially with errors
     if any remote executors are in error state.
@@ -748,7 +748,7 @@ class Context(object):
     self.ensure_initialized()
     pywrap_tfe.TFE_AbortCollectiveOps(self._handle, code, message)
 
-  def check_collective_ops_peer_health(self, task):
+  def check_collective_ops_peer_health(self, task, timeout_in_ms):
     """Check collective peer health.
 
     This probes each task to see if they're still alive. Note that restarted
@@ -758,6 +758,7 @@ class Context(object):
 
     Args:
       task: a task string, must be in the format of /job:xxx/replica:0/task:N.
+      timeout_in_ms: an integer, the timeout. If zero, there's no timeout.
 
     Raises:
       tf.errors.UnavailableError: when a peer is down.
@@ -766,7 +767,8 @@ class Context(object):
       tf.errors.InvalidArgumentError: when the task string is invalid.
     """
     self.ensure_initialized()
-    pywrap_tfe.TFE_CollectiveOpsCheckPeerHealth(self._handle, task)
+    pywrap_tfe.TFE_CollectiveOpsCheckPeerHealth(self._handle, task,
+                                                timeout_in_ms)
 
   @property
   def _handle(self):
@@ -948,7 +950,12 @@ class Context(object):
     if self._log_device_placement is not None:
       config.log_device_placement = self._log_device_placement
 
-    config.experimental.enable_mlir_bridge = pywrap_tfe.TF_IsMlirBridgeEnabled()
+    is_mlir_bridge_enabled = pywrap_tfe.TF_IsMlirBridgeEnabled()
+    config.experimental.mlir_bridge_rollout = is_mlir_bridge_enabled
+    if (is_mlir_bridge_enabled ==
+        config_pb2.ConfigProto.Experimental.MLIR_BRIDGE_ROLLOUT_ENABLED):
+      config.experimental.enable_mlir_bridge = True
+
     if self._enable_mlir_graph_optimization is not None:
       config.experimental.enable_mlir_graph_optimization = (
           self._enable_mlir_graph_optimization)
@@ -2274,7 +2281,7 @@ def async_scope():
   execution, potentially raising exceptions if async execution results in
   an error state.
 
-  Users may write the following code to asynchronuously invoke `train_step_fn`
+  Users may write the following code to asynchronously invoke `train_step_fn`
   and log the `loss` metric for every `num_steps` steps in a training loop.
   `train_step_fn` internally consumes data using `iterator.get_next()`, and may
   throw OutOfRangeError when running out of data. In the case:

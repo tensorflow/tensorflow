@@ -599,12 +599,16 @@ void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   }
 }
 
-// Based on the semantics of Device::Sync this call should wait for
-// all streams not just the current one.
 Status BaseGPUDevice::Sync() {
-  return tensorflow_gpu_device_info()
-      ->stream->parent()
-      ->BlockHostUntilAllStreamsAreDone();
+  DCHECK_NE(stream_, nullptr);
+
+  // Device::Sync is supposed to block until all operations queued on the device
+  // at the time of the call have completed.  On GPUs, only operations enqueued
+  // on the compute stream can remain pending after the (Async)OpKernel that
+  // enqueued the operation has completed.  We do use other streams for copies
+  // and collectives, but in those cases the (Async)OpKernels themselves block
+  // until the queued operation has finished.
+  return stream_->compute->BlockHostUntilDone();
 }
 
 void BaseGPUDevice::ComputeAsync(AsyncOpKernel* op_kernel,

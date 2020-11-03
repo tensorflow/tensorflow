@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Xtensa implementation of micro_timer.
-// To include this with make, add TAGS=xtensa-xpg.
+// Xtensa timer implementation.
+// To include this with make, add TARGET=xtensa_hifimini.
 #include "tensorflow/lite/micro/micro_time.h"
 
 #include <time.h>

@@ -62,6 +62,8 @@ CollectiveAllReduceStrategy = (
     collective_all_reduce_strategy.CollectiveAllReduceStrategy)
 CollectiveAllReduceExtended = (
     collective_all_reduce_strategy.CollectiveAllReduceExtended)
+_CollectiveAllReduceStrategyExperimental = (
+    collective_all_reduce_strategy._CollectiveAllReduceStrategyExperimental)
 
 
 def create_test_objects(cluster_spec=None,
@@ -608,6 +610,28 @@ class CollectiveAllReduceStrategyV2Test(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(
         list(range(len(strategy.extended.worker_devices))) *
         strategy.extended._num_workers, results[1].numpy())
+
+
+class ExperimentalCompatibilityTest(test.TestCase):
+
+  def testIsInstance(self):
+    # It's not uncommon for people to special case MultiWorkerMirroredStrategy,
+    # so we need to make sure isinstance check works for combinations between
+    # the experimental and non-experimental endpoints.
+    strategy = CollectiveAllReduceStrategy()
+    experimental_strategy = _CollectiveAllReduceStrategyExperimental()
+    self.assertIsInstance(strategy, CollectiveAllReduceStrategy)
+    self.assertIsInstance(strategy, _CollectiveAllReduceStrategyExperimental)
+    self.assertIsInstance(experimental_strategy, CollectiveAllReduceStrategy)
+    self.assertIsInstance(experimental_strategy,
+                          _CollectiveAllReduceStrategyExperimental)
+
+  def testName(self):
+    # Estimator checks the __name__ to special case MultiWorkerMirroredStrategy.
+    self.assertEqual(CollectiveAllReduceStrategy.__name__,
+                     'CollectiveAllReduceStrategy')
+    self.assertEqual(_CollectiveAllReduceStrategyExperimental.__name__,
+                     'CollectiveAllReduceStrategy')
 
 
 if __name__ == '__main__':

@@ -120,46 +120,6 @@ llvm::SmallPtrSet<FuncOp, 4> GetReachableFunctionsFromRegion(ModuleOp module,
   return visited_functions;
 }
 
-// Collects all functions and transitive functions reachable from region that
-// contain replicate variant ops.
-llvm::SmallDenseMap<llvm::StringRef, FuncOp> GetReachableFunctionsToClone(
-    ModuleOp module, Region& region,
-    const llvm::Optional<DictionaryAttr>& devices) {
-  llvm::SmallPtrSet<FuncOp, 4> reachable_functions =
-      GetReachableFunctionsFromRegion(module, region);
-
-  llvm::SmallDenseMap<llvm::StringRef, FuncOp> functions_to_clone;
-  llvm::SmallVector<FuncOp, 4> functions_to_visit;
-  for (FuncOp func : reachable_functions) {
-    if (!func.getCallableRegion()) continue;
-    if (HasReplicaVariantOps(*func.getCallableRegion(), devices)) {
-      functions_to_clone.insert({func.getName(), func});
-      functions_to_visit.push_back(func);
-    }
-  }
-
-  while (!functions_to_visit.empty()) {
-    llvm::SmallVector<FuncOp, 4> new_functions_to_visit;
-
-    for (FuncOp func_to_visit : functions_to_visit) {
-      auto func_uses = func_to_visit.getSymbolUses(module);
-      if (!func_uses) continue;
-      for (auto use : *func_uses) {
-        auto parent_func = use.getUser()->getParentOfType<FuncOp>();
-        if (!parent_func || !reachable_functions.contains(parent_func) ||
-            !functions_to_clone.insert({parent_func.getName(), parent_func})
-                 .second)
-          continue;
-        new_functions_to_visit.push_back(parent_func);
-      }
-    }
-
-    functions_to_visit.swap(new_functions_to_visit);
-  }
-
-  return functions_to_clone;
-}
-
 struct FuncOldNameAndClone {
   StringRef old_name;
   FuncOp clone;
@@ -276,20 +236,19 @@ LogicalResult ExpandReplicateIntoReplicas(
   terminator.erase();
 
   auto funcs_to_clone =
-      GetReachableFunctionsToClone(module, replicate_op.body(), devices);
+      GetReachableFunctionsFromRegion(module, replicate_op.body());
   SymbolTable symbol_table(module);
 
   builder.setInsertionPoint(island_op);
   BlockAndValueMapping mapping;
   for (int i : llvm::seq<int>(0, num_replicas)) {
-    // Clone reachable functions with replica variant ops.
+    // Clone reachable functions from region.
     llvm::SmallVector<FuncOldNameAndClone, 4> cloned_functions;
     cloned_functions.reserve(funcs_to_clone.size());
-    for (auto& func_to_clone : funcs_to_clone) {
-      auto cloned_function = func_to_clone.getSecond().clone();
+    for (FuncOp func_to_clone : funcs_to_clone) {
+      auto cloned_function = func_to_clone.clone();
       symbol_table.insert(cloned_function, module.end());
-      cloned_functions.push_back(
-          {func_to_clone.getSecond().getName(), cloned_function});
+      cloned_functions.push_back({func_to_clone.getName(), cloned_function});
     }
 
     // Create new island for replica.

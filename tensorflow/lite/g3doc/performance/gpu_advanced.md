@@ -325,7 +325,6 @@ Android APIs support quantized models by default. To disable, do the following:
 **C++ API**
 
 ```c++
-// NEW: Prepare custom options with feature enabled.
 TfLiteGpuDelegateOptionsV2 options = TfLiteGpuDelegateOptionsV2Default();
 options.experimental_flags = TFLITE_GPU_EXPERIMENTAL_FLAGS_NONE;
 
@@ -336,7 +335,6 @@ if (interpreter->ModifyGraphWithDelegate(delegate) != kTfLiteOk) return false;
 **Java API**
 
 ```java
-// NEW: Prepare GPU delegate with feature turned on.
 GpuDelegate delegate = new GpuDelegate(new GpuDelegate.Options().setQuantizedModelsAllowed(false));
 
 Interpreter.Options options = (new Interpreter.Options()).addDelegate(delegate);
@@ -344,27 +342,21 @@ Interpreter.Options options = (new Interpreter.Options()).addDelegate(delegate);
 
 #### iOS
 
-Support for quantized models on iOS APIs is experimental. To enable, do the
-following:
+iOD APIs support quantized models by default. To disable, do the following:
 
 **Swift API**
 
 ```swift
-// NEW: Prepare custom options with feature enabled.
 var options = MetalDelegate.Options()
-options.isQuantizationEnabled = true
+options.isQuantizationEnabled = false
 let delegate = MetalDelegate(options: options)
 ```
 
 **C API (also used for Objective-C)**
 
 ```c
-
-// THIS:
-// NEW: Prepare custom options with feature enabled.
-const TFLGpuDelegateOptions options = {
-  .enable_quantization = true,
-};
+TFLGpuDelegateOptions options = TFLGpuDelegateOptionsDefault();
+options.enable_quantization = false;
 
 auto* delegate = TFLGpuDelegateCreate(options);
 ```

@@ -311,6 +311,15 @@ class AsyncInterleaveMany : public Node {
     (*total_processing_times)[long_name()] =
         self_processing_time + inputs_processing_time;
   }
+
+  double MaximumBufferedBytes() const TF_SHARED_LOCKS_REQUIRED(mu_) {
+    double result = 0;
+    auto* parameter = gtl::FindOrNull(parameters_, kParallelism);
+    if (parameter) {
+      result += (*parameter)->value * AverageBufferedElementSize();
+    }
+    return result;
+  }
 };
 
 class KnownRatio : public Node {
@@ -591,6 +600,26 @@ class AsyncKnownRatio : public Node {
         ratio_ * TotalProcessingTimeForInputs(*total_processing_times);
     (*total_processing_times)[long_name()] =
         self_processing_time + inputs_processing_time;
+  }
+
+  double MaximumBufferedBytes() const TF_SHARED_LOCKS_REQUIRED(mu_) {
+    double result = 0;
+    auto* parameter = gtl::FindOrNull(parameters_, kBufferSize);
+    if (!parameter) {
+      parameter = gtl::FindOrNull(parameters_, kParallelism);
+    }
+
+    if (parameter) {
+      if (ratio_ == 0) {
+        result += (*parameter)->value * AverageBufferedElementSize();
+      } else {
+        // The estimation is currently not accurate for MapAndBatchDataset for
+        // the maximum buffer size does not match `num_parallel_calls`
+        // parameter.
+        result += (*parameter)->value * AverageBufferedElementSize() / ratio_;
+      }
+    }
+    return result;
   }
 
  private:
@@ -1067,11 +1096,34 @@ double Node::TotalProcessingTime(
 }
 
 double Node::AverageBufferedElementSize() const {
-  if (buffered_elements_ == 0) {
-    return 0;
+  DCHECK_GE(num_elements_, 0);
+  DCHECK_GE(buffered_elements_, 0);
+  if (num_elements_ <= 0) {
+    if (buffered_elements_ <= 0) {
+      // If there are no produced elements or buffered elements recorded, return
+      // 0.
+      return 0;
+    }
+    // If there are no produced elements but some buffered elements, return the
+    // average size of all buffered elements.
+    return static_cast<double>(buffered_bytes_) /
+           static_cast<double>(buffered_elements_);
   }
-  return static_cast<double>(buffered_bytes_) /
-         static_cast<double>(buffered_elements_);
+
+  if (buffered_elements_ <= 0) {
+    // If there are no buffered elements but some produced elements, return the
+    // average size of all produced elements.
+    return static_cast<double>(bytes_produced_) /
+           static_cast<double>(num_elements_);
+  }
+
+  // Otherwise, return the mean value of average size of all produced elements
+  // and average size of all buffered elements.
+  return (static_cast<double>(bytes_produced_) /
+              static_cast<double>(num_elements_) +
+          static_cast<double>(buffered_bytes_) /
+              static_cast<double>(buffered_elements_)) /
+         2.0;
 }
 
 double Node::OutputTimeForInputs(
@@ -1275,18 +1327,15 @@ void Node::TotalMaximumBufferedBytesHelper(
     return;
   }
 
-  double result = 0;
-  auto* parameter = gtl::FindOrNull(parameters_, kBufferSize);
-  if (!parameter) {
-    parameter = gtl::FindOrNull(parameters_, kParallelism);
-  }
-  if (parameter) {
-    result = (*parameter)->value * AverageBufferedElementSize();
-  }
+  double result = MaximumBufferedBytes();
   for (auto& input : inputs_) {
     result += total_bytes->at(input->long_name());
   }
   total_bytes->insert(std::make_pair(long_name(), result));
+}
+
+double Node::MaximumBufferedBytes() const TF_SHARED_LOCKS_REQUIRED(mu_) {
+  return 0;
 }
 
 void Model::AddNode(Node::Factory factory, const string& name,

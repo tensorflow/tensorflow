@@ -190,8 +190,8 @@ cc_library(
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/nnapi:nnapi_implementation",
+        "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/schema:schema_utils",
         "//tensorflow/lite/testing:util",
         "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:logging",
@@ -544,11 +544,13 @@ BUILTIN_KERNEL_SRCS = [
     "batch_to_space_nd.cc",
     "bidirectional_sequence_lstm.cc",
     "bidirectional_sequence_rnn.cc",
+    "call_once.cc",
     "cast.cc",
     "ceil.cc",
     "comparisons.cc",
     "concatenation.cc",
     "conv.cc",
+    "cumsum.cc",
     "densify.cc",
     "depth_to_space.cc",
     "depthwise_conv.cc",
@@ -717,7 +719,6 @@ cc_library(
     name = "custom_ops",
     srcs = [
         "complex_support.cc",
-        "cumsum.cc",
         "multinomial.cc",
         "random_standard_normal.cc",
         "rfft2d.cc",
@@ -2101,6 +2102,21 @@ cc_test(
 )
 
 cc_test(
+    name = "call_once_test",
+    size = "small",
+    srcs = ["call_once_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":kernel_util",
+        ":subgraph_test_util",
+        ":test_main",
+        ":variable_op_kernels",
+        "//tensorflow/lite:framework",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "if_test",
     size = "small",
     srcs = ["if_test.cc"],
@@ -2225,6 +2241,7 @@ cc_library(
         ":builtin_ops",
         ":kernel_util",
         ":test_util",
+        ":variable_op_kernels",
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
@@ -2341,16 +2358,15 @@ cc_test(
 
 cc_test(
     name = "cumsum_test",
+    size = "small",
     srcs = ["cumsum_test.cc"],
     deps = [
-        ":custom_ops",
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
-        "@flatbuffers",
     ],
 )
 
