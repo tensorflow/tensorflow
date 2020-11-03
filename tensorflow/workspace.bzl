@@ -653,8 +653,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     # WARNING: make sure ncteisen@ and vpai@ are cc-ed on any CL to change the below rule
     tf_http_archive(
         name = "com_github_grpc_grpc",
-        sha256 = "0935b6f0ab88cbb00bd387513f677244109fdd1a7057e003d1eb94bcd4d299dd",
-        strip_prefix = "grpc-414bb8322de2411eee1f4e841ff29d887bec7884",
+        sha256 = "a21c3a70eb356e0be2d989fdface89633421f2eddb95a1ede1f10a4804d7860b",
+        strip_prefix = "grpc-ee5b762f33a42170144834f5ab7efda9d76c480b"
         system_build_file = clean_dep("//third_party/systemlibs:grpc.BUILD"),
         patch_file = clean_dep("//third_party/grpc:generate_cc_env_fix.patch"),
         system_link_files = {
@@ -663,8 +663,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
             "//third_party/systemlibs:grpc.bazel.grpc_deps.bzl": "bazel/grpc_deps.bzl",
         },
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/grpc/grpc/archive/414bb8322de2411eee1f4e841ff29d887bec7884.tar.gz",
-            "https://github.com/grpc/grpc/archive/414bb8322de2411eee1f4e841ff29d887bec7884.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/grpc/grpc/archive/ee5b762f33a42170144834f5ab7efda9d76c480b.tar.gz",
+            "https://github.com/grpc/grpc/archive/ee5b762f33a42170144834f5ab7efda9d76c480b.tar.gz",
         ],
     )
 
