@@ -74,7 +74,7 @@ tf_cuda_library(
     hdrs = ["devices.h"],
     cuda_deps = [
         "//tensorflow/core/common_runtime/gpu:gpu_init",
-        "//tensorflow/core:stream_executor",
+        "//tensorflow/core/platform:stream_executor",
     ],
     visibility = ["//visibility:public"],
     deps = [

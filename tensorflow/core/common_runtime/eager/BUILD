@@ -451,7 +451,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
-        "//tensorflow/core:mkl_graph_util",
+        "//tensorflow/core/graph:mkl_graph_util",
     ],
     alwayslink = 1,
 )

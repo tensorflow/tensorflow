@@ -118,7 +118,7 @@ PjRtTpuClient::PjRtTpuClient(LocalClient* client,
                              std::vector<std::unique_ptr<PjRtDevice>> devices,
                              int host_id,
                              tf_tpu::TpuPlatformInterface* tpu_platform)
-    : PjRtClient("tpu", client, std::move(devices), host_id,
+    : PjRtClient(kTpuName, client, std::move(devices), host_id,
                  /*allocator=*/nullptr,
                  /*host_memory_allocator=*/nullptr,
                  /*should_stage_host_to_device_transfers=*/false,
@@ -199,7 +199,8 @@ StatusOr<std::vector<std::unique_ptr<PjRtDevice>>> GetTpuDevices(
 StatusOr<std::shared_ptr<PjRtClient>> GetTpuClient(
     bool asynchronous, absl::Duration init_retry_timeout) {
   tf_tpu::TpuPlatformInterface* platform =
-      tf_tpu::TpuPlatformInterface::GetRegisteredPlatform();
+      tf_tpu::TpuPlatformInterface::GetRegisteredPlatform(
+          /*initialize_platform=*/true, /*num_tries=*/1);
   if (platform == nullptr) {
     return InvalidArgument("TpuPlatform is not available.");
   }

@@ -22,7 +22,7 @@ upstream.
 
 ## QuickStart: building and testing
 
-These instructions work on Linux, you may have to adjust for your plaform.
+These instructions work on Linux, you may have to adjust for your platform.
 
 To build the code in this repository, you need a clone of the LLVM/MLIR git
 repository:

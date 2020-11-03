@@ -38,7 +38,7 @@ class ProfilerClientTest(test_util.TensorFlowTestCase):
     with self.assertRaises(errors.UnavailableError) as error:
       profiler_client.trace(
           'localhost:' + str(test_port), self.get_temp_dir(), duration_ms=10)
-    self.assertEqual('No trace event is collected', str(error.exception))
+    self.assertStartsWith(str(error.exception), 'No trace event was collected')
 
   def testTrace_ProfileIdleServerWithOptions(self):
     test_port = portpicker.pick_unused_port()
@@ -54,7 +54,7 @@ class ProfilerClientTest(test_util.TensorFlowTestCase):
           self.get_temp_dir(),
           duration_ms=10,
           options=options)
-    self.assertEqual('No trace event is collected', str(error.exception))
+    self.assertStartsWith(str(error.exception), 'No trace event was collected')
 
   def testMonitor_ProcessInvalidAddress(self):
     # Monitor is only supported in cloud TPU. Test invalid address instead.

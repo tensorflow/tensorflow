@@ -63,7 +63,6 @@ tf_py_test(
         "no_rocm",
         "notsan",  # b/168814536
     ],
-    tfrt_enabled = True,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
@@ -101,6 +100,7 @@ tf_py_test(
     tags = [
         "no_oss",
         "no_pip",
+        "notsan",  # TODO(b/170901700)
     ],
     deps = [
         ":applications",

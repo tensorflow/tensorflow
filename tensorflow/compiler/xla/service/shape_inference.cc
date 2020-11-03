@@ -1811,19 +1811,32 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         // Input feature dimension is a contracting dimension, which does not
         // affect the output dimension size. So we need to do nothing.
       } else {
-        return InvalidArgument(
-            "Dynamic Spatial Convolution is not supported: lhs shape is %s ",
-            lhs.ToString());
+        for (int64 j = 0; j < dnums.output_spatial_dimensions_size(); ++j) {
+          if (i == dnums.input_spatial_dimensions(j)) {
+            // i is a spatial dimension, find corresponding output spatial
+            // dimension.
+            is_dynamic[dnums.output_spatial_dimensions(j)] = true;
+          }
+        }
       }
     }
     if (rhs.is_dynamic_dimension(i)) {
       if (i == dnums.kernel_input_feature_dimension()) {
         // Kernel feature dimension does not affect the output dimension size.
         // So we need to do nothing.
-      } else {
+      } else if (i == dnums.kernel_output_feature_dimension()) {
         return InvalidArgument(
-            "Dynamic Spatial Convolution is not supported: rhs shape is %s ",
+            "Dynamic output feature dim on convolution kernel is not "
+            "supported: rhs shape is %s ",
             rhs.ToString());
+      } else {
+        for (int64 j = 0; j < dnums.kernel_spatial_dimensions_size(); ++j) {
+          if (i == dnums.kernel_spatial_dimensions(j)) {
+            // i is a spatial dimension, find corresponding output spatial
+            // dimension.
+            is_dynamic[dnums.output_spatial_dimensions(j)] = true;
+          }
+        }
       }
     }
   }
@@ -2084,7 +2097,6 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         arg_shapes.size());
   }
   int64 num_reduced_args = arg_shapes.size() / 2;
-
   auto reduced_args = arg_shapes.subspan(0, num_reduced_args);
   // Check that all of the reduced tensors have the same dimensions. The element
   // types may be different.
@@ -2097,7 +2109,6 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
           ShapeUtil::HumanString(*reduced_args[i]));
     }
   }
-
   // Check that the dimensions to reduce are in-bounds for the given shape.
   // We've already verified all reduced tensors have the same dimensions, so it
   // doesn't matter which one we choose.
@@ -2154,6 +2165,44 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
                                         {operand_shape.element_type()},
                                         /*inputs=*/1));
   return InferReduceWindowShape(operand_shape, init_value_shape, window);
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferReduceWindowShape(
+    absl::Span<const Shape* const> operands,
+    absl::Span<const Shape* const> init_values, const Window& window,
+    const ProgramShape& to_apply_shape) {
+  auto number_of_input = operands.size();
+  // Check that all of the reduced tensors have the same dimensions. The element
+  // types may be different.
+  for (int64 i = 1; i < number_of_input; ++i) {
+    if (!ShapeUtil::SameDimensions(*operands[0], *operands[i])) {
+      return InvalidArgument(
+          "All reduced tensors must have the same dimension. Tensor 0 has "
+          "shape %s, Tensor %d has shape %s",
+          ShapeUtil::HumanString(*operands[0]), i,
+          ShapeUtil::HumanString(*operands[i]));
+    }
+  }
+  std::vector<PrimitiveType> operand_element_type_vec;
+  for (const Shape* s : operands) {
+    operand_element_type_vec.push_back(s->element_type());
+  }
+  TF_RETURN_IF_ERROR(VerifyReducerShape(to_apply_shape, init_values,
+                                        operand_element_type_vec,
+                                        /*inputs=*/number_of_input));
+  std::vector<Shape> output_shape_vec;
+  for (int i = 0; i < operands.size(); ++i) {
+    TF_ASSIGN_OR_RETURN(
+        auto cur_output_shape,
+        InferReduceWindowShape(*operands[i], *init_values[i], window));
+    output_shape_vec.push_back(cur_output_shape);
+  }
+  if (ShapeUtil::IsScalar(to_apply_shape.result())) {
+    CHECK_EQ(output_shape_vec.size(), 1);
+    return output_shape_vec[0];
+  } else {
+    return ShapeUtil::MakeTupleShape(output_shape_vec);
+  }
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferReduceWindowShape(

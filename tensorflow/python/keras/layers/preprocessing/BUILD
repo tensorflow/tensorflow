@@ -47,6 +47,7 @@ py_library(
     name = "discretization",
     srcs = [
         "discretization.py",
+        "discretization_v1.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -54,6 +55,7 @@ py_library(
         "//tensorflow/python:boosted_trees_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:resources",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:tf_export",
@@ -461,6 +463,7 @@ tf_py_test(
     size = "small",
     srcs = ["discretization_test.py"],
     python_version = "PY3",
+    shard_count = 4,
     tags = ["no_rocm"],
     deps = [
         ":discretization",
@@ -476,7 +479,9 @@ distribute_py_test(
     srcs = ["discretization_distribution_test.py"],
     main = "discretization_distribution_test.py",
     python_version = "PY3",
-    tags = ["multi_and_single_gpu"],
+    tags = [
+        "multi_and_single_gpu",
+    ],
     deps = [
         ":discretization",
         ":preprocessing_test_utils",
@@ -588,6 +593,10 @@ tf_py_test(
     size = "small",
     srcs = ["normalization_test.py"],
     python_version = "PY3",
+    tags = [
+        "broken",  # b/170974360
+        "noasan",  # TODO(b/337374867) fails with -fsanitize=null
+    ],
     deps = [
         ":normalization",
         ":preprocessing_test_utils",
@@ -618,7 +627,9 @@ distribute_py_test(
     srcs = ["normalization_distribution_test.py"],
     main = "normalization_distribution_test.py",
     python_version = "PY3",
-    tags = ["no_oss"],
+    tags = [
+        "no_oss",
+    ],
     deps = [
         ":normalization",
         ":preprocessing_test_utils",
@@ -636,7 +647,6 @@ tf_py_test(
     name = "table_utils_test",
     srcs = ["table_utils_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":table_utils",
         "//tensorflow/python:client_testlib",
@@ -653,9 +663,6 @@ tf_py_test(
     srcs = ["text_vectorization_test.py"],
     python_version = "PY3",
     shard_count = 4,
-    tags = [
-        "noasan",  #TODO(b/161376526): Enable when bug fix lands.
-    ],
     deps = [
         ":preprocessing_test_utils",
         ":text_vectorization",
@@ -697,6 +704,7 @@ tf_py_test(
     name = "reduction_test",
     srcs = ["reduction_test.py"],
     python_version = "PY3",
+    tags = ["notsan"],  # TODO(b/170783154)
     deps = [
         ":reduction",
         "//tensorflow/python:client_testlib",

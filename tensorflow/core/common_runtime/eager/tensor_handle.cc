@@ -1116,6 +1116,28 @@ const char* TensorHandle::BackingDeviceName(Status* status) const {
   }
 }
 
+const char* TensorHandle::DeviceType(Status* status) const {
+  if (VariantDeviceIsCustom(device())) {
+    status->Update(
+        tensorflow::errors::Unimplemented("Custom device unsupported"));
+    return nullptr;
+  }
+  status->Update(WaitUnknownDevice());
+  tensorflow::Device* d = op_device();
+  return (d == nullptr) ? "CPU" : d->parsed_name().type.c_str();
+}
+
+int TensorHandle::DeviceId(Status* status) const {
+  if (VariantDeviceIsCustom(device())) {
+    status->Update(
+        tensorflow::errors::Unimplemented("Custom device unsupported"));
+    return -1;
+  }
+  status->Update(WaitUnknownDevice());
+  tensorflow::Device* d = op_device();
+  return (d == nullptr) ? 0 : d->parsed_name().id;
+}
+
 tensorflow::ImmediateExecutionTensorHandle* TensorHandle::Copy() {
   Ref();
   return this;

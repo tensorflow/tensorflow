@@ -70,6 +70,7 @@ func @main(%arg0: tensor<4xi32>, %arg1: tensor<32x4x4x128xf32>, %arg2: tensor<1x
 // CHECK-NEXT:    name: "min_runtime_version",
 // CHECK-NEXT:    buffer: 5
 // CHECK-NEXT:  } ]
+// CHECK-NEXT:  signature_defs: [ ]
 // CHECK-NEXT:}
 
   %cst = constant unit

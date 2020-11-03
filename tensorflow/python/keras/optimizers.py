@@ -60,7 +60,7 @@ def deserialize(config, custom_objects=None):
   """
   # loss_scale_optimizer has a direct dependency of optimizer, import here
   # rather than top to avoid the cyclic dependency.
-  from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer  # pylint: disable=g-import-not-at-top
+  from tensorflow.python.keras.mixed_precision import loss_scale_optimizer  # pylint: disable=g-import-not-at-top
   all_classes = {
       'adadelta': adadelta_v2.Adadelta,
       'adagrad': adagrad_v2.Adagrad,
@@ -71,6 +71,10 @@ def deserialize(config, custom_objects=None):
       'sgd': gradient_descent_v2.SGD,
       'ftrl': ftrl.Ftrl,
       'lossscaleoptimizer': loss_scale_optimizer.LossScaleOptimizer,
+      # LossScaleOptimizerV1 deserializes into LossScaleOptimizer, as
+      # LossScaleOptimizerV1 will be removed soon but deserializing it will
+      # still be supported.
+      'lossscaleoptimizerv1': loss_scale_optimizer.LossScaleOptimizer,
   }
 
   # Make deserialization case-insensitive for built-in optimizers.

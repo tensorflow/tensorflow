@@ -50,6 +50,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -118,14 +119,11 @@ bool HasSameStaticShapes(Operation* op) {
 }
 
 // Util that casts 'val' to Int32 by adding a cast Op.
-Value CreateCastToInt32(Attribute val, Location loc,
-                        PatternRewriter& rewriter) {
+Value CreateCastToInt32(Value val, Location loc, PatternRewriter& rewriter) {
   auto shape = val.getType().dyn_cast<RankedTensorType>().getShape();
   IntegerType new_ele_type = rewriter.getIntegerType(32);
   ShapedType new_type = RankedTensorType::get(shape, new_ele_type);
-  return rewriter.create<TF::CastOp>(loc, new_type,
-                                     rewriter.create<TF::ConstOp>(loc, val),
-                                     rewriter.getBoolAttr(false));
+  return rewriter.create<TFL::CastOp>(loc, new_type, val);
 }
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_legalize_tf.inc"
@@ -152,7 +150,6 @@ DECL_CONVERT_OP(Split);
 DECL_CONVERT_OP(SplitV);
 DECL_CONVERT_OP(StridedSlice);
 DECL_CONVERT_OP(Unpack);
-DECL_CONVERT_OP(Reciprocal);
 DECL_CONVERT_OP(RandomUniform);
 
 #undef DECL_CONVERT_OP
@@ -511,26 +508,6 @@ LogicalResult ConvertTFAssertOp::matchAndRewrite(
   return success();
 }
 
-LogicalResult ConvertTFReciprocalOp::matchAndRewrite(
-    Operation* op, PatternRewriter& rewriter) const {
-  auto tf_reciprocal_op = cast<TF::ReciprocalOp>(op);
-
-  auto status_or_const_op = CreateConstOpWithSingleValue(
-      &rewriter, op->getLoc(),
-      tf_reciprocal_op.x().getType().cast<ShapedType>(), 1);
-  if (!status_or_const_op.ok()) {
-    return failure();
-  }
-
-  StringAttr fused_activation_function =
-      StringAttr::get("NONE", rewriter.getContext());
-
-  rewriter.replaceOpWithNewOp<TFL::DivOp>(op, status_or_const_op.ValueOrDie(),
-                                          tf_reciprocal_op.x(),
-                                          fused_activation_function);
-  return success();
-}
-
 // Legalize unidirectional sequence lstm.
 struct LegalizeUnidirectionalSequenceLstm : public RewritePattern {
   explicit LegalizeUnidirectionalSequenceLstm(MLIRContext* context)
@@ -664,18 +641,22 @@ void LegalizeTF::runOnFunction() {
   auto* context = &getContext();
   auto func = getFunction();
 
+  // Add TF->TF lowering patterns.
+  TF::PopulateLoweringTFPatterns(context, &patterns);
+
   // Add the generated patterns to the list.
-  populateWithGenerated(context, &patterns);
+  populateWithGenerated(context, patterns);
   patterns
       .insert<ConvertTFConcatV2Op, ConvertTFMatMulOp, ConvertTFMatrixDiagV2Op,
               ConvertTFMatrixDiagV3Op, ConvertTFPackOp, ConvertTFReshapeOp,
               ConvertTFSplitOp, ConvertTFSplitVOp, ConvertTFStridedSliceOp,
-              ConvertTFUnpackOp, ConvertTFAssertOp, ConvertTFReciprocalOp,
-              ConvertTFRandomUniformOp>(context);
+              ConvertTFUnpackOp, ConvertTFAssertOp, ConvertTFRandomUniformOp>(
+          context);
 
   // Ophint python converter converted tf node pattern.
   patterns.insert<LegalizeUnidirectionalSequenceLstm,
                   LegalizeUnidirectionalSequenceRnn>(context);
+  FrozenRewritePatternList frozenPatterns(std::move(patterns));
 
   ConversionTarget target(*context);
   // It is legal to have TF ops in the graph still which can be
@@ -715,7 +696,7 @@ void LegalizeTF::runOnFunction() {
   // Currently unit-test doesn't do multiple tries, so we need this.
   const int max_iterations = 15;
   for (int i = 0; i < max_iterations; ++i) {
-    if (failed(applyPartialConversion(func, target, patterns))) {
+    if (failed(applyPartialConversion(func, target, frozenPatterns))) {
       return;
     }
   }

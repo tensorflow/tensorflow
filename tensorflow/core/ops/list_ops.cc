@@ -69,7 +69,7 @@ REGISTER_OP("EmptyTensorList")
           0, &element_shape));
       c->set_output_handle_shapes_and_types(
           0, std::vector<shape_inference::ShapeAndType>{
-                 {element_shape, element_dtype}});
+                 {element_shape, element_dtype, ST_TENSOR_LIST}});
       return Status::OK();
     });
 
@@ -106,7 +106,7 @@ REGISTER_OP("TensorListPushBack")
       }
       c->set_output_handle_shapes_and_types(
           0, std::vector<shape_inference::ShapeAndType>{
-                 {element_shape, element_dtype}});
+                 {element_shape, element_dtype, ST_TENSOR_LIST}});
       return Status::OK();
     });
 
@@ -153,7 +153,7 @@ REGISTER_OP("TensorListPushBackBatch")
       }
       c->set_output_handle_shapes_and_types(
           0, std::vector<shape_inference::ShapeAndType>{
-                 {element_shape, element_dtype}});
+                 {element_shape, element_dtype, ST_TENSOR_LIST}});
       return Status::OK();
     });
 
@@ -345,7 +345,7 @@ REGISTER_OP("TensorListSplit")
                                   &element_shape_from_tensor_shape));
       c->set_output_handle_shapes_and_types(
           0, std::vector<shape_inference::ShapeAndType>{
-                 {element_shape, element_dtype}});
+                 {element_shape, element_dtype, ST_TENSOR_LIST}});
       return Status::OK();
     });
 

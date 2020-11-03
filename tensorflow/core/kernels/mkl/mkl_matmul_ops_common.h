@@ -35,12 +35,6 @@ using mkldnn::stream;
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
-#ifdef INTEL_MKL_DNN_ONLY
-// Temporarily copying some definitions from mkl_cblas.h so the same code can
-// be used when calling oneDNN or CBLAS batchmatmul in mkl_batch_matmul_op.cc.
-typedef enum { CblasRowMajor, CblasColumnMajor } CBLAS_LAYOUT;
-#define MKL_INT int
-#endif
 
 // This structure aggregates multiple inputs to MklDnnMatMul* methods.
 struct MklDnnMatMulFwdParams {
@@ -728,67 +722,6 @@ class MklMatMulPrimitiveFactory : public MklPrimitiveFactory<T> {
     this->SetOp(key, op);
   }
 };
-
-template <typename T>
-void dnnl_gemm_batch(const std::vector<bool>& transa,
-                     const std::vector<bool>& transb, const std::vector<int>& m,
-                     const std::vector<int>& n, const std::vector<int>& k,
-                     const std::vector<float>& alpha, const T* a, const T* b,
-                     const std::vector<float>& beta, T* c,
-                     const int group_count, const std::vector<int>& group_size,
-                     OpKernelContext* ctx = nullptr) {
-  // Current BatchMatMul support in Tensorflow is narrower than the one offered
-  // by MKL and MKL-DNN. Current BatchMatMul support in Tensorflow uses only 1
-  // group of size equal to batch_size, and all MatMul parameters (m, n, k,
-  // alpha, beta) within that group are same.
-  DCHECK(group_size.size() == 1);
-  DCHECK(transa.size() == group_size[0]);
-  DCHECK(transb.size() == group_size[0]);
-  DCHECK(alpha.size() == group_size[0]);
-  DCHECK(beta.size() == group_size[0]);
-  DCHECK(m.size() == group_size[0]);
-  DCHECK(n.size() == group_size[0]);
-  DCHECK(k.size() == group_size[0]);
-  for (int64_t idx = 0; idx < group_size[0]; idx++)
-    DCHECK(transa[0] == transa[idx]);
-  for (int64_t idx = 0; idx < group_size[0]; idx++)
-    DCHECK(transb[0] == transb[idx]);
-  for (int64_t idx = 0; idx < group_size[0]; idx++)
-    DCHECK(alpha[0] == alpha[idx]);
-  for (int64_t idx = 0; idx < group_size[0]; idx++)
-    DCHECK(beta[0] == beta[idx]);
-  for (int64_t idx = 0; idx < group_size[0]; idx++) DCHECK(m[0] == m[idx]);
-  for (int64_t idx = 0; idx < group_size[0]; idx++) DCHECK(n[0] == n[idx]);
-  for (int64_t idx = 0; idx < group_size[0]; idx++) DCHECK(k[0] == k[idx]);
-
-  using dims = mkldnn::memory::dims;
-  // Prepare strides based on the transa and transb flags: transposed
-  // matrices have strides swapped BatchMatMul in MKL-DNN supports 3D metrices
-  // so far. That is why strides are 3D also.
-  dims a_sizes = dims{group_size[0], m[0], k[0]};
-  dims b_sizes = dims{group_size[0], k[0], n[0]};
-  dims c_sizes = dims{group_size[0], m[0], n[0]};
-  dims a_strides =
-      !transa[0] ? dims{m[0] * k[0], k[0], 1} : dims{k[0] * m[0], 1, m[0]};
-  dims b_strides =
-      !transb[0] ? dims{k[0] * n[0], n[0], 1} : dims{n[0] * k[0], 1, k[0]};
-  dims c_strides = dims{m[0] * n[0], n[0], 1};
-
-  // MklMatMul uses const alpha and beta, make guarantee here to ensure
-  // they are never changed.
-  DCHECK_EQ(alpha, 1.0f);
-  DCHECK_EQ(beta, 0.f);
-
-  MklMatMulParams params(a_sizes, b_sizes, c_sizes, a_strides, b_strides,
-                         c_strides);
-  MklMatMulPrimitive<T>* matmul_prim =
-      MklMatMulPrimitiveFactory<T>::Get(params, 0);
-
-  // Execute matmul primitive.
-  std::shared_ptr<stream> cpu_stream;
-  cpu_stream.reset(CreateStream(ctx, matmul_prim->GetEngine()));
-  matmul_prim->Execute(a, b, c, cpu_stream);
-}
 
 template <typename T>
 void dnnl_gemm(char transa, char transb, int64_t m, int64_t n, int64_t k,

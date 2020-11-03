@@ -103,6 +103,10 @@ enum HostEventType {
   // Batching related.
   kBatchingSessionRun,
   kProcessBatch,
+  kConcatInputTensors,
+  kMergeInputTensors,
+  kScheduleWithoutSplit,
+  kScheduleWithSplit,
   // JAX related.
   kExecuteOnLocalDevices,
   // GPU related.
@@ -191,7 +195,11 @@ enum StatType {
   kDevCapMemorySize,
   kDevCapComputeCapMajor,
   kDevCapComputeCapMinor,
-  kLastStatType = kDevCapComputeCapMinor,
+  // Batching related.
+  kBatchSizeAfterPadding,
+  kPaddingAmount,
+  kBatchingInputTaskSize,
+  kLastStatType = kBatchingInputTaskSize,
 };
 
 inline std::string GpuPlaneName(int32 device_ordinal) {
@@ -208,6 +216,8 @@ inline bool IsHostEventType(HostEventType event_type,
 }
 
 absl::optional<int64> FindHostEventType(absl::string_view event_name);
+
+absl::optional<int64> FindTfOpEventType(absl::string_view event_name);
 
 absl::string_view GetStatTypeStr(StatType stat_type);
 

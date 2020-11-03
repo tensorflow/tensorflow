@@ -537,6 +537,12 @@ class NoneTensorSpec(type_spec.BatchableTypeSpec):
   def _to_legacy_output_classes(self):
     return self
 
+  def most_specific_compatible_shape(self, other):
+    if type(self) is not type(other):
+      raise ValueError("No TypeSpec is compatible with both %s and %s" %
+                       (self, other))
+    return self
+
 
 type_spec.register_type_spec_from_value_converter(type(None),
                                                   NoneTensorSpec.from_value)

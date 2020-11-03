@@ -15,6 +15,23 @@ func @inline_simple() -> tensor<2xi32> {
   return %result : tensor<2xi32>
 }
 
+// Test that TPUParitionedCallOp is not inlined.
+
+func @simple_callee() -> tensor<2xi32> attributes {sym_visibility = "private"} {
+  %cst = "tf.Const"() { value = dense<2> : tensor<2xi32> } : () -> tensor<2xi32>
+  return %cst : tensor<2xi32>
+}
+
+// CHECK-LABEL: func @dont_inline_tpu_partitioned_call(
+func @dont_inline_tpu_partitioned_call() -> tensor<2xi32> {
+  // CHECK-NEXT: %[[ORDINAL:.*]] = "tf.TPUOrdinalSelector"
+  // CHECK-NEXT: %[[PARTITIONED_CALL:.*]] = "tf.TPUPartitionedCall"(%[[ORDINAL]])
+  // CHECK-NEXT: return %[[PARTITIONED_CALL]]
+  %0 = "tf.TPUOrdinalSelector"() {device = ""} : () -> tensor<?xi32>
+  %result = "tf.TPUPartitionedCall"(%0) {config = "", config_proto = "", executor_type = "", f = @simple_callee} : (tensor<?xi32>) -> tensor<2xi32>
+  return %result : tensor<2xi32>
+}
+
 // Check that TF call operations can be inlined, even when the shape of the
 // argument or result is different than the called function.
 

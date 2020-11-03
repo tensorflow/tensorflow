@@ -15,6 +15,20 @@ limitations under the License.
 
 package org.tensorflow.processor;
 
+import com.google.common.base.CaseFormat;
+import com.google.common.base.Strings;
+import com.google.common.collect.HashMultimap;
+import com.google.common.collect.Multimap;
+import com.squareup.javapoet.ClassName;
+import com.squareup.javapoet.FieldSpec;
+import com.squareup.javapoet.JavaFile;
+import com.squareup.javapoet.MethodSpec;
+import com.squareup.javapoet.ParameterSpec;
+import com.squareup.javapoet.ParameterizedTypeName;
+import com.squareup.javapoet.TypeName;
+import com.squareup.javapoet.TypeSpec;
+import com.squareup.javapoet.TypeVariableName;
+import com.squareup.javapoet.WildcardTypeName;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.Collections;
@@ -23,7 +37,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
 import javax.annotation.processing.AbstractProcessor;
 import javax.annotation.processing.Filer;
 import javax.annotation.processing.Messager;
@@ -43,21 +56,6 @@ import javax.lang.model.type.TypeVariable;
 import javax.lang.model.util.ElementFilter;
 import javax.lang.model.util.Elements;
 import javax.tools.Diagnostic.Kind;
-
-import com.google.common.base.CaseFormat;
-import com.google.common.base.Strings;
-import com.google.common.collect.HashMultimap;
-import com.google.common.collect.Multimap;
-import com.squareup.javapoet.ClassName;
-import com.squareup.javapoet.FieldSpec;
-import com.squareup.javapoet.JavaFile;
-import com.squareup.javapoet.MethodSpec;
-import com.squareup.javapoet.ParameterSpec;
-import com.squareup.javapoet.ParameterizedTypeName;
-import com.squareup.javapoet.TypeName;
-import com.squareup.javapoet.TypeSpec;
-import com.squareup.javapoet.TypeVariableName;
-import com.squareup.javapoet.WildcardTypeName;
 
 /**
  * A compile-time Processor that aggregates classes annotated with {@link
@@ -109,7 +107,7 @@ public final class OperatorProcessor extends AbstractProcessor {
 
     // If there are no annotated elements, claim the annotation but do nothing.
     if (annotated.size() == 0) {
-      return true;
+      return false;
     }
 
     // This processor has to aggregate all op classes in one round, as it generates a single Ops
@@ -124,25 +122,25 @@ public final class OperatorProcessor extends AbstractProcessor {
                 + "One reason this can happen is if other annotation processors generate\n"
                 + "new @Operator source files.");
       }
-      return true;
+      return false;
     }
 
     // Collect all classes tagged with our annotation.
     Multimap<String, MethodSpec> groupedMethods = HashMultimap.create();
     if (!collectOpsMethods(roundEnv, groupedMethods, annotation)) {
-      return true;
+      return false;
     }
 
     // Nothing to do when there are no tagged classes.
     if (groupedMethods.isEmpty()) {
-      return true;
+      return false;
     }
 
     // Validate operator classes and generate Op API.
     writeApi(groupedMethods);
 
     hasRun = true;
-    return true;
+    return false;
   }
 
   @Override
@@ -410,7 +408,8 @@ public final class OperatorProcessor extends AbstractProcessor {
             .returns(T_OPS)
             .addStatement("return new Ops(scope.withControlDependencies(controls))")
             .addJavadoc(
-                "Returns an API that adds operations to the graph with the provided control dependencies.\n\n"
+                "Returns an API that adds operations to the graph with the provided control"
+                    + " dependencies.\n\n"
                     + "@see {@link $T#withControlDependencies(Iterable<Operand<?>>)}\n",
                 T_SCOPE)
             .build());
@@ -457,8 +456,10 @@ public final class OperatorProcessor extends AbstractProcessor {
             .returns(T_OPS)
             .addStatement("return new Ops(new $T($T.getDefault()))", T_SCOPE, T_EAGER_SESSION)
             .addJavadoc(
-                "Creates an API for building operations in the default eager execution environment\n\n"
-                    + "<p>Invoking this method is equivalent to {@code Ops.create(EagerSession.getDefault())}.\n")
+                "Creates an API for building operations in the default eager execution"
+                    + " environment\n\n"
+                    + "<p>Invoking this method is equivalent to {@code"
+                    + " Ops.create(EagerSession.getDefault())}.\n")
             .build());
 
     return opsBuilder.build();

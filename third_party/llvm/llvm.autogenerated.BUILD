@@ -468,6 +468,7 @@ llvm_target_list = [
             ("-gen-global-isel", "lib/Target/AArch64/AArch64GenGlobalISel.inc"),
             ("-gen-global-isel-combiner -combiners=AArch64PreLegalizerCombinerHelper", "lib/Target/AArch64/AArch64GenPreLegalizeGICombiner.inc"),
             ("-gen-global-isel-combiner -combiners=AArch64PostLegalizerCombinerHelper", "lib/Target/AArch64/AArch64GenPostLegalizeGICombiner.inc"),
+            ("-gen-global-isel-combiner -combiners=AArch64PostLegalizerLoweringHelper", "lib/Target/AArch64/AArch64GenPostLegalizeGILowering.inc"),
             ("-gen-callingconv", "lib/Target/AArch64/AArch64GenCallingConv.inc"),
             ("-gen-subtarget", "lib/Target/AArch64/AArch64GenSubtargetInfo.inc"),
             ("-gen-disassembler", "lib/Target/AArch64/AArch64GenDisassemblerTables.inc"),

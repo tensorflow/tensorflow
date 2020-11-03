@@ -162,7 +162,7 @@ func @main() -> () {
 
 // -----
 
-// Test tensor list grads.
+// Test tensor array grads.
 
 // CHECK-LABEL: func @main
 func @main() {
@@ -314,6 +314,93 @@ func @else_branch(%arg0: tensor<!tf.resource>) -> tensor<!tf.resource> {
 
 // -----
 
+// Tests WhileRegion loop with access to the tensor array defined outside and
+// its gradient defined inside.
+
+// CHECK-LABEL: func @main
+func @main() -> () {
+  // CHECK: %[[SIZE:.*]] = "tf.Const"() {value = dense<5> : tensor<i32>}
+  %size = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
+  %index = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: %[[VAR:.*]] = "tf.MlirLocalVarOp"() : () -> tensor<!tf.resource<tensor<5x3xf32>>>
+  // CHECK-NOT: tf.TensorArrayV3
+  %ta:2 = "tf.TensorArrayV3"(%size) {dtype = f32, element_shape = #tf.shape<3>, dynamic_size = false, clear_after_read = true, identical_element_shapes = true, tensor_array_name = "ta"} : (tensor<i32>) -> (tensor<!tf.resource>, tensor<f32>)
+  // CHECK: %[[FLOW_INIT:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>}
+  // CHECK: %[[WHILE:.*]]:2 = "tf.WhileRegion"(%[[FLOW_INIT]], %[[SIZE]]) ( {
+  %while:2 = "tf.WhileRegion"(%ta#1, %size) ({
+  // CHECK: ^bb0(%[[BARG0:.*]]: tensor<f32>, %[[BARG1:.*]]: tensor<i32>):
+  ^bb0(%barg0: tensor<f32>, %barg1: tensor<i32>):
+    // CHECK: %[[PRED:.*]] = "tf._SomeOp"(%[[BARG1]])
+    // CHECK: "tf.Yield"(%[[PRED]])
+    %pred = "tf._SomeOp"(%barg1) : (tensor<i32>) -> tensor<i1>
+    "tf.Yield" (%pred) : (tensor<i1>) -> ()
+  }, {
+  // CHECK: ^bb0(%[[BARG0:.*]]: tensor<f32>, %[[BARG1:.*]]: tensor<i32>):
+  ^bb0(%barg0: tensor<f32>, %barg1: tensor<i32>):
+    %const1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+    %sub = "tf.Sub"(%barg1, %const1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    %elem = "tf._SomeOp"() : () -> tensor<3xf32>
+    %flow = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
+    // CHECK: %[[READ_VAR:.*]] = "tf.ReadVariableOp"(%[[VAR]])
+    // CHECK: %[[UPDATE:.*]] = "tf.XlaDynamicUpdateSlice"(%[[READ_VAR]],
+    // CHECK: "tf.AssignVariableOp"(%[[VAR]], %[[UPDATE]])
+    %write = "tf.TensorArrayWriteV3"(%ta#0, %sub, %elem, %flow) : (tensor<!tf.resource>, tensor<i32>, tensor<3xf32>, tensor<f32>) -> tensor<f32>
+    // CHECK: %[[GVAR:.*]] = "tf.MlirLocalVarOp"() : () -> tensor<!tf.resource<tensor<5x3xf32>>>
+    %grad:2 = "tf.TensorArrayGradV3"(%ta#0, %write) {source = "a"} : (tensor<!tf.resource>, tensor<f32>) -> (tensor<!tf.resource>, tensor<f32>)
+    // CHECK: %[[READ_GVAR:.*]] = "tf.ReadVariableOp"(%[[GVAR]])
+    // CHECK: %[[UPDATE:.*]] = "tf.XlaDynamicUpdateSlice"(%[[READ_GVAR]],
+    // CHECK: "tf.AssignVariableOp"(%[[GVAR]], %[[UPDATE]])
+    %gwrite = "tf.TensorArrayWriteV3"(%grad#0, %sub, %elem, %grad#1) : (tensor<!tf.resource>, tensor<i32>, tensor<3xf32>, tensor<f32>) -> tensor<f32>
+    "tf.Yield"(%gwrite, %sub) : (tensor<f32>, tensor<i32>) -> ()
+  }) {is_stateless = false}
+       : (tensor<f32>, tensor<i32>) -> (tensor<f32>, tensor<i32>)
+  // CHECK: %[[READ_VAR:.*]] = "tf.ReadVariableOp"(%[[VAR]])
+  // CHECK: "tf.Slice"(%[[READ_VAR]]
+  %read = "tf.TensorArrayReadV3"(%ta#0, %index, %while#0) : (tensor<!tf.resource>, tensor<i32>, tensor<f32>) -> tensor<3xf32>
+  return
+}
+
+// -----
+
+// Test IfRegion op.
+
+// CHECK-LABEL: func @main
+// CHECK-SAME:  %[[PRED:.*]]: tensor<i1>
+func @main(%arg0: tensor<i1>) -> () {
+  %size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-NOT: tf.TensorArrayV3
+  // CHECK: %[[TA_BUFFER:.*]] = "tf.MlirLocalVarOp"() : () -> tensor<!tf.resource<tensor<10x3xf32>>>
+  // CHECK: "tf.AssignVariableOp"(%[[TA_BUFFER]]
+  // CHECK-NOT: tf.TensorArrayV3
+  %ta:2 = "tf.TensorArrayV3"(%size) {dtype = f32, element_shape = #tf.shape<3>, dynamic_size = false, clear_after_read = true, identical_element_shapes = true, tensor_array_name = "ta"} : (tensor<i32>) -> (tensor<!tf.resource>, tensor<f32>)
+  // CHECK: "tf.IfRegion"(%[[PRED]]) ( {
+  %case_op = "tf.IfRegion"(%arg0) ({
+      // CHECK: %[[TA_VAL:.*]] = "tf.ReadVariableOp"(%[[TA_BUFFER]])
+      // CHECK: "tf.Slice"(%[[TA_VAL]]
+      // CHECK-NOT: tf.TensorArrayReadV3
+      %idx = "tf.Const"() {value = dense<3> : tensor<i32>} : () -> tensor<i32>
+      %read = "tf.TensorArrayReadV3"(%ta#0, %idx, %ta#1) : (tensor<!tf.resource>, tensor<i32>, tensor<f32>) -> tensor<3xf32>
+      "tf.Yield"(%ta#1) : (tensor<f32>) -> ()
+    // CHECK: },  {
+    }, {
+      // CHECK: %[[TA_VAL:.*]] = "tf.ReadVariableOp"(%[[TA_BUFFER]])
+      // CHECK: %[[UPDATE:.*]] = "tf.XlaDynamicUpdateSlice"(%[[TA_VAL]]
+      // CHECK: "tf.AssignVariableOp"(%[[TA_BUFFER]], %[[UPDATE]])
+      // CHECK-NOT: tf.TensorArrayWriteV3
+      %idx = "tf.Const"() {value = dense<4> : tensor<i32>} : () -> tensor<i32>
+      %elem = "tf._SomeOp"() : () -> tensor<3xf32>
+      %write = "tf.TensorArrayWriteV3"(%ta#0, %idx, %elem, %ta#1) : (tensor<!tf.resource>, tensor<i32>, tensor<3xf32>, tensor<f32>) -> tensor<f32>
+      "tf.Yield"(%write) : (tensor<f32>) -> ()
+    // CHECK: }) {is_stateless = false} : (tensor<i1>) -> tensor<f32>
+    }) {is_stateless = false} : (tensor<i1>) -> tensor<f32>
+  %idx = "tf.Const"() {value = dense<6> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-NOT: tf.TensorArrayReadV3
+  %read_val = "tf.TensorArrayReadV3"(%ta#0, %idx, %case_op) : (tensor<!tf.resource>, tensor<i32>, tensor<f32>) -> tensor<3xf32>
+  return
+}
+
+// -----
+
 // Tests (Stateful)PartitionedCall op with access to the tensor array defined
 // outside and its gradient defined inside. The gradient creation should be
 // moved outside.
@@ -458,6 +545,59 @@ func @callee() -> (tensor<*xf32>) attributes {sym_visibility = "private"} {
   // CHECK: return %[[CAST]] : tensor<*xf32>
   return %val : tensor<*xf32>
 }
+// -----
+
+// Test CaseRegion with gradient inside PartitionedCall Op. The gradient local
+// variable should be inserted before the PartitionedCall op.
+
+// CHECK-LABEL:   func @main()
+func @main() -> () {
+  %size = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
+  %index = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: %[[VAR:.*]] = "tf.MlirLocalVarOp"() : () -> tensor<!tf.resource<tensor<5x3xf32>>>
+  // CHECK-NOT: tf.TensorArrayV3
+  %ta:2 = "tf.TensorArrayV3"(%size) {dtype = f32, element_shape = #tf.shape<3>, dynamic_size = false, clear_after_read = true, identical_element_shapes = true, tensor_array_name = "ta"} : (tensor<i32>) -> (tensor<!tf.resource>, tensor<f32>)
+  %cond = "tf._SomeOp"() : () -> tensor<i1>
+  // CHECK: %[[GVAR:.*]] = "tf.MlirLocalVarOp"() : () -> tensor<!tf.resource<tensor<5x3xf32>>>
+  // CHECK: "tf.StatefulPartitionedCall"(%[[VAR]], %[[GVAR]])
+  %call = "tf.StatefulPartitionedCall"(%ta#0) {f = @callee, config = "", config_proto = "", executor_type = ""}
+    : (tensor<!tf.resource>) -> tensor<!tf.resource>
+  // CHECK-NOT: tf.TensorArrayReadV3
+  %read = "tf.TensorArrayReadV3"(%call, %index, %ta#1) : (tensor<!tf.resource>, tensor<i32>, tensor<f32>) -> tensor<3xf32>
+  return
+}
+
+// CHECK-LABEL: func @callee
+// CHECK-SAME:  %[[VAR:.*]]: tensor<!tf.resource<tensor<5x3xf32>>>, %[[GVAR:.*]]: tensor<!tf.resource<tensor<5x3xf32>>>
+func @callee(%arg0: tensor<!tf.resource>) -> tensor<!tf.resource> attributes {sym_visibility = "private"} {
+  %index = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  %elem = "tf._SomeOp"() : () -> tensor<3xf32>
+  %flow = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
+  // CHECK: %[[BR_INDEX:.*]] = "tf.SomeOp"() : () -> tensor<i32>
+  %branch_index = "tf.SomeOp"() : () -> tensor<i32>
+  // CHECK: "tf.CaseRegion"(%[[BR_INDEX]]) ( {
+  "tf.CaseRegion"(%branch_index) ({
+    // CHECK: %[[READ_GVAR:.*]] = "tf.ReadVariableOp"(%[[GVAR]])
+    // CHECK: %[[UPDATE:.*]] = "tf.XlaDynamicUpdateSlice"(%[[READ_GVAR]],
+    // CHECK: "tf.AssignVariableOp"(%[[GVAR]], %[[UPDATE]])
+    %grad:2 = "tf.TensorArrayGradV3"(%arg0, %flow) {source = "a"} : (tensor<!tf.resource>, tensor<f32>) -> (tensor<!tf.resource>, tensor<f32>)
+    %gwrite = "tf.TensorArrayWriteV3"(%grad#0, %index, %elem, %grad#1) : (tensor<!tf.resource>, tensor<i32>, tensor<3xf32>, tensor<f32>) -> tensor<f32>
+    "tf.Yield"() : () -> ()
+  }, {
+    // CHECK: %[[READ_VAR:.*]] = "tf.ReadVariableOp"(%[[VAR]])
+    // CHECK: "tf.Slice"(%[[READ_VAR]]
+    %read = "tf.TensorArrayReadV3"(%arg0, %index, %flow) : (tensor<!tf.resource>, tensor<i32>, tensor<f32>) -> tensor<3xf32>
+    "tf.Yield"() : () -> ()
+  }, {
+    // CHECK: %[[READ_VAR:.*]] = "tf.ReadVariableOp"(%[[VAR]])
+    // CHECK: %[[UPDATE:.*]] = "tf.XlaDynamicUpdateSlice"(%[[READ_VAR]],
+    // CHECK: "tf.AssignVariableOp"(%[[VAR]], %[[UPDATE]])
+    %write = "tf.TensorArrayWriteV3"(%arg0, %index, %elem, %flow) : (tensor<!tf.resource>, tensor<i32>, tensor<3xf32>, tensor<f32>) -> tensor<f32>
+    "tf.Yield"() : () -> ()
+  }) {is_stateless = false} : (tensor<i32>) -> ()
+  // CHECK: return %[[VAR]]
+ return %arg0 : tensor<!tf.resource>
+}
 
 // -----
 
@@ -500,4 +640,47 @@ func @if_then(%arg0: tensor<!tf.resource>, %arg1: tensor<!tf.resource>) -> tenso
 }
 func @if_else(%arg0: tensor<!tf.resource>, %arg1: tensor<!tf.resource>) -> tensor<!tf.resource> {
   return %arg1 : tensor<!tf.resource>
+}
+
+// -----
+
+// Tests that the pass returns meaningful error message when region based
+// control flow op has resource arguments.
+func @main() -> () {
+  %size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+  %ta:2 = "tf.TensorArrayV3"(%size) {dtype = f32, element_shape = #tf.shape<3>, dynamic_size = false, clear_after_read = true, identical_element_shapes = true, tensor_array_name = "ta"} : (tensor<i32>) -> (tensor<!tf.resource>, tensor<f32>)
+  // expected-error @+1 {{found unexpected type 'tensor<!tf.resource<tensor<10x3xf32>>>' of operand #0, resource type operands are expected to have been canonicalized away for region based control flow ops}}
+  %1:2 = "tf.WhileRegion"(%ta#0, %size) ({
+    ^bb0 (%carg0: tensor<!tf.resource>, %carg1: tensor<i32>):
+      %pred = "tf._SomeOp"(%carg1) : (tensor<i32>) -> tensor<i1>
+      "tf.Yield"(%pred) : (tensor<i1>) -> ()
+    }, {
+    ^bb0 (%carg0: tensor<!tf.resource>, %carg1: tensor<i32>):
+      %idx = "tf.Const"() {value = dense<3> : tensor<i32>} : () -> tensor<i32>
+      %read_true = "tf.TensorArrayReadV3"(%carg0, %idx, %ta#1) : (tensor<!tf.resource>, tensor<i32>, tensor<f32>) -> tensor<3xf32>
+      "tf.Yield"(%carg0, %idx) : (tensor<!tf.resource>, tensor<i32>) -> ()
+    }) {is_stateless = false}
+       : (tensor<!tf.resource>, tensor<i32>) -> (tensor<!tf.resource>, tensor<i32>)
+  return
+}
+
+// -----
+
+// Tests that the pass returns meaningful error message when region based
+// control flow op has resource returns.
+
+func @main(%arg0: tensor<i1>) -> (tensor<3xf32>) {
+  %size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+  %ta:2 = "tf.TensorArrayV3"(%size) {dtype = f32, element_shape = #tf.shape<3>, dynamic_size = false, clear_after_read = true, identical_element_shapes = true, tensor_array_name = "ta"} : (tensor<i32>) -> (tensor<!tf.resource>, tensor<f32>)
+  // expected-error @+1 {{found unexpected type 'tensor<!tf.resource>' of result #1, resource type results are expected to have been canonicalized away for region based control flow ops}}
+  %if_op:2 = "tf.IfRegion"(%arg0) ({
+      %idx = "tf.Const"() {value = dense<3> : tensor<i32>} : () -> tensor<i32>
+      %read_true = "tf.TensorArrayReadV3"(%ta#0, %idx, %ta#1) : (tensor<!tf.resource>, tensor<i32>, tensor<f32>) -> tensor<3xf32>
+      "tf.Yield"(%read_true, %ta#0) : (tensor<3xf32>, tensor<!tf.resource>) -> ()
+    }, {
+      %idx = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
+      %read_false = "tf.TensorArrayReadV3"(%ta#0, %idx, %ta#1) : (tensor<!tf.resource>, tensor<i32>, tensor<f32>) -> tensor<3xf32>
+      "tf.Yield"(%read_false, %ta#0) : (tensor<3xf32>, tensor<!tf.resource>) -> ()
+    }) {is_stateless = false} : (tensor<i1>) -> (tensor<3xf32>, tensor<!tf.resource>)
+  return %if_op : tensor<3xf32>
 }

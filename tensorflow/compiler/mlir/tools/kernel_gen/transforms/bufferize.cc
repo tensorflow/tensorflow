@@ -40,10 +40,9 @@ namespace transforms {
 namespace {
 
 class TensorFromElementsOpConverter
-    : public BufferAssignmentOpConversionPattern<TensorFromElementsOp> {
+    : public OpConversionPattern<TensorFromElementsOp> {
  public:
-  using BufferAssignmentOpConversionPattern<
-      TensorFromElementsOp>::BufferAssignmentOpConversionPattern;
+  using OpConversionPattern<TensorFromElementsOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
       TensorFromElementsOp op, ArrayRef<Value> operands,
@@ -64,10 +63,9 @@ class TensorFromElementsOpConverter
 };
 
 class DynamicTensorFromElementsOpConverter
-    : public BufferAssignmentOpConversionPattern<DynamicTensorFromElementsOp> {
+    : public OpConversionPattern<DynamicTensorFromElementsOp> {
  public:
-  using BufferAssignmentOpConversionPattern<
-      DynamicTensorFromElementsOp>::BufferAssignmentOpConversionPattern;
+  using OpConversionPattern<DynamicTensorFromElementsOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
       DynamicTensorFromElementsOp op, ArrayRef<Value> operands,
@@ -115,11 +113,9 @@ class DynamicTensorFromElementsOpConverter
   }
 };
 
-class TensorLoadOpConversion
-    : public BufferAssignmentOpConversionPattern<TensorLoadOp> {
+class TensorLoadOpConversion : public OpConversionPattern<TensorLoadOp> {
  public:
-  using BufferAssignmentOpConversionPattern<
-      TensorLoadOp>::BufferAssignmentOpConversionPattern;
+  using OpConversionPattern<TensorLoadOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
       TensorLoadOp op, ArrayRef<Value> operands,
@@ -131,10 +127,9 @@ class TensorLoadOpConversion
 };
 
 class ExtractElementOpConversion
-    : public BufferAssignmentOpConversionPattern<ExtractElementOp> {
+    : public OpConversionPattern<ExtractElementOp> {
  public:
-  using BufferAssignmentOpConversionPattern<
-      ExtractElementOp>::BufferAssignmentOpConversionPattern;
+  using OpConversionPattern<ExtractElementOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
       ExtractElementOp op, ArrayRef<Value> operands,
@@ -151,11 +146,23 @@ class ExtractElementOpConversion
   }
 };
 
-class TensorCastOpConverter
-    : public BufferAssignmentOpConversionPattern<TensorCastOp> {
+template <typename OpTy>
+class SimpleOpResultConversion : public OpConversionPattern<OpTy> {
  public:
-  using BufferAssignmentOpConversionPattern<
-      TensorCastOp>::BufferAssignmentOpConversionPattern;
+  using OpConversionPattern<OpTy>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      OpTy op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const final {
+    rewriter.replaceOpWithNewOp<OpTy>(
+        op, this->getTypeConverter()->convertType(op.getType()), operands);
+    return success();
+  }
+};
+
+class TensorCastOpConverter : public OpConversionPattern<TensorCastOp> {
+ public:
+  using OpConversionPattern<TensorCastOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
       TensorCastOp op, ArrayRef<Value> operands,
@@ -163,7 +170,7 @@ class TensorCastOpConverter
     Value arg = operands.front();
     if (!arg.getType().isa<BaseMemRefType>()) return failure();
 
-    auto result_ty = converter->convertType(op.getType());
+    auto result_ty = getTypeConverter()->convertType(op.getType());
     rewriter.replaceOpWithNewOp<MemRefCastOp>(op, arg, result_ty);
 
     return success();
@@ -173,11 +180,12 @@ class TensorCastOpConverter
 }  // namespace
 
 void populateStandardBufferizePattern(MLIRContext *context,
-                                      BufferAssignmentTypeConverter *converter,
+                                      BufferizeTypeConverter *converter,
                                       OwningRewritePatternList *patterns) {
   patterns->insert<ExtractElementOpConversion, TensorFromElementsOpConverter,
-                   DynamicTensorFromElementsOpConverter, TensorLoadOpConversion,
-                   TensorCastOpConverter>(context, converter);
+                   DynamicTensorFromElementsOpConverter,
+                   SimpleOpResultConversion<SelectOp>, TensorLoadOpConversion,
+                   TensorCastOpConverter>(*converter, context);
 }
 
 }  // namespace transforms

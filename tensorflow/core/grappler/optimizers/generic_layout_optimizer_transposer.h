@@ -149,10 +149,12 @@ class Transposer {
                               utils::MutationNewNode* added_node);
 
  protected:
+  int GetFanoutPortRank(const utils::MutableNodeView& node, int port) const;
   bool IsFanoutPortRankN(const utils::MutableNodeView& node, int port,
                          int n) const;
   bool IsFanoutPortsRankN(const utils::MutableNodeView& node,
                           absl::Span<const int> ports, int n) const;
+  int GetFaninPortRank(const utils::MutableNodeView& node, int port) const;
   bool IsFaninPortRankN(const utils::MutableNodeView& node, int port,
                         int n) const;
 

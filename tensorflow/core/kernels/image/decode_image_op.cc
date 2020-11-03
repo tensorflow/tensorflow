@@ -242,6 +242,16 @@ class DecodeImageV2Op : public OpKernel {
       flags.crop_x = crop_window_vec(1);
       flags.crop_height = crop_window_vec(2);
       flags.crop_width = crop_window_vec(3);
+    } else if (op_type_ == "DecodeBmp") {
+      // TODO(b/171060723): Only DecodeBmp as op_type_ is not acceptable here
+      // because currently `decode_(jpeg|png|gif)` ops can decode any one of
+      // jpeg, png or gif but not bmp. Similarly, `decode_bmp` cannot decode
+      // anything but bmp formats. This behavior needs to be revisited. For more
+      // details, please refer to the bug.
+      OP_REQUIRES(context, false,
+                  errors::InvalidArgument(
+                      "Trying to decode JPEG format using DecodeBmp op. Use "
+                      "`decode_jpeg` or `decode_image` instead."));
     }
 
     // Output tensor and the image buffer size.
@@ -346,6 +356,24 @@ class DecodeImageV2Op : public OpKernel {
       status = context->allocate_output(
           0, TensorShape({height, width, decode.channels}), &output);
     }
+
+    if (op_type_ == "DecodeBmp") {
+      // TODO(b/171060723): Only DecodeBmp as op_type_ is not acceptable here
+      // because currently `decode_(jpeg|png|gif)` ops can decode any one of
+      // jpeg, png or gif but not bmp. Similarly, `decode_bmp` cannot decode
+      // anything but bmp formats. This behavior needs to be revisited. For more
+      // details, please refer to the bug.
+      OP_REQUIRES(context, false,
+                  errors::InvalidArgument(
+                      "Trying to decode PNG format using DecodeBmp op. Use "
+                      "`decode_png` or `decode_image` instead."));
+    } else if (op_type_ == "DecodeAndCropJpeg") {
+      OP_REQUIRES(context, false,
+                  errors::InvalidArgument(
+                      "DecodeAndCropJpeg operation can run on JPEG only, but "
+                      "detected PNG."));
+    }
+
     if (!status.ok()) png::CommonFreeDecode(&decode);
     OP_REQUIRES_OK(context, status);
 
@@ -392,6 +420,23 @@ class DecodeImageV2Op : public OpKernel {
     OP_REQUIRES(context, channels_ == 0 || channels_ == 3,
                 errors::InvalidArgument("channels must be 0 or 3 for GIF, got ",
                                         channels_));
+
+    if (op_type_ == "DecodeBmp") {
+      // TODO(b/171060723): Only DecodeBmp as op_type_ is not acceptable here
+      // because currently `decode_(jpeg|png|gif)` ops can decode any one of
+      // jpeg, png or gif but not bmp. Similarly, `decode_bmp` cannot decode
+      // anything but bmp formats. This behavior needs to be revisited. For more
+      // details, please refer to the bug.
+      OP_REQUIRES(context, false,
+                  errors::InvalidArgument(
+                      "Trying to decode GIF format using DecodeBmp op. Use "
+                      "`decode_gif` or `decode_image` instead."));
+    } else if (op_type_ == "DecodeAndCropJpeg") {
+      OP_REQUIRES(context, false,
+                  errors::InvalidArgument(
+                      "DecodeAndCropJpeg operation can run on JPEG only, but "
+                      "detected GIF."));
+    }
 
     // Decode GIF, allocating tensor if dtype is uint8, otherwise defer tensor
     // allocation til after dtype conversion is done. `gif`::Decode` supports
@@ -476,6 +521,21 @@ class DecodeImageV2Op : public OpKernel {
         context, channels_ != 1,
         errors::InvalidArgument(
             "`channels` must be 0, 3 or 4 for BMP, but got ", channels_));
+
+    if (op_type_ != "DecodeBmp" && op_type_ != "DecodeImage") {
+      if (op_type_ == "DecodeAndCropJpeg") {
+        OP_REQUIRES(context, false,
+                    errors::InvalidArgument(
+                        "DecodeAndCropJpeg operation can run on JPEG only, but "
+                        "detected BMP."));
+      } else {
+        OP_REQUIRES(context, false,
+                    errors::InvalidArgument(
+                        "Trying to decode BMP format using a wrong op. Use "
+                        "`decode_bmp` or `decode_image` instead. Op used: ",
+                        op_type_));
+      }
+    }
 
     OP_REQUIRES(context, (32 <= input.size()),
                 errors::InvalidArgument("Incomplete bmp content, requires at "

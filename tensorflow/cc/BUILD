@@ -251,7 +251,6 @@ cc_library_with_android_deps(
     deps = [
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_experimental",
         "//tensorflow/core:protos_all_cc",
     ],
 )
@@ -266,7 +265,6 @@ tf_cc_test(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_experimental",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

@@ -87,6 +87,7 @@ func @main(tensor<4xi1>) -> tensor<4xi1> {
   // CHECK-NEXT:   name: "min_runtime_version",
   // CHECK-NEXT:   buffer: 6
   // CHECK-NEXT:   } ]
+  // CHECK-NEXT:   signature_defs: [ ]
   // CHECK-NEXT: }
   // CHECK-EMPTY:
 

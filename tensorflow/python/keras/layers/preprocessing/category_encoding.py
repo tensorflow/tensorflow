@@ -298,12 +298,18 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
     binary_output = (self._output_mode == BINARY)
     if isinstance(inputs, sparse_tensor.SparseTensor):
       max_value = math_ops.reduce_max(inputs.values)
+      min_value = math_ops.reduce_min(inputs.values)
     else:
       max_value = math_ops.reduce_max(inputs)
-    condition = math_ops.greater_equal(
-        math_ops.cast(out_depth, max_value.dtype), max_value)
+      min_value = math_ops.reduce_min(inputs)
+    condition = math_ops.logical_and(
+        math_ops.greater_equal(
+            math_ops.cast(out_depth, max_value.dtype), max_value),
+        math_ops.greater_equal(
+            min_value, math_ops.cast(0, min_value.dtype)))
     control_flow_ops.Assert(
-        condition, ["Input must be less than max_token {}".format(out_depth)])
+        condition, ["Input values must be in the range 0 <= values < max_tokens"
+                    " with max_tokens={}".format(out_depth)])
     if self._sparse:
       result = bincount_ops.sparse_bincount(
           inputs,

@@ -23,10 +23,6 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 // Checks if the value has only one user.
 def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;
 
-// Constraint that makes sure both operands are the same operands.
-// TODO(b/154826385): Reconsider once equal source pattern symbols are allowed.
-def EqualOperands : Constraint<CPred<"$0 == $1">>;
-
 // Checks if the operand0's rank is one less than operand1's rank.
 def PReluAlphaRankCheck : Constraint<
   CPred<"$0.getType().cast<ShapedType>().getRank() == "
@@ -36,13 +32,12 @@ def PReluAlphaRankCheck : Constraint<
 // PReLU pattern from Keras:
 // f(x) = Relu(x) + (-alpha * Relu(-x))
 def : Pat<(TF_AddV2Op
-           (TF_ReluOp:$relu_out $input1),
+           (TF_ReluOp:$relu_out $x),
            (TF_MulOp:$mul_out
-            (TF_ReluOp (TF_NegOp:$input_neg_out $input2)),
+            (TF_ReluOp (TF_NegOp:$input_neg_out $x)),
             $neg_alpha)),
-          (TFJS_PReluOp $input1, (TF_NegOp $neg_alpha)),
-          [(EqualOperands $input1, $input2),
-           (PReluAlphaRankCheck $neg_alpha, $input1),
+          (TFJS_PReluOp $x, (TF_NegOp $neg_alpha)),
+          [(PReluAlphaRankCheck $neg_alpha, $x),
            (HasOneUse $relu_out),
            (HasOneUse $mul_out),
            (HasOneUse $input_neg_out)

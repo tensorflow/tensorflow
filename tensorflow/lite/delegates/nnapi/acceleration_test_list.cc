@@ -307,6 +307,9 @@ PowOpModel/.+,29
 # quant_basic_lstm_test
 QuantizedLstmTest/BasicQuantizedLstmTest/29
 
+# quantized_lstm op test
+IntegerLstmOpTest/NoCifg_NoPeephole_Projection_LayerNorm,30
+
 # quantize_test
 QuantizeOpTest/UINT8,29
 QuantizeOpTest/UInt8UInt8.+,29

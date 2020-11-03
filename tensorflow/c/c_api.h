@@ -1577,6 +1577,13 @@ TF_CAPI_EXPORT extern void TF_DeleteServer(TF_Server* server);
 TF_CAPI_EXPORT extern void TF_RegisterLogListener(
     void (*listener)(const char*));
 
+// Register a FileSystem plugin from filename `plugin_filename`.
+//
+// On success, place OK in status.
+// On failure, place an error status in status.
+TF_CAPI_EXPORT extern void TF_RegisterFilesystemPlugin(
+    const char* plugin_filename, TF_Status* status);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

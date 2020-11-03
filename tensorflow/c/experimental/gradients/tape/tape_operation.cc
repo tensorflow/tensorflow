@@ -25,7 +25,7 @@ TapeOperation::TapeOperation(AbstractOperation* parent_op, Tape* tape,
       parent_op_(parent_op),
       tape_(tape),
       registry_(registry) {
-  // TODO(srbs): Make AbstractOperation RefCounted.
+  // TODO(b/172003047): Consider making AbstractOperation RefCounted.
   // parent_op_->Ref();
 }
 void TapeOperation::Release() {
@@ -33,7 +33,7 @@ void TapeOperation::Release() {
   delete this;
 }
 TapeOperation::~TapeOperation() {
-  // TODO(srbs): Make AbstractOperation RefCounted.
+  // TODO(b/172003047): Consider making AbstractOperation RefCounted.
   // parent_op->Unref();
 }
 Status TapeOperation::Reset(const char* op, const char* raw_device_name) {

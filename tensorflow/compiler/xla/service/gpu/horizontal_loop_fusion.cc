@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/util/env_var.h"
@@ -135,25 +136,6 @@ bool IsFusionSupported(const HloInstruction& instr) {
   }
 
   return true;
-}
-
-bool IsConsumerTheOnlyNonRootUser(const HloInstruction& instr,
-                                  const HloInstruction& consumer) {
-  return absl::c_all_of(instr.users(), [&](const HloInstruction* user) {
-    if (user->opcode() == HloOpcode::kGetTupleElement) {
-      // Skip GTE.
-      return IsConsumerTheOnlyNonRootUser(*user, consumer);
-    } else if (user == &consumer) {
-      // `user` is `consumer`.
-      return true;
-    } else if (user == user->parent()->root_instruction()) {
-      // Consumed by ROOT is always fine, since it is impossible to create
-      // cycles through ROOT.
-      return true;
-    } else {
-      return false;
-    }
-  });
 }
 
 // Returns whether `instr` is a profitable candidate to be horizontally fused.

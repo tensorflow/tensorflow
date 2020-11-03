@@ -125,7 +125,7 @@ def _IfGrad(op, *grads):  # pylint: disable=invalid-name
   false_grad_graph = _create_grad_func(
       false_graph, grads, util.unique_grad_fn_name(false_graph.name))
 
-  # Replaces output None grads with zeros if atleast one branch has non-None
+  # Replaces output None grads with zeros if at least one branch has non-None
   # grad at that index.
   _create_zeros_for_none_grads([true_graph, false_graph],
                                [true_grad_graph, false_grad_graph])
@@ -206,7 +206,7 @@ def _build_cond(pred,
   computation.
 
   true_graph and false_graph need not have the same input types, but they must
-  have the same outpute types.
+  have the same output types.
 
   Args:
     pred: boolean Tensor
@@ -268,27 +268,35 @@ def _build_cond(pred,
     else:
       op_fn = gen_functional_ops.stateless_if
 
-    tensors = op_fn(
-        pred,
-        cond_inputs, [t.dtype for t in true_graph.outputs],
-        util.create_new_tf_function(true_graph),
-        util.create_new_tf_function(false_graph),
-        output_shapes=_get_output_shapes(true_graph.outputs,
-                                         false_graph.outputs),
-        name=name)
+    def _make_op(inputs):
+      if_op, tensors = util.get_op_and_outputs(op_fn(
+          pred,
+          inputs, [t.dtype for t in true_graph.outputs],
+          util.create_new_tf_function(true_graph),
+          util.create_new_tf_function(false_graph),
+          output_shapes=_get_output_shapes(true_graph.outputs,
+                                           false_graph.outputs),
+          name=name))
+      _copy_handle_data(tensors, true_graph.outputs, false_graph.outputs)
+      # `if_op` is None if this is a `StatelessIf` op with no outputs.
+      if if_op is not None:
+        # The true and false graphs have already been created, and we need that
+        # to happen before we know which tensors will be captured and so whether
+        # to wrap the cond in a tf.function. Post-hoc mutation of the branch
+        # `outer_graph` properties seems like the only option if we want to
+        # conditionally wrap in a function.
+        true_graph.outer_graph = ops.get_default_graph()
+        false_graph.outer_graph = ops.get_default_graph()
+        if_op._true_graph = true_graph
+        if_op._false_graph = false_graph
+        util.maybe_set_lowering_attr(if_op)
+        util.maybe_propagate_compile_time_consts_in_xla(if_op)
+        _set_read_only_resource_inputs_attr(if_op, [true_graph, false_graph])
+        # Prevent fetching since the variant outputs can't be fetched directly.
+        if_op.graph.prevent_fetching(if_op)
+      return tensors
+    tensors = util.run_as_function_for_tape_gradients(_make_op, cond_inputs)
 
-  if_op, tensors = _get_op_and_outputs(tensors)
-  # `if_op` is None if this is a `StatelessIf` op with no outputs.
-  if if_op is not None:
-    if_op._true_graph = true_graph
-    if_op._false_graph = false_graph
-    util.maybe_set_lowering_attr(if_op)
-    util.maybe_propagate_compile_time_consts_in_xla(if_op)
-    _set_read_only_resource_inputs_attr(if_op, [true_graph, false_graph])
-    # Prevent fetching since the variant outputs can't be fetched directly.
-    if_op.graph.prevent_fetching(if_op)
-
-  _copy_handle_data(tensors, true_graph.outputs, false_graph.outputs)
   # Return identities for each output of the If op, rather than the output of
   # the If op directly. This makes pruning work if the output of cond() is
   # fetched: the lowering pass converts the If outputs into IdentityN outputs,
@@ -544,7 +552,7 @@ def _make_inputs_match(branch_graphs, branch_inputs):
 
 
 def _create_zeros_for_none_grads(forward_graphs, grad_graphs):
-  """Creates zeros for None out grads if atleast one branch has non-None grad.
+  """Creates zeros for None out grads if at least one branch has non-None grad.
 
   Args:
     forward_graphs: List of forward FuncGraphs.
@@ -683,15 +691,6 @@ def _make_indexed_slices_indices_types_match(op_type, branch_graphs):
   for branch_graph in branch_graphs:
     branch_graph.structured_outputs = _pack_sequence_as(
         branch_graph.structured_outputs, branch_graph.outputs)
-
-
-def _get_op_and_outputs(op_or_outputs):
-  if isinstance(op_or_outputs, ops.Operation):
-    return op_or_outputs, []
-  elif not op_or_outputs:  # Empty list.
-    return None, []
-  else:
-    return op_or_outputs[0].op, op_or_outputs
 
 
 def _pack_sequence_as(structured_outputs, op_outputs):
@@ -933,7 +932,7 @@ class _CondGradFuncGraph(util.CondBranchFuncGraph):
     # If it is not a resource, we wrap it in an optional in the forward graph
     # and capture the optional normally. We then unwrap the captured optional
     # value in the gradient graph to get the raw intermediate value.
-    # If it is a resource, we trace the resource upto the input in the forward
+    # If it is a resource, we trace the resource up to the input in the forward
     # graph and capture that.
 
     if tensor.dtype == dtypes.resource:
@@ -1035,7 +1034,7 @@ def _CaseGrad(op, *grads):  # pylint: disable=invalid-name
     branch_grad_graphs.append(
         _create_grad_func(branch_graph, grads,
                           util.unique_grad_fn_name(branch_graph.name)))
-  # Replaces output None grads with zeros if atleast one branch has non-None
+  # Replaces output None grads with zeros if at least one branch has non-None
   # grad at that index.
   _create_zeros_for_none_grads(branch_graphs, branch_grad_graphs)
 
@@ -1121,7 +1120,7 @@ def _build_case(branch_index,
   computation.
 
   `branch_graphs` need not have the same input types, but they must
-  have the same outpute types.
+  have the same output types.
 
   Args:
     branch_index: integer Tensor
@@ -1156,23 +1155,24 @@ def _build_case(branch_index,
   # Create the Case op.
   with ops.control_dependencies(
       sum((list(bg.control_captures) for bg in branch_graphs), [])):
-    tensors = op_fn(
-        branch_index,
-        case_inputs, [t.dtype for t in branch_graphs[0].outputs],
-        [util.create_new_tf_function(g) for g in branch_graphs],
-        output_shapes=_get_output_shapes(*[g.outputs for g in branch_graphs]),
-        name=name)
 
-  case_op, tensors = _get_op_and_outputs(tensors)
+    def _make_op(inputs):
+      case_op, tensors = util.get_op_and_outputs(op_fn(
+          branch_index,
+          inputs, [t.dtype for t in branch_graphs[0].outputs],
+          [util.create_new_tf_function(g) for g in branch_graphs],
+          output_shapes=_get_output_shapes(*[g.outputs for g in branch_graphs]),
+          name=name))
+      _copy_handle_data(tensors, *[g.outputs for g in branch_graphs])
+      if case_op is not None:
+        util.maybe_set_lowering_attr(case_op, lower_using_switch_merge)
+        util.maybe_propagate_compile_time_consts_in_xla(case_op)
+        _set_read_only_resource_inputs_attr(case_op, branch_graphs)
+        # Prevent fetching since the variant outputs can't be fetched directly.
+        case_op.graph.prevent_fetching(case_op)
+      return tensors
+    tensors = util.run_as_function_for_tape_gradients(_make_op, case_inputs)
 
-  if case_op is not None:
-    util.maybe_set_lowering_attr(case_op, lower_using_switch_merge)
-    util.maybe_propagate_compile_time_consts_in_xla(case_op)
-    _set_read_only_resource_inputs_attr(case_op, branch_graphs)
-    # Prevent fetching since the variant outputs can't be fetched directly.
-    case_op.graph.prevent_fetching(case_op)
-
-  _copy_handle_data(tensors, *[g.outputs for g in branch_graphs])
   # Return identities for each output of the Case op, rather than the output of
   # the Case op directly. This makes pruning work if the output of switch_case()
   # is fetched: the lowering pass converts the Case outputs into IdentityN

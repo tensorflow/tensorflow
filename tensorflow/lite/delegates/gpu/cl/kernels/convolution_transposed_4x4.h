@@ -43,7 +43,7 @@ class ConvolutionTransposed4x4 : public GPUOperation {
       std::vector<int3>* work_groups) const override {
     work_groups->push_back(work_group_size_);
   }
-  absl::Status BindArguments() override;
+  absl::Status BindArguments(ArgumentsBinder* args) override;
   int3 GetGridSize() const override;
 
   // Move only

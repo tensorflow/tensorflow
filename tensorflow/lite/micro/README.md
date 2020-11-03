@@ -22,6 +22,12 @@ kilobytes of memory.
 To learn how to use the framework, visit the developer documentation at
 [tensorflow.org/lite/microcontrollers](https://www.tensorflow.org/lite/microcontrollers).
 
+# Continuous Buils Status
+
+Build Type | Status                                                                                                                                                                       | Artifacts
+---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------
+Linux      | [![Status](https://storage.googleapis.com/tensorflow-kokoro-build-badges/tflite-micro.svg)](https://storage.googleapis.com/tensorflow-kokoro-build-badges/tflite-micro.html) |
+
 # Getting Help and Involved
 
 A
@@ -48,3 +54,4 @@ project, we have additional documentation in the [docs](docs/) folder.
 *   [Benchmarks](benchmarks/README.md)
 *   [Memory Management](docs/memory_management.md)
 *   [New Platform Support](docs/new_platform_support.md)
+*   [Software Emulation with Renode](docs/renode.md)

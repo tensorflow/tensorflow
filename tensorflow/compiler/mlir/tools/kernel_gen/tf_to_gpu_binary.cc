@@ -25,6 +25,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
+#include "tensorflow/compiler/mlir/tools/kernel_gen/crash_handler.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/kernel_creator.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
@@ -63,6 +64,7 @@ xla::Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
 }  // namespace tensorflow
 
 int main(int argc, char** argv) {
+  tensorflow::kernel_gen::SetCrashReportMessage();
   llvm::cl::opt<std::string> input_file("input", llvm::cl::desc("input file"),
                                         llvm::cl::value_desc("filename"),
                                         llvm::cl::init("foo.mlir"));

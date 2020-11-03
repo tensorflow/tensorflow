@@ -176,6 +176,7 @@ cc_library(
         "//learning/brain/research/jax:__subpackages__",
         "//learning/deepmind/tensorflow/tensorfn:__subpackages__",
         "//learning/pathways:__subpackages__",
+        "//tensorflow/compiler/xla:friends",
     ],
     deps = [
         ":local_device_state",

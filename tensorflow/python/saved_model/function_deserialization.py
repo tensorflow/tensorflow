@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import re
+from absl import logging
 
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.protobuf import saved_object_graph_pb2
@@ -32,7 +33,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
@@ -220,7 +220,6 @@ def recreate_function(saved_function, concrete_functions):
   # instead of creating a new `Function` backed by a Python layer to
   # glue things together. Current approach is nesting functions deeper for each
   # serialization cycle.
-
   coder = nested_structure_coder.StructureCoder()
 
   # Note: handling method functions is tricky since make_decorator does not
@@ -237,7 +236,9 @@ def recreate_function(saved_function, concrete_functions):
       coder)
 
   def restored_function_body(*args, **kwargs):
-    """Calls a restored function."""
+    """Calls a restored function or raises an error if no matching function."""
+    if not saved_function.concrete_functions:
+      raise ValueError("Found zero restored functions for caller function.")
     # This is the format of function.graph.structured_input_signature. At this
     # point, the args and kwargs have already been canonicalized.
     inputs = (args, kwargs)
@@ -406,13 +407,14 @@ def _sort_function_defs(library, library_function_names):
   return [reverse[x] for x in output]
 
 
-def fix_node_def(node_def, functions, shared_name_suffix, debug_name):
+def _check_op_has_custom_gradients(node_def):
+  """Returns True if op has custom gradients."""
+  return ("_gradient_op_type" in node_def.attr and
+          node_def.op not in ["StatefulPartitionedCall", "PartitionedCall"])
+
+
+def fix_node_def(node_def, functions, shared_name_suffix):
   """Replace functions calls and shared names in `node_def`."""
-  if ("_gradient_op_type" in node_def.attr and
-      node_def.op not in ["StatefulPartitionedCall", "PartitionedCall"]):
-    logging.warning(
-        "Importing a function (%s) with ops with custom gradients. Will likely "
-        "fail if a gradient is requested.", debug_name)
   if node_def.op in functions:
     node_def.op = functions[node_def.op].name
   for _, attr_value in node_def.attr.items():
@@ -470,8 +472,16 @@ def _fix_fdef(orig_fdef, functions, shared_name_suffix):
   """
   fdef = function_pb2.FunctionDef()
   fdef.CopyFrom(orig_fdef)
+  contains_custom_gradients = False
+
   for node_def in fdef.node_def:
-    fix_node_def(node_def, functions, shared_name_suffix, fdef.signature.name)
+    fix_node_def(node_def, functions, shared_name_suffix)
+    if not contains_custom_gradients:
+      contains_custom_gradients = _check_op_has_custom_gradients(node_def)
+  if contains_custom_gradients:
+    logging.warning(
+        "Importing a function (%s) with ops with custom gradients. Will likely "
+        "fail if a gradient is requested.", fdef.signature.name)
 
   fdef.signature.name = _clean_function_name(fdef.signature.name)
   return fdef
