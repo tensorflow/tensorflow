@@ -117,7 +117,7 @@ detailed allocation logging:
 #include "recording_micro_interpreter.h"
 
 // Simply change the class name from 'MicroInterpreter' to 'RecordingMicroInterpreter':
-tflite::RecoridngMicroInterpreter interpreter(
+tflite::RecordingMicroInterpreter interpreter(
   tflite::GetModel(my_model_data), ops_resolver,
   tensor_arena, tensor_arena_size, error_reporter);
 

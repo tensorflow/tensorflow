@@ -846,3 +846,76 @@ func @transpose(%arg0: memref<2x2xf32>, %arg1: memref<2x2xf32>) {
   return
 }
 // CHECK: linalg.generic {{{.*}}indexing_maps = [#[[TRANSPOSE_INPUT_MAP]], #[[TRANSPOSE_OUTPUT_MAP]]]
+
+// -----
+
+// CHECK-DAG: #[[REDUCE_INPUT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-DAG: #[[REDUCE_OUTPUT_MAP:.*]] = affine_map<(d0, d1) -> (d0)>
+// CHECK-LABEL: func @reduce_add
+func @reduce_add(%arg: memref<100x10xf32>,
+             %init: memref<f32>,
+             %result: memref<100xf32>) {
+  "lmhlo.reduce"(%arg, %init, %result) ( {
+    ^bb0(%lhs: memref<f32>, %rhs: memref<f32>, %res: memref<f32>):
+      "lmhlo.add"(%lhs, %rhs, %res)
+        : (memref<f32>, memref<f32>, memref<f32>) -> ()
+      "lmhlo.terminator"() : () -> ()
+    } ) {dimensions = dense<[1]> : tensor<1xi64>}
+      : (memref<100x10xf32>, memref<f32>, memref<100xf32>) -> ()
+  return
+}
+// CHECK: %[[INIT_VAL:.*]] = load %arg1[] : memref<f32>
+// CHECK: linalg.fill(%arg2, %[[INIT_VAL]])
+// CHECK: linalg.generic {
+// CHECK-SAME: indexing_maps = [#[[REDUCE_INPUT_MAP]], #[[REDUCE_OUTPUT_MAP]]],
+// CHECK-SAME: iterator_types = ["parallel", "reduction"]}
+// CHECK-SAME: ins(%arg0 : memref<100x10xf32>) outs(%arg2 : memref<100xf32>) {
+// CHECK: alloca
+// CHECK-NEXT: alloca
+// CHECK-NEXT: alloca
+// CHECK-NEXT: store
+// CHECK-NEXT: store
+// CHECK-NEXT: load
+// CHECK-NEXT: load
+// CHECK-NEXT: addf
+// CHECK-NEXT: store
+// CHECK-NEXT: load
+// CHECK-NEXT: linalg.yield
+// CHECK-NEXT: }
+
+// -----
+
+// CHECK-DAG: #[[REDUCE_INPUT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-DAG: #[[REDUCE_OUTPUT_MAP:.*]] = affine_map<(d0, d1) -> (d0)>
+// CHECK-LABEL: func @reduce_maximum
+func @reduce_maximum(%arg: memref<100x10xf32>,
+             %init: memref<f32>,
+             %result: memref<100xf32>) {
+  "lmhlo.reduce"(%arg, %init, %result) ( {
+    ^bb0(%lhs: memref<f32>, %rhs: memref<f32>, %res: memref<f32>):
+      "lmhlo.maximum"(%lhs, %rhs, %res)
+        : (memref<f32>, memref<f32>, memref<f32>) -> ()
+      "lmhlo.terminator"() : () -> ()
+    } ) {dimensions = dense<[1]> : tensor<1xi64>}
+      : (memref<100x10xf32>, memref<f32>, memref<100xf32>) -> ()
+  return
+}
+// CHECK: %[[INIT_VAL:.*]] = load %arg1[] : memref<f32>
+// CHECK: linalg.fill(%arg2, %[[INIT_VAL]])
+// CHECK: linalg.generic {
+// CHECK-SAME: indexing_maps = [#[[REDUCE_INPUT_MAP]], #[[REDUCE_OUTPUT_MAP]]],
+// CHECK-SAME: iterator_types = ["parallel", "reduction"]}
+// CHECK-SAME: ins(%arg0 : memref<100x10xf32>) outs(%arg2 : memref<100xf32>) {
+// CHECK: alloca
+// CHECK-NEXT: alloca
+// CHECK-NEXT: alloca
+// CHECK-NEXT: store
+// CHECK-NEXT: store
+// CHECK-NEXT: load
+// CHECK-NEXT: load
+// CHECK-NEXT: cmpf
+// CHECK-NEXT: select
+// CHECK-NEXT: store
+// CHECK-NEXT: load
+// CHECK-NEXT: linalg.yield
+// CHECK-NEXT: }

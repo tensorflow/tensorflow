@@ -152,6 +152,11 @@ class TestCluster(object):
   def num_tasks_on_worker(self, worker_index=0):
     return self.workers[worker_index]._num_tasks()
 
+  def __del__(self):
+    # Destroy workers before the dispatcher for clean shutdown.
+    self.workers.clear()
+    del self.dispatcher
+
 
 class TestBase(test_base.DatasetTestBase):
   """Base class for tf.data service tests."""

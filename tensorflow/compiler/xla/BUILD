@@ -490,12 +490,14 @@ cc_library(
 cc_library(
     name = "error_spec",
     hdrs = ["error_spec.h"],
+    visibility = [":friends"],
 )
 
 cc_library(
     name = "literal_comparison",
     srcs = ["literal_comparison.cc"],
     hdrs = ["literal_comparison.h"],
+    visibility = [":friends"],
     deps = [
         ":error_spec",
         ":literal",

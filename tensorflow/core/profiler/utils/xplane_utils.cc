@@ -117,29 +117,15 @@ bool IsNested(const XEvent& event, const XEvent& parent) {
   return XEventTimespan(parent).Includes(XEventTimespan(event));
 }
 
-void AddOrUpdateIntStat(int64 metadata_id, int64 value, XEvent* event) {
+XStat* FindOrAddMutableStat(int64 metadata_id, XEvent* event) {
   for (auto& stat : *event->mutable_stats()) {
     if (stat.metadata_id() == metadata_id) {
-      stat.set_int64_value(value);
-      return;
+      return &stat;
     }
   }
   XStat* stat = event->add_stats();
   stat->set_metadata_id(metadata_id);
-  stat->set_int64_value(value);
-}
-
-void AddOrUpdateStrStat(int64 metadata_id, absl::string_view value,
-                        XEvent* event) {
-  for (auto& stat : *event->mutable_stats()) {
-    if (stat.metadata_id() == metadata_id) {
-      stat.set_str_value(std::string(value));
-      return;
-    }
-  }
-  XStat* stat = event->add_stats();
-  stat->set_metadata_id(metadata_id);
-  stat->set_str_value(std::string(value));
+  return stat;
 }
 
 void RemovePlane(XSpace* space, const XPlane* plane) {

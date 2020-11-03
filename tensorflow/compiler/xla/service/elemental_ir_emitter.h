@@ -92,6 +92,8 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
                                  bool is_signed);
   llvm::Value* EmitIntegerRemainder(llvm::Value* lhs, llvm::Value* rhs,
                                     bool is_signed);
+  llvm::Value* EmitIntegerPow(llvm::Value* lhs, llvm::Value* rhs,
+                              bool is_signed);
 
   virtual StatusOr<llvm::Value*> EmitIntegerBinaryOp(const HloInstruction* op,
                                                      llvm::Value* lhs_value,

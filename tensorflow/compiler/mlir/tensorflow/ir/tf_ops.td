@@ -200,10 +200,8 @@ def TF_ConstOp : TF_Op<"Const", [ConstantLike, NoSideEffect,
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 
   let builders = [
-    OpBuilder<
-      "OpBuilder &builder, OperationState &result, Attribute value">,
-    OpBuilder<
-      "OpBuilder &builder, OperationState &result, Type type, Attribute value">,
+    OpBuilderDAG<(ins "Attribute":$value)>,
+    OpBuilderDAG<(ins "Type":$type, "Attribute":$value)>,
   ];
 
   let hasFolder = 1;
@@ -233,6 +231,22 @@ source_target_pairs=`[[0,1],[1,2],[2,3],[3,0]]` gets the outputs:
 
   let results = (outs
     TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_XlaAllReduceOp : TF_Op<"XlaAllReduce", [NoSideEffect, TF_AllTypesMatch<["input", "output"]>]> {
+  let summary = "An Op to reduce inputs across replicated TPU instances.";
+
+  let arguments = (ins
+    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Int32, TF_Uint32]>:$input,
+    TF_Int32Tensor:$group_assignment,
+    TF_AnyStrAttrOf<["Min", "Max", "Mul", "Add", "Mean"]>:$reduce_op
+  );
+
+  let results = (outs
+    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Int32, TF_Uint32]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -390,10 +404,13 @@ else_branch: A region that computes the outputs of the op if cond = false.
     return Verify(*this);
   }];
 
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, TypeRange resultTypes, ValueRange operands, llvm::ArrayRef<::mlir::NamedAttribute> attributes, unsigned numRegions", [{
+  let builders = [
+    OpBuilderDAG<(ins "TypeRange":$resultTypes, "ValueRange":$operands,
+      "llvm::ArrayRef<::mlir::NamedAttribute>":$attributes,
+      "unsigned":$numRegions),
+    [{
       assert(numRegions == 2u && "mismatched number of regions");
-      build(builder, result, resultTypes, operands, attributes);
+      build($_builder, $_state, resultTypes, operands, attributes);
     }]>];
 
   let hasCanonicalizer = 1;
@@ -1132,9 +1149,10 @@ as true/false for a branch condition.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, Value value", [{
-      build(builder, result, RankedTensorType::get({}, builder.getI1Type()),
+  let builders = [
+    OpBuilderDAG<(ins "Value":$value),
+    [{
+      build($_builder, $_state, RankedTensorType::get({}, $_builder.getI1Type()),
             value);
     }]>];
 

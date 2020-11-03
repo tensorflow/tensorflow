@@ -49,3 +49,10 @@ and [TensorFlow Hub](https://tfhub.dev/s?deployment-format=lite) to download
 pretrained models with metadata for both vision and text tasks. Also see
 different options of
 [visualizing the metadata](../convert/metadata.md#visualize-the-metadata).
+
+## TensorFlow Lite Support GitHub repo
+
+Visit the
+[TensorFlow Lite Support GitHub repo](https://github.com/tensorflow/tflite-support)
+for more examples and source code. Let us know your feedback by creating a
+[new GitHub issue](https://github.com/tensorflow/tflite-support/issues/new).

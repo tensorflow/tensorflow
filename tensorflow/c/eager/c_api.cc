@@ -1447,13 +1447,11 @@ TFE_TensorHandle* TFE_NewTensorHandle(const tensorflow::Tensor& t,
 
 void TFE_ContextExportRunMetadata(TFE_Context* ctx, TF_Buffer* buf,
                                   TF_Status* status) {
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  status->status = context->Executor().WaitForAllPendingNodes();
+  auto* context = tensorflow::unwrap(ctx);
+  status->status = context->AsyncWait();
   if (!status->status.ok()) return;
-  tensorflow::mutex_lock ml(*context->MetadataMu());
-  status->status = MessageToBuffer(*context->RunMetadataProto(), buf);
-  context->ClearRunMetadata();
+  auto run_metadata = context->ExportRunMetadata();
+  status->status = MessageToBuffer(*run_metadata, buf);
 }
 
 namespace {

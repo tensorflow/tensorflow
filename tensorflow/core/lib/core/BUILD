@@ -244,7 +244,10 @@ filegroup(
     srcs = [
         "stringpiece.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/jpeg:__pkg__",
+    ],
 )
 
 filegroup(

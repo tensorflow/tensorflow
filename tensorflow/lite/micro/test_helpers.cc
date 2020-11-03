@@ -30,7 +30,8 @@ limitations under the License.
 #include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/micro_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/schema/schema_utils.h"
+
+// TODO(b/170464050): Use TFLM test only version of schema_utils.
 
 namespace tflite {
 namespace testing {
@@ -85,8 +86,7 @@ class ModelBuilder {
       : builder_(builder) {}
 
   // Registers an operator that will be used in the model.
-  Operator RegisterOp(BuiltinOperator op, const char* custom_code,
-                      int32_t version);
+  Operator RegisterOp(BuiltinOperator op, const char* custom_code);
 
   // Adds a tensor to the model.
   Tensor AddTensor(TensorType type, std::initializer_list<int32_t> shape) {
@@ -145,11 +145,10 @@ class ModelBuilder {
 };
 
 ModelBuilder::Operator ModelBuilder::RegisterOp(BuiltinOperator op,
-                                                const char* custom_code,
-                                                int32_t version) {
+                                                const char* custom_code) {
   TFLITE_DCHECK(next_operator_code_id_ <= kMaxOperatorCodes);
-  operator_codes_[next_operator_code_id_] =
-      tflite::CreateOperatorCodeDirect(*builder_, op, custom_code, version);
+  operator_codes_[next_operator_code_id_] = tflite::CreateOperatorCodeDirect(
+      *builder_, /*deprecated_builtin_code=*/0, custom_code, /*version=*/0, op);
   next_operator_code_id_++;
   return next_operator_code_id_ - 1;
 }
@@ -261,7 +260,7 @@ const Model* BuildSimpleStatefulModel() {
   ModelBuilder model_builder(fb_builder);
 
   const int op_id =
-      model_builder.RegisterOp(BuiltinOperator_CUSTOM, "simple_stateful_op", 0);
+      model_builder.RegisterOp(BuiltinOperator_CUSTOM, "simple_stateful_op");
   const int input_tensor = model_builder.AddTensor(TensorType_UINT8, {3});
   const int median_tensor = model_builder.AddTensor(TensorType_UINT8, {3});
   const int invoke_count_tensor =
@@ -302,8 +301,7 @@ const Model* BuildSimpleModelWithBranch() {
                  v
   */
   const int op_id =
-      model_builder.RegisterOp(BuiltinOperator_CUSTOM, "mock_custom",
-                               /* version= */ 0);
+      model_builder.RegisterOp(BuiltinOperator_CUSTOM, "mock_custom");
   const int t0 = model_builder.AddTensor(TensorType_FLOAT32, {2, 2, 3});
   const int t1 = model_builder.AddTensor(TensorType_FLOAT32, {2, 2, 3});
   const int t2 = model_builder.AddTensor(TensorType_FLOAT32, {2, 2, 3});
@@ -325,8 +323,7 @@ const Model* BuildModelWithOfflinePlanning(int number_of_tensors,
   ModelBuilder model_builder(fb_builder);
 
   const int op_id =
-      model_builder.RegisterOp(BuiltinOperator_CUSTOM, "mock_custom",
-                               /* version= */ 0);
+      model_builder.RegisterOp(BuiltinOperator_CUSTOM, "mock_custom");
 
   for (int i = 0; i < number_of_tensors; ++i) {
     model_builder.AddTensor(TensorType_FLOAT32, {2, 2, 3});
@@ -407,8 +404,9 @@ const Model* BuildSimpleMockModel() {
                      builder->CreateString("test_subgraph"))};
   constexpr size_t operator_codes_size = 1;
   const Offset<OperatorCode> operator_codes[operator_codes_size] = {
-      CreateOperatorCodeDirect(*builder, BuiltinOperator_CUSTOM, "mock_custom",
-                               0)};
+      CreateOperatorCodeDirect(*builder, /*deprecated_builtin_code=*/0,
+                               "mock_custom",
+                               /*version=*/0, BuiltinOperator_CUSTOM)};
   const Offset<Model> model_offset = CreateModel(
       *builder, 0, builder->CreateVector(operator_codes, operator_codes_size),
       builder->CreateVector(subgraphs, subgraphs_size),
@@ -556,8 +554,9 @@ const Model* BuildComplexMockModel() {
 
   constexpr size_t operator_codes_size = 1;
   const Offset<OperatorCode> operator_codes[operator_codes_size] = {
-      CreateOperatorCodeDirect(*builder, BuiltinOperator_CUSTOM, "mock_custom",
-                               0)};
+      CreateOperatorCodeDirect(*builder, /*deprecated_builtin_code=*/0,
+                               "mock_custom",
+                               /*version=*/0, BuiltinOperator_CUSTOM)};
 
   const Offset<Model> model_offset = CreateModel(
       *builder, 0, builder->CreateVector(operator_codes, operator_codes_size),

@@ -72,6 +72,7 @@ cc_library(
         "//tensorflow/python:py_seq_tensor",
         "//tensorflow/python:py_util",
         "//tensorflow/python:safe_ptr",
+        "//tensorflow/python:safe_pyobject_ptr",
         "//tensorflow/python:stack_trace",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
@@ -375,6 +376,9 @@ cuda_py_test(
     tags = [
         "no_windows",  #TODO(b/139745667)
         "notsan",  #TODO(b/139745667)
+    ],
+    xla_tags = [
+        "no_cuda_asan",  # times out
     ],
     deps = [
         ":backprop",
@@ -787,6 +791,7 @@ tf_py_test(
     name = "pywrap_tfe_test",
     srcs = ["pywrap_tfe_test.py"],
     python_version = "PY3",
+    tags = ["no_windows"],  # TODO(b/171756439)
     deps = [
         ":backprop",
         ":context",

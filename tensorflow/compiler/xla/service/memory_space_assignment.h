@@ -982,7 +982,7 @@ class AlternateMemoryBestFitHeap
 
   // Given colocated intervals, populates allocation_values with the
   // corresponding AllocationValue objects.
-  void CreateAllocationValuesFromColocatedIntervals(
+  virtual void CreateAllocationValuesFromColocatedIntervals(
       absl::Span<const AlternateMemoryBestFitHeap::BufferInterval* const>
           colocated_intervals,
       std::vector<MemorySpaceAssignment::AllocationValue>& allocation_values);

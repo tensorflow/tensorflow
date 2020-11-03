@@ -3,7 +3,7 @@
 #   related to dist-strat used by Keras..
 
 load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
-load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
@@ -31,6 +31,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":sidecar_evaluator",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data",
         "//tensorflow/python/distribute:distribute_coordinator",
@@ -89,6 +90,17 @@ py_library(
         "worker_training_state.py",
     ],
     srcs_version = "PY2AND3",
+    deps = [
+        ":distributed_file_utils",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/keras:backend",
+        "//tensorflow/python/keras/utils:mode_keys",
+        "//tensorflow/python/training:checkpoint_management",
+        "//tensorflow/python/training/tracking:util",
+    ],
 )
 
 py_library(
@@ -210,6 +222,7 @@ distribute_py_test(
     shard_count = 10,
     tags = [
         "multi_and_single_gpu",
+        "no_cuda_asan",  # times out
     ],
     deps = [
         ":optimizer_combinations",
@@ -307,6 +320,7 @@ py_library(
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:parameter_server_strategy",
+        "//tensorflow/python/distribute:parameter_server_strategy_v2",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/distribute:tpu_strategy",
         "//tensorflow/python/eager:context",
@@ -536,6 +550,9 @@ distribute_py_test(
         "multi_and_single_gpu",
         "no_rocm", # Times out on ROCM
     ],
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         ":saved_model_test_base",
         "//tensorflow/python/keras/saving",
@@ -736,8 +753,8 @@ py_test(
     srcs = ["multi_worker_callback_tf2_test.py"],
     python_version = "PY3",
     shard_count = 5,
-    tags = ["no_oss_py38"],  #TODO(b/171435331)
     deps = [
+        ":distributed_file_utils",
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:multi_process_runner",
@@ -774,29 +791,6 @@ py_library(
     ],
 )
 
-py_test(
-    name = "multi_worker_tutorial_test",
-    srcs = ["multi_worker_tutorial_test.py"],
-    python_version = "PY3",
-    shard_count = 5,
-    tags = [
-        "noasan",  # TODO(b/156029134)
-        "nomsan",  # TODO(b/156029134)
-        "notap",  # TODO(b/165865820): restore when not flaky
-        "notsan",  # TODO(b/156029134)
-    ],
-    deps = [
-        "//tensorflow/python:platform",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/distribute:collective_all_reduce_strategy",
-        "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:multi_process_runner",
-        "//tensorflow/python/distribute:multi_worker_test_base",
-        "//tensorflow/python/keras",
-        "//tensorflow/python/keras/optimizer_v2",
-    ],
-)
-
 distribute_py_test(
     name = "saved_model_save_load_test",
     size = "medium",
@@ -806,6 +800,10 @@ distribute_py_test(
     shard_count = 7,
     tags = [
         "multi_and_single_gpu",
+        "no_cuda_asan",  # times out
+    ],
+    xla_tags = [
+        "no_cuda_asan",  # times out
     ],
     deps = [
         ":saved_model_test_base",
@@ -822,6 +820,9 @@ distribute_py_test(
     shard_count = 7,
     tags = [
         "multi_and_single_gpu",
+    ],
+    xla_tags = [
+        "no_cuda_asan",  # times out
     ],
     deps = [
         ":saved_model_test_base",
@@ -878,5 +879,55 @@ py_test(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras",
+    ],
+)
+
+py_library(
+    name = "distributed_file_utils",
+    srcs = [
+        "distributed_file_utils.py",
+    ],
+    deps = [
+        "//tensorflow/python:lib",
+        "//tensorflow/python/distribute:distribute_lib",
+    ],
+)
+
+py_test(
+    name = "distributed_file_utils_test",
+    srcs = ["distributed_file_utils_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":distributed_file_utils",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_library(
+    name = "sidecar_evaluator",
+    srcs = ["sidecar_evaluator.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:summary_ops_v2",
+        "//tensorflow/python:tf_export",
+        "//tensorflow/python:training_lib",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/training/tracking:util",
+        "@absl_py//absl/logging",
+    ],
+)
+
+tf_py_test(
+    name = "sidecar_evaluator_test",
+    size = "small",
+    srcs = ["sidecar_evaluator_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":sidecar_evaluator",
+        "//tensorflow/python/compat:v2_compat",
     ],
 )

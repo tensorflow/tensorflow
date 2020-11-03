@@ -29,6 +29,7 @@ TF_CONST_INIT extern const int64 kSlowCallThresholdPs;
 
 enum class BottleneckType {
   kSlowSource,
+  kSlowDataService,
   kSlowRemoteSource,
   kSlowTransformationWithParallelVersion,
   kSlowTransformationWithoutParallelVersion,

@@ -2386,3 +2386,29 @@ func @main(%arg0: tensor<i32>, %arg1: tensor<1xf32>) -> tensor<i32> {
   }) : (tensor<i32>, tensor<1xf32>) -> (tensor<i32>)
   return %0#0 : tensor<i32>
 }
+
+// -----
+
+// CHECK-LABEL: valid_unranked_inputs_on_reshape
+func @valid_unranked_inputs_on_reshape(%arg0: tensor<3x4xi32>, %arg1: tensor<*xi32>) -> tensor<3x4xi32> {
+  // CHECK: "tfl.reshape"(%arg0, %arg1)
+  %0 = "tfl.reshape"(%arg0, %arg1) : (tensor<3x4xi32>, tensor<*xi32>) -> tensor<3x4xi32>
+  return %0 : tensor<3x4xi32>
+}
+
+// -----
+
+// CHECK-LABEL: valid_one_dynamic_dim_on_reshape
+func @valid_one_dynamic_dim_on_reshape(%arg0: tensor<3x4xi32>, %arg1: tensor<1x?x4xi32>) -> tensor<1x3x4xi32> {
+  // CHECK: "tfl.reshape"(%arg0, %arg1)
+  %0 = "tfl.reshape"(%arg0, %arg1) : (tensor<3x4xi32>, tensor<1x?x4xi32>) -> tensor<1x3x4xi32>
+  return %0 : tensor<1x3x4xi32>
+}
+
+// -----
+
+func @invalid_two_dynamic_dims_on_reshape(%arg0: tensor<3x4xi32>, %arg1: tensor<?x?x4xi32>) -> tensor<1x3x4xi32> {
+  // expected-error @+1 {{its shape value, 'tensor<?x?x4xi32>', is invalid because it has more than one dynamic dimensions. You need to set up the unspecified size(s) to avoid this problem, for example, setting batch size in keras model or setting unspecified input size(s) with fixed ones.}}
+  %0 = "tfl.reshape"(%arg0, %arg1) : (tensor<3x4xi32>, tensor<?x?x4xi32>) -> tensor<1x3x4xi32>
+  return %0 : tensor<1x3x4xi32>
+}

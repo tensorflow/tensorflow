@@ -1542,7 +1542,4 @@ def _scipy_sparse_to_sparse_tensor(t):
 
 
 def _is_distributed_dataset(ds):
-  # TODO(b/151165986): Use public APIs.
-  return isinstance(
-      ds,
-      (input_lib.DistributedDataset, input_lib.DistributedDatasetsFromFunction))
+  return isinstance(ds, input_lib.DistributedDatasetInterface)

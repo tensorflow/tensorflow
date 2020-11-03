@@ -468,6 +468,16 @@ func @ZerosLike_variant(%arg0: tensor<!tf.variant<tensor<2xi32>>>) -> tensor<!tf
   return %0 : tensor<!tf.variant<tensor<2xi32>>>
 }
 
+// CHECK-LABEL: func @OnesLike_unranked
+func @OnesLike_unranked(%arg0: tensor<*xi32>) -> tensor<*xi32> {
+  // CHECK: %[[ONE:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: %[[SHAPE:.*]] = "tf.Shape"(%arg0) : (tensor<*xi32>) -> tensor<?xi64>
+  // CHECK: "tf.BroadcastTo"(%[[ONE]], %[[SHAPE]]) : (tensor<i32>, tensor<?xi64>) -> tensor<*xi32>
+
+  %0 = "tf.OnesLike"(%arg0) : (tensor<*xi32>) -> tensor<*xi32>
+  return %0 : tensor<*xi32>
+}
+
 // CHECK-LABEL: func @addN_2
 func @addN_2(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: %[[SUM0:.*]] = "tf.AddV2"(%arg0, %arg1)

@@ -36,22 +36,18 @@ table IntValue {
   name:string;
   value:int32;
   active:bool;
-  offset:uint32;
 }
 
 table FloatValue {
   name:string;
   value:float;
   active:bool;
-  offset:uint32;
 }
 
 table HalfValue {
   name:string;
   value:float;
   active:bool;
-  store_as_f32:bool;
-  offset:uint32;
 }
 
 enum AccessType : byte {
@@ -172,13 +168,8 @@ table TensorDescriptorMapValue {
 
 table Arguments {
   int_values:[IntValue];
-  shared_int4s:[int32];
-
   float_values:[FloatValue];
-  shared_float4s:[float];
-
   half_values:[HalfValue];
-  shared_half4s:[float];
 
   buffer_refs:[BufferDescriptorMapValue];
   texture2d_refs:[Texture2DDescriptorMapValue];

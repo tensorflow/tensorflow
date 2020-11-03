@@ -292,10 +292,24 @@ class MetricsContainer(Container):
 
   @property
   def metrics(self):
-    """Metrics created by this container."""
+    """All metrics in this container."""
     if not self._built:
       return []
     return self._metrics_in_order
+
+  @property
+  def unweighted_metrics(self):
+    """Metrics in this container that should not be passed `sample_weight`."""
+    if not self._built:
+      return None
+    return nest.flatten(self._metrics)
+
+  @property
+  def weighted_metrics(self):
+    """Metrics in this container that should be passed `sample_weight`."""
+    if not self._built:
+      return None
+    return nest.flatten(self._weighted_metrics)
 
   def build(self, y_pred, y_true):
     """One-time setup of metric objects."""

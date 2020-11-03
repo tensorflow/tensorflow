@@ -34,10 +34,8 @@ xla::ShapedBuffer FromC(XLA_ShapedBuffer* c_buffer) {
     i++;
   }
 
-  xla::ShapedBuffer xla_shaped_buffer(
-      xla_on_device_shape,
-      tensorflow::tpu::TpuPlatformInterface::GetRegisteredPlatform(),
-      c_buffer->device_ordinal);
+  xla::ShapedBuffer xla_shaped_buffer(xla_on_device_shape,
+                                      c_buffer->device_ordinal);
   xla_shaped_buffer.set_buffers(xla_shape_tree);
   return xla_shaped_buffer;
 }
@@ -92,7 +90,7 @@ SE_DeviceMemoryAllocator ToC(
   se_allocator.allocate = [](void* ctx, int device_ordinal, uint64_t size,
                              bool retry_on_failure, int64_t memory_space,
                              SE_ScopedDeviceMemory* memory,
-                             SE_Status* se_status) {
+                             TF_Status* se_status) {
     auto allocation =
         reinterpret_cast<stream_executor::DeviceMemoryAllocator*>(ctx)
             ->Allocate(device_ordinal, size, retry_on_failure, memory_space);
@@ -109,7 +107,7 @@ SE_DeviceMemoryAllocator ToC(
   };
 
   se_allocator.deallocate = [](void* ctx, SE_DeviceMemoryBase* base,
-                               int device_ordinal, SE_Status* se_status) {
+                               int device_ordinal, TF_Status* se_status) {
     auto status = reinterpret_cast<stream_executor::DeviceMemoryAllocator*>(ctx)
                       ->Deallocate(device_ordinal, ApiConverter::FromC(*base));
     if (!status.ok()) {

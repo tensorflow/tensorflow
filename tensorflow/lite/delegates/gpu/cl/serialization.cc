@@ -508,30 +508,11 @@ void Decode(const data::TensorDescWithId* fb_desc, TensorDescriptor* desc,
   *id = fb_desc->id();
 }
 
-absl::Status Decode(CLContext* context, const data::Arguments* fb_args,
-                    Arguments* args) {
-  args->shared_int4s_data_ = std::vector<int32_t>(
-      fb_args->shared_int4s()->data(),
-      fb_args->shared_int4s()->data() + fb_args->shared_int4s()->size());
-
-  args->shared_float4s_data_ = std::vector<float>(
-      fb_args->shared_float4s()->data(),
-      fb_args->shared_float4s()->data() + fb_args->shared_float4s()->size());
-
-  std::vector<float> tmp = std::vector<float>(
-      fb_args->shared_half4s()->data(),
-      fb_args->shared_half4s()->data() + fb_args->shared_half4s()->size());
-
-  args->shared_half4s_data_.resize(tmp.size());
-  for (int i = 0; i < tmp.size(); ++i) {
-    args->shared_half4s_data_[i] = tmp[i];
-  }
-
+absl::Status Decode(const data::Arguments* fb_args, Arguments* args) {
   args->int_values_.clear();
   for (auto int_values_fb : *fb_args->int_values()) {
     Arguments::IntValue value;
     value.value = int_values_fb->value();
-    value.offset = int_values_fb->offset();
     value.active = int_values_fb->active();
     std::string name(int_values_fb->name()->c_str(),
                      int_values_fb->name()->size());
@@ -542,7 +523,6 @@ absl::Status Decode(CLContext* context, const data::Arguments* fb_args,
   for (auto float_values_fb : *fb_args->float_values()) {
     Arguments::FloatValue value;
     value.value = float_values_fb->value();
-    value.offset = float_values_fb->offset();
     value.active = float_values_fb->active();
     std::string name(float_values_fb->name()->c_str(),
                      float_values_fb->name()->size());
@@ -553,9 +533,7 @@ absl::Status Decode(CLContext* context, const data::Arguments* fb_args,
   for (auto half_values_fb : *fb_args->half_values()) {
     Arguments::HalfValue value;
     value.value = half_values_fb->value();
-    value.offset = half_values_fb->offset();
     value.active = half_values_fb->active();
-    value.store_as_f32 = half_values_fb->store_as_f32();
     std::string name(half_values_fb->name()->c_str(),
                      half_values_fb->name()->size());
     args->half_values_[name] = value;
@@ -635,9 +613,6 @@ absl::Status Decode(CLContext* context, const data::Arguments* fb_args,
     args->AddObjectRef(key, access_type,
                        absl::make_unique<TensorDescriptor>(std::move(desc)));
   }
-
-  RETURN_IF_ERROR(args->AllocateObjects(context));
-  RETURN_IF_ERROR(args->AddObjectArgs());
   return absl::OkStatus();
 }
 
@@ -649,7 +624,6 @@ flatbuffers::Offset<data::Arguments> Encode(
     data::IntValueBuilder value_builder(*builder);
     value_builder.add_name(name_fb);
     value_builder.add_value(value.second.value);
-    value_builder.add_offset(value.second.offset);
     value_builder.add_active(value.second.active);
     int_values_fb.push_back(value_builder.Finish());
   }
@@ -660,7 +634,6 @@ flatbuffers::Offset<data::Arguments> Encode(
     data::FloatValueBuilder value_builder(*builder);
     value_builder.add_name(name_fb);
     value_builder.add_value(value.second.value);
-    value_builder.add_offset(value.second.offset);
     value_builder.add_active(value.second.active);
     float_values_fb.push_back(value_builder.Finish());
   }
@@ -671,9 +644,7 @@ flatbuffers::Offset<data::Arguments> Encode(
     data::HalfValueBuilder value_builder(*builder);
     value_builder.add_name(name_fb);
     value_builder.add_value(value.second.value);
-    value_builder.add_offset(value.second.offset);
     value_builder.add_active(value.second.active);
-    value_builder.add_store_as_f32(value.second.store_as_f32);
     half_values_fb.push_back(value_builder.Finish());
   }
 
@@ -681,7 +652,7 @@ flatbuffers::Offset<data::Arguments> Encode(
       buffer_objs_fb;
   for (auto& value : args.objects_) {
     const auto* buffer_desc =
-        dynamic_cast<const BufferDescriptor*>(value.second.descriptor.get());
+        dynamic_cast<const BufferDescriptor*>(value.second.get());
     if (!buffer_desc) continue;
     auto desc_fb = Encode(*buffer_desc, builder);
     auto key_fb = builder->CreateString(value.first);
@@ -694,7 +665,7 @@ flatbuffers::Offset<data::Arguments> Encode(
       texture2d_objs_fb;
   for (auto& value : args.objects_) {
     const auto* texture_desc =
-        dynamic_cast<const Texture2DDescriptor*>(value.second.descriptor.get());
+        dynamic_cast<const Texture2DDescriptor*>(value.second.get());
     if (!texture_desc) continue;
     auto desc_fb = Encode(*texture_desc, builder);
     auto key_fb = builder->CreateString(value.first);
@@ -706,8 +677,8 @@ flatbuffers::Offset<data::Arguments> Encode(
   std::vector<flatbuffers::Offset<data::TensorLinearDescriptorMapValue>>
       tensor_linear_objs_fb;
   for (auto& value : args.objects_) {
-    const auto* tensor_desc = dynamic_cast<const TensorLinearDescriptor*>(
-        value.second.descriptor.get());
+    const auto* tensor_desc =
+        dynamic_cast<const TensorLinearDescriptor*>(value.second.get());
     if (!tensor_desc) continue;
     auto desc_fb = Encode(*tensor_desc, builder);
     auto key_fb = builder->CreateString(value.first);
@@ -720,7 +691,7 @@ flatbuffers::Offset<data::Arguments> Encode(
       tensor_objs_fb;
   for (auto& value : args.objects_) {
     const auto* tensor_desc =
-        dynamic_cast<const TensorDescriptor*>(value.second.descriptor.get());
+        dynamic_cast<const TensorDescriptor*>(value.second.get());
     if (!tensor_desc) continue;
     auto desc_fb = Encode(*tensor_desc, builder);
     auto key_fb = builder->CreateString(value.first);
@@ -734,7 +705,7 @@ flatbuffers::Offset<data::Arguments> Encode(
       buffer_refs_fb;
   for (auto& value : args.object_refs_) {
     const auto* buffer_desc =
-        dynamic_cast<const BufferDescriptor*>(value.second.descriptor.get());
+        dynamic_cast<const BufferDescriptor*>(value.second.get());
     if (!buffer_desc) continue;
     auto desc_fb = Encode(*buffer_desc, builder);
     auto key_fb = builder->CreateString(value.first);
@@ -747,7 +718,7 @@ flatbuffers::Offset<data::Arguments> Encode(
       texture2d_refs_fb;
   for (auto& value : args.object_refs_) {
     const auto* texture_desc =
-        dynamic_cast<const Texture2DDescriptor*>(value.second.descriptor.get());
+        dynamic_cast<const Texture2DDescriptor*>(value.second.get());
     if (!texture_desc) continue;
     auto desc_fb = Encode(*texture_desc, builder);
     auto key_fb = builder->CreateString(value.first);
@@ -759,8 +730,8 @@ flatbuffers::Offset<data::Arguments> Encode(
   std::vector<flatbuffers::Offset<data::TensorLinearDescriptorMapValue>>
       tensor_linear_refs_fb;
   for (auto& value : args.object_refs_) {
-    const auto* tensor_desc = dynamic_cast<const TensorLinearDescriptor*>(
-        value.second.descriptor.get());
+    const auto* tensor_desc =
+        dynamic_cast<const TensorLinearDescriptor*>(value.second.get());
     if (!tensor_desc) continue;
     auto desc_fb = Encode(*tensor_desc, builder);
     auto key_fb = builder->CreateString(value.first);
@@ -773,7 +744,7 @@ flatbuffers::Offset<data::Arguments> Encode(
       tensor_refs_fb;
   for (auto& value : args.object_refs_) {
     const auto* tensor_desc =
-        dynamic_cast<const TensorDescriptor*>(value.second.descriptor.get());
+        dynamic_cast<const TensorDescriptor*>(value.second.get());
     if (!tensor_desc) continue;
     auto desc_fb = Encode(*tensor_desc, builder);
     auto key_fb = builder->CreateString(value.first);
@@ -783,14 +754,6 @@ flatbuffers::Offset<data::Arguments> Encode(
     tensor_refs_fb.push_back(ten_map_builder.Finish());
   }
 
-  auto shared_int4s_data_fb = builder->CreateVector(args.shared_int4s_data_);
-  auto shared_float4s_data_fb =
-      builder->CreateVector(args.shared_float4s_data_);
-  std::vector<float> tmp(args.shared_half4s_data_.size());
-  for (int i = 0; i < tmp.size(); ++i) {
-    tmp[i] = args.shared_half4s_data_[i];
-  }
-  auto shared_half4s_data_fb = builder->CreateVector(tmp);
   auto int_values_fb_vec = builder->CreateVector(int_values_fb);
   auto float_values_fb_vec = builder->CreateVector(float_values_fb);
   auto half_values_fb_vec = builder->CreateVector(half_values_fb);
@@ -803,9 +766,6 @@ flatbuffers::Offset<data::Arguments> Encode(
   auto tensor_linear_refs_fb_vec = builder->CreateVector(tensor_linear_refs_fb);
   auto tensor_refs_fb_vec = builder->CreateVector(tensor_refs_fb);
   data::ArgumentsBuilder arguments_builder(*builder);
-  arguments_builder.add_shared_int4s(shared_int4s_data_fb);
-  arguments_builder.add_shared_float4s(shared_float4s_data_fb);
-  arguments_builder.add_shared_half4s(shared_half4s_data_fb);
   arguments_builder.add_int_values(int_values_fb_vec);
   arguments_builder.add_float_values(float_values_fb_vec);
   arguments_builder.add_half_values(half_values_fb_vec);
@@ -820,9 +780,8 @@ flatbuffers::Offset<data::Arguments> Encode(
   return arguments_builder.Finish();
 }
 
-absl::Status Decode(CLContext* context, const data::GPUOperation* fb_op,
-                    GPUOperation* op) {
-  RETURN_IF_ERROR(Decode(context, fb_op->arguments(), &op->args_));
+absl::Status Decode(const data::GPUOperation* fb_op, GPUOperation* op) {
+  RETURN_IF_ERROR(Decode(fb_op->arguments(), &op->args_));
   op->code_ = std::string(fb_op->code()->c_str(), fb_op->code()->size());
   op->work_group_size_.x = fb_op->work_group_size()->x();
   op->work_group_size_.y = fb_op->work_group_size()->y();
@@ -935,10 +894,9 @@ flatbuffers::Offset<data::CLNode> Encode(
   return node_builder.Finish();
 }
 
-absl::Status Decode(CLContext* context, const data::CLNode* fb_node,
-                    CLNode* node) {
+absl::Status Decode(const data::CLNode* fb_node, CLNode* node) {
   GPUOperation op;
-  RETURN_IF_ERROR(Decode(context, fb_node->gpu_op(), &op));
+  RETURN_IF_ERROR(Decode(fb_node->gpu_op(), &op));
   node->operation = absl::make_unique<GPUOperation>(std::move(op));
   for (auto in_fb : *fb_node->input_ids()) {
     node->inputs.push_back(in_fb);
@@ -1006,8 +964,7 @@ flatbuffers::Offset<data::InferenceContext> Encode(
   return inf_builder.Finish();
 }
 
-absl::Status Decode(CLContext* context,
-                    const data::InferenceContext* fb_inference,
+absl::Status Decode(const data::InferenceContext* fb_inference,
                     InferenceContext* inference) {
   inference->need_flush_ = fb_inference->need_flush();
   inference->flush_periodically_ = fb_inference->flush_periodically();
@@ -1019,7 +976,7 @@ absl::Status Decode(CLContext* context,
   inference->nodes_.resize(fb_inference->nodes()->size());
   int counter = 0;
   for (auto node_fb : *fb_inference->nodes()) {
-    RETURN_IF_ERROR(Decode(context, node_fb, &inference->nodes_[counter]));
+    RETURN_IF_ERROR(Decode(node_fb, &inference->nodes_[counter]));
     counter++;
   }
 

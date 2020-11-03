@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/tpu_op_util.h"
 
+#include <cstdint>
 #include <string>
 
 #include "tensorflow/core/lib/gtl/cleanup.h"
@@ -91,7 +92,7 @@ std::string GuaranteedConstFingerprint(
 // evaluation of `guaranteed_const_fingerprint()` callback.
 TpuCompilationCacheKey CreateCompilationCacheKey(
     absl::string_view function_name, uint64 function_library_fingerprint,
-    absl::string_view mlir_module, const OpInputList& guaranteed_constants,
+    uint64 mlir_module_fingerprint, const OpInputList& guaranteed_constants,
     const std::vector<TensorShape>& dynamic_shapes,
     const TPUCompileMetadataProto& metadata,
     const TpuMeshStateInterface& mesh_state) {
@@ -115,7 +116,7 @@ TpuCompilationCacheKey CreateCompilationCacheKey(
               config_prefix.data(),
               shapes_prefix.data(),
               function_name.data(),
-              mlir_module.data(),
+              mlir_module_fingerprint,
               flattened_device_ids.data(),
               flattened_device_ids.size(),
               guaranteed_constants.size(),

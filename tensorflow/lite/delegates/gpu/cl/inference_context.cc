@@ -199,12 +199,21 @@ absl::Status InferenceContext::InitFromGraph(
   RETURN_IF_ERROR(Tune(tuning_parameters));
 
   if (serialized_model) {
+    // Temporary, will be resolved later, now we don't have complete
+    // intermediate representation
+    for (auto& node : nodes_) {
+      node.operation->MoveObjectRefsFromCLToGeneric();
+      node.operation->SyncScalarValues();
+    }
     flatbuffers::FlatBufferBuilder builder;
     auto encoded_fb = Encode(*this, &builder);
     data::FinishInferenceContextBuffer(builder, encoded_fb);
     serialized_model->resize(builder.GetSize());
     std::memcpy(serialized_model->data(), builder.GetBufferPointer(),
                 builder.GetSize());
+    for (auto& node : nodes_) {
+      node.operation->MoveObjectRefsFromGenericToCL();
+    }
   }
   for (auto& node : nodes_) {
     node.operation->args_.ReleaseCPURepresentation();
@@ -220,7 +229,7 @@ absl::Status InferenceContext::RestoreDeserialized(
     return absl::DataLossError("Deserialization failed.");
   }
   auto decoded_fb = data::GetInferenceContext(serialized_model.data());
-  RETURN_IF_ERROR(Decode(&env->context(), decoded_fb, this));
+  RETURN_IF_ERROR(Decode(decoded_fb, this));
 
   CreationContext creation_context;
   creation_context.device = env->GetDevicePtr();

@@ -10,5 +10,8 @@ package(
 filegroup(
     name = "testdata",
     srcs = glob(["*.jpg"]),
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/jpeg:__pkg__",
+    ],
 )

@@ -103,8 +103,7 @@ class InferenceContext {
   friend flatbuffers::Offset<data::InferenceContext> Encode(
       const InferenceContext& inference,
       flatbuffers::FlatBufferBuilder* builder);
-  friend absl::Status Decode(CLContext* context,
-                             const data::InferenceContext* fb_inference,
+  friend absl::Status Decode(const data::InferenceContext* fb_inference,
                              InferenceContext* inference);
 
   void CopyInAndOutIds(const GraphFloat32& graph);
