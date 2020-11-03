@@ -229,7 +229,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
             // Run the key function on the input element.
             std::vector<Tensor> key_func_output;
             TF_RETURN_IF_ERROR(instantiated_key_func_->RunWithBorrowedArgs(
-                ctx, next_input_element, &key_func_output));
+                ctx, next_input_element, &key_func_output, model_node()));
 
             if (key_func_output.size() != 1 ||
                 key_func_output[0].dtype() != DT_INT64 ||
@@ -275,7 +275,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
           return Status::OK();
         }
         TF_RETURN_IF_ERROR(instantiated_finalize_func_->RunWithBorrowedArgs(
-            ctx, states_[keys_[keys_index_++]], out_tensors));
+            ctx, states_[keys_[keys_index_++]], out_tensors, model_node()));
         *end_of_sequence = false;
         return Status::OK();
       }

@@ -239,7 +239,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
               // group.
               std::vector<Tensor> key_func_output;
               TF_RETURN_IF_ERROR(instantiated_key_func_->RunWithBorrowedArgs(
-                  ctx, next_input_element, &key_func_output));
+                  ctx, next_input_element, &key_func_output, model_node()));
 
               if (key_func_output.size() != 1 ||
                   key_func_output[0].dtype() != DT_INT64 ||

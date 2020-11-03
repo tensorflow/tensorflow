@@ -450,8 +450,9 @@ Status MakeIteratorFromInputElement(
     std::unique_ptr<IteratorBase>* out_iterator) {
   std::vector<Tensor> return_values;
 
-  TF_RETURN_IF_ERROR(inst_captured_func.RunWithBorrowedArgs(ctx, input_element,
-                                                            &return_values));
+  TF_RETURN_IF_ERROR(inst_captured_func.RunWithBorrowedArgs(
+        ctx, input_element, &return_values,
+        std::shared_ptr<model::Node>(nullptr)));
 
   if (!(return_values.size() == 1 && return_values[0].dtype() == DT_VARIANT &&
         TensorShapeUtils::IsScalar(return_values[0].shape()))) {
@@ -848,11 +849,10 @@ Status InstantiatedCapturedFunction::Run(
             "InstantiatedCapturedFunction::Run#id=", f_opts.step_id, "#");
       },
       profiler::TraceMeLevel::kInfo);
-  if (collect_usage) {
-    // Resource usage is for function execution is gathered from the executor.
-    node->record_stop(EnvTime::NowNanos());
+  if (node) {
+    // Resource usage for function execution is gathered from the executor.
+    if (collect_usage) node->record_stop(EnvTime::NowNanos());
     TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame));
-    node->record_start(EnvTime::NowNanos());
     if (ctx->stats_aggregator()) {
       string prefix_with_func_name =
           strings::StrCat(node->name(), stats_utils::kDelimiter,
@@ -863,6 +863,7 @@ Status InstantiatedCapturedFunction::Run(
           node->num_elements());
     }
     node->add_processing_time(stats_collector->processing_time());
+    if (collect_usage) node->record_start(EnvTime::NowNanos());
   } else {
     TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame));
   }
@@ -871,7 +872,7 @@ Status InstantiatedCapturedFunction::Run(
 
 Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
     IteratorContext* ctx, const std::vector<Tensor>& args,
-    std::vector<Tensor>* rets) const {
+    std::vector<Tensor>* rets, const std::shared_ptr<model::Node>& node) const {
   auto& info = captured_func_->short_circuit_info();
   if (!info.indices.empty()) {
     return RunShortCircuit(info, args, captured_func_, rets);
@@ -888,6 +889,14 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
   CancellationManager cancellation_manager(ctx->cancellation_manager());
   f_opts.cancellation_manager = &cancellation_manager;
 
+  std::shared_ptr<SimpleStepStatsCollector> stats_collector;
+  if (node || ctx->stats_aggregator()) {
+    stats_collector = std::make_shared<SimpleStepStatsCollector>();
+  }
+  const bool collect_usage =
+      node && ctx->model() && ctx->model()->collect_resource_usage();
+  f_opts.stats_collector = stats_collector.get();
+
   BorrowedArgsCallFrame frame(args, &captured_func_->captured_inputs(),
                               ret_types_);
   profiler::TraceMe activity(
@@ -897,7 +906,24 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
             f_opts.step_id, "#");
       },
       profiler::TraceMeLevel::kInfo);
-  TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame));
+  if (node) {
+    // Resource usage for function execution is gathered from the executor.
+    if (collect_usage) node->record_stop(EnvTime::NowNanos());
+    TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame));
+    if (ctx->stats_aggregator()) {
+      string prefix_with_func_name =
+          strings::StrCat(node->name(), stats_utils::kDelimiter,
+                          captured_func_->func().name());
+      ctx->stats_aggregator()->AddToHistogram(
+          stats_utils::ExecutionTimeHistogramName(prefix_with_func_name),
+          {static_cast<float>(stats_collector->processing_time())},
+          node->num_elements());
+    }
+    node->add_processing_time(stats_collector->processing_time());
+    if (collect_usage) node->record_start(EnvTime::NowNanos());
+  } else {
+    TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame));
+  }
   return frame.ConsumeRetvals(rets);
 }
 

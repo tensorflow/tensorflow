@@ -221,7 +221,8 @@ class InstantiatedCapturedFunction {
   // possible.
   Status RunWithBorrowedArgs(IteratorContext* ctx,
                              const std::vector<Tensor>& args,
-                             std::vector<Tensor>* rets) const;
+                             std::vector<Tensor>* rets,
+                             const std::shared_ptr<model::Node>& node) const;
 
   // Synchronously runs the captured function on the given `args`, and stores
   // the results in `*rets`. Prefer to use `Run()` or `RunAsync()` when

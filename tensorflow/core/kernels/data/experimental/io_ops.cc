@@ -148,7 +148,8 @@ Status SaveDatasetOp::GetShardIndex(IteratorContext* ctx,
   }
   std::vector<Tensor> output_tensors;
   TF_RETURN_IF_ERROR(
-      function->RunWithBorrowedArgs(ctx, element, &output_tensors));
+      function->RunWithBorrowedArgs(ctx, element, &output_tensors,
+        std::shared_ptr<model::Node>(nullptr)));
 
   if (output_tensors.size() != 1 || output_tensors[0].dtype() != DT_INT64 ||
       output_tensors[0].NumElements() != 1) {
