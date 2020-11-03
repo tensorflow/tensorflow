@@ -13,18 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_GPU_OBJECT_DESC_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_CL_GPU_OBJECT_DESC_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_GPU_OBJECT_DESC_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_GPU_OBJECT_DESC_H_
 
 #include <map>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "tensorflow/lite/delegates/gpu/cl/serialization_generated.h"
 #include "tensorflow/lite/delegates/gpu/common/access_type.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h"
 
 namespace tflite {
 namespace gpu {
@@ -132,9 +132,9 @@ class GPUObjectDescriptor {
   AccessType GetAccess() const { return access_type_; }
 
  protected:
-  friend flatbuffers::Offset<data::GPUObjectDescriptor> Encode(
+  friend flatbuffers::Offset<tflite::gpu::data::GPUObjectDescriptor> Encode(
       const GPUObjectDescriptor& desc, flatbuffers::FlatBufferBuilder* builder);
-  friend void Decode(const data::GPUObjectDescriptor* fb_obj,
+  friend void Decode(const tflite::gpu::data::GPUObjectDescriptor* fb_obj,
                      GPUObjectDescriptor* obj);
   mutable std::map<std::string, std::string> state_vars_;
   AccessType access_type_;
@@ -146,4 +146,4 @@ using GPUObjectDescriptorPtr = std::unique_ptr<GPUObjectDescriptor>;
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_CL_GPU_OBJECT_DESC_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_GPU_OBJECT_DESC_H_
