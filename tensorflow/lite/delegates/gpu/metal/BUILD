@@ -55,6 +55,7 @@ objc_library(
     copts = DEFAULT_COPTS,
     sdk_frameworks = ["Metal"],
     deps = [
+        ":gpu_object",
         "//tensorflow/lite/delegates/gpu/common:status",
         "@com_google_absl//absl/types:span",
     ],
@@ -200,6 +201,19 @@ cc_library(
     name = "device_info",
     srcs = ["device_info.cc"],
     hdrs = ["device_info.h"],
+)
+
+objc_library(
+    name = "gpu_object",
+    hdrs = ["gpu_object.h"],
+    copts = DEFAULT_COPTS,
+    sdk_frameworks = ["Metal"],
+    deps = [
+        ":gpu_object_desc",
+        "//tensorflow/lite/delegates/gpu/common:access_type",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:status",
+    ],
 )
 
 cc_library(
