@@ -38,7 +38,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/xtensa_hifi/xtensa_tf_micro_common.h"
 
 namespace tflite {
@@ -50,26 +50,30 @@ constexpr int kInputTensor = 0;
 constexpr int kOutputTensor = 0;
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteEvalTensor* input =
+      tflite::micro::GetEvalInput(context, node, kInputTensor);
   TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteFloat32);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TfLiteEvalTensor* output =
+      tflite::micro::GetEvalOutput(context, node, kOutputTensor);
 #if HIFI_VFPU
   int err;
   const float* inp_data_ptr;
   float* out_data_ptr;
-  const RuntimeShape& input_shape = GetTensorShape(input);
-  const RuntimeShape& output_shape = GetTensorShape(output);
+  const RuntimeShape& input_shape = tflite::micro::GetTensorShape(input);
+  const RuntimeShape& output_shape = tflite::micro::GetTensorShape(output);
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
 
-  inp_data_ptr = GetTensorData<float>(input);
-  out_data_ptr = GetTensorData<float>(output);
+  inp_data_ptr = tflite::micro::GetTensorData<float>(input);
+  out_data_ptr = tflite::micro::GetTensorData<float>(output);
 
   err = xa_nn_elm_floor_f32_f32(out_data_ptr, inp_data_ptr, flat_size);
 
   CHECK_ERR_HIFI_NNLIB_KER(err, "xa_nn_elm_floor_f32_f32 failed");
 #else
-  reference_ops::Floor(GetTensorShape(input), GetTensorData<float>(input),
-                       GetTensorShape(output), GetTensorData<float>(output));
+  reference_ops::Floor(tflite::micro::GetTensorShape(input),
+                       tflite::micro::GetTensorData<float>(input),
+                       tflite::micro::GetTensorShape(output),
+                       tflite::micro::GetTensorData<float>(output));
 #endif /* HIFI_VFPU */
   return kTfLiteOk;
 }
