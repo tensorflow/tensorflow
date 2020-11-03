@@ -2060,12 +2060,7 @@ filegroup(
         # JPEG data
         "//tensorflow/core/lib/jpeg/testdata",
         # GIF data
-        "lib/gif/testdata/lena.gif",
-        "lib/gif/testdata/scan.gif",
-        "lib/gif/testdata/red_black.gif",
-        "lib/gif/testdata/squares.gif",
-        # GIF data with optimization
-        "lib/gif/testdata/optimized.gif",
+        "//tensorflow/core/lib/gif/testdata:gif_testdata",
         # BMP data
         "//tensorflow/core/lib/bmp:bmp_testdata",
     ],
