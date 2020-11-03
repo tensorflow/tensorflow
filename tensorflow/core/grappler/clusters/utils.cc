@@ -152,8 +152,8 @@ DeviceProperties GetLocalGPUInfo(PlatformGpuId platform_gpu_id) {
 DeviceProperties GetDeviceInfo(const DeviceNameUtils::ParsedName& device) {
   DeviceProperties unknown;
   unknown.set_type("UNKNOWN");
-  // for first party devices, subdevice type is empty.
-  // for third party devices, subdevice type is registered from plugin.
+  // For first party devices, subdevice type is empty.
+  // For third party devices, subdevice type is registered from plugin.
   const string& subdevice_type = DeviceFactory::SubDeviceType(device.type);
 
   if (device.type == "CPU") {

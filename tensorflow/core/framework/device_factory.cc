@@ -74,8 +74,7 @@ string DeviceFactory::SubDeviceType(const string& device_type) {
   if (iter != factories.end()) {
     return iter->second.subdevice_type;
   }
-  static const string& kEmptyString = *new string("");
-  return kEmptyString;
+  return "";
 }
 
 // static

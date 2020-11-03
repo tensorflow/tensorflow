@@ -1348,8 +1348,8 @@ Status FindKernelRegistration(
   // default kernel.
   if (*reg == nullptr &&
       !IsSymbolicExecutionDevice(device_type.type_string())) {
-    const string default_key = Key(node_op, /*device_type*/ DEVICE_DEFAULT,
-                                   /*subdevice_type*/ "", label);
+    const string default_key = Key(node_op, /*device_type=*/DEVICE_DEFAULT,
+                                   /*subdevice_type=*/"", label);
     auto regs = typed_registry->registry.equal_range(default_key);
     for (auto iter = regs.first; iter != regs.second; ++iter) {
       // If there is a kernel registered for the op and device_type,
