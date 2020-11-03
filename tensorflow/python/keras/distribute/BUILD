@@ -931,3 +931,18 @@ tf_py_test(
         "//tensorflow/python/compat:v2_compat",
     ],
 )
+
+tf_py_test(
+    name = "sharded_variable_test",
+    size = "small",
+    srcs = ["sharded_variable_test.py"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/distribute:sharded_variable",
+        "//tensorflow/python/keras/engine:base_layer",
+    ],
+)
