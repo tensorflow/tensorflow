@@ -2759,12 +2759,13 @@ class TensorFlowTestCase(googletest.TestCase):
     self.assertAllClose(a, b, rtol=rtol, atol=atol, msg=msg)
 
   @py_func_if_in_function
-  def assertNotAllClose(self, a, b, **kwargs):
+  def assertNotAllClose(self, a, b, msg=None, **kwargs):
     """Assert that two numpy arrays, or Tensors, do not have near values.
 
     Args:
       a: the first value to compare.
       b: the second value to compare.
+      msg: Optional message to report on failure.
       **kwargs: additional keyword arguments to be passed to the underlying
         `assertAllClose` call.
 
@@ -2775,7 +2776,8 @@ class TensorFlowTestCase(googletest.TestCase):
       self.assertAllClose(a, b, **kwargs)
     except AssertionError:
       return
-    raise AssertionError("The two values are close at all elements")
+    msg = msg or ""
+    raise AssertionError("The two values are close at all elements. %s" % msg)
 
   @py_func_if_in_function
   def assertAllEqual(self, a, b, msg=None):
