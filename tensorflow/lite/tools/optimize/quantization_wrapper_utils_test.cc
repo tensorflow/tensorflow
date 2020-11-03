@@ -36,6 +36,8 @@ TEST(LstmPreprocess, Add2Tensors) {
   auto lstm_op = absl::make_unique<OperatorT>();
 
   lstm_op_code->builtin_code = BuiltinOperator_LSTM;
+  lstm_op_code->deprecated_builtin_code =
+      static_cast<int8_t>(BuiltinOperator_LSTM);
   lstm_op_code->version = 2;
   lstm_op->opcode_index = 0;
   lstm_op->inputs = {0, 1,  2,  3,  4,  5,  6,  7,  8,  -1, -1, -1,

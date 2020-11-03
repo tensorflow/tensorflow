@@ -57,9 +57,9 @@ void TestPreluFloat(const int* input_dims_data, const float* input_data,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims),
-      CreateFloatTensor(alpha_data, alpha_dims),
-      CreateFloatTensor(output_data, output_dims),
+      CreateTensor(input_data, input_dims),
+      CreateTensor(alpha_data, alpha_dims),
+      CreateTensor(output_data, output_dims),
   };
 
   ValidatePreluGoldens(tensors, tensors_size, expected_output_data,
@@ -93,8 +93,8 @@ void TestPreluQuantized(const int* input_dims_data, const float* input_data,
                             output_zero_point),
   };
 
-  AsymmetricQuantize(golden, golden_quantized, output_dims_count, output_scale,
-                     output_zero_point);
+  Quantize(golden, golden_quantized, output_dims_count, output_scale,
+           output_zero_point);
 
   ValidatePreluGoldens(tensors, tensors_size, golden_quantized,
                        output_dims_count, output_data);

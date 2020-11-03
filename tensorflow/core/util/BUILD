@@ -668,7 +668,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/kernels:bounds_check",
+        "//tensorflow/core/framework:bounds_check",
         "//third_party/eigen3",
     ],
 )
@@ -702,6 +702,9 @@ tf_cuda_only_cc_test(
     name = "gpu_kernel_helper_test",
     srcs = [
         "gpu_kernel_helper_test.cu.cc",
+    ],
+    tags = [
+        "no_cuda_asan",  # TODO(b/171342366): re-enable.
     ],
     deps = [
         "//tensorflow/core:test",
@@ -737,7 +740,6 @@ tf_cc_tests(
         "tensor_slice_writer_test.cc",
         "work_sharder_test.cc",
     ],
-    create_named_test_suite = True,
     linkopts = select({
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
@@ -758,7 +760,6 @@ tf_cc_tests(
         "//tensorflow/core",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:direct_session_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -768,6 +769,7 @@ tf_cc_tests(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/platform:regexp",
         "//third_party/eigen3",

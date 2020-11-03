@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -55,6 +56,13 @@ class HloFunctionImporter {
   static Status ImportAsRegion(const xla::HloComputation& computation,
                                mlir::Region* region, mlir::Builder* builder);
 
+  // Imports the given computation to the given place specified by `builder`.
+  // `arguments` contains values for all parameters.
+  static StatusOr<mlir::Value> ImportInstructions(
+      const xla::HloComputation& computation,
+      const llvm::SmallVectorImpl<mlir::Value>& arguments,
+      mlir::OpBuilder* builder);
+
  private:
   HloFunctionImporter(mlir::ModuleOp module,
                       std::unordered_map<const xla::HloComputation*,
@@ -80,6 +88,10 @@ class HloFunctionImporter {
   // Assumes that the block already has correct arguments populated.
   tensorflow::Status ImportInstructions(const HloComputation& computation,
                                         mlir::Block* block);
+  StatusOr<mlir::Value> ImportInstructionsImpl(
+      const xla::HloComputation& computation,
+      const llvm::SmallVectorImpl<mlir::Value>& arguments,
+      mlir::OpBuilder* builder);
 
   // Imports an instruction.
   StatusOr<mlir::Operation*> ImportInstruction(xla::HloInstruction* instruction,
@@ -107,7 +119,10 @@ class HloFunctionImporter {
 
   // Converts an XLA ComparisonDirection to the corresponding MLIR attribute.
   mlir::NamedAttribute ConvertComparisonDirection(
-      xla::HloInstruction* instruction);
+      ComparisonDirection direction);
+
+  // Converts an XLA Comparison::Type to the corresponding MLIR attribute.
+  mlir::NamedAttribute ConvertComparisonType(Comparison::Type type);
 
   // Converts the dimensions of an HLO instruction into an MLIR attribute.
   mlir::DenseIntElementsAttr ConvertDimensions(

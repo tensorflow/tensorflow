@@ -30,10 +30,8 @@ namespace tflite {
 #define INT24_MIN -8388608
 #define INT24_MAX 8388607
 
-//
 // Multiply 24bit value by a quantized multiplier (w/ shift) and returns a 48bit
 // aligned value in the QR register.
-//
 inline ae_q56s MultiplyByQuantizedMultiplier(ae_p24x2s x_24x2,
                                              int32_t quantized_multiplier,
                                              int shift) {
@@ -92,11 +90,10 @@ inline ae_q56s MultiplyByQuantizedMultiplierResult48Bit(
   return MultiplyByQuantizedMultiplier(x_24x2, quantized_multiplier, shift);
 }
 
-//
 // Calculate quantization params for 24bit runtimes.
-//
-inline void QuantizeMultiplier(float multiplier, int32_t* quantized_multiplier,
-                               int* shift) {
+inline void QuantizeMultiplierForInt24(float multiplier,
+                                       int32_t* quantized_multiplier,
+                                       int* shift) {
   if (multiplier == 0.0f) {
     *quantized_multiplier = 0;
     *shift = 0;
@@ -123,9 +120,7 @@ inline void QuantizeMultiplier(float multiplier, int32_t* quantized_multiplier,
   *quantized_multiplier = static_cast<int32_t>(q_fixed);
 }
 
-//
 // Convert a floating point number to a Q representation for 24 bit integers.
-//
 inline int CreateQConstantForInt24(int integer_bits, float f) {
   const float min_bounds = static_cast<float>(INT24_MIN);
   const float max_bounds = static_cast<float>(INT24_MAX);

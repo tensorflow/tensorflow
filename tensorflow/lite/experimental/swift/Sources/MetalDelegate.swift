@@ -62,8 +62,8 @@ extension MetalDelegate {
     public var waitType: ThreadWaitType = .passive
 
     /// Indicates whether the GPU delegate allows execution of an 8-bit quantized model. The default
-    /// is `false`.
-    public var isQuantizationEnabled = false
+    /// is `true`.
+    public var isQuantizationEnabled = true
 
     /// Creates a new instance with the default values.
     public init() {}

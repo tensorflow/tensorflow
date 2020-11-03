@@ -18,7 +18,6 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/conv_buffer_1x1.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/conv_powervr.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/conv_texture.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/fully_connected.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -31,8 +30,9 @@ std::unique_ptr<GPUOperation> SelectFullyConnectedGeneric(
     const FullyConnectedAttributes& attr, const DeviceInfo& device_info,
     const OperationDef& op_def, int batch_size) {
   if (op_def.IsBatchSupported()) {
-    ConvTexture conv = CreateConvTexture(device_info, op_def, attr);
-    return absl::make_unique<ConvTexture>(std::move(conv));
+    BHWC dst_shape = BHWC(batch_size, 1, 1, attr.weights.shape.o);
+    ConvPowerVR conv = CreateConvPowerVR(device_info, op_def, attr, &dst_shape);
+    return absl::make_unique<ConvPowerVR>(std::move(conv));
   } else {
     FullyConnected fc = CreateFullyConnected(device_info, op_def, attr);
     return absl::make_unique<FullyConnected>(std::move(fc));
@@ -43,8 +43,9 @@ std::unique_ptr<GPUOperation> SelectFullyConnectedAdreno(
     const FullyConnectedAttributes& attr, const DeviceInfo& device_info,
     const OperationDef& op_def, int batch_size) {
   if (op_def.IsBatchSupported()) {
-    ConvTexture conv = CreateConvTexture(device_info, op_def, attr);
-    return absl::make_unique<ConvTexture>(std::move(conv));
+    BHWC dst_shape = BHWC(batch_size, 1, 1, attr.weights.shape.o);
+    ConvPowerVR conv = CreateConvPowerVR(device_info, op_def, attr, &dst_shape);
+    return absl::make_unique<ConvPowerVR>(std::move(conv));
   } else {
     FullyConnected fc = CreateFullyConnected(device_info, op_def, attr);
     return absl::make_unique<FullyConnected>(std::move(fc));
@@ -71,8 +72,10 @@ std::unique_ptr<GPUOperation> SelectFullyConnectedMali(
       ConvBuffer1x1 conv = CreateConvBuffer1x1(device_info, op_def, attr);
       return absl::make_unique<ConvBuffer1x1>(std::move(conv));
     } else {
-      ConvTexture conv = CreateConvTexture(device_info, op_def, attr);
-      return absl::make_unique<ConvTexture>(std::move(conv));
+      BHWC dst_shape = BHWC(batch_size, 1, 1, attr.weights.shape.o);
+      ConvPowerVR conv =
+          CreateConvPowerVR(device_info, op_def, attr, &dst_shape);
+      return absl::make_unique<ConvPowerVR>(std::move(conv));
     }
   } else {
     FullyConnected fc = CreateFullyConnected(device_info, op_def, attr);

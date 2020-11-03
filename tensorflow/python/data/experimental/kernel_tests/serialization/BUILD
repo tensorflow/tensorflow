@@ -40,7 +40,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
@@ -59,7 +58,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:array_ops",
@@ -82,7 +80,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:array_ops",
@@ -103,7 +100,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
@@ -122,7 +118,6 @@ tf_py_test(
         "no_windows",
         "notsan",
     ],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -166,7 +161,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
@@ -184,7 +178,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
@@ -203,7 +196,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
@@ -222,7 +214,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
@@ -240,7 +231,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
@@ -259,7 +249,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
@@ -280,7 +269,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
@@ -298,7 +286,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
@@ -324,7 +311,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
@@ -343,7 +329,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
@@ -361,8 +346,8 @@ tf_py_test(
         "no_oss",
         "no_pip",
         "no_windows",
+        "noasan",  # TODO(b/337374867) fails with -fsanitize=null
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:array_ops",
@@ -382,7 +367,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
@@ -403,7 +387,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
@@ -422,7 +405,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
@@ -446,7 +428,6 @@ tf_py_test(
     tags = [
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
@@ -465,7 +446,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
@@ -483,7 +463,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
@@ -501,7 +480,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:array_ops",
@@ -521,7 +499,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
@@ -542,7 +519,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
@@ -567,7 +543,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
@@ -584,7 +559,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
@@ -601,7 +575,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
@@ -625,7 +598,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
@@ -643,7 +615,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
@@ -662,7 +633,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
@@ -680,7 +650,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_combinations",
@@ -701,7 +670,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
@@ -719,7 +687,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
@@ -737,7 +704,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
@@ -757,7 +723,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:array_ops",
@@ -777,7 +742,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:array_ops",
@@ -798,7 +762,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
@@ -818,7 +781,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
@@ -837,7 +799,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
@@ -855,7 +816,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
@@ -874,7 +834,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
@@ -892,7 +851,6 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",

@@ -110,12 +110,12 @@ std::string ConverterToConvWeights::GetConverterToConvWeightsCode(
   return c;
 }
 
-absl::Status ConverterToConvWeights::BindArguments() {
+absl::Status ConverterToConvWeights::BindArguments(ArgumentsBinder* args) {
   float4 mask = GetMaskForLastPlane(src_[0]->Channels());
-  RETURN_IF_ERROR(args_.SetFloat("mask_x", mask.x));
-  RETURN_IF_ERROR(args_.SetFloat("mask_y", mask.y));
-  RETURN_IF_ERROR(args_.SetFloat("mask_z", mask.z));
-  return args_.SetFloat("mask_w", mask.w);
+  RETURN_IF_ERROR(args->SetFloat("mask_x", mask.x));
+  RETURN_IF_ERROR(args->SetFloat("mask_y", mask.y));
+  RETURN_IF_ERROR(args->SetFloat("mask_z", mask.z));
+  return args->SetFloat("mask_w", mask.w);
 }
 
 int3 ConverterToConvWeights::GetGridSize() const {

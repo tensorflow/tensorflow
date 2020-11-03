@@ -68,7 +68,6 @@ tf_cc_test(
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:direct_session_internal",
         "//tensorflow/core:example_parser_configuration",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -79,15 +78,14 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:example_parsing_ops",
     ],
 )
 
-filegroup(
+alias(
     name = "example_parser_configuration_testdata",
-    srcs = [
-        "testdata/parse_example_graph_def.pbtxt",
-    ],
+    actual = "//tensorflow/core/example/testdata:example_parser_configuration_testdata",
 )
 
 tf_proto_library(

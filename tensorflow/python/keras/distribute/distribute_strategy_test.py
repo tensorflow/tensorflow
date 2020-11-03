@@ -35,8 +35,8 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
-from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import parameter_server_strategy
+from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import tpu_strategy
@@ -52,7 +52,7 @@ from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.keras.distribute import distributed_training_utils_v1
 from tensorflow.python.keras.distribute import optimizer_combinations
 from tensorflow.python.keras.engine import base_layer_utils
-from tensorflow.python.keras.mixed_precision.experimental import policy
+from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
 from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.ops import array_ops
@@ -66,6 +66,7 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import rmsprop
+from tensorflow.python.training import server_lib
 from tensorflow.python.util import nest
 
 _RANDOM_SEED = 1337
@@ -528,8 +529,11 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
 
   @ds_combinations.generate(all_strategy_combinations())
   def test_calling_model_with_mixed_precision(self, distribution):
-    if isinstance(distribution.extended,
-                  parameter_server_strategy.ParameterServerStrategyExtended):
+    if isinstance(distribution,
+                  (parameter_server_strategy.ParameterServerStrategyV1,
+                   parameter_server_strategy_v2.ParameterServerStrategyV2,
+                   central_storage_strategy.CentralStorageStrategy,
+                   central_storage_strategy.CentralStorageStrategyV1)):
       self.skipTest('b/152097775')
     if _is_tpu_strategy(distribution):
       policy_name = 'mixed_bfloat16'
@@ -577,8 +581,11 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
     # AutoCastVariable to a tensor on a TPU, where the variable was the LHS of
     # the '+' operator, used to cause the gradient w.r.t. the variable to be
     # None.
-    if isinstance(distribution.extended,
-                  parameter_server_strategy.ParameterServerStrategyExtended):
+    if isinstance(distribution,
+                  (parameter_server_strategy.ParameterServerStrategyV1,
+                   parameter_server_strategy_v2.ParameterServerStrategyV2,
+                   central_storage_strategy.CentralStorageStrategy,
+                   central_storage_strategy.CentralStorageStrategyV1)):
       self.skipTest('b/152097775')
 
     if _is_tpu_strategy(distribution):
@@ -1151,9 +1158,6 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
     if mode == 'graph' and _is_tpu_strategy(distribution):
       self.skipTest('partial batch not supported with TPU in graph mode.')
 
-    if isinstance(distribution,
-                  collective_all_reduce_strategy.CollectiveAllReduceStrategy):
-      self.skipTest('EOF error causes subsequent collective ops fail.')
     with self.cached_session():
       with distribution.scope():
         optimizer_fn = gradient_descent_keras.SGD
@@ -1166,8 +1170,8 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
             loss,
             metrics=metrics)
 
-      inputs = np.zeros((1000, 3), dtype=np.float32)
-      targets = np.zeros((1000, 4), dtype=np.float32)
+      inputs = np.zeros((100, 3), dtype=np.float32)
+      targets = np.zeros((100, 4), dtype=np.float32)
       # steps/steps_per_epoch are calculated when using numpy arrays as
       # input data.
       fit_with_numpy = model.fit(
@@ -1881,6 +1885,9 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
   @ds_combinations.generate(
       combinations.combine(distribution=all_strategies, mode=['eager']))
   def test_host_training_loop(self, distribution):
+    if isinstance(distribution,
+                  collective_all_reduce_strategy.CollectiveAllReduceStrategy):
+      self.skipTest('b/172032817')
     with distribution.scope():
       inputs = keras.Input((10, 10, 3))
       x = keras.layers.Conv2D(3, kernel_size=3)(inputs)
@@ -1907,6 +1914,9 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
   @ds_combinations.generate(
       combinations.combine(distribution=all_strategies, mode=['eager']))
   def test_host_training_loop_last_partial_execution(self, distribution):
+    if isinstance(distribution,
+                  collective_all_reduce_strategy.CollectiveAllReduceStrategy):
+      self.skipTest('b/172032817')
     with distribution.scope():
       inputs = keras.Input(10)
       outputs = keras.layers.Dense(1)(inputs)
@@ -1931,6 +1941,9 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
   @ds_combinations.generate(
       combinations.combine(distribution=all_strategies, mode=['eager']))
   def test_host_training_loop_dataset_unknown_size(self, distribution):
+    if isinstance(distribution,
+                  collective_all_reduce_strategy.CollectiveAllReduceStrategy):
+      self.skipTest('b/172032817')
     with distribution.scope():
       inputs = keras.Input(10)
       outputs = keras.layers.Dense(1)(inputs)
@@ -1967,6 +1980,9 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
   @ds_combinations.generate(
       combinations.combine(distribution=all_strategies, mode=['eager']))
   def test_host_training_loop_truncate_to_epoch(self, distribution):
+    if isinstance(distribution,
+                  collective_all_reduce_strategy.CollectiveAllReduceStrategy):
+      self.skipTest('b/172032817')
     with distribution.scope():
       inputs = keras.Input(10)
       outputs = keras.layers.Dense(1)(inputs)
@@ -2449,16 +2465,15 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     cluster_spec = multi_worker_test_base.create_in_process_cluster(
         num_workers=3, num_ps=2)
     cluster_resolver = SimpleClusterResolver(
-        cluster_spec=multi_worker_util.normalize_cluster_spec(cluster_spec),
+        cluster_spec=server_lib.ClusterSpec(cluster_spec),
         task_type='worker',
         task_id=1,
         num_accelerators={'GPU': 0})
-    distribution = parameter_server_strategy.ParameterServerStrategy(
+    distribution = parameter_server_strategy.ParameterServerStrategyV1(
         cluster_resolver)
 
     self.assertIsInstance(distribution,
-                          (parameter_server_strategy.ParameterServerStrategyV1,
-                           parameter_server_strategy.ParameterServerStrategy))
+                          parameter_server_strategy.ParameterServerStrategyV1)
 
     with self.assertRaisesRegex(NotImplementedError,
                                 'ParameterServerStrategy*'):

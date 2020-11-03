@@ -68,6 +68,30 @@ enum EventType {
   LAST_EVENT_TYPE = DEVICE_WAIT_HOST
 };
 
+// Generic event types that shown to the user.
+enum GenericEventType {
+  kFirstGenericEventType = 1,
+  // Device is computing.
+  kDeviceCompute = kFirstGenericEventType,
+  // Device-to-device communication.
+  kDeviceToDevice,
+  // Collective Ops such as All-Reduce and NCCL.
+  kDeviceCollectives,
+  // Host is computing.
+  kHostCompute,
+  // Host is preparing to launch a computation on device.
+  kHostPrepare,
+  // Device waiting for input from the host.
+  kInput,
+  // Device sending output to the host.
+  kOutput,
+  // Host is compling.
+  kCompile,
+  // No recognized event associated with the time.
+  kAllOthers,
+  kLastGenericEventType = kAllOthers,
+};
+
 // Contains the type and timespan of an event.
 struct EventTypeSpan {
   EventType type;  // type of this event.
@@ -197,8 +221,8 @@ EventType ClassifyGpuEvent(absl::string_view event_name,
 // Returns the name of the given EventType.
 std::string PrintEventType(EventType event_type);
 
-// Returns the label of the given EventType.
-std::string PrintEventTypeLabel(EventType event_type);
+// Returns the string of the given GenericEventType.
+absl::string_view GetGenericEventTypeStr(GenericEventType event_type);
 
 // Returns a string that prints the given EventTypeSpan.
 std::string PrintEventTypeSpan(const EventTypeSpan& event_type_span);

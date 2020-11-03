@@ -24,7 +24,6 @@ limitations under the License.
 #include "llvm/ADT/SCCIterator.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Analysis/CallGraph.h"  // from @llvm-project
@@ -40,8 +39,8 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/core/framework/resource_mgr.h"
 
 namespace mlir {
 namespace TF {
@@ -228,50 +227,15 @@ BacktrackAnalysisInfo::BacktrackAnalysisInfo(
     backtracked_values_.push_back(backtrack_analysis.BacktrackValue(result));
 }
 
-namespace {
-
-//===----------------------------------------------------------------------===//
-// ResourceAliasAnalysisInfo helper functions.
-//===----------------------------------------------------------------------===//
-
-constexpr char kResourceArgUniqueIdAttr[] = "tf._resource_arg_unique_id";
-
-// Returns if a VarHandleOp is anonymous, which means it always creates a new
-// variable.
-bool IsResourceHandleAnonymous(VarHandleOp handle) {
-  return handle.shared_name() == tensorflow::ResourceHandle::ANONYMOUS_NAME;
-}
-
-// Returns a string unique identifier for a non-anonymous VarHandleOp.
-std::string GetVarHandleStringId(VarHandleOp handle) {
-  auto device = handle.getAttrOfType<StringAttr>("device");
-  return llvm::join(
-      llvm::ArrayRef<llvm::StringRef>{
-          handle.container(), handle.shared_name(),
-          device ? device.getValue() : llvm::StringRef()},
-      "/");
-}
-
-// Finds a unique ID for a VarHandleOp's output. If it is anonymous, always
-// creates a new ID; otherwise, tries to reuse the existing ID for the
-// referenced variable if it exists, or creates a new one if not.
-int64_t GetOrCreateIdForVarHandle(VarHandleOp handle, int64_t& next_id,
-                                  llvm::StringMap<int64_t>& name_id_map) {
-  // Always create a new ID for anonymous handle.
-  if (IsResourceHandleAnonymous(handle)) return next_id++;
-
-  auto name = GetVarHandleStringId(handle);
-  auto emplace_res = name_id_map.try_emplace(name, next_id);
-  // New ID created, increment next_id.
-  if (emplace_res.second) ++next_id;
-  return emplace_res.first->second;
-}
-
-}  // namespace
-
 //===----------------------------------------------------------------------===//
 // ResourceAliasAnalysisInfo
 //===----------------------------------------------------------------------===//
+
+namespace {
+
+constexpr char kResourceArgUniqueIdAttr[] = "tf._resource_arg_unique_id";
+
+}  // namespace
 
 constexpr int64_t ResourceAliasAnalysisInfo::kUnknownResourceId;
 
@@ -338,13 +302,13 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
     }
   });
 
-  llvm::StringMap<int64_t> var_handle_name_id_map;
+  llvm::SmallDenseMap<ResourceHandle, int64_t> resource_handle_id_map;
   func_op.walk([&](Operation* op) {
-    if (auto var_handle = dyn_cast<VarHandleOp>(op)) {
-      AddValueUniqueIDMapping(
-          var_handle.resource(),
-          GetOrCreateIdForVarHandle(var_handle, next_unique_id,
-                                    var_handle_name_id_map));
+    if (auto resource_alloc = dyn_cast<ResourceHandleAllocatorInterface>(op)) {
+      ResourceHandleValueAndId resource =
+          resource_alloc.GetResourceHandleValueAndId(resource_handle_id_map,
+                                                     next_unique_id);
+      AddValueUniqueIDMapping(resource.value, resource.id);
     } else if (llvm::isa<IdentityNOp, IdentityOp>(op)) {
       for (auto result : filter_resources(op->getResults()))
         PropagateInputToOutput(op->getOperand(result.getResultNumber()),

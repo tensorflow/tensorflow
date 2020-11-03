@@ -28,6 +28,18 @@ pyx_library(
     srcs = ["custom_call_for_test.pyx"],
 )
 
+py_test(
+    name = "xla_client_backend_independent_test",
+    srcs = ["xla_client_backend_independent_test.py"],
+    python_version = "PY3",
+    tags = ["no_oss"],  # TODO(phawkins): This test passes, but requires --config=monolithic.
+    deps = [
+        ":xla_client",
+        ":xla_extension",
+        "@absl_py//absl/testing:absltest",
+    ] + xla_py_test_deps(),
+)
+
 py_library(
     name = "xla_client_test",
     testonly = 1,
@@ -227,6 +239,7 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":py_client",
+        ":python_ref_manager",
         ":traceback",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
@@ -434,6 +447,7 @@ pybind_extension(
         "//tensorflow/compiler/xla/pjrt:interpreter_device",
         "//tensorflow/compiler/xla/pjrt:nvidia_gpu_device",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:tpu_client",
         "//tensorflow/compiler/xla/pjrt:tracked_device_buffer",
         "//tensorflow/compiler/xla/pjrt/distributed",
         "//tensorflow/compiler/xla/pjrt/distributed:client",

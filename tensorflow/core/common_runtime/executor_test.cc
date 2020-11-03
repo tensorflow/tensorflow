@@ -433,11 +433,10 @@ TEST_F(ExecutorTest, NoInputTensors) {
 // Create a graph that is 'depth' deep. At each level, fan-in and fan-out a
 // maximum of 'width' nodes. All nodes are no-ops and all dependencies are
 // control dependencies.
-static void BM_executor(int iters, int width, int depth) {
-  testing::StopTiming();
-#ifdef PLATFORM_GOOGLE
-  BenchmarkUseRealTime();
-#endif  // PLATFORM_GOOGLE
+static void BM_executor(::testing::benchmark::State& state) {
+  const int width = state.range(0);
+  const int depth = state.range(1);
+
   Graph* g = new Graph(OpRegistry::Global());
   random::PhiloxRandom philox(1729, 17);
   random::SimplePhilox rand(&philox);
@@ -466,30 +465,29 @@ static void BM_executor(int iters, int width, int depth) {
       ++cur;
     }
   }
-#ifdef PLATFORM_GOOGLE
-  SetBenchmarkLabel(strings::StrCat("Nodes = ", cur));
-  SetBenchmarkItemsProcessed(cur * static_cast<int64>(iters));
-#endif  // PLATFORM_GOOGLE
+
   FixupSourceAndSinkEdges(g);
-  testing::StartTiming();
-  test::Benchmark("cpu", g).Run(iters);
+  test::Benchmark("cpu", g, /*old_benchmark_api=*/false).Run(state);
+
+  state.SetLabel(strings::StrCat("Nodes = ", cur));
+  state.SetItemsProcessed(cur * static_cast<int64>(state.iterations()));
 }
 
 // Tall skinny graphs
-BENCHMARK(BM_executor)->ArgPair(16, 1024);
-BENCHMARK(BM_executor)->ArgPair(32, 8192);
+BENCHMARK(BM_executor)->UseRealTime()->ArgPair(16, 1024);
+BENCHMARK(BM_executor)->UseRealTime()->ArgPair(32, 8192);
 
 // Short fat graphs
-BENCHMARK(BM_executor)->ArgPair(1024, 16);
-BENCHMARK(BM_executor)->ArgPair(8192, 32);
+BENCHMARK(BM_executor)->UseRealTime()->ArgPair(1024, 16);
+BENCHMARK(BM_executor)->UseRealTime()->ArgPair(8192, 32);
 
 // Tall fat graph
-BENCHMARK(BM_executor)->ArgPair(1024, 1024);
+BENCHMARK(BM_executor)->UseRealTime()->ArgPair(1024, 1024);
 
-static void BM_const_identity(int iters, int width, int outputs_per_const) {
-#ifdef PLATFORM_GOOGL
-  BenchmarkUseRealTime();
-#endif  // PLATFORM_GOOGLE
+static void BM_const_identity(::testing::benchmark::State& state) {
+  const int width = state.range(0);
+  const int outputs_per_const = state.range(1);
+
   Graph* g = new Graph(OpRegistry::Global());
   for (int i = 0; i < width; ++i) {
     Tensor i_t(i);
@@ -499,23 +497,21 @@ static void BM_const_identity(int iters, int width, int outputs_per_const) {
     }
   }
   FixupSourceAndSinkEdges(g);
-#ifdef PLATFORM_GOOGLE
-  SetBenchmarkLabel(
-      strings::StrCat("Nodes = ", (1 + outputs_per_const) * width));
-  SetBenchmarkItemsProcessed((1 + outputs_per_const) * width *
-                             static_cast<int64>(iters));
-#endif  // PLATFORM_GOOGLE
-  test::Benchmark("cpu", g).Run(iters);
+  test::Benchmark("cpu", g, /*old_benchmark_api=*/false).Run(state);
+  state.SetLabel(strings::StrCat("Nodes = ", (1 + outputs_per_const) * width));
+  state.SetItemsProcessed((1 + outputs_per_const) * width *
+                          static_cast<int64>(state.iterations()));
 }
 
 // Graph with actual op execution.
-BENCHMARK(BM_const_identity)->ArgPair(1, 1);
-BENCHMARK(BM_const_identity)->ArgPair(1, 100);
-BENCHMARK(BM_const_identity)->ArgPair(100, 1);
-BENCHMARK(BM_const_identity)->ArgPair(100, 100);
+BENCHMARK(BM_const_identity)
+    ->UseRealTime()
+    ->ArgPair(1, 1)
+    ->ArgPair(1, 100)
+    ->ArgPair(100, 1)
+    ->ArgPair(100, 100);
 
-static void BM_FeedInputFetchOutput(int iters) {
-  testing::StopTiming();
+static void BM_FeedInputFetchOutput(::testing::benchmark::State& state) {
   Graph* g = new Graph(OpRegistry::Global());
   // z = x + y: x and y are provided as benchmark inputs.  z is the
   // output of the benchmark.  Conceptually, the caller is ALICE, the
@@ -531,13 +527,10 @@ static void BM_FeedInputFetchOutput(int iters) {
 
   Tensor val(DT_FLOAT, TensorShape({}));
   val.scalar<float>()() = 3.14;
-#ifdef PLATFORM_GOOGLE
-  SetBenchmarkItemsProcessed(static_cast<int64>(iters));
-#endif  // PLATFORM_GOOGLE
   FixupSourceAndSinkEdges(g);
-  testing::StartTiming();
-  test::Benchmark("cpu", g).RunWithRendezvousArgs({{x_key, val}, {y_key, val}},
-                                                  {z_key}, iters);
+  test::Benchmark("cpu", g, /*old_benchmark_api=*/false)
+      .RunWithRendezvousArgs({{x_key, val}, {y_key, val}}, {z_key}, state);
+  state.SetItemsProcessed(static_cast<int64>(state.iterations()));
 }
 BENCHMARK(BM_FeedInputFetchOutput);
 
@@ -549,9 +542,8 @@ BENCHMARK(BM_FeedInputFetchOutput);
 //
 // ...using the functional `WhileOp` (if `lower` is false) or the
 // `Switch`/`Merge`-style of control flow (if `lower` is true).
-static void BM_WhileLoopHelper(int iters, int loop_iters, int loop_vars,
-                               bool lower) {
-  testing::StopTiming();
+static void BM_WhileLoopHelper(::testing::benchmark::State& state,
+                               int loop_iters, int loop_vars, bool lower) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
 
   // Add test functions for cond and body.
@@ -661,12 +653,15 @@ static void BM_WhileLoopHelper(int iters, int loop_iters, int loop_vars,
   }
 
   FixupSourceAndSinkEdges(graph.get());
-  testing::StartTiming();
-  test::Benchmark("cpu", graph.release()).Run(iters);
+  test::Benchmark("cpu", graph.release(), /*old_benchmark_api=*/false)
+      .Run(state);
 }
 
-static void BM_LoweredWhileLoop(int iters, int loop_iters, int loop_vars) {
-  BM_WhileLoopHelper(iters, loop_iters, loop_vars, /* lower= */ true);
+static void BM_LoweredWhileLoop(::testing::benchmark::State& state) {
+  const int loop_iters = state.range(0);
+  const int loop_vars = state.range(1);
+
+  BM_WhileLoopHelper(state, loop_iters, loop_vars, /* lower= */ true);
 }
 BENCHMARK(BM_LoweredWhileLoop)
     ->ArgPair(0, 1)
@@ -680,8 +675,11 @@ BENCHMARK(BM_LoweredWhileLoop)
     ->ArgPair(100, 100)
     ->ArgPair(1000, 100);
 
-static void BM_FunctionalWhileLoop(int iters, int loop_iters, int loop_vars) {
-  BM_WhileLoopHelper(iters, loop_iters, loop_vars, /* lower= */ false);
+static void BM_FunctionalWhileLoop(::testing::benchmark::State& state) {
+  const int loop_iters = state.range(0);
+  const int loop_vars = state.range(1);
+
+  BM_WhileLoopHelper(state, loop_iters, loop_vars, /* lower= */ false);
 }
 BENCHMARK(BM_FunctionalWhileLoop)
     ->ArgPair(0, 1)

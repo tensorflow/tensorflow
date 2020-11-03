@@ -70,12 +70,13 @@ class FailTestRMA : public CollectiveRemoteAccessLocal {
                     const AllocatorAttributes& to_alloc_attr, Tensor* to_tensor,
                     const DeviceLocality& client_locality,
                     int dev_to_dev_stream_index,
+                    CancellationManager* cancellation_manager,
                     const StatusCallback& done) override {
     if (MaybeFail(done)) return;
     CollectiveRemoteAccessLocal::RecvFromPeer(
         peer_device, peer_task, peer_is_local, key, to_device, to_device_ctx,
         to_alloc_attr, to_tensor, client_locality, dev_to_dev_stream_index,
-        done);
+        cancellation_manager, done);
   }
 
   void PostToPeer(const string& peer_device, const string& peer_task,
@@ -84,11 +85,13 @@ class FailTestRMA : public CollectiveRemoteAccessLocal {
                   const AllocatorAttributes& from_alloc_attr,
                   const Tensor* from_tensor,
                   const DeviceLocality& client_locality,
+                  CancellationManager* cancellation_manager,
                   const StatusCallback& done) override {
     if (MaybeFail(done)) return;
     CollectiveRemoteAccessLocal::PostToPeer(
         peer_device, peer_task, key, from_device, from_device_ctx,
-        from_alloc_attr, from_tensor, client_locality, done);
+        from_alloc_attr, from_tensor, client_locality, cancellation_manager,
+        done);
   }
 
   mutex mu_;
@@ -442,6 +445,7 @@ class RingGathererTest : public ::testing::Test {
       OpKernelContext::Params op_params;
       op_params.step_id = kStepId;
       op_params.device = device_;
+      op_params.cancellation_manager = &parent_->cancellation_manager_;
       gtl::InlinedVector<TensorValue, 4> inputs;
       inputs.push_back(TensorValue(&input_tensor_));
       op_params.inputs = &inputs;
@@ -523,6 +527,7 @@ class RingGathererTest : public ::testing::Test {
   std::unique_ptr<string> gpu_ring_order_;
   mutex mu_;
   int32 gather_counter_ TF_GUARDED_BY(mu_) = 0;
+  CancellationManager cancellation_manager_;
 };
 
 CollectiveParams SetUpCollectiveParams(const int num_devs_per_task,

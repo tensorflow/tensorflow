@@ -702,7 +702,7 @@ def shape_n(input, out_type=dtypes.int32, name=None):
 def size_v2(input, out_type=dtypes.int32, name=None):
   # pylint: disable=redefined-builtin
   """Returns the size of a tensor.
-  
+
   See also `tf.shape`.
 
   Returns a 0-D `Tensor` representing the number of elements in `input`
@@ -1330,13 +1330,23 @@ def parallel_stack(values, name="parallel_stack"):
 
       tf.parallel_stack([x, y, z]) = np.asarray([x, y, z])
 
+  @compatibility(eager)
+  parallel_stack is not compatible with eager execution.
+  @end_compatibility
+
   Args:
     values: A list of `Tensor` objects with the same shape and type.
     name: A name for this operation (optional).
 
   Returns:
     output: A stacked `Tensor` with the same type as `values`.
+
+  Raises:
+    RuntimeError: if executed in eager mode.
   """
+  if context.executing_eagerly():
+    raise RuntimeError("tf.parallel_stack() is not compatible with "
+                       "eager execution.")
   with ops.name_scope(name):
     value_t = ops.convert_to_tensor(values[0])
     value_shape = ops.convert_to_tensor(value_t).get_shape()
@@ -1758,9 +1768,9 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
             shape(tensor)[axis + ndims_mask:]
         ], 0))
     # TODO(yongtang): tf.reshape in C++ kernel might have set the shape
-    # correctly, so the following may not be needed? It still might ben
-    # possible that there are some edge case where tensor_util.constant_value
-    # resolves more case than ShapeInference of tf.reshape in C++ kernel.
+    # correctly, so the following may not be needed? It still might be possible
+    # that there are some edge case where tensor_util.constant_value resolves
+    # more cases than ShapeInference of tf.reshape in C++ kernel.
     if axis_value is not None:
       first_dim = shape_tensor[axis:axis + ndims_mask].num_elements()
       tensor.set_shape(
@@ -2108,7 +2118,7 @@ def transpose_v2(a, perm=None, conjugate=False, name="transpose"):
   As above, simply calling `tf.transpose` will default to `perm=[2,1,0]`.
 
   To take the transpose of the matrices in dimension-0 (such as when you are
-  transposing matrices where 0 is the batch dimesnion), you would set
+  transposing matrices where 0 is the batch dimension), you would set
   `perm=[0,2,1]`.
 
   >>> tf.transpose(x, perm=[0, 2, 1])
@@ -3650,7 +3660,7 @@ def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
   array([[inf, 1. ],
          [0.5, 1. ]], dtype=float32)>
 
-  The operaton returns a dense Tensor of shape `[2, 2]` with
+  The operation returns a dense Tensor of shape `[2, 2]` with
   edit distances normalized by `truth` lengths.
 
   **Note**: It is possible to calculate edit distance between two
@@ -3685,7 +3695,7 @@ def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
   normalize = True
 
   # The output would be a dense Tensor of shape `(2,)`, with edit distances
-  noramlized by 'truth' lengths.
+  normalized by 'truth' lengths.
   # output => array([0., 0.5], dtype=float32)
   ```
 
@@ -3756,6 +3766,23 @@ def _FakeQuantWithMinMaxVarsPerChannelGradient(op, grad):
       op.inputs[2],
       num_bits=op.get_attr("num_bits"),
       narrow_range=op.get_attr("narrow_range"))
+
+
+@ops.RegisterGradient("QuantizeAndDequantizeV4")
+def _QuantizeAndDequantizeV4Grad(op, grad):
+  """Gradient for QuantizeAndDequantizeV4 op."""
+  return quantize_and_dequantize_v4_grad(
+      grad,
+      op.inputs[0],
+      op.inputs[1],
+      op.inputs[2],
+      axis=op.get_attr("axis"))
+
+
+@ops.RegisterGradient("QuantizeAndDequantizeV4Grad")
+def _QuantizeAndDequantizeV4GradGrad(op, grad):
+  """Gradient for QuantizeAndDequantizeV4Grad op."""
+  return _QuantizeAndDequantizeV4Grad(op, grad)
 
 
 @tf_export("required_space_to_batch_paddings")
@@ -5297,8 +5324,8 @@ def tensor_scatter_nd_update(tensor, indices, updates, name=None):
   tf.Tensor([ 0 9  0 10  11  0  0 12], shape=(8,), dtype=int32)
 
   The length (first axis) of `updates` must equal the length of the `indices`:
-  `num_updates`. This is the the number of updates being inserted. Each
-  scalar update is inserted into `tensor` at the indexed location.
+  `num_updates`. This is the number of updates being inserted. Each scalar
+  update is inserted into `tensor` at the indexed location.
 
   For a higher rank input `tensor` scalar updates can be inserted by using an
   `index_depth` that matches `tf.rank(tensor)`:
@@ -5322,7 +5349,7 @@ def tensor_scatter_nd_update(tensor, indices, updates, name=None):
   `outer_shape` and the `inner_shape`.
 
   `indices` indexes into the outer level of the input tensor (`outer_shape`).
-  and replaces the sub-array at that location with the coresponding item from
+  and replaces the sub-array at that location with the corresponding item from
   the `updates` list. The shape of each update is `inner_shape`.
 
   When updating a list of slices the shape constraints are:
@@ -5355,7 +5382,7 @@ def tensor_scatter_nd_update(tensor, indices, updates, name=None):
   >>> updates = tf.constant([[1, 2, 3],
   ...                        [4, 5, 6]])
 
-  Alltogether this gives:
+  Altogether this gives:
 
   >>> tf.tensor_scatter_nd_update(tensor, indices, updates).numpy()
   array([[0, 0, 0],
@@ -5380,7 +5407,7 @@ def tensor_scatter_nd_update(tensor, indices, updates, name=None):
     * Provide updates each with a shape matching the `inner_shape`:
       `[time, width, height, channels]`.
 
-  To relace the first two clips with ones:
+  To replace the first two clips with ones:
 
   >>> indices = [[0],[1]]
   >>> new_clips = tf.ones([2, time, width, height, channels])
@@ -5403,7 +5430,7 @@ def tensor_scatter_nd_update(tensor, indices, updates, name=None):
 
   ### Folded indices
 
-  In simple cases it's convienient to think of `indices` and `updates` as
+  In simple cases it's convenient to think of `indices` and `updates` as
   lists, but this is not a strict requirement. Instead of a flat `num_updates`,
   the `indices` and `updates` can be folded into a `batch_shape`. This
   `batch_shape` is all axes of the `indices`, except for the innermost
@@ -5630,6 +5657,13 @@ dequantize.__doc__ = gen_array_ops.dequantize.__doc__
 
 @tf_export("quantization.quantize_and_dequantize")
 @dispatch.add_dispatch_support
+@deprecation.deprecated(None,
+                        "This Op has been deprecated, use" +
+                        "`quantize_and_dequantize_v2` instead. To " +
+                        "To simulate the V1 the behavior of " +
+                        "tf.quantization.quantize_and_dequantize(...) use " +
+                        "tf.grad_pass_through(" +
+                        "tf.quantization.quantize_and_dequantize_v2)(...).")
 def quantize_and_dequantize(
     input,  # pylint: disable=redefined-builtin
     input_min,
@@ -5676,6 +5710,93 @@ def quantize_and_dequantize(
     axis %= input.shape.ndims
 
   return gen_array_ops.quantize_and_dequantize_v2(
+      input,
+      input_min=input_min,
+      input_max=input_max,
+      signed_input=signed_input,
+      num_bits=num_bits,
+      range_given=range_given,
+      round_mode=round_mode,
+      narrow_range=narrow_range,
+      axis=axis,
+      name=name)
+
+
+@tf_export("quantization.quantize_and_dequantize_v2")
+@dispatch.add_dispatch_support
+def quantize_and_dequantize_v2(
+    input,  # pylint: disable=redefined-builtin
+    input_min,
+    input_max,
+    signed_input=True,
+    num_bits=8,
+    range_given=False,
+    round_mode="HALF_TO_EVEN",
+    name=None,
+    narrow_range=False,
+    axis=None):
+  """Quantizes then dequantizes a tensor.
+
+  Updates the gradient definition for quantization that is outside the range to
+  be 0.To simulate the V1 the behavior of
+  tf.quantization.quantize_and_dequantize(...) use
+  tf.grad_pass_through(tf.quantization.quantize_and_dequantize_v2)(...).
+
+  Example usage:
+
+  ```python
+  def getQuantizeOp(input):
+      input_tensor = tf.placeholder(tf.float32, shape=[4, 4])
+      net = tf.quantization.quantize_and_dequantize(input,
+                                                    input_min=min_threshold,
+                                                    input_max=max_threshold,
+                                                    range_given=True)
+
+  To simulate v1 behavior:
+
+  def testDecomposeQuantizeDequantize(self):
+      def f(input_tensor):
+        return tf.quantization.quantize_and_dequantize_v2(input_tensor,
+                                                          input_min = 5.0,
+                                                          input_max= -10.0,
+                                                          range_given=True)
+      input_tensor = tf.placeholder(tf.float32, shape=[4, 4])
+      net = tf.grad_pass_through(f)(input_tensor)
+  ```
+
+  Args:
+    input: A `Tensor` to quantize and dequantize.
+    input_min: If range_given=True, the minimum input value, that needs to be
+      represented in the quantized representation. If axis is specified, this
+      should be a vector of minimum values for each slice along axis.
+    input_max: If range_given=True, the maximum input value that needs to be
+      represented in the quantized representation. If axis is specified, this
+      should be a vector of maximum values for each slice along axis.
+    signed_input: True if the quantization is signed or unsigned.
+    num_bits: The bitwidth of the quantization.
+    range_given: If true use `input_min` and `input_max` for the range of the
+      input, otherwise determine min and max from the input `Tensor`.
+    round_mode: Rounding mode when rounding from float values to quantized ones.
+      one of ['HALF_TO_EVEN', 'HALF_UP']
+    name: Optional name for the operation.
+    narrow_range: If true, then the absolute value of the quantized minimum
+      value is the same as the quantized maximum value, instead of 1 greater.
+      i.e. for 8 bit quantization, the minimum value is -127 instead of -128.
+    axis: Integer. If specified, refers to a dimension of the input tensor, such
+      that quantization will be per slice along that dimension.
+
+  Returns:
+    A `Tensor`. Each element is the result of quantizing and dequantizing the
+    corresponding element of `input`.
+  """
+  if axis is None:
+    axis = -1
+  elif axis < 0:
+    if input.shape.ndims is None:
+      raise ValueError("input should have known rank to use negative axis.")
+    axis %= input.shape.ndims
+
+  return gen_array_ops.quantize_and_dequantize_v4(
       input,
       input_min=input_min,
       input_max=input_max,
@@ -6175,7 +6296,7 @@ def _with_nonzero_rank(data):
 @dispatch.add_dispatch_support
 def repeat(input, repeats, axis=None, name=None):  # pylint: disable=redefined-builtin
   """Repeat elements of `input`.
-  
+
   See also `tf.concat`, `tf.stack`, `tf.tile`.
 
   Args:

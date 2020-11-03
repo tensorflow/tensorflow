@@ -57,7 +57,6 @@ void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
   GraphDef graph_def;
   OP_REQUIRES_OK(
       ctx, AsGraphDef(ctx, dataset, std::move(serialization_ctx), &graph_def));
-  StripDevicePlacement(graph_def.mutable_library());
 
   DataServiceDispatcherClient client(address, protocol);
   int64 dataset_id;

@@ -373,12 +373,14 @@ class AutomaticControlDependencies(object):
       if control_flow_util.IsInWhileLoop(op):
         continue
       control_inputs = set()
-      # Ensure stateful ops run. Note that this includes read only ops, although
-      # they don't have direct side effect, they are affected by ops that writes
-      # the same resource and may be inputs to side-effect ops like tf.print. If
-      # the function gets inlined, they must execute before ops that depend on
-      # the function call.
-      if op_def_registry.get(op.type) is None or op_is_stateful(op):
+      # Ensure stateful ops run.
+      # Read-only ops are added to control outputs if the read value is
+      # consumed. This covers the case when the read value is returned from
+      # the function since that goes through a tf.identity in mark_as_return.
+      if (op_def_registry.get(op.type) is None or
+          (op_is_stateful(op) and
+           (op.type not in utils.RESOURCE_READ_OPS or
+            any(output.consumers() for output in op.outputs)))):
         ops_which_must_run.add(op)
       # Make a note of all opened manager_ids.
       if op.type == "NoOp":

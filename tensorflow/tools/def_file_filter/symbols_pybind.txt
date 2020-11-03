@@ -346,6 +346,10 @@ tensorflow::profiler::ProfilerServer::~ProfilerServer
 tensorflow::profiler::ProfileGrpc
 tensorflow::profiler::NewSessionGrpc
 tensorflow::profiler::MonitorGrpc
+tensorflow::profiler::RemoteProfilerSession::Create
+tensorflow::profiler::RemoteProfilerSession::GetServiceAddress
+tensorflow::profiler::RemoteProfilerSession::WaitForCompletion
+tensorflow::profiler::RemoteProfilerSession::~RemoteProfilerSession
 
 [status_macros] # tfcompile
 xla::status_macros::MakeErrorStream::Impl::Impl
@@ -389,6 +393,13 @@ tensorflow::tensor_float_32_execution_enabled
 
 [get_compiler_ir] # tfe
 tensorflow::GetCompilerIr
+stream_executor::port::internal_statusor::Helper::Crash
 
 [tensor_handle] # tfe
 tensorflow::TensorHandle::Tensor
+
+[python_api_dispatcher] # python_api_dispatcher
+tensorflow::PythonAPIDispatcher
+
+[python_tensor_converter] # python_tensor_converter
+tensorflow::PythonTensorConverter

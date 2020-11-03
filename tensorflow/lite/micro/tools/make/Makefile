@@ -37,6 +37,7 @@ TARGET := $(HOST_OS)
 TARGET_ARCH := $(HOST_ARCH)
 
 # Default compiler and tool names:
+TOOLCHAIN:=gcc
 CXX_TOOL := g++
 CC_TOOL := gcc
 AR_TOOL := ar
@@ -50,7 +51,6 @@ ALL_TAGS := $(TAGS) $(TARGET)
 # include directories from one source.
 INCLUDES := \
 -I. \
--I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(MAKEFILE_DIR)/downloads/flatbuffers/include \
 -I$(MAKEFILE_DIR)/downloads/ruy
@@ -111,6 +111,7 @@ COMMON_FLAGS := \
   -fdata-sections \
   -fmessage-length=0 \
   -DTF_LITE_STATIC_MEMORY \
+  -DTF_LITE_DISABLE_X86_NEON \
   $(OPTIMIZATION_LEVEL) \
   $(CC_WARNINGS) \
   $(TAG_DEFINES)
@@ -122,15 +123,21 @@ CXXFLAGS := \
   -fno-threadsafe-statics \
   $(COMMON_FLAGS)
 
-CCFLAGS  := \
-	-std=c11 \
-	$(COMMON_FLAGS)
+CCFLAGS := \
+  -std=c11 \
+  $(COMMON_FLAGS)
 
 ARFLAGS := -r
 
-LDFLAGS += \
-  -Wl,--fatal-warnings \
-  -Wl,--gc-sections
+ifeq ($(TOOLCHAIN), gcc)
+  ifneq ($(TARGET), osx)
+    # GCC on MacOS uses an LLVM backend so we avoid the additional linker flags
+    # that are unsupported with LLVM.
+    LDFLAGS += \
+      -Wl,--fatal-warnings \
+      -Wl,--gc-sections
+  endif
+endif
 
 # override these in the makefile.inc for specific compiler targets
 TARGET_TOOLCHAIN_PREFIX :=
@@ -354,11 +361,21 @@ $(eval $(call add_third_party_download,$(RUY_URL),$(RUY_MD5),ruy,))
 $(eval $(call add_third_party_download,$(PERSON_MODEL_URL),$(PERSON_MODEL_MD5),person_model_grayscale,))
 $(eval $(call add_third_party_download,$(PERSON_MODEL_INT8_URL),$(PERSON_MODEL_INT8_MD5),person_model_int8,))
 
-# These target-specific makefiles should modify or replace options like
-# CXXFLAGS or LIBS to work for a specific targeted architecture. All logic
-# based on platforms or architectures should happen within these files, to
-# keep this main makefile focused on the sources and dependencies.
-include $(wildcard $(MAKEFILE_DIR)/targets/*_makefile.inc)
+# The target-specific makefile must have a name that is exactly
+# TARGET_makefile.inc and is only needed for cross-compilation (i.e. when TARGET
+# is different from the HOST_OS).
+# There are also some other targets like arduino and CHRE that are also special
+# in that they do no have a <target>_makefile but are still used to create a
+# directory for the generated artifacts. We are using a workaround right now and
+# will be separating the project generation from the Makefile in the future.
+TARGETS_WITHOUT_MAKEFILES := \
+$(HOST_OS) \
+arduino \
+chre
+
+ifeq ($(findstring $(TARGET),$(TARGETS_WITHOUT_MAKEFILES)),)
+  include $(MAKEFILE_DIR)/targets/$(TARGET)_makefile.inc
+endif
 
 # Load dependencies for optimized kernel implementations.
 include $(wildcard $(MAKEFILE_DIR)/ext_libs/*.inc)

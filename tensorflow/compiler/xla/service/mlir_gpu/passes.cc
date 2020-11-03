@@ -203,63 +203,6 @@ struct DeadTempBufferRemovalPass
   }
 };
 
-struct MoveScalarComputationsIntoGpuLaunchPass
-    : MoveScalarComputationsIntoGpuLaunchPassBase<
-          MoveScalarComputationsIntoGpuLaunchPass> {
-  static bool isInliningBeneficiary(mlir::Operation* op) {
-    return llvm::isa<mlir::ConstantOp, mlir::DimOp, mlir::SelectOp,
-                     mlir::CmpIOp>(op);
-  }
-
-  static bool extractBeneficiaryOps(
-      mlir::Operation* op, llvm::SmallVectorImpl<mlir::Operation*>* ops,
-      llvm::SetVector<mlir::Value> args) {
-    if (!isInliningBeneficiary(op)) {
-      return false;
-    }
-
-    ops->push_back(op);
-    for (auto operand : op->getOperands()) {
-      // It is an existing arg, keep going.
-      if (args.count(operand)) {
-        continue;
-      }
-      mlir::Operation* definingOp = operand.getDefiningOp();
-      if (!definingOp || !extractBeneficiaryOps(definingOp, ops, args)) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  static void inlineOperationsIntoLaunch(mlir::gpu::LaunchOp launch) {
-    llvm::SetVector<mlir::Value> used_above;
-    mlir::getUsedValuesDefinedAbove(launch.body(), used_above);
-    mlir::BlockAndValueMapping inlined_map;
-    for (mlir::Value v : used_above) {
-      llvm::SmallVector<mlir::Operation*, 8> ops_to_move;
-      mlir::Operation* definingOp = v.getDefiningOp();
-      if (definingOp &&
-          extractBeneficiaryOps(definingOp, &ops_to_move, used_above)) {
-        mlir::OpBuilder b(launch.body());
-        for (mlir::Operation* op : llvm::reverse(ops_to_move)) {
-          auto result = b.clone(*op, inlined_map);
-          for (auto pair : llvm::zip(op->getResults(), result->getResults())) {
-            mlir::replaceAllUsesInRegionWith(std::get<0>(pair),
-                                             std::get<1>(pair), launch.body());
-          }
-          inlined_map.map(op->getResults(), result->getResults());
-        }
-      }
-    }
-  }
-
-  void runOnFunction() override {
-    getFunction().walk(
-        [](mlir::gpu::LaunchOp launch) { inlineOperationsIntoLaunch(launch); });
-  }
-};
-
 struct RewriteKernelSignaturePass
     : RewriteKernelSignaturePassBase<RewriteKernelSignaturePass> {
   void runOnFunction() override {
@@ -412,11 +355,6 @@ std::unique_ptr<mlir::FunctionPass> createStoreForwardingPass() {
 
 std::unique_ptr<mlir::FunctionPass> createDeadTempBufferRemovalPass() {
   return absl::make_unique<DeadTempBufferRemovalPass>();
-}
-
-std::unique_ptr<mlir::FunctionPass>
-createMoveScalarComputationsIntoGpuLaunchPass() {
-  return absl::make_unique<MoveScalarComputationsIntoGpuLaunchPass>();
 }
 
 std::unique_ptr<mlir::FunctionPass> createRewriteKernelSignaturePass() {

@@ -37,6 +37,9 @@ std::unique_ptr<OperationPass<ModuleOp> > CreateEmbedTFFrameworkPass();
 
 namespace transforms {
 
+// Pass to find and annotate candidates for buffer reuse.
+std::unique_ptr<FunctionPass> CreateBufferReusePass();
+
 // Pass for applying LLVM legalization patterns.
 std::unique_ptr<OperationPass<ModuleOp> > CreateTFKernelToLLVMPass();
 
@@ -55,6 +58,8 @@ std::unique_ptr<FunctionPass> CreateMaterializeBroadcastsPass();
 std::unique_ptr<FunctionPass> CreateParallelLoopsToSequential();
 
 // Pass to propagate TF ABI knowledge, e.g. offsets, alignment.
+// This is very limited and will be removed soon.
+// TODO(herhut): Remove this.
 std::unique_ptr<OperationPass<LLVM::LLVMFuncOp>>
 CreatePropagateTensorFlowABIKnowledgePass(
     llvm::ArrayRef<uint32_t> same_shape = {});
@@ -66,6 +71,12 @@ std::unique_ptr<OperationPass<gpu::GPUModuleOp>> CreateGpuKernelToBlobPass(
 
 // Pass to unfuse batch norm.
 std::unique_ptr<FunctionPass> CreateUnfuseBatchNormPass();
+
+// Pass to propagate tensorflow runtime ABI knowledge across kernel boundaries.
+std::unique_ptr<FunctionPass> CreatePropagateTfAbiKnowledgeToKernels();
+
+// Pass to propagate shape equalities across kernel boundaries.
+std::unique_ptr<FunctionPass> CreatePropagateShapeKnowledgeToKernels();
 
 }  // namespace transforms
 

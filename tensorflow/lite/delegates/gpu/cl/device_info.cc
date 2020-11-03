@@ -150,7 +150,13 @@ int AdrenoInfo::GetRegisterMemorySizePerComputeUnit() const {
   } else if (gpu_version >= 500 && gpu_version < 600) {
     return -1;  // Adreno 5xx does not support it currently
   } else if (gpu_version >= 600 && gpu_version < 700) {
-    return gpu_version == 640 ? 128 * 144 * 16 : 128 * 96 * 16;
+    if (gpu_version == 640) {
+      return 128 * 144 * 16;
+    } else if (gpu_version == 650) {
+      return 128 * 64 * 16;
+    } else {
+      return 128 * 96 * 16;
+    }
   } else {
     return -1;  //  Adreno 7xx and higher does not exist yet
   }

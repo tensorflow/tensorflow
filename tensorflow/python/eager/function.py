@@ -67,7 +67,6 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
 from tensorflow.python.saved_model import save_context
-from tensorflow.python.saved_model import save_options
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import lazy_loader
@@ -1388,6 +1387,7 @@ class _HigherOrderTapeGradientFunctions(_TapeGradientFunctions):
           gradients with respect to the inputs.
     """
     outputs = []
+    iteration_count = 0
     # First we need to figure out how many side outputs from the forward pass
     # will be required. We do this in a temporary graph to avoid actually
     # running multiple copies of the backward pass (one per _GradientsHelper
@@ -1402,28 +1402,48 @@ class _HigherOrderTapeGradientFunctions(_TapeGradientFunctions):
     # all of the forward op's outputs: symbolic gradients with tf.gradients
     # instead rely on regenerating backward functions when higher-order
     # gradients are requested.
-    while len(outputs) < len(self._func_graph.outputs):
+    while (len(outputs) < len(self._func_graph.outputs)
+           # It's possible for gradient generation to add new ops to the forward
+           # pass. If all of the new outputs are non-trainable, there's no
+           # reason to continue.
+           and any(backprop_util.IsTrainable(output)
+                   for output in self._func_graph.outputs[len(outputs):])):
+      iteration_count += 1
+      if iteration_count >= 20 and iteration_count % 5 == 0:
+        new_op_with_trainable_output = None
+        num_new_trainable_outputs = 0
+        for output in self._func_graph.outputs[len(outputs):]:
+          if backprop_util.IsTrainable(output):
+            num_new_trainable_outputs += 1
+            new_op_with_trainable_output = output.op
+        logging.warning(
+            ("Determining side outputs for the function '{}' is taking longer "
+             "than expected ({} iterations, typically this converges in 5 or "
+             "so). This could indicate that a gradient registration is adding "
+             "new ops to the forward pass every time gradients are generated. "
+             "{} new trainable output(s) were added this iteration, one from "
+             "the following op:\n {}\nThis may indicate a TensorFlow bug, or "
+             "an issue in a tf.custom_gradient.")
+            .format(
+                self._func_graph.name, iteration_count,
+                num_new_trainable_outputs, new_op_with_trainable_output))
       outputs = list(self._func_graph.outputs)
       self._build_functions_for_outputs(
           outputs, inference_args, input_tangents)
+
     (forward_function, forward_graph,
      backward_function, output_indices, num_output_tangents) = (
          self._build_functions_for_outputs(
              outputs, inference_args, input_tangents))
-    if len(self._func_graph.outputs) != len(outputs):
+    if (len(self._func_graph.outputs) > len(outputs)
+        and any(backprop_util.IsTrainable(output)
+                for output in self._func_graph.outputs[len(outputs):])):
       raise AssertionError(
           ("Unexpectedly added new outputs to the forward function when "
            "building the backward function: {}").format(
                self._func_graph.outputs[len(outputs):]))
     return (forward_function, forward_graph, backward_function, output_indices,
             num_output_tangents)
-
-
-# Represents the output of TFE_Py_TapeSetPossibleGradientTypes. Real enums are
-# unfortunately too slow to use here.
-_POSSIBLE_GRADIENT_TYPES_NONE = 0
-_POSSIBLE_GRADIENT_TYPES_FIRST_ORDER = 1
-_POSSIBLE_GRADIENT_TYPES_HIGHER_ORDER = 2
 
 
 class _ForwardBackwardCall(object):
@@ -1919,9 +1939,8 @@ class ConcreteFunction(object):
                          "on invocation of %s, the %d-th input (%s) was not a "
                          "Tensor." % (self._func_graph.name, i, str(arg)))
     args = tensor_inputs + captured_inputs
-    possible_gradient_type = (
-        pywrap_tfe.TFE_Py_TapeSetPossibleGradientTypes(args))
-    if (possible_gradient_type == _POSSIBLE_GRADIENT_TYPES_NONE
+    possible_gradient_type = gradients_util.PossibleTapeGradientTypes(args)
+    if (possible_gradient_type == gradients_util.POSSIBLE_GRADIENT_TYPES_NONE
         and executing_eagerly):
       # No tape is watching; skip to running the function.
       return self._build_call_outputs(self._inference_function.call(
@@ -2081,7 +2100,7 @@ class ConcreteFunction(object):
     Args:
       args: A flat list of Tensors with all of the inputs to the forward
         function (including user-specified and captured inputs).
-      possible_gradient_type: One of _POSSIBLE_GRADIENT_TYPES_*.
+      possible_gradient_type: One of gradients_util.POSSIBLE_GRADIENT_TYPES_*.
       executing_eagerly: Boolean, the value of context.executing_eagerly().
 
     Returns:
@@ -2099,7 +2118,8 @@ class ConcreteFunction(object):
     # Allows re-use of forward and backward function pairs depending on the
     # tapes and forward accumulators watching its inputs.
     cache_key = (need_gradients_for_jvps, input_tangents.indices)
-    if possible_gradient_type == _POSSIBLE_GRADIENT_TYPES_FIRST_ORDER:
+    if (possible_gradient_type
+        == gradients_util.POSSIBLE_GRADIENT_TYPES_FIRST_ORDER):
       if input_tangents.indices or executing_eagerly:
         # There is a single non-persistent tape active, so the user can only
         # request first-order gradients from a tape. We can spend less time
@@ -2130,7 +2150,8 @@ class ConcreteFunction(object):
         return _ForwardBackwardCall(
             self._delayed_rewrite_functions, args, input_tangents.tangents,
             tape_watching=True)
-    elif possible_gradient_type == _POSSIBLE_GRADIENT_TYPES_HIGHER_ORDER:
+    elif (possible_gradient_type
+          == gradients_util.POSSIBLE_GRADIENT_TYPES_HIGHER_ORDER):
       # Either there's a persistent tape watching, or there are multiple nested
       # tapes. Either way, the user may request higher-order gradients. We'll
       # spend a bit more time and make sure higher-order gradients are correct.
@@ -2145,7 +2166,7 @@ class ConcreteFunction(object):
         self._higher_order_tape_functions[cache_key] = functions
       return _ForwardBackwardCall(functions, args, input_tangents.tangents,
                                   tape_watching=True)
-    # else possible_gradient_type == _POSSIBLE_GRADIENT_TYPES_NONE, meaning no
+    # else possible_gradient_type == POSSIBLE_GRADIENT_TYPES_NONE, meaning no
     # tape is recording.
     return _ForwardBackwardCall(
         self._delayed_rewrite_functions, args, input_tangents.tangents,
@@ -3177,10 +3198,7 @@ class Function(object):
       variable_policy = (
           save_context.get_save_options().experimental_variable_policy)
     else:
-      # With EXPAND_DISTRIBUTED_VARIABLES the variables have the same behavior
-      # in and out of saving. We use EXPAND_DISTRIBUTED_VARIABLES so that if the
-      # user saves with it, there's no need to retrace the functions.
-      variable_policy = save_options.VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES
+      variable_policy = None
 
     return (parent_graph, device_functions, colocation_stack,
             in_cross_replica_context, variable_policy, xla_context_id)

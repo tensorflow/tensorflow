@@ -1659,7 +1659,8 @@ inline void ComputeInterpolationValues(const int32 value, const int32 scale_10,
     *scaled_value = value * scale_10;
   }
   *lower_bound = std::max(*scaled_value / (1 << 10), 0);
-  *upper_bound = std::min(*scaled_value / (1 << 10) + 1, input_size - 1);
+  *upper_bound =
+      std::min((*scaled_value + (1 << 10) - 1) / (1 << 10), input_size - 1);
 }
 
 // Same as above but doesn't use any floating-point for the resize
@@ -1743,8 +1744,9 @@ inline void ResizeBilinearInteger(
               (input_y - (1 << 10) * y0) * (input_x - (1 << 10) * x0);
           const int64_t output_20 =
               output_20_ll + output_20_lu + output_20_rl + output_20_ru;
-          const T interpolation =
-              static_cast<T>((output_20 + (1 << 19)) / (1 << 20));
+          const int64_t round = (output_20 > 0) ? (1 << 19) : -(1 << 19);
+          const int8_t interpolation =
+              static_cast<int8_t>((output_20 + round) / (1 << 20));
           output_data[Offset(output_shape, b, y, x, c)] = interpolation;
         }
       }

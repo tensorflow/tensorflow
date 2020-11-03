@@ -33,7 +33,7 @@ mixed_precision_graph_rewrite_is_enabled = False
 # Session has already been created.
 non_mixed_precision_session_created = False
 
-# Whether the global tf.keras.mixed_precision.experimental.Policy uses mixed
-# precision. Used to raise an error message if both a mixed Policy and the graph
-# rewrite are used at the same time.
+# Whether the global tf.keras.mixed_precision.Policy uses mixed precision. Used
+# to raise an error message if both a mixed Policy and the graph rewrite are
+# used at the same time.
 using_mixed_precision_policy = False

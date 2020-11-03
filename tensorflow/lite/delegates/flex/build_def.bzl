@@ -20,6 +20,7 @@ load(
     "tflite_jni_linkopts",
 )
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
+load("//tensorflow/lite:special_rules.bzl", "flex_portable_tensorflow_deps")
 
 def generate_flex_kernel_header(
         name,
@@ -130,13 +131,7 @@ def tflite_flex_cc_library(
                 clean_dep("//tensorflow/core/kernels:android_all_ops_textual_hdrs"),
             ],
             visibility = visibility,
-            deps = [
-                "@com_google_absl//absl/strings:str_format",
-                "//third_party/fft2d:fft2d_headers",
-                "//third_party/eigen3",
-                "@com_google_absl//absl/types:optional",
-                "@gemmlowp",
-                "@icu//:common",
+            deps = flex_portable_tensorflow_deps() + [
                 clean_dep("//tensorflow/core:protos_all_cc"),
                 clean_dep("//tensorflow/core:portable_tensorflow_lib_lite"),
                 clean_dep("//tensorflow/core/platform:strong_hash"),

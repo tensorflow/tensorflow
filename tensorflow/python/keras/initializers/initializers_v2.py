@@ -34,7 +34,7 @@ class Initializer(object):
   signature:
 
   ```python
-  def __call__(self, shape, dtype=None):
+  def __call__(self, shape, dtype=None, **kwargs):
     # returns a tensor of shape `shape` and dtype `dtype`
     # containing values drawn from a distribution of your choice.
   ```
@@ -54,7 +54,7 @@ class Initializer(object):
       self.mean = mean
       self.stddev = stddev
 
-    def __call__(self, shape, dtype=None):
+    def __call__(self, shape, dtype=None, **kwargs):
       return tf.random.normal(
           shape, mean=self.mean, stddev=self.stddev, dtype=dtype)
 
@@ -68,12 +68,13 @@ class Initializer(object):
   works fine.
   """
 
-  def __call__(self, shape, dtype=None):
+  def __call__(self, shape, dtype=None, **kwargs):
     """Returns a tensor object initialized as specified by the initializer.
 
     Args:
       shape: Shape of the tensor.
       dtype: Optional dtype of the tensor.
+      **kwargs: Additional keyword arguments.
     """
     raise NotImplementedError
 
@@ -124,7 +125,7 @@ class Zeros(init_ops_v2.Zeros, Initializer):
   >>> layer = tf.keras.layers.Dense(3, kernel_initializer=initializer)
   """
 
-  def __call__(self, shape, dtype=None):
+  def __call__(self, shape, dtype=None, **kwargs):
     """Returns a tensor object initialized as specified by the initializer.
 
     Args:
@@ -133,8 +134,9 @@ class Zeros(init_ops_v2.Zeros, Initializer):
        supported. If not specified, `tf.keras.backend.floatx()` is used,
        which default to `float32` unless you configured it otherwise
        (via `tf.keras.backend.set_floatx(float_dtype)`).
+      **kwargs: Additional keyword arguments.
     """
-    return super(Zeros, self).__call__(shape, dtype=_get_dtype(dtype))
+    return super(Zeros, self).__call__(shape, dtype=_get_dtype(dtype), **kwargs)
 
 
 @keras_export('keras.initializers.Ones', 'keras.initializers.ones', v1=[])
@@ -154,7 +156,7 @@ class Ones(init_ops_v2.Ones, Initializer):
   >>> layer = tf.keras.layers.Dense(3, kernel_initializer=initializer)
   """
 
-  def __call__(self, shape, dtype=None):
+  def __call__(self, shape, dtype=None, **kwargs):
     """Returns a tensor object initialized as specified by the initializer.
 
     Args:
@@ -163,8 +165,9 @@ class Ones(init_ops_v2.Ones, Initializer):
        supported. If not specified, `tf.keras.backend.floatx()` is used,
        which default to `float32` unless you configured it otherwise
        (via `tf.keras.backend.set_floatx(float_dtype)`).
+      **kwargs: Additional keyword arguments.
     """
-    return super(Ones, self).__call__(shape, dtype=_get_dtype(dtype))
+    return super(Ones, self).__call__(shape, dtype=_get_dtype(dtype), **kwargs)
 
 
 @keras_export('keras.initializers.Constant',
@@ -196,7 +199,7 @@ class Constant(Initializer):
   def __init__(self, value=0):
     self.value = value
 
-  def __call__(self, shape, dtype=None):
+  def __call__(self, shape, dtype=None, **kwargs):
     """Returns a tensor object initialized to `self.value`.
 
     Args:
@@ -205,7 +208,9 @@ class Constant(Initializer):
        `tf.keras.backend.floatx()` is used,
        which default to `float32` unless you configured it otherwise
        (via `tf.keras.backend.set_floatx(float_dtype)`).
+      **kwargs: Additional keyword arguments.
     """
+    del kwargs
     return constant_op.constant(
         self.value, dtype=_get_dtype(dtype), shape=shape)
 
@@ -241,7 +246,7 @@ class RandomUniform(init_ops_v2.RandomUniform, Initializer):
       always produce the same random tensor for a given shape and dtype.
   """
 
-  def __call__(self, shape, dtype=None):
+  def __call__(self, shape, dtype=None, **kwargs):
     """Returns a tensor object initialized as specified by the initializer.
 
     Args:
@@ -251,8 +256,10 @@ class RandomUniform(init_ops_v2.RandomUniform, Initializer):
         `tf.keras.backend.floatx()` is used,
        which default to `float32` unless you configured it otherwise
        (via `tf.keras.backend.set_floatx(float_dtype)`).
+      **kwargs: Additional keyword arguments.
     """
-    return super(RandomUniform, self).__call__(shape, dtype=_get_dtype(dtype))
+    return super(RandomUniform, self).__call__(
+        shape, dtype=_get_dtype(dtype), **kwargs)
 
 
 @keras_export('keras.initializers.RandomNormal',
@@ -283,17 +290,19 @@ class RandomNormal(init_ops_v2.RandomNormal, Initializer):
       always produce the same random tensor for a given shape and dtype.
   """
 
-  def __call__(self, shape, dtype=None):
+  def __call__(self, shape, dtype=None, **kwargs):
     """Returns a tensor object initialized to random normal values.
 
     Args:
       shape: Shape of the tensor.
       dtype: Optional dtype of the tensor. Only floating point types are
-       supported. If not specified, `tf.keras.backend.floatx()` is used,
-       which default to `float32` unless you configured it otherwise
-       (via `tf.keras.backend.set_floatx(float_dtype)`)
+        supported. If not specified, `tf.keras.backend.floatx()` is used, which
+        default to `float32` unless you configured it otherwise (via
+        `tf.keras.backend.set_floatx(float_dtype)`)
+      **kwargs: Additional keyword arguments.
     """
-    return super(RandomNormal, self).__call__(shape, dtype=_get_dtype(dtype))
+    return super(RandomNormal, self).__call__(
+        shape, dtype=_get_dtype(dtype), **kwargs)
 
 
 @keras_export('keras.initializers.TruncatedNormal',
@@ -329,17 +338,19 @@ class TruncatedNormal(init_ops_v2.TruncatedNormal, Initializer):
       always produce the same random tensor for a given shape and dtype.
   """
 
-  def __call__(self, shape, dtype=None):
+  def __call__(self, shape, dtype=None, **kwargs):
     """Returns a tensor object initialized to random normal values (truncated).
 
     Args:
       shape: Shape of the tensor.
       dtype: Optional dtype of the tensor. Only floating point types are
-       supported. If not specified, `tf.keras.backend.floatx()` is used,
-       which default to `float32` unless you configured it otherwise
-       (via `tf.keras.backend.set_floatx(float_dtype)`)
+        supported. If not specified, `tf.keras.backend.floatx()` is used, which
+        default to `float32` unless you configured it otherwise (via
+        `tf.keras.backend.set_floatx(float_dtype)`)
+      **kwargs: Additional keyword arguments.
     """
-    return super(TruncatedNormal, self).__call__(shape, dtype=_get_dtype(dtype))
+    return super(TruncatedNormal, self).__call__(
+        shape, dtype=_get_dtype(dtype), **kwargs)
 
 
 @keras_export('keras.initializers.VarianceScaling',
@@ -384,17 +395,19 @@ class VarianceScaling(init_ops_v2.VarianceScaling, Initializer):
       always produce the same random tensor for a given shape and dtype.
   """
 
-  def __call__(self, shape, dtype=None):
+  def __call__(self, shape, dtype=None, **kwargs):
     """Returns a tensor object initialized as specified by the initializer.
 
     Args:
       shape: Shape of the tensor.
       dtype: Optional dtype of the tensor. Only floating point types are
-       supported. If not specified, `tf.keras.backend.floatx()` is used,
-       which default to `float32` unless you configured it otherwise
-       (via `tf.keras.backend.set_floatx(float_dtype)`)
+        supported. If not specified, `tf.keras.backend.floatx()` is used, which
+        default to `float32` unless you configured it otherwise (via
+        `tf.keras.backend.set_floatx(float_dtype)`)
+      **kwargs: Additional keyword arguments.
     """
-    return super(VarianceScaling, self).__call__(shape, dtype=_get_dtype(dtype))
+    return super(VarianceScaling, self).__call__(
+        shape, dtype=_get_dtype(dtype), **kwargs)
 
 
 @keras_export('keras.initializers.Orthogonal',
@@ -436,7 +449,7 @@ class Orthogonal(init_ops_v2.Orthogonal, Initializer):
       ([pdf](https://arxiv.org/pdf/1312.6120.pdf))
   """
 
-  def __call__(self, shape, dtype=None):
+  def __call__(self, shape, dtype=None, **kwargs):
     """Returns a tensor object initialized to an orthogonal matrix.
 
     Args:
@@ -445,8 +458,10 @@ class Orthogonal(init_ops_v2.Orthogonal, Initializer):
         supported. If not specified, `tf.keras.backend.floatx()` is used,
        which default to `float32` unless you configured it otherwise
        (via `tf.keras.backend.set_floatx(float_dtype)`)
+      **kwargs: Additional keyword arguments.
     """
-    return super(Orthogonal, self).__call__(shape, dtype=_get_dtype(dtype))
+    return super(Orthogonal, self).__call__(
+        shape, dtype=_get_dtype(dtype), **kwargs)
 
 
 @keras_export('keras.initializers.Identity',
@@ -473,7 +488,7 @@ class Identity(init_ops_v2.Identity, Initializer):
     gain: Multiplicative factor to apply to the identity matrix.
   """
 
-  def __call__(self, shape, dtype=None):
+  def __call__(self, shape, dtype=None, **kwargs):
     """Returns a tensor object initialized to a 2D identity matrix.
 
     Args:
@@ -482,8 +497,10 @@ class Identity(init_ops_v2.Identity, Initializer):
        supported. If not specified, `tf.keras.backend.floatx()` is used,
        which default to `float32` unless you configured it otherwise
        (via `tf.keras.backend.set_floatx(float_dtype)`)
+      **kwargs: Additional keyword arguments.
     """
-    return super(Identity, self).__call__(shape, dtype=_get_dtype(dtype))
+    return super(Identity, self).__call__(
+        shape, dtype=_get_dtype(dtype), **kwargs)
 
 
 @keras_export('keras.initializers.GlorotUniform',

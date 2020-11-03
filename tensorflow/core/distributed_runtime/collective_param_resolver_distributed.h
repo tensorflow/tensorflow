@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COLLECTIVE_PARAM_RESOLVER_DISTRIBUTED_H_
 
 #include "tensorflow/core/common_runtime/collective_param_resolver_local.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/platform/status.h"
 
@@ -46,6 +47,8 @@ class CollectiveParamResolverDistributed : public CollectiveParamResolverLocal {
                              CompleteInstanceResponse* response,
                              CancellationManager* cancel_mgr,
                              const StatusCallback& done) override;
+
+  void StartAbort(const Status& s) override;
 
  protected:
   // Returns the cached group iff there's an entry for this group_key in the
@@ -87,6 +90,7 @@ class CollectiveParamResolverDistributed : public CollectiveParamResolverLocal {
 
   WorkerCacheInterface* worker_cache_;  // Not owned
   const string group_leader_;
+  CancellationManager abortion_cancel_mgr_;
 };
 
 }  // namespace tensorflow

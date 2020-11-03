@@ -108,7 +108,7 @@ except Exception:  # pylint: disable=broad-except
 # Uses the same mechanism as above to selectively enable/disable MLIR
 # compilation.
 def is_mlir_bridge_enabled():
-  return False
+  return None
 
 
 try:
@@ -120,8 +120,11 @@ except ImportError:
     pass
 
 
-def _get_object_count_by_type():
-  return collections.Counter([type(obj).__name__ for obj in gc.get_objects()])
+def _get_object_count_by_type(exclude=()):
+  return (
+      collections.Counter([type(obj).__name__ for obj in gc.get_objects()]) -
+      collections.Counter([type(obj).__name__ for obj in exclude]))
+
 
 @tf_export("test.gpu_device_name")
 def gpu_device_name():
@@ -657,12 +660,20 @@ def assert_no_new_pyobjects_executing_eagerly(func=None, warmup_iters=2):
         # versions of python2.7.x.
         for _ in range(warmup_iters):
           f(self, *args, **kwargs)
+        # Since we aren't in the normal test lifecylce, we need to manually run
+        # cleanups to clear out their object references.
+        self.doCleanups()
 
         # Some objects are newly created by _get_object_count_by_type().  So
         # create and save as a dummy variable to include it as a baseline.
         obj_count_by_type = _get_object_count_by_type()
         gc.collect()
-        obj_count_by_type = _get_object_count_by_type()
+        # unittest.doCleanups adds to self._outcome with each unwound call.
+        # These objects are retained across gc collections so we exclude them
+        # from the object count calculation.
+        obj_count_by_type = _get_object_count_by_type(
+            exclude=gc.get_referents(self._outcome.errors,
+                                     self._outcome.skipped))
 
         if ops.has_default_graph():
           collection_sizes_before = {
@@ -671,6 +682,9 @@ def assert_no_new_pyobjects_executing_eagerly(func=None, warmup_iters=2):
           }
         for _ in range(3):
           f(self, *args, **kwargs)
+        # Since we aren't in the normal test lifecylce, we need to manually run
+        # cleanups to clear out their object references.
+        self.doCleanups()
         # Note that gc.get_objects misses anything that isn't subject to garbage
         # collection (C types). Collections are a common source of leaks, so we
         # test for collection sizes explicitly.
@@ -692,7 +706,11 @@ def assert_no_new_pyobjects_executing_eagerly(func=None, warmup_iters=2):
         gc.collect()
 
         # There should be no new Python objects hanging around.
-        obj_count_by_type = _get_object_count_by_type() - obj_count_by_type
+        obj_count_by_type = (
+            _get_object_count_by_type(
+                exclude=gc.get_referents(self._outcome.errors,
+                                         self._outcome.skipped)) -
+            obj_count_by_type)
         # In some cases (specifically on MacOS), new_count is somehow
         # smaller than previous_count.
         # Using plain assert because not all classes using this decorator
@@ -1959,6 +1977,9 @@ def matmul_without_tf32(a, b, *args, **kwargs):
   If a matmul itself is being tested, or some other op which uses matmul, use
   `run_without_tensor_float_32` instead.
 
+  This also casts complex64 inputs to complex128, since TensorFloat-32 can also
+  be used with complex64
+
   Args:
     a: First input to tf.linalg.matmul
     b: Second input to tf.linalg.matmul
@@ -1971,6 +1992,11 @@ def matmul_without_tf32(a, b, *args, **kwargs):
   if config.tensor_float_32_execution_enabled() and a.dtype == "float32":
     a = math_ops.cast(a, "float64")
     b = math_ops.cast(b, "float64")
+    ret = math_ops.matmul(a, b, *args, **kwargs)
+    return math_ops.cast(ret, a.dtype)
+  elif config.tensor_float_32_execution_enabled() and a.dtype == "complex64":
+    a = math_ops.cast(a, "complex128")
+    b = math_ops.cast(b, "complex128")
     ret = math_ops.matmul(a, b, *args, **kwargs)
     return math_ops.cast(ret, a.dtype)
   else:
@@ -2004,8 +2030,13 @@ class TensorFlowTestCase(googletest.TestCase):
       # disable it here.
       pywrap_tf_session.TF_SetXlaConstantFoldingDisabled(True)
 
+    # Check if the mlir bridge has been explicitly enabled or disabled. If
+    # is_mlir_bridge_enabled() returns None, the user did not explictly enable
+    # or disable the bridge so do not update enable_mlir_bridge.
     if is_mlir_bridge_enabled():
       context.context().enable_mlir_bridge = True
+    elif is_mlir_bridge_enabled() is not None:
+      context.context().enable_mlir_bridge = False
 
     self._threads = []
     self._tempdir = None
@@ -2013,6 +2044,7 @@ class TensorFlowTestCase(googletest.TestCase):
     self._test_start_time = None
 
   def setUp(self):
+    super(TensorFlowTestCase, self).setUp()
     self._ClearCachedSession()
     random.seed(random_seed.DEFAULT_GRAPH_SEED)
     np.random.seed(random_seed.DEFAULT_GRAPH_SEED)
@@ -2047,6 +2079,7 @@ class TensorFlowTestCase(googletest.TestCase):
       thread.check_termination()
 
     self._ClearCachedSession()
+    super(TensorFlowTestCase, self).tearDown()
 
   def _ClearCachedSession(self):
     if self._cached_session is not None:

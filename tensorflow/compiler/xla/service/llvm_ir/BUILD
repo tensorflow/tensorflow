@@ -264,3 +264,13 @@ cc_library(
         "@llvm-project//llvm:Core",
     ],
 )
+
+tf_cc_test(
+    name = "ir_array_test",
+    srcs = ["ir_array_test.cc"],
+    deps = [
+        ":ir_array",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)

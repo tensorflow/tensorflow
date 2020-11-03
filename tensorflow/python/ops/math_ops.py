@@ -114,8 +114,9 @@ def linspace_nd(start, stop, num, name=None, axis=0):
 
   A sequence of `num` evenly-spaced values are generated beginning at `start`
   along a given `axis`.
-  If `num > 1`, the values in the sequence increase by `stop - start / num - 1`,
-  so that the last one is exactly `stop`. If `num <= 0`, `ValueError` is raised.
+  If `num > 1`, the values in the sequence increase by
+  `(stop - start) / (num - 1)`, so that the last one is exactly `stop`.
+  If `num <= 0`, `ValueError` is raised.
 
   Matches
   [np.linspace](https://docs.scipy.org/doc/numpy/reference/generated/numpy.linspace.html)'s
@@ -486,7 +487,7 @@ def multiply(x, y, name=None):
   >>> tf.math.multiply(7,6)
   <tf.Tensor: shape=(), dtype=int32, numpy=42>
 
-  If `x.shape` is not thes same as `y.shape`, they will be broadcast to a
+  If `x.shape` is not the same as `y.shape`, they will be broadcast to a
   compatible shape. (More about broadcasting
   [here](https://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).)
 
@@ -512,7 +513,7 @@ def multiply(x, y, name=None):
 
   Raises:
 
-   * InvalidArgumentError: When `x` and `y` have incomptatible shapes or types.
+   * InvalidArgumentError: When `x` and `y` have incompatible shapes or types.
   """
 
   return gen_math_ops.mul(x, y, name)
@@ -1867,9 +1868,9 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):  # pylint: disa
                            key=dtype_hierarchy.index)
     else:
       inferred_dtype = dtype
-    # Always try perform a cast even start/limit/delta are already tensors.
-    # This will revole the case where start/limit/delta's original's dtype
-    # is different from provided dtype.
+    # Always try to perform a cast even when start/limit/delta are already
+    # tensors. This will resolve the case where start/limit/delta's original's
+    # dtype is different from provided dtype.
     start = cast(start, inferred_dtype)
     limit = cast(limit, inferred_dtype)
     delta = cast(delta, inferred_dtype)
@@ -2721,10 +2722,10 @@ def reduce_max(input_tensor, axis=None, keepdims=False, name=None):
   tf.Tensor(-1, shape=(), dtype=int32)
   >>> x = tf.constant([4, float('nan')])
   >>> print(tf.reduce_max(x))
-  tf.Tensor(4.0, shape=(), dtype=float32)
+  tf.Tensor(nan, shape=(), dtype=float32)
   >>> x = tf.constant([float('nan'), float('nan')])
   >>> print(tf.reduce_max(x))
-  tf.Tensor(-inf, shape=(), dtype=float32)
+  tf.Tensor(nan, shape=(), dtype=float32)
   >>> x = tf.constant([float('-inf'), float('inf')])
   >>> print(tf.reduce_max(x))
   tf.Tensor(inf, shape=(), dtype=float32)
@@ -4809,6 +4810,35 @@ def ndtri(x, name=None):
     return gen_math_ops.ndtri(x)
 
 
+@tf_export("math.erfcinv")
+@dispatch.add_dispatch_support
+def erfcinv(x, name=None):
+  """Computes the inverse of complementary error function.
+
+  Given `x`, compute the inverse complementary error function of `x`.
+  This function is the inverse of `tf.math.erfc`, and is defined on
+  `[0, 2]`.
+
+  >>> tf.math.erfcinv([0., 0.2, 1., 1.5, 2.])
+  <tf.Tensor: shape=(5,), dtype=float32, numpy=
+  array([       inf,  0.9061935, -0.       , -0.4769363,       -inf],
+        dtype=float32)>
+
+  Args:
+    x: `Tensor` with type `float` or `double`.
+    name: A name for the operation (optional).
+  Returns:
+    Inverse complementary error function of `x`.
+
+  @compatibility(numpy)
+  Equivalent to scipy.special.erfcinv
+  @end_compatibility
+  """
+  with ops.name_scope(name, "erfcinv", [x]):
+    x = ops.convert_to_tensor(x, name="start")
+    return -ndtri(0.5 * x) * np.sqrt(0.5)
+
+
 @tf_export("math.ceil", v1=["math.ceil", "ceil"])
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("ceil")
@@ -4860,7 +4890,7 @@ def sqrt(x, name=None):  # pylint: disable=redefined-builtin
     array([[0.0+1.j],
            [4.0+0.j]])>
 
-  Note: In order to support complex complex, please provide an input tensor
+  Note: In order to support complex type, please provide an input tensor
   of `complex64` or `complex128`.
 
   Args:
@@ -5014,7 +5044,7 @@ def floor(x, name=None):
   """Returns element-wise largest integer not greater than x.
 
   Both input range is `(-inf, inf)` and the
-  ouput range consists of all integer values.
+  output range consists of all integer values.
 
   For example:
 

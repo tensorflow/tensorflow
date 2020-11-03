@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
@@ -124,6 +125,13 @@ class ImmediateExecutionContext : public AbstractContext {
   // Returns the device placement policy for the current thread.
   virtual ContextDevicePlacementPolicy GetDevicePlacementPolicy() const = 0;
 
+  // Configure graph collection in RunMetadata.
+  virtual void SetShouldStoreGraphs(bool value) = 0;
+
+  // Return the collected RunMetadata. This method will transfer the ownership
+  // to the caller.
+  virtual std::unique_ptr<RunMetadata> ExportRunMetadata() = 0;
+
   // For LLVM style RTTI.
   static bool classof(const AbstractContext* ptr) {
     return ptr->getKind() == kEager || ptr->getKind() == kTfrt;
@@ -148,9 +156,6 @@ class ImmediateExecutionContext : public AbstractContext {
   virtual EagerExecutor& Executor() = 0;
   // Update the Eager Executor for current thread.
   virtual void SetExecutorForThread(EagerExecutor* executor) = 0;
-
-  // Configure graph collection in RunMetadata.
-  virtual void SetShouldStoreGraphs(bool value) = 0;
 
  protected:
   explicit ImmediateExecutionContext(AbstractContextKind kind)

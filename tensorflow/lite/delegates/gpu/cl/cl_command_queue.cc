@@ -56,14 +56,15 @@ void CLCommandQueue::Release() {
   }
 }
 
-absl::Status CLCommandQueue::DispatchImplicit(const CLKernel& kernel, int3 grid,
-                                              int3 work_group_size,
-                                              CLEvent* event) {
+absl::Status CLCommandQueue::Dispatch(const CLKernel& kernel,
+                                      const int3& work_groups_count,
+                                      const int3& work_group_size,
+                                      CLEvent* event) {
   std::vector<size_t> local(3);
   std::vector<size_t> global(3);
   for (int i = 0; i < 3; ++i) {
     local[i] = work_group_size[i];
-    global[i] = AlignByN(grid[i], work_group_size[i]);
+    global[i] = work_groups_count[i] * work_group_size[i];
   }
   cl_event resulting_event;
   const int error_code = clEnqueueNDRangeKernel(
@@ -80,9 +81,10 @@ absl::Status CLCommandQueue::DispatchImplicit(const CLKernel& kernel, int3 grid,
   return absl::OkStatus();
 }
 
-absl::Status CLCommandQueue::DispatchImplicit(const CLKernel& kernel, int3 grid,
-                                              int3 work_group_size) {
-  return DispatchImplicit(kernel, grid, work_group_size, nullptr);
+absl::Status CLCommandQueue::Dispatch(const CLKernel& kernel,
+                                      const int3& work_groups_count,
+                                      const int3& work_group_size) {
+  return Dispatch(kernel, work_groups_count, work_group_size, nullptr);
 }
 
 absl::Status CLCommandQueue::EnqueueEvent(CLEvent* event) {
@@ -191,12 +193,13 @@ void ProfilingCommandQueue::SetEventsLabel(const std::string& name) {
 
 void ProfilingCommandQueue::ResetMeasurements() { events_.clear(); }
 
-absl::Status ProfilingCommandQueue::DispatchImplicit(const CLKernel& kernel,
-                                                     int3 grid,
-                                                     int3 work_group_size) {
+absl::Status ProfilingCommandQueue::Dispatch(const CLKernel& kernel,
+                                             const int3& work_groups_count,
+                                             const int3& work_group_size) {
   events_.push_back(CLEvent());
-  RETURN_IF_ERROR(CLCommandQueue::DispatchImplicit(
-      kernel, grid, work_group_size, &events_[events_.size() - 1]));
+  RETURN_IF_ERROR(CLCommandQueue::Dispatch(kernel, work_groups_count,
+                                           work_group_size,
+                                           &events_[events_.size() - 1]));
   events_.back().SetName(current_label_);
   return absl::OkStatus();
 }
@@ -213,14 +216,15 @@ ProfilingInfo ProfilingCommandQueue::GetProfilingInfo() const {
 }
 
 absl::Status ProfilingCommandQueue::GetBestWorkGroupIndex(
-    const CLKernel& kernel, const DeviceInfo& device_info, const int3& grid,
+    const CLKernel& kernel, const DeviceInfo& device_info,
+    const std::vector<int3>& work_groups_count,
     const std::vector<int3>& work_group_sizes, int* index) {
   // Some Adreno 3xx can have wrong numbers for some events
   const bool possible_bug_with_events = device_info.IsAdreno3xx();
   events_.resize(work_group_sizes.size());
   for (int i = 0; i < work_group_sizes.size(); ++i) {
-    RETURN_IF_ERROR(CLCommandQueue::DispatchImplicit(
-        kernel, grid, work_group_sizes[i], &events_[i]));
+    RETURN_IF_ERROR(CLCommandQueue::Dispatch(kernel, work_groups_count[i],
+                                             work_group_sizes[i], &events_[i]));
 
     // reducing the speed of memory leak on Mali for some kernels
     if (device_info.IsMali() && i % 8 == 7) {
