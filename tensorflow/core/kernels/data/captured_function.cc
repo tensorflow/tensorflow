@@ -851,6 +851,8 @@ Status InstantiatedCapturedFunction::Run(
       profiler::TraceMeLevel::kInfo);
   if (node) {
     // Resource usage for function execution is gathered from the executor.
+    // TODO(jsimsa): Factor out common code for Run, RunAsync, and
+    // RunWithBorrowedArguments
     if (collect_usage) node->record_stop(EnvTime::NowNanos());
     TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame));
     if (ctx->stats_aggregator()) {
