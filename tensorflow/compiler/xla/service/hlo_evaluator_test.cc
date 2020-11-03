@@ -2861,6 +2861,109 @@ TEST_P(HloEvaluatorBf16Test, ReduceWindowAdd6D) {
   EXPECT_TRUE(LiteralTestUtil::Equal(result_literal, result));
 }
 
+TEST_P(HloEvaluatorBf16Test, Min3In5Stride2Tuple) {
+  HloComputation::Builder builder("main");
+  auto input1 = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR1<float>({10000, 1000, 100, 10, 1})));
+  auto input2 = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR1<float>({10000, 1000, 100, 10, 1})));
+  HloComputation::Builder bcompute("ComputeFunction");
+  auto shape1 = ShapeUtil::MakeShape(F32, {});
+  auto shape2 = ShapeUtil::MakeShape(F32, {});
+  auto p2 =
+      bcompute.AddInstruction(HloInstruction::CreateParameter(0, shape1, "x0"));
+  auto p3 =
+      bcompute.AddInstruction(HloInstruction::CreateParameter(1, shape2, "x1"));
+  auto p4 =
+      bcompute.AddInstruction(HloInstruction::CreateParameter(2, shape1, "y0"));
+  auto p5 =
+      bcompute.AddInstruction(HloInstruction::CreateParameter(3, shape2, "y1"));
+  std::vector<HloInstruction*> compute_vec = {
+      bcompute.AddInstruction(
+          HloInstruction::CreateBinary(shape1, HloOpcode::kMinimum, p2, p4)),
+      bcompute.AddInstruction(
+          HloInstruction::CreateBinary(shape2, HloOpcode::kMinimum, p3, p5))};
+  bcompute.AddInstruction(HloInstruction::CreateTuple(compute_vec));
+  auto compute_tuple = m_->AddEmbeddedComputation(bcompute.Build());
+  std::vector<HloInstruction*> input_vec = {input1, input2};
+  auto init1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::MaxValue(F32)));
+  auto init2 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::MaxValue(F32)));
+  std::vector<HloInstruction*> init_vec = {init1, init2};
+  auto padding = std::pair<int64, int64>(0, 0);
+  TF_ASSERT_OK_AND_ASSIGN(auto window,
+                          ShapeInference::InferWindowFromDimensions(
+                              {3}, {2}, absl::MakeSpan(&padding, 1),
+                              /*lhs_dilation=*/{},
+                              /*rhs_dilation=*/{}));
+  std::vector<const Shape*> input_shapes = {&input1->shape(), &input2->shape()};
+  std::vector<const Shape*> init_shapes = {&init1->shape(), &init2->shape()};
+  TF_ASSERT_OK_AND_ASSIGN(Shape shape,
+                          ShapeInference::InferReduceWindowShape(
+                              input_shapes, init_shapes, window,
+                              compute_tuple->ComputeProgramShape()));
+  builder.AddInstruction(HloInstruction::CreateReduceWindow(
+      shape, input_vec, init_vec, window, compute_tuple));
+  auto r1 = LiteralUtil::CreateR1<float>({100, 1});
+  auto expected = LiteralUtil::MakeTuple({&r1, &r1});
+  m_->AddEntryComputation(builder.Build());
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_P(HloEvaluatorBf16Test, Min3In5Stride2TupleDiffInput) {
+  HloComputation::Builder builder("main");
+  auto input1 = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR1<float>({10000, 1000, 100, 10, 1})));
+  auto input2 = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR1<int>({15, 28, 300, 107, 12})));
+  HloComputation::Builder bcompute("ComputeFunction");
+  auto shape1 = ShapeUtil::MakeShape(F32, {});
+  auto shape2 = ShapeUtil::MakeShape(S32, {});
+  auto p2 =
+      bcompute.AddInstruction(HloInstruction::CreateParameter(0, shape1, "x0"));
+  auto p3 =
+      bcompute.AddInstruction(HloInstruction::CreateParameter(1, shape2, "x1"));
+  auto p4 =
+      bcompute.AddInstruction(HloInstruction::CreateParameter(2, shape1, "y0"));
+  auto p5 =
+      bcompute.AddInstruction(HloInstruction::CreateParameter(3, shape2, "y1"));
+  std::vector<HloInstruction*> compute_vec = {
+      bcompute.AddInstruction(
+          HloInstruction::CreateBinary(shape1, HloOpcode::kMinimum, p2, p4)),
+      bcompute.AddInstruction(
+          HloInstruction::CreateBinary(shape2, HloOpcode::kMinimum, p3, p5))};
+  bcompute.AddInstruction(HloInstruction::CreateTuple(compute_vec));
+  auto compute_tuple = m_->AddEmbeddedComputation(bcompute.Build());
+  std::vector<HloInstruction*> input_vec = {input1, input2};
+  auto init1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::MaxValue(F32)));
+  auto init2 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::MaxValue(S32)));
+  std::vector<HloInstruction*> init_vec = {init1, init2};
+  auto padding = std::pair<int64, int64>(0, 0);
+  TF_ASSERT_OK_AND_ASSIGN(auto window,
+                          ShapeInference::InferWindowFromDimensions(
+                              {3}, {2}, absl::MakeSpan(&padding, 1),
+                              /*lhs_dilation=*/{},
+                              /*rhs_dilation=*/{}));
+  std::vector<const Shape*> input_shapes = {&input1->shape(), &input2->shape()};
+  std::vector<const Shape*> init_shapes = {&init1->shape(), &init2->shape()};
+  TF_ASSERT_OK_AND_ASSIGN(Shape shape,
+                          ShapeInference::InferReduceWindowShape(
+                              input_shapes, init_shapes, window,
+                              compute_tuple->ComputeProgramShape()));
+  builder.AddInstruction(HloInstruction::CreateReduceWindow(
+      shape, input_vec, init_vec, window, compute_tuple));
+  auto r1 = LiteralUtil::CreateR1<float>({100, 1});
+  auto r2 = LiteralUtil::CreateR1<int>({15, 12});
+  auto expected = LiteralUtil::MakeTuple({&r1, &r2});
+  m_->AddEntryComputation(builder.Build());
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
 TEST_P(HloEvaluatorBf16Test, StridedSlice) {
   HloComputation::Builder b(TestName());
 
