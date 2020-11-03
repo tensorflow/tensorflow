@@ -168,9 +168,8 @@ class ShapeInference {
                                                 const Shape& init_value,
                                                 const Window& window);
   static StatusOr<Shape> InferReduceWindowShape(
-      absl::Span<const Shape* const> operands,
-      absl::Span<const Shape* const> init_values, const Window& window,
-      const ProgramShape& to_apply_shape);
+      absl::Span<const Shape*> operands, absl::Span<const Shape*> init_values,
+      const Window& window, const ProgramShape& to_apply_shape);
 
   static StatusOr<Shape> InferReduceWindowShape(
       absl::Span<const Shape*> operands, absl::Span<const Shape*> init_values,

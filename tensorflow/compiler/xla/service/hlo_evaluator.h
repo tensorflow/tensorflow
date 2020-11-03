@@ -260,8 +260,6 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleReduce(HloInstruction* reduce) override;
 
-  Status HandleReduceWindow(HloInstruction* hlo) override;
-
   Status HandleCustomCall(HloInstruction* custom_call) override;
 
   // Unsupported HLOs, note some of them (such as BatchNorm*) are typically

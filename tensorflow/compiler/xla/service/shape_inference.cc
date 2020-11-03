@@ -2168,9 +2168,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferReduceWindowShape(
-    absl::Span<const Shape* const> operands,
-    absl::Span<const Shape* const> init_values, const Window& window,
-    const ProgramShape& to_apply_shape) {
+    absl::Span<const Shape*> operands, absl::Span<const Shape*> init_values,
+    const Window& window, const ProgramShape& to_apply_shape) {
   auto number_of_input = operands.size();
   // Check that all of the reduced tensors have the same dimensions. The element
   // types may be different.
