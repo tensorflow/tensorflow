@@ -107,7 +107,7 @@ if [[ "$RELEASE_BUILD" == 1 ]]; then
   # Because this hurts the performance of TF, we don't override it in release build.
   export TF_OVERRIDE_EIGEN_STRONG_INLINE=0
 else
-  export TF_OVERRIDE_EIGEN_STRONG_INLINE=1
+  export TF_OVERRIDE_EIGEN_STRONG_INLINE=0
 fi
 
 if [[ "$TF_NIGHTLY" == 1 ]]; then
