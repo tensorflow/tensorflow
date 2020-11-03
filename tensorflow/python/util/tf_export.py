@@ -48,6 +48,8 @@ import sys
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
+from typing import Any, Callable, TypeVar
+
 ESTIMATOR_API_NAME = 'estimator'
 KERAS_API_NAME = 'keras'
 TENSORFLOW_API_NAME = 'tensorflow'
@@ -83,6 +85,10 @@ API_ATTRS_V1 = {
         '_keras_api_names_v1',
         '_keras_api_constants_v1')
 }
+
+
+# Define type variables
+F = TypeVar("F", bound=Callable[..., Any])
 
 
 class SymbolAlreadyExposedError(Exception):
@@ -406,6 +412,9 @@ def kwarg_only(f):
   return tf_decorator.make_decorator(f, wrapper, decorator_argspec=f_argspec)
 
 
-tf_export = functools.partial(api_export, api_name=TENSORFLOW_API_NAME)
+def tf_export(*args, **kwargs) -> Callable[[F], F]:
+  wrapper = functools.partial(api_export, api_name=TENSORFLOW_API_NAME)
+  return wrapper(*args, **kwargs)
+
 estimator_export = functools.partial(api_export, api_name=ESTIMATOR_API_NAME)
 keras_export = functools.partial(api_export, api_name=KERAS_API_NAME)
