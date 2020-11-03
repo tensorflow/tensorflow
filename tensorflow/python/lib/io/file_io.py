@@ -428,17 +428,8 @@ def get_matching_files_v2(pattern, num_threads=1):
   if isinstance(pattern, six.string_types):
     return handle_single_pattern(pattern)
 
-  if not isinstance(num_threads, int):
-    raise TypeError("`num_threads` must be a integer.")
-
-  if num_threads <= 1:
-    return [
-        # Convert the filenames to string from bytes.
-        compat.as_str_any(matching_filename)  # pylint: disable=g-complex-comprehension
-        for single_filename in pattern
-        for matching_filename in _pywrap_file_io.GetMatchingFiles(
-            compat.as_bytes(single_filename))
-    ]
+  if not isinstance(num_threads, int) or num_threads < 1:
+    raise TypeError("`num_threads` must be a integer and not less than 1.")
 
   patterns = list(pattern)
   pool = Pool(processes=min(num_threads, len(patterns)))
