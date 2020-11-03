@@ -1745,8 +1745,8 @@ inline void ResizeBilinearInteger(
           const int64_t output_20 =
               output_20_ll + output_20_lu + output_20_rl + output_20_ru;
           const int64_t round = (output_20 > 0) ? (1 << 19) : -(1 << 19);
-          const int8_t interpolation =
-              static_cast<int8_t>((output_20 + round) / (1 << 20));
+          const T interpolation =
+              static_cast<T>((output_20 + round) / (1 << 20));
           output_data[Offset(output_shape, b, y, x, c)] = interpolation;
         }
       }
