@@ -113,6 +113,8 @@ DataType ConvertIODataTypeToDataType(toco::IODataType dtype) {
       return DT_QUINT8;
     case toco::IODataType::INT8:
       return DT_QINT8;
+    case toco::IODataType::QUANTIZED_INT16:
+      return DT_INT16;
     case toco::IODataType::INT32:
       return DT_INT32;
     case toco::IODataType::INT64:
