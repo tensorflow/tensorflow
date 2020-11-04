@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -38,6 +39,39 @@ namespace kernel_gen {
 namespace transforms {
 
 namespace {
+
+class ConstantOpConverter : public OpConversionPattern<ConstantOp> {
+ public:
+  using OpConversionPattern<ConstantOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      ConstantOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const final {
+    // We only need to bufferize tensor constants.
+    Location loc = op.getLoc();
+    auto result_type = op.getType().dyn_cast<RankedTensorType>();
+    if (!result_type) return failure();
+    if (result_type.getNumDynamicDims() != 0 || result_type.getRank() != 1)
+      return failure();
+
+    auto elements_attr = op.getValue().dyn_cast<DenseElementsAttr>();
+    auto memref_type = MemRefType::get({result_type.getNumElements()},
+                                       result_type.getElementType());
+
+    Value buffer = rewriter.create<AllocaOp>(loc, memref_type);
+    Value value;
+    if (elements_attr.isSplat())
+      value = rewriter.create<ConstantOp>(loc, elements_attr.getSplatValue());
+    for (auto pair : llvm::enumerate(elements_attr.getAttributeValues())) {
+      if (!elements_attr.isSplat())
+        value = rewriter.create<ConstantOp>(loc, pair.value());
+      Value index = rewriter.create<ConstantIndexOp>(loc, pair.index());
+      rewriter.create<StoreOp>(loc, value, buffer, index);
+    }
+    rewriter.replaceOp(op, {buffer});
+    return success();
+  }
+};
 
 class TensorFromElementsOpConverter
     : public OpConversionPattern<TensorFromElementsOp> {
@@ -182,7 +216,8 @@ class TensorCastOpConverter : public OpConversionPattern<TensorCastOp> {
 void populateStandardBufferizePattern(MLIRContext *context,
                                       BufferizeTypeConverter *converter,
                                       OwningRewritePatternList *patterns) {
-  patterns->insert<ExtractElementOpConversion, TensorFromElementsOpConverter,
+  patterns->insert<ConstantOpConverter, ExtractElementOpConversion,
+                   TensorFromElementsOpConverter,
                    DynamicTensorFromElementsOpConverter,
                    SimpleOpResultConversion<SelectOp>, TensorLoadOpConversion,
                    TensorCastOpConverter>(*converter, context);
