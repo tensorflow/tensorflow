@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,9 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_MICRO_EXAMPLES_NETWORK_TESTER_EXPECTED_OUTPUT_DATA_H_
-#define TENSORFLOW_LITE_MICRO_EXAMPLES_NETWORK_TESTER_EXPECTED_OUTPUT_DATA_H_
+// Xtensa timer implementation.
+// To include this with make, add TARGET=xtensa_hifi.
+#include "tensorflow/lite/micro/micro_time.h"
 
-static unsigned char expected_output_data[1][4] = {{6, 8, 14, 16}};
+#include <time.h>
 
-#endif  // TENSORFLOW_LITE_MICRO_EXAMPLES_NETWORK_TESTER_EXPECTED_OUTPUT_DATA_H_
+namespace tflite {
+
+int32_t ticks_per_second() { return CLOCKS_PER_SEC; }
+
+int32_t GetCurrentTimeTicks() { return clock(); }
+
+}  // namespace tflite

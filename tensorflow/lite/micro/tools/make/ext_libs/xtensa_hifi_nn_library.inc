@@ -17,6 +17,7 @@ ifneq ($(filter xtensa_hifi, $(ALL_TAGS)),)
                              $(XTENSA_PATH)/$(NNLIB)/algo/kernels/activations/hifi4/xa_nn_activations_asym8_asym8.c \
                              $(XTENSA_PATH)/$(NNLIB)/algo/kernels/activations/hifi4/xa_nn_activations_32_16.c \
                              $(XTENSA_PATH)/$(NNLIB)/algo/kernels/activations/hifi4/xa_nn_activations_32_8.c  \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/activations/hifi4/xa_nn_activations_8_8.c  \
                              $(XTENSA_PATH)/$(NNLIB)/algo/kernels/activations/hifi4/xa_nn_softmax_asym8_asym8.c \
                              $(XTENSA_PATH)/$(NNLIB)/algo/kernels/basic/hifi4/xa_nn_floor_f32.c \
                              $(XTENSA_PATH)/$(NNLIB)/algo/kernels/basic/hifi4/xa_nn_elm_add_f32.c \
@@ -25,6 +26,7 @@ ifneq ($(filter xtensa_hifi, $(ALL_TAGS)),)
                              $(XTENSA_PATH)/$(NNLIB)/algo/kernels/basic/hifi4/xa_nn_elm_mul_quant8.c \
                              $(XTENSA_PATH)/$(NNLIB)/algo/kernels/cnn/hifi4/xa_nn_conv2d_std_circ_buf.c \
                              $(XTENSA_PATH)/$(NNLIB)/algo/kernels/cnn/hifi4/xa_nn_conv2d_std_asym8xasym8.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/cnn/hifi4/xa_nn_conv2d_pointwise_asym8xasym8.c \
                              $(XTENSA_PATH)/$(NNLIB)/algo/kernels/cnn/hifi4/xa_nn_conv2d_std_f32.c \
                              $(XTENSA_PATH)/$(NNLIB)/algo/kernels/cnn/hifi4/xa_nn_matXvec_asym8xasym8_asym8_circ.c \
                              $(XTENSA_PATH)/$(NNLIB)/algo/kernels/cnn/hifi4/xa_nn_matXvec_f32_circ.c \
@@ -38,6 +40,7 @@ ifneq ($(filter xtensa_hifi, $(ALL_TAGS)),)
                              $(XTENSA_PATH)/$(NNLIB)/algo/kernels/matXvec/hifi4/xa_nn_matXvec_8x16.c \
                              $(XTENSA_PATH)/$(NNLIB)/algo/kernels/matXvec/hifi4/xa_nn_matXvec_8x8.c \
                              $(XTENSA_PATH)/$(NNLIB)/algo/kernels/matXvec/hifi4/xa_nn_matXvec_asym8xasym8.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/matXvec/hifi4/xa_nn_matmul_asym8xasym8.c \
                              $(XTENSA_PATH)/$(NNLIB)/algo/kernels/pool/hifi4/xa_nn_avgpool.c \
                              $(XTENSA_PATH)/$(NNLIB)/algo/kernels/pool/hifi4/xa_nn_avgpool_f32.c \
                              $(XTENSA_PATH)/$(NNLIB)/algo/kernels/pool/hifi4/xa_nn_avgpool_asym8.c \
@@ -70,4 +73,79 @@ ifneq ($(filter xtensa_hifi, $(ALL_TAGS)),)
 
     endif
 
+    ifneq (,$(filter hifi5%, $(TARGET_ARCH)))
+
+        NNLIB = xa_nnlib_hifi5
+
+        CCFLAGS += -DNNLIB_HIFI5 \
+                   -DXTENSA_NNLIB_MAX_SCRATCH_SIZE=70*1024
+
+        CXXFLAGS += -DNNLIB_HIFI5 \
+                    -DXTENSA_NNLIB_MAX_SCRATCH_SIZE=70*1024
+
+        MICROLITE_CC_SRCS += \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/activations/hifi5/xa_nn_activations_f32_f32.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/activations/hifi5/xa_nn_activations_asym8_asym8.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/activations/hifi5/xa_nn_activations_32_16.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/activations/hifi5/xa_nn_activations_32_8.c  \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/activations/hifi5/xa_nn_activations_8_8.c  \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/activations/hifi5/xa_nn_softmax_asym8_asym8.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/basic/hifi5/xa_nn_dot_prod_16x16.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/basic/hifi5/xa_nn_floor_f32.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/basic/hifi5/xa_nn_elm_add_f32.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/basic/hifi5/xa_nn_elm_add_quant8.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/basic/hifi5/xa_nn_elm_mul_f32.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/basic/hifi5/xa_nn_elm_mul_quant8.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/basic/hifi5/xa_nn_elm_quantize.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/cnn/hifi5/xa_nn_conv2d_std_circ_buf.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/cnn/hifi5/xa_nn_conv2d_std_asym8xasym8.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/cnn/hifi5/xa_nn_conv2d_pointwise_asym8xasym8.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/cnn/hifi5/xa_nn_conv2d_std_f32.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/cnn/hifi5/xa_nn_matXvec_asym8xasym8_asym8_circ.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/cnn/hifi5/xa_nn_matXvec_f32_circ.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/cnn/hifi5/xa_nn_conv2d_depthwise.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/cnn/hifi5/xa_nn_conv2d_depthwise_f32.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/cnn/hifi5/xa_nn_conv2d_depthwise_asym8xasym8.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/cnn/hifi5/xa_nn_conv2d_depthwise_sym8sxasym8s.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/cnn/hifi5/xa_nn_circ_buf.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/fc/hifi4/xa_nn_fully_connected.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/matXvec/hifi5/xa_nn_matXvec_f32.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/matXvec/hifi5/xa_nn_matXvec_16x16.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/matXvec/hifi5/xa_nn_matXvec_8x16.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/matXvec/hifi5/xa_nn_matXvec_8x8.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/matXvec/hifi5/xa_nn_matXvec_asym8xasym8.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/matXvec/hifi5/xa_nn_matXvec_sym8sxasym8s.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/matXvec/hifi5/xa_nn_matmul_asym8xasym8.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/matXvec/hifi5/xa_nn_matmul_8x8.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/pool/hifi5/xa_nn_avgpool.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/pool/hifi5/xa_nn_avgpool_f32.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/pool/hifi5/xa_nn_avgpool_asym8.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/pool/hifi5/xa_nn_maxpool.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/pool/hifi5/xa_nn_maxpool_f32.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/pool/hifi5/xa_nn_maxpool_asym8.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/pool/hifi5/xa_nn_avgpool_asym8_nhwc.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/pool/hifi5/xa_nn_maxpool_asym8_nhwc.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/pool/hifi5/xa_nn_maxpool_f32_nhwc.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/pool/hifi5/xa_nn_avgpool_f32_nhwc.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/kernels/pool/hifi5/xa_nn_inv_256_tbl.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/ndsp/hifi5/src/vec_sigmoidf_hifi5.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/ndsp/hifi5/src/vec_tanhf_hifi5.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/ndsp/hifi5/src/vec_reluf_hifi5.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/ndsp/hifi5/src/vec_softmaxf_hifi5.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/ndsp/hifi5/src/vec_alognf_hifi5.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/ndsp/hifi5/src/scl_sigmoidf_hifi5.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/ndsp/hifi5/src/scl_tanhf_hifi5.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/ndsp/hifi5/src/expf_tbl.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/ndsp/hifi5/src/pow2f_tbl.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/ndsp/hifi5/src/inff_tbl.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/ndsp/hifi5/src/tanhf_tbl.c \
+                             $(XTENSA_PATH)/$(NNLIB)/algo/ndsp/hifi5/src/nanf_tbl.c \
+
+        INCLUDES += -I$(XTENSA_PATH)/$(NNLIB)/algo/kernels/ \
+                    -I$(XTENSA_PATH)/$(NNLIB)/include/nnlib/ \
+                    -I$(XTENSA_PATH)/$(NNLIB)/include/ \
+                    -I$(XTENSA_PATH)/$(NNLIB)/algo/common/include/ \
+                    -I$(XTENSA_PATH)/$(NNLIB)/algo/ndsp/hifi5/include/ \
+
+    endif
 endif

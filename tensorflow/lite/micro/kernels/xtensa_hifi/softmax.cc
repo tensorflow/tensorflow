@@ -184,17 +184,76 @@ TfLiteStatus SoftmaxQuantized(TfLiteContext* context,
     }
   } else if (input->type == kTfLiteInt8) {
     if (output->type == kTfLiteInt16) {
+#ifndef NNLIB_HIFI5
       tflite::reference_ops::Softmax(
           op_data, tflite::micro::GetTensorShape(input),
           tflite::micro::GetTensorData<int8_t>(input),
           tflite::micro::GetTensorShape(output),
           tflite::micro::GetTensorData<int16_t>(output));
+#else
+      const RuntimeShape& input_shape = tflite::micro::GetTensorShape(input);
+      const int8_t* input_data = tflite::micro::GetTensorData<int8_t>(input);
+      const RuntimeShape& output_shape = tflite::micro::GetTensorShape(output);
+      int16_t* output_data = tflite::micro::GetTensorData<int16_t>(output);
+      const int trailing_dim = input_shape.DimensionsCount() - 1;
+      const int outer_size =
+          MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
+      const int depth =
+          MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
+
+      ALLOCATE_XTENSA_NNLIB_SCRATCH_MEM;
+      void* p_scratch = xtensa_nnlib_scratch_buf;
+
+      if (get_softmax_scratch_size(-4, -4, depth) >
+          XTENSA_NNLIB_MAX_SCRATCH_SIZE) {
+        TF_LITE_KERNEL_LOG(context, "Softmax: insufficient scratch memory");
+        return kTfLiteError;
+      }
+
+      for (int i = 0; i < outer_size; ++i) {
+        int err = xa_nn_vec_softmax_asym8s_16(
+            &output_data[i * depth], &input_data[i * depth], op_data.diff_min,
+            op_data.input_left_shift, op_data.input_multiplier, depth,
+            p_scratch);
+        CHECK_ERR_HIFI_NNLIB_KER(err, "xa_nn_vec_softmax_asym8s_16 failed");
+      }
+      return kTfLiteOk;
+#endif
     } else {
+#ifndef NNLIB_HIFI5
       tflite::reference_ops::Softmax(
           op_data, tflite::micro::GetTensorShape(input),
           tflite::micro::GetTensorData<int8_t>(input),
           tflite::micro::GetTensorShape(output),
           tflite::micro::GetTensorData<int8_t>(output));
+#else
+      const RuntimeShape& input_shape = tflite::micro::GetTensorShape(input);
+      const int8_t* input_data = tflite::micro::GetTensorData<int8_t>(input);
+      const RuntimeShape& output_shape = tflite::micro::GetTensorShape(output);
+      int8_t* output_data = tflite::micro::GetTensorData<int8_t>(output);
+      const int trailing_dim = input_shape.DimensionsCount() - 1;
+      const int outer_size =
+          MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
+      const int depth =
+          MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
+
+      ALLOCATE_XTENSA_NNLIB_SCRATCH_MEM;
+      void* p_scratch = xtensa_nnlib_scratch_buf;
+
+      if (get_softmax_scratch_size(-4, -4, depth) >
+          XTENSA_NNLIB_MAX_SCRATCH_SIZE) {
+        TF_LITE_KERNEL_LOG(context, "Softmax: insufficient scratch memory");
+        return kTfLiteError;
+      }
+
+      for (int i = 0; i < outer_size; ++i) {
+        int err = xa_nn_vec_softmax_asym8s_asym8s(
+            &output_data[i * depth], &input_data[i * depth], op_data.diff_min,
+            op_data.input_left_shift, op_data.input_multiplier, depth,
+            p_scratch);
+        CHECK_ERR_HIFI_NNLIB_KER(err, "xa_nn_vec_softmax_asym8s_asym8s failed");
+      }
+#endif
     }
   } else {
     tflite::reference_ops::SoftmaxInt16(

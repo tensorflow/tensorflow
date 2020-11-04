@@ -184,8 +184,6 @@ inline TfLiteStatus EvalFloatSVDF(
   {
     float* new_state_start = state_ptr;
     const float* old_state_start = state_ptr + 1;
-    const float* old_state_end =
-        state_ptr + batch_size * num_filters * memory_size;
     for (int i = 0; i < batch_size * num_filters * memory_size - 1; i++) {
       new_state_start[i] = old_state_start[i];
     }
@@ -205,7 +203,7 @@ inline TfLiteStatus EvalFloatSVDF(
     float* result = &state_ptr[memory_size - 1];
     float* result_in_batch = result;
 
-#if HIFI_VFPU
+#if HIFI_VFPU && !defined NNLIB_HIFI5
     float* out_scratch = scratch_ptr;
     float* bias_scratch = output_ptr;
     for (int i = 0; i < num_units; i++) bias_scratch[i] = 0.0f;
@@ -249,14 +247,15 @@ inline TfLiteStatus EvalFloatSVDF(
       output_ptr);
 }
 
-void EvalIntegerSVDF(TfLiteContext* context, TfLiteNode* node,
-                     const TfLiteEvalTensor* input_tensor,
-                     const TfLiteEvalTensor* weights_feature_tensor,
-                     const TfLiteEvalTensor* weights_time_tensor,
-                     const TfLiteEvalTensor* bias_tensor,
-                     const TfLiteSVDFParams* params,
-                     TfLiteEvalTensor* activation_state_tensor,
-                     TfLiteEvalTensor* output_tensor, const OpData& data) {
+TfLiteStatus EvalIntegerSVDF(TfLiteContext* context, TfLiteNode* node,
+                             const TfLiteEvalTensor* input_tensor,
+                             const TfLiteEvalTensor* weights_feature_tensor,
+                             const TfLiteEvalTensor* weights_time_tensor,
+                             const TfLiteEvalTensor* bias_tensor,
+                             const TfLiteSVDFParams* params,
+                             TfLiteEvalTensor* activation_state_tensor,
+                             TfLiteEvalTensor* output_tensor,
+                             const OpData& data) {
   const int n_rank = params->rank;
   const int n_batch = input_tensor->dims->data[0];
   const int n_input = input_tensor->dims->data[1];
@@ -267,6 +266,33 @@ void EvalIntegerSVDF(TfLiteContext* context, TfLiteNode* node,
   TFLITE_DCHECK(context != nullptr);
   TFLITE_DCHECK(context->GetScratchBuffer != nullptr);
 
+#ifdef NNLIB_HIFI5
+  // Shift states.
+  int16_t* const state_ptr =
+      tflite::micro::GetTensorData<int16_t>(activation_state_tensor);
+
+  // Left shift the activation_state.
+  {
+    ae_int16x8* pDst = reinterpret_cast<ae_int16x8*>(state_ptr);
+    ae_int16x8* pSrc = reinterpret_cast<ae_int16x8*>(state_ptr + 1);
+    ae_int16x4 d, d1;
+    ae_valignx2 valign1 = AE_LA128_PP(pSrc);
+    ae_valignx2 valign2 = AE_ZALIGN128();
+
+    int loopcnt = (n_batch * n_filter * n_memory - 1);
+
+    for (int cnt = 0; cnt < (loopcnt >> 3); cnt++) {
+      AE_LA16X4X2_IP(d, d1, valign1, pSrc);
+      AE_SA16X4X2_IP(d, d1, valign2, pDst);
+    }
+    AE_SA128POS_FP(valign2, pDst);
+
+    for (int cnt1 = 0; cnt1 < (loopcnt & 0x7); cnt1++) {
+      AE_L16_IP(d, (ae_int16*)pSrc, 2);
+      AE_S16_0_IP(d, (ae_int16*)pDst, 2);
+    }
+  }
+#else
   int32_t* scratch_tensor = static_cast<int32_t*>(
       context->GetScratchBuffer(context, data.scratch_tensor_index));
   int32_t* scratch_output_tensor = static_cast<int32_t*>(
@@ -285,10 +311,12 @@ void EvalIntegerSVDF(TfLiteContext* context, TfLiteNode* node,
       *new_state_start++ = *old_state_start++;
     }
   }
+#endif
 
-  // Note: no need to clear the latest activation, matmul is not accumulative.
+// Note: no need to clear the latest activation, matmul is not accumulative.
 
-  // Feature matmul.
+// Feature matmul.
+#ifndef NNLIB_HIFI5
   {
     int16_t* state =
         tflite::micro::GetTensorData<int16_t>(activation_state_tensor);
@@ -321,7 +349,28 @@ void EvalIntegerSVDF(TfLiteContext* context, TfLiteNode* node,
       }
     }
   }
+#else
+  {
+    int16_t* state =
+        tflite::micro::GetTensorData<int16_t>(activation_state_tensor);
+    const int8_t* input = tflite::micro::GetTensorData<int8_t>(input_tensor);
+    const int8_t* weight_feature =
+        tflite::micro::GetTensorData<int8_t>(weights_feature_tensor);
+    int16_t* result_in_batch = state + (n_memory - 1);
+    int err = 0;
 
+    for (int b = 0; b < n_batch; b++) {
+      err = xa_nn_matXvec_out_stride_sym8sxasym8s_16(
+          &result_in_batch[b * n_filter * n_memory], weight_feature,
+          &input[b * n_input], NULL, n_filter, n_input, n_input, n_memory,
+          -data.input_zero_point, (data.effective_scale_1_a),
+          data.effective_scale_1_b);
+      CHECK_ERR_HIFI_NNLIB_KER(err, "xa_nn_vec_matXvec_sym8sxasym8s_16 failed");
+    }
+  }
+#endif
+
+#ifndef NNLIB_HIFI5
   // Time.
   {
     for (int b = 0; b < n_batch; ++b) {
@@ -391,6 +440,29 @@ void EvalIntegerSVDF(TfLiteContext* context, TfLiteNode* node,
           static_cast<int8_t>(x4);
     }
   }
+#else
+  {
+    for (int b = 0; b < n_batch; ++b) {
+      int8_t* output_ptr =
+          tflite::micro::GetTensorData<int8_t>(output_tensor) + b * n_unit;
+
+      const int16_t* vector1_ptr =
+          tflite::micro::GetTensorData<int16_t>(weights_time_tensor);
+      const int16_t* vector2_ptr =
+          tflite::micro::GetTensorData<int16_t>(activation_state_tensor) +
+          b * n_memory * n_filter;
+      int err = 0;
+      const int32_t* bias_ptr =
+          tflite::micro::GetTensorData<int32_t>(bias_tensor);
+      err = xa_nn_dot_prod_16x16_asym8s(
+          output_ptr, vector1_ptr, vector2_ptr, bias_ptr, n_memory * n_rank,
+          (data.effective_scale_2_a), data.effective_scale_2_b,
+          data.output_zero_point, n_unit);
+      CHECK_ERR_HIFI_NNLIB_KER(err, "xa_nn_dot_prod_16x16_asym8s failed");
+    }
+  }
+#endif
+  return kTfLiteOk;
 }
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {

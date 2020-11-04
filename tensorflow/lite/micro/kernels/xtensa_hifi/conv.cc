@@ -254,78 +254,107 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
     const int filter_width = filter_shape.Dims(2);
     const int output_height = output_shape.Dims(1);
     const int output_width = output_shape.Dims(2);
-    const int filter_depth = filter_shape.Dims(3);
 
     int err, output_data_format = 0;
     uint8_t* p_scratch;
     uint8_t* p_filter;
     // Calculate filter_depth_padded as next near multiple of 4
-    int filter_depth_padded = (filter_depth + 3) & (~3);
     int out_length = output_height * output_width * output_depth;
-    int filter_size_padded = filter_height * filter_width * filter_depth_padded;
     int required_scratch, input_precision = PREC_ASYM8;
-    int h, c;
 
-    required_scratch = xa_nn_conv2d_std_getsize(
-        input_height, input_depth, filter_height, filter_width, stride_height,
-        pad_height, output_height, input_precision);
+    if (filter_height == 1 && filter_width == 1) {
+      for (int batch = 0; batch < batches; ++batch) {
+        uint8_t* p_out_temp;
+        p_out_temp = &output_data[batch * out_length];
 
-    if (required_scratch <= 0) {
-      TF_LITE_KERNEL_LOG(context,
-                         "conv2d_std_asym8: xa_nn_conv2d_std_getsize failed");
-      return kTfLiteError;
-    }
+        err = xa_nn_conv2d_pointwise_asym8xasym8(
+            p_out_temp, const_cast<UWORD8*>(filter_data),
+            const_cast<UWORD8*>(
+                &input_data[batch * input_height * input_width * input_depth]),
+            const_cast<WORD32*>(bias_data), input_height, input_width,
+            input_depth, output_depth, input_offset, filter_offset,
+            output_multiplier, output_shift, output_offset, output_data_format);
 
-    ALLOCATE_XTENSA_NNLIB_SCRATCH_MEM;
-    p_scratch = xtensa_nnlib_scratch_buf;
+        CHECK_ERR_HIFI_NNLIB_KER(
+            err, "conv2d_std_asym8: xa_nn_conv2d_pointwise_asym8xasym8 failed");
 
-    p_filter = p_scratch;
-    required_scratch +=
-        ALIGNED_SIZE((sizeof(uint8_t) * filter_size_padded * output_depth), 8);
-    p_scratch +=
-        ALIGNED_SIZE(sizeof(uint8_t) * filter_size_padded * output_depth, 8);
+        err = xa_nn_vec_activation_min_max_asym8_asym8(
+            p_out_temp, p_out_temp, output_activation_min,
+            output_activation_max, out_length);
 
-    if (required_scratch > static_cast<int>(XTENSA_NNLIB_MAX_SCRATCH_SIZE)) {
-      TF_LITE_KERNEL_LOG(context,
-                         "conv2d_std_asym8: insufficient scratch memory");
-      return kTfLiteError;
-    }
-
-    // Padding filter coefficients depthwise
-    for (h = 0; h < filter_height * filter_width * output_depth; h++) {
-      for (c = 0; c < filter_depth; c++) {
-        p_filter[h * filter_depth_padded + c] =
-            filter_data[h * filter_depth + c];
+        CHECK_ERR_HIFI_NNLIB_KER(
+            err, "xa_nn_vec_activation_min_max_asym8_asym8 failed");
       }
-      for (c = input_depth; c < filter_depth_padded; c++) {
-        p_filter[h * filter_depth_padded + c] =
-            -filter_offset;  // filter_depth[h*input_depth + c];
+    } else {
+      required_scratch = xa_nn_conv2d_std_getsize(
+          input_height, input_depth, filter_height, filter_width, stride_height,
+          pad_height, output_height, input_precision);
+
+      if (required_scratch <= 0) {
+        TF_LITE_KERNEL_LOG(context,
+                           "conv2d_std_asym8: xa_nn_conv2d_std_getsize failed");
+        return kTfLiteError;
       }
-    }
 
-    for (int batch = 0; batch < batches; ++batch) {
-      uint8_t* p_out_temp;
-      p_out_temp = &output_data[batch * out_length];
+      ALLOCATE_XTENSA_NNLIB_SCRATCH_MEM;
+      p_scratch = xtensa_nnlib_scratch_buf;
 
-      err = xa_nn_conv2d_std_asym8xasym8(
-          p_out_temp,
-          &input_data[batch * input_height * input_width * input_depth],
-          p_filter,  // filter_data,
-          bias_data, input_height, input_width, input_depth, filter_height,
-          filter_width, output_depth, stride_width, stride_height, pad_width,
-          pad_height, output_height, output_width, input_offset, filter_offset,
-          output_multiplier, output_shift, output_offset, output_data_format,
-          static_cast<void*>(p_scratch));
+#ifndef NNLIB_HIFI5
+      const int filter_depth = filter_shape.Dims(3);
+      int filter_depth_padded = (filter_depth + 3) & (~3);
+      int filter_size_padded =
+          filter_height * filter_width * filter_depth_padded;
+      p_filter = p_scratch;
+      required_scratch += ALIGNED_SIZE(
+          (sizeof(uint8_t) * filter_size_padded * output_depth), 8);
+      p_scratch +=
+          ALIGNED_SIZE(sizeof(uint8_t) * filter_size_padded * output_depth, 8);
 
-      CHECK_ERR_HIFI_NNLIB_KER(
-          err, "conv2d_std_asym8: xa_nn_conv2d_std_asym8xasym8 failed");
+      if (required_scratch > static_cast<int>(XTENSA_NNLIB_MAX_SCRATCH_SIZE)) {
+        TF_LITE_KERNEL_LOG(context,
+                           "conv2d_std_asym8: insufficient scratch memory");
+        return kTfLiteError;
+      }
 
-      err = xa_nn_vec_activation_min_max_asym8_asym8(
-          p_out_temp, p_out_temp, output_activation_min, output_activation_max,
-          out_length);
+      // Padding filter coefficients depthwise
+      for (int h = 0; h < filter_height * filter_width * output_depth; h++) {
+        for (int c = 0; c < filter_depth; c++) {
+          p_filter[h * filter_depth_padded + c] =
+              filter_data[h * filter_depth + c];
+        }
+        for (int c = input_depth; c < filter_depth_padded; c++) {
+          p_filter[h * filter_depth_padded + c] =
+              -filter_offset;  // filter_depth[h*input_depth + c];
+        }
+      }
+#else
+      p_filter = const_cast<uint8_t*>(filter_data);
+#endif
 
-      CHECK_ERR_HIFI_NNLIB_KER(
-          err, "xa_nn_vec_activation_min_max_asym8_asym8 failed");
+      for (int batch = 0; batch < batches; ++batch) {
+        uint8_t* p_out_temp;
+        p_out_temp = &output_data[batch * out_length];
+
+        err = xa_nn_conv2d_std_asym8xasym8(
+            p_out_temp,
+            &input_data[batch * input_height * input_width * input_depth],
+            p_filter,  // filter_data,
+            bias_data, input_height, input_width, input_depth, filter_height,
+            filter_width, output_depth, stride_width, stride_height, pad_width,
+            pad_height, output_height, output_width, input_offset,
+            filter_offset, output_multiplier, output_shift, output_offset,
+            output_data_format, static_cast<void*>(p_scratch));
+
+        CHECK_ERR_HIFI_NNLIB_KER(
+            err, "conv2d_std_asym8: xa_nn_conv2d_std_asym8xasym8 failed");
+
+        err = xa_nn_vec_activation_min_max_asym8_asym8(
+            p_out_temp, p_out_temp, output_activation_min,
+            output_activation_max, out_length);
+
+        CHECK_ERR_HIFI_NNLIB_KER(
+            err, "xa_nn_vec_activation_min_max_asym8_asym8 failed");
+      }
     }
   } else {
     // TODO(b/154032858): Investigate removing extra copies.

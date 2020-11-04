@@ -24,6 +24,7 @@ ifeq ($(TARGET), xtensa_hifi)
   endif
 
   $(eval $(call add_third_party_download,$(XTENSA_HIFI4_URL),$(XTENSA_HIFI4_MD5),xa_nnlib_hifi4,))
+  $(eval $(call add_third_party_download,$(XTENSA_HIFI5_URL),$(XTENSA_HIFI5_MD5),xa_nnlib_hifi5,))
 
   PLATFORM_ARGS = \
     -mno-mul16 \
@@ -38,17 +39,21 @@ ifeq ($(TARGET), xtensa_hifi)
     -mtext-section-literals \
     -fno-unsafe-math-optimizations \
 
-  TF_LITE_MICRO_FLAGS = \
-    -DTF_LITE_STATIC_MEMORY\
 
   export PATH := $(XTENSA_BASE)/tools/$(XTENSA_TOOLS_VERSION)/XtensaTools/bin:$(PATH)
   TARGET_TOOLCHAIN_PREFIX := xt-
   CXX_TOOL := clang++
   CC_TOOL := clang
 
-  CXXFLAGS = -O0 $(PLATFORM_ARGS) -std=c++11 $(TF_LITE_MICRO_FLAGS)
-  #TODO: Use -std=c11 ?
-  CCFLAGS = -O3 $(PLATFORM_ARGS) $(TF_LITE_MICRO_FLAGS)
+  CXXFLAGS += $(PLATFORM_ARGS)
+  CCFLAGS += $(PLATFORM_ARGS)
+
+ifneq (,$(filter hifi4%, $(TARGET_ARCH)))
+  # Disabling optimizations for .cc files for HiFi 4 build.
+  # With optimzation some of the unit test cases fail. 
+  # TODO(pnikam-cad): Fix unit test case failures seen with -O3 
+  CXXFLAGS += -O0
+endif
 
   TEST_SCRIPT := tensorflow/lite/micro/testing/test_xtensa_hifi_binary.sh
 

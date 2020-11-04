@@ -37,6 +37,7 @@ limitations under the License.
 #ifndef __XTENSA_TF_MICRO_COMMON__
 #define __XTENSA_TF_MICRO_COMMON__
 
+#include "tensorflow/lite/micro/micro_time.h"
 #include "xa_nnlib_api.h"
 #include "xa_nnlib_standards.h"
 
@@ -76,5 +77,16 @@ limitations under the License.
 
 #define ALIGNED_SIZE(x, bytes) (((x) + (bytes - 1)) & (~(bytes - 1)))
 #define ALIGN_PTR(x, bytes) ((((unsigned)(x)) + (bytes - 1)) & (~(bytes - 1)))
+
+// Profiler macros based on the micro_timer implementation
+#define MICRO_TIMER_START \
+  int32_t start_ticks;    \
+  int32_t duration_ticks; \
+  start_ticks = tflite::GetCurrentTimeTicks();
+
+#define MICRO_TIMER_STOP(error_reporter, name)                    \
+  duration_ticks = tflite::GetCurrentTimeTicks() - start_ticks;   \
+  TF_LITE_REPORT_ERROR(error_reporter, "%s took %d cycles", name, \
+                       duration_ticks);
 
 #endif /* __XTENSA_TF_MICRO_COMMON__ */
