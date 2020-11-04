@@ -110,8 +110,8 @@ class BufferSizeAnalysis {
     });
 
     // Operand and result of `reshape_memref_cast` must be of same size.
-    f.walk([&](lmhlo::ReshapeMemRefCastOp reshapeOp) {
-      ecs_.unionSets(reshapeOp.result(), reshapeOp.operand());
+    f.walk([&](MemRefReshapeOp reshapeOp) {
+      ecs_.unionSets(reshapeOp.result(), reshapeOp.source());
     });
   }
 

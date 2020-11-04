@@ -39,7 +39,7 @@ module attributes {gpu.container_module} {
   ^bb6:  // pred: ^bb4
     %13 = alloca() : memref<1xindex>
     store %8, %13[%c0] : memref<1xindex>
-    %14 = lmhlo.reshape_memref_cast %arg0(%13) : (memref<*xf32>, memref<1xindex>) -> memref<?xf32>
+    %14 = memref_reshape %arg0(%13) : (memref<*xf32>, memref<1xindex>) -> memref<?xf32>
     %15 = dim %14, %c0 : memref<?xf32>
     %16 = tf_framework.alloc(%ctx, %15) : memref<?xf32>
     %17 = cmpi "sle", %15, %c0 : index
@@ -53,7 +53,7 @@ module attributes {gpu.container_module} {
     gpu.launch_func @abs_kernel::@abs_kernel
         blocks in (%24, %c1, %c1) threads in (%c256, %c1, %c1)
         args(%14 : memref<?xf32>, %16 : memref<?xf32>)
-    %25 = lmhlo.reshape_memref_cast %16(%1) : (memref<?xf32>, memref<?xindex>) -> memref<*xf32>
+    %25 = memref_reshape %16(%1) : (memref<?xf32>, memref<?xindex>) -> memref<*xf32>
     return %25 : memref<*xf32>
   }
 

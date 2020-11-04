@@ -133,7 +133,7 @@ struct PropagateTfAbiKnowledgeToKernelsPass
     while (!worklist.empty()) {
       Value candidate = worklist.pop_back_val();
       for (auto user : candidate.getUsers()) {
-        if (auto reshape = dyn_cast<lmhlo::ReshapeMemRefCastOp>(user)) {
+        if (auto reshape = dyn_cast<MemRefReshapeOp>(user)) {
           // Reshape propagates alignment and offset.
           // TODO(herhut): This should be a trait.
           if (allocated_by_runtime.insert(reshape.result()).second) {
