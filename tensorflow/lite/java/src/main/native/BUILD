@@ -51,6 +51,7 @@ cc_library(
     deps = [
         ":native_framework_only",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:builtin_ops",
     ],
     alwayslink = 1,
