@@ -188,6 +188,14 @@ int GetRecommendedBlockSizeForConv(const DeviceInfo& device_info,
   return block_size;
 }
 
+int3 GetWorkGroupsCount(const int3& grid_size, const int3& work_group_size) {
+  int3 work_groups_count;
+  work_groups_count.x = DivideRoundUp(grid_size.x, work_group_size.x);
+  work_groups_count.y = DivideRoundUp(grid_size.y, work_group_size.y);
+  work_groups_count.z = DivideRoundUp(grid_size.z, work_group_size.z);
+  return work_groups_count;
+}
+
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

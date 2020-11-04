@@ -92,6 +92,8 @@ cc_library(
         "//tensorflow/c/eager:immediate_execution_context",
         "//tensorflow/c/eager:immediate_execution_operation",
         "//tensorflow/c/eager:immediate_execution_tensor_handle",
+        "//tensorflow/c/experimental/saved_model/core:signature_def_function_metadata",
+        "//tensorflow/c/experimental/saved_model/core:tensor_spec",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/lib/llvm_rtti",
@@ -164,6 +166,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/eager:context",
+        "//tensorflow/core/common_runtime/eager:tensor_handle",
+        "//tensorflow/core/lib/llvm_rtti",
         "@com_google_absl//absl/types:optional",
     ],
 )

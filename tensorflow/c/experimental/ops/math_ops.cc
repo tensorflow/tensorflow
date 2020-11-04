@@ -144,5 +144,33 @@ Status Exp(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
   return exp_op->Execute(outputs, &num_retvals);
 }
 
+Status Sqrt(AbstractContext* ctx,
+            absl::Span<AbstractTensorHandle* const> inputs,
+            absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+  AbstractOperationPtr sqrt_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(sqrt_op->Reset("Sqrt", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(sqrt_op.get(), name));
+  TF_RETURN_IF_ERROR(sqrt_op->AddInput(inputs[0]));
+
+  int num_retvals = 1;
+  Status s = sqrt_op->Execute(outputs, &num_retvals);
+  return s;
+}
+
+Status SqrtGrad(AbstractContext* ctx,
+                absl::Span<AbstractTensorHandle* const> inputs,
+                absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+  AbstractOperationPtr sqrt_grad_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(
+      sqrt_grad_op->Reset("SqrtGrad", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(sqrt_grad_op.get(), name));
+  TF_RETURN_IF_ERROR(sqrt_grad_op->AddInput(inputs[0]));
+  TF_RETURN_IF_ERROR(sqrt_grad_op->AddInput(inputs[1]));
+
+  int num_retvals = 1;
+  Status s = sqrt_grad_op->Execute(outputs, &num_retvals);
+  return s;
+}
+
 }  // namespace ops
 }  // namespace tensorflow

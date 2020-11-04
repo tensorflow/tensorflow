@@ -587,6 +587,21 @@ def map_structure(func, *structure, **kwargs):
   `structure[i]`.  All structures in `structure` must have the same arity,
   and the return value will contain results with the same structure layout.
 
+  Examples:
+
+  1. A single Python dict:
+
+  >>> a = {"hello": 24, "world": 76}
+  >>> tf.nest.map_structure(lambda p: p * 2, a)
+  {'hello': 48, 'world': 152}
+
+  2. Multiple Python dictionaries:
+
+  >>> d1 = {"hello": 24, "world": 76}
+  >>> d2 = {"hello": 36, "world": 14}
+  >>> tf.nest.map_structure(lambda p1, p2: p1 + p2, d1, d2)
+  {'hello': 60, 'world': 90}
+
   Args:
     func: A callable that accepts as many arguments as there are structures.
     *structure: scalar, or tuple or dict or list of constructed scalars and/or

@@ -32,9 +32,9 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_op_consts.h"
 #include "tensorflow/core/tpu/kernels/tpu_pod_state.h"
 #include "tensorflow/core/tpu/tpu_api.h"
-#include "tensorflow/core/tpu/tpu_config_c_api.h"
 #include "tensorflow/core/tpu/tpu_configuration.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
+#include "tensorflow/core/tpu/tpu_ops_c_api.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"
 
 namespace tensorflow {
@@ -203,12 +203,11 @@ void WaitForDistributedTpuOp::Compute(OpKernelContext* ctx) {
   TF_Status* status = TF_NewStatus();
   auto cleanup = xla::MakeCleanup([&status, &tpu_topology_output]() {
     TF_DeleteStatus(status);
-    tpu::ConfigApiFn()->TpuConfigurationApi_FreeCharArrayFn(
-        tpu_topology_output);
+    tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(tpu_topology_output);
   });
 
   auto* mesh_common_state = mesh_state->mesh_common_state();
-  tpu::ConfigApiFn()->WaitForDistributedTpuOp_DoWorkFn(
+  tpu::OpsApiFn()->WaitForDistributedTpuOp_DoWorkFn(
       num_hosts, num_devices_per_host,
       const_cast<const int32_t**>(mapping_arg.data()), mesh_common_state,
       &tpu_topology_output_size, &tpu_topology_output, status);
@@ -247,7 +246,7 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
   auto tpu_host_config = ctx->input(0).scalar<tstring>()();
 
   bool is_master_worker =
-      tpu::ConfigApiFn()->TpuConfigurationApi_HasTPUPodStateFn();
+      tpu::OpsApiFn()->TpuConfigurationApi_HasTPUPodStateFn();
   if (!is_master_worker) {
     // Reset the mesh interface if we are not the master.
     OP_REQUIRES_OK(ctx, DeleteIfExists<tpu::TpuMeshStateInterface>(
@@ -283,9 +282,9 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
   int32_t* device_id_output = nullptr;
   auto cleanup = xla::MakeCleanup([&status, &device_id_output]() {
     TF_DeleteStatus(status);
-    tpu::ConfigApiFn()->TpuConfigurationApi_FreeInt32ArrayFn(device_id_output);
+    tpu::OpsApiFn()->TpuConfigurationApi_FreeInt32ArrayFn(device_id_output);
   });
-  tpu::ConfigApiFn()->InitializeHostForDistributedTpuOp_DoWorkFn(
+  tpu::OpsApiFn()->InitializeHostForDistributedTpuOp_DoWorkFn(
       tpu_host_config.size(), tpu_host_config.data(),
       enable_whole_mesh_compilations_, is_master_worker, &device_id_output_size,
       &device_id_output, status);
@@ -302,16 +301,16 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
                           tpu::kCompiledProtoCacheResourceName, proto_lookup));
   } else {
     int64_t cache_size_bytes;
-    tpu::ConfigApiFn()->TpuConfigurationApi_RemoteCompilationCacheSizeInBytesFn(
+    tpu::OpsApiFn()->TpuConfigurationApi_RemoteCompilationCacheSizeInBytesFn(
         &cache_size_bytes);
 
     char* server_address_output = nullptr;
     auto cleanup_server_address = xla::MakeCleanup([&server_address_output]() {
-      tpu::ConfigApiFn()->TpuConfigurationApi_FreeCharArrayFn(
+      tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(
           server_address_output);
     });
     size_t server_address_output_size;
-    tpu::ConfigApiFn()
+    tpu::OpsApiFn()
         ->TpuConfigurationApi_CompilationCacheServerAddressFromConfigFn(
             tpu_host_config.size(), tpu_host_config.data(),
             &server_address_output_size, &server_address_output, status);
@@ -346,8 +345,8 @@ void SetGlobalTPUArrayOp::Compute(OpKernelContext* ctx) {
   auto tpu_topology = ctx->input(0).scalar<tstring>()();
   TF_Status* status = TF_NewStatus();
 
-  tpu::ConfigApiFn()->SetGlobalTPUArrayOp_DoWorkFn(tpu_topology.size(),
-                                                   tpu_topology.data(), status);
+  tpu::OpsApiFn()->SetGlobalTPUArrayOp_DoWorkFn(tpu_topology.size(),
+                                                tpu_topology.data(), status);
 
   OP_REQUIRES_OK(ctx, StatusFromTF_Status(status));
   TF_DeleteStatus(status);
@@ -362,7 +361,7 @@ void DisconnectDistributedTpuChipsOp::Compute(OpKernelContext* ctx) {
   TF_Status* status = TF_NewStatus();
   int32_t number_of_chips_output = 0;
 
-  tpu::ConfigApiFn()->DisconnectDistributedTpuChipsOp_DoWorkFn(
+  tpu::OpsApiFn()->DisconnectDistributedTpuChipsOp_DoWorkFn(
       &number_of_chips_output, status);
 
   Tensor* ctx_output;

@@ -17,6 +17,7 @@ cc_library(
     deps = [
         ":autotune_buffer_sizes",
         ":disable_intra_op_parallelism",
+        ":disable_prefetch_legacy_autotune",
         ":enable_gradient_descent",
         ":filter_fusion",
         ":filter_with_random_uniform_fusion",
@@ -121,6 +122,41 @@ tf_cc_test(
     srcs = ["disable_intra_op_parallelism_test.cc"],
     deps = [
         ":disable_intra_op_parallelism",
+        ":graph_test_utils",
+        ":graph_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:grappler_item",
+    ],
+)
+
+cc_library(
+    name = "disable_prefetch_legacy_autotune",
+    srcs = ["disable_prefetch_legacy_autotune.cc"],
+    hdrs = ["disable_prefetch_legacy_autotune.h"],
+    deps = [
+        ":graph_utils",
+        ":optimizer_base",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "//tensorflow/core:lib_internal",
+    ] + tf_protos_all(),
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "disable_prefetch_legacy_autotune_test",
+    srcs = ["disable_prefetch_legacy_autotune_test.cc"],
+    deps = [
+        ":disable_prefetch_legacy_autotune",
         ":graph_test_utils",
         ":graph_utils",
         "//tensorflow/core:framework",

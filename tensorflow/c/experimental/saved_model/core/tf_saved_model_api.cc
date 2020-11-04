@@ -192,18 +192,23 @@ Status TFSavedModelAPI::GetFunction(const std::string& function_path,
 
 Status TFSavedModelAPI::GetSignatureDefFunction(
     const std::string& signature_def_key, SignatureDefFunction** function) {
-  // TODO(bmzhao): Add support for retrieving a signaturedef function.
-  return errors::Unimplemented(
-      "Retrieving SignatureDef functions is unimplemented currently");
-}
-
-std::vector<ConcreteFunction*> TFSavedModelAPI::ListFunctions() {
-  std::vector<ConcreteFunction*> result;
-  result.reserve(revived_objects_.concrete_functions.size());
-  for (auto& index_and_function : revived_objects_.concrete_functions) {
-    result.push_back(index_and_function.second.get());
+  auto signatures_iter =
+      revived_objects_.signatures_map.find(signature_def_key);
+  if (signatures_iter == revived_objects_.signatures_map.end()) {
+    return errors::NotFound("No signature with key ", signature_def_key,
+                            " was found");
   }
-  return result;
+  int node = signatures_iter->second;
+
+  auto function_iter = revived_objects_.signature_def_functions.find(node);
+  if (function_iter == revived_objects_.signature_def_functions.end()) {
+    return errors::Internal(
+        "Unable to find SignatureDefFunction associated with key ",
+        signature_def_key, " despite key being valid.");
+  }
+
+  *function = function_iter->second.get();
+  return Status();
 }
 
 Status TFSavedModelAPI::GetVariable(const std::string& variable_path,

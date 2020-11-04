@@ -25,9 +25,9 @@ limitations under the License.
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/lite/tfl_to_std.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
@@ -257,9 +257,9 @@ void PrepareQuantizePass::SanityCheckAndAdjustment(FuncOp func) {
   // (Quant $in, $qA) would introduce less quantization noise) the likley cause
   // is an minor error in constructing the original network model that
   // introduced back-to-back Fake Quantization operations. Hence: emit a
-  // warning. N.b. at this point weŕe (teporarility) in the quantization dialect
-  // (presuambly enalbe re-use in xla etc) quant::*QuantizeCastOp weŕe matching
-  // here.
+  // warning. N.b. at this point we're (teporarility) in the quantization
+  // dialect (presuambly enable re-use in xla etc) quant::*QuantizeCastOp
+  // we're matching here.
   //
   func.walk([&](quant::QuantizeCastOp q_op) {
     // If up with end up with
@@ -337,7 +337,7 @@ void PrepareQuantizePass::runOnFunction() {
     // Currently, only activation stats are imported, so narrow_range = false.
     patterns.insert<PrepareQuantStats>(bit_width, false, false, ctx);
   }
-  applyPatternsAndFoldGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   SanityCheckAndAdjustment(func);
 

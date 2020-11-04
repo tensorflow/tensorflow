@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -515,11 +516,23 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       break;
     }
     case HloOpcode::kReduceWindow:
+      TF_RET_CHECK(proto.operand_ids_size() % 2 == 0)
+          << "Reduce window should have an even number of operands but "
+             "sees "
+          << proto.operand_ids_size();
       TF_RET_CHECK(proto.called_computation_ids_size() == 1)
           << "ReduceWindow should have 1 called computation but sees "
           << proto.called_computation_ids_size();
-      instruction = CreateReduceWindow(shape, operands(0), operands(1),
-                                       proto.window(), computations(0));
+      {
+        const auto reduce_operands = all_operands();
+        auto inputs = absl::MakeSpan(reduce_operands)
+                          .subspan(0, reduce_operands.size() / 2);
+        auto init_values =
+            absl::MakeSpan(reduce_operands)
+                .subspan(reduce_operands.size() / 2, reduce_operands.size());
+        instruction = CreateReduceWindow(shape, inputs, init_values,
+                                         proto.window(), computations(0));
+      }
       break;
     case HloOpcode::kSelectAndScatter:
       TF_RET_CHECK(proto.called_computation_ids_size() == 2)
@@ -547,6 +560,11 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           instruction = CreateCustomCall(shape, all_operands(), computations(0),
                                          proto.custom_call_target(),
                                          proto.backend_config());
+        } else if (proto.called_computation_ids_size() > 1) {
+          instruction = CreateCustomCall(
+              shape, all_operands(), all_computations(),
+              proto.custom_call_target(), proto.backend_config());
+
         } else {
           instruction = CreateCustomCall(shape, all_operands(),
                                          proto.custom_call_target(),
@@ -568,6 +586,12 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           std::max(static_cast<int64>(proto.batch_group_count()), int64{1}));
       custom_call_instr->set_custom_call_has_side_effect(
           proto.custom_call_has_side_effect());
+      custom_call_instr->set_padding_type(proto.padding_type());
+
+      PrecisionConfig precision_config = proto.precision_config();
+      precision_config.mutable_operand_precision()->Resize(
+          proto.operand_ids_size(), PrecisionConfig::DEFAULT);
+      *custom_call_instr->mutable_precision_config() = precision_config;
       std::vector<std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
           output_to_operand_aliasing;
       for (const auto& aliasing : proto.custom_call_output_operand_aliasing()) {
@@ -1273,6 +1297,13 @@ HloInstruction::CreateBitcastConvert(const Shape& shape,
       shape, operand, init_value, window, reduce_computation);
 }
 
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReduceWindow(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    absl::Span<HloInstruction* const> init_values, const Window& window,
+    HloComputation* reduce_computation) {
+  return absl::make_unique<HloReduceWindowInstruction>(
+      shape, operands, init_values, window, reduce_computation);
+}
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateBatchNormTraining(const Shape& shape,
                                         HloInstruction* operand,
@@ -1536,6 +1567,15 @@ bool HloInstruction::HasSideEffect() const {
     string opaque) {
   return absl::make_unique<HloCustomCallInstruction>(
       shape, operands, to_apply, custom_call_target, std::move(opaque));
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCustomCall(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    absl::Span<HloComputation* const> called_computations,
+    absl::string_view custom_call_target, string opaque) {
+  return absl::make_unique<HloCustomCallInstruction>(
+      shape, operands, called_computations, custom_call_target,
+      std::move(opaque));
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCustomCall(
@@ -2776,6 +2816,17 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
                opcode() == HloOpcode::kSort) {
       extra.push_back(
           StrCat("to_apply=", PrintNameInternal(to_apply()->name(), options)));
+    } else if (opcode() == HloOpcode::kCustomCall) {
+      if (!called_computations().empty()) {
+        extra.push_back(StrCat(
+            "called_computations={",
+            StrJoin(called_computations(), ", ",
+                    [&](string* out, const HloComputation* computation) {
+                      StrAppend(
+                          out, PrintNameInternal(computation->name(), options));
+                    }),
+            "}"));
+      }
     } else if (!called_computations().empty()) {
       extra.push_back(StrCat(
           "calls=",
@@ -2931,6 +2982,10 @@ void HloInstruction::set_tracing(HloInstruction* trace_instruction) {
 }
 
 bool HloInstruction::IsFused() const { return parent_->IsFusionComputation(); }
+
+bool HloInstruction::IsCustomCall(absl::string_view target) const {
+  return opcode() == HloOpcode::kCustomCall && custom_call_target() == target;
+}
 
 bool HloInstruction::IsInputFusion() const {
   return opcode() == HloOpcode::kFusion && fusion_kind() == FusionKind::kInput;
@@ -3807,6 +3862,10 @@ const PrecisionConfig& HloInstruction::precision_config() const {
   if (auto* dot = DynCast<HloDotInstruction>(this)) {
     return dot->precision_config();
   }
+
+  if (auto* custom_call = DynCast<HloCustomCallInstruction>(this)) {
+    return custom_call->precision_config();
+  }
   LOG(FATAL) << "Unimplemented method.";
 }
 
@@ -4162,6 +4221,10 @@ const string& HloInstruction::custom_call_target() const {
 
 const PaddingConfig& HloInstruction::padding_config() const {
   return Cast<HloPadInstruction>(this)->padding_config();
+}
+
+PaddingType HloInstruction::padding_type() const {
+  return Cast<HloCustomCallInstruction>(this)->padding_type();
 }
 
 PaddingConfig* HloInstruction::mutable_padding_config() {

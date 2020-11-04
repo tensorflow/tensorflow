@@ -164,7 +164,7 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
   cinfo.dct_method = flags.dct_method;
 
   // Determine the output image size before attempting decompress to prevent
-  // OOM'ing doing the decompress
+  // OOM'ing during the decompress
   jpeg_calc_output_dimensions(&cinfo);
 
   int64 total_size = static_cast<int64>(cinfo.output_height) *
@@ -577,7 +577,7 @@ bool GetImageInfo(const void* srcdata, int datasize, int* width, int* height,
   SetSrc(&cinfo, srcdata, datasize, false);
 
   jpeg_read_header(&cinfo, TRUE);
-  jpeg_start_decompress(&cinfo);  // required to transfer image size to cinfo
+  jpeg_calc_output_dimensions(&cinfo);
   if (width) *width = cinfo.output_width;
   if (height) *height = cinfo.output_height;
   if (components) *components = cinfo.output_components;

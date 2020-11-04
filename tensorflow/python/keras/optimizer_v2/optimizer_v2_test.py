@@ -486,6 +486,16 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(4.0, lr)
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def testDir(self):
+    opt = gradient_descent.SGD(learning_rate=1.0, momentum=0.1)
+    dir_result = set(dir(opt))
+    self.assertIn('learning_rate', dir_result)  # Hyperparameter
+    self.assertIn('lr', dir_result)  # Hyperparameter
+    self.assertIn('momentum', dir_result)  # Hyperparameter
+    self.assertIn('nesterov', dir_result)  # Attribute
+    self.assertIn('minimize', dir_result)  # Attribute
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testOptimizerWithKerasModel(self):
     a = input_layer.Input(shape=(3,), name='input_a')
     b = input_layer.Input(shape=(3,), name='input_b')

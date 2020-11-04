@@ -44,13 +44,12 @@ std::unique_ptr<OperationPass<FuncOp>> createControlFlowToScfPass();
 /// Lowers from HLO dialect to Standard dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeToStdPass();
 
+/// Lowers from the CHLO dialect to the HLO dialect.
+std::unique_ptr<FunctionPass> createChloLegalizeToHloPass();
+
 /// Lowers from HLO dialect to LHLO dialect allocating/deallocating temporary
-/// buffers if necessary. If `results_escape_functions` is set to true,
-/// allocated buffers for function results will be returned and escape the
-/// function. Otherwise, the signature is rewritten with extra arguments for the
-/// buffers that are to be used for results.
-std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass(
-    bool results_escape_functions = false);
+/// buffers if necessary.
+std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass();
 
 // Lowers from HLO dialect to Linalg dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeHloToLinalgPass();
@@ -63,7 +62,7 @@ std::unique_ptr<OperationPass<FuncOp>> createSinkConstantsToControlFlowPass();
 std::unique_ptr<OperationPass<FuncOp>> createMhloFusionPass();
 
 /// Lowers trigonometric operations from the standard dialect to approximations
-// that do not use intrinsics.
+/// that do not use intrinsics.
 std::unique_ptr<OperationPass<FuncOp>>
 createLegalizeTrigonometricToApproximationPass();
 

@@ -1,4 +1,5 @@
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_py_library")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -17,6 +18,7 @@ py_library(
     srcs = [
         "interpreter.py",
     ],
+    compatible_with = get_compatible_with_portable(),
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
@@ -84,6 +86,7 @@ py_library(
         ":lite",
         "//tensorflow/lite/toco/logging:gen_html",
         "//tensorflow/lite/toco/logging:toco_conversion_log_proto_py",
+        "//tensorflow/python:util",
         "@six_archive//:six",
     ],
 )
@@ -97,7 +100,7 @@ py_test(
     ],
     python_version = "PY3",
     # Increased thread count for reducing timeout failures.
-    shard_count = 4,
+    shard_count = 10,
     srcs_version = "PY2AND3",
     tags = [
         "no_oss",
@@ -107,9 +110,26 @@ py_test(
         "notsan",  # b/160824139
     ],
     deps = [
+        ":convert",
         ":tflite_convert",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python:tf2",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/saved_model",
+        "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/training:training_util",
+        "//tensorflow/python/training/tracking",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -130,7 +150,6 @@ py_library(
         "//tensorflow/lite/experimental/tensorboard:ops_util",
         "//tensorflow/lite/python/optimize:calibrator",
         "//tensorflow/python:graph_util",
-        "//tensorflow/python/keras",
         "//tensorflow/python/saved_model:constants",
         "//tensorflow/python/saved_model:loader",
         "@six_archive//:six",
@@ -149,6 +168,7 @@ py_test(
     ],
     deps = [
         ":lite",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "@six_archive//:six",
@@ -159,13 +179,11 @@ py_test(
     name = "lite_v2_test",
     srcs = ["lite_v2_test.py"],
     python_version = "PY3",
-    shard_count = 4,
+    shard_count = 12,
     srcs_version = "PY2AND3",
     tags = [
         "no_mac",  # TODO(b/148247402): flatbuffers import broken on Mac OS.
         "no_windows",
-        "noasan",  # b/168812578
-        "notsan",  # b/168812578
     ],
     deps = [
         ":lite",
@@ -215,6 +233,8 @@ py_library(
     deps = [
         ":op_hint",
         ":schema_py",
+        ":schema_util",
+        "//tensorflow/lite/python:tflite_keras_util",
         "//tensorflow/lite/toco:toco_flags_proto_py",
         "//tensorflow/python:convert_to_constants",
         "//tensorflow/python:dtypes",
@@ -254,6 +274,18 @@ py_test(
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "tflite_keras_util",
+    srcs = [
+        "tflite_keras_util.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:util",
+        "//tensorflow/python/eager:def_function",
     ],
 )
 
@@ -359,7 +391,6 @@ py_test(
         "//tensorflow/python:nn",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:session",
-        "//tensorflow/python/keras",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model",
     ],
@@ -382,4 +413,14 @@ sh_test(
     name = "convert_file_to_c_source_test",
     srcs = ["convert_file_to_c_source_test.sh"],
     data = [":convert_file_to_c_source"],
+)
+
+py_library(
+    name = "schema_util",
+    srcs = ["schema_util.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow/lite/schema:utils_friends"],
+    deps = [
+        "//tensorflow/python:util",
+    ],
 )

@@ -158,10 +158,10 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:elemental_ir_emitter",
+        "//tensorflow/compiler/xla/service:fusion_node_indexing_evaluation",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Core",
@@ -262,5 +262,15 @@ cc_library(
     hdrs = ["ir_builder_mixin.h"],
     deps = [
         "@llvm-project//llvm:Core",
+    ],
+)
+
+tf_cc_test(
+    name = "ir_array_test",
+    srcs = ["ir_array_test.cc"],
+    deps = [
+        ":ir_array",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
 )

@@ -140,7 +140,7 @@ class ModelDatasetOp::Dataset : public DatasetBase {
       IteratorContext::Params params(ctx);
       {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(EnsureOptimizeThreadStarted(ctx));
+        TF_RETURN_IF_ERROR(EnsureModelThreadStarted(ctx));
         params.model = model_;
         int64 now_nanos = EnvTime::NowNanos();
         RecordInput(now_nanos);
@@ -175,18 +175,16 @@ class ModelDatasetOp::Dataset : public DatasetBase {
     }
 
    private:
-    Status EnsureOptimizeThreadStarted(IteratorContext* ctx)
+    Status EnsureModelThreadStarted(IteratorContext* ctx)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (!model_thread_) {
-        std::shared_ptr<IteratorContext> new_ctx =
-            std::make_shared<IteratorContext>(*ctx);
-        model_thread_ = ctx->StartThread(
-            "tf_data_model", [this, new_ctx]() { ModelThread(new_ctx); });
+        model_thread_ =
+            ctx->StartThread("tf_data_model", [this]() { ModelThread(); });
       }
       return Status::OK();
     }
 
-    void ModelThread(const std::shared_ptr<IteratorContext>& ctx) {
+    void ModelThread() {
       int64 last_optimization_ms = 0;
       int64 optimization_period_ms = 10;
       int64 current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;

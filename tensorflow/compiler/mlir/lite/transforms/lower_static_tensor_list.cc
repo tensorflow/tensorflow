@@ -892,14 +892,14 @@ LogicalResult LowerStaticTensorListPass::RewriteFunction(
   target.addLegalOp<TFL::BidirectionalSequenceLSTMOp>();
 
   OwningRewritePatternList patterns;
-  populateWithGenerated(context, &patterns);
+  populateWithGenerated(context, patterns);
   patterns.insert<ConvertConst, ConvertEmptyTensorList, ConvertIdentity,
                   ConvertTensorListGetItem, ConvertTensorListLength,
                   ConvertTensorListPushBack, ConvertTensorListReserve,
                   ConvertTensorListSetItem, ConvertTensorListStack,
                   ConvertTensorListResize, ConvertWhile, ConvertWhileRegion>(
       context);
-  return applyPartialConversion(func, target, patterns);
+  return applyPartialConversion(func, target, std::move(patterns));
 }
 
 void LowerStaticTensorListPass::runOnOperation() {

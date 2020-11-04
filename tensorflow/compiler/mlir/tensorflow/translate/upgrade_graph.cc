@@ -21,11 +21,6 @@ Status GenerateResourceSharedNameIfEmpty(Graph& graph,
                                          FunctionLibraryDefinition& flib_def) {
   auto is_resource_op_with_empty_shared_name = [](const NodeDef& node_def,
                                                   const OpDef& op_def) {
-    // Only upgrade when it is a resource handle op.
-    if (op_def.output_arg().size() != 1 ||
-        op_def.output_arg(0).type() != tensorflow::DT_RESOURCE)
-      return false;
-
     // If the OpDef has "use_node_name_sharing" field, then it is valid to use
     // node names as shared names.
     if (!std::any_of(op_def.attr().begin(), op_def.attr().end(),

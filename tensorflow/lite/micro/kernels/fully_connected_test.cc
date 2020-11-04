@@ -20,11 +20,9 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/kernels/kernel_runner.h"
-#include "tensorflow/lite/micro/kernels/micro_ops.h"
 #include "tensorflow/lite/micro/micro_utils.h"
 #include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
-#include "tensorflow/lite/micro/testing/test_utils.h"
 
 namespace tflite {
 namespace testing {
@@ -241,8 +239,7 @@ TfLiteStatus ValidateFullyConnectedGoldens(
   int outputs_array_data[] = {1, 3};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  const TfLiteRegistration registration =
-      ops::micro::Register_FULLY_CONNECTED();
+  const TfLiteRegistration registration = Register_FULLY_CONNECTED();
   micro::KernelRunner runner(
       registration, tensors, tensors_size, inputs_array, outputs_array,
       reinterpret_cast<void*>(&builtin_data), micro_test::reporter);
@@ -279,10 +276,10 @@ TfLiteStatus TestFullyConnectedFloat(
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims),
-      CreateFloatTensor(weights_data, weights_dims),
-      CreateFloatTensor(bias_data, bias_dims),
-      CreateFloatTensor(output_data, output_dims),
+      CreateTensor(input_data, input_dims),
+      CreateTensor(weights_data, weights_dims),
+      CreateTensor(bias_data, bias_dims),
+      CreateTensor(output_data, output_dims),
   };
 
   return ValidateFullyConnectedGoldens(tensors, tensors_size, activation, 1e-4f,
@@ -320,8 +317,8 @@ TfLiteStatus TestFullyConnectedQuantized(
                             output_zero_point),
   };
 
-  AsymmetricQuantize(golden, golden_quantized, output_dims_count, output_scale,
-                     output_zero_point);
+  Quantize(golden, golden_quantized, output_dims_count, output_scale,
+           output_zero_point);
 
   return ValidateFullyConnectedGoldens(tensors, tensors_size, activation, 0.0f,
                                        output_dims_count, golden_quantized,

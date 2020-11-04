@@ -45,10 +45,7 @@ CholeskyThunk::CholeskyThunk(ThunkInfo thunk_info,
       info_buffer_(info_buffer),
       type_(type),
       batch_size_(batch_size),
-      a_batch_stride_(
-          n * n *
-          ShapeUtil::ByteSizeOfPrimitiveType(
-              thunk_info.hlo_instruction->operand(0)->shape().element_type())),
+      a_batch_stride_(n * n * ShapeUtil::ByteSizeOfPrimitiveType(type)),
       n_(n) {}
 
 Status CholeskyThunk::ExecuteOnStream(const ExecuteParams& params) {

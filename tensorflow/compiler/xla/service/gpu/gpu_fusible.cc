@@ -143,29 +143,27 @@ bool IsInputFusibleReduction(const HloInstruction& instr) {
          IsReductionFromOrToContiguousDimensions(instr);
 }
 
+const HloInstruction* GetRealHeroForMultiOutputFusion(
+    const HloInstruction& instr) {
+  if (instr.opcode() != HloOpcode::kFusion) {
+    return &instr;
+  }
+  auto fused_expression_root = instr.fused_expression_root();
+  if (!instr.IsMultiOutputFusion()) {
+    return fused_expression_root;
+  }
+  // If possible, we want to pick a reduction-from-or-to-contiguous-dims
+  // operand of the fusion root, because it has the most constraints.
+  for (const auto* inst : fused_expression_root->operands()) {
+    if (IsReductionFromOrToContiguousDimensions(*inst)) {
+      return inst;
+    }
+  }
+  return fused_expression_root->operands()[0];
+}
+
 bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
                                           const HloInstruction& instr2) {
-  // Returns the instructions that determines the emitter used for lowering,
-  // sometimes referred to as "the real hero".
-  auto get_real_hero =
-      [&](const HloInstruction* instr) -> const HloInstruction* {
-    if (instr->opcode() != HloOpcode::kFusion) {
-      return instr;
-    }
-    auto fused_expression_root = instr->fused_expression_root();
-    if (!instr->IsMultiOutputFusion()) {
-      return fused_expression_root;
-    }
-    // If possible, we want to pick a reduction-to-vector operand of the
-    // fusion root, because it has the most constraints.
-    for (const auto* inst : fused_expression_root->operands()) {
-      if (IsReductionFromOrToContiguousDimensions(*inst)) {
-        return inst;
-      }
-    }
-    return fused_expression_root->operands()[0];
-  };
-
   // Multi-output fusion kernels share a common parallel loop. The loop
   // dimensions are determined by instruction shapes.
   auto get_loop_shape = [&](const HloInstruction* element_instr) {
@@ -181,8 +179,8 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
   // root ops should have equal output shapes. An exception are
   // reduction-to-vector ops. Here the input shapes of the reduction (first
   // operand shape) and the reduction dimensions need to match.
-  auto* instr_1 = get_real_hero(&instr1);
-  auto* instr_2 = get_real_hero(&instr2);
+  auto* instr_1 = GetRealHeroForMultiOutputFusion(instr1);
+  auto* instr_2 = GetRealHeroForMultiOutputFusion(instr2);
   if (IsReductionFromOrToContiguousDimensions(*instr_1) &&
       IsReductionFromOrToContiguousDimensions(*instr_2) &&
       !AreFusedReductionOutputsConsistent({instr_1, instr_2}, instr_1)) {
@@ -336,9 +334,9 @@ static int64 SharedMemoryUsage(const HloInstruction& instr) {
     }
   } else if (instr.opcode() == HloOpcode::kFusion) {
     int64 sum = 0;
-    for (const HloInstruction* operand :
-         instr.fused_expression_root()->operands()) {
-      sum += SharedMemoryUsage(*operand);
+    for (const HloInstruction* hlo :
+         instr.fused_instructions_computation()->MakeInstructionPostOrder()) {
+      sum += SharedMemoryUsage(*hlo);
     }
     return sum;
   }
@@ -522,6 +520,25 @@ HloInstruction::FusionKind ChooseFusionKind(const HloInstruction& /*producer*/,
                                             const HloInstruction& consumer) {
   return IsInputFusible(consumer) ? HloInstruction::FusionKind::kInput
                                   : HloInstruction::FusionKind::kLoop;
+}
+
+bool IsConsumerTheOnlyNonRootUser(const HloInstruction& instr,
+                                  const HloInstruction& consumer) {
+  return absl::c_all_of(instr.users(), [&](const HloInstruction* user) {
+    if (user->opcode() == HloOpcode::kGetTupleElement) {
+      // Skip GTE.
+      return IsConsumerTheOnlyNonRootUser(*user, consumer);
+    }
+    if (user == &consumer) {
+      // `user` is `consumer`.
+      return true;
+    }
+    if (user == user->parent()->root_instruction()) {
+      // Consumed by ROOT.
+      return true;
+    }
+    return false;
+  });
 }
 
 }  // namespace gpu

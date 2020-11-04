@@ -40,7 +40,7 @@ Status MlirGraphOptimizationPass::Run(const ConfigProto& config_proto,
 
   VLOG(1) << "Run MLIR Graph Optimization Passes";
   PassManager pm(module.getContext());
-  ::tensorflow::SetCrashReproducer(pm);
+  ::tensorflow::applyTensorflowAndCLOptions(pm);
 
   // Run island coarsening before shape inference to allow more exact shape
   // inference using constant folding within islands.
@@ -50,7 +50,8 @@ Status MlirGraphOptimizationPass::Run(const ConfigProto& config_proto,
   // Assign optimal data layout to layout sensitive operations and delete
   // redundant transposes from the IR.
   LayoutOptimizationPipelineOptions layout_optimization_options;
-  CreateLayoutOptimizationPipeline(pm, layout_optimization_options);
+  CreateLayoutOptimizationPipeline(pm.nest<FuncOp>(),
+                                   layout_optimization_options);
 
   // Prepare IR for exporting.
   pm.addPass(CreateBreakUpIslandsPass());

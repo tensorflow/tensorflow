@@ -239,9 +239,9 @@ class XPlaneVisitor : public XStatsOwner<XPlane> {
 
  private:
   void BuildEventTypeMap(const XPlane* plane,
-                         const TypeGetter& event_type_getter);
+                         const TypeGetterList& event_type_getter_list);
   void BuildStatTypeMap(const XPlane* plane,
-                        const TypeGetter& stat_type_getter);
+                        const TypeGetterList& stat_type_getter_list);
 
   const XPlane* plane_;
 

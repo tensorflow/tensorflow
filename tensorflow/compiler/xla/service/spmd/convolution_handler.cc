@@ -281,6 +281,22 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnRHS(
     rhs = rhs.Reshard(aligned_rhs_sharding).PadWithValue(zero);
   }
 
+  if (original_hlo->feature_group_count() > 1 &&
+      (lhs.sharding().tile_assignment().dim(dnums.input_feature_dimension()) >
+           1 ||
+       rhs.sharding().tile_assignment().dim(
+           dnums.kernel_output_feature_dimension()) > 1)) {
+    return nullptr;
+  }
+
+  if (original_hlo->batch_group_count() > 1 &&
+      (lhs.sharding().tile_assignment().dim(dnums.input_batch_dimension()) >
+           1 ||
+       rhs.sharding().tile_assignment().dim(
+           dnums.kernel_output_feature_dimension()) > 1)) {
+    return nullptr;
+  }
+
   // Reshard RHS so that each shard computes the partial sum of the full
   // shape result, and add AllReduce. See HandleConvolutionTiledLhsAndRhs()
   // that reshards LHS.
@@ -573,6 +589,22 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnLHS(
     lhs = lhs.PadWithValue(zero);
     rhs =
         rhs.Reshard(aligned_rhs_sharding).PadWithValue(zero, reversed_rhs_dims);
+  }
+
+  if (original_hlo->feature_group_count() > 1 &&
+      (lhs.sharding().tile_assignment().dim(dnums.input_feature_dimension()) >
+           1 ||
+       rhs.sharding().tile_assignment().dim(
+           dnums.kernel_output_feature_dimension()) > 1)) {
+    return nullptr;
+  }
+
+  if (original_hlo->batch_group_count() > 1 &&
+      (lhs.sharding().tile_assignment().dim(dnums.input_batch_dimension()) >
+           1 ||
+       rhs.sharding().tile_assignment().dim(
+           dnums.kernel_output_feature_dimension()) > 1)) {
+    return nullptr;
   }
   // Reshard LHS by exchanging halo such that each shard computes the partial
   // sum of the full shape result, and add AllReduce.

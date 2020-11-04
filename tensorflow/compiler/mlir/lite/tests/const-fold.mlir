@@ -577,3 +577,13 @@ func @div_dense_different_rank() -> tensor<1x2x2xf32> {
 // CHECK: %[[CST:.*]] = constant dense<[{{\[}}{{\[}}5.000000e-01, 0.333333343], [1.000000e+00, 0.666666686]]]> : tensor<1x2x2xf32>
 // CHECK:  return %[[CST]]
 }
+
+// CHECK-LABEL: @rsqrt_bf16
+func @rsqrt_bf16() -> tensor<bf16> {
+  %cst = constant dense<4.0> : tensor<bf16>
+  %0 = "tfl.rsqrt"(%cst) : (tensor<bf16>) -> tensor<bf16>
+  return %0 : tensor<bf16>
+
+// CHECK: %[[CST:.*]] = constant dense<5.000000e-01> : tensor<bf16>
+// CHECK:  return %[[CST]]
+}

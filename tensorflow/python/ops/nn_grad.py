@@ -579,7 +579,7 @@ def _Conv2DGrad(op, grad):
 
   # We call the gen_nn_ops backprop functions instead of nn_ops backprop
   # functions for performance reasons in Eager mode. gen_nn_ops functions take a
-  # `explicit_paddings` parameter, but nn_ops functions do not. So if were were
+  # `explicit_paddings` parameter, but nn_ops functions do not. So if we were
   # to use the nn_ops functions, we would have to convert `padding` and
   # `explicit_paddings` into a single `padding` parameter, increasing overhead
   # in Eager mode.
@@ -897,6 +897,11 @@ def _BaseFusedBatchNormGrad(op, version, *grad):
     if data_format == b"NCHW":
       x = array_ops.transpose(x, [0, 2, 3, 1])
       grad_y = array_ops.transpose(grad_y, [0, 2, 3, 1])
+    elif data_format == b"NCDHW":
+      x = array_ops.transpose(x, [0, 2, 3, 4, 1])
+      grad_y = array_ops.transpose(grad_y, [0, 2, 3, 4, 1])
+    target_data_format = ("NHWC" if data_format in (b"NCHW",
+                                                    b"NHWC") else "NDHWC")
     args = {
         "y_backprop": grad_y,
         "x": x,
@@ -904,7 +909,7 @@ def _BaseFusedBatchNormGrad(op, version, *grad):
         "reserve_space_1": pop_mean,
         "reserve_space_2": pop_var,
         "epsilon": epsilon,
-        "data_format": "NHWC",
+        "data_format": target_data_format,
         "is_training": is_training
     }
     if version == 2:
@@ -912,6 +917,8 @@ def _BaseFusedBatchNormGrad(op, version, *grad):
     dx, dscale, doffset, _, _ = grad_fun(**args)
     if data_format == b"NCHW":
       dx = array_ops.transpose(dx, [0, 3, 1, 2])
+    elif data_format == b"NCDHW":
+      dx = array_ops.transpose(dx, [0, 4, 1, 2, 3])
   return dx, dscale, doffset, None, None
 
 
@@ -941,8 +948,8 @@ def _BatchNormGrad(grad_y,
   """Returns the gradients for the 3 inputs of BatchNorm.
 
   Args:
-    grad_y: A `Tensor` of 4 dimensions for gradient for y.
-    x: A `Tensor` of 4 dimensions for x.
+    grad_y: A `Tensor` of 4 or 5 dimensions for gradient for y.
+    x: A `Tensor` of 4 or 5 dimensions for x.
     scale: A `Tensor` of 1 dimension for scaling.
     pop_mean: A `Tensor` of 1 dimension for the population mean. Only used when
       is_training=False.
@@ -968,10 +975,18 @@ def _BatchNormGrad(grad_y,
     if data_format == b"NHWC":
       keepdims = False
       reduce_axis = [0, 1, 2]
-    else:
+    elif data_format == b"NDHWC":
+      keepdims = False
+      reduce_axis = [0, 1, 2, 3]
+    elif data_format == b"NCHW":
       keepdims = True
       reduce_axis = [0, 2, 3]
       shape = [1, array_ops.size(scale), 1, 1]
+      scale = array_ops.reshape(scale, shape)
+    else:
+      keepdims = True
+      reduce_axis = [0, 2, 3, 4]
+      shape = [1, array_ops.size(scale), 1, 1, 1]
       scale = array_ops.reshape(scale, shape)
     mean_grad_y = math_ops.reduce_mean(grad_y, reduce_axis, keepdims=keepdims)
     mean_x = math_ops.reduce_mean(x, reduce_axis, keepdims=keepdims)
@@ -987,16 +1002,24 @@ def _BatchNormGrad(grad_y,
         grad_y_offset - math_ops.reciprocal(var_x + epsilon) * mean * x_offset)
     grad_scale = math_ops.rsqrt(var_x + epsilon) * math_ops.reduce_sum(
         grad_y * x_offset, axis=reduce_axis, keepdims=keepdims)
-    if data_format == b"NCHW":
+    if data_format == b"NCHW" or data_format == b"NCDHW":
       grad_scale = array_ops.squeeze(grad_scale)
     grad_offset = math_ops.reduce_sum(grad_y, axis=reduce_axis)
     return math_ops.cast(grad_x, x_dtype), grad_scale, grad_offset
   else:
     if data_format == b"NHWC":
       reduce_axis = [0, 1, 2]
-    else:
+    elif data_format == b"NDHWC":
+      reduce_axis = [0, 1, 2, 3]
+    elif data_format == b"NCHW":
       reduce_axis = [0, 2, 3]
       shape = [1, array_ops.size(pop_mean), 1, 1]
+      pop_mean = array_ops.reshape(pop_mean, shape)
+      pop_var = array_ops.reshape(pop_var, shape)
+      scale = array_ops.reshape(scale, shape)
+    else:
+      reduce_axis = [0, 2, 3, 4]
+      shape = [1, array_ops.size(pop_mean), 1, 1, 1]
       pop_mean = array_ops.reshape(pop_mean, shape)
       pop_var = array_ops.reshape(pop_var, shape)
       scale = array_ops.reshape(scale, shape)

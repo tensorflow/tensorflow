@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/add.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/concat_xy.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/concat_z.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/depthwise_conv.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/lstm.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/max_unpooling.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/mean.h"
@@ -108,6 +109,13 @@ absl::Status SelectConcat(const ConcatAttributes& attr,
     default:
       return absl::UnimplementedError("No concat for this axis.");
   }
+}
+
+std::unique_ptr<GPUOperation> SelectDWConvolutionDynamicWeights(
+    const DepthwiseConvolution2DAttributes& attr, const DeviceInfo& device_info,
+    const OperationDef& op_def) {
+  return absl::make_unique<GPUOperation>(
+      CreateDepthwiseConvolution2DDynamicWeights(device_info, op_def, attr));
 }
 
 void SelectReshape(int src_channels, int dst_channels,

@@ -25,11 +25,14 @@ import functools
 
 import six
 
+from tensorflow.python.distribute import central_storage_strategy
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
 from tensorflow.python.distribute import parameter_server_strategy
+from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute import values as ds_values
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -53,6 +56,9 @@ from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 
+
+keras_optimizers_gauge = monitoring.BoolGauge(
+    "/tensorflow/api/keras/optimizers", "keras optimizer usage", "method")
 
 _DEFAULT_VALID_DTYPES = frozenset([
     dtypes.float16, dtypes.bfloat16, dtypes.float32, dtypes.float64,
@@ -326,6 +332,9 @@ class OptimizerV2(trackable.Trackable):
     Raises:
       ValueError: in case of any invalid argument.
     """
+    # Instrument optimizer usages
+    keras_optimizers_gauge.get_cell(self.__class__.__name__).set(True)
+
     allowed_kwargs = {"clipnorm", "clipvalue", "lr", "decay", "global_clipnorm"}
     for k in kwargs:
       if k not in allowed_kwargs:
@@ -608,9 +617,12 @@ class OptimizerV2(trackable.Trackable):
             "context.")
 
       strategy = distribute_ctx.get_strategy()
-      if (not experimental_aggregate_gradients and strategy and isinstance(
-          strategy.extended,
-          parameter_server_strategy.ParameterServerStrategyExtended)):
+      if (not experimental_aggregate_gradients and strategy and
+          isinstance(strategy,
+                     (parameter_server_strategy.ParameterServerStrategyV1,
+                      parameter_server_strategy_v2.ParameterServerStrategyV2,
+                      central_storage_strategy.CentralStorageStrategy,
+                      central_storage_strategy.CentralStorageStrategyV1))):
         raise NotImplementedError(
             "`experimental_aggregate_gradients=False is not supported for "
             "ParameterServerStrategy and CentralStorageStrategy")
@@ -681,7 +693,7 @@ class OptimizerV2(trackable.Trackable):
         # If the current context is graph mode or any of the update ops are
         # symbolic then the step update should be carried out under a graph
         # context. (eager updates execute immediately)
-        with ops._get_graph_from_inputs(update_ops).as_default():  # pylint: disable=protected-access
+        with backend._current_graph(update_ops).as_default():  # pylint: disable=protected-access
           with ops.control_dependencies([control_flow_ops.group(update_ops)]):
             return self._iterations.assign_add(1, read_value=False)
 
@@ -789,6 +801,14 @@ class OptimizerV2(trackable.Trackable):
       if name in self._hyper:
         return self._get_hyper(name)
       raise e
+
+  def __dir__(self):
+    result = set(super(OptimizerV2, self).__dir__())
+    if "_hyper" in result:
+      result |= self._hyper.keys()
+      if "learning_rate" in self._hyper.keys():
+        result.add("lr")
+    return list(result)
 
   def __setattr__(self, name, value):
     """Override setattr to support dynamic hyperparameter setting."""

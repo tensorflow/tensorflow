@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import copy
 import numpy as np
 import six
@@ -30,13 +31,14 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.engine import keras_tensor
+from tensorflow.python.keras.utils import object_identity
 from tensorflow.python.keras.utils import tf_contextlib
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.util import nest
-from tensorflow.python.util import object_identity
 
 
 def is_tensor_or_tensor_list(v):
@@ -65,7 +67,7 @@ def get_reachable_from_inputs(inputs, targets=None):
   reachable = object_identity.ObjectIdentitySet(inputs)
   if targets:
     remaining_targets = object_identity.ObjectIdentitySet(nest.flatten(targets))
-  queue = inputs[:]
+  queue = collections.deque(inputs)
 
   while queue:
     x = queue.pop()
@@ -92,7 +94,7 @@ def get_reachable_from_inputs(inputs, targets=None):
         reachable.add(y)
         if targets:
           remaining_targets.discard(y)
-        queue.insert(0, y)
+        queue.appendleft(y)
 
     if targets and not remaining_targets:
       return reachable
@@ -363,6 +365,9 @@ def register_symbolic_tensor_type(cls):
     cls: A `class` type which shall be regarded as a symbolic `Tensor`.
   """
   global _user_convertible_tensor_types
+  if cls not in _user_convertible_tensor_types:
+    keras_tensor.register_keras_tensor_specialization(
+        cls, keras_tensor.UserRegisteredTypeKerasTensor)
   _user_convertible_tensor_types.add(cls)
 
 
@@ -474,10 +479,11 @@ def get_tensor_spec(t, dynamic_batch=False, name=None):
 
   dynamic_batch_spec = copy.deepcopy(spec)
   # RaggedTensorSpec only has a private _shape.
-  shape = dynamic_batch_spec._shape.as_list()
-  if shape:
-    shape[0] = None
-    dynamic_batch_spec._shape = tensor_shape.TensorShape(shape)
+  shape = dynamic_batch_spec._shape
+  if shape.rank is not None and shape.rank > 0:
+    shape_list = shape.as_list()
+    shape_list[0] = None
+    dynamic_batch_spec._shape = tensor_shape.TensorShape(shape_list)
   return dynamic_batch_spec
   # pylint: enable=protected-access
 

@@ -98,7 +98,6 @@ tf_py_test(
     name = "base_cluster_resolver_py_test",
     srcs = ["cluster_resolver_test.py"],
     main = "cluster_resolver_test.py",
-    tfrt_enabled = True,
     deps = [
         ":base_cluster_resolver_py",
         "//tensorflow/python:client_testlib",
@@ -114,7 +113,6 @@ tf_py_test(
     size = "small",
     srcs = ["gce_cluster_resolver_test.py"],
     main = "gce_cluster_resolver_test.py",
-    tfrt_enabled = True,
     deps = [
         ":gce_cluster_resolver_py",
         "//tensorflow/python:client_testlib",
@@ -131,7 +129,6 @@ tf_py_test(
     srcs = ["tfconfig_cluster_resolver_test.py"],
     grpc_enabled = True,
     main = "tfconfig_cluster_resolver_test.py",
-    tfrt_enabled = True,
     deps = [
         ":tfconfig_cluster_resolver_py",
         "//tensorflow/python:client_testlib",
@@ -148,7 +145,6 @@ tf_py_test(
     srcs = ["sagemaker_cluster_resolver_test.py"],
     grpc_enabled = True,
     main = "sagemaker_cluster_resolver_test.py",
-    tfrt_enabled = True,
     deps = [
         ":sagemaker_cluster_resolver_py",
         "//tensorflow/python:client_testlib",
@@ -165,7 +161,6 @@ tf_py_test(
     srcs = ["slurm_cluster_resolver_test.py"],
     main = "slurm_cluster_resolver_test.py",
     tags = [],
-    tfrt_enabled = True,
     deps = [
         ":slurm_cluster_resolver_py",
         "//tensorflow/python:client_testlib",
@@ -181,7 +176,6 @@ tf_py_test(
     size = "small",
     srcs = ["kubernetes_cluster_resolver_test.py"],
     main = "kubernetes_cluster_resolver_test.py",
-    tfrt_enabled = True,
     deps = [
         ":kubernetes_cluster_resolver_py",
         "//tensorflow/python:client_testlib",

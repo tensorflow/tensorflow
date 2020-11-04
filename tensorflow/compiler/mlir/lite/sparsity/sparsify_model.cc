@@ -57,7 +57,7 @@ TfLiteStatus SparsifyModel(const tflite::ModelT& input_model,
     return kTfLiteError;
   }
 
-  PassManager pm(module->getContext());
+  PassManager pm(module->getContext(), OpPassManager::Nesting::Implicit);
   pm.addPass(TFL::CreateDenseToSparsePass());
 
   if (failed(pm.run(module.get()))) {

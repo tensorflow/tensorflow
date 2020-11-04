@@ -783,6 +783,10 @@ class ShapeUtil {
   static absl::optional<std::vector<int64>> FindTranspose021(const Shape& a,
                                                              const Shape& b);
 
+  // Strips device-specific information, namely tiling and memory-space
+  // information, from a shape.
+  static Shape DeviceShapeToHostShape(Shape s);
+
  private:
   // Validates the shape size is sane. This makes sure it's safe to do
   // calculations in int64 without overflowing.

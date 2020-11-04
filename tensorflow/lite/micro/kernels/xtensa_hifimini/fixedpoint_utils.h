@@ -25,19 +25,13 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 
 namespace tflite {
-namespace ops {
-namespace micro {
-namespace xtensa {
-namespace hifimini {
 
 // INT24 MIN/MAX
 #define INT24_MIN -8388608
 #define INT24_MAX 8388607
 
-//
 // Multiply 24bit value by a quantized multiplier (w/ shift) and returns a 48bit
 // aligned value in the QR register.
-//
 inline ae_q56s MultiplyByQuantizedMultiplier(ae_p24x2s x_24x2,
                                              int32_t quantized_multiplier,
                                              int shift) {
@@ -77,13 +71,10 @@ inline ae_q56s MultiplyByQuantizedMultiplier(ae_p24x2s x_24x2,
   return result_56;
 }
 
-//
 // Multiply 32bit value by a quantized multiplier (w/ shift) and returns a 48bit
 // aligned value in the QR register.
-//
-inline ae_q56s MultiplyByQuantizedMultiplier(int32_t x,
-                                             int32_t quantized_multiplier,
-                                             int shift) {
+inline ae_q56s MultiplyByQuantizedMultiplierResult48Bit(
+    int32_t x, int32_t quantized_multiplier, int shift) {
   // Convert x into a 2x24bit PR register file. If x is outside the numerical
   // limits of a 24bit integer, the "fractional" or lower 8bits are discarded.
   // If x is within the range of a 24 bit integer, the "signed" or upper 8bits
@@ -99,11 +90,10 @@ inline ae_q56s MultiplyByQuantizedMultiplier(int32_t x,
   return MultiplyByQuantizedMultiplier(x_24x2, quantized_multiplier, shift);
 }
 
-//
 // Calculate quantization params for 24bit runtimes.
-//
-inline void QuantizeMultiplier(float multiplier, int32_t* quantized_multiplier,
-                               int* shift) {
+inline void QuantizeMultiplierForInt24(float multiplier,
+                                       int32_t* quantized_multiplier,
+                                       int* shift) {
   if (multiplier == 0.0f) {
     *quantized_multiplier = 0;
     *shift = 0;
@@ -130,9 +120,7 @@ inline void QuantizeMultiplier(float multiplier, int32_t* quantized_multiplier,
   *quantized_multiplier = static_cast<int32_t>(q_fixed);
 }
 
-//
 // Convert a floating point number to a Q representation for 24 bit integers.
-//
 inline int CreateQConstantForInt24(int integer_bits, float f) {
   const float min_bounds = static_cast<float>(INT24_MIN);
   const float max_bounds = static_cast<float>(INT24_MAX);
@@ -144,10 +132,6 @@ inline int CreateQConstantForInt24(int integer_bits, float f) {
   return static_cast<int>(raw);
 }
 
-}  // namespace hifimini
-}  // namespace xtensa
-}  // namespace micro
-}  // namespace ops
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_MICRO_KERNELS_XTENSA_HIFIMINI_FIXEDPOINT_UTILS_H_

@@ -202,6 +202,7 @@ tf_cuda_library(
             ":tf_status",
             ":tf_tensor",
             "@com_google_absl//absl/strings",
+            "//tensorflow/c/experimental/filesystem:modular_filesystem",
             "//tensorflow/cc/saved_model:loader_lite",
             "//tensorflow/cc:gradients",
             "//tensorflow/cc:ops",
@@ -217,6 +218,8 @@ tf_cuda_library(
             "//tensorflow/core:lib_internal",
             "//tensorflow/core/distributed_runtime:server_lib",
             "//tensorflow/core/kernels:logging_ops",
+            "//tensorflow/compiler/mlir/tfr:node_expansion_pass",
+            "//tensorflow/compiler/mlir/tfr:graph_decompose_pass",
         ],
     }),
     alwayslink = 1,
@@ -252,6 +255,30 @@ tf_cuda_library(
             "//tensorflow/core:lib",
         ],
     }),
+)
+
+cc_library(
+    name = "tf_shape",
+    srcs = ["tf_shape.cc"],
+    hdrs = ["tf_shape.h"],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":c_api_macros",
+        ":tf_shape_internal",
+        "//tensorflow/core:framework",
+    ],
+)
+
+cc_library(
+    name = "tf_shape_internal",
+    hdrs = ["tf_shape_internal.h"],
+    copts = tf_copts(),
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":conversion_macros",
+        "//tensorflow/core:framework",
+    ],
 )
 
 cc_library(
@@ -485,6 +512,18 @@ tf_cuda_library(
     ],
 )
 
+cc_library(
+    name = "kernels_hdrs",
+    hdrs = ["kernels.h"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":c_api_internal",
+        ":tf_datatype",
+        ":tf_status",
+        ":tf_tensor",
+    ],
+)
+
 tf_cuda_library(
     name = "kernels",
     srcs = [
@@ -536,6 +575,16 @@ tf_cuda_library(
         ],
     }),
     alwayslink = 1,
+)
+
+cc_library(
+    name = "ops_hdrs",
+    hdrs = ["ops.h"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":tf_datatype",
+        ":tf_status",
+    ],
 )
 
 # -----------------------------------------------------------------------------

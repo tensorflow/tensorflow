@@ -35,6 +35,7 @@ from tensorflow.lite.python import wrap_toco
 from tensorflow.lite.toco import model_flags_pb2 as _model_flags_pb2
 from tensorflow.lite.toco import toco_flags_pb2 as _toco_flags_pb2
 from tensorflow.lite.toco import types_pb2 as _types_pb2
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import resource_loader as _resource_loader
 from tensorflow.python.util import deprecation
@@ -157,6 +158,19 @@ def mlir_sparsify(input_data_str):
     Sparsified model in serialized form (e.g. a TFLITE model).
   """
   return wrap_toco.wrapped_experimental_mlir_sparsify(input_data_str)
+
+
+def register_custom_opdefs(custom_opdefs_list):
+  """Register the given custom opdefs to the TensorFlow global op registry.
+
+  Args:
+    custom_opdefs_list: String representing the custom ops OpDefs that are
+      included in the GraphDef.
+
+  Returns:
+    True if the registration is successfully completed.
+  """
+  return wrap_toco.wrapped_register_custom_opdefs(custom_opdefs_list)
 
 
 def toco_convert_protos(model_flags_str,
@@ -288,7 +302,7 @@ Alternative, use virtualenv.""")
         pass
 
 
-def build_toco_flags(inference_type=lite_constants.FLOAT,
+def build_toco_flags(inference_type=dtypes.float32,
                      inference_input_type=None,
                      input_format=lite_constants.TENSORFLOW_GRAPHDEF,
                      output_format=lite_constants.TFLITE,
@@ -339,7 +353,7 @@ def build_toco_flags(inference_type=lite_constants.FLOAT,
 
 def build_toco_convert_protos(input_tensors,
                               output_tensors,
-                              inference_type=lite_constants.FLOAT,
+                              inference_type=dtypes.float32,
                               inference_input_type=None,
                               input_format=lite_constants.TENSORFLOW_GRAPHDEF,
                               input_shapes=None,

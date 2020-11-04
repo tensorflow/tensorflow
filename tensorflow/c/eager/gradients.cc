@@ -191,7 +191,7 @@ Status TapeVSpace::CallBackwardFunction(
       &ctx, incoming_gradients, result);
 }
 
-Status TapeVSpace::BuildOnesLike(TapeTensor t,
+Status TapeVSpace::BuildOnesLike(const TapeTensor& t,
                                  AbstractTensorHandle** result) const {
   AbstractOperationPtr op(ctx_->CreateOperation());
   TF_RETURN_IF_ERROR(op->Reset("OnesLike", /*raw_device_name=*/nullptr));

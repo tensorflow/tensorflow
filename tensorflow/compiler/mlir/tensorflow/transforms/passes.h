@@ -84,6 +84,10 @@ std::unique_ptr<OperationPass<FuncOp>> CreateGpuOpFusionPass();
 std::unique_ptr<OperationPass<mlir::FuncOp>>
 CreateTensorDeviceCopyConversionPass();
 
+// Returns a pass that folds tf.BroadcastTo nodes with subsequent nodes if they
+// have built in broadcasting support.
+std::unique_ptr<OperationPass<FuncOp>> CreateBroadcastFoldPass();
+
 struct LayoutOptimizationPipelineOptions
     : public PassPipelineOptions<LayoutOptimizationPipelineOptions> {
   Option<std::string> force_data_format{
@@ -274,7 +278,7 @@ CreateMarkOpsForOutsideCompilationPass();
 // Creates a pass that hoists a `tf_device.launch` body and assigns a `device`
 // attribute to each TensorFlow dialect op in the body based on the `device`
 // attribute on the `tf_device.launch`.
-std::unique_ptr<OperationPass<FuncOp>> CreateLaunchToDeviceAttributePass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateLaunchToDeviceAttributePass();
 }  // namespace TFDevice
 
 namespace TFTPU {
@@ -353,6 +357,9 @@ CreateTPUUpdateEmbeddingEnqueueOpInputsPass();
 // ops to a separate parallel_execute region to run on CPU.
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTPUExtractOutsideCompilationPass();
+
+// Creates a pass that propagates TPU devices to users.
+std::unique_ptr<OperationPass<FuncOp>> CreateTPUDevicePropagationPass();
 
 // Populates the supplied passmanager with the passes required to run the
 // bridge.

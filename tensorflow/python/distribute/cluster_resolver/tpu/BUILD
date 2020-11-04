@@ -32,7 +32,6 @@ tf_py_test(
     grpc_enabled = True,
     main = "tpu_cluster_resolver_test.py",
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":tpu_cluster_resolver_py",
         "//tensorflow/python:client_testlib",

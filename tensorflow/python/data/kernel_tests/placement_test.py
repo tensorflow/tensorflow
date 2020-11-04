@@ -19,6 +19,7 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
+from tensorflow.python.data.experimental.ops import prefetching_ops
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import def_function
@@ -27,13 +28,14 @@ from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-@combinations.generate(test_base.v2_eager_only_combinations())
 class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
   """Tests for tf.data placement within tf.functions.
 
@@ -48,6 +50,7 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
     # cross-device copies.
     config.set_optimizer_experimental_options({"disable_meta_optimizer": True})
 
+  @combinations.generate(test_base.eager_only_combinations())
   def testWhileWithCapturedDataset(self):
     dataset = dataset_ops.Dataset.range(10)
 
@@ -61,6 +64,7 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     self.assertEqual(f().numpy(), 45)
 
+  @combinations.generate(test_base.eager_only_combinations())
   def testWhile(self):
     self.skipTest("b/166625126")
 
@@ -75,8 +79,8 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     self.assertEqual(f().numpy(), 45)
 
+  @combinations.generate(test_base.eager_only_combinations())
   def testCondWithPlacement(self):
-    self.skipTest("b/166625126")
     # When the cond op is explicitly placed, there shouldn't be cross-device
     # copies.
     @def_function.function
@@ -93,10 +97,10 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
         nxt = next(iterator)
       return nxt
 
-    self.assertEqual(f(), 1)
+    self.assertEqual(f().numpy(), 1)
 
+  @combinations.generate(test_base.eager_only_combinations())
   def testCondWithColocation(self):
-    self.skipTest("b/166625126")
     # When the cond op is colocated with the dataset, there shouldn't be
     # cross-device copies.
     @def_function.function
@@ -115,6 +119,7 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     self.assertEqual(f().numpy(), 1)
 
+  @combinations.generate(test_base.eager_only_combinations())
   def testCond(self):
     self.skipTest("b/166625126")
     # Ideally, placer should avoid cross-device copies even when the cond op
@@ -134,6 +139,7 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     self.assertEqual(f().numpy(), 1)
 
+  @combinations.generate(test_base.eager_only_combinations())
   def testId(self):
     self.skipTest("b/166625126")
     # Ideally, placer should know that Identity(dataset) should be on the same
@@ -144,6 +150,105 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
       dataset = array_ops.identity(dataset)
       return dataset
     f()
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testIteratorOnDeviceEagerMode(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available")
+
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.apply(prefetching_ops.prefetch_to_device("/gpu:0"))
+    iterator = iter(dataset)
+    data = next(iterator)
+    optional_data = iterator.get_next_as_optional()
+
+    self.assertIn("gpu:0", dataset._variant_tensor.device.lower())
+    self.assertIn("gpu:0", iterator._iterator_resource.device.lower())
+    self.assertIn("gpu:0", data.device.lower())
+    self.assertIn("gpu:0", optional_data.get_value().device.lower())
+    self.assertIn("gpu:0", optional_data.has_value().device.lower())
+
+  @combinations.generate(test_base.graph_only_combinations())
+  def testIteratorOnDeviceGraphModeOneShotIterator(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available")
+
+    self.skipTest("TODO(b/169429285): tf.data.Dataset.make_one_shot_iterator "
+                  "does not support GPU placement.")
+
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.apply(prefetching_ops.prefetch_to_device("/gpu:0"))
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
+    data = iterator.get_next()
+    optional_data = iterator.get_next_as_optional()
+
+    with ops.colocate_with(dataset._variant_tensor):
+      dataset_device = test_ops.device_placement_op()
+    self.assertIn(b"GPU:0", self.evaluate(dataset_device))
+
+    with ops.colocate_with(iterator._iterator_resource):
+      iterator_device = test_ops.device_placement_op()
+    self.assertIn(b"GPU:0", self.evaluate(iterator_device))
+
+    with ops.colocate_with(data):
+      data_device = test_ops.device_placement_op()
+    self.assertIn(b"GPU:0", self.evaluate(data_device))
+
+    with ops.colocate_with(optional_data.get_value()):
+      get_value_device = test_ops.device_placement_op()
+    self.assertIn(b"GPU:0", self.evaluate(get_value_device))
+
+    with ops.colocate_with(optional_data.has_value()):
+      has_value_device = test_ops.device_placement_op()
+    self.assertIn(b"GPU:0", self.evaluate(has_value_device))
+
+  @combinations.generate(test_base.graph_only_combinations())
+  def testIteratorOnDeviceGraphModeInitializableIterator(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available")
+
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.apply(prefetching_ops.prefetch_to_device("/gpu:0"))
+    iterator = dataset_ops.make_initializable_iterator(dataset)
+    data = iterator.get_next()
+    optional_data = iterator.get_next_as_optional()
+
+    with ops.colocate_with(dataset._variant_tensor):
+      dataset_device = test_ops.device_placement_op()
+    self.assertIn(b"GPU:0", self.evaluate(dataset_device))
+
+    with ops.colocate_with(iterator._iterator_resource):
+      iterator_device = test_ops.device_placement_op()
+    self.assertIn(b"GPU:0", self.evaluate(iterator_device))
+
+    with ops.colocate_with(data):
+      data_device = test_ops.device_placement_op()
+    self.assertIn(b"GPU:0", self.evaluate(data_device))
+
+    with ops.colocate_with(optional_data.get_value()):
+      get_value_device = test_ops.device_placement_op()
+    self.assertIn(b"GPU:0", self.evaluate(get_value_device))
+
+    with ops.colocate_with(optional_data.has_value()):
+      has_value_device = test_ops.device_placement_op()
+    self.assertIn(b"GPU:0", self.evaluate(has_value_device))
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testIterDatasetEagerModeWithExplicitDevice(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available")
+
+    @def_function.function
+    def comp():
+      value = constant_op.constant(0, dtype=dtypes.int64)
+      for d in iter(dataset_ops.Dataset.range(10)):
+        value += d
+      return value
+
+    with ops.device("/gpu:0"):
+      result = comp()
+    self.assertEqual(result.numpy(), 45)
+
 
 if __name__ == "__main__":
   test.main()

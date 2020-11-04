@@ -25,6 +25,7 @@ RUN bin/bash -c 'if [[ $ROCM_DEB_REPO == http://repo.radeon.com/rocm/*  ]] ; the
 # Install misc pkgs
 RUN apt-get update --allow-insecure-repositories && DEBIAN_FRONTEND=noninteractive apt-get install -y \
   build-essential \
+  bsdmainutils \
   clang-6.0 \
   clang-format-6.0 \
   clang-tidy-6.0 \

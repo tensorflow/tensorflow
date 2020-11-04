@@ -29,6 +29,7 @@ cc_library(
     }),
     deps = [
         "//tensorflow/c:env",
+        "//tensorflow/c:logging",
         "//tensorflow/c:tf_status",
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
         "//third_party/hadoop:hdfs",

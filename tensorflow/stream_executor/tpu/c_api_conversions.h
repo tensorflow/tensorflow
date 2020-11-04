@@ -43,9 +43,19 @@ stream_executor::DeviceMemoryBase FromC(const SE_DeviceMemoryBase& se_base);
 void Free(SE_DeviceMemoryBase*);
 
 // xla::Shape
-xla::Shape FromC(const XLA_Shape* shape);
+xla::Shape FromC(const XLA_Shape* c_shape);
 void ToC(const xla::Shape& xla_shape, XLA_Shape* c_shape);
-void Free(XLA_Shape* shape);
+void Free(XLA_Shape* c_shape);
+
+// xla::Layout
+xla::Layout FromC(const XLA_Layout* c_layout);
+void ToC(const xla::Layout& xla_layout, XLA_Layout* c_layout);
+void Free(XLA_Layout* c_layout);
+
+// xla::Tile
+xla::Tile FromC(const XLA_Tile* c_tile);
+void ToC(const xla::Tile& xla_tile, XLA_Tile* c_tile);
+void Free(XLA_Tile* c_tile);
 
 // xla::ShapeIndex
 XLA_ShapeIndex ToC(const xla::ShapeIndex& xla_shape);

@@ -67,32 +67,44 @@ static Graph* RandomBinomialRejComplement(int num_batches,
   return RandomBinomialGraph(100., 0.2, num_batches, samples_per_batch);
 }
 
-#define BM_RandomBinomialInv(DEVICE, B, S)                           \
-  static void BM_RandomBinomialInv_##DEVICE##_##B##_##S(int iters) { \
-    test::Benchmark(#DEVICE, RandomBinomialInv(B, S)).Run(iters);    \
-    testing::ItemsProcessed(static_cast<int64>(B) * S * iters);      \
-  }                                                                  \
+#define BM_RandomBinomialInv(DEVICE, B, S)                                   \
+  static void BM_RandomBinomialInv_##DEVICE##_##B##_##S(                     \
+      ::testing::benchmark::State& state) {                                  \
+    test::Benchmark(#DEVICE, RandomBinomialInv(B, S),                        \
+                    /*old_benchmark_api*/ false)                             \
+        .Run(state);                                                         \
+    state.SetItemsProcessed(static_cast<int64>(B) * S * state.iterations()); \
+  }                                                                          \
   BENCHMARK(BM_RandomBinomialInv_##DEVICE##_##B##_##S);
 
-#define BM_RandomBinomialRej(DEVICE, B, S)                           \
-  static void BM_RandomBinomialRej_##DEVICE##_##B##_##S(int iters) { \
-    test::Benchmark(#DEVICE, RandomBinomialRej(B, S)).Run(iters);    \
-    testing::ItemsProcessed(static_cast<int64>(B) * S * iters);      \
-  }                                                                  \
+#define BM_RandomBinomialRej(DEVICE, B, S)                                   \
+  static void BM_RandomBinomialRej_##DEVICE##_##B##_##S(                     \
+      ::testing::benchmark::State& state) {                                  \
+    test::Benchmark(#DEVICE, RandomBinomialRej(B, S),                        \
+                    /*old_benchmark_api*/ false)                             \
+        .Run(state);                                                         \
+    state.SetItemsProcessed(static_cast<int64>(B) * S * state.iterations()); \
+  }                                                                          \
   BENCHMARK(BM_RandomBinomialRej_##DEVICE##_##B##_##S);
 
-#define BM_RandomBinomialInvComplement(DEVICE, B, S)                           \
-  static void BM_RandomBinomialInvComplement_##DEVICE##_##B##_##S(int iters) { \
-    test::Benchmark(#DEVICE, RandomBinomialInvComplement(B, S)).Run(iters);    \
-    testing::ItemsProcessed(static_cast<int64>(B) * S * iters);                \
-  }                                                                            \
+#define BM_RandomBinomialInvComplement(DEVICE, B, S)                         \
+  static void BM_RandomBinomialInvComplement_##DEVICE##_##B##_##S(           \
+      ::testing::benchmark::State& state) {                                  \
+    test::Benchmark(#DEVICE, RandomBinomialInvComplement(B, S),              \
+                    /*old_benchmark_api*/ false)                             \
+        .Run(state);                                                         \
+    state.SetItemsProcessed(static_cast<int64>(B) * S * state.iterations()); \
+  }                                                                          \
   BENCHMARK(BM_RandomBinomialInvComplement_##DEVICE##_##B##_##S);
 
-#define BM_RandomBinomialRejComplement(DEVICE, B, S)                           \
-  static void BM_RandomBinomialRejComplement_##DEVICE##_##B##_##S(int iters) { \
-    test::Benchmark(#DEVICE, RandomBinomialRejComplement(B, S)).Run(iters);    \
-    testing::ItemsProcessed(static_cast<int64>(B) * S * iters);                \
-  }                                                                            \
+#define BM_RandomBinomialRejComplement(DEVICE, B, S)                         \
+  static void BM_RandomBinomialRejComplement_##DEVICE##_##B##_##S(           \
+      ::testing::benchmark::State& state) {                                  \
+    test::Benchmark(#DEVICE, RandomBinomialRejComplement(B, S),              \
+                    /*old_benchmark_api*/ false)                             \
+        .Run(state);                                                         \
+    state.SetItemsProcessed(static_cast<int64>(B) * S * state.iterations()); \
+  }                                                                          \
   BENCHMARK(BM_RandomBinomialRejComplement_##DEVICE##_##B##_##S);
 
 BM_RandomBinomialInv(cpu, 1000, 1000);

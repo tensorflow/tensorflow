@@ -113,6 +113,8 @@ DataType ConvertIODataTypeToDataType(toco::IODataType dtype) {
       return DT_QUINT8;
     case toco::IODataType::INT8:
       return DT_QINT8;
+    case toco::IODataType::QUANTIZED_INT16:
+      return DT_INT16;
     case toco::IODataType::INT32:
       return DT_INT32;
     case toco::IODataType::INT64:
@@ -273,7 +275,8 @@ Status DumpOpGraphToFile(mlir::ModuleOp module, const std::string& filename) {
 
 Status ConvertMLIRToTFLiteFlatBuffer(
     const toco::TocoFlags& toco_flags, mlir::OwningModuleRef module,
-    const mlir::TFL::PassConfig& pass_config, string* result,
+    const mlir::TFL::PassConfig& pass_config,
+    const std::unordered_set<std::string>& saved_model_tags, string* result,
     llvm::Optional<tensorflow::Session*> session) {
   bool emit_builtin_tflite_ops = !toco_flags.force_select_tf_ops();
   bool emit_select_tf_ops = toco_flags.enable_select_tf_ops();
@@ -286,7 +289,8 @@ Status ConvertMLIRToTFLiteFlatBuffer(
         absl::StrCat(toco_flags.dump_graphviz_dir(), "/toco_AT_IMPORT.dot")));
   }
 
-  mlir::PassManager pm(module->getContext());
+  mlir::PassManager pm(module->getContext(),
+                       mlir::OpPassManager::Nesting::Implicit);
 
   tensorflow::AddTFToTFLConversionPasses(pass_config, &pm, session);
   // Convert back to outlined while format for export back to flatbuffer.
@@ -297,8 +301,8 @@ Status ConvertMLIRToTFLiteFlatBuffer(
 
   auto status = ConvertTFExecutorToTFLOrFlatbuffer(
       module.get(), /*export_to_mlir=*/false, emit_builtin_tflite_ops,
-      emit_select_tf_ops, emit_custom_ops, pass_config.quant_specs, result,
-      &pm);
+      emit_select_tf_ops, emit_custom_ops, pass_config.quant_specs,
+      saved_model_tags, result, &pm);
   if (toco_flags.has_dump_graphviz_dir()) {
     TF_RETURN_IF_ERROR(DumpOpGraphToFile(
         // rename once we enable the new converter feature flag.

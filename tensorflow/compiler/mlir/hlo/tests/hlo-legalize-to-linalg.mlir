@@ -1,6 +1,6 @@
 // RUN: mlir-hlo-opt %s -hlo-legalize-to-linalg -split-input-file | FILECHECK_OPTS="" FileCheck %s
 
-// CHECK: #map0 = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK: #map = affine_map<(d0, d1) -> (d0, d1)>
 // CHECK-LABEL: func @float_add
 func @float_add(%lhs: tensor<2x2xf32>,
                 %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
@@ -249,6 +249,20 @@ func @copy(%input: tensor<2x4x8xf32>) -> tensor<2x4x8xf32> {
   return %0 : tensor<2x4x8xf32>
 }
 // CHECK: return [[ARG]] : tensor<2x4x8xf32>
+
+// -----
+
+// CHECK-LABEL: func @is_finte
+func @is_finte(%input: tensor<2x2xf32>) -> tensor<2x2xi1> {
+  %0 = "mhlo.is_finite"(%input) : (tensor<2x2xf32>) -> tensor<2x2xi1>
+  return %0 : tensor<2x2xi1>
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32
+// CHECK-NEXT:   %[[POS_INF:.+]] = constant 0x7F800000 : f32
+// CHECK-NEXT:   %[[ABS_X:.+]] = absf %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   %[[RESULT:.+]] = cmpf "one", %[[ABS_X]], %[[POS_INF]] : f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
 
 // -----
 

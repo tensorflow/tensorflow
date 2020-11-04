@@ -15,9 +15,9 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def TestChloLegalizeToHloPass : Pass<"mhlo-test-chlo-legalize-to-hlo", "FuncOp"> {
-  let summary = "Test pass for applying chlo -> hlo legalization patterns.";
-  let constructor = "createTestChloLegalizeToHloPass()";
+def ChloLegalizeToHloPass : Pass<"chlo-legalize-to-hlo", "FuncOp"> {
+  let summary = "Legalize CHLO to HLO.";
+  let constructor = "createChloLegalizeToHloPass()";
 }
 
 def HloLegalizeToLhloPass : Pass<"hlo-legalize-to-lhlo", "ModuleOp"> {

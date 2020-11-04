@@ -23,6 +23,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_utils",
         "@com_google_absl//absl/memory",
         "@flatbuffers",
     ],
@@ -39,6 +40,7 @@ tf_cc_test(
         ":modify_model_interface",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_utils",
         "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -78,6 +80,34 @@ tf_cc_test(
         ":quantization_wrapper_utils",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_utils",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+tf_cc_test(
+    name = "quantization_wrapper_utils_custom_test",
+    srcs = [
+        "quantization_wrapper_utils.cc",
+        "quantization_wrapper_utils.h",
+        "quantization_wrapper_utils_custom_test.cc",
+    ],
+    defines = [
+        "TFLITE_CUSTOM_LSTM",
+    ],
+    tags = [
+        "tflite_not_portable_android",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":operator_property",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_utils",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
@@ -131,7 +161,9 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/kernels/internal:types",
+        "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_utils",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
@@ -165,6 +197,7 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_utils",
     ],
 )
 
@@ -175,7 +208,7 @@ tf_cc_test(
         "--test_model_file=$(location //tensorflow/lite/tools/optimize:testdata/single_conv_weights_min_0_max_plus_10.bin)",
     ],
     data = [
-        "//tensorflow/lite/tools/optimize:testdata/single_conv_weights_min_0_max_plus_10.bin",
+        ":testdata/single_conv_weights_min_0_max_plus_10.bin",
     ],
     tags = [
         "tflite_not_portable_android",
@@ -188,7 +221,9 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_utils",
         "//tensorflow/lite/testing:util",
+        "//third_party/eigen3",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
@@ -212,6 +247,7 @@ cc_library(
         # TODO(suharshs): Move the relevant quantization utils to a non-internal location.
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_utils",
         "//tensorflow/core:tflite_portable_logging",
     ],
 )
@@ -239,6 +275,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_utils",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
@@ -269,6 +306,7 @@ cc_library(
         "//tensorflow/lite:util",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_utils",
         "@flatbuffers",
     ],
 )
@@ -303,6 +341,8 @@ tf_cc_test(
         "//tensorflow/lite/tools/optimize:testdata/svdf_calibrated.bin",
         "//tensorflow/lite/tools/optimize:testdata/svdf_quantized.bin",
         "//tensorflow/lite/tools/optimize:testdata/transpose.bin",
+        "//tensorflow/lite/tools/optimize:testdata/unidirectional_sequence_lstm_calibrated.bin",
+        "//tensorflow/lite/tools/optimize:testdata/unidirectional_sequence_lstm_quantized.bin",
         "//tensorflow/lite/tools/optimize:testdata/unpack.bin",
     ],
     tags = [
@@ -316,6 +356,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_utils",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],

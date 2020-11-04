@@ -4307,30 +4307,36 @@ inline void LogSoftmax(const SoftmaxParams& params,
 // TODO(tflite): notes for optimization:
 // 1) See if e^ is also bottleneck in the reference fully-integer
 // version and apply lookup there and compare.
+template <typename T>
 inline void LogSoftmax(const SoftmaxParams& params, float input_scale,
-                       const RuntimeShape& input_shape, const uint8* input_data,
-                       const RuntimeShape& output_shape, uint8* output_data) {
-  ruy::profiler::ScopeLabel label("LogSoftmax/Uint8");
+                       const RuntimeShape& input_shape, const T* input_data,
+                       const RuntimeShape& output_shape, T* output_data) {
+  ruy::profiler::ScopeLabel label("LogSoftmax");
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int excluding_last_dim =
       MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
   const int last_dim =
       MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
 
-  const int32_t clamp_max = std::numeric_limits<uint8>::max();
-  const int32_t clamp_min = std::numeric_limits<uint8>::min();
+  const int32_t clamp_max = std::numeric_limits<T>::max();
+  const int32_t clamp_min = std::numeric_limits<T>::min();
+
+  int32_t zero_point_offset = 0;
+  if (std::is_same<T, int8_t>::value) {
+    zero_point_offset = 128;
+  }
   for (int i = 0; i < excluding_last_dim; ++i) {
-    uint8_t max_val = std::numeric_limits<uint8>::min();
+    T max_val = std::numeric_limits<T>::min();
     // Find max quantized value.
     for (int j = 0; j < last_dim; ++j) {
       max_val = std::max(max_val, input_data[j]);
     }
 
     float sum_exp = 0.0f;
-    const int32_t max_uint8 = std::numeric_limits<uint8_t>::max();
+    const int32_t max_q8 = std::numeric_limits<T>::max();
     // Offset into table to compute exp(scale*(x - xmax)) instead of
     // exp(scale*(x)) to prevent overflow.
-    const float* table_offset = &params.table[max_uint8 - max_val];
+    const float* table_offset = &params.table[max_q8 - max_val];
     // Calculate sum(exp(scale*(x - x_max))).
     for (int j = 0; j < last_dim; ++j) {
       sum_exp += table_offset[input_data[j]];
@@ -4340,7 +4346,8 @@ inline void LogSoftmax(const SoftmaxParams& params, float input_scale,
     // params.scale is the output scale.
     const float scale = input_scale / params.scale;
     const float precomputed =
-        (input_scale * max_val + log_sum_exp) / params.scale;
+        (input_scale * (max_val + zero_point_offset) + log_sum_exp) /
+        params.scale;
     for (int j = 0; j < last_dim; ++j) {
       // Equivalent to (input_scale * (input_data[j] - max_val) - log_sum_exp) /
       // output_scale.
@@ -4350,7 +4357,7 @@ inline void LogSoftmax(const SoftmaxParams& params, float input_scale,
       // Use std::rint over std::round (which is used in
       // FakeQuant) since it's multiple times faster on tested arm32.
       const int32_t prob_quantized = std::rint(log_prob) + params.zero_point;
-      output_data[j] = static_cast<uint8_t>(
+      output_data[j] = static_cast<T>(
           std::max(std::min(clamp_max, prob_quantized), clamp_min));
     }
     input_data += last_dim;

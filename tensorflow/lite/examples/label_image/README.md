@@ -222,3 +222,20 @@ label_image
 ```
 
 See the `label_image.cc` source code for other command line options.
+
+Note that this binary also supports runtime/delegate arguments introduced by the
+[delegate registrar](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/delegates).
+If there is any conflict, the arguments mentioned earlier are given precedence.
+For example, you can run the binary with additional command line options
+such as `--use_nnapi=true --nnapi_accelerator_name=google-edgetpu` to utilize
+the EdgeTPU in a 4th-gen Pixel phone. Please be aware that the "=" in the option
+should not be omitted.
+
+```
+adb shell \
+    "/data/local/tmp/label_image \
+    -m /data/local/tmp/mobilenet_v1_1.0_224_quant.tflite \
+    -i /data/local/tmp/grace_hopper.bmp \
+    -l /data/local/tmp/labels.txt -j 1 \
+    --use_nnapi=true --nnapi_accelerator_name=google-edgetpu"
+```

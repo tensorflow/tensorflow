@@ -26,10 +26,7 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files([
-    "LICENSE",
-    "placeholder.txt",
-])
+exports_files(["placeholder.txt"])
 
 cc_binary(
     name = "gen_proto_text_functions",

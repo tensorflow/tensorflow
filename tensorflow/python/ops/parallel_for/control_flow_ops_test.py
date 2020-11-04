@@ -44,8 +44,10 @@ from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_list_ops
 from tensorflow.python.ops import gen_nn_ops
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients as gradient_ops
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import list_ops
@@ -172,6 +174,7 @@ class PForTest(PForTestCase):
                         pfor_control_flow_ops.vectorized_map(
                             lambda x: x * x, math_ops.range(4)))
     self.assertTrue(def_function.functions_run_eagerly())
+    def_function.run_functions_eagerly(False)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -968,6 +971,65 @@ class TensorListTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 2)
 
+  def test_create_outside_and_push_back(self):
+    h = list_ops.tensor_list_reserve([2], 2, dtypes.int32)
+
+    def loop_fn(i):
+      handle = list_ops.tensor_list_push_back(h, [i, 2])
+      handle = list_ops.tensor_list_push_back(handle, [1, 2])
+      handle = list_ops.tensor_list_push_back(handle, [1, 2])
+      return list_ops.tensor_list_stack(handle, dtypes.int32)
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_create_inside_and_push_back(self):
+
+    def loop_fn(i):
+      handle = list_ops.tensor_list_reserve([2], 2, dtypes.int32)
+      handle = list_ops.tensor_list_push_back(handle, [i, 2])
+      handle = list_ops.tensor_list_push_back(handle, [1, 2])
+      return list_ops.tensor_list_stack(handle, dtypes.int32)
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_pop_back_no_shape(self):
+
+    def loop_fn(i):
+      handle = list_ops.tensor_list_reserve([2], 2, dtypes.int32)
+      handle = list_ops.tensor_list_push_back(handle, [1, 2])
+      handle = list_ops.tensor_list_push_back(handle, [i, 2])
+      handle, tensor = list_ops.tensor_list_pop_back(handle, dtypes.int32)
+      return tensor, list_ops.tensor_list_stack(handle, dtypes.int32)
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_pop_back_no_shape_capture(self):
+    h = list_ops.tensor_list_reserve([2], 1, dtypes.int32)
+    h = list_ops.tensor_list_push_back(h, [1, 2])
+
+    def loop_fn(i):
+      handle, tensor = list_ops.tensor_list_pop_back(h, dtypes.int32)
+      handle = list_ops.tensor_list_push_back(handle, [1, i])
+      return tensor, list_ops.tensor_list_stack(handle, dtypes.int32)
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_pop_back_with_shape(self):
+
+    @def_function.function
+    def loop_fn(i):
+      with backprop.GradientTape() as tape:
+        handle = list_ops.tensor_list_reserve(None, 1, dtypes.float32)
+        x = math_ops.cast(i, dtypes.float32)[None]
+        tape.watch(x)
+        handle = list_ops.tensor_list_push_back(handle, x)
+        stacked = list_ops.tensor_list_stack(handle, dtypes.float32)
+      list_grad = tape.gradient(stacked, x, x)
+      self.assertEqual("TensorListPopBack", list_grad.op.type)
+      return list_grad, stacked, list_grad.op.inputs[1]
+
+    self._test_loop_fn(loop_fn, 3)
+
   def test_create_outside_and_scatter(self):
     h = list_ops.tensor_list_reserve([2], 2, dtypes.int32)
 
@@ -1072,6 +1134,29 @@ class TensorListTest(PForTestCase):
     self._test_loop_fn(loop_fn, 2)
     if not v2_enabled:
       control_flow_v2_toggles.disable_control_flow_v2()
+
+  def test_tensor_list_addn_already_stacked(self):
+
+    def loop_fn(i):
+      l1 = list_ops.tensor_list_reserve([], 2, dtypes.int32)
+      l1 = list_ops.tensor_list_set_item(l1, 0, i)
+      l2 = list_ops.tensor_list_reserve([], 2, dtypes.int32)
+      l2 = list_ops.tensor_list_set_item(l2, 1, i)
+      return list_ops.tensor_list_stack(math_ops.add_n([l1, l2]), dtypes.int32)
+
+    self._test_loop_fn(loop_fn, 2)
+
+  def test_tensor_list_addn_stacking_required(self):
+    l1 = list_ops.tensor_list_reserve([], 2, dtypes.int32)
+    l1 = list_ops.tensor_list_set_item(l1, 1, 1)
+
+    def loop_fn(i):
+      l2 = list_ops.tensor_list_reserve([], 2, dtypes.int32)
+      l2 = list_ops.tensor_list_set_item(l2, 1, i)
+      return list_ops.tensor_list_stack(
+          math_ops.add_n([l1, l2]), dtypes.int32)
+
+    self._test_loop_fn(loop_fn, 2)
 
 
 class StackTest(PForTestCase):
@@ -1541,6 +1626,23 @@ class WhileV2Test(PForTestCase):
     x = constant_op.constant(np.random.uniform(size=(1, 3)))
     y = constant_op.constant(np.random.uniform(size=(3, 3)))
     self.assertAllClose(_f(x, y, True), _f(x, y, False))
+
+  def test_scan(self):
+    np.random.seed(seed=42)
+    data = np.random.randn(3).astype(np.float32)
+
+    def log_prob(x):
+      return math_ops.reduce_sum(functional_ops.scan_v2(
+          lambda _, yi: (x - yi)**2,
+          elems=data,
+          initializer=constant_op.constant(0.)))
+
+    x = variables.Variable(array_ops.ones([2]))
+    self.evaluate(x.initializer)
+    v_log_prob = lambda x: pfor_control_flow_ops.vectorized_map(log_prob, x)
+    theoretical, numerical = gradient_checker_v2.compute_gradient(
+        v_log_prob, (x,), delta=1e-3)
+    self.assertAllClose(theoretical, numerical, rtol=1e-2)
 
 
 @test_util.run_all_in_graph_and_eager_modes

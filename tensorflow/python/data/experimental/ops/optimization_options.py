@@ -300,8 +300,11 @@ class OptimizationOptions(options.OptionsBase):
       # equivalent to tuning the buffer sizes of the other asynchronous
       # transformations.
       result.enabled.append("autotune_buffer_sizes")
+      result.enabled.append("disable_prefetch_legacy_autotune")
+
     if self.autotune is False:  # pylint: disable=g-bool-id-comparison
       result.disabled.append("autotune_buffer_sizes")
+      result.disabled.append("disable_prefetch_legacy_autotune")
 
     return result
 
@@ -312,6 +315,7 @@ class OptimizationOptions(options.OptionsBase):
       graph_rewrite_configs = []
     autotune_only_optimizations = [
         "autotune_buffer_sizes",
+        "disable_prefetch_legacy_autotune",
         "enable_gradient_descent",
         "map_parallelization"
     ]

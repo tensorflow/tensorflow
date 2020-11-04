@@ -300,17 +300,6 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputNames(JNIEnv* env,
 }
 
 JNIEXPORT void JNICALL
-Java_org_tensorflow_lite_NativeInterpreterWrapper_useNNAPI(JNIEnv* env,
-                                                           jclass clazz,
-                                                           jlong handle,
-                                                           jboolean state) {
-  tflite_api_dispatcher::Interpreter* interpreter =
-      convertLongToInterpreter(env, handle);
-  if (interpreter == nullptr) return;
-  interpreter->UseNNAPI(static_cast<bool>(state));
-}
-
-JNIEXPORT void JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_allowFp16PrecisionForFp32(
     JNIEnv* env, jclass clazz, jlong handle, jboolean allow) {
   tflite_api_dispatcher::Interpreter* interpreter =

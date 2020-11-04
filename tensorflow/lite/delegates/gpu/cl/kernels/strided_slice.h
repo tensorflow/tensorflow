@@ -27,7 +27,7 @@ namespace cl {
 class StridedSlice : public GPUOperation {
  public:
   StridedSlice(const OperationDef& definition, const SliceAttributes& attr);
-  absl::Status BindArguments() override;
+  absl::Status BindArguments(ArgumentsBinder* args) override;
   int3 GetGridSize() const override;
 
   // Move only

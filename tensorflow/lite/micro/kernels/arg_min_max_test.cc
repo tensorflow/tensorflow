@@ -17,8 +17,8 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/kernels/kernel_runner.h"
+#include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
-#include "tensorflow/lite/micro/testing/test_utils.h"
 
 namespace tflite {
 namespace testing {
@@ -60,9 +60,9 @@ void TestArgMinMaxFloat(const int* input_dims_data, const float* input_values,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_values, input_dims),
-      CreateInt32Tensor(axis_values, axis_dims),
-      CreateInt32Tensor(output, output_dims),
+      CreateTensor(input_values, input_dims),
+      CreateTensor(axis_values, axis_dims),
+      CreateTensor(output, output_dims),
   };
 
   ValidateArgMinMaxGoldens(tensors, tensors_size, goldens, output,
@@ -88,8 +88,8 @@ void TestArgMinMaxQuantized(const int* input_dims_data,
   TfLiteTensor tensors[tensors_size] = {
       CreateQuantizedTensor(input_values, input_quantized, input_dims,
                             input_scale, input_zero_point),
-      CreateInt32Tensor(axis_values, axis_dims),
-      CreateInt32Tensor(output, output_dims),
+      CreateTensor(axis_values, axis_dims),
+      CreateTensor(output, output_dims),
   };
 
   ValidateArgMinMaxGoldens(tensors, tensors_size, goldens, output,

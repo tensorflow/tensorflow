@@ -16,10 +16,42 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EXPERIMENTAL_SAVED_MODEL_CORE_SIGNATURE_DEF_FUNCTION_METADATA_H_
 #define TENSORFLOW_C_EXPERIMENTAL_SAVED_MODEL_CORE_SIGNATURE_DEF_FUNCTION_METADATA_H_
 
+#include <string>
+#include <vector>
+
+#include "tensorflow/c/experimental/saved_model/core/tensor_spec.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/struct.pb.h"
+
 namespace tensorflow {
 
+// SignatureDefParam represents a named Tensor input or output to a
+// SignatureDefFunction.
+class SignatureDefParam {
+ public:
+  SignatureDefParam(std::string name, TensorSpec spec);
+
+  const std::string& name() const;
+
+  const TensorSpec& spec() const;
+
+ private:
+  std::string name_;
+  TensorSpec spec_;
+};
+
 class SignatureDefFunctionMetadata {
-  // TODO(bmzhao): Fill in with fields as necessary
+ public:
+  SignatureDefFunctionMetadata() = default;
+  SignatureDefFunctionMetadata(std::vector<SignatureDefParam> arguments,
+                               std::vector<SignatureDefParam> returns);
+
+  const std::vector<SignatureDefParam>& arguments() const;
+  const std::vector<SignatureDefParam>& returns() const;
+
+ private:
+  std::vector<SignatureDefParam> arguments_;
+  std::vector<SignatureDefParam> returns_;
 };
 
 }  // namespace tensorflow
