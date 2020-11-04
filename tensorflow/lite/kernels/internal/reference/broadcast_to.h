@@ -72,12 +72,19 @@ inline void BroadcastTo(const RuntimeShape& unextended_input_shape,
 
   // Get the last dimension has broadcasting. At this dimension, the data is
   // copied from input tensor to output tensor.
-  int last_broadcast_dim = 0;
-  for (int i = N - 1; i > 0; --i) {
+  int last_broadcast_dim = -1;
+  for (int i = N - 1; i >= 0; --i) {
     if (input_desc.extents[i] != output_desc.extents[i]) {
       last_broadcast_dim = i;
       break;
     }
+  }
+
+  // If non-broadcasting, just copy data from input to output tensor.
+  if (last_broadcast_dim == -1) {
+    memcpy(output_data, input_data,
+           unextended_input_shape.FlatSize() * TfLiteTypeGetSize(data_type));
+    return;
   }
 
   // Broadcasting using memcpy.
