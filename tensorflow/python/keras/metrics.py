@@ -383,33 +383,20 @@ class Reduce(Metric):
       # Update dimensions of weights to match with values if possible.
       values, _, sample_weight = losses_utils.squeeze_or_expand_dimensions(
           values, sample_weight=sample_weight)
-
-      def reduce_values(values, sample_weight):
+      try:
+        # Broadcast weights if possible.
+        sample_weight = weights_broadcast_ops.broadcast_weights(
+            sample_weight, values)
+      except ValueError:
         # Reduce values to same ndim as weight array
         ndim = K.ndim(values)
         weight_ndim = K.ndim(sample_weight)
         if self.reduction == metrics_utils.Reduction.SUM:
-          return math_ops.reduce_sum(
+          values = math_ops.reduce_sum(
               values, axis=list(range(weight_ndim, ndim)))
         else:
-          return math_ops.reduce_mean(
+          values = math_ops.reduce_mean(
               values, axis=list(range(weight_ndim, ndim)))
-
-      # Attempt to broadcast weights if possible because it is more performant.
-      # When a tensor shape is not fully defined, use the fallback path because
-      # broadcast_weights with a dynamic shape input calls a GPU/TPU
-      # incompatible op (DenseToDenseSetOperation).
-      is_cpu_tensor = values.device and 'CPU' in values.device
-      if is_cpu_tensor or values.get_shape().is_fully_defined(
-      ) or K.ndim(values) is None:
-        try:
-          sample_weight = weights_broadcast_ops.broadcast_weights(
-              sample_weight, values)
-        except ValueError:
-          values = reduce_values(values, sample_weight)
-      else:
-        values = reduce_values(values, sample_weight)
-
       values = math_ops.multiply(values, sample_weight)
 
     value_sum = math_ops.reduce_sum(values)

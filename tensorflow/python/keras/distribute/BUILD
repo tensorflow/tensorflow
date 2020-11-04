@@ -240,6 +240,7 @@ distribute_py_test(
 distribute_py_test(
     name = "custom_training_loop_metrics_test",
     srcs = ["custom_training_loop_metrics_test.py"],
+    disable_mlir_bridge = False,
     main = "custom_training_loop_metrics_test.py",
     tags = [
         "multi_and_single_gpu",
