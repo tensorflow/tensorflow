@@ -28,12 +28,10 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-enum class TextureAddressMode {
-  DONT_CARE,  // translated to CLK_ADDRESS_NONE
-  ZERO,       // translated to CLK_ADDRESS_CLAMP
+enum class AddressMode {
+  kDontCare,
+  kZero,
 };
-
-std::string TextureAddressModeToString(TextureAddressMode address_mode);
 
 enum class TensorStorageType {
   UNKNOWN,
@@ -72,7 +70,7 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   void Release() override { data.clear(); }
 
   bool HasAxis(Axis axis) const;
-  void SetTextureAddressMode(TextureAddressMode mode);
+  void SetAddressMode(AddressMode mode);
 
   absl::Status GetLinkingContextFromWriteSelector(
       const std::vector<std::string>& args, std::string* value_name,
@@ -140,7 +138,7 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   std::string GetWidth() const;
   std::string GetSliceStride() const;
 
-  TextureAddressMode ModeFromState() const;
+  AddressMode AddressModeFromState() const;
 
   absl::Status GetDataTypeFromTemplateArgs(const std::string& template_arg,
                                            DataType* result) const;

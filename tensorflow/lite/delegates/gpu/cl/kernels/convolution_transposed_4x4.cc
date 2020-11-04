@@ -66,7 +66,7 @@ ConvolutionTransposed4x4& ConvolutionTransposed4x4::operator=(
 std::string ConvolutionTransposed4x4::GenerateConvolutionTransposedCode(
     const OperationDef& op_def, WeightsUploadType weights_upload_type) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
+  src_desc.SetAddressMode(AddressMode::kZero);
   if (op_def.IsBatchSupported()) {
     src_desc.SetStateVar("BatchedWidth", "true");
   }
