@@ -11,6 +11,7 @@ ${UART}                       sysbus.cpu.uartSemihosting
 
 *** Keywords ***
 Prepare Tests
+    [Documentation]           Make environment variables avaiable in whole test suite and list files in ${BIN_DIR}
     Setup
     ${SCRIPT} =               Get Environment Variable    SCRIPT
     ${LOGFILE} =              Get Environment Variable    LOGFILE
@@ -21,10 +22,12 @@ Prepare Tests
     List All Test Binaries
 
 Teardown With Custom Message
+    [Documentation]           Replace robot fail message with shorter one to avoid duplicated UART output in log
     Set Test Message          ${file} - FAILED
     Test Teardown
 
 List All Test Binaries
+    [Documentation]           List all files in ${BIN_DIR} and make it available from test cases
     Setup
     ${BIN_DIR} =              Get Environment Variable    BIN_DIR
     @{binaries} =             List Files In Directory     ${BIN_DIR}   absolute=True
