@@ -931,13 +931,13 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual([2, 4, 6],
                         imported.f(constant_op.constant([1, 2, 3])).numpy())
 
-  def test_experimental_compile(self, cycles):
+  def test_jit_compile(self, cycles):
 
     # It'd be nice to use parameterize here, but the library does not support
     # having parameterized test methods inside already-parameterized classes.
-    for experimental_compile in (None, True, False):
+    for jit_compile in (None, True, False):
 
-      @def_function.function(experimental_compile=experimental_compile)
+      @def_function.function(jit_compile=jit_compile)
       def f(x):
         return x + 1.
 
@@ -948,7 +948,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
       imported = cycle(root, cycles)
 
-      self.assertEqual(imported.f._experimental_compile, experimental_compile)
+      self.assertEqual(imported.f._jit_compile, jit_compile)
 
   def test_get_concrete_function(self, cycles):
 

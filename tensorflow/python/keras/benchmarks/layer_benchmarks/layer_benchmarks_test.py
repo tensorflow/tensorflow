@@ -92,7 +92,7 @@ class KerasLayerBenchmarks(six.with_metaclass(
     layer = layer_cls(**layer_args)
     x = tf.ones(input_shape)
     layer.call = tf.function(
-        layer.call, experimental_compile=True)
+        layer.call, jit_compile=True)
 
     fn = functools.partial(layer, x)
     name = _get_benchmark_name(self._get_name())
@@ -156,7 +156,7 @@ class KerasLayerBenchmarksBackwardXLA(six.with_metaclass(
     layer = layer_cls(**layer_args)
     x = tf.ones(input_shape)
     layer.call = tf.function(
-        layer.call, experimental_compile=True)
+        layer.call, jit_compile=True)
 
     fn = functools.partial(_layer_call_backward, layer, x)
     name = _get_benchmark_name(self._get_name())

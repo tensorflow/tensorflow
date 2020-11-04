@@ -20,7 +20,6 @@ from __future__ import print_function
 import abc
 import atexit
 import collections
-import collections.abc as collections_abc
 import functools
 import multiprocessing.pool
 import threading
@@ -585,7 +584,7 @@ def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
                        'You should provide one `' + weight_type + '`'
                        'array per model output.')
     return x_weight
-  if isinstance(x_weight, collections_abc.Mapping):
+  if isinstance(x_weight, collections.abc.Mapping):
     generic_utils.check_for_unexpected_keys(weight_type, x_weight, output_names)
     x_weights = []
     for name in output_names:
@@ -772,7 +771,7 @@ def collect_per_output_metric_info(metrics,
               [metrics_module.clone_metric(m) for m in metrics])
       else:
         nested_metrics = [metrics]
-  elif isinstance(metrics, collections_abc.Mapping):
+  elif isinstance(metrics, collections.abc.Mapping):
     generic_utils.check_for_unexpected_keys('metrics', metrics, output_names)
     nested_metrics = []
     for name in output_names:
@@ -1088,7 +1087,7 @@ def get_loss_function(loss):
         'before passing them to Model.compile.'.format(loss))
 
   # Deserialize loss configuration, if needed.
-  if isinstance(loss, collections_abc.Mapping):
+  if isinstance(loss, collections.abc.Mapping):
     loss = losses.get(loss)
 
   # Custom callable class.
@@ -1305,7 +1304,7 @@ def prepare_sample_weight_modes(training_endpoints, sample_weight_mode):
     ValueError: In case of invalid `sample_weight_mode` input.
   """
 
-  if isinstance(sample_weight_mode, collections_abc.Mapping):
+  if isinstance(sample_weight_mode, collections.abc.Mapping):
     generic_utils.check_for_unexpected_keys(
         'sample_weight_mode', sample_weight_mode,
         [e.output_name for e in training_endpoints])
@@ -1352,7 +1351,7 @@ def prepare_loss_functions(loss, output_names):
       ValueError: If loss is a dict with keys not in model output names,
           or if loss is a list with len not equal to model outputs.
   """
-  if isinstance(loss, collections_abc.Mapping):
+  if isinstance(loss, collections.abc.Mapping):
     generic_utils.check_for_unexpected_keys('loss', loss, output_names)
     loss_functions = []
     for name in output_names:
@@ -1364,7 +1363,7 @@ def prepare_loss_functions(loss, output_names):
       loss_functions.append(get_loss_function(loss.get(name, None)))
   elif isinstance(loss, six.string_types):
     loss_functions = [get_loss_function(loss) for _ in output_names]
-  elif isinstance(loss, collections_abc.Sequence):
+  elif isinstance(loss, collections.abc.Sequence):
     if len(loss) != len(output_names):
       raise ValueError('When passing a list as loss, it should have one entry '
                        'per model outputs. The model has {} outputs, but you '
@@ -1398,7 +1397,7 @@ def prepare_loss_weights(training_endpoints, loss_weights=None):
   if loss_weights is None:
     for e in training_endpoints:
       e.loss_weight = 1.
-  elif isinstance(loss_weights, collections_abc.Mapping):
+  elif isinstance(loss_weights, collections.abc.Mapping):
     generic_utils.check_for_unexpected_keys(
         'loss_weights', loss_weights,
         [e.output_name for e in training_endpoints])
@@ -1705,7 +1704,7 @@ def should_run_validation(validation_freq, epoch):
       raise ValueError('`validation_freq` can not be less than 1.')
     return one_indexed_epoch % validation_freq == 0
 
-  if not isinstance(validation_freq, collections_abc.Container):
+  if not isinstance(validation_freq, collections.abc.Container):
     raise ValueError('`validation_freq` must be an Integer or '
                      '`collections.abc.Container` (e.g. list, tuple, etc.)')
   return one_indexed_epoch in validation_freq

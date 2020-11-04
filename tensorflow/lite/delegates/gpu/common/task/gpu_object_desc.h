@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_METAL_GPU_OBJECT_DESC_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_METAL_GPU_OBJECT_DESC_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_GPU_OBJECT_DESC_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_GPU_OBJECT_DESC_H_
 
 #include <map>
 #include <memory>
@@ -24,14 +24,36 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/access_type.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h"
 
 namespace tflite {
 namespace gpu {
-namespace metal {
+
+struct GPUImage2DDescriptor {
+  DataType data_type;
+  AccessType access_type;
+};
+
+struct GPUImage3DDescriptor {
+  DataType data_type;
+  AccessType access_type;
+};
+
+struct GPUImage2DArrayDescriptor {
+  DataType data_type;
+  AccessType access_type;
+};
+
+struct GPUImageBufferDescriptor {
+  DataType data_type;
+  AccessType access_type;
+};
+
+struct GPUCustomMemoryDescriptor {
+  std::string type_name;
+};
 
 enum class MemoryType { GLOBAL, CONSTANT, LOCAL };
-
-std::string MemoryTypeToMetalType(MemoryType type);
 
 struct GPUBufferDescriptor {
   DataType data_type;
@@ -45,11 +67,32 @@ struct GPUResources {
   std::vector<std::string> ints;
   std::vector<std::string> floats;
   std::vector<std::pair<std::string, GPUBufferDescriptor>> buffers;
+  std::vector<std::pair<std::string, GPUImage2DDescriptor>> images2d;
+  std::vector<std::pair<std::string, GPUImage2DArrayDescriptor>> image2d_arrays;
+  std::vector<std::pair<std::string, GPUImage3DDescriptor>> images3d;
+  std::vector<std::pair<std::string, GPUImageBufferDescriptor>> image_buffers;
+  std::vector<std::pair<std::string, GPUCustomMemoryDescriptor>>
+      custom_memories;
 
   std::vector<std::string> GetNames() const {
     std::vector<std::string> names = ints;
     names.insert(names.end(), floats.begin(), floats.end());
     for (const auto& obj : buffers) {
+      names.push_back(obj.first);
+    }
+    for (const auto& obj : images2d) {
+      names.push_back(obj.first);
+    }
+    for (const auto& obj : image2d_arrays) {
+      names.push_back(obj.first);
+    }
+    for (const auto& obj : images3d) {
+      names.push_back(obj.first);
+    }
+    for (const auto& obj : image_buffers) {
+      names.push_back(obj.first);
+    }
+    for (const auto& obj : custom_memories) {
       names.push_back(obj.first);
     }
     return names;
@@ -63,7 +106,6 @@ class GPUObjectDescriptor {
   GPUObjectDescriptor& operator=(const GPUObjectDescriptor&) = default;
   GPUObjectDescriptor(GPUObjectDescriptor&& obj_desc) = default;
   GPUObjectDescriptor& operator=(GPUObjectDescriptor&& obj_desc) = default;
-
   virtual ~GPUObjectDescriptor() = default;
 
   void SetStateVar(const std::string& key, const std::string& value) const {
@@ -89,14 +131,17 @@ class GPUObjectDescriptor {
   AccessType GetAccess() const { return access_type_; }
 
  protected:
+  friend flatbuffers::Offset<tflite::gpu::data::GPUObjectDescriptor> Encode(
+      const GPUObjectDescriptor& desc, flatbuffers::FlatBufferBuilder* builder);
+  friend void Decode(const tflite::gpu::data::GPUObjectDescriptor* fb_obj,
+                     GPUObjectDescriptor* obj);
   mutable std::map<std::string, std::string> state_vars_;
   AccessType access_type_;
 };
 
 using GPUObjectDescriptorPtr = std::unique_ptr<GPUObjectDescriptor>;
 
-}  // namespace metal
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_METAL_GPU_OBJECT_DESC_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_GPU_OBJECT_DESC_H_

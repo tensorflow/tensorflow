@@ -50,7 +50,9 @@ module attributes {gpu.container_module} {
     %22 = subi %c0, %21 : index
     %23 = addi %21, %c1 : index
     %24 = select %17, %22, %23 : index
-    "gpu.launch_func"(%24, %c1, %c1, %c256, %c1, %c1, %14, %16) {kernel = @abs_kernel::@abs_kernel} : (index, index, index, index, index, index, memref<?xf32>, memref<?xf32>) -> ()
+    gpu.launch_func @abs_kernel::@abs_kernel
+        blocks in (%24, %c1, %c1) threads in (%c256, %c1, %c1)
+        args(%14 : memref<?xf32>, %16 : memref<?xf32>)
     %25 = lmhlo.reshape_memref_cast %16(%1) : (memref<?xf32>, memref<?xindex>) -> memref<*xf32>
     return %25 : memref<*xf32>
   }

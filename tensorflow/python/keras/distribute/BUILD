@@ -361,6 +361,7 @@ distribute_py_test(
         "no_rocm",  # times out on ROCm
         "no_windows_gpu",
         "noasan",  # TODO(b/170902997)
+        "noguitar",  # TODO(b/172354344)
         "notap",  # TODO(b/170902997)
         "notsan",
     ],
@@ -923,11 +924,28 @@ py_library(
 
 tf_py_test(
     name = "sidecar_evaluator_test",
-    size = "small",
+    size = "medium",
     srcs = ["sidecar_evaluator_test.py"],
     python_version = "PY3",
     deps = [
         ":sidecar_evaluator",
         "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/keras",
+    ],
+)
+
+tf_py_test(
+    name = "sharded_variable_test",
+    size = "small",
+    srcs = ["sharded_variable_test.py"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/distribute:sharded_variable",
+        "//tensorflow/python/keras:metrics",
+        "//tensorflow/python/keras/engine:base_layer",
     ],
 )

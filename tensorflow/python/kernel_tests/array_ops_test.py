@@ -1486,6 +1486,31 @@ class PadTest(test_util.TensorFlowTestCase):
                           [[0, 0, 0, 0, 0, 0, 0], [0, 0, 1, 2, 3, 0, 0],
                            [0, 0, 4, 5, 6, 0, 0], [0, 0, 0, 0, 0, 0, 0]])
 
+  def testSymmetricMirrorPadGrad(self):
+    t = np.broadcast_to(np.arange(0, 7), (3, 2, 1, 7))
+    paddings = constant_op.constant([
+        [1, 1],
+        [0, 0],
+        [0, 0],
+        [2, 2],
+    ])
+    expected = np.broadcast_to(np.array([9, 27, 27]), (1, 2, 1, 3))
+    result = gen_array_ops.mirror_pad_grad(t, paddings, "SYMMETRIC")
+    self.assertAllEqual(result, expected)
+
+  def testReflectMirrorPadGrad(self):
+    t = np.broadcast_to(np.reshape(np.arange(0, 7), (7, 1)), (1, 4, 7, 1))
+    paddings = constant_op.constant([
+        [0, 0],
+        [1, 1],
+        [2, 2],
+        [0, 0],
+    ])
+    expected = np.broadcast_to(
+        np.reshape(np.array([16, 18, 8]), (3, 1)), (1, 2, 3, 1))
+    result = gen_array_ops.mirror_pad_grad(t, paddings, "REFLECT")
+    self.assertAllEqual(result, expected)
+
 
 class InvertPermutationTest(test_util.TensorFlowTestCase):
 

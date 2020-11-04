@@ -41,6 +41,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -48,6 +49,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_tensor as ragged_tensor_lib
 from tensorflow.python.util import nest
 
@@ -981,6 +983,34 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
     self._test_input_iteration(input_type, api_type, iteration_type,
                                dataset_or_input_fn, worker_device_pairs,
                                expected_values, distribution)
+
+  @combinations.generate(
+      combinations.combine(
+          strategy=[
+              strategy_combinations.multi_worker_mirrored_2x1_cpu,
+              strategy_combinations.multi_worker_mirrored_2x1_gpu,
+          ],
+          mode=["eager"]))
+  def testLoopOverDatasetInTFFunction(self, strategy):
+    dataset = dataset_ops.Dataset.range(10).map(lambda x: {  # pylint: disable=g-long-lambda
+        "y": math_ops.cast(x, dtypes.float32) ** 2,
+    }).batch(4)
+    dist_dataset = strategy.experimental_distribute_dataset(dataset)
+
+    with strategy.scope():
+      v = variables.Variable(0.0, aggregation=variables.VariableAggregation.SUM)
+
+    @def_function.function
+    def iterator_fn(dist_dataset):
+
+      def assign_add_fn(data):
+        v.assign_add(math_ops.reduce_sum(data["y"]))
+
+      for data in dist_dataset:
+        strategy.run(assign_add_fn, args=(data,))
+
+    iterator_fn(dist_dataset)
+    self.assertEqual(v.numpy(), 285.0)
 
 
 class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,

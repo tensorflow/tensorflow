@@ -106,7 +106,6 @@ cc_library(
         "lib/EDSC/Builders.cpp",
     ],
     hdrs = [
-        "include/mlir-c/Core.h",
         "include/mlir/EDSC/Builders.h",
     ],
     includes = ["include"],
@@ -856,6 +855,16 @@ cc_library(
     ],
 )
 
+filegroup(
+    name = "ShapeOpsTdFiles",
+    srcs = [
+        "include/mlir/Dialect/Shape/IR/ShapeBase.td",
+        "include/mlir/Dialect/Shape/IR/ShapeOps.td",
+        "include/mlir/Interfaces/InferTypeOpInterface.td",
+        ":StdOpsTdFiles",
+    ],
+)
+
 gentbl(
     name = "ShapeOpsIncGen",
     strip_include_prefix = "include",
@@ -922,6 +931,22 @@ cc_library(
     ],
 )
 
+gentbl(
+    name = "ShapeToStandardGen",
+    strip_include_prefix = "lib/Conversion/ShapeToStandard",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "lib/Conversion/ShapeToStandard/ShapeToStandard.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "lib/Conversion/ShapeToStandard/ShapeToStandard.td",
+    td_srcs = [
+        ":ShapeOpsTdFiles",
+    ],
+)
+
 cc_library(
     name = "ShapeToStandard",
     srcs = glob([
@@ -936,6 +961,7 @@ cc_library(
         ":Pass",
         ":SCFDialect",
         ":Shape",
+        ":ShapeToStandardGen",
         ":StandardOps",
         ":Support",
         ":Transforms",
@@ -2353,6 +2379,25 @@ cc_library(
         ":SPIRVSerializationGen",
         ":Support",
         ":Transforms",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "SPIRVLinking",
+    srcs = glob(
+        [
+            "lib/Dialect/SPIRV/Linking/ModuleCombiner/*.cpp",
+        ],
+    ),
+    hdrs = [
+        "include/mlir/Dialect/SPIRV/ModuleCombiner.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":SPIRVDialect",
+        ":Support",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -4052,6 +4097,7 @@ cc_library(
         ":SCFToStandard",
         ":SCFTransforms",
         ":StandardOps",
+        ":StandardOpsTransforms",
         ":StandardToLLVM",
         ":Support",
         ":TransformUtils",

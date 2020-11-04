@@ -30,9 +30,7 @@ namespace xla {
 TpuExecutable::TpuExecutable(const XLA_TpuProgram* core_program,
                              std::unique_ptr<HloModule> hlo_module,
                              HostCommandHandler host_command_handler)
-    : TpuExecutableInterface(std::move(hlo_module),
-                             /*hlo_profile_printer_data=*/nullptr,
-                             /*hlo_profile_index_map=*/nullptr),
+    : TpuExecutableInterface(std::move(hlo_module)),
       core_program_(core_program),
       host_command_handler_(std::move(host_command_handler)) {}
 

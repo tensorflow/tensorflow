@@ -1801,11 +1801,11 @@ absl::flat_hash_map<string, std::vector<string>>* GetAllowlistTable() {
       "Range", "Rank", "Reshape", "Shape", "ShapeN", "Size", "Squeeze",
       "Transpose", "ZerosLike", "OnesLike", "BiasAdd" /*PW + Broadcast*/,
       "BroadcastArgs", "BroadcastGradientArgs", "OneHot", "Concat", "ConcatV2",
-      "ConcatOffset", "Const", "MirrorPad", "Pack", "Pad", "PadV2", "Reverse",
-      "ReverseV2", "ReverseSequence", "Slice", "Split", "SplitV",
-      "StridedSlice", "StridedSliceGrad", "ResourceStridedSliceAssign",
-      "Tile", "Transpose", "InvertPermutation", "Unpack", "DeviceIndex",
-      "TensorStridedSliceUpdate",
+      "ConcatOffset", "Const", "MirrorPad", "MirrorPadGrad", "Pack", "Pad",
+      "PadV2", "Reverse", "ReverseV2", "ReverseSequence", "Slice", "Split",
+      "SplitV", "StridedSlice", "StridedSliceGrad",
+      "ResourceStridedSliceAssign", "Tile", "Transpose", "InvertPermutation",
+      "Unpack", "DeviceIndex", "TensorStridedSliceUpdate",
      }}};
   // clang-format on
   return result;

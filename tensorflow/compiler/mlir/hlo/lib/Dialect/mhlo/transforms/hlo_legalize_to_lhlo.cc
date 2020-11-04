@@ -504,12 +504,7 @@ struct HloLegalizeToLhlo
 
  public:
   HloLegalizeToLhlo() = default;
-  HloLegalizeToLhlo(const HloLegalizeToLhlo& o) {
-    this->results_escape_function = o.results_escape_function.getValue();
-  }
-  explicit HloLegalizeToLhlo(bool results_escape_function) {
-    this->results_escape_function.setValue(results_escape_function);
-  }
+  HloLegalizeToLhlo(const HloLegalizeToLhlo& o) {}
 
   void runOnOperation() override {
     OwningRewritePatternList patterns;
@@ -542,13 +537,6 @@ struct HloLegalizeToLhlo
                          isMemRefType);
     });
 
-    auto kind = results_escape_function
-                    ? BufferizeTypeConverter::KeepAsFunctionResult
-                    : BufferizeTypeConverter::AppendToArgumentsList;
-    converter.setResultConversionKind<UnrankedTensorType, UnrankedMemRefType>(
-        kind);
-    converter.setResultConversionKind<RankedTensorType, MemRefType>(kind);
-
     populateHLOToLHLOConversionPattern(&context, &converter, &patterns);
     populateWithBufferizeOpConversionPatterns<mlir::ReturnOp, mlir::ReturnOp,
                                               lmhlo::CopyOp>(
@@ -559,13 +547,6 @@ struct HloLegalizeToLhlo
                                       std::move(patterns))))
       signalPassFailure();
   }
-
- private:
-  Option<bool> results_escape_function{
-      *this, "results-escape-function",
-      llvm::cl::desc(
-          "Allocate the results of functions within the functions body"),
-      llvm::cl::init(false)};
 };
 }  // namespace
 
@@ -625,9 +606,8 @@ void populateHLOToLHLOConversionPattern(MLIRContext* context,
   // clang-format on
 }
 
-std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass(
-    bool results_escape_function) {
-  return std::make_unique<HloLegalizeToLhlo>(results_escape_function);
+std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass() {
+  return std::make_unique<HloLegalizeToLhlo>();
 }
 
 }  // namespace mhlo

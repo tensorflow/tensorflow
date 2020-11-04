@@ -458,6 +458,8 @@ class XlaBuilder {
 
   XlaOp Pad(XlaOp operand, XlaOp padding_value,
             const PaddingConfig& padding_config);
+  XlaOp PadInDim(XlaOp operand, XlaOp padding_value, int64 dimno, int64 pad_lo,
+                 int64 pad_hi);
 
   virtual StatusOr<XlaOp> PadInternal(const Shape& shape, XlaOp operand,
                                       XlaOp padding_value,
@@ -1027,6 +1029,9 @@ class XlaBuilder {
 
   friend XlaOp Pad(XlaOp operand, XlaOp padding_value,
                    const PaddingConfig& padding_config);
+
+  friend XlaOp PadInDim(XlaOp operand, XlaOp padding_value, int64 dimno,
+                        int64 pad_lo, int64 pad_hi);
 
   friend XlaOp Reshape(XlaOp operand, absl::Span<const int64> dimensions,
                        absl::Span<const int64> new_sizes);
@@ -1609,6 +1614,11 @@ XlaOp Copy(XlaOp operand);
 // specifies the padding amount for each dimension.
 XlaOp Pad(XlaOp operand, XlaOp padding_value,
           const PaddingConfig& padding_config);
+
+// Enqueues a pad operation in a given dimension, taking all other
+// dimensions as they are.
+XlaOp PadInDim(XlaOp operand, XlaOp padding_value, int64 dimno, int64 pad_lo,
+               int64 pad_hi);
 
 // Enqueues an operation onto the computation that flattens the operand based
 // on the dimension order (major/slowest-varying to minor/fastest-varying)

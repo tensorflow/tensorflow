@@ -664,6 +664,29 @@ TEST(QuantizedActivationsOpTest, Relu6Int8) {
               ElementsAreArray({0, 0, 32, 64, 48, 0, 96, 16}));
 }
 
+TEST(QuantizedActivationsOpTest, Relu6Int16) {
+  const float kMin = -1;
+  const float kMax = 32767.f / 32768.f;
+  QuantizedActivationsOpModel m(
+      BuiltinOperator_RELU6,
+      /*input=*/{TensorType_INT16, {1, 2, 4, 1}, 8 * kMin, 8 * kMax},
+      /*output=*/{TensorType_INT16, {1, 2, 4, 1}, 8 * kMin, 8 * kMax});
+  m.SetInput<int16_t>({
+      0, -6, 2, 4,   //
+      3, -2, 10, 1,  //
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0, 0, 2, 4,  //
+                      3, 0, 6, 1,  //
+                  },
+                  kQuantizedToleranceInt16)));
+  EXPECT_THAT(m.GetOutput<int16_t>(),
+              ElementsAreArray({0, 0, 8192, 16384, 12288, 0, 24576, 4096}));
+}
+
 TEST(QuantizedActivationsOpTest, ReluUint8) {
   const float kMin = -1;
   const float kMax = 127.f / 128.f;
@@ -707,6 +730,29 @@ TEST(QuantizedActivationsOpTest, ReluInt8) {
                                                     kQuantizedTolerance)));
   EXPECT_THAT(m.GetOutput<int8_t>(),
               ElementsAreArray({0, 0, 32, 64, 48, 0, 112, 16}));
+}
+
+TEST(QuantizedActivationsOpTest, ReluInt16) {
+  const float kMin = -1;
+  const float kMax = 32767.f / 32768.f;
+  QuantizedActivationsOpModel m(
+      BuiltinOperator_RELU,
+      /*input=*/{TensorType_INT16, {1, 2, 4, 1}, 8 * kMin, 8 * kMax},
+      /*output=*/{TensorType_INT16, {1, 2, 4, 1}, 8 * kMin, 8 * kMax});
+  m.SetInput<int16_t>({
+      0, -6, 2, 4,  //
+      3, -2, 7, 1,  //
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0, 0, 2, 4,  //
+                      3, 0, 7, 1,  //
+                  },
+                  kQuantizedToleranceInt16)));
+  EXPECT_THAT(m.GetOutput<int16_t>(),
+              ElementsAreArray({0, 0, 8192, 16384, 12288, 0, 28672, 4096}));
 }
 
 TEST_P(TanhOpTest, TanhUint8) {
