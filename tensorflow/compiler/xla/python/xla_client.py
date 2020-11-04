@@ -419,6 +419,7 @@ XlaComputation = _xla.XlaComputation
 FftType = _xla.FftType
 Client = _xla.Client
 Buffer = _xla.Buffer
+DeviceArrayBase = _xla.DeviceArrayBase
 Executable = _xla.Executable
 
 

@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import collections.abc as collections_abc
 import warnings
 
 import numpy as np
@@ -1210,7 +1209,7 @@ class Model(training_lib.Model):
     # at this point.
     if self.run_eagerly or self._distribution_strategy:
       inputs = training_utils_v1.cast_if_floating_dtype(inputs)
-      if isinstance(inputs, collections_abc.Sequence):
+      if isinstance(inputs, collections.abc.Sequence):
         # Unwrap lists with only one input, as we do when training on batch
         if len(inputs) == 1:
           inputs = inputs[0]

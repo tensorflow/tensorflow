@@ -4003,7 +4003,7 @@ def batch_to_space_v2(input, block_shape, crops, name=None):  # pylint: disable=
 
   Examples:
 
-  (1) For the following input of shape `[4, 1, 1, 1]`,
+  1. For the following input of shape `[4, 1, 1, 1]`,
      `block_shape = [2, 2]`, and `crops = [[0, 0], [0, 0]]`:
 
      ```python
@@ -4020,7 +4020,7 @@ def batch_to_space_v2(input, block_shape, crops, name=None):  # pylint: disable=
          [[3], [4]]]]
      ```
 
-  (2) For the following input of shape `[4, 1, 1, 3]`,
+  2. For the following input of shape `[4, 1, 1, 3]`,
      `block_shape = [2, 2]`, and `crops = [[0, 0], [0, 0]]`:
 
      ```python
@@ -4037,7 +4037,7 @@ def batch_to_space_v2(input, block_shape, crops, name=None):  # pylint: disable=
            [[7, 8, 9], [10, 11, 12]]]]
      ```
 
-  (3) For the following
+  3. For the following
      input of shape `[4, 2, 2, 1]`,
      `block_shape = [2, 2]`, and `crops = [[0, 0], [0, 0]]`:
 
@@ -4057,7 +4057,7 @@ def batch_to_space_v2(input, block_shape, crops, name=None):  # pylint: disable=
           [[13], [14], [15], [16]]]
      ```
 
-   (4) For the following input of shape
+  4. For the following input of shape
       `[8, 1, 3, 1]`,
       `block_shape = [2, 2]`, and `crops = [[0, 0], [2, 0]]`:
 

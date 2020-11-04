@@ -1397,6 +1397,42 @@ ENTRY CustomCall {
 
 )"
 },
+// CustomCall with single computation.
+{
+"CustumCallSingleComp",
+R"(HloModule custom_call_with_comp
+
+max_F32 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(lhs, rhs)
+}
+
+ENTRY CustomCall {
+  constant = f32[1]{0} constant({12345})
+  ROOT custom-call = f32[1,2,3]{0,2,1} custom-call(constant), custom_call_target="foo\"bar", called_computations={max_F32}
+}
+
+)"
+},
+// CustomCall with multiple computations.
+{
+"CustumCallMultipleComps",
+R"(HloModule custom_call_with_comps
+
+max_F32 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(lhs, rhs)
+}
+
+ENTRY CustomCall {
+  constant = f32[1]{0} constant({12345})
+  ROOT custom-call = f32[1,2,3]{0,2,1} custom-call(constant), custom_call_target="foo\"bar", called_computations={max_F32, max_F32}
+}
+
+)"
+},
 // Variables with non-default names
 {
 "NonDefaultNames",

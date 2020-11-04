@@ -279,7 +279,8 @@ void CreateConvertMlirToXlaHloPipeline(
   pm.addPass(mlir::TF::CreateTensorListOpsDecompositionPass());
   pm.addPass(mlir::TF::CreateStackOpsDecompositionPass());
   pm.addPass(mlir::TF::CreateTensorArrayOpsDecompositionPass());
-  pm.addPass(mlir::TFDevice::CreateDecomposeResourceOpsPass());
+  pm.addNestedPass<mlir::FuncOp>(
+      mlir::TFDevice::CreateDecomposeResourceOpsPass());
   pm.addPass(mlir::TF::CreatePromoteResourcesToArgsPass());
   pm.addPass(mlir::createSymbolDCEPass());
   // Guarantee all functions have one use, which enables shape inference.

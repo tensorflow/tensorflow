@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/delegates/gpu/common/task/gpu_object_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 
@@ -57,9 +56,6 @@ cl_channel_type DataTypeToChannelType(DataType type, bool normalized = false);
 absl::Status CreateRGBAImage2D(cl_context context, int width, int height,
                                cl_channel_type channel_type, void* data,
                                cl_mem* result);
-
-std::string MemoryTypeToCLType(MemoryType type);
-
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

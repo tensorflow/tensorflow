@@ -22,7 +22,6 @@ import random
 import string
 import time
 
-from absl import flags
 import numpy as np
 
 from tensorflow.python import keras
@@ -34,8 +33,6 @@ from tensorflow.python.keras.layers.preprocessing import hashing
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
-
-FLAGS = flags.FLAGS
 
 v2_compat.enable_v2_behavior()
 

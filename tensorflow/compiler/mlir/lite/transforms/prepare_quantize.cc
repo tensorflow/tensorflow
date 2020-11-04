@@ -257,9 +257,9 @@ void PrepareQuantizePass::SanityCheckAndAdjustment(FuncOp func) {
   // (Quant $in, $qA) would introduce less quantization noise) the likley cause
   // is an minor error in constructing the original network model that
   // introduced back-to-back Fake Quantization operations. Hence: emit a
-  // warning. N.b. at this point weŕe (teporarility) in the quantization dialect
-  // (presuambly enalbe re-use in xla etc) quant::*QuantizeCastOp weŕe matching
-  // here.
+  // warning. N.b. at this point we're (teporarility) in the quantization
+  // dialect (presuambly enable re-use in xla etc) quant::*QuantizeCastOp
+  // we're matching here.
   //
   func.walk([&](quant::QuantizeCastOp q_op) {
     // If up with end up with
