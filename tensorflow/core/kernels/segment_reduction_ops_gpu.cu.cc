@@ -73,10 +73,9 @@ __global__ void SortedSegmentReductionCustomKernel(
     for (Index j = 0; j < actual_stripe_height; j++) {
       Index current_output_segment_id =
           segment_ids[input_outer_dim_index_base + j];
-      // Decide whether to write result to global memory.
-      // Result is only written to global memory if we move
-      // to another segment. Otherwise we can keep accumulating
-      // locally.
+      // Decide whether to write result to global memory. Result is only written
+      // to global memory if we move to another segment. Otherwise we can keep 
+      // accumulating locally.
       if (current_output_segment_id > last_output_segment_id) {
         const Index output_index =
             last_output_segment_id * inner_dim_size + segment_offset;
@@ -90,7 +89,7 @@ __global__ void SortedSegmentReductionCustomKernel(
         reduce_res = initial_value;
       }
       SegmentReductionF()(&reduce_res,
-                          ldg(input + (input_outer_dim_index_base + j) \
+                          ldg(input + (input_outer_dim_index_base + j)
                               * inner_dim_size + segment_offset));
       last_output_segment_id = current_output_segment_id;
     }
@@ -117,8 +116,8 @@ __global__ void SortedSegmentMeanCustomKernel(
     T sum = T(0);
     Index first_segment_id = segment_ids[input_outer_dim_index_base];
     Index last_output_segment_id = output_outer_dim_size;
-    bool is_first_has_race = input_outer_dim_index_base > 0 \
-        && first_segment_id == segment_ids[input_outer_dim_index_base - 1] \
+    bool is_first_has_race = input_outer_dim_index_base > 0
+        && first_segment_id == segment_ids[input_outer_dim_index_base - 1]
         ? true : false;
 
     const Index actual_stripe_height =
@@ -140,7 +139,7 @@ __global__ void SortedSegmentMeanCustomKernel(
         if (last_output_segment_id == first_segment_id && is_first_has_race) {
           Index previous_segment_num = 0;
           for (Index k = 1; input_outer_dim_index_base - k >= 0; k++) {
-            if (segment_ids[input_outer_dim_index_base] \
+            if (segment_ids[input_outer_dim_index_base]
                   != segment_ids[input_outer_dim_index_base - k])
               break;
             previous_segment_num++;
@@ -162,9 +161,9 @@ __global__ void SortedSegmentMeanCustomKernel(
     Index last_input_outer_dim_index =
         input_outer_dim_index_base + actual_stripe_height - 1;
     bool is_last_has_race =
-        last_input_outer_dim_index < input_outer_dim_size - 1 \
-          && segment_ids[last_input_outer_dim_index] == \
-             segment_ids[last_input_outer_dim_index + 1] \
+        last_input_outer_dim_index < input_outer_dim_size - 1
+          && segment_ids[last_input_outer_dim_index] ==
+             segment_ids[last_input_outer_dim_index + 1]
           ? true : false;
     const Index output_index =
         last_output_segment_id * inner_dim_size + segment_offset;
@@ -173,7 +172,7 @@ __global__ void SortedSegmentMeanCustomKernel(
       for (Index j = 1;
            last_input_outer_dim_index + j < input_outer_dim_size;
            j++) {
-        if (segment_ids[last_input_outer_dim_index] \
+        if (segment_ids[last_input_outer_dim_index]
               != segment_ids[last_input_outer_dim_index + j])
           break;
         after_segment_num++;
@@ -229,7 +228,7 @@ void SegmentMeanFunctor<T, Index>::operator()(
     return;
   }
 
-  // Launch kernel to compute sorted segment sum.
+  // Launch kernel to compute sorted segment mean.
   // Notes:
   // *) 'input_total_size' is the total number of elements to process.
   // *) 'segment_ids.shape' is a prefix of data's shape.
@@ -275,7 +274,7 @@ void SegmentReductionFunctor<T, Index, InitialValueF, SegmentReductionF,
     return;
   }
 
-  // Launch kernel to compute sorted segment sum.
+  // Launch kernel to compute sorted segment reduction.
   // Notes:
   // *) 'input_total_size' is the total number of elements to process.
   // *) 'segment_ids.shape' is a prefix of data's shape.
