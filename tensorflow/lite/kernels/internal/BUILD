@@ -380,6 +380,10 @@ cc_library(
     srcs = ["quantization_util.cc"],
     hdrs = ["quantization_util.h"],
     copts = tflite_copts() + micro_copts(),
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-lm"],
+    }),
     deps = [
         ":compatibility",
         ":cppmath",
