@@ -700,7 +700,7 @@ func @slice(%arg0: tensor<3x4xi32>) -> tensor<1x2xi32> {
 
 func @slice_indices_mismatch(%arg0: tensor<3x4xi32>) -> tensor<1x4xi32> {
   // expected-error@+1 {{failed to verify that all of {start_indices, limit_indices, strides} have same type}}
-  %0 = "mhlo.slice"(%arg0) {start_indices = dense<[1, 2, 3]> : tensor<3xi64>, limit_indices = dense<[2, 4]> : tensor<2xi64>, strides = dense<[1, 2]> : tensor<2xi64>} : (tensor<3x4xi32>) -> tensor<1x4xi32>
+  %0 = "mhlo.slice"(%arg0) {start_indices = dense<[1, 2]> : tensor<2xi64>, limit_indices = dense<[2, 4, 1]> : tensor<3xi64>, strides = dense<[1, 2]> : tensor<2xi64>} : (tensor<3x4xi32>) -> tensor<1x4xi32>
   return %0 : tensor<1x4xi32>
 }
 
@@ -710,6 +710,30 @@ func @slice_operand_result_mismatch(%arg0: tensor<3x4xi32>) -> tensor<1x4xf32> {
   // expected-error@+1 {{requires the same element type for all operands and results}}
   %0 = "mhlo.slice"(%arg0) {start_indices = dense<[1, 0]> : tensor<2xi64>, limit_indices = dense<[2, 4]> : tensor<2xi64>, strides = dense<[1, 2]> : tensor<2xi64>} : (tensor<3x4xi32>) -> tensor<1x4xf32>
   return %0 : tensor<1x4xf32>
+}
+
+// -----
+
+func @slice_indices_not_rank_1(%arg0: tensor<3x4xi32>) -> tensor<1x2xi32> {
+  // expected-error@+1 {{start_indices has rank 2 instead of required rank 1}}
+  %0 = "mhlo.slice"(%arg0) {
+    start_indices = dense<[[1, 0]]> : tensor<1x2xi64>,
+    limit_indices = dense<[[2, 4]]> : tensor<1x2xi64>,
+    strides = dense<[[1, 2]]> : tensor<1x2xi64>
+  } : (tensor<3x4xi32>) -> tensor<1x2xi32>
+  return %0 : tensor<1x2xi32>
+}
+
+// -----
+
+func @slice_indices_wrong_size(%arg0: tensor<3x4xi32>) -> tensor<1x2xi32> {
+  // expected-error@+1 {{the number of elements in start_indices (3) does not match the rank of the operand (2)}}
+  %0 = "mhlo.slice"(%arg0) {
+    start_indices = dense<[1, 0, 0]> : tensor<3xi64>,
+    limit_indices = dense<[2, 4, 0]> : tensor<3xi64>,
+    strides = dense<[1, 2, 0]> : tensor<3xi64>
+  } : (tensor<3x4xi32>) -> tensor<1x2xi32>
+  return %0 : tensor<1x2xi32>
 }
 
 // -----
