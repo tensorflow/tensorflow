@@ -35,11 +35,9 @@ cc_library(
     srcs = ["bufferize.cc"],
     hdrs = ["rewriters.h"],
     deps = [
-        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
     ],
