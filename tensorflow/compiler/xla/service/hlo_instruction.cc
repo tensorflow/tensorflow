@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <ostream>
 #include <set>
+#include <string>
 #include <unordered_set>
 #include <utility>
 
@@ -3692,6 +3693,10 @@ string OpMetadataToString(const OpMetadata& metadata) {
   }
   if (metadata.source_line() != 0) {
     result.push_back(StrCat("source_line=", metadata.source_line()));
+  }
+  if (!metadata.profile_type().empty()) {
+    result.push_back(StrCat("profile_type={",
+                            absl::StrJoin(metadata.profile_type(), ","), "}"));
   }
   return StrJoin(result, " ");
 }
