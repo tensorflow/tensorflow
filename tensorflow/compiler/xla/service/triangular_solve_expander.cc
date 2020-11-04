@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
@@ -43,6 +44,8 @@ XlaOp DiagonalBlocks(XlaOp a, int64 block_size) {
     int ndims = shape.rank();
     int64 n = ShapeUtil::GetDimension(shape, -1);
     int64 num_blocks = n / block_size;
+    absl::Span<int64 const> batch_dims = absl::MakeConstSpan(
+        shape.dimensions().begin(), shape.dimensions().begin() + (ndims - 2));
 
     XlaOp diag_blocks;
 
@@ -100,10 +103,10 @@ XlaOp DiagonalBlocks(XlaOp a, int64 block_size) {
 
       auto eye =
           IdentityMatrix(builder, shape.element_type(), padding, padding);
-      config = MakeNoPaddingConfig(ndims);
-      config.mutable_dimensions(ndims - 2)->set_edge_padding_low(n %
-                                                                 block_size);
+      config = MakeNoPaddingConfig(2);
+      config.mutable_dimensions(0)->set_edge_padding_low(n % block_size);
       eye = Pad(eye, Zero(builder, shape.element_type()), config);
+      eye = Broadcast(eye, batch_dims);
       last_blocks = ConcatInDim(builder, {last_blocks, eye}, ndims - 1);
 
       // Add a singleton dimension
