@@ -26,7 +26,6 @@ import tempfile
 import weakref
 
 from absl.testing import parameterized
-
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
@@ -1313,6 +1312,34 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(TypeError):
       # The signatures mapping is immutable
       imported.signatures["random_key"] = 3
+
+  def test_names_normalized(self, cycles):
+    class ObjWithFunction(module.Module):
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec([], dtype=dtypes.int32, name="A-b"),
+          tensor_spec.TensorSpec([], dtype=dtypes.int32, name="A/D"),
+          tensor_spec.TensorSpec([], dtype=dtypes.int32, name="bar"),
+          tensor_spec.TensorSpec([], dtype=dtypes.int32, name="e"),
+      ])
+      def foo(self, a, b, c, d=10, **options):
+        del options
+        return a + b + c + d
+
+    exported = ObjWithFunction()
+
+    with self.assertLogs(level="WARNING") as logs:
+      imported = cycle(exported, cycles)
+
+    expected_message = (
+        "WARNING:absl:Function `foo` contains input name(s) A-b, A/D with "
+        "unsupported characters which will be renamed to a_b, a_d in the "
+        "SavedModel.")
+    self.assertIn(expected_message, logs.output)
+
+    loaded_signature = imported.signatures["serving_default"].inputs
+    self.assertEqual("a_b:0", loaded_signature[0].name)
+    self.assertEqual("a_d:0", loaded_signature[1].name)
 
   def test_multiple_argument_signatures_no_positional(self, cycles):
 
