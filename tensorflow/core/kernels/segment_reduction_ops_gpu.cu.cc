@@ -116,7 +116,7 @@ __global__ void SortedSegmentMeanCustomKernel(
     T sum = T(0);
     Index first_segment_id = segment_ids[input_outer_dim_index_base];
     Index last_output_segment_id = output_outer_dim_size;
-    bool is_first_has_race = input_outer_dim_index_base > 0
+    bool is_first_update_racy = input_outer_dim_index_base > 0
         && first_segment_id == segment_ids[input_outer_dim_index_base - 1]
         ? true : false;
 
@@ -136,7 +136,8 @@ __global__ void SortedSegmentMeanCustomKernel(
             last_output_segment_id * inner_dim_size + segment_offset;
         // decide whether to write result to global memory using atomic
         // operations
-        if (last_output_segment_id == first_segment_id && is_first_has_race) {
+        if (last_output_segment_id == first_segment_id 
+            && is_first_update_racy) {
           Index previous_segment_num = 0;
           for (Index k = 1; input_outer_dim_index_base - k >= 0; k++) {
             if (segment_ids[input_outer_dim_index_base]
@@ -160,14 +161,14 @@ __global__ void SortedSegmentMeanCustomKernel(
 
     Index last_input_outer_dim_index =
         input_outer_dim_index_base + actual_stripe_height - 1;
-    bool is_last_has_race =
+    bool is_last_update_racy =
         last_input_outer_dim_index < input_outer_dim_size - 1
           && segment_ids[last_input_outer_dim_index] ==
              segment_ids[last_input_outer_dim_index + 1]
           ? true : false;
     const Index output_index =
         last_output_segment_id * inner_dim_size + segment_offset;
-    if (is_last_has_race) {
+    if (is_last_update_racy) {
       Index after_segment_num = 0;
       for (Index j = 1;
            last_input_outer_dim_index + j < input_outer_dim_size;
