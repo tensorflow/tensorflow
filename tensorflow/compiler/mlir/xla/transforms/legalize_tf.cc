@@ -5535,10 +5535,7 @@ class ConvertDynamicExpandDimsOp : public OpRewritePattern<TF::ExpandDimsOp> {
     llvm::SmallVector<Value, 4> dims;
     dims.resize(result_ty.getRank());
 
-    auto inserted_dim = expand_dims_attr.getValue({})
-                            .cast<IntegerAttr>()
-                            .getValue()
-                            .getSExtValue();
+    auto inserted_dim = expand_dims[0].getSExtValue();
 
     // Handle the negative value use case.
     if (inserted_dim < 0) {
