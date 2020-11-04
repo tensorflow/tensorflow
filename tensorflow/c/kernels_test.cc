@@ -184,8 +184,8 @@ ATTR_TEST_REGISTER_OP(Type, type);
   \ 
   do {                                                                     \
     int32_t list_size, total_size;                                         \
-    TF_OpKernelConstruction_GetAttrListSize(ctx, attr_name, &list_size,    \
-                                            &total_size, status);          \
+    TF_OpKernelConstruction_GetAttrSize(ctx, attr_name, &list_size,        \
+                                        &total_size, status);              \
     EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);            \
     EXPECT_EQ(expected_list_size, list_size);                              \
     EXPECT_EQ(expected_total_size, total_size);                            \

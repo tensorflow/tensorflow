@@ -239,12 +239,12 @@ void TF_OpKernelContext_Failure(TF_OpKernelContext* ctx, TF_Status* status) {
   cc_ctx->CtxFailure(s);
 }
 
-void TF_OpKernelConstruction_GetAttrListSize(TF_OpKernelConstruction* ctx,
-                                             const char* attr_name,
-                                             int32_t* list_size,
-                                             int32_t* total_size,
-                                             TF_Status* status) {
-  const auto* attr = GetAttrValue(ctx, attr_name, status);
+void TF_OpKernelConstruction_GetAttrSize(TF_OpKernelConstruction* ctx,
+                                         const char* attr_name,
+                                         int32_t* list_size,
+                                         int32_t* total_size,
+                                         TF_Status* status) {
+  const tensorflow::AttrValue* attr = GetAttrValue(ctx, attr_name, status);
   if (!status->status.ok()) {
     *list_size = -1;
     *total_size = -1;
@@ -313,7 +313,7 @@ void TF_OpKernelConstruction_GetAttrListSize(TF_OpKernelConstruction* ctx,
   }
 }
 
-#define DEFINE_TF_GETATTR(func, c_type, cc_type, list_field)                   \
+#define DEFINE_TF_GETATTR(func, c_type, cc_type, attr_type, list_field)        \
   void TF_OpKernelConstruction_GetAttr##func(TF_OpKernelConstruction* ctx,     \
                                              const char* attr_name,            \
                                              c_type* val, TF_Status* status) { \
@@ -330,24 +330,27 @@ void TF_OpKernelConstruction_GetAttrListSize(TF_OpKernelConstruction* ctx,
       TF_OpKernelConstruction* ctx, const char* attr_name, c_type* vals,       \
       int max_vals, TF_Status* status) {                                       \
     TF_SetStatus(status, TF_OK, "");                                           \
-    const auto* attr = GetAttrValue(ctx, attr_name, status);                   \
+    const tensorflow::AttrValue* attr = GetAttrValue(ctx, attr_name, status);  \
     if (!status->status.ok()) return;                                          \
     if (attr->value_case() != tensorflow::AttrValue::kList) {                  \
       status->status =                                                         \
           InvalidArgument("Value for '", attr_name, "' is not a list.");       \
       return;                                                                  \
     }                                                                          \
+    status->status =                                                           \
+        tensorflow::AttrValueHasType(*attr, "list(" attr_type ")");            \
+    if (!status->status.ok()) return;                                          \
     const auto len = std::min(max_vals, attr->list().list_field##_size());     \
     for (int i = 0; i < len; ++i) {                                            \
       vals[i] = static_cast<c_type>(attr->list().list_field(i));               \
     }                                                                          \
   }
 
-DEFINE_TF_GETATTR(Type, TF_DataType, tensorflow::DataType, type)
-DEFINE_TF_GETATTR(Int32, int32_t, tensorflow::int32, i)
-DEFINE_TF_GETATTR(Int64, int64_t, tensorflow::int64, i)
-DEFINE_TF_GETATTR(Float, float, float, f)
-DEFINE_TF_GETATTR(Bool, unsigned char, bool, b)
+DEFINE_TF_GETATTR(Type, TF_DataType, tensorflow::DataType, "type", type)
+DEFINE_TF_GETATTR(Int32, int32_t, tensorflow::int32, "int", i)
+DEFINE_TF_GETATTR(Int64, int64_t, tensorflow::int64, "int", i)
+DEFINE_TF_GETATTR(Float, float, float, "float", f)
+DEFINE_TF_GETATTR(Bool, TF_Bool, bool, "bool", b)
 
 void TF_OpKernelConstruction_GetAttrString(TF_OpKernelConstruction* ctx,
                                            const char* attr_name, void* value,

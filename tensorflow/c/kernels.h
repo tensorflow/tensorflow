@@ -168,7 +168,7 @@ TF_CAPI_EXPORT extern TF_DataType TF_ExpectedOutputDataType(
 // Returns the step ID of the given context.
 TF_CAPI_EXPORT extern int64_t TF_StepId(TF_OpKernelContext* ctx);
 
-// Get the lise_size and total_size of the attribute `attr_name` of `oper`.
+// Get the list_size and total_size of the attribute `attr_name` of `oper`.
 // list_size - the length of the list.
 // total_size - total size of the list.
 //   (1) If attr_type == TF_ATTR_STRING
@@ -182,8 +182,7 @@ TF_CAPI_EXPORT extern int64_t TF_StepId(TF_OpKernelContext* ctx);
 //       then total_size is the cumulative number
 //       of dimensions of all shapes in the list.
 //   (5) Otherwise, total_size is undefined.
-
-TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrListSize(
+TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrSize(
     TF_OpKernelConstruction* ctx, const char* attr_name, int32_t* list_size,
     int32_t* total_size, TF_Status* status);
 
@@ -229,13 +228,13 @@ TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrFloat(
 // If the attribute could not be found or could not be interpreted as
 // bool, *status is populated with an error.
 TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrBool(
-    TF_OpKernelConstruction* ctx, const char* attr_name, unsigned char* val,
+    TF_OpKernelConstruction* ctx, const char* attr_name, TF_Bool* val,
     TF_Status* status);
 
 // Interprets the named kernel construction attribute as string and
 // places it into *val. `val` must
 // point to an array of length at least `max_length` (ideally set to
-// total_size from TF_OpKernelConstruction_GetAttrListSize(ctx,
+// total_size from TF_OpKernelConstruction_GetAttrSize(ctx,
 // attr_name, list_size, total_size)). *status is set to TF_OK.
 //
 // If the attribute could not be found or could not be interpreted as
@@ -248,7 +247,7 @@ TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrString(
 // places it into *vals. *status is set to TF_OK.
 // `vals` must point to an array of length at least `max_values` (ideally set
 // to list_size from
-// TF_OpKernelConstruction_GetAttrListSize(ctx, attr_name, list_size,
+// TF_OpKernelConstruction_GetAttrSize(ctx, attr_name, list_size,
 // total_size)).
 TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrTypeList(
     TF_OpKernelConstruction* ctx, const char* attr_name, TF_DataType* vals,
@@ -258,17 +257,17 @@ TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrTypeList(
 // places it into *vals. *status is set to TF_OK.
 // `vals` must point to an array of length at least `max_values` (ideally set
 // to list_size from
-// TF_OpKernelConstruction_GetAttrListSize(ctx, attr_name, list_size,
+// TF_OpKernelConstruction_GetAttrSize(ctx, attr_name, list_size,
 // total_size)).
 TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrInt32List(
     TF_OpKernelConstruction* ctx, const char* attr_name, int32_t* vals,
     int max_vals, TF_Status* status);
 
-// Interprets the named kernel construction attribute as int64_t and
+// Interprets the named kernel construction attribute as int64_t array and
 // places it into *vals. *status is set to TF_OK.
 // `vals` must point to an array of length at least `max_values` (ideally set
 // to list_size from
-// TF_OpKernelConstruction_GetAttrListSize(ctx, attr_name, list_size,
+// TF_OpKernelConstruction_GetAttrSize(ctx, attr_name, list_size,
 // total_size)).
 TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrInt64List(
     TF_OpKernelConstruction* ctx, const char* attr_name, int64_t* vals,
@@ -278,7 +277,7 @@ TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrInt64List(
 // places it into *vals. *status is set to TF_OK.
 // `vals` must point to an array of length at least `max_values` (ideally set
 // to list_size from
-// TF_OpKernelConstruction_GetAttrListSize(ctx, attr_name, list_size,
+// TF_OpKernelConstruction_GetAttrSize(ctx, attr_name, list_size,
 // total_size)).
 TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrFloatList(
     TF_OpKernelConstruction* ctx, const char* attr_name, float* vals,
@@ -288,10 +287,10 @@ TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrFloatList(
 // places it into *vals. *status is set to TF_OK.
 // `vals` must point to an array of length at least `max_values` (ideally set
 // to list_size from
-// TF_OpKernelConstruction_GetAttrListSize(ctx, attr_name, list_size,
+// TF_OpKernelConstruction_GetAttrSize(ctx, attr_name, list_size,
 // total_size)).
 TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrBoolList(
-    TF_OpKernelConstruction* ctx, const char* attr_name, unsigned char* vals,
+    TF_OpKernelConstruction* ctx, const char* attr_name, TF_Bool* vals,
     int max_vals, TF_Status* status);
 
 // Interprets the named kernel construction attribute as string and fills in
@@ -301,7 +300,7 @@ TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrBoolList(
 // least `storage_size` bytes in length. Ideally, max_values would be set to
 // list_size and `storage` would be at least
 // total_size, obtained from
-// TF_OpKernelConstruction_GetAttrListSize(ctx, attr_name, list_size,
+// TF_OpKernelConstruction_GetAttrSize(ctx, attr_name, list_size,
 // total_size).
 TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrStringList(
     TF_OpKernelConstruction* ctx, const char* attr_name, void** vals,
