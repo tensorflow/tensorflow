@@ -289,7 +289,8 @@ Status ConvertMLIRToTFLiteFlatBuffer(
         absl::StrCat(toco_flags.dump_graphviz_dir(), "/toco_AT_IMPORT.dot")));
   }
 
-  mlir::PassManager pm(module->getContext());
+  mlir::PassManager pm(module->getContext(),
+                       mlir::OpPassManager::Nesting::Implicit);
 
   tensorflow::AddTFToTFLConversionPasses(pass_config, &pm, session);
   // Convert back to outlined while format for export back to flatbuffer.
