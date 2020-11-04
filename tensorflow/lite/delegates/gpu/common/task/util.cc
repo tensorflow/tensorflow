@@ -30,5 +30,18 @@ std::string MemoryTypeToCLType(MemoryType type) {
   return "";
 }
 
+std::string MemoryTypeToMetalType(MemoryType type) {
+  switch (type) {
+    case MemoryType::GLOBAL:
+      return "device";
+    case MemoryType::CONSTANT:
+      return "constant";
+      break;
+    case MemoryType::LOCAL:
+      return "threadgroup";
+  }
+  return "";
+}
+
 }  // namespace gpu
 }  // namespace tflite

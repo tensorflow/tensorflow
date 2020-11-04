@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
+#include "tensorflow/lite/delegates/gpu/common/task/util.h"
 
 namespace tflite {
 namespace gpu {
