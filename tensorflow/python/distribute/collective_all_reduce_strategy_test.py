@@ -635,4 +635,5 @@ class ExperimentalCompatibilityTest(test.TestCase):
 
 
 if __name__ == '__main__':
-  test_util.main()
+  # TODO(b/172304955): enable logical devices.
+  test_util.main(config_logical_devices=False)
