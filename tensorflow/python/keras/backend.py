@@ -2554,8 +2554,8 @@ def abs(x):
 def sqrt(x):
   """Element-wise square root.
 
-     This function clips tensor values to a specified min(0) and max(inf)
-     before taking sqrt.
+     This function clips negative tensor values to 0 before computing the
+     square root.
 
   Arguments:
       x: Tensor or variable.
@@ -2564,8 +2564,7 @@ def sqrt(x):
       A tensor.
   """
   zero = _constant_to_tensor(0., x.dtype.base_dtype)
-  inf = _constant_to_tensor(np.inf, x.dtype.base_dtype)
-  x = clip_ops.clip_by_value(x, zero, inf)
+  x = math_ops.maximum(x, zero)
   return math_ops.sqrt(x)
 
 
