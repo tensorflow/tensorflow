@@ -610,6 +610,11 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
         return 2;
       }
       return 1;
+    // The version one of broadcast to op won't be not supported since the
+    // version one was rollbacked and the builtin op code number has been
+    // changed because of builtin op code shortage problem.
+    case BuiltinOperator_BROADCAST_TO:
+      return 2;
     default:
       return 1;
   }

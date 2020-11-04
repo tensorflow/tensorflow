@@ -156,6 +156,7 @@ TfLiteRegistration* Register_HARD_SWISH_REF();
 TfLiteRegistration* Register_DEPTH_TO_SPACE_REF();
 TfLiteRegistration* Register_SELECT_V2();
 TfLiteRegistration* Register_SEGMENT_SUM();
+TfLiteRegistration* Register_BROADCAST_TO();
 
 namespace {
 
@@ -261,6 +262,12 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
              /* max_version = */ 4);
   AddBuiltin(BuiltinOperator_L2_NORMALIZATION, Register_L2NORM_REF(),
              /* min_version = */ 1,
+             /* max_version = */ 2);
+  // The version one of broadcast to op won't be not supported since the version
+  // one was rollbacked and the builtin op code number has been changed because
+  // of builtin op code shortage problem.
+  AddBuiltin(BuiltinOperator_BROADCAST_TO, Register_BROADCAST_TO(),
+             /* min_version = */ 2,
              /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_LOCAL_RESPONSE_NORMALIZATION,
              Register_LOCAL_RESPONSE_NORM_REF());
