@@ -59,9 +59,9 @@ endif()
 # MLIR/LLVM Configuration
 #-------------------------------------------------------------------------------
 
-# Skip to find MLIR, which allows to build MHLO as part of another project.
-# This is necessary if the project which embeds MHLO uses a bundled version of
-# MLIR and does not use an installed version of MLIR.
+# Find MLIR to install if we are building standalone. If building as part of
+# another project, let it handle the MLIR dependency. The dependent project
+# might use a bundled version of MLIR instead of installing, for instance.
 if(NOT MHLO_BUILD_EMBEDDED)
   find_package(MLIR REQUIRED CONFIG)
   message(STATUS "Using MLIRConfig.cmake in: ${MLIR_DIR}")
