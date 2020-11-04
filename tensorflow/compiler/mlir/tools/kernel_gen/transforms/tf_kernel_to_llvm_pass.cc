@@ -56,8 +56,8 @@ class TFKernelToLLVMPass : public TFKernelToLLVMPassBase<TFKernelToLLVMPass> {
     // Set target.
     ConversionTarget target(getContext());
     target.addLegalDialect<LLVM::LLVMDialect>();
-    target
-        .addIllegalDialect<gpu::GPUDialect, tf_framework::TFFrameworkDialect>();
+    target.addIllegalDialect<gpu::GPUDialect, StandardOpsDialect,
+                             tf_framework::TFFrameworkDialect>();
     target.addIllegalOp<LLVM::DialectCastOp>();
 
     if (failed(applyPartialConversion(m, target, std::move(patterns)))) {
