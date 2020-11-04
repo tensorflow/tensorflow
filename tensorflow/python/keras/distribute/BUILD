@@ -945,6 +945,7 @@ tf_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/distribute:sharded_variable",
+        "//tensorflow/python/keras:metrics",
         "//tensorflow/python/keras/engine:base_layer",
     ],
 )
