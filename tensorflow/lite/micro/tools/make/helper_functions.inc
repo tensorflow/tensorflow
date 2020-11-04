@@ -37,6 +37,7 @@ substitute_specialized_implementation = \
   $(if $(wildcard $(1)),$(firstword $(wildcard $(dir $(1))$(2)/$(notdir $(1))) $(wildcard $(1))),$(1))
 substitute_specialized_implementations = \
   $(foreach source,$(1),$(call substitute_specialized_implementation,$(source),$(2)))
+
 # Here we're first looking for specialized implementations in ref_dir/$(TAG1)
 # and then ref_dir/$(TAG2), etc, before falling back to ref_dir's
 # implementation.
@@ -45,6 +46,7 @@ substitute_specialized_implementations = \
 define specialize_on_tags
 $(if $(2),$(call substitute_specialized_implementations,$(call specialize_on_tags,$(1),$(wordlist 2,$(words $(2)),$(2))),$(firstword $(2))),$(1))
 endef
+
 # The entry point that most targets should use to find implementation-specific
 # versions of their source files. The only argument is a list of file paths.
 specialize = $(call specialize_on_tags,$(1),$(strip $(call reverse,$(ALL_TAGS))))
