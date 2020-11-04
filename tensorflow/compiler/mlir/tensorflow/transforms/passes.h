@@ -374,6 +374,12 @@ void CreateTPUBridgePipeline(OpPassManager& pm);
 // bridge in V1 mode.
 void CreateTPUBridgePipelineV1(OpPassManager& pm);
 
+// Creates a pass that replicates the tf._TPUCompileMlir op on each host that
+// needs the compiled program. It helps avoid transferring the compiled binary
+// between hosts.
+std::unique_ptr<OperationPass<mlir::ModuleOp>>
+CreateTPUCompileOpReplicationPass();
+
 }  // namespace TFTPU
 
 }  // namespace mlir
