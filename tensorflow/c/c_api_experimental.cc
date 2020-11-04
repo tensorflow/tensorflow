@@ -766,12 +766,14 @@ TF_Library* TF_LoadPluggableDeviceLibrary(const char* library_filename,
 #else
   TF_Library* lib_handle = new TF_Library;
   static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
-  static std::unordered_map<std::string, void*> loaded_libs;
+  static std::unordered_map<std::string, void*>* loaded_libs =
+      new std::unordered_map<std::string, void*>();
   tensorflow::Env* env = tensorflow::Env::Default();
   {
     tensorflow::mutex_lock lock(mu);
-    if (loaded_libs.find(library_filename) != loaded_libs.end()) {
-      lib_handle->lib_handle = loaded_libs[library_filename];
+    auto it = loaded_libs->find(library_filename);
+    if (it != loaded_libs->end()) {
+      lib_handle->lib_handle = it->second;
     } else {
       status->status =
           env->LoadDynamicLibrary(library_filename, &lib_handle->lib_handle);
