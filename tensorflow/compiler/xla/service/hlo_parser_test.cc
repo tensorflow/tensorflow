@@ -1908,7 +1908,7 @@ TEST_F(HloParserTest, MetadataWithCholesky) {
   const string original = R"(HloModule metadata_with_cholesky
 ENTRY %blabla (a: f32[1,291,291]) -> f32[1,291,291] {
   %a = f32[1,291,291] parameter(0)
-  %out = f32[1,291,291] cholesky(f32[1,291,291] %a), lower=true, metadata={op_type="Cholesky" op_name="Cholesky"}
+  %out = f32[1,291,291] cholesky(f32[1,291,291] %a), lower=true, metadata={op_type="Cholesky" op_name="Cholesky" profile_type={1}}
 }
 )";
   auto result = ParseAndReturnVerifiedModule(original);
@@ -1923,6 +1923,12 @@ ENTRY %blabla (a: f32[1,291,291]) -> f32[1,291,291] {
                             ->root_instruction()
                             ->metadata()
                             .op_type());
+  EXPECT_EQ(WINDOW, *result.ValueOrDie()
+                         ->entry_computation()
+                         ->root_instruction()
+                         ->metadata()
+                         .profile_type()
+                         .begin());
 }
 
 TEST_F(HloParserTest, WrongShape) {

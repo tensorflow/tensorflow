@@ -2419,3 +2419,21 @@ func @invalid_two_dynamic_dims_on_reshape(%arg0: tensor<3x4xi32>, %arg1: tensor<
   %0 = "tfl.reshape"(%arg0, %arg1) : (tensor<3x4xi32>, tensor<?x?x4xi32>) -> tensor<1x3x4xi32>
   return %0 : tensor<1x3x4xi32>
 }
+
+// -----
+
+// CHECK-LABEL: testBroadcastToWithI32ShapeTensor
+func @testBroadcastToWithI32ShapeTensor(tensor<?x?x?x?x?x?xf32>, tensor<8xi32>) -> tensor<?x?x?x?x?x?x?x?xf32> {
+^bb0(%arg0: tensor<?x?x?x?x?x?xf32>, %arg1: tensor<8xi32>):
+  // CHECK: "tfl.broadcast_to"(%arg0, %arg1)
+  %0 = "tfl.broadcast_to"(%arg0, %arg1): (tensor<?x?x?x?x?x?xf32>, tensor<8xi32>) -> tensor<?x?x?x?x?x?x?x?xf32>
+  return %0 : tensor<?x?x?x?x?x?x?x?xf32>
+}
+
+// CHECK-LABEL: testBroadcastToWithI64ShapeTensor
+func @testBroadcastToWithI64ShapeTensor(tensor<?x?x?x?x?x?xf32>, tensor<8xi64>) -> tensor<?x?x?x?x?x?x?x?xf32> {
+^bb0(%arg0: tensor<?x?x?x?x?x?xf32>, %arg1: tensor<8xi64>):
+  // CHECK: "tfl.broadcast_to"(%arg0, %arg1)
+  %0 = "tfl.broadcast_to"(%arg0, %arg1): (tensor<?x?x?x?x?x?xf32>, tensor<8xi64>) -> tensor<?x?x?x?x?x?x?x?xf32>
+  return %0 : tensor<?x?x?x?x?x?x?x?xf32>
+}

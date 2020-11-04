@@ -25,6 +25,8 @@ namespace gpu {
 
 std::string MemoryTypeToCLType(MemoryType type);
 
+std::string MemoryTypeToMetalType(MemoryType type);
+
 }  // namespace gpu
 }  // namespace tflite
 

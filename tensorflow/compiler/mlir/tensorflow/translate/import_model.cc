@@ -3569,17 +3569,20 @@ Status SavedModelSignatureDefImporter::LiftVariables() {
 
   mlir::PassManager pm(module_->getContext());
   SetCrashReproducer(pm);
-  pm.addPass(mlir::tf_executor::CreateTFExecutorGraphPruningPass());
-  pm.addPass(mlir::CreateExecutorDialectToFunctionalConversionPass());
+  pm.addNestedPass<mlir::FuncOp>(
+      mlir::tf_executor::CreateTFExecutorGraphPruningPass());
+  pm.addNestedPass<mlir::FuncOp>(
+      mlir::CreateExecutorDialectToFunctionalConversionPass());
   pm.addPass(
       mlir::tf_saved_model::CreateRemoveVariablesInSessionInitializerPass());
-  pm.addPass(
+  pm.addNestedPass<mlir::FuncOp>(
       mlir::TF::
           CreateConvertReadonlyReferenceVariablesToResourceVariablesPass());
   pm.addPass(mlir::TF::CreatePromoteVarHandlesToArgsPass());
   pm.addPass(
       mlir::tf_saved_model::CreateLiftVariablesPass(bundle_.GetSession()));
-  pm.addPass(mlir::tf_saved_model::CreateDedupBoundInputBindingPass());
+  pm.addNestedPass<mlir::FuncOp>(
+      mlir::tf_saved_model::CreateDedupBoundInputBindingPass());
   if (mlir::failed(pm.run(*module_)))
     return diag_handler.Combine(errors::Internal("Failed to lift variables."));
 

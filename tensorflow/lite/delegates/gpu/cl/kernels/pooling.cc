@@ -28,7 +28,7 @@ std::string GetAveragePoolingKernelCode(const OperationDef& op_def,
                                         bool stride_correction,
                                         GPUOperation* op) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
+  src_desc.SetAddressMode(AddressMode::kZero);
   if (op_def.IsBatchSupported()) {
     src_desc.SetStateVar("BatchedWidth", "true");
   }

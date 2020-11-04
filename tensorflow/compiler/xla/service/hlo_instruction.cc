@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <ostream>
 #include <set>
+#include <string>
 #include <unordered_set>
 #include <utility>
 
@@ -495,11 +496,11 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       break;
     }
     case HloOpcode::kReplicaId: {
-      instruction = CreateReplicaId();
+      instruction = CreateReplicaId(shape);
       break;
     }
     case HloOpcode::kPartitionId: {
-      instruction = CreatePartitionId();
+      instruction = CreatePartitionId(shape);
       break;
     }
     case HloOpcode::kConvolution: {
@@ -1079,15 +1080,20 @@ HloInstruction::CreateCollectivePermuteStart(
       channel_id);
 }
 
-/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReplicaId() {
-  return absl::WrapUnique(
-      new HloInstruction(HloOpcode::kReplicaId, ShapeUtil::MakeShape(U32, {})));
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReplicaId(
+    const Shape& shape) {
+  CHECK(Shape::Equal().IgnoreLayout()(shape, ShapeUtil::MakeShape(U32, {})))
+      << "HloInstruction replica-id must have a shape of u32[], but "
+      << shape.ToString() << " is specified";
+  return absl::WrapUnique(new HloInstruction(HloOpcode::kReplicaId, shape));
 }
 
-/* static */ std::unique_ptr<HloInstruction>
-HloInstruction::CreatePartitionId() {
-  return absl::WrapUnique(new HloInstruction(HloOpcode::kPartitionId,
-                                             ShapeUtil::MakeShape(U32, {})));
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreatePartitionId(
+    const Shape& shape) {
+  CHECK(Shape::Equal().IgnoreLayout()(shape, ShapeUtil::MakeShape(U32, {})))
+      << "HloInstruction partition-id must have a shape of u32[], but "
+      << shape.ToString() << " is specified";
+  return absl::WrapUnique(new HloInstruction(HloOpcode::kPartitionId, shape));
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateInfeed(
@@ -1798,13 +1804,11 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       break;
     case HloOpcode::kReplicaId:
       CHECK_EQ(new_operands.size(), 0);
-      clone = CreateReplicaId();
-      *clone->mutable_shape() = shape;
+      clone = CreateReplicaId(shape);
       break;
     case HloOpcode::kPartitionId:
       CHECK_EQ(new_operands.size(), 0);
-      clone = CreatePartitionId();
-      *clone->mutable_shape() = shape;
+      clone = CreatePartitionId(shape);
       break;
   }
   // SetupDerivedInstruction will setup the precision_config_ field.
@@ -3692,6 +3696,10 @@ string OpMetadataToString(const OpMetadata& metadata) {
   }
   if (metadata.source_line() != 0) {
     result.push_back(StrCat("source_line=", metadata.source_line()));
+  }
+  if (!metadata.profile_type().empty()) {
+    result.push_back(StrCat("profile_type={",
+                            absl::StrJoin(metadata.profile_type(), ","), "}"));
   }
   return StrJoin(result, " ");
 }

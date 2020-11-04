@@ -211,15 +211,6 @@ Status TFSavedModelAPI::GetSignatureDefFunction(
   return Status();
 }
 
-std::vector<ConcreteFunction*> TFSavedModelAPI::ListFunctions() {
-  std::vector<ConcreteFunction*> result;
-  result.reserve(revived_objects_.concrete_functions.size());
-  for (auto& index_and_function : revived_objects_.concrete_functions) {
-    result.push_back(index_and_function.second.get());
-  }
-  return result;
-}
-
 Status TFSavedModelAPI::GetVariable(const std::string& variable_path,
                                     Variable** variable) {
   absl::optional<int> node =

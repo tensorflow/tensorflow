@@ -279,6 +279,11 @@ CreateMarkOpsForOutsideCompilationPass();
 // attribute to each TensorFlow dialect op in the body based on the `device`
 // attribute on the `tf_device.launch`.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLaunchToDeviceAttributePass();
+
+// Creates a pass that hoists a `tf_device.replicate` body and replicates each
+// TensorFlow dialect op in the body based on its `device` attribute and the
+// `devices` attribute on the `tf_device.replicate`.
+std::unique_ptr<OperationPass<mlir::ModuleOp>> CreateTFDeviceReplicationPass();
 }  // namespace TFDevice
 
 namespace TFTPU {

@@ -49,12 +49,12 @@ bool TFIntListIs1XY1(const ArrayAttr &attr);
 // must be `IntegerAttr`.
 bool TFIntListIsAllOnes(const ArrayAttr &attr);
 
-// Returns true iff the given value is a float tensor.
+// Returns true iff the given value is a float32 tensor.
 // is "DT_FLOAT".
-inline bool TFTypeIsFloatTensor(Value value) {
+inline bool TFTypeIsFloat32Tensor(Value value) {
   auto tensorType = value.getType().dyn_cast<TensorType>();
   if (!tensorType) return false;
-  return tensorType.getElementType().isa<FloatType>();
+  return tensorType.getElementType().isF32();
 }
 
 // Returns true iff the given TensorFlow op has a `padding` attribute whose

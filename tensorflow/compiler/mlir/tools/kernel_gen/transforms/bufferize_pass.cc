@@ -98,7 +98,8 @@ struct BufferizePass : public BufferizePassBase<BufferizePass> {
       return converter.isLegal(inputs) && converter.isLegal(results) &&
              converter.isLegal(&op.getBody());
     });
-    target.addDynamicallyLegalOp<CallOp, ReturnOp, SelectOp>(typesAreLegal);
+    target.addDynamicallyLegalOp<CallOp, ReturnOp, SelectOp, ConstantOp>(
+        typesAreLegal);
 
     OwningRewritePatternList patterns;
     mhlo::populateHLOToLHLOConversionPattern(&context, &converter, &patterns);

@@ -35,11 +35,9 @@ cc_library(
     srcs = ["bufferize.cc"],
     hdrs = ["rewriters.h"],
     deps = [
-        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
     ],
@@ -128,7 +126,6 @@ cc_library(
         "//tensorflow/compiler/mlir/hlo:hlo_legalize_to_lhlo",
         "//tensorflow/compiler/mlir/hlo:lhlo",
         "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
-        "//tensorflow/compiler/mlir/hlo:lhlo_legalize_to_llvm",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
     ] + if_cuda_is_configured([
         "//tensorflow/stream_executor/gpu:asm_compiler",

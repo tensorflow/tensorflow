@@ -1076,30 +1076,6 @@ def tf_cc_test(
         **kwargs
     )
 
-# Part of the testing workflow requires a distinguishable name for the build
-# rules that involve a GPU, even if otherwise identical to the base rule.
-def tf_cc_test_gpu(
-        name,
-        srcs,
-        deps,
-        linkstatic = 0,
-        tags = [],
-        data = [],
-        size = "medium",
-        suffix = "",
-        args = None):
-    tf_cc_test(
-        name,
-        srcs,
-        deps,
-        size = size,
-        args = args,
-        data = data,
-        linkstatic = linkstatic,
-        suffix = suffix,
-        tags = tags,
-    )
-
 def tf_gpu_cc_test(
         name,
         srcs = [],
@@ -1274,17 +1250,6 @@ def tf_cc_test_mkl(
             args = args,
             features = disable_header_modules,
         )
-
-def tf_cc_tests_gpu(
-        srcs,
-        deps,
-        name = "",
-        linkstatic = 0,
-        tags = [],
-        size = "medium",
-        kernels = [],
-        args = None):
-    tf_cc_tests(srcs, deps, linkstatic, size = size, args = args, kernels = kernels, tags = tags)
 
 def tf_gpu_cc_tests(
         srcs,

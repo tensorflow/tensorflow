@@ -272,6 +272,15 @@ void InferenceContext::CopyInAndOutIds(const GraphFloat32& graph) {
   for (const auto& output : outputs) {
     output_ids_.push_back(output->id);
   }
+
+  in_refs_.resize(inputs.size());
+  out_refs_.resize(outputs.size());
+  for (int i = 0; i < inputs.size(); ++i) {
+    in_refs_[i] = inputs[i]->tensor.ref;
+  }
+  for (int i = 0; i < outputs.size(); ++i) {
+    out_refs_[i] = outputs[i]->tensor.ref;
+  }
 }
 
 void InferenceContext::ReserveGraphTensors(

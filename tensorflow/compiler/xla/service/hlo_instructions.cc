@@ -646,6 +646,7 @@ HloAllGatherInstruction::CloneWithNewOperandsImpl(
 HloInstructionProto HloAllGatherInstruction::ToProto() const {
   HloInstructionProto proto = HloCollectiveInstruction::ToProto();
   proto.add_dimensions(all_gather_dimension_);
+  proto.set_use_global_device_ids(use_global_device_ids_);
   return proto;
 }
 

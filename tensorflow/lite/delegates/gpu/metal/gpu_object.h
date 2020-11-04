@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/access_type.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/delegates/gpu/metal/gpu_object_desc.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_object_desc.h"
 
 namespace tflite {
 namespace gpu {

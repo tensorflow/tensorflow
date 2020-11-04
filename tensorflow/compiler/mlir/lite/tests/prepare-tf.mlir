@@ -571,6 +571,73 @@ func @MatrixSetDiagV3Conversion(%arg0: tensor<3x3xi32>, %arg1: tensor<3xi32>) ->
   // CHECK: return %[[RES]]
 }
 
+func @broadcast_to_f32_low_dim(%arg0: tensor<3xf32>, %arg1: tensor<2xi32>) -> tensor<3x3xf32> {
+  %0 = "tf.BroadcastTo"(%arg0, %arg1) : (tensor<3xf32>, tensor<2xi32>) -> tensor<3x3xf32>
+  return %0: tensor<3x3xf32>
+
+// CHECK-LABEL: broadcast_to_f32_low_dim
+// CHECK:  [[CST:%.*]] = constant dense<1.000000e+00> : tensor<3x3xf32>
+// CHECK:  [[MUL:%.*]] = "tf.Mul"(%arg0, [[CST]]) : (tensor<3xf32>, tensor<3x3xf32>) -> tensor<3x3xf32>
+// CHECK:  return [[MUL]] : tensor<3x3xf32>
+}
+
+func @broadcast_to_i32_low_dim(%input: tensor<3xi32>, %shape: tensor<2xi32>) -> tensor<3x3xi32> {
+  %0 = "tf.BroadcastTo"(%input, %shape) : (tensor<3xi32>, tensor<2xi32>) -> tensor<3x3xi32>
+  return %0: tensor<3x3xi32>
+
+// CHECK-LABEL: broadcast_to_i32_low_dim
+// CHECK:  [[CST:%.*]] = constant dense<1> : tensor<3x3xi32>
+// CHECK:  [[MUL:%.*]] = "tf.Mul"(%arg0, [[CST]]) : (tensor<3xi32>, tensor<3x3xi32>) -> tensor<3x3xi32>
+// CHECK:  return [[MUL]] : tensor<3x3xi32>
+}
+
+func @broadcast_to_low_dim_with_unknown_shape(%arg0: tensor<3xf32>, %arg1: tensor<*xi32>) -> tensor<3x3xf32> {
+  %0 = "tf.BroadcastTo"(%arg0, %arg1) : (tensor<3xf32>, tensor<*xi32>) -> tensor<3x3xf32>
+  return %0: tensor<3x3xf32>
+
+// CHECK-LABEL: broadcast_to_low_dim_with_unknown_shape
+// CHECK:  [[CST:%.*]] = constant dense<1.000000e+00> : tensor<3x3xf32>
+// CHECK:  [[MUL:%.*]] = "tf.Mul"(%arg0, [[CST]]) : (tensor<3xf32>, tensor<3x3xf32>) -> tensor<3x3xf32>
+// CHECK:  return [[MUL]] : tensor<3x3xf32>
+}
+
+func @broadcast_to_i32_low_dim_with_unknown_output(%input: tensor<3xi32>, %shape: tensor<2xi32>) -> tensor<*xi32> {
+  %0 = "tf.BroadcastTo"(%input, %shape) : (tensor<3xi32>, tensor<2xi32>) -> tensor<*xi32>
+  return %0: tensor<*xi32>
+
+// CHECK-LABEL: broadcast_to_i32_low_dim_with_unknown_output
+// CHECK:  [[CST:%.*]] = constant dense<1> : tensor<i32>
+// CHECK:  [[FILL:%.*]] = "tf.Fill"(%arg1, [[CST]]) : (tensor<2xi32>, tensor<i32>) -> tensor<*xi32>
+// CHECK:  [[MUL:%.*]] = "tf.Mul"(%arg0, [[FILL]]) : (tensor<3xi32>, tensor<*xi32>) -> tensor<*xi32>
+// CHECK:  return [[MUL]] : tensor<*xi32>
+}
+
+func @broadcast_to_high_dim_with_unknown_shape(%arg0: tensor<1x2x3x4x5x6xf32>, %arg1: tensor<*xi32>) -> tensor<7x8x1x2x3x4x5x6xf32> {
+  %0 = "tf.BroadcastTo"(%arg0, %arg1) : (tensor<1x2x3x4x5x6xf32>, tensor<*xi32>) -> tensor<7x8x1x2x3x4x5x6xf32>
+  return %0: tensor<7x8x1x2x3x4x5x6xf32>
+
+// CHECK-LABEL: broadcast_to_high_dim_with_unknown_shape
+// CHECK:  [[BCT:%.*]] = "tf.BroadcastTo"(%arg0, %arg1) : (tensor<1x2x3x4x5x6xf32>, tensor<*xi32>) -> tensor<7x8x1x2x3x4x5x6xf32>
+// CHECK:  return [[BCT]] : tensor<7x8x1x2x3x4x5x6xf32>
+}
+
+func @broadcast_to_high_dim_with_unknown_output(%arg0: tensor<1x2x3x4x5x6xf32>, %arg1: tensor<8xi32>) -> tensor<*xf32> {
+  %0 = "tf.BroadcastTo"(%arg0, %arg1) : (tensor<1x2x3x4x5x6xf32>, tensor<8xi32>) -> tensor<*xf32>
+  return %0: tensor<*xf32>
+
+// CHECK-LABEL: broadcast_to_high_dim_with_unknown_output
+// CHECK:  [[BCT:%.*]] = "tf.BroadcastTo"(%arg0, %arg1) : (tensor<1x2x3x4x5x6xf32>, tensor<8xi32>) -> tensor<*xf32>
+// CHECK:  return [[BCT]] : tensor<*xf32>
+}
+
+func @broadcast_to_with_unknown_shape_and_output(%arg0: tensor<1x2x3x4x5x6xf32>, %arg1: tensor<*xi32>) -> tensor<*xf32> {
+  %0 = "tf.BroadcastTo"(%arg0, %arg1) : (tensor<1x2x3x4x5x6xf32>, tensor<*xi32>) -> tensor<*xf32>
+  return %0: tensor<*xf32>
+
+// CHECK-LABEL: broadcast_to_with_unknown_shape_and_output
+// CHECK:  "tf.BroadcastTo"(%arg0, %arg1)
+}
+
 // CHECK-LABEL: xla_conv
 func @xla_conv(%arg0: tensor<4x8x8x16xf32>) -> tensor<4x8x8x16xf32> {
   %0 = "tf.Const"() {value = dense<1.000000e+00> : tensor<3x3x16x16xf32>} : () -> tensor<3x3x16x16xf32> loc("Const_1")
@@ -646,4 +713,26 @@ func @DoNotConvertConv2DWhenFilterTypeDimIsNotDecided(%arg0 : tensor<?x?x?x96xf3
 // CHECK: tf.Conv2D
 }
 
+// CHECK-LABEL: conv2d_f16
+func @conv2d_f16(%arg0 : tensor<?x224x224x3xf16>, %arg1 : tensor<3x3x3x16xf16>) -> tensor<?x112x112x16xf16> {
+  %0 = "tf.Conv2D"(%arg0, %arg1) {data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 2, 2, 1], use_cudnn_on_gpu = true} : (tensor<?x224x224x3xf16>, tensor<3x3x3x16xf16>) -> tensor<?x112x112x16xf16>
+  return %0 : tensor<?x112x112x16xf16>
+  // CHECK: "tf.Conv2D"
 }
+
+// CHECK-LABEL: fused_batch_norm_v3_f16
+func @fused_batch_norm_v3_f16(%arg0 : tensor<?x112x112x16xf16>, %arg1 : tensor<16xf32>, %arg2 : tensor<16xf32>, %arg3 : tensor<16xf32>, %arg4 : tensor<16xf32>) -> tensor<?x112x112x16xf16> {
+  %0, %1, %2, %3, %4, %5 = "tf.FusedBatchNormV3"(%arg0, %arg1, %arg2, %arg3, %arg4) {data_format = "NHWC", device = "", epsilon = 1.000000e-03 : f32, exponential_avg_factor = 1.000000e+00 : f32, is_training = false} : (tensor<?x112x112x16xf16>, tensor<16xf32>, tensor<16xf32>, tensor<16xf32>, tensor<16xf32>) -> (tensor<?x112x112x16xf16>, tensor<16xf32>, tensor<16xf32>, tensor<16xf32>, tensor<16xf32>, tensor<*xf32>)
+  return %0 : tensor<?x112x112x16xf16>
+  // CHECK: "tf.FusedBatchNormV3"
+}
+
+// CHECK-LABEL: depthwise_conv2d_native_f16
+func @depthwise_conv2d_native_f16(%arg0 : tensor<?x112x112x16xf16>, %arg1 : tensor<3x3x16x1xf16>) -> tensor<?x112x112x16xf16> {
+  %0 = "tf.DepthwiseConv2dNative"(%arg0, %arg1) {data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<?x112x112x16xf16>, tensor<3x3x16x1xf16>) -> tensor<?x112x112x16xf16>
+  return %0 : tensor<?x112x112x16xf16>
+  // CHECK: "tf.DepthwiseConv2dNative"
+}
+
+}
+

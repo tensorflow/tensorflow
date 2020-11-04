@@ -5492,13 +5492,9 @@ tf_cc_test(
     ],
 )
 
-filegroup(
+alias(
     name = "spectrogram_test_data",
-    srcs = [
-        "spectrogram_test_data/short_test_segment.wav",
-        "spectrogram_test_data/short_test_segment_spectrogram.csv.bin",
-        "spectrogram_test_data/short_test_segment_spectrogram_400_200.csv.bin",
-    ],
+    actual = "//tensorflow/core/kernels/spectrogram_test_data:spectrogram_test_data",
     visibility = ["//visibility:public"],
 )
 

@@ -301,7 +301,7 @@ struct ConvertTFConvOp : public RewritePattern {
 
     TFConvOpType tf_op = cast<TFConvOpType>(op);
 
-    if (!TFTypeIsFloatTensor(tf_op.input()) || !TFDataFormatIsNHWC(op))
+    if (!TFTypeIsFloat32Tensor(tf_op.input()) || !TFDataFormatIsNHWC(op))
       return failure();
 
     IntegerAttr height, width;
@@ -716,9 +716,9 @@ struct ConvertTFBroadcastTo : public RewritePattern {
 
     // Allow lowering when low dimension inputs are given and its type is F32 or
     // I32.
-    if (!((output_type.hasRank() && output_type.getRank() <= 5) ||
+    if (!((output_type.hasRank() && output_type.getRank() <= 4) ||
           (shape_type.hasStaticShape() && shape_type.getRank() == 1 &&
-           shape_type.getDimSize(0) <= 5)))
+           shape_type.getDimSize(0) <= 4)))
       return failure();
 
     if (!(element_type.isa<BFloat16Type, Float32Type>() ||
@@ -815,6 +815,9 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
     offset = fused_batch_norm_op.getODSOperands(2);
     mean = fused_batch_norm_op.getODSOperands(3);
     variance = fused_batch_norm_op.getODSOperands(4);
+
+    if (!TFTypeIsFloat32Tensor(fused_batch_norm_op.x())) return failure();
+
     {
       epsilon = fused_batch_norm_op.getAttrOfType<::mlir::FloatAttr>("epsilon");
       if (!epsilon)
