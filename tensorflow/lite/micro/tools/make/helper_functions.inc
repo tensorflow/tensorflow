@@ -1,3 +1,4 @@
+DOWNLOAD_SCRIPT := $(MAKEFILE_DIR)/download_and_extract.sh
 
 # Reverses a space-separated list of words.
 reverse = $(if $(1),$(call reverse,$(wordlist 2,$(words $(1)),$(1)))) $(firstword $(1))
@@ -517,7 +518,7 @@ endef
 # 1 - Information about the library, separated by '!'s.
 define create_download_rule
 $(word 3, $(subst !, ,$(1))):
-	tensorflow/lite/micro/tools/make/download_and_extract.sh $(subst !, ,$(1))
+	$(DOWNLOAD_SCRIPT) $(subst !, ,$(1))
 THIRD_PARTY_TARGETS += $(word 3, $(subst !, ,$(1)))
 endef
 
