@@ -27,10 +27,10 @@ namespace bitpacked {
 
 // These are the bconv2d properties common to all threads
 struct BConv2DThreadDataCommon {
-  nn_image_t *Y;
-  nn_image_t *X;
-  nn_tensor_t *K;
-  int32_t *thresholds;
+  bnn_b32_t *Y;
+  const bnn_b32_t *X;
+  const bnn_b32_t *K;
+  const int32_t *thresholds;
 
   nn_image_params_t x;
   nn_image_params_t y;
@@ -54,18 +54,13 @@ namespace deepin {
 extern "C" {
 ATTRIBUTE_THREAD_FUNCTION void bconv2d_bitpacked_deepin_thread_generator(
     void *context) {
-  BConv2DThreadData *td = (BConv2DThreadData *)context;
+  auto *td = static_cast<BConv2DThreadData *>(context);
 
   while (td != nullptr) {
     bnn_conv2d_bin_out_valid(
-        (bnn_b32_t *)td->common->Y, (const bnn_b256_t *)td->common->X,
-        (const bnn_b256_t *)td->common->K,
-        (const int32_t *)td->common->thresholds,
-        (const nn_image_params_t *)&td->common->x,
-        (const nn_image_params_t *)&td->common->y,
-        (const nn_window_params_t *)&td->common->k, (const unsigned)td->y_loc_x,
-        (const unsigned)td->y_loc_y, (const unsigned)td->y_sub_width,
-        (const unsigned)td->y_sub_height);
+        td->common->Y, (bnn_b256_t *)td->common->X, (bnn_b256_t *)td->common->K,
+        td->common->thresholds, &td->common->x, &td->common->y, &td->common->k,
+        td->y_loc_x, td->y_loc_y, td->y_sub_width, td->y_sub_height);
 
     td = td->next;
   }
@@ -102,6 +97,10 @@ struct BConv2DBitpackedOpData {
   size_t stack_size;  // The amount of stack required to run an instance of
                       // bconv2d_bitpacked_deepin_thread_generator
   int stack_scratch_index;  // The index where the above stack will be allocated
+
+  // for loading from external mem
+  int weights_scratch_index = 0;
+  int bias_scratch_index = 0;
 };
 
 void *Init(TfLiteContext *context, const char *buffer, size_t length) {
@@ -122,8 +121,8 @@ void *Init(TfLiteContext *context, const char *buffer, size_t length) {
 
   flexbuffers::Vector strides =
       get_named_uint32_custom_option_vector(context, buffer, length, "stride");
-  op_data->common.k.stride.horizontal = strides[0].AsInt32();
-  op_data->common.k.stride.vertical = strides[1].AsInt32();
+  op_data->common.k.stride.vertical = strides[0].AsInt32();
+  op_data->common.k.stride.horizontal = strides[1].AsInt32();
 
   op_data->common.k.dilation.horizontal = 1;
   op_data->common.k.dilation.vertical = 1;
@@ -185,9 +184,20 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   TF_LITE_ENSURE_EQ(context, op_data->common.y.channels,
                     (uint32_t)output->dims->data[3] * 32);
 
-  // TODO: remove this when parallelization is
+  // TODO: remove this when parallelization is done
   op_data->regions[0].y_sub_width = op_data->common.y.width;
   op_data->regions[0].y_sub_height = op_data->common.y.height;
+
+  // TODO: fix this this when parallelization is done
+  // allocate scratch buffers for weights and biases (if necessary)
+  if (!is_ram_address((uintptr_t)kernel->data.data)) {
+    TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
+        context, kernel->bytes, &op_data->weights_scratch_index));
+  }
+  if (!is_ram_address((uintptr_t)thresholds->data.data)) {
+    TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
+        context, thresholds->bytes, &op_data->bias_scratch_index));
+  }
 
   // allocate the stack for thread workers
   GET_THREAD_FUNCTION_STACKSIZE(op_data->stack_size,
@@ -207,13 +217,33 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
   const TfLiteTensor *input = GetInput(context, node, 0);
   const TfLiteTensor *kernel = GetInput(context, node, 1);
   const TfLiteTensor *thresholds = GetInput(context, node, 2);
-  const TfLiteTensor *output = GetOutput(context, node, 0);
+  TfLiteTensor *output = GetOutput(context, node, 0);
 
   // setup runtime pointers
-  op_data->common.X = (nn_image_t *)input->data.int8;
-  op_data->common.K = (nn_tensor_t *)kernel->data.int8;
-  op_data->common.thresholds = thresholds->data.i32;
-  op_data->common.Y = (nn_image_t *)output->data.int8;
+  op_data->common.X = GetTensorData<bnn_b32_t>(input);
+  op_data->common.Y = GetTensorData<bnn_b32_t>(output);
+
+  // load weights & bias scratch buffers (if necessary)
+  if (op_data->weights_scratch_index >= 0) {
+    op_data->common.K = static_cast<const bnn_b32_t *>(
+        context->GetScratchBuffer(context, op_data->weights_scratch_index));
+    dispatcher->FetchBuffer((int8_t **)&op_data->common.K,
+                            GetTensorData<int8_t>(kernel), kernel->bytes);
+  } else {
+    op_data->common.K = GetTensorData<bnn_b32_t>(kernel);
+  }
+  TF_LITE_ENSURE(context, op_data->common.K);
+
+  if (op_data->bias_scratch_index >= 0) {
+    op_data->common.thresholds = static_cast<const int32_t *>(
+        context->GetScratchBuffer(context, op_data->bias_scratch_index));
+    dispatcher->FetchBuffer((int8_t **)&op_data->common.thresholds,
+                            GetTensorData<int8_t>(thresholds),
+                            thresholds->bytes);
+  } else {
+    op_data->common.thresholds = GetTensorData<int32_t>(thresholds);
+  }
+  TF_LITE_ENSURE(context, op_data->common.thresholds);
 
   // initialize the dispatcher
   char *stack = static_cast<char *>(
