@@ -312,7 +312,7 @@ TEST(ResizeBilinear, TestResizeBilinearHalfPixelCenters_2x2to4x6_Int8) {
   op_params.half_pixel_centers = false;
 
   // Test with half_pixel_centers = false.
-  reference_ops::ResizeBilinear(
+  reference_ops::ResizeBilinearInteger(
       op_params, input_dims_inference, input_data.data(), output_size_dims,
       output_size_data.data(), output_dims_inference, output_data.data());
   // clang-format off
@@ -335,7 +335,7 @@ TEST(ResizeBilinear, TestResizeBilinearHalfPixelCenters_2x2to4x6_Int8) {
 
   // Test with half_pixel_centers = true.
   op_params.half_pixel_centers = true;
-  reference_ops::ResizeBilinear(
+  reference_ops::ResizeBilinearInteger(
       op_params, input_dims_inference, input_data.data(), output_size_dims,
       output_size_data.data(), output_dims_inference, output_data.data());
   // clang-format off
