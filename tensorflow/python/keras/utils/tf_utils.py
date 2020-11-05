@@ -127,9 +127,9 @@ def map_structure_with_atomic(is_atomic_fn, map_fn, nested):
   if not nest.is_nested(nested):
     raise ValueError(
         'Received non-atomic and non-sequence element: {}'.format(nested))
-  if nest._is_mapping(nested):
+  if nest.is_mapping(nested):
     values = [nested[k] for k in sorted(nested.keys())]
-  elif nest._is_attrs(nested):
+  elif nest.is_attrs(nested):
     values = _astuple(nested)
   else:
     values = nested
