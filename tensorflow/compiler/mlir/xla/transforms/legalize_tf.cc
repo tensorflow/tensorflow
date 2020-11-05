@@ -1044,8 +1044,9 @@ static DenseIntElementsAttr TFSliceSizes2HLOSliceSizes(
 // Note that this right now only does comparision on the first pair of block
 // arguments.
 static void BuildSortComparisonBody(llvm::ArrayRef<Type> element_types,
-                                    StringRef direction, Region *body,
-                                    OpBuilder *builder) {
+                                    StringRef direction,
+                                    llvm::Optional<StringRef> compare_type,
+                                    Region *body, OpBuilder *builder) {
   OpBuilder::InsertionGuard insertion_point_gurad(*builder);
 
   Block *block = builder->createBlock(body);
@@ -1056,10 +1057,12 @@ static void BuildSortComparisonBody(llvm::ArrayRef<Type> element_types,
   }
 
   Location loc = body->getLoc();
-  StringAttr compare_direction =
-      StringAttr::get(direction, builder->getContext());
+  StringAttr compare_direction = builder->getStringAttr(direction);
+  StringAttr type_attr;
+  if (compare_type) type_attr = builder->getStringAttr(*compare_type);
   Value compare = builder->create<mhlo::CompareOp>(
-      loc, block->getArgument(0), block->getArgument(1), compare_direction);
+      loc, block->getArgument(0), block->getArgument(1), compare_direction,
+      type_attr);
 
   builder->create<mhlo::ReturnOp>(loc, compare);
 }
@@ -4754,9 +4757,15 @@ class ConvertTopKV2Op : public OpRewritePattern<TF::TopKV2Op> {
     auto sort_op = rewriter.create<mhlo::SortOp>(
         op.getLoc(), llvm::ArrayRef<Value>{op.input(), iota_op}, last_dim_index,
         /*is_stable=*/true);
+
+    // Use TOTALORDER comparison type instead of the default comparison if the
+    // element type is of type float.
+    llvm::Optional<StringRef> compare_type;
+    if (input_type.getElementType().isa<FloatType>())
+      compare_type.emplace("TOTALORDER");
     BuildSortComparisonBody({input_type.getElementType(), i32_type},
-                            /*direction=*/"GT", &sort_op.comparator(),
-                            &rewriter);
+                            /*direction=*/"GT", compare_type,
+                            &sort_op.comparator(), &rewriter);
 
     // Get the sorted input and index tuple element.
     auto tuple_first_element = sort_op.getResult(0);
@@ -5044,8 +5053,8 @@ class ConvertRandomShuffleOp : public OpRewritePattern<TF::RandomShuffleOp> {
             op.getLoc(), llvm::ArrayRef<Value>{keys, current});
         auto i32_type = rewriter.getIntegerType(32);
         BuildSortComparisonBody({i32_type, input_type.getElementType()},
-                                /*direction=*/"LT", &sorted.comparator(),
-                                &rewriter);
+                                /*direction=*/"LT", llvm::None,
+                                &sorted.comparator(), &rewriter);
         current = sorted.getResult(1);
       }
       rewriter.replaceOp(op, current);

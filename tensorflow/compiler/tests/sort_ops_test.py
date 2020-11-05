@@ -25,7 +25,6 @@ from tensorflow.compiler.tests import xla_test
 from tensorflow.compiler.tf2xla.python import xla
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
@@ -151,7 +150,6 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
               topk, [x.astype(dtype)],
               expected=[expected.astype(dtype), indices])
 
-  @test_util.disable_mlir_bridge("Support compare type in HLO Compare Op")
   def testTopKZeros(self):
     """Tests that positive and negative zeros sort correctly."""
     supported_types = set(
