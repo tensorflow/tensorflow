@@ -79,13 +79,6 @@ REGISTER_COMPLEX_CPU_KERNELS_ALL(complex128);
                                           atomic_reduction_kernel_functor> >)
 
 #define REGISTER_GPU_SORTED_KERNELS(type, index_type)                        \
-  REGISTER_KERNEL_BUILDER(                                                   \
-    Name("SegmentMean")                                                      \
-        .Device(DEVICE_GPU)                                                  \
-        .TypeConstraint<type>("T")                                           \
-        .TypeConstraint<index_type>("Tindices"),                             \
-    SegmentReductionGPUOp<type, index_type,                                  \
-      functor::SegmentMeanFunctor<type, index_type>>);                       \
   REGISTER_GPU_KERNEL_SORTEDSEGMENT("SegmentSum", type, index_type,          \
                                     functor::Zero<type>,                     \
                                     functor::SumOpGpu<type>,                 \
