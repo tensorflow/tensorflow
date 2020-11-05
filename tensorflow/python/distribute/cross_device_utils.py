@@ -557,46 +557,38 @@ class CollectiveReplicaLauncher(object):
     # have consistent length across the board, we handle the reduction of
     # IndexedSlices as follows:
     #   1. Gather the lengths of IndexedSlices from all participants.
-    #   2. If they have consistent length, apply all_gather.
-    #   3. Otherwise convert IndexedSlices to dense tensors and apply
-    #      all_reduce.
+    #   2. If they do not have consistent length, they are padded with zeros to the same length.
+    #   3. Apply all gather.
     with ops.device(self._device):
-
-      def all_gather():
-        """Use all_gather to aggregate `IndexedSlices`."""
-        all_values = self._all_gather(
-            input_slices.values, communication_hint, timeout=timeout)
-        # Add control dependency to order the all-gather.
-        control = [all_values] if communication_hint == 'NCCL' else []
-        with ops.control_dependencies(control):
-          all_indices = self._all_gather(
-              input_slices.indices, communication_hint, timeout=timeout)
-        return ops.IndexedSlices(
-            values=all_values,
-            indices=all_indices,
-            dense_shape=input_slices.dense_shape)
-
-      def densify_and_all_reduce():
-        """Use all_reduce to aggregate `IndexedSlices`."""
-        densified = ops.convert_to_tensor(input_slices)
-        reduced = self.all_reduce(
-            densified, communication_hint=communication_hint, timeout=timeout)
-        # We have to convert dense grad to IndexedSlice because all_reduce()
-        # and all_gather() must have the same return type as required by
-        # control_flow_ops.cond.
-        return ops.IndexedSlices(
-            values=reduced,
-            indices=math_ops.range(array_ops.shape(reduced)[0]),
-            dense_shape=input_slices.dense_shape)
-
       length = array_ops.shape(input_slices.indices)
       all_lengths = self._all_gather(
           length, communication_hint, timeout=timeout)
-      return control_flow_ops.cond(
+      max_len = math_ops.reduce_max(all_lengths)
+      pad_size = [ [0, 0] for i in range(len(input_slices.values.get_shape())) ]
+      pad_size[0][1] = max_len - length[0]
+      pad_values = array_ops.pad(input_slices.values, pad_size)
+      pad_indices = array_ops.pad(input_slices.indices,
+          [[0, max_len - length[0]]])
+
+      all_values, all_indices = control_flow_ops.cond(
           math_ops.equal(
               math_ops.reduce_max(all_lengths),
-              math_ops.reduce_min(all_lengths)), all_gather,
-          densify_and_all_reduce)
+              math_ops.reduce_min(all_lengths)), 
+          lambda : (input_slices.values, input_slices.indices), 
+          lambda :(pad_values, pad_indices))
+      gathered_all_values = self._all_gather(pad_values, 
+                                             communication_hint,
+                                             timeout=timeout)
+      # Add control dependency to order the all-gather.
+      control = [gathered_all_values] if communication_hint == 'NCCL' else []
+      with ops.control_dependencies(control):
+        gathered_all_indices = self._all_gather(pad_indices,
+                                                communication_hint,
+                                                timeout=timeout)
+      return ops.IndexedSlices(
+          values=gathered_all_values,
+          indices=gathered_all_indices,
+          dense_shape=input_slices.dense_shape)
 
 
 def aggregate_tensors_or_indexed_slices(values, accumulation_fn=math_ops.add_n):
