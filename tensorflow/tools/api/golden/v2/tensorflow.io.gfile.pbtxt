@@ -14,7 +14,7 @@ tf_module {
   }
   member_method {
     name: "glob"
-    argspec: "args=[\'pattern\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'pattern\', \'num_threads\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "isdir"
