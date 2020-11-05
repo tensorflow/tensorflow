@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
@@ -2463,6 +2464,34 @@ XlaOp XlaBuilder::ReduceWindow(absl::Span<const XlaOp> operands,
     std::vector<std::pair<int64, int64>> padding_values =
         MakePadding(AsInt64Slice(operand_shape->dimensions()),
                     window_dimensions, window_strides, padding);
+    TF_ASSIGN_OR_RETURN(auto window,
+                        ShapeInference::InferWindowFromDimensions(
+                            window_dimensions, window_strides, padding_values,
+                            /*lhs_dilation=*/{},
+                            /*rhs_dilation=*/{}));
+    PaddingType padding_type = PADDING_INVALID;
+    for (int64 i = 0; i < operand_shape->rank(); ++i) {
+      if (operand_shape->is_dynamic_dimension(i) &&
+          !window_util::IsTrivialWindowDimension(window.dimensions(i)) &&
+          padding == Padding::kSame) {
+        // SAME padding can create dynamic padding sizes. The padding size
+        // need to be rewritten by dynamic padder using HloInstructions. We
+        // create a CustomCall to handle this.
+        padding_type = PADDING_SAME;
+      }
+    }
+    if (padding_type == PADDING_SAME) {
+      TF_ASSIGN_OR_RETURN(
+          HloInstructionProto instr,
+          ReduceWindowInternal(operands, init_values, computation,
+                               window_dimensions, window_strides, {}, {},
+                               padding_values));
+      instr.set_custom_call_target("DynamicReduceWindowSamePadding");
+      std::vector<XlaOp> args;
+      args.insert(args.end(), operands.begin(), operands.end());
+      args.insert(args.end(), init_values.begin(), init_values.end());
+      return AddInstruction(std::move(instr), HloOpcode::kCustomCall, args);
+    }
     return ReduceWindowWithGeneralPadding(
         operands, init_values, computation, window_dimensions, window_strides,
         /*base_dilations=*/{}, /*window_dilations=*/{}, padding_values);
@@ -2479,48 +2508,74 @@ XlaOp XlaBuilder::ReduceWindowWithGeneralPadding(
     absl::Span<const std::pair<int64, int64>> padding) {
   std::vector<const Shape*> operand_shapes, init_shapes;
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    for (int i = 0; i < operands.size(); ++i) {
-      const auto& operand = operands[i];
-      const auto& init_value = init_values[i];
+    if (operands.size() == 1) {
+      const auto& operand = operands[0];
+      const auto& init_value = init_values[0];
       TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
       operand_shapes.push_back(operand_shape);
       TF_ASSIGN_OR_RETURN(const Shape* init_shape, GetShapePtr(init_value));
       init_shapes.push_back(init_shape);
-    }
-    TF_ASSIGN_OR_RETURN(const ProgramShape& to_apply_shape,
-                        computation.GetProgramShape());
-    TF_ASSIGN_OR_RETURN(auto window,
-                        ShapeInference::InferWindowFromDimensions(
-                            window_dimensions, window_strides, padding,
-                            /*lhs_dilation=*/base_dilations,
-                            /*rhs_dilation=*/window_dilations));
-    TF_ASSIGN_OR_RETURN(
-        Shape shape, ShapeInference::InferReduceWindowShape(
-                         absl::MakeSpan(operand_shapes),
-                         absl::MakeSpan(init_shapes), window, to_apply_shape));
-    return ReduceWindowInternal(shape, operands, init_values, computation,
-                                std::move(window));
-  });
-}
 
-StatusOr<XlaOp> XlaBuilder::ReduceWindowInternal(
-    const Shape& shape, absl::Span<const XlaOp> operands,
-    absl::Span<const XlaOp> init_values, const XlaComputation& computation,
-    Window window) {
-  if (operands.size() == 1) {
-    return ReduceWindowInternal(shape, operands[0], init_values[0], computation,
-                                window);
-  } else {
-    HloInstructionProto instr;
-    *instr.mutable_shape() = shape.ToProto();
-    *instr.mutable_window() = std::move(window);
-    AddCalledComputation(computation, &instr);
+      TF_ASSIGN_OR_RETURN(const ProgramShape& to_apply_shape,
+                          computation.GetProgramShape());
+      TF_ASSIGN_OR_RETURN(auto window,
+                          ShapeInference::InferWindowFromDimensions(
+                              window_dimensions, window_strides, padding,
+                              /*lhs_dilation=*/base_dilations,
+                              /*rhs_dilation=*/window_dilations));
+      TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferReduceWindowShape(
+                                           absl::MakeSpan(operand_shapes),
+                                           absl::MakeSpan(init_shapes), window,
+                                           to_apply_shape));
+      return ReduceWindowInternal(shape, operands[0], init_values[0],
+                                  computation, window);
+    }
+
+    TF_ASSIGN_OR_RETURN(
+        HloInstructionProto instr,
+        ReduceWindowInternal(operands, init_values, computation,
+                             window_dimensions, window_strides, base_dilations,
+                             window_dilations, padding));
     std::vector<XlaOp> args;
     args.insert(args.end(), operands.begin(), operands.end());
     args.insert(args.end(), init_values.begin(), init_values.end());
-    return AddInstruction(std::move(instr), HloOpcode::kReduceWindow,
-                          absl::MakeSpan(args));
+    return AddInstruction(std::move(instr), HloOpcode::kReduceWindow, args);
+  });
+}
+
+StatusOr<HloInstructionProto> XlaBuilder::ReduceWindowInternal(
+    absl::Span<const XlaOp> operands, absl::Span<const XlaOp> init_values,
+    const XlaComputation& computation,
+    absl::Span<const int64> window_dimensions,
+    absl::Span<const int64> window_strides,
+    absl::Span<const int64> base_dilations,
+    absl::Span<const int64> window_dilations,
+    absl::Span<const std::pair<int64, int64>> padding) {
+  std::vector<const Shape*> operand_shapes, init_shapes;
+  for (int i = 0; i < operands.size(); ++i) {
+    const auto& operand = operands[i];
+    const auto& init_value = init_values[i];
+    TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+    operand_shapes.push_back(operand_shape);
+    TF_ASSIGN_OR_RETURN(const Shape* init_shape, GetShapePtr(init_value));
+    init_shapes.push_back(init_shape);
   }
+  TF_ASSIGN_OR_RETURN(const ProgramShape& to_apply_shape,
+                      computation.GetProgramShape());
+  TF_ASSIGN_OR_RETURN(auto window,
+                      ShapeInference::InferWindowFromDimensions(
+                          window_dimensions, window_strides, padding,
+                          /*lhs_dilation=*/base_dilations,
+                          /*rhs_dilation=*/window_dilations));
+  TF_ASSIGN_OR_RETURN(Shape shape,
+                      ShapeInference::InferReduceWindowShape(
+                          absl::MakeSpan(operand_shapes),
+                          absl::MakeSpan(init_shapes), window, to_apply_shape));
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+  *instr.mutable_window() = std::move(window);
+  AddCalledComputation(computation, &instr);
+  return instr;
 }
 
 StatusOr<XlaOp> XlaBuilder::ReduceWindowInternal(
@@ -2858,12 +2913,71 @@ XlaOp XlaBuilder::SelectAndScatter(XlaOp operand, const XlaComputation& select,
                                    const XlaComputation& scatter) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
-    return SelectAndScatterWithGeneralPadding(
-        operand, select, window_dimensions, window_strides,
+
+    std::vector<std::pair<int64, int64>> padding_values =
         MakePadding(AsInt64Slice(operand_shape->dimensions()),
-                    window_dimensions, window_strides, padding),
+                    window_dimensions, window_strides, padding);
+
+    TF_ASSIGN_OR_RETURN(auto window,
+                        ShapeInference::InferWindowFromDimensions(
+                            window_dimensions, window_strides, padding_values,
+                            /*lhs_dilation=*/{},
+                            /*rhs_dilation=*/{}));
+    PaddingType padding_type = PADDING_INVALID;
+    for (int64 i = 0; i < operand_shape->rank(); ++i) {
+      if (operand_shape->is_dynamic_dimension(i) &&
+          !window_util::IsTrivialWindowDimension(window.dimensions(i)) &&
+          padding == Padding::kSame) {
+        // SAME padding can create dynamic padding sizes. The padding size
+        // need to be rewritten by dynamic padder using HloInstructions. We
+        // create a CustomCall to handle this.
+        padding_type = PADDING_SAME;
+      }
+    }
+    if (padding_type == PADDING_SAME) {
+      TF_ASSIGN_OR_RETURN(
+          HloInstructionProto instr,
+          SelectAndScatterInternal(operand, select, window_dimensions,
+                                   window_strides, padding_values, source,
+                                   init_value, scatter));
+      instr.set_custom_call_target("DynamicSelectAndScatterSamePadding");
+      return AddInstruction(std::move(instr), HloOpcode::kCustomCall,
+                            {operand, source, init_value});
+    }
+    return SelectAndScatterWithGeneralPadding(
+        operand, select, window_dimensions, window_strides, padding_values,
         source, init_value, scatter);
   });
+}
+
+StatusOr<HloInstructionProto> XlaBuilder::SelectAndScatterInternal(
+    XlaOp operand, const XlaComputation& select,
+    absl::Span<const int64> window_dimensions,
+    absl::Span<const int64> window_strides,
+    absl::Span<const std::pair<int64, int64>> padding, XlaOp source,
+    XlaOp init_value, const XlaComputation& scatter) {
+  HloInstructionProto instr;
+
+  TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+  TF_ASSIGN_OR_RETURN(const Shape* source_shape, GetShapePtr(source));
+  TF_ASSIGN_OR_RETURN(const Shape* init_shape, GetShapePtr(init_value));
+  TF_ASSIGN_OR_RETURN(const ProgramShape& select_shape,
+                      select.GetProgramShape());
+  TF_ASSIGN_OR_RETURN(const ProgramShape& scatter_shape,
+                      scatter.GetProgramShape());
+  TF_ASSIGN_OR_RETURN(*instr.mutable_window(),
+                      ShapeInference::InferWindowFromDimensions(
+                          window_dimensions, window_strides, padding,
+                          /*lhs_dilation=*/{}, /*rhs_dilation=*/{}));
+  TF_ASSIGN_OR_RETURN(Shape shape,
+                      ShapeInference::InferSelectAndScatterShape(
+                          *operand_shape, select_shape, instr.window(),
+                          *source_shape, *init_shape, scatter_shape));
+  *instr.mutable_shape() = shape.ToProto();
+
+  AddCalledComputation(select, &instr);
+  AddCalledComputation(scatter, &instr);
+  return instr;
 }
 
 XlaOp XlaBuilder::SelectAndScatterWithGeneralPadding(
@@ -2873,27 +2987,10 @@ XlaOp XlaBuilder::SelectAndScatterWithGeneralPadding(
     absl::Span<const std::pair<int64, int64>> padding, XlaOp source,
     XlaOp init_value, const XlaComputation& scatter) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
-
-    TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
-    TF_ASSIGN_OR_RETURN(const Shape* source_shape, GetShapePtr(source));
-    TF_ASSIGN_OR_RETURN(const Shape* init_shape, GetShapePtr(init_value));
-    TF_ASSIGN_OR_RETURN(const ProgramShape& select_shape,
-                        select.GetProgramShape());
-    TF_ASSIGN_OR_RETURN(const ProgramShape& scatter_shape,
-                        scatter.GetProgramShape());
-    TF_ASSIGN_OR_RETURN(*instr.mutable_window(),
-                        ShapeInference::InferWindowFromDimensions(
-                            window_dimensions, window_strides, padding,
-                            /*lhs_dilation=*/{}, /*rhs_dilation=*/{}));
-    TF_ASSIGN_OR_RETURN(Shape shape,
-                        ShapeInference::InferSelectAndScatterShape(
-                            *operand_shape, select_shape, instr.window(),
-                            *source_shape, *init_shape, scatter_shape));
-    *instr.mutable_shape() = shape.ToProto();
-
-    AddCalledComputation(select, &instr);
-    AddCalledComputation(scatter, &instr);
+    TF_ASSIGN_OR_RETURN(HloInstructionProto instr,
+                        SelectAndScatterInternal(
+                            operand, select, window_dimensions, window_strides,
+                            padding, source, init_value, scatter));
 
     return AddInstruction(std::move(instr), HloOpcode::kSelectAndScatter,
                           {operand, source, init_value});
