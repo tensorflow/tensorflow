@@ -137,6 +137,12 @@ COMMON_FLAGS := \
   $(OPTIMIZED_KERNEL_DEFINES) \
   $(TAG_DEFINES)
 
+ifeq ($(TARGET), $(HOST_OS))
+  # If we are not doing a cross-compilation then -DTF_LITE_USE_CTIME is what we
+  # want to have by default.
+  COMMON_FLAGS += -DTF_LITE_USE_CTIME
+endif
+
 CXXFLAGS := \
   -std=c++11 \
   -fno-rtti \
