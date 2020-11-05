@@ -519,14 +519,21 @@ StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(
 
   // ViewOp only takes memrefs without affine maps (layouts). Let ViewOp produce
   // the physical shape (where dimensions are ordered in major to minor) first,
-  // then follow up with a StaticMemRefCastOp to cast the resulting memref to
+  // then follow up with a MemRefReinterpretCast to cast the resulting memref to
   // the original layout.
   Value result =
       builder_.create<ViewOp>(loc, physical_out_type, alloc, byte_shift,
                               /*sizes=*/ValueRange{});
-  if (physical_out_type != out_type)
-    result = builder_.create<lmhlo::StaticMemRefCastOp>(loc, out_memref_type,
-                                                        result);
+  if (physical_out_type != out_type) {
+    int64_t out_offset;
+    SmallVector<int64_t, 4> out_strides;
+    if (failed(getStridesAndOffset(out_memref_type, out_strides, out_offset)))
+      return tensorflow::errors::Internal(
+          "Failed to get strides and offset from the output type.");
+    result = builder_.create<MemRefReinterpretCastOp>(
+        loc, out_memref_type, result, out_offset, out_memref_type.getShape(),
+        out_strides, llvm::None, llvm::None, llvm::None);
+  }
   return cached_value = result;
 }
 

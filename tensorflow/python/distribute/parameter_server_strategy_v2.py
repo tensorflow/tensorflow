@@ -182,11 +182,18 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
 
   If `TF_CONFIG` environment variable is set, a
   `tf.distribute.cluster_resolver.TFConfigClusterResolver` should be used as
-  well. Note that for legacy reason, on some platform, "chief" is used as the
-  task type for the coordinator, as the following example demonstrates. Here we
-  set `TF_CONFIG` for the task designated as a parameter server (task type "ps")
-  and index 1 (the second task), in a cluster with 1 chief, 2 parameter servers,
-  and 3 workers. Note that the it needs to be set before the use of
+  well.
+
+  Since there are assumptions in
+  `tf.distribute.experimental.ParameterServerStrategy` around the naming of the
+  task types, "chief", "ps", and "worker" should be used in the
+  `tf.distribute.cluster_resolver.ClusterResolver` to refer to the coordinator,
+  parameter servers, and workers, respectively.
+
+  The following example demonstrates setting `TF_CONFIG` for the task designated
+  as a parameter server (task type "ps") and index 1 (the second task), in a
+  cluster with 1 chief, 2 parameter servers, and 3 workers. Note that it needs
+  to be set before the use of
   `tf.distribute.cluster_resolver.TFConfigClusterResolver`.
 
   Example code for cluster setup:

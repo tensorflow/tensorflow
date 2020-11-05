@@ -375,8 +375,17 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
-    case BuiltinOperator_ABS:
     case BuiltinOperator_RELU:
+      if (op_sig.input_types.at(0) == TensorType_INT16) {
+        return 3;
+      }
+      if (op_sig.input_types.at(0) == TensorType_INT8 ||
+          op_sig.input_types.at(0) == TensorType_UINT8) {
+        return 2;
+      }
+      return 1;
+
+    case BuiltinOperator_ABS:
       if (op_sig.input_types.at(0) == TensorType_INT8 ||
           op_sig.input_types.at(0) == TensorType_UINT8) {
         return 2;
@@ -556,6 +565,7 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_MEAN:
     case BuiltinOperator_PAD:
     case BuiltinOperator_PADV2:
+    case BuiltinOperator_RELU6:
       // In case of int16 inputs, the version is 3.
       if (op_sig.input_types.at(0) == TensorType_INT16) {
         return 3;
@@ -584,7 +594,6 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_SUM:
     case BuiltinOperator_REDUCE_MAX:
     case BuiltinOperator_REDUCE_MIN:
-    case BuiltinOperator_RELU6:
     case BuiltinOperator_LOG_SOFTMAX:
     case BuiltinOperator_TOPK_V2:
     case BuiltinOperator_ARG_MAX:
@@ -603,6 +612,11 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
         return 2;
       }
       return 1;
+    // The version one of broadcast to op won't be not supported since the
+    // version one was rollbacked and the builtin op code number has been
+    // changed because of builtin op code shortage problem.
+    case BuiltinOperator_BROADCAST_TO:
+      return 2;
     default:
       return 1;
   }

@@ -173,7 +173,8 @@ Status XlaCompilationCache::BuildExecutable(
   build_options.set_result_layout(result.xla_output_shape);
   build_options.set_device_allocator(options.device_allocator);
   build_options.set_alias_passthrough_params(options.alias_passthrough_params);
-
+  build_options.mutable_debug_options()->set_xla_detailed_logging(
+      options.detailed_logging);
   TF_ASSIGN_OR_RETURN(
       auto executables,
       client_->Compile(*result.computation, argument_layouts, build_options));

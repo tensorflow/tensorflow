@@ -2486,6 +2486,23 @@ Status HloEvaluator::HandleReduce(HloInstruction* instr) {
   return Status::OK();
 }
 
+Status HloEvaluator::HandleReduceWindow(HloInstruction* hlo) {
+  // Here we delegate the handling to the typed visitor class, instantiated by
+  // using the type of the first input of ReduceWindow. The support for the
+  // variadic case inside the typed_visitor is made to not use the template
+  // parameter so it doesn't really matter which type is used to instantiate it
+  // here. We choose not to move the implementation for handle ReduceWindow
+  // from the typed visitor to here because we need to reuse the
+  // IterateThroughWindow method, which is defined and only avaiable inside the
+  // typed visitor.
+  if (hlo->shape().IsTuple()) {
+    return hlo->Visit(
+        typed_visitors_[hlo->shape().tuple_shapes(0).element_type()].get());
+  } else {
+    return DefaultAction(hlo);
+  }
+}
+
 Status HloEvaluator::HandleCustomCall(HloInstruction* custom_call) {
   if (!custom_call_handler_) {
     // No handler is registered; this means custom-calls are not allowed.

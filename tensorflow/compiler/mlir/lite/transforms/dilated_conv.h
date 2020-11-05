@@ -92,7 +92,7 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
     return failure();
   }
 
-  if (!TFTypeIsFloatTensor(op.input()) || !TFDataFormatIsNHWC(op))
+  if (!TFTypeIsFloat32Tensor(op.input()) || !TFDataFormatIsNHWC(op))
     return failure();
 
   // Allow dynamic width and height dimensions only.

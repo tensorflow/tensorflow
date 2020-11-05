@@ -47,6 +47,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.variables import global_variables_initializer as _global_variables_initializer
@@ -1571,6 +1572,24 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     # Check the add node in the inlined function is included.
     func = sess.graph.as_graph_def().library.function[0].signature.name
     self.assertIn(('add@' + six.ensure_str(func)), converter._debug_info.traces)
+
+  def testOutputOnlyModel(self):
+    with ops.Graph().as_default():
+      out_tensor = random_ops.random_normal(shape=[3])
+      sess = session.Session()
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverter.from_session(sess, [], [out_tensor])
+    converter.target_spec.supported_ops = [
+        lite.OpsSet.TFLITE_BUILTINS,
+        lite.OpsSet.SELECT_TF_OPS,
+    ]
+
+    # Empty input array is a valid input.
+    self.assertTrue(converter._has_valid_tensors())
+
+    tflite_model = converter.convert()
+    self.assertIsNotNone(tflite_model)
 
 
 class FromFrozenGraphFile(LiteTest):

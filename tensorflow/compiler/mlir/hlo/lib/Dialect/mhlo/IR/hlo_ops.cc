@@ -2173,10 +2173,21 @@ LogicalResult SliceOp::inferReturnTypes(
     return success();
   }
 
-  int64_t rank = ranked_ty.getRank();
   ShapedType attr_ty = slice.start_indices().getType();
-  if (attr_ty.getRank() != 1 || attr_ty.getNumElements() != rank ||
-      !attr_ty.getElementType().isSignlessInteger(64) ||
+  if (attr_ty.getRank() != 1) {
+    return emitOptionalError(location, "start_indices has rank ",
+                             attr_ty.getRank(), " instead of required rank 1");
+  }
+
+  int64_t rank = ranked_ty.getRank();
+  if (attr_ty.getNumElements() != rank) {
+    return emitOptionalError(
+        location, "the number of elements in start_indices (",
+        attr_ty.getNumElements(), ") does not match the rank of the operand (",
+        rank, ")");
+  }
+
+  if (!attr_ty.getElementType().isSignlessInteger(64) ||
       slice.limit_indices().getType() != attr_ty ||
       slice.strides().getType() != attr_ty) {
     // Unfortunately we can't rely on the AllTypesMatch trait for the SliceOp

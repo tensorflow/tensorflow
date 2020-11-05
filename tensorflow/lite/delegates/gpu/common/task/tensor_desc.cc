@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
@@ -22,7 +22,6 @@ limitations under the License.
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 namespace {
 std::string GetReadImageFromDataType(DataType data_type) {
   if (data_type == DataType::FLOAT32) {
@@ -44,16 +43,16 @@ std::string GetWriteImageFromDataType(DataType data_type) {
   }
 }
 
-}  // namespace
-
-std::string TextureAddressModeToString(TextureAddressMode address_mode) {
+std::string AddressModeToCLSampler(AddressMode address_mode) {
   switch (address_mode) {
-    case TextureAddressMode::DONT_CARE:
+    case AddressMode::kDontCare:
       return "smp_none";
-    case TextureAddressMode::ZERO:
+    case AddressMode::kZero:
       return "smp_zero";
   }
 }
+
+}  // namespace
 
 std::string ToString(TensorStorageType type) {
   switch (type) {
@@ -340,7 +339,7 @@ std::string TensorDescriptor::Read(DataType read_as_type,
     case TensorStorageType::TEXTURE_ARRAY:
       return absl::StrCat(
           read_as, "(", image_type,
-          ", " + TextureAddressModeToString(ModeFromState()) + ", ",
+          ", " + AddressModeToCLSampler(AddressModeFromState()) + ", ",
           global_address, ")");
     case TensorStorageType::IMAGE_BUFFER:
       return absl::StrCat(read_as, "(image_buffer, ", global_address, ")");
@@ -645,8 +644,8 @@ bool TensorDescriptor::HasAxis(Axis axis) const {
   return false;
 }
 
-void TensorDescriptor::SetTextureAddressMode(TextureAddressMode mode) {
-  if (mode == TextureAddressMode::ZERO) {
+void TensorDescriptor::SetAddressMode(AddressMode mode) {
+  if (mode == AddressMode::kZero) {
     state_vars_["TextureMode"] = "ZERO";
   } else {
     state_vars_["TextureMode"] = "DONT_CARE";
@@ -732,16 +731,16 @@ std::string TensorDescriptor::GetSliceStride() const {
   }
 }
 
-TextureAddressMode TensorDescriptor::ModeFromState() const {
+AddressMode TensorDescriptor::AddressModeFromState() const {
   auto it = state_vars_.find("TextureMode");
   if (it != state_vars_.end()) {
     if (it->second == "ZERO") {
-      return TextureAddressMode::ZERO;
+      return AddressMode::kZero;
     } else {
-      return TextureAddressMode::DONT_CARE;
+      return AddressMode::kDontCare;
     }
   } else {
-    return TextureAddressMode::DONT_CARE;
+    return AddressMode::kDontCare;
   }
 }
 
@@ -913,6 +912,5 @@ template void DataToBHWDC<half>(absl::Span<const half> src, const BHWDC& shape,
                                 const TensorDescriptor& desc,
                                 absl::Span<float> dst);
 
-}  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

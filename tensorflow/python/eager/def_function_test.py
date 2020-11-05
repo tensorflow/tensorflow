@@ -683,7 +683,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
         experimental_implements=implements,
         experimental_autograph_options=autograph_options,
         experimental_relax_shapes=relax_shapes,
-        experimental_compile=compile_)
+        jit_compile=compile_)
 
     if override_function:
       cloned_py_function = lambda x: x + 1
@@ -699,7 +699,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(implements, cloned._implements)
     self.assertEqual(autograph_options, cloned._experimental_autograph_options)
     self.assertEqual(relax_shapes, cloned._experimental_relax_shapes)
-    self.assertEqual(compile_, cloned._experimental_compile)
+    self.assertEqual(compile_, cloned._jit_compile)
 
     # This test does not run with XLA JIT support linked in so we can only check
     # the output of the function if compile is disabled.

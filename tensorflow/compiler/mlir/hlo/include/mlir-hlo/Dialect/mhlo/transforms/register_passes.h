@@ -35,8 +35,6 @@ inline void registerAllMhloPasses() { registerMHLOPasses(); }
 
 namespace lmhlo {
 
-std::unique_ptr<Pass> createTestLhloToLLVMPass();
-
 #define GEN_PASS_REGISTRATION
 #include "mlir-hlo/Dialect/mhlo/transforms/lmhlo_passes.h.inc"
 

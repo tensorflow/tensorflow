@@ -308,7 +308,7 @@ func @abs_unranked_i64(%arg : memref<*xi64>,
                        %flat_shape : memref<1xindex>,
                        %arg_size : index) -> memref<*xi64>
                        attributes {tf_entry} {
-  %flat_arg = lmhlo.reshape_memref_cast %arg(%flat_shape)
+  %flat_arg = memref_reshape %arg(%flat_shape)
       : (memref<*xi64>, memref<1xindex>) -> memref<?xi64>
   // CHECK: alloc
   // CHECK-SAME: reuse_input_candidates = [0 : index], reuse_output = 0 : index
@@ -324,7 +324,7 @@ func @abs_unranked_i64(%arg : memref<*xi64>,
     %a_abs = select %a_pos, %a, %a_neg : i64
     linalg.yield %a_abs : i64
   }
-  %result = lmhlo.reshape_memref_cast %flat_result(%arg_shape)
+  %result = memref_reshape %flat_result(%arg_shape)
       : (memref<?xi64>, memref<?xindex>) -> memref<*xi64>
   return %result : memref<*xi64>
 }

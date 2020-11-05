@@ -70,49 +70,53 @@ Status LowerLHLOToGPU(mlir::ModuleOp module, LowerLHLOToGPUOptions options) {
   // Legalize from HLO to LHLO.
   pm.addPass(::mlir::mhlo::createLegalizeToLhloPass());
   // Moving `AllocOp`s and inserting missing `DeallocOp`s
-  pm.addPass(::mlir::createBufferHoistingPass());
-  pm.addPass(::mlir::createBufferDeallocationPass());
+  pm.addNestedPass<mlir::FuncOp>(::mlir::createBufferHoistingPass());
+  pm.addNestedPass<mlir::FuncOp>(::mlir::createBufferDeallocationPass());
   // Next, we can strip the outer fusion operation.
-  pm.addPass(createFusionOpRemoverPass());
+  pm.addNestedPass<mlir::FuncOp>(createFusionOpRemoverPass());
   // Remove unnecessary LHLO copies.
-  pm.addPass(::mlir::createCopyRemovalPass());
+  pm.addNestedPass<mlir::FuncOp>(::mlir::createCopyRemovalPass());
   // Legalize reduce operations directly to GPU dialect.
-  pm.addPass(::mlir::lmhlo::createLegalizeToGpuPass());
+  pm.addNestedPass<mlir::FuncOp>(::mlir::lmhlo::createLegalizeToGpuPass());
   // Transform LHLO operations to LinAlg.
-  pm.addPass(::mlir::lmhlo::createLegalizeLhloToLinalgPass());
+  pm.addNestedPass<mlir::FuncOp>(
+      ::mlir::lmhlo::createLegalizeLhloToLinalgPass());
   // Fuse linalg operations.
-  pm.addPass(::mlir::lmhlo::createLhloFuseLinalgPass(
+  pm.addNestedPass<mlir::FuncOp>(::mlir::lmhlo::createLhloFuseLinalgPass(
       /*use_parallel_loops=*/true, tiling_for_unrolling));
   // Transform the Linalg operations inside of the loop nest into parallel
   // loops.
-  pm.addPass(::mlir::createConvertLinalgToParallelLoopsPass());
+  pm.addNestedPass<mlir::FuncOp>(
+      ::mlir::createConvertLinalgToParallelLoopsPass());
   // Canonicalize the code to simplify index computations. This is needed so
   // that loop bounds have the same value.
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
   // Fuse the inner-most loops.
-  pm.addPass(createFuseInnerParallelLoopsPass());
+  pm.addNestedPass<mlir::FuncOp>(createFuseInnerParallelLoopsPass());
   // Run CSE to ensure that loads and stores to the same subview get
   // recognized as such.
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
   // Forward stores to buffers to loads.
-  pm.addPass(createStoreForwardingPass());
+  pm.addNestedPass<mlir::FuncOp>(createStoreForwardingPass());
   // Remove now unused temporary buffers.
-  pm.addPass(createDeadTempBufferRemovalPass());
+  pm.addNestedPass<mlir::FuncOp>(createDeadTempBufferRemovalPass());
   if (!options.unroll_factors.empty()) {
-    pm.addPass(::mlir::createParallelLoopTilingPass(as_int64));
+    pm.addNestedPass<mlir::FuncOp>(
+        ::mlir::createParallelLoopTilingPass(as_int64));
   }
   // Project all loop dimensions to X if necessary.
   if (options.collapse_parallel_loops) {
-    pm.addPass(createParallelLoopCollapsingToFirstDimPass());
+    pm.addNestedPass<mlir::FuncOp>(
+        createParallelLoopCollapsingToFirstDimPass());
   }
   // Some basic cleanup.
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
   // Greedily map the remaining loop to GPU hardware dimensions.
-  pm.addPass(createMapParallelLoopsPass());
+  pm.addNestedPass<::mlir::FuncOp>(createMapParallelLoopsPass());
   // Apply the mapping.
-  pm.addPass(mlir::createParallelLoopToGpuPass());
+  pm.addNestedPass<::mlir::FuncOp>(mlir::createParallelLoopToGpuPass());
   // Some basic cleanup.
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
@@ -131,7 +135,7 @@ Status LowerLHLOToGPU(mlir::ModuleOp module, LowerLHLOToGPUOptions options) {
   // Make sure the kernel signature resembled the original function's
   // signature
   if (options.rewrite_signature) {
-    pm.addPass(createRewriteKernelSignaturePass());
+    pm.addNestedPass<::mlir::FuncOp>(createRewriteKernelSignaturePass());
   }
   if (failed(pm.run(module))) {
     return InternalError("Lowering to GPU kernels failed.");
@@ -179,8 +183,9 @@ class LowerToNVVMPass
 }  // namespace
 
 Status LowerKernelBodiesToNVVM(mlir::ModuleOp module) {
+  ::mlir::PassManager pm(module.getContext());
   // We cannot verify as the signature of the kernel is rewritten.
-  ::mlir::PassManager pm(module.getContext(), /*verifyPasses=*/false);
+  pm.enableVerifier(false);
   tensorflow::applyTensorflowAndCLOptions(pm);
 
   // Rewrite kernel functions to LLVM IR.
@@ -250,8 +255,9 @@ class LowerToROCDLPass
 }  // namespace
 
 Status LowerKernelBodiesToROCDL(mlir::ModuleOp module) {
+  ::mlir::PassManager pm(module.getContext());
   // We cannot verify as the signature of the kernel is rewritten.
-  ::mlir::PassManager pm(module.getContext(), /*verifyPasses=*/false);
+  pm.enableVerifier(false);
   tensorflow::applyTensorflowAndCLOptions(pm);
 
   auto enable_if_vlog_is_on = [](mlir::Pass*, mlir::Operation*) {

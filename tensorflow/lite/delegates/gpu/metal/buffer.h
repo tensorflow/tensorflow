@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
 #include "tensorflow/lite/delegates/gpu/metal/gpu_object.h"
 
 namespace tflite {
@@ -58,6 +59,8 @@ class Buffer : public GPUObject {
 
   absl::Status GetGPUResources(const GPUObjectDescriptor* obj_ptr,
                                GPUResourcesWithValue* resources) const override;
+
+  absl::Status CreateFromBufferDescriptor(const BufferDescriptor& desc, id<MTLDevice> device);
 
  private:
   void Release();

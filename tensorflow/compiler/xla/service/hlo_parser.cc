@@ -1841,6 +1841,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<std::vector<std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>>
           output_to_operand_aliasing;
       optional<PaddingType> padding_type;
+      optional<std::vector<HloComputation*>> called_computations;
       attrs["custom_call_target"] = {/*required=*/true, AttrTy::kString,
                                      &custom_call_target};
       attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
@@ -1856,6 +1857,9 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
                                               &custom_call_has_side_effect};
       attrs["to_apply"] = {/*required=*/false, AttrTy::kHloComputation,
                            &to_apply};
+      attrs["called_computations"] = {/*required=*/false,
+                                      AttrTy::kBracedHloComputationList,
+                                      &called_computations};
       attrs["output_to_operand_aliasing"] = {/*required=*/false,
                                              AttrTy::kInstructionAliasing,
                                              &output_to_operand_aliasing};
@@ -1865,6 +1869,11 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<std::vector<PrecisionConfig::Precision>> operand_precision;
       attrs["operand_precision"] = {/*required=*/false, AttrTy::kPrecisionList,
                                     &operand_precision};
+      if (called_computations.has_value() && to_apply.has_value()) {
+        return Error(lexer_.GetLoc(),
+                     "A single instruction can't have both to_apply and "
+                     "calls field");
+      }
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
@@ -1909,6 +1918,11 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
           instruction =
               builder->AddInstruction(HloInstruction::CreateCustomCall(
                   shape, operands, *to_apply, *custom_call_target,
+                  backend_config ? *backend_config : ""));
+        } else if (called_computations.has_value()) {
+          instruction =
+              builder->AddInstruction(HloInstruction::CreateCustomCall(
+                  shape, operands, *called_computations, *custom_call_target,
                   backend_config ? *backend_config : ""));
         } else {
           instruction =
@@ -4224,10 +4238,13 @@ bool HloParserImpl::ParseMetadata(OpMetadata* metadata) {
   optional<std::string> op_name;
   optional<std::string> source_file;
   optional<int32> source_line;
+  optional<std::vector<int64>> profile_type;
   attrs["op_type"] = {/*required=*/false, AttrTy::kString, &op_type};
   attrs["op_name"] = {/*required=*/false, AttrTy::kString, &op_name};
   attrs["source_file"] = {/*required=*/false, AttrTy::kString, &source_file};
   attrs["source_line"] = {/*required=*/false, AttrTy::kInt32, &source_line};
+  attrs["profile_type"] = {/*required=*/false, AttrTy::kBracedInt64List,
+                           &profile_type};
   if (!ParseSubAttributes(attrs)) {
     return false;
   }
@@ -4242,6 +4259,14 @@ bool HloParserImpl::ParseMetadata(OpMetadata* metadata) {
   }
   if (source_line) {
     metadata->set_source_line(*source_line);
+  }
+  if (profile_type) {
+    for (const auto& type : *profile_type) {
+      if (!ProfileType_IsValid(type)) {
+        return false;
+      }
+      metadata->add_profile_type(static_cast<ProfileType>(type));
+    }
   }
   return true;
 }

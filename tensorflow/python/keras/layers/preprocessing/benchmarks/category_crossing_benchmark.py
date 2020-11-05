@@ -20,7 +20,6 @@ from __future__ import print_function
 import itertools
 import time
 
-from absl import flags
 import numpy as np
 
 from tensorflow.python import keras
@@ -32,8 +31,6 @@ from tensorflow.python.keras.layers.preprocessing import category_crossing
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
-
-FLAGS = flags.FLAGS
 
 v2_compat.enable_v2_behavior()
 

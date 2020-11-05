@@ -636,11 +636,155 @@ struct LegalizeUnidirectionalSequenceRnn : public RewritePattern {
   }
 };
 
-void LegalizeTF::runOnFunction() {
-  OwningRewritePatternList patterns;
-  auto* context = &getContext();
-  auto func = getFunction();
+// Put two TFL BroadcastTo ops in front of the given TF binary broadcast op to
+// to make binary broadcast-able op conversion always successful and does not
+// require flex delegate.
+template <typename SourceOp>
+class ApplyExplicitBroadcasting : public OpRewritePattern<SourceOp> {
+ public:
+  using OpRewritePattern<SourceOp>::OpRewritePattern;
 
+  LogicalResult matchAndRewrite(SourceOp src_op,
+                                PatternRewriter& rewriter) const override {
+    Operation* op = static_cast<Operation*>(src_op);
+    auto lhs = op->getOperand(0);
+    auto rhs = op->getOperand(1);
+
+    // Should have static shapes to calculate the broadcasted shape.
+    if (!lhs.getType().cast<ShapedType>().hasStaticShape() ||
+        !rhs.getType().cast<ShapedType>().hasStaticShape()) {
+      return failure();
+    }
+
+    auto lhs_shape = lhs.getType().cast<ShapedType>().getShape();
+    auto rhs_shape = rhs.getType().cast<ShapedType>().getShape();
+
+    if (lhs_shape == rhs_shape) {
+      return failure();
+    }
+
+    // Calculate the broadcasted shape.
+    SmallVector<int64_t, 4> result_shape;
+    if (!OpTrait::util::getBroadcastedShape(lhs_shape, rhs_shape,
+                                            result_shape)) {
+      return failure();
+    }
+
+    RankedTensorType result_type = RankedTensorType::get(
+        result_shape, getElementTypeOrSelf(op->getResult(0).getType()));
+
+    // Create a const op, that stores the above broadcasted shape.
+    auto new_shape_attr = mlir::DenseIntElementsAttr::get(
+        RankedTensorType::get(result_shape.size(), rewriter.getIntegerType(64)),
+        result_shape);
+    auto new_shape = rewriter.create<TF::ConstOp>(op->getLoc(), new_shape_attr);
+
+    // Apply BroadcastTo ops to each input.
+    auto broadcast_type = RankedTensorType::get(
+        result_shape, getElementTypeOrSelf(lhs.getType()));
+
+    if (result_type.getShape() != lhs_shape) {
+      lhs = rewriter
+                .create<TF::BroadcastToOp>(op->getLoc(), broadcast_type, lhs,
+                                           new_shape)
+                .output();
+    }
+    if (result_type.getShape() != rhs_shape) {
+      rhs = rewriter
+                .create<TF::BroadcastToOp>(op->getLoc(), broadcast_type, rhs,
+                                           new_shape)
+                .output();
+    }
+
+    // Recreate an op with the above Broadcast op results.
+    rewriter.replaceOpWithNewOp<SourceOp>(op, result_type, lhs, rhs);
+    return success();
+  }
+};
+
+// This specialization is for TF SelectV2 op. SelectV2 op have three inputs and
+// they should have broadcastable shapes.
+template <>
+class ApplyExplicitBroadcasting<TF::SelectV2Op>
+    : public OpRewritePattern<TF::SelectV2Op> {
+ public:
+  using OpRewritePattern<TF::SelectV2Op>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::SelectV2Op src_op,
+                                PatternRewriter& rewriter) const override {
+    Operation* op = static_cast<Operation*>(src_op);
+    auto cond = op->getOperand(0);
+    auto lhs = op->getOperand(1);
+    auto rhs = op->getOperand(2);
+
+    // Should have static shapes to calculate the broadcasted shape.
+    if (!lhs.getType().cast<ShapedType>().hasStaticShape() ||
+        !rhs.getType().cast<ShapedType>().hasStaticShape() ||
+        !cond.getType().cast<ShapedType>().hasStaticShape()) {
+      return failure();
+    }
+
+    auto lhs_shape = lhs.getType().cast<ShapedType>().getShape();
+    auto rhs_shape = rhs.getType().cast<ShapedType>().getShape();
+    auto cond_shape = cond.getType().cast<ShapedType>().getShape();
+
+    if (lhs_shape == rhs_shape && cond_shape == lhs_shape) {
+      return failure();
+    }
+
+    // Calculate the broadcasted shape.
+    SmallVector<int64_t, 4> broadcasted_shape;
+    if (!OpTrait::util::getBroadcastedShape(lhs_shape, rhs_shape,
+                                            broadcasted_shape)) {
+      return failure();
+    }
+
+    SmallVector<int64_t, 4> result_shape;
+    if (!OpTrait::util::getBroadcastedShape(broadcasted_shape, cond_shape,
+                                            result_shape)) {
+      return failure();
+    }
+
+    // Create a const op, that stores the above broadcasted shape.
+    auto shape_type =
+        RankedTensorType::get(result_shape.size(), rewriter.getIntegerType(64));
+    auto new_shape_attr =
+        mlir::DenseIntElementsAttr::get(shape_type, result_shape);
+    auto new_shape = rewriter.create<TF::ConstOp>(op->getLoc(), new_shape_attr);
+
+    // Apply BroadcastTo ops to each input.
+    auto cond_result_type =
+        RankedTensorType::get(result_shape, rewriter.getIntegerType(1));
+    auto result_type = RankedTensorType::get(
+        result_shape, getElementTypeOrSelf(lhs.getType()));
+
+    if (result_shape != cond_shape) {
+      cond = rewriter
+                 .create<TF::BroadcastToOp>(op->getLoc(), cond_result_type,
+                                            cond, new_shape)
+                 .output();
+    }
+    if (result_shape != lhs_shape) {
+      lhs = rewriter
+                .create<TF::BroadcastToOp>(op->getLoc(), result_type, lhs,
+                                           new_shape)
+                .output();
+    }
+    if (result_shape != rhs_shape) {
+      rhs = rewriter
+                .create<TF::BroadcastToOp>(op->getLoc(), result_type, rhs,
+                                           new_shape)
+                .output();
+    }
+
+    // Recreate an op with the above Broadcast op results.
+    rewriter.replaceOpWithNewOp<TF::SelectV2Op>(op, result_type, cond, lhs,
+                                                rhs);
+    return success();
+  }
+};
+
+void addPatterns(MLIRContext* context, OwningRewritePatternList& patterns) {
   // Add TF->TF lowering patterns.
   TF::PopulateLoweringTFPatterns(context, &patterns);
 
@@ -656,7 +800,25 @@ void LegalizeTF::runOnFunction() {
   // Ophint python converter converted tf node pattern.
   patterns.insert<LegalizeUnidirectionalSequenceLstm,
                   LegalizeUnidirectionalSequenceRnn>(context);
-  FrozenRewritePatternList frozenPatterns(std::move(patterns));
+}
+
+void applyPatterns(FuncOp func, ConversionTarget& target,
+                   FrozenRewritePatternList& frozenPatterns) {
+  // Keep trying to convert.
+  // TODO(karimnosseir): This is similar to what apply greedy patterns does.
+  // Look if there is a function that tries until it converge.
+  // Currently unit-test doesn't do multiple tries, so we need this.
+  const int max_iterations = 15;
+  for (int i = 0; i < max_iterations; ++i) {
+    if (failed(applyPartialConversion(func, target, frozenPatterns))) {
+      return;
+    }
+  }
+}
+
+void LegalizeTF::runOnFunction() {
+  auto* context = &getContext();
+  auto func = getFunction();
 
   ConversionTarget target(*context);
   // It is legal to have TF ops in the graph still which can be
@@ -690,16 +852,42 @@ void LegalizeTF::runOnFunction() {
         return success(current_thread_id == llvm::get_threadid());
       });
 
-  // Keep trying to convert.
-  // TODO(karimnosseir): This is similar to what apply greedy patterns does.
-  // Look if there is a function that tries until it converge.
-  // Currently unit-test doesn't do multiple tries, so we need this.
-  const int max_iterations = 15;
-  for (int i = 0; i < max_iterations; ++i) {
-    if (failed(applyPartialConversion(func, target, frozenPatterns))) {
-      return;
-    }
-  }
+  OwningRewritePatternList stage1Patterns;
+
+  addPatterns(context, stage1Patterns);
+
+  FrozenRewritePatternList stage1FrozenPatterns(std::move(stage1Patterns));
+  applyPatterns(func, target, stage1FrozenPatterns);
+
+  // Explict BroadcastTo addition for left-over broadcast-able ops.
+  // The following pattern matchings should be done after the other legalization
+  // rules in order not to add unnecessary BroadcastTo ops.
+  OwningRewritePatternList stage2Patterns;
+
+  addPatterns(context, stage2Patterns);
+
+  stage2Patterns.insert<ApplyExplicitBroadcasting<TF::LessEqualOp>,
+                        ApplyExplicitBroadcasting<TF::GreaterEqualOp>,
+                        ApplyExplicitBroadcasting<TF::NotEqualOp>,
+                        ApplyExplicitBroadcasting<TF::GreaterOp>,
+                        ApplyExplicitBroadcasting<TF::LessOp>,
+                        ApplyExplicitBroadcasting<TF::EqualOp>,
+                        ApplyExplicitBroadcasting<TF::AddOp>,
+                        ApplyExplicitBroadcasting<TF::AddV2Op>,
+                        ApplyExplicitBroadcasting<TF::MulOp>,
+                        ApplyExplicitBroadcasting<TF::DivOp>,
+                        ApplyExplicitBroadcasting<TF::RealDivOp>,
+                        ApplyExplicitBroadcasting<TF::SubOp>,
+                        ApplyExplicitBroadcasting<TF::FloorDivOp>,
+                        ApplyExplicitBroadcasting<TF::FloorModOp>,
+                        ApplyExplicitBroadcasting<TF::PowOp>,
+                        ApplyExplicitBroadcasting<TF::MaximumOp>,
+                        ApplyExplicitBroadcasting<TF::MinimumOp>,
+                        ApplyExplicitBroadcasting<TF::SquaredDifferenceOp>,
+                        ApplyExplicitBroadcasting<TF::SelectV2Op>>(context);
+
+  FrozenRewritePatternList stage2FrozenPatterns(std::move(stage2Patterns));
+  applyPatterns(func, target, stage2FrozenPatterns);
 }
 
 }  // namespace

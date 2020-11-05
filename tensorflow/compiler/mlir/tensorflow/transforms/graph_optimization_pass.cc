@@ -50,7 +50,8 @@ Status MlirGraphOptimizationPass::Run(const ConfigProto& config_proto,
   // Assign optimal data layout to layout sensitive operations and delete
   // redundant transposes from the IR.
   LayoutOptimizationPipelineOptions layout_optimization_options;
-  CreateLayoutOptimizationPipeline(pm, layout_optimization_options);
+  CreateLayoutOptimizationPipeline(pm.nest<FuncOp>(),
+                                   layout_optimization_options);
 
   // Prepare IR for exporting.
   pm.addPass(CreateBreakUpIslandsPass());

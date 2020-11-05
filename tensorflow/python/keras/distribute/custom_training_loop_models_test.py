@@ -419,7 +419,7 @@ class KerasModelsXLATest(test.TestCase, parameterized.TestCase):
   @ds_combinations.generate(
       combinations.combine(
           distribution=strategy_combinations.tpu_strategies, mode=["eager"]))
-  def test_tf_function_experimental_compile(self, distribution):
+  def test_tf_function_jit_compile(self, distribution):
     dataset = _get_dataset()
     input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
 
@@ -433,7 +433,7 @@ class KerasModelsXLATest(test.TestCase, parameterized.TestCase):
         self.kernel = self.add_variable(
             "kernel", shape=[int(input_shape[-1]), self.num_outputs])
 
-      @def_function.function(experimental_compile=True)
+      @def_function.function(jit_compile=True)
       def call(self, inputs):
         return math_ops.matmul(inputs, self.kernel)
 
