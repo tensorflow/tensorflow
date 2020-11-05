@@ -18,17 +18,17 @@ limitations under the License.
 #include <cstdint>
 
 #include "tensorflow/lite/delegates/gpu/cl/arguments.h"
-#include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
 #include "tensorflow/lite/delegates/gpu/cl/inference_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
-#include "tensorflow/lite/delegates/gpu/cl/linear_storage.h"
 #include "tensorflow/lite/delegates/gpu/cl/precision.h"
 #include "tensorflow/lite/delegates/gpu/cl/serialization_generated.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
-#include "tensorflow/lite/delegates/gpu/cl/texture2d.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_object_desc.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tensor_linear_desc.h"
+#include "tensorflow/lite/delegates/gpu/common/task/texture2d_desc.h"
 
 namespace tflite {
 namespace gpu {
