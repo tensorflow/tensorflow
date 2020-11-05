@@ -2757,6 +2757,10 @@ class SparseApplyFtrlOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices.shape()),
                 errors::InvalidArgument("indices must be one-dimensional"));
 
+    // Note: The range checks on lr, l1, l2, and lr_power below are disabled
+    // for non-CPU devices because their values cannot be accessed directly from
+    // the host. The GPU kernel will not crash if these conditions are not met,
+    // it will simply produce a bogus answer (possibly inf/nan).
     const Tensor& lr = ctx->input(5);
     OP_REQUIRES(
         ctx,
