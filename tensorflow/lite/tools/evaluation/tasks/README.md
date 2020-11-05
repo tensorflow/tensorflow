@@ -5,7 +5,13 @@ This page describes how you can check the accuracy of quantized models to verify
 ## Accuracy & correctness
 TensorFlow Lite has two types of tooling to measure how accurately a delegate behaves for a given model: Task-Based and Task-Agnostic. 
 
-For more information visit the [Tools for Evaluation](https://www.tensorflow.org/lite/performance/delegates#tools_for_evaluation) page.
+**Task-Based Evaluation**
+TFLite has two tools to evaluate correctness on two image-based tasks:
+- [ILSVRC 2012](http://image-net.org/challenges/LSVRC/2012/) (Image Classification) with top-K accuracy
+- [COCO Object Detection](https://cocodataset.org/#detection-2020) (w/ bounding boxes) with mean Average Precision (mAP)
+
+**Task-Agnostic Evaluation**
+For tasks where there isn't an established on-device evaluation tool, or if you are experimenting with custom models, TensorFlow Lite has the Inference Diff tool.
 
 ## Tools
 There are three different binaries which are supported. A brief description of each is provided below.
@@ -18,3 +24,7 @@ This binary evaluates TensorFlow Lite models trained for the [ILSVRC 2012 image 
 
 ### [Object Detection Evaluation](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/evaluation/tasks/coco_object_detection#object-detection-evaluation-using-the-2014-coco-minival-dataset)
 This binary evaluates TensorFlow Lite models trained for the bounding box-based [COCO Object Detection](https://cocodataset.org/#detection-eval) task.
+
+***
+
+For more information visit the TensorFlow Lite guide on [Tools for Evaluation](https://www.tensorflow.org/lite/performance/delegates#tools_for_evaluation) page.
