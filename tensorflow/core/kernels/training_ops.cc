@@ -757,19 +757,19 @@ struct ResourceSparseApplyAdadelta<CPUDevice, T, Tindex> {
     const Tindex N = static_cast<Tindex>(indices.size());
     for (Tindex i = 0; i < N; i++) {
       const Tindex index = indices(i);
-      auto accum_ = accum.template chip<0>(index);
-      auto accum_update_ = accum_update.template chip<0>(index);
-      auto grad_ = grad.template chip<0>(i);
+      auto a = accum.template chip<0>(index);
+      auto a_update = accum_update.template chip<0>(index);
+      auto g = grad.template chip<0>(i);
 
-      accum_ = accum_ * accum_.constant(rho()) +
-                grad_.square() * grad_.constant(T(1) - rho());
+      a = a * a.constant(rho()) +
+                g.square() * g.constant(T(1) - rho());
       const auto update =
-          (accum_update_ + accum_update_.constant(epsilon())).sqrt() *
-          (accum_ + accum_.constant(epsilon())).rsqrt() * grad_;
+          (a_update + a_update.constant(epsilon())).sqrt() *
+          (a + a.constant(epsilon())).rsqrt() * g;
       auto v = var.template chip<0>(index);
       v -= update * update.constant(lr());
-      accum_update_ =
-          accum_update_ * accum_update_.constant(rho()) +
+      a_update =
+          a_update * a_update.constant(rho()) +
           update.square() * update.constant(static_cast<T>(1) - rho());
     }
     return -1;
@@ -1199,20 +1199,10 @@ class SparseApplyAdadeltaOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    Var* var;
     const bool sparse = true;
-    mutex* mu = GetTrainingVariableMutex<Device, T>(ctx, 0, sparse, &var);
-    core::ScopedUnref scoped_unref(var);
-    // mu_accum is actually the same mutex as mu_var since currently we use a
-    // global mutex.
-    //
-    // mutex* mu_accum = ctx->input_ref_mutex(1);
-    if (use_exclusive_lock_ && mu != nullptr) {
-      mutex_lock ml(*mu);
-      DoCompute(ctx);
-    } else {
-      DoCompute(ctx);
-    }
+    auto locks = MaybeLockVariableInputMutexesInOrder<Device, T>(
+        ctx, use_exclusive_lock_, sparse, {0, 1, 2});
+    DoCompute(ctx);
   }
 
   void DoCompute(OpKernelContext* ctx) {
