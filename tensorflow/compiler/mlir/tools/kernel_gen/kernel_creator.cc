@@ -70,7 +70,8 @@ constexpr llvm::StringRef kGpuBinaryAttrName = "gpu.binary";
 
 Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
                     llvm::ArrayRef<uint32_t> tile_sizes,
-                    llvm::ArrayRef<uint32_t> unroll_factors) {
+                    llvm::ArrayRef<uint32_t> unroll_factors,
+                    bool embed_memref_prints) {
   mlir::PassManager pm(module.getContext());
   applyTensorflowAndCLOptions(pm);
 
@@ -184,6 +185,10 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
 
   // Constraints are removed as late as possible and before lowering to CFG.
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createConvertShapeConstraintsPass());
+  if (embed_memref_prints) {
+    pm.addNestedPass<::mlir::FuncOp>(
+        mlir::kernel_gen::transforms::CreateEmbedMemRefPrintsPass());
+  }
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
 
   pm.addPass(::mlir::createLowerToCFGPass());
@@ -227,11 +232,12 @@ StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
     mlir::MLIRContext& context, llvm::StringRef tf_code, bool gpu_binary_only,
     llvm::ArrayRef<std::string> architectures,
     llvm::ArrayRef<uint32_t> tile_sizes, llvm::ArrayRef<uint32_t> same_shape,
-    llvm::ArrayRef<uint32_t> unroll_factors, bool generate_fatbin) {
+    llvm::ArrayRef<uint32_t> unroll_factors, bool embed_memref_prints,
+    bool generate_fatbin) {
   mlir::RegisterAllTensorFlowDialects(context.getDialectRegistry());
   mlir::OwningModuleRef module = mlir::parseSourceString(tf_code, &context);
-  TF_RETURN_IF_ERROR(
-      LowerTFtoGPU(module.get(), gpu_binary_only, tile_sizes, unroll_factors));
+  TF_RETURN_IF_ERROR(LowerTFtoGPU(module.get(), gpu_binary_only, tile_sizes,
+                                  unroll_factors, embed_memref_prints));
 #if !defined(TENSORFLOW_USE_ROCM) && !defined(GOOGLE_CUDA)
   return InternalError(
       "Neither TENSORFLOW_USE_ROCM nor GOOGLE_CUDA are defined."

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_TENSOR_TYPE_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_CL_TENSOR_TYPE_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_TENSOR_DESC_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_TENSOR_DESC_H_
 
 #include <cstddef>
 #include <string>
@@ -26,7 +26,6 @@ limitations under the License.
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 
 enum class AddressMode {
   kDontCare,
@@ -182,8 +181,7 @@ void DataToBHWDC(absl::Span<const T> src, const BHWDC& shape,
 
 std::string ToString(TensorStorageType type);
 
-}  // namespace cl
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_CL_TENSOR_TYPE_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_TENSOR_DESC_H_

@@ -230,6 +230,17 @@ LogicalResult transposeForBatchMatmul(
   return success();
 }
 
+// Returns success when the given shape argument of the Reshape op is valid.
+LogicalResult verifyShapeOfReshapeOp(std::vector<int64_t> shape) {
+  int num_dynamic_dims = 0;
+  for (int64_t dim : shape) {
+    if (dim == ShapedType::kDynamicSize) ++num_dynamic_dims;
+  }
+
+  // Reshape op allows only at most one dynamic dimension.
+  return (num_dynamic_dims <= 1) ? success() : failure();
+}
+
 // Reshapes LHS and RHS to have B0,...,Bn,L,C and B0,...,Bn,C,R shape
 // respectively while assuming that the initial shape for them is
 // B0,...,Bn,L0,...,Ln,C0,...,Cn and B0,...,Bn,C0,...,Cn,R0,...,Rn respectively.
@@ -284,6 +295,10 @@ LogicalResult reshapeForBatchMatmul(const Location& loc,
   rhs_shape.push_back(rhs_size);
   out_shape->push_back(rhs_size);
 
+  if (failed(verifyShapeOfReshapeOp(lhs_shape)) ||
+      failed(verifyShapeOfReshapeOp(rhs_shape)))
+    return failure();
+
   *lhs = createReshapeOp(*lhs, lhs_shape, lhs_type.getElementType(), loc,
                          rewriter);
   *rhs = createReshapeOp(*rhs, rhs_shape, rhs_type.getElementType(), loc,
@@ -322,15 +337,18 @@ LogicalResult rewriteToBatchMatmul(TF::EinsumOp op,
                                    &matmul_shape, &rewriter)))
     return failure();
 
+  std::vector<int64_t> reshape_shape =
+      inverseTransposeVector(original_type.getShape(), out_transpose);
+  if (failed(verifyShapeOfReshapeOp(reshape_shape))) return failure();
+
   auto matmul_type =
       RankedTensorType::get(matmul_shape, original_type.getElementType());
   Value out = rewriter.create<TF::BatchMatMulV2Op>(
       op.getLoc(), matmul_type, lhs, rhs, rewriter.getBoolAttr(false),
       rewriter.getBoolAttr(false));
 
-  out = createReshapeOp(
-      out, inverseTransposeVector(original_type.getShape(), out_transpose),
-      original_type.getElementType(), op.getLoc(), &rewriter);
+  out = createReshapeOp(out, reshape_shape, original_type.getElementType(),
+                        op.getLoc(), &rewriter);
   out = createTransposeOp(out, op.getLoc(), out_transpose, &rewriter);
 
   rewriter.replaceOp(op, out);

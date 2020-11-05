@@ -79,24 +79,10 @@ class DataServiceDispatcherImpl {
                     GetWorkersResponse* response);
 
  private:
-  struct DistributedEpochJob {
-    // When the distributed epoch job is first created, we eagerly create the
-    // split provider to fail fast in case the dataset doesn't support
-    // splitting. Split providers for later repetitions are created on demand.
-    explicit DistributedEpochJob(int64 job_id, int64 dataset_id,
-                                 std::unique_ptr<SplitProvider> split_provider)
-        : job_id(job_id), dataset_id(dataset_id) {
-      split_providers[0] = std::move(split_provider);
-    }
-
-    const int64 job_id;
-    const int64 dataset_id;
-    // Map from repetition index to split provider.
-    absl::flat_hash_map<int64, std::unique_ptr<SplitProvider>> split_providers;
-  };
-
-  // Creates a new DistributedEpochJob in `distributed_epoch_jobs_`.
-  Status MakeDistributedEpochJob(int64 job_id, int64 dataset_id)
+  // Restores a `SplitProvider` from the state in `job` and stores it in
+  // `restored`.
+  Status RestoreSplitProvider(const DispatcherState::Job& job,
+                              std::unique_ptr<SplitProvider>& restored)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Makes a split provider for the specified `dataset_id`, and stores it in
   // `split_provider`.
@@ -153,6 +139,9 @@ class DataServiceDispatcherImpl {
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Checks that the dispatcher has started, returning UNAVAILABLE if it hasn't.
   Status CheckStarted() LOCKS_EXCLUDED(mu_);
+  // Records that a split was produced by a call to `GetSplit`.
+  Status RecordSplitProduced(int64 job_id, int64 repetition, bool finished)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Applies a state update, updating both the journal and the in-memory state.
   Status Apply(const Update& update) EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Applies a state update, but doesn't update the journal. Only meant to be
@@ -186,10 +175,10 @@ class DataServiceDispatcherImpl {
       worker_stubs_ TF_GUARDED_BY(mu_);
   // Store of dataset definitions.
   std::unique_ptr<DatasetStore> dataset_store_ TF_GUARDED_BY(mu_);
-  // Mapping from job id to `DistributedEpochJob` for jobs with processing mode
+  // Mapping from job id to `SplitProvider`s for jobs with processing mode
   // DISTRIBUTED_EPOCH.
-  absl::flat_hash_map<int64, std::unique_ptr<DistributedEpochJob>>
-      distributed_epoch_jobs_ TF_GUARDED_BY(mu_);
+  absl::flat_hash_map<int64, std::unique_ptr<SplitProvider>> split_providers_
+      TF_GUARDED_BY(mu_);
 
   absl::optional<std::unique_ptr<JournalWriter>> journal_writer_
       TF_GUARDED_BY(mu_);

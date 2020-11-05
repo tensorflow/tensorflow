@@ -1951,4 +1951,24 @@ def TF_CacheDatasetV2Op : TF_Op<"CacheDatasetV2", []> {
   );
 }
 
+def TF__TPUDeviceOrdinalPlaceholderOp : TF_Op<"_TPUDeviceOrdinalPlaceholder", []> {
+  let summary = [{
+Placeholder device ordinal that represents device ordinal of a replicated op.
+  }];
+
+  let description = [{
+This op can be used when certain rewrite passes materialize ops that require a
+device ordinal of a replicated op but replication logic has been abstracted away
+using tf_device.replicate op. Subsequent rewrite passes must replace this op with
+a constant output that represents the correct device ordinal of the replicated
+operations inside a TPU host.
+  }];
+
+  let arguments = (ins);
+
+  let results = (outs
+    TF_Int64Tensor:$device_ordinal
+  );
+}
+
 #endif // TF_OPS

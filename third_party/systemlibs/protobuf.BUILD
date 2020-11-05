@@ -45,26 +45,11 @@ WELL_KNOWN_PROTO_MAP = {
     "wrappers": ("google/protobuf/wrappers.proto", []),
 }
 
-HEADERS = [
-    "google/protobuf/arena.h",
-    "google/protobuf/compiler/importer.h",
-    "google/protobuf/descriptor.h",
-    "google/protobuf/io/coded_stream.h",
-    "google/protobuf/io/zero_copy_stream.h",
-    "google/protobuf/io/zero_copy_stream_impl_lite.h",
-    "google/protobuf/map.h",
-    "google/protobuf/repeated_field.h",
-    "google/protobuf/text_format.h",
-    "google/protobuf/util/json_util.h",
-    "google/protobuf/util/type_resolver_util.h",
-] + [
-    proto[0].replace(".proto", ".pb.h")
-    for proto in WELL_KNOWN_PROTO_MAP.values()
-]
+RELATIVE_WELL_KNOWN_PROTOS = [proto[1][0] for proto in WELL_KNOWN_PROTO_MAP.items()]
 
 genrule(
     name = "link_proto_files",
-    outs = HEADERS + [proto[0] for proto in WELL_KNOWN_PROTO_MAP.values()],
+    outs = RELATIVE_WELL_KNOWN_PROTOS,
     cmd = """
       for i in $(OUTS); do
         f=$${i#$(@D)/}
@@ -78,12 +63,10 @@ cc_library(
     name = "protobuf",
     linkopts = ["-lprotobuf"],
     visibility = ["//visibility:public"],
-    deps = [":protobuf_headers"],
 )
 
 cc_library(
     name = "protobuf_headers",
-    hdrs = HEADERS,
     linkopts = ["-lprotobuf"],
     visibility = ["//visibility:public"],
 )

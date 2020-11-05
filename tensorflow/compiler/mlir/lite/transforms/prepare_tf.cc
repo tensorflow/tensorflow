@@ -82,8 +82,10 @@ class PrepareTFPass : public PassWrapper<PrepareTFPass, FunctionPass> {
  public:
   PrepareTFPass() = default;
   PrepareTFPass(const PrepareTFPass &) {}
-  explicit PrepareTFPass(bool unfold_batch_matmul) {
+  explicit PrepareTFPass(bool unfold_batch_matmul,
+                         bool allow_bf16_type_legalization) {
     unfold_batch_matmul_ = unfold_batch_matmul;
+    allow_bf16_type_legalization_ = allow_bf16_type_legalization;
   }
   void runOnFunction() override;
 
@@ -97,6 +99,10 @@ class PrepareTFPass : public PassWrapper<PrepareTFPass, FunctionPass> {
       *this, "tfl-unfold-batch-matmul",
       llvm::cl::desc("Unfold BatchMatMul into individual MatMul ops."),
       llvm::cl::init(true)};
+
+  Option<bool> allow_bf16_type_legalization_{
+      *this, "tfl-allow-bf16-type-legalization",
+      llvm::cl::desc("Allow bf16 type legalization."), llvm::cl::init(false)};
 };
 
 template <class TFFakeQuantOp>
@@ -258,6 +264,15 @@ using PreparePerTensorFakeQuantWithMinMaxArgs =
         TF::FakeQuantWithMinMaxArgsOp, /*PerAxis=*/false,
         FetchMinMaxAttrs<TF::FakeQuantWithMinMaxArgsOp>>;
 
+// Transient state for preserving data from match to rewrite
+struct ConvertTFConvOpMatchState {
+  IntegerAttr dilation_height_factor;
+  IntegerAttr dilation_width_factor;
+  StringAttr padding;
+  IntegerAttr stride_height;
+  IntegerAttr stride_width;
+};
+
 // Templated class for declaring a converter from some TensorFlow convolution
 // op into its counterpart in TensorFlow Lite.
 //
@@ -273,19 +288,12 @@ using PreparePerTensorFakeQuantWithMinMaxArgs =
 //
 //  int64_t getBiasDim(ArrayRef<int64_t> filterShape) const;
 template <typename ConcreteType, typename TFConvOpType>
-struct ConvertTFConvOp : public RewritePattern {
-  // Transient state for preserving data from match to rewrite
-  struct ConvertTFConvOpMatchState {
-    IntegerAttr dilation_height_factor;
-    IntegerAttr dilation_width_factor;
-    StringAttr padding;
-    IntegerAttr stride_height;
-    IntegerAttr stride_width;
-  };
-
-  ConvertTFConvOp(MLIRContext *context)
+class ConvertTFConvOp : public RewritePattern {
+ public:
+  ConvertTFConvOp(MLIRContext *context, bool allow_bf16_type_legalization)
       : RewritePattern(TFConvOpType::getOperationName(), 1, context),
-        intAttrOne(Builder(context).getI32IntegerAttr(1)) {}
+        intAttrOne(Builder(context).getI32IntegerAttr(1)),
+        allow_bf16_type_legalization_(allow_bf16_type_legalization) {}
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
@@ -301,8 +309,12 @@ struct ConvertTFConvOp : public RewritePattern {
 
     TFConvOpType tf_op = cast<TFConvOpType>(op);
 
-    if (!TFTypeIsFloat32Tensor(tf_op.input()) || !TFDataFormatIsNHWC(op))
+    if (!TFTypeIsFloat32Tensor(tf_op.input()) &&
+        !(allow_bf16_type_legalization_ &&
+          TFTypeIsBFloat16Tensor(tf_op.input())))
       return failure();
+
+    if (!TFDataFormatIsNHWC(op)) return failure();
 
     IntegerAttr height, width;
     if (!TFIntListIs1XY1(op, "strides", &height, &width)) return failure();
@@ -359,13 +371,17 @@ struct ConvertTFConvOp : public RewritePattern {
   }
 
   const IntegerAttr intAttrOne;
+
+ private:
+  bool allow_bf16_type_legalization_;
 };
 
 class ConvertTFConv2D : public ConvertTFConvOp<ConvertTFConv2D, TF::Conv2DOp> {
  public:
   using BaseType = ConvertTFConvOp<ConvertTFConv2D, TF::Conv2DOp>;
 
-  ConvertTFConv2D(MLIRContext *context) : BaseType(context) {}
+  ConvertTFConv2D(MLIRContext *context, bool allow_bf16_type_legalization)
+      : BaseType(context, allow_bf16_type_legalization) {}
 
   int64_t getBiasDim(ArrayRef<int64_t> filterShape) const {
     return filterShape.back();
@@ -421,7 +437,9 @@ class ConvertTFDepthwiseConv2dNative
   using BaseType = ConvertTFConvOp<ConvertTFDepthwiseConv2dNative,
                                    TF::DepthwiseConv2dNativeOp>;
 
-  ConvertTFDepthwiseConv2dNative(MLIRContext *context) : BaseType(context) {}
+  ConvertTFDepthwiseConv2dNative(MLIRContext *context,
+                                 bool allow_bf16_type_legalization)
+      : BaseType(context, allow_bf16_type_legalization) {}
 
   int64_t getBiasDim(ArrayRef<int64_t> filterShape) const {
     return filterShape[2] * filterShape[3];
@@ -1199,8 +1217,10 @@ void PrepareTFPass::runOnFunction() {
         ctx);
   }
   phase_2_patterns.insert<TF::ConvertTFEinsumOp, ConvertTFBroadcastTo,
-                          ConvertTFConv2D, ConvertTFDepthwiseConv2dNative,
                           ConvertTFStridedSlice, ConvertRfftToRfft2d>(ctx);
+  phase_2_patterns.insert<ConvertTFConv2D, ConvertTFDepthwiseConv2dNative>(
+      ctx, allow_bf16_type_legalization_);
+
   applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
 }
 
@@ -1208,8 +1228,9 @@ void PrepareTFPass::runOnFunction() {
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
 std::unique_ptr<OperationPass<FuncOp>> CreatePrepareTFPass(
-    bool unfold_batch_matmul) {
-  return std::make_unique<PrepareTFPass>(unfold_batch_matmul);
+    bool unfold_batch_matmul, bool allow_bf16_type_legalization) {
+  return std::make_unique<PrepareTFPass>(unfold_batch_matmul,
+                                         allow_bf16_type_legalization);
 }
 
 static PassRegistration<PrepareTFPass> pass(

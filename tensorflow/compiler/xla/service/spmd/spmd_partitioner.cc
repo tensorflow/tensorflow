@@ -364,6 +364,9 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(const HloSharding& target) {
   VLOG(2) << "Resharding " << hlo_->ToString() << " from "
           << hlo_->sharding().ToString() << " to " << target.ToString();
   const Shape& shape = hlo_->shape();
+  if (shape.element_type() == TOKEN) {
+    return *this;
+  }
   CHECK(shape.IsTuple() || !target.IsTuple());
 
   // Tuple shape instructions may have non-tuple sharding, which means that the
@@ -394,10 +397,6 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(const HloSharding& target) {
   }
 
   if (sharding() == target) {
-    return *this;
-  }
-
-  if (shape.element_type() == TOKEN) {
     return *this;
   }
 
@@ -3111,8 +3110,143 @@ Status SpmdPartitioningVisitor::HandleConditional(HloInstruction* hlo) {
 }
 
 Status SpmdPartitioningVisitor::HandleOutfeed(HloInstruction* hlo) {
-  TF_RET_CHECK(hlo->sharding().HasUniqueDevice());
-  return HandleSingleDevice(hlo);
+  if (hlo->sharding().HasUniqueDevice()) {
+    return HandleSingleDevice(hlo);
+  }
+
+  const auto& sharding = hlo->sharding();
+  const Shape& shape = hlo->operand(0)->shape();
+  auto partitioned_operand =
+      GetPartitionedHlo(hlo->operand(0)).Reshard(sharding);
+  const auto& shard_shape = partitioned_operand.hlo()->shape();
+  const auto& operand = partitioned_operand.hlo();
+  auto token = GetPartitionedHlo(hlo->operand(1)).hlo();
+
+  if (EvenlyPartitions(shape, sharding)) {
+    SetPartitionedHlo(hlo, [&]() {
+      return b_.AddInstruction(HloInstruction::CreateOutfeed(
+          operand->shape(), operand, token, hlo->outfeed_config()));
+    });
+    return Status::OK();
+  }
+
+  // Create a branch for each unique partitioned shape.
+  std::vector<Shape> per_branch_partitioned_shapes;
+  std::vector<int32> conditional_branch_indices(num_partitions_);
+  for (int64 i = 0; i < num_partitions_; ++i) {
+    auto partitioned_shape =
+        MakeNonPaddedShapeForGivenPartition(shape, sharding, i);
+    int64 matching_existing_index = 0;
+    for (; matching_existing_index < per_branch_partitioned_shapes.size();
+         ++matching_existing_index) {
+      if (ShapeUtil::Compatible(
+              partitioned_shape,
+              per_branch_partitioned_shapes[matching_existing_index])) {
+        break;
+      }
+    }
+    if (matching_existing_index < per_branch_partitioned_shapes.size()) {
+      conditional_branch_indices[i] = matching_existing_index;
+    } else {
+      conditional_branch_indices[i] = per_branch_partitioned_shapes.size();
+      per_branch_partitioned_shapes.push_back(std::move(partitioned_shape));
+    }
+  }
+
+  // Get branch index for this partition.
+  HloInstruction* branch_index;
+  if (per_branch_partitioned_shapes.size() == num_partitions_) {
+    // Use partition ID as the branch index if each partition has its own
+    // branch.
+    branch_index = partition_id_;
+    // PartitionId's output is U32 but conditional requires S32.
+    if (branch_index->shape().element_type() != S32) {
+      branch_index = b_.AddInstruction(HloInstruction::CreateConvert(
+          ShapeUtil::ChangeElementType(branch_index->shape(), S32),
+          branch_index));
+    }
+  } else {
+    // Otherwise, use a constant table to look up the branch index.
+    auto branch_index_table = b_.AddInstruction(HloInstruction::CreateConstant(
+        LiteralUtil::CreateR1<int32>(conditional_branch_indices)));
+    branch_index = b_.AddInstruction(HloInstruction::CreateDynamicSlice(
+        ShapeUtil::MakeShape(S32, {1}), branch_index_table, {partition_id_},
+        {1}));
+    branch_index = b_.AddInstruction(HloInstruction::CreateReshape(
+        ShapeUtil::MakeShape(S32, {}), branch_index));
+  }
+
+  // Create conditional for the outfeed.
+  std::vector<HloComputation*> branches(per_branch_partitioned_shapes.size());
+  for (int64 i = 0; i < branches.size(); ++i) {
+    SpmdBuilder branch_b(absl::StrCat("outfeed_branch_", i), visiting_hlo_);
+    // Create tuple param within the branch.
+    auto param = branch_b.AddInstruction(HloInstruction::CreateParameter(
+        /*parameter_number=*/0,
+        ShapeUtil::MakeTupleShape({operand->shape(), token->shape()}),
+        "outfeed_token_param"));
+    auto outfeed_data = branch_b.AddInstruction(
+        HloInstruction::CreateGetTupleElement(operand->shape(), param, 0));
+    auto outfeed_token = branch_b.AddInstruction(
+        HloInstruction::CreateGetTupleElement(token->shape(), param, 1));
+    if (!ShapeUtil::Compatible(per_branch_partitioned_shapes[i], shard_shape)) {
+      std::function<HloInstruction*(const ShapeIndex&, HloInstruction*)>
+          slice_outfeed =
+              [&](const ShapeIndex& index,
+                  HloInstruction* outfeed_operand) -> HloInstruction* {
+        // Get outfeed element shape.
+        const Shape& element_shape =
+            ShapeUtil::GetSubshape(outfeed_data->shape(), index);
+        // Recursively call slice_outfeed for tuple shapes.
+        if (element_shape.IsTuple() && element_shape.tuple_shapes_size() > 0) {
+          std::vector<HloInstruction*> slice_elements(
+              element_shape.tuple_shapes_size());
+          for (int64 i = 0; i < slice_elements.size(); ++i) {
+            auto sub_index = index;
+            sub_index.push_back(i);
+            slice_elements[i] = slice_outfeed(
+                sub_index,
+                branch_b.AddInstruction(HloInstruction::CreateGetTupleElement(
+                    ShapeUtil::GetSubshape(element_shape, {i}), outfeed_operand,
+                    i)));
+          }
+          return branch_b.AddInstruction(
+              HloInstruction::CreateTuple(slice_elements));
+        }
+        // Get the slice shape.
+        const Shape& slice_shape = ShapeUtil::GetSubshape(
+            per_branch_partitioned_shapes[i], ShapeIndexView(index));
+        if (ShapeUtil::Compatible(element_shape, slice_shape)) {
+          return outfeed_operand;
+        }
+        // Slice out useful data.
+        if (element_shape.IsArray()) {
+          CHECK(slice_shape.IsArray());
+          std::vector<int64> start_indices(slice_shape.rank(), 0);
+          std::vector<int64> slice_strides(slice_shape.rank(), 1);
+          return branch_b.AddInstruction(HloInstruction::CreateSlice(
+              slice_shape, outfeed_operand, start_indices,
+              slice_shape.dimensions(), slice_strides));
+        }
+        CHECK(element_shape.IsTuple());
+        CHECK(element_shape.tuple_shapes().empty());
+        return outfeed_operand;
+      };
+      outfeed_data = slice_outfeed({}, outfeed_data);
+    }
+    branch_b.AddInstruction(HloInstruction::CreateOutfeed(
+        per_branch_partitioned_shapes[i], outfeed_data, outfeed_token,
+        hlo->outfeed_config()));
+    branches[i] = module_->AddEmbeddedComputation(branch_b.Build());
+  }
+  SetPartitionedHlo(hlo, [&]() {
+    return b_.AddInstruction(HloInstruction::CreateConditional(
+        token->shape(), branch_index, branches,
+        std::vector<HloInstruction*>(
+            branches.size(),
+            b_.AddInstruction(HloInstruction::CreateTuple({operand, token})))));
+  });
+  return Status::OK();
 }
 
 Status SpmdPartitioningVisitor::HandleRng(HloInstruction* hlo) {
@@ -3741,7 +3875,8 @@ Status SpmdPartitioner::PreprocessSharding(HloModule* module) {
         TF_RET_CHECK(hlo->has_sharding())
             << "Side-effect HLO must have sharding: " << hlo->ToString();
         TF_RET_CHECK(!HasReplicatedSharding(hlo->sharding()) ||
-                     hlo->opcode() == HloOpcode::kInfeed)
+                     hlo->opcode() == HloOpcode::kInfeed ||
+                     hlo->opcode() == HloOpcode::kOutfeed)
             << "Non-infeed side-effect HLO cannot have a replicated sharding:"
             << hlo->ToString();
       }

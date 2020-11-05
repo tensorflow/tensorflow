@@ -125,8 +125,8 @@ Status IrEmitter::EmitConstants(const HloComputation& computation,
     // merely preserves their names (like available_externally), we also need
     // to ensure that they stick around even if they're "unused".
     //
-    // We may have to be more more clever here in the future if we notice that
-    // we're keeping around too many globals because of their linkage.
+    // We may have to be more clever here in the future if we notice that we're
+    // keeping around too many globals because of their linkage.
     unsigned global_address_space = llvm_ir::GetGlobalMemoryAddressSpace(
         *ir_emitter_context_->llvm_module());
 

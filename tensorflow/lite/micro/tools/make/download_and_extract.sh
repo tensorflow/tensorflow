@@ -118,6 +118,11 @@ download_and_extract() {
   local tempfile=${tempdir}/temp_file
   local curl_retries=3
 
+  # Destionation already downloaded.
+  if [ -d ${dir} ]; then
+      exit 0
+  fi
+
   command -v curl >/dev/null 2>&1 || {
     echo >&2 "The required 'curl' tool isn't installed. Try 'apt-get install curl'."; exit 1;
   }

@@ -17,6 +17,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "nest"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "test"
     mtype: "<type \'module\'>"
   }

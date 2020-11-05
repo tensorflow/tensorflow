@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
@@ -22,7 +22,6 @@ limitations under the License.
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 namespace {
 std::string GetReadImageFromDataType(DataType data_type) {
   if (data_type == DataType::FLOAT32) {
@@ -913,6 +912,5 @@ template void DataToBHWDC<half>(absl::Span<const half> src, const BHWDC& shape,
                                 const TensorDescriptor& desc,
                                 absl::Span<float> dst);
 
-}  // namespace cl
 }  // namespace gpu
 }  // namespace tflite
