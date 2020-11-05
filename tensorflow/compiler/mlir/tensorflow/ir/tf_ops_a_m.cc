@@ -1371,7 +1371,7 @@ LogicalResult ConstOp::inferReturnTypes(
 // Conv2DOp and Conv3DOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult VerifyConvOpAttributesV2(
+static LogicalResult VerifyConvOpAttributes(
     int num_dims, ArrayRef<Attribute> strides, ArrayRef<Attribute> dilations,
     llvm::Optional<mlir::Location> location) {
   int64_t strides_size = strides.size();
@@ -1392,18 +1392,6 @@ static LogicalResult VerifyConvOpAttributesV2(
     return emitOptionalError(location, "requires positive dilations");
 
   return success();
-}
-
-template <typename OpT>
-static LogicalResult VerifyConvOpAttributes(OpT op, int num_dims) {
-  if (!IsOfRankOrUnranked(op.getResult(), num_dims))
-    return op.emitOpError()
-           << "requires result to be " << num_dims << "D tensor";
-
-  llvm::Optional<mlir::Location> location = op.getLoc();
-  ArrayRef<Attribute> strides = op.strides().getValue();
-  ArrayRef<Attribute> dilations = op.dilations().getValue();
-  return VerifyConvOpAttributesV2(num_dims, strides, dilations, location);
 }
 
 // Verifies that,
@@ -1465,8 +1453,7 @@ template <typename OpT,
 static LogicalResult inferConvReturnTypes(
     OpT op, llvm::SmallVectorImpl<mlir::Type>& inferredReturnTypes,
     llvm::Optional<mlir::Location> location,
-    ArrayRef<Attribute> explicit_padding,
-    tensorflow::FilterTensorFormat filterFormat) {
+    ArrayRef<Attribute> explicit_padding) {
   const int64_t num_spatial_dims = std::is_same<OpT, Conv2DOpAdaptor>() ? 2 : 3;
   const int64_t num_dims = 2 + num_spatial_dims;
   const Value input = op.input();
@@ -1517,8 +1504,7 @@ static LogicalResult inferConvReturnTypes(
                                "requires non negative explicit paddings");
   }
 
-  if (failed(
-          VerifyConvOpAttributesV2(num_dims, strides, dilations, location))) {
+  if (failed(VerifyConvOpAttributes(num_dims, strides, dilations, location))) {
     return failure();
   }
 
@@ -1558,7 +1544,7 @@ static LogicalResult inferConvReturnTypes(
       input_ty.getShape()[GetTensorBatchDimIndex(num_dims, format)];
   return_shape[GetTensorFeatureDimIndex(num_dims, format)] =
       filter_ty.getShape()[GetFilterTensorInnerInputChannelsDimIndex(
-          num_dims, filterFormat)];
+          num_dims, tensorflow::FilterTensorFormat::FORMAT_HWIO)];
 
   inferredReturnTypes.assign(
       {RankedTensorType::get(return_shape, input_ty.getElementType())});
@@ -1578,18 +1564,9 @@ LogicalResult Conv2DOp::inferReturnTypes(
     explicit_pad = ::mlir::Builder(context).getI64ArrayAttr({});
   }
   explicit_padding = explicit_pad.getValue();
-  StringRef filterFormat;
-  StringAttr filterFormatAttr =
-      attributes.get("filter_format").dyn_cast_or_null<::mlir::StringAttr>();
-  if (!filterFormatAttr) {
-    filterFormatAttr = ::mlir::Builder(context).getStringAttr("HWIO");
-  }
-  filterFormat = filterFormatAttr.getValue();
-  tensorflow::FilterTensorFormat format;
-  FilterFormatFromString(filterFormat.str(), &format);
 
   return inferConvReturnTypes(op, inferredReturnTypes, location,
-                              explicit_padding, format);
+                              explicit_padding);
 }
 
 StringRef Conv2DOp::GetOptimalLayout(const RuntimeDevices &devices) {
@@ -1705,8 +1682,15 @@ static LogicalResult Verify(Conv2DBackpropInputOp op) {
       !IsOfRankOrUnranked(op.filter(), num_dims))
     return op.emitOpError()
            << "requires operands to be " << num_dims << "D tensor";
+  if (!IsOfRankOrUnranked(op.getResult(), num_dims))
+    return op.emitOpError()
+           << "requires result to be " << num_dims << "D tensor";
 
-  LogicalResult verify_result = VerifyConvOpAttributes(op, num_dims);
+  llvm::Optional<mlir::Location> location = op.getLoc();
+  ArrayRef<Attribute> strides = op.strides().getValue();
+  ArrayRef<Attribute> dilations = op.dilations().getValue();
+  LogicalResult verify_result =
+      VerifyConvOpAttributes(num_dims, strides, dilations, location);
   if (failed(verify_result)) {
     return verify_result;
   }
@@ -1775,18 +1759,9 @@ LogicalResult Conv3DOp::inferReturnTypes(
     explicit_pad = ::mlir::Builder(context).getI64ArrayAttr({});
   }
   explicit_padding = explicit_pad.getValue();
-  StringRef filterFormat;
-  StringAttr filterFormatAttr =
-      attributes.get("filter_format").dyn_cast_or_null<::mlir::StringAttr>();
-  if (!filterFormatAttr) {
-    filterFormatAttr = ::mlir::Builder(context).getStringAttr("HWIO");
-  }
-  filterFormat = filterFormatAttr.getValue();
-  tensorflow::FilterTensorFormat format;
-  FilterFormatFromString(filterFormat.str(), &format);
 
   return inferConvReturnTypes(op, inferredReturnTypes, location,
-                              explicit_padding, format);
+                              explicit_padding);
 }
 
 //===----------------------------------------------------------------------===//
