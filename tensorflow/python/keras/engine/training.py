@@ -27,7 +27,7 @@ import warnings
 import six
 
 from tensorflow.python.autograph.lang import directives
-from tensorflow.python.data.experimental.ops.distribute_options import AutoShardPolicy
+from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
@@ -1583,7 +1583,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
           self.distribute_strategy)) and isinstance(x, dataset_types):
         try:
           options = dataset_ops.Options()
-          data_option = AutoShardPolicy.DATA
+          data_option = distribute_options.AutoShardPolicy.DATA
           options.experimental_distribute.auto_shard_policy = data_option
           x = x.with_options(options)
         except ValueError:
