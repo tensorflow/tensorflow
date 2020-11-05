@@ -450,7 +450,7 @@ Status MakeIteratorFromInputElement(
     std::unique_ptr<IteratorBase>* out_iterator) {
   return MakeIteratorFromInputElement(
       ctx, parent, input_element, thread_index, inst_captured_func, prefix,
-      /*node=*/nullptr);
+      out_iterator, /*node=*/nullptr);
 }
 
 Status MakeIteratorFromInputElement(
