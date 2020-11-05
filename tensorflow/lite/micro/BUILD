@@ -40,7 +40,6 @@ cc_library(
     ],
     copts = micro_copts(),
     deps = [
-        ":memory_helpers",
         ":micro_compatibility",
         ":micro_profiler",
         ":op_resolvers",
