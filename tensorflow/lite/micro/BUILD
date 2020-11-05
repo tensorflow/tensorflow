@@ -66,7 +66,7 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels/internal:reference",
         "//tensorflow/lite/schema:schema_fbs",
-        "@flatbuffers",
+        "@flatbuffers//:runtime_cc",
     ],
 )
 
