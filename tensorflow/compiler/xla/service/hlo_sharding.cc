@@ -365,6 +365,9 @@ Status HloSharding::ValidateTuple(const Shape& shape, int64 num_devices) const {
 }
 
 Status HloSharding::Validate(const Shape& shape, int64 num_devices) const {
+  if (shape.IsToken()) {
+    return Status::OK();
+  }
   Status status = IsTuple() ? ValidateTuple(shape, num_devices)
                             : ValidateNonTuple(shape, num_devices);
   if (!status.ok()) {
