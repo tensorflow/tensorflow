@@ -26,7 +26,7 @@ tf_module {
   }
   member_method {
     name: "Glob"
-    argspec: "args=[\'filename\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'filename\', \'num_threads\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "IsDirectory"
