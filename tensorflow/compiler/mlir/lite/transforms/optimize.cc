@@ -445,7 +445,7 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
     auto shape = cst.getType().getShape();
     if (!IsDimensionsDegenerateExceptLastOne(shape)) return failure();
 
-    int64_t element_size = shape.size() > 0 ? shape[shape.size() - 1] : 1;
+    int64_t element_size = shape.empty() ? 1 : shape[shape.size() - 1];
     // Expand and transpose the multiplier since weights are using the
     // OHWI data format in TFLite.
     int64_t normalized_shape[2] = {element_size, 1};

@@ -79,15 +79,17 @@ bool IsBroadcastableElementsAttrs(mlir::Attribute a, mlir::Attribute b) {
 }
 
 bool IsDimensionsDegenerateExceptLastOne(ArrayRef<int64_t> elements_shape) {
-  for (auto i = 0; i < elements_shape.size() - 1; i++) {
-    if (elements_shape[i] != 1) return false;
+  if (elements_shape.empty()) return true;
+
+  for (auto dim : elements_shape.drop_back(1)) {
+    if (dim != 1) return false;
   }
   return true;
 }
 
 bool IsDimensionsDegenerateExceptLastOne(Attribute val) {
-  if (auto elements = val.dyn_cast<DenseElementsAttr>()) {
-    return IsDimensionsDegenerateExceptLastOne(elements.getType().getShape());
+  if (auto ranked_type = val.getType().dyn_cast<RankedTensorType>()) {
+    return IsDimensionsDegenerateExceptLastOne(ranked_type.getShape());
   }
   return false;
 }
