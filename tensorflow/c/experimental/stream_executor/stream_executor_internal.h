@@ -37,6 +37,9 @@ port::Status InitStreamExecutorPlugin(void* dso_handle);
 // testing).
 port::Status InitStreamExecutorPlugin(SEInitPluginFn init_fn);
 
+// This file implements core stream executor base classes in terms of
+// the C API defined in stream_executor.h. A class "CSomething" represents a
+// "Something" that can be manipulated via calls in the C interface.
 class CPlatform : public Platform {
  public:
   explicit CPlatform(SP_Platform platform,
