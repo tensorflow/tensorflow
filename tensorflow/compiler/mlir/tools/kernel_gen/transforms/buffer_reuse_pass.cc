@@ -52,16 +52,6 @@ namespace kernel_gen {
 namespace transforms {
 namespace {
 
-// TODO(frgossen): Move this to MLIR.
-static void walkBlocks(Operation *op, std::function<void(Block &)> callback) {
-  for (Region &region : op->getRegions()) {
-    for (Block &block : region) {
-      callback(block);
-      for (Operation &nested_op : block) walkBlocks(&nested_op, callback);
-    }
-  }
-}
-
 /// A temporary buffer size analysis that is correct but may be incomplete.
 class BufferSizeAnalysis {
  public:
@@ -121,8 +111,8 @@ class BufferSizeAnalysis {
       for (Value val : op->getResults())
         if (val.getType().isa<BaseMemRefType>()) buffers.push_back(val);
     });
-    walkBlocks(f.getOperation(), [&](Block &block) {
-      for (Value val : block.getArguments()) {
+    f.walk([&](Block *block) {
+      for (Value val : block->getArguments()) {
         if (val.getType().isa<BaseMemRefType>()) buffers.push_back(val);
       }
     });
@@ -180,8 +170,8 @@ class BufferReuseAnalysis {
   void find_reuse_candiates(FuncOp &f, BufferAliasAnalysis &aliases) {
     Liveness liveness(f);
     BufferSizeAnalysis size_equivalences(f);
-    walkBlocks(f.getOperation(), [&](Block &block) {
-      find_reuse_candiates(block, aliases, liveness.getLiveness(&block),
+    f.walk([&](Block *block) {
+      find_reuse_candiates(*block, aliases, liveness.getLiveness(block),
                            size_equivalences, f.getArguments());
     });
   }
