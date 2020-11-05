@@ -91,7 +91,7 @@ class DeviceFactory {
   // for built-in devices.
   static int32 DevicePriority(const std::string& device_type);
 
-  // Return the "subdevice_type" string for a "device_type string".
+  // Return the subdevice_type string for a device_type string.
   static string SubDeviceType(const std::string& device_type);
 };
 namespace dfactory {
