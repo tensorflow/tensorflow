@@ -383,7 +383,26 @@ def _find_libs(repository_ctx, rocm_config, bash_bin):
 
 def _exec_find_rocm_config(repository_ctx, script_path):
     python_bin = get_python_bin(repository_ctx)
-    return execute(repository_ctx, [python_bin, script_path])
+    # If used with remote execution then repository_ctx.execute() can't
+    # access files from the source tree. A trick is to read the contents
+    # of the file in Starlark and embed them as part of the command. In
+    # this case the trick is not sufficient as the find_cuda_config.py
+    # script has more than 8192 characters. 8192 is the command length
+    # limit of cmd.exe on Windows. Thus we additionally need to compress
+    # the contents locally and decompress them as part of the execute().
+    compressed_contents = repository_ctx.read(script_path)
+    decompress_and_execute_cmd = (
+        "from zlib import decompress;" +
+        "from base64 import b64decode;" +
+        "from os import system;" +
+        "script = decompress(b64decode('%s'));" % compressed_contents +
+        "f = open('script.py', 'wb');" +
+        "f.write(script);" +
+        "f.close();" +
+        "system('\"%s\" script.py');" % (python_bin)
+    )
+
+    return execute(repository_ctx, [python_bin, "-c", decompress_and_execute_cmd])
 
 def find_rocm_config(repository_ctx, script_path):
     """Returns ROCm config dictionary from running find_rocm_config.py"""
@@ -552,7 +571,7 @@ def _create_local_rocm_repository(repository_ctx):
         "rocm:rocm_config.h",
     ]}
 
-    find_rocm_config_script = repository_ctx.path(Label("@org_tensorflow//third_party/gpus:find_rocm_config.py"))
+    find_rocm_config_script = repository_ctx.path(Label("@org_tensorflow//third_party/gpus:find_rocm_config.py.gz.base64"))
 
     bash_bin = get_bash_bin(repository_ctx)
     rocm_config = _get_rocm_config(repository_ctx, bash_bin, find_rocm_config_script)
