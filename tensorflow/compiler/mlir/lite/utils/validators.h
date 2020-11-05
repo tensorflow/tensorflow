@@ -57,6 +57,13 @@ inline bool TFTypeIsFloat32Tensor(Value value) {
   return tensorType.getElementType().isF32();
 }
 
+// Returns true iff the given value is a bf16 tensor.
+inline bool TFTypeIsBFloat16Tensor(Value value) {
+  auto tensorType = value.getType().dyn_cast<TensorType>();
+  if (!tensorType) return false;
+  return tensorType.getElementType().isBF16();
+}
+
 // Returns true iff the given TensorFlow op has a `padding` attribute whose
 // value is "SAME" or "VALID", and writes the attribute to `padding`.
 inline bool TFPaddingIsSameOrValid(Operation *op, StringAttr *padding) {
