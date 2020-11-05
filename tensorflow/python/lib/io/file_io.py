@@ -346,8 +346,8 @@ def get_matching_files(filename, num_threads=None):
     filename: string or iterable of strings. The glob pattern(s).
     num_threads: int. If `filename` is iterable of strings, it will create 
       a threadpool of size `min(num_threads, len(list(filename)))` to match all 
-      strings parallelly. Default `num_threads` is None, which will use the 
-      length of `filename` directly.
+      strings parallelly. Default `num_threads` is None, which will execute 
+      serially.
 
   Returns:
     A list of strings containing filenames that match the given pattern(s).
@@ -406,8 +406,8 @@ def get_matching_files_v2(pattern, num_threads=None):
     pattern: string or iterable of strings. The glob pattern(s).
     num_threads: int. If `pattern` is iterable of strings, it will create 
       a threadpool of size `min(num_threads, len(list(pattern)))` to match all 
-      strings parallelly. Default `num_threads` is None, which will use the 
-      length of `pattern` directly.
+      strings parallelly. Default `num_threads` is None, which will execute 
+      serially.
 
   Returns:
     A list of strings containing filenames that match the given pattern(s).
@@ -431,8 +431,8 @@ def get_matching_files_v2(pattern, num_threads=None):
   patterns = list(pattern)
   if not patterns:
     return []
-  # If user didn't supply any, use the length of pattern list
-  num_threads = num_threads or len(patterns)
+  # If user didn't give anything or give None, use one thread. 
+  num_threads = num_threads or 1
   if not isinstance(num_threads, int) or num_threads < 1:
     raise TypeError("`num_threads` must be a integer and not less than 1.")
   
