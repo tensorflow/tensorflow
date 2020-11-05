@@ -344,10 +344,10 @@ def get_matching_files(filename, num_threads=None):
 
   Args:
     filename: string or iterable of strings. The glob pattern(s).
-    num_threads: int. If `filename` is iterable of strings and
-      `num_threads` is greater than one, it will create a threadpool to
-      match all strings parallelly. The size of threadpool is
-      `min(num_threads, len(list(filename)))`.
+    num_threads: int. If `filename` is iterable of strings, it will create 
+      a threadpool of size `min(num_threads, len(list(filename)))` to match all 
+      strings parallelly. Default `num_threads` is None, which will use the 
+      length of `filename` directly.
 
   Returns:
     A list of strings containing filenames that match the given pattern(s).
@@ -404,10 +404,10 @@ def get_matching_files_v2(pattern, num_threads=None):
 
   Args:
     pattern: string or iterable of strings. The glob pattern(s).
-    num_threads: int. If `pattern` is iterable of strings and
-      `num_threads` is greater than one, it will create a threadpool to
-      match all strings parallelly. The size of threadpool is
-      `min(num_threads, len(list(pattern)))`.
+    num_threads: int. If `pattern` is iterable of strings, it will create 
+      a threadpool of size `min(num_threads, len(list(pattern)))` to match all 
+      strings parallelly. Default `num_threads` is None, which will use the 
+      length of `pattern` directly.
 
   Returns:
     A list of strings containing filenames that match the given pattern(s).
