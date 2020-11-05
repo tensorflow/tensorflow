@@ -205,7 +205,7 @@ static void EmitOperatorBuilders(const std::vector<Record *> &defs,
     } else {
       os << "      tflite::BuiltinOptions_NONE, /*builtin_options=*/0,\n";
     }
-    // Only builtin ops' builders are auto-generated. custom_options are only
+    // Only built-in ops' builders are auto-generated. custom_options are only
     // used by custom or flex ops and those ops are handled manually.
     os << "      /*custom_options=*/0, "
        << "tflite::CustomOptionsFormat_FLEXBUFFERS,\n"
@@ -223,7 +223,7 @@ static inline std::string GetOperatorName(const Record &def) {
   return name.upper();
 }
 
-// Emits a function that returns builtin operator code for each TFLite op.
+// Emits a function that returns built-in operator code for each TFLite op.
 //
 // The signature of the function is:
 //
@@ -495,16 +495,16 @@ static bool RuntimeVerifierWriterMain(raw_ostream &os, RecordKeeper &records) {
 
     for (int i = 0, e = op.getNumOperands(); i < e; ++i) {
       auto &value = op.getOperand(i);
-      // Skip from from first variadic operands for now. Else getOperand index
-      // used below doesn't match.
+      // Skip from first variadic operands for now. Else getOperand index used
+      // below doesn't match.
       if (value.isVariableLength()) break;
       if (!value.name.empty())
         verify_ctx.addSubst(value.name, formatv("op->getOperand({0})", i));
     }
     for (int i = 0, e = op.getNumResults(); i < e; ++i) {
       auto &value = op.getResult(i);
-      // Skip from from first variadic results for now. Else getResult index
-      // used below doesn't match.
+      // Skip from first variadic results for now. Else getResult index used
+      // below doesn't match.
       if (value.isVariableLength()) break;
       if (!value.name.empty())
         verify_ctx.addSubst(value.name, formatv("op->getResult({0})", i));

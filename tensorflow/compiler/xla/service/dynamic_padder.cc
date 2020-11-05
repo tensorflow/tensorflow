@@ -303,7 +303,7 @@ HloInstruction* PadWithScalar(HloInstruction* inst, int64 dim,
 //  [1,2,2,3,4,4] and subtract it with 1:
 //  [0,1,1,2,3,3]
 //
-// 4.Use the the result of cumsum as gather indicies to rearrange the original
+// 4.Use the result of cumsum as gather indices to rearrange the original
 // data. Feed the original input [a,b,c,d,P,P] and indices into gather.
 //
 //  operand [a,b,c,d,P,P], indices [0,1,1,2,3,3]
@@ -668,7 +668,7 @@ Status RewriteDynamicReshapeCombineInput(
       gather->shape(), gather, output_dynamic_size, output_dim));
   auto users = reshape->users();
   for (auto* user : users) {
-    // Avoid cycles by not replacing the staic reshape and get_dimension_size.
+    // Avoid cycles by not replacing the static reshape and get_dimension_size.
     if (user != reshape_static && user != output_dynamic_size) {
       TF_RETURN_IF_ERROR(reshape->ReplaceUseWith(user, gather));
     }
@@ -750,7 +750,7 @@ HloInstruction* RewriteInputWithDynamicPadding(
     auto* padding_dim = padding_configs.mutable_dimensions(input_spatial_dim);
     const int64 dilated_window_size = window_util::DilatedBound(
         window_dim->size(), window_dim->window_dilation());
-    // Chosoe dilated window size as low padding and static padding_high +
+    // Choose dilated window size as low padding and static padding_high +
     // padding_low as high padding to make sure the following dynamic slice is
     // valid.
     //
@@ -1513,8 +1513,8 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
   // it. We do this because we have two different APIs to express a dynamic
   // dimension:
   //
-  // 1. Dynamic dimension as specificed directly in the shape -- Needed for
-  // Pytorch.
+  // 1. Dynamic dimension as specified directly in the shape -- Needed for
+  // PyTorch.
   //
   // 2. Dynamic dimension using dynamic parameter binding object. This
   // is needed for tensorflow.

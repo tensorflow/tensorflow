@@ -194,7 +194,7 @@ bool VerifyMulOpShapeConstraints(MulOp op) {
   auto element_type = getElementTypeOrSelf(op.output().getType());
 
   // Allows QI8 and QUI8 inputs up to five dimension broadcasting unless the
-  // output type is not QI16. If the output type is Q16, allows onlt the same
+  // output type is not QI16. If the output type is Q16, allows only the same
   // shape operands.
   if (IsQI8Type(element_type) || IsQUI8Type(element_type)) {
     if (IsQI16Type(getElementTypeOrSelf(op.lhs().getType()))) {
@@ -857,9 +857,9 @@ static void BuildGatherOp(OpBuilder *builder, OperationState &result,
     axis_i += params_rank;
   }
 
-  // params must be atleast rank axis + 1
+  // params must be at least rank axis + 1
   if (params_rank < axis_i + 1) {
-    emitError(result.location, "params must be atleast rank axis + 1");
+    emitError(result.location, "params must be at least rank axis + 1");
   }
 
   if (indices_rank == 0) {
@@ -1322,7 +1322,7 @@ TFL::ConstOp NarrowDownInt64InputValuesForOp(Operation *input_op,
   return builder->create<TFL::ConstOp>(loc, new_value_i32_attr);
 }
 
-// This will cast donw int64 values for TFL slice op.
+// This will cast down int64 values for TFL slice op.
 // This will require the begin & size are constants.
 struct CastDonwInt64BeginEndToInt32 : public OpRewritePattern<TFL::SliceOp> {
   using OpRewritePattern<TFL::SliceOp>::OpRewritePattern;
@@ -1482,7 +1482,7 @@ LogicalResult UnpackOp::inferReturnTypes(
 
   if (input_type.hasStaticShape() && input_type.getNumElements() <= 0) {
     return emitOptionalError(
-        loc, "number of elements in input shoule be larger than 0");
+        loc, "number of elements in input should be larger than 0");
   }
 
   const int64_t rank = input_type.getRank();
