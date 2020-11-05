@@ -44,6 +44,7 @@ VALID_LIBS = [
     "snappy",
     "tblib_archive",
     "termcolor_archive",
+    "typing_extensions_archive",
     "wrapt",
     "zlib",
 ]
