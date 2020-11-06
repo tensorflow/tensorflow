@@ -39,6 +39,8 @@ from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
 
+ALLOWED_TASK_TYPES = ("chief", "worker", "ps")
+
 
 @tf_export("distribute.experimental.ParameterServerStrategy", v1=[])
 class ParameterServerStrategyV2(distribute_lib.Strategy):
@@ -479,9 +481,27 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
 
   def _verify_args_and_config(self, cluster_resolver):
     if not cluster_resolver.cluster_spec():
-      raise ValueError("Cluster spec must be non-empty in `cluster_resolver`.")
+      raise ValueError("Cluster spec must be non-empty in "
+                       "`tf.distribute.cluster_resolver.ClusterResolver`.")
     if self.extended._num_gpus_per_worker > 1:  # pylint: disable=protected-access
       raise NotImplementedError("Multi-gpu is not supported yet.")
+
+    # The following checks if the task types are allowed (chief, ps, worker).
+    disallowed_task_type_error_str = (
+        "Disallowed task type found in "
+        "`tf.distribute.cluster_resolver.ClusterResolver` provided to "
+        "`tf.distribute.experimental.ParameterServerStrategy`. Allowed types "
+        "are {},".format(ALLOWED_TASK_TYPES))
+    if any([
+        job not in ALLOWED_TASK_TYPES
+        for job in cluster_resolver.cluster_spec().jobs
+    ]):
+      raise ValueError("{} and the cluster spec is {}.".format(
+          disallowed_task_type_error_str, cluster_resolver.cluster_spec()))
+    if (cluster_resolver.task_type and
+        cluster_resolver.task_type not in ALLOWED_TASK_TYPES):
+      raise ValueError("{} and current task type is {}.".format(
+          disallowed_task_type_error_str, cluster_resolver.task_type))
 
 
 class ParameterServerStrategyV2Extended(
