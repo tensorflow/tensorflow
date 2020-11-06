@@ -850,6 +850,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.outputs = {{0, {}}};
       property.restrict_same_input_output_scale = false;
       property.version = 1;
+      property.quantizable_int16 = false;
       break;
     case BuiltinOperator_LEAKY_RELU:
       property.inputs = {{0, {}}};
@@ -986,6 +987,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.outputs = {{0, {}}};
       property.restrict_same_input_output_scale = true;
       property.version = 2;
+      property.quantizable_int16 = false;
       break;
     case BuiltinOperator_REDUCE_MAX:
     case BuiltinOperator_REDUCE_MIN:
