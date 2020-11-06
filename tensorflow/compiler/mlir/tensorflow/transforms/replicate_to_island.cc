@@ -51,8 +51,8 @@ constexpr char kDeviceOrdinalAttr[] = "device_ordinal";
 constexpr char kTPUCore0[] = "TPU_REPLICATED_CORE_0";
 
 struct ReplicateToIslandPass
-    : public PassWrapper<ReplicateToIslandPass, OperationPass<ModuleOp>> {
-  void runOnOperation() override;
+    : public PassWrapper<ReplicateToIslandPass, FunctionPass> {
+  void runOnFunction() override;
 };
 
 // Returns whether op requires `_xla_replica_id` attribute.
@@ -136,7 +136,7 @@ LogicalResult UpdateRegionReplicateVariantOps(
 // `tf_device.replicate`, the device will be remapped to an explicit device
 // for the associated replica island.
 LogicalResult ExpandReplicateIntoReplicas(
-    const Dialect* tf_dialect, OpBuilder& builder, ModuleOp module,
+    const Dialect* tf_dialect, OpBuilder& builder,
     tf_executor::IslandOp island_op, tf_device::ReplicateOp replicate_op,
     int num_replicas, llvm::SmallVectorImpl<tf_executor::IslandOp>& replicas) {
   replicas.reserve(num_replicas);
@@ -232,7 +232,6 @@ LogicalResult ExpandReplicateIntoReplicas(
 //   tf_executor.yield %a1, %b1 : tensor<i1>, tensor<i1>
 // }
 LogicalResult CreateIslandsFromReplicate(const Dialect* tf_dialect,
-                                         ModuleOp module,
                                          tf_executor::GraphOp graph_op,
                                          tf_executor::IslandOp island_op,
                                          tf_device::ReplicateOp replicate_op) {
@@ -241,7 +240,7 @@ LogicalResult CreateIslandsFromReplicate(const Dialect* tf_dialect,
 
   // Create islands per replica.
   llvm::SmallVector<tf_executor::IslandOp, 8> replicas;
-  if (failed(ExpandReplicateIntoReplicas(tf_dialect, builder, module, island_op,
+  if (failed(ExpandReplicateIntoReplicas(tf_dialect, builder, island_op,
                                          replicate_op, num_replicas, replicas)))
     return failure();
 
@@ -297,18 +296,17 @@ LogicalResult CreateIslandsFromReplicate(const Dialect* tf_dialect,
   return success();
 }
 
-void ReplicateToIslandPass::runOnOperation() {
-  auto module = getOperation();
+void ReplicateToIslandPass::runOnFunction() {
   const Dialect* tf_dialect = getContext().getLoadedDialect("tf");
   if (!tf_dialect) {
-    module.emitError() << "'tf' dialect is not registered";
+    getOperation().emitError() << "'tf' dialect is not registered";
     return signalPassFailure();
   }
 
   // Find islands with a single `tf_device.replicate` and create individual
   // islands per replica of the replicate.
   llvm::SmallVector<tf_executor::IslandOp, 4> replicate_op_islands;
-  module.walk([&](tf_executor::GraphOp graph_op) {
+  getOperation().walk([&](tf_executor::GraphOp graph_op) {
     for (auto island_op : graph_op.getOps<tf_executor::IslandOp>()) {
       if (!island_op.WrapsSingleOp()) continue;
 
@@ -321,14 +319,14 @@ void ReplicateToIslandPass::runOnOperation() {
     auto graph_op = island_op.getParentOfType<tf_executor::GraphOp>();
     auto replicate_op =
         cast<tf_device::ReplicateOp>(island_op.GetBody().front());
-    if (failed(CreateIslandsFromReplicate(tf_dialect, module, graph_op,
-                                          island_op, replicate_op)))
+    if (failed(CreateIslandsFromReplicate(tf_dialect, graph_op, island_op,
+                                          replicate_op)))
       return signalPassFailure();
   }
 }
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<ModuleOp>> CreateReplicateToIslandPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateReplicateToIslandPass() {
   return std::make_unique<ReplicateToIslandPass>();
 }
 

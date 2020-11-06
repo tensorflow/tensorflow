@@ -46,7 +46,6 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -59,8 +58,8 @@ namespace {
 constexpr char kDeviceAttr[] = "device";
 
 struct LaunchToDeviceAttributePass
-    : public PassWrapper<LaunchToDeviceAttributePass, OperationPass<ModuleOp>> {
-  void runOnOperation() override;
+    : public PassWrapper<LaunchToDeviceAttributePass, FunctionPass> {
+  void runOnFunction() override;
 };
 
 // Assign all ops in region with specified device from launch.
@@ -99,7 +98,6 @@ LogicalResult AssignDevicesInRegion(const Dialect* tf_dialect,
 }
 
 LogicalResult HoistOpsAndAnnotateWithDevice(const Dialect* tf_dialect,
-                                            ModuleOp module,
                                             tf_device::LaunchOp launch) {
   // Forward launch inner op results to launch op results.
   launch.replaceAllUsesWith(launch.GetBody().getTerminator()->getOperands());
@@ -120,16 +118,15 @@ LogicalResult HoistOpsAndAnnotateWithDevice(const Dialect* tf_dialect,
   return success();
 }
 
-void LaunchToDeviceAttributePass::runOnOperation() {
+void LaunchToDeviceAttributePass::runOnFunction() {
   const Dialect* tf_dialect = getContext().getLoadedDialect("tf");
   if (!tf_dialect) {
     getOperation().emitError() << "'tf' dialect is not registered";
     return signalPassFailure();
   }
 
-  auto module = getOperation();
-  auto result = module.walk([&](tf_device::LaunchOp launch) {
-    if (failed(HoistOpsAndAnnotateWithDevice(tf_dialect, module, launch)))
+  auto result = getOperation().walk([&tf_dialect](tf_device::LaunchOp launch) {
+    if (failed(HoistOpsAndAnnotateWithDevice(tf_dialect, launch)))
       return WalkResult::interrupt();
 
     return WalkResult::advance();
@@ -140,7 +137,7 @@ void LaunchToDeviceAttributePass::runOnOperation() {
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<ModuleOp>> CreateLaunchToDeviceAttributePass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateLaunchToDeviceAttributePass() {
   return std::make_unique<LaunchToDeviceAttributePass>();
 }
 

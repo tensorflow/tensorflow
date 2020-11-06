@@ -254,7 +254,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateReplicateInvariantOpHoistingPass();
 
 // Creates a pass that forms replica `tf_executor.island` from a single
 // `tf_device.replicate` island.
-std::unique_ptr<OperationPass<ModuleOp>> CreateReplicateToIslandPass();
+std::unique_ptr<OperationPass<FuncOp>> CreateReplicateToIslandPass();
 
 // Creates a pass that creates `tf_executor.island` from a single
 // `tf_device.parallel_execute` island.
@@ -278,7 +278,7 @@ CreateMarkOpsForOutsideCompilationPass();
 // Creates a pass that hoists a `tf_device.launch` body and assigns a `device`
 // attribute to each TensorFlow dialect op in the body based on the `device`
 // attribute on the `tf_device.launch`.
-std::unique_ptr<OperationPass<ModuleOp>> CreateLaunchToDeviceAttributePass();
+std::unique_ptr<OperationPass<FuncOp>> CreateLaunchToDeviceAttributePass();
 
 // Creates a pass that hoists a `tf_device.replicate` body and replicates each
 // TensorFlow dialect op in the body based on its `device` attribute and the
