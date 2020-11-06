@@ -57,8 +57,8 @@ def test():
   # Incur another bound_input on the asset, but with a different sym_name, i.e.,
   # __tf_saved_model_asset1_tokens.txt vs. __tf_saved_model_asset0_tokens.txt.
   table = tf.lookup.StaticVocabularyTable(table_initializer, num_oov_buckets=10)
-  vocab_file_tensor = tf.convert_to_tensor(vocabulary_file, tf.string,
-                                           name='asset_filepath')
+  vocab_file_tensor = tf.convert_to_tensor(
+      vocabulary_file, tf.string, name='asset_filepath')
   tf.add_to_collection(tf.GraphKeys.ASSET_FILEPATHS, vocab_file_tensor)
 
   x = tf.placeholder(tf.string, shape=(), name='input')
@@ -77,4 +77,4 @@ def test():
 
 if __name__ == '__main__':
   common_v1.set_tf_options()
-  common_v1.do_test(test)
+  common_v1.do_test(test, use_lite=True)

@@ -3712,6 +3712,14 @@ StatusOr<mlir::OwningModuleRef> ConvertSavedModelV1ToMlir(
                                                  context, upgrade_legacy);
 }
 
+StatusOr<mlir::OwningModuleRef> ConvertSavedModelV1ToMlirLite(
+    const MetaGraphDef& meta_graph_def, const GraphDebugInfo& debug_info,
+    absl::Span<std::string> exported_names, mlir::MLIRContext* context,
+    bool upgrade_legacy) {
+  return SavedModelSignatureDefImporterLite::Convert(
+      meta_graph_def, debug_info, exported_names, context, upgrade_legacy);
+}
+
 std::string MlirModuleToString(mlir::ModuleOp module,
                                mlir::OpPrintingFlags flags) {
   std::string txt_module;
