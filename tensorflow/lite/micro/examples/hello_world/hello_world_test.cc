@@ -46,9 +46,6 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
   // This pulls in all the operation implementations we need
   tflite::AllOpsResolver resolver;
 
-  // This helps load the input and output quantization parameters
-  TfLiteAffineQuantization* quantization;
-
   // Create an area of memory to use for input, output, and intermediate arrays.
 
   // Minimum arena size, at the time of writing. After allocating tensors
@@ -86,10 +83,8 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteInt8, input->type);
 
   // Get the input quantization parameters
-  quantization =
-      static_cast<TfLiteAffineQuantization*>(input->quantization.params);
-  float input_scale = quantization->scale->data[0];
-  int input_zero_point = quantization->zero_point->data[0];
+  float input_scale = input->params.scale;
+  int input_zero_point = input->params.zero_point;
 
   // Quantize the input from floating-point to integer
   int8_t x_quantized = x / input_scale + input_zero_point;
@@ -109,10 +104,8 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteInt8, output->type);
 
   // Get the output quantization parameters
-  quantization =
-      static_cast<TfLiteAffineQuantization*>(output->quantization.params);
-  float output_scale = quantization->scale->data[0];
-  int output_zero_point = quantization->zero_point->data[0];
+  float output_scale = output->params.scale;
+  int output_zero_point = output->params.zero_point;
 
   // Obtain the quantized output from model's output tensor
   int8_t y_pred_quantized = output->data.int8[0];

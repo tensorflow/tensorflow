@@ -33,13 +33,6 @@ TfLiteTensor* input = nullptr;
 TfLiteTensor* output = nullptr;
 int inference_count = 0;
 
-// Get the input and output quantization parameters
-float input_scale = 0.0f;
-int input_zero_point = 0;
-
-float output_scale = 0.0f;
-int output_zero_point = 0;
-
 // Create an area of memory to use for input, output, and intermediate arrays.
 // Minimum arena size, at the time of writing. After allocating tensors
 // you can retrieve this value by invoking interpreter.arena_used_bytes().
@@ -89,17 +82,6 @@ void setup() {
   input = interpreter->input(0);
   output = interpreter->output(0);
 
-  // Get the input and output quantization parameters
-  TfLiteAffineQuantization* quantization;
-  quantization =
-      static_cast<TfLiteAffineQuantization*>(input->quantization.params);
-  input_scale = quantization->scale->data[0];
-  input_zero_point = quantization->zero_point->data[0];
-  quantization =
-      static_cast<TfLiteAffineQuantization*>(output->quantization.params);
-  output_scale = quantization->scale->data[0];
-  output_zero_point = quantization->zero_point->data[0];
-
   // Keep track of how many inferences we have performed.
   inference_count = 0;
 }
@@ -115,7 +97,7 @@ void loop() {
   float x = position * kXrange;
 
   // Quantize the input from floating-point to integer
-  int8_t x_quantized = x / input_scale + input_zero_point;
+  int8_t x_quantized = x / input->params.scale + input->params.zero_point;
   // Place the quantized input in the model's input tensor
   input->data.int8[0] = x_quantized;
 
@@ -130,7 +112,7 @@ void loop() {
   // Obtain the quantized output from model's output tensor
   int8_t y_quantized = output->data.int8[0];
   // Dequantize the output from integer to floating-point
-  float y = (y_quantized - output_zero_point) * output_scale;
+  float y = (y_quantized - output->params.zero_point) * output->params.scale;
 
   // Output the results. A custom HandleOutput function can be implemented
   // for each supported hardware target.
