@@ -179,6 +179,43 @@ class CascadelakePlatform(IntelPlatform):
       return self.BAZEL_PREFIX_ + self.ARCH_PREFIX_ + \
              CASCADELAKE_ARCH_NEW + " "
 
+class IcelakeClientPlatform(IntelPlatform):
+
+  def __init__(self):
+    IntelPlatform.__init__(self, 8, 4)
+
+  def get_bazel_gcc_flags(self):
+    ICELAKE_ARCH_OLD = "skylake-avx512"
+    ICELAKE_ARCH_NEW = "icelake-client"
+    AVX512_FLAGS = ["avx512f", "avx512cd"]
+    if IntelPlatform.use_old_arch_names(self, 8, 4):
+      ret_val = self.BAZEL_PREFIX_ + self.ARCH_PREFIX_ + \
+        ICELAKE_ARCH_OLD + " "
+      for flag in AVX512_FLAGS:
+        ret_val += self.BAZEL_PREFIX_ + self.FLAG_PREFIX_ + flag + " "
+      return ret_val
+    else:
+      return self.BAZEL_PREFIX_ + self.ARCH_PREFIX_ + \
+             ICELAKE_ARCH_NEW + " "
+
+class IcelakeServerPlatform(IntelPlatform):
+
+  def __init__(self):
+    IntelPlatform.__init__(self, 8, 4)
+
+  def get_bazel_gcc_flags(self):
+    ICELAKE_ARCH_OLD = "skylake-avx512"
+    ICELAKE_ARCH_NEW = "icelake-server"
+    AVX512_FLAGS = ["avx512f", "avx512cd"]
+    if IntelPlatform.use_old_arch_names(self, 8, 4):
+      ret_val = self.BAZEL_PREFIX_ + self.ARCH_PREFIX_ + \
+        ICELAKE_ARCH_OLD + " "
+      for flag in AVX512_FLAGS:
+        ret_val += self.BAZEL_PREFIX_ + self.FLAG_PREFIX_ + flag + " "
+      return ret_val
+    else:
+      return self.BAZEL_PREFIX_ + self.ARCH_PREFIX_ + \
+             ICELAKE_ARCH_NEW + " "
 
 class BuildEnvSetter(object):
   """Prepares the proper environment settings for various Intel platforms."""
@@ -189,7 +226,9 @@ class BuildEnvSetter(object):
       "sandybridge": SandyBridgePlatform(),
       "haswell": HaswellPlatform(),
       "skylake": SkylakePlatform(),
-      "cascadelake": CascadelakePlatform()
+      "cascadelake": CascadelakePlatform(),
+      "icelake-client": IcelakeClientPlatform(),
+      "icelake-server": IcelakeServerPlatform(),
   }
 
   def __init__(self):
