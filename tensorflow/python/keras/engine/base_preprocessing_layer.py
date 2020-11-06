@@ -30,6 +30,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import type_spec
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import training_generator_v1
 from tensorflow.python.keras.engine.base_layer import Layer
@@ -161,6 +162,12 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
           'got {}'.format(type(data)))
 
     if isinstance(data, dataset_ops.DatasetV2):
+      # Validate that the dataset only contains single-tensor elements.
+      if not isinstance(data.element_spec, type_spec.TypeSpec):
+        raise TypeError(
+            'The dataset should yield single-Tensor elements. Use `dataset.map`'
+            'to select the element of interest.\n'
+            'Got dataset.element_spec=' + str(data.element_spec))
       # Validate the datasets to try and ensure we haven't been passed one with
       # infinite size. That would cause an infinite loop here.
       if tf_utils.dataset_is_infinite(data):
