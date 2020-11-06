@@ -164,6 +164,7 @@ def _gen_kernel_bin_impl(ctx):
             "--cpu_codegen=%s" % ctx.attr.cpu_codegen,
             "--jit=%s" % ctx.attr.jit,
         ],
+        use_default_shell_env = True,
         mnemonic = "compile",
         progress_message = "Generating kernel '%{label}'",
     )

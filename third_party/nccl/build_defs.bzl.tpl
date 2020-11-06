@@ -100,6 +100,7 @@ def _device_link_impl(ctx):
                 "--output-file=%s" % cubin.path,
             ] + [file.path for file in inputs],
             mnemonic = "nvlink",
+            use_default_shell_env = True,
         )
         cubins.append(cubin)
         images.append("--image=profile=%s,file=%s" % (arch, cubin.path))
@@ -125,6 +126,7 @@ def _device_link_impl(ctx):
         arguments = arguments_list + images,
         tools = [bin2c],
         mnemonic = "fatbinary",
+        use_default_shell_env = True,
     )
 
     # Generate the source file #including the headers generated above.
@@ -203,6 +205,7 @@ def _prune_relocatable_code_impl(ctx):
             executable = ctx.file._nvprune,
             arguments = arguments,
             mnemonic = "nvprune",
+            use_default_shell_env = True,
         )
         outputs.append(output)
 
