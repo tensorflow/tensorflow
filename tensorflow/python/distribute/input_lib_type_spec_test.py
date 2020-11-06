@@ -450,6 +450,53 @@ class InputTypeSpecTest(test.TestCase, parameterized.TestCase):
       f(v)
     self.assertEqual(self.trace_count, 1)
 
+  @combinations.generate(
+      combinations.combine(
+          mode=["eager"],
+          tf_api_version=2,
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_two_gpus,
+              strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          ],
+          enable_get_next_as_optional=[True, False]))
+  def testTypeSpecForPerReplicaOptions(self, distribution, enable_get_next_as_optional):
+
+    fname1 = os.path.join(self.get_temp_dir(), "1.txt")
+    _create_text_file(fname1, 5)
+    fname2 = os.path.join(self.get_temp_dir(), "2.txt")
+    _create_text_file(fname2, 9)
+
+    def dataset_fn(input_context):
+      dataset = dataset_ops.DatasetV2.from_tensor_slices([fname1, fname2])
+      dataset = dataset.shard(input_context.num_input_pipelines,
+                              input_context.input_pipeline_id)
+      return readers.TextLineDatasetV2(dataset).map(
+          string_ops.string_to_number).batch(
+              input_context.get_per_replica_batch_size(4))
+    
+    options = distribute_lib.InputOptions(
+        experimental_place_dataset_on_device = True,
+        experimental_prefetch_to_device = False,
+        experimental_replication_mode = distribute_lib.InputReplicationMode.PER_REPLICA)
+
+    ds = distribution.experimental_distribute_datasets_from_function(dataset_fn, options)
+
+    distribution.extended.experimental_enable_get_next_as_optional = (
+        enable_get_next_as_optional)
+
+    with distribution.scope():
+      iterator = iter(ds)
+      _check_type_spec_structure(iterator)
+
+    spec = iterator._type_spec
+
+    tensor_list = spec._to_components(iterator)
+    re_iterator = spec._from_components(tensor_list)
+
+    self.assertEqual(iterator._input_workers, re_iterator._input_workers)
+    self.assertAllEqual(iterator._iterators, re_iterator._iterators)    
+
 
 class RaggedTensorDistributedIteratorTest(test.TestCase,
                                           parameterized.TestCase):
