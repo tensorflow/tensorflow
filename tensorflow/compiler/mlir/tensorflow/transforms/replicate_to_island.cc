@@ -96,7 +96,7 @@ LogicalResult UpdateRegionReplicateVariantOps(
 
   auto result = region.walk([&](Operation* op) -> WalkResult {
     if (RequiresReplicaIDAttribute(op)) {
-      op->setAttr(kReplicaIdAttr, builder.getI32IntegerAttr(replica_id));
+      op->setAttr(kReplicaIdAttr, builder.getI64IntegerAttr(replica_id));
       return WalkResult::advance();
     }
 
