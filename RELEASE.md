@@ -13,7 +13,7 @@
   
 * A major refactoring of the internals of the Keras Functional API has been completed, that should improve the reliability, stability, and performance of constructing Functional models.
 
-* Keras mixed precision API [`tf.keras.mixed_precision`](https://www.tensorflow.org/api_docs/python/tf/keras/mixed_precision?version=nightly) is no longer experimental and allows the use of 16-bit floating point formats during training, improving performance by up to 3x on GPUs and 60% on TPUs.
+* Keras mixed precision API [`tf.keras.mixed_precision`](https://www.tensorflow.org/api_docs/python/tf/keras/mixed_precision?version=nightly) is no longer experimental and allows the use of 16-bit floating point formats during training, improving performance by up to 3x on GPUs and 60% on TPUs. Please see below for additional details.
 
 * TF Profiler now supports profiling multiple workers using the [sampling mode API](https://www.tensorflow.org/guide/profiler#profiling_apis).
 
@@ -188,6 +188,24 @@
   * For Keras model, the individual call of `Model.evaluate` uses no cached data for evaluation, while `Model.fit` uses cached data when
     `validation_data` arg is provided for better performance.
   * Adds a `save_traces` argument to `model.save`/ `tf.keras.models.save_model` which determines whether the SavedModel format stores the Keras model/layer call     functions. The traced functions allow Keras to revive custom models and layers without the original class definition, but if this isn't required the tracing     can be disabled with the added option.
+  * The `tf.keras.mixed_precision` API is non non-experimental. The
+    non-experimental API differs from the experimental API in several ways.
+    * `tf.keras.mixed_precision.Policy` no longer takes in a
+      `tf.mixed_precision.experimental.LossScale` in the constructor, and no
+      longer has a `LossScale` associated with it. Instead, `Model.compile`
+      will automatically wrap the optimizer with a `LossScaleOptimizer` using
+      dynamic loss scaling if `Policy.name` is "mixed_float16".
+    * `tf.keras.mixed_precision.LossScaleOptimizer`'s constructor takes in
+      different arguments. In particular, it no longer takes in a `LossScale`,
+      and there is no longer a `LossScale` associated with the
+      `LossScaleOptimizer`. Instead, `LossScaleOptimizer` directly implements
+      fixed or dynamic loss scaling. See the documentation of
+      [`tf.keras.mixed_precision.experimental.LossScaleOptimizer`](https://www.tensorflow.org/api_docs/python/tf/keras/mixed_precision/experimental/LossScaleOptimizer?version=nightly)
+      for details on the differences between the experimental
+      `LossScaleOptimizer` and the new non-experimental `LossScaleOptimizer`.
+    * `tf.mixed_precision.experimental.LossScale` and its subclasses are
+      deprecated, as all of its functionality now exists within
+      `tf.keras.mixed_precision.LossScaleOptimizer`
 
 ### `tf.lite`:
   * `TFLiteConverter`:
