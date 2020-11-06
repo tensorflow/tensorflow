@@ -138,10 +138,15 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
   Attributes:
     name: The name of the layer (string).
-    dtype: The dtype of the layer's computations and weights. If mixed
-      precision is used with a `tf.keras.mixed_precision.Policy`, this is
-      instead just the dtype of the layer's weights, as the computations are
-      done in a different dtype.
+    dtype: The dtype of the layer's weights.
+    variable_dtype: Alias of `dtype`.
+    compute_dtype: The dtype of the layer's computations. Layers automatically
+      cast inputs to this dtype which causes the computations and output to also
+      be in this dtype. When mixed precision is used with a
+      `tf.keras.mixed_precision.Policy`, this will be different than
+      `variable_dtype`.
+    dtype_policy: The layer's dtype policy. See the
+      `tf.keras.mixed_precision.Policy` documentation for details.
     trainable_weights: List of variables to be included in backprop.
     non_trainable_weights: List of variables that should not be
       included in backprop.
@@ -517,7 +522,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     Arguments:
       name: Variable name.
       shape: Variable shape. Defaults to scalar if unspecified.
-      dtype: The type of the variable. Defaults to `self.dtype` or `float32`.
+      dtype: The type of the variable. Defaults to `self.dtype`.
       initializer: Initializer instance (callable).
       regularizer: Regularizer instance (callable).
       trainable: Boolean, whether the variable should be part of the layer's
@@ -2372,6 +2377,11 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     This is equivalent to `Layer.dtype_policy.compute_dtype`. Unless
     mixed precision is used, this is the same as `Layer.dtype`, the dtype of
     the weights.
+
+    Layers automatically cast their inputs to the compute dtype, which causes
+    computations and the output to be in the compute dtype as well. This is done
+    by the base Layer class in `Layer.__call__`, so you do not have to insert
+    these casts if implementing your own layer.
 
     Layers often perform certain internal computations in higher precision when
     `compute_dtype` is float16 or bfloat16 for numeric stability. The output
