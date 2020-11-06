@@ -3396,7 +3396,7 @@ tf_kernel_library(
     name = "fft_ops",
     prefix = "fft_ops",
     deps = MATH_DEPS + [
-    ] + if_cuda_or_rocm([":gpu_utils"]) + if_cuda([
+    ] + if_cuda([
         "//tensorflow/core/platform/default/build_config:cufft_plugin",
     ]),
 )
