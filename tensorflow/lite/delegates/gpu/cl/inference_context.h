@@ -32,9 +32,9 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 #include "tensorflow/lite/delegates/gpu/cl/precision.h"
 #include "tensorflow/lite/delegates/gpu/cl/serialization_generated.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 namespace tflite {
@@ -93,6 +93,9 @@ class InferenceContext {
 
   const std::vector<ValueId>& GetInputIds() const { return input_ids_; }
   const std::vector<ValueId>& GetOutputIds() const { return output_ids_; }
+
+  const std::vector<int64_t>& GetInputRefs() const { return in_refs_; }
+  const std::vector<int64_t>& GetOutputRefs() const { return out_refs_; }
 
   absl::Status RestoreDeserialized(const std::vector<uint8_t>& serialized_model,
                                    Environment* env);
@@ -220,6 +223,10 @@ class InferenceContext {
   std::vector<ValueId> input_ids_;
   std::map<ValueId, ValueId> variable_ids_and_refs_;
   std::vector<ValueId> output_ids_;
+
+  // for serialization
+  std::vector<int64_t> in_refs_;
+  std::vector<int64_t> out_refs_;
 };
 
 // Runs OpenCL specific transforms for the graph.

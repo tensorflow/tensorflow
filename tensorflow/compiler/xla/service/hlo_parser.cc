@@ -2541,7 +2541,7 @@ bool HloParserImpl::SetValueInLiteral(LocTy loc, std::complex<double> value,
                                                            literal);
     default:
       LOG(FATAL) << PrimitiveType_Name(shape.element_type())
-                 << " is not a complex type type";
+                 << " is not a complex type";
   }
 }
 
@@ -2563,7 +2563,7 @@ bool HloParserImpl::SetValueInLiteralHelper(LocTy loc, ParsedElemT value,
 
   // Check that the index is in range and assign into the literal
   if (index >= ShapeUtil::ElementsIn(literal->shape())) {
-    return Error(loc, StrCat("trys to set value ", StringifyValue(value),
+    return Error(loc, StrCat("tries to set value ", StringifyValue(value),
                              " to a literal in shape ",
                              ShapeUtil::HumanString(literal->shape()),
                              " at linear index ", index,
@@ -3574,7 +3574,7 @@ bool HloParserImpl::ParseWindow(Window* window, bool expect_outer_curlies) {
 }
 
 // This is the inverse of HloInstruction::ConvolutionDimensionNumbersToString.
-// Thestring looks like "dim_labels=0bf_0io->0bf".
+// The string looks like "dim_labels=0bf_0io->0bf".
 bool HloParserImpl::ParseConvolutionDimensionNumbers(
     ConvolutionDimensionNumbers* dnums) {
   if (lexer_.GetKind() != TokKind::kDimLabels) {
@@ -4238,10 +4238,13 @@ bool HloParserImpl::ParseMetadata(OpMetadata* metadata) {
   optional<std::string> op_name;
   optional<std::string> source_file;
   optional<int32> source_line;
+  optional<std::vector<int64>> profile_type;
   attrs["op_type"] = {/*required=*/false, AttrTy::kString, &op_type};
   attrs["op_name"] = {/*required=*/false, AttrTy::kString, &op_name};
   attrs["source_file"] = {/*required=*/false, AttrTy::kString, &source_file};
   attrs["source_line"] = {/*required=*/false, AttrTy::kInt32, &source_line};
+  attrs["profile_type"] = {/*required=*/false, AttrTy::kBracedInt64List,
+                           &profile_type};
   if (!ParseSubAttributes(attrs)) {
     return false;
   }
@@ -4256,6 +4259,14 @@ bool HloParserImpl::ParseMetadata(OpMetadata* metadata) {
   }
   if (source_line) {
     metadata->set_source_line(*source_line);
+  }
+  if (profile_type) {
+    for (const auto& type : *profile_type) {
+      if (!ProfileType_IsValid(type)) {
+        return false;
+      }
+      metadata->add_profile_type(static_cast<ProfileType>(type));
+    }
   }
   return true;
 }

@@ -90,7 +90,6 @@ load("//tensorflow:tensorflow.bzl", "if_nccl")
 load("//tensorflow:tensorflow.bzl", "tensorflow_opensource_extra_deps")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cc_tests_gpu")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_monitoring_framework_deps")
@@ -122,7 +121,6 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_dynamic_kernels",
     "if_static",
-    "tf_cuda_tests_tags",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
@@ -2021,31 +2019,6 @@ tf_cc_test_mkl(
         "//tensorflow/core/kernels/mkl:mkl_transpose_op",
         "//tensorflow/core/kernels/mkl:mkl_tmp_bf16_ops",
     ]),
-)
-
-tf_cc_tests_gpu(
-    name = "gpu_related_tests",
-    size = "small",
-    srcs = glob(["user_ops/**/*_test.cc"]),
-    linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
-    deps = [
-        ":core_cpu",
-        ":core_cpu_internal",
-        ":direct_session",
-        ":framework",
-        ":framework_internal",
-        ":gpu_id",
-        ":gpu_runtime",
-        ":lib",
-        ":lib_internal",
-        ":protos_all_cc",
-        ":test",
-        ":test_main",
-        ":testlib",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/core/kernels:ops_util",
-    ],
 )
 
 # Test data

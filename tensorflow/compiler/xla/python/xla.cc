@@ -288,6 +288,7 @@ PYBIND11_MODULE(xla_extension, m) {
              return LiteralToPython(std::move(literal));
            })
       .def("shape", &PyBuffer::shape)
+      .def("xla_shape", &PyBuffer::shape)
       .def_property_readonly("client", &PyBuffer::client)
       .def("device", &PyBuffer::device)
       .def("platform", &PyBuffer::platform_name)

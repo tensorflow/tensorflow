@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
 #include "tensorflow/lite/delegates/gpu/cl/linear_storage.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/cl/texture2d.h"
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"

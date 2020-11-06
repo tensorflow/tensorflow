@@ -267,7 +267,7 @@ func @view_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2: index)
     %13 = absf %arg3 : f32
     linalg.yield %13 : f32
   }
-  %2 = lmhlo.reshape_memref_cast %1(%arg1)
+  %2 = memref_reshape %1(%arg1)
       : (memref<?xf32>, memref<?xindex>) -> memref<*xf32>
   return %2 : memref<*xf32>
 }
@@ -279,7 +279,7 @@ func @view_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2: index)
 //   CHECK-NOT:  scf.for
 //       CHECK:      linalg.generic
 //       CHECK:        absf
-//       CHECK:  reshape_memref_cast
+//       CHECK:  memref_reshape
 
 // TILED-LABEL: func @view_result
 //   TILED-DAG:  %[[C2:.*]] = constant 2
@@ -288,7 +288,7 @@ func @view_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2: index)
 //   TILED-NOT:  scf.for
 //       TILED:      linalg.generic
 //       TILED:        absf
-//       TILED:  reshape_memref_cast
+//       TILED:  memref_reshape
 
 
 // PLOOP-LABEL: func @view_result
@@ -297,5 +297,5 @@ func @view_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2: index)
 //   PLOOP-NOT:  scf.parallel
 //       PLOOP:      linalg.generic
 //       PLOOP:        absf
-//       PLOOP:  reshape_memref_cast
+//       PLOOP:  memref_reshape
 

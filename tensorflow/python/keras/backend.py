@@ -77,7 +77,6 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables as variables_module
-from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import moving_averages
@@ -2555,8 +2554,8 @@ def abs(x):
 def sqrt(x):
   """Element-wise square root.
 
-     This function clips tensor values to a specified min(0) and max(inf)
-     before taking sqrt.
+     This function clips negative tensor values to 0 before computing the
+     square root.
 
   Arguments:
       x: Tensor or variable.
@@ -2565,8 +2564,7 @@ def sqrt(x):
       A tensor.
   """
   zero = _constant_to_tensor(0., x.dtype.base_dtype)
-  inf = _constant_to_tensor(np.inf, x.dtype.base_dtype)
-  x = clip_ops.clip_by_value(x, zero, inf)
+  x = math_ops.maximum(x, zero)
   return math_ops.sqrt(x)
 
 
@@ -3093,7 +3091,7 @@ def concatenate(tensors, axis=-1):
   if py_all(is_sparse(x) for x in tensors):
     return sparse_ops.sparse_concat(axis, tensors)
   elif py_all(isinstance(x, ragged_tensor.RaggedTensor) for x in tensors):
-    return ragged_concat_ops.concat(tensors, axis)
+    return array_ops.concat(tensors, axis)
   else:
     return array_ops.concat([to_dense(x) for x in tensors], axis)
 

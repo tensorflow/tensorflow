@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <math.h>
+
 #include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/examples/hello_world/model.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
@@ -24,6 +26,10 @@ limitations under the License.
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
+  // Define the input and the expected output
+  float x = 0.0f;
+  float y_true = sin(x);
+
   // Set up logging
   tflite::MicroErrorReporter micro_error_reporter;
 
@@ -44,9 +50,9 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
 
   // Minimum arena size, at the time of writing. After allocating tensors
   // you can retrieve this value by invoking interpreter.arena_used_bytes().
-  const int model_arena_size = 2468;
+  const int model_arena_size = 754;
   /* Extra headroom for model + alignment + future interpreter changes */
-  const int extra_arena_size = 570 + 16 + 100;
+  const int extra_arena_size = 554 + 16 + 100;
   const int tensor_arena_size = model_arena_size + extra_arena_size;
   uint8_t tensor_arena[tensor_arena_size];
 
@@ -73,13 +79,19 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
   // other).
   TF_LITE_MICRO_EXPECT_EQ(1, input->dims->data[0]);
   TF_LITE_MICRO_EXPECT_EQ(1, input->dims->data[1]);
-  // The input is a 32 bit floating point value
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteFloat32, input->type);
+  // The input is an 8 bit integer value
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteInt8, input->type);
 
-  // Provide an input value
-  input->data.f[0] = 0.;
+  // Get the input quantization parameters
+  float input_scale = input->params.scale;
+  int input_zero_point = input->params.zero_point;
 
-  // Run the model on this input and check that it succeeds
+  // Quantize the input from floating-point to integer
+  int8_t x_quantized = x / input_scale + input_zero_point;
+  // Place the quantized input in the model's input tensor
+  input->data.int8[0] = x_quantized;
+
+  // Run the model and check that it succeeds
   TfLiteStatus invoke_status = interpreter.Invoke();
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, invoke_status);
 
@@ -89,34 +101,42 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
   TF_LITE_MICRO_EXPECT_EQ(2, output->dims->size);
   TF_LITE_MICRO_EXPECT_EQ(1, output->dims->data[0]);
   TF_LITE_MICRO_EXPECT_EQ(1, output->dims->data[1]);
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteFloat32, output->type);
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteInt8, output->type);
 
-  // Obtain the output value from the tensor
-  float value = output->data.f[0];
-  // Check that the output value is within 0.05 of the expected value
-  TF_LITE_MICRO_EXPECT_NEAR(0.f, value, 0.05f);
+  // Get the output quantization parameters
+  float output_scale = output->params.scale;
+  int output_zero_point = output->params.zero_point;
+
+  // Obtain the quantized output from model's output tensor
+  int8_t y_pred_quantized = output->data.int8[0];
+  // Dequantize the output from integer to floating-point
+  float y_pred = (y_pred_quantized - output_zero_point) * output_scale;
+
+  // Check if the output is within a small range of the expected output
+  float epsilon = 0.05f;
+  TF_LITE_MICRO_EXPECT_NEAR(y_true, y_pred, epsilon);
 
   // Run inference on several more values and confirm the expected outputs
-  input->data.f[0] = 1.;
-  invoke_status = interpreter.Invoke();
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, invoke_status);
+  x = 1.f;
+  y_true = sin(x);
+  input->data.int8[0] = x / input_scale + input_zero_point;
+  interpreter.Invoke();
+  y_pred = (output->data.int8[0] - output_zero_point) * output_scale;
+  TF_LITE_MICRO_EXPECT_NEAR(y_true, y_pred, epsilon);
 
-  value = output->data.f[0];
-  TF_LITE_MICRO_EXPECT_NEAR(0.841f, value, 0.05f);
+  x = 3.f;
+  y_true = sin(x);
+  input->data.int8[0] = x / input_scale + input_zero_point;
+  interpreter.Invoke();
+  y_pred = (output->data.int8[0] - output_zero_point) * output_scale;
+  TF_LITE_MICRO_EXPECT_NEAR(y_true, y_pred, epsilon);
 
-  input->data.f[0] = 3.f;
-  invoke_status = interpreter.Invoke();
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, invoke_status);
-
-  value = output->data.f[0];
-  TF_LITE_MICRO_EXPECT_NEAR(0.141f, value, 0.05f);
-
-  input->data.f[0] = 5.f;
-  invoke_status = interpreter.Invoke();
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, invoke_status);
-
-  value = output->data.f[0];
-  TF_LITE_MICRO_EXPECT_NEAR(-0.959f, value, 0.05f);
+  x = 5.f;
+  y_true = sin(x);
+  input->data.int8[0] = x / input_scale + input_zero_point;
+  interpreter.Invoke();
+  y_pred = (output->data.int8[0] - output_zero_point) * output_scale;
+  TF_LITE_MICRO_EXPECT_NEAR(y_true, y_pred, epsilon);
 }
 
 TF_LITE_MICRO_TESTS_END

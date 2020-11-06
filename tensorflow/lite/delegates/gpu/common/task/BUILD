@@ -38,6 +38,35 @@ flatbuffer_cc_library(
 )
 
 cc_library(
+    name = "tensor_desc",
+    srcs = ["tensor_desc.cc"],
+    hdrs = ["tensor_desc.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
+        "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/common/task:gpu_object_desc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "tensor_linear_desc",
+    srcs = ["tensor_linear_desc.cc"],
+    hdrs = ["tensor_linear_desc.h"],
+    deps = [
+        ":gpu_object_desc",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common:util",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "texture2d_desc",
     srcs = ["texture2d_desc.cc"],
     hdrs = ["texture2d_desc.h"],

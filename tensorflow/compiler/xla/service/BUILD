@@ -1898,6 +1898,7 @@ cc_library(
         "//tensorflow/compiler/xla/client/lib:slicing",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -2776,6 +2777,7 @@ cc_library(
         ":hlo_dce",
         ":hlo_pass",
         ":hlo_verifier",
+        ":pattern_matcher",
         ":shape_inference",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:literal",

@@ -197,10 +197,11 @@ func @dyn_broadcast(%operand: memref<?x?xf32>) {
   // CHECK: %[[EXPAND_1:.*]] = cmpi "slt", %[[OPERAND_DIM_1]], %[[RESULT_DIM_2]]
   // CHECK: %[[STRIDE_1:.*]] = select %[[EXPAND_1]], %[[C0_]], %[[C1_]] : index
 
-  // CHECK: %[[TRANSFORMED_MEMREF:.*]] = lmhlo.dynamic_memref_cast
-  // CHECK-SAME: %[[OPERAND]](%[[RESULT_DIM_1]], %[[RESULT_DIM_2]])
-  // CHECK-SAME: {{\[}}%[[STRIDE_0]], %[[STRIDE_1]]]
-  // CHECK-SAME: : memref<?x?xf32> -> memref<?x?xf32, #map>
+  // CHECK: %[[TRANSFORMED_MEMREF:.*]] = memref_reinterpret_cast %[[OPERAND]] to
+  // CHECK-SAME: offset: [0],
+  // CHECK-SAME: sizes: {{\[}}%[[RESULT_DIM_1]], %[[RESULT_DIM_2]]]
+  // CHECK-SAME: strides: {{\[}}%[[STRIDE_0]], %[[STRIDE_1]]]
+  // CHECK-SAME: : memref<?x?xf32> to memref<?x?xf32, #map>
 
   // CHECK: "lmhlo.broadcast_in_dim"(%[[TRANSFORMED_MEMREF]], %[[RESULT]]) {
   // CHECK-SAME:   broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>

@@ -134,8 +134,6 @@ add_mlir_library(LmhloPasses
   lhlo_fuse_linalg.cc
   lhlo_legalize_to_affine.cc
   lhlo_legalize_to_gpu.cc
-  lhlo_legalize_to_llvm.cc
-  lhlo_legalize_to_llvm_pass.cc
   lhlo_legalize_to_parallel_loops.cc
 
   DEPENDS

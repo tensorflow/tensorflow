@@ -184,7 +184,7 @@ def _get_val_from_proto(attr_type, attr_val):
       array_attr_elts = ['{}:{}'.format(val, elt_ty) for val in values]
       return '[{}]'.format(','.join(array_attr_elts))
   raise NotImplementedError(
-      'Proto AttrValue not recoganized. type: {}, value: {}'.format(
+      'Proto AttrValue not recognized. type: {}, value: {}'.format(
           attr_type, attr_val))
 
 
@@ -242,7 +242,7 @@ class OpDefCache(object):
     elif not func_def:
       op_name = f_name
     else:
-      # TODO(fengliuai): create one utility method to match different apis.
+      # TODO(fengliuai): create one utility method to match different APIs.
       compose_dec = []
       for dec in func_def.decorator_list:
         if isinstance(dec, ast.Call):
@@ -381,7 +381,7 @@ class TFRTypeResolver(type_inference.Resolver):
     if hasattr(value, '__module__'):
       # All the imported operations, which are not autograph built-ins, are
       # considered to be TF raw ops.
-      # TODO(fengliuai): refine the condition so we only matche tensorflow
+      # TODO(fengliuai): refine the condition so we only match TensorFlow
       # ops here.
       return {TFRTypes.TF_RAW_OP}
     # TODO(mdan): Is ATTR equivalent to string?
@@ -519,7 +519,7 @@ class SymbolTable(object):
   def insert_symbol(self, name, value, type_):
     self.curr_table['symbols'][name] = (value, type_)
     # TODO(mdan): Use the inferred type rather than tracking it here.
-    # The following field is decrepcated.
+    # The following field is deprecated.
     self.curr_table['types'][name] = type_
     return value
 
@@ -696,7 +696,7 @@ class TFRGen(transformer.CodeGenerator):
       if ty == TFRTypes.SHAPE and node.attr == 'as_list':
         return (value, TFRTypes.TF_TENSOR_SHAPE_FUNC)
 
-    raise NotImplementedError('Attribute kind not recoganized.')
+    raise NotImplementedError('Attribute kind not recognized.')
 
   def visit_Assign(self, node):
     values = self.visit(node.value)
@@ -705,7 +705,7 @@ class TFRGen(transformer.CodeGenerator):
     elif isinstance(node.targets[0], ast.Name):
       targets = [node.targets[0].id]
     else:
-      raise NotImplementedError('Assignment target type not recoganized.')
+      raise NotImplementedError('Assignment target type not recognized.')
 
     if isinstance(values, list):
       if len(targets) == len(values):
@@ -1300,7 +1300,7 @@ class TFRGen(transformer.CodeGenerator):
 
 def _apply_py_to_tf_passes(node, ctx):
   """Apply transformations from PyToTF to match tf.function tracing."""
-  # TODO(fengliuai): we don't know which passes are required, thus we evalute
+  # TODO(fengliuai): we don't know which passes are required, thus we evaluate
   # each one when the corresponding node is handled.
   # copied from PyToTF.transform_ast
   node = return_statements.transform(node, ctx, False)

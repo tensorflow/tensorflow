@@ -93,4 +93,9 @@ def PropagateShapeKnowledgeToKernels
   let constructor = "transforms::CreatePropagateShapeKnowledgeToKernels()";
 }
 
+def EmbedMemRefPrintsPass : FunctionPass<"embed-memref-prints"> {
+  let summary = "Pass to print content of memrefs";
+  let constructor = "transforms::CreateEmbedMemRefPrintsPass()";
+}
+
 #endif // TF_KERNEL_GEN_PASSES

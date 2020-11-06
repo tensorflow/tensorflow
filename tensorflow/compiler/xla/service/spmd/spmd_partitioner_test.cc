@@ -683,6 +683,95 @@ ENTRY entry {
   EXPECT_THAT(root_b1, AllOf(op::Shape("token[]"), op::AfterAll()));
 }
 
+TEST_F(SpmdPartitioningTest, OutfeedEvenlyTiled) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  token.0 = token[] after-all()
+  data = f32[1024]{0} parameter(0), sharding={devices=[2]0,1}
+  ROOT outfeed = token[] outfeed(data, token.0), sharding={devices=[2]0,1}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Shape("token[]"),
+                          op::Outfeed(op::Parameter(), op::AfterAll())));
+}
+
+TEST_F(SpmdPartitioningTest, OutfeedTupleEvenlyTiled) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  token.0 = token[] after-all()
+  data = (f32[1024,2]{1,0}, f32[2]{0}) parameter(0), sharding={{devices=[2,1]0,1},
+    {devices=[2]0,1}}
+  ROOT outfeed = token[] outfeed(data, token.0), sharding={{devices=[2,1]0,1},
+    {devices=[2]0,1}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Shape("token[]"),
+                          op::Outfeed(op::Parameter(), op::AfterAll())));
+}
+
+TEST_F(SpmdPartitioningTest, OutfeedReplicated) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  token.0 = token[] after-all()
+  data = (f32[1024,2]{1,0}, f32[2]{0}) parameter(0), sharding={{devices=[2,1]0,1},
+    {replicated}}
+  ROOT outfeed = token[] outfeed(data, token.0), sharding={{devices=[2,1]0,1},
+    {replicated}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Shape("token[]"),
+                          op::Outfeed(op::Parameter(), op::AfterAll())));
+}
+
+TEST_F(SpmdPartitioningTest, OutfeedUnevenlyTiled) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  token.0 = token[] after-all()
+  data = (f32[1023,2]{1,0}, f32[3]{0}) parameter(0), sharding={{devices=[2,1]0,1},
+    {devices=[2]0,1}}
+  outfeed = token[] outfeed(data, token.0), sharding={{devices=[2,1]0,1},
+    {devices=[2]0,1}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      root, AllOf(op::Shape("token[]"),
+                  op::Conditional(op::Convert(),
+                                  op::Tuple(op::Parameter(), op::AfterAll()),
+                                  op::Tuple(op::Parameter(), op::AfterAll()))));
+
+  auto first_outfeed =
+      AllOf(op::Shape("(f32[512,2], f32[2])"), op::GetTupleElement());
+  EXPECT_THAT(root->called_computations()[0]->root_instruction(),
+              AllOf(op::Shape("token[]"),
+                    op::Outfeed(first_outfeed, op::GetTupleElement())));
+
+  auto second_outfeed = AllOf(op::Shape("(f32[511,2], f32[1])"), op::Tuple());
+  EXPECT_THAT(root->called_computations()[1]->root_instruction(),
+              AllOf(op::Shape("token[]"),
+                    op::Outfeed(second_outfeed, op::GetTupleElement())));
+}
+
 TEST_F(SpmdPartitioningTest, ReduceWindowReplicatedInput) {
   const char* const hlo_string = R"(
 HloModule module

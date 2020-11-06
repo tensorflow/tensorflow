@@ -98,7 +98,8 @@ xla::Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
                 llvm::ArrayRef<std::string> architectures,
                 llvm::ArrayRef<uint32_t> tile_sizes,
                 llvm::ArrayRef<uint32_t> same_shape,
-                llvm::ArrayRef<uint32_t> unroll_factors) {
+                llvm::ArrayRef<uint32_t> unroll_factors,
+                bool embed_memref_prints) {
   // Read TF code.
   std::string tf_code;
   TF_RETURN_IF_ERROR(
@@ -109,7 +110,7 @@ xla::Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
       mlir::OwningModuleRef module,
       GenerateKernelForTfCode(context, tf_code, /*gpu_binary_only=*/false,
                               architectures, tile_sizes, same_shape,
-                              unroll_factors));
+                              unroll_factors, embed_memref_prints));
   // Get binary.
   TF_ASSIGN_OR_RETURN(std::string binary, EmitToBinary(*module));
 
@@ -130,6 +131,10 @@ int main(int argc, char** argv) {
   llvm::cl::opt<std::string> output_file(
       "output", llvm::cl::desc("output file"), llvm::cl::value_desc("filename"),
       llvm::cl::init("foo.bin"));
+  llvm::cl::opt<bool> embed_memref_prints(
+      "embed_memref_prints",
+      llvm::cl::desc("embes memref prints at the end of their lifetime"),
+      llvm::cl::init(false));
   llvm::cl::list<std::string> architectures(
       "arch", llvm::cl::desc("target architectures (e.g. sm_70 or compute_75)"),
       llvm::cl::OneOrMore, llvm::cl::CommaSeparated);
@@ -151,9 +156,9 @@ int main(int argc, char** argv) {
   mlir::registerPassManagerCLOptions();
   llvm::cl::ParseCommandLineOptions(argc, argv, "TF op GPU kernel generator\n");
 
-  auto status =
-      tensorflow::kernel_gen::Run(input_file, output_file, architectures,
-                                  tile_sizes, same_shape, unroll_factors);
+  auto status = tensorflow::kernel_gen::Run(
+      input_file, output_file, architectures, tile_sizes, same_shape,
+      unroll_factors, embed_memref_prints);
   if (!status.ok()) {
     LOG(ERROR) << status;
     return 1;

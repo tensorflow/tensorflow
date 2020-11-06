@@ -250,6 +250,8 @@ table InferenceContext {
   input_ids:[int32];
   variable_ids_and_refs:[PairOfValueIds];
   output_ids:[int32];
+  input_refs:[int64];
+  output_refs:[int64];
 }
 
 root_type InferenceContext;

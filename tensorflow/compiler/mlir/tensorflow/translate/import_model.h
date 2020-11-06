@@ -68,6 +68,16 @@ ConvertSavedModelV1ToMlir(const SavedModelBundle& saved_model,
                           mlir::MLIRContext* context,
                           bool upgrade_legacy = false);
 
+// Given a V1 SavedModel, returns a MLIR module containing the functions,
+// expressed with tf_executor dialect. It does not require a session to be
+// created and it does not perform any graph transformation.
+stream_executor::port::StatusOr<mlir::OwningModuleRef>
+ConvertSavedModelV1ToMlirLite(const MetaGraphDef& meta_graph_def,
+                              const GraphDebugInfo& debug_info,
+                              absl::Span<std::string> exported_names,
+                              mlir::MLIRContext* context,
+                              bool upgrade_legacy = false);
+
 // Serialize a MLIR module to a string.
 std::string MlirModuleToString(mlir::ModuleOp module,
                                mlir::OpPrintingFlags flags);

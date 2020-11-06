@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/storage_type_util.h"
 
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 
 namespace tflite {

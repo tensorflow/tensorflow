@@ -33,13 +33,13 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/selectors/operation_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/special_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/storage_type_util.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/add_bias.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/merge_padding_with.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
@@ -271,6 +271,15 @@ void InferenceContext::CopyInAndOutIds(const GraphFloat32& graph) {
   const auto outputs = graph.outputs();
   for (const auto& output : outputs) {
     output_ids_.push_back(output->id);
+  }
+
+  in_refs_.resize(inputs.size());
+  out_refs_.resize(outputs.size());
+  for (int i = 0; i < inputs.size(); ++i) {
+    in_refs_[i] = inputs[i]->tensor.ref;
+  }
+  for (int i = 0; i < outputs.size(); ++i) {
+    out_refs_[i] = outputs[i]->tensor.ref;
   }
 }
 

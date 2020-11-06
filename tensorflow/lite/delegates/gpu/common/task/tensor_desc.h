@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_TENSOR_TYPE_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_CL_TENSOR_TYPE_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_TENSOR_DESC_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_TENSOR_DESC_H_
 
 #include <cstddef>
 #include <string>
@@ -26,14 +26,11 @@ limitations under the License.
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 
-enum class TextureAddressMode {
-  DONT_CARE,  // translated to CLK_ADDRESS_NONE
-  ZERO,       // translated to CLK_ADDRESS_CLAMP
+enum class AddressMode {
+  kDontCare,
+  kZero,
 };
-
-std::string TextureAddressModeToString(TextureAddressMode address_mode);
 
 enum class TensorStorageType {
   UNKNOWN,
@@ -72,7 +69,7 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   void Release() override { data.clear(); }
 
   bool HasAxis(Axis axis) const;
-  void SetTextureAddressMode(TextureAddressMode mode);
+  void SetAddressMode(AddressMode mode);
 
   absl::Status GetLinkingContextFromWriteSelector(
       const std::vector<std::string>& args, std::string* value_name,
@@ -140,7 +137,7 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   std::string GetWidth() const;
   std::string GetSliceStride() const;
 
-  TextureAddressMode ModeFromState() const;
+  AddressMode AddressModeFromState() const;
 
   absl::Status GetDataTypeFromTemplateArgs(const std::string& template_arg,
                                            DataType* result) const;
@@ -184,8 +181,7 @@ void DataToBHWDC(absl::Span<const T> src, const BHWDC& shape,
 
 std::string ToString(TensorStorageType type);
 
-}  // namespace cl
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_CL_TENSOR_TYPE_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_TENSOR_DESC_H_

@@ -602,7 +602,7 @@ void QuantizationDriver::RequantizeValue(Value value, RequantizeState *state,
 //   - use the first one in the collection,
 // - use the single input if it is ready, or,
 // - use the single output if it is ready, or,
-// - use use the first ready one in the collection.
+// - use the first ready one in the collection.
 QuantParams QuantizationDriver::GetQuantParamsForSameScaleConstraint(
     Operation *op) {
   // Two vector to collect Non-empty operands and results states.
@@ -680,7 +680,7 @@ void QuantizationDriver::PreprocessConstantOps() {
       if (biases.find(operand_num) == biases.end() &&
           !llvm::dyn_cast<mlir::SameScalesOpInterface>(user) &&
           !llvm::dyn_cast<quant::QuantizeCastOp>(user)) {
-        // Needs to scan the content to get the quantiztion parameters if there
+        // Needs to scan the content to get the quantization parameters if there
         // are no quantization parameters (FakeQuant ops).
         // For this case, the weight isn't duplicated.
         weights_.insert(cst);
@@ -807,7 +807,7 @@ bool QuantizationDriver::PropagateParams() {
       // Use the final state to set all the operands' parameters.
       for (int i = 0, e = op->getNumOperands(); i != e; ++i) {
         if (auto type = op->getOperand(i).getType().dyn_cast<ShapedType>()) {
-          // Without this check, it will accidently propagate the quantization
+          // Without this check, it will accidentally propagate the quantization
           // information by the shared non-float tensors.
           if (type.getElementType().isa<FloatType>())
             changed |= SetOperandParams(op, i, params);
@@ -817,7 +817,7 @@ bool QuantizationDriver::PropagateParams() {
       // Use the final state to set all the results' parameters.
       for (int res = 0, e = op->getNumResults(); res != e; ++res)
         if (auto type = op->getResult(res).getType().dyn_cast<ShapedType>()) {
-          // Without this check, it will accidently propagate the quantization
+          // Without this check, it will accidentally propagate the quantization
           // information by the shared non-float-tensors.
           if (type.getElementType().isa<FloatType>())
             changed |= SetResultParams(op, res, params);

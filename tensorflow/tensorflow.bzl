@@ -774,7 +774,7 @@ def tf_gen_op_wrapper_cc(
             out_ops_file + "_internal.cc",
         ],
         srcs = srcs,
-        exec_tools = [":" + tool] + tf_binary_additional_srcs(),
+        tools = [":" + tool] + tf_binary_additional_srcs(),
         cmd = ("$(location :" + tool + ") $(location :" + out_ops_file + ".h) " +
                "$(location :" + out_ops_file + ".cc) " +
                str(include_internal_ops) + " " + api_def_args_str),
@@ -982,7 +982,7 @@ def tf_gen_op_wrapper_py(
             name = name + "_pygenrule",
             outs = [out],
             srcs = api_def_srcs + [hidden_file],
-            exec_tools = [tool_name] + tf_binary_additional_srcs(),
+            tools = [tool_name] + tf_binary_additional_srcs(),
             cmd = ("$(location " + tool_name + ") " + api_def_args_str +
                    " @$(location " + hidden_file + ") > $@"),
             compatible_with = compatible_with,
@@ -992,7 +992,7 @@ def tf_gen_op_wrapper_py(
             name = name + "_pygenrule",
             outs = [out],
             srcs = api_def_srcs,
-            exec_tools = [tool_name] + tf_binary_additional_srcs(),
+            tools = [tool_name] + tf_binary_additional_srcs(),
             cmd = ("$(location " + tool_name + ") " + api_def_args_str + " " +
                    op_list_arg + " " +
                    ("1" if op_list_is_whitelist else "0") + " > $@"),
@@ -1074,30 +1074,6 @@ def tf_cc_test(
             "//conditions:default": 0,
         }),
         **kwargs
-    )
-
-# Part of the testing workflow requires a distinguishable name for the build
-# rules that involve a GPU, even if otherwise identical to the base rule.
-def tf_cc_test_gpu(
-        name,
-        srcs,
-        deps,
-        linkstatic = 0,
-        tags = [],
-        data = [],
-        size = "medium",
-        suffix = "",
-        args = None):
-    tf_cc_test(
-        name,
-        srcs,
-        deps,
-        size = size,
-        args = args,
-        data = data,
-        linkstatic = linkstatic,
-        suffix = suffix,
-        tags = tags,
     )
 
 def tf_gpu_cc_test(
@@ -1274,17 +1250,6 @@ def tf_cc_test_mkl(
             args = args,
             features = disable_header_modules,
         )
-
-def tf_cc_tests_gpu(
-        srcs,
-        deps,
-        name = "",
-        linkstatic = 0,
-        tags = [],
-        size = "medium",
-        kernels = [],
-        args = None):
-    tf_cc_tests(srcs, deps, linkstatic, size = size, args = args, kernels = kernels, tags = tags)
 
 def tf_gpu_cc_tests(
         srcs,
@@ -2376,7 +2341,7 @@ def tf_generate_proto_text_sources(name, srcs_relative_dir, srcs, protodeps = []
         cmd =
             "$(location //tensorflow/tools/proto_text:gen_proto_text_functions) " +
             "$(@D) " + srcs_relative_dir + " $(SRCS)",
-        exec_tools = [
+        tools = [
             clean_dep("//tensorflow/tools/proto_text:gen_proto_text_functions"),
         ],
         compatible_with = compatible_with,

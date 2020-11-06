@@ -206,7 +206,7 @@ struct HloToLhloDynamicBroadcastInDimOpConverter
   // Inserts dynamic memref to change the layout of the memref to put 0-stride
   // and size of the target dimension if size-1 dimension expansion is
   // necessary.
-  lmhlo::DynamicMemRefCastOp InsertDynamicMemrefCastOp(
+  MemRefReinterpretCastOp InsertDynamicMemrefCastOp(
       mhlo::DynamicBroadcastInDimOp op, Value operand, OpBuilder* b) const {
     auto loc = op.getLoc();
     auto operand_type = operand.getType().cast<MemRefType>();
@@ -259,8 +259,13 @@ struct HloToLhloDynamicBroadcastInDimOpConverter
         makeStridedLinearLayoutMap(dynamic_layout,
                                    /*offset=*/0, b->getContext()));
 
-    auto transformed_operand = b->create<lmhlo::DynamicMemRefCastOp>(
-        loc, type_erased_memref_type, operand, sizes, strides);
+    SmallVector<int64_t, 2> static_sizes(sizes.size(),
+                                         ShapedType::kDynamicSize);
+    SmallVector<int64_t, 2> static_strides(strides.size(),
+                                           ShapedType::kDynamicStrideOrOffset);
+    auto transformed_operand = b->create<MemRefReinterpretCastOp>(
+        loc, type_erased_memref_type, operand, /*offset=*/0, static_sizes,
+        static_strides, llvm::None, sizes, strides);
     return transformed_operand;
   }
 };
@@ -284,7 +289,7 @@ struct HloToLhloDynamicReshapeConverter
       return failure();
     }
     mhlo::DynamicReshapeOp::Adaptor adaptor(operands);
-    rewriter.replaceOpWithNewOp<lmhlo::ReshapeMemRefCastOp>(
+    rewriter.replaceOpWithNewOp<MemRefReshapeOp>(
         op, result_type, adaptor.operand(), adaptor.output_shape());
     return success();
   }

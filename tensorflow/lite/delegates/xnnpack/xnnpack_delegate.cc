@@ -843,6 +843,14 @@ class Subgraph {
                                         node, context->tensors, dwconv_params,
                                         quasi_static_tensors, xnnpack_tensors);
       }
+      case kTfLiteBuiltinDepthToSpace: {
+        const TfLiteDepthToSpaceParams* depth_to_space_params =
+            static_cast<const TfLiteDepthToSpaceParams*>(node->builtin_data);
+
+        return VisitDepthToSpaceNode(subgraph, logging_context, node_index,
+                                     node, context->tensors,
+                                     depth_to_space_params, xnnpack_tensors);
+      }
       case kTfLiteBuiltinDiv: {
         const TfLiteDivParams* div_params =
             static_cast<const TfLiteDivParams*>(node->builtin_data);
@@ -1361,6 +1369,45 @@ class Subgraph {
       if (status != xnn_status_success) {
         TF_LITE_KERNEL_LOG(logging_context,
                            "failed to delegate DEPTHWISE_CONV_2D node #%d",
+                           node_index);
+        return kTfLiteError;
+      }
+    }
+
+    return kTfLiteOk;
+  }
+
+  static TfLiteStatus VisitDepthToSpaceNode(
+      xnn_subgraph_t subgraph, TfLiteContext* logging_context, int node_index,
+      TfLiteNode* node, const TfLiteTensor* tensors,
+      const TfLiteDepthToSpaceParams* depth_to_space_params,
+      const std::vector<uint32_t>& xnnpack_tensors) {
+    TF_LITE_ENSURE_STATUS(
+        CheckNumInputsAndOutputs(logging_context, node, 1, 1, node_index));
+
+    const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
+        logging_context, input_tensor, node->inputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, input_tensor, node->inputs->data[0], node_index));
+
+    const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
+        logging_context, output_tensor, node->outputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, output_tensor, node->outputs->data[0], node_index));
+
+    if (subgraph != nullptr) {
+      const xnn_status status = xnn_define_depth_to_space(
+          subgraph,
+          /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
+          /*output_id=*/xnnpack_tensors[node->outputs->data[0]],
+          /*block_size=*/
+          static_cast<uint32_t>(depth_to_space_params->block_size),
+          /*flags=*/0);
+      if (status != xnn_status_success) {
+        TF_LITE_KERNEL_LOG(logging_context,
+                           "failed to delegate DEPTH_TO_SPACE node #%d",
                            node_index);
         return kTfLiteError;
       }

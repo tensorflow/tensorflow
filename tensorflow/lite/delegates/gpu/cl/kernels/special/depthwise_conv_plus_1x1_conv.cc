@@ -117,7 +117,7 @@ std::string GenerateCode(const OperationDef& op_def,
                          const DepthwiseConvolution2DAttributes& dw_attr,
                          int result_depth, GPUOperation* result) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
+  src_desc.SetAddressMode(AddressMode::kZero);
   result->AddSrcTensor("src_tensor", src_desc);
   result->AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
 
