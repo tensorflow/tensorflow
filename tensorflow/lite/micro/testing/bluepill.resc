@@ -23,10 +23,3 @@ machine LoadPlatformDescriptionFromString "uartSemihosting: UART.SemihostingUart
 showAnalyzer cpu.uartSemihosting Antmicro.Renode.Analyzers.LoggingUartAnalyzer
 cpu.uartSemihosting CreateFileBackend $logfile true
 
-macro reset
-"""
-    sysbus LoadELF $bin
-"""
-
-runMacro $reset
-

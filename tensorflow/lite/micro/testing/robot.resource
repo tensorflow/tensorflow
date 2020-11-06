@@ -16,14 +16,18 @@ Teardown With Custom Message
     Test Teardown
     [Documentation]           Replace robot fail message with whole UART output
     ${UART_LOGS}              Get File    ${LOGFILE}
-    Set Test Message          UART OUTPUT:\n${UART_LOGS}
+    Set Test Message          UART OUTPUT:\n\n${UART_LOGS}
+    Remove File               ${LOGFILE}
+
+Create Platform
+    Execute Command           $logfile=@${LOGFILE}
+    Execute Script            ${SCRIPT}
+    Provides                  ready-platform
 
 Test Binary
     [Arguments]               ${BIN}
-    Remove File               ${LOGFILE}
-    Execute Command           $logfile = @${LOGFILE}
-    Execute Command           $bin = ${BIN}
-    Execute Script            ${SCRIPT}
+    Requires                  ready-platform
+    Execute Command           sysbus LoadELF ${BIN}
 
     Create Terminal Tester    ${UART}  timeout=2
     Start Emulation
