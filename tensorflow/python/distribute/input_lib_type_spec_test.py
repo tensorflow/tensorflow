@@ -497,6 +497,42 @@ class InputTypeSpecTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(iterator._input_workers, re_iterator._input_workers)
     self.assertAllEqual(iterator._iterators, re_iterator._iterators)    
 
+  def testFromFunctionInputSignatureForPerReplicaValuesWithOptions(self, distribution, enable_get_next_as_optional):
+
+    fname1 = os.path.join(self.get_temp_dir(), "1.txt")
+    _create_text_file(fname1, 5)
+    fname2 = os.path.join(self.get_temp_dir(), "2.txt")
+    _create_text_file(fname2, 9)
+
+    def dataset_fn(input_context):
+      dataset = dataset_ops.DatasetV2.from_tensor_slices([fname1, fname2])
+      dataset = dataset.shard(input_context.num_input_pipelines,
+                              input_context.input_pipeline_id)
+      return readers.TextLineDatasetV2(dataset).map(
+          string_ops.string_to_number).batch(
+              input_context.get_per_replica_batch_size(4))
+
+    options = distribute_lib.InputOptions(
+      experimental_place_dataset_on_device = True,
+      experimental_prefetch_to_device = False,
+      experimental_replication_mode = distribute_lib.InputReplicationMode.PER_REPLICA)          
+
+    distribution.extended.experimental_enable_get_next_as_optional = (
+        enable_get_next_as_optional)
+    ds = distribution.experimental_distribute_datasets_from_function(dataset_fn, options)
+    _check_type_spec_structure(iter(ds))
+    element_spec = ds.element_spec
+    iter_element_spec = iter(ds).element_spec
+    nest.assert_same_structure(element_spec, iter_element_spec)
+    self.assertAllEqual(
+        nest.flatten(element_spec), nest.flatten(iter_element_spec))
+
+    @def_function.function(input_signature=[element_spec])
+    def process_inputs(inputs):
+      distribution.run(lambda inputs: inputs, args=(inputs,))
+
+    for x in ds:
+      process_inputs(x)
 
 class RaggedTensorDistributedIteratorTest(test.TestCase,
                                           parameterized.TestCase):
