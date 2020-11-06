@@ -285,9 +285,15 @@ Status XlaCompilationCache::CompileSingleOp(
     TF_ASSIGN_OR_RETURN(auto graph, CreateGraph(node_def, args, result_dtypes));
 
     const ConfigProto* config = ctx->function_library()->config_proto();
+    bool mlir_requested =
+        (config && (config->experimental().enable_mlir_bridge() ||
+                    config->experimental().mlir_bridge_rollout() ==
+                        tensorflow::ConfigProto::Experimental::
+                            MLIR_BRIDGE_ROLLOUT_ENABLED)) ||
+        tensorflow::GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge ==
+            tensorflow::ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED;
     // TODO(b/171039585): Support tf.VarIsInitializedOp using MLIR.
-    bool use_mlir = config && config->experimental().enable_mlir_bridge() &&
-                    node_def.op() != "VarIsInitializedOp";
+    bool use_mlir = mlir_requested && node_def.op() != "VarIsInitializedOp";
 #ifdef LIBTPU_ON_GCE
     if (use_mlir) {
       LOG(WARNING) << "MLIR is not supported in this environment.";
