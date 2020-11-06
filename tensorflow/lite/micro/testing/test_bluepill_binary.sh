@@ -46,25 +46,42 @@ then
   exit 1
 fi
 
+ROBOT_SCRIPT=${TEST_TMPDIR}/Bluepill.robot
+ROBOT_RESOURCE=${ROOT_DIR}/tensorflow/lite/micro/testing/robot.resource
+
+echo -e "*** Settings ***\n" \
+        "Suite Setup                   Prepare Tests\n" \
+        "Suite Teardown                Teardown\n" \
+        "Test Setup                    Reset Emulation\n" \
+        "Test Teardown                 Teardown With Custom Message\n" \
+        "Resource                      \${RENODEKEYWORDS}\n" \
+        "Resource                      ${ROBOT_RESOURCE}\n" \
+        "Default Tags                  bluepill uart tensorflow arm\n" \
+        "\n" \
+        "*** Variables ***\n" \
+        "\${CREATE_SNAPSHOT_ON_FAIL}    False\n" \
+        "\n" \
+        "*** Test Cases ***\n" \
+        "Should Create Platform\n" \
+        "    Create Platform\n" > $ROBOT_SCRIPT
+
+BIN_DIR=${ROOT_DIR}/$1
+for binary in `ls $BIN_DIR`;
+do
+    echo -e "Should Run $binary\n"\
+    	    "    Test Binary    @$BIN_DIR/$binary\n" >> $ROBOT_SCRIPT
+done
+
 exit_code=0
 
-if ! BIN_DIR=${ROOT_DIR}/$1 \
-  SCRIPT=${ROOT_DIR}/tensorflow/lite/micro/testing/bluepill.resc \
+if ! SCRIPT=${ROOT_DIR}/tensorflow/lite/micro/testing/bluepill.resc \
   LOGFILE=$MICRO_LOG_FILENAME \
   EXPECTED="$2" \
   ${RENODE_TEST_SCRIPT} \
-  ${ROOT_DIR}/tensorflow/lite/micro/testing/bluepill.robot \
+  ${ROBOT_SCRIPT} \
   -r $TEST_TMPDIR
 then
   exit_code=1
 fi
 
-if [ $exit_code -eq 0 ]
-then
-  echo "PASS"
-else
-  echo "UART LOGS:"
-  # Extract output from renode log
-  cat ${MICRO_LOG_FILENAME} |grep 'uartSemihosting' |sed 's/^.*from start] *//g'
-fi
 exit $exit_code
