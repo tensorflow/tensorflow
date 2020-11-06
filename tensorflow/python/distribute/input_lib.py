@@ -1676,7 +1676,7 @@ class _SingleWorkerDatasetIteratorSpec(type_spec.TypeSpec):
 
   __slots__ = ["_worker", "_devices", "_element_spec", "_options"]
 
-  def __init__(self, worker, devices, element_spec):
+  def __init__(self, worker, devices, element_spec, options):
     self._worker = worker
     self._devices = tuple(device_util.canonicalize(d) for d in devices)
     self._element_spec = element_spec
