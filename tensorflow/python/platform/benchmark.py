@@ -195,6 +195,9 @@ class ParameterizedBenchmark(_BenchmarkRegistrar):
   def __new__(mcs, clsname, base, attrs):
     param_config_list = attrs["_benchmark_parameters"]
 
+    def create_benchmark_function(original_benchmark, params):
+      return lambda self: original_benchmark(self, *params)
+
     for name in attrs.copy().keys():
       if not name.startswith("benchmark"):
         continue
@@ -210,10 +213,7 @@ class ParameterizedBenchmark(_BenchmarkRegistrar):
           raise Exception(
               "Benchmark named {} already defined.".format(benchmark_name))
 
-        def create_benchmark_function(params):
-          return lambda self: original_benchmark(self, *params)
-
-        benchmark = create_benchmark_function(params)
+        benchmark = create_benchmark_function(original_benchmark, params)
         # Renaming is important because `report_benchmark` function looks up the
         # function name in the stack trace.
         attrs[benchmark_name] = _rename_function(benchmark, 1, benchmark_name)
