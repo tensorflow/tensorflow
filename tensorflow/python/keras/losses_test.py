@@ -1577,7 +1577,7 @@ class KLDivergenceTest(test.TestCase):
 
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
-class HuberLossTest(test.TestCase):
+class HuberLossTest(test.TestCase, parameterized.TestCase):
 
   def huber_loss(self, y_true, y_pred, delta=1.0):
     error = y_pred - y_true
@@ -1675,17 +1675,16 @@ class HuberLossTest(test.TestCase):
     actual_loss = sample_weight * np.sum(self.expected_losses) / self.batch_size
     self.assertAlmostEqual(self.evaluate(loss), actual_loss, 3)
 
-  def test_loss_with_non_default_dtype(self):
-    # Test case for GitHub issue:
-    # https://github.com/tensorflow/tensorflow/issues/39004
+  @parameterized.parameters((dtypes.float16),
+                            (dtypes.float32),
+                            (dtypes.float64))
+  def test_loss_with_different_dtypes(self, dtype):
     self.setup()
+    y_pred = math_ops.cast(self.y_pred, dtype)
+    y_true = math_ops.cast(self.y_true, dtype)
     h_obj = losses.Huber()
-    try:
-      backend.set_floatx('float64')
-      loss = h_obj(self.y_true, self.y_true)
-      self.assertAlmostEqual(self.evaluate(loss), 0.0, 3)
-    finally:
-      backend.set_floatx('float32')
+    loss = h_obj(y_true, y_pred)
+    self.assertEqual(loss.dtype, dtype)
 
 
 class BinaryTruePositivesViaControlFlow(losses.Loss):

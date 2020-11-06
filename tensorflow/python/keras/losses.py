@@ -1443,9 +1443,9 @@ def huber(y_true, y_pred, delta=1.0):
   Returns:
     Tensor with one scalar loss entry per sample.
   """
-  y_pred = math_ops.cast(y_pred, dtype=K.floatx())
-  y_true = math_ops.cast(y_true, dtype=K.floatx())
-  delta = math_ops.cast(delta, dtype=K.floatx())
+  y_pred = ops.convert_to_tensor_v2_with_dispatch(y_pred)
+  y_true = math_ops.cast(y_true, dtype=y_pred.dtype)
+  delta = ops.convert_to_tensor_v2_with_dispatch(delta, dtype=y_pred.dtype)
   error = math_ops.subtract(y_pred, y_true)
   abs_error = math_ops.abs(error)
   half = ops.convert_to_tensor_v2_with_dispatch(0.5, dtype=abs_error.dtype)
