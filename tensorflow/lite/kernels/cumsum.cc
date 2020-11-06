@@ -13,43 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "flatbuffers/flexbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
-// TODO(b/161933288): Promote this op to builtin-op when we can add new builtin
-// ops.
 
 namespace tflite {
 namespace ops {
-namespace custom {
+namespace builtin {
 namespace cumsum {
-
-typedef struct {
-  bool exclusive;
-  bool reverse;
-} TfLiteCumsumParams;
 
 static const int kInputTensor = 0;
 static const int kAxisTensor = 1;
 static const int kOutputTensor = 0;
-
-void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  auto* data = new TfLiteCumsumParams;
-  const uint8_t* buffer_data = reinterpret_cast<const uint8_t*>(buffer);
-
-  const flexbuffers::Map& m = flexbuffers::GetRoot(buffer_data, length).AsMap();
-  data->exclusive = m["exclusive"].AsBool();
-  data->reverse = m["reverse"].AsBool();
-  return data;
-}
-
-void Free(TfLiteContext* context, void* buffer) {
-  delete reinterpret_cast<TfLiteCumsumParams*>(buffer);
-}
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
@@ -58,8 +37,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* axis = GetInput(context, node, kAxisTensor);
 
-  TF_LITE_ENSURE(context,
-                 input->type == kTfLiteInt32 || input->type == kTfLiteFloat32);
+  TF_LITE_ENSURE(context, input->type == kTfLiteInt32 ||
+                              input->type == kTfLiteFloat32 ||
+                              input->type == kTfLiteInt64);
   TF_LITE_ENSURE_EQ(context, axis->type, kTfLiteInt32);
 
   TF_LITE_ENSURE_EQ(context, NumElements(axis), 1);
@@ -78,7 +58,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-  auto* params = reinterpret_cast<TfLiteCumsumParams*>(node->user_data);
+  auto* params = reinterpret_cast<TfLiteCumsumParams*>(node->builtin_data);
 
   int axis = *GetTensorData<int>(axis_tensor);
   if (axis < 0) axis += NumDimensions(input);
@@ -93,6 +73,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       optimized_ops::CumSum(GetTensorData<int>(input), GetTensorShape(input),
                             axis, params->exclusive, params->reverse,
                             GetTensorData<int>(output));
+      break;
+    }
+    case kTfLiteInt64: {
+      optimized_ops::CumSum(GetTensorData<int64_t>(input),
+                            GetTensorShape(input), axis, params->exclusive,
+                            params->reverse, GetTensorData<int64_t>(output));
       break;
     }
     case kTfLiteFloat32: {
@@ -115,11 +101,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace cumsum
 
 TfLiteRegistration* Register_CUMSUM() {
-  static TfLiteRegistration r = {cumsum::Init, cumsum::Free, cumsum::Prepare,
+  static TfLiteRegistration r = {nullptr, nullptr, cumsum::Prepare,
                                  cumsum::Eval};
   return &r;
 }
 
-}  // namespace custom
+}  // namespace builtin
 }  // namespace ops
 }  // namespace tflite

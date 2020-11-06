@@ -14,56 +14,52 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tfr/integration/graph_decompose_pass.h"
 
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfr/integration/tfr_decompose_ctx.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/util/env_var.h"
+#include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
+namespace {
+
+auto* tf_core_op_expansion_graph_counter =
+    monitoring::Counter<0>::New("/tensorflow/core/op_expansion/graph_counter",
+                                "The number of graphs being op expanded.");
+}  // namespace
+
+namespace tfr {
+
+bool GraphDecomposePass::IsEnabled(const ConfigProto& config_proto) const {
+  const char* tfr_lib_env_val = getenv(std::string(kTFRLibEnv).c_str());
+  return tfr_lib_env_val != nullptr;
+}
 
 Status GraphDecomposePass::Run(const ConfigProto& config_proto,
                                mlir::ModuleOp module) {
-  TF_ASSIGN_OR_RETURN(ctx_, LoadDecompositionLib(module.getContext()));
-  TF_RETURN_IF_ERROR(ctx_->Decompose(module));
-  return ctx_->Destroy();
-}
-
-StatusOr<std::unique_ptr<TFRDecomposeContext>>
-GraphDecomposePass::LoadDecompositionLib(mlir::MLIRContext* mlir_ctx) {
-  Env* env = Env::Default();
-  std::string tfr_lib_dir;
-  TF_RETURN_IF_ERROR(ReadStringFromEnvVar(
-      "TF_MLIR_TFR_LIB_DIR", "tensorflow/compiler/mlir/tfr/resources",
-      &tfr_lib_dir));
-  string composite_mlir_dir = io::JoinPath(env->GetRunfilesDir(), tfr_lib_dir);
-  std::vector<string> files;
-  TF_RETURN_IF_ERROR(env->GetChildren(composite_mlir_dir, &files));
-  std::string tfr_raw_text;
-  for (const auto& file : files) {
-    string fullpath = io::JoinPath(composite_mlir_dir, file);
-    if (env->MatchPath(fullpath, io::JoinPath(composite_mlir_dir, "*.mlir"))) {
-      std::string text;
-      TF_RETURN_IF_ERROR(ReadFileToString(env, fullpath, &text));
-      tfr_raw_text.append(text);
-    }
+  if (!IsEnabled(config_proto)) {
+    LOG_FIRST_N(INFO, 1) << "Skipping Graph Decomposition Pass, decompositin "
+                            "library was not found";
+    return Status::OK();
   }
 
-  auto ctx = TFRDecomposeContext::Get(tfr_raw_text, mlir_ctx);
-  if (!ctx) {
-    return errors::Internal(absl::StrCat(
-        "Failed to load the imported decomposition lib: ", tfr_raw_text));
-  }
-  return ctx;
+  tf_core_op_expansion_graph_counter->GetCell()->IncrementBy(1);
+
+  LOG_FIRST_N(INFO, 1) << "Run Graph Decomposition Passes";
+
+  TF_RETURN_IF_ERROR(DecomposeGraph(module));
+
+  LOG_FIRST_N(INFO, 1) << "Finish Graph Decomposition Passes";
+
+  return Status::OK();
 }
 
 namespace {
-constexpr int kMlirGraphDecomposePassPriority = 1;
+constexpr int kMlirGraphDecomposePassPriority = -1;
 
 static mlir_pass_registration::MlirOptimizationPassRegistration
     register_mlir_graph_decompose_pass(kMlirGraphDecomposePassPriority,
                                        std::make_unique<GraphDecomposePass>());
 }  // namespace
 
+}  // namespace tfr
 }  // namespace tensorflow

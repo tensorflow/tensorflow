@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/env_var.h"
+#include "tensorflow/core/util/util.h"
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cudnn/cudnn.h"
@@ -306,6 +307,9 @@ bool IsCpuCompatible(const RemapperContext& ctx, const Pattern& matched) {
     return IsCpuCompatibleConv2D(&node);
   } else if (IsDepthwiseConv2dNative(node)) {
 #ifdef INTEL_MKL
+    if (DisableMKL()) {
+      return false;
+    }
     return IsCpuCompatibleDepthwiseConv2dNative(&node);
 #else
     return false;
@@ -660,6 +664,7 @@ bool IsAddWithNoBroadcast(const RemapperContext& ctx, const NodeDef& node) {
 bool FindContractionWithBiasAddAndAdd(const RemapperContext& ctx,
                                       const utils::MutableNodeView& node_view,
                                       ContractionWithBiasAddAndAdd* matched) {
+  if (DisableMKL()) return false;
   // Fusion with AddN is supported only when it has two inputs.
   // TODO(lyandy): Forward controls for patterns with control dependencies.
   if (HasControlFaninOrFanout(node_view) || node_view.NumRegularFanins() != 2)
@@ -710,6 +715,7 @@ bool FindContractionWithBiasAddAndAdd(const RemapperContext& ctx,
 bool FindContractionWithBiasAndAddActivation(
     const RemapperContext& ctx, int node_index,
     ContractionWithBiasAndAddActivation* matched) {
+  if (DisableMKL()) return false;
   const auto* node_view = ctx.graph_view.GetNode(node_index);
   // TODO(lyandy): Forward controls for patterns with control dependencies.
   if (HasControlFaninOrFanout(*node_view)) return false;
@@ -839,11 +845,7 @@ bool FindFusedBatchNormEx(const RemapperContext& ctx, int node_index,
     // We fuse FusedBatchNorm on GPU or MKL CPU.
     if (!NodeIsOnGpu(fused_batch_norm_node_def)) return false;
 #else
-    if (NativeFormatEnabled()) {
-      // Temporarily disable FusedBatchNorm fusion on CPU until
-      // we support it under native format mode
-      if (!NodeIsOnGpu(fused_batch_norm_node_def)) return false;
-    }
+    if (DisableMKL()) return false;
 #endif
 
     DataType t_dtype = GetDataTypeFromAttr(*fused_batch_norm_node_def, "T");

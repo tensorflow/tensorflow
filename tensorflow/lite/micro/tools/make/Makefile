@@ -37,9 +37,20 @@ TARGET := $(HOST_OS)
 TARGET_ARCH := $(HOST_ARCH)
 
 # Default compiler and tool names:
+TOOLCHAIN:=gcc
 CXX_TOOL := g++
 CC_TOOL := gcc
 AR_TOOL := ar
+
+# Specify which specialized kernel implementation should be pulled in. This was
+# previously supported via TAGS, but that is soon going to be removed. The
+# reason for removing TAGS is that we no longer support more than a single
+# specialized implementation and we also want to be explicit about what
+# makefiles get included for a given command line invocation.
+#
+# Currently, we are keeping the support for optimized kernels via TAGS for
+# backwards compatibility, but will be removing that in the near future.
+OPTIMIZED_KERNEL_DIR :=
 
 # Specify TAGS on the command line to add a particular set of specialized
 # implementations, for example TAGS="CMSIS disco_f746ng" to target a Discovery
@@ -50,7 +61,6 @@ ALL_TAGS := $(TAGS) $(TARGET)
 # include directories from one source.
 INCLUDES := \
 -I. \
--I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(MAKEFILE_DIR)/downloads/flatbuffers/include \
 -I$(MAKEFILE_DIR)/downloads/ruy
@@ -74,7 +84,6 @@ TEST_SCRIPT := tensorflow/lite/micro/testing/test_linux_binary.sh
 
 MICROLITE_LIBS := -lm
 
-
 # For each tag specified on the command line we add -D<tag> to the cflags to
 # allow for #idefs in the code.
 #
@@ -87,6 +96,17 @@ MICROLITE_LIBS := -lm
 # TODO(b/168824958): remove dash->underscore transformation once the cmsis-nn
 # and ethos-u directories have been renamed.
 TAG_DEFINES := $(foreach TAG,$(TAGS),-D$(shell echo $(TAG) | tr [a-z] [A-Z] | tr - _))
+
+OPTIMIZED_KERNEL_DEFINES :=
+ifneq ($(OPTIMIZED_KERNEL_DIR),)
+  # For backwards compatibility, we are using an empty OPTIMIZED_KERNEL_DIR to
+  # impy that we want to fall-back to TAGS. So, we are additionally using
+  # OPTIMIZED_KERNEL_DIR==none to signify that we do not want any optimized
+  # implementations.
+  ifneq ($(OPTIMIZED_KERNEL_DIR), none)
+    OPTIMIZED_KERNEL_DEFINES := -D$(shell echo $(OPTIMIZED_KERNEL_DIR) | tr [a-z] [A-Z] | tr - _)
+  endif
+endif
 
 OPTIMIZATION_LEVEL := -O3
 
@@ -111,8 +131,10 @@ COMMON_FLAGS := \
   -fdata-sections \
   -fmessage-length=0 \
   -DTF_LITE_STATIC_MEMORY \
+  -DTF_LITE_DISABLE_X86_NEON \
   $(OPTIMIZATION_LEVEL) \
   $(CC_WARNINGS) \
+  $(OPTIMIZED_KERNEL_DEFINES) \
   $(TAG_DEFINES)
 
 CXXFLAGS := \
@@ -122,15 +144,21 @@ CXXFLAGS := \
   -fno-threadsafe-statics \
   $(COMMON_FLAGS)
 
-CCFLAGS  := \
-	-std=c11 \
-	$(COMMON_FLAGS)
+CCFLAGS := \
+  -std=c11 \
+  $(COMMON_FLAGS)
 
 ARFLAGS := -r
 
-LDFLAGS += \
-  -Wl,--fatal-warnings \
-  -Wl,--gc-sections
+ifeq ($(TOOLCHAIN), gcc)
+  ifneq ($(TARGET), osx)
+    # GCC on MacOS uses an LLVM backend so we avoid the additional linker flags
+    # that are unsupported with LLVM.
+    LDFLAGS += \
+      -Wl,--fatal-warnings \
+      -Wl,--gc-sections
+  endif
+endif
 
 # override these in the makefile.inc for specific compiler targets
 TARGET_TOOLCHAIN_PREFIX :=
@@ -208,13 +236,16 @@ $(wildcard tensorflow/lite/micro/memory_planner/*test.cc)
 MICROLITE_BENCHMARK_SRCS := \
 $(wildcard tensorflow/lite/micro/benchmarks/*benchmark.cc)
 
+MICROLITE_CC_KERNEL_SRCS := \
+$(wildcard tensorflow/lite/micro/kernels/*.cc)
+MICROLITE_CC_KERNEL_SRCS := $(filter-out $(MICROLITE_TEST_SRCS), $(MICROLITE_CC_KERNEL_SRCS))
+
 MICROLITE_TEST_HDRS := \
 $(wildcard tensorflow/lite/micro/testing/*.h)
 
 MICROLITE_CC_BASE_SRCS := \
 $(wildcard tensorflow/lite/micro/*.cc) \
 $(wildcard tensorflow/lite/micro/benchmarks/*model_data.cc) \
-$(wildcard tensorflow/lite/micro/kernels/*.cc) \
 $(wildcard tensorflow/lite/micro/memory_planner/*.cc) \
 $(wildcard tensorflow/lite/micro/testing/*model.cc) \
 tensorflow/lite/c/common.c \
@@ -224,7 +255,6 @@ tensorflow/lite/core/api/op_resolver.cc \
 tensorflow/lite/core/api/tensor_utils.cc \
 tensorflow/lite/kernels/internal/quantization_util.cc \
 tensorflow/lite/kernels/kernel_util.cc \
-tensorflow/lite/micro/testing/test_utils.cc \
 tensorflow/lite/schema/schema_utils.cc
 
 MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_TEST_SRCS), $(MICROLITE_CC_BASE_SRCS))
@@ -355,17 +385,46 @@ $(eval $(call add_third_party_download,$(RUY_URL),$(RUY_MD5),ruy,))
 $(eval $(call add_third_party_download,$(PERSON_MODEL_URL),$(PERSON_MODEL_MD5),person_model_grayscale,))
 $(eval $(call add_third_party_download,$(PERSON_MODEL_INT8_URL),$(PERSON_MODEL_INT8_MD5),person_model_int8,))
 
-# These target-specific makefiles should modify or replace options like
-# CXXFLAGS or LIBS to work for a specific targeted architecture. All logic
-# based on platforms or architectures should happen within these files, to
-# keep this main makefile focused on the sources and dependencies.
-include $(wildcard $(MAKEFILE_DIR)/targets/*_makefile.inc)
+# The target-specific makefile must have a name that is exactly
+# TARGET_makefile.inc and is only needed for cross-compilation (i.e. when TARGET
+# is different from the HOST_OS).
+# There are also some other targets like arduino and CHRE that are also special
+# in that they do no have a <target>_makefile but are still used to create a
+# directory for the generated artifacts. We are using a workaround right now and
+# will be separating the project generation from the Makefile in the future.
+TARGETS_WITHOUT_MAKEFILES := \
+$(HOST_OS) \
+arduino \
+chre
 
-# Load dependencies for optimized kernel implementations.
-include $(wildcard $(MAKEFILE_DIR)/ext_libs/*.inc)
+ifeq ($(findstring $(TARGET),$(TARGETS_WITHOUT_MAKEFILES)),)
+  include $(MAKEFILE_DIR)/targets/$(TARGET)_makefile.inc
+endif
 
-# Call specialize here so that platform-specific tags can be taken into account.
-MICROLITE_CC_SRCS := $(call specialize,$(MICROLITE_CC_SRCS))
+ifneq ($(OPTIMIZED_KERNEL_DIR),)
+  # The new way of using optimized kernels enforces that only that specific
+  # makefile is included. For backwards compatibility, we are using an empty
+  # OPTIMIZED_KERNEL_DIR to impy that we want to fall-back to TAGS. So, we are
+  # additionally using OPTIMIZED_KERNEL_DIR==none to signify that we do not want
+  # any optimized implementations.
+  ifneq ($(OPTIMIZED_KERNEL_DIR), none)
+    include $(MAKEFILE_DIR)/ext_libs/$(OPTIMIZED_KERNEL_DIR).inc
+    # Specialize for the optimized kernels
+    MICROLITE_CC_KERNEL_SRCS := $(call substitute_specialized_implementations,$(MICROLITE_CC_KERNEL_SRCS),$(OPTIMIZED_KERNEL_DIR))
+  endif
+
+  # Specialize for debug_log. micro_time etc.
+  MICROLITE_CC_SRCS := $(call substitute_specialized_implementations,$(MICROLITE_CC_SRCS),$(TARGET))
+  MICROLITE_CC_SRCS += $(MICROLITE_CC_KERNEL_SRCS)
+else
+  # This is the deprecated way of pulling in optimized kernel implementations.
+  # Load dependencies for optimized kernel implementations.
+  include $(wildcard $(MAKEFILE_DIR)/ext_libs/*.inc)
+
+  # Call specialize here so that platform-specific tags can be taken into account.
+  MICROLITE_CC_SRCS += $(MICROLITE_CC_KERNEL_SRCS)
+  MICROLITE_CC_SRCS := $(call specialize,$(MICROLITE_CC_SRCS))
+endif
 
 ALL_TAGS += $(TARGET_ARCH)
 

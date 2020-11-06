@@ -44,7 +44,7 @@ class ForThunk : public Thunk {
  private:
   const int64 loop_limit_;
   std::unique_ptr<SequentialThunk> body_thunk_sequence_;
-  absl::optional<size_t> body_profile_index_;
+  const absl::optional<size_t> body_profile_index_;
 };
 
 }  // namespace gpu

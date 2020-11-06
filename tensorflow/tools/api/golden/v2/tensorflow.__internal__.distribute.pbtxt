@@ -4,4 +4,8 @@ tf_module {
     name: "combinations"
     mtype: "<type \'module\'>"
   }
+  member {
+    name: "multi_process_runner"
+    mtype: "<type \'module\'>"
+  }
 }

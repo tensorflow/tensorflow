@@ -450,6 +450,13 @@ def vectorized_map(fn, elems, fallback_to_while_loop=True):
     results of applying fn to tensors unpacked from elems along the first
     dimension, from first to last.
 
+    Although they are less common as user-visible inputs and outputs, note that
+    tensors of type `tf.variant` which represent tensor lists (for example from
+    `tf.raw_ops.TensorListFromTensor`) are vectorized by stacking the list
+    contents rather than the variant itself, and so the container tensor will
+    have a scalar shape when returned rather than the usual stacked shape. This
+    improves the performance of control flow gradient vectorization.
+
   Raises:
     ValueError: If vectorization fails and fallback_to_while_loop is False.
   """

@@ -43,14 +43,12 @@ class MlirGeneratedUnaryOp : public OpKernel {
   absl::Mutex mu_;
 };
 
-#define GENERATE_OP_KERNEL_BASE(kernel_name)                                  \
-  class MlirGenerated##kernel_name##Op : public MlirGeneratedUnaryOp {        \
-   public:                                                                    \
-    MlirGenerated##kernel_name##Op(OpKernelConstruction* ctx,                 \
-                                   absl::Span<const uint8_t> cubin_data)      \
-        : MlirGeneratedUnaryOp(ctx,                                           \
-                               absl::AsciiStrToLower(#kernel_name "_kernel"), \
-                               cubin_data) {}                                 \
+#define GENERATE_OP_KERNEL_BASE(kernel_name)                               \
+  class MlirGenerated##kernel_name##Op : public MlirGeneratedUnaryOp {     \
+   public:                                                                 \
+    MlirGenerated##kernel_name##Op(OpKernelConstruction* ctx,              \
+                                   absl::Span<const uint8_t> cubin_data)   \
+        : MlirGeneratedUnaryOp(ctx, #kernel_name "_kernel", cubin_data) {} \
   };
 
 #define GENERATE_OP_KERNEL_FOR(kernel_name, data_type)    \

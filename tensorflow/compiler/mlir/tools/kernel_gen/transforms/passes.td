@@ -28,6 +28,11 @@ def EmbedTFFrameworkPass : Pass<"embed-tf-framework", "ModuleOp"> {
   let constructor = "tf_framework::CreateEmbedTFFrameworkPass()";
 }
 
+def BufferReusePass : FunctionPass<"buffer-reuse"> {
+  let summary = "Pass to find and annotate candidates for buffer reuse.";
+  let constructor = "transforms::CreateBufferReusePass()";
+}
+
 def ShapeToDescriptorsPass : Pass<"shape-to-descriptors", "ModuleOp"> {
   let summary = "Pass to transform shape computations to descriptors";
   let constructor = "transforms::CreateShapeToDescriptorsPass()";
@@ -53,7 +58,10 @@ def GpuKernelToBlobPass : Pass<"gpu-kernel-to-blob", "gpu::GPUModuleOp"> {
   let options = [
     Option<"blob_annotation_", "blob-annotation", "std::string",
            /*default=*/"", "Blob attribute name">,
-    Option<"arch_", "arch", "int32_t", /*default=*/"0", "GPU architecture">,
+    ListOption<"architectures_", "arch", "std::string", "GPU architectures">,
+    Option<"generate_fatbin_", "generate-fatbin", "bool", /*default=*/"true",
+           "Bundle machine code for the different architectures in one "
+           "fatbin.">,
   ];
   let constructor = "transforms::CreateGpuKernelToBlobPass()";
 }
@@ -71,6 +79,23 @@ def PropagateTensorFlowABIKnowledgePass
                "List of same shape args">,
   ];
   let constructor = "transforms::CreatePropagateTensorFlowABIKnowledgePass()";
+}
+
+def PropagateTfAbiKnowledgeToKernels
+    : FunctionPass<"propagate-tf-abi-knowledge-to-kernels"> {
+  let summary = "Pass to propagate tensorflow ABI knowledge to kernels";
+  let constructor = "transforms::CreatePropagateTfAbiKnowledgeToKernels()";
+}
+
+def PropagateShapeKnowledgeToKernels
+    : FunctionPass<"propagate-shape-knowledge-to-kernels"> {
+  let summary = "Pass to propagate shape information into kernels";
+  let constructor = "transforms::CreatePropagateShapeKnowledgeToKernels()";
+}
+
+def EmbedMemRefPrintsPass : FunctionPass<"embed-memref-prints"> {
+  let summary = "Pass to print content of memrefs";
+  let constructor = "transforms::CreateEmbedMemRefPrintsPass()";
 }
 
 #endif // TF_KERNEL_GEN_PASSES

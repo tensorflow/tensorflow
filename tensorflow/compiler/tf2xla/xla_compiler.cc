@@ -18,6 +18,7 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/types/variant.h"
 #include "tensorflow/compiler/jit/defs.h"
@@ -627,8 +628,28 @@ std::unique_ptr<Graph> XlaCompiler::GetGraph(const FunctionBody* fbody) {
   graph_optimizer_options.inline_with_single_device_body_placer = true;
   graph_optimizer_options.ignore_noinline = is_inside_mustcompile;
 
-  optimizer.Optimize(flib_runtime_, flib_runtime_->env(),
-                     /*device=*/nullptr, &graph, graph_optimizer_options);
+  {
+    GraphShapeInfo shape_info;
+    InferShapes(graph.get(), /*arg_shapes=*/{},
+                flib_runtime_->GetFunctionLibraryDefinition(), &shape_info)
+        .IgnoreError();
+    auto node_name_index = graph->BuildNodeNameIndex();
+    std::unordered_map<string, std::vector<PartialTensorShape>> shape_map;
+    for (const auto& node_shape_info : shape_info) {
+      const string& node_name = node_shape_info.first;
+      const std::vector<InferredShape>& output_shapes = node_shape_info.second;
+      const auto& node_iter = node_name_index.find(node_name);
+      if (node_iter != node_name_index.end()) {
+        auto& partial_shapes = shape_map[node_name];
+        for (const auto& inferred_shape : output_shapes) {
+          partial_shapes.push_back(inferred_shape.shape);
+        }
+      }
+    }
+    graph_optimizer_options.shape_map = &shape_map;
+    optimizer.Optimize(flib_runtime_, flib_runtime_->env(),
+                       /*device=*/nullptr, &graph, graph_optimizer_options);
+  }
 
   // Run shape inference on the graph and optimize the graph again.
   GraphShapeInfo shape_info;
@@ -653,6 +674,38 @@ std::unique_ptr<Graph> XlaCompiler::GetGraph(const FunctionBody* fbody) {
                      /*device=*/nullptr, &graph, graph_optimizer_options);
 
   return graph;
+}
+
+// Collects all control rets from `orig_control_ret_nodes` that are still valid,
+// keeping the same order.
+std::vector<std::string> GetValidControlRets(
+    absl::Span<Node* const> orig_control_ret_nodes, const Graph& graph) {
+  // Build map from control ret node to index.
+  absl::flat_hash_map<const Node*, int> control_ret_nodes_map;
+  for (int i = 0; i < orig_control_ret_nodes.size(); ++i) {
+    const Node* n = orig_control_ret_nodes[i];
+    control_ret_nodes_map[n] = i;
+  }
+  // Check which control rets are still valid.
+  std::vector<bool> is_valid_control_ret(orig_control_ret_nodes.size(), false);
+  int num_valid_control_rets = 0;
+  for (const Node* n : graph.nodes()) {
+    auto iter = control_ret_nodes_map.find(n);
+    if (iter != control_ret_nodes_map.end()) {
+      ++num_valid_control_rets;
+      is_valid_control_ret[iter->second] = true;
+    }
+  }
+  // Return valid control rets in same order as they appear in
+  // `orig_control_ret_nodes`.
+  std::vector<std::string> valid_control_rets;
+  valid_control_rets.reserve(num_valid_control_rets);
+  for (int i = 0; i < orig_control_ret_nodes.size(); ++i) {
+    if (is_valid_control_ret[i]) {
+      valid_control_rets.push_back(orig_control_ret_nodes[i]->name());
+    }
+  }
+  return valid_control_rets;
 }
 
 Status XlaCompiler::CompileFunction(
@@ -734,20 +787,26 @@ Status XlaCompiler::CompileFunction(
 
   VLOG(1) << "====================================================";
 #ifdef LIBTPU_ON_GCE
-  if (GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge) {
+  if (GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge ==
+      ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED) {
     VLOG(1) << "MLIR is not supported in this environment.";
   }
   TF_RETURN_IF_ERROR(
       CompileGraph(options, function_id, std::move(graph), args, result));
 #else
-  if (GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge) {
+  if (GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge ==
+      ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED) {
     VLOG(1) << "Using MLIR bridge";
     GraphDebugInfo debug_info;
+
+    std::vector<std::string> valid_control_rets =
+        GetValidControlRets(fbody->control_ret_nodes, *graph);
+
     TF_RETURN_IF_ERROR(CompileGraphToXlaHlo(
         std::move(*graph), mlir::SpanToArrayRef<XlaCompiler::Argument>(args),
-        options_.device_type.type_string(), options.use_tuple_arg,
-        *options_.flib_def, debug_info, options_.shape_representation_fn,
-        result));
+        valid_control_rets, options_.device_type.type_string(),
+        options.use_tuple_arg, *options_.flib_def, debug_info,
+        options_.shape_representation_fn, result));
   } else {
     TF_RETURN_IF_ERROR(
         CompileGraph(options, function_id, std::move(graph), args, result));

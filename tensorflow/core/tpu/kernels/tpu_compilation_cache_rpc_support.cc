@@ -111,23 +111,6 @@ xla::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(
   }
   header.set_is_empty(false);
 
-  HostComputeMetadataSerializedProto host_compute_metadata;
-  auto cleanup_host_compute_metadata =
-      xla::MakeCleanup([&host_compute_metadata]() {
-        if (host_compute_metadata.size > 0) {
-          stream_executor::tpu::SerializedProto_Free(host_compute_metadata);
-        }
-      });
-  Status get_host_compute_metadata_status =
-      tpu_program_group->SerializeHostComputeMetadata(cache_entry.core_index(),
-                                                      &host_compute_metadata);
-  if (!get_host_compute_metadata_status.ok()) {
-    return errors::Internal("Failed to serialize host compute metadata.");
-  }
-  if (!header.mutable_host_compute_metadata()->ParseFromArray(
-          host_compute_metadata.bytes, host_compute_metadata.size)) {
-    return errors::Internal("Failed to deserialize host compute metadata.");
-  }
 
   bool may_modify_variables =
       tpu_program_group->may_modify_variables(cache_entry.core_index());

@@ -524,7 +524,7 @@ class Conv2D(Conv):
 
   When using this layer as the first layer in a model,
   provide the keyword argument `input_shape`
-  (tuple of integers, does not include the sample axis),
+  (tuple of integers or `None`, does not include the sample axis),
   e.g. `input_shape=(128, 128, 3)` for 128x128 RGB pictures
   in `data_format="channels_last"`.
 
@@ -683,7 +683,7 @@ class Conv3D(Conv):
 
   When using this layer as the first layer in a model,
   provide the keyword argument `input_shape`
-  (tuple of integers, does not include the sample axis),
+  (tuple of integers or `None`, does not include the sample axis),
   e.g. `input_shape=(128, 128, 128, 1)` for 128x128x128 volumes
   with a single channel,
   in `data_format="channels_last"`.
@@ -832,7 +832,7 @@ class Conv1DTranspose(Conv1D):
 
   When using this layer as the first layer in a model,
   provide the keyword argument `input_shape`
-  (tuple of integers, does not include the sample axis),
+  (tuple of integers or `None`, does not include the sample axis),
   e.g. `input_shape=(128, 3)` for data with 128 time steps and 3 channels.
 
   Arguments:
@@ -1079,7 +1079,7 @@ class Conv2DTranspose(Conv2D):
 
   When using this layer as the first layer in a model,
   provide the keyword argument `input_shape`
-  (tuple of integers, does not include the sample axis),
+  (tuple of integers or `None`, does not include the sample axis),
   e.g. `input_shape=(128, 128, 3)` for 128x128 RGB pictures
   in `data_format="channels_last"`.
 
@@ -1382,7 +1382,7 @@ class Conv3DTranspose(Conv3D):
 
   When using this layer as the first layer in a model,
   provide the keyword argument `input_shape`
-  (tuple of integers, does not include the sample axis),
+  (tuple of integers or `None`, does not include the sample axis),
   e.g. `input_shape=(128, 128, 128, 3)` for a 128x128x128 volume with 3 channels
   if `data_format="channels_last"`.
 
@@ -2024,7 +2024,7 @@ class SeparableConv1D(SeparableConv):
 
   def call(self, inputs):
     if self.padding == 'causal':
-      inputs = array_ops.pad(inputs, self._compute_causal_padding())
+      inputs = array_ops.pad(inputs, self._compute_causal_padding(inputs))
     if self.data_format == 'channels_last':
       strides = (1,) + self.strides * 2 + (1,)
       spatial_start_dim = 1

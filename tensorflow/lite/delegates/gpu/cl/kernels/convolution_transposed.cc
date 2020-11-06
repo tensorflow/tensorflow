@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/cl/precision.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
@@ -123,7 +122,7 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
     const OperationDef& op_def, const DeviceInfo& device_info,
     bool weights_are_buffer, const int4& block_size) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
+  src_desc.SetAddressMode(AddressMode::kZero);
   AddSrcTensor("src_tensor", src_desc);
   AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
 
@@ -516,12 +515,12 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
   return c;
 }
 
-absl::Status ConvolutionTransposed::BindArguments() {
+absl::Status ConvolutionTransposed::BindArguments(ArgumentsBinder* args) {
   if (definition_.src_tensors[0].HasAxis(Axis::DEPTH)) {
     const int aligned_h =
         AlignByN(dst_[0]->Height(), stride_.y * block_size_.y);
     RETURN_IF_ERROR(
-        args_.SetInt("grid_size_y", DivideRoundUp(aligned_h, block_size_.y)));
+        args->SetInt("grid_size_y", DivideRoundUp(aligned_h, block_size_.y)));
   }
   return absl::OkStatus();
 }

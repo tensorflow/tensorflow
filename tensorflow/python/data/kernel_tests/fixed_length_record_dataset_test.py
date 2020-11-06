@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import gzip
 import os
+import pathlib
 import zlib
 
 from absl.testing import parameterized
@@ -189,6 +190,24 @@ class FixedLengthRecordDatasetTest(test_base.DatasetTestBase,
             r"file \".*fixed_length_record.0.txt\" has body length 21 bytes, "
             r"which is not an exact multiple of the record length \(4 bytes\).")
         )
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testFixedLengthRecordDatasetPathlib(self):
+    test_filenames = self._createFiles()
+    test_filenames = [pathlib.Path(f) for f in test_filenames]
+    dataset = readers.FixedLengthRecordDataset(
+        test_filenames,
+        self._record_bytes,
+        self._header_bytes,
+        self._footer_bytes,
+        buffer_size=10,
+        num_parallel_reads=4)
+    expected_output = []
+    for j in range(self._num_files):
+      expected_output.extend(
+          [self._record(j, i) for i in range(self._num_records)])
+    self.assertDatasetProduces(dataset, expected_output=expected_output,
+                               assert_items_equal=True)
 
 
 if __name__ == "__main__":

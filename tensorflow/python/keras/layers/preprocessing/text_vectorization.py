@@ -28,6 +28,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.layers.preprocessing import category_encoding
 from tensorflow.python.keras.layers.preprocessing import string_lookup
+from tensorflow.python.keras.layers.preprocessing import table_utils
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
@@ -481,7 +482,8 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
     it.
 
     Arguments:
-      vocab: An array of string tokens.
+      vocab: An array of string tokens, or a path to a file containing one
+        token per line.
       df_data: An array of document frequency data. Only necessary if the layer
         output_mode is TFIDF.
       oov_df_value: The document frequency of the OOV token. Only necessary if
@@ -505,6 +507,21 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
                           "pad_to_max_tokens is False, the vocabulary cannot "
                           "be changed after the layer is "
                           "called.").format(mode=self._output_mode))
+
+    # Handle reading from a file. We can't do this via TF-IDF, as we don't have
+    # a standard format - we error out and ask our users to parse the file
+    # themselves.
+    if isinstance(vocab, str):
+      if self._output_mode == TFIDF:
+        raise RuntimeError("Setting vocabulary directly from a file is not "
+                           "supported in TF-IDF mode, since this layer cannot "
+                           "read files containing TF-IDF weight data. Please "
+                           "read the file using Python and set the vocab "
+                           "and weights by passing lists or arrays to the "
+                           "set_vocabulary function's `vocab` and `df_data` "
+                           "args.")
+      vocab = table_utils.get_vocabulary_from_file(
+          vocab, self._index_lookup_layer.encoding)
 
     self._index_lookup_layer.set_vocabulary(vocab)
 

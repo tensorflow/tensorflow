@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/depthwise_conv.h"
 
-#include "cmsis/CMSIS/NN/Include/arm_nnfunctions.h"
+#include "CMSIS/NN/Include/arm_nnfunctions.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
@@ -28,9 +28,6 @@ limitations under the License.
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 namespace tflite {
-namespace ops {
-namespace micro {
-namespace depthwise_conv {
 namespace {
 
 constexpr int kInputTensor = 0;
@@ -103,8 +100,6 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
   }
   return kTfLiteOk;
 }
-
-}  // namespace
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
@@ -464,19 +459,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-}  // namespace depthwise_conv
+}  // namespace
 
 TfLiteRegistration Register_DEPTHWISE_CONV_2D() {
-  return {/*init=*/depthwise_conv::Init,
+  return {/*init=*/Init,
           /*free=*/nullptr,
-          /*prepare=*/depthwise_conv::Prepare,
-          /*invoke=*/depthwise_conv::Eval,
+          /*prepare=*/Prepare,
+          /*invoke=*/Eval,
           /*profiling_string=*/nullptr,
           /*builtin_code=*/0,
           /*custom_name=*/nullptr,
           /*version=*/0};
 }
 
-}  // namespace micro
-}  // namespace ops
 }  // namespace tflite

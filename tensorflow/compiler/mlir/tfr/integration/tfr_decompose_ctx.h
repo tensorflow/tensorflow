@@ -15,25 +15,19 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFR_INTEGRATION_TFR_DECOMPOSE_CTX_H_
 #define TENSORFLOW_COMPILER_MLIR_TFR_INTEGRATION_TFR_DECOMPOSE_CTX_H_
 
-#include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
-#include "tensorflow/core/common_runtime/optimization_registry.h"
-#include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/framework/node_def.pb.h"
-#include "tensorflow/core/framework/node_def_builder.h"
-#include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/stringpiece.h"
-#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
+namespace tfr {
+
+extern const char* const kTFRLibEnv;
 
 using stream_executor::port::StatusOr;
-using NodeAndType = std::pair<StringPiece, DataType>;
 
 // An wrapper for all the objects used to decompose a module (graph mode) and
 // node_def (eager mode). Note that this class owns the decomposition library.
@@ -41,34 +35,47 @@ class TFRDecomposeContext {
  public:
   // The entry function to get a decompose context. All the required passes have
   // been initialized.
-  static std::unique_ptr<TFRDecomposeContext> Get(StringPiece tfr_raw_text,
-                                                  mlir::MLIRContext* mlir_ctx);
+  static StatusOr<std::unique_ptr<TFRDecomposeContext>> Get(
+      mlir::MLIRContext* mlir_ctx);
 
   // Constructor of the decompose context. To share the decompose library, the
   // whole decompose TFR function library is loaded.
-  explicit TFRDecomposeContext(mlir::OwningModuleRef tfr_module);
+  explicit TFRDecomposeContext(mlir::ModuleOp tfr_module);
 
-  // Decompose the op in the NodeDef to a set of primitive ops according to the
-  // decompose library in the context. Wrap the decomposed result in a GraphDef.
-  StatusOr<std::unique_ptr<GraphDef>> Decompose(const NodeDef& node_def,
-                                                absl::Span<NodeAndType> inputs);
+  // Constructs the decompose context from the tfr text module and the mlir
+  // context. The tfr text module is added to the mlir context.
+  static std::unique_ptr<TFRDecomposeContext> GetFromText(
+      StringPiece tfr_raw_text, mlir::MLIRContext* mlir_ctx);
 
-  // Decompose the ops in the ModuleOp to a set of primitive ops according to
-  // decompose library in the context.
-  Status Decompose(mlir::ModuleOp user_module);
+  // Decomposes the op in the NodeDef to a set of primitive ops according to the
+  // decompose library in the context. Wrap the decomposed result in a
+  // FunctionDef.
+  StatusOr<FunctionDef> ExpandNode(const NodeDef& node_def,
+                                   StringPiece func_name);
 
-  // Release all the owned references.
-  Status Destroy();
+  // Runs the decompose passes on the user_module.
+  Status DecomposeGraph(mlir::ModuleOp user_module);
+
+  // Erases the tfr_module created.
+  void Destroy();
 
  private:
-  mlir::OwningModuleRef tfr_module_;
+  mlir::ModuleOp tfr_module_;
   mlir::PassManager pm_;
 
-  FunctionLibraryDefinition flib_def_;
-  GraphDebugInfo debug_info_;
   GraphExportConfig export_confs_;
 };
 
+// Decomposes the NodeDef to a set of primitive ops according to the decompose
+// library loaded. Wrap the decomposed result in a FunctionDef.
+StatusOr<FunctionDef> ExpandNode(const NodeDef& node_def,
+                                 StringPiece func_name);
+
+// Decomposes the ops in the ModuleOp to a set of primitive ops according to
+// decompose library in the context.
+Status DecomposeGraph(mlir::ModuleOp user_module);
+
+}  // namespace tfr
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TFR_INTEGRATION_TFR_DECOMPOSE_CTX_H_

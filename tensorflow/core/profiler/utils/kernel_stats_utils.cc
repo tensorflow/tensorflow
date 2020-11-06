@@ -88,9 +88,11 @@ bool IsKernelUsingTensorCore(absl::string_view kernel_name) {
   // Some examples: volta_h884gemm, volta_fp16_s884gemm,
   // turing_fp16_s1688cudnn_fp16
   bool possible_tensor_kernel = absl::StrContains(kernel_name, "884") ||
-                                absl::StrContains(kernel_name, "1688");
+                                absl::StrContains(kernel_name, "1688") ||
+                                absl::StrContains(kernel_name, "hmma") ||
+                                absl::StrContains(kernel_name, "xmma");
   if (possible_tensor_kernel) {
-    VLOG(1) << "Possible tensor kernel: " << kernel_name << "\n";
+    VLOG(3) << "Possible tensor kernel: " << kernel_name;
   }
 
   return (absl::StartsWith(kernel_name, "volta_i884") ||
@@ -104,7 +106,9 @@ bool IsKernelUsingTensorCore(absl::string_view kernel_name) {
           absl::StartsWith(kernel_name, "turing_s1688") ||
           absl::StartsWith(kernel_name, "turing_fp16_i1688") ||
           absl::StartsWith(kernel_name, "turing_fp16_h1688") ||
-          absl::StartsWith(kernel_name, "turing_fp16_s1688"));
+          absl::StartsWith(kernel_name, "turing_fp16_s1688") ||
+          absl::StrContains(kernel_name, "hmma") ||
+          absl::StrContains(kernel_name, "xmma"));
 }
 
 // This list is not exhaustive.

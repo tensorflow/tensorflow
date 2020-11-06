@@ -1074,8 +1074,7 @@ ShapeUtil::InsertedOrDeleted1SizedDimensions(const Shape& shape_pre,
     }
   }
 
-  return std::make_tuple(!deleted_indices.empty() || !inserted_indices.empty(),
-                         deleted_indices, inserted_indices);
+  return std::make_tuple(true, deleted_indices, inserted_indices);
 }
 
 /* static */ std::vector<std::pair<int64, int64>>
@@ -1622,6 +1621,16 @@ static Shape MergeDimensions(absl::Span<const size_t> segs,
   }
 
   return absl::nullopt;
+}
+
+Shape ShapeUtil::DeviceShapeToHostShape(Shape s) {
+  ForEachMutableSubshape(&s, [](Shape* subshape, const ShapeIndex& index) {
+    if (subshape->IsArray()) {
+      subshape->mutable_layout()->clear_tiles();
+      subshape->mutable_layout()->set_memory_space(Layout::kDefaultMemorySpace);
+    }
+  });
+  return s;
 }
 
 }  // namespace xla

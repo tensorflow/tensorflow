@@ -139,7 +139,6 @@ cuda_py_test(
         "no_pip",
         "no_windows",  # b/168218876
     ],
-    tfrt_enabled = True,
     deps = [
         ":_unified_api",
         ":context_stack",

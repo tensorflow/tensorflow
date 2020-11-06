@@ -50,9 +50,21 @@ namespace data {
 
 namespace {
 // The name of the journal directory inside the dispatcher's working directory.
+// This name is load-bearing; do not change.
 constexpr char kJournalDir[] = "tf_data_dispatcher_journal";
 // The name of the datasets directory inside the dispatcher's working directory.
 constexpr char kDatasetsDir[] = "datasets";
+
+constexpr std::array<const char*, 8> kNodeNameSharingOps = {
+    "HashTable",
+    "HashTableV2",
+    "MutableHashTable",
+    "MutableHashTableV2",
+    "MutableDenseHashTable",
+    "MutableDenseHashTableV2",
+    "MutableHashTableOfTensors",
+    "MutableHashTableOfTensorsV2",
+};
 
 using Dataset = DispatcherState::Dataset;
 using Worker = DispatcherState::Worker;
@@ -82,6 +94,23 @@ Status CreateWorkerStub(const std::string& address, const std::string& protocol,
   auto channel = ::grpc::CreateCustomChannel(address, credentials, args);
   stub = WorkerService::NewStub(channel);
   return Status::OK();
+}
+
+void PrepareGraph(GraphDef* graph) {
+  for (NodeDef& node : *graph->mutable_node()) {
+    for (const auto& op : kNodeNameSharingOps) {
+      // Set `use_node_name_sharing` to `true` so that resources aren't deleted
+      // prematurely. Otherwise, resources may be deleted when their ops are
+      // deleted at the end of the GraphRunner::Run used by standalone::Dataset.
+      if (node.op() == op) {
+        (*node.mutable_attr())["use_node_name_sharing"].set_b(true);
+      }
+      if (!node.device().empty()) {
+        *node.mutable_device() = "";
+      }
+    }
+  }
+  StripDevicePlacement(graph->mutable_library());
 }
 }  // namespace
 
@@ -144,7 +173,8 @@ Status DataServiceDispatcherImpl::Start() {
   }
   for (const auto& job : state_.ListJobs()) {
     if (job->processing_mode == ProcessingMode::DISTRIBUTED_EPOCH) {
-      TF_RETURN_IF_ERROR(MakeDistributedEpochJob(job->job_id, job->dataset_id));
+      TF_RETURN_IF_ERROR(
+          RestoreSplitProvider(*job, split_providers_[job->job_id]));
     }
   }
   // Initialize the journal writer in `Start` so that we fail fast in case it
@@ -154,16 +184,21 @@ Status DataServiceDispatcherImpl::Start() {
   return Status::OK();
 }
 
-Status DataServiceDispatcherImpl::MakeDistributedEpochJob(int64 job_id,
-                                                          int64 dataset_id)
+Status DataServiceDispatcherImpl::RestoreSplitProvider(
+    const Job& job, std::unique_ptr<SplitProvider>& restored)
     EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  std::unique_ptr<DistributedEpochJob>& distributed_epoch_job =
-      distributed_epoch_jobs_[job_id];
-  DCHECK(!distributed_epoch_job);
+  int64 index = job.distributed_epoch_state.value().split_provider_index;
+  VLOG(1) << "Restoring split provider for job " << job.job_id << " to index "
+          << index;
   std::unique_ptr<SplitProvider> split_provider;
-  TF_RETURN_IF_ERROR(MakeSplitProvider(dataset_id, split_provider));
-  distributed_epoch_job = absl::make_unique<DistributedEpochJob>(
-      job_id, dataset_id, std::move(split_provider));
+  TF_RETURN_IF_ERROR(MakeSplitProvider(job.dataset_id, split_provider));
+  Tensor unused_tensor;
+  bool unused_end_of_splits;
+  for (int i = 0; i < index; ++i) {
+    TF_RETURN_IF_ERROR(
+        split_provider->GetNext(&unused_tensor, &unused_end_of_splits));
+  }
+  restored = std::move(split_provider);
   return Status::OK();
 }
 
@@ -269,26 +304,38 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
   mutex_lock l(mu_);
   int64 job_id = request->job_id();
   int64 repetition = request->repetition();
-  std::unique_ptr<DistributedEpochJob>& distributed_epoch_job =
-      distributed_epoch_jobs_[job_id];
-  if (!distributed_epoch_job) {
-    return errors::NotFound("distributed_epoch_job id not found: ", job_id);
+  VLOG(3) << "Received GetSplit request for job " << job_id << ", repetition "
+          << repetition;
+  std::shared_ptr<const Job> job;
+  TF_RETURN_IF_ERROR(state_.JobFromId(job_id, job));
+  if (!job->distributed_epoch_state.has_value()) {
+    return errors::FailedPrecondition(
+        "Cannot get split for job ", job_id,
+        ", since it is not a distributed_epoch job.");
   }
-  std::unique_ptr<SplitProvider>& split_provider =
-      distributed_epoch_job->split_providers[repetition];
-  if (!split_provider) {
-    VLOG(1) << "Creating split provider for job "
-            << distributed_epoch_job->job_id << " repetition " << repetition;
-    TF_RETURN_IF_ERROR(
-        MakeSplitProvider(distributed_epoch_job->dataset_id, split_provider));
+  int64 current_repetition = job->distributed_epoch_state.value().repetition;
+  if (repetition < current_repetition) {
+    response->set_end_of_splits(true);
+    VLOG(3) << "Returning end_of_splits since current reptition "
+            << current_repetition << " is greater than the requested reptition "
+            << repetition;
+    return Status::OK();
   }
+  SplitProvider* split_provider = split_providers_[job_id].get();
+  DCHECK(split_provider != nullptr);
   Tensor split;
   bool end_of_splits = false;
   TF_RETURN_IF_ERROR(split_provider->GetNext(&split, &end_of_splits));
+  TF_RETURN_IF_ERROR(RecordSplitProduced(job_id, repetition, end_of_splits));
   response->set_end_of_splits(end_of_splits);
-  if (!end_of_splits) {
+  if (end_of_splits) {
+    // Create a new split provider for the next repetition.
+    TF_RETURN_IF_ERROR(
+        MakeSplitProvider(job->dataset_id, split_providers_[job_id]));
+  } else {
     split.AsProtoTensorContent(response->mutable_split());
   }
+  VLOG(3) << "Returning from GetSplit, end_of_splits=" << end_of_splits;
   return Status::OK();
 }
 
@@ -312,14 +359,17 @@ Status DataServiceDispatcherImpl::GetOrRegisterDataset(
     GetOrRegisterDatasetResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
   uint64 fingerprint;
-  const GraphDef& graph = request->dataset().graph();
-  TF_RETURN_IF_ERROR(HashGraph(graph, &fingerprint));
+  DatasetDef dataset_def = request->dataset();
+  GraphDef* graph = dataset_def.mutable_graph();
+  PrepareGraph(graph);
+  TF_RETURN_IF_ERROR(HashGraph(*graph, &fingerprint));
+
   mutex_lock l(mu_);
 #if defined(PLATFORM_GOOGLE)
   VLOG_LINES(4,
-             absl::StrCat("Registering dataset graph: ", graph.DebugString()));
+             absl::StrCat("Registering dataset graph: ", graph->DebugString()));
 #else
-  VLOG(4) << "Registering dataset graph: " << graph.DebugString();
+  VLOG(4) << "Registering dataset graph: " << graph->DebugString();
 #endif
   std::shared_ptr<const Dataset> dataset;
   Status s = state_.DatasetFromFingerprint(fingerprint, dataset);
@@ -334,7 +384,7 @@ Status DataServiceDispatcherImpl::GetOrRegisterDataset(
   }
 
   int64 id;
-  TF_RETURN_IF_ERROR(RegisterDataset(fingerprint, request->dataset(), id));
+  TF_RETURN_IF_ERROR(RegisterDataset(fingerprint, dataset_def, id));
   response->set_dataset_id(id);
   VLOG(3) << "Registered new dataset with id " << id;
   return Status::OK();
@@ -467,7 +517,7 @@ Status DataServiceDispatcherImpl::CreateJob(
   }
   int64 job_id = state_.NextAvailableJobId();
   if (processing_mode == ProcessingMode::DISTRIBUTED_EPOCH) {
-    TF_RETURN_IF_ERROR(MakeDistributedEpochJob(job_id, dataset_id));
+    TF_RETURN_IF_ERROR(MakeSplitProvider(dataset_id, split_providers_[job_id]));
   }
   Update update;
   CreateJobUpdate* create_job = update.mutable_create_job();
@@ -623,7 +673,14 @@ Status DataServiceDispatcherImpl::GetTasks(const GetTasksRequest* request,
   mutex_lock l(mu_);
   VLOG(3) << "Looking up tasks for job client id " << request->job_client_id();
   std::shared_ptr<const Job> job;
-  TF_RETURN_IF_ERROR(state_.JobForJobClientId(request->job_client_id(), job));
+  Status s = state_.JobForJobClientId(request->job_client_id(), job);
+  if (errors::IsNotFound(s) && !config_.fault_tolerant_mode()) {
+    return errors::NotFound(
+        "Unknown job client id ", request->job_client_id(),
+        ". The dispatcher is not configured to be fault tolerant, so this "
+        "could be caused by a dispatcher restart.");
+  }
+  TF_RETURN_IF_ERROR(s);
   std::vector<std::shared_ptr<const Task>> tasks;
   TF_RETURN_IF_ERROR(state_.TasksForJob(job->job_id, tasks));
   for (const auto& task : tasks) {
@@ -659,6 +716,18 @@ Status DataServiceDispatcherImpl::CheckStarted() LOCKS_EXCLUDED(mu_) {
     return errors::Unavailable("Dispatcher has not started yet.");
   }
   return Status::OK();
+}
+
+Status DataServiceDispatcherImpl::RecordSplitProduced(int64 job_id,
+                                                      int64 repetition,
+                                                      bool finished)
+    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  Update update;
+  ProduceSplitUpdate* produce_split = update.mutable_produce_split();
+  produce_split->set_job_id(job_id);
+  produce_split->set_repetition(repetition);
+  produce_split->set_finished(finished);
+  return Apply(update);
 }
 
 Status DataServiceDispatcherImpl::ApplyWithoutJournaling(const Update& update)

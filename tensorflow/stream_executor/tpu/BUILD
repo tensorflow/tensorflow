@@ -3,7 +3,10 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = ["//tensorflow/core/tpu:__subpackages__"],
+    default_visibility = [
+        "//learning/brain/experimental/dtensor:__subpackages__",
+        "//tensorflow/core/tpu:__subpackages__",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -65,16 +68,6 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
-    name = "tpu_node_context_c_api_hdrs",
-    hdrs = ["tpu_node_context_c_api.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":c_api_decl",
-        "//tensorflow/core/tpu:libtftpu_header",
     ],
 )
 
@@ -192,7 +185,6 @@ cc_library(
     deps = [
         ":status_helper",
         ":tpu_executor_c_api_hdrs",
-        ":tpu_node_context_c_api_hdrs",
         ":tpu_platform_interface",
         "//tensorflow/compiler/xla/service",
         "//tensorflow/compiler/xla/service:backend",
@@ -201,6 +193,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/tpu:tpu_api",
+        "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/memory",
@@ -290,9 +283,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:lib",
         "//tensorflow/core/tpu:tpu_api",
-        "//tensorflow/core/tpu/kernels:tpu_compile_c_api_hdrs",
-        "//tensorflow/core/tpu/kernels:tpu_execute_c_api_hdrs",
-        "//tensorflow/core/tpu/kernels:tpu_program_c_api_hdrs",
+        "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/stream_executor",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",

@@ -30,7 +30,8 @@ limitations under the License.
 #include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/micro_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/schema/schema_utils.h"
+
+// TODO(b/170464050): Use TFLM test only version of schema_utils.
 
 namespace tflite {
 namespace testing {
@@ -85,8 +86,7 @@ class ModelBuilder {
       : builder_(builder) {}
 
   // Registers an operator that will be used in the model.
-  Operator RegisterOp(BuiltinOperator op, const char* custom_code,
-                      int32_t version);
+  Operator RegisterOp(BuiltinOperator op, const char* custom_code);
 
   // Adds a tensor to the model.
   Tensor AddTensor(TensorType type, std::initializer_list<int32_t> shape) {
@@ -145,11 +145,10 @@ class ModelBuilder {
 };
 
 ModelBuilder::Operator ModelBuilder::RegisterOp(BuiltinOperator op,
-                                                const char* custom_code,
-                                                int32_t version) {
+                                                const char* custom_code) {
   TFLITE_DCHECK(next_operator_code_id_ <= kMaxOperatorCodes);
-  operator_codes_[next_operator_code_id_] =
-      tflite::CreateOperatorCodeDirect(*builder_, op, custom_code, version);
+  operator_codes_[next_operator_code_id_] = tflite::CreateOperatorCodeDirect(
+      *builder_, /*deprecated_builtin_code=*/0, custom_code, /*version=*/0, op);
   next_operator_code_id_++;
   return next_operator_code_id_ - 1;
 }
@@ -206,7 +205,7 @@ const Model* ModelBuilder::BuildModel(
   } else {
     // A non-zero value of num_subgraph_inputs means that some of
     // the operator input tensors are not subgraph inputs.
-    TFLITE_DCHECK(num_subgraph_inputs < inputs.size());
+    TFLITE_DCHECK(num_subgraph_inputs <= inputs.size());
   }
 
   const flatbuffers::Offset<SubGraph> subgraphs[subgraphs_size] = {
@@ -261,7 +260,7 @@ const Model* BuildSimpleStatefulModel() {
   ModelBuilder model_builder(fb_builder);
 
   const int op_id =
-      model_builder.RegisterOp(BuiltinOperator_CUSTOM, "simple_stateful_op", 0);
+      model_builder.RegisterOp(BuiltinOperator_CUSTOM, "simple_stateful_op");
   const int input_tensor = model_builder.AddTensor(TensorType_UINT8, {3});
   const int median_tensor = model_builder.AddTensor(TensorType_UINT8, {3});
   const int invoke_count_tensor =
@@ -302,8 +301,7 @@ const Model* BuildSimpleModelWithBranch() {
                  v
   */
   const int op_id =
-      model_builder.RegisterOp(BuiltinOperator_CUSTOM, "mock_custom",
-                               /* version= */ 0);
+      model_builder.RegisterOp(BuiltinOperator_CUSTOM, "mock_custom");
   const int t0 = model_builder.AddTensor(TensorType_FLOAT32, {2, 2, 3});
   const int t1 = model_builder.AddTensor(TensorType_FLOAT32, {2, 2, 3});
   const int t2 = model_builder.AddTensor(TensorType_FLOAT32, {2, 2, 3});
@@ -325,8 +323,7 @@ const Model* BuildModelWithOfflinePlanning(int number_of_tensors,
   ModelBuilder model_builder(fb_builder);
 
   const int op_id =
-      model_builder.RegisterOp(BuiltinOperator_CUSTOM, "mock_custom",
-                               /* version= */ 0);
+      model_builder.RegisterOp(BuiltinOperator_CUSTOM, "mock_custom");
 
   for (int i = 0; i < number_of_tensors; ++i) {
     model_builder.AddTensor(TensorType_FLOAT32, {2, 2, 3});
@@ -407,8 +404,9 @@ const Model* BuildSimpleMockModel() {
                      builder->CreateString("test_subgraph"))};
   constexpr size_t operator_codes_size = 1;
   const Offset<OperatorCode> operator_codes[operator_codes_size] = {
-      CreateOperatorCodeDirect(*builder, BuiltinOperator_CUSTOM, "mock_custom",
-                               0)};
+      CreateOperatorCodeDirect(*builder, /*deprecated_builtin_code=*/0,
+                               "mock_custom",
+                               /*version=*/0, BuiltinOperator_CUSTOM)};
   const Offset<Model> model_offset = CreateModel(
       *builder, 0, builder->CreateVector(operator_codes, operator_codes_size),
       builder->CreateVector(subgraphs, subgraphs_size),
@@ -556,8 +554,9 @@ const Model* BuildComplexMockModel() {
 
   constexpr size_t operator_codes_size = 1;
   const Offset<OperatorCode> operator_codes[operator_codes_size] = {
-      CreateOperatorCodeDirect(*builder, BuiltinOperator_CUSTOM, "mock_custom",
-                               0)};
+      CreateOperatorCodeDirect(*builder, /*deprecated_builtin_code=*/0,
+                               "mock_custom",
+                               /*version=*/0, BuiltinOperator_CUSTOM)};
 
   const Offset<Model> model_offset = CreateModel(
       *builder, 0, builder->CreateVector(operator_codes, operator_codes_size),
@@ -870,101 +869,17 @@ TfLiteFloatArray* FloatArrayFromFloats(const float* floats) {
   return reinterpret_cast<TfLiteFloatArray*>(const_cast<float*>(floats));
 }
 
-TfLiteTensor CreateTensor(TfLiteIntArray* dims, bool is_variable) {
-  TfLiteTensor result;
-  result.dims = dims;
-  result.params = {};
-  result.quantization = {kTfLiteNoQuantization, nullptr};
-  result.is_variable = is_variable;
-  result.allocation_type = kTfLiteMemNone;
-  return result;
-}
-
-TfLiteTensor CreateFloatTensor(const float* data, TfLiteIntArray* dims,
-                               bool is_variable) {
-  TfLiteTensor result = CreateTensor(dims, is_variable);
-  result.type = kTfLiteFloat32;
-  result.data.f = const_cast<float*>(data);
-  result.bytes = ElementCount(*dims) * sizeof(float);
-  return result;
-}
-
-void PopulateFloatTensor(TfLiteTensor* tensor, float* begin, float* end) {
-  float* p = begin;
-  float* v = tensor->data.f;
-  while (p != end) {
-    *v++ = *p++;
-  }
-}
-
-TfLiteTensor CreateBoolTensor(const bool* data, TfLiteIntArray* dims,
-                              bool is_variable) {
-  TfLiteTensor result = CreateTensor(dims, is_variable);
-  result.type = kTfLiteBool;
-  result.data.b = const_cast<bool*>(data);
-  result.bytes = ElementCount(*dims) * sizeof(bool);
-  return result;
-}
-
-TfLiteTensor CreateInt32Tensor(const int32_t* data, TfLiteIntArray* dims,
-                               bool is_variable) {
-  TfLiteTensor result = CreateTensor(dims, is_variable);
-  result.type = kTfLiteInt32;
-  result.data.i32 = const_cast<int32_t*>(data);
-  result.bytes = ElementCount(*dims) * sizeof(int32_t);
-  return result;
-}
-
-TfLiteTensor CreateQuantizedTensor(const uint8_t* data, TfLiteIntArray* dims,
-                                   float scale, int zero_point,
-                                   bool is_variable) {
-  TfLiteTensor result = CreateTensor(dims, is_variable);
-  result.type = kTfLiteUInt8;
-  result.data.uint8 = const_cast<uint8_t*>(data);
-  result.params = {scale, zero_point};
-  result.quantization = {kTfLiteAffineQuantization, nullptr};
-  result.bytes = ElementCount(*dims) * sizeof(uint8_t);
-  return result;
-}
-
-TfLiteTensor CreateQuantizedTensor(const int8_t* data, TfLiteIntArray* dims,
-                                   float scale, int zero_point,
-                                   bool is_variable) {
-  TfLiteTensor result = CreateTensor(dims, is_variable);
-  result.type = kTfLiteInt8;
-  result.data.int8 = const_cast<int8_t*>(data);
-  result.params = {scale, zero_point};
-  result.quantization = {kTfLiteAffineQuantization, nullptr};
-  result.bytes = ElementCount(*dims) * sizeof(int8_t);
-  return result;
-}
-
-TfLiteTensor CreateQuantizedTensor(const int16_t* data, TfLiteIntArray* dims,
-                                   float scale, int zero_point,
-                                   bool is_variable) {
-  TfLiteTensor result = CreateTensor(dims, is_variable);
-  result.type = kTfLiteInt16;
-  result.data.i16 = const_cast<int16_t*>(data);
-  result.params = {scale, zero_point};
-  result.quantization = {kTfLiteAffineQuantization, nullptr};
-  result.bytes = ElementCount(*dims) * sizeof(int16_t);
-  return result;
-}
-
 TfLiteTensor CreateQuantizedBiasTensor(const float* data, int32_t* quantized,
                                        TfLiteIntArray* dims, float input_scale,
                                        float weights_scale, bool is_variable) {
   float bias_scale = input_scale * weights_scale;
   tflite::SymmetricQuantize(data, quantized, ElementCount(*dims), bias_scale);
-  TfLiteTensor result = CreateTensor(dims, is_variable);
-  result.type = kTfLiteInt32;
-  result.data.i32 = const_cast<int32_t*>(quantized);
+
   // Quantized int32_t tensors always have a zero point of 0, since the range of
   // int32_t values is large, and because zero point costs extra cycles during
   // processing.
-  result.params = {bias_scale, 0};
-  result.quantization = {kTfLiteAffineQuantization, nullptr};
-  result.bytes = ElementCount(*dims) * sizeof(int32_t);
+  TfLiteTensor result =
+      CreateQuantizedTensor(quantized, dims, bias_scale, 0, is_variable);
   return result;
 }
 
@@ -986,18 +901,15 @@ TfLiteTensor CreatePerChannelQuantizedBiasTensor(
     zero_points[i + 1] = 0;
   }
 
-  SymmetricPerChannelQuantize(input, quantized, input_size, num_channels,
-                              scales_array);
+  SymmetricPerChannelQuantize<int32_t>(input, quantized, input_size,
+                                       num_channels, scales_array);
 
   affine_quant->scale = FloatArrayFromFloats(scales);
   affine_quant->zero_point = IntArrayFromInts(zero_points);
   affine_quant->quantized_dimension = quantized_dimension;
 
-  TfLiteTensor result = CreateTensor(dims, is_variable);
-  result.type = kTfLiteInt32;
-  result.data.i32 = const_cast<int32_t*>(quantized);
+  TfLiteTensor result = CreateTensor(quantized, dims, is_variable);
   result.quantization = {kTfLiteAffineQuantization, affine_quant};
-  result.bytes = ElementCount(*dims) * sizeof(int32_t);
   return result;
 }
 
@@ -1020,11 +932,8 @@ TfLiteTensor CreateSymmetricPerChannelQuantizedTensor(
   affine_quant->zero_point = IntArrayFromInts(zero_points);
   affine_quant->quantized_dimension = quantized_dimension;
 
-  TfLiteTensor result = CreateTensor(dims, is_variable);
-  result.type = kTfLiteInt8;
-  result.data.int8 = const_cast<int8_t*>(quantized);
+  TfLiteTensor result = CreateTensor(quantized, dims, is_variable);
   result.quantization = {kTfLiteAffineQuantization, affine_quant};
-  result.bytes = ElementCount(*dims) * sizeof(int8_t);
   return result;
 }
 

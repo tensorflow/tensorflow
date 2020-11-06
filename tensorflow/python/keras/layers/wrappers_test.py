@@ -37,7 +37,6 @@ from tensorflow.python.keras.layers.rnn_cell_wrapper_v2 import ResidualWrapper
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
@@ -1205,7 +1204,7 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       if merge_mode == 'ave':
         merge_func = lambda y, y_rev: (y + y_rev) / 2
       elif merge_mode == 'concat':
-        merge_func = lambda y, y_rev: ragged_concat_ops.concat(
+        merge_func = lambda y, y_rev: array_ops.concat(
             (y, y_rev), axis=-1)
       elif merge_mode == 'mul':
         merge_func = lambda y, y_rev: (y * y_rev)

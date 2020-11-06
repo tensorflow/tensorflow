@@ -1,12 +1,12 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("//tensorflow:tensorflow.bzl", "if_not_android", "tf_cc_test", "tf_cuda_library")
-
-# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_pybind_cc_library_wrapper")
+load(
+    "//tensorflow/core/profiler/builds:build_config.bzl",
+    "tf_profiler_copts",
+    "tf_profiler_pybind_cc_library_wrapper",
+)
 
 package(
     default_visibility = [
@@ -16,13 +16,10 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-tf_pybind_cc_library_wrapper(
-    name = "profiler_session_headers",
-    visibility = [
-        "//tensorflow/core/profiler/rpc:__pkg__",
-        "//tensorflow/python/profiler/internal:__pkg__",
-    ],
-    deps = [":profiler_session"],
+tf_profiler_pybind_cc_library_wrapper(
+    name = "profiler_session_for_pybind",
+    actual = ":profiler_session",
+    visibility = ["//tensorflow/python/profiler/internal:__pkg__"],
 )
 
 cc_library(
@@ -46,6 +43,7 @@ cc_library(
         "profiler_session.cc",
         "profiler_session.h",
     ],
+    copts = tf_profiler_copts(),
     visibility = [
         "//tensorflow/core/profiler:__pkg__",
         "//tensorflow/python:__pkg__",
@@ -57,6 +55,7 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/time",
         "//tensorflow/core:protos_all_cc",
     ] + if_not_android([
         ":profiler_lock",
@@ -67,57 +66,6 @@ cc_library(
         "//tensorflow/core/profiler/utils:xplane_utils",
         "//tensorflow/core/profiler/utils:xplane_schema",
     ]),
-    alwayslink = True,
-)
-
-tf_pybind_cc_library_wrapper(
-    name = "local_profiler_headers",
-    visibility = [
-        "//tensorflow/core/profiler/rpc:__pkg__",
-        "//tensorflow/python/profiler/internal:__pkg__",
-    ],
-    deps = [":local_profiler"],
-)
-
-cc_library(
-    name = "local_profiler",
-    hdrs = ["local_profiler.h"],
-    visibility = ["//tensorflow/core/profiler:internal"],
-    deps = [
-        "@com_google_absl//absl/memory",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform",
-        "//tensorflow/core/profiler:profiler_options_proto_cc",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        ":profiler_interface",
-    ] + if_static([
-        ":local_profiler_impl",
-    ]),
-)
-
-cc_library(
-    name = "local_profiler_impl",
-    srcs = ["local_profiler.cc"],
-    hdrs = ["local_profiler.h"],
-    visibility = ["//tensorflow/core/profiler:internal"],
-    deps = [
-        ":profiler_interface",
-        ":profiler_lock",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform",
-        "//tensorflow/core/profiler:profiler_options_proto_cc",
-        "//tensorflow/core/profiler/convert:post_process_single_host_xplane",
-        "//tensorflow/core/profiler/lib:profiler_factory",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/core/profiler/utils:derived_timeline",
-        "//tensorflow/core/profiler/utils:group_events",
-        "//tensorflow/core/profiler/utils:xplane_schema",
-        "//tensorflow/core/profiler/utils:xplane_utils",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/time",
-    ],
     alwayslink = True,
 )
 
@@ -138,6 +86,7 @@ cc_library(
         "profiler_factory.cc",
         "profiler_factory.h",
     ],
+    copts = tf_profiler_copts(),
     visibility = [
         "//tensorflow/core/profiler:__pkg__",
     ],
@@ -152,6 +101,7 @@ cc_library(
 cc_library(
     name = "profiler_interface",
     hdrs = ["profiler_interface.h"],
+    copts = tf_profiler_copts(),
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -178,10 +128,10 @@ tf_cuda_library(
     alwayslink = True,
 )
 
-tf_pybind_cc_library_wrapper(
-    name = "traceme_headers",
+tf_profiler_pybind_cc_library_wrapper(
+    name = "traceme_for_pybind",
+    actual = ":traceme",
     visibility = ["//tensorflow/python/profiler/internal:__pkg__"],
-    deps = [":traceme"],
 )
 
 cc_library(
@@ -278,6 +228,7 @@ cc_library(
     name = "profiler_lock",
     srcs = ["profiler_lock.cc"],
     hdrs = ["profiler_lock.h"],
+    copts = tf_profiler_copts(),
     visibility = ["//tensorflow/core/profiler:internal"],
 )
 

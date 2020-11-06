@@ -49,6 +49,7 @@ py_library(
     deps = [
         "//tensorflow/python:lib",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
         "//tensorflow/python:saver",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python/eager:def_function",
@@ -57,7 +58,8 @@ py_library(
         "//tensorflow/python/keras:optimizers",
         "//tensorflow/python/keras:regularizers",
         "//tensorflow/python/keras/engine:input_spec",
-        "//tensorflow/python/keras/mixed_precision/experimental:autocast_variable",
+        "//tensorflow/python/keras/mixed_precision:autocast_variable",
+        "//tensorflow/python/keras/protobuf:saved_metadata_proto_py",
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:metrics_utils",
         "//tensorflow/python/keras/utils:mode_keys",
@@ -73,6 +75,9 @@ tf_py_test(
     srcs = ["metrics_serialization_test.py"],
     python_version = "PY3",
     shard_count = 8,
+    tags = [
+        "notsan",  # TODO(b/170870790)
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -206,8 +211,8 @@ tf_py_test(
     size = "small",
     srcs = ["saved_model/json_utils_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
+        ":saving",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",

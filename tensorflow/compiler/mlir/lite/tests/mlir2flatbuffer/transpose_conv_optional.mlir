@@ -4,8 +4,9 @@ func @main(%arg0: tensor<4xi32>, %arg1: tensor<32x4x4x128xf32>, %arg2: tensor<1x
 // CHECK: {
 // CHECK-NEXT:  version: 3,
 // CHECK-NEXT:  operator_codes: [ {
-// CHECK-NEXT:    builtin_code: TRANSPOSE_CONV,
-// CHECK-NEXT:    version: 1
+// CHECK-NEXT:    deprecated_builtin_code: 67,
+// CHECK-NEXT:    version: 1,
+// CHECK-NEXT:    builtin_code: TRANSPOSE_CONV
 // CHECK-NEXT:  } ],
 // CHECK-NEXT:  subgraphs: [ {
 // CHECK-NEXT:    tensors: [ {
@@ -69,6 +70,7 @@ func @main(%arg0: tensor<4xi32>, %arg1: tensor<32x4x4x128xf32>, %arg2: tensor<1x
 // CHECK-NEXT:    name: "min_runtime_version",
 // CHECK-NEXT:    buffer: 5
 // CHECK-NEXT:  } ]
+// CHECK-NEXT:  signature_defs: [ ]
 // CHECK-NEXT:}
 
   %cst = constant unit

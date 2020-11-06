@@ -62,7 +62,7 @@ def smart_resize(x, size, interpolation='bilinear'):
 
   You could simply do:
 
-  ````python
+  ```python
   size = (200, 200)
   ds = ds.map(lambda img: tf.image.resize(img, size))
   ```

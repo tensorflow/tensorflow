@@ -73,9 +73,10 @@ ifeq ($(HOST_OS),windows)
 CXXFLAGS += -fext-numeric-literals -D__LITTLE_ENDIAN__
 endif
 
-ifeq ($(HOST_ARCH),x86_64)
-  ifeq ($(HOST_OS),linux)
+ifeq ($(TARGET_ARCH),x86_64)
+  ifeq ($(TARGET),linux)
     CXXFLAGS += -DTFLITE_HAVE_CPUINFO
+    TFLITE_HAVE_CPUINFO := true
   endif
 endif
 
@@ -138,13 +139,16 @@ $(wildcard tensorflow/lite/core/*.cc) \
 $(wildcard tensorflow/lite/core/api/*.cc) \
 $(wildcard tensorflow/lite/experimental/resource/*.cc) \
 $(wildcard tensorflow/lite/schema/schema_utils.cc) \
-$(wildcard tensorflow/lite/tools/make/downloads/ruy/ruy/*.cc) \
+$(wildcard tensorflow/lite/tools/make/downloads/ruy/ruy/*.cc)
+ifeq ($(TFLITE_HAVE_CPUINFO),true)
+CORE_CC_ALL_SRCS += \
 $(wildcard tensorflow/lite/tools/make/downloads/cpuinfo/src/*.c) \
 $(wildcard tensorflow/lite/tools/make/downloads/cpuinfo/src/x86/*.c) \
 $(wildcard tensorflow/lite/tools/make/downloads/cpuinfo/src/x86/linux/*.c) \
 $(wildcard tensorflow/lite/tools/make/downloads/cpuinfo/src/x86/cache/*.c) \
 $(wildcard tensorflow/lite/tools/make/downloads/cpuinfo/src/linux/*.c) \
 $(wildcard tensorflow/lite/tools/make/downloads/cpuinfo/deps/clog/src/*.c)
+endif
 ifneq ($(BUILD_TYPE),micro)
 CORE_CC_ALL_SRCS += \
 $(wildcard tensorflow/lite/kernels/*.cc) \

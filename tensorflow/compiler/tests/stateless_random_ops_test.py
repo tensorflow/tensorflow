@@ -51,7 +51,7 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
     scenarios (e.g. TPU). The new version of stateless_random_* requires the
     intermediate tensor `alg` to be compile-time constant, so we need to check
     that this requirement is met. We use xla.compile instead of tf.function's
-    experimental_compile because the latter doesn't throw an error even if the
+    jit_compile because the latter doesn't throw an error even if the
     compile-time-constant constraint is not met.
     """
     if config.list_logical_devices('TPU'):

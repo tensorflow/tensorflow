@@ -33,13 +33,13 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/selectors/operation_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/special_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/storage_type_util.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/add_bias.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/merge_padding_with.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
@@ -153,7 +153,7 @@ CLNode& CLNode::operator=(CLNode&& node) {
 
 absl::Status InferenceContext::InitFromGraph(
     const CreateInferenceInfo& create_info, const GraphFloat32& graph,
-    Environment* env) {
+    Environment* env, std::vector<uint8_t>* serialized_model) {
   CreationContext creation_context;
   creation_context.device = env->GetDevicePtr();
   creation_context.context = &env->context();
@@ -182,10 +182,6 @@ absl::Status InferenceContext::InitFromGraph(
   RETURN_IF_ERROR(Compile(creation_context));
   RETURN_IF_ERROR(UpdateParams());
 
-  for (auto& node : nodes_) {
-    node.operation->args_.ReleaseCPURepresentation();
-  }
-
   TuningParameters tuning_parameters;
   tuning_parameters.queue = env->profiling_queue();
   tuning_parameters.info = &env->device().info_;
@@ -201,14 +197,63 @@ absl::Status InferenceContext::InitFromGraph(
     }
   }
   RETURN_IF_ERROR(Tune(tuning_parameters));
+
+  if (serialized_model) {
+    // Temporary, will be resolved later, now we don't have complete
+    // intermediate representation
+    for (auto& node : nodes_) {
+      node.operation->MoveObjectRefsFromCLToGeneric();
+      node.operation->SyncScalarValues();
+    }
+    flatbuffers::FlatBufferBuilder builder;
+    auto encoded_fb = Encode(*this, &builder);
+    data::FinishInferenceContextBuffer(builder, encoded_fb);
+    serialized_model->resize(builder.GetSize());
+    std::memcpy(serialized_model->data(), builder.GetBufferPointer(),
+                builder.GetSize());
+    for (auto& node : nodes_) {
+      node.operation->MoveObjectRefsFromGenericToCL();
+    }
+  }
+  for (auto& node : nodes_) {
+    node.operation->args_.ReleaseCPURepresentation();
+  }
+  return absl::OkStatus();
+}
+
+absl::Status InferenceContext::RestoreDeserialized(
+    const std::vector<uint8_t>& serialized_model, Environment* env) {
+  flatbuffers::Verifier verifier(serialized_model.data(),
+                                 serialized_model.size());
+  if (!data::VerifyInferenceContextBuffer(verifier)) {
+    return absl::DataLossError("Deserialization failed.");
+  }
+  auto decoded_fb = data::GetInferenceContext(serialized_model.data());
+  RETURN_IF_ERROR(Decode(decoded_fb, this));
+
+  CreationContext creation_context;
+  creation_context.device = env->GetDevicePtr();
+  creation_context.context = &env->context();
+  creation_context.queue = env->queue();
+  creation_context.cache = env->program_cache();
+
+  RETURN_IF_ERROR(AllocateMemory(creation_context.context));
+  BindMemoryToOperations();
+  for (auto& node : nodes_) {
+    RETURN_IF_ERROR(node.operation->CompileDeserialized(creation_context));
+  }
+  RETURN_IF_ERROR(UpdateParams());
+  for (auto& node : nodes_) {
+    node.operation->args_.ReleaseCPURepresentation();
+  }
   return absl::OkStatus();
 }
 
 absl::Status InferenceContext::InitFromGraphWithTransforms(
     const CreateInferenceInfo& create_info, GraphFloat32* graph,
-    Environment* env) {
+    Environment* env, std::vector<uint8_t>* serialized_model) {
   RETURN_IF_ERROR(RunGraphTransforms(graph));
-  RETURN_IF_ERROR(InitFromGraph(create_info, *graph, env));
+  RETURN_IF_ERROR(InitFromGraph(create_info, *graph, env, serialized_model));
   return absl::OkStatus();
 }
 
@@ -226,6 +271,15 @@ void InferenceContext::CopyInAndOutIds(const GraphFloat32& graph) {
   const auto outputs = graph.outputs();
   for (const auto& output : outputs) {
     output_ids_.push_back(output->id);
+  }
+
+  in_refs_.resize(inputs.size());
+  out_refs_.resize(outputs.size());
+  for (int i = 0; i < inputs.size(); ++i) {
+    in_refs_[i] = inputs[i]->tensor.ref;
+  }
+  for (int i = 0; i < outputs.size(); ++i) {
+    out_refs_[i] = outputs[i]->tensor.ref;
   }
 }
 

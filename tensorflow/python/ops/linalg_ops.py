@@ -151,6 +151,9 @@ def matrix_triangular_solve(matrix, rhs, lower=True, adjoint=False, name=None):
 def cholesky_solve(chol, rhs, name=None):
   """Solves systems of linear eqns `A X = RHS`, given Cholesky factorizations.
 
+  Specifically, returns `X` from `A X = RHS`, where `A = L L^T`, `L` is the
+  `chol` arg and `RHS` is the `rhs` arg.
+
   ```python
   # Solve 10 separate 2x2 linear systems:
   A = ... # shape 10 x 2 x 2

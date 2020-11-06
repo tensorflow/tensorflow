@@ -178,6 +178,9 @@ An n-way switch statement, implementing the following:
   let verifier = [{
     return Verify(*this);
   }];
+
+  let hasCanonicalizer = 1;
+
 }
 
 // In MLIR, the TensorFlow tensor value is represented as an ElementsAttr, with
@@ -197,10 +200,8 @@ def TF_ConstOp : TF_Op<"Const", [ConstantLike, NoSideEffect,
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 
   let builders = [
-    OpBuilder<
-      "OpBuilder &builder, OperationState &result, Attribute value">,
-    OpBuilder<
-      "OpBuilder &builder, OperationState &result, Type type, Attribute value">,
+    OpBuilderDAG<(ins "Attribute":$value)>,
+    OpBuilderDAG<(ins "Type":$type, "Attribute":$value)>,
   ];
 
   let hasFolder = 1;
@@ -230,6 +231,22 @@ source_target_pairs=`[[0,1],[1,2],[2,3],[3,0]]` gets the outputs:
 
   let results = (outs
     TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_XlaAllReduceOp : TF_Op<"XlaAllReduce", [NoSideEffect, TF_AllTypesMatch<["input", "output"]>]> {
+  let summary = "An Op to reduce inputs across replicated TPU instances.";
+
+  let arguments = (ins
+    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Int32, TF_Uint32]>:$input,
+    TF_Int32Tensor:$group_assignment,
+    TF_AnyStrAttrOf<["Min", "Max", "Mul", "Add", "Mean"]>:$reduce_op
+  );
+
+  let results = (outs
+    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Int32, TF_Uint32]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -386,6 +403,15 @@ else_branch: A region that computes the outputs of the op if cond = false.
   let verifier = [{
     return Verify(*this);
   }];
+
+  let builders = [
+    OpBuilderDAG<(ins "TypeRange":$resultTypes, "ValueRange":$operands,
+      "llvm::ArrayRef<::mlir::NamedAttribute>":$attributes,
+      "unsigned":$numRegions),
+    [{
+      assert(numRegions == 2u && "mismatched number of regions");
+      build($_builder, $_state, resultTypes, operands, attributes);
+    }]>];
 
   let hasCanonicalizer = 1;
 }
@@ -787,7 +813,7 @@ This operation holds the metadata common to operations of a `tpu.replicate()` co
   let results = (outs);
 }
 
-def TF_VarHandleOp : TF_Op<"VarHandleOp", []> {
+def TF_VarHandleOp : TF_Op<"VarHandleOp", [TF_ResourceHandleAllocatorInterface]> {
   let summary = "Creates a handle to a Variable resource from its name.";
 
   let description = [{
@@ -816,6 +842,13 @@ Example:
     TF_DerivedOperandOrResultHandleTypeAttr<"resource">;
   TF_DerivedOperandOrResultHandleShapeAttr shape =
     TF_DerivedOperandOrResultHandleShapeAttr<"resource">;
+
+  let extraClassDeclaration = [{
+    // TF_ResourceHandleAllocatorInterface:
+    ResourceHandleValueAndId GetResourceHandleValueAndId(
+      llvm::SmallDenseMap<ResourceHandle, int64_t> &resource_handle_id_map,
+      int64_t &next_id);
+  }];
 }
 
 // Multiple variadic operands with different sizes are not supported by the
@@ -1116,9 +1149,10 @@ as true/false for a branch condition.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, Value value", [{
-      build(builder, result, RankedTensorType::get({}, builder.getI1Type()),
+  let builders = [
+    OpBuilderDAG<(ins "Value":$value),
+    [{
+      build($_builder, $_state, RankedTensorType::get({}, $_builder.getI1Type()),
             value);
     }]>];
 
@@ -1619,7 +1653,7 @@ event: A string containing a binary-encoded tf.Event proto.
   let results = (outs);
 }
 
-def TF_SummaryWriterOp : TF_Op<"SummaryWriter", []> {
+def TF_SummaryWriterOp : TF_Op<"SummaryWriter", [TF_ResourceHandleAllocatorInterface]> {
   let summary = "Returns a handle to be used to access a summary writer.";
 
   let description = [{
@@ -1637,6 +1671,13 @@ writer: the summary writer resource. Scalar handle.
   let results = (outs
     Res<TF_ResourceTensor, "", [TF_SummaryAlloc]>:$writer
   );
+
+  let extraClassDeclaration = [{
+    // TF_ResourceHandleAllocatorInterface:
+    ResourceHandleValueAndId GetResourceHandleValueAndId(
+      llvm::SmallDenseMap<ResourceHandle, int64_t> &resource_handle_id_map,
+      int64_t &next_id);
+  }];
 }
 
 def TF_WriteAudioSummaryOp : TF_Op<"WriteAudioSummary", []> {
@@ -1907,6 +1948,26 @@ def TF_CacheDatasetV2Op : TF_Op<"CacheDatasetV2", []> {
 
   let results = (outs
     TF_VariantTensor:$handle
+  );
+}
+
+def TF__TPUDeviceOrdinalPlaceholderOp : TF_Op<"_TPUDeviceOrdinalPlaceholder", []> {
+  let summary = [{
+Placeholder device ordinal that represents device ordinal of a replicated op.
+  }];
+
+  let description = [{
+This op can be used when certain rewrite passes materialize ops that require a
+device ordinal of a replicated op but replication logic has been abstracted away
+using tf_device.replicate op. Subsequent rewrite passes must replace this op with
+a constant output that represents the correct device ordinal of the replicated
+operations inside a TPU host.
+  }];
+
+  let arguments = (ins);
+
+  let results = (outs
+    TF_Int64Tensor:$device_ordinal
   );
 }
 

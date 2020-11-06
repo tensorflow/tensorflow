@@ -303,7 +303,7 @@ class CuDNNGRU(_CuDNNRNN):
         'rnn_mode': 'gru',
     }
 
-    outputs, h, _, _, _ = gen_cudnn_rnn_ops.cudnn_rnnv2(**args)
+    outputs, h, _, _, _ = gen_cudnn_rnn_ops.CudnnRNNV2(**args)
 
     if self.stateful or self.return_state:
       h = h[0]

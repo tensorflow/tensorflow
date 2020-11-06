@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
+from tensorflow.core.protobuf.tpu import tpu_embedding_configuration_pb2
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.platform import test
 from tensorflow.python.tpu import tpu_embedding_v2_utils
@@ -86,6 +87,34 @@ class ConfigTest(test.TestCase):
         'initializer=None, optimizer=None, combiner=\'sum\', name=\'table\'), '
         'max_sequence_length=0, name=\'feature\')'
     )
+
+
+class TPUEmbeddingConfigurationTest(test.TestCase):
+
+  def test_no_truncate(self):
+    truncate_length = 14937  # Experimentally maximum string length loggable.
+
+    config = tpu_embedding_configuration_pb2.TPUEmbeddingConfiguration()
+    for i in range(500):
+      td = config.table_descriptor.add()
+      td.name = 'table_{}'.format(i)
+      td.vocabulary_size = i
+    config.num_hosts = 2
+    config.num_tensor_cores = 4
+    config.batch_size_per_tensor_core = 128
+
+    self.assertGreater(
+        len(str(config)), truncate_length,
+        'Test sanity check: generated config should be of truncating length.')
+
+    with self.assertLogs() as logs:
+      tpu_embedding_v2_utils.log_tpu_embedding_configuration(config)
+
+    self.assertIn('table_499', ''.join(logs.output))
+    for line in logs.output:
+      self.assertLess(
+          len(line), truncate_length,
+          'Logging function lines should not be of truncating length.')
 
 
 if __name__ == '__main__':

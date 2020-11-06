@@ -1,3 +1,4 @@
+DOWNLOAD_SCRIPT := $(MAKEFILE_DIR)/download_and_extract.sh
 
 # Reverses a space-separated list of words.
 reverse = $(if $(1),$(call reverse,$(wordlist 2,$(words $(1)),$(1)))) $(firstword $(1))
@@ -37,6 +38,7 @@ substitute_specialized_implementation = \
   $(if $(wildcard $(1)),$(firstword $(wildcard $(dir $(1))$(2)/$(notdir $(1))) $(wildcard $(1))),$(1))
 substitute_specialized_implementations = \
   $(foreach source,$(1),$(call substitute_specialized_implementation,$(source),$(2)))
+
 # Here we're first looking for specialized implementations in ref_dir/$(TAG1)
 # and then ref_dir/$(TAG2), etc, before falling back to ref_dir's
 # implementation.
@@ -45,6 +47,7 @@ substitute_specialized_implementations = \
 define specialize_on_tags
 $(if $(2),$(call substitute_specialized_implementations,$(call specialize_on_tags,$(1),$(wordlist 2,$(words $(2)),$(2))),$(firstword $(2))),$(1))
 endef
+
 # The entry point that most targets should use to find implementation-specific
 # versions of their source files. The only argument is a list of file paths.
 specialize = $(call specialize_on_tags,$(1),$(strip $(call reverse,$(ALL_TAGS))))
@@ -517,7 +520,7 @@ endef
 # 1 - Information about the library, separated by '!'s.
 define create_download_rule
 $(word 3, $(subst !, ,$(1))):
-	tensorflow/lite/micro/tools/make/download_and_extract.sh $(subst !, ,$(1))
+	$(DOWNLOAD_SCRIPT) $(subst !, ,$(1))
 THIRD_PARTY_TARGETS += $(word 3, $(subst !, ,$(1)))
 endef
 

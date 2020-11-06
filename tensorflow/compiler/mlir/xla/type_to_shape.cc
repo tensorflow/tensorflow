@@ -139,7 +139,8 @@ Shape TypeToShape(mlir::Type type) {
       for (const auto& e : llvm::enumerate(strides)) {
         strides_with_indices.push_back({e.value(), e.index()});
       }
-      std::sort(strides_with_indices.begin(), strides_with_indices.end());
+      std::stable_sort(strides_with_indices.begin(),
+                       strides_with_indices.end());
 
       llvm::SmallVector<int64, 4> minor_to_major;
       int64_t stride = 1;
@@ -148,7 +149,7 @@ Shape TypeToShape(mlir::Type type) {
 
         // Either the affine map is not perfectly strided, or the dimensions
         // recovered from strides don't match the actual dimensions in shapes.
-        if (stride != pr.first) return {};
+        if (stride != pr.first && m.getShape()[pr.second] != 1) return {};
 
         stride *= m.getShape()[pr.second];
       }

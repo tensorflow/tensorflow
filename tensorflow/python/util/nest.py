@@ -126,6 +126,19 @@ _is_mutable_mapping = _pywrap_utils.IsMutableMapping
 _is_mapping = _pywrap_utils.IsMapping
 
 
+@tf_export("__internal__.nest.is_attrs", v1=[])
+def is_attrs(obj):
+  """Returns a true if its input is an instance of an attr.s decorated class."""
+  return _is_attrs(obj)
+
+
+@tf_export("__internal__.nest.is_mapping", v1=[])
+def is_mapping(obj):
+  """Returns a true if its input is a collections.Mapping."""
+  return _is_mapping(obj)
+
+
+@tf_export("__internal__.nest.sequence_like", v1=[])
 def _sequence_like(instance, args):
   """Converts the sequence `args` to the same type as `instance`.
 
@@ -587,6 +600,21 @@ def map_structure(func, *structure, **kwargs):
   `structure[i]`.  All structures in `structure` must have the same arity,
   and the return value will contain results with the same structure layout.
 
+  Examples:
+
+  1. A single Python dict:
+
+  >>> a = {"hello": 24, "world": 76}
+  >>> tf.nest.map_structure(lambda p: p * 2, a)
+  {'hello': 48, 'world': 152}
+
+  2. Multiple Python dictionaries:
+
+  >>> d1 = {"hello": 24, "world": 76}
+  >>> d2 = {"hello": 36, "world": 14}
+  >>> tf.nest.map_structure(lambda p1, p2: p1 + p2, d1, d2)
+  {'hello': 60, 'world': 90}
+
   Args:
     func: A callable that accepts as many arguments as there are structures.
     *structure: scalar, or tuple or dict or list of constructed scalars and/or
@@ -879,6 +907,7 @@ def assert_shallow_structure(shallow_tree,
                                expand_composites=expand_composites)
 
 
+@tf_export("__internal__.nest.flatten_up_to", v1=[])
 def flatten_up_to(shallow_tree, input_tree, check_types=True,
                   expand_composites=False):
   """Flattens `input_tree` up to `shallow_tree`.
@@ -1067,6 +1096,7 @@ def flatten_with_tuple_paths_up_to(shallow_tree,
   return list(_yield_flat_up_to(shallow_tree, input_tree, is_seq))
 
 
+@tf_export("__internal__.nest.map_structure_up_to", v1=[])
 def map_structure_up_to(shallow_tree, func, *inputs, **kwargs):
   """Applies a function or op to a number of partially flattened inputs.
 
@@ -1246,6 +1276,7 @@ def map_structure_with_tuple_paths_up_to(shallow_tree, func, *inputs, **kwargs):
                           expand_composites=expand_composites)
 
 
+@tf_export("__internal__.nest.get_traverse_shallow_structure", v1=[])
 def get_traverse_shallow_structure(traverse_fn, structure,
                                    expand_composites=False):
   """Generates a shallow structure from a `traverse_fn` and `structure`.
@@ -1316,6 +1347,7 @@ def get_traverse_shallow_structure(traverse_fn, structure,
   return _sequence_like(structure, level_traverse)
 
 
+@tf_export("__internal__.nest.yield_flat_paths", v1=[])
 def yield_flat_paths(nest, expand_composites=False):
   """Yields paths for some nested structure.
 
@@ -1410,6 +1442,7 @@ def flatten_with_tuple_paths(structure, expand_composites=False):
                   flatten(structure, expand_composites=expand_composites)))
 
 
+@tf_export("__internal__.nest.list_to_tuple", v1=[])
 def list_to_tuple(structure):
   """Replace all lists with tuples.
 

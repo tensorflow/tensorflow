@@ -1,3 +1,5 @@
+<!-- mdformat off(b/169948621#comment2) -->
+
 <!--
 Semi-automated TOC generation with instructions from
 https://github.com/ekalinin/github-markdown-toc#auto-insert-and-update-toc
@@ -38,13 +40,14 @@ sections:
 
 The illustration below represents typical allocations in TFLM:
 
-## ```
-
-| | | | | HEAD |<-- TEMPORARY -->| TAIL |
-
-## | | | |
-
-*   Lowest Address Highest Address * ```
+```
+--------------------------------------------------------------------------------
+|        |                     |                                               |
+|  HEAD  |<--  TEMPORARY    -->|                    TAIL                       |
+|        |                     |                                               |
+--------------------------------------------------------------------------------
+* Lowest Address                                               Highest Address *
+```
 
 ### Head Section
 
@@ -114,7 +117,7 @@ detailed allocation logging:
 #include "recording_micro_interpreter.h"
 
 // Simply change the class name from 'MicroInterpreter' to 'RecordingMicroInterpreter':
-tflite::RecoridngMicroInterpreter interpreter(
+tflite::RecordingMicroInterpreter interpreter(
   tflite::GetModel(my_model_data), ops_resolver,
   tensor_arena, tensor_arena_size, error_reporter);
 
@@ -129,20 +132,18 @@ interpreter.PrintAllocations();
 
 The output of this call will look something similar to this (output from the
 [memory_arena_threshold_test](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/memory_arena_threshold_test.cc#L205)):
-`sh [RecordingMicroAllocator] Arena allocation total 9568 bytes
+
+```bash
+[RecordingMicroAllocator] Arena allocation total 9568 bytes
 [RecordingMicroAllocator] Arena allocation head 7744 bytes
 [RecordingMicroAllocator] Arena allocation tail 1824 bytes
-[RecordingMicroAllocator] 'TfLiteEvalTensor data' used 360 bytes with alignment
-overhead (requested 360 bytes for 15 allocations) [RecordingMicroAllocator]
-'Persistent TfLiteTensor data' used 0 bytes with alignment overhead (requested 0
-bytes for 0 tensors) [RecordingMicroAllocator] 'Persistent TfLiteTensor
-quantization data' used 0 bytes with alignment overhead (requested 0 bytes for 0
-allocations) [RecordingMicroAllocator] 'TfLiteTensor variable buffer data' used
-0 bytes with alignment overhead (requested 0 bytes for 0 allocations)
-[RecordingMicroAllocator] 'NodeAndRegistration struct' used 392 bytes with
-alignment overhead (requested 392 bytes for 7 NodeAndRegistration structs)
-[RecordingMicroAllocator] 'Operator runtime data' used 136 bytes with alignment
-overhead (requested 136 bytes for 5 OpData structs)`
+[RecordingMicroAllocator] 'TfLiteEvalTensor data' used 360 bytes with alignment overhead (requested 360 bytes for 15 allocations)
+[RecordingMicroAllocator] 'Persistent TfLiteTensor data' used 0 bytes with alignment overhead (requested 0 bytes for 0 tensors)
+[RecordingMicroAllocator] 'Persistent TfLiteTensor quantization data' used 0 bytes with alignment overhead (requested 0 bytes for 0 allocations)
+[RecordingMicroAllocator] 'TfLiteTensor variable buffer data' used 0 bytes with alignment overhead (requested 0 bytes for 0 allocations)
+[RecordingMicroAllocator] 'NodeAndRegistration struct' used 392 bytes with alignment overhead (requested 392 bytes for 7 NodeAndRegistration structs)
+[RecordingMicroAllocator] 'Operator runtime data' used 136 bytes with alignment overhead (requested 136 bytes for 5 OpData structs)
+```
 
 ### Allocation Section Details
 

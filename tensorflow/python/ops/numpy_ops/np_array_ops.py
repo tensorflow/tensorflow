@@ -572,7 +572,7 @@ def size(x, axis=None):  # pylint: disable=missing-docstring
     return 1
   x = asarray(x).data
   if x.shape.is_fully_defined():
-    return np.prod(x.shape.as_list())
+    return np.prod(x.shape.as_list(), dtype=int)
   else:
     return np_utils.tensor_to_ndarray(array_ops.size_v2(x))
 
@@ -822,16 +822,32 @@ def transpose(a, axes=None):
 @np_utils.np_doc('swapaxes')
 def swapaxes(a, axis1, axis2):  # pylint: disable=missing-docstring
   a = asarray(a).data
+  def adjust_axes(axes, rank):
+    def f(x):
+      if isinstance(x, int):
+        if x < 0:
+          x = x + rank
+      else:
+        x = array_ops.where_v2(x < 0, np_utils.add(x, a_rank), x)
+      return x
+    return nest.map_structure(f, axes)
 
-  a_rank = array_ops.rank(a)
-  axis1 = array_ops.where_v2(axis1 < 0, axis1 + a_rank, axis1)
-  axis2 = array_ops.where_v2(axis2 < 0, axis2 + a_rank, axis2)
-
-  perm = math_ops.range(a_rank)
-  perm = array_ops.tensor_scatter_update(perm, [[axis1], [axis2]],
-                                         [axis2, axis1])
+  if (a.shape.rank is not None and
+      isinstance(axis1, int) and isinstance(axis2, int)):
+    # This branch makes sure `perm` is statically known, to avoid a
+    # not-compile-time-constant XLA error.
+    a_rank = a.shape.rank
+    axis1, axis2 = adjust_axes((axis1, axis2), a_rank)
+    perm = list(range(a_rank))
+    perm[axis1] = axis2
+    perm[axis2] = axis1
+  else:
+    a_rank = array_ops.rank(a)
+    axis1, axis2 = adjust_axes((axis1, axis2), a_rank)
+    perm = math_ops.range(a_rank)
+    perm = array_ops.tensor_scatter_update(perm, [[axis1], [axis2]],
+                                           [axis2, axis1])
   a = array_ops.transpose(a, perm)
-
   return np_utils.tensor_to_ndarray(a)
 
 

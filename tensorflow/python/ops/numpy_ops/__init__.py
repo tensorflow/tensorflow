@@ -19,7 +19,7 @@ operations. APIs are based on and have been tested with NumPy 1.16 version.
 
 The set of supported APIs may be expanded over time. Also future releases may
 change the baseline version of NumPy API being supported. A list of some
-systematic differences with NumPy are listed later in the "Differences with
+systematic differences with NumPy is listed later in the "Differences with
 NumPy" section.
 
 ## Getting Started
@@ -31,7 +31,7 @@ In the code snippets below, we will assume that `tf.experimental.numpy` is
 imported as `tnp` and NumPy is imported as `np`
 
 ```python
-print(tnp.ones([2,1]) + tnp.ones([1, 2]))
+print(tnp.ones([2,1]) + np.ones([1, 2]))
 ```
 
 ## Types
@@ -153,7 +153,7 @@ Here is a non-exhaustive list of differences:
     are not supported.
 *   Only a subset of functions and modules are supported. This set will be
     expanded over time. For supported functions, some arguments or argument
-    values may not be supported. This differences are generally provide in the
+    values may not be supported. These differences are generally provided in the
     function comments. Full `ufunc` support is also not provided.
 *   Buffer mutation is currently not supported. `ndarrays` wrap immutable
     tensors. This means that output buffer arguments (e..g `out` in ufuncs) are

@@ -6,12 +6,6 @@ load(
 )
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cc_tests_gpu")
-
-# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
 # buildifier: disable=same-origin-load
@@ -58,7 +52,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:stream_executor",
+        "//tensorflow/core/platform:stream_executor",
     ],
 )
 
@@ -153,7 +147,6 @@ tf_cuda_library(
         ":gpu_id_impl",
         ":gpu_init_impl",
         ":gpu_lib",
-        "//tensorflow/core:core_cpu_impl",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -161,7 +154,8 @@ tf_cuda_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:stream_executor",
+        "//tensorflow/core/common_runtime:core_cpu_impl",
+        "//tensorflow/core/platform:stream_executor",
         "//tensorflow/core/platform:tensor_float_32_utils",
         "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/core/profiler/lib:scoped_annotation",
@@ -181,7 +175,7 @@ tf_cuda_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:stream_executor",
+        "//tensorflow/core/platform:stream_executor",
         "//third_party/eigen3",
     ] + if_static([":gpu_runtime_impl"]),
 )
@@ -219,8 +213,8 @@ tf_cuda_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:stream_executor",
         "//tensorflow/core/framework:allocator",
+        "//tensorflow/core/platform:stream_executor",
     ],
 )
 
@@ -234,7 +228,7 @@ tf_cuda_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:stream_executor",
+        "//tensorflow/core/platform:stream_executor",
     ] + if_static(
         [":gpu_init_impl"],
     ),
@@ -255,7 +249,7 @@ tf_cuda_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:stream_executor",
+        "//tensorflow/core/platform:stream_executor",
     ],
     alwayslink = 1,
 )
@@ -276,20 +270,16 @@ tf_cc_test(
     ],
 )
 
-tf_cc_tests_gpu(
-    name = "gpu_related_tests",
+tf_cuda_cc_test(
+    name = "gpu_bfc_allocator_test",
     size = "small",
     srcs = [
         "gpu_bfc_allocator_test.cc",
-        "gpu_device_test.cc",
-        "gpu_id_manager_test.cc",
-        "pool_allocator_test.cc",
     ],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_id",
-        ":gpu_runtime",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -306,7 +296,85 @@ tf_cc_tests_gpu(
     ],
 )
 
-tf_cc_test_gpu(
+tf_cuda_cc_test(
+    name = "gpu_device_test",
+    size = "small",
+    srcs = [
+        "gpu_device_test.cc",
+    ],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":gpu_id",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/common_runtime:core_cpu",
+        "//tensorflow/core/common_runtime:core_cpu_internal",
+        "//tensorflow/core/common_runtime:direct_session_internal",
+        "//tensorflow/core/kernels:ops_util",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "gpu_id_manager_test",
+    size = "small",
+    srcs = [
+        "gpu_id_manager_test.cc",
+    ],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":gpu_id",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/common_runtime:core_cpu",
+        "//tensorflow/core/common_runtime:core_cpu_internal",
+        "//tensorflow/core/common_runtime:direct_session_internal",
+        "//tensorflow/core/kernels:ops_util",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "pool_allocator_test",
+    size = "small",
+    srcs = [
+        "pool_allocator_test.cc",
+    ],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":gpu_id",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/common_runtime:core_cpu",
+        "//tensorflow/core/common_runtime:core_cpu_internal",
+        "//tensorflow/core/common_runtime:direct_session_internal",
+        "//tensorflow/core/kernels:ops_util",
+    ],
+)
+
+tf_cuda_cc_test(
     name = "gpu_event_mgr_test",
     srcs = ["gpu_event_mgr_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
@@ -355,14 +423,13 @@ tf_cuda_cc_test(
     ],
 )
 
-tf_cc_test_gpu(
+tf_cuda_cc_test(
     name = "gpu_allocator_retry_test",
     size = "medium",
     srcs = ["gpu_allocator_retry_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags(),
     deps = [
-        ":gpu_runtime",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -378,7 +445,7 @@ tf_cc_test_gpu(
     ],
 )
 
-tf_cc_test_gpu(
+tf_cuda_cc_test(
     name = "gpu_debug_allocator_test",
     size = "medium",
     srcs = ["gpu_debug_allocator_test.cc"],
@@ -387,7 +454,6 @@ tf_cc_test_gpu(
     tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_id",
-        ":gpu_runtime",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",

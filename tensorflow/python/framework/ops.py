@@ -371,7 +371,7 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
       TypeError: If the op is not an `Operation`.
     """
     if not isinstance(op, Operation):
-      raise TypeError("op needs to be an Operation: %s" % op)
+      raise TypeError("op needs to be an Operation: %s" % (op,))
     self._op = op
     self._value_index = value_index
     self._dtype = dtypes.as_dtype(dtype)
@@ -1946,19 +1946,19 @@ class Operation(object):
       assert op_def is None
       c_op = node_def
     else:
-      raise TypeError("node_def needs to be a NodeDef: %s" % node_def)
+      raise TypeError("node_def needs to be a NodeDef: %s" % (node_def,))
 
     if not isinstance(g, Graph):
-      raise TypeError("g needs to be a Graph: %s" % g)
+      raise TypeError("g needs to be a Graph: %s" % (g,))
     self._graph = g
 
     if inputs is None:
       inputs = []
     elif not isinstance(inputs, list):
-      raise TypeError("inputs needs to be a list of Tensors: %s" % inputs)
+      raise TypeError("inputs needs to be a list of Tensors: %s" % (inputs,))
     for a in inputs:
       if not isinstance(a, Tensor):
-        raise TypeError("input needs to be a Tensor: %s" % a)
+        raise TypeError("input needs to be a Tensor: %s" % (a,))
     if input_types is None:
       input_types = [i.dtype.base_dtype for i in inputs]
     else:
@@ -4332,12 +4332,16 @@ class Graph(object):
   def _colocate_with_for_gradient(self, op, gradient_uid,
                                   ignore_existing=False):
     with self.colocate_with(op, ignore_existing):
-      if gradient_uid is not None and self._control_flow_context is not None:
-        self._control_flow_context.EnterGradientColocation(op, gradient_uid)
-        try:
+      if gradient_uid is not None:
+        ctx = _get_enclosing_context(self)
+        if ctx is not None:
+          ctx.EnterGradientColocation(op, gradient_uid)
+          try:
+            yield
+          finally:
+            ctx.ExitGradientColocation(op, gradient_uid)
+        else:
           yield
-        finally:
-          self._control_flow_context.ExitGradientColocation(op, gradient_uid)
       else:
         yield
 
@@ -6099,7 +6103,7 @@ def _get_graph_from_inputs(op_input_list, graph=None):
 
   op_input_list = tuple(op_input_list)  # Handle generators correctly
   if graph and not isinstance(graph, Graph):
-    raise TypeError("Input graph needs to be a Graph: %s" % graph)
+    raise TypeError("Input graph needs to be a Graph: %s" % (graph,))
 
   # 1. We validate that all of the inputs are from the same graph. This is
   #    either the supplied graph parameter, or the first one selected from one
@@ -6955,3 +6959,15 @@ def set_int_list_attr(op, attr_name, ints):
   """TF internal method used to set a list(int) attribute in the node_def."""
   ints_list = attr_value_pb2.AttrValue.ListValue(i=ints)
   op._set_attr(attr_name, attr_value_pb2.AttrValue(list=ints_list))  # pylint:disable=protected-access
+
+
+def _get_enclosing_context(graph):
+  # pylint: disable=protected-access
+  if graph is None:
+    return None
+
+  if graph._control_flow_context is not None:
+    return graph._control_flow_context
+
+  if graph.building_function and hasattr(graph, "outer_graph"):
+    return _get_enclosing_context(graph.outer_graph)

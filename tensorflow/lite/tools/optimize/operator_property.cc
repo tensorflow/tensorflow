@@ -44,7 +44,8 @@ const OpVariant GetOperatorVariant(const ModelT* model, int subgraph_index,
       model->subgraphs.at(subgraph_index)->operators[op_index].get();
   op_variant.op_code =
       GetBuiltinCode(model->operator_codes[op->opcode_index].get());
-  if (op_variant.op_code == BuiltinOperator_LSTM) {
+  if (op_variant.op_code == BuiltinOperator_LSTM ||
+      op_variant.op_code == BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM) {
     if (op->inputs.size() == 5) {
       // The 5 input ("basic") LSTM is not supported in this tooling (yet).
       op_variant.is_quantizable = false;
@@ -99,6 +100,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.inputs = {{0, {}}, {1, {}}};
       property.outputs = {{0, {}}};
       property.version = 2;
+      property.quantize_input_as_activations = true;
       break;
     }
     case BuiltinOperator_BATCH_TO_SPACE_ND:
@@ -229,7 +231,8 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.version = 2;
       break;
     }
-    case BuiltinOperator_LSTM: {
+    case BuiltinOperator_LSTM:
+    case BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM: {
       if (!op_variant.is_quantizable) {
         // Early exist for 5 input LSTM.
         // It is not supported in this tooling yet.
@@ -847,6 +850,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.outputs = {{0, {}}};
       property.restrict_same_input_output_scale = false;
       property.version = 1;
+      property.quantizable_int16 = false;
       break;
     case BuiltinOperator_LEAKY_RELU:
       property.inputs = {{0, {}}};
@@ -858,7 +862,6 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
       property.version = 2;
-      property.quantizable_int16 = false;
       break;
     case BuiltinOperator_RELU_N1_TO_1:
       property.inputs = {{0, {}}};
@@ -984,6 +987,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.outputs = {{0, {}}};
       property.restrict_same_input_output_scale = true;
       property.version = 2;
+      property.quantizable_int16 = false;
       break;
     case BuiltinOperator_REDUCE_MAX:
     case BuiltinOperator_REDUCE_MIN:

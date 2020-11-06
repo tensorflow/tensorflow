@@ -249,6 +249,8 @@ cc_library(
         "//tensorflow/core/kernels/batching_util:threadsafe_status",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:thread_annotations",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:traceme_encode",
         "//tensorflow/core/util:incremental_barrier",
     ],
 )

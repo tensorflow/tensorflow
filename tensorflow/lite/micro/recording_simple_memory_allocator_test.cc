@@ -83,8 +83,8 @@ TF_LITE_MICRO_TEST(TestRecordsHeadSizeAdjustment) {
   tflite::RecordingSimpleMemoryAllocator allocator(micro_test::reporter, arena,
                                                    arena_size);
 
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
-                          allocator.SetHeadSize(/*size=*/5, /*alignment=*/1));
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk, allocator.SetHeadBufferSize(/*size=*/5, /*alignment=*/1));
   TF_LITE_MICRO_EXPECT_EQ(allocator.GetUsedBytes(), static_cast<size_t>(5));
   TF_LITE_MICRO_EXPECT_EQ(allocator.GetRequestedBytes(),
                           static_cast<size_t>(5));
@@ -107,8 +107,8 @@ TF_LITE_MICRO_TEST(TestRecordsMisalignedHeadSizeAdjustments) {
   tflite::RecordingSimpleMemoryAllocator allocator(micro_test::reporter, arena,
                                                    arena_size);
 
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
-                          allocator.SetHeadSize(/*size=*/10, /*alignment=*/12));
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk, allocator.SetHeadBufferSize(/*size=*/10, /*alignment=*/12));
   // Validate used bytes in 8 byte range that can included alignment of 12:
   TF_LITE_MICRO_EXPECT_GE(allocator.GetUsedBytes(), static_cast<size_t>(10));
   TF_LITE_MICRO_EXPECT_LE(allocator.GetUsedBytes(), static_cast<size_t>(20));
@@ -125,8 +125,8 @@ TF_LITE_MICRO_TEST(TestDoesNotRecordFailedTailAllocations) {
   tflite::RecordingSimpleMemoryAllocator allocator(micro_test::reporter, arena,
                                                    arena_size);
 
-  TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteError, allocator.SetHeadSize(/*size=*/2048, /*alignment=*/1));
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteError, allocator.SetHeadBufferSize(
+                                            /*size=*/2048, /*alignment=*/1));
   TF_LITE_MICRO_EXPECT_EQ(allocator.GetUsedBytes(), static_cast<size_t>(0));
   TF_LITE_MICRO_EXPECT_EQ(allocator.GetRequestedBytes(),
                           static_cast<size_t>(0));

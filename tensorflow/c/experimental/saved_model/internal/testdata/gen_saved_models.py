@@ -30,9 +30,11 @@ import os
 from tensorflow.python.compat import v2_compat
 
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.module import module
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import app
@@ -72,11 +74,32 @@ def _gen_uninitialized_variable(base_dir):
       to_save, export_dir=os.path.join(base_dir, "UninitializedVariable"))
 
 
+def _gen_simple_while_loop(base_dir):
+  """Generates a saved model with a while loop."""
+
+  class Module(module.Module):
+    """A module with a while loop."""
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec((), dtypes.float32)])
+    def compute(self, value):
+      acc, _ = control_flow_ops.while_loop(
+          cond=lambda acc, i: i > 0,
+          body=lambda acc, i: (acc + i, i - 1),
+          loop_vars=(constant_op.constant(0.0), value))
+      return acc
+
+  to_save = Module()
+  saved_model.save(
+      to_save, export_dir=os.path.join(base_dir, "SimpleWhileLoop"))
+
+
 def main(args):
   if len(args) != 2:
     raise app.UsageError("Expected one argument (base_dir).")
   _, base_dir = args
   _gen_uninitialized_variable(base_dir)
+  _gen_simple_while_loop(base_dir)
 
 
 if __name__ == "__main__":

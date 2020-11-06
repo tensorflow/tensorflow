@@ -84,7 +84,7 @@ def create_test_objects(cluster_spec=None,
         task_type=task_type,
         task_id=task_id,
         num_accelerators={'GPU': num_gpus})
-    distribution = parameter_server_strategy.ParameterServerStrategy(
+    distribution = parameter_server_strategy.ParameterServerStrategyV1(
         cluster_resolver)
     target = 'grpc://' + cluster_spec[WORKER][task_id]
   else:
@@ -191,7 +191,7 @@ class ParameterServerStrategyTestBase(
           g = e + 1.0
         self.assertEqual(g.device, worker_device + '/device:CPU:1')
 
-        # Ths ops.colocate_with will be ignored when defining a variable but not
+        # This ops.colocate_with will be ignored when defining a variable but not
         # for a normal tensor.
         with ops.colocate_with(x):
           u = variable_scope.get_variable('u', initializer=30.0)
@@ -345,7 +345,7 @@ class ParameterServerStrategyTestBase(
           g = e + 1.0
         self.assertEqual(g.device, device_util.canonicalize('/device:CPU:1'))
 
-        # Ths ops.colocate_with will be ignored when defining a variable but not
+        # This ops.colocate_with will be ignored when defining a variable but not
         # for a normal tensor.
         with ops.colocate_with(x):
           u = variable_scope.get_variable('u', initializer=30.0)
@@ -748,7 +748,7 @@ class ParameterServerStrategyTest(
         task_type='worker',
         task_id=1,
         num_accelerators={'GPU': 0})
-    strategy = parameter_server_strategy.ParameterServerStrategy(
+    strategy = parameter_server_strategy.ParameterServerStrategyV1(
         cluster_resolver)
     dataset = dataset_ops.DatasetV2.from_tensor_slices([5., 6., 7., 8.])
 

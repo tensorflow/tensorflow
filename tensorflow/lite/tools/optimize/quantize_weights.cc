@@ -297,6 +297,8 @@ int32_t GetOrInsertDequantizeOpCodeIndex(ModelT* model) {
   model->operator_codes.push_back(absl::make_unique<OperatorCodeT>());
   int op_code_idx = model->operator_codes.size() - 1;
   model->operator_codes[op_code_idx]->builtin_code = BuiltinOperator_DEQUANTIZE;
+  model->operator_codes[op_code_idx]->deprecated_builtin_code =
+      static_cast<int8_t>(BuiltinOperator_DEQUANTIZE);
   // Version 2 and onwards supports INT8 inputs.
   model->operator_codes[op_code_idx]->version = 2;
 

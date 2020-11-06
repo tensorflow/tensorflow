@@ -597,6 +597,7 @@ void MoveOutsideCompiledOpsInsideControlFlow(
     tf_device::LaunchOp host_launch_op, Value compilation_key,
     llvm::ArrayRef<Operation*> cluster_section_ops,
     const llvm::SmallVectorImpl<ControlFlowStackInfo>& controlflow_stack,
+    llvm::ArrayRef<Operation*> cluster_ops,
     const llvm::SmallSetVector<Value, 4>& section_external_inputs,
     llvm::ArrayRef<Value> section_external_outputs,
     llvm::SmallDenseMap<Operation*, Operation*>* replicated_controlflow_map) {
@@ -643,11 +644,12 @@ void MoveOutsideCompiledOpsInsideControlFlow(
   MoveOutsideClusterOpsBeforeOp(insertion_op, cluster_section_ops, context);
 
   builder.setInsertionPoint(insertion_op);
-  builder.create<TF::_XlaSendFromHostOp>(
-      tpu_cluster.getLoc(), section_external_outputs,
-      /*dynamic_key=*/compilation_key,
-      builder.getStringAttr(retvals_communication_key),
-      /*device_ordinal=*/builder.getI64IntegerAttr(0));
+  if (!section_external_outputs.empty())
+    builder.create<TF::_XlaSendFromHostOp>(
+        tpu_cluster.getLoc(), section_external_outputs,
+        /*dynamic_key=*/compilation_key,
+        builder.getStringAttr(retvals_communication_key),
+        /*device_ordinal=*/builder.getI64IntegerAttr(0));
 
   for (auto result :
        llvm::zip(section_external_inputs, recv_at_host.getResults())) {
@@ -655,14 +657,19 @@ void MoveOutsideCompiledOpsInsideControlFlow(
                                      *insertion_op->getParentRegion());
   }
 
+  auto operand_inside_device_cluster = [&](OpOperand& operand) {
+    return tpu_cluster.body().isAncestor(
+               operand.getOwner()->getParentRegion()) &&
+           llvm::none_of(cluster_ops, [&](Operation* cluster_op) {
+             return operand.getOwner() == cluster_op;
+           });
+  };
+
   for (auto result :
        llvm::zip(section_external_outputs, host_compute.getResults())) {
-    for (auto& result_use : std::get<0>(result).getUses()) {
-      Operation* result_using_op = result_use.getOwner();
-      const bool inside_device_cluster =
-          tpu_cluster.body().isAncestor(result_using_op->getParentRegion());
-      if (inside_device_cluster) result_use.set(std::get<1>(result));
-    }
+    Value external_output = std::get<0>(result);
+    external_output.replaceUsesWithIf(std::get<1>(result),
+                                      operand_inside_device_cluster);
   }
 }
 
@@ -731,7 +738,7 @@ void MoveOutsideCompiledOps(
 
     MoveOutsideCompiledOpsInsideControlFlow(
         module, tpu_cluster, host_cluster_section_name, host_launch_op,
-        compilation_key, cluster_section_ops, controlflow_stack,
+        compilation_key, cluster_section_ops, controlflow_stack, cluster_ops,
         section_external_inputs, section_external_outputs.takeVector(),
         &replicated_controlflows);
   }

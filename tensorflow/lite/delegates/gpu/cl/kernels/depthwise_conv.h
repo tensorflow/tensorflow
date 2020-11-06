@@ -186,6 +186,10 @@ GPUOperation CreateDepthwiseConvolution2D(
     const DeviceInfo& device_info, const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& attr);
 
+GPUOperation CreateDepthwiseConvolution2DDynamicWeights(
+    const DeviceInfo& device_info, const OperationDef& definition,
+    const DepthwiseConvolution2DAttributes& attr);
+
 GPUOperation CreateDepthwiseConvolution3D(
     const DeviceInfo& device_info, const OperationDef& definition,
     const DepthwiseConvolution3DAttributes& attr);

@@ -84,6 +84,10 @@ std::unique_ptr<OperationPass<FuncOp>> CreateGpuOpFusionPass();
 std::unique_ptr<OperationPass<mlir::FuncOp>>
 CreateTensorDeviceCopyConversionPass();
 
+// Returns a pass that folds tf.BroadcastTo nodes with subsequent nodes if they
+// have built in broadcasting support.
+std::unique_ptr<OperationPass<FuncOp>> CreateBroadcastFoldPass();
+
 struct LayoutOptimizationPipelineOptions
     : public PassPipelineOptions<LayoutOptimizationPipelineOptions> {
   Option<std::string> force_data_format{
@@ -274,7 +278,12 @@ CreateMarkOpsForOutsideCompilationPass();
 // Creates a pass that hoists a `tf_device.launch` body and assigns a `device`
 // attribute to each TensorFlow dialect op in the body based on the `device`
 // attribute on the `tf_device.launch`.
-std::unique_ptr<OperationPass<FuncOp>> CreateLaunchToDeviceAttributePass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateLaunchToDeviceAttributePass();
+
+// Creates a pass that hoists a `tf_device.replicate` body and replicates each
+// TensorFlow dialect op in the body based on its `device` attribute and the
+// `devices` attribute on the `tf_device.replicate`.
+std::unique_ptr<OperationPass<mlir::ModuleOp>> CreateTFDeviceReplicationPass();
 }  // namespace TFDevice
 
 namespace TFTPU {
@@ -354,6 +363,9 @@ CreateTPUUpdateEmbeddingEnqueueOpInputsPass();
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTPUExtractOutsideCompilationPass();
 
+// Creates a pass that propagates TPU devices to users.
+std::unique_ptr<OperationPass<FuncOp>> CreateTPUDevicePropagationPass();
+
 // Populates the supplied passmanager with the passes required to run the
 // bridge.
 void CreateTPUBridgePipeline(OpPassManager& pm);
@@ -361,6 +373,12 @@ void CreateTPUBridgePipeline(OpPassManager& pm);
 // Populates the supplied passmanager with the passes required to run the
 // bridge in V1 mode.
 void CreateTPUBridgePipelineV1(OpPassManager& pm);
+
+// Creates a pass that replicates the tf._TPUCompileMlir op on each host that
+// needs the compiled program. It helps avoid transferring the compiled binary
+// between hosts.
+std::unique_ptr<OperationPass<mlir::ModuleOp>>
+CreateTPUCompileOpReplicationPass();
 
 }  // namespace TFTPU
 

@@ -71,6 +71,8 @@ class TpuTopologyExternal {
       : topology_(topology) {}
   int32 LogicalDevicesPerHost(TpuCoreTypeEnum core_type) const;
   int32 LogicalDevicesPerChip(TpuCoreTypeEnum core_type) const;
+  int32 HostCount() const;
+  int32 ChipsPerHost() const;
   TpuTopologyChipBoundsExternal chip_bounds() const;
   bool HasChip(int x, int y, int z) const;
   TpuCoreLocationExternal Core(int x, int y, int z, TpuCoreTypeEnum core_type,

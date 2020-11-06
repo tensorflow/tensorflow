@@ -19,11 +19,11 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/special/depthwise_conv_plus_1x1_conv.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/special/fc_fc_add.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 namespace tflite {
@@ -38,6 +38,10 @@ absl::Status TryDepthwiseConvPlus1x1Conv(
   auto* dw_node = graph.GetNode(first_node_id);
   if (OperationTypeFromString(dw_node->operation.type) !=
       OperationType::DEPTHWISE_CONVOLUTION) {
+    return absl::NotFoundError("DepthwiseConvPlus1x1Conv not suitable.");
+  }
+  auto dw_inputs = graph.FindInputs(dw_node->id);
+  if (dw_inputs.size() != 1) {
     return absl::NotFoundError("DepthwiseConvPlus1x1Conv not suitable.");
   }
   auto dw_outputs = graph.FindOutputs(dw_node->id);
@@ -60,7 +64,6 @@ absl::Status TryDepthwiseConvPlus1x1Conv(
       dw_node->operation.attributes);
   auto conv_attr =
       absl::any_cast<Convolution2DAttributes>(conv_node->operation.attributes);
-  auto dw_inputs = graph.FindInputs(dw_node->id);
   auto conv_outputs = graph.FindOutputs(conv_node->id);
   OperationDef op_def;
   op_def.precision = precision;

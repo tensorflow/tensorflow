@@ -173,7 +173,8 @@ Status XlaCompilationCache::BuildExecutable(
   build_options.set_result_layout(result.xla_output_shape);
   build_options.set_device_allocator(options.device_allocator);
   build_options.set_alias_passthrough_params(options.alias_passthrough_params);
-
+  build_options.mutable_debug_options()->set_xla_detailed_logging(
+      options.detailed_logging);
   TF_ASSIGN_OR_RETURN(
       auto executables,
       client_->Compile(*result.computation, argument_layouts, build_options));
@@ -283,28 +284,30 @@ Status XlaCompilationCache::CompileSingleOp(
     const NodeDef& node_def = ctx->op_kernel().def();
     TF_ASSIGN_OR_RETURN(auto graph, CreateGraph(node_def, args, result_dtypes));
 
-    bool has_tensor_list_arg =
-        absl::c_any_of(args, [](const XlaCompiler::Argument arg) {
-          return arg.kind == XlaCompiler::Argument::kTensorList;
-        });
     const ConfigProto* config = ctx->function_library()->config_proto();
-    bool use_mlir = config && config->experimental().enable_mlir_bridge();
+    // TODO(b/171039585): Support tf.VarIsInitializedOp using MLIR.
+    bool use_mlir = config && config->experimental().enable_mlir_bridge() &&
+                    node_def.op() != "VarIsInitializedOp";
 #ifdef LIBTPU_ON_GCE
-    if (use_mlir && has_tensor_list_arg) {
+    if (use_mlir) {
       LOG(WARNING) << "MLIR is not supported in this environment.";
     }
     return compiler->CompileGraph(compile_options, node_def.name(),
                                   std::move(graph), args, result);
 #else
-    // TODO(b/155596779): Support TensorList args.
-    if (!use_mlir || !has_tensor_list_arg) {
+    if (!use_mlir) {
       return compiler->CompileGraph(compile_options, node_def.name(),
                                     std::move(graph), args, result);
     }
 
+    VLOG(1) << "Using MLIR bridge";
     GraphDebugInfo debug_info;
+    std::vector<std::string> control_rets;
+    if (result_dtypes.empty()) {
+      control_rets.push_back(node_def.name());
+    }
     return CompileGraphToXlaHlo(
-        *graph, mlir::SpanToArrayRef<XlaCompiler::Argument>(args),
+        *graph, mlir::SpanToArrayRef<XlaCompiler::Argument>(args), control_rets,
         options.device_type.type_string(), compile_options.use_tuple_arg,
         *options.flib_def, debug_info, options.shape_representation_fn, result);
 #endif

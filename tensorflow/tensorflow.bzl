@@ -4,7 +4,6 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_dynamic_kernels",
     "if_static",
-    "register_extension_info",
     "tf_additional_grpc_deps_py",
     "tf_additional_xla_deps_py",
     "tf_exec_properties",
@@ -39,7 +38,6 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "if_enable_mkl",
     "if_mkl",
-    "if_mkl_lnx_x64",
     "if_mkl_ml",
     "mkl_deps",
 )
@@ -48,16 +46,13 @@ load(
     "if_mkl_open_source_only",
     "if_mkldnn_threadpool",
 )
-load(
-    "//third_party/ngraph:build_defs.bzl",
-    "if_ngraph",
-)
+load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 
 # version for the shared libraries, can
 # not contain rc or alpha, only numbers.
 # Also update tensorflow/core/public/version.h
 # and tensorflow/tools/pip_package/setup.py
-VERSION = "2.4.0"
+VERSION = "2.5.0"
 VERSION_MAJOR = VERSION.split(".")[0]
 
 # Sanitize a dependency so that it works correctly from code that includes
@@ -115,11 +110,6 @@ def tf_android_core_proto_headers(core_proto_sources_relative):
         _add_tfcore_prefix(p).replace(":", "/").replace(".proto", ".proto.h")
         for p in core_proto_sources_relative
     ])
-
-# Wrapper for portable protos which currently just creates an empty rule.
-def tf_portable_proto_library(name, proto_deps, deps = [], **kwargs):
-    _ignore = [kwargs]
-    cc_library(name = name, deps = deps + [dep + "_cc" for dep in proto_deps])
 
 def tf_portable_full_lite_protos(full, lite):
     return select({
@@ -268,6 +258,12 @@ def if_libtpu(if_true, if_false = []):
         "//conditions:default": if_false,
     })
 
+def if_registration_v2(if_true, if_false = []):
+    return select({
+        "//tensorflow:registration_v2": if_true,
+        "//conditions:default": if_false,
+    })
+
 # Linux systems may required -lrt linker flag for e.g. clock_gettime
 # see https://github.com/tensorflow/tensorflow/issues/15129
 def lrt_if_needed():
@@ -331,11 +327,9 @@ def tf_copts(
         if_libtpu(["-DLIBTPU_ON_GCE"], []) +
         if_xla_available(["-DTENSORFLOW_USE_XLA=1"]) +
         if_tensorrt(["-DGOOGLE_TENSORRT=1"]) +
-        if_mkl(["-DINTEL_MKL=1", "-DENABLE_MKLDNN_V1", "-DENABLE_INTEL_MKL_BFLOAT16"]) +
-        if_mkl_open_source_only(["-DINTEL_MKL_DNN_ONLY"]) +
+        if_mkl(["-DINTEL_MKL=1", "-DENABLE_MKLDNN_V1", "-DENABLE_INTEL_MKL_BFLOAT16", "-DINTEL_MKL_DNN_ONLY"]) +
         if_mkldnn_threadpool(["-DENABLE_MKLDNN_THREADPOOL"]) +
         if_enable_mkl(["-DENABLE_MKL"]) +
-        if_ngraph(["-DINTEL_NGRAPH=1"]) +
         if_android_arm(["-mfpu=neon"]) +
         if_linux_x86_64(["-msse3"]) +
         if_ios_x86_64(["-msse4.1"]) +
@@ -355,7 +349,12 @@ def tf_copts(
     )
 
 def tf_openmp_copts():
-    return (if_mkl_lnx_x64(["-fopenmp"]) + if_mkldnn_threadpool(["-fno-openmp"]))
+    # We assume when compiling on Linux gcc/clang will be used and MSVC on Windows
+    return select({
+        "@org_tensorflow//third_party/mkl:build_with_mkl_lnx_openmp": ["-fopenmp"],
+        "@org_tensorflow//third_party/mkl:build_with_mkl_windows_openmp": ["/openmp"],
+        "//conditions:default": [],
+    })
 
 def tf_opts_nortti():
     return [
@@ -399,7 +398,12 @@ def tf_defines_nortti_if_lite_protos():
 
 # Given a list of "op_lib_names" (a list of files in the ops directory
 # without their .cc extensions), generate a library for that file.
-def tf_gen_op_libs(op_lib_names, deps = None, is_external = True, compatible_with = None):
+def tf_gen_op_libs(
+        op_lib_names,
+        sub_directory = "ops/",
+        deps = None,
+        is_external = True,
+        compatible_with = None):
     # Make library out of each op so it can also be used to generate wrappers
     # for various languages.
     if not deps:
@@ -408,7 +412,7 @@ def tf_gen_op_libs(op_lib_names, deps = None, is_external = True, compatible_wit
         cc_library(
             name = n + "_op_lib",
             copts = tf_copts(is_external = is_external),
-            srcs = ["ops/" + n + ".cc"],
+            srcs = [sub_directory + n + ".cc"],
             deps = deps + [clean_dep("//tensorflow/core:framework")],
             compatible_with = compatible_with,
             visibility = ["//visibility:public"],
@@ -644,11 +648,6 @@ def tf_cc_shared_object(
             visibility = visibility,
         )
 
-register_extension_info(
-    extension_name = "tf_cc_shared_object",
-    label_regex_for_dep = "{extension_name}",
-)
-
 # Links in the framework shared object
 # (//third_party/tensorflow:libtensorflow_framework.so) when not building
 # statically. Also adds linker options (rpaths) so that the framework shared
@@ -704,11 +703,6 @@ def tf_cc_binary(
             visibility = visibility,
         )
 
-register_extension_info(
-    extension_name = "tf_cc_binary",
-    label_regex_for_dep = "{extension_name}.*",
-)
-
 # A simple wrap around native.cc_binary rule.
 # When using this rule, you should realize it doesn't link to any tensorflow
 # dependencies by default.
@@ -732,11 +726,6 @@ def tf_native_cc_binary(
         }) + linkopts + _rpath_linkopts(name),
         **kwargs
     )
-
-register_extension_info(
-    extension_name = "tf_native_cc_binary",
-    label_regex_for_dep = "{extension_name}.*",
-)
 
 def tf_gen_op_wrapper_cc(
         name,
@@ -785,7 +774,7 @@ def tf_gen_op_wrapper_cc(
             out_ops_file + "_internal.cc",
         ],
         srcs = srcs,
-        exec_tools = [":" + tool] + tf_binary_additional_srcs(),
+        tools = [":" + tool] + tf_binary_additional_srcs(),
         cmd = ("$(location :" + tool + ") $(location :" + out_ops_file + ".h) " +
                "$(location :" + out_ops_file + ".cc) " +
                str(include_internal_ops) + " " + api_def_args_str),
@@ -993,7 +982,7 @@ def tf_gen_op_wrapper_py(
             name = name + "_pygenrule",
             outs = [out],
             srcs = api_def_srcs + [hidden_file],
-            exec_tools = [tool_name] + tf_binary_additional_srcs(),
+            tools = [tool_name] + tf_binary_additional_srcs(),
             cmd = ("$(location " + tool_name + ") " + api_def_args_str +
                    " @$(location " + hidden_file + ") > $@"),
             compatible_with = compatible_with,
@@ -1003,7 +992,7 @@ def tf_gen_op_wrapper_py(
             name = name + "_pygenrule",
             outs = [out],
             srcs = api_def_srcs,
-            exec_tools = [tool_name] + tf_binary_additional_srcs(),
+            tools = [tool_name] + tf_binary_additional_srcs(),
             cmd = ("$(location " + tool_name + ") " + api_def_args_str + " " +
                    op_list_arg + " " +
                    ("1" if op_list_is_whitelist else "0") + " > $@"),
@@ -1087,40 +1076,6 @@ def tf_cc_test(
         **kwargs
     )
 
-register_extension_info(
-    extension_name = "tf_cc_test",
-    label_regex_for_dep = "{extension_name}.*",
-)
-
-# Part of the testing workflow requires a distinguishable name for the build
-# rules that involve a GPU, even if otherwise identical to the base rule.
-def tf_cc_test_gpu(
-        name,
-        srcs,
-        deps,
-        linkstatic = 0,
-        tags = [],
-        data = [],
-        size = "medium",
-        suffix = "",
-        args = None):
-    tf_cc_test(
-        name,
-        srcs,
-        deps,
-        size = size,
-        args = args,
-        data = data,
-        linkstatic = linkstatic,
-        suffix = suffix,
-        tags = tags,
-    )
-
-register_extension_info(
-    extension_name = "tf_cc_test_gpu",
-    label_regex_for_dep = "{extension_name}",
-)
-
 def tf_gpu_cc_test(
         name,
         srcs = [],
@@ -1171,19 +1126,9 @@ def tf_gpu_cc_test(
         ]),
     )
 
-register_extension_info(
-    extension_name = "tf_gpu_cc_test",
-    label_regex_for_dep = "{extension_name}",
-)
-
 # terminology changes: saving tf_cuda_* definition for compatibility
 def tf_cuda_cc_test(*args, **kwargs):
     tf_gpu_cc_test(*args, **kwargs)
-
-register_extension_info(
-    extension_name = "tf_cuda_cc_test",
-    label_regex_for_dep = "{extension_name}",
-)
 
 def tf_gpu_only_cc_test(
         name,
@@ -1224,19 +1169,9 @@ def tf_gpu_only_cc_test(
         exec_properties = tf_exec_properties({"tags": tags}),
     )
 
-register_extension_info(
-    extension_name = "tf_gpu_only_cc_test",
-    label_regex_for_dep = "{extension_name}_gpu",
-)
-
 # terminology changes: saving tf_cuda_* definition for compatibility
 def tf_cuda_only_cc_test(*args, **kwargs):
     tf_gpu_only_cc_test(*args, **kwargs)
-
-register_extension_info(
-    extension_name = "tf_cuda_only_cc_test",
-    label_regex_for_dep = "{extension_name}_gpu",
-)
 
 # Create a cc_test for each of the tensorflow tests listed in "tests", along
 # with a test suite of the given name, if provided.
@@ -1316,17 +1251,6 @@ def tf_cc_test_mkl(
             features = disable_header_modules,
         )
 
-def tf_cc_tests_gpu(
-        srcs,
-        deps,
-        name = "",
-        linkstatic = 0,
-        tags = [],
-        size = "medium",
-        kernels = [],
-        args = None):
-    tf_cc_tests(srcs, deps, linkstatic, size = size, args = args, kernels = kernels, tags = tags)
-
 def tf_gpu_cc_tests(
         srcs,
         deps,
@@ -1368,11 +1292,6 @@ def tf_java_test(
         *args,
         **kwargs
     )
-
-register_extension_info(
-    extension_name = "tf_java_test",
-    label_regex_for_dep = "{extension_name}",
-)
 
 def _cuda_copts(opts = []):
     """Gets the appropriate set of copts for (maybe) CUDA compilation.
@@ -1425,11 +1344,6 @@ def tf_gpu_kernel_library(
         **kwargs
     )
 
-register_extension_info(
-    extension_name = "tf_gpu_kernel_library",
-    label_regex_for_dep = "{extension_name}",
-)
-
 def tf_gpu_library(deps = None, cuda_deps = None, copts = tf_copts(), **kwargs):
     """Generate a cc_library with a conditional set of CUDA dependencies.
 
@@ -1465,19 +1379,9 @@ def tf_gpu_library(deps = None, cuda_deps = None, copts = tf_copts(), **kwargs):
         **kwargs
     )
 
-register_extension_info(
-    extension_name = "tf_gpu_library",
-    label_regex_for_dep = "{extension_name}",
-)
-
 # terminology changes: saving tf_cuda_* definition for compatibility
 def tf_cuda_library(*args, **kwargs):
     tf_gpu_library(*args, **kwargs)
-
-register_extension_info(
-    extension_name = "tf_cuda_library",
-    label_regex_for_dep = "{extension_name}",
-)
 
 def tf_kernel_library(
         name,
@@ -1591,11 +1495,6 @@ def tf_kernel_library(
         deps = deps,
     )
 
-register_extension_info(
-    extension_name = "tf_kernel_library",
-    label_regex_for_dep = "({extension_name}(_gpu)?|libtfkernel_{extension_name}\\.so)",
-)
-
 def tf_mkl_kernel_library(
         name,
         prefix = None,
@@ -1630,14 +1529,9 @@ def tf_mkl_kernel_library(
         hdrs = hdrs,
         deps = deps,
         alwayslink = alwayslink,
-        copts = copts,
+        copts = copts + if_override_eigen_strong_inline(["/DEIGEN_STRONG_INLINE=inline"]),
         features = disable_header_modules,
     )
-
-register_extension_info(
-    extension_name = "tf_mkl_kernel_library",
-    label_regex_for_dep = "{extension_name}",
-)
 
 def _get_transitive_headers(hdrs, deps):
     """Obtain the header files for a target and its transitive dependencies.
@@ -1781,7 +1675,7 @@ def tf_custom_op_library_additional_deps():
         clean_dep("//tensorflow/core:framework_headers_lib"),
     ] + if_windows([clean_dep("//tensorflow/python:pywrap_tensorflow_import_lib")])
 
-# A list of targets that contains the implemenation of
+# A list of targets that contains the implementation of
 # tf_custom_op_library_additional_deps. It's used to generate a DEF file for
 # exporting symbols from _pywrap_tensorflow.dll on Windows.
 def tf_custom_op_library_additional_deps_impl():
@@ -1906,11 +1800,6 @@ def tf_custom_op_library(name, srcs = [], gpu_srcs = [], deps = [], linkopts = [
         **kwargs
     )
 
-register_extension_info(
-    extension_name = "tf_custom_op_library",
-    label_regex_for_dep = "{extension_name}",
-)
-
 # Placeholder to use until bazel supports py_strict_binary.
 def py_strict_binary(name, **kwargs):
     native.py_binary(name = name, **kwargs)
@@ -1940,11 +1829,6 @@ def tf_custom_op_py_library(
         visibility = visibility,
         deps = deps,
     )
-
-register_extension_info(
-    extension_name = "tf_custom_op_py_library",
-    label_regex_for_dep = "{extension_name}",
-)
 
 # In tf_py_wrap_cc_opensource generated libraries
 # module init functions are not exported unless
@@ -2167,11 +2051,6 @@ def py_test(deps = [], data = [], kernels = [], exec_properties = None, **kwargs
         **kwargs
     )
 
-register_extension_info(
-    extension_name = "py_test",
-    label_regex_for_dep = "{extension_name}",
-)
-
 # Similar to py_test above, this macro is used to exclude dependencies for some py_binary
 # targets in order to reduce the size of //tensorflow/tools/pip_package:simple_console_windows.
 # See https://github.com/tensorflow/tensorflow/issues/22390
@@ -2191,11 +2070,6 @@ def py_binary(name, deps = [], **kwargs):
         }),
         **kwargs
     )
-
-register_extension_info(
-    extension_name = "py_binary",
-    label_regex_for_dep = "{extension_name}",
-)
 
 def pytype_library(**kwargs):
     # Types not enforced in OSS.
@@ -2293,11 +2167,6 @@ def tf_py_test(
             **kwargs
         )
 
-register_extension_info(
-    extension_name = "tf_py_test",
-    label_regex_map = {"deps": "deps:{extension_name}"},
-)
-
 def gpu_py_test(
         name,
         srcs,
@@ -2312,6 +2181,7 @@ def gpu_py_test(
         xla_enable_strict_auto_jit = False,
         xla_enabled = False,
         grpc_enabled = False,
+        xla_tags = [],  # additional tags for xla_gpu tests
         **kwargs):
     if main == None:
         main = name + ".py"
@@ -2334,7 +2204,7 @@ def gpu_py_test(
                 kernels = kernels,
                 main = main,
                 shard_count = shard_count,
-                tags = test_tags + ["xla", "manual"],
+                tags = test_tags + xla_tags + ["xla", "manual"],
                 xla_enabled = xla_enabled,
                 xla_enable_strict_auto_jit = True,
                 **kwargs
@@ -2358,19 +2228,9 @@ def gpu_py_test(
             **kwargs
         )
 
-register_extension_info(
-    extension_name = "gpu_py_test",
-    label_regex_map = {"deps": "deps:{extension_name}"},
-)
-
 # terminology changes: saving cuda_* definition for compatibility
 def cuda_py_test(*args, **kwargs):
     gpu_py_test(*args, **kwargs)
-
-register_extension_info(
-    extension_name = "cuda_py_test",
-    label_regex_map = {"deps": "deps:{extension_name}"},
-)
 
 def py_tests(
         name,
@@ -2481,7 +2341,7 @@ def tf_generate_proto_text_sources(name, srcs_relative_dir, srcs, protodeps = []
         cmd =
             "$(location //tensorflow/tools/proto_text:gen_proto_text_functions) " +
             "$(@D) " + srcs_relative_dir + " $(SRCS)",
-        exec_tools = [
+        tools = [
             clean_dep("//tensorflow/tools/proto_text:gen_proto_text_functions"),
         ],
         compatible_with = compatible_with,
@@ -2615,11 +2475,6 @@ def cc_library_with_android_deps(
         **kwargs):
     deps = if_not_android(deps) + if_android(android_deps) + common_deps
     cc_library(deps = deps, copts = copts, **kwargs)
-
-register_extension_info(
-    extension_name = "cc_library_with_android_deps",
-    label_regex_for_dep = "{extension_name}",
-)
 
 def tensorflow_opensource_extra_deps():
     return []
@@ -2814,7 +2669,7 @@ def if_cuda_or_rocm(if_true, if_false = []):
 
       If the same additional dependency is needed for both CUDA and ROCm
       (for eg. `reduction_ops` dependency for the `bias_op` target above),
-      then specifying that dependency in both  both `if_cuda` and `if_rocm` will
+      then specifying that dependency in both `if_cuda` and `if_rocm` will
       result in both those functions returning a select statement, which contains
       the same dependency, which then leads to a duplicate dependency bazel error.
 
@@ -2939,3 +2794,66 @@ def internal_tfrt_deps():
 
 def internal_cuda_deps():
     return []
+
+def _tf_gen_options_header_impl(ctx):
+    header_depset = depset([ctx.outputs.output_header])
+
+    define_vals = {True: "true", False: "false"}
+    substitutions = {}
+    for target, identifier in ctx.attr.build_settings.items():
+        setting_val = target[BuildSettingInfo].value
+        lines = [
+            "// %s" % target.label,
+            "#define TF_OPTION_%s() %s" % (identifier, define_vals[setting_val]),
+        ]
+        substitutions["#define_option %s" % identifier] = "\n".join(lines)
+
+    ctx.actions.expand_template(
+        template = ctx.file.template,
+        output = ctx.outputs.output_header,
+        substitutions = substitutions,
+    )
+
+    return [
+        DefaultInfo(files = header_depset),
+    ]
+
+tf_gen_options_header = rule(
+    attrs = {
+        "output_header": attr.output(
+            doc = "File path for the generated header (output)",
+            mandatory = True,
+        ),
+        "template": attr.label(
+            doc = """Template for the header.
+            For each option name 'X' (see build_settings attribute),
+            '#define_option X' results in a macro 'TF_OPTION_X()'
+            """,
+            allow_single_file = True,
+            mandatory = True,
+        ),
+        "build_settings": attr.label_keyed_string_dict(
+            doc = """Dictionary from build-setting labels to option names. Example:
+               {"//tensorflow:x_setting" : "X"}
+            """,
+            providers = [BuildSettingInfo],
+        ),
+    },
+    implementation = _tf_gen_options_header_impl,
+    doc = """
+    Generates a header file for Bazel build settings.
+
+    This is an alternative to setting preprocessor defines on the compiler
+    command line. It has a few advantages:
+      - Usage of the options requires #include-ing the header, and thus a
+        Bazel-level dependency.
+      - Each option has a definition site in source code, which mentions the
+        corresponding Bazel setting. This is particularly useful when
+        navigating code with the assistance of static analysis (e.g.
+        https://cs.opensource.google/tensorflow).
+      - Each option is represented as a FUNCTION()-style macro, which is always
+        defined (i.e. one uses #if instead of #ifdef). This allows forms like
+        'if constexpr (TF_OPTION_FOO()) { ... }', and helps catch missing
+        dependencies (if 'F' is undefined, '#if F()' results in an error).
+    """,
+)

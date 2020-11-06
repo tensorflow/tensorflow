@@ -522,7 +522,8 @@ struct NcclAllReduceConfig::AuxData {
 NcclAllReduceConfig::NcclAllReduceConfig(NcclAllReduceConfig&&) = default;
 NcclAllReduceConfig::~NcclAllReduceConfig() = default;
 
-NcclAllReduceConfig GetNcclAllReduceConfig(const HloInstruction* instr) {
+NcclAllReduceConfig GetNcclAllReduceConfig(const HloInstruction* instr,
+                                           int64 replica_count) {
   NcclAllReduceConfig config;
   config.operand_count = instr->operands().size();
   config.operand_element_type.reserve(config.operand_count);
@@ -530,6 +531,7 @@ NcclAllReduceConfig GetNcclAllReduceConfig(const HloInstruction* instr) {
     config.operand_element_type.push_back(
         instr->operand(i)->shape().element_type());
   }
+  config.replica_count = replica_count;
   config.replica_groups = instr->replica_groups();
   auto reduction_kind = MatchReductionComputation(instr->to_apply());
   CHECK(reduction_kind.has_value());
@@ -584,16 +586,8 @@ Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
       params.profiler->MakeScopedInstructionProfiler(profile_index());
 
   int64 local_device_ordinal = params.stream->parent()->device_ordinal();
-  GlobalDeviceId global_device_id;
-  if (params.gpu_global_device_ids) {
-    TF_RET_CHECK(0 <= local_device_ordinal &&
-                 local_device_ordinal < params.gpu_global_device_ids->size());
-    global_device_id = (*params.gpu_global_device_ids)[local_device_ordinal];
-  } else {
-    // No local -> global mapping was provided; assume the identity mapping.
-    global_device_id = GlobalDeviceId(local_device_ordinal);
-  }
-
+  TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
+                      params.GetGlobalDeviceId());
   // Determines the set of global and local devices that are participating in
   // the same collective group as the caller.
   TF_ASSIGN_OR_RETURN(

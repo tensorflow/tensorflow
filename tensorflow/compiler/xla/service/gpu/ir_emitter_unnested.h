@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk_emitter.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/kernel_support_library.h"
 
 namespace xla {
@@ -51,7 +52,7 @@ struct HloBufferSlice : public BufferSlice {
 
 struct MlirBufferSlice : public BufferSlice {
   // The buffer is modified by the kernel.
-  bool written;
+  bool written = false;
 
   Shape shape;
 };
@@ -59,6 +60,15 @@ struct MlirBufferSlice : public BufferSlice {
 struct MlirEmitterInput {
   mlir::Operation* op;
   Thunk::ThunkInfo thunk_info;
+
+  // A field to allow plumbing extra information that BufferAssignment has, but
+  // LMHLO/MLIR representation does not have. Specifically, this is for passing
+  // the allocated buffer for tuple outputs (an array of pointers to tuple
+  // elements).
+  //
+  // TODO(timshen): We need a corresponding construct in LMHLO to represent
+  // this, aka an array of pointers to different memrefs. Once we have that, we
+  // can merge this information back to LMHLO graph and remove this field.
   MlirBufferSlice extra_slice;
 };
 
@@ -148,9 +158,13 @@ class IrEmitterUnnested : public IrEmitter,
   Status HandleDot(HloInstruction* dot) override;
   Status HandleFft(HloInstruction* fft) override;
   Status HandleFusion(HloInstruction* fusion) override;
+  Status EmitLoopFusionFromMlir(MlirEmitterInput input,
+                                const Shape& output_shape, int unroll_factor);
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
   Status HandleReduce(HloInstruction* reduce) override;
   Status HandleSelectAndScatter(HloInstruction* instruction) override;
+  Status EmitSelectAndScatterFromMlir(
+      MlirEmitterInput mlir_input, std::unique_ptr<Thunk>&& initializer_thunk);
   Status HandleTuple(HloInstruction* tuple) override;
   Status HandleWhile(HloInstruction* xla_while) override;
   Status HandleInfeed(HloInstruction* xla_infeed) override;
@@ -158,9 +172,10 @@ class IrEmitterUnnested : public IrEmitter,
   Status HandleRng(HloInstruction* random) override;
   Status HandleRngGetAndUpdateState(HloInstruction* rng_state) override;
   Status HandleScatter(HloInstruction* scatter) override;
+  Status EmitScatterFromMlir(MlirEmitterInput mlir_input);
   Status HandleSelect(HloInstruction* select) override;
   Status HandleSort(HloInstruction* sort) override;
-  Status EmitSortFromMlir(MlirEmitterInput input);
+  Status EmitSortFromMlir(MlirEmitterInput mlir_input);
   Status HandleTriangularSolve(HloInstruction* hlo) override;
   Status HandleTupleSelect(HloInstruction* tuple_select) override;
   Status HandleAllReduce(HloInstruction* crs) override;
@@ -407,16 +422,38 @@ class IrEmitterUnnested : public IrEmitter,
       const llvm_ir::IrArray::Index& slice_input_index);
 
   // Emits code for an in-place scatter, modifying `thunk`s launch dimensions in
-  // the process. `scatter` may be fused, scatter indices are taken from
-  // `scatter_indices_gen`, updates from`updates_gen`. The output buffer is
-  // expected to have the operand values in it already. If unique_indices
-  // is false, we will use an atomic update. Using true for unique_indices
-  // behaves properly only when it is guaranteed that the indices to be
-  // updated do not overlap. The caller is responsible for ensuring this is
-  // the case.
-  Status EmitScatter(Thunk* thunk, HloInstruction* scatter,
+  // the process. Scatter indices are taken from `scatter_indices_gen`, updates
+  // from `updates_gen`. The output buffer is expected to have the operand
+  // values in it already. If unique_indices is false, we will use an atomic
+  // update. Using true for unique_indices behaves properly only when it is
+  // guaranteed that the indices to be updated do not overlap. The caller is
+  // responsible for ensuring this is the case.
+  Status EmitScatter(Thunk* thunk, mlir::lmhlo::ScatterOp scatter,
+                     const llvm_ir::IrArray& output,
                      const llvm_ir::ElementGenerator& scatter_indices_gen,
-                     const llvm_ir::ElementGenerator& updates_gen);
+                     const llvm_ir::ElementGenerator& updates_gen,
+                     std::function<llvm::Type*(int64)> get_index_type);
+
+  // Structure describing a scatter operation for IR emission.
+  // TODO(jurahul): Migrate element generators to use MLIR.
+  //                Migrate update_computation to be an MLIR Region.
+  struct ScatterDescriptor {
+    std::string name;
+    Shape operand_shape;
+    Shape scatter_indices_shape;
+    Shape updates_shape;
+    mlir::mhlo::ScatterDimensionNumbers dim_numbers;
+    bool unique_indices;
+    const HloComputation* update_computation;
+    llvm_ir::IrArray output;
+    llvm_ir::ElementGenerator scatter_indices_gen;
+    llvm_ir::ElementGenerator updates_gen;
+    std::function<llvm::Type*(int64)> get_index_type;
+  };
+
+  // Emits code for an in-place scatter using the provided scatter operation
+  // description.
+  Status EmitScatter(const ScatterDescriptor& desc, Thunk* thunk);
 
   // Returns true if a 0-2-1 tiling algorithm is already used to emit the kernel
   // for the hlo instruction.

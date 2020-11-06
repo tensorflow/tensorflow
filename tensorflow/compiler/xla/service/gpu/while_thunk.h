@@ -53,12 +53,11 @@ class WhileThunk : public Thunk {
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
-  const HloInstruction* hlo_instruction_;
   const BufferAllocation::Slice condition_result_buffer_index_;
   std::unique_ptr<SequentialThunk> condition_thunk_sequence_;
   std::unique_ptr<SequentialThunk> body_thunk_sequence_;
-  absl::optional<size_t> condition_profile_index_;
-  absl::optional<size_t> body_profile_index_;
+  const absl::optional<size_t> condition_profile_index_;
+  const absl::optional<size_t> body_profile_index_;
 };
 
 }  // namespace gpu

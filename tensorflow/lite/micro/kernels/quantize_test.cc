@@ -18,7 +18,6 @@ limitations under the License.
 #include "tensorflow/lite/micro/kernels/kernel_runner.h"
 #include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
-#include "tensorflow/lite/micro/testing/test_utils.h"
 
 namespace tflite {
 namespace testing {
@@ -35,8 +34,7 @@ void ValidateQuantizeGoldens(TfLiteTensor* tensors, int tensors_size,
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
   // Version 1 of quantize supports int8_t and uint8_t quantization.
-  const TfLiteRegistration registration =
-      tflite::ops::micro::Register_QUANTIZE();
+  const TfLiteRegistration registration = Register_QUANTIZE();
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
                              outputs_array,
                              /*builtin_data=*/nullptr, micro_test::reporter);
@@ -45,7 +43,7 @@ void ValidateQuantizeGoldens(TfLiteTensor* tensors, int tensors_size,
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
   // Use reference quantization from test utils to compare against op output.
-  AsymmetricQuantize(golden, golden_quantized, output_len, scale, zero_point);
+  Quantize(golden, golden_quantized, output_len, scale, zero_point);
   for (int i = 0; i < output_len; ++i) {
     TF_LITE_MICRO_EXPECT_EQ(golden_quantized[i], output_data[i]);
   }
@@ -73,7 +71,7 @@ void TestQuantizeFloat(const int* input_dims_data, const float* input_data,
   // 1 input, 1 output.
   constexpr int tensors_size = 2;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims),
+      CreateTensor(input_data, input_dims),
       output_tensor,
   };
 
@@ -278,6 +276,23 @@ TF_LITE_MICRO_TEST(QuantizeOpTestInt8toInt8NoZeroPoint) {
   int8_t output_quantized[length];
   int8_t values_quantized[length];
   int8_t input_quantized[length];
+  tflite::testing::TestRequantize(dims, values, input_quantized, input_scale,
+                                  input_zero_point, dims, values,
+                                  values_quantized, output_scale,
+                                  output_zero_point, output_quantized);
+}
+
+TF_LITE_MICRO_TEST(QuantizeOpTestInt16toInt32) {
+  const int length = 10;
+  const int dims[] = {2, 2, 5};
+  const float values[] = {-32, -31, -30, -29, -28, 27, 28, 29, 30, 31};
+  const float input_scale = 1.f;
+  const int input_zero_point = 0;
+  const float output_scale = 0.5;
+  const int output_zero_point = 0;
+  int32_t output_quantized[length];
+  int32_t values_quantized[length];
+  int16_t input_quantized[length];
   tflite::testing::TestRequantize(dims, values, input_quantized, input_scale,
                                   input_zero_point, dims, values,
                                   values_quantized, output_scale,

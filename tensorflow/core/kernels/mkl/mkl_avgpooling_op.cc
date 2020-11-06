@@ -40,7 +40,7 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-template <typename Device, typename T>
+template <typename Device, typename T, bool native_format = false>
 class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
  public:
   explicit MklAvgPoolingOp(OpKernelConstruction* context)
@@ -48,6 +48,7 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
     // Workspace is an MKLDNN construct that is only used in Max Pooling.
     // So set workspace_enabled_ to false.
     this->workspace_enabled_ = false;
+    this->native_format_ = native_format;
   }
 
   void Compute(OpKernelContext* context) override {
@@ -55,7 +56,8 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
       const Tensor& input_tensor =
           MklGetInput(context, this->kInputTensorIndexInput);
       MklDnnShape dnn_shape_input;
-      GetMklShape(context, this->kInputTensorIndexInput, &dnn_shape_input);
+      GetMklShape(context, this->kInputTensorIndexInput, &dnn_shape_input,
+                  this->native_format_);
       this->SanityCheckInput(context, input_tensor, dnn_shape_input);
       if (!context->status().ok()) return;
 
@@ -116,7 +118,8 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
           src_dims, output_dims_mkl_order, filter_dims, strides, padding_left,
           padding_right, ALGORITHM::pooling_avg_exclude_padding,
           pooling_prop_kind,
-          static_cast<MEMORY_FORMAT>(this->data_format_mkldnn_), input_md);
+          static_cast<MEMORY_FORMAT>(this->data_format_mkldnn_), input_md,
+          this->native_format_);
 #else
       MklPoolingParams fwdParams(
           src_dims, output_dims_mkl_order, filter_dims, strides, padding_left,
@@ -174,11 +177,13 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
   engine cpu_engine_ = engine(ENGINE_CPU, 0);
 };  // MklAvgPoolingOp
 
-template <class Device, class T>
+template <class Device, class T, bool native_format = false>
 class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
  public:
   explicit MklAvgPoolingGradOp(OpKernelConstruction* context)
-      : MklPoolingBackwardOpBase<T>(context) {}
+      : MklPoolingBackwardOpBase<T>(context) {
+    this->native_format_ = native_format;
+  }
 
   void Compute(OpKernelContext* context) override {
     try {
@@ -188,8 +193,10 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
           MklGetInput(context, kInputTensorIndexInputGradient);
 
       MklDnnShape orig_input_mkl_shape, grad_mkl_shape;
-      GetMklShape(context, kInputTensorIndexInputShape, &orig_input_mkl_shape);
-      GetMklShape(context, kInputTensorIndexInputGradient, &grad_mkl_shape);
+      GetMklShape(context, kInputTensorIndexInputShape, &orig_input_mkl_shape,
+                  this->native_format_);
+      GetMklShape(context, kInputTensorIndexInputGradient, &grad_mkl_shape,
+                  this->native_format_);
       if (!context->status().ok()) return;
 
       // Used to allocate output_diff_src/diff_src.
@@ -249,7 +256,8 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
           orig_input_dims_mkl_order, output_dims_mkl_order, filter_dims,
           strides, padding_left, padding_right,
           ALGORITHM::pooling_avg_exclude_padding, prop_kind::forward_training,
-          static_cast<MEMORY_FORMAT>(this->data_format_mkldnn_), src_md);
+          static_cast<MEMORY_FORMAT>(this->data_format_mkldnn_), src_md,
+          this->native_format_);
 #else
       MklPoolingParams bwdParams(
           orig_input_dims_mkl_order, output_dims_mkl_order, filter_dims,
@@ -273,7 +281,8 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       std::shared_ptr<PoolingBwdPd> pooling_bwd_pd =
           pooling_bwd->GetPoolingBwdPd();
       T* diff_dst_data = nullptr;
-      if (IS_DIFF_DST_REORDER_NEEDED(diff_dst_md, pooling_bwd_pd,
+      if (!this->native_format_ &&
+          IS_DIFF_DST_REORDER_NEEDED(diff_dst_md, pooling_bwd_pd,
                                      pooling_bwd)) {
         grad_dnn_data.SetUsrMem(diff_dst_md, &grad_tensor);
         grad_dnn_data.CheckReorderToOpMem(MEMORY_PD_WITHOUT_DATA(
@@ -307,36 +316,56 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
   engine cpu_engine_ = engine(ENGINE_CPU, 0);
 };  // MklAvgPoolingGradOp
 
-#define REGISTER_MKL_AVGPOOL3D_KERNELS(T)                      \
-  REGISTER_KERNEL_BUILDER(                                     \
-      Name("_MklAvgPool3D")                                    \
-          .Device(DEVICE_CPU)                                  \
-          .TypeConstraint<T>("T")                              \
-          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
-      MklAvgPoolingOp<CPUDevice, T>);                          \
-  REGISTER_KERNEL_BUILDER(                                     \
-      Name("_MklAvgPool3DGrad")                                \
-          .Device(DEVICE_CPU)                                  \
-          .TypeConstraint<T>("T")                              \
-          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
-      MklAvgPoolingGradOp<CPUDevice, T>);
+#define REGISTER_MKL_AVGPOOL3D_KERNELS(T)                                     \
+  REGISTER_KERNEL_BUILDER(                                                    \
+      Name("_MklAvgPool3D")                                                   \
+          .Device(DEVICE_CPU)                                                 \
+          .TypeConstraint<T>("T")                                             \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel),                \
+      MklAvgPoolingOp<CPUDevice, T>);                                         \
+  REGISTER_KERNEL_BUILDER(                                                    \
+      Name("_MklAvgPool3DGrad")                                               \
+          .Device(DEVICE_CPU)                                                 \
+          .TypeConstraint<T>("T")                                             \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel),                \
+      MklAvgPoolingGradOp<CPUDevice, T>);                                     \
+  REGISTER_KERNEL_BUILDER(Name("_MklNativeAvgPool3D")                         \
+                              .Device(DEVICE_CPU)                             \
+                              .TypeConstraint<T>("T")                         \
+                              .Label(mkl_op_registry::kMklNameChangeOpLabel), \
+                          MklAvgPoolingOp<CPUDevice, T, true>);               \
+  REGISTER_KERNEL_BUILDER(Name("_MklNativeAvgPool3DGrad")                     \
+                              .Device(DEVICE_CPU)                             \
+                              .TypeConstraint<T>("T")                         \
+                              .Label(mkl_op_registry::kMklNameChangeOpLabel), \
+                          MklAvgPoolingGradOp<CPUDevice, T, true>);
 
 TF_CALL_float(REGISTER_MKL_AVGPOOL3D_KERNELS);
 TF_CALL_bfloat16(REGISTER_MKL_AVGPOOL3D_KERNELS);
 
-#define REGISTER_MKL_AVGPOOL_KERNELS(T)                        \
-  REGISTER_KERNEL_BUILDER(                                     \
-      Name("_MklAvgPool")                                      \
-          .Device(DEVICE_CPU)                                  \
-          .TypeConstraint<T>("T")                              \
-          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
-      MklAvgPoolingOp<CPUDevice, T>);                          \
-  REGISTER_KERNEL_BUILDER(                                     \
-      Name("_MklAvgPoolGrad")                                  \
-          .Device(DEVICE_CPU)                                  \
-          .TypeConstraint<T>("T")                              \
-          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
-      MklAvgPoolingGradOp<CPUDevice, T>);
+#define REGISTER_MKL_AVGPOOL_KERNELS(T)                                       \
+  REGISTER_KERNEL_BUILDER(                                                    \
+      Name("_MklAvgPool")                                                     \
+          .Device(DEVICE_CPU)                                                 \
+          .TypeConstraint<T>("T")                                             \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel),                \
+      MklAvgPoolingOp<CPUDevice, T>);                                         \
+  REGISTER_KERNEL_BUILDER(                                                    \
+      Name("_MklAvgPoolGrad")                                                 \
+          .Device(DEVICE_CPU)                                                 \
+          .TypeConstraint<T>("T")                                             \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel),                \
+      MklAvgPoolingGradOp<CPUDevice, T>);                                     \
+  REGISTER_KERNEL_BUILDER(Name("_MklNativeAvgPool")                           \
+                              .Device(DEVICE_CPU)                             \
+                              .TypeConstraint<T>("T")                         \
+                              .Label(mkl_op_registry::kMklNameChangeOpLabel), \
+                          MklAvgPoolingOp<CPUDevice, T, true>);               \
+  REGISTER_KERNEL_BUILDER(Name("_MklNativeAvgPoolGrad")                       \
+                              .Device(DEVICE_CPU)                             \
+                              .TypeConstraint<T>("T")                         \
+                              .Label(mkl_op_registry::kMklNameChangeOpLabel), \
+                          MklAvgPoolingGradOp<CPUDevice, T, true>);
 
 TF_CALL_float(REGISTER_MKL_AVGPOOL_KERNELS);
 TF_CALL_bfloat16(REGISTER_MKL_AVGPOOL_KERNELS);

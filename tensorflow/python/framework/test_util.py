@@ -66,6 +66,7 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import tfrt_utils
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
@@ -107,7 +108,7 @@ except Exception:  # pylint: disable=broad-except
 # Uses the same mechanism as above to selectively enable/disable MLIR
 # compilation.
 def is_mlir_bridge_enabled():
-  return False
+  return None
 
 
 try:
@@ -119,19 +120,11 @@ except ImportError:
     pass
 
 
-# Uses the same mechanism as above to selectively enable TFRT.
-def is_tfrt_enabled():
-  return False
+def _get_object_count_by_type(exclude=()):
+  return (
+      collections.Counter([type(obj).__name__ for obj in gc.get_objects()]) -
+      collections.Counter([type(obj).__name__ for obj in exclude]))
 
-
-try:
-  from tensorflow.python.framework.is_tfrt_test_true import is_tfrt_enabled  # pylint: disable=g-import-not-at-top, unused-import
-except Exception:  # pylint: disable=broad-except
-  pass
-
-
-def _get_object_count_by_type():
-  return collections.Counter([type(obj).__name__ for obj in gc.get_objects()])
 
 @tf_export("test.gpu_device_name")
 def gpu_device_name():
@@ -623,12 +616,12 @@ def enable_output_all_intermediates(fn):
     The wrapped function
   """
 
-  def wrapper(*args, **kwargs):
+  def wrapper(self, *args, **kwargs):
     output_all_intermediates_old = \
         control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE
     control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE = True
     try:
-      return fn(*args, **kwargs)
+      return fn(self, *args, **kwargs)
     finally:
       control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE = \
           output_all_intermediates_old
@@ -667,12 +660,20 @@ def assert_no_new_pyobjects_executing_eagerly(func=None, warmup_iters=2):
         # versions of python2.7.x.
         for _ in range(warmup_iters):
           f(self, *args, **kwargs)
+        # Since we aren't in the normal test lifecylce, we need to manually run
+        # cleanups to clear out their object references.
+        self.doCleanups()
 
         # Some objects are newly created by _get_object_count_by_type().  So
         # create and save as a dummy variable to include it as a baseline.
         obj_count_by_type = _get_object_count_by_type()
         gc.collect()
-        obj_count_by_type = _get_object_count_by_type()
+        # unittest.doCleanups adds to self._outcome with each unwound call.
+        # These objects are retained across gc collections so we exclude them
+        # from the object count calculation.
+        obj_count_by_type = _get_object_count_by_type(
+            exclude=gc.get_referents(self._outcome.errors,
+                                     self._outcome.skipped))
 
         if ops.has_default_graph():
           collection_sizes_before = {
@@ -681,6 +682,9 @@ def assert_no_new_pyobjects_executing_eagerly(func=None, warmup_iters=2):
           }
         for _ in range(3):
           f(self, *args, **kwargs)
+        # Since we aren't in the normal test lifecylce, we need to manually run
+        # cleanups to clear out their object references.
+        self.doCleanups()
         # Note that gc.get_objects misses anything that isn't subject to garbage
         # collection (C types). Collections are a common source of leaks, so we
         # test for collection sizes explicitly.
@@ -702,7 +706,11 @@ def assert_no_new_pyobjects_executing_eagerly(func=None, warmup_iters=2):
         gc.collect()
 
         # There should be no new Python objects hanging around.
-        obj_count_by_type = _get_object_count_by_type() - obj_count_by_type
+        obj_count_by_type = (
+            _get_object_count_by_type(
+                exclude=gc.get_referents(self._outcome.errors,
+                                         self._outcome.skipped)) -
+            obj_count_by_type)
         # In some cases (specifically on MacOS), new_count is somehow
         # smaller than previous_count.
         # Using plain assert because not all classes using this decorator
@@ -1831,7 +1839,7 @@ def disable_tfrt(unused_description):
     """Execute the test only if tfrt is not enabled."""
 
     if tf_inspect.isclass(cls_or_func):
-      if is_tfrt_enabled():
+      if tfrt_utils.enabled():
         return None
       else:
         return cls_or_func
@@ -1839,7 +1847,7 @@ def disable_tfrt(unused_description):
       def decorator(func):
 
         def decorated(self, *args, **kwargs):
-          if is_tfrt_enabled():
+          if tfrt_utils.enabled():
             return
           else:
             return func(self, *args, **kwargs)
@@ -1969,6 +1977,9 @@ def matmul_without_tf32(a, b, *args, **kwargs):
   If a matmul itself is being tested, or some other op which uses matmul, use
   `run_without_tensor_float_32` instead.
 
+  This also casts complex64 inputs to complex128, since TensorFloat-32 can also
+  be used with complex64
+
   Args:
     a: First input to tf.linalg.matmul
     b: Second input to tf.linalg.matmul
@@ -1981,6 +1992,11 @@ def matmul_without_tf32(a, b, *args, **kwargs):
   if config.tensor_float_32_execution_enabled() and a.dtype == "float32":
     a = math_ops.cast(a, "float64")
     b = math_ops.cast(b, "float64")
+    ret = math_ops.matmul(a, b, *args, **kwargs)
+    return math_ops.cast(ret, a.dtype)
+  elif config.tensor_float_32_execution_enabled() and a.dtype == "complex64":
+    a = math_ops.cast(a, "complex128")
+    b = math_ops.cast(b, "complex128")
     ret = math_ops.matmul(a, b, *args, **kwargs)
     return math_ops.cast(ret, a.dtype)
   else:
@@ -2014,8 +2030,13 @@ class TensorFlowTestCase(googletest.TestCase):
       # disable it here.
       pywrap_tf_session.TF_SetXlaConstantFoldingDisabled(True)
 
+    # Check if the mlir bridge has been explicitly enabled or disabled. If
+    # is_mlir_bridge_enabled() returns None, the user did not explictly enable
+    # or disable the bridge so do not update enable_mlir_bridge.
     if is_mlir_bridge_enabled():
       context.context().enable_mlir_bridge = True
+    elif is_mlir_bridge_enabled() is not None:
+      context.context().enable_mlir_bridge = False
 
     self._threads = []
     self._tempdir = None
@@ -2023,6 +2044,7 @@ class TensorFlowTestCase(googletest.TestCase):
     self._test_start_time = None
 
   def setUp(self):
+    super(TensorFlowTestCase, self).setUp()
     self._ClearCachedSession()
     random.seed(random_seed.DEFAULT_GRAPH_SEED)
     np.random.seed(random_seed.DEFAULT_GRAPH_SEED)
@@ -2057,6 +2079,7 @@ class TensorFlowTestCase(googletest.TestCase):
       thread.check_termination()
 
     self._ClearCachedSession()
+    super(TensorFlowTestCase, self).tearDown()
 
   def _ClearCachedSession(self):
     if self._cached_session is not None:
@@ -2736,12 +2759,13 @@ class TensorFlowTestCase(googletest.TestCase):
     self.assertAllClose(a, b, rtol=rtol, atol=atol, msg=msg)
 
   @py_func_if_in_function
-  def assertNotAllClose(self, a, b, **kwargs):
+  def assertNotAllClose(self, a, b, msg=None, **kwargs):
     """Assert that two numpy arrays, or Tensors, do not have near values.
 
     Args:
       a: the first value to compare.
       b: the second value to compare.
+      msg: Optional message to report on failure.
       **kwargs: additional keyword arguments to be passed to the underlying
         `assertAllClose` call.
 
@@ -2752,7 +2776,8 @@ class TensorFlowTestCase(googletest.TestCase):
       self.assertAllClose(a, b, **kwargs)
     except AssertionError:
       return
-    raise AssertionError("The two values are close at all elements")
+    msg = msg or ""
+    raise AssertionError("The two values are close at all elements. %s" % msg)
 
   @py_func_if_in_function
   def assertAllEqual(self, a, b, msg=None):

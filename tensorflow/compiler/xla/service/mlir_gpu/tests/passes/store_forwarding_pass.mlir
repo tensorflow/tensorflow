@@ -13,6 +13,19 @@ func @forward() -> f32 {
   return %1 : f32
 }
 
+// CHECK-LABEL: @forward_alloca
+func @forward_alloca() -> f32 {
+  %0 = alloca() : memref<1024xf32>
+  %c42 = constant 24 : index
+  // CHECK: %[[CST:.*]] = constant 1.0
+  %c1 = constant 1.0 : f32
+  store %c1, %0[%c42] : memref<1024xf32>
+  // CHECK-NOT: load
+  %1 = load %0[%c42] : memref<1024xf32>
+  // CHECK: return %[[CST]]
+  return %1 : f32
+}
+
 // CHECK-LABEL: @wrong_index
 func @wrong_index() -> f32 {
   %0 = alloc() : memref<1024xf32>

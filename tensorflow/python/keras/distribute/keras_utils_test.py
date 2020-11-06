@@ -23,9 +23,11 @@ import tempfile
 
 from absl.testing import parameterized
 import numpy as np
+
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations as ds_combinations
+from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.distribute import values
@@ -575,4 +577,4 @@ class TestDistributionStrategyWithStaticShapes(test.TestCase,
 
 
 if __name__ == '__main__':
-  test.main()
+  multi_process_runner.test_main()

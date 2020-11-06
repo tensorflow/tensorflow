@@ -124,7 +124,7 @@ class CudnnBatchNormBackwardThunk : public Thunk {
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
-  CudnnBatchNormConfig config_;
+  const CudnnBatchNormConfig config_;
   BufferAllocation::Slice operand_;
   BufferAllocation::Slice scale_;
   BufferAllocation::Slice mean_;

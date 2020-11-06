@@ -54,8 +54,9 @@ void MklPoolingFwdPrimitive<T>::Setup(const MklPoolingParams& fwdParams) {
 #else
   context_.src_md.reset(new memory::desc(fwdParams.src_md.data));
 #endif  //  !ENABLE_MKLDNN_V1
-  context_.dst_md.reset(new memory::desc({fwdParams.dst_dims}, MklDnnType<T>(),
-                                         MEMORY_FORMAT::any));
+  context_.dst_md.reset(new memory::desc(
+      {fwdParams.dst_dims}, MklDnnType<T>(),
+      fwdParams.native_format ? fwdParams.src_format : MEMORY_FORMAT::any));
 
 #ifndef ENABLE_MKLDNN_V1
   // Create a pooling descriptor.
@@ -187,8 +188,9 @@ void MklPoolingBwdPrimitive<T>::Setup(const MklPoolingParams& bwdParams) {
       {bwdParams.dst_dims}, MklDnnType<T>(), bwdParams.src_format));
 #else
   context_.src_md.reset(new memory::desc(bwdParams.src_md.data));
-  context_.dst_md.reset(new memory::desc({bwdParams.dst_dims}, MklDnnType<T>(),
-                                         MEMORY_FORMAT::any));
+  context_.dst_md.reset(new memory::desc(
+      {bwdParams.dst_dims}, MklDnnType<T>(),
+      bwdParams.native_format ? bwdParams.src_format : MEMORY_FORMAT::any));
 #endif  // !ENABLE_MKLDNN_V1
 
 #ifndef ENABLE_MKLDNN_V1

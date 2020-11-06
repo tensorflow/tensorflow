@@ -33,7 +33,7 @@ struct OpStatsOptions {
 
 // NOTE: call GroupTfEvents before if OpStats.step_db needs to be generated.
 OpStats ConvertXSpaceToOpStats(const XSpace& space,
-                               const OpStatsOptions& config);
+                               const OpStatsOptions& options);
 
 // Propagate and dedup the diagnostics in XSpace and add to OpStats.
 void PropagateXSpaceDiagnosticsToOpStats(const XSpace& space,

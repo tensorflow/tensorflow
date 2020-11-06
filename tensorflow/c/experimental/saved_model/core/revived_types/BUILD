@@ -146,6 +146,7 @@ cc_library(
         ":tf_signature_def_function",
         ":variable",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -166,6 +167,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/eager:context",
+        "//tensorflow/core/common_runtime/eager:tensor_handle",
+        "//tensorflow/core/lib/llvm_rtti",
         "@com_google_absl//absl/types:optional",
     ],
 )

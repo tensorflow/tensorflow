@@ -52,6 +52,7 @@ cc_library(
         "//tensorflow/lite/micro/memory_planner",
         "//tensorflow/lite/micro/memory_planner:greedy_memory_planner",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_utils",
         "@flatbuffers//:runtime_cc",
     ],
 )
@@ -81,13 +82,13 @@ cc_library(
     deps = [
         ":micro_utils",
         ":op_resolvers",
+        "//tensorflow/lite:type_to_tflitetype",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/schema:schema_utils",
         "@flatbuffers//:runtime_cc",
     ],
 )
@@ -109,6 +110,7 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/lite/micro/kernels:fully_connected",
         "//tensorflow/lite/micro/kernels:micro_ops",
         "//tensorflow/lite/schema:schema_fbs",
     ],
@@ -328,6 +330,7 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":micro_framework",
+        "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )

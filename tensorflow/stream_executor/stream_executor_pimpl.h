@@ -395,6 +395,21 @@ class StreamExecutor {
   // Get the list of supported algorithms for BLAS gemm.
   bool GetBlasGemmAlgorithms(std::vector<blas::AlgorithmType> *out_algorithms);
 
+  // Creates a backend-specific plan object for a blaslt matmul operation, which
+  // can then be passed to DoBlasLtMatmul(). When possible, plans should be
+  // created once and reused for multiple calls to DoBlasLtMatmul().
+  // Returns a null pointer on failure.
+  port::StatusOr<std::unique_ptr<blas::IBlasLtMatmulPlan>>
+  CreateBlasLtMatmulPlan(const blas::BlasLtMatmulPlanParams &params);
+
+  // Gets a list of supported algorithms for DoBlasLtMatmul. The algorithms are
+  // returned in the order of increasing estimated compute time according to an
+  // internal heuristic. The first returned algorithm can be used as the default
+  // algorithm if no autotuning is to be performed.
+  port::StatusOr<std::vector<std::unique_ptr<blas::IBlasLtMatmulAlgorithm>>>
+  GetBlasLtMatmulAlgorithms(const blas::IBlasLtMatmulPlan *plan,
+                            size_t max_workspace_size, int max_algorithm_count);
+
   // Create an RNN descriptor based on model shapes and configurations.
   // The caller retains the ownership of the descriptor.
   port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> createRnnDescriptor(
@@ -512,24 +527,6 @@ class StreamExecutor {
   // Return an allocator which delegates to this stream executor for memory
   // allocation.
   StreamExecutorMemoryAllocator *GetAllocator() { return &allocator_; }
-
-  // Block host until all streams associated with this stream executor have
-  // finished all of enqueued work.
-  port::Status BlockHostUntilAllStreamsAreDone() {
-    std::vector<Stream *> streams;
-    {
-      absl::MutexLock lock(&mu_);
-      for (Stream *stream : streams_) {
-        streams.push_back(stream);
-      }
-    }
-
-    for (Stream *stream : streams) {
-      TF_RETURN_IF_ERROR(BlockHostUntilDone(stream));
-    }
-
-    return port::Status::OK();
-  }
 
  private:
   template <typename BeginCallT, typename CompleteCallT, typename ReturnT,
@@ -660,16 +657,6 @@ class StreamExecutor {
   template <typename TraceCallT, typename... ArgsT>
   void SubmitTrace(TraceCallT trace_call, ArgsT &&...args);
 
-  void RegisterStream(Stream *stream) {
-    absl::MutexLock lock(&mu_);
-    streams_.insert(stream);
-  }
-
-  void UnregisterStream(Stream *stream) {
-    absl::MutexLock lock(&mu_);
-    streams_.erase(stream);
-  }
-
   // Reader/writer lock for class-static StreamExecutor members.
   static absl::Mutex static_mu_;
 
@@ -759,9 +746,6 @@ class StreamExecutor {
   int64 memory_limit_bytes_;
 
   StreamExecutorMemoryAllocator allocator_;
-
-  // Set of streams associated with this stream executor.
-  std::set<Stream *> streams_ TF_GUARDED_BY(mu_);
 
   SE_DISALLOW_COPY_AND_ASSIGN(StreamExecutor);
 };

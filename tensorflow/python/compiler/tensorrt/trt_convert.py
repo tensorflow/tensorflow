@@ -50,6 +50,7 @@ from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import saver
 from tensorflow.python.training.tracking import tracking
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
@@ -426,6 +427,8 @@ class TrtGraphConverter(object):
   ```
   """
 
+  @deprecation.deprecated_args(None, "Remove the use of this argument",
+                               "session_config")
   def __init__(self,
                input_saved_model_dir=None,
                input_saved_model_tags=None,
@@ -994,6 +997,9 @@ class TrtGraphConverterV2(object):
     assert context.executing_eagerly()
     if conversion_params is None:
       conversion_params = TrtConversionParams()
+    elif conversion_params.rewriter_config_template is not None:
+      tf_logging.warn("the rewrite_config_template field will be deprecated.")
+
     _check_trt_version_compatibility()
     _check_conversion_params(conversion_params, is_v2=True)
 
@@ -1052,6 +1058,10 @@ class TrtGraphConverterV2(object):
         [tensor.name for tensor in func.outputs])
     rebuilt_func.graph.structured_outputs = nest.pack_sequence_as(
         func.graph.structured_outputs, rebuilt_func.graph.structured_outputs)
+    # Copy structured input signature from original function (used during
+    # serialization)
+    rebuilt_func.graph.structured_input_signature = (
+        func.structured_input_signature)
     return rebuilt_func
 
   # TODO(laigd): provide a utility function to optimize a ConcreteFunction and
@@ -1104,6 +1114,10 @@ class TrtGraphConverterV2(object):
     self._converted_func.graph.structured_outputs = nest.pack_sequence_as(
         func.graph.structured_outputs,
         self._converted_func.graph.structured_outputs)
+    # Copy structured input signature from original function (used during
+    # serialization)
+    self._converted_func.graph.structured_input_signature = (
+        func.structured_input_signature)
 
     if self._need_calibration:
       for inp in calibration_input_fn():
@@ -1121,6 +1135,7 @@ class TrtGraphConverterV2(object):
       self._converted_func = self._rebuild_func(self._converted_func)
 
     self._converted = True
+    return self._converted_func
 
   def build(self, input_fn):
     """Run inference with converted graph in order to build TensorRT engines.
@@ -1259,6 +1274,8 @@ class TrtGraphConverterV2(object):
       reset_converted_func.graph.structured_outputs = nest.pack_sequence_as(
           self._converted_func.graph.structured_outputs,
           reset_converted_func.graph.structured_outputs)
+      reset_converted_func.graph.strucutred_input_signature = (
+          self._converted_func.structured_input_signature)
       self._converted_func = reset_converted_func
 
     signatures[self._input_saved_model_signature_key] = self._converted_func

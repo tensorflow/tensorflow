@@ -98,6 +98,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
@@ -112,6 +113,13 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream.h"
 
 namespace xla {
+
+PjRtPlatformId PjRtDevice::platform_id() const {
+  return client_->platform_id();
+}
+const std::string& PjRtDevice::platform_name() const {
+  return client_->platform_name();
+}
 
 StatusOr<LocalDeviceState*> PjRtDevice::GetLocalDeviceState() const {
   if (local_device_state_) {
@@ -145,8 +153,8 @@ StatusOr<DeviceAssignment> DevicesToDeviceAssignment(
           devices[replica].size(), replica, devices[0].size());
     }
     for (int partition = 0; partition < devices[replica].size(); ++partition) {
-      if (devices[0][0]->platform_name() !=
-          devices[replica][partition]->platform_name()) {
+      if (devices[0][0]->platform_id() !=
+          devices[replica][partition]->platform_id()) {
         return InvalidArgument(
             "Device assignment passed to Compile() must have devices of a "
             "single kind, got %s for replica 0 partition 0 and %s for replica "
@@ -181,7 +189,8 @@ PjRtClient::PjRtClient(
     std::unique_ptr<tensorflow::Allocator> host_memory_allocator,
     bool should_stage_host_to_device_transfers,
     std::unique_ptr<GpuExecutableRunOptions> gpu_run_options)
-    : platform_name_(std::move(platform_name)),
+    : platform_id_(tensorflow::Fingerprint64(platform_name)),
+      platform_name_(std::move(platform_name)),
       client_(client),
       host_memory_allocator_(std::move(host_memory_allocator)),
       devices_(std::move(devices)),
@@ -206,15 +215,15 @@ PjRtClient::PjRtClient(
     CHECK(id_to_device_.insert({device->id(), device.get()}).second)
         << "Duplicate device id: " << device->id();
 
-    if (device->local_device_state()) {
-      int idx = device->local_device_state()->device_ordinal();
+    if (device->IsLocalDevice()) {
+      int idx = device->local_device_id();
       if (idx >= local_devices_.size()) {
         local_devices_.resize(idx + 1);
       }
       CHECK(local_devices_[idx] == nullptr) << idx;
       local_devices_[idx] = device.get();
     }
-    device->client_ = this;
+    device->SetClient(this);
   }
   for (int idx = 0; idx < local_devices_.size(); ++idx) {
     CHECK(local_devices_[idx] != nullptr) << idx;
@@ -225,62 +234,6 @@ StatusOr<DeviceAssignment> PjRtClient::GetDefaultDeviceAssignment(
     int num_replicas, int num_partitions) const {
   return client_->backend().computation_placer()->AssignDevices(num_replicas,
                                                                 num_partitions);
-}
-
-StatusOr<absl::flat_hash_set<int>> PjRtClient::GetParametersThatMustBeDonated(
-    const LocalExecutable& executable, bool tuple_inputs) const {
-  HloComputation* computation =
-      executable.executable()->module().entry_computation();
-  int number_of_parameters = [&]() -> int {
-    if (tuple_inputs) {
-      CHECK_EQ(computation->num_parameters(), 1);
-      const Shape& input_tuple_shape =
-          computation->parameter_instruction(0)->shape();
-      CHECK(input_tuple_shape.IsTuple());
-      return input_tuple_shape.tuple_shapes_size();
-    } else {
-      return computation->num_parameters();
-    }
-  }();
-  // If any buffer in a parameter is aliased we will donate the entire input
-  // parameter.
-  absl::flat_hash_set<int> parameters_to_donate;
-  const HloInputOutputAliasConfig& config =
-      executable.executable()->module().input_output_alias_config();
-  TF_RETURN_IF_ERROR(config.ForEachAliasWithStatus(
-      [&](const ShapeIndex& output_index,
-          const HloInputOutputAliasConfig::Alias& alias) {
-        if (tuple_inputs) {
-          if (alias.parameter_number != 0) {
-            return InvalidArgument(
-                "Unexpected parameter number %d in alias config with tupled "
-                "inputs",
-                alias.parameter_number);
-          }
-          const ShapeIndex& index = alias.parameter_index;
-          if (!index.empty()) {
-            int this_parameter = index.data()[0];
-            if (this_parameter >= number_of_parameters) {
-              return InvalidArgument(
-                  "Unexpected parameter index %s in alias config with tupled "
-                  "inputs and %d parameters",
-                  index.ToString(), number_of_parameters);
-            }
-            parameters_to_donate.insert(this_parameter);
-          }
-        } else {
-          int this_parameter = alias.parameter_number;
-          if (this_parameter >= number_of_parameters) {
-            return InvalidArgument(
-                "Unexpected parameter number %d in alias config without tupled "
-                "inputs and %d parameters",
-                this_parameter, number_of_parameters);
-          }
-          parameters_to_donate.insert(this_parameter);
-        }
-        return Status::OK();
-      }));
-  return parameters_to_donate;
 }
 
 std::unique_ptr<HloCostAnalysis> PjRtClient::GetHloCostAnalysis() {
@@ -576,24 +529,23 @@ void PjRtBuffer::ScopedHold::AddToInput(
   }
 }
 
-/* static */
-StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::FromHostBuffer(
+bool PjRtBuffer::IsOnCpu() const { return client()->platform_id() == kCpuId; }
+
+StatusOr<std::unique_ptr<PjRtBuffer>> PjRtClient::BufferFromHostBuffer(
     const void* data, const Shape& shape,
     HostBufferSemantics host_buffer_semantics,
-    std::shared_ptr<void> buffer_reference, PjRtClient* client,
-    PjRtDevice* device) {
-  tensorflow::profiler::TraceMe traceme("PjRtBuffer::FromHostBuffer");
-  VLOG(2) << "PjRtBuffer::FromHostBuffer: shape: " << shape.ToString()
+    std::shared_ptr<void> buffer_reference, PjRtDevice* device) {
+  tensorflow::profiler::TraceMe traceme("PjRtClient::BufferFromHostBuffer");
+  VLOG(2) << "PjRtClient::BufferFromHostBuffer: shape: " << shape.ToString()
           << " device: " << device->DebugString();
   if (shape.IsTuple()) {
-    return InvalidArgument("Use FromHostLiteral to transfer a tuple");
+    return InvalidArgument("Use BufferFromHostLiteral to transfer a tuple");
   }
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
                       device->GetLocalDeviceState());
   int64 size = ShapeUtil::ByteSizeOf(shape);
 
-  TransferManager* transfer_manager =
-      client->client()->backend().transfer_manager();
+  TransferManager* transfer_manager = client()->backend().transfer_manager();
   TF_ASSIGN_OR_RETURN(Shape compact_shape,
                       transfer_manager->ChooseCompactLayoutForShape(shape));
 
@@ -628,10 +580,11 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::FromHostBuffer(
         };
         buffer = se::DeviceMemoryBase(const_cast<void*>(data), size);
       } else {
-        void* staging_buffer = client->host_memory_allocator()->AllocateRaw(
+        void* staging_buffer = host_memory_allocator()->AllocateRaw(
             cpu_function_runtime::kMinAlign, size);
-        on_delete_callback = [staging_buffer, client]() {
-          client->host_memory_allocator()->DeallocateRaw(staging_buffer);
+        on_delete_callback = [staging_buffer, host_memory_allocator =
+                                                  host_memory_allocator()]() {
+          host_memory_allocator->DeallocateRaw(staging_buffer);
         };
         buffer = se::DeviceMemoryBase(staging_buffer, size);
         std::memcpy(staging_buffer, data, size);
@@ -643,7 +596,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::FromHostBuffer(
           std::initializer_list<se::DeviceMemoryBase>{buffer},
           definition_events, std::move(on_delete_callback));
       return absl::make_unique<PjRtBuffer>(
-          shape, shape, std::move(device_buffer), client, device);
+          shape, shape, std::move(device_buffer), this, device);
     }
   }
 
@@ -651,21 +604,22 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::FromHostBuffer(
       std::unique_ptr<PjRtBuffer> py_buffer,
       AllocateDestinationBuffer(compact_shape, device, local_device,
                                 local_device->host_to_device_stream(),
-                                /*is_uninitialized_create=*/false, client));
+                                /*is_uninitialized_create=*/false, this));
 
-  ScopedHold device_buffer(py_buffer->GetBufferWithUsageHold());
+  PjRtBuffer::ScopedHold device_buffer(py_buffer->GetBufferWithUsageHold());
   CHECK(device_buffer.ok());
 
   // If necessary, allocate a host-side buffer for staging host-to-device
   // transfers. On GPU this is a buffer in pinned memory.
   std::shared_ptr<void> staging_buffer;
   if (host_buffer_semantics == HostBufferSemantics::kImmutableOnlyDuringCall ||
-      client->should_stage_host_to_device_transfers()) {
-    void* ptr = client->host_memory_allocator()->AllocateRaw(
+      should_stage_host_to_device_transfers()) {
+    void* ptr = host_memory_allocator()->AllocateRaw(
         tensorflow::Allocator::kAllocatorAlignment, size);
-    staging_buffer = std::shared_ptr<void>(ptr, [client](void* ptr) {
-      client->host_memory_allocator()->DeallocateRaw(ptr);
-    });
+    staging_buffer = std::shared_ptr<void>(
+        ptr, [host_memory_allocator = host_memory_allocator()](void* ptr) {
+          host_memory_allocator->DeallocateRaw(ptr);
+        });
   }
 
   // Copy the buffer into a staging buffer before returning control to the
@@ -684,22 +638,23 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::FromHostBuffer(
   // usage holds have gone away.
   // TODO(misard) assess if it would be preferable to introduce a heuristic to
   // put the transfer into the calling thread for small literals.
-  auto transfer_h2d = [client, transfer_manager, local_device, data, size,
+  auto transfer_h2d = [local_client = client(), transfer_manager, local_device,
+                       data, size,
                        movable_device_buffer{device_buffer.ToClosure()}, shape,
                        py_buffer{py_buffer.get()}, compact_shape,
                        on_device_shape{py_buffer->on_device_shape()},
                        staging_buffer{std::move(staging_buffer)},
                        buffer_reference{std::move(buffer_reference)},
                        host_buffer_semantics]() {
-    ScopedHold device_buffer(movable_device_buffer);
+    PjRtBuffer::ScopedHold device_buffer(movable_device_buffer);
     // This function uses TF_CHECK_OK and ValueOrDie() since we have no way
     // to report failures from a callback. However, the operations here are
     // unlikely to fail and not recoverable even if we were to fail: DMAs to
     // memory that has already been allocated, and a possible Event
     // allocation.
 
-    ShapedBuffer buffer = device_buffer->AsShapedBuffer(
-        compact_shape, on_device_shape, client->client()->platform());
+    ShapedBuffer buffer =
+        device_buffer->AsShapedBuffer(compact_shape, on_device_shape);
     // If applicable on the backend, stage the transfer via host memory
     // allocated via the host_memory_allocator. On GPU, this is pinned
     // memory.
@@ -736,41 +691,38 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::FromHostBuffer(
     // already defers its work onto a stream (= thread on CPU).
     transfer_h2d();
   } else {
-    client->h2d_transfer_pool()->Schedule(transfer_h2d);
+    h2d_transfer_pool()->Schedule(transfer_h2d);
   }
   return py_buffer;
 }
 
-/* static */
-StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::CreateUninitialized(
-    const Shape& shape, PjRtClient* client, PjRtDevice* device) {
-  tensorflow::profiler::TraceMe traceme("PjRtBuffer::CreateUninitialized");
-  VLOG(2) << "PjRtBuffer::CreateUninitialized: shape: " << shape.ToString()
-          << " device: " << device->DebugString();
+StatusOr<std::unique_ptr<PjRtBuffer>> PjRtClient::CreateUninitializedBuffer(
+    const Shape& shape, PjRtDevice* device) {
+  tensorflow::profiler::TraceMe traceme(
+      "PjRtClient::CreateUninitializedBuffer");
+  VLOG(2) << "PjRtClient::CreateUninitializedBuffer: shape: "
+          << shape.ToString() << " device: " << device->DebugString();
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
                       device->GetLocalDeviceState());
 
-  TransferManager* transfer_manager =
-      client->client()->backend().transfer_manager();
+  TransferManager* transfer_manager = client()->backend().transfer_manager();
   TF_ASSIGN_OR_RETURN(Shape compact_shape,
                       transfer_manager->ChooseCompactLayoutForShape(shape));
 
   return AllocateDestinationBuffer(compact_shape, device, local_device,
                                    /*copy_stream=*/nullptr,
-                                   /*is_uninitialized_create=*/true, client);
+                                   /*is_uninitialized_create=*/true, this);
 }
 
-/* static */
-StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::FromHostLiteral(
-    const LiteralSlice& literal, PjRtClient* client, PjRtDevice* device) {
-  tensorflow::profiler::TraceMe traceme("PjRtBuffer::FromHostLiteral");
-  VLOG(2) << "PjRtBuffer::FromHostLiteral: shape: "
+StatusOr<std::unique_ptr<PjRtBuffer>> PjRtClient::BufferFromHostLiteral(
+    const LiteralSlice& literal, PjRtDevice* device) {
+  tensorflow::profiler::TraceMe traceme("PjRtClient::BufferFromHostLiteral");
+  VLOG(2) << "PjRtClient::BufferFromHostLiteral: shape: "
           << literal.shape().ToString() << " device: " << device->DebugString();
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
                       device->GetLocalDeviceState());
 
-  TransferManager* transfer_manager =
-      client->client()->backend().transfer_manager();
+  TransferManager* transfer_manager = client()->backend().transfer_manager();
   TF_ASSIGN_OR_RETURN(
       Shape compact_shape,
       transfer_manager->ChooseCompactLayoutForShape(literal.shape()));
@@ -778,9 +730,9 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::FromHostLiteral(
       std::unique_ptr<PjRtBuffer> py_buffer,
       AllocateDestinationBuffer(compact_shape, device, local_device,
                                 local_device->host_to_device_stream(),
-                                /*is_uninitialized_create=*/false, client));
+                                /*is_uninitialized_create=*/false, this));
 
-  ScopedHold device_buffer(py_buffer->GetBufferWithUsageHold());
+  PjRtBuffer::ScopedHold device_buffer(py_buffer->GetBufferWithUsageHold());
   CHECK(device_buffer.ok());
 
   // The host to device transfer is performed on a thread pool, mostly because
@@ -789,11 +741,11 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::FromHostLiteral(
   // usage holds have gone away.
   // TODO(misard) assess if it would be preferable to introduce a heuristic to
   // put the transfer into the calling thread for small literals.
-  auto transfer_h2d = [client, transfer_manager, local_device,
+  auto transfer_h2d = [local_client = client(), transfer_manager, local_device,
                        movable_device_buffer{device_buffer.ToClosure()},
                        literal, py_buffer{py_buffer.get()}, compact_shape,
                        on_device_shape{py_buffer->on_device_shape()}]() {
-    ScopedHold device_buffer(movable_device_buffer);
+    PjRtBuffer::ScopedHold device_buffer(movable_device_buffer);
     // This function uses TF_CHECK_OK and ValueOrDie() since we have no way
     // to report failures from a callback. However, the operations here are
     // unlikely to fail and not recoverable even if we were to fail: DMAs to
@@ -801,8 +753,8 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::FromHostLiteral(
     // allocation.
 
     se::Stream* h2d_stream = local_device->host_to_device_stream();
-    ShapedBuffer buffer = device_buffer->AsShapedBuffer(
-        compact_shape, on_device_shape, client->client()->platform());
+    ShapedBuffer buffer =
+        device_buffer->AsShapedBuffer(compact_shape, on_device_shape);
     TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
         h2d_stream, literal, buffer));
 
@@ -817,12 +769,12 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::FromHostLiteral(
         .IgnoreError();  // Can return error::Unimplemented
     QCHECK(h2d_stream->ok());
   };
-  client->h2d_transfer_pool()->Schedule(transfer_h2d);
+  h2d_transfer_pool()->Schedule(transfer_h2d);
   return py_buffer;
 }
 
-/*static*/ void PjRtBuffer::MakeCrossHostReceiveBuffers(
-    absl::Span<const Shape> shapes, PjRtClient* client, PjRtDevice* device,
+void PjRtClient::MakeCrossHostReceiveBuffers(
+    absl::Span<const Shape> shapes, PjRtDevice* device,
     PjRtCrossHostRecvNotifier&& notifier) {
   if (shapes.empty()) {
     notifier(InvalidArgument(
@@ -843,7 +795,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::FromHostLiteral(
     StatusOr<std::unique_ptr<PjRtBuffer>> buffer_or =
         AllocateDestinationBuffer(shape, device, local_device,
                                   /*copy_stream=*/nullptr,
-                                  /*is_uninitialized_create=*/false, client);
+                                  /*is_uninitialized_create=*/false, this);
     if (!buffer_or.ok()) {
       notifier(buffer_or.status());
       return;
@@ -851,7 +803,31 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::FromHostLiteral(
     buffers.push_back(buffer_or.ConsumeValueOrDie());
   }
 
-  client->EnqueueCrossHostReceive(std::move(buffers), std::move(notifier));
+  EnqueueCrossHostReceive(std::move(buffers), std::move(notifier));
+}
+
+// Transfer the given literal to the infeed queue of the given local device.
+Status PjRtDevice::TransferToInfeed(const LiteralSlice& literal) const {
+  // Only support infeed to local device.
+  TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device, GetLocalDeviceState());
+  return local_device->client()->TransferToInfeedLocal(
+      literal, local_device->device_ordinal());
+}
+
+StatusOr<Literal> PjRtDevice::TransferFromOutfeed(const Shape& shape) const {
+  TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device, GetLocalDeviceState());
+  return local_device->client()->TransferFromOutfeedLocal(
+      shape, local_device->device_ordinal());
+}
+
+StatusOr<PjRtDevice*> PjRtClient::LookupLocalDevice(int local_device_id) const {
+  for (auto* device : local_devices_) {
+    if (local_device_id == device->local_device_id()) {
+      return device;
+    }
+  }
+  return InvalidArgument("No matching device found for local_device_id %d",
+                         local_device_id);
 }
 
 PjRtBuffer::PjRtBuffer(Shape on_host_shape, Shape on_device_shape,
@@ -1123,8 +1099,8 @@ PjRtBuffer::CopyToHostAsyncInternal(bool discard_cached_copy,
     host_shape = on_host_shape_;
   }
   host_value->value = std::make_shared<Literal>(host_shape);
-  ShapedBuffer shaped_buffer = device_buffer->AsShapedBuffer(
-      host_shape, on_device_shape_, client_->client()->platform());
+  ShapedBuffer shaped_buffer =
+      device_buffer->AsShapedBuffer(host_shape, on_device_shape_);
   client_->client()->backend().transfer_manager()->TransferLiteralFromDevice(
       stream, shaped_buffer, host_value->value.get(),
       [host_value](Status done_status) {
@@ -1159,7 +1135,7 @@ PjRtBuffer::CopyToHostAsyncInternal(bool discard_cached_copy,
 
 StatusOr<std::shared_ptr<Literal>> PjRtBuffer::ToLiteral(
     const bool discard_cached_copy, absl::optional<xla::Layout> layout) {
-  tensorflow::profiler::TraceMe traceme("PjRtBuffer::ToLiteral");
+  tensorflow::profiler::TraceMe traceme("PjRtClient::ToLiteral");
   TF_ASSIGN_OR_RETURN(std::shared_ptr<HostValue> host_value,
                       CopyToHostAsyncInternal(discard_cached_copy, layout));
   if (host_value == nullptr) {
@@ -1176,8 +1152,7 @@ StatusOr<ShapedBuffer> PjRtBuffer::AsShapedBuffer() const {
     return InvalidArgument(
         "Attempted to fetch value of invalid/deleted buffer.");
   }
-  return device_buffer_->AsShapedBuffer(on_host_shape_, on_device_shape_,
-                                        client_->client()->platform());
+  return device_buffer_->AsShapedBuffer(on_host_shape_, on_device_shape_);
 }
 
 PjRtBuffer::ScopedHold PjRtBuffer::GetBufferWithHold(ScopedHold::Type type) {
@@ -1212,8 +1187,8 @@ PjRtBuffer::CopyToDeviceHelper(
 
   ScopedHold dst_device_buffer(py_buffer->GetBufferWithUsageHold());
   CHECK(dst_device_buffer.ok());
-  ShapedBuffer dst_buffer = dst_device_buffer->AsShapedBuffer(
-      on_host_shape_, on_device_shape_, client_->client()->platform());
+  ShapedBuffer dst_buffer =
+      dst_device_buffer->AsShapedBuffer(on_host_shape_, on_device_shape_);
 
   // Copy the leaf buffers.
   StatusOr<std::shared_ptr<BufferSequencingEvent>> copy_event_or =
@@ -1262,6 +1237,14 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::CopyToDevice(
   if (dst_device == device_) {
     return InvalidArgument(
         "CopyToDevice cannot accept the same source and destination devices");
+  }
+
+  // Copying across PjRtClients involves a copy through the host.
+  if (dst_device->client() != client_) {
+    TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal, ToLiteral());
+    return dst_device->client()->BufferFromHostBuffer(
+        literal->untyped_data(), literal->shape(),
+        PjRtClient::HostBufferSemantics::kZeroCopy, nullptr, dst_device);
   }
 
   TF_ASSIGN_OR_RETURN(LocalDeviceState * dst_local_device,
@@ -1490,12 +1473,66 @@ PjRtExecutable::PjRtExecutable(
   }
 }
 
-Status PjRtExecutable::SetUpDonation(PjRtClient* client, bool tuple_inputs) {
+StatusOr<absl::flat_hash_set<int>> GetParametersThatMustBeDonated(
+    const HloModule& module, bool tuple_inputs) {
+  HloComputation* computation = module.entry_computation();
+  int number_of_parameters = [&]() -> int {
+    if (tuple_inputs) {
+      CHECK_EQ(computation->num_parameters(), 1);
+      const Shape& input_tuple_shape =
+          computation->parameter_instruction(0)->shape();
+      CHECK(input_tuple_shape.IsTuple());
+      return input_tuple_shape.tuple_shapes_size();
+    } else {
+      return computation->num_parameters();
+    }
+  }();
+  // If any buffer in a parameter is aliased we will donate the entire input
+  // parameter.
+  absl::flat_hash_set<int> parameters_to_donate;
+  const HloInputOutputAliasConfig& config = module.input_output_alias_config();
+  TF_RETURN_IF_ERROR(config.ForEachAliasWithStatus(
+      [&](const ShapeIndex& output_index,
+          const HloInputOutputAliasConfig::Alias& alias) {
+        if (tuple_inputs) {
+          if (alias.parameter_number != 0) {
+            return InvalidArgument(
+                "Unexpected parameter number %d in alias config with tupled "
+                "inputs",
+                alias.parameter_number);
+          }
+          const ShapeIndex& index = alias.parameter_index;
+          if (!index.empty()) {
+            int this_parameter = index.data()[0];
+            if (this_parameter >= number_of_parameters) {
+              return InvalidArgument(
+                  "Unexpected parameter index %s in alias config with tupled "
+                  "inputs and %d parameters",
+                  index.ToString(), number_of_parameters);
+            }
+            parameters_to_donate.insert(this_parameter);
+          }
+        } else {
+          int this_parameter = alias.parameter_number;
+          if (this_parameter >= number_of_parameters) {
+            return InvalidArgument(
+                "Unexpected parameter number %d in alias config without tupled "
+                "inputs and %d parameters",
+                this_parameter, number_of_parameters);
+          }
+          parameters_to_donate.insert(this_parameter);
+        }
+        return Status::OK();
+      }));
+  return parameters_to_donate;
+}
+
+Status PjRtExecutable::SetUpDonation(bool tuple_inputs) {
   parameters_that_must_be_donated_.reserve(executables_.size());
   for (auto& executable : executables_) {
-    TF_ASSIGN_OR_RETURN(
-        absl::flat_hash_set<int> parameters_to_donate,
-        client->GetParametersThatMustBeDonated(*executable, tuple_inputs));
+    TF_ASSIGN_OR_RETURN(absl::flat_hash_set<int> parameters_to_donate,
+                        GetParametersThatMustBeDonated(
+                            executable->executable()->module(), tuple_inputs));
     parameters_that_must_be_donated_.emplace_back(
         std::move(parameters_to_donate));
   }
@@ -1956,7 +1993,7 @@ PjRtExecutable::ExecuteOnLocalDevices(
     if (!statusor.ok()) {
       return AppendStatus(
           statusor.status(),
-          absl::StrFormat("while running replica %d and partition %d of a"
+          absl::StrFormat("while running replica %d and partition %d of a "
                           "replicated computation (other "
                           "replicas may have failed as well).",
                           replica, partition));
@@ -1964,6 +2001,19 @@ PjRtExecutable::ExecuteOnLocalDevices(
     wrapped_results[i] = std::move(statusor.ValueOrDie());
   }
   return wrapped_results;
+}
+
+StatusOr<std::vector<std::shared_ptr<HloModule>>>
+PjRtExecutable::GetHloModules() {
+  std::vector<std::shared_ptr<HloModule>> modules;
+  modules.reserve(executables().size());
+  for (const auto& local_exec : executables()) {
+    if (!local_exec->executable()->has_module()) {
+      return InvalidArgument("Executable does not have HLO modules.");
+    }
+    modules.push_back(local_exec->executable()->shared_module());
+  }
+  return std::move(modules);
 }
 
 namespace {
@@ -2053,14 +2103,13 @@ StatusOr<std::pair<std::vector<Shape>, Shape>> GetShardedProgramShapes(
 
 }  // namespace
 
-/*static*/ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtExecutable::Compile(
-    const XlaComputation& computation, PjRtClient* client,
-    CompileOptions options) {
-  tensorflow::profiler::TraceMe traceme("LocalExecutable::Compile");
+StatusOr<std::unique_ptr<PjRtExecutable>> PjRtClient::Compile(
+    const XlaComputation& computation, CompileOptions options) {
+  tensorflow::profiler::TraceMe traceme("PjRtClient::Compile");
 
   ExecutableBuildOptions& build_options = options.executable_build_options;
   if (!build_options.device_allocator()) {
-    build_options.set_device_allocator(client->allocator());
+    build_options.set_device_allocator(allocator());
   }
 
   int num_replicas;
@@ -2076,14 +2125,14 @@ StatusOr<std::pair<std::vector<Shape>, Shape>> GetShardedProgramShapes(
     num_partitions = 1;
   } else {
     if (!build_options.has_device_assignment()) {
-      VLOG(2) << "PjRtExecutable::Compile using default device_assignment.";
+      VLOG(2) << "PjRtClient::Compile using default device_assignment.";
       TF_ASSIGN_OR_RETURN(
           DeviceAssignment device_assignment,
-          client->GetDefaultDeviceAssignment(build_options.num_replicas(),
-                                             build_options.num_partitions()));
+          GetDefaultDeviceAssignment(build_options.num_replicas(),
+                                     build_options.num_partitions()));
       build_options.set_device_assignment(device_assignment);
     }
-    VLOG(2) << "PjRtExecutable::Compile device_assignment:\n"
+    VLOG(2) << "PjRtClient::Compile device_assignment:\n"
             << build_options.device_assignment().ToString();
     num_replicas = build_options.device_assignment().replica_count();
     num_partitions = build_options.device_assignment().computation_count();
@@ -2110,7 +2159,8 @@ StatusOr<std::pair<std::vector<Shape>, Shape>> GetShardedProgramShapes(
 
   // Assign a default layout based on `sharded_shape` to any array subshapes in
   // `dst_shape` that are missing layouts.
-  auto assign_layouts = [client](const Shape& sharded_shape, Shape* dst_shape) {
+  auto assign_layouts = [local_client = client()](const Shape& sharded_shape,
+                                                  Shape* dst_shape) {
     return ShapeUtil::ForEachMutableSubshapeWithStatus(
         dst_shape, [&](Shape* subshape, const ShapeIndex& idx) {
           if (subshape->IsArray() && !subshape->has_layout()) {
@@ -2118,8 +2168,7 @@ StatusOr<std::pair<std::vector<Shape>, Shape>> GetShardedProgramShapes(
             const Shape& sharded_subshape =
                 ShapeUtil::GetSubshape(sharded_shape, idx);
             LayoutUtil::SetToDefaultLayout(subshape);
-            TF_ASSIGN_OR_RETURN(Shape layout, client->client()
-                                                  ->backend()
+            TF_ASSIGN_OR_RETURN(Shape layout, local_client->backend()
                                                   .transfer_manager()
                                                   ->ChooseCompactLayoutForShape(
                                                       sharded_subshape));
@@ -2154,8 +2203,8 @@ StatusOr<std::pair<std::vector<Shape>, Shape>> GetShardedProgramShapes(
     for (int replica = 0; replica < num_replicas; ++replica) {
       for (int partition = 0; partition < num_partitions; ++partition) {
         int device_id = (*device_assignment)(replica, partition);
-        PjRtDevice* device = LookupDevice(*client, device_id);
-        if (device->host_id() != client->host_id()) {
+        PjRtDevice* device = LookupDevice(*this, device_id);
+        if (device->host_id() != host_id()) {
           VLOG(3) << "Non-local device: " << device_id;
           continue;
         }
@@ -2177,15 +2226,14 @@ StatusOr<std::pair<std::vector<Shape>, Shape>> GetShardedProgramShapes(
 
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<LocalExecutable>> local_executables,
-      client->client()->Compile(computation, argument_layout_pointers,
-                                build_options));
+      client()->Compile(computation, argument_layout_pointers, build_options));
 
   auto executable = absl::make_unique<PjRtExecutable>(
       std::move(local_executables), options.parameter_is_tupled_arguments,
       std::move(device_assignment), std::move(local_logical_device_ids),
-      std::move(local_devices), client);
+      std::move(local_devices), this);
   TF_RETURN_IF_ERROR(
-      executable->SetUpDonation(client, options.parameter_is_tupled_arguments));
+      executable->SetUpDonation(options.parameter_is_tupled_arguments));
   return executable;
 }
 

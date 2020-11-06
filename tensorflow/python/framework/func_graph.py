@@ -107,6 +107,7 @@ def convert_structure_to_signature(structure, arg_names=None):
         int,
         float,
         bool,
+        str,
         type(None),
         dtypes.DType,
         tensor_spec.TensorSpec,
@@ -441,6 +442,11 @@ class FuncGraph(ops.Graph):
     if current is None:
       return self._fallback_outer_graph
     return current
+
+  @outer_graph.setter
+  def outer_graph(self, new_outer_graph):
+    """Sets `outer_graph` to `new_outer_graph`."""
+    self._weak_outer_graph = weakref.ref(new_outer_graph)
 
   @property
   def output_types(self):

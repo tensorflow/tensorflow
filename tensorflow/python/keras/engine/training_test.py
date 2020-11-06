@@ -68,6 +68,19 @@ except ImportError:
 
 class TrainingTest(keras_parameterized.TestCase):
 
+  @keras_parameterized.run_all_keras_modes
+  @keras_parameterized.run_with_all_model_types
+  def test_model_instrumentation(self):
+    layers = [
+        layers_module.Dense(10, dtype=np.float64),
+        layers_module.Dense(10, dtype=np.float64)
+    ]
+    model = testing_utils.get_model_from_layers(layers, input_shape=(1,))
+
+    self.assertTrue(model._instrumented_keras_api)
+    self.assertTrue(model._instrumented_keras_model_class)
+    self.assertFalse(model._instrumented_keras_layer_class)
+
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   def test_fit_training_arg(self):
@@ -833,7 +846,8 @@ class TrainingTest(keras_parameterized.TestCase):
         return self.layer2(self.layer1(inputs))
 
     l = LayerWithWeightSharedLayers()
-    self.assertEqual(l._layers, [l.layer1, l.layer2])
+    layers = list(l._flatten_layers(include_self=False, recursive=False))
+    self.assertEqual(layers, [l.layer1, l.layer2])
     self.assertEqual(l.variables,
                      [l.layer1.trainable_var, l.layer1.non_trainable_var])
     self.assertEqual(l.trainable_variables, [l.layer1.trainable_var])
@@ -2445,7 +2459,7 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
       output_a_np = np.random.random((10, 4))
       output_b_np = np.random.random((10, 3))
 
-      input_v = backend.variables_module.Variable(input_a_np, dtype='float32')
+      input_v = variables_lib.Variable(input_a_np, dtype='float32')
       self.evaluate(variables_lib.variables_initializer([input_v]))
       a = input_layer.Input(tensor=input_v)
       b = input_layer.Input(shape=(3,), name='input_b')
@@ -2656,7 +2670,7 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
       out = model.evaluate(input_a_np, None)
 
       # Test model with no external data at all.
-      input_v = backend.variables_module.Variable(input_a_np, dtype='float32')
+      input_v = variables_lib.Variable(input_a_np, dtype='float32')
       self.evaluate(variables_lib.variables_initializer([input_v]))
       a = input_layer.Input(tensor=input_v)
       a_2 = layers_module.Dense(4, name='dense_1')(a)
@@ -2815,7 +2829,7 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
                                })
 
       # test with custom TF placeholder as target
-      pl_target_a = backend.array_ops.placeholder('float32', shape=(None, 4))
+      pl_target_a = array_ops.placeholder('float32', shape=(None, 4))
       model.compile(optimizer='rmsprop', loss='mse',
                     target_tensors={'dense_1': pl_target_a})
       model.train_on_batch([input_a_np, input_b_np],
@@ -3642,16 +3656,20 @@ class TestAutoUpdates(keras_parameterized.TestCase):
 
 class TestFunctionTracing(keras_parameterized.TestCase):
 
+  def _seq_model_and_data(self):
+    model = sequential.Sequential([layers_module.Dense(4, activation='relu')])
+    model.compile(loss='mse', optimizer='rmsprop')
+    x = np.random.random((10, 6))
+    y = np.random.random((10, 4))
+    return model, x, y
+
   @keras_parameterized.run_all_keras_modes(
       always_skip_v1=True, always_skip_eager=True)
   def test_no_tracing_between_epoch(self):
     if sys.version_info[0] < 3:
       self.skipTest('self.assertLogs() call is not available in Python 2.')
 
-    model = sequential.Sequential([layers_module.Dense(4, activation='relu')])
-    model.compile(loss='mse', optimizer='rmsprop')
-    x = np.random.random((10, 6))
-    y = np.random.random((10, 4))
+    model, x, y = self._seq_model_and_data()
 
     logging.set_verbosity(1)
     with self.assertLogs(level=1) as logs:
@@ -3659,6 +3677,21 @@ class TestFunctionTracing(keras_parameterized.TestCase):
 
     new_func_graph = 'INFO:absl:Creating new FuncGraph for Python function'
     self.assertEqual(sum(new_func_graph in log for log in logs.output), 9)
+
+  @keras_parameterized.run_all_keras_modes(
+      always_skip_v1=True, always_skip_eager=True)
+  def test_evaluate_no_cached_data(self):
+    if sys.version_info[0] < 3:
+      self.skipTest('self.assertLogs() call is not available in Python 2.')
+
+    model, x, y = self._seq_model_and_data()
+
+    new_func_graph = 'INFO:absl:Creating new FuncGraph for Python function'
+    logging.set_verbosity(1)
+    with self.assertLogs(level=1) as eval_logs:
+      for _ in range(6):
+        model.evaluate(x, y, batch_size=5)
+    self.assertEqual(sum(new_func_graph in log for log in eval_logs.output), 20)
 
 
 class TestBuildCustomModel(keras_parameterized.TestCase):

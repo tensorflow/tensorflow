@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/internal/reference/conv.h"
 
-#include "cmsis/CMSIS/NN/Include/arm_nn_types.h"
-#include "cmsis/CMSIS/NN/Include/arm_nnfunctions.h"
+#include "CMSIS/NN/Include/arm_nn_types.h"
+#include "CMSIS/NN/Include/arm_nnfunctions.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
@@ -28,9 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 namespace tflite {
-namespace ops {
-namespace micro {
-namespace conv {
+namespace {
 
 constexpr int kInputTensor = 0;
 constexpr int kFilterTensor = 1;
@@ -421,6 +419,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TFLITE_DCHECK(node->user_data != nullptr);
   const OpData& data = *(static_cast<const OpData*>(node->user_data));
 
+  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+  TF_LITE_ENSURE_MSG(context, input->type == filter->type,
+                     "Hybrid models are not supported on TFLite Micro.");
+
   switch (input->type) {  // Already know in/out types are same.
     case kTfLiteFloat32:
       EvalFloat(context, node, params, data, input, filter, bias, nullptr,
@@ -442,19 +444,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-}  // namespace conv
+}  // namespace
 
 TfLiteRegistration Register_CONV_2D() {
-  return {/*init=*/conv::Init,
+  return {/*init=*/Init,
           /*free=*/nullptr,
-          /*prepare=*/conv::Prepare,
-          /*invoke=*/conv::Eval,
+          /*prepare=*/Prepare,
+          /*invoke=*/Eval,
           /*profiling_string=*/nullptr,
           /*builtin_code=*/0,
           /*custom_name=*/nullptr,
           /*version=*/0};
 }
 
-}  // namespace micro
-}  // namespace ops
 }  // namespace tflite

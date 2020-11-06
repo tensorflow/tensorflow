@@ -537,10 +537,8 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME:         device_ordinal = 0
     // CHECK-SAME:         key = "host_compute_channel_cluster1_0_args"
     // CHECK:              "tf.D"(%[[ARG_RECV_OUTPUT]]#0, %[[ARG_RECV_OUTPUT]]#1)
-    // CHECK:              "tf._XlaSendFromHost"(%[[PLACEHOLDER_KEY]])
-    // CHECK-SAME:         device_ordinal = 0
-    // CHECK-SAME:         key = "host_compute_channel_cluster1_0_retvals"
-    // CHECK-NEXT:         "tf.Yield"() : () -> ()
+    // CHECK-NOT:          "tf._XlaSendFromHost"(%[[PLACEHOLDER_KEY]])
+    // CHECK:              "tf.Yield"() : () -> ()
     // CHECK:          "tf_device.cluster"
     // CHECK:            %[[A_OUTPUT:[0-9]*]] = "tf.A"
     // CHECK:            %[[B_OUTPUT:[0-9]*]] = "tf.B"
@@ -591,9 +589,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME:       (tensor<2x!tf.string>) -> (tensor<?xi32>, tensor<?xi32>, tensor<i1>)
     // CHECK-NEXT:       tf.IfRegion"(%[[RECV_OUTPUT]]#2)
     // CHECK:              "tf.D"(%[[RECV_OUTPUT]]#0, %[[RECV_OUTPUT]]#1, %[[F_OUT]])
-    // CHECK:              "tf._XlaSendFromHost"(%[[PLACEHOLDER_KEY]])
-    // CHECK-SAME:         device_ordinal = 0
-    // CHECK-SAME:         key = "host_compute_channel_cluster1_0_retvals"
+    // CHECK-NOT:          "tf._XlaSendFromHost"(%[[PLACEHOLDER_KEY]])
     // CHECK:          "tf_device.cluster"
     // CHECK:            %[[A_OUTPUT:[0-9]*]] = "tf.A"
     // CHECK:            %[[B_OUTPUT:[0-9]*]] = "tf.B"
@@ -652,9 +648,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-NEXT:           "tf.H"(%[[RECV_OUTPUT]]#0, %[[F_OUT]])
     // CHECK:                "tf.Yield"() : () -> ()
     // CHECK:                "tf.Yield"() : () -> ()
-    // CHECK:              "tf._XlaSendFromHost"(%[[PLACEHOLDER_KEY]])
-    // CHECK-SAME:         device_ordinal = 0
-    // CHECK-SAME:         key = "host_compute_channel_cluster1_0_retvals"
+    // CHECK-NOT:          "tf._XlaSendFromHost"(%[[PLACEHOLDER_KEY]])
     // CHECK:          "tf_device.cluster"
     // CHECK:            %[[A_OUTPUT:[0-9]*]] = "tf.A"
     // CHECK:            %[[B_OUTPUT:[0-9]*]] = "tf.B"
@@ -832,9 +826,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME:          device_ordinal = 0
     // CHECK-SAME:          key = "host_compute_channel_cluster1_0_args"
     // CHECK:               "tf.D"(%[[ARG_RECV_OUTPUT]])
-    // CHECK:               "tf._XlaSendFromHost"(%[[PLACEHOLDER_KEY]])
-    // CHECK-SAME:          device_ordinal = 0
-    // CHECK-SAME:          key = "host_compute_channel_cluster1_0_retvals"
+    // CHECK-NOT            "tf._XlaSendFromHost"(%[[PLACEHOLDER_KEY]])
     // CHECK-NEXT:          "tf.Yield"() : () -> ()
 
     // CHECK:          "tf_device.cluster"
@@ -1152,9 +1144,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-NEXT:         %[[K_OUTPUT:[0-9]*]] = "tf.K"
     // CHECK-NEXT:          tf.WhileRegion"(%[[J_OUTPUT]], %[[D_OUTPUT]])
     // CHECK:                 %[[H_OUTPUT:[0-9]*]] = "tf.H"(%[[K_OUTPUT]])
-    // CHECK:              "tf._XlaSendFromHost"(%[[PLACEHOLDER_KEY]])
-    // CHECK-SAME:         device_ordinal = 0
-    // CHECK-SAME:         key = "host_compute_channel_cluster1_0_retvals"
+    // CHECK-NOT:           "tf._XlaSendFromHost"(%[[PLACEHOLDER_KEY]])
     // CHECK:          "tf_device.cluster"
     // CHECK:            %[[A_OUTPUT:[0-9]*]] = "tf.A"
     // CHECK:            %[[B_OUTPUT:[0-9]*]] = "tf.B"
