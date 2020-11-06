@@ -68,9 +68,10 @@ TfLiteRegistration* Register_Lookup_8();
 
 // Binarized ops
 TfLiteRegistration* Register_BSign_8();
+TfLiteRegistration* Register_BConv2D_Bitpacked_Deepin();
+TfLiteRegistration* Register_BConv2D_Bitpacked();
 
 // Under development
-TfLiteRegistration* Register_BConv2D_Bitpacked_Deepin();
 TfLiteRegistration* Register_Pad();
 TfLiteRegistration* Register_Add_8();
 
