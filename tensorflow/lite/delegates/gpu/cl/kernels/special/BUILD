@@ -29,7 +29,6 @@ cc_library(
     srcs = ["fc_fc_add.cc"],
     hdrs = ["fc_fc_add.h"],
     deps = [
-        "//tensorflow/lite/delegates/gpu/cl:arguments",
         "//tensorflow/lite/delegates/gpu/cl:buffer",
         "//tensorflow/lite/delegates/gpu/cl:cl_kernel",
         "//tensorflow/lite/delegates/gpu/cl:device_info",

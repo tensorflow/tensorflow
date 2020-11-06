@@ -48,22 +48,6 @@ cc_library(
 )
 
 cc_library(
-    name = "arguments",
-    srcs = ["arguments.cc"],
-    hdrs = ["arguments.h"],
-    deps = [
-        ":serialization_cc_fbs",
-        "//tensorflow/lite/delegates/gpu/common:access_type",
-        "//tensorflow/lite/delegates/gpu/common:data_type",
-        "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/common/task:gpu_object_desc",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
     name = "buffer",
     srcs = ["buffer.cc"],
     hdrs = ["buffer.h"],
@@ -113,7 +97,6 @@ cc_library(
     srcs = ["cl_arguments.cc"],
     hdrs = ["cl_arguments.h"],
     deps = [
-        ":arguments",
         ":buffer",
         ":cl_context",
         ":device_info",
@@ -126,6 +109,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/common/task:arguments",
         "//tensorflow/lite/delegates/gpu/common/task:util",
         "@com_google_absl//absl/strings",
     ],
@@ -140,7 +124,6 @@ cc_test(
         "local",
     ],
     deps = [
-        ":arguments",
         ":buffer",
         ":cl_arguments",
         ":device_info",
@@ -393,7 +376,6 @@ cc_library(
         "serialization.h",
     ],
     deps = [
-        ":arguments",
         ":buffer",
         ":cl_command_queue",
         ":cl_context",
@@ -418,6 +400,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/common/task:arguments",
         "//tensorflow/lite/delegates/gpu/common/task:buffer_desc",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_object_desc",
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
