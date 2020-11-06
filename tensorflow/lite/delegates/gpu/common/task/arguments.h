@@ -13,23 +13,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_ARGUMENTS_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_CL_ARGUMENTS_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_ARGUMENTS_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_ARGUMENTS_H_
 
 #include <map>
 #include <string>
 #include <vector>
 
-#include "tensorflow/lite/delegates/gpu/cl/serialization_generated.h"
 #include "tensorflow/lite/delegates/gpu/common/access_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_object_desc.h"
+#include "tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 
 namespace tflite {
 namespace gpu {
 namespace cl {
+class CLArguments;
+}
 
 class ArgumentsBinder {
  public:
@@ -64,11 +66,12 @@ class Arguments {
   void ReleaseCPURepresentation();
 
  private:
-  friend flatbuffers::Offset<data::Arguments> Encode(
+  friend flatbuffers::Offset<tflite::gpu::data::Arguments> Encode(
       const Arguments& args, flatbuffers::FlatBufferBuilder* builder);
-  friend absl::Status Decode(const data::Arguments* fb_args, Arguments* args);
+  friend absl::Status Decode(const tflite::gpu::data::Arguments* fb_args,
+                             Arguments* args);
 
-  friend class CLArguments;
+  friend class cl::CLArguments;
   void GetActiveArguments(const std::string& args_prefix,
                           const std::string& code);
 
@@ -103,8 +106,7 @@ class Arguments {
   std::map<std::string, GPUObjectDescriptorPtr> objects_;
 };
 
-}  // namespace cl
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_CL_ARGUMENTS_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_ARGUMENTS_H_
