@@ -50,6 +50,36 @@
     * Code that manually enters `keras.backend.get_graph()` before building a functional model is no longer needed.
     * Start enforcing input shape assumptions when calling Functional API Keras models. This may potentially break some users, in case there is a mismatch             between the shape used when creating `Input` objects in a Functional model, and the shape of the data passed to that model. You can fix this mismatch by         either calling the model with correctly-shaped data, or by relaxing `Input` shape assumptions (note that you can pass shapes with `None` entries for axes
       that are meant to be dynamic). You can also disable the input checking entirely by setting `model.input_spec = None`.
+  * Serveral changes have been made to `tf.keras.mixed_precision.experimental`. Note that it is now recommended to use the non-experimental `tf.keras.mixed_precision` API.
+    * `AutoCastVariable.dtype` now refers to the actual variable dtype, not the
+       dtype it will be casted to.
+    * When mixed precision is enabled, `tf.keras.layers.Embedding` now outputs a
+      float16 or bfloat16 tensor instead of a float32 tensor.
+    * The property
+      `tf.keras.mixed_precision.experimental.LossScaleOptimizer.loss_scale` is 
+      now a tensor, not a `LossScale` object. This means to get a loss scale of
+      a `LossScaleOptimizer` as a tensor, you must now call `opt.loss_scale`
+      instead of `opt.loss_scale()`.
+    * The property `should_cast_variables` has been removed from
+      `tf.keras.mixed_precision.experimental.Policy`
+    * When passing a `tf.mixed_precision.experimental.DynamicLossScale` to
+      `tf.keras.mixed_precision.experimental.LossScaleOptimizer`, the
+      `DynamicLossScale`'s multiplier must be 2.
+    * When passing a `tf.mixed_precision.experimental.DynamicLossScale` to
+      `tf.keras.mixed_precision.experimental.LossScaleOptimizer`, the weights of
+      the `DynanmicLossScale` are copied into the `LossScaleOptimizer` instead
+      of being reused. This means modifying the weights of the
+      `DynamicLossScale` will no longer affect the weights of the
+      LossScaleOptimizer, and vice versa.
+    * The global policy can no longer be set to a non-floating point policy in
+      `tf.keras.mixed_precision.experimental.set_policy`
+    * In `Layer.call`, `AutoCastVariable`s will no longer be casted within
+      `MirroredStrategy.run` or `ReplicaContext.merge_call`. This is because a
+      thread local variable is used to determine whether `AutoCastVariable`s are
+      casted, and those two functions run with a different thread. Note this
+      only applies if one of these two functions is called within `Layer.call`;
+      if one of those two functions calls `Layer.call`, `AutoCastVariable`s will
+      still be casted.
 
 * `tf.data`:
   * `tf.data.experimental.service.DispatchServer` now takes a config tuple instead of individual arguments. Usages should be updated to      `tf.data.experimental.service.DispatchServer(dispatcher_config)`.
