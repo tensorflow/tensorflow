@@ -578,8 +578,9 @@ Status SnapshotDatasetV2Op::Dataset::Iterator::Reader::Initialize(
   std::vector<Tensor> reader_output;
   reader_input.push_back(std::move(input_dataset_tensor));
 
+  // NOTE: We intentionally ignore resource modeling outside GetNext().
   TF_RETURN_IF_ERROR(instantiated_reader_func_->Run(
-      ctx, std::move(reader_input), &reader_output));
+      ctx, std::move(reader_input), &reader_output, /*node=*/nullptr));
   if (reader_output.size() != 1) {
     return errors::InvalidArgument(
         "reader_func returns more than one argument.");
@@ -673,7 +674,7 @@ Status SnapshotDatasetV2Op::Dataset::Iterator::Writer::GetShardIndex(
 
   // Run the shard function
   TF_RETURN_IF_ERROR(instantiated_shard_func_->RunWithBorrowedArgs(
-      ctx, tensors, &output_tensors));
+      ctx, tensors, &output_tensors, model_node()));
 
   if (output_tensors.size() != 1 || output_tensors[0].dtype() != DT_INT64 ||
       output_tensors[0].NumElements() != 1) {
