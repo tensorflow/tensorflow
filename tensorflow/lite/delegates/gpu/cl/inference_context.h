@@ -169,6 +169,7 @@ class InferenceContext {
 
   class TensorReserver {
    public:
+    TensorReserver() : next_(0) {}
     ValueId Add(const DummyTensor& dummy) {
       reservations_[next_] = dummy;
       return next_++;

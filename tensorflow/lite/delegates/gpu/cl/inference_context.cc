@@ -286,7 +286,7 @@ void InferenceContext::CopyInAndOutIds(const GraphFloat32& graph) {
 void InferenceContext::ReserveGraphTensors(
     const CreateInferenceInfo& create_info, const DeviceInfo& device_info,
     const GraphFloat32& graph) {
-  ValueId max_id;
+  ValueId max_id = 0;
   auto tensors = graph.values();
   auto data_type = DeduceDataTypeFromPrecision(create_info.precision);
   for (auto& t : tensors) {
