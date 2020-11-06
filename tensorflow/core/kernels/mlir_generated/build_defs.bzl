@@ -129,6 +129,7 @@ def _gen_kernel_fatbin_impl(ctx):
             "--output=%s" % gpu_bin.path,
             "--enable_ftz=%s" % (ctx.attr.data_type == "f32"),
         ],
+        use_default_shell_env = True,
         mnemonic = "compile",
     )
     compilation_outputs = cc_common.create_compilation_outputs(
