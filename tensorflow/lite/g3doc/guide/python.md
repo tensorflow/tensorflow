@@ -102,7 +102,7 @@ pip3 install https://github.com/google-coral/pycoral/releases/download/release-f
 </tr>
 
 <tr>
-  <td style="white-space:nowrap" rowspan="3">macOS 10.15</td>
+  <td style="white-space:nowrap" rowspan="4">macOS 10.15</td>
   <td style="white-space:nowrap">3.5</td>
   <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp35-cp35m-macosx_10_15_x86_64.whl</td>
 </tr>
@@ -123,7 +123,7 @@ pip3 install https://github.com/google-coral/pycoral/releases/download/release-f
 </tr>
 
 <tr>
-  <td style="white-space:nowrap" rowspan="3">Windows 10</td>
+  <td style="white-space:nowrap" rowspan="4">Windows 10</td>
   <td style="white-space:nowrap">3.5</td>
   <td>https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp35-cp35m-win_amd64.whl</td>
 </tr>
