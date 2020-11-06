@@ -44,15 +44,18 @@ class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
         builder_(module.getContext()),
         i8_type_(builder_.getIntegerType(8)) {}
 
-  ::xla::StatusOr<lmhlo::SortOp> EmitSortOp(::xla::HloInstruction* instr);
-  ::xla::StatusOr<lmhlo::FusionOp> EmitFusionOp(::xla::HloInstruction* instr);
-  ::xla::StatusOr<lmhlo::ScatterOp> EmitScatterOp(::xla::HloInstruction* instr);
+  ::xla::StatusOr<mlir::Operation*> EmitOp(::xla::HloInstruction* instr);
+
   ::xla::StatusOr<mhlo::ScatterDimensionNumbers> GetScatterDimensionNumbers(
-      ::xla::HloInstruction* instr);
-  ::xla::StatusOr<lmhlo::SelectAndScatterOp> EmitSelectAndScatterOp(
       ::xla::HloInstruction* instr);
 
  private:
+  ::xla::StatusOr<lmhlo::SortOp> EmitSortOp(::xla::HloInstruction* instr);
+  ::xla::StatusOr<lmhlo::FusionOp> EmitFusionOp(::xla::HloInstruction* instr);
+  ::xla::StatusOr<lmhlo::ScatterOp> EmitScatterOp(::xla::HloInstruction* instr);
+  ::xla::StatusOr<lmhlo::SelectAndScatterOp> EmitSelectAndScatterOp(
+      ::xla::HloInstruction* instr);
+
   template <typename OpType>
   ::xla::StatusOr<OpType> CreateOpWithoutAttrs(::xla::HloInstruction* instr);
 
@@ -80,11 +83,6 @@ class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
   tensorflow::Status HandleParameter(::xla::HloInstruction* instr) final {
     return tensorflow::Status::OK();
   }
-
-  tensorflow::Status HandleSort(::xla::HloInstruction* instr) final;
-  tensorflow::Status HandleFusion(::xla::HloInstruction* instr) final;
-  tensorflow::Status HandleScatter(::xla::HloInstruction* instr) final;
-  tensorflow::Status HandleSelectAndScatter(::xla::HloInstruction* instr) final;
 
   // Helper function that recursively visits the tuple structure in
   // `current_shape`, and reconstruct a matching lmhlo::TupleOp.

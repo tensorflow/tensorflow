@@ -1158,7 +1158,7 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
   }
 
   MlirEmitterInput input;
-  TF_ASSIGN_OR_RETURN(input.op, lhlo_scratch_emitter_.EmitFusionOp(fusion));
+  TF_ASSIGN_OR_RETURN(input.op, lhlo_scratch_emitter_.EmitOp(fusion));
   const auto& buffer_assignment = ir_emitter_context_->buffer_assignment();
   auto& slice = input.extra_slice;
   TF_ASSIGN_OR_RETURN(slice.buffer_slice,
@@ -1294,9 +1294,8 @@ Status IrEmitterUnnested::HandleSelectAndScatter(
                       BuildInitializerThunk(select_and_scatter));
 
   MlirEmitterInput input;
-  TF_ASSIGN_OR_RETURN(
-      auto select_and_scatter_op,
-      lhlo_scratch_emitter_.EmitSelectAndScatterOp(select_and_scatter));
+  TF_ASSIGN_OR_RETURN(auto select_and_scatter_op,
+                      lhlo_scratch_emitter_.EmitOp(select_and_scatter));
   input.op = select_and_scatter_op;
   input.thunk_info = GetThunkInfo(select_and_scatter);
   return EmitSelectAndScatterFromMlir(input, std::move(initializer_thunk));
@@ -1581,8 +1580,7 @@ Status IrEmitterUnnested::HandleRngGetAndUpdateState(
 Status IrEmitterUnnested::HandleScatter(HloInstruction* scatter) {
   MlirEmitterInput result;
 
-  TF_ASSIGN_OR_RETURN(auto scatter_op,
-                      lhlo_scratch_emitter_.EmitScatterOp(scatter));
+  TF_ASSIGN_OR_RETURN(auto scatter_op, lhlo_scratch_emitter_.EmitOp(scatter));
   result.op = scatter_op;
   result.thunk_info = GetThunkInfo(scatter);
   return EmitScatterFromMlir(result);
@@ -1867,7 +1865,7 @@ IrEmitterUnnested::GetOrCreateSubComputationFromRegion(mlir::Region* region) {
 Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
   MlirEmitterInput result;
 
-  TF_ASSIGN_OR_RETURN(auto sort_op, lhlo_scratch_emitter_.EmitSortOp(sort));
+  TF_ASSIGN_OR_RETURN(auto sort_op, lhlo_scratch_emitter_.EmitOp(sort));
   result.op = sort_op;
   const auto& buffer_assignment = ir_emitter_context_->buffer_assignment();
   auto& slice = result.extra_slice;
