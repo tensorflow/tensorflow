@@ -5,6 +5,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "EagerTensor"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "FuncGraph"
     mtype: "<type \'type\'>"
   }
