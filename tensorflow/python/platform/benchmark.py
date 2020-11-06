@@ -65,13 +65,24 @@ def _rename_function(f, arg_num, name):
                               func_code.co_firstlineno, func_code.co_lnotab,
                               func_code.co_freevars, func_code.co_cellvars)
   else:
-    new_code = types.CodeType(arg_num, 0, func_code.co_nlocals,
-                              func_code.co_stacksize, func_code.co_flags,
-                              func_code.co_code, func_code.co_consts,
-                              func_code.co_names, func_code.co_varnames,
-                              func_code.co_filename, name,
-                              func_code.co_firstlineno, func_code.co_lnotab,
-                              func_code.co_freevars, func_code.co_cellvars)
+    if sys.version_info > (3, 8, 0, "alpha", 3):
+      # Python3.8 / PEP570 added co_posonlyargcount argument to CodeType.
+      new_code = types.CodeType(arg_num, func_code.co_posonlyargcount,
+                                0, func_code.co_nlocals,
+                                func_code.co_stacksize, func_code.co_flags,
+                                func_code.co_code, func_code.co_consts,
+                                func_code.co_names, func_code.co_varnames,
+                                func_code.co_filename, name,
+                                func_code.co_firstlineno, func_code.co_lnotab,
+                                func_code.co_freevars, func_code.co_cellvars)
+    else:
+      new_code = types.CodeType(arg_num, 0, func_code.co_nlocals,
+                                func_code.co_stacksize, func_code.co_flags,
+                                func_code.co_code, func_code.co_consts,
+                                func_code.co_names, func_code.co_varnames,
+                                func_code.co_filename, name,
+                                func_code.co_firstlineno, func_code.co_lnotab,
+                                func_code.co_freevars, func_code.co_cellvars)
 
   return types.FunctionType(new_code, f.__globals__, name, f.__defaults__,
                             f.__closure__)
