@@ -39,6 +39,7 @@ load(
     "if_enable_mkl",
     "if_mkl",
     "if_mkl_ml",
+    "mkl_deps",
 )
 load(
     "//third_party/mkl_dnn:build_defs.bzl",
@@ -1240,7 +1241,7 @@ def tf_cc_test_mkl(
                     "-lm",
                 ],
             }) + _rpath_linkopts(src_to_test_name(src)),
-            deps = deps + tf_binary_dynamic_kernel_deps(kernels) + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),
+            deps = deps + tf_binary_dynamic_kernel_deps(kernels) + mkl_deps(),
             data = data + tf_binary_dynamic_kernel_dsos(),
             exec_properties = tf_exec_properties({"tags": tags}),
             linkstatic = linkstatic,
@@ -2637,7 +2638,7 @@ def tf_python_pybind_extension(
         features = features,
         copts = copts,
         hdrs = hdrs,
-        deps = deps + tf_binary_pybind_deps() + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),
+        deps = deps + tf_binary_pybind_deps() + mkl_deps(),
         defines = defines,
         visibility = visibility,
         link_in_framework = True,
