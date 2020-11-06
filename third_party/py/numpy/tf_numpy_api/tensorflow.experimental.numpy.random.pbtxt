@@ -21,6 +21,10 @@ tf_module {
     argspec: "args=[\'s\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "standard_normal"
+    argspec: "args=[\'size\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "uniform"
     argspec: "args=[\'low\', \'high\', \'size\'], varargs=None, keywords=None, defaults=[\'0.0\', \'1.0\', \'None\'], "
   }
