@@ -644,11 +644,12 @@ void MoveOutsideCompiledOpsInsideControlFlow(
   MoveOutsideClusterOpsBeforeOp(insertion_op, cluster_section_ops, context);
 
   builder.setInsertionPoint(insertion_op);
-  builder.create<TF::_XlaSendFromHostOp>(
-      tpu_cluster.getLoc(), section_external_outputs,
-      /*dynamic_key=*/compilation_key,
-      builder.getStringAttr(retvals_communication_key),
-      /*device_ordinal=*/builder.getI64IntegerAttr(0));
+  if (!section_external_outputs.empty())
+    builder.create<TF::_XlaSendFromHostOp>(
+        tpu_cluster.getLoc(), section_external_outputs,
+        /*dynamic_key=*/compilation_key,
+        builder.getStringAttr(retvals_communication_key),
+        /*device_ordinal=*/builder.getI64IntegerAttr(0));
 
   for (auto result :
        llvm::zip(section_external_inputs, recv_at_host.getResults())) {
