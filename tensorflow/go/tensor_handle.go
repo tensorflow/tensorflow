@@ -132,12 +132,12 @@ func (th *TensorHandle) BackingDeviceName() (string, error) {
 	// See https://github.com/tensorflow/tensorflow/issues/23257#issuecomment-433751410
 	return th.DeviceName()
 	/*
-	status := newStatus()
-	name := C.TFE_TensorHandleBackingDeviceName(th.c, status.c)
-	if err := status.Err(); err != nil {
-		return "", err
-	}
-	return C.GoString(name), nil
+		status := newStatus()
+		name := C.TFE_TensorHandleBackingDeviceName(th.c, status.c)
+		if err := status.Err(); err != nil {
+			return "", err
+		}
+		return C.GoString(name), nil
 	*/
 }
 
