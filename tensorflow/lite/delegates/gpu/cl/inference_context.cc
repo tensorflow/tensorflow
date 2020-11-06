@@ -222,7 +222,7 @@ absl::Status InferenceContext::InitFromGraph(
 }
 
 absl::Status InferenceContext::RestoreDeserialized(
-    const std::vector<uint8_t>& serialized_model, Environment* env) {
+    const absl::Span<const uint8_t> serialized_model, Environment* env) {
   flatbuffers::Verifier verifier(serialized_model.data(),
                                  serialized_model.size());
   if (!data::VerifyInferenceContextBuffer(verifier)) {

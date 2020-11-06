@@ -660,7 +660,7 @@ class InferenceBuilderImpl : public InferenceBuilder {
   }
 
   absl::Status Initialize(const InferenceEnvironmentOptions& env_options,
-                          const std::vector<uint8_t>& serialized_model,
+                          const absl::Span<const uint8_t> serialized_model,
                           std::vector<int64_t>* in_refs = nullptr,
                           std::vector<int64_t>* out_refs = nullptr) {
     context_ = absl::make_unique<InferenceContext>();
@@ -932,10 +932,10 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
     return absl::OkStatus();
   }
 
-  absl::Status NewInferenceBuilder(const std::vector<uint8_t>& serialized_model,
-                                   std::unique_ptr<InferenceBuilder>* builder,
-                                   std::vector<int64_t>* in_refs,
-                                   std::vector<int64_t>* out_refs) final {
+  absl::Status NewInferenceBuilder(
+      const absl::Span<const uint8_t> serialized_model,
+      std::unique_ptr<InferenceBuilder>* builder, std::vector<int64_t>* in_refs,
+      std::vector<int64_t>* out_refs) final {
     if (environment_.program_cache() &&
         !options_.serialized_binary_cache.empty()) {
       // Ignore returned error. Cache is discarded.

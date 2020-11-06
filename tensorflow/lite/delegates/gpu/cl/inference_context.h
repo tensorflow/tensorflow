@@ -97,8 +97,8 @@ class InferenceContext {
   const std::vector<int64_t>& GetInputRefs() const { return in_refs_; }
   const std::vector<int64_t>& GetOutputRefs() const { return out_refs_; }
 
-  absl::Status RestoreDeserialized(const std::vector<uint8_t>& serialized_model,
-                                   Environment* env);
+  absl::Status RestoreDeserialized(
+      const absl::Span<const uint8_t> serialized_model, Environment* env);
 
  private:
   enum TensorMemoryType { STRONG_SHAPE = 0, BUFFER = 1, VARIABLE = 2 };
