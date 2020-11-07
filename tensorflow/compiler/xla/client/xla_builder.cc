@@ -1530,7 +1530,9 @@ XlaOp XlaBuilder::DynamicConvKernelGrad(
                                precision_config, padding_type));
 
     instr.set_custom_call_target("DynamicConvolutionKernelGrad");
-
+    // The gradient of kernel has kernel shape and shouldn't have any dynamic
+    // sizes.
+    instr.mutable_shape()->clear_is_dynamic_dimension();
     return AddInstruction(std::move(instr), HloOpcode::kCustomCall,
                           {activations, gradients});
   });
