@@ -459,8 +459,27 @@ class InputTypeSpecTest(test.TestCase, parameterized.TestCase):
               strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           ],
-          enable_get_next_as_optional=[True, False]))
-  def testTypeSpecForPerReplicaOptions(self, distribution, enable_get_next_as_optional):
+          enable_get_next_as_optional=[True, False],
+          input_options=[
+              distribute_lib.InputOptions(
+                  experimental_place_dataset_on_device=True,
+                  experimental_prefetch_to_device=False,
+                  experimental_replication_mode=distribute_lib
+                  .InputReplicationMode.PER_REPLICA),
+              distribute_lib.InputOptions(
+                  experimental_place_dataset_on_device=False,
+                  experimental_prefetch_to_device=False,
+                  experimental_replication_mode=distribute_lib
+                  .InputReplicationMode.PER_REPLICA),
+              distribute_lib.InputOptions(
+                  experimental_place_dataset_on_device=False,
+                  experimental_prefetch_to_device=True,
+                  experimental_replication_mode=distribute_lib
+                  .InputReplicationMode.PER_REPLICA),
+          ],))
+  def testFromFunctionInputSignatureForPerReplicaValuesWithOptions(self, distribution,
+                                                                   enable_get_next_as_optional,
+                                                                   input_options):
 
     fname1 = os.path.join(self.get_temp_dir(), "1.txt")
     _create_text_file(fname1, 5)
@@ -473,59 +492,27 @@ class InputTypeSpecTest(test.TestCase, parameterized.TestCase):
                               input_context.input_pipeline_id)
       return readers.TextLineDatasetV2(dataset).map(
           string_ops.string_to_number).batch(
-              input_context.get_per_replica_batch_size(4))
-    
-    options = distribute_lib.InputOptions(
-        experimental_place_dataset_on_device = True,
-        experimental_prefetch_to_device = False,
-        experimental_replication_mode = distribute_lib.InputReplicationMode.PER_REPLICA)
-
-    ds = distribution.experimental_distribute_datasets_from_function(dataset_fn, options)
+              input_context.get_per_replica_batch_size(4))         
 
     distribution.extended.experimental_enable_get_next_as_optional = (
         enable_get_next_as_optional)
+    ds = distribution.experimental_distribute_datasets_from_function(dataset_fn, 
+                                                                     input_options)
 
-    with distribution.scope():
-      iterator = iter(ds)
-      _check_type_spec_structure(iterator)
-
+    iterator = iter(ds)
+    _check_type_spec_structure(iterator)
     spec = iterator._type_spec
-
     tensor_list = spec._to_components(iterator)
     re_iterator = spec._from_components(tensor_list)
 
-    self.assertEqual(iterator._input_workers, re_iterator._input_workers)
-    self.assertAllEqual(iterator._iterators, re_iterator._iterators)    
-
-  def testFromFunctionInputSignatureForPerReplicaValuesWithOptions(self, distribution, enable_get_next_as_optional):
-
-    fname1 = os.path.join(self.get_temp_dir(), "1.txt")
-    _create_text_file(fname1, 5)
-    fname2 = os.path.join(self.get_temp_dir(), "2.txt")
-    _create_text_file(fname2, 9)
-
-    def dataset_fn(input_context):
-      dataset = dataset_ops.DatasetV2.from_tensor_slices([fname1, fname2])
-      dataset = dataset.shard(input_context.num_input_pipelines,
-                              input_context.input_pipeline_id)
-      return readers.TextLineDatasetV2(dataset).map(
-          string_ops.string_to_number).batch(
-              input_context.get_per_replica_batch_size(4))
-
-    options = distribute_lib.InputOptions(
-      experimental_place_dataset_on_device = True,
-      experimental_prefetch_to_device = False,
-      experimental_replication_mode = distribute_lib.InputReplicationMode.PER_REPLICA)          
-
-    distribution.extended.experimental_enable_get_next_as_optional = (
-        enable_get_next_as_optional)
-    ds = distribution.experimental_distribute_datasets_from_function(dataset_fn, options)
     _check_type_spec_structure(iter(ds))
     element_spec = ds.element_spec
     iter_element_spec = iter(ds).element_spec
     nest.assert_same_structure(element_spec, iter_element_spec)
     self.assertAllEqual(
         nest.flatten(element_spec), nest.flatten(iter_element_spec))
+    self.assertEqual(iterator._input_workers, re_iterator._input_workers)
+    self.assertAllEqual(iterator._iterators, re_iterator._iterators) 
 
     @def_function.function(input_signature=[element_spec])
     def process_inputs(inputs):
