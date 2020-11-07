@@ -433,8 +433,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kSetDimensionSize: {
       attributes.push_back(builder_->getNamedAttr(
-          "dimension", builder_->getIntegerAttr(builder_->getIntegerType(32),
-                                                instruction->dimension())));
+          "dimension", builder_->getI64IntegerAttr(instruction->dimension())));
       MakeAndReturn(SetDimensionSizeOp);
     }
     case HloOpcode::kSlice: {
@@ -589,8 +588,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     };
     case HloOpcode::kGetDimensionSize: {
       attributes.push_back(builder_->getNamedAttr(
-          "dimension", builder_->getIntegerAttr(builder_->getIntegerType(32),
-                                                instruction->dimension())));
+          "dimension", builder_->getI64IntegerAttr(instruction->dimension())));
       MakeAndReturn(GetDimensionSizeOp);
     };
     case HloOpcode::kTranspose: {

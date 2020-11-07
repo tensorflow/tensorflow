@@ -909,11 +909,21 @@ func @erase_dead_lhlo_constant_negative(%M : memref<4xf32>) -> memref<256x1024xf
 }
 
 // CHECK-LABEL: func @fold_get_dimension_size
-func @fold_get_dimension_size(%I : tensor<1x128x512xf32>) -> tensor<i32> {
-  %size = "mhlo.get_dimension_size"(%I) {dimension = 2 : i32} : (tensor<1x128x512xf32>) -> tensor<i32>
+func @fold_get_dimension_size(%I: tensor<1x128x512xf32>) -> tensor<i32> {
+  %size = "mhlo.get_dimension_size"(%I) {dimension = 2 : i64} : (tensor<1x128x512xf32>) -> tensor<i32>
   return %size : tensor<i32>
   // CHECK-NEXT: %[[C:.*]] = mhlo.constant dense<512> : tensor<i32>
   // CHECK-NEXT: return %[[C]]
+}
+
+// CHECK-LABEL: func @fold_set_dimension_size
+// CHECK-SAME: (%[[I:.*]]: tensor<1x128x512xf32>)
+func @fold_set_dimension_size(%I: tensor<1x128x512xf32>) -> tensor<1x128x512xf32> {
+  %dim = mhlo.constant dense<512> : tensor<i32>
+  %result = "mhlo.set_dimension_size"(%I, %dim) {dimension = 2 : i64} : (tensor<1x128x512xf32>, tensor<i32>) -> tensor<1x128x512xf32>
+  return %result : tensor<1x128x512xf32>
+
+  // CHECK-NEXT: return %[[I]]
 }
 
 // CHECK-LABEL: func @fold_select_same
