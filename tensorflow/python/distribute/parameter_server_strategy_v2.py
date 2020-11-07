@@ -704,13 +704,12 @@ class ParameterServerStrategyV2Extended(
 # The warning that will be logged if the way we initialize sharded variables
 # is memory-inefficient.
 _INEFFICIENT_INIT_WARNING = (
-    "Large variable %s is partitioned but not initialized in a memory-efficient"
-    " way. The full value is first being created and then sliced into smaller "
-    "values. To reduce the memory footprint, explicitly specify `dtype` and "
-    "`shape` when creating variables, and pass a callable to Variable's "
-    "`initial_value`. The callable should take only one argument which is a "
-    "namedtuple (shape: `tf.TensorShape`, offsets: list/tuple) where shape is "
-    "the shape of the component variable, and offsets is the offsets of the "
-    "smaller variable on each axis.")
+    "Large variable %s is partitioned but not initialized in a "
+    "memory-efficient way. On each shard, the full value is first being "
+    "created and then sliced into smaller values. To reduce the memory "
+    "footprint, explicitly specify `dtype` and `shape` when creating "
+    "variables, and use `tf.initializers` to initialize the variable. "
+    "Note that some initializers (e.g., orthogonal) don't support "
+    "memory-efficient initialization and there is not much you can do here.")
 
 _LARGE_VARIABLE_NUM_ELEMENTS = 1e9
