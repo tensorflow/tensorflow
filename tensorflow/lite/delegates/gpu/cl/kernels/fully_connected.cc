@@ -41,9 +41,9 @@ FullyConnected::FullyConnected(const OperationDef& definition,
                                const DeviceInfo& device_info)
     : GPUOperation(definition) {
   if (device_info.IsAdreno()) {
-    if (device_info.IsAdreno3xx()) {
+    if (device_info.adreno_info.IsAdreno3xx()) {
       work_group_size_ = int3(16, 4, 1);
-    } else if (device_info.IsAdreno4xx()) {
+    } else if (device_info.adreno_info.IsAdreno4xx()) {
       work_group_size_ = int3(32, 4, 1);
     } else {
       work_group_size_ = int3(32, 4, 1);
