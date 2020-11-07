@@ -2070,14 +2070,10 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
       loaded = cycle(root, 1)
 
     expected_save_message = (
-        "WARNING:absl:No concrete functions found for untraced function `foo` "
-        "while saving. This function will not be callable after loading.")
-    expected_load_message = (
-        "WARNING:absl:Could not find any concrete functions to restore for "
-        "this SavedFunction object while loading. The function will not be "
-        "callable.")
+        "WARNING:absl:Found untraced functions such as foo while saving "
+        "(showing 1 of 1). These functions will not be directly callable after "
+        "loading.")
     self.assertIn(expected_save_message, logs.output)
-    self.assertIn(expected_load_message, logs.output)
 
     with self.assertRaisesRegex(
         ValueError, "Found zero restored functions for caller function."):
