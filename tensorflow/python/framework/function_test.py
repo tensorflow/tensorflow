@@ -1643,7 +1643,9 @@ class FunctionInlineControlTest(test.TestCase, parameterized.TestCase):
                 do_function_inlining=True,
                 do_constant_folding=True)))
     cell_func_call_pattern = re.compile(r"Cell[^/]*\(")
-    @function.Defun(dtype, noinline=noinline)
+
+    @function.Defun(dtype, noinline=noinline, func_name="CellT" if noinline
+                                              else "CellF")
     def Cell(v):
       # If v is a vector [n, 1], x is a big square matrix.
       x = math_ops.tanh(v + array_ops.transpose(v, [1, 0]))

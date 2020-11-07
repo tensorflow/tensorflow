@@ -1704,6 +1704,8 @@ cuda_py_test(
     name = "batch_gemm_op_test",
     size = "small",
     srcs = ["batch_gemm_op_test.py"],
+    tags = ["gpu",
+    ],
     deps = [
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
