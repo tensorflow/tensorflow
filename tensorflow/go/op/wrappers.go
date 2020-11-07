@@ -12339,7 +12339,7 @@ func ExtractGlimpseV2UniformNoise(value bool) ExtractGlimpseV2Attr {
 // ExtractGlimpseV2Noise sets the optional noise attribute to value.
 //
 // value: indicates if the noise should `uniform`, `gaussian`, or
-// `zero`. The default is `uniform` which means the the noise type
+// `zero`. The default is `uniform` which means the noise type
 // will be decided by `uniform_noise`.
 // If not specified, defaults to "uniform"
 func ExtractGlimpseV2Noise(value string) ExtractGlimpseV2Attr {
@@ -12441,7 +12441,7 @@ func ExtractGlimpseUniformNoise(value bool) ExtractGlimpseAttr {
 // ExtractGlimpseNoise sets the optional noise attribute to value.
 //
 // value: indicates if the noise should `uniform`, `gaussian`, or
-// `zero`. The default is `uniform` which means the the noise type
+// `zero`. The default is `uniform` which means the noise type
 // will be decided by `uniform_noise`.
 // If not specified, defaults to "uniform"
 func ExtractGlimpseNoise(value string) ExtractGlimpseAttr {
@@ -35861,7 +35861,7 @@ func TensorArrayV3ClearAfterRead(value bool) TensorArrayV3Attr {
 // TensorArrayV3IdenticalElementShapes sets the optional identical_element_shapes attribute to value.
 //
 // value: If true (default is false), then all
-// elements in the TensorArray will be expected to have have identical shapes.
+// elements in the TensorArray will be expected to have identical shapes.
 // This allows certain behaviors, like dynamically checking for
 // consistent shapes on write, and being able to fill in properly
 // shaped zero tensors on stack -- even if the element_shape attribute
@@ -38900,7 +38900,7 @@ func InfeedEnqueuePrelinearizedBuffer(scope *Scope, input tf.Output, optional ..
 //   is preceded by "FIRST_DIM_SIZE".
 //
 // Arguments:
-//	shape: The desired shape of the the output tensor. If left unspecified (empty),
+//	shape: The desired shape of the output tensor. If left unspecified (empty),
 // the minimal shape required to contain all the elements in the ragged tensor
 // (the natural shape) will be used. If some dimensions are left unspecified, then
 // the size of the natural shape is used in that dimension.
