@@ -205,26 +205,26 @@ StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(
       "StaticMemRefCastOp(ViewOp(arg))");
 }
 
+static bool WritesMlirBuffer(mlir::Operation* op, mlir::Value operand) {
+  llvm::SmallVector<mlir::MemoryEffects::EffectInstance, 2> effects;
+  mlir::cast<mlir::MemoryEffectOpInterface>(op).getEffectsOnValue(operand,
+                                                                  effects);
+  return absl::c_any_of(
+      effects, [](const mlir::MemoryEffects::EffectInstance& instance) {
+        return mlir::isa<mlir::MemoryEffects::Write>(instance.getEffect());
+      });
+}
+
 StatusOr<std::vector<MlirBufferSlice>> GetMlirBufferSlices(
     mlir::Operation* op, mlir::ValueRange operands,
     absl::Span<const BufferAllocation> allocations) {
-  const auto buffer_is_written = [op](mlir::Value operand) {
-    llvm::SmallVector<mlir::MemoryEffects::EffectInstance, 2> effects;
-    mlir::cast<mlir::MemoryEffectOpInterface>(op).getEffectsOnValue(operand,
-                                                                    effects);
-    return absl::c_any_of(
-        effects, [](const mlir::MemoryEffects::EffectInstance& instance) {
-          return mlir::isa<mlir::MemoryEffects::Write>(instance.getEffect());
-        });
-  };
-
   std::vector<MlirBufferSlice> slices;
   for (mlir::Value operand : operands) {
     slices.emplace_back();
     auto& slice = slices.back();
     TF_ASSIGN_OR_RETURN(slice.buffer_slice,
                         GetAllocationSliceForMlir(operand, allocations));
-    slice.written = buffer_is_written(operand);
+    slice.written = WritesMlirBuffer(op, operand);
     slice.shape = TypeToShape(operand.getType());
   }
   return slices;
@@ -374,18 +374,12 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
 
 namespace {
 // Computes the maximum valid unroll factor for a given instruction.
-int ComputeMaxUnrollFactor(const HloInstruction* hlo) {
-  int max_unroll_factor = hlo->GetModule()
-                              ->config()
-                              .debug_options()
-                              .xla_gpu_max_kernel_unroll_factor();
+int ComputeMaxUnrollFactor(const Shape& shape,
+                           const HloModuleConfig& hlo_module_config) {
+  int max_unroll_factor =
+      hlo_module_config.debug_options().xla_gpu_max_kernel_unroll_factor();
 
-  // Find the largest possible power of two to unroll by.
-  // TODO(kramerb): Make this smarter.
-  const Shape& element_shape = hlo->IsMultiOutputFusion()
-                                   ? ShapeUtil::GetSubshape(hlo->shape(), {0})
-                                   : hlo->shape();
-  int64 num_elements = ShapeUtil::ElementsIn(element_shape);
+  int64 num_elements = ShapeUtil::ElementsIn(shape);
   for (int i = max_unroll_factor; i > 1; i /= 2) {
     if (num_elements % i == 0) {
       return i;
@@ -394,6 +388,16 @@ int ComputeMaxUnrollFactor(const HloInstruction* hlo) {
 
   // Cannot unroll.
   return 1;
+}
+
+// Computes the maximum valid unroll factor for a given instruction.
+int ComputeMaxUnrollFactor(const HloInstruction* hlo) {
+  // Find the largest possible power of two to unroll by.
+  // TODO(kramerb): Make this smarter.
+  const Shape& element_shape = hlo->IsMultiOutputFusion()
+                                   ? ShapeUtil::GetSubshape(hlo->shape(), {0})
+                                   : hlo->shape();
+  return ComputeMaxUnrollFactor(element_shape, hlo->GetModule()->config());
 }
 
 // Returns the llvm type for the indices used in the kernel that contains the
@@ -917,6 +921,22 @@ static StatusOr<std::vector<MlirBufferSlice>> CreateFusionSlices(
   return slices;
 }
 
+StatusOr<MlirEmitterInput> IrEmitterUnnested::GetMlirEmitterInput(
+    HloInstruction* hlo) {
+  MlirEmitterInput input;
+  TF_ASSIGN_OR_RETURN(input.op, lhlo_scratch_emitter_.EmitOp(hlo));
+  input.thunk_info = GetThunkInfo(hlo);
+  if (hlo->shape().IsTuple()) {
+    const auto& buffer_assignment = ir_emitter_context_->buffer_assignment();
+    auto& slice = input.extra_slice.emplace();
+    TF_ASSIGN_OR_RETURN(slice.buffer_slice,
+                        buffer_assignment.GetUniqueSlice(hlo, {}));
+    slice.written = true;
+    slice.shape = hlo->shape();
+  }
+  return input;
+}
+
 // TODO(timshen): update the comment once the HandleFusion code path deleted.
 //
 // This is migrated from IrEmitter::HandleFusion() with IrEmitterUnnested as the
@@ -937,7 +957,9 @@ Status IrEmitterUnnested::EmitLoopFusionFromMlir(MlirEmitterInput input,
       CreateFusionSlices(fusion_operands, fusion_outputs, operand_shapes,
                          output_shape,
                          ir_emitter_context_->buffer_assignment()));
-  slices.push_back(input.extra_slice);
+  if (input.extra_slice) {
+    slices.push_back(*input.extra_slice);
+  }
 
   std::vector<llvm_ir::IrArray> ir_arrays;
   Thunk* kernel_thunk;
@@ -1157,16 +1179,7 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
     unroll_factor = ComputeMaxUnrollFactor(fusion);
   }
 
-  MlirEmitterInput input;
-  TF_ASSIGN_OR_RETURN(input.op, lhlo_scratch_emitter_.EmitOp(fusion));
-  const auto& buffer_assignment = ir_emitter_context_->buffer_assignment();
-  auto& slice = input.extra_slice;
-  TF_ASSIGN_OR_RETURN(slice.buffer_slice,
-                      buffer_assignment.GetUniqueSlice(fusion, {}));
-  slice.written = true;
-  slice.shape = fusion->shape();
-  input.thunk_info = GetThunkInfo(fusion);
-
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(fusion));
   return EmitLoopFusionFromMlir(input, fusion->shape(), unroll_factor);
 }
 
@@ -1293,11 +1306,7 @@ Status IrEmitterUnnested::HandleSelectAndScatter(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> initializer_thunk,
                       BuildInitializerThunk(select_and_scatter));
 
-  MlirEmitterInput input;
-  TF_ASSIGN_OR_RETURN(auto select_and_scatter_op,
-                      lhlo_scratch_emitter_.EmitOp(select_and_scatter));
-  input.op = select_and_scatter_op;
-  input.thunk_info = GetThunkInfo(select_and_scatter);
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(select_and_scatter));
   return EmitSelectAndScatterFromMlir(input, std::move(initializer_thunk));
 }
 
@@ -1578,12 +1587,8 @@ Status IrEmitterUnnested::HandleRngGetAndUpdateState(
 }
 
 Status IrEmitterUnnested::HandleScatter(HloInstruction* scatter) {
-  MlirEmitterInput result;
-
-  TF_ASSIGN_OR_RETURN(auto scatter_op, lhlo_scratch_emitter_.EmitOp(scatter));
-  result.op = scatter_op;
-  result.thunk_info = GetThunkInfo(scatter);
-  return EmitScatterFromMlir(result);
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(scatter));
+  return EmitScatterFromMlir(input);
 }
 
 Status IrEmitterUnnested::EmitScatterFromMlir(MlirEmitterInput mlir_input) {
@@ -1868,7 +1873,7 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
   TF_ASSIGN_OR_RETURN(auto sort_op, lhlo_scratch_emitter_.EmitOp(sort));
   result.op = sort_op;
   const auto& buffer_assignment = ir_emitter_context_->buffer_assignment();
-  auto& slice = result.extra_slice;
+  auto& slice = result.extra_slice.emplace();
   TF_ASSIGN_OR_RETURN(slice.buffer_slice,
                       buffer_assignment.GetUniqueSlice(sort, {}));
   slice.written = true;
@@ -1890,7 +1895,9 @@ Status IrEmitterUnnested::EmitSortFromMlir(MlirEmitterInput mlir_input) {
   TF_ASSIGN_OR_RETURN(
       std::vector<MlirBufferSlice> outputs,
       GetMlirBufferSlices(sort_op, sort_op.output(), allocations));
-  outputs.push_back(mlir_input.extra_slice);
+  if (mlir_input.extra_slice) {
+    outputs.push_back(*mlir_input.extra_slice);
+  }
 
   std::vector<std::unique_ptr<Thunk>> thunks;
 
