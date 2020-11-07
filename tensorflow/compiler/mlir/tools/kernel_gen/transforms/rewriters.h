@@ -20,7 +20,6 @@ limitations under the License.
 
 namespace mlir {
 
-class BufferAssignmentPlacer;
 class BufferizeTypeConverter;
 class LLVMTypeConverter;
 class MLIRContext;

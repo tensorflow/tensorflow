@@ -36,6 +36,9 @@ Status DispatcherState::Apply(const Update& update) {
     case Update::kCreateJob:
       CreateJob(update.create_job());
       break;
+    case Update::kProduceSplit:
+      ProduceSplit(update.produce_split());
+      break;
     case Update::kAcquireJobClient:
       AcquireJobClient(update.acquire_job_client());
       break;
@@ -94,6 +97,19 @@ void DispatcherState::CreateJob(const CreateJobUpdate& create_job) {
     named_jobs_[named_job_key.value()] = job;
   }
   next_available_job_id_ = std::max(next_available_job_id_, job_id + 1);
+}
+
+void DispatcherState::ProduceSplit(const ProduceSplitUpdate& produce_split) {
+  std::shared_ptr<Job> job = jobs_[produce_split.job_id()];
+  DCHECK(job->distributed_epoch_state.has_value());
+  DistributedEpochState& state = job->distributed_epoch_state.value();
+  DCHECK_EQ(produce_split.repetition(), state.repetition);
+  if (produce_split.finished()) {
+    state.repetition++;
+    state.split_provider_index = 0;
+    return;
+  }
+  state.split_provider_index++;
 }
 
 void DispatcherState::AcquireJobClient(

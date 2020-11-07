@@ -251,6 +251,12 @@ class Node {
   // Returns the node output.
   Node* output() const { return output_; }
 
+  // Returns the parameter value.
+  double parameter_value(const string& name) const TF_LOCKS_EXCLUDED(mu_) {
+    tf_shared_lock l(mu_);
+    return parameters_.at(name)->state->value;
+  }
+
   // Returns the aggregate processing time.
   int64 processing_time() const TF_LOCKS_EXCLUDED(mu_) {
     return processing_time_;
@@ -517,6 +523,12 @@ class Node {
       absl::flat_hash_map<string, double>* total_bytes) const
       TF_SHARED_LOCKS_REQUIRED(mu_);
 
+  // Compute and return the maximum buffered bytes on the node itself. By
+  // default non-tunable nodes are assumed not to buffer any bytes, so the
+  // tunable nodes as subclasses are expected to override this method to ensure
+  // that the optimization algorithm respects the memory budget.
+  virtual double MaximumBufferedBytes() const TF_SHARED_LOCKS_REQUIRED(mu_);
+
   // Stores the time passed to the last call to `Node::record_start()` on the
   // current thread.
   //
@@ -692,8 +704,8 @@ class Model {
   // (e.g. CPU, memory). The logic for collecting this information assumes that
   // the collection is not repeatedly disabled and enabled. As a consequence,
   // the implementation starts collecting resource usage when it encounters a
-  // tunable parameter (because the information is used for for tuning the value
-  // of the parameter) and never stops.
+  // tunable parameter (because the information is used for tuning the value of
+  // the parameter) and never stops.
   std::atomic<bool> collect_resource_usage_;
 };
 

@@ -434,7 +434,7 @@ Status TpuCompilationCacheInterface::CompileIfKeyAbsentHelper(
 
     // Check if caller has disabled compilation. Set using
     // internal::ScopedTpuCompileDisabler.
-    if (!UtilApiFn()->TpuCompile_IsTpuCompilationEnabledFn()) {
+    if (!OpsApiFn()->TpuCompile_IsTpuCompilationEnabledFn()) {
       const std::string error_msg = strings::StrCat(
           "[TpuCompilationDisabled]: Compilation cache miss, but compilation "
           "disabled, session_name(",

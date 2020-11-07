@@ -29,6 +29,7 @@ limitations under the License.
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/utils/string_container_utils.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -538,6 +539,14 @@ mlir::LogicalResult GetHostDeviceOutsideComputation(
 
   *host_device = tpu_device_assignment.tpu_devices[0][0].host;
   return mlir::success();
+}
+
+bool IsTPUDevice(llvm::StringRef device) {
+  Device parsed_device;
+  if (!DeviceNameUtils::ParseFullName(mlir::StringRefToView(device),
+                                      &parsed_device))
+    return false;
+  return parsed_device.has_type && parsed_device.type == kDeviceTPU;
 }
 
 }  // namespace tensorflow

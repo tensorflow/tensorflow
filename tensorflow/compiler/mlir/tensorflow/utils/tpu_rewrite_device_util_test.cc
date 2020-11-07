@@ -804,5 +804,11 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceNotReplicated) {
   EXPECT_EQ(host_device, "/job:localhost/replica:0/task:0/device:CPU:0");
 }
 
+TEST(TPURewriteDeviceUtilTest, TestIsTPUDevice) {
+  EXPECT_TRUE(IsTPUDevice("/job:localhost/replica:0/task:0/device:TPU:0"));
+  EXPECT_FALSE(IsTPUDevice("/job:localhost/replica:0/task:0/device:CPU:0"));
+  EXPECT_FALSE(IsTPUDevice("INVALID_DEVICE"));
+}
+
 }  // anonymous namespace
 }  // namespace tensorflow

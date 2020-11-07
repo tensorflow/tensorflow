@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/import_utils.h"
 #include "tensorflow/core/framework/function.h"
@@ -146,6 +147,25 @@ std::string ExperimentalConvertSavedModelToMlir(
   }
 
   return MlirModuleToString(*module_or.ConsumeValueOrDie(), show_debug_info);
+}
+
+std::string ExperimentalConvertSavedModelV1ToMlirLite(
+    const std::string &saved_model_path, const std::string &tags,
+    bool upgrade_legacy, bool show_debug_info, TF_Status *status) {
+  std::unordered_set<string> tag_set =
+      absl::StrSplit(tags, ',', absl::SkipEmpty());
+
+  mlir::MLIRContext context;
+
+  auto module_or = SavedModelSignatureDefsToMlirImportLite(
+      saved_model_path, tag_set, /*exported_names=*/{}, &context,
+      upgrade_legacy);
+  if (!module_or.status().ok()) {
+    Set_TF_Status_from_Status(status, module_or.status());
+    return "// error";
+  }
+
+  return MlirModuleToString(*module_or.ValueOrDie(), show_debug_info);
 }
 
 std::string ExperimentalConvertSavedModelV1ToMlir(

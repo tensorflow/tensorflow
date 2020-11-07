@@ -73,7 +73,6 @@ using FlatTensorFunctionMap =
 
 namespace {
 
-
 const TrackableObjectGraph::TrackableObject::SerializedTensor*
 FindSerializedTensorInTrackable(
     const TrackableObjectGraph::TrackableObject& trackable_object,
@@ -181,12 +180,11 @@ Status TFSavedModelAPI::GetFunction(const std::string& function_path,
     return errors::NotFound("No saved object found at path ", function_path);
   }
 
-  auto function_iter = revived_objects_.concrete_functions.find(*node);
-  if (function_iter == revived_objects_.concrete_functions.end()) {
+  *function = revived_objects_.concrete_functions.Find(*node);
+  if (*function == nullptr) {
     return errors::NotFound("No function found at path ", function_path);
   }
 
-  *function = function_iter->second.get();
   return Status();
 }
 
@@ -209,15 +207,6 @@ Status TFSavedModelAPI::GetSignatureDefFunction(
 
   *function = function_iter->second.get();
   return Status();
-}
-
-std::vector<ConcreteFunction*> TFSavedModelAPI::ListFunctions() {
-  std::vector<ConcreteFunction*> result;
-  result.reserve(revived_objects_.concrete_functions.size());
-  for (auto& index_and_function : revived_objects_.concrete_functions) {
-    result.push_back(index_and_function.second.get());
-  }
-  return result;
 }
 
 Status TFSavedModelAPI::GetVariable(const std::string& variable_path,
@@ -263,10 +252,10 @@ Status TFSavedModelAPI::Load(
   // This occurs in python here:
   // https://github.com/tensorflow/tensorflow/blob/285b5fa15405c5e2c084080f52a1818be8648079/tensorflow/python/saved_model/function_deserialization.py#L438-L454
 
-  // Step 1: For each node in the graph, we should initialize an object of the
+  // For each node in the graph, we should initialize an object of the
   // corresponding type. For objects that depend on the initialization of other
   // objects (like functions which capture resources), we will initialize them
-  // in step 2.
+  // later.
   PartiallyRevivedObjects partially_revived_objects;
   TF_RETURN_IF_ERROR(internal::PartiallyReviveSavedModelObjects(
       bundle.meta_graph_def(), context, directory, &partially_revived_objects));
@@ -274,6 +263,22 @@ Status TFSavedModelAPI::Load(
   RevivedObjects revived_objects;
   TF_RETURN_IF_ERROR(partially_revived_objects.Build(
       context, bundle.saved_object_graph(), &revived_objects));
+
+  // Revive function library functions as concrete functions without captures.
+  // This is necessary because object graph functions may refer to functions
+  // _not_ in the object graph: A while loop, for example, will create two
+  // auxiliary `while_cond` and `while_body` functions that are only present in
+  // the graph def function library.
+  for (const FunctionDef& function :
+       bundle.meta_graph_def().graph_def().library().function()) {
+    std::unique_ptr<TFConcreteFunction> concrete_function;
+    TF_RETURN_IF_ERROR(TFConcreteFunction::Create(/*function_def=*/&function,
+                                                  /*captures=*/{},
+                                                  /*metadata=*/{},
+                                                  /*ctx=*/context,
+                                                  /*out=*/&concrete_function));
+    revived_objects.concrete_functions.Insert(std::move(concrete_function));
+  }
 
   TF_RETURN_IF_ERROR(
       RestoreCheckpoint(&bundle, revived_objects, directory, context));

@@ -263,8 +263,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             });
       }
 
-      while (results_.empty() && !job_finished_ && !cancelled_ &&
-             status_.ok()) {
+      while (results_.empty() &&
+             !(job_finished_ && num_running_worker_threads_ == 0) &&
+             !cancelled_ && status_.ok()) {
         get_next_cv_.wait(l);
       }
       if (cancelled_) {
@@ -301,6 +302,26 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       return errors::Unimplemented("RestoreInternal is not yet supported");
+    }
+
+    data::TraceMeMetadata GetTraceMeMetadata() const override {
+      data::TraceMeMetadata result;
+      int64 num_tasks = -1;
+      if (mu_.try_lock()) {
+        num_tasks = tasks_.size() - finished_tasks_;
+        mu_.unlock();
+      }
+      std::string num_tasks_string =
+          (num_tasks == -1)
+              ? "unavailable"
+              : strings::Printf("%lld", static_cast<long long>(num_tasks));
+      result.push_back(std::make_pair("num_tasks", num_tasks_string));
+      result.push_back(std::make_pair("job_name", dataset()->job_name_));
+      result.push_back(std::make_pair(
+          "max_outstanding_requests",
+          strings::Printf("%lld", static_cast<long long>(
+                                      dataset()->max_outstanding_requests_))));
+      return result;
     }
 
    private:
@@ -370,6 +391,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       job_finished_ = job_finished;
       if (job_finished) {
         get_next_cv_.notify_all();
+        worker_thread_cv_.notify_all();
         return;
       }
       for (int i = 0; i < tasks_.size(); ++i) {
@@ -416,6 +438,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           mutex_lock l(mu_);
           num_running_worker_threads_--;
           outstanding_requests_--;
+          get_next_cv_.notify_all();
         };
         worker_threads_.push_back(ctx->StartThread(
             "tf-data-service-task_thread", [this, done = std::move(done)]() {
@@ -440,7 +463,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             worker_thread_cv_.notify_one();
           }
           outstanding_requests_--;
-          while (!cancelled_ && !(SpaceInBuffer() && TaskAvailable())) {
+          while (!cancelled_ && !(SpaceInBuffer() && TaskAvailable()) &&
+                 !job_finished_) {
             if (VLOG_IS_ON(3)) {
               VLOG(3) << "Sleeping with results_.size=" << results_.size()
                       << ", outstanding_requests_=" << outstanding_requests_
@@ -452,7 +476,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             worker_thread_cv_.wait(l);
           }
           outstanding_requests_++;
-          if (cancelled_) {
+          if (cancelled_ || job_finished_) {
             return;
           }
           // Search for a task to update.
@@ -475,10 +499,13 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         Status s = GetElement(task_to_process.get(), deadline_micros);
         if (!s.ok()) {
           mutex_lock l(mu_);
-          VLOG(1) << "Failed to get element for task "
-                  << task_to_process->task_id << ": " << s;
+          VLOG(1) << "Failed to get element from worker "
+                  << task_to_process->address << ": " << s;
           task_to_process->in_use = false;
-          status_ = s;
+          status_ = Status(
+              s.code(),
+              absl::StrCat("Failed to get element from worker ",
+                           task_to_process->address, ": ", s.error_message()));
           get_next_cv_.notify_all();
           return;
         }
@@ -529,6 +556,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             (deadline_micros > deadline_with_backoff_micros)
                 ? deadline_with_backoff_micros
                 : deadline_micros;
+        VLOG(1) << "Failed to get an element from worker " << task->address
+                << ": " << s << ". Will retry in "
+                << (backoff_until - now_micros) << " microseconds";
         Env::Default()->SleepForMicroseconds(backoff_until - now_micros);
       }
 
@@ -561,7 +591,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     const int64 iterator_index_;
 
-    mutex mu_;
+    mutable mutex mu_;
     condition_variable get_next_cv_ TF_GUARDED_BY(mu_);
     condition_variable worker_thread_cv_ TF_GUARDED_BY(mu_);
     condition_variable manager_thread_cv_ TF_GUARDED_BY(mu_);

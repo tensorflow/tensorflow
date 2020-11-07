@@ -28,6 +28,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
@@ -1008,6 +1009,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
           np.array([], dtype=dtype).reshape((0, 3)),
           expected=np.array([[0, 0, 0], [0, 0, 0]], dtype=dtype))
 
+  @test_util.disable_mlir_bridge("TODO(b/172473885)")
   def testMatMul(self):
     self._testMatMul(math_ops.matmul, self.float_types | {np.float64})
 
@@ -1045,6 +1047,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
     self._testMatMul(SparseMatmulWrapperFT, self.float_types)
     self._testMatMul(SparseMatmulWrapperTT, self.float_types)
 
+  @test_util.disable_mlir_bridge("TODO(b/172473885)")
   def testBatchMatMul(self):
     # Tests with batches of matrices.
     for dtype in self.float_types | {np.float64}:
@@ -1096,6 +1099,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
             x,
             expected=np.matmul(x, x.transpose([0, 1, 3, 2])))
 
+  @test_util.disable_mlir_bridge("TODO(b/172473885)")
   def testExpandDims(self):
     for dtype in self.numeric_types:
       self._testBinary(
@@ -1329,6 +1333,41 @@ class BinaryOpsTest(xla_test.XLATestCase):
               ],
               dtype=dtype))
 
+  def testSymmetricMirrorPadGrad(self):
+    mirror_pad_grad = lambda t, paddings: gen_array_ops.mirror_pad_grad(
+        t, paddings, "SYMMETRIC")
+    for dtype in self.numeric_types:
+      self._testBinary(
+          mirror_pad_grad,
+          np.broadcast_to(np.arange(0, 7, dtype=dtype), (3, 2, 1, 7)),
+          np.array([
+              [1, 1],
+              [0, 0],
+              [0, 0],
+              [2, 2],
+          ], dtype=np.int32),
+          expected=np.broadcast_to(
+              np.array([9, 27, 27], dtype=dtype), (1, 2, 1, 3)))
+
+  def testReflectMirrorPadGrad(self):
+    mirror_pad_grad = lambda t, paddings: gen_array_ops.mirror_pad_grad(
+        t, paddings, "REFLECT")
+    for dtype in self.numeric_types:
+      self._testBinary(
+          mirror_pad_grad,
+          np.broadcast_to(
+              np.reshape(np.arange(0, 7, dtype=dtype), (7, 1)), (1, 4, 7, 1)),
+          np.array([
+              [0, 0],
+              [1, 1],
+              [2, 2],
+              [0, 0],
+          ], dtype=np.int32),
+          expected=np.broadcast_to(
+              np.reshape(np.array([16, 18, 8], dtype=dtype), (3, 1)),
+              (1, 2, 3, 1)))
+
+  @test_util.disable_mlir_bridge("TODO(b/172473885)")
   def testReshape(self):
     for dtype in self.numeric_types:
       self._testBinary(
@@ -1460,6 +1499,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
                [1, 2]],
               dtype=dtype))
 
+  @test_util.disable_mlir_bridge("TODO(b/172473885)")
   def testTranspose(self):
     for dtype in self.numeric_types:
       self._testBinary(
@@ -1478,6 +1518,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
           np.array([1, 0], dtype=np.int32),
           expected=np.array([[1, 3], [2, 4]], dtype=dtype))
 
+  @test_util.disable_mlir_bridge("TODO(b/172473885)")
   def testConjugateTranspose(self):
     for dtype in self.complex_types:
       self._testBinary(
@@ -1514,6 +1555,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
           np.array([[4, 5, 6], [40, 50, 60]], dtype=dtype),
           expected=np.array([[-3, 6, -3], [60, -120, 60]], dtype=dtype))
 
+  @test_util.disable_mlir_bridge("TODO(b/172473885)")
   def testBroadcastArgs(self):
     self._testBinary(array_ops.broadcast_dynamic_shape,
                      np.array([2, 3, 5], dtype=np.int32),

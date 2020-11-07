@@ -17,39 +17,43 @@ limitations under the License.
 
 namespace tensorflow {
 
-#define REGISTER_CPU_KERNELS(type)                                             \
-  REGISTER_KERNEL_BUILDER(                                                     \
-      Name("Min")                                                              \
-          .Device(DEVICE_CPU)                                                  \
-          .TypeConstraint<type>("T")                                           \
-          .TypeConstraint<int32>("Tidx"),                                      \
-      ReductionOp<CPUDevice, type, int32, Eigen::internal::MinReducer<type>>); \
-  REGISTER_KERNEL_BUILDER(                                                     \
-      Name("Min")                                                              \
-          .Device(DEVICE_CPU)                                                  \
-          .TypeConstraint<type>("T")                                           \
-          .TypeConstraint<int64>("Tidx"),                                      \
-      ReductionOp<CPUDevice, type, int64, Eigen::internal::MinReducer<type>>);
+#define REGISTER_CPU_KERNELS(type)                                          \
+  REGISTER_KERNEL_BUILDER(                                                  \
+      Name("Min")                                                           \
+          .Device(DEVICE_CPU)                                               \
+          .TypeConstraint<type>("T")                                        \
+          .TypeConstraint<int32>("Tidx"),                                   \
+      ReductionOp<CPUDevice, type, int32,                                   \
+                  Eigen::internal::MinReducer<type, Eigen::PropagateNaN>>); \
+  REGISTER_KERNEL_BUILDER(                                                  \
+      Name("Min")                                                           \
+          .Device(DEVICE_CPU)                                               \
+          .TypeConstraint<type>("T")                                        \
+          .TypeConstraint<int64>("Tidx"),                                   \
+      ReductionOp<CPUDevice, type, int64,                                   \
+                  Eigen::internal::MinReducer<type, Eigen::PropagateNaN>>);
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#define REGISTER_GPU_KERNELS(type)                                             \
-  REGISTER_KERNEL_BUILDER(                                                     \
-      Name("Min")                                                              \
-          .Device(DEVICE_GPU)                                                  \
-          .TypeConstraint<type>("T")                                           \
-          .TypeConstraint<int32>("Tidx")                                       \
-          .HostMemory("reduction_indices"),                                    \
-      ReductionOp<GPUDevice, type, int32, Eigen::internal::MinReducer<type>>); \
-  REGISTER_KERNEL_BUILDER(                                                     \
-      Name("Min")                                                              \
-          .Device(DEVICE_GPU)                                                  \
-          .TypeConstraint<type>("T")                                           \
-          .TypeConstraint<int64>("Tidx")                                       \
-          .HostMemory("reduction_indices"),                                    \
-      ReductionOp<GPUDevice, type, int64, Eigen::internal::MinReducer<type>>);
+#define REGISTER_GPU_KERNELS(type)                                          \
+  REGISTER_KERNEL_BUILDER(                                                  \
+      Name("Min")                                                           \
+          .Device(DEVICE_GPU)                                               \
+          .TypeConstraint<type>("T")                                        \
+          .TypeConstraint<int32>("Tidx")                                    \
+          .HostMemory("reduction_indices"),                                 \
+      ReductionOp<GPUDevice, type, int32,                                   \
+                  Eigen::internal::MinReducer<type, Eigen::PropagateNaN>>); \
+  REGISTER_KERNEL_BUILDER(                                                  \
+      Name("Min")                                                           \
+          .Device(DEVICE_GPU)                                               \
+          .TypeConstraint<type>("T")                                        \
+          .TypeConstraint<int64>("Tidx")                                    \
+          .HostMemory("reduction_indices"),                                 \
+      ReductionOp<GPUDevice, type, int64,                                   \
+                  Eigen::internal::MinReducer<type, Eigen::PropagateNaN>>);
 REGISTER_GPU_KERNELS(Eigen::half);
 REGISTER_GPU_KERNELS(float);
 REGISTER_GPU_KERNELS(double);

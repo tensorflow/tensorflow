@@ -126,7 +126,6 @@ tf_py_test(
     tags = [
         "no_pip",
     ],
-    tfrt_enabled = True,
     deps = [
         ":descriptor_source_test_base",
         "//tensorflow/python:client_testlib",

@@ -199,5 +199,13 @@ class CalibratorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     quantized_model = quantizer.calibrate(input_gen)
     self.assertIsNotNone(quantized_model)
 
+  def test_add_intermediate_tensors(self):
+    model_path = resource_loader.get_path_to_datafile(
+        'test_data/mobilenet_like_model.bin')
+    model = open(model_path, 'rb').read()
+    added_model = _calibrator.add_intermediate_tensors(model)
+    self.assertIsNotNone(added_model)
+
+
 if __name__ == '__main__':
   test.main()

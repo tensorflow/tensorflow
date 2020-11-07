@@ -101,6 +101,30 @@ class TF_AllTypesMatch<list<string> names> :
             !foreach(n, names, !subst("$_self", "$" # n, "$_self.getType()"))>>;
 
 //===----------------------------------------------------------------------===//
+// Rank/Shape helpers.
+//===----------------------------------------------------------------------===//
+
+class TF_OperandIsUnrankedPred<int n> :
+  CPred<"$_op.getOperand(" # n # ").getType().isa<UnrankedTensorType>()">;
+
+class TF_ResultIsUnrankedPred<int n> :
+  CPred<"$_op.getResult(" # n # ").getType().isa<UnrankedTensorType>()">;
+
+// Returns true if the n-th operand has unknown rank or has rank m.
+class TF_OperandHasRank<int n, int m> :
+  PredOpTrait<"operand " # n # " is " # m # "-D",
+    Or<[TF_OperandIsUnrankedPred<n>,
+      CPred<"$_op.getOperand(" # n #
+      ").getType().cast<ShapedType>().getRank() == " # m>]>>;
+
+// Returns true if the n-th result has unknown rank or has rank m.
+class TF_ResultHasRank<int n, int m> :
+  PredOpTrait<"result " # n # " is " # m # "-D",
+    Or<[TF_ResultIsUnrankedPred<n>,
+      CPred<"$_op.getResult(" # n #
+      ").getType().cast<ShapedType>().getRank() == " # m>]>>;
+
+//===----------------------------------------------------------------------===//
 // TensorFlow op side effects
 //===----------------------------------------------------------------------===//
 
@@ -565,42 +589,40 @@ def TF_IntTypeAttr : TypeAttrBase<"IntegerType", "integer type"> {
 // Mixin class defining a builder for binary ops supporting broadcast
 // behavior. The result type has the same element type as both operands.
 class WithBroadcastableBinOpBuilder {
-  list<OpBuilder> builders = [OpBuilder<
-"OpBuilder &builder, OperationState &result, Value  x, Value  y",
-[{
+  list<OpBuilderDAG> builders = [
+    OpBuilderDAG<(ins "Value":$x, "Value":$y),
+    [{
   auto resultType =
       OpTrait::util::getBroadcastedType(x.getType(), y.getType());
   if (!resultType)
-    mlir::emitError(result.location, "non-broadcastable operands");
-  return build(builder, result, resultType, x, y);
-}]
-  >];
+    mlir::emitError($_state.location, "non-broadcastable operands");
+  return build($_builder, $_state, resultType, x, y);
+}]>];
 }
 
 // Mixin class defining a builder for comparison ops supporting broadcast
 // behavior. The result type has bool element type.
 class WithBroadcastableCmpOpBuilder {
-  list<OpBuilder> builders = [OpBuilder<
-"OpBuilder &builder, OperationState &result, Value  x, Value  y",
-[{
+  list<OpBuilderDAG> builders = [
+    OpBuilderDAG<(ins "Value":$x, "Value":$y),
+    [{
   Type resultType;
   if (x.getType().isa<UnrankedTensorType>() ||
       y.getType().isa<UnrankedTensorType>()) {
-    resultType = UnrankedTensorType::get(builder.getI1Type());
+    resultType = UnrankedTensorType::get($_builder.getI1Type());
   } else {
     SmallVector<int64_t, 4> resultShape;
     if (!OpTrait::util::getBroadcastedShape(
             x.getType().cast<ShapedType>().getShape(),
             y.getType().cast<ShapedType>().getShape(), resultShape)) {
-      mlir::emitError(result.location,
+      mlir::emitError($_state.location,
                       "operands have no broadcastable shapes");
     }
 
-    resultType = RankedTensorType::get(resultShape, builder.getI1Type());
+    resultType = RankedTensorType::get(resultShape, $_builder.getI1Type());
   }
-  return build(builder, result, resultType, x, y);
-}]
-  >];
+  return build($_builder, $_state, resultType, x, y);
+}]>];
 }
 
 #endif // TF_OP_BASE

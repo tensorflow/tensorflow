@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/convolution_transposed_3x3_thin.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/convolution_transposed_4x4.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/convolution_transposed_thin.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 
 namespace tflite {
 namespace gpu {

@@ -8,7 +8,7 @@ TODO(timshen): Change once all patches are checked in.
 The convolution emitter is a prototype with the following goals:
 
 *   The top priority is performance.
-*   It supports arbitrarily sophiscated layouts.
+*   It supports arbitrarily sophisticated layouts.
 *   It supports platform-specific high-performance instructions.
 *   It is as portable as possible.
 *   It enables fusion support in the future.

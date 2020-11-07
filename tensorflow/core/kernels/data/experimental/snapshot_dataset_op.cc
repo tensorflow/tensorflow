@@ -304,8 +304,7 @@ SnapshotDatasetV2Op::Dataset::Dataset(
       input_(input),
       hash_(hash),
       path_(path),
-      compression_(compression == kCompressionAuto ? io::compression::kSnappy
-                                                   : compression),
+      compression_(compression),
       reader_prefix_(reader_prefix),
       writer_prefix_(writer_prefix),
       reader_func_(std::move(reader_func)),
@@ -375,6 +374,12 @@ Status SnapshotDatasetV2Op::Dataset::AsGraphDefInternal(
   AttrValue writer_prefix_attr;
   b->BuildAttrValue(writer_prefix_, &writer_prefix_attr);
 
+  AttrValue hash_valid_attr;
+  b->BuildAttrValue(true, &hash_valid_attr);
+
+  AttrValue hash_attr;
+  b->BuildAttrValue(static_cast<int64>(hash_), &hash_attr);
+
   AttrValue reader_func_attr;
   b->BuildAttrValue(reader_func_->func(), &reader_func_attr);
 
@@ -400,6 +405,8 @@ Status SnapshotDatasetV2Op::Dataset::AsGraphDefInternal(
       {{kCompression, compression_attr},
        {kReaderPrefix, reader_prefix_attr},
        {kWriterPrefix, writer_prefix_attr},
+       {kHashValid, hash_valid_attr},
+       {kHash, hash_attr},
        {kReaderFunc, reader_func_attr},
        {kShardFunc, shard_func_attr},
        {kReaderFuncTarguments, reader_func_arguments_types_attr},
@@ -571,8 +578,9 @@ Status SnapshotDatasetV2Op::Dataset::Iterator::Reader::Initialize(
   std::vector<Tensor> reader_output;
   reader_input.push_back(std::move(input_dataset_tensor));
 
+  // NOTE: We intentionally ignore resource modeling outside GetNext().
   TF_RETURN_IF_ERROR(instantiated_reader_func_->Run(
-      ctx, std::move(reader_input), &reader_output));
+      ctx, std::move(reader_input), &reader_output, /*node=*/nullptr));
   if (reader_output.size() != 1) {
     return errors::InvalidArgument(
         "reader_func returns more than one argument.");
@@ -666,7 +674,7 @@ Status SnapshotDatasetV2Op::Dataset::Iterator::Writer::GetShardIndex(
 
   // Run the shard function
   TF_RETURN_IF_ERROR(instantiated_shard_func_->RunWithBorrowedArgs(
-      ctx, tensors, &output_tensors));
+      ctx, tensors, &output_tensors, model_node()));
 
   if (output_tensors.size() != 1 || output_tensors[0].dtype() != DT_INT64 ||
       output_tensors[0].NumElements() != 1) {
@@ -828,6 +836,10 @@ SnapshotDatasetV2Op::SnapshotDatasetV2Op(OpKernelConstruction* ctx)
   if (ctx->HasAttr(kWriterPrefix)) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kWriterPrefix, &writer_prefix_));
   }
+  OP_REQUIRES_OK(ctx, ctx->GetAttr(kHashValid, &hash_valid_));
+  int64 hash;
+  OP_REQUIRES_OK(ctx, ctx->GetAttr(kHash, &hash));
+  hash_ = static_cast<uint64>(hash);
 
   OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, kReaderFunc, reader_params,
                                                &reader_func_metadata_));
@@ -840,20 +852,26 @@ void SnapshotDatasetV2Op::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   tstring path;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "path", &path));
 
-  // Computes the hash of the preceding items in the graph.
-  uint64 graph_hash;
-  GraphDef graph_def;
-  SerializationContext::Params params;
-  std::vector<std::pair<string, Tensor>> input_list;
-  params.input_list = &input_list;
-  params.external_state_policy =
-      SerializationContext::ExternalStatePolicy::kIgnore;
-  OP_REQUIRES_OK(
-      ctx, AsGraphDef(ctx, input, SerializationContext(params), &graph_def));
-  OP_REQUIRES_OK(ctx, HashGraph(graph_def, &graph_hash));
-
-  // Different compression modes should result in different graph hashes.
-  graph_hash = Hash64Combine(graph_hash, Hash64(compression_));
+  std::string compression = compression_ == kCompressionAuto
+                                ? io::compression::kSnappy
+                                : compression_;
+  uint64 hash;
+  if (hash_valid_) {
+    hash = hash_;
+  } else {
+    // Computes the hash of the preceding items in the graph.
+    GraphDef graph_def;
+    SerializationContext::Params params;
+    std::vector<std::pair<string, Tensor>> input_list;
+    params.input_list = &input_list;
+    params.external_state_policy =
+        SerializationContext::ExternalStatePolicy::kIgnore;
+    OP_REQUIRES_OK(
+        ctx, AsGraphDef(ctx, input, SerializationContext(params), &graph_def));
+    OP_REQUIRES_OK(ctx, HashGraph(graph_def, &hash));
+    // Different compression modes should result in different graph hashes.
+    hash = Hash64Combine(hash, Hash64(compression));
+  }
 
   std::unique_ptr<CapturedFunction> reader_func;
   OP_REQUIRES_OK(ctx,
@@ -865,8 +883,8 @@ void SnapshotDatasetV2Op::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                           kShardFuncOtherArgs, &shard_func));
 
   *output = new SnapshotDatasetV2Op::Dataset(
-      ctx, input, graph_hash, path, compression_, reader_prefix_,
-      writer_prefix_, std::move(reader_func), std::move(shard_func));
+      ctx, input, hash, path, compression, reader_prefix_, writer_prefix_,
+      std::move(reader_func), std::move(shard_func));
 }
 
 namespace {

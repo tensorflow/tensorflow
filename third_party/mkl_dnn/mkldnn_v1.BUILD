@@ -1,6 +1,10 @@
 exports_files(["LICENSE"])
 
 load(
+    "@org_tensorflow//tensorflow:tensorflow.bzl",
+    "tf_openmp_copts",
+)
+load(
     "@org_tensorflow//third_party/mkl_dnn:build_defs.bzl",
     "if_mkl_open_source_only",
     "if_mkldnn_threadpool",
@@ -12,14 +16,6 @@ load(
 load(
     "@org_tensorflow//third_party:common.bzl",
     "template_rule",
-)
-
-config_setting(
-    name = "clang_linux_x86_64",
-    values = {
-        "cpu": "k8",
-        "define": "using_clang=true",
-    },
 )
 
 _DNNL_RUNTIME_OMP = {
@@ -81,19 +77,13 @@ cc_library(
         ":dnnl_version_h",
     ],
     hdrs = glob(["include/*"]),
-    copts = [
-        "-fexceptions",
+    copts = select({
+        "@org_tensorflow//tensorflow:windows": [],
+        "//conditions:default": ["-fexceptions"],
+    }) + [
         "-UUSE_MKL",
         "-UUSE_CBLAS",
-    ] + select({
-        "@org_tensorflow//tensorflow:linux_x86_64": [
-            "-fopenmp",  # only works with gcc
-        ],
-        # TODO(ibiryukov): enable openmp with clang by including libomp as a
-        # dependency.
-        ":clang_linux_x86_64": [],
-        "//conditions:default": [],
-    }),
+    ] + tf_openmp_copts(),
     includes = [
         "include",
         "src",

@@ -200,13 +200,15 @@ Status ProcessFunctionLibraryRuntime::GetDeviceContext(
     // "TPU_SYSTEM" indicates that `device` is a CPU.
     return Status::OK();
   }
-  if (device_type == "GPU" || device_type == "TPU") {
+
+  if (device->IsRemoteCallAllowed()) {
     auto* dev_info = flr->device()->tensorflow_gpu_device_info();
     if (dev_info) {
       *device_context = dev_info->default_context;
       return Status::OK();
     }
   }
+
   return errors::Internal("Device type: ", device_type,
                           " is currently unsupported for remote ",
                           "function executions");

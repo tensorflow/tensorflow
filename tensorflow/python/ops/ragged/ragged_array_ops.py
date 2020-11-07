@@ -447,7 +447,10 @@ def expand_dims(input, axis, name=None):  # pylint: disable=redefined-builtin
       return ragged_tensor.RaggedTensor.from_uniform_row_length(
           input, uniform_row_length=1, nrows=input.nrows(), validate=False)
     else:
-      return input.with_values(expand_dims(input.values, axis - 1))
+      if ragged_tensor.is_ragged(input.values):
+        return input.with_values(expand_dims(input.values, axis - 1))
+      else:
+        return input.with_values(array_ops.expand_dims(input.values, axis - 1))
 
 
 #===============================================================================

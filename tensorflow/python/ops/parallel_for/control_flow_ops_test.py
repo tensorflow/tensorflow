@@ -971,6 +971,65 @@ class TensorListTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 2)
 
+  def test_create_outside_and_push_back(self):
+    h = list_ops.tensor_list_reserve([2], 2, dtypes.int32)
+
+    def loop_fn(i):
+      handle = list_ops.tensor_list_push_back(h, [i, 2])
+      handle = list_ops.tensor_list_push_back(handle, [1, 2])
+      handle = list_ops.tensor_list_push_back(handle, [1, 2])
+      return list_ops.tensor_list_stack(handle, dtypes.int32)
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_create_inside_and_push_back(self):
+
+    def loop_fn(i):
+      handle = list_ops.tensor_list_reserve([2], 2, dtypes.int32)
+      handle = list_ops.tensor_list_push_back(handle, [i, 2])
+      handle = list_ops.tensor_list_push_back(handle, [1, 2])
+      return list_ops.tensor_list_stack(handle, dtypes.int32)
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_pop_back_no_shape(self):
+
+    def loop_fn(i):
+      handle = list_ops.tensor_list_reserve([2], 2, dtypes.int32)
+      handle = list_ops.tensor_list_push_back(handle, [1, 2])
+      handle = list_ops.tensor_list_push_back(handle, [i, 2])
+      handle, tensor = list_ops.tensor_list_pop_back(handle, dtypes.int32)
+      return tensor, list_ops.tensor_list_stack(handle, dtypes.int32)
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_pop_back_no_shape_capture(self):
+    h = list_ops.tensor_list_reserve([2], 1, dtypes.int32)
+    h = list_ops.tensor_list_push_back(h, [1, 2])
+
+    def loop_fn(i):
+      handle, tensor = list_ops.tensor_list_pop_back(h, dtypes.int32)
+      handle = list_ops.tensor_list_push_back(handle, [1, i])
+      return tensor, list_ops.tensor_list_stack(handle, dtypes.int32)
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_pop_back_with_shape(self):
+
+    @def_function.function
+    def loop_fn(i):
+      with backprop.GradientTape() as tape:
+        handle = list_ops.tensor_list_reserve(None, 1, dtypes.float32)
+        x = math_ops.cast(i, dtypes.float32)[None]
+        tape.watch(x)
+        handle = list_ops.tensor_list_push_back(handle, x)
+        stacked = list_ops.tensor_list_stack(handle, dtypes.float32)
+      list_grad = tape.gradient(stacked, x, x)
+      self.assertEqual("TensorListPopBack", list_grad.op.type)
+      return list_grad, stacked, list_grad.op.inputs[1]
+
+    self._test_loop_fn(loop_fn, 3)
+
   def test_create_outside_and_scatter(self):
     h = list_ops.tensor_list_reserve([2], 2, dtypes.int32)
 

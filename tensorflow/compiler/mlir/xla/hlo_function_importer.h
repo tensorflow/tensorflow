@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -61,6 +62,8 @@ class HloFunctionImporter {
       const xla::HloComputation& computation,
       const llvm::SmallVectorImpl<mlir::Value>& arguments,
       mlir::OpBuilder* builder);
+
+  static void SetLayoutForMlir(mlir::Operation* op, const Shape& shape);
 
  private:
   HloFunctionImporter(mlir::ModuleOp module,
@@ -118,7 +121,10 @@ class HloFunctionImporter {
 
   // Converts an XLA ComparisonDirection to the corresponding MLIR attribute.
   mlir::NamedAttribute ConvertComparisonDirection(
-      xla::HloInstruction* instruction);
+      ComparisonDirection direction);
+
+  // Converts an XLA Comparison::Type to the corresponding MLIR attribute.
+  mlir::NamedAttribute ConvertComparisonType(Comparison::Type type);
 
   // Converts the dimensions of an HLO instruction into an MLIR attribute.
   mlir::DenseIntElementsAttr ConvertDimensions(

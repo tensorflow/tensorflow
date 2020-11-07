@@ -79,15 +79,6 @@ namespace {
 }  // namespace
 
 //===----------------------------------------------------------------------===//
-// NegOp
-//===----------------------------------------------------------------------===//
-
-void NegOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                        MLIRContext *context) {
-  results.insert<NegNested>(context);
-}
-
-//===----------------------------------------------------------------------===//
 // NotEqualOp
 //===----------------------------------------------------------------------===//
 
@@ -482,15 +473,6 @@ static LogicalResult Verify(QrOp op) {
 void ReadVariableOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   results.insert<ReadVariableOfCast>(context);
-}
-
-//===----------------------------------------------------------------------===//
-// ReciprocalOp
-//===----------------------------------------------------------------------===//
-
-void ReciprocalOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
-  results.insert<ReciprocalNested>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1332,7 +1314,7 @@ LogicalResult SpaceToBatchNDOp::inferReturnTypes(
   SmallVector<int64_t, 4> return_shape(input_rank, ShapedType::kDynamicSize);
 
   // The return has all dimension sizes unknown when block_rank is unknown.
-  if (block_rank == -1) {
+  if (block_rank == ShapedType::kDynamicSize) {
     inferredReturnTypes.assign(
         {RankedTensorType::get(return_shape, input_type.getElementType())});
     return success();
@@ -1351,6 +1333,14 @@ LogicalResult SpaceToBatchNDOp::inferReturnTypes(
       matchPattern(paddings_val, m_Constant(&paddings_attr))) {
     int64_t return_batch = input_shape[0];
     for (uint64_t i = 0; i < block_rank; ++i) {
+      // Propagate dynamic dimension.
+      if (input_shape[i + 1] == ShapedType::kDynamicSize) {
+        return_batch = ShapedType::kDynamicSize;
+      }
+      if (return_batch == ShapedType::kDynamicSize) {
+        return_shape[1 + i] = ShapedType::kDynamicSize;
+        continue;
+      }
       int64_t paddings_sum =
           paddings_attr.getValue({i, 0}).cast<IntegerAttr>().getInt() +
           paddings_attr.getValue({i, 1}).cast<IntegerAttr>().getInt();
@@ -1930,6 +1920,19 @@ bool StridedSliceGradOp::GetSlicedShapeAndBoundRanges(
 }
 
 //===----------------------------------------------------------------------===//
+// SummaryWriterOp
+//===----------------------------------------------------------------------===//
+
+ResourceHandleValueAndId SummaryWriterOp::GetResourceHandleValueAndId(
+    llvm::SmallDenseMap<ResourceHandle, int64_t> &resource_handle_id_map,
+    int64_t &next_id) {
+  llvm::StringRef device = GetDeviceOrEmpty(getOperation());
+  return GetResourceHandleValueAndIdBase(container(), shared_name(), device,
+                                         writer(), resource_handle_id_map,
+                                         next_id);
+}
+
+//===----------------------------------------------------------------------===//
 // TensorListReserveOp
 //===----------------------------------------------------------------------===//
 
@@ -2445,18 +2448,10 @@ static LogicalResult VerifyUnsortedSegmentReduction(Op op) {
 ResourceHandleValueAndId VarHandleOp::GetResourceHandleValueAndId(
     llvm::SmallDenseMap<ResourceHandle, int64_t> &resource_handle_id_map,
     int64_t &next_id) {
-  // Always create a new ID for anonymous handle.
-  if (IsResourceHandleAnonymous(shared_name())) return {resource(), next_id++};
-
-  llvm::StringRef device;
-  if (auto device_attr = getAttrOfType<StringAttr>("device"))
-    device = device_attr.getValue();
-
-  ResourceHandle handle(container(), shared_name(), device, /*op=*/nullptr);
-  auto emplace_res = resource_handle_id_map.try_emplace(handle, next_id);
-  // New ID created, increment next_id.
-  if (emplace_res.second) ++next_id;
-  return {resource(), emplace_res.first->second};
+  llvm::StringRef device = GetDeviceOrEmpty(getOperation());
+  return GetResourceHandleValueAndIdBase(container(), shared_name(), device,
+                                         resource(), resource_handle_id_map,
+                                         next_id);
 }
 
 //===----------------------------------------------------------------------===//

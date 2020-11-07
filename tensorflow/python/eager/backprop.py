@@ -1111,7 +1111,13 @@ class GradientTape(object):
     Note: Unless you set `persistent=True` a GradientTape can only be used to
     compute one set of gradients (or jacobians).
 
-    See[wikipedia article](http://en.wikipedia.org/wiki/jacobian_matrix_and_determinant)
+    Note: By default the jacobian implementation uses parallel for (pfor), which
+    creates a tf.function under the hood for each jacobian call. For better
+    performance, and to avoid recompilation and vectorization rewrites on each
+    call, enclose GradientTape code in @tf.function.
+
+    See[wikipedia
+    article](http://en.wikipedia.org/wiki/jacobian_matrix_and_determinant)
     for the definition of a Jacobian.
 
     Example usage:
@@ -1242,6 +1248,12 @@ class GradientTape(object):
 
     Note: Unless you set `persistent=True` a GradientTape can only be used to
     compute one set of gradients (or jacobians).
+
+    Note: By default the batch_jacobian implementation uses parallel for (pfor),
+    which creates a tf.function under the hood for each batch_jacobian call.
+    For better performance, and to avoid recompilation and vectorization
+    rewrites on each call, enclose GradientTape code in @tf.function.
+
 
     Example usage:
 

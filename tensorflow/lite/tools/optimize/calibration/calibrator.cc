@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/optimize/calibration/calibration_common.h"
 #include "tensorflow/lite/tools/optimize/calibration/calibration_logger.h"
 #include "tensorflow/lite/tools/optimize/calibration/calibration_reader.h"
+#include "tensorflow/lite/tools/optimize/calibration/custom_logging_ops/lstm.h"
 #include "tensorflow/lite/tools/optimize/calibration/logging_op.h"
 #include "tensorflow/lite/tools/optimize/calibration/logging_op_resolver.h"
 
@@ -177,8 +178,12 @@ logging_kernel_func_ptr GetLoggingEvalFunc(TfLiteContext* context,
                                            TfLiteNode* node,
                                            int builtin_op_code) {
   switch (builtin_op_code) {
-    case BuiltinOperator_LSTM:
+    case BuiltinOperator_LSTM: {
+      if (node->intermediates->size == 12) {
+        return tflite::optimize::calibration::custom::lstm_logging_kernel;
+      }
       return tflite::optimize::calibration::builtin::lstm_logging_kernel;
+    }
     case BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM:
       return tflite::optimize::calibration::builtin::
           unidirectional_sequence_lstm_logging_kernel;
@@ -210,12 +215,11 @@ TfLiteStatus LoggingEval(TfLiteContext* context, TfLiteNode* node) {
   auto builtin_op_code = calibrator->GetOpInfo(node).builtin_op_code;
   auto kernel_invoke_intermediate =
       GetLoggingEvalFunc(context, node, builtin_op_code);
-  TfLiteStatus status;
   if (kernel_invoke_intermediate == nullptr) {
-    status = kernel_invoke(context, node);
+    TF_LITE_ENSURE_STATUS(kernel_invoke(context, node));
   } else {
-    status = kernel_invoke_intermediate(context, node, calibrator->GetLogger(),
-                                        error_reporter);
+    TF_LITE_ENSURE_STATUS(kernel_invoke_intermediate(
+        context, node, calibrator->GetLogger(), error_reporter));
   }
 
   // TODO(shashishekhar): An intermediate tensor in graph will get logged twice
@@ -237,7 +241,7 @@ TfLiteStatus LoggingEval(TfLiteContext* context, TfLiteNode* node) {
         i, tensor.data.f, tensor.bytes / sizeof(float), error_reporter));
   }
 
-  return status;
+  return kTfLiteOk;
 }
 
 // Returns the loggable tensors. Not all inputs and outputs need to be logged.
@@ -278,8 +282,11 @@ TfLiteStatus GetNodeOpInfoMapAndContext(
 
   // Since we only consider the primary subgraph while populating
   // node_to_opinfo, do the same here.
-  TF_LITE_ENSURE_EQ(*context, interpreter->execution_plan().size(),
-                    node_to_opinfo.size());
+  // Because Flex delegate can merge multiple op nodes into one Delegate node if
+  // they are located in a row, the size of the execution plan can be lesser
+  // than the size of the graph's op nodes.
+  TF_LITE_ENSURE(*context,
+                 interpreter->execution_plan().size() <= node_to_opinfo.size());
   for (const auto& entry : node_to_opinfo) {
     auto op_info = entry.second;
     const auto* node_and_reg = interpreter->node_and_registration(entry.first);
@@ -399,8 +406,8 @@ TfLiteStatus BuildLoggingInterpreter(
   // (TfLiteContext, TfLiteNode) -> OperatorInfo
   std::unordered_map<const TfLiteNode*, OperatorInfo> node_ptr_opinfo_map;
   TfLiteContext* context = nullptr;
-  GetNodeOpInfoMapAndContext(node_to_opinfo, interpreter->get(),
-                             &node_ptr_opinfo_map, &context);
+  TF_LITE_ENSURE_STATUS(GetNodeOpInfoMapAndContext(
+      node_to_opinfo, interpreter->get(), &node_ptr_opinfo_map, &context));
 
   Calibrator* calibrator = nullptr;
   // Register a calibrator object for the context. This can be accessed

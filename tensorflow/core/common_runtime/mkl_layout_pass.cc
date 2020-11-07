@@ -1571,7 +1571,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   }
 
   // If the depth_radius of LRN is not 2, then MKL DNN takes unoptimized
-  // path. The unoptimized path is slow. Thus we dont rewrite the node
+  // path. The unoptimized path is slow. Thus we don't rewrite the node
   // and use default Eigen. But for depth_radius=2, MKL DNN optimized
   // path is taken, i.e., eigen node is rewritten by MKl DNN node.
   static bool LrnRewrite(const Node* n) {
@@ -1969,7 +1969,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 
   // Helper function used by FixMklMetaDataEdges. Fixes the metadata edge
   // pointed by 'e_metadata' corresponding to the data edge 'e_data' in graph
-  // 'g'. Returns true is fixup was done; otherwise, it returns false.
+  // 'g'. Returns true if fixup was done; otherwise, it returns false.
   bool FixMklMetaDataEdgeIfNeeded(std::unique_ptr<Graph>* g, const Edge* e_data,
                                   const Edge* e_metadata);
 
@@ -3231,8 +3231,9 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
       // BiasAdd has only 1 output (at slot 0) and merged node also has only 1
       // output (at slot 0).
       const int kConv2DWithBiasOutputSlot = 0;
-      DCHECK((*g)->AddEdge(new_node, kConv2DWithBiasOutputSlot, e->dst(),
-                           e->dst_input()));
+      auto new_edge = (*g)->AddEdge(new_node, kConv2DWithBiasOutputSlot,
+                                    e->dst(), e->dst_input());
+      DCHECK(new_edge);
     }
   }
 
@@ -3459,7 +3460,7 @@ Status MklLayoutRewritePass::MergeConv2DBackpropFilterWithBiasAddGrad(
   // This is because BackpropFilterWithBias is going to emit bias output also.
   NodeBuilder nb(fltr->name(), csinfo_.conv2d_grad_filter_with_bias);
   // Since Conv2DBackpropFilterWithBias has same number of inputs as
-  // Conv2DBackpropFilter, we can just copy input edges directly. We dont need
+  // Conv2DBackpropFilter, we can just copy input edges directly. We don't need
   // to copy any data input of BiasAddGrad because that input also goes to
   // Conv2DBackpropFilter.
   const int fltr_ins = fltr->num_inputs();
@@ -3525,8 +3526,9 @@ Status MklLayoutRewritePass::MergeConv2DBackpropFilterWithBiasAddGrad(
         (*g)->AddControlEdge(new_node, e->dst(), true);
       }
     } else {
-      DCHECK((*g)->AddEdge(new_node, kMergedNodeBiasGradOutputIdx, e->dst(),
-                           e->dst_input()));
+      auto new_edge = (*g)->AddEdge(new_node, kMergedNodeBiasGradOutputIdx,
+                                    e->dst(), e->dst_input());
+      DCHECK(new_edge);
     }
   }
   unique_node.clear();
@@ -3539,8 +3541,9 @@ Status MklLayoutRewritePass::MergeConv2DBackpropFilterWithBiasAddGrad(
         (*g)->AddControlEdge(new_node, e->dst(), true);
       }
     } else {
-      DCHECK((*g)->AddEdge(new_node, kMergedNodeFilterGradOutputIdx, e->dst(),
-                           e->dst_input()));
+      auto new_edge = (*g)->AddEdge(new_node, kMergedNodeFilterGradOutputIdx,
+                                    e->dst(), e->dst_input());
+      DCHECK(new_edge);
     }
   }
 
@@ -3668,10 +3671,11 @@ Status MklLayoutRewritePass::RewriteNodeForLayoutPropagation(
         (*g)->AddControlEdge(*new_node, e->dst(), true);
       }
     } else {
-      DCHECK((*g)->AddEdge(
+      auto new_edge = (*g)->AddEdge(
           *new_node,
           GetTensorDataIndex(e->src_output(), e->src()->num_outputs()),
-          e->dst(), e->dst_input()));
+          e->dst(), e->dst_input());
+      DCHECK(new_edge);
     }
   }
   return Status::OK();
@@ -3791,7 +3795,7 @@ Status MklLayoutRewritePass::RewriteNode(std::unique_ptr<Graph>* g,
   return ret_status;
 }
 
-// TODO(mdfaijul): Is there any other elegent way to check for quantized ops
+// TODO(mdfaijul): Is there any other elegant way to check for quantized ops
 // having attributes other than "T"?
 // Current implementation reflects only QuantizedConv2D and its fused Ops.
 const MklLayoutRewritePass::RewriteInfo*
@@ -3979,7 +3983,7 @@ MklLayoutRewritePass::CheckForNodeFusion(Node* a) const {
 
   for (auto fi = finfo_.begin(); fi != finfo_.end(); ++fi) {
     //
-    // Make sure node "a" and its succeding nodes (b, c ...), match the pattern
+    // Make sure node "a" and its succeeding nodes (b, c ...), match the pattern
     // defined in fusion info (ops[0], ops[1], ...),
     // a.k.a. "a->b->c" matches "op1->op2->op3"
     //
@@ -4044,8 +4048,9 @@ bool MklLayoutRewritePass::FixMklMetaDataEdgeIfNeeded(std::unique_ptr<Graph>* g,
   if (IsConstant(e_metadata->src())) {
     Node* e_metadata_dst = e_metadata->dst();
     int e_metadata_in_slot = e_metadata->dst_input();
-    DCHECK((*g)->AddEdge(n_data, n_metadata_op_slot, e_metadata_dst,
-                         e_metadata_in_slot));
+    auto new_edge = (*g)->AddEdge(n_data, n_metadata_op_slot, e_metadata_dst,
+                                  e_metadata_in_slot);
+    DCHECK(new_edge);
 
     (*g)->RemoveEdge(e_metadata);
     return true;

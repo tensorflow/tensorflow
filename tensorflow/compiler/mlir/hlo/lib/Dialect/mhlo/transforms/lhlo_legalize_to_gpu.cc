@@ -184,7 +184,7 @@ struct LhloLegalizeToGpuPass
     target.addIllegalOp<ReduceOp>();
     auto func = getFunction();
     patterns.insert<LhloReduceToGPULaunchConverter>(func.getContext());
-    if (failed(applyPartialConversion(func, target, patterns))) {
+    if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
       signalPassFailure();
     }
   }

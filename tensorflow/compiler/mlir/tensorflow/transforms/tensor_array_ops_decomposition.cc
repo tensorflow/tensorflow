@@ -458,38 +458,41 @@ llvm::SmallDenseMap<int64_t, llvm::SmallVector<string, 4>> AccessedGradients(
     ArrayRef<FuncOp> funcs, ModuleOp module) {
   llvm::SmallDenseMap<int64_t, llvm::SmallVector<string, 4>> result;
   llvm::SmallDenseMap<int64_t, llvm::StringSet<>> result_sets;
-  auto insert = [&](Value v, const string& source) {
-    auto arg = v.cast<BlockArgument>();
-    if (!arg) return;
+  auto insert = [&](Value v, const string& source, const Block& func_block) {
+    auto arg = v.dyn_cast<BlockArgument>();
+    if (!arg || arg.getOwner() != &func_block) return;
     auto insert_res = result_sets[arg.getArgNumber()].insert(source);
     if (!insert_res.second) return;
     result[arg.getArgNumber()].push_back(source);
   };
   for (FuncOp func : funcs) {
-    for (auto& op : func.front().getOperations()) {
-      if (llvm::isa<TF::IdentityOp, TF::IdentityNOp>(&op)) {
-        op.replaceAllUsesWith(op.getOperands());
-        continue;
+    const Block& func_block = func.front();
+    // Walk all operations and nested regions to find accessed gradient sources
+    // for function arguments.
+    func.walk([&](Operation* op) {
+      if (llvm::isa<TF::IdentityOp, TF::IdentityNOp>(op)) {
+        op->replaceAllUsesWith(op->getOperands());
+        return;
       }
-      if (auto grad = llvm::dyn_cast<TF::TensorArrayGradV3Op>(&op)) {
-        insert(grad.handle(), grad.source().str());
-      } else if (auto while_op = llvm::dyn_cast<TF::WhileOp>(&op)) {
+      if (auto grad = llvm::dyn_cast<TF::TensorArrayGradV3Op>(op)) {
+        insert(grad.handle(), grad.source().str(), func_block);
+      } else if (auto while_op = llvm::dyn_cast<TF::WhileOp>(op)) {
         for (const auto& entry : AccessedGradients(
                  {while_op.body_function(), while_op.cond_function()}, module))
           for (const string& source : entry.getSecond())
-            insert(while_op.getOperand(entry.getFirst()), source);
-      } else if (auto if_op = llvm::dyn_cast<TF::IfOp>(&op)) {
+            insert(while_op.getOperand(entry.getFirst()), source, func_block);
+      } else if (auto if_op = llvm::dyn_cast<TF::IfOp>(op)) {
         for (const auto& entry : AccessedGradients(
                  {if_op.then_function(), if_op.else_function()}, module))
           for (const string& source : entry.getSecond())
-            insert(if_op.getOperand(entry.getFirst() + 1), source);
-      } else if (auto call = llvm::dyn_cast<CallOpInterface>(&op)) {
+            insert(if_op.getOperand(entry.getFirst() + 1), source, func_block);
+      } else if (auto call = llvm::dyn_cast<CallOpInterface>(op)) {
         auto callee = dyn_cast<FuncOp>(call.resolveCallable());
         for (const auto& entry : AccessedGradients({callee}, module))
           for (const string& source : entry.getSecond())
-            insert(call.getArgOperands()[entry.getFirst()], source);
+            insert(call.getArgOperands()[entry.getFirst()], source, func_block);
       }
-    }
+    });
   }
   return result;
 }
@@ -810,6 +813,38 @@ LogicalResult HandlePartitionedCallOp(
   return success();
 }
 
+LogicalResult HandleRegionControlFlowOps(
+    Operation& op, ModuleOp module,
+    llvm::SmallDenseMap<Value, TensorArrayStats>* stats,
+    llvm::StringMap<PartitionedCallTensorArrayOpsInfo>*
+        decomposed_partitioned_call_callees) {
+  for (OpOperand& operand : op.getOpOperands()) {
+    if (getElementTypeOrSelf(operand.get().getType()).isa<TF::ResourceType>()) {
+      return op.emitOpError()
+             << "found unexpected type " << operand.get().getType()
+             << " of operand #" << operand.getOperandNumber()
+             << ", resource type operands are expected to have been "
+                "canonicalized away for region based control flow ops";
+    }
+  }
+  for (OpResult result : op.getResults()) {
+    if (getElementTypeOrSelf(result.getType()).isa<TF::ResourceType>()) {
+      return op.emitOpError()
+             << "found unexpected type " << result.getType() << " of result #"
+             << result.getResultNumber()
+             << ", resource type results are expected to have been "
+                "canonicalized away for region based control flow ops";
+    }
+  }
+
+  for (Region& region : op.getRegions()) {
+    if (failed(DecomposeTensorArrayOps(&region.front(), module, stats,
+                                       decomposed_partitioned_call_callees)))
+      return failure();
+  }
+  return success();
+}
+
 LogicalResult DecomposeTensorArrayOps(
     Block* block, ModuleOp module,
     llvm::SmallDenseMap<Value, TensorArrayStats>* stats,
@@ -853,6 +888,12 @@ LogicalResult DecomposeTensorArrayOps(
                             decomposed_partitioned_call_callees))) {
         return failure();
       }
+    } else if (llvm::isa<TF::CaseRegionOp>(op) ||
+               llvm::isa<TF::IfRegionOp>(op) ||
+               llvm::isa<TF::WhileRegionOp>(op)) {
+      if (failed(HandleRegionControlFlowOps(
+              op, module, stats, decomposed_partitioned_call_callees)))
+        return failure();
     } else if (auto pcall = llvm::dyn_cast<TF::PartitionedCallOp>(&op)) {
       auto callee = pcall.func();
       if (!callee)

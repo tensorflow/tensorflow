@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections.abc as collections_abc
 import functools
 import itertools
 import unittest
@@ -31,7 +32,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
-from tensorflow.python.util.compat import collections_abc
 
 try:
   import h5py  # pylint:disable=g-import-not-at-top

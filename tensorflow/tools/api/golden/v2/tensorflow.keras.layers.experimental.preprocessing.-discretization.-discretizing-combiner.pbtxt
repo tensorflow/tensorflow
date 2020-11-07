@@ -1,0 +1,34 @@
+path: "tensorflow.keras.layers.experimental.preprocessing.Discretization.DiscretizingCombiner"
+tf_class {
+  is_instance: "<class \'tensorflow.python.keras.layers.preprocessing.discretization.Discretization.DiscretizingCombiner\'>"
+  is_instance: "<class \'tensorflow.python.keras.engine.base_preprocessing_layer.Combiner\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'epsilon\', \'num_bins\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "compute"
+    argspec: "args=[\'self\', \'values\', \'accumulator\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "deserialize"
+    argspec: "args=[\'self\', \'encoded_accumulator\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "extract"
+    argspec: "args=[\'self\', \'accumulator\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "merge"
+    argspec: "args=[\'self\', \'accumulators\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "restore"
+    argspec: "args=[\'self\', \'output\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "serialize"
+    argspec: "args=[\'self\', \'accumulator\'], varargs=None, keywords=None, defaults=None"
+  }
+}
