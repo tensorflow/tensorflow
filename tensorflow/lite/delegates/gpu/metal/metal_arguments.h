@@ -22,8 +22,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/arguments.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_object_desc.h"
-#include "tensorflow/lite/delegates/gpu/metal/arguments.h"
 
 namespace tflite {
 namespace gpu {
@@ -35,7 +35,7 @@ struct GPUResourcesWithValue {
   std::vector<std::pair<std::string, id<MTLBuffer>>> buffers;
 };
 
-class MetalArguments : public ArgumentsSetter {
+class MetalArguments : public ArgumentsBinder {
  public:
   MetalArguments() = default;
 
@@ -49,6 +49,7 @@ class MetalArguments : public ArgumentsSetter {
 
   absl::Status SetInt(const std::string& name, int value) override;
   absl::Status SetFloat(const std::string& name, float value) override;
+  absl::Status SetHalf(const std::string& name, half value) override;
 
   void Encode(id<MTLComputeCommandEncoder> encoder, int buffer_offset) const;
 
