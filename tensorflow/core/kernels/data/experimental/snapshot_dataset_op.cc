@@ -64,10 +64,21 @@ namespace tensorflow {
 namespace data {
 namespace experimental {
 
+/* static */ constexpr const char* const SnapshotDatasetV2Op::kDatasetType;
+/* static */ constexpr const char* const SnapshotDatasetV2Op::kOutputTypes;
+/* static */ constexpr const char* const SnapshotDatasetV2Op::kOutputShapes;
 /* static */ constexpr const char* const SnapshotDatasetV2Op::kCompression;
+/* static */ constexpr const char* const SnapshotDatasetV2Op::kReaderPrefix;
+/* static */ constexpr const char* const SnapshotDatasetV2Op::kWriterPrefix;
+/* static */ constexpr const char* const SnapshotDatasetV2Op::kHashValid;
+/* static */ constexpr const char* const SnapshotDatasetV2Op::kHash;
 /* static */ constexpr const char* const SnapshotDatasetV2Op::kCompressionAuto;
 /* static */ constexpr const char* const SnapshotDatasetV2Op::kReaderFunc;
 /* static */ constexpr const char* const SnapshotDatasetV2Op::kShardFunc;
+/* static */ constexpr const char* const
+    SnapshotDatasetV2Op::kReaderFuncOtherArgs;
+/* static */ constexpr const char* const
+    SnapshotDatasetV2Op::kShardFuncOtherArgs;
 /* static */ constexpr const char* const
     SnapshotDatasetV2Op::kReaderFuncTarguments;
 /* static */ constexpr const char* const
