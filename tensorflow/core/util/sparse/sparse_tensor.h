@@ -36,6 +36,18 @@ limitations under the License.
 #include "tensorflow/core/util/sparse/group_iterator.h"
 
 namespace tensorflow {
+
+namespace functor {
+
+template<typename Device, typename T, typename Index>
+struct SparseToDenseFunctor {
+  void operator()(OpKernelContext* c, const Tensor& indices,
+                  const Tensor& output_shape, const Tensor& sparse_values,
+                  const Tensor& default_value, bool validate_indices);
+};
+
+}
+
 namespace sparse {
 
 class SparseTensor {

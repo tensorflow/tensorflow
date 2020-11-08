@@ -39,51 +39,18 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Operator to convert sparse representations to dense.
-template <typename T, typename Index>
-class SparseToDense : public OpKernel {
- public:
-  explicit SparseToDense(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("validate_indices", &validate_indices_));
-  }
+using CPUDevice = Eigen::ThreadPoolDevice;
+using GPUDevice = Eigen::GpuDevice;
 
-  void Compute(OpKernelContext* c) override {
-    // sparse_indices
-    const Tensor& indices = c->input(0);
-    OP_REQUIRES(c, indices.dims() <= 2,
-                errors::InvalidArgument(
-                    "sparse_indices should be a scalar, vector, or matrix, "
-                    "got shape ",
-                    indices.shape().DebugString()));
+namespace functor {
+
+template<typename T, typename Index>
+struct SparseToDenseFunctor<CPUDevice, T, Index> {
+  void operator()(OpKernelContext* c, const Tensor& indices,
+                  const Tensor& output_shape, const Tensor& sparse_values,
+                  const Tensor& default_value, bool validate_indices) {
     const int64 num_elems = indices.dims() > 0 ? indices.dim_size(0) : 1;
     const int64 num_dims = indices.dims() > 1 ? indices.dim_size(1) : 1;
-
-    // output_shape
-    const Tensor& output_shape = c->input(1);
-    OP_REQUIRES(
-        c, TensorShapeUtils::IsVector(output_shape.shape()),
-        errors::InvalidArgument("output_shape must be rank 1, got shape ",
-                                output_shape.shape().DebugString()));
-    OP_REQUIRES(c, output_shape.NumElements() == num_dims,
-                errors::InvalidArgument(
-                    "output_shape has incorrect number of elements: ",
-                    output_shape.NumElements(), " should be: ", num_dims));
-
-    // sparse_values
-    const Tensor& sparse_values = c->input(2);
-    const int64 num_values = sparse_values.NumElements();
-    OP_REQUIRES(c,
-                sparse_values.dims() == 0 ||
-                    (sparse_values.dims() == 1 && num_values == num_elems),
-                errors::InvalidArgument("sparse_values has incorrect shape ",
-                                        sparse_values.shape().DebugString(),
-                                        ", should be [] or [", num_elems, "]"));
-
-    // default_value
-    const Tensor& default_value = c->input(3);
-    OP_REQUIRES(c, TensorShapeUtils::IsScalar(default_value.shape()),
-                errors::InvalidArgument("default_value should be a scalar."));
 
     auto output_shape_vec = output_shape.flat<Index>();
     TensorShape output_tensor_shape;
@@ -132,7 +99,7 @@ class SparseToDense : public OpKernel {
         c, sparse::SparseTensor::Create(*indices_shaped, *sparse_values_b,
                                         output->shape(), order, &st));
 
-    if (validate_indices_) {
+    if (validate_indices) {
       OP_REQUIRES_OK(c, st.IndicesValid());
     }
 
@@ -141,6 +108,59 @@ class SparseToDense : public OpKernel {
                 errors::InvalidArgument(
                     "Indices are not valid (out of bounds).  Shape: ",
                     output->shape().DebugString()));
+  }
+};
+
+}
+
+// Operator to convert sparse representations to dense.
+template <typename Device, typename T, typename Index>
+class SparseToDense : public OpKernel {
+ public:
+  explicit SparseToDense(OpKernelConstruction* context) : OpKernel(context) {
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("validate_indices", &validate_indices_));
+  }
+
+  void Compute(OpKernelContext* c) override {
+    // sparse_indices
+    const Tensor& indices = c->input(0);
+    OP_REQUIRES(c, indices.dims() <= 2,
+                errors::InvalidArgument(
+                    "sparse_indices should be a scalar, vector, or matrix, "
+                    "got shape ",
+                    indices.shape().DebugString()));
+    const int64 num_elems = indices.dims() > 0 ? indices.dim_size(0) : 1;
+    const int64 num_dims = indices.dims() > 1 ? indices.dim_size(1) : 1;
+
+    // output_shape
+    const Tensor& output_shape = c->input(1);
+    OP_REQUIRES(
+        c, TensorShapeUtils::IsVector(output_shape.shape()),
+        errors::InvalidArgument("output_shape should be a vector, got shape ",
+                                output_shape.shape().DebugString()));
+    OP_REQUIRES(c, output_shape.NumElements() == num_dims,
+                errors::InvalidArgument(
+                    "output_shape has incorrect number of elements: ",
+                    output_shape.NumElements(), " should be: ", num_dims));
+
+    // sparse_values
+    const Tensor& sparse_values = c->input(2);
+    const int64 num_values = sparse_values.NumElements();
+    OP_REQUIRES(c,
+                sparse_values.dims() == 0 ||
+                (sparse_values.dims() == 1 && num_values == num_elems),
+                errors::InvalidArgument("sparse_values has incorrect shape ",
+                                        sparse_values.shape().DebugString(),
+                                        ", should be [] or [", num_elems, "]"));
+
+    // default_value
+    const Tensor& default_value = c->input(3);
+    OP_REQUIRES(c, TensorShapeUtils::IsScalar(default_value.shape()),
+                errors::InvalidArgument("default_value should be a scalar."));
+
+    functor::SparseToDenseFunctor<Device, T, Index>()(
+        c, indices, output_shape, sparse_values, default_value, validate_indices_);
   }
 
  private:
@@ -152,7 +172,7 @@ class SparseToDense : public OpKernel {
                               .Device(DEVICE_CPU)                      \
                               .TypeConstraint<type>("T")               \
                               .TypeConstraint<index_type>("Tindices"), \
-                          SparseToDense<type, index_type>);
+                          SparseToDense<CPUDevice, type, index_type>);
 
 #define REGISTER_KERNELS_ALL(type) \
   REGISTER_KERNELS(type, int32);   \
@@ -161,6 +181,45 @@ class SparseToDense : public OpKernel {
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS_ALL);
 REGISTER_KERNELS_ALL(bool);
 REGISTER_KERNELS_ALL(tstring);
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+namespace functor {
+#define DECLARE_GPU_SPEC(T, Tindex)                                   \
+  template<>                                                          \
+  void SparseToDenseFunctor<GPUDevice, T, Tindex>::operator()(        \
+      OpKernelContext* c, const Tensor& indices,                      \
+      const Tensor& output_shape, const Tensor& sparse_values,        \
+      const Tensor& default_value, bool validate_indices);            \
+  extern template struct SparseToDenseFunctor<GPUDevice, T, Tindex>;
+
+#define DECLARE_GPU_SPEC_ALL(type) \
+  DECLARE_GPU_SPEC(type, int32);   \
+  DECLARE_GPU_SPEC(type, int64);
+
+TF_CALL_REAL_NUMBER_TYPES(DECLARE_GPU_SPEC_ALL);
+DECLARE_GPU_SPEC_ALL(bool);
+#undef DECLARE_GPU_SPEC_ALL
+#undef DECLARE_GPU_SPEC
+
+}  // namespace functor
+
+#define REGISTER_KERNELS_GPU(type, index_type)                         \
+  REGISTER_KERNEL_BUILDER(Name("SparseToDense")                        \
+                              .Device(DEVICE_GPU)                      \
+                              .TypeConstraint<type>("T")               \
+                              .TypeConstraint<index_type>("Tindices"), \
+                          SparseToDense<GPUDevice, type, index_type>);
+
+#define REGISTER_KERNELS_GPU_ALL(type) \
+  REGISTER_KERNELS_GPU(type, int32);   \
+  REGISTER_KERNELS_GPU(type, int64);
+
+TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS_GPU_ALL);
+REGISTER_KERNELS_GPU_ALL(bool);
+#undef REGISTER_KERNELS_GPU_ALL
+#undef REGISTER_KERNELS_GPU
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #undef REGISTER_KERNELS_ALL
 #undef REGISTER_KERNELS
