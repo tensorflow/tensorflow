@@ -132,7 +132,8 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
         max_tokens=max_tokens,
         compute_idf=output_mode == TFIDF)
     super(CategoryEncoding, self).__init__(combiner=combiner, **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell("V2").set("CategoryEncoding")
+    base_preprocessing_layer.keras_kpl_gauge.get_cell(
+        "CategoryEncoding").set(True)
 
     self._max_tokens = max_tokens
     self._output_mode = output_mode

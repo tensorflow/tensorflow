@@ -28,6 +28,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sets
+from tensorflow.python.util.tf_export import tf_export
 
 
 def _has_valid_dims(weights_shape, values_shape):
@@ -133,6 +134,7 @@ def assert_broadcastable(weights, values):
     return control_flow_ops.Assert(is_valid_shape, data, name=scope)
 
 
+@tf_export("__internal__.ops.broadcast_weights", v1=[])
 def broadcast_weights(weights, values):
   """Broadcast `weights` to the same shape as `values`.
 

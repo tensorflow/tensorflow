@@ -246,6 +246,15 @@ cc_library(
 )
 
 cc_library(
+    name = "precision",
+    srcs = ["precision.cc"],
+    hdrs = ["precision.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+    ],
+)
+
+cc_library(
     name = "quantization_util",
     srcs = ["quantization_util.cc"],
     hdrs = ["quantization_util.h"],

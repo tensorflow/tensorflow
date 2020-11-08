@@ -127,8 +127,8 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(mu_);
 
       if (!initialized_) {
-        TF_RETURN_IF_ERROR(
-            instantiated_init_func_->RunWithBorrowedArgs(ctx, {}, &state_));
+        TF_RETURN_IF_ERROR(instantiated_init_func_->RunWithBorrowedArgs(
+            ctx, {}, &state_, model_node()));
         initialized_ = true;
       }
 
@@ -137,8 +137,8 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
         return Status::OK();
       }
 
-      Status s = instantiated_next_func_->RunWithBorrowedArgs(ctx, state_,
-                                                              out_tensors);
+      Status s = instantiated_next_func_->RunWithBorrowedArgs(
+          ctx, state_, out_tensors, model_node());
       if (s.ok()) {
         *end_of_sequence = false;
       } else if (errors::IsOutOfRange(s)) {
@@ -150,7 +150,7 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
         // NOTE(mrry): We ignore any tensors returned by the finalize function.
         std::vector<Tensor> ignored;
         TF_RETURN_IF_ERROR(instantiated_finalize_func_->RunWithBorrowedArgs(
-            ctx, state_, &ignored));
+            ctx, state_, &ignored, model_node()));
         finalized_ = true;
       }
       return s;

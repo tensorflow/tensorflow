@@ -63,6 +63,8 @@ class HloFunctionImporter {
       const llvm::SmallVectorImpl<mlir::Value>& arguments,
       mlir::OpBuilder* builder);
 
+  static void SetLayoutForMlir(mlir::Operation* op, const Shape& shape);
+
  private:
   HloFunctionImporter(mlir::ModuleOp module,
                       std::unordered_map<const xla::HloComputation*,

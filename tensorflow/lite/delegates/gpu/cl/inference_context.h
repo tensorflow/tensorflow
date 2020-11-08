@@ -30,9 +30,9 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/model_hints.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
-#include "tensorflow/lite/delegates/gpu/cl/precision.h"
 #include "tensorflow/lite/delegates/gpu/cl/serialization_generated.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
@@ -97,8 +97,8 @@ class InferenceContext {
   const std::vector<int64_t>& GetInputRefs() const { return in_refs_; }
   const std::vector<int64_t>& GetOutputRefs() const { return out_refs_; }
 
-  absl::Status RestoreDeserialized(const std::vector<uint8_t>& serialized_model,
-                                   Environment* env);
+  absl::Status RestoreDeserialized(
+      const absl::Span<const uint8_t> serialized_model, Environment* env);
 
  private:
   enum TensorMemoryType { STRONG_SHAPE = 0, BUFFER = 1, VARIABLE = 2 };
@@ -169,6 +169,7 @@ class InferenceContext {
 
   class TensorReserver {
    public:
+    TensorReserver() : next_(0) {}
     ValueId Add(const DummyTensor& dummy) {
       reservations_[next_] = dummy;
       return next_++;

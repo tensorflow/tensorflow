@@ -283,9 +283,9 @@ class PartitionedHlo {
   // unevenly partitioned dimensions are padded on the right, but this function
   // allows specifying left-padded dimensions, which can be used during the
   // handling of kReverse, etc.
-  PartitionedHlo PadWithValue(
-      HloInstruction* pad_value,
-      absl::Span<const int64> left_padded_dims = {}) const;
+  PartitionedHlo PadWithValue(HloInstruction* pad_value,
+                              absl::Span<const int64> left_padded_dims = {},
+                              absl::Span<const int64> skipped_dims = {}) const;
 
   // Returns the SPMD instruction.
   HloInstruction* hlo() const { return hlo_; }

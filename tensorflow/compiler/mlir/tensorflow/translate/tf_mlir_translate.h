@@ -106,6 +106,16 @@ StatusOr<mlir::OwningModuleRef> SavedModelSignatureDefsToMlirImport(
     absl::Span<std::string> exported_names, mlir::MLIRContext* context,
     bool upgrade_legacy = false);
 
+// Converts a TensorFlow V1 SavedModel stored in the directory with the given
+// `saved_model_dir` into a MLIR module. Creates MLIR entities into the
+// given MLIR `context`. This does not create session internally so it is faster
+// and does not perform any graph transformation.
+StatusOr<mlir::OwningModuleRef> SavedModelSignatureDefsToMlirImportLite(
+    absl::string_view saved_model_dir,
+    const std::unordered_set<std::string>& tags,
+    absl::Span<std::string> exported_names, mlir::MLIRContext* context,
+    bool upgrade_legacy = false);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_TF_MLIR_TRANSLATE_H_

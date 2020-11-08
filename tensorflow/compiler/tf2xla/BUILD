@@ -872,6 +872,7 @@ cc_library(
     hdrs = ["mlir_bridge_pass.h"],
     deps = [
         "//tensorflow/compiler/jit:flags",
+        "//tensorflow/compiler/mlir:mlir_bridge_rollout_policy",
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:device_util",

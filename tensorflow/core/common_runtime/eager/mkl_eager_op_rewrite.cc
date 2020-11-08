@@ -212,7 +212,7 @@ bool MklEagerOpRewrite::FastCheckIfKernelRegistered(std::string op_name,
     registered_kernels_map_.insert(
         std::make_pair(registered_kernels_key, kernel_registered));
   } else {
-    // Kernel is visited atleast once. return stored registration result.
+    // Kernel is visited at least once. Return stored registration result.
     kernel_registered = kernel_element->second;
   }
 

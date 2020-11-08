@@ -343,9 +343,8 @@ def get_func_graphs(op):
             _get_func_graph_for_branch(
                 op.get_attr("else_branch"), "_false_graph"))
   elif op.type in ["Case", "StatelessCase"]:
-    # TODO(b/141114088): investigate whether to cache graphs in forward pass
-    return [_get_func_graph_for_branch(branch_fn)
-            for branch_fn in op.get_attr("branches")]
+    return [_get_func_graph_for_branch(branch_fn, "_branch_graph_{}".format(i))
+            for i, branch_fn in enumerate(op.get_attr("branches"))]
   else:
     raise ValueError("Unsupported op type: {}".format(op.type))
 
@@ -1170,6 +1169,13 @@ def _build_case(branch_index,
         _set_read_only_resource_inputs_attr(case_op, branch_graphs)
         # Prevent fetching since the variant outputs can't be fetched directly.
         case_op.graph.prevent_fetching(case_op)
+
+        # Store the branch graphs so they can be reused during the gradient
+        # pass.
+        for i, bg in enumerate(branch_graphs):
+          bg.outer_graph = ops.get_default_graph()
+          setattr(case_op, "_branch_graph_{}".format(i), bg)
+
       return tensors
     tensors = util.run_as_function_for_tape_gradients(_make_op, case_inputs)
 

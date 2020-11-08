@@ -64,10 +64,21 @@ namespace tensorflow {
 namespace data {
 namespace experimental {
 
+/* static */ constexpr const char* const SnapshotDatasetV2Op::kDatasetType;
+/* static */ constexpr const char* const SnapshotDatasetV2Op::kOutputTypes;
+/* static */ constexpr const char* const SnapshotDatasetV2Op::kOutputShapes;
 /* static */ constexpr const char* const SnapshotDatasetV2Op::kCompression;
+/* static */ constexpr const char* const SnapshotDatasetV2Op::kReaderPrefix;
+/* static */ constexpr const char* const SnapshotDatasetV2Op::kWriterPrefix;
+/* static */ constexpr const char* const SnapshotDatasetV2Op::kHashValid;
+/* static */ constexpr const char* const SnapshotDatasetV2Op::kHash;
 /* static */ constexpr const char* const SnapshotDatasetV2Op::kCompressionAuto;
 /* static */ constexpr const char* const SnapshotDatasetV2Op::kReaderFunc;
 /* static */ constexpr const char* const SnapshotDatasetV2Op::kShardFunc;
+/* static */ constexpr const char* const
+    SnapshotDatasetV2Op::kReaderFuncOtherArgs;
+/* static */ constexpr const char* const
+    SnapshotDatasetV2Op::kShardFuncOtherArgs;
 /* static */ constexpr const char* const
     SnapshotDatasetV2Op::kReaderFuncTarguments;
 /* static */ constexpr const char* const
@@ -578,8 +589,9 @@ Status SnapshotDatasetV2Op::Dataset::Iterator::Reader::Initialize(
   std::vector<Tensor> reader_output;
   reader_input.push_back(std::move(input_dataset_tensor));
 
+  // NOTE: We intentionally ignore resource modeling outside GetNext().
   TF_RETURN_IF_ERROR(instantiated_reader_func_->Run(
-      ctx, std::move(reader_input), &reader_output));
+      ctx, std::move(reader_input), &reader_output, /*node=*/nullptr));
   if (reader_output.size() != 1) {
     return errors::InvalidArgument(
         "reader_func returns more than one argument.");
@@ -673,7 +685,7 @@ Status SnapshotDatasetV2Op::Dataset::Iterator::Writer::GetShardIndex(
 
   // Run the shard function
   TF_RETURN_IF_ERROR(instantiated_shard_func_->RunWithBorrowedArgs(
-      ctx, tensors, &output_tensors));
+      ctx, tensors, &output_tensors, model_node()));
 
   if (output_tensors.size() != 1 || output_tensors[0].dtype() != DT_INT64 ||
       output_tensors[0].NumElements() != 1) {

@@ -550,7 +550,7 @@ x_value: 1.1843798*2^2, y_value: -1.9542645*2^-1
 To stop viewing the debug output with `screen`, hit `Ctrl+A`, immediately
 followed by the `K` key, then hit the `Y` key.
 
-### Run the tests on a development machine
+## Run the tests on a development machine
 
 To compile and test this example on a desktop Linux or macOS machine, first
 clone the TensorFlow repository from GitHub to a convenient place:
@@ -581,7 +581,7 @@ It's a fairly small amount of code that creates an interpreter, gets a handle to
 a model that's been compiled into the program, and then invokes the interpreter
 with the model and sample inputs.
 
-### Train your own model
+## Train your own model
 
 So far you have used an existing trained model to run inference on
 microcontrollers. If you wish to train your own model, follow the instructions

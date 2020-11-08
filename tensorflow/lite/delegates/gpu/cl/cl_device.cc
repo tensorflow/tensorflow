@@ -120,32 +120,32 @@ OpenCLVersion ParseCLVersion(const std::string& version) {
   }
 }
 
-Vendor ParseVendor(const std::string& device_name,
-                   const std::string& vendor_name) {
+GpuVendor ParseVendor(const std::string& device_name,
+                      const std::string& vendor_name) {
   std::string d_name = device_name;
   std::string v_name = vendor_name;
   std::transform(d_name.begin(), d_name.end(), d_name.begin(), ::tolower);
   std::transform(v_name.begin(), v_name.end(), v_name.begin(), ::tolower);
   if (d_name.find("qualcomm") != std::string::npos ||
       v_name.find("qualcomm") != std::string::npos) {
-    return Vendor::kQualcomm;
+    return GpuVendor::kQualcomm;
   } else if (d_name.find("mali") != std::string::npos ||
              v_name.find("mali") != std::string::npos) {
-    return Vendor::kMali;
+    return GpuVendor::kMali;
   } else if (d_name.find("power") != std::string::npos ||
              v_name.find("power") != std::string::npos) {
-    return Vendor::kPowerVR;
+    return GpuVendor::kPowerVR;
   } else if (d_name.find("nvidia") != std::string::npos ||
              v_name.find("nvidia") != std::string::npos) {
-    return Vendor::kNvidia;
+    return GpuVendor::kNvidia;
   } else if (d_name.find("advanced micro devices") != std::string::npos ||
              v_name.find("advanced micro devices") != std::string::npos) {
-    return Vendor::kAMD;
+    return GpuVendor::kAMD;
   } else if (d_name.find("intel") != std::string::npos ||
              v_name.find("intel") != std::string::npos) {
-    return Vendor::kIntel;
+    return GpuVendor::kIntel;
   } else {
-    return Vendor::kUnknown;
+    return GpuVendor::kUnknown;
   }
 }
 
@@ -162,10 +162,10 @@ DeviceInfo DeviceInfoFromDeviceID(cl_device_id id) {
   const auto vendor_name = GetDeviceInfo<std::string>(id, CL_DEVICE_VENDOR);
   const auto opencl_c_version =
       GetDeviceInfo<std::string>(id, CL_DEVICE_OPENCL_C_VERSION);
-  info.vendor = ParseVendor(device_name, vendor_name);
-  if (info.vendor == Vendor::kQualcomm) {
+  info.gpu_vendor = ParseVendor(device_name, vendor_name);
+  if (info.IsAdreno()) {
     info.adreno_info = AdrenoInfo(opencl_c_version);
-  } else if (info.vendor == Vendor::kMali) {
+  } else if (info.IsMali()) {
     info.mali_info = MaliInfo(device_name);
   }
   info.cl_version = ParseCLVersion(opencl_c_version);
@@ -191,7 +191,7 @@ DeviceInfo DeviceInfoFromDeviceID(cl_device_id id) {
     auto status = GetDeviceInfo<cl_device_fp_config>(
         id, CL_DEVICE_HALF_FP_CONFIG, &f16_config);
     // AMD supports cl_khr_fp16 but CL_DEVICE_HALF_FP_CONFIG is empty.
-    if (status.ok() && info.vendor != Vendor::kAMD) {
+    if (status.ok() && !info.IsAMD()) {
       info.supports_fp16_rtn = f16_config & CL_FP_ROUND_TO_NEAREST;
     } else {  // happens on PowerVR
       f16_config = f32_config;
@@ -201,7 +201,7 @@ DeviceInfo DeviceInfoFromDeviceID(cl_device_id id) {
     info.supports_fp16_rtn = false;
   }
 
-  if (info.vendor == Vendor::kPowerVR && !info.supports_fp16) {
+  if (info.IsPowerVR() && !info.supports_fp16) {
     // PowerVR doesn't have full support of fp16 and so doesn't list this
     // extension. But it can support fp16 in MADs and as buffers/textures types,
     // so we will use it.
@@ -210,9 +210,8 @@ DeviceInfo DeviceInfoFromDeviceID(cl_device_id id) {
   }
 
   if (!info.supports_image3d_writes &&
-      ((info.vendor == Vendor::kQualcomm &&
-        IsGPUVersionInRange(info.adreno_info.gpu_version, 400, 500)) ||
-       info.vendor == Vendor::kNvidia)) {
+      ((info.IsAdreno() && info.adreno_info.IsAdreno4xx()) ||
+       info.IsNvidia())) {
     // in local tests Adreno 430 can write in image 3d, at least on small sizes,
     // but it doesn't have cl_khr_3d_image_writes in list of available
     // extensions
@@ -333,18 +332,6 @@ bool CLDevice::SupportsSubGroupWithSize(int sub_group_size) const {
 
 bool CLDevice::IsAdreno() const { return info_.IsAdreno(); }
 
-bool CLDevice::IsAdreno3xx() const { return info_.IsAdreno3xx(); }
-
-bool CLDevice::IsAdreno4xx() const { return info_.IsAdreno4xx(); }
-
-bool CLDevice::IsAdreno5xx() const { return info_.IsAdreno5xx(); }
-
-bool CLDevice::IsAdreno6xx() const { return info_.IsAdreno6xx(); }
-
-bool CLDevice::IsAdreno6xxOrHigher() const {
-  return info_.IsAdreno6xxOrHigher();
-}
-
 bool CLDevice::IsPowerVR() const { return info_.IsPowerVR(); }
 
 bool CLDevice::IsNvidia() const { return info_.IsNvidia(); }
@@ -354,10 +341,6 @@ bool CLDevice::IsMali() const { return info_.IsMali(); }
 bool CLDevice::IsAMD() const { return info_.IsAMD(); }
 
 bool CLDevice::IsIntel() const { return info_.IsIntel(); }
-
-bool CLDevice::SupportsOneLayerTextureArray() const {
-  return info_.SupportsOneLayerTextureArray();
-}
 
 void CLDevice::DisableOneLayerTextureArray() {
   info_.adreno_info.support_one_layer_texture_array = false;

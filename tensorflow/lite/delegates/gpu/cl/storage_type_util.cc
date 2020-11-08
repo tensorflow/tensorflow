@@ -49,7 +49,8 @@ bool CanCreateTensorWithShape(const DeviceInfo& device_info, const BHWDC& shape,
              slices * shape.d <= device_info.image3d_max_depth;
     case TensorStorageType::TEXTURE_ARRAY:
       // Bug on some Adreno. b/131099086
-      if (slices == 1 && !device_info.SupportsOneLayerTextureArray()) {
+      if (slices == 1 && device_info.IsAdreno() &&
+          !device_info.adreno_info.support_one_layer_texture_array) {
         return false;
       }
       return shape.w * shape.b <= device_info.image2d_max_width &&

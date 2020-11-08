@@ -422,12 +422,18 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
                            'the correct dtype).')
     super(Model, self).build(input_shape)
 
+  @doc_controls.doc_in_current_and_subclasses
   def call(self, inputs, training=None, mask=None):
     """Calls the model on new inputs.
 
     In this case `call` just reapplies
     all ops in the graph to the new inputs
     (e.g. build a new computational graph from the provided inputs).
+
+    Note: This method should not be called directly. It is only meant to be
+    overridden when subclassing `tf.keras.Model`.
+    To call a model on an input, always use the `__call__` method,
+    i.e. `model(inputs)`, which relies on the underlying `call` method.
 
     Arguments:
         inputs: A tensor or list of tensors.

@@ -5,6 +5,14 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "EagerTensor"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "FuncGraph"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "decorator"
     mtype: "<type \'module\'>"
   }
@@ -17,7 +25,15 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "eager_context"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "nest"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "ops"
     mtype: "<type \'module\'>"
   }
   member {
