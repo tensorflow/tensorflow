@@ -415,21 +415,68 @@ bool IsTrivialElementwise(HloInstruction* hlo) {
 
 bool ConvolutionVisitor::CanPropagate(HloInstruction* consumer,
                                       HloInstruction* producer) {
-  for (int64 i = 0; i < consumer->operand_count(); ++i) {
-    auto old_producer = consumer->mutable_operand(i);
-    if (IsTrivialElementwise(consumer)) {
-      if (old_to_new_instrs_.count(old_producer) <= 0 &&
-          old_producer->opcode() != HloOpcode::kConstant &&
-          !(old_producer->opcode() == HloOpcode::kBroadcast &&
-            IsBroadcastPropagatable(old_producer, producer))) {
+  if (IsTrivialElementwise(consumer)) {
+    VLOG(2) << "Doing propagation check on elementwise op: "
+            << consumer->ToString();
+
+    HloInstruction* pivot_operand = nullptr;
+    for (int64 i = 0; i < consumer->operand_count(); ++i) {
+      auto old_producer = consumer->mutable_operand(i);
+      const bool broadcast_or_constant =
+          (old_producer->opcode() == HloOpcode::kConstant) ||
+          (old_producer->opcode() == HloOpcode::kBroadcast &&
+           IsBroadcastPropagatable(old_producer, producer));
+
+      if (!old_to_new_instrs_.contains(old_producer) &&
+          !broadcast_or_constant) {
         VLOG(1) << "Cannot propagate on elementwise op "
                 << consumer->ToString();
         return false;
+      } else {
+        if (broadcast_or_constant) {
+          VLOG(2) << "Skipping on " << old_producer->ToString();
+          continue;
+        }
+
+        CHECK(old_to_new_instrs_.contains(old_producer));
+
+        CHECK(instr_to_dim_map_.contains(old_producer));
+        if (pivot_operand == nullptr) {
+          pivot_operand = old_producer;
+          VLOG(2) << "Elementwise op: pivot " << old_producer->ToString();
+        } else {
+          VLOG(2) << "Elementwise op: checking for shape equivalence "
+                  << consumer->ToString();
+          if (instr_to_dim_map_[pivot_operand] !=
+              instr_to_dim_map_[old_producer]) {
+            return false;
+          }
+          auto pivot_new_instr = old_to_new_instrs_[pivot_operand];
+          auto pivot_permute_dims = instr_to_dim_permute_map_[pivot_new_instr];
+          auto new_instr = old_to_new_instrs_[old_producer];
+          auto permute_dims = instr_to_dim_permute_map_[new_instr];
+          for (int j = 0; j < pivot_permute_dims.size(); ++j) {
+            // Ensure the dimension mapping is the same.
+            if (pivot_permute_dims[j] != permute_dims[j]) {
+              return false;
+            }
+
+            // Make sure all other dimensions are of the same size.
+            if (pivot_new_instr->shape().dimensions(j) !=
+                new_instr->shape().dimensions(j)) {
+              return false;
+            }
+          }
+        }
       }
     }
-    if (consumer->opcode() == HloOpcode::kConvolution ||
-        consumer->opcode() == HloOpcode::kReduceWindow ||
-        consumer->opcode() == HloOpcode::kReduce) {
+  }
+
+  if (consumer->opcode() == HloOpcode::kConvolution ||
+      consumer->opcode() == HloOpcode::kReduceWindow ||
+      consumer->opcode() == HloOpcode::kReduce) {
+    for (int64 i = 0; i < consumer->operand_count(); ++i) {
+      auto old_producer = consumer->mutable_operand(i);
       if (i == 0 && !old_to_new_instrs_.contains(old_producer)) {
         return false;
       }
@@ -1007,7 +1054,7 @@ Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
     spatial_split_size += stride;
   }
 
-  const int64 slice_size =
+  int64 slice_size =
       spatial_split_size +
       std::max(kernel_spatial_dim_size - stride, static_cast<int64>(0));
 
@@ -1020,7 +1067,7 @@ Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
       activations_new->shape().dimensions(spatial_dimension_to_split);
   // In the below case, we cannot use the activations directly for Halo
   // Duplication. We must reshape them.
-  if (new_space_size != spatial_split_size) {
+  if (spatial_split_size > new_space_size) {
     std::vector<int64> new_dimensions(
         activations_new->shape().dimensions().begin(),
         activations_new->shape().dimensions().end());
@@ -1068,6 +1115,21 @@ Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
                                slice_size - spatial_split_size,
                                old_split_dim_size));
   } else {
+    // If the ideal spatial_split_size was smaller than the incoming spatial
+    // dimension size, we don't need reshaping. Instead, we determine the
+    // additional space available, and adjust the required slice size (and
+    // thereby the halo size).'t need reshaping. Instead, we determine the
+    // additional space available, and adjust the required slice size (and
+    // thereby the halo size).
+    if (spatial_split_size < new_space_size) {
+      const int64 additional_space_present = spatial_split_size % stride;
+      spatial_split_size = new_space_size;
+      slice_size =
+          spatial_split_size +
+          std::max(kernel_spatial_dim_size - stride - additional_space_present,
+                   static_cast<int64>(0));
+    }
+
     TF_ASSIGN_OR_RETURN(
         activations_new,
         HaloDuplicateWithSlice(activations_new, spatial_dimension_to_split,
