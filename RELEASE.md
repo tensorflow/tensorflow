@@ -15,7 +15,7 @@
 
 * Keras mixed precision API [`tf.keras.mixed_precision`](https://www.tensorflow.org/api_docs/python/tf/keras/mixed_precision?version=nightly) is no longer experimental and allows the use of 16-bit floating point formats during training, improving performance by up to 3x on GPUs and 60% on TPUs. Please see below for additional details.
 
-* TF Profiler now supports profiling multiple workers using the [sampling mode API](https://www.tensorflow.org/guide/profiler#profiling_apis).
+* TensorFlow Profiler now supports profiling `MultiWorkerMirroredStrategy` and tracing multiple workers using the [sampling mode API](https://www.tensorflow.org/guide/profiler#profiling_apis).
 
 * TFLite Profiler for Android is available. See the detailed [guide](https://www.tensorflow.org/lite/performance/measurement#trace_tensorflow_lite_internals_in_android) to learn more.
 
