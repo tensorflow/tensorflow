@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_PRECISION_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_CL_PRECISION_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_PRECISION_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_PRECISION_H_
 
 #include <string>
 
@@ -22,7 +22,6 @@ limitations under the License.
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 
 enum class CalculationsPrecision { F32, F32_F16, F16 };
 // F32 - all data and all math ops in F32
@@ -36,8 +35,7 @@ DataType DeduceDataTypeFromPrecision(CalculationsPrecision precision);
 
 std::string ToString(CalculationsPrecision precision);
 
-}  // namespace cl
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_CL_PRECISION_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_PRECISION_H_

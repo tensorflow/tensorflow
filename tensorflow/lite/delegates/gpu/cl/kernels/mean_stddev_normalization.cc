@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/device_info.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
-#include "tensorflow/lite/delegates/gpu/cl/precision.h"
 
 namespace tflite {
 namespace gpu {
@@ -105,23 +104,25 @@ MeanStdDevNormalization::MeanStdDevNormalization(const OperationDef& definition,
   }
   if (device_info.IsAdreno()) {
     AdrenoInfo info = device_info.adreno_info;
-    if (device_info.IsAdreno3xx()) {
-      if (info.gpu_version < 320) {
+    if (info.IsAdreno3xx()) {
+      if (info.adreno_gpu == AdrenoGpu::kAdreno320 ||
+          info.adreno_gpu == AdrenoGpu::kAdreno330) {
+        desired_work_group_size = 128;
+      } else {
         desired_work_group_size = 64;
+      }
+    } else if (info.IsAdreno4xx()) {
+      if (info.adreno_gpu == AdrenoGpu::kAdreno430) {
+        desired_work_group_size = 256;
       } else {
         desired_work_group_size = 128;
       }
-    } else if (device_info.IsAdreno4xx()) {
-      if (info.gpu_version < 430) {
-        desired_work_group_size = 128;
-      } else {
+    } else if (info.IsAdreno5xx()) {
+      if (info.adreno_gpu == AdrenoGpu::kAdreno530 ||
+          info.adreno_gpu == AdrenoGpu::kAdreno540) {
         desired_work_group_size = 256;
-      }
-    } else if (device_info.IsAdreno5xx()) {
-      if (info.gpu_version < 530) {
-        desired_work_group_size = 128;
       } else {
-        desired_work_group_size = 256;
+        desired_work_group_size = 128;
       }
     }
   }

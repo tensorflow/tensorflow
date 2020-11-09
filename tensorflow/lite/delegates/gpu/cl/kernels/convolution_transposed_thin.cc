@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
-#include "tensorflow/lite/delegates/gpu/cl/precision.h"
 
 namespace tflite {
 namespace gpu {
@@ -35,7 +34,7 @@ ConvolutionTransposedThin::ConvolutionTransposedThin(
       definition_, DivideRoundUp(attr.weights.shape.i, 4), attr.weights.shape.o,
       int2(attr.weights.shape.w, attr.weights.shape.h));
   if (definition_.precision == CalculationsPrecision::F16 &&
-      device_info.IsAdreno3xx()) {
+      device_info.IsAdreno() && device_info.adreno_info.IsAdreno3xx()) {
     compiler_options_.push_back(CompilerOptions::ADRENO_FULL_SIMD_LINE);
   }
 }

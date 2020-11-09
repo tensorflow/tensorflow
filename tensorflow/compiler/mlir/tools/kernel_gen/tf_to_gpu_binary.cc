@@ -47,9 +47,10 @@ xla::Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
   mlir::MLIRContext context;
   TF_ASSIGN_OR_RETURN(
       mlir::OwningModuleRef module,
-      GenerateKernelForTfCode(context, tf_code, /*gpu_binary_only=*/true,
-                              architecture, tile_sizes, same_shape,
-                              unroll_factors, /*generate_fatbin=*/false));
+      GenerateKernelForTfCode(
+          context, tf_code, /*gpu_binary_only=*/true, architecture, tile_sizes,
+          same_shape, unroll_factors,
+          /*embed_memref_prints=*/false, /*generate_fatbin=*/false));
   // Extract gpu_binary.
   TF_ASSIGN_OR_RETURN(std::string gpu_binary, ExtractGpuBinary(*module));
 

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/jit/xla_kernel_creator.h"
 
+#include "tensorflow/compiler/mlir/mlir_bridge_rollout_policy.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -89,8 +90,9 @@ static Status CreateXlaKernel(FunctionLibraryRuntime* flr,
   XlaOpRegistry::RegisterCompilationKernels();
 
   // Only check for compilability if the MLIR bridge is not enabled.
-  if (GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge !=
-      ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED) {
+  MlirBridgeRolloutPolicy policy = GetMlirBridgeRolloutPolicy(absl::nullopt);
+  if (policy == MlirBridgeRolloutPolicy::kDisabledByUser ||
+      policy == MlirBridgeRolloutPolicy::kDisabledAfterGraphAnalysis) {
     RecursiveCompilabilityChecker::UncompilableNodesMap uncompilable_nodes_map;
     if (!IsCompilable(flr, node_def, &uncompilable_nodes_map)) {
       std::vector<RecursiveCompilabilityChecker::UncompilableNodeInfo>

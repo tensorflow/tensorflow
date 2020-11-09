@@ -20,12 +20,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
-#include "tensorflow/lite/delegates/gpu/cl/arguments.h"
 #include "tensorflow/lite/delegates/gpu/cl/device_info.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/linear_storage.h"
-#include "tensorflow/lite/delegates/gpu/cl/precision.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
@@ -43,9 +41,9 @@ FullyConnected::FullyConnected(const OperationDef& definition,
                                const DeviceInfo& device_info)
     : GPUOperation(definition) {
   if (device_info.IsAdreno()) {
-    if (device_info.IsAdreno3xx()) {
+    if (device_info.adreno_info.IsAdreno3xx()) {
       work_group_size_ = int3(16, 4, 1);
-    } else if (device_info.IsAdreno4xx()) {
+    } else if (device_info.adreno_info.IsAdreno4xx()) {
       work_group_size_ = int3(32, 4, 1);
     } else {
       work_group_size_ = int3(32, 4, 1);

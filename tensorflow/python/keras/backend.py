@@ -41,6 +41,7 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.eager import lift_to_graph
+from tensorflow.python.eager.context import get_config
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
@@ -821,7 +822,7 @@ def get_default_session_config():
         'OMP_NUM_THREADS is no longer used by the default Keras config. '
         'To configure the number of threads, use tf.config.threading APIs.')
 
-  config = context.context().config
+  config = get_config()
   config.allow_soft_placement = True
 
   return config

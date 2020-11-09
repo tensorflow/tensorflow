@@ -31,7 +31,6 @@ cc_library(
         ":environment",
         ":inference_context",
         ":opencl_wrapper",
-        ":precision",
         ":tensor",
         ":tensor_type_util",
         "@com_google_absl//absl/memory",
@@ -40,26 +39,11 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/cl/kernels:converter",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:model",
+        "//tensorflow/lite/delegates/gpu/common:precision",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
-    ],
-)
-
-cc_library(
-    name = "arguments",
-    srcs = ["arguments.cc"],
-    hdrs = ["arguments.h"],
-    deps = [
-        ":serialization_cc_fbs",
-        "//tensorflow/lite/delegates/gpu/common:access_type",
-        "//tensorflow/lite/delegates/gpu/common:data_type",
-        "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/common/task:gpu_object_desc",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -113,7 +97,6 @@ cc_library(
     srcs = ["cl_arguments.cc"],
     hdrs = ["cl_arguments.h"],
     deps = [
-        ":arguments",
         ":buffer",
         ":cl_context",
         ":device_info",
@@ -126,6 +109,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/common/task:arguments",
         "//tensorflow/lite/delegates/gpu/common/task:util",
         "@com_google_absl//absl/strings",
     ],
@@ -140,7 +124,6 @@ cc_test(
         "local",
     ],
     deps = [
-        ":arguments",
         ":buffer",
         ":cl_arguments",
         ":device_info",
@@ -306,11 +289,11 @@ cc_library(
         ":cl_context",
         ":cl_device",
         ":device_info",
-        ":precision",
         ":program_cache",
         ":tensor",
         ":util",
         "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:precision",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:tensor",
@@ -393,7 +376,6 @@ cc_library(
         "serialization.h",
     ],
     deps = [
-        ":arguments",
         ":buffer",
         ":cl_command_queue",
         ":cl_context",
@@ -402,7 +384,6 @@ cc_library(
         ":gpu_object",
         ":model_hints",
         ":opencl_wrapper",
-        ":precision",
         ":serialization_cc_fbs",
         ":storage_type_util",
         "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
@@ -413,11 +394,13 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:model_transformer",
         "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:precision",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/common/task:arguments",
         "//tensorflow/lite/delegates/gpu/common/task:buffer_desc",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_object_desc",
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
@@ -470,15 +453,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "@com_google_absl//absl/strings",
         "@opencl_headers",
-    ],
-)
-
-cc_library(
-    name = "precision",
-    srcs = ["precision.cc"],
-    hdrs = ["precision.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:data_type",
     ],
 )
 

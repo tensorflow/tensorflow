@@ -93,6 +93,13 @@ class DispatcherState {
     const int64 index;
   };
 
+  struct DistributedEpochState {
+    // The current repetition.
+    int64 repetition = 0;
+    // Number of splits produced so far by the current split provider.
+    int64 split_provider_index = 0;
+  };
+
   // A job for processing a dataset.
   struct Job {
     explicit Job(int64 job_id, int64 dataset_id, ProcessingMode processing_mode,
@@ -100,12 +107,17 @@ class DispatcherState {
         : job_id(job_id),
           dataset_id(dataset_id),
           processing_mode(processing_mode),
-          named_job_key(named_job_key) {}
+          named_job_key(named_job_key) {
+      if (processing_mode == ProcessingMode::DISTRIBUTED_EPOCH) {
+        distributed_epoch_state = DistributedEpochState();
+      }
+    }
 
     const int64 job_id;
     const int64 dataset_id;
     const ProcessingMode processing_mode;
     const absl::optional<NamedJobKey> named_job_key;
+    absl::optional<DistributedEpochState> distributed_epoch_state;
     int64 num_clients = 0;
     int64 last_client_released_micros = -1;
     bool finished = false;
@@ -177,6 +189,7 @@ class DispatcherState {
   void RegisterDataset(const RegisterDatasetUpdate& register_dataset);
   void RegisterWorker(const RegisterWorkerUpdate& register_worker);
   void CreateJob(const CreateJobUpdate& create_job);
+  void ProduceSplit(const ProduceSplitUpdate& produce_split);
   void AcquireJobClient(const AcquireJobClientUpdate& acquire_job_client);
   void ReleaseJobClient(const ReleaseJobClientUpdate& release_job_client);
   void CreateTask(const CreateTaskUpdate& create_task);

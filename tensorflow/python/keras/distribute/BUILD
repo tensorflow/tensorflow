@@ -3,8 +3,8 @@
 #   related to dist-strat used by Keras..
 
 load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
-load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")  # buildifier: disable=same-origin-load
 
 package(
     # TODO(scottzhu): Remove this deps when distribute test are converted to integration test.
@@ -226,6 +226,7 @@ distribute_py_test(
     ],
     deps = [
         ":optimizer_combinations",
+        ":strategy_combinations",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:util",
         "//tensorflow/python/compat:v2_compat",
@@ -246,6 +247,7 @@ distribute_py_test(
         "multi_and_single_gpu",
     ],
     deps = [
+        ":strategy_combinations",
         "//tensorflow/python:errors",
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -271,6 +273,7 @@ distribute_py_test(
         "notsan",  # TODO(b/170869466)
     ],
     deps = [
+        ":strategy_combinations",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -295,6 +298,7 @@ distribute_py_test(
         "multi_and_single_gpu",
     ],
     deps = [
+        ":strategy_combinations",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:combinations",
@@ -314,6 +318,7 @@ py_library(
     ],
     deps = [
         ":optimizer_combinations",
+        ":strategy_combinations",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:training",
         "//tensorflow/python/distribute:combinations",
@@ -400,6 +405,7 @@ py_library(
         "keras_stateful_lstm_model_correctness_test.py",
     ],
     deps = [
+        ":strategy_combinations",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:training",
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
@@ -510,6 +516,7 @@ distribute_py_test(
         "multi_and_single_gpu",
     ],
     deps = [
+        ":strategy_combinations",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/eager:test",
@@ -747,7 +754,7 @@ cuda_py_test(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "multi_worker_callback_tf2_test",
     srcs = ["multi_worker_callback_tf2_test.py"],
     python_version = "PY3",
@@ -854,7 +861,7 @@ distribute_py_test(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "parameter_server_training_test",
     srcs = ["parameter_server_training_test.py"],
     python_version = "PY3",
@@ -894,7 +901,7 @@ py_library(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "distributed_file_utils_test",
     srcs = ["distributed_file_utils_test.py"],
     python_version = "PY3",
@@ -947,5 +954,13 @@ tf_py_test(
         "//tensorflow/python/distribute:sharded_variable",
         "//tensorflow/python/keras:metrics",
         "//tensorflow/python/keras/engine:base_layer",
+    ],
+)
+
+py_library(
+    name = "strategy_combinations",
+    srcs = ["strategy_combinations.py"],
+    deps = [
+        "//tensorflow/python/distribute:strategy_combinations",
     ],
 )

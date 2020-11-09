@@ -2777,6 +2777,7 @@ cc_library(
         ":hlo_dce",
         ":hlo_pass",
         ":hlo_verifier",
+        ":pattern_matcher",
         ":shape_inference",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:literal",

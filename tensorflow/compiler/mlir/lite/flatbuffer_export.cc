@@ -434,9 +434,10 @@ class Translator {
 
   // Builds TFLite tensor from the given value. `buffer_idx` is index of the
   // corresponding buffer. Emits error and returns llvm::None on failure.
-  Optional<BufferOffset<tflite::Tensor>> BuildTensor(Value value,
-                                                     const std::string& name,
-                                                     unsigned buffer_idx);
+  Optional<BufferOffset<tflite::Tensor>> BuildTensor(
+      Value value, const std::string& name, unsigned buffer_idx,
+      const Optional<BufferOffset<tflite::QuantizationParameters>>&
+          quant_parameters);
 
   // TODO(b/137395003): Legalize control flow ops to TFLite dialect, and remove
   // these 2 functions here.
@@ -490,6 +491,10 @@ class Translator {
       Operation* inst, std::vector<int32_t> operands,
       const std::vector<int32_t>& results,
       const std::vector<int32_t>& intermediates);
+
+  // Returns the quantization parameters for output value of "quant.stats" op.
+  BufferOffset<tflite::QuantizationParameters>
+  GetQuantizationForQuantStatsOpOutput(mlir::quant::StatisticsOp stats_op);
 
   // Build a subgraph with a given name out of the region either corresponding
   // to a function's body or while op.
@@ -654,7 +659,9 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensorFromType(
 }
 
 Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
-    Value value, const std::string& name, unsigned buffer_idx) {
+    Value value, const std::string& name, unsigned buffer_idx,
+    const Optional<BufferOffset<tflite::QuantizationParameters>>&
+        quant_parameters) {
   auto type = value.getType().cast<TensorType>();
 
   // TFLite requires tensor shape only for the inputs and constants.
@@ -734,6 +741,8 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
         builder_.CreateVector<int64_t>(qtype.getZeroPoints()),
         tflite::QuantizationDetails_NONE, /*details=*/0,
         qtype.getQuantizedDimension());
+  } else if (quant_parameters.hasValue()) {
+    q_params = quant_parameters.getValue();
   } else {
     q_params = tflite::CreateQuantizationParameters(builder_);
   }
@@ -1193,6 +1202,34 @@ bool Translator::IsStatefulOperand(mlir::Operation* op, int operand_index) {
   return absl::c_find(operand_indices, operand_index) != operand_indices.end();
 }
 
+BufferOffset<tflite::QuantizationParameters>
+Translator::GetQuantizationForQuantStatsOpOutput(
+    mlir::quant::StatisticsOp stats_op) {
+  auto layer_stats = stats_op.layerStats().cast<mlir::DenseFPElementsAttr>();
+  Optional<mlir::ElementsAttr> axis_stats = stats_op.axisStats();
+  Optional<uint64_t> axis = stats_op.axis();
+  std::vector<float> mins, maxs;
+  mlir::DenseFPElementsAttr min_max_attr =
+      axis_stats.hasValue()
+          ? axis_stats.getValue().cast<mlir::DenseFPElementsAttr>()
+          : layer_stats;
+
+  for (auto index_and_value : llvm::enumerate(min_max_attr.getFloatValues())) {
+    const llvm::APFloat value = index_and_value.value();
+    if (index_and_value.index() % 2 == 0) {
+      mins.push_back(value.convertToFloat());
+    } else {
+      maxs.push_back(value.convertToFloat());
+    }
+  }
+
+  return tflite::CreateQuantizationParameters(
+      builder_, builder_.CreateVector<float>(mins),
+      builder_.CreateVector<float>(maxs), /*scale=*/0, /*zero_point=*/0,
+      tflite::QuantizationDetails_NONE, /*details=*/0,
+      /*quantized_dimension=*/axis.hasValue() ? axis.getValue() : 0);
+}
+
 Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
     const std::string& name, Region* region) {
   bool has_input_attr = false;
@@ -1212,14 +1249,23 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
 
     tensor_index_map.insert({value, tensors.size()});
     tensor_index_map_[name] = tensors.size();
-    auto tensor_or = BuildTensor(value, name, buffers_.size());
+    Optional<BufferOffset<tflite::QuantizationParameters>> quant_parameters;
+    if (value.hasOneUse()) {
+      auto stats_op =
+          llvm::dyn_cast<mlir::quant::StatisticsOp>(*value.user_begin());
+      if (stats_op) {
+        quant_parameters = GetQuantizationForQuantStatsOpOutput(stats_op);
+      }
+    }
+    auto tensor_or =
+        BuildTensor(value, name, buffers_.size(), quant_parameters);
     if (!tensor_or) return false;
     tensors.push_back(*tensor_or);
 
     // TODO(ashwinm): Check if for stateful tensors, if it is also needed to
-    // make the Buffer empty apart from setting the buffer_idx=0 in the Tensor.
-    // This does not seem to affect runtime behavior for RNN/LSTM, but would be
-    // good for reducing memory footprint.
+    // make the Buffer empty apart from setting the buffer_idx=0 in the
+    // Tensor. This does not seem to affect runtime behavior for RNN/LSTM,
+    // but would be good for reducing memory footprint.
     if (auto* inst = value.getDefiningOp()) {
       auto buffer_or = BuildBuffer(inst);
       if (!buffer_or) return false;
@@ -1247,6 +1293,11 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
   bool failed_once = false;
   for (auto& inst : bb) {
     if (inst.isKnownTerminator()) break;
+    // For "quant.stats" op, it's used to store the quantization parameters info
+    // and its output should be then replaced by its input value.
+    if (auto quant_stats_op = llvm::dyn_cast<mlir::quant::StatisticsOp>(inst)) {
+      continue;
+    }
     std::vector<int32_t> intermediates;
     // Build intermediate tensors for tfl.lstm and insert these tensors into
     // flatbuffer.
@@ -1304,6 +1355,10 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
     for (auto operand : real_inst->getOperands()) {
       if (operand.getType().isa<NoneType>())
         operands.push_back(kTfLiteOptionalTensor);
+      else if (auto stats_op =
+                   llvm::dyn_cast_or_null<mlir::quant::StatisticsOp>(
+                       operand.getDefiningOp()))
+        operands.push_back(tensor_index_map.lookup(stats_op.arg()));
       else
         operands.push_back(tensor_index_map.lookup(operand));
     }

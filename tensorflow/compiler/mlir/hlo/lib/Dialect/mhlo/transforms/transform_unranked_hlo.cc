@@ -386,14 +386,14 @@ struct ConvertUnrankedDynamicBroadcastBinaryOp
         rewriter.create<SelectOp>(loc, greater_rank_lhs, lhs_rank, rhs_rank);
 
     // Generate a list of nested if/else statements to handle rank
-    // specializations from 2-6.
+    // specializations from 1-6.
     scf::IfOp if_op = createRankSpecializedBroadcastAndOp(rewriter, op, lhs,
-                                                          rhs, greater_rank, 2);
+                                                          rhs, greater_rank, 1);
 
     // Put each subsequent rank specialization inside the else statement of the
     // previous one.
     OpBuilder else_builder = if_op.getElseBodyBuilder(rewriter.getListener());
-    for (int i = 3; i < max_rank_specialization; i++) {
+    for (int i = 2; i < max_rank_specialization; i++) {
       auto inner_if = createRankSpecializedBroadcastAndOp(else_builder, op, lhs,
                                                           rhs, greater_rank, i);
 
