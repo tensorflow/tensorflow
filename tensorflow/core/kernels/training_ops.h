@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_TRAINING_OPS_H_
 #define TENSORFLOW_CORE_KERNELS_TRAINING_OPS_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 namespace functor {
@@ -49,13 +49,13 @@ struct ApplyAdadelta {
 template <typename Device, typename T, typename Tindex>
 struct ResourceSparseApplyAdadelta {
   Tindex operator()(const Device& d, typename TTypes<T>::Matrix var,
-                  typename TTypes<T>::Matrix accum,
-                  typename TTypes<T>::Matrix accum_update,
-                  typename TTypes<T>::ConstScalar lr,
-                  typename TTypes<T>::ConstScalar rho,
-                  typename TTypes<T>::ConstScalar epsilon,
-                  typename TTypes<T>::ConstMatrix grad,
-                  typename TTypes<Tindex>::ConstFlat indices);
+                    typename TTypes<T>::Matrix accum,
+                    typename TTypes<T>::Matrix accum_update,
+                    typename TTypes<T>::ConstScalar lr,
+                    typename TTypes<T>::ConstScalar rho,
+                    typename TTypes<T>::ConstScalar epsilon,
+                    typename TTypes<T>::ConstMatrix grad,
+                    typename TTypes<Tindex>::ConstFlat indices);
 };
 
 template <typename Device, typename T>
