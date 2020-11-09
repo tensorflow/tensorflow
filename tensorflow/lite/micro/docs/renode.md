@@ -55,6 +55,7 @@ make -f tensorflow/lite/micro/tools/make/Makefile TARGET=bluepill test
 
  * This makes use of the robot framework from Renode.
  * Note that the tests can currently not be run in parallel.
+ * It takes about 25 second to complete all tests, including around 3 seconds for suite startup/teardown and average 0.38 second per test.
 
 ## Under the hood of the Testing Infrastructure
 
