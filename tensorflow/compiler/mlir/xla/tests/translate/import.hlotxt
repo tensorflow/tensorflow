@@ -232,10 +232,10 @@ add {
   // CHECK-SAME:       output_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>
   // CHECK-SAME:     }
   // CHECK-SAME:     feature_group_count = 1 : i64
-  // CHECK-SAME:     lhs_dilations = dense<1> : tensor<2xi64>
+  // CHECK-SAME:     lhs_dilation = dense<1> : tensor<2xi64>
   // CHECK-SAME:     padding = dense<{{\[\[}}44, 45], [60, 60]]> : tensor<2x2xi64>
   // CHECK-SAME:     precision_config = ["DEFAULT", "DEFAULT"]
-  // CHECK-SAME:     rhs_dilations = dense<[2, 3]> : tensor<2xi64>
+  // CHECK-SAME:     rhs_dilation = dense<[2, 3]> : tensor<2xi64>
   // CHECK-SAME:     window_strides = dense<[4, 5]> : tensor<2xi64>
   // CHECK-SAME:   }
   // CHECK-SAME:   (tensor<256x32x32x6xf32>, tensor<2x2x1x1xf32>) -> tensor<16x30x30x256xf32>
