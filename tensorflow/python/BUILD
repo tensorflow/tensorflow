@@ -1538,6 +1538,7 @@ py_library(
     name = "function_def_to_graph",
     srcs = ["framework/function_def_to_graph.py"],
     srcs_version = "PY2AND3",
+    visibility = visibility,
     deps = [
         ":framework",
         ":framework_ops",
@@ -1591,7 +1592,7 @@ py_library(
         "framework/convert_to_constants.py",
     ],
     srcs_version = "PY2AND3",
-    visibility = visibility + ["//waymo/ml:__subpackages__"],
+    visibility = visibility,
     deps = [
         ":dtypes",
         ":framework_ops",
@@ -7499,7 +7500,6 @@ py_library(
     visibility = visibility + [
         "//learning/deepmind/tensorflow:__subpackages__",
         "//third_party/car/deep_nets/tensorflow:__subpackages__",
-        "//waymo/ml:__subpackages__",
     ],
     deps = [
         ":framework_for_generated_wrappers",

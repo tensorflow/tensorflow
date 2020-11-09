@@ -69,7 +69,7 @@ struct MlirEmitterInput {
   // TODO(timshen): We need a corresponding construct in LMHLO to represent
   // this, aka an array of pointers to different memrefs. Once we have that, we
   // can merge this information back to LMHLO graph and remove this field.
-  MlirBufferSlice extra_slice;
+  absl::optional<MlirBufferSlice> extra_slice;
 };
 
 // Emits LLVM IR for an "unnested computation".
@@ -648,6 +648,8 @@ class IrEmitterUnnested : public IrEmitter,
 
   StatusOr<const HloComputation*> GetOrCreateSubComputationFromRegion(
       mlir::Region* region);
+
+  StatusOr<MlirEmitterInput> GetMlirEmitterInput(HloInstruction* hlo);
 
   // Returns the last generated thunk.
   Thunk* LastThunk() const { return thunk_sequence_.back().get(); }

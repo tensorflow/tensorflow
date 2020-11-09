@@ -22,6 +22,7 @@ import uuid
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
+from tensorflow.python.eager.context import get_device_name
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device
@@ -1748,7 +1749,7 @@ def _generate_defun_backend(unique_api_name, preferred_device, func,
 
 def _get_context_device_type():
   """Parse the current context and return the device type, eg CPU/GPU."""
-  current_device = context.context().device_name
+  current_device = get_device_name()
   if current_device is None:
     return None
   return device.DeviceSpec.from_string(current_device).device_type

@@ -2602,9 +2602,8 @@ string HloInstruction::ToString(const HloPrintOptions& options) const {
   return ToStringWithCanonicalNameMap(options, &new_map);
 }
 
-bool HloInstruction::IsElementwiseImpl(
-    const absl::optional<int64>& operand_idx) const {
-  switch (opcode_) {
+bool HloInstruction::IsOpElementwise(HloOpcode opcode) {
+  switch (opcode) {
     // Unary elementwise operations.
     case HloOpcode::kAbs:
     case HloOpcode::kRoundNearestAfz:
@@ -2633,7 +2632,6 @@ bool HloInstruction::IsElementwiseImpl(
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
     case HloOpcode::kTanh:
-      CHECK_EQ(1, operand_count());
       return true;
 
     // Binary elementwise operations, the same as in IsElementwiseBinary().
@@ -2654,7 +2652,6 @@ bool HloInstruction::IsElementwiseImpl(
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
-      CHECK_EQ(2, operand_count());
       return true;
 
     // Ternary elementwise operations.
@@ -2662,12 +2659,17 @@ bool HloInstruction::IsElementwiseImpl(
     case HloOpcode::kClamp:
       return true;
 
-    case HloOpcode::kDynamicUpdateSlice:
-      return operand_idx.has_value() && operand_idx.value() == 0;
-
     default:
       return false;
   }
+}
+
+bool HloInstruction::IsElementwiseImpl(
+    const absl::optional<int64>& operand_idx) const {
+  if (opcode_ == HloOpcode::kDynamicUpdateSlice) {
+    return operand_idx.has_value() && operand_idx.value() == 0;
+  }
+  return IsOpElementwise(opcode_);
 }
 
 bool HloInstruction::IsCrossModuleAllReduce() const {

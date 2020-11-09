@@ -431,7 +431,7 @@ add {
 // CHECK-SAME:  ([[ARG:%.*]]: tensor<4x2xf32>)
 %test_get_dimension_size (Arg_0.1: f32[4,2]) -> s32[] {
   %Arg_0.1 = f32[4,2] parameter(0)
-  // CHECK-NEXT:  "mhlo.get_dimension_size"([[ARG]]) {dimension = 1 : i32} : (tensor<4x2xf32>) -> tensor<i32>
+  // CHECK-NEXT:  "mhlo.get_dimension_size"([[ARG]]) {dimension = 1 : i64} : (tensor<4x2xf32>) -> tensor<i32>
   ROOT %get-dimension-size.2 = s32[] get-dimension-size(f32[4,2] %Arg_0.1), dimensions={1}
 }
 
@@ -836,7 +836,7 @@ add {
 %test_set_dimension_size (Arg_0.1: f32[4,4], Arg_1.2: s32[]) -> f32[4,<=4] {
   %Arg_0.1 = f32[4,4] parameter(0)
   %Arg_1.2 = s32[] parameter(1)
-  // CHECK-NEXT:  "mhlo.set_dimension_size"([[ARG]], [[SIZE]]) {dimension = 1 : i32} : (tensor<4x4xf32>, tensor<i32>) -> tensor<4x4xf32>
+  // CHECK-NEXT:  "mhlo.set_dimension_size"([[ARG]], [[SIZE]]) {dimension = 1 : i64} : (tensor<4x4xf32>, tensor<i32>) -> tensor<4x4xf32>
   ROOT %set-dimension-size.2 = f32[4,<=4] set-dimension-size(f32[4,4] %Arg_0.1, s32[] %Arg_1.2), dimensions={1}
 }
 

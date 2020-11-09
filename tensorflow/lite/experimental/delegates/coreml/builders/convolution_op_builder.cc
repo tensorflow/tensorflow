@@ -15,7 +15,6 @@ limitations under the License.
 #include "tensorflow/lite/experimental/delegates/coreml/builders/convolution_op_builder.h"
 
 #include "google/protobuf/repeated_field.h"
-#include "external/coremltools/mlmodel/format/NeuralNetwork.pb.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/delegates/coreml/builders/activation_layer_builder.h"
 #include "tensorflow/lite/experimental/delegates/coreml/builders/op_factory.h"
