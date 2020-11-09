@@ -248,6 +248,38 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
+          combinations.combine(autotune=False, autotune_buffers=False) +
+          combinations.combine(autotune=True, autotune_buffers=False) +
+          combinations.combine(autotune=True, autotune_buffers=True),
+          combinations.combine(set_env=[False, True])))
+  def testOptimizationEnableGradientDescent(self, autotune, autotune_buffers,
+                                            set_env):
+    if set_env:
+      os.environ["TF_DATA_EXPERIMENT_OPT_IN"] = "enable_gradient_descent"
+      os.environ["TF_JOB_NAME"] = "test_job"
+
+    dataset = dataset_ops.Dataset.range(5)
+    dataset = dataset.prefetch(buffer_size=-1)
+    dataset = dataset.map(lambda x: x + 1, num_parallel_calls=2)
+    dataset = dataset.map(lambda x: x + 1, num_parallel_calls=-1)
+    dataset = dataset.prefetch(buffer_size=3)
+    dataset = dataset.map(lambda x: x + 1, num_parallel_calls=-1)
+    dataset = dataset.prefetch(buffer_size=1)
+
+    options = dataset_ops.Options()
+    options.experimental_optimization.autotune = autotune
+    options.experimental_optimization.autotune_buffers = autotune_buffers
+    dataset = dataset.with_options(options)
+
+    self.assertDatasetProduces(dataset, expected_output=list(range(3, 8)))
+
+    if set_env:
+      del os.environ["TF_DATA_EXPERIMENT_OPT_IN"]
+      del os.environ["TF_JOB_NAME"]
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
           combinations.combine(autotune=[True, False]),
           combinations.combine(set_env=[True, False])))
   def testOptimizationMapParallelization(self, autotune, set_env):
@@ -543,16 +575,14 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     if autotune_buffers is True:  # pylint: disable=g-bool-id-comparison
       self.assertIn("autotune_buffer_sizes", graph_rewrites.enabled)
       self.assertIn("disable_prefetch_legacy_autotune", graph_rewrites.enabled)
+      self.assertEqual(algorithm,
+                       optimization_options._AutotuneAlgorithm.GRADIENT_DESCENT)
     else:
       self.assertNotIn("autotune_buffer_sizes", graph_rewrites.enabled)
       self.assertNotIn("disable_prefetch_legacy_autotune",
                        graph_rewrites.enabled)
-    if autotune_buffers is False:  # pylint: disable=g-bool-id-comparison
       self.assertEqual(algorithm,
                        optimization_options._AutotuneAlgorithm.HILL_CLIMB)
-    else:
-      self.assertEqual(algorithm,
-                       optimization_options._AutotuneAlgorithm.GRADIENT_DESCENT)
 
   @combinations.generate(
       combinations.times(

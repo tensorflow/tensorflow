@@ -84,6 +84,7 @@ void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
     // of the Borg jobs, the experiments will be randomly turned on.
     // clang-format off
     absl::flat_hash_map<string, uint64> live_experiments = {
+        {"enable_gradient_descent", 100},
         {"map_parallelization", 20}
     };
     // clang-format on
@@ -110,9 +111,6 @@ void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
 
   // The vector stores the graduated experiment names which will be turned on
   // for all input pipelines.
-  //
-  // Note some of the graduated experiments may be hard coded, so not listed
-  // below.
   // clang-format off
   std::vector<string> graduated_experiments = {"disable_intra_op_parallelism"};
   // clang-format on
