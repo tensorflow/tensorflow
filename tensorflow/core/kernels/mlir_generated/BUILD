@@ -61,6 +61,18 @@ filegroup(
     ),
 )
 
+filegroup(
+    name = "binary_kernel_srcs",
+    srcs = if_mlir_unranked_kernels_enabled(
+        [
+            "unranked_gpu_add.cc",
+            "unranked_op_gpu_base.h",
+            "unranked_op_gpu_base.cc",
+        ],
+        [],
+    ),
+)
+
 cc_library(
     name = "unranked_kernel_deps",
     deps =
@@ -124,11 +136,8 @@ tf_kernel_library(
     name = "cwise_binary_op",
     # Technically these source files don't need --config=cuda or --config=rocm,
     # but we want to avoid building them if they are not needed.
-    srcs = if_cuda_or_rocm(["unranked_gpu_add.cc"]),
-    tags = [
-        "manual",
-        "no_rocm",
-    ],
+    srcs = if_cuda_or_rocm([":binary_kernel_srcs"]),
+    tags = ["manual"],
     deps = if_cuda_or_rocm([
         ":unranked_kernel_deps",
         "@com_google_absl//absl/strings",
