@@ -465,7 +465,7 @@ absl::Status GPUOperationFromNode(const DeviceInfo& device_info,
     case OperationType::REDUCE_PRODUCT:
     case OperationType::REDUCE_SUM: {
       auto attr = absl::any_cast<ReduceAttributes>(node.operation.attributes);
-      if (attr.axis != Axis::CHANNELS) {
+      if (attr.dims != std::set<Axis>({Axis::CHANNELS})) {
         return absl::UnimplementedError(
             "Currently we can reduce only in channels dimension.");
       }
