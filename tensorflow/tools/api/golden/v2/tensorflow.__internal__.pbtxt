@@ -29,6 +29,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "function"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "nest"
     mtype: "<type \'module\'>"
   }
