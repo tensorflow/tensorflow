@@ -113,6 +113,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
+#include "tensorflow/core/protobuf/saver.pb.h"
 #include "tensorflow/core/protobuf/struct.pb.h"
 #include "tensorflow/core/protobuf/trackable_object_graph.pb.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
@@ -3278,13 +3279,22 @@ class SavedModelSignatureDefImporterLite {
  public:
   // Main entry point: converts all functions (specified by SignatureDefs) in
   // the given meta graph to an MLIR Module.
+  //
+  // `import_restore` is introduced to control whether restore graph
+  // is imported in eg. SavedModelSignatureDefImporter. Ideally, we don't need
+  // this option to control this as restore graph should be always imported.
+  // However, right now, SavedModelSignatureDefImporter cannot handle restore
+  // graph correctly.
+  //
+  // TODO(chky): Remove import_restore once the restore graph is correctly
+  // handled in SavedModelSignatureDefImporter.
   static StatusOr<mlir::OwningModuleRef> Convert(
       const MetaGraphDef& meta_graph_def, const GraphDebugInfo& debug_info,
       absl::Span<std::string> exported_names, mlir::MLIRContext* context,
-      bool upgrade_legacy) {
+      bool upgrade_legacy, bool import_restore = true) {
     LoadImporterDialects(*context);
-    SavedModelSignatureDefImporterLite importer(meta_graph_def, debug_info,
-                                                exported_names, context);
+    SavedModelSignatureDefImporterLite importer(
+        meta_graph_def, debug_info, exported_names, context, import_restore);
     TF_RETURN_IF_ERROR(importer.InitializeGraph(upgrade_legacy));
     TF_ASSIGN_OR_RETURN(auto module, importer.ConvertSignatures());
 
@@ -3294,18 +3304,20 @@ class SavedModelSignatureDefImporterLite {
     return module;
   }
 
+ private:
   SavedModelSignatureDefImporterLite(const MetaGraphDef& meta_graph_def,
                                      const GraphDebugInfo& debug_info,
                                      absl::Span<std::string> exported_names,
-                                     mlir::MLIRContext* context)
+                                     mlir::MLIRContext* context,
+                                     bool import_restore)
       : meta_graph_def_(meta_graph_def),
         debug_info_(debug_info),
         graph_(std::make_unique<Graph>(OpRegistry::Global())),
         exported_names_(exported_names),
         module_(mlir::ModuleOp::create(mlir::UnknownLoc::get(context))),
-        symbol_table_(module_.get()) {}
+        symbol_table_(module_.get()),
+        import_restore_(import_restore) {}
 
- private:
   // Initializes Graph from saved model GraphDef. If `upgrade_legacy` is set,
   // functionalization is ran on the Graph.
   Status InitializeGraph(bool upgrade_legacy);
@@ -3322,7 +3334,8 @@ class SavedModelSignatureDefImporterLite {
   };
   StatusOr<std::vector<AssetInfo>> ConvertAssets();
   // Converts the initialization graph in the SavedModel to an MLIR function.
-  Status ConvertInitializer(const std::vector<AssetInfo>& assets);
+  Status ConvertInitializer(const std::string& target_node_name,
+                            const std::vector<AssetInfo>& assets);
 
   // Converts a graph with feeds and fetches to an MLIR function.
   StatusOr<mlir::OwningModuleRef> ConvertGraph(
@@ -3348,6 +3361,7 @@ class SavedModelSignatureDefImporterLite {
   absl::Span<std::string> exported_names_;
   mlir::OwningModuleRef module_;
   mlir::SymbolTable symbol_table_;
+  bool import_restore_ = true;
 };
 
 Status SavedModelSignatureDefImporterLite::InitializeGraph(
@@ -3408,12 +3422,7 @@ void SavedModelSignatureDefImporterLite::MoveConvertedFunctionsToModule(
 }
 
 Status SavedModelSignatureDefImporterLite::ConvertInitializer(
-    const std::vector<AssetInfo>& assets) {
-  std::string init_node_name;
-  TF_RETURN_IF_ERROR(internal::GetInitOp("", meta_graph_def_, &init_node_name));
-
-  if (init_node_name.empty()) return Status::OK();
-
+    const std::string& target_node_name, const std::vector<AssetInfo>& assets) {
   std::vector<std::pair<std::string, TensorInfo>> inputs;
   inputs.reserve(assets.size());
   for (const auto& asset : assets) {
@@ -3423,12 +3432,12 @@ Status SavedModelSignatureDefImporterLite::ConvertInitializer(
     inputs.push_back({asset.tensor_name, tensor_info});
   }
 
-  TF_ASSIGN_OR_RETURN(auto sub_module, ConvertGraph(init_node_name, inputs, {},
-                                                    {init_node_name}));
+  TF_ASSIGN_OR_RETURN(auto sub_module, ConvertGraph(target_node_name, inputs,
+                                                    {}, {target_node_name}));
 
   mlir::SymbolTable sub_symbol_table(*sub_module);
 
-  auto init_func_op = sub_symbol_table.lookup<mlir::FuncOp>(init_node_name);
+  auto init_func_op = sub_symbol_table.lookup<mlir::FuncOp>(target_node_name);
   init_func_op.removeAttr("tf.entry_function");
 
   mlir::OpBuilder builder(module_->getBodyRegion());
@@ -3445,10 +3454,8 @@ Status SavedModelSignatureDefImporterLite::ConvertInitializer(
   // tf_saved_model.
   init_func_op.setAttr(
       "tf_saved_model.exported_names",
-      builder.getStrArrayAttr({"__tf_saved_model_session_initializer"}));
-
-  builder.create<mlir::tf_saved_model::SessionInitializerOp>(
-      module_->getLoc(), builder.getSymbolRefAttr(init_func_op.getName()));
+      builder.getStrArrayAttr({absl::StrCat(
+          "__tf_saved_model_session_initializer_", target_node_name)}));
 
   // Move the converted functions to top level MLIR module.
   MoveConvertedFunctionsToModule(*sub_module);
@@ -3570,9 +3577,44 @@ SavedModelSignatureDefImporterLite::ConvertSignatures() {
   }
 
   TF_ASSIGN_OR_RETURN(auto assets, ConvertAssets());
-  TF_RETURN_IF_ERROR(ConvertInitializer(assets));
 
   mlir::OpBuilder builder(module_->getBodyRegion());
+  llvm::SmallVector<mlir::Attribute, 2> init_sym_refs;
+
+  if (import_restore_ && meta_graph_def_.has_saver_def()) {
+    std::vector<AssetInfo> variable_and_assets;
+
+    // Create an AssetOp for the variable checkpoint files. The relative
+    // filename is used here.
+    auto variable_filename_op = builder.create<mlir::tf_saved_model::AssetOp>(
+        module_->getLoc(),
+        /*sym_name=*/
+        builder.getStringAttr("__tf_saved_model_variables"),
+        /*filename=*/
+        builder.getStringAttr(io::JoinPath(kSavedModelVariablesDirectory,
+                                           kSavedModelVariablesFilename)));
+    variable_and_assets.push_back(
+        {meta_graph_def_.saver_def().filename_tensor_name(),
+         variable_filename_op});
+    variable_and_assets.insert(variable_and_assets.end(), assets.begin(),
+                               assets.end());
+
+    const auto& restore_op_name = meta_graph_def_.saver_def().restore_op_name();
+    TF_RETURN_IF_ERROR(
+        ConvertInitializer(restore_op_name, variable_and_assets));
+    init_sym_refs.push_back(builder.getSymbolRefAttr(restore_op_name));
+  }
+
+  std::string init_op_name;
+  TF_RETURN_IF_ERROR(internal::GetInitOp("", meta_graph_def_, &init_op_name));
+  if (!init_op_name.empty()) {
+    TF_RETURN_IF_ERROR(ConvertInitializer(init_op_name, assets));
+    init_sym_refs.push_back(builder.getSymbolRefAttr(init_op_name));
+  }
+
+  builder.create<mlir::tf_saved_model::SessionInitializerOp>(
+      module_->getLoc(), builder.getArrayAttr(init_sym_refs));
+
   module_->setAttr("tf_saved_model.semantics", builder.getUnitAttr());
 
   SortSavedModelModule(*module_);
@@ -3600,7 +3642,7 @@ class SavedModelSignatureDefImporter {
     TF_ASSIGN_OR_RETURN(auto module,
                         SavedModelSignatureDefImporterLite::Convert(
                             bundle.meta_graph_def, debug_info, exported_names,
-                            context, upgrade_legacy));
+                            context, upgrade_legacy, /*import_restore=*/false));
 
     mlir::OpBuilder builder(module->getContext());
     module->setAttr("tf_saved_model.under_construction", builder.getUnitAttr());

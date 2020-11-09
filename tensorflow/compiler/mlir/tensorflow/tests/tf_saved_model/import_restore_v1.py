@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-# RUN: %p/hash_table_v1 | FileCheck %s
+# RUN: %p/import_restore_v1 | FileCheck %s
 
 # pylint: disable=missing-docstring,line-too-long
 from __future__ import absolute_import
@@ -33,48 +33,36 @@ from tensorflow.compiler.mlir.tensorflow.tests.tf_saved_model import common_v1
 # CHECK-SAME: min_consumer
 # CHECK-SAME: producer
 
-# CHECK: "tf_saved_model.global_tensor"()
-# CHECK: "tf_saved_model.session_initializer"() {initializers = [@[[init:.*]]]} : () -> ()
+# CHECK: tf_saved_model.session_initializer
+# CHECK-SAME: initializers = [@[[restore:.*]]]
 
-# CHECK:      func @[[init]]
-# CHECK-NEXT: [[R5:%.*]] = "tf.Const"()
-# CHECK-NEXT: [[R6:%.*]] = "tf.Const"()
-# CHECK-NEXT: [[R7:%.*]] = "tf.HashTableV2"()
-# CHECK-SAME: shared_name = "[[hash_table:.*]]"
-# CHECK-NEXT: "tf.LookupTableImportV2"([[R7]], [[R5]], [[R6]])
+# CHECK: "tf_saved_model.asset"()
+# CHECK-SAME: {filename = [[filename:.*]], sym_name = "[[sym_name:.*]]"} : () -> ()
+
+# CHECK:      func @[[restore]](
+# CHECK-SAME:   [[variable_path:%.*]]: tensor<!tf.string> {tf_saved_model.bound_input = @[[sym_name]]}
+# CHECK-SAME: tf_saved_model.exported_names = ["{{__tf_saved_model_session_initializer.*}}"]
+# CHECK: [[v0:%.*]] = "tf.RestoreV2"([[variable_path]]
+# CHECK: [[v1:%.*]] = "tf.Identity"([[v0]])
+# CHECK: [[handle:%.*]] = "tf.VarHandleOp"
+# CHECK-SAME: shared_name = [[shared_name:".*"]]
+# CHECK: "tf.AssignVariableOp"([[handle]], [[v1]])
 
 # CHECK:      func {{@[a-zA-Z_0-9]+}}(
-# CHECK-SAME: [[ARG0:%.*]]: tensor<i32>
-# CHECK-SAME: [[ARG1:%.*]]: tensor<!tf.resource
-# CHECK-SAME: attributes {{.*}} tf_saved_model.exported_names = ["key"]
-
-# CHECK-NEXT: [[R0:%.*]] = "tf.Const"()
-# CHECK-NEXT: [[R1:%.*]] = "tf.HashTableV2"()
-# CHECK-SAME: shared_name = "[[hash_table]]"
-# CHECK-NEXT: [[R2:%.*]] = "tf.LookupTableFindV2"([[R1]], [[ARG0]], [[R0]])
-# CHECK-NEXT: [[R3:%.*]] = "tf.ReadVariableOp"([[ARG1]])
-# CHECK-NEXT: [[R4:%.*]] = "tf.AddV2"([[R2]], [[R3]])
-# CHECK-NEXT: return [[R4]]
+# CHECK-SAME: tf_saved_model.exported_names = ["key"]
+# CHECK: tf.VarHandleOp
+# CHECK-SAME: shared_name = [[shared_name]]
 
 
 def Test():
 
-  z = tf.compat.v1.get_variable(
+  x = tf.constant([[1.0], [1.0], [1.0]])
+  y = tf.compat.v1.get_variable(
       name='y',
-      shape=(),
+      shape=(1, 3),
       initializer=tf.random_normal_initializer(),
       trainable=True)
-  table_initializer = tf.lookup.KeyValueTensorInitializer(
-      keys=[1, 2, 3, 4],
-      values=[5, 6, 7, 8],
-      key_dtype=tf.int32,
-      value_dtype=tf.float32)
-  table = tf.lookup.StaticHashTable(
-      table_initializer, default_value=tf.constant(0.0))
-
-  x = tf.placeholder(tf.int32, shape=(), name='input')
-  y = table.lookup(x)
-  r = tf.add(y, z)
+  r = tf.matmul(x, y)
 
   tensor_info_x = tf.compat.v1.saved_model.utils.build_tensor_info(x)
   tensor_info_r = tf.compat.v1.saved_model.utils.build_tensor_info(r)
@@ -84,9 +72,9 @@ def Test():
           inputs={'x': tensor_info_x},
           outputs={'r': tensor_info_r},
           method_name='some_function'))
-  }, tf.tables_initializer(), None
+  }, None, None
 
 
 if __name__ == '__main__':
   common_v1.set_tf_options()
-  common_v1.do_test(Test, canonicalize=True)
+  common_v1.do_test(Test, use_lite=True)
