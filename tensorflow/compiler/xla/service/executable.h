@@ -375,6 +375,10 @@ class Executable {
   bool dumping_snapshot() const { return hlo_proto_ != nullptr; }
   HloProto const* hlo_proto() const { return hlo_proto_.get(); }
 
+  std::string& debug_info() { return debug_info_; }
+  void set_debug_info(const std::string& debug_info) {
+    debug_info_ = debug_info;
+  }
   // Gather unused but donated buffers, return them to the caller of this API.
   // We don't free buffers inside this function since the caller could have
   // different preferences for buffer deallocation. For example, in TensorFlow,
@@ -399,6 +403,9 @@ class Executable {
 
   std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data_;
   std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map_;
+
+  // Generic debug information as a string.
+  std::string debug_info_;
 };
 
 }  // namespace xla
