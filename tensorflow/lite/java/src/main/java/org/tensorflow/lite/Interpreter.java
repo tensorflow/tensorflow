@@ -369,6 +369,7 @@ public final class Interpreter implements AutoCloseable {
    * <p>Note: This call is *purely optional*. Tensor allocation will occur automatically during
    * execution if any input tensors have been resized. This call is most useful in determining the
    * shapes for any output tensors before executing the graph, e.g.,
+   *
    * <pre>{@code
    * interpreter.resizeInput(0, new int[]{1, 4, 4, 3}));
    * interpreter.allocateTensors();
@@ -500,14 +501,11 @@ public final class Interpreter implements AutoCloseable {
   /**
    * Advanced: Modifies the graph with the provided {@link Delegate}.
    *
-   * <p>Note: The typical path for providing delegates is via {@link Options#addDelegate}, at
-   * creation time. This path should only be used when a delegate might require coordinated
-   * interaction between Interpeter creation and delegate application.
-   *
-   * <p>WARNING: This is an experimental API and subject to change.
-   *
    * @throws IllegalArgumentException if error occurs when modifying graph with {@code delegate}.
+   * @deprecated Prefer using {@link Options#addDelegate} to provide delegates at creation time.
+   *     This method will be removed in a future release.
    */
+  @Deprecated
   public void modifyGraphWithDelegate(Delegate delegate) {
     checkNotClosed();
     wrapper.modifyGraphWithDelegate(delegate);
@@ -525,7 +523,7 @@ public final class Interpreter implements AutoCloseable {
     wrapper.resetVariableTensors();
   }
 
-   /**
+  /**
    * Advanced: Interrupts inference in the middle of a call to {@link Interpreter#run}.
    *
    * <p>A cancellation flag will be set to true when this function gets called. The interpreter will
@@ -536,10 +534,9 @@ public final class Interpreter implements AutoCloseable {
    * <p>WARNING: This is an experimental API and subject to change.
    *
    * @param cancelled {@code true} to cancel inference in a best-effort way; {@code false} to
-   * resume.
+   *     resume.
    * @throws IllegalStateException if the interpreter is not initialized with the cancellable
-   * option, which is by default off.
-   *
+   *     option, which is by default off.
    * @see {@link Interpreter.Options#setCancellable(boolean)}.
    */
   public void setCancelled(boolean cancelled) {

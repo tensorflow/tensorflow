@@ -52,7 +52,6 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -339,8 +338,8 @@ class TPUStrategyV2(distribute_lib.Strategy):
     """Adds annotation that `tensor` will be split across logical devices.
 
     This adds an annotation to tensor `tensor` specifying that operations on
-    `tensor` will be be split among multiple logical devices. Tensor `tensor`
-    will be split across dimensions specified by `partition_dimensions`.
+    `tensor` will be split among multiple logical devices. Tensor `tensor` will
+    be split across dimensions specified by `partition_dimensions`.
     The dimensions of `tensor` must be divisible by corresponding value in
     `partition_dimensions`.
 
@@ -742,6 +741,9 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     # Flag to turn on VariablePolicy
     self._use_var_policy = True
 
+    # Flag to enable TF2 SPMD
+    self._use_spmd_for_xla_partitioning = False
+
   def _validate_colocate_with_variable(self, colocate_with_variable):
     distribute_utils. validate_colocate(colocate_with_variable, self)
 
@@ -797,12 +799,19 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         raise ValueError(
             "Found tensor {} with spec {}. TPUStrategy does not support "
             "distributed datasets with device prefetch when using sparse or "
-            "ragged tensors. If you indend to use sparse or ragged tensors, "
+            "ragged tensors. If you intend to use sparse or ragged tensors, "
             "please pass a tf.distribute.InputOptions object with "
             "experimental_prefetch_to_device set to False to your dataset "
             "distribution function.".format(path, type(spec)))
 
   def _experimental_distribute_dataset(self, dataset, options):
+    if (options and options.experimental_replication_mode ==
+        distribute_lib.InputReplicationMode.PER_REPLICA):
+      raise NotImplementedError(
+          "InputReplicationMode.PER_REPLICA "
+          "is only supported in "
+          "`experimental_distribute_datasets_from_function`."
+      )
     if options is None or options.experimental_prefetch_to_device:
       self._check_spec(dataset.element_spec)
 
@@ -813,6 +822,13 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         num_replicas_in_sync=self._num_replicas_in_sync)
 
   def _distribute_datasets_from_function(self, dataset_fn, options):
+    if (options and options.experimental_replication_mode ==
+        distribute_lib.InputReplicationMode.PER_REPLICA):
+      raise NotImplementedError(
+          "InputReplicationMode.PER_REPLICA "
+          "is only supported in "
+          " `experimental_distribute_datasets_from_function` "
+          "of tf.distribute.MirroredStrategy")
     input_workers = self._get_input_workers(options)
     input_contexts = []
     num_workers = input_workers.num_workers
@@ -887,8 +903,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
           run_fn,
           replicate_inputs,
           device_assignment=self._device_assignment,
-          xla_options=tpu.XLAOptions(use_spmd_for_xla_partitioning=False))
-
+          xla_options=tpu.XLAOptions(use_spmd_for_xla_partitioning=self
+                                     ._use_spmd_for_xla_partitioning))
       # If run_fn has tensor outputs, tpu.replicate returns a list of list. We
       # will flatten it in this case. If run_fn has no tensor outputs,
       # tpu.replicate returns a list of no_ops, we will keep the output as it
@@ -1022,8 +1038,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         distribute_utils.TPU_VARIABLE_CLASS_MAPPING,
         distribute_utils.TPU_VARIABLE_POLICY_MAPPING, **kwargs)
 
-  def _gather_to_implementation(self, value, destinations, axis,
-                                experimental_hints):
+  def _gather_to_implementation(self, value, destinations, axis, options):
     if not isinstance(value, values.DistributedValues):
       return value
 
@@ -1070,7 +1085,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
     return output
 
-  def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
+  def _reduce_to(self, reduce_op, value, destinations, options):
     if (isinstance(value, values.DistributedValues) or
         tensor_util.is_tensor(value)
        ) and tpu_values.enclosing_tpu_context() is not None:
@@ -1349,7 +1364,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
             device_assignment=self._device_assignment,
             maximum_shapes=maximum_shapes,
             padding_spec=padding_spec,
-            xla_options=tpu.XLAOptions(use_spmd_for_xla_partitioning=False))
+            xla_options=tpu.XLAOptions(use_spmd_for_xla_partitioning=self
+                                       ._use_spmd_for_xla_partitioning))
 
       # Remove all no ops that may have been added during 'tpu.replicate()'
       if isinstance(result[0], list):
@@ -1412,12 +1428,11 @@ class _TPUReplicaContext(distribute_lib.ReplicaContext):
     return self.strategy.extended.experimental_logical_device(logical_device_id)
 
   # TODO(wxinyi): Investigate whether to use cross_replica_sum to optimize it.
-  def _all_gather(self, value, axis, experimental_hints=None):
+  def all_gather(self, value, axis, experimental_hints=None):
     del experimental_hints
     for v in nest.flatten(value):
       if isinstance(v, ops.IndexedSlices):
-        raise NotImplementedError("gather/all_gather does not support "
-                                  "IndexedSlices")
+        raise NotImplementedError("all_gather does not support IndexedSlices")
 
     def _all_to_all(value, axis):
       # The underlying AllToAllOp first do a split of the input value and then
@@ -1468,12 +1483,8 @@ class _TPUReplicaContext(distribute_lib.ReplicaContext):
       result = array_ops.concat(squeezed, axis=axis)
       return result
 
-    @custom_gradient.custom_gradient
-    def grad_wrapper(*xs):
-      ys = [_all_to_all(t, axis=axis) for t in xs]
-      return ys, lambda *dy_s: self._all_gather(dy_s, axis)
-
-    return nest.pack_sequence_as(value, grad_wrapper(*nest.flatten(value)))
+    ys = [_all_to_all(t, axis=axis) for t in nest.flatten(value)]
+    return nest.pack_sequence_as(value, ys)
 
 
 def _set_last_step_outputs(ctx, last_step_tensor_outputs):

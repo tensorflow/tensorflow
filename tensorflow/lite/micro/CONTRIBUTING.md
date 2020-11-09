@@ -109,7 +109,7 @@ fixing a bug needs a bigger architectural change.
 ### Reference Kernel Implementations
 
 Pull requests that port reference kernels from TF Lite Mobile to TF Lite Micro
-are welcome once we have enouch context from the contributor on why the
+are welcome once we have enough context from the contributor on why the
 additional kernel is needed.
 
 1.  Please create a

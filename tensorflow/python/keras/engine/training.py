@@ -27,7 +27,7 @@ import warnings
 import six
 
 from tensorflow.python.autograph.lang import directives
-from tensorflow.python.data.experimental.ops.distribute_options import AutoShardPolicy
+from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
@@ -51,7 +51,8 @@ from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import compile_utils
 from tensorflow.python.keras.engine import data_adapter
 from tensorflow.python.keras.engine import training_utils
-from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer as lso
+from tensorflow.python.keras.mixed_precision import loss_scale_optimizer as lso
+from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.keras.saving import hdf5_format
 from tensorflow.python.keras.saving import save
 from tensorflow.python.keras.saving.saved_model import json_utils
@@ -69,15 +70,12 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variables
-from tensorflow.python.ops.ragged import ragged_concat_ops
-from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
-from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
@@ -424,12 +422,18 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
                            'the correct dtype).')
     super(Model, self).build(input_shape)
 
+  @doc_controls.doc_in_current_and_subclasses
   def call(self, inputs, training=None, mask=None):
     """Calls the model on new inputs.
 
     In this case `call` just reapplies
     all ops in the graph to the new inputs
     (e.g. build a new computational graph from the provided inputs).
+
+    Note: This method should not be called directly. It is only meant to be
+    overridden when subclassing `tf.keras.Model`.
+    To call a model on an input, always use the `__call__` method,
+    i.e. `model(inputs)`, which relies on the underlying `call` method.
 
     Arguments:
         inputs: A tensor or list of tensors.
@@ -549,12 +553,25 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
 
   def _get_optimizer(self, optimizer):
     """Wraps `optimizer` in `LossScaleOptimizer` if necessary."""
+    # The deprecated PolicyV1 has a loss_scale, which we use for backwards
+    # compatibility to match TF 2.3 behavior. The new Policy does not have a
+    # loss_scale, so we use dynamic loss scaling if the mixed_float16 policy is
+    # used.
+    if isinstance(self._dtype_policy, policy.PolicyV1):
+      loss_scale = self._dtype_policy.loss_scale
+    elif self._dtype_policy.name == 'mixed_float16':
+      loss_scale = 'dynamic'
+    else:
+      loss_scale = None
 
     def _get_single_optimizer(opt):
       opt = optimizers.get(opt)
-      if (self._dtype_policy.loss_scale is not None and
+      if (loss_scale is not None and
           not isinstance(opt, lso.LossScaleOptimizer)):
-        opt = lso.LossScaleOptimizer(opt, self._dtype_policy.loss_scale)
+        if loss_scale == 'dynamic':
+          opt = lso.LossScaleOptimizer(opt)
+        else:
+          opt = lso.LossScaleOptimizerV1(opt, loss_scale)
       return opt
 
     return nest.map_structure(_get_single_optimizer, optimizer)
@@ -954,7 +971,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
             form of datasets, generators, or `keras.utils.Sequence` instances
             (since they generate batches).
         validation_freq: Only relevant if validation data is provided. Integer
-            or `collections_abc.Container` instance (e.g. list, tuple, etc.).
+            or `collections.abc.Container` instance (e.g. list, tuple, etc.).
             If an integer, specifies how many training epochs to run before a
             new validation run is performed, e.g. `validation_freq=2` runs
             validation every 2 epochs. If a Container, specifies the epochs on
@@ -1572,7 +1589,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
           self.distribute_strategy)) and isinstance(x, dataset_types):
         try:
           options = dataset_ops.Options()
-          data_option = AutoShardPolicy.DATA
+          data_option = distribute_options.AutoShardPolicy.DATA
           options.experimental_distribute.auto_shard_policy = data_option
           x = x.with_options(options)
         except ValueError:
@@ -1908,21 +1925,35 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
   @property
   def trainable_weights(self):
     self._assert_weights_created()
-    return self._dedup_weights(
-        trackable_layer_utils.gather_trainable_weights(
-            trainable=self.trainable,
-            sub_layers=self._layers,
-            extra_variables=self._trainable_weights))
+    if not self._trainable:
+      return []
+    trainable_variables = []
+    for trackable_obj in self._self_tracked_trackables:
+      trainable_variables += trackable_obj.trainable_variables
+    trainable_variables += self._trainable_weights
+    return self._dedup_weights(trainable_variables)
 
   @property
   def non_trainable_weights(self):
     self._assert_weights_created()
-    return self._dedup_weights(
-        trackable_layer_utils.gather_non_trainable_weights(
-            trainable=self.trainable,
-            sub_layers=self._layers,
-            extra_variables=self._non_trainable_weights +
-            self._trainable_weights))
+    non_trainable_variables = []
+    for trackable_obj in self._self_tracked_trackables:
+      non_trainable_variables += trackable_obj.non_trainable_variables
+
+    if not self._trainable:
+      # Return order is all trainable vars, then all non-trainable vars.
+      trainable_variables = []
+      for trackable_obj in self._self_tracked_trackables:
+        trainable_variables += trackable_obj.trainable_variables
+
+      non_trainable_variables = (
+          trainable_variables + self._trainable_weights +
+          non_trainable_variables + self._non_trainable_weights)
+    else:
+      non_trainable_variables = (
+          non_trainable_variables + self._non_trainable_weights)
+
+    return self._dedup_weights(non_trainable_variables)
 
   def get_weights(self):
     """Retrieves the weights of the model.
@@ -2335,8 +2366,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     """Returns the undeduplicated list of all layer variables/weights."""
     self._assert_weights_created()
     weights = []
-    for layer in self._layers:
-      weights += layer.weights
+    for layer in self._self_tracked_trackables:
+      weights += layer.variables
     weights += (self._trainable_weights + self._non_trainable_weights)
     return weights
 
@@ -2697,8 +2728,6 @@ def concat(tensors, axis=0):
   """Concats `tensor`s along `axis`."""
   if isinstance(tensors[0], sparse_tensor.SparseTensor):
     return sparse_ops.sparse_concat_v2(axis=axis, sp_inputs=tensors)
-  if isinstance(tensors[0], ragged_tensor.RaggedTensor):
-    return ragged_concat_ops.concat(tensors, axis=axis)
   return array_ops.concat(tensors, axis=axis)
 
 
@@ -2732,7 +2761,7 @@ def _collective_all_reduce_multi_worker(strategy):
 # for all strategies
 def _multi_worker_concat(v, strategy):
   """Order PerReplica objects for CollectiveAllReduceStrategy and concat."""
-  replicas = strategy._gather(v, axis=0)  # pylint: disable=protected-access
+  replicas = strategy.gather(v, axis=0)  # pylint: disable=protected-access
   # TODO(b/170435030): We now need to make sure these run after the iterator
   # GetNext, so that we don't trigger aborting collective ops in the case of
   # EOF. Remove after the issue is fixed.
@@ -2744,10 +2773,10 @@ def _multi_worker_concat(v, strategy):
           for single_value in v.values
       ],
                                 axis=0)
-      all_shapes = strategy._gather(shapes, axis=0)  # pylint: disable=protected-access
+      all_shapes = strategy.gather(shapes, axis=0)
     else:
       # v is a tensor. This may happen when, say, we have 2x1 multi-worker.
-      all_shapes = strategy._gather(  # pylint: disable=protected-access
+      all_shapes = strategy.gather(
           array_ops.expand_dims_v2(array_ops.shape(v)[0], axis=0),
           axis=0)
 

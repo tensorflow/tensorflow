@@ -69,6 +69,13 @@ func @broadcast_multi_dim_add(%arg0: tensor<4x1x1xi32>, %arg1: tensor<4x4x4x4xi3
   return %0 : tensor<4x4x4x4xi32>
 }
 
+// CHECK-LABEL:   func @unsupported_broadcast_add
+// CHECK: chlo.broadcast_add
+func @unsupported_broadcast_add(%arg0: tensor<4x1x1xi32>, %arg1: tensor<4x4x4x4xi32>) -> tensor<4x4x4x4xi32> {
+  %0 = "chlo.broadcast_add"(%arg0, %arg1) {broadcast_dimensions = dense<[0, 1, 2]> : tensor<3xi64>} : (tensor<4x1x1xi32>, tensor<4x4x4x4xi32>) -> tensor<4x4x4x4xi32>
+  return %0 : tensor<4x4x4x4xi32>
+}
+
 // CHECK-LABEL:   func @div(
 // CHECK-SAME:              %[[VAL_0:.*]]: tensor<2xi32>) -> tensor<2xi32> {
 // CHECK:           %[[VAL_1:.*]] = "tf.Div"(%[[VAL_0]], %[[VAL_0]]) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
@@ -533,6 +540,13 @@ func @equal_incompatible_shape_broadcastable(%arg0: tensor<?xi32>, %arg1: tensor
   return %0 : tensor<?xi1>
 }
 
+// CHECK-LABEL: func @equal_unsupported_compare_type
+func @equal_unsupported_compare_type(%arg0: tensor<1xf32>, %arg1: tensor<1x2xf32>) -> tensor<1x2xi1> {
+  // CHECK: chlo.broadcast_compare
+  %0 = "chlo.broadcast_compare"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>, compare_type = "TOTALORDER", comparison_direction = "EQ"} : (tensor<1xf32>, tensor<1x2xf32>) -> tensor<1x2xi1>
+  return %0 : tensor<1x2xi1>
+}
+
 // CHECK-LABEL:   func @notequal(
 // CHECK-SAME:                   %[[VAL_0:.*]]: tensor<2xi32>,
 // CHECK-SAME:                   %[[VAL_1:.*]]: tensor<2xi32>) -> tensor<2xi1> {
@@ -597,6 +611,13 @@ func @greater(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
 func @broadcast_greater(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
   %0 = "chlo.broadcast_compare"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = "GT"} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
   return %0 : tensor<1x2xi1>
+}
+
+// CHECK-LABEL: func @greater_unsupported_compare_type
+func @greater_unsupported_compare_type(%arg0: tensor<2xf32>, %arg1: tensor<2xf32>) -> tensor<2xi1> {
+  // CHECK: mhlo.compare
+  %0 = "mhlo.compare"(%arg0, %arg1) {compare_type = "TOTALORDER", comparison_direction = "GT"} : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xi1>
+  return %0 : tensor<2xi1>
 }
 
 // CHECK-LABEL:   func @greater_equal(

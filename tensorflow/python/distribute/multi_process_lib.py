@@ -19,11 +19,28 @@ from __future__ import division
 from __future__ import print_function
 import multiprocessing
 import os
+import platform
 import sys
 import unittest
 from absl import app
 
 from tensorflow.python.eager import test
+
+
+def is_oss():
+  """Returns whether the test is run under OSS."""
+  return len(sys.argv) >= 1 and 'bazel' in sys.argv[0]
+
+
+def _is_enabled():
+  # Note that flags may not be parsed at this point and simply importing the
+  # flags module causes a variety of unusual errors.
+  tpu_args = [arg for arg in sys.argv if arg.startswith('--tpu')]
+  if is_oss() and tpu_args:
+    return False
+  if sys.version_info == (3, 8) and platform.system() == 'Linux':
+    return False  # TODO(b/171242147)
+  return sys.platform != 'win32'
 
 
 class _AbslProcess:
@@ -39,7 +56,7 @@ class _AbslProcess:
     app.run(lambda _: self._run_impl())
 
 
-if sys.platform != 'win32':
+if _is_enabled():
 
   class AbslForkServerProcess(_AbslProcess,
                               multiprocessing.context.ForkServerProcess):
@@ -142,7 +159,7 @@ def test_main():
 
   os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 
-  if sys.platform != 'win32':
+  if _is_enabled():
     _set_spawn_exe_path()
     _if_spawn_run_and_exit()
 

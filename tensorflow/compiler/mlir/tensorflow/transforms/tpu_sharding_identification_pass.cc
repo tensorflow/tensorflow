@@ -48,17 +48,17 @@ struct TPUShardingIdentificationPass
   void runOnOperation() override;
 };
 
-// Finds XlaSharding op connected to a value. If value is a resource type then
-// XlaSharding op will be connected to a ReadVariable op. XlaSharding op may be
-// direct user of inputs but it may also be followed by an Identity op and, in
-// the case where bfloat16 type is used, Cast op may be added right after the
-// input.
+// Finds XlaSharding op connected to an argument value. If value is a resource
+// type then XlaSharding op will be connected to a ReadVariable op. XlaSharding
+// op may be direct user of inputs but it may also be followed by an Identity op
+// and, in the case where bfloat16 type is used, Cast op may be added right
+// after the input.
 //
 // TODO(hongjunchoi): Add logic to parse XlaSharding op inside control flow (If,
 // Case, While) ops and Caller return values.
 // TODO(hongjunchoi): Consider explicitly checking op patterns to detect sharded
 // inputs.
-llvm::Optional<llvm::StringRef> GetXlaSharding(const Value& value) {
+llvm::Optional<llvm::StringRef> GetXlaShardingFromArg(const Value& value) {
   llvm::SmallPtrSet<Value, 4> visited_values;
   llvm::SmallVector<Value, 4> values_to_visit{value};
   while (!values_to_visit.empty()) {
@@ -67,16 +67,16 @@ llvm::Optional<llvm::StringRef> GetXlaSharding(const Value& value) {
       if (!visited_values.insert(value_to_visit).second) continue;
 
       for (auto& use : value_to_visit.getUses()) {
-        if (auto sharding = llvm::dyn_cast<TF::XlaShardingOp>(use.getOwner()))
+        Operation* owner = use.getOwner();
+        if (auto sharding = llvm::dyn_cast<TF::XlaShardingOp>(owner))
           return sharding._XlaSharding();
 
-        if (llvm::isa<TF::IdentityOp, TF::CastOp, TF::ReadVariableOp>(
-                use.getOwner())) {
+        if (llvm::isa<TF::IdentityOp, TF::CastOp, TF::ReadVariableOp>(owner)) {
           next_values_to_visit.push_back(use.getOwner()->getResult(0));
           continue;
         }
 
-        if (auto call_op = llvm::dyn_cast<CallOpInterface>(use.getOwner())) {
+        if (auto call_op = llvm::dyn_cast<CallOpInterface>(owner)) {
           FuncOp func = llvm::dyn_cast<FuncOp>(call_op.resolveCallable());
           if (!func) continue;
           next_values_to_visit.push_back(
@@ -89,18 +89,6 @@ llvm::Optional<llvm::StringRef> GetXlaSharding(const Value& value) {
   }
 
   return llvm::None;
-}
-
-// Returns the provided sharding configuration if operand of return value of
-// tf_device.ClusterFunc op is directly from XlaSharding op,
-llvm::Optional<StringRef> ParseReturnValueSharding(FuncOp func,
-                                                   const int output_index,
-                                                   const OpOperand& operand) {
-  if (auto sharding_op = llvm::dyn_cast_or_null<TF::XlaShardingOp>(
-          operand.get().getDefiningOp()))
-    return sharding_op._XlaSharding();
-
-  return llvm::Optional<StringRef>();
 }
 
 // Walks the graph from the arguments of the `cluster_func_op` and extracts
@@ -128,23 +116,61 @@ void IdentifyXlaShardingForComputationInputs(
   // Sharding configurations are added to the tf_device.ClusterFunc as an
   // attribute and the function as an argument attribute.
   for (auto& arg : cluster_function_block.getArguments()) {
-    auto arg_sharding = GetXlaSharding(arg);
-    const int arg_index = arg.getArgNumber();
+    auto arg_sharding = GetXlaShardingFromArg(arg);
+    const int index = arg.getArgNumber();
 
     if (arg_sharding) {
-      sharding_for_args[arg_index] = arg_sharding.getValue();
+      sharding_for_args[index] = arg_sharding.getValue();
       cluster_function.setArgAttr(
-          arg_index, kShardingAttr,
+          index, kShardingAttr,
           builder->getStringAttr(arg_sharding.getValue()));
     } else {
       cluster_function.setArgAttr(
-          arg_index, kShardingAttr,
+          index, kShardingAttr,
           builder->getStringAttr(logical_core_0_sharding));
     }
   }
 
   cluster_func_op.setAttr(tensorflow::kInputShardingAttr,
                           builder->getStrArrayAttr(sharding_for_args));
+}
+
+// Finds XlaSharding op connected to a result value. XlaSharding op may be
+// direct user of inputs but it may also be followed by an Identity op and, in
+// the case where bfloat16 type is used, Cast op may be added right after the
+// input.
+//
+// TODO(hongjunchoi): Add logic to parse XlaSharding op inside control flow (If,
+// Case, While) ops and Caller argument values.
+// TODO(hongjunchoi): Consider explicitly checking op patterns to detect sharded
+// inputs.
+llvm::Optional<StringRef> GetXlaShardingFromRetval(const Value& value) {
+  llvm::SmallPtrSet<Value, 4> visited_values;
+  Value value_to_visit = value;
+  while (value_to_visit) {
+    if (!visited_values.insert(value_to_visit).second) return llvm::None;
+
+    Operation* def = value_to_visit.getDefiningOp();
+    if (auto sharding = llvm::dyn_cast_or_null<TF::XlaShardingOp>(def))
+      return sharding._XlaSharding();
+
+    if (llvm::isa_and_nonnull<TF::IdentityOp, TF::CastOp>(def)) {
+      value_to_visit = def->getOperand(0);
+      continue;
+    }
+
+    if (auto call_op = llvm::dyn_cast_or_null<CallOpInterface>(def)) {
+      FuncOp func = llvm::dyn_cast<FuncOp>(call_op.resolveCallable());
+      if (!func) continue;
+      value_to_visit = func.front().getTerminator()->getOperand(
+          value_to_visit.cast<OpResult>().getResultNumber());
+      continue;
+    }
+
+    break;
+  }
+
+  return llvm::None;
 }
 
 // Parses XlaSharding op directly connected from the outputs of the
@@ -164,8 +190,8 @@ void IdentifyXlaShardingForComputationOutputs(
   // tf_device.ClusterFunc as an attribute and the function as a result
   // attribute.
   for (auto& ret : terminator->getOpOperands()) {
+    auto ret_sharding = GetXlaShardingFromRetval(ret.get());
     const int index = ret.getOperandNumber();
-    auto ret_sharding = ParseReturnValueSharding(func, index, ret);
 
     if (ret_sharding) {
       sharding_for_rets[index] = ret_sharding.getValue();
@@ -176,6 +202,7 @@ void IdentifyXlaShardingForComputationOutputs(
                          builder->getStringAttr(logical_core_0_sharding));
     }
   }
+
   cluster_func.setAttr(tensorflow::kOutputShardingAttr,
                        builder->getStrArrayAttr(sharding_for_rets));
 }

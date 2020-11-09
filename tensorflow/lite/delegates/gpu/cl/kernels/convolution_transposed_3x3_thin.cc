@@ -49,7 +49,7 @@ ConvolutionTransposed3x3Thin& ConvolutionTransposed3x3Thin::operator=(
 std::string ConvolutionTransposed3x3Thin::GenerateConvolutionTransposedCode(
     const OperationDef& op_def, int src_depth, int dst_depth) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
+  src_desc.SetAddressMode(AddressMode::kZero);
   AddSrcTensor("src_tensor", src_desc);
   AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
 

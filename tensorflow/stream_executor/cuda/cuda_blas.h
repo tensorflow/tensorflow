@@ -150,6 +150,13 @@ class CUDABlas : public blas::BlasSupport {
                               const blas::IBlasLtMatmulAlgorithm *algorithm,
                               DeviceMemoryBase bias);
 
+  // Helper function for implementing GetBlasLtMatmulAlgorithms.
+  port::StatusOr<std::vector<std::unique_ptr<blas::IBlasLtMatmulAlgorithm>>>
+  GetBlasLtMatmulAlgorithmsInternal(const blas::IBlasLtMatmulPlan *plan,
+                                    size_t max_workspace_size,
+                                    int max_algorithm_count,
+                                    bool for_remainder_batch = false);
+
   // Guards the cuBLAS handle for this device.
   absl::Mutex mu_;
 

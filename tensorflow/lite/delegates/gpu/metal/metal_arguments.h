@@ -22,13 +22,20 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/delegates/gpu/metal/arguments.h"
+#include "tensorflow/lite/delegates/gpu/common/task/arguments.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_object_desc.h"
 
 namespace tflite {
 namespace gpu {
 namespace metal {
 
-class MetalArguments : public ArgumentsSetter {
+struct GPUResourcesWithValue {
+  std::vector<std::pair<std::string, int>> ints;
+  std::vector<std::pair<std::string, float>> floats;
+  std::vector<std::pair<std::string, id<MTLBuffer>>> buffers;
+};
+
+class MetalArguments : public ArgumentsBinder {
  public:
   MetalArguments() = default;
 
@@ -42,10 +49,20 @@ class MetalArguments : public ArgumentsSetter {
 
   absl::Status SetInt(const std::string& name, int value) override;
   absl::Status SetFloat(const std::string& name, float value) override;
+  absl::Status SetHalf(const std::string& name, half value) override;
 
   void Encode(id<MTLComputeCommandEncoder> encoder, int buffer_offset) const;
 
  private:
+  std::string GetListOfArgs(int buffer_offset);
+
+  absl::Status SetGPUResources(const std::string& name,
+                               const GPUResourcesWithValue& resources);
+
+  void AddBuffer(const std::string& name, const GPUBufferDescriptor& desc);
+
+  absl::Status SetBuffer(const std::string& name, id<MTLBuffer> handle);
+
   static constexpr char kArgsPrefix[] = "args.";
   struct IntValue {
     int value;
@@ -71,6 +88,12 @@ class MetalArguments : public ArgumentsSetter {
   };
   std::map<std::string, FloatValue> float_values_;
   std::vector<uint8_t> const_data_;
+
+  struct MetalBufferDescriptor {
+    GPUBufferDescriptor desc;
+    id<MTLBuffer> handle;
+  };
+  std::map<std::string, MetalBufferDescriptor> buffers_;
 };
 
 }  // namespace metal

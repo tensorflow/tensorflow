@@ -139,6 +139,19 @@ cc_library(
     deps = [
         ":schema_fbs",
         "//tensorflow/lite/kernels/internal:compatibility",
+        "@flatbuffers//:runtime_cc",
+    ],
+)
+
+cc_library(
+    name = "schema_conversion_utils",
+    srcs = ["schema_conversion_utils.cc"],
+    hdrs = ["schema_conversion_utils.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = [":utils_friends"],
+    deps = [
+        ":schema_fbs",
+        "//tensorflow/lite/kernels/internal:compatibility",
         "@flatbuffers",
     ],
 )

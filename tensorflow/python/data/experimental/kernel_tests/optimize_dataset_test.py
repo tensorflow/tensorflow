@@ -208,6 +208,26 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.with_options(options)
     self.assertDatasetProduces(dataset, expected_output=[[0]])
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testOptimizationDoubleOptimizeDatasetNested(self):
+    def flat_map_fn(_):
+      dataset = dataset_ops.Dataset.from_tensors(0)
+      dataset = dataset.apply(testing.assert_next(["MapAndBatch"]))
+      dataset = dataset.skip(0)
+      # Should be fused by map and batch fusion
+      dataset = dataset.map(lambda x: x)
+      dataset = dataset.batch(1)
+      return dataset
+
+    dataset = dataset_ops.Dataset.from_tensors(0)
+    dataset = dataset.flat_map(flat_map_fn)
+    dataset = dataset_ops._OptimizeDataset(dataset, ["map_and_batch_fusion"],
+                                           [], [])
+    dataset = dataset_ops._OptimizeDataset(dataset, ["noop_elimination"], [],
+                                           [])
+
+    self.assertDatasetProduces(dataset, expected_output=[[0]])
+
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
@@ -252,6 +272,33 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.with_options(options)
 
     self.assertDatasetProduces(dataset, expected_output=list(range(3, 8)))
+
+    if set_env:
+      del os.environ["TF_DATA_EXPERIMENT_OPT_IN"]
+      del os.environ["TF_JOB_NAME"]
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(autotune=[True, False]),
+          combinations.combine(set_env=[True, False])))
+  def testOptimizationMapParallelization(self, autotune, set_env):
+    if set_env:
+      os.environ["TF_DATA_EXPERIMENT_OPT_IN"] = "map_parallelization"
+      os.environ["TF_JOB_NAME"] = "test_job"
+
+    dataset = dataset_ops.Dataset.range(5)
+    if autotune and set_env:
+      dataset = dataset.apply(testing.assert_next(["ParallelMap"]))
+    else:
+      dataset = dataset.apply(testing.assert_next(["Map"]))
+    dataset = dataset.map(lambda x: x + 1)
+
+    options = dataset_ops.Options()
+    options.experimental_optimization.autotune = autotune
+    dataset = dataset.with_options(options)
+
+    self.assertDatasetProduces(dataset, expected_output=list(range(1, 6)))
 
     if set_env:
       del os.environ["TF_DATA_EXPERIMENT_OPT_IN"]
@@ -514,6 +561,7 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
                      optimization_options._AutotuneAlgorithm.GRADIENT_DESCENT)
     self.assertEqual(cpu_budget, 1000)
     self.assertEqual(ram_budget, 999999999)
+
 
 if __name__ == "__main__":
   test.main()

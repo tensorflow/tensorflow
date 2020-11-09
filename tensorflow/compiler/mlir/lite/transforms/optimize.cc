@@ -35,13 +35,13 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -128,6 +128,12 @@ bool CanFuseConvOrDepthwiseConvShapes(const ArrayRef<int64_t> filter_shape,
     return false;
   }
   auto elements_depth = elements_shape.empty() ? 1 : elements_shape.back();
+  // If elements depth equals 1 (i.e., scalar or tensor with 1 element), then we
+  // can let binary op to broadcast elements.
+  if (elements_depth == 1) {
+    return true;
+  }
+
   // In TFLite Conv2D uses OHWI format for filter, and 1HWO for Depthwise Conv.
   // For conv:
   // Check if last dimension in filter equals the first dimension
@@ -194,16 +200,16 @@ bool CanOptimizeIdentityGatherNdOrScatterNdOp(Value params,
 ElementsAttr ExpandTo4DForConvImpl(Attribute a, bool is_depthwise) {
   auto elements = a.dyn_cast<DenseElementsAttr>();
   auto shape = elements.getType().getShape();
-  if (shape.size() == 4) {
-    return elements;
+  if (!shape.empty()) {
+    // Checks that elements are essentially 1d.
+    assert(elements.getNumElements() == shape.back());
   }
   std::vector<int64_t> shape_data = {1, 1, 1, 1};
-  if (shape.size() == 1 || shape.empty()) {
-    if (is_depthwise)
-      shape_data[3] = shape.empty() ? 1 : shape[0];
-    else
-      shape_data[0] = shape.empty() ? 1 : shape[0];
-  }
+  const int vector_length = elements.getNumElements();
+  if (is_depthwise)
+    shape_data[3] = vector_length;
+  else
+    shape_data[0] = vector_length;
   auto new_shape =
       RankedTensorType::get(shape_data, elements.getType().getElementType());
   return elements.reshape(new_shape);
@@ -438,25 +444,27 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
       return failure();
     if (fc_op.fused_activation_function() != "NONE") return failure();
 
-    // Broadcast the constant operand of Mul if it isn't compatible to the
-    // filter input. We only support broadcasting the operand along the depth
-    // dimension, when the operand's depth is 1.
-    Value new_const_val = constant_val;
-    if (!IsBroadcastableElementsAttrAndType(cst.getType(), filter.getType())) {
-      auto original_shape = cst.getType().getShape();
-      llvm::SmallVector<int64_t, 4> normalized_shape(original_shape.begin(),
-                                                     original_shape.end());
-      normalized_shape.push_back(1);
-      auto new_cst = cst.reshape(RankedTensorType::get(
-          normalized_shape, cst.getType().getElementType()));
-      Type new_type = new_cst.getType();
-      if (!IsBroadcastableElementsAttrAndType(new_type, filter.getType())) {
-        return failure();
-      }
-      auto new_op =
-          rewriter.create<ConstantOp>(mul_op.getLoc(), new_type, new_cst);
-      new_const_val = new_op.getResult();
+    // Only fuse multiplier if all dimensions other than the depth dimension
+    // are equal to 1 since otherwise
+    // `matmul(x, filter) * cst != matmul(x, filter * cst)`
+    // even if `filter` and `cst` are be broadcastable.
+    auto shape = cst.getType().getShape();
+    if (!IsDimensionsDegenerateExceptLastOne(shape)) return failure();
+
+    int64_t element_size = shape.empty() ? 1 : shape[shape.size() - 1];
+    // Expand and transpose the multiplier since weights are using the
+    // OHWI data format in TFLite.
+    int64_t normalized_shape[2] = {element_size, 1};
+    auto new_cst = cst.reshape(RankedTensorType::get(
+        normalized_shape, cst.getType().getElementType()));
+    Type new_type = new_cst.getType();
+    if (!IsBroadcastableElementsAttrAndType(new_type, filter.getType())) {
+      return failure();
     }
+
+    auto new_op =
+        rewriter.create<ConstantOp>(mul_op.getLoc(), new_type, new_cst);
+    Value new_const_val = new_op.getResult();
 
     // Rewrite. Since the folder of TFL::MulOp couldn't broadcast the operands,
     // TF::MulOp is used to fold the constant.
@@ -804,15 +812,21 @@ void Optimize::runOnFunction() {
                   FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
                   FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>,
                   FuseFullyConnectedAndMul>(ctx);
-  applyPatternsAndFoldGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   // Fuse the binary ops with the following ops.
-  patterns.insert<
-      FuseBinaryOpToFollowingConv2D, FuseBinaryOpToFollowingDepthwiseConv2D,
+  OwningRewritePatternList phase_2_patterns;
+  TFL::populateWithGenerated(ctx, phase_2_patterns);
+  phase_2_patterns.insert<
+      FuseFullyConnectedAndAdd, FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
+      FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
+      FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>,
+      FuseFullyConnectedAndMul, FuseBinaryOpToFollowingConv2D,
+      FuseBinaryOpToFollowingDepthwiseConv2D,
       FuseBinaryOpToFollowingFullyConnected, FuseConv2DAndMulWithQDQs,
       FuseDepthwiseConv2DAndMulWithQDQs, ConvertTrivialTransposeOpToReshapeOp>(
       ctx);
-  applyPatternsAndFoldGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
 }
 
 }  // namespace

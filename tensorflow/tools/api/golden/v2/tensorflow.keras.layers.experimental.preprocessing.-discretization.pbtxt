@@ -1,6 +1,7 @@
 path: "tensorflow.keras.layers.experimental.preprocessing.Discretization"
 tf_class {
   is_instance: "<class \'tensorflow.python.keras.layers.preprocessing.discretization.Discretization\'>"
+  is_instance: "<class \'tensorflow.python.keras.engine.base_preprocessing_layer.CombinerPreprocessingLayer\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_preprocessing_layer.PreprocessingLayer\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.module.module.Module\'>"
@@ -9,11 +10,23 @@ tf_class {
   is_instance: "<class \'tensorflow.python.keras.utils.version_utils.LayerVersionSelector\'>"
   is_instance: "<type \'object\'>"
   member {
+    name: "DiscretizingCombiner"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "activity_regularizer"
     mtype: "<type \'property\'>"
   }
   member {
+    name: "compute_dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "dtype_policy"
     mtype: "<type \'property\'>"
   }
   member {
@@ -109,6 +122,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "variable_dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "variables"
     mtype: "<type \'property\'>"
   }
@@ -118,7 +135,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'bins\'], varargs=None, keywords=kwargs, defaults=None"
+    argspec: "args=[\'self\', \'bins\', \'epsilon\'], varargs=None, keywords=kwargs, defaults=[\'0.01\'], "
   }
   member_method {
     name: "adapt"

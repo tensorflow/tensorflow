@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import functools
 
+from absl import app
+
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import multi_process_runner
@@ -58,7 +60,7 @@ def _gather(strategy, value):
     return array_ops.stack(value._values)
   assert len(strategy.extended.worker_devices) == len(value._values)
   inputs = [array_ops.expand_dims_v2(v, axis=0) for v in value._values]
-  return strategy._gather(values.PerReplica(inputs), axis=0)
+  return strategy.gather(values.PerReplica(inputs), axis=0)
   # pylint: enable=protected-access
 
 
@@ -82,13 +84,22 @@ def set_logical_devices_to_at_least(device, num):
           context.LogicalDeviceConfiguration(memory_limit=2048))
     else:
       logical_devices.append(context.LogicalDeviceConfiguration())
-  # Create logical devices from the the last device since sometimes the first
-  # GPU is the primary graphic card and may has less memory available.
+  # Create logical devices from the last device since sometimes the first GPU
+  # is the primary graphic card and may have less memory available.
   config.set_logical_device_configuration(physical_devices[-1], logical_devices)
 
 
-def main(enable_v2_behavior=True):
+def _set_logical_devices():
+  if config.list_physical_devices("GPU"):
+    set_logical_devices_to_at_least("GPU", 2)
+  if config.list_physical_devices("CPU"):
+    set_logical_devices_to_at_least("CPU", 2)
+
+
+def main(enable_v2_behavior=True, config_logical_devices=True):
   """All-in-one main function for tf.distribute tests."""
+  if config_logical_devices:
+    app.call_after_init(_set_logical_devices)
   if enable_v2_behavior:
     v2_compat.enable_v2_behavior()
   else:

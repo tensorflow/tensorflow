@@ -12,11 +12,9 @@ resulting in lower latency. In the best scenario, inference on the GPU may now
 run fast enough for previously not available real-time applications.
 
 Unlike CPUs, GPUs compute with 16-bit or 32-bit floating point numbers and do
-not require quantization for optimal performance.
-
-**NOTE:** The delegate does accept 8-bit quantized models on Android. Support on
-iOS is experimental. Refer to the [advanced documentation](gpu_advanced.md) for
-details.
+not require quantization for optimal performance. The delegate does accept 8-bit
+quantized models, but the calculation will be performed in floating point
+numbers. Refer to the [advanced documentation](gpu_advanced.md) for details.
 
 Another benefit with GPU inference is its power efficiency. GPUs carry out the
 computations in a very efficient and optimized manner, so that they consume less

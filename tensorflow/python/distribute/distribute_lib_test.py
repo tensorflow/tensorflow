@@ -94,8 +94,8 @@ class _TestExtended(distribute_lib.StrategyExtendedV1):
   def _local_results(self, value):
     return (value,)
 
-  def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
-    del reduce_op, destinations, experimental_hints
+  def _reduce_to(self, reduce_op, value, destinations, options):
+    del reduce_op, destinations, options
     return value
 
   def _experimental_run_steps_on_iterator(self, fn, iterator, iterations,

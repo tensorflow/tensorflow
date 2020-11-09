@@ -125,6 +125,47 @@ the numbers here:
   </figcaption>
 </figure>
 
+### Full integer quantization with int16 activations and int8 weights
+
+[Quantization with int16 activations](https://www.tensorflow.org/model_optimization/guide/quantization/post_training)
+is a full integer quantization scheme with activations in int16 and weights in
+int8. This mode can improve accuracy of the quantized model in comparison to the
+full integer quantization scheme with both activations and weights in int8
+keeping a similar model size. It is recommended when activations are sensitive
+to the quantization.
+
+<i>NOTE:</i> Currently only non-optimized reference kernel implementations are
+available in TFLite for this quantization scheme, so by default the performance
+will be slow compared to int8 kernels. Full advantages of this mode can
+currently be accessed via specialised hardware, or custom software.
+
+Below are the accuracy results for some models that benefit from this mode.
+<figure>
+  <table>
+    <tr>
+      <th>Model</th>
+      <th>Accuracy metric type </th>
+      <th>Accuracy (float32 activations) </th>
+      <th>Accuracy (int8 activations) </th>
+      <th>Accuracy (int16 activations) </th>
+    </tr> <tr><td>Wav2letter</td><td>WER</td><td>6.7%</td><td>7.7%</td>
+      <td>7.2%</td></tr>
+    <tr><td>DeepSpeech 0.5.1 (unrolled)</td><td>CER</td><td>6.13%</td><td>43.67%</td>
+      <td>6.52%</td></tr>
+    <tr><td>YoloV3</td><td>mAP(IOU=0.5)</td><td>0.577</td><td>0.563</td>
+      <td>0.574</td></tr>
+    <tr><td>MobileNetV1</td><td>Top-1 Accuracy</td><td>0.7062</td><td>0.694</td>
+      <td>0.6936</td></tr>
+    <tr><td>MobileNetV2</td><td>Top-1 Accuracy</td><td>0.718</td><td>0.7126</td>
+      <td>0.7137</td></tr>
+    <tr><td>MobileBert</td><td>F1(Exact match)</td><td>88.81(81.23)</td><td>2.08(0)</td>
+      <td>88.73(81.15)</td></tr>
+ </table>
+  <figcaption>
+    <b>Table 2</b> Benefits of model quantization with int16 activations
+  </figcaption>
+</figure>
+
 ### Pruning
 
 [Pruning](https://www.tensorflow.org/model_optimization/guide/pruning) works by

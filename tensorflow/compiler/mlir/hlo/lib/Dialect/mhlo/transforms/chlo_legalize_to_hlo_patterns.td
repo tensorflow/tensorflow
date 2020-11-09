@@ -31,7 +31,8 @@ def : Pat<(HLOClient_AcosOp $input),
     (HLO_CompareOp
       $input,
       (HLO_ConstantLike<"-1"> $input),
-      HLO_COMPARISON_DIRECTION_NE
+      HLO_COMPARISON_DIRECTION_NE,
+      (HLO_DEFAULT_COMPARISON_TYPE)
     ),
     (HLO_MulOp
       (HLO_ConstantLike<"2"> $input),
@@ -67,7 +68,8 @@ def : Pat<(HLOClient_SinhOp $input),
     (HLO_CompareOp
       (HLO_AbsOp $input),
       (HLO_ConstantLike<"1"> $input),
-      HLO_COMPARISON_DIRECTION_LT
+      HLO_COMPARISON_DIRECTION_LT,
+      (HLO_DEFAULT_COMPARISON_TYPE)
     ),
     (HLO_DivOp
       (HLO_SubOp

@@ -31,7 +31,6 @@ int main(int argc, char **argv) {
   mlir::registerAllPasses();
   mlir::mhlo::registerAllMhloPasses();
   mlir::lmhlo::registerAllLmhloPasses();
-  mlir::mhlo::registerAllMhloPasses();
 
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);

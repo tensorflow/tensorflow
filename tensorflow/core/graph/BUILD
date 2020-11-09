@@ -64,6 +64,7 @@ filegroup(
         "graph_node_util.h",
         "node_builder.h",
         "tensor_id.h",
+        "types.h",
     ],
 )
 

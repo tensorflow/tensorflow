@@ -101,10 +101,16 @@ message TfDataBottleneckAnalysis {
   string iterator_name = 4;
   // Long name of the bottleneck iterator.
   string iterator_long_name = 5;
+  // Suggestion to resolve the bottleneck.
+  string suggestion = 6;
 }
 
 // TfDataStats of all hosts.
 message CombinedTfDataStats {
+  // Whether it is input bound.
+  bool is_input_bound = 3;
+  // Summary of the analysis.
+  string summary = 4;
   // Bottleneck analysis result.
   TfDataBottleneckAnalysis bottleneck_analysis = 1;
   // TfDataStats per host.

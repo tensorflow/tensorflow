@@ -1344,32 +1344,6 @@ const char *GetTraceEventTypeName(const CuptiTracerEventType &type) {
   }
 }
 
-void AnnotationMap::Add(uint32 device_id, uint32 correlation_id,
-                        const std::string &annotation) {
-  if (annotation.empty()) return;
-  VLOG(3) << "Add annotation: device_id: " << device_id
-          << " correlation_id: " << correlation_id
-          << " annotation: " << annotation;
-  if (device_id >= per_device_map_.size()) return;
-  auto &per_device_map = per_device_map_[device_id];
-  absl::MutexLock lock(&per_device_map.mutex);
-  if (per_device_map.annotations.size() < max_size_) {
-    absl::string_view annotation_str =
-        *per_device_map.annotations.insert(annotation).first;
-    per_device_map.correlation_map.emplace(correlation_id, annotation_str);
-  }
-}
-
-absl::string_view AnnotationMap::LookUp(uint32 device_id,
-                                        uint32 correlation_id) {
-  if (device_id >= per_device_map_.size()) return absl::string_view();
-  auto &per_device_map = per_device_map_[device_id];
-  absl::MutexLock lock(&per_device_map.mutex);
-  auto it = per_device_map.correlation_map.find(correlation_id);
-  return it != per_device_map.correlation_map.end() ? it->second
-                                                    : absl::string_view();
-}
-
 /* static */ CuptiTracer *CuptiTracer::GetCuptiTracerSingleton() {
   static auto *singleton = new CuptiTracer(GetCuptiInterface());
   return singleton;

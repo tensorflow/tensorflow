@@ -26,10 +26,6 @@ load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_version_info_genrule")
 load(
-    "//third_party/mkl:build_defs.bzl",
-    "mkl_deps",
-)
-load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
 )
@@ -703,11 +699,14 @@ tf_cuda_only_cc_test(
     srcs = [
         "gpu_kernel_helper_test.cu.cc",
     ],
+    tags = [
+        "no_cuda_asan",  # TODO(b/171342366): re-enable.
+    ],
     deps = [
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//third_party/eigen3",
-    ] + mkl_deps(),
+    ],
 )
 
 tf_cc_tests(

@@ -447,8 +447,8 @@ func @main(%arg0: tensor<200x100x300xf32>, %arg1: tensor<10x2xi32>) -> tensor<10
 
 // CHECK:  HloModule
 func @main(%arg: tensor<4x2xf32>, %size: tensor<i32>) -> tensor<i32> {
-  %0 = "mhlo.set_dimension_size"(%arg, %size) {dimension = 1 : i32} : (tensor<4x2xf32>, tensor<i32>) -> tensor<4x2xf32>
-  %1 = "mhlo.get_dimension_size"(%0) {dimension = 1 : i32} : (tensor<4x2xf32>) -> tensor<i32>
+  %0 = "mhlo.set_dimension_size"(%arg, %size) {dimension = 1 : i64} : (tensor<4x2xf32>, tensor<i32>) -> tensor<4x2xf32>
+  %1 = "mhlo.get_dimension_size"(%0) {dimension = 1 : i64} : (tensor<4x2xf32>) -> tensor<i32>
   return %1 : tensor<i32>
 }
 
@@ -750,7 +750,7 @@ func @main(%arg0: tensor<10x24x24x64xf32>, %arg1: tensor<10x12x12x64xf32>) -> te
   %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
   %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ( {
   ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):	// no predecessors
-    %2 = "mhlo.compare"(%arg3, %arg4) {comparison_direction = "GE"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %2 = "mhlo.compare"(%arg3, %arg4) {compare_type = "TOTALORDER", comparison_direction = "GE"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%2) : (tensor<i1>) -> ()
   },  {
   ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):	// no predecessors
@@ -764,7 +764,7 @@ func @main(%arg0: tensor<10x24x24x64xf32>, %arg1: tensor<10x12x12x64xf32>) -> te
 }
 
 // CHECK:  %[[SELECT_COMPUTATION:.*]] ([[ARG0:.*]]: f32[], [[ARG1:.*]]: f32[]) -> pred[] {
-// CHECK:  ROOT %[[RESULT:.*]] = pred[] compare(f32[] %[[ARG0]], f32[] %[[ARG1]]), direction=GE
+// CHECK:  ROOT %[[RESULT:.*]] = pred[] compare(f32[] %[[ARG0]], f32[] %[[ARG1]]), direction=GE, type=TOTALORDER
 
 // CHECK:  %[[SCATTER_COMPUTATION:.*]] ([[ARG0:.*]]: f32[], [[ARG1:.*]]: f32[]) -> f32[] {
 // CHECK:  ROOT %[[RESULT:.*]] = f32[] add(f32[] %[[ARG0]], f32[] %[[ARG1]])
@@ -825,7 +825,7 @@ func @main(%arg: tensor<3x4xi32>, %token: !mhlo.token) -> !mhlo.token {
 
 // CHECK:  HloModule
 func @main(%arg: tensor<4x4xf32>, %size: tensor<i32>) -> tensor<4x4xf32> {
-  %0 = "mhlo.set_dimension_size"(%arg, %size) {dimension = 1 : i32} : (tensor<4x4xf32>, tensor<i32>) -> tensor<4x4xf32>
+  %0 = "mhlo.set_dimension_size"(%arg, %size) {dimension = 1 : i64} : (tensor<4x4xf32>, tensor<i32>) -> tensor<4x4xf32>
   return %0 : tensor<4x4xf32>
 }
 
@@ -950,7 +950,7 @@ func @main(%arg0: tensor<4xi1>, %arg1: tensor<4xi1>) -> tensor<4xi1> {
 func @main(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
   %0:2 = "mhlo.sort"(%input0, %input1) ( {
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<i32>):
-    %7 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %7 = "mhlo.compare"(%arg0, %arg1) {compare_type = "FLOAT", comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
   }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>, tensor<16x16xi32>)
   return
@@ -963,6 +963,22 @@ func @main(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
 // CHECK: [[GET0:%.+]] = f32[16,16] get-tuple-element((f32[16,16], s32[16,16]) [[SORT]]), index=0
 // CHECK: ROOT [[GET1:%.+]] = s32[16,16] get-tuple-element((f32[16,16], s32[16,16]) [[SORT]]), index=1
 
+// -----
+
+// CHECK:  HloModule
+func @main(%input0: tensor<16x16xf32>) {
+  %0 = "mhlo.sort"(%input0) ( {
+  ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
+    %7 = "mhlo.compare"(%arg0, %arg1) {compare_type = "FLOAT", comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    "mhlo.return"(%7) : (tensor<i1>) -> ()
+  }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>) -> (tensor<16x16xf32>)
+  return
+}
+
+// CHECK: %[[SORT_CMP:.*]] ([[ARG0:.*]]: f32[], [[ARG1:.*]]: f32[]) -> pred[] {
+// CHECK:   ROOT %[[CMP:.*]] = pred[] compare(f32[] %[[ARG0]], f32[] %[[ARG1]]), direction=GT
+
+// CHECK: ROOT %[[RESULT:.*]] = f32[16,16] sort(f32[16,16] %Arg_0.1), dimensions={1}, is_stable=true, to_apply=%[[SORT_CMP]]
 
 // -----
 

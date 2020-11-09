@@ -43,7 +43,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/buffer_convert.h"
 #include "tensorflow/lite/delegates/gpu/metal/common.h"
 #include "tensorflow/lite/delegates/gpu/metal/compiled_model.h"
-#include "tensorflow/lite/delegates/gpu/metal/environment.h"
+#include "tensorflow/lite/delegates/gpu/metal/device_info.h"
 #include "tensorflow/lite/delegates/gpu/metal/inference_context.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -177,10 +177,7 @@ class Delegate {
     if (options) {
       options_ = *options;
     } else {
-      // Default options.
-      options_.allow_precision_loss = false;
-      options_.enable_quantization = false;
-      options_.wait_type = TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypePassive;
+      options_ = TFLGpuDelegateOptionsDefault();
     }
     metal_device_ = MTLCreateSystemDefaultDevice();
     command_queue_ = [metal_device_ newCommandQueue];
@@ -731,4 +728,13 @@ bool TFLGpuDelegateSetCommandEncoder(
   if (!metal_delegate) return false;
   metal_delegate->SetCommandEncoder(encoder, control_encoder);
   return true;
+}
+
+TFLGpuDelegateOptions TFLGpuDelegateOptionsDefault() {
+  TFLGpuDelegateOptions options = {
+      .allow_precision_loss = false,
+      .wait_type = TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypePassive,
+      .enable_quantization = true,
+  };
+  return options;
 }

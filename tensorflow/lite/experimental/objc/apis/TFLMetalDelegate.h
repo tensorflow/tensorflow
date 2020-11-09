@@ -57,7 +57,7 @@ typedef NS_ENUM(NSUInteger, TFLMetalDelegateThreadWaitType) {
 
 /**
  * Indicates whether the GPU delegate allows execution of an 8-bit quantized model. The default is
- * `false`.
+ * `true`.
  */
 @property(nonatomic, getter=isQuantizationEnabled) BOOL quantizationEnabled;
 

@@ -35,7 +35,7 @@ Worker::Worker(WorkerEnv* env) : env_(env), recent_request_ids_(100000) {
   StatusGroup::ConfigureLogHistory();
 }
 
-void Worker::GetStatusAsync(const GetStatusRequest* request,
+void Worker::GetStatusAsync(CallOptions* opts, const GetStatusRequest* request,
                             GetStatusResponse* response, bool fail_fast,
                             StatusCallback done) {
   const DeviceMgr* dm = env_->device_mgr;

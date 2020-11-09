@@ -197,7 +197,7 @@ class StringLookup(index_lookup.IndexLookup):
         vocabulary=vocabulary,
         invert=invert,
         **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell("V2").set("StringLookup")
+    base_preprocessing_layer.keras_kpl_gauge.get_cell("StringLookup").set(True)
 
   def get_config(self):
     config = {"encoding": self.encoding}
@@ -212,3 +212,8 @@ class StringLookup(index_lookup.IndexLookup):
     # This is required because the MutableHashTable doesn't preserve insertion
     # order, but we rely on the order of the array to assign indices.
     return [x.decode(self.encoding) for _, x in sorted(zip(values, keys))]
+
+  def set_vocabulary(self, vocab):
+    if isinstance(vocab, str):
+      vocab = table_utils.get_vocabulary_from_file(vocab, self.encoding)
+    super().set_vocabulary(vocab)

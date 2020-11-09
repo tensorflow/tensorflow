@@ -2278,6 +2278,7 @@ op {
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_BOOL
+        type: DT_VARIANT
       }
     }
   }
@@ -7569,6 +7570,11 @@ op {
     name: "instance_key"
     type: DT_INT32
   }
+  input_arg {
+    name: "ordering_token"
+    type: DT_RESOURCE
+    number_attr: "Nordering_token"
+  }
   output_arg {
     name: "data"
     type_attr: "T"
@@ -7599,6 +7605,14 @@ op {
     default_value {
       f: 0
     }
+  }
+  attr {
+    name: "Nordering_token"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
   }
   is_stateful: true
 }
@@ -7745,6 +7759,11 @@ op {
     name: "instance_key"
     type: DT_INT32
   }
+  input_arg {
+    name: "ordering_token"
+    type: DT_RESOURCE
+    number_attr: "Nordering_token"
+  }
   output_arg {
     name: "data"
     type_attr: "T"
@@ -7797,6 +7816,14 @@ op {
     default_value {
       f: 0
     }
+  }
+  attr {
+    name: "Nordering_token"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
   }
   is_stateful: true
 }
@@ -41290,6 +41317,35 @@ op {
   }
 }
 op {
+  name: "RiscAdd"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  is_aggregate: true
+  is_commutative: true
+}
+op {
   name: "RngReadAndSkip"
   input_arg {
     name: "resource"
@@ -44612,6 +44668,20 @@ op {
     type: "string"
     default_value {
       s: ""
+    }
+  }
+  attr {
+    name: "hash_valid"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "hash"
+    type: "int"
+    default_value {
+      i: 0
     }
   }
   attr {
@@ -49877,7 +49947,6 @@ op {
       }
     }
   }
-  is_stateful: true
 }
 op {
   name: "StatelessRandomNormal"

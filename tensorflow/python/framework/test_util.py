@@ -108,7 +108,7 @@ except Exception:  # pylint: disable=broad-except
 # Uses the same mechanism as above to selectively enable/disable MLIR
 # compilation.
 def is_mlir_bridge_enabled():
-  return False
+  return None
 
 
 try:
@@ -1977,6 +1977,9 @@ def matmul_without_tf32(a, b, *args, **kwargs):
   If a matmul itself is being tested, or some other op which uses matmul, use
   `run_without_tensor_float_32` instead.
 
+  This also casts complex64 inputs to complex128, since TensorFloat-32 can also
+  be used with complex64
+
   Args:
     a: First input to tf.linalg.matmul
     b: Second input to tf.linalg.matmul
@@ -1989,6 +1992,11 @@ def matmul_without_tf32(a, b, *args, **kwargs):
   if config.tensor_float_32_execution_enabled() and a.dtype == "float32":
     a = math_ops.cast(a, "float64")
     b = math_ops.cast(b, "float64")
+    ret = math_ops.matmul(a, b, *args, **kwargs)
+    return math_ops.cast(ret, a.dtype)
+  elif config.tensor_float_32_execution_enabled() and a.dtype == "complex64":
+    a = math_ops.cast(a, "complex128")
+    b = math_ops.cast(b, "complex128")
     ret = math_ops.matmul(a, b, *args, **kwargs)
     return math_ops.cast(ret, a.dtype)
   else:
@@ -2022,8 +2030,13 @@ class TensorFlowTestCase(googletest.TestCase):
       # disable it here.
       pywrap_tf_session.TF_SetXlaConstantFoldingDisabled(True)
 
+    # Check if the mlir bridge has been explicitly enabled or disabled. If
+    # is_mlir_bridge_enabled() returns None, the user did not explictly enable
+    # or disable the bridge so do not update enable_mlir_bridge.
     if is_mlir_bridge_enabled():
       context.context().enable_mlir_bridge = True
+    elif is_mlir_bridge_enabled() is not None:
+      context.context().enable_mlir_bridge = False
 
     self._threads = []
     self._tempdir = None
@@ -2746,23 +2759,29 @@ class TensorFlowTestCase(googletest.TestCase):
     self.assertAllClose(a, b, rtol=rtol, atol=atol, msg=msg)
 
   @py_func_if_in_function
-  def assertNotAllClose(self, a, b, **kwargs):
+  def assertNotAllClose(self, a, b, rtol=1e-6, atol=1e-6, msg=None):
     """Assert that two numpy arrays, or Tensors, do not have near values.
 
     Args:
-      a: the first value to compare.
-      b: the second value to compare.
-      **kwargs: additional keyword arguments to be passed to the underlying
-        `assertAllClose` call.
+      a: The expected numpy `ndarray`, or anything that can be converted into a
+        numpy `ndarray` (including Tensor), or any arbitrarily nested of
+        structure of these.
+      b: The actual numpy `ndarray`, or anything that can be converted into a
+        numpy `ndarray` (including Tensor), or any arbitrarily nested of
+        structure of these.
+      rtol: relative tolerance.
+      atol: absolute tolerance.
+      msg: Optional message to report on failure.
 
     Raises:
       AssertionError: If `a` and `b` are unexpectedly close at all elements.
     """
     try:
-      self.assertAllClose(a, b, **kwargs)
+      self.assertAllClose(a, b,  rtol=rtol, atol=atol, msg=msg)
     except AssertionError:
       return
-    raise AssertionError("The two values are close at all elements")
+    msg = msg or ""
+    raise AssertionError("The two values are close at all elements. %s" % msg)
 
   @py_func_if_in_function
   def assertAllEqual(self, a, b, msg=None):

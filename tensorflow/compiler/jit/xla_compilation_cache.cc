@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <numeric>
 
+#include "tensorflow/compiler/mlir/mlir_bridge_rollout_policy.h"
 #include "absl/base/call_once.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -173,7 +174,8 @@ Status XlaCompilationCache::BuildExecutable(
   build_options.set_result_layout(result.xla_output_shape);
   build_options.set_device_allocator(options.device_allocator);
   build_options.set_alias_passthrough_params(options.alias_passthrough_params);
-
+  build_options.mutable_debug_options()->set_xla_detailed_logging(
+      options.detailed_logging);
   TF_ASSIGN_OR_RETURN(
       auto executables,
       client_->Compile(*result.computation, argument_layouts, build_options));
@@ -283,14 +285,12 @@ Status XlaCompilationCache::CompileSingleOp(
     const NodeDef& node_def = ctx->op_kernel().def();
     TF_ASSIGN_OR_RETURN(auto graph, CreateGraph(node_def, args, result_dtypes));
 
-    // TODO(b/155596779): Support TensorList args.
-    bool has_tensor_list_arg =
-        absl::c_any_of(args, [](const XlaCompiler::Argument arg) {
-          return arg.kind == XlaCompiler::Argument::kTensorList;
-        });
     const ConfigProto* config = ctx->function_library()->config_proto();
-    bool use_mlir = config && config->experimental().enable_mlir_bridge() &&
-                    !has_tensor_list_arg;
+    // TODO(b/171039585): Support tf.VarIsInitializedOp using MLIR.
+    bool use_mlir = config &&
+                    GetMlirBridgeRolloutPolicy(*config) ==
+                        MlirBridgeRolloutPolicy::kEnabledByUser &&
+                    node_def.op() != "VarIsInitializedOp";
 #ifdef LIBTPU_ON_GCE
     if (use_mlir) {
       LOG(WARNING) << "MLIR is not supported in this environment.";

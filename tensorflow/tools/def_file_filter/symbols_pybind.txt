@@ -222,6 +222,7 @@ tensorflow::EagerContext::WaitForAndCloseRemoteContexts
 
 [mlir] # mlir
 tensorflow::ExperimentalRunPassPipeline
+tensorflow::ExperimentalConvertSavedModelV1ToMlirLite
 tensorflow::ExperimentalConvertSavedModelV1ToMlir
 tensorflow::ExperimentalConvertSavedModelToMlir
 tensorflow::ImportGraphDef
@@ -393,6 +394,13 @@ tensorflow::tensor_float_32_execution_enabled
 
 [get_compiler_ir] # tfe
 tensorflow::GetCompilerIr
+stream_executor::port::internal_statusor::Helper::Crash
 
 [tensor_handle] # tfe
 tensorflow::TensorHandle::Tensor
+
+[python_api_dispatcher] # python_api_dispatcher
+tensorflow::PythonAPIDispatcher
+
+[python_tensor_converter] # python_tensor_converter
+tensorflow::PythonTensorConverter

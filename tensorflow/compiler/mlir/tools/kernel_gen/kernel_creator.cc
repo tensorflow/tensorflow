@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToGPU/SCFToGPUPass.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToStandard/SCFToStandard.h"  // from @llvm-project
+#include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/ParallelLoopMapper.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
@@ -36,12 +37,14 @@ limitations under the License.
 #include "mlir/Dialect/SCF/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/Transforms.h"  // from @llvm-project
+#include "mlir/Dialect/Shape/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Bufferize.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
@@ -67,34 +70,38 @@ constexpr llvm::StringRef kGpuBinaryAttrName = "gpu.binary";
 
 Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
                     llvm::ArrayRef<uint32_t> tile_sizes,
-                    llvm::ArrayRef<uint32_t> unroll_factors) {
+                    llvm::ArrayRef<uint32_t> unroll_factors,
+                    bool embed_memref_prints) {
   mlir::PassManager pm(module.getContext());
   applyTensorflowAndCLOptions(pm);
 
   if (gpu_binary_only) {
-    pm.addPass(mlir::mhlo::createLegalizeTFPass(
+    pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass(
         /*allow_partial_conversion=*/false, /*legalize_chlo=*/true));
     pm.addNestedPass<mlir::FuncOp>(
         mlir::kernel_gen::transforms::CreateMaterializeBroadcastsPass());
     pm.addNestedPass<mlir::FuncOp>(
         mlir::kernel_gen::transforms::CreateUnfuseBatchNormPass());
-    pm.addPass(mlir::mhlo::createLegalizeToLhloPass(
-        /*results_escape_functions=*/true));
+    pm.addPass(mlir::mhlo::createLegalizeToLhloPass());
     // Moving `AllocOp`s and inserting missing `DeallocOp`s
-    pm.addPass(::mlir::createBufferPlacementPass());
+    pm.addNestedPass<mlir::FuncOp>(::mlir::createBufferHoistingPass());
+    pm.addNestedPass<mlir::FuncOp>(::mlir::createBufferDeallocationPass());
     pm.addNestedPass<mlir::FuncOp>(mlir::createCopyRemovalPass());
+    pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(mlir::kernel_gen::transforms::CreateShapeToDescriptorsPass());
   } else {
-    pm.addPass(mlir::mhlo::createLegalizeTFPass(
+    pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass(
         /*allow_partial_conversion=*/false, /*legalize_chlo=*/false));
-    pm.addPass(mlir::mhlo::createChloLegalizeToHloPass());
-    pm.addPass(mlir::createTransformUnrankedHloPass());
+    pm.addNestedPass<mlir::FuncOp>(mlir::createTransformUnrankedHloPass());
+    pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createChloLegalizeToHloPass());
+    pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
     pm.addPass(mlir::kernel_gen::transforms::CreateShapeToDescriptorsPass());
     // Clean up the IR created above. In particular, operations on descriptors
     // are simplified here.
     pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(mlir::kernel_gen::transforms::CreateBufferizePass());
-    pm.addPass(mlir::kernel_gen::transforms::CreateParallelLoopsToSequential());
+    pm.addNestedPass<mlir::FuncOp>(
+        mlir::kernel_gen::transforms::CreateParallelLoopsToSequential());
   }
 
   // Clean up the IR for further processing.
@@ -114,36 +121,41 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
     tiling_for_unrolling.append(tile_sizes.begin(), tile_sizes.end());
   }
   // Transform LHLO operations to LinAlg.
-  pm.addPass(::mlir::lmhlo::createLegalizeLhloToLinalgPass());
+  pm.addNestedPass<mlir::FuncOp>(
+      ::mlir::lmhlo::createLegalizeLhloToLinalgPass());
   // Fuse linalg operations.
-  pm.addPass(::mlir::lmhlo::createLhloFuseLinalgPass(
+  pm.addNestedPass<mlir::FuncOp>(::mlir::lmhlo::createLhloFuseLinalgPass(
       /*use_parallel_loops=*/true, tiling_for_unrolling));
   // Transform the Linalg operations inside of the loop nest into parallel
   // loops.
-  pm.addPass(::mlir::createConvertLinalgToParallelLoopsPass());
+  pm.addNestedPass<mlir::FuncOp>(
+      ::mlir::createConvertLinalgToParallelLoopsPass());
   // Canonicalize the code to simplify index computations. This is needed so
   // that loop bounds have the same value.
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
   // Fuse the inner-most loops.
-  pm.addPass(xla::mlir_gpu::createFuseInnerParallelLoopsPass());
+  pm.addNestedPass<mlir::FuncOp>(
+      xla::mlir_gpu::createFuseInnerParallelLoopsPass());
   // Run CSE to ensure that loads and stores to the same subview get
   // recognized as such.
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
   // Forward stores to buffers to loads.
-  pm.addPass(xla::mlir_gpu::createStoreForwardingPass());
+  pm.addNestedPass<mlir::FuncOp>(xla::mlir_gpu::createStoreForwardingPass());
   // Remove now unused temporary buffers.
-  pm.addPass(xla::mlir_gpu::createDeadTempBufferRemovalPass());
+  pm.addNestedPass<mlir::FuncOp>(
+      xla::mlir_gpu::createDeadTempBufferRemovalPass());
   if (!unroll_factors.empty()) {
-    pm.addPass(::mlir::createParallelLoopTilingPass(as_int64));
+    pm.addNestedPass<mlir::FuncOp>(
+        ::mlir::createParallelLoopTilingPass(as_int64));
   }
   // Some basic cleanup.
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
   // Greedily map the remaining loop to GPU hardware dimensions.
-  pm.addPass(xla::mlir_gpu::createMapParallelLoopsPass());
+  pm.addNestedPass<::mlir::FuncOp>(xla::mlir_gpu::createMapParallelLoopsPass());
   // Apply the mapping.
-  pm.addPass(mlir::createParallelLoopToGpuPass());
+  pm.addNestedPass<::mlir::FuncOp>(mlir::createParallelLoopToGpuPass());
 
   // Embed TF Framework ops.
   if (!gpu_binary_only) {
@@ -166,9 +178,19 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
 
   if (gpu_binary_only) {
     // Make kernel signature deterministic so that we can call it externally.
-    pm.addPass(xla::mlir_gpu::createRewriteKernelSignaturePass());
+    pm.addNestedPass<::mlir::FuncOp>(
+        xla::mlir_gpu::createRewriteKernelSignaturePass());
   }
   pm.addPass(::mlir::createLowerAffinePass());
+
+  // Constraints are removed as late as possible and before lowering to CFG.
+  pm.addNestedPass<::mlir::FuncOp>(::mlir::createConvertShapeConstraintsPass());
+  if (embed_memref_prints) {
+    pm.addNestedPass<::mlir::FuncOp>(
+        mlir::kernel_gen::transforms::CreateEmbedMemRefPrintsPass());
+  }
+  pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
+
   pm.addPass(::mlir::createLowerToCFGPass());
   if (failed(pm.run(module))) {
     return InternalError("Lowering to GPU kernels failed.");
@@ -210,11 +232,12 @@ StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
     mlir::MLIRContext& context, llvm::StringRef tf_code, bool gpu_binary_only,
     llvm::ArrayRef<std::string> architectures,
     llvm::ArrayRef<uint32_t> tile_sizes, llvm::ArrayRef<uint32_t> same_shape,
-    llvm::ArrayRef<uint32_t> unroll_factors, bool generate_fatbin) {
+    llvm::ArrayRef<uint32_t> unroll_factors, bool embed_memref_prints,
+    bool generate_fatbin) {
   mlir::RegisterAllTensorFlowDialects(context.getDialectRegistry());
   mlir::OwningModuleRef module = mlir::parseSourceString(tf_code, &context);
-  TF_RETURN_IF_ERROR(
-      LowerTFtoGPU(module.get(), gpu_binary_only, tile_sizes, unroll_factors));
+  TF_RETURN_IF_ERROR(LowerTFtoGPU(module.get(), gpu_binary_only, tile_sizes,
+                                  unroll_factors, embed_memref_prints));
 #if !defined(TENSORFLOW_USE_ROCM) && !defined(GOOGLE_CUDA)
   return InternalError(
       "Neither TENSORFLOW_USE_ROCM nor GOOGLE_CUDA are defined."

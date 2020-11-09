@@ -22,8 +22,6 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
-#include "tensorflow/lite/delegates/gpu/cl/precision.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -241,7 +239,7 @@ void ConvPowerVR::GenerateCode(const DeviceInfo& device_info) {
   if (definition_.src_tensors[0].HasAxis(Axis::DEPTH)) {
     kernel_is_trivial = kernel_is_trivial & conv_params_.z_kernel_is_1;
   }
-  if (device_info.IsAdreno3xx() &&
+  if (device_info.IsAdreno() && device_info.adreno_info.IsAdreno3xx() &&
       definition_.precision == CalculationsPrecision::F16 &&
       kernel_is_trivial) {
     compiler_options_.push_back(CompilerOptions::ADRENO_FULL_SIMD_LINE);
@@ -327,7 +325,7 @@ std::string ConvPowerVR::GenerateConv(const DeviceInfo& device_info,
                                       bool stride_correction,
                                       const ConvParams& conv_params) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
+  src_desc.SetAddressMode(AddressMode::kZero);
   if (op_def.IsBatchSupported()) {
     src_desc.SetStateVar("BatchedWidth", "true");
   }
@@ -1188,7 +1186,7 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     conv_params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
   } else if (device_info.IsAdreno()) {
     conv_params.block_size = int4(2, 2, 1, 2);
-    if (device_info.IsAdreno3xx()) {
+    if (device_info.adreno_info.IsAdreno3xx()) {
       if (definition.precision == CalculationsPrecision::F16) {
         conv_params.block_size = int4(2, 2, 1, 2);
       } else if (definition.precision == CalculationsPrecision::F32_F16) {

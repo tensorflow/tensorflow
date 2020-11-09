@@ -33,7 +33,7 @@ limitations under the License.
 
 PYBIND11_MODULE(tfr_wrapper, m) {
   m.def("verify", [](std::string input) {
-    mlir::MLIRContext ctx(/*loadAllDialects=*/true);
+    mlir::MLIRContext ctx;
     auto& registry = ctx.getDialectRegistry();
     registry.insert<mlir::scf::SCFDialect, mlir::TF::TensorFlowDialect,
                     mlir::StandardOpsDialect, mlir::shape::ShapeDialect,

@@ -1261,7 +1261,10 @@ class _EagerTensorBase(Tensor):
 
 # This call creates an EagerTensor class, as a subclass of _EagerTensorBase, and
 # registers it with the current module.
-EagerTensor = pywrap_tfe.TFE_Py_InitEagerTensor(_EagerTensorBase)
+# It is exposed as an __internal__ api for now (b/171081052), though we
+# expect it to be eventually covered by tf Tensor types and typing.
+EagerTensor = tf_export("__internal__.EagerTensor", v1=[])(
+    pywrap_tfe.TFE_Py_InitEagerTensor(_EagerTensorBase))
 
 
 @tf_export(v1=["convert_to_tensor"])

@@ -132,7 +132,7 @@ bool NotFromQuantOpOrSameQuantType(mlir::Value val, mlir::TypeAttr qtype_attr) {
       llvm::dyn_cast_or_null<mlir::TFL::QuantizeOp>(val_defn_op);
   if (!q_op) return true;
 
-  // Ignore shape details - weŕe really only trying to
+  // Ignore shape details - we're really only trying to
   // check if quantization is the same.
   auto stripped_src_qtype = GetShapeStrippedType(q_op.qtypeAttr());
   auto stripped_qtype = GetShapeStrippedType(qtype_attr);

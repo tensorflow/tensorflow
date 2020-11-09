@@ -19,7 +19,6 @@ limitations under the License.
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/rewriters.h"
@@ -53,16 +52,15 @@ class TFKernelToLLVMPass : public TFKernelToLLVMPassBase<TFKernelToLLVMPass> {
     tf_framework::PopulateTFFrameworkToLLVMConversionPatterns(&type_converter,
                                                               &patterns);
     populateGpuToLLVMConversionPatterns(type_converter, patterns, "gpu.binary");
-    lmhlo::PopulateLhloToLLVMConversionPatterns(&type_converter, &patterns);
 
     // Set target.
     ConversionTarget target(getContext());
     target.addLegalDialect<LLVM::LLVMDialect>();
-    target
-        .addIllegalDialect<gpu::GPUDialect, tf_framework::TFFrameworkDialect>();
+    target.addIllegalDialect<gpu::GPUDialect, StandardOpsDialect,
+                             tf_framework::TFFrameworkDialect>();
     target.addIllegalOp<LLVM::DialectCastOp>();
 
-    if (failed(applyPartialConversion(m, target, patterns))) {
+    if (failed(applyPartialConversion(m, target, std::move(patterns)))) {
       signalPassFailure();
     }
   }

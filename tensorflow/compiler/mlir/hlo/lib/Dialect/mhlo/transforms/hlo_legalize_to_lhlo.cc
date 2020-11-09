@@ -42,7 +42,7 @@ namespace mhlo {
 namespace {
 
 template <typename T>
-using BaseOpConversion = BufferizeOpConversionPattern<T>;
+using BaseOpConversion = OpConversionPattern<T>;
 
 Value InsertDynamicAllocAndDealloc(Location loc, Value result,
                                    Value shape_operand,
@@ -206,7 +206,7 @@ struct HloToLhloDynamicBroadcastInDimOpConverter
   // Inserts dynamic memref to change the layout of the memref to put 0-stride
   // and size of the target dimension if size-1 dimension expansion is
   // necessary.
-  lmhlo::DynamicMemRefCastOp InsertDynamicMemrefCastOp(
+  MemRefReinterpretCastOp InsertDynamicMemrefCastOp(
       mhlo::DynamicBroadcastInDimOp op, Value operand, OpBuilder* b) const {
     auto loc = op.getLoc();
     auto operand_type = operand.getType().cast<MemRefType>();
@@ -259,8 +259,13 @@ struct HloToLhloDynamicBroadcastInDimOpConverter
         makeStridedLinearLayoutMap(dynamic_layout,
                                    /*offset=*/0, b->getContext()));
 
-    auto transformed_operand = b->create<lmhlo::DynamicMemRefCastOp>(
-        loc, type_erased_memref_type, operand, sizes, strides);
+    SmallVector<int64_t, 2> static_sizes(sizes.size(),
+                                         ShapedType::kDynamicSize);
+    SmallVector<int64_t, 2> static_strides(strides.size(),
+                                           ShapedType::kDynamicStrideOrOffset);
+    auto transformed_operand = b->create<MemRefReinterpretCastOp>(
+        loc, type_erased_memref_type, operand, /*offset=*/0, static_sizes,
+        static_strides, llvm::None, sizes, strides);
     return transformed_operand;
   }
 };
@@ -284,7 +289,7 @@ struct HloToLhloDynamicReshapeConverter
       return failure();
     }
     mhlo::DynamicReshapeOp::Adaptor adaptor(operands);
-    rewriter.replaceOpWithNewOp<lmhlo::ReshapeMemRefCastOp>(
+    rewriter.replaceOpWithNewOp<MemRefReshapeOp>(
         op, result_type, adaptor.operand(), adaptor.output_shape());
     return success();
   }
@@ -504,12 +509,7 @@ struct HloLegalizeToLhlo
 
  public:
   HloLegalizeToLhlo() = default;
-  HloLegalizeToLhlo(const HloLegalizeToLhlo& o) {
-    this->results_escape_function = o.results_escape_function.getValue();
-  }
-  explicit HloLegalizeToLhlo(bool results_escape_function) {
-    this->results_escape_function.setValue(results_escape_function);
-  }
+  HloLegalizeToLhlo(const HloLegalizeToLhlo& o) {}
 
   void runOnOperation() override {
     OwningRewritePatternList patterns;
@@ -541,33 +541,17 @@ struct HloLegalizeToLhlo
       return std::all_of(op.operand_type_begin(), op.operand_type_end(),
                          isMemRefType);
     });
-    target.addDynamicallyLegalOp<shape::AssumingOp>([&](shape::AssumingOp op) {
-      return std::all_of(op.result_type_begin(), op.result_type_end(),
-                         isMemRefType);
-    });
-
-    auto kind = results_escape_function
-                    ? BufferizeTypeConverter::KeepAsFunctionResult
-                    : BufferizeTypeConverter::AppendToArgumentsList;
-    converter.setResultConversionKind<UnrankedTensorType, UnrankedMemRefType>(
-        kind);
-    converter.setResultConversionKind<RankedTensorType, MemRefType>(kind);
 
     populateHLOToLHLOConversionPattern(&context, &converter, &patterns);
     populateWithBufferizeOpConversionPatterns<mlir::ReturnOp, mlir::ReturnOp,
                                               lmhlo::CopyOp>(
         &context, converter, patterns);
-    populateShapeTypeConversionPatterns(&context, converter, patterns);
-    if (failed(applyPartialConversion(getOperation(), target, patterns)))
+    populateShapeStructuralTypeConversionsAndLegality(&context, converter,
+                                                      patterns, target);
+    if (failed(applyPartialConversion(getOperation(), target,
+                                      std::move(patterns))))
       signalPassFailure();
   }
-
- private:
-  Option<bool> results_escape_function{
-      *this, "results-escape-function",
-      llvm::cl::desc(
-          "Allocate the results of functions within the functions body"),
-      llvm::cl::init(false)};
 };
 }  // namespace
 
@@ -623,13 +607,12 @@ void populateHLOToLHLOConversionPattern(MLIRContext* context,
       HloToLhloReturnOpConverter,
       HloToLhloTensorLoadOpConverter,
       HloToLhloTensorStoreOpConverter
-  >(context, *converter);
+  >(context);
   // clang-format on
 }
 
-std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass(
-    bool results_escape_function) {
-  return std::make_unique<HloLegalizeToLhlo>(results_escape_function);
+std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass() {
+  return std::make_unique<HloLegalizeToLhlo>();
 }
 
 }  // namespace mhlo

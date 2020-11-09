@@ -25,6 +25,8 @@ BackwardFunction* ExpRegisterer(const ForwardOperation& op);
 BackwardFunction* MatMulRegisterer(const ForwardOperation& op);
 BackwardFunction* SqrtRegisterer(const ForwardOperation& op);
 BackwardFunction* NegRegisterer(const ForwardOperation& op);
+BackwardFunction* SubRegisterer(const ForwardOperation& op);
+BackwardFunction* MulRegisterer(const ForwardOperation& op);
 
 }  // namespace gradients
 }  // namespace tensorflow

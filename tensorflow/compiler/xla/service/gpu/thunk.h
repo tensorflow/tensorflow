@@ -108,6 +108,8 @@ class Thunk {
     std::vector<std::function<void()>>* deferred_host_callbacks;  // never null
     const std::vector<GlobalDeviceId>* gpu_global_device_ids;     // may be null
     const NcclUniqueIdCallback* nccl_unique_id_callback;          // may be null
+
+    StatusOr<GlobalDeviceId> GetGlobalDeviceId() const;
   };
 
   // Execute the kernel for the thunk on the given stream. This method must be

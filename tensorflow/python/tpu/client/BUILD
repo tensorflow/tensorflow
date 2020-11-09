@@ -43,7 +43,6 @@ tf_py_test(
     tags = [
         "no_oss_py2",
     ],
-    tfrt_enabled = True,
     deps = [
         ":client",
         "//tensorflow/python:client_testlib",

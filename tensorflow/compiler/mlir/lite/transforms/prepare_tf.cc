@@ -46,12 +46,12 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
@@ -82,8 +82,10 @@ class PrepareTFPass : public PassWrapper<PrepareTFPass, FunctionPass> {
  public:
   PrepareTFPass() = default;
   PrepareTFPass(const PrepareTFPass &) {}
-  explicit PrepareTFPass(bool unfold_batch_matmul) {
+  explicit PrepareTFPass(bool unfold_batch_matmul,
+                         bool allow_bf16_type_legalization) {
     unfold_batch_matmul_ = unfold_batch_matmul;
+    allow_bf16_type_legalization_ = allow_bf16_type_legalization;
   }
   void runOnFunction() override;
 
@@ -97,6 +99,10 @@ class PrepareTFPass : public PassWrapper<PrepareTFPass, FunctionPass> {
       *this, "tfl-unfold-batch-matmul",
       llvm::cl::desc("Unfold BatchMatMul into individual MatMul ops."),
       llvm::cl::init(true)};
+
+  Option<bool> allow_bf16_type_legalization_{
+      *this, "tfl-allow-bf16-type-legalization",
+      llvm::cl::desc("Allow bf16 type legalization."), llvm::cl::init(false)};
 };
 
 template <class TFFakeQuantOp>
@@ -258,6 +264,15 @@ using PreparePerTensorFakeQuantWithMinMaxArgs =
         TF::FakeQuantWithMinMaxArgsOp, /*PerAxis=*/false,
         FetchMinMaxAttrs<TF::FakeQuantWithMinMaxArgsOp>>;
 
+// Transient state for preserving data from match to rewrite
+struct ConvertTFConvOpMatchState {
+  IntegerAttr dilation_height_factor;
+  IntegerAttr dilation_width_factor;
+  StringAttr padding;
+  IntegerAttr stride_height;
+  IntegerAttr stride_width;
+};
+
 // Templated class for declaring a converter from some TensorFlow convolution
 // op into its counterpart in TensorFlow Lite.
 //
@@ -273,19 +288,12 @@ using PreparePerTensorFakeQuantWithMinMaxArgs =
 //
 //  int64_t getBiasDim(ArrayRef<int64_t> filterShape) const;
 template <typename ConcreteType, typename TFConvOpType>
-struct ConvertTFConvOp : public RewritePattern {
-  // Transient state for preserving data from match to rewrite
-  struct ConvertTFConvOpMatchState {
-    IntegerAttr dilation_height_factor;
-    IntegerAttr dilation_width_factor;
-    StringAttr padding;
-    IntegerAttr stride_height;
-    IntegerAttr stride_width;
-  };
-
-  ConvertTFConvOp(MLIRContext *context)
+class ConvertTFConvOp : public RewritePattern {
+ public:
+  ConvertTFConvOp(MLIRContext *context, bool allow_bf16_type_legalization)
       : RewritePattern(TFConvOpType::getOperationName(), 1, context),
-        intAttrOne(Builder(context).getI32IntegerAttr(1)) {}
+        intAttrOne(Builder(context).getI32IntegerAttr(1)),
+        allow_bf16_type_legalization_(allow_bf16_type_legalization) {}
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
@@ -301,8 +309,12 @@ struct ConvertTFConvOp : public RewritePattern {
 
     TFConvOpType tf_op = cast<TFConvOpType>(op);
 
-    if (!TFTypeIsFloatTensor(tf_op.input()) || !TFDataFormatIsNHWC(op))
+    if (!TFTypeIsFloat32Tensor(tf_op.input()) &&
+        !(allow_bf16_type_legalization_ &&
+          TFTypeIsBFloat16Tensor(tf_op.input())))
       return failure();
+
+    if (!TFDataFormatIsNHWC(op)) return failure();
 
     IntegerAttr height, width;
     if (!TFIntListIs1XY1(op, "strides", &height, &width)) return failure();
@@ -328,7 +340,9 @@ struct ConvertTFConvOp : public RewritePattern {
     // tensor, for setting depth_multiplier attribute, etc.).
     auto filter = tf_op.filter();
     auto filter_type = filter.getType().template dyn_cast<RankedTensorType>();
-    if (!filter_type || filter_type.getRank() != 4) return failure();
+    if (!filter_type || filter_type.getRank() != 4 ||
+        !filter_type.hasStaticShape())
+      return failure();
 
     // TensorFlow convolution op only has two inputs, while the TFLite one has
     // three, with the bias vector marked as optional. However, TOCO has a
@@ -357,13 +371,17 @@ struct ConvertTFConvOp : public RewritePattern {
   }
 
   const IntegerAttr intAttrOne;
+
+ private:
+  bool allow_bf16_type_legalization_;
 };
 
 class ConvertTFConv2D : public ConvertTFConvOp<ConvertTFConv2D, TF::Conv2DOp> {
  public:
   using BaseType = ConvertTFConvOp<ConvertTFConv2D, TF::Conv2DOp>;
 
-  ConvertTFConv2D(MLIRContext *context) : BaseType(context) {}
+  ConvertTFConv2D(MLIRContext *context, bool allow_bf16_type_legalization)
+      : BaseType(context, allow_bf16_type_legalization) {}
 
   int64_t getBiasDim(ArrayRef<int64_t> filterShape) const {
     return filterShape.back();
@@ -419,7 +437,9 @@ class ConvertTFDepthwiseConv2dNative
   using BaseType = ConvertTFConvOp<ConvertTFDepthwiseConv2dNative,
                                    TF::DepthwiseConv2dNativeOp>;
 
-  ConvertTFDepthwiseConv2dNative(MLIRContext *context) : BaseType(context) {}
+  ConvertTFDepthwiseConv2dNative(MLIRContext *context,
+                                 bool allow_bf16_type_legalization)
+      : BaseType(context, allow_bf16_type_legalization) {}
 
   int64_t getBiasDim(ArrayRef<int64_t> filterShape) const {
     return filterShape[2] * filterShape[3];
@@ -714,9 +734,9 @@ struct ConvertTFBroadcastTo : public RewritePattern {
 
     // Allow lowering when low dimension inputs are given and its type is F32 or
     // I32.
-    if (!((output_type.hasRank() && output_type.getRank() <= 5) ||
+    if (!((output_type.hasRank() && output_type.getRank() <= 4) ||
           (shape_type.hasStaticShape() && shape_type.getRank() == 1 &&
-           shape_type.getDimSize(0) <= 5)))
+           shape_type.getDimSize(0) <= 4)))
       return failure();
 
     if (!(element_type.isa<BFloat16Type, Float32Type>() ||
@@ -813,6 +833,9 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
     offset = fused_batch_norm_op.getODSOperands(2);
     mean = fused_batch_norm_op.getODSOperands(3);
     variance = fused_batch_norm_op.getODSOperands(4);
+
+    if (!TFTypeIsFloat32Tensor(fused_batch_norm_op.x())) return failure();
+
     {
       epsilon = fused_batch_norm_op.getAttrOfType<::mlir::FloatAttr>("epsilon");
       if (!epsilon)
@@ -1045,7 +1068,7 @@ LogicalResult ConvertTf2XlaOps(FuncOp func, MLIRContext *context) {
   TF::PopulateLegalizeHloToTfPatterns(&patterns, context);
   mhlo::GatherOp::getCanonicalizationPatterns(patterns, context);
 
-  return applyPartialConversion(func, target, patterns);
+  return applyPartialConversion(func, target, std::move(patterns));
 }
 
 // Convert rfft to rfft2d.
@@ -1145,7 +1168,7 @@ struct ConvertRfftToRfft2d : public RewritePattern {
 };
 
 void PrepareTFPass::runOnFunction() {
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns, phase_2_patterns;
   auto func = getFunction();
   MLIRContext *ctx = &getContext();
 
@@ -1183,28 +1206,31 @@ void PrepareTFPass::runOnFunction() {
   // This will allow optimizing any TF_Mul->TF_Conv in the graph
   // and any expanded from FusedBatchNorm. We need to do this
   // before converting TF_Conv to TFL_Conv
-  applyPatternsAndFoldGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   // Load the generated pattern again, so new quantization pass-through
   // will be applied.
-  patterns.clear();
-  TFL::populateWithGenerated(ctx, patterns);
+  TFL::populateWithGenerated(ctx, phase_2_patterns);
   if (unfold_batch_matmul_) {
-    patterns.insert<TF::ConvertTFBatchMatMulOp<TF::BatchMatMulOp>,
-                    TF::ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>>(ctx);
+    phase_2_patterns.insert<TF::ConvertTFBatchMatMulOp<TF::BatchMatMulOp>,
+                            TF::ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>>(
+        ctx);
   }
-  patterns.insert<TF::ConvertTFEinsumOp, ConvertTFBroadcastTo, ConvertTFConv2D,
-                  ConvertTFDepthwiseConv2dNative, ConvertTFStridedSlice,
-                  ConvertRfftToRfft2d>(ctx);
-  applyPatternsAndFoldGreedily(func, patterns);
+  phase_2_patterns.insert<TF::ConvertTFEinsumOp, ConvertTFBroadcastTo,
+                          ConvertTFStridedSlice, ConvertRfftToRfft2d>(ctx);
+  phase_2_patterns.insert<ConvertTFConv2D, ConvertTFDepthwiseConv2dNative>(
+      ctx, allow_bf16_type_legalization_);
+
+  applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
 }
 
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
 std::unique_ptr<OperationPass<FuncOp>> CreatePrepareTFPass(
-    bool unfold_batch_matmul) {
-  return std::make_unique<PrepareTFPass>(unfold_batch_matmul);
+    bool unfold_batch_matmul, bool allow_bf16_type_legalization) {
+  return std::make_unique<PrepareTFPass>(unfold_batch_matmul,
+                                         allow_bf16_type_legalization);
 }
 
 static PassRegistration<PrepareTFPass> pass(

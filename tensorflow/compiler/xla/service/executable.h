@@ -232,6 +232,10 @@ class ExecutionOutput {
 // interface that is used for launching compiled programs across platforms.
 class Executable {
  public:
+  explicit Executable(std::shared_ptr<HloModule> hlo_module)
+      : hlo_module_(std::move(hlo_module)) {}
+
+  // TODO(b/172012028): Remove this constructor.
   explicit Executable(
       std::shared_ptr<HloModule> hlo_module,
       std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,

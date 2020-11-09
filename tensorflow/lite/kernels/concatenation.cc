@@ -100,6 +100,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
   }
 
+  if (input_type == kTfLiteInt16) {
+    // Make sure that all Int16 inputs have a null zero-point.
+    for (int i = 0; i < node->inputs->size; ++i) {
+      const TfLiteTensor* t = GetInput(context, node, i);
+      TF_LITE_ENSURE_EQ(context, t->params.zero_point, 0);
+    }
+    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+  }
+
   return context->ResizeTensor(context, output, output_size);
 }
 

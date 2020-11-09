@@ -481,8 +481,8 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertIs(weak_x(), None)
     self.assertIs(weak_y(), None)
 
-  @test_util.disable_tfrt('TFE_ContextGetExecutorForThread not implemented '
-                          'b/156188669')
+  @test_util.disable_tfrt(
+      'b/153697193: tfrt cannot decode python stacktrace yet')
   def testAsyncExceptionStackTrace(self):
     config.set_synchronous_execution(False)
 

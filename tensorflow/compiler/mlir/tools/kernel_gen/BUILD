@@ -77,6 +77,8 @@ cc_library(
         "@llvm-project//mlir:SCFToGPUPass",
         "@llvm-project//mlir:SCFToStandard",
         "@llvm-project//mlir:SCFTransforms",
+        "@llvm-project//mlir:ShapeToStandard",
+        "@llvm-project//mlir:ShapeTransforms",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
@@ -85,7 +87,10 @@ cc_library(
 
 tf_cc_binary(
     name = "tf_to_gpu_binary",
-    srcs = ["tf_to_gpu_binary.cc"],
+    srcs = [
+        "crash_handler.h",
+        "tf_to_gpu_binary.cc",
+    ],
     visibility = [
         "//tensorflow/compiler/mlir/tools/kernel_gen/tests/tf_to_gpu_binary:__pkg__",
         "//tensorflow/core/kernels/mlir_generated:__pkg__",
@@ -95,6 +100,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
