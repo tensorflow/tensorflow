@@ -209,27 +209,27 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   data->output_zero_point = output->params.zero_point;
 
   if (data->is_mli_applicable) {
-    data->mli_in = reinterpret_cast<mli_tensor*>(
+    data->mli_in = static_cast<mli_tensor*>(
         context->AllocatePersistentBuffer(context, sizeof(mli_tensor)));
-    data->mli_weights = reinterpret_cast<mli_tensor*>(
+    data->mli_weights = static_cast<mli_tensor*>(
         context->AllocatePersistentBuffer(context, sizeof(mli_tensor)));
-    data->mli_bias = reinterpret_cast<mli_tensor*>(
+    data->mli_bias = static_cast<mli_tensor*>(
         context->AllocatePersistentBuffer(context, sizeof(mli_tensor)));
-    data->mli_out = reinterpret_cast<mli_tensor*>(
+    data->mli_out = static_cast<mli_tensor*>(
         context->AllocatePersistentBuffer(context, sizeof(mli_tensor)));
-    data->cfg = reinterpret_cast<mli_conv2d_cfg*>(
+    data->cfg = static_cast<mli_conv2d_cfg*>(
         context->AllocatePersistentBuffer(context, sizeof(mli_conv2d_cfg)));
 
     // reuse space allocated for OpData parameters
     data->mli_weights->el_params.asym.scale.pi32 =
-        (int32_t*)data->per_channel_output_multiplier;
+        static_cast<int32_t*>(data->per_channel_output_multiplier);
     data->mli_bias->el_params.asym.scale.pi32 =
-        (int32_t*)data->per_channel_output_shift;
+        static_cast<int32_t*>(data->per_channel_output_shift);
 
     data->mli_weights->el_params.asym.zero_point.pi16 =
-        (int16_t*)&data->filter_zero_point;
+        reinterpret_cast<int16_t*>(&data->filter_zero_point);
     data->mli_bias->el_params.asym.zero_point.pi16 =
-        (int16_t*)&data->filter_zero_point + sizeof(int16_t);
+        reinterpret_cast<int16_t*>(&data->filter_zero_point) + sizeof(int16_t);
 
     ops::micro::ConvertToMliTensor(input, data->mli_in);
     ops::micro::ConvertToMliTensorPerChannel(filter, data->mli_weights);
