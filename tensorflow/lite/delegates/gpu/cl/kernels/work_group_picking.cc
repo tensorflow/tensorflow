@@ -277,7 +277,7 @@ void GetPossibleWorkGroupsConv(TuningType tuning_type,
     case TuningType::FAST: {
       int max_z_size = 16;
       if (device_info.IsAdreno()) {
-        max_z_size = device_info.IsAdreno3xx() ? 16 : 64;
+        max_z_size = device_info.adreno_info.IsAdreno3xx() ? 16 : 64;
       }
       max_z_size = std::min(max_z_size, device_info.max_work_group_size_z);
       work_groups->push_back(

@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/model_hints.h"
-#include "tensorflow/lite/delegates/gpu/cl/precision.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/operation_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/special_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/storage_type_util.h"
@@ -38,6 +37,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/add_bias.h"
@@ -222,7 +222,7 @@ absl::Status InferenceContext::InitFromGraph(
 }
 
 absl::Status InferenceContext::RestoreDeserialized(
-    const std::vector<uint8_t>& serialized_model, Environment* env) {
+    const absl::Span<const uint8_t> serialized_model, Environment* env) {
   flatbuffers::Verifier verifier(serialized_model.data(),
                                  serialized_model.size());
   if (!data::VerifyInferenceContextBuffer(verifier)) {
@@ -286,7 +286,7 @@ void InferenceContext::CopyInAndOutIds(const GraphFloat32& graph) {
 void InferenceContext::ReserveGraphTensors(
     const CreateInferenceInfo& create_info, const DeviceInfo& device_info,
     const GraphFloat32& graph) {
-  ValueId max_id;
+  ValueId max_id = 0;
   auto tensors = graph.values();
   auto data_type = DeduceDataTypeFromPrecision(create_info.precision);
   for (auto& t : tensors) {

@@ -33,6 +33,10 @@ namespace cl {
 class CLArguments;
 }
 
+namespace metal {
+class MetalArguments;
+}
+
 class ArgumentsBinder {
  public:
   virtual absl::Status SetInt(const std::string& name, int value) = 0;
@@ -72,6 +76,7 @@ class Arguments {
                              Arguments* args);
 
   friend class cl::CLArguments;
+  friend class metal::MetalArguments;
   void GetActiveArguments(const std::string& args_prefix,
                           const std::string& code);
 

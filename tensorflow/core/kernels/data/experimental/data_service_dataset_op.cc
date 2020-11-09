@@ -53,6 +53,8 @@ namespace data {
 /* static */ constexpr const char* const
     DataServiceDatasetOp::kMaxOutstandingRequests;
 /* static */ constexpr const char* const
+    DataServiceDatasetOp::kTaskRefreshIntervalHintMs;
+/* static */ constexpr const char* const
     DataServiceDatasetOp::kIterationCounter;
 /* static */ constexpr const char* const DataServiceDatasetOp::kOutputTypes;
 /* static */ constexpr const char* const DataServiceDatasetOp::kOutputShapes;

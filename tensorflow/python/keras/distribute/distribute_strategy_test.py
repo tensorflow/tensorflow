@@ -51,6 +51,11 @@ from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.keras.distribute import distributed_training_utils_v1
 from tensorflow.python.keras.distribute import optimizer_combinations
+from tensorflow.python.keras.distribute.strategy_combinations import all_strategies
+from tensorflow.python.keras.distribute.strategy_combinations import multi_worker_mirrored_strategies
+from tensorflow.python.keras.distribute.strategy_combinations import strategies_minus_default_minus_tpu
+from tensorflow.python.keras.distribute.strategy_combinations import strategies_minus_tpu
+from tensorflow.python.keras.distribute.strategy_combinations import tpu_strategies
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
@@ -228,37 +233,6 @@ def multi_input_output_model():
   e = keras.layers.Dropout(0.5, name='dropout')(c)
   model = keras.models.Model([a, b], [d, e])
   return model
-
-
-strategies_minus_default_minus_tpu = [
-    strategy_combinations.one_device_strategy,
-    strategy_combinations.one_device_strategy_gpu,
-    strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-    strategy_combinations.mirrored_strategy_with_two_gpus,
-    strategy_combinations.central_storage_strategy_with_gpu_and_cpu
-]
-
-strategies_minus_tpu = [
-    strategy_combinations.default_strategy,
-    strategy_combinations.one_device_strategy,
-    strategy_combinations.one_device_strategy_gpu,
-    strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-    strategy_combinations.mirrored_strategy_with_two_gpus,
-    strategy_combinations.central_storage_strategy_with_gpu_and_cpu
-]
-
-multi_worker_mirrored_strategies = [
-    strategy_combinations.multi_worker_mirrored_2x1_cpu,
-    strategy_combinations.multi_worker_mirrored_2x1_gpu,
-    strategy_combinations.multi_worker_mirrored_2x2_gpu,
-]
-
-tpu_strategies = [
-    strategy_combinations.tpu_strategy,
-]
-
-all_strategies = (
-    strategies_minus_tpu + tpu_strategies + multi_worker_mirrored_strategies)
 
 
 def strategy_minus_tpu_combinations():
@@ -1704,8 +1678,7 @@ class TestRegularizerLoss(test.TestCase, parameterized.TestCase):
     return math_ops.reduce_mean(y_pred)
 
   @ds_combinations.generate(
-      combinations.times(
-          strategy_combinations.all_strategy_combinations_minus_default()))
+      combinations.times(all_strategy_combinations_minus_default()))
   def test_regularizer_loss(self, distribution):
     batch_size = 2
     if not distributed_training_utils.global_batch_size_supported(distribution):
@@ -2648,9 +2621,7 @@ class TestModelCapturesStrategy(test.TestCase, parameterized.TestCase):
   """Tests that model creation captures the strategy."""
 
   @ds_combinations.generate(
-      combinations.combine(
-          distribution=strategy_combinations.all_strategies,
-          mode=['eager']))
+      combinations.combine(distribution=all_strategies, mode=['eager']))
   def test_fit_and_evaluate(self, distribution):
     dataset = dataset_ops.DatasetV2.from_tensor_slices(
         (array_ops.ones(shape=(64,)), array_ops.ones(shape=(64,))))

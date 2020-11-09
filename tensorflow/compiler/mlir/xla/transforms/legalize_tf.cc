@@ -2763,13 +2763,13 @@ class ConvertSoftmaxOp : public OpRewritePattern<OpTy> {
 // will be converted into:
 //
 //   %const = mhlo.constant dense<1> : tensor<i32>
-//   %dim_0 = "mhlo.get_dimension_size"(%input) {dimension = 0 : i32} :
+//   %dim_0 = "mhlo.get_dimension_size"(%input) {dimension = 0 : i64} :
 //                                         (tensor<2x?x8xf32>) -> tensor<i32>
 //   %prod_0 = mhlo.multiply %const, %dim_0 : tensor<i32>
-//   %dim_1 = "mhlo.get_dimension_size"(%input) {dimension = 1 : i32} :
+//   %dim_1 = "mhlo.get_dimension_size"(%input) {dimension = 1 : i64} :
 //                                         (tensor<2x?x8xf32>) -> tensor<i32>
 //   %prod_1 = mhlo.multiply %prod_0, %dim_1 : tensor<i32>
-//   %dim_2 = "mhlo.get_dimension_size"(%input) {dimension = 2 : i32} :
+//   %dim_2 = "mhlo.get_dimension_size"(%input) {dimension = 2 : i64} :
 //                                         (tensor<2x?x8xf32>) -> tensor<i32>
 //   %size = mhlo.multiply %prod_1, %dim_2 : tensor<i32>
 class ConvertSizeOp : public OpRewritePattern<TF::SizeOp> {
@@ -2789,7 +2789,7 @@ class ConvertSizeOp : public OpRewritePattern<TF::SizeOp> {
     for (int64_t i = 0; i < rank; ++i) {
       auto i32_ty = rewriter.getIntegerType(32);
       auto size_ty = RankedTensorType::get({}, i32_ty);
-      auto dim_index = rewriter.getIntegerAttr(i32_ty, i);
+      auto dim_index = rewriter.getI64IntegerAttr(i);
       Value dim = rewriter.create<GetDimensionSizeOp>(op.getLoc(), size_ty,
                                                       input, dim_index);
       dim = rewriter.create<mhlo::ConvertOp>(op.getLoc(), result_ty, dim);
