@@ -13,11 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/precision.h"
+#include "tensorflow/lite/delegates/gpu/common/precision.h"
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 
 std::string ToString(CalculationsPrecision precision) {
   switch (precision) {
@@ -38,6 +37,5 @@ DataType DeduceDataTypeFromPrecision(CalculationsPrecision precision) {
   }
 }
 
-}  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

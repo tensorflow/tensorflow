@@ -115,6 +115,11 @@ bool NeedsCastBack(OpOperand& use, Dialect* tf_dialect) {
 // tf.Cast operation for uses that are incompatible with the new type.
 void UpdateTypeAndInsertIncompatibleUseCasts(Dialect* tf_dialect, Type new_type,
                                              Value result) {
+  if (isa_and_nonnull<tf_executor::GraphOp>(result.getDefiningOp())) {
+    result.setType(new_type);
+    return;
+  }
+
   // A tf.Cast operation is lazily created on the first use requires a cast.
   TF::CastOp cast_op;
   auto get_cast_op = [&]() {

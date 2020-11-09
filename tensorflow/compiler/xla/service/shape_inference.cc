@@ -198,13 +198,6 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
           window.DebugString());
     }
 
-    if (base_shape.is_dynamic_dimension(i) &&
-        !window_util::IsTrivialWindowDimension(dim)) {
-      return Unimplemented(
-          "Dynamic shape is not supported for non trivial window: %s",
-          window_util::ToString(window));
-    }
-
     const int64 dilated_base = window_util::DilatedBound(
         ShapeUtil::GetDimension(base_shape, i), dim.base_dilation());
     const int64 padded_dilated_base =

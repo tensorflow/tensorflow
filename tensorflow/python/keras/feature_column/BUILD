@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
     default_visibility = [
@@ -153,7 +153,7 @@ tf_py_test(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "sequence_feature_column_integration_test",
     srcs = ["sequence_feature_column_integration_test.py"],
     python_version = "PY3",

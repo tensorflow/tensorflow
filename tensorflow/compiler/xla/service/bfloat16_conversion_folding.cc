@@ -63,7 +63,7 @@ class BFloat16ConversionFoldingVisitor : public DfsHloVisitorWithDefault {
 
   // Folds the BF16 -> F32 conversion operand to the HLO.
   //
-  // Precondition: the operand is a F32 -> BF16 conversion.
+  // Precondition: the operand is a BF16 -> F32 conversion.
   Status FoldOperandConversion(HloInstruction* hlo, int64 operand_index);
 
   HloComputation* computation_;

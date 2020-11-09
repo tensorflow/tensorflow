@@ -49,6 +49,7 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
+from tensorflow.python.util.tf_export import tf_export
 
 ALLOWLIST_COLLECTIONS = [
     ops.GraphKeys.GLOBAL_VARIABLES,
@@ -133,6 +134,7 @@ def convert_structure_to_signature(structure, arg_names=None):
   return nest.pack_sequence_as(structure, mapped)
 
 
+@tf_export("__internal__.FuncGraph", v1=[])
 class FuncGraph(ops.Graph):
   """Graph representing a function body.
 

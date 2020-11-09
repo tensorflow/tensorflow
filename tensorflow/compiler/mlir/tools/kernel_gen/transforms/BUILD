@@ -72,6 +72,7 @@ cc_library(
     srcs = [
         "buffer_reuse_pass.cc",
         "bufferize_pass.cc",
+        "embed_memref_prints.cc",
         "embed_tf_framework_pass.cc",
         "gpu_kernel_to_blob_pass.cc",
         "materialize_broadcasts_pass.cc",

@@ -1039,7 +1039,8 @@ class ClusterCoordinator(object):
 
     Args:
       fn: A `tf.function`; the function to be dispatched to a worker for
-        execution asynchronously.
+        execution asynchronously. Regular python funtion is not supported to be
+        scheduled.
       args: Positional arguments for `fn`.
       kwargs: Keyword arguments for `fn`.
 
@@ -1052,6 +1053,11 @@ class ClusterCoordinator(object):
         previously scheduled function, since the last time an error was thrown
         or since the beginning of the program.
     """
+    if not isinstance(fn,
+                      (def_function.Function, tf_function.ConcreteFunction)):
+      raise TypeError(
+          "`tf.distribute.experimental.coordinator.ClusterCoordinator.schedule`"
+          " only accepts a `tf.function` or a concrete function.")
     # Slot variables are usually created during function tracing time; thus
     # `schedule` needs to be called within the `strategy.scope()`.
     with self.strategy.scope():

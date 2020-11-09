@@ -6,6 +6,22 @@ package(
 )
 
 cc_library(
+    name = "arguments",
+    srcs = ["arguments.cc"],
+    hdrs = ["arguments.h"],
+    deps = [
+        ":serialization_base_cc_fbs",
+        "//tensorflow/lite/delegates/gpu/common:access_type",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/common/task:gpu_object_desc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "buffer_desc",
     srcs = ["buffer_desc.cc"],
     hdrs = ["buffer_desc.h"],

@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/bundle_v2.h"
+#include "tensorflow/cc/saved_model/reader.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
@@ -185,6 +186,29 @@ StatusOr<mlir::OwningModuleRef> SavedModelSignatureDefsToMlirImport(
 
   auto module_or = ConvertSavedModelV1ToMlir(bundle, exported_names, context,
                                              upgrade_legacy);
+  if (!module_or.status().ok()) {
+    LOG(ERROR) << "SavedModel V1 import failed: " << module_or.status();
+  }
+  return module_or;
+}
+
+StatusOr<mlir::OwningModuleRef> SavedModelSignatureDefsToMlirImportLite(
+    absl::string_view saved_model_dir,
+    const std::unordered_set<std::string>& tags,
+    absl::Span<std::string> exported_names, mlir::MLIRContext* context,
+    bool upgrade_legacy) {
+  MetaGraphDef meta_graph_def;
+  auto status = ReadMetaGraphDefFromSavedModel(std::string(saved_model_dir),
+                                               tags, &meta_graph_def);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to load saved model v1 '" << saved_model_dir
+               << "': " << status;
+    return status;
+  }
+
+  auto module_or =
+      ConvertSavedModelV1ToMlirLite(meta_graph_def, /*debug_info=*/{},
+                                    exported_names, context, upgrade_legacy);
   if (!module_or.status().ok()) {
     LOG(ERROR) << "SavedModel V1 import failed: " << module_or.status();
   }

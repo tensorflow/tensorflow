@@ -219,6 +219,14 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         ParallelInterleaveDatasetOp::kDatasetType, params);
   }
 
+  int64 Cardinality() const override {
+    int64 n = input_->Cardinality();
+    if (n == kInfiniteCardinality) {
+      return n;
+    }
+    return kUnknownCardinality;
+  }
+
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
     return Status::OK();
@@ -999,7 +1007,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
             absl::make_unique<std::vector<Tensor>>(std::move(inputs));
         status = MakeIteratorFromInputElement(
             ctx_.get(), this, *element->inputs, element->id,
-            *instantiated_captured_func_, prefix(), &element->iterator);
+            *instantiated_captured_func_, prefix(), &element->iterator,
+            model_node());
         if (!status.ok()) {
           element->inputs.reset();
           element->iterator.reset();
@@ -1291,7 +1300,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
             reader->ReadScalar(iterator_name, kIdSuffix, &element->id));
         TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(
             ctx, this, *element->inputs, element->id,
-            *instantiated_captured_func_.get(), prefix(), &iterator));
+            *instantiated_captured_func_.get(), prefix(), &iterator,
+            model_node()));
       }
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, iterator));
       mutex_lock l(*mu_);

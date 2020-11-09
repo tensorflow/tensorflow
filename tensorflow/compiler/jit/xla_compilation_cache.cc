@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <numeric>
 
+#include "tensorflow/compiler/mlir/mlir_bridge_rollout_policy.h"
 #include "absl/base/call_once.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -286,7 +287,9 @@ Status XlaCompilationCache::CompileSingleOp(
 
     const ConfigProto* config = ctx->function_library()->config_proto();
     // TODO(b/171039585): Support tf.VarIsInitializedOp using MLIR.
-    bool use_mlir = config && config->experimental().enable_mlir_bridge() &&
+    bool use_mlir = config &&
+                    GetMlirBridgeRolloutPolicy(*config) ==
+                        MlirBridgeRolloutPolicy::kEnabledByUser &&
                     node_def.op() != "VarIsInitializedOp";
 #ifdef LIBTPU_ON_GCE
     if (use_mlir) {

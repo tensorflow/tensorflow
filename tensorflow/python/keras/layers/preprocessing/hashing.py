@@ -138,7 +138,7 @@ class Hashing(base_preprocessing_layer.PreprocessingLayer):
     if num_bins is None or num_bins <= 0:
       raise ValueError('`num_bins` cannot be `None` or non-positive values.')
     super(Hashing, self).__init__(name=name, **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell('V2').set('Hashing')
+    base_preprocessing_layer.keras_kpl_gauge.get_cell('Hashing').set(True)
     self.num_bins = num_bins
     self.strong_hash = True if salt is not None else False
     if salt is not None:

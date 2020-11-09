@@ -1485,6 +1485,8 @@ class HloInstruction {
   // Returns true if this instruction is elementwise on all its operands.
   bool IsElementwise() const;
 
+  static bool IsOpElementwise(HloOpcode opcode);
+
   // Returns true if this is a cross module all-reduce instruction.
   bool IsCrossModuleAllReduce() const;
 

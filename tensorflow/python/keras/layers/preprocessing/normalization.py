@@ -117,7 +117,7 @@ class Normalization(base_preprocessing_layer.CombinerPreprocessingLayer):
 
     super(Normalization, self).__init__(
         combiner=_NormalizingCombiner(axis), dtype=dtype, **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell('V2').set('Normalization')
+    base_preprocessing_layer.keras_kpl_gauge.get_cell('Normalization').set(True)
 
     if 0 in axis:
       raise ValueError('The argument \'axis\' may not be 0.')

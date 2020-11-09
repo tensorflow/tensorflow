@@ -141,7 +141,7 @@ std::string GetDefaultSamplers(const DeviceInfo& device_info) {
   result +=
       "__constant sampler_t smp_none = CLK_NORMALIZED_COORDS_FALSE | "
       "CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;\n";
-  if (device_info.IsAdreno3xx()) {
+  if (device_info.IsAdreno() && device_info.adreno_info.IsAdreno3xx()) {
     // Unfortunately, CLK_ADDRESS_CLAMP is very slow on Adreno3xx and
     // we can observe huge register overhead when compared to other modes.
 

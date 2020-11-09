@@ -1017,7 +1017,7 @@ def HLO_GetDimensionSizeOp: HLO_Op<"get_dimension_size", [NoSideEffect]>,
       BASE_HLO_GetDimensionSizeOp {
   let arguments = (ins
     HLO_Tensor:$operand,
-    I32Attr:$dimension
+    I64Attr:$dimension
   );
   // TODO(hinsu): Allow 64-bit result types once XLA HLO dialect based on the
   // XLA semantics is available. This limitation is because of the current XLA
@@ -1129,9 +1129,11 @@ def HLO_SetDimensionSizeOp: HLO_Op<"set_dimension_size", [NoSideEffect]>,
   let arguments = (ins
     HLO_Tensor:$operand,
     I32Tensor:$size,
-    I32Attr:$dimension
+    I64Attr:$dimension
   );
   let results = (outs HLO_Tensor);
+
+  let hasFolder = 1;
 }
 
 def HLO_SortOp : HLO_Op<"sort", [RecursiveSideEffects, SameOperandsAndResultShape]>, BASE_HLO_SortOp {

@@ -25,7 +25,6 @@ import functools
 import weakref
 
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend as K
@@ -635,6 +634,6 @@ def _wrap_activity_regularizer(layer):
 
 
 def _get_layer_call_method(layer):
-  if isinstance(layer.call, (def_function.Function, function.ConcreteFunction)):
+  if isinstance(layer.call, (def_function.Function)):
     return layer.call.python_function
   return layer.call

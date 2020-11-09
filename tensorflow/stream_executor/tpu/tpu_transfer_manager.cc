@@ -114,9 +114,9 @@ Status TpuTransferManager::TransferBuffersToInfeed(
   buffers_array.reserve(buffers.size());
 
   for (int64_t i = 0; i < buffers.size(); ++i) {
-    buffers_array.push_back(
-        const_cast<unsigned int*>(buffers[i].const_data().data()));
-    buffers_size.push_back(buffers[i].const_data().size());
+    absl::Span<const uint32_t> span = buffers[i].const_data<uint32_t>();
+    buffers_array.push_back(const_cast<uint32_t*>(span.data()));
+    buffers_size.push_back(span.size());
   }
 
   tpu::ExecutorApiFn()->TpuTransferManager_TransferBuffersToInfeedFn(
@@ -309,7 +309,8 @@ Status TpuTransferManager::LinearizeToBuffers(
 
   for (int64_t i = 0; i < buffers_array_size; ++i) {
     tpu::NoncopyableBuffer buf(buffers_size[i]);
-    memcpy(buf.mutable_data().data(), buffers_array[i], buffers_size[i]);
+    memcpy(buf.mutable_data<uint8_t>().data(), buffers_array[i],
+           buffers_size[i]);
     buffers->push_back(std::move(buf));
   }
 

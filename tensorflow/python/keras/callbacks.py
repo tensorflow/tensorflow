@@ -1700,7 +1700,7 @@ class EarlyStopping(Callback):
 
   >>> callback = tf.keras.callbacks.EarlyStopping(monitor='loss', patience=3)
   >>> # This callback will stop the training when there is no improvement in
-  >>> # the validation loss for three consecutive epochs.
+  >>> # the loss for three consecutive epochs.
   >>> model = tf.keras.models.Sequential([tf.keras.layers.Dense(10)])
   >>> model.compile(tf.keras.optimizers.SGD(), loss='mse')
   >>> history = model.fit(np.arange(100).reshape(5, 20), np.zeros(5),
