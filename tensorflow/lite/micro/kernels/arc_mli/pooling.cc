@@ -109,11 +109,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   }
 
   if (data->is_mli_applicable) {
-    data->mli_in = reinterpret_cast<mli_tensor*>(
+    data->mli_in = static_cast<mli_tensor*>(
         context->AllocatePersistentBuffer(context, sizeof(mli_tensor)));
-    data->mli_out = reinterpret_cast<mli_tensor*>(
+    data->mli_out = static_cast<mli_tensor*>(
         context->AllocatePersistentBuffer(context, sizeof(mli_tensor)));
-    data->cfg = reinterpret_cast<mli_pool_cfg*>(
+    data->cfg = static_cast<mli_pool_cfg*>(
         context->AllocatePersistentBuffer(context, sizeof(mli_pool_cfg)));
 
     ops::micro::ConvertToMliTensor(input, data->mli_in);
