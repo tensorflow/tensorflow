@@ -228,8 +228,8 @@ class OptimizationOptions(options.OptionsBase):
     # If autotune_buffers is enabled, we use the GRADIENT_DESCENT algorithm by
     # default, which is more performant for tuning heterogeneous parameters.
     algorithm = (
-        _AutotuneAlgorithm.GRADIENT_DESCENT
-        if self._autotune_buffers() else _AutotuneAlgorithm.HILL_CLIMB)
+        _AutotuneAlgorithm.HILL_CLIMB if self.autotune_buffers is False  # pylint: disable=g-bool-id-comparison
+        else _AutotuneAlgorithm.GRADIENT_DESCENT)
     cpu_budget = 0  # Indicates that all CPU cores should be used by default.
     ram_budget = 0  # Indicates that default value of RAM budget should be used.
 

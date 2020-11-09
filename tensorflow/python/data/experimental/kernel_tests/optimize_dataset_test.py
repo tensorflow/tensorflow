@@ -248,38 +248,6 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
-          combinations.combine(autotune=False, autotune_buffers=False) +
-          combinations.combine(autotune=True, autotune_buffers=False) +
-          combinations.combine(autotune=True, autotune_buffers=True),
-          combinations.combine(set_env=[False, True])))
-  def testOptimizationEnableGradientDescent(self, autotune, autotune_buffers,
-                                            set_env):
-    if set_env:
-      os.environ["TF_DATA_EXPERIMENT_OPT_IN"] = "enable_gradient_descent"
-      os.environ["TF_JOB_NAME"] = "test_job"
-
-    dataset = dataset_ops.Dataset.range(5)
-    dataset = dataset.prefetch(buffer_size=-1)
-    dataset = dataset.map(lambda x: x + 1, num_parallel_calls=2)
-    dataset = dataset.map(lambda x: x + 1, num_parallel_calls=-1)
-    dataset = dataset.prefetch(buffer_size=3)
-    dataset = dataset.map(lambda x: x + 1, num_parallel_calls=-1)
-    dataset = dataset.prefetch(buffer_size=1)
-
-    options = dataset_ops.Options()
-    options.experimental_optimization.autotune = autotune
-    options.experimental_optimization.autotune_buffers = autotune_buffers
-    dataset = dataset.with_options(options)
-
-    self.assertDatasetProduces(dataset, expected_output=list(range(3, 8)))
-
-    if set_env:
-      del os.environ["TF_DATA_EXPERIMENT_OPT_IN"]
-      del os.environ["TF_JOB_NAME"]
-
-  @combinations.generate(
-      combinations.times(
-          test_base.default_test_combinations(),
           combinations.combine(autotune=[True, False]),
           combinations.combine(set_env=[True, False])))
   def testOptimizationMapParallelization(self, autotune, set_env):
@@ -533,34 +501,80 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual(set(graph_rewrites.default),
                      set(expected_optimizations_default))
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testAutotuningDefaults(self):
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(autotune=[True, False, None]),
+          combinations.combine(autotune_buffers=[True, False, None])))
+  def testAutotuningSettings(self, autotune, autotune_buffers):
     options = dataset_ops.Options()
+    if autotune is not None:
+      options.experimental_optimization.autotune = autotune
+    if autotune_buffers is not None:
+      options.experimental_optimization.autotune_buffers = autotune_buffers
 
     # Check defaults
-    autotune, algorithm, cpu_budget, ram_budget = options._autotune_settings()
-    self.assertTrue(autotune)
-    self.assertEqual(algorithm,
-                     optimization_options._AutotuneAlgorithm.HILL_CLIMB)
-    self.assertEqual(cpu_budget, 0)
-    self.assertEqual(ram_budget, 0)
+    autotune_settings = options._autotune_settings()
+    autotune_val = autotune_settings[0]
+    autotune_buffers_val = options.experimental_optimization._autotune_buffers()
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testAutotuningSettings(self):
+    if autotune is not False:  # pylint: disable=g-bool-id-comparison
+      self.assertTrue(autotune_val)
+    else:
+      self.assertFalse(autotune_val)
+    if autotune_buffers is True:  # pylint: disable=g-bool-id-comparison
+      self.assertTrue(autotune_buffers_val)
+    else:
+      self.assertFalse(autotune_buffers_val)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(autotune_buffers=[True, False, None])))
+  def testAutotuneBuffersSettings(self, autotune_buffers):
     options = dataset_ops.Options()
-    options.experimental_optimization.autotune_cpu_budget = 1000
-    options.experimental_optimization.autotune_ram_budget = 999999999
-    options.experimental_optimization.autotune_buffers = True
-    self.assertIn("autotune_buffer_sizes", options._graph_rewrites().enabled)
-    self.assertIn("disable_prefetch_legacy_autotune",
-                  options._graph_rewrites().enabled)
+    if autotune_buffers is not None:
+      options.experimental_optimization.autotune_buffers = autotune_buffers
 
-    autotune, algorithm, cpu_budget, ram_budget = options._autotune_settings()
-    self.assertTrue(autotune)
-    self.assertEqual(algorithm,
-                     optimization_options._AutotuneAlgorithm.GRADIENT_DESCENT)
-    self.assertEqual(cpu_budget, 1000)
-    self.assertEqual(ram_budget, 999999999)
+    graph_rewrites = options._graph_rewrites()
+    autotune_settings = options._autotune_settings()
+    algorithm = autotune_settings[1]
+
+    if autotune_buffers is True:  # pylint: disable=g-bool-id-comparison
+      self.assertIn("autotune_buffer_sizes", graph_rewrites.enabled)
+      self.assertIn("disable_prefetch_legacy_autotune", graph_rewrites.enabled)
+    else:
+      self.assertNotIn("autotune_buffer_sizes", graph_rewrites.enabled)
+      self.assertNotIn("disable_prefetch_legacy_autotune",
+                       graph_rewrites.enabled)
+    if autotune_buffers is False:  # pylint: disable=g-bool-id-comparison
+      self.assertEqual(algorithm,
+                       optimization_options._AutotuneAlgorithm.HILL_CLIMB)
+    else:
+      self.assertEqual(algorithm,
+                       optimization_options._AutotuneAlgorithm.GRADIENT_DESCENT)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(set_budget=[True, False]),
+      ))
+  def testResourceBudgets(self, set_budget):
+    options = dataset_ops.Options()
+    if set_budget:
+      options.experimental_optimization.autotune_cpu_budget = 1000
+      options.experimental_optimization.autotune_ram_budget = 999999999
+
+    autotune_settings = options._autotune_settings()
+    cpu_budget = autotune_settings[2]
+    ram_budget = autotune_settings[3]
+
+    if set_budget:
+      self.assertEqual(cpu_budget, 1000)
+      self.assertEqual(ram_budget, 999999999)
+    else:
+      self.assertEqual(cpu_budget, 0)
+      self.assertEqual(ram_budget, 0)
 
 
 if __name__ == "__main__":
