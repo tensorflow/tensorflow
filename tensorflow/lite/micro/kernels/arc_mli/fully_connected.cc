@@ -130,13 +130,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       IsMliApplicable(context, input, filter, bias, params);
 
   if (input->type == kTfLiteInt8 && data->is_mli_applicable) {
-    data->mli_in = reinterpret_cast<mli_tensor*>(
+    data->mli_in = static_cast<mli_tensor*>(
         context->AllocatePersistentBuffer(context, sizeof(mli_tensor)));
-    data->mli_weights = reinterpret_cast<mli_tensor*>(
+    data->mli_weights = static_cast<mli_tensor*>(
         context->AllocatePersistentBuffer(context, sizeof(mli_tensor)));
-    data->mli_bias = reinterpret_cast<mli_tensor*>(
+    data->mli_bias = static_cast<mli_tensor*>(
         context->AllocatePersistentBuffer(context, sizeof(mli_tensor)));
-    data->mli_out = reinterpret_cast<mli_tensor*>(
+    data->mli_out = static_cast<mli_tensor*>(
         context->AllocatePersistentBuffer(context, sizeof(mli_tensor)));
 
     ops::micro::ConvertToMliTensor(input, data->mli_in);
