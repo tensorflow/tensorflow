@@ -184,7 +184,7 @@ cc_library(
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/micro:memory_helpers",
         "//tensorflow/lite/micro:micro_utils",
-        "@flatbuffers",
+        "@flatbuffers//:runtime_cc",
     ] + select({
         "//conditions:default": [],
         ":xtensa_hifimini": [
@@ -237,6 +237,16 @@ tflite_micro_cc_test(
     ],
 )
 
+cc_library(
+    name = "flexbuffers_generated_data",
+    srcs = [
+       "flexbuffers_generated_data.cc",
+    ],
+    hdrs = [
+        "flexbuffers_generated_data.h",
+    ]
+)
+
 tflite_micro_cc_test(
     name = "detection_postprocess_test",
     srcs = [
@@ -245,10 +255,11 @@ tflite_micro_cc_test(
     deps = [
         ":kernel_runner",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_framework",
-        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/kernels/internal:tensor",
+        "//tensorflow/lite/micro:test_helpers",
+        ":flexbuffers_generated_data",
         "//tensorflow/lite/micro/testing:micro_test",
-        "@flatbuffers",
+        "@flatbuffers//:runtime_cc",
     ],
 )
 

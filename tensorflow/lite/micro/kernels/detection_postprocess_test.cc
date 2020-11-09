@@ -20,8 +20,8 @@ limitations under the License.
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/micro/test_helpers.h"
 
-// See: tensorflow/lite/micro/kernels/detection_postprocess_test/readme
-#include "tensorflow/lite/micro/kernels/detection_postprocess_test/flexbuffers_generated_data.h"
+// See: tensorflow/lite/micro/kernels/detection_postprocess_test/README.md
+#include "tensorflow/lite/micro/kernels/flexbuffers_generated_data.h"
 
 namespace tflite {
 namespace testing {
@@ -142,14 +142,14 @@ void TestDetectionPostprocess(
         CreateQuantizedTensor(input_data3, input_data_quantized3, input_dims3,
                               input_scale3, input_zero_point3);
   } else {
-    tensors[0] = CreateFloatTensor(input_data1, input_dims1);
-    tensors[1] = CreateFloatTensor(input_data2, input_dims2);
-    tensors[2] = CreateFloatTensor(input_data3, input_dims3);
+    tensors[0] = CreateTensor(input_data1, input_dims1);
+    tensors[1] = CreateTensor(input_data2, input_dims2);
+    tensors[2] = CreateTensor(input_data3, input_dims3);
   }
-  tensors[3] = CreateFloatTensor(output_data1, output_dims1);
-  tensors[4] = CreateFloatTensor(output_data2, output_dims2);
-  tensors[5] = CreateFloatTensor(output_data3, output_dims3);
-  tensors[6] = CreateFloatTensor(output_data4, output_dims4);
+  tensors[3] = CreateTensor(output_data1, output_dims1);
+  tensors[4] = CreateTensor(output_data2, output_dims2);
+  tensors[5] = CreateTensor(output_data3, output_dims3);
+  tensors[6] = CreateTensor(output_data4, output_dims4);
 
   ::tflite::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
@@ -167,16 +167,12 @@ void TestDetectionPostprocess(
   // Using generated data as input to operator.
   int data_size;
   const char* init_data;
-  const char* init_data_none_regular_nms =
-      reinterpret_cast<const char*>(tflite::testing::gen_data_none_regular_nms);
-  const char* init_data_regular_nms =
-      reinterpret_cast<const char*>(tflite::testing::gen_data_regular_nms);
   if (use_regular_nms) {
-    init_data = init_data_regular_nms;
-    data_size = tflite::testing::gen_data_size_regular_nms;
+    init_data = g_gen_data_regular_nms;
+    data_size = g_gen_data_size_regular_nms;
   } else {
-    init_data = init_data_none_regular_nms;
-    data_size = tflite::testing::gen_data_size_none_regular_nms;
+    init_data = g_gen_data_none_regular_nms;
+    data_size = g_gen_data_size_none_regular_nms;
   }
   TF_LITE_MICRO_EXPECT_EQ(
       kTfLiteOk, runner.InitAndPrepare(init_data, data_size));

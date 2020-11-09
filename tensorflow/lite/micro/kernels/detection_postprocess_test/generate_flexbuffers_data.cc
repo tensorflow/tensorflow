@@ -48,25 +48,21 @@ void generate(const char* name, bool use_regular_nms) {
       fbb.GetBuffer().data());
   int fbb_size = fbb.GetBuffer().size();
 
-  printf("int gen_data_size_%s = %d;\n", name, fbb_size);
-  printf("static constexpr uint8_t gen_data_%s[%d] = { ", name, fbb_size);
+  printf("const unsigned int g_gen_data_size_%s = %d;\n", name, fbb_size);
+  printf("const char g_gen_data_%s[] = { ", name);
   for (size_t i = 0; i < fbb_size; i++) {
       printf("%u, ", init_data[i]);
   }
-  printf("};\n\n");
+  printf("};\n");
 }
 
 int main() {
   printf("%s\n", license);
   printf("// This file is generated. See:\n");
   printf("// tensorflow/lite/micro/kernels/detection_postprocess_test/readme");
+  printf("\n");
+  printf("#include \"tensorflow/lite/micro/kernels/flexbuffers_generated_data.h\"");
   printf("\n\n");
-  printf("namespace tflite {\n");
-  printf("namespace testing {\n");
-  printf("namespace {\n");
   generate("none_regular_nms", false);
   generate("regular_nms", true);
-  printf("}\n");
-  printf("}\n");
-  printf("}\n");
 }

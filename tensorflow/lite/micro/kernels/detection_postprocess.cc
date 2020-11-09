@@ -27,22 +27,16 @@ limitations under the License.
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 
-
 namespace tflite {
-namespace ops {
-namespace micro {
-namespace custom {
-namespace detection_postprocess {
+namespace {
 
 /**
  * This version of detection_postprocess is specific to TFLite Micro. It
  * contains the following differences between the TFLite version:
  *
  * 1.) Temporaries (temporary tensors) - Micro use instead scratch buffer API.
- * 2.) Output dimensions - the TFLite version determines output size
- * and resizes the output tensor. Micro runtime does not support tensor
- * resizing. However if output dimensions are undefined TFLu memory API is
- * used to allocate the new dimensions.
+ * 2.) Output dimensions - the TFLite version does not support undefined out
+ * dimensions. So model must have static out dimensions.
  */
 
 // Input tensors
@@ -795,14 +789,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   return kTfLiteOk;
 }
-
-}  // namespace detection_postprocess
+}  // namespace
 
 TfLiteRegistration* Register_DETECTION_POSTPROCESS() {
-  static TfLiteRegistration r = {/*init=*/detection_postprocess::Init,
-                                 /*free=*/detection_postprocess::Free,
-                                 /*prepare=*/detection_postprocess::Prepare,
-                                 /*invoke=*/detection_postprocess::Eval,
+  static TfLiteRegistration r = {/*init=*/Init,
+                                 /*free=*/Free,
+                                 /*prepare=*/Prepare,
+                                 /*invoke=*/Eval,
                                  /*profiling_string=*/nullptr,
                                  /*builtin_code=*/0,
                                  /*custom_name=*/nullptr,
@@ -810,7 +803,4 @@ TfLiteRegistration* Register_DETECTION_POSTPROCESS() {
   return &r;
 }
 
-}  // namespace custom
-}  // namespace micro
-}  // namespace ops
 }  // namespace tflite

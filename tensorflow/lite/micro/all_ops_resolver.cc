@@ -18,7 +18,6 @@ namespace tflite {
 namespace ops {
 namespace micro {
 namespace custom {
-TfLiteRegistration* Register_DETECTION_POSTPROCESS();
 TfLiteRegistration* Register_ETHOSU();
 const char* GetString_ETHOSU();
 }  // namespace custom
@@ -38,6 +37,7 @@ AllOpsResolver::AllOpsResolver() {
   AddCos();
   AddDepthwiseConv2D();
   AddDequantize();
+  AddDetectionPostprocess();
   AddEqual();
   AddFloor();
   AddFullyConnected();
@@ -85,8 +85,6 @@ AllOpsResolver::AllOpsResolver() {
   AddUnpack();
 
   // TODO(b/159644355): Figure out if custom Ops belong in AllOpsResolver.
-  AddCustom("TFLite_Detection_PostProcess",
-            tflite::ops::micro::custom::Register_DETECTION_POSTPROCESS());
   TfLiteRegistration* registration =
       tflite::ops::micro::custom::Register_ETHOSU();
   if (registration) {
