@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
+#include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/access_type.h"
 
 namespace tflite {
@@ -106,14 +107,14 @@ bool OperationDef::IsBatchSupported() const {
 GPUOperation::GPUOperation(const OperationDef& definition)
     : definition_(definition) {}
 
-void GPUOperation::SetSrc(Tensor* ptr, int index) {
+void GPUOperation::SetSrc(GpuSpatialTensor* ptr, int index) {
   if (index >= src_.size()) {
     src_.resize(index + 1, nullptr);
   }
   src_[index] = ptr;
 }
 
-void GPUOperation::SetDst(Tensor* ptr, int index) {
+void GPUOperation::SetDst(GpuSpatialTensor* ptr, int index) {
   if (index >= dst_.size()) {
     dst_.resize(index + 1, nullptr);
   }
@@ -213,10 +214,20 @@ void GPUOperation::AddDstTensor(const std::string& tensor_name,
 
 absl::Status GPUOperation::UpdateParams() {
   for (int i = 0; i < src_tensors_names_.size(); ++i) {
-    RETURN_IF_ERROR(cl_args_.SetObjectRef(src_tensors_names_[i], src_[i]));
+    const auto* cl_spatial_tensor = dynamic_cast<const Tensor*>(src_[i]);
+    if (!cl_spatial_tensor) {
+      return absl::InvalidArgumentError("Expected CLSpatialTensor.");
+    }
+    RETURN_IF_ERROR(
+        cl_args_.SetObjectRef(src_tensors_names_[i], cl_spatial_tensor));
   }
   for (int i = 0; i < dst_tensors_names_.size(); ++i) {
-    RETURN_IF_ERROR(cl_args_.SetObjectRef(dst_tensors_names_[i], dst_[i]));
+    const auto* cl_spatial_tensor = dynamic_cast<const Tensor*>(dst_[i]);
+    if (!cl_spatial_tensor) {
+      return absl::InvalidArgumentError("Expected CLSpatialTensor.");
+    }
+    RETURN_IF_ERROR(
+        cl_args_.SetObjectRef(dst_tensors_names_[i], cl_spatial_tensor));
   }
   RETURN_IF_ERROR(BindArguments(&cl_args_));
   grid_size_ = GetGridSize();
