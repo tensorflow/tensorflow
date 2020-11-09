@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
@@ -68,7 +69,7 @@ std::string GetFullyConnectedCode(const DeviceInfo& device_info,
       FLT4(0.0f) : vector[j * 32 + tid_index];
     $1(mem_flags::mem_threadgroup);
     for (uint i = 0, counter = j * 32 + tid.y * 8; i < 8; ++i, ++counter) {
-      summa += dot(local_vector[tid.y * 8 + i], matrix[counter * args.dst_channels_alignedx8 + ugid.x]);
+      summa += dot(local_vector[tid.y * 8 + i], args.weights.Read(counter * args.dst_channels_alignedx8 + ugid.x));
     }
     $1(mem_flags::mem_none);
   }
@@ -82,8 +83,8 @@ std::string GetFullyConnectedCode(const DeviceInfo& device_info,
     if (src_depth % 4 != 0) {
       code << "    if (counter >= args.src_slices) continue;" << std::endl;
     }
-    code << "    summa += dot(vector[counter], matrix[counter * "
-            "args.dst_channels_alignedx8 + ugid.x]);"
+    code << "    summa += dot(vector[counter], args.weights.Read(counter * "
+            "args.dst_channels_alignedx8 + ugid.x));"
          << std::endl;
     code << "  }" << std::endl;
   }
@@ -102,7 +103,7 @@ std::string GetFullyConnectedCode(const DeviceInfo& device_info,
   if (tid.y == 0 && tid.x % 4 == 0 && ugid.x < args.dst_channels) {
     const int linear_index = ugid.x / 4;
     FLT4 value = FLT4(temp[tid.x][0], temp[tid.x + 1][0], temp[tid.x + 2][0], temp[tid.x + 3][0]) +
-      biases[linear_index];
+      args.bias.Read(linear_index);
     uint3 gid = uint3(0u, 0u, uint(linear_index));
     $$2
     result[linear_index] = value;
@@ -164,13 +165,31 @@ std::vector<ComputeTaskDescriptorPtr> FullyConnected(
     }
   }
 
-  desc->immutable_buffers = {
-      {"device FLT4* const matrix",
-       GetByteBufferConverted(filters_reordered, options.storage_precision)},
-      {"device FLT4* const biases",
-       GetByteBufferConvertedResized(attr.bias.data, options.storage_precision,
-                                     attr.weights.shape.o)},
-  };
+  BufferDescriptor weights_desc;
+  weights_desc.element_type =
+      options.storage_precision == RuntimeOptions::Precision::FP32
+          ? DataType::FLOAT32
+          : DataType::FLOAT16;
+  weights_desc.element_size = 4;
+  weights_desc.data =
+      GetByteBufferConverted(filters_reordered, options.storage_precision);
+  weights_desc.size = weights_desc.data.size();
+
+  desc->args.AddObject(
+      "weights", absl::make_unique<BufferDescriptor>(std::move(weights_desc)));
+
+  BufferDescriptor bias_desc;
+  bias_desc.element_type =
+      options.storage_precision == RuntimeOptions::Precision::FP32
+          ? DataType::FLOAT32
+          : DataType::FLOAT16;
+  bias_desc.element_size = 4;
+  bias_desc.data = GetByteBufferConvertedResized(
+      attr.bias.data, options.storage_precision, attr.weights.shape.o);
+  bias_desc.size = bias_desc.data.size();
+
+  desc->args.AddObject(
+      "bias", absl::make_unique<BufferDescriptor>(std::move(bias_desc)));
 
   desc->resize_function = [attr](const std::map<ValueId, BHWC>& buffers) {
     const uint3 groups_size{8, 4, 1};

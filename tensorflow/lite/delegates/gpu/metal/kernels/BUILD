@@ -269,6 +269,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/common/task:buffer_desc",
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
         "//tensorflow/lite/delegates/gpu/metal:device_info",
         "//tensorflow/lite/delegates/gpu/metal:runtime_options",
