@@ -30,5 +30,20 @@ from tensorflow.python.ops.risc_ops_gen import *
 def risc_add(
     input_lhs,
     input_rhs,
-    name="RISC_ADD"):
+    name='RISC_ADD'):
   return gen_risc_ops.risc_add(input_lhs, input_rhs, name=name)
+
+
+def risc_conv(x,
+              kernel,
+              strides,
+              data_format='NHWC',
+              dilations=None,
+              name='RISC_CONV'):
+  return gen_risc_ops.risc_conv(
+      x,
+      kernel,
+      strides,
+      data_format=data_format,
+      dilations=dilations,
+      name=name)

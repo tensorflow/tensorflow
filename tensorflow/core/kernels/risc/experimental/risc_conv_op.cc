@@ -20,25 +20,31 @@ limitations under the License.
 #include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
+namespace risc {
+namespace experimental {
 
-REGISTER_OP("RiscAdd")
-    .Input("x: T")
-    .Input("y: T")
-    .Output("z: T")
-    .Attr("T: {bfloat16, half, float, double}")
-    .SetShapeFn(shape_inference::UnchangedShape)
-    .SetIsAggregate()
-    .SetIsCommutative();
+typedef Eigen::ThreadPoolDevice CPUDevice;
 
-// TODO(b/171294012): change shape function.
-REGISTER_OP("RiscConv")
-    .Input("input: T")
-    .Input("filter: T")
-    .Output("output: T")
-    .Attr("T: {float, double}")
-    .Attr("strides: list(int)")
-    .Attr(GetConvnetDataFormatAttrString())
-    .SetShapeFn(shape_inference::UnknownShape)
-    .Attr("dilations: list(int) = [1, 1, 1, 1]");
+template <typename Device, typename T>
+class RiscConvOp : public OpKernel {
+ public:
+  explicit RiscConvOp(OpKernelConstruction* context) : OpKernel(context) {
+    // TODO(b/171294012): Implement RiscConv op.
+  }
 
+  void Compute(OpKernelContext* context) override {
+    // TODO(b/171294012): Implement RiscConv op.
+  }
+};
+
+#define REGISTER_CPU(T)                                           \
+  REGISTER_KERNEL_BUILDER(                                        \
+      Name("RiscConv").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      RiscConvOp<CPUDevice, T>);
+
+REGISTER_CPU(float);
+REGISTER_CPU(double);
+
+}  // namespace experimental
+}  // namespace risc
 }  // namespace tensorflow
