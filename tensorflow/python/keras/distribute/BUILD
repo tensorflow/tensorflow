@@ -3,8 +3,8 @@
 #   related to dist-strat used by Keras..
 
 load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
-load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")  # buildifier: disable=same-origin-load
 
 package(
     # TODO(scottzhu): Remove this deps when distribute test are converted to integration test.
@@ -747,7 +747,7 @@ cuda_py_test(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "multi_worker_callback_tf2_test",
     srcs = ["multi_worker_callback_tf2_test.py"],
     python_version = "PY3",
@@ -854,7 +854,7 @@ distribute_py_test(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "parameter_server_training_test",
     srcs = ["parameter_server_training_test.py"],
     python_version = "PY3",
@@ -894,7 +894,7 @@ py_library(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "distributed_file_utils_test",
     srcs = ["distributed_file_utils_test.py"],
     python_version = "PY3",

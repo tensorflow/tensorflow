@@ -197,7 +197,7 @@ class StringLookup(index_lookup.IndexLookup):
         vocabulary=vocabulary,
         invert=invert,
         **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell("V2").set("StringLookup")
+    base_preprocessing_layer.keras_kpl_gauge.get_cell("StringLookup").set(True)
 
   def get_config(self):
     config = {"encoding": self.encoding}

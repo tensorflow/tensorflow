@@ -220,7 +220,8 @@ absl::Status ProfilingCommandQueue::GetBestWorkGroupIndex(
     const std::vector<int3>& work_groups_count,
     const std::vector<int3>& work_group_sizes, int* index) {
   // Some Adreno 3xx can have wrong numbers for some events
-  const bool possible_bug_with_events = device_info.IsAdreno3xx();
+  const bool possible_bug_with_events =
+      device_info.IsAdreno() && device_info.adreno_info.IsAdreno3xx();
   events_.resize(work_group_sizes.size());
   for (int i = 0; i < work_group_sizes.size(); ++i) {
     RETURN_IF_ERROR(CLCommandQueue::Dispatch(kernel, work_groups_count[i],

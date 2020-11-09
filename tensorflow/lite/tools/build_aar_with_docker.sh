@@ -79,7 +79,7 @@ if [ ! -d /tensorflow_src ]; then
   done
 
   if [ -z ${BAZEL_CACHE_DIR} ]; then
-    mkdir "bazel-build-cache"
+    mkdir -p "bazel-build-cache"
     BAZEL_CACHE_DIR="$PWD/bazel-build-cache"
     ARGUMENTS="${ARGUMENTS} --cache_dir=${BAZEL_CACHE_DIR}"
   fi

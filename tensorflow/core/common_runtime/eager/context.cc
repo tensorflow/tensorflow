@@ -739,7 +739,7 @@ Status EagerContext::AddFunctionDef(const FunctionDef& fdef,
         return errors::InvalidArgument(
             "Attempting to add a duplicate function with name: ",
             fdef.signature().name(), " where the previous and current ",
-            "definitions differ. Previous definiton: ",
+            "definitions differ. Previous definition: ",
             prev_fdef->DebugString(),
             " and current definition: ", fdef.DebugString());
       }
@@ -1233,9 +1233,8 @@ Status EagerContext::UpdateRemoteMaster(
     tf_shared_lock l(remote_state_mu_);
     if (context_id != context_id_) {
       return errors::InvalidArgument(
-          "Failed to update remote remote master context due to invalid ",
-          "context id. Request id = ", context_id,
-          " but current id = ", context_id_);
+          "Failed to update remote master context due to invalid context id. ",
+          "Request id = ", context_id, " but current id = ", context_id_);
     }
   }
 

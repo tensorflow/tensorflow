@@ -202,7 +202,7 @@ class IntegerLookup(index_lookup.IndexLookup):
         vocabulary=vocabulary,
         invert=invert,
         **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell("V2").set("IntegerLookup")
+    base_preprocessing_layer.keras_kpl_gauge.get_cell("IntegerLookup").set(True)
 
   def get_config(self):
     base_config = super(IntegerLookup, self).get_config()

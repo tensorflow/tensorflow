@@ -107,6 +107,7 @@ struct EmbedMemRefPrintsPass
     OpBuilder b(&getContext());
     func.walk([&](AllocOp op) { EmitPrint(op, liveness, &b); });
     func.walk([&](AllocaOp op) { EmitPrint(op, liveness, &b); });
+    func.walk([&](MemRefReinterpretCastOp op) { EmitPrint(op, liveness, &b); });
   }
 };
 

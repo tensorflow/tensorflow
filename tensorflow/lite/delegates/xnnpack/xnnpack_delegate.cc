@@ -859,6 +859,15 @@ class Subgraph {
                             context->tensors, div_params, xnnpack_tensors);
       }
       case kTfLiteBuiltinFullyConnected: {
+        // FullyConnected with sparse weight has version 8, which cannot be
+        // delegated to XNNPack.
+        if (registration->version == 8) {
+          TF_LITE_MAYBE_KERNEL_LOG(logging_context,
+                                   "Unsupported version %d of FullyConnected.",
+                                   registration->version);
+          return kTfLiteError;
+        }
+
         const TfLiteFullyConnectedParams* fc_params =
             static_cast<const TfLiteFullyConnectedParams*>(node->builtin_data);
 
