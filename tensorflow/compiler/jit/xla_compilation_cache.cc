@@ -140,6 +140,7 @@ XlaCompilationCache::BuildSignature(
   for (const XlaCompiler::Argument& arg : args) {
     switch (arg.kind) {
       case XlaCompiler::Argument::kConstant:
+      case XlaCompiler::Argument::kConstantResource:
         signature.arg_values.push_back(arg.constant_value);
         break;
       case XlaCompiler::Argument::kParameter:
