@@ -131,6 +131,7 @@ cc_library(
     ] + if_cuda_is_configured([
         "//tensorflow/stream_executor/gpu:asm_compiler",
     ]) + if_rocm_is_configured([
+        "//tensorflow/stream_executor/gpu:asm_compiler",
         "//tensorflow/core/platform:rocm_rocdl_path",
     ]),
 )
