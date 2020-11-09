@@ -433,8 +433,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kSetDimensionSize: {
       attributes.push_back(builder_->getNamedAttr(
-          "dimension", builder_->getIntegerAttr(builder_->getIntegerType(32),
-                                                instruction->dimension())));
+          "dimension", builder_->getI64IntegerAttr(instruction->dimension())));
       MakeAndReturn(SetDimensionSizeOp);
     }
     case HloOpcode::kSlice: {
@@ -589,8 +588,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     };
     case HloOpcode::kGetDimensionSize: {
       attributes.push_back(builder_->getNamedAttr(
-          "dimension", builder_->getIntegerAttr(builder_->getIntegerType(32),
-                                                instruction->dimension())));
+          "dimension", builder_->getI64IntegerAttr(instruction->dimension())));
       MakeAndReturn(GetDimensionSizeOp);
     };
     case HloOpcode::kTranspose: {
@@ -816,10 +814,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       instruction->shape().layout() !=
           LayoutUtil::MakeDescendingLayout(
               instruction->shape().dimensions().size())) {
-    llvm::SmallVector<int64_t, 4> minor_to_major(
-        instruction->shape().layout().minor_to_major().begin(),
-        instruction->shape().layout().minor_to_major().end());
-    op->setAttr("minor_to_major", builder_->getIndexTensorAttr(minor_to_major));
+    SetLayoutForMlir(op, instruction->shape());
   }
   return op;
 }
@@ -946,6 +941,16 @@ mlir::NamedAttribute HloFunctionImporter::ConvertChannelHandle(
       mlir::mhlo::ChannelHandle::get(
           builder_->getI64IntegerAttr(channel.handle()),
           builder_->getI64IntegerAttr(channel.type()), context_));
+}
+
+void HloFunctionImporter::SetLayoutForMlir(mlir::Operation* op,
+                                           const Shape& shape) {
+  llvm::SmallVector<int64_t, 4> minor_to_major(
+      shape.layout().minor_to_major().begin(),
+      shape.layout().minor_to_major().end());
+  op->setAttr(
+      "minor_to_major",
+      mlir::Builder(op->getContext()).getIndexTensorAttr(minor_to_major));
 }
 
 }  // namespace xla

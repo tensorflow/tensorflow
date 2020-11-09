@@ -76,7 +76,7 @@ class DeviceOpMetricsDbBuilder : public OpMetricsDbBuilder {
                absl::string_view category, absl::string_view provenance,
                bool is_eager, uint64 occurrences, uint64 time_ps,
                uint64 children_time_ps, int64 flops, int64 bytes_accessed,
-               const protobuf::RepeatedPtrField<OpMetrics_MemoryAccessed>&
+               const protobuf::RepeatedPtrField<OpMetrics::MemoryAccessed>&
                    memory_accessed_breakdown = {});
 
  protected:

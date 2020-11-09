@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
-#include "tensorflow/lite/delegates/gpu/cl/precision.h"
 
 namespace tflite {
 namespace gpu {
@@ -28,8 +27,9 @@ namespace cl {
 namespace {
 // Adreno can provide up to ~3-4KB of constant memory, but in some cases even
 // 3KB can have very bad performance.
-int GetAdrenoOptimalMaxConstantSize(int gpu_version) {
-  if (gpu_version < 600) {
+int GetAdrenoOptimalMaxConstantSize(const AdrenoInfo& adreno_info) {
+  if (adreno_info.IsAdreno3xx() || adreno_info.IsAdreno4xx() ||
+      adreno_info.IsAdreno5xx()) {
     return 256 * 10;  // 2.5KB
   } else {
     return 256 * 14;  // 3.5KB
@@ -42,7 +42,7 @@ int GetOptimalMaxConstantSize(const DeviceInfo& info) {
     // so as it tuned for __constant memory that have big profit on Adreno
     return 1024;  // 1KB
   } else {
-    return GetAdrenoOptimalMaxConstantSize(info.adreno_info.gpu_version);
+    return GetAdrenoOptimalMaxConstantSize(info.adreno_info);
   }
 }
 
@@ -286,7 +286,7 @@ GPUOperation CreateConvConstants(const DeviceInfo& device_info,
   op.code_ = GenerateConvolutionConstantCode(
       definition, attr.weights.shape, stride_correction, use_dot_conv, &op);
   if (definition.precision == CalculationsPrecision::F16 &&
-      device_info.IsAdreno3xx()) {
+      device_info.IsAdreno() && device_info.adreno_info.IsAdreno3xx()) {
     op.compiler_options_.push_back(CompilerOptions::ADRENO_FULL_SIMD_LINE);
   }
   if (definition.precision != CalculationsPrecision::F32 &&

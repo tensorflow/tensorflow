@@ -1246,3 +1246,38 @@ func @bitcast(%arg: tensor<2x4xf32>) -> tensor<2x4xf32> {
   %0 = "mhlo.reduce_precision"(%arg) {exponent_bits=2 : i32, mantissa_bits=3 : i32} : (tensor<2x4xf32>) -> tensor<2x4xf32>
   return %0 : tensor<2x4xf32>
 }
+
+// -----
+
+func @get_dimension_size(%I: tensor<1x128x512xf32>) -> tensor<i32> {
+  // expected-error@+1 {{requires dimension attribute in range [0, 3); found (3)}}
+  %size = "mhlo.get_dimension_size"(%I) {dimension = 3 : i64} : (tensor<1x128x512xf32>) -> tensor<i32>
+  return %size : tensor<i32>
+}
+
+// -----
+
+func @get_dimension_size(%I: tensor<1x128x512xf32>) -> tensor<i32> {
+  %size = "mhlo.get_dimension_size"(%I) {dimension = 2 : i64} : (tensor<1x128x512xf32>) -> tensor<i32>
+  return %size : tensor<i32>
+}
+
+// -----
+
+func @set_dimension_size(%I: tensor<1x128x512xf32>) -> tensor<1x128x512xf32> {
+  %dim = mhlo.constant dense<512> : tensor<1xi32>
+
+  // expected-error@+1 {{size operand should be of rank-0}}
+  %result = "mhlo.set_dimension_size"(%I, %dim) {dimension = 2 : i64} : (tensor<1x128x512xf32>, tensor<1xi32>) -> tensor<1x128x512xf32>
+  return %result : tensor<1x128x512xf32>
+}
+
+// -----
+
+func @set_dimension_size(%I: tensor<1x128x512xf32>) -> tensor<1x128x512xf32> {
+  %dim = mhlo.constant dense<512> : tensor<i32>
+
+  // expected-error@+1 {{requires dimension attribute in range [0, 3); found (3)}}
+  %result = "mhlo.set_dimension_size"(%I, %dim) {dimension = 3 : i64} : (tensor<1x128x512xf32>, tensor<i32>) -> tensor<1x128x512xf32>
+  return %result : tensor<1x128x512xf32>
+}

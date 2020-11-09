@@ -57,7 +57,7 @@ void AppendArgument(const std::string& arg, std::string* args) {
 constexpr char MetalArguments::kArgsPrefix[];
 
 absl::Status MetalArguments::Init(int buffer_offset, Arguments* args, std::string* code) {
-  args->GetActiveArguments(*code);
+  args->GetActiveArguments(kArgsPrefix, *code);
   std::string struct_desc = "struct uniforms_buffer {\n";
   int pos = 0;
   for (auto& fvalue : args->float_values_) {
@@ -133,6 +133,10 @@ absl::Status MetalArguments::SetFloat(const std::string& name, float value) {
     *ptr = value;
   }
   return absl::OkStatus();
+}
+
+absl::Status MetalArguments::SetHalf(const std::string& name, half value) {
+  return absl::UnimplementedError("No support of half uniforms in Metal backend");
 }
 
 void MetalArguments::Encode(id<MTLComputeCommandEncoder> encoder, int buffer_offset) const {

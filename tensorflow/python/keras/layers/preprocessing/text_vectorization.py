@@ -334,7 +334,8 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
     super(TextVectorization, self).__init__(
         combiner=None,
         **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell("V2").set("TextVectorization")
+    base_preprocessing_layer.keras_kpl_gauge.get_cell(
+        "TextVectorization").set(True)
 
     mask_token = "" if output_mode in [None, INT] else None
     self._index_lookup_layer = self._get_index_lookup_class()(

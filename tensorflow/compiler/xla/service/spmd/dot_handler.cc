@@ -1148,6 +1148,27 @@ StatusOr<HloInstruction*> PartitionDotGroupOnContracting(
     }
     lhs = lhs.Reshard(lhs_sharding);
   }
+  // Mask out invalid data.
+  std::vector<int64> lhs_skipped_dims;
+  for (int64 i = 0; i < lhs.base_shape().rank(); ++i) {
+    if (absl::c_linear_search(lhs_dims, i)) {
+      continue;
+    }
+    lhs_skipped_dims.push_back(i);
+  }
+  lhs = lhs.PadWithValue(
+      CreateZero(ShapeUtil::MakeShape(lhs.base_shape().element_type(), {}), b),
+      /*left_padded_dims=*/{}, lhs_skipped_dims);
+  std::vector<int64> rhs_skipped_dims;
+  for (int64 i = 0; i < rhs.base_shape().rank(); ++i) {
+    if (absl::c_linear_search(rhs_dims, i)) {
+      continue;
+    }
+    rhs_skipped_dims.push_back(i);
+  }
+  rhs = rhs.PadWithValue(
+      CreateZero(ShapeUtil::MakeShape(rhs.base_shape().element_type(), {}), b),
+      /*left_padded_dims=*/{}, rhs_skipped_dims);
   top_level_sharding_to_reset.emplace_back(lhs.hlo(), lhs_sharding);
   lhs.hlo()->set_sharding(lhs_grouped.sharding);
   top_level_sharding_to_reset.emplace_back(rhs.hlo(), rhs_sharding);

@@ -463,7 +463,8 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(const HloSharding& target) {
 }
 
 PartitionedHlo PartitionedHlo::PadWithValue(
-    HloInstruction* pad_value, absl::Span<const int64> left_padded_dims) const {
+    HloInstruction* pad_value, absl::Span<const int64> left_padded_dims,
+    absl::Span<const int64> skipped_dims) const {
   const HloSharding& sharding = hlo_->sharding();
   const Shape& shape = hlo_->shape();
   CHECK(!shape.IsTuple() && shape.element_type() != TOKEN);
@@ -502,7 +503,8 @@ PartitionedHlo PartitionedHlo::PadWithValue(
   auto offsets = MakePartitionOffsets(base_shape_, sharding,
                                       state_.partition_id, state_.b);
   for (int64 i = 0; i < shape.rank(); ++i) {
-    if (base_shape_.dimensions(i) % sharding.tile_assignment().dim(i) == 0) {
+    if (base_shape_.dimensions(i) % sharding.tile_assignment().dim(i) == 0 ||
+        absl::c_linear_search(skipped_dims, i)) {
       continue;
     }
     if (mask == nullptr) {

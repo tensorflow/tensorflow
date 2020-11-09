@@ -29,6 +29,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.kernel_tests.random import util as \
 random_test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_stateless_random_ops_v2
 from tensorflow.python.ops import stateless_random_ops as stateless
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -62,6 +63,18 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
       return xla.compile(
           lambda x: stateless.stateless_random_normal([], seed=x), [x])
     f([1, 2])
+
+  def testLargeNormal(self):
+    """Tests an OOM bug of StatelessRandomNormalV2 on TPU."""
+    with self.session() as sess, self.test_scope():
+      seed_t = array_ops.placeholder(dtypes.int32, shape=[2])
+      key, counter, alg = (gen_stateless_random_ops_v2.
+                           stateless_random_get_key_counter_alg(seed_t))
+      x = gen_stateless_random_ops_v2.stateless_random_normal_v2(
+          shape=[1024, 32000], key=key, counter=counter, dtype=dtypes.float32,
+          alg=alg)
+      y = sess.run(x, {seed_t: [0x12345678, 0xabcdef1]})
+    self.assertAllEqual([1024, 32000], y.shape)
 
   def testDeterminism(self):
     # Stateless values should be equal iff the seeds are equal (roughly)

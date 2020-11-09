@@ -58,6 +58,8 @@ class SnapshotDatasetV2Op : public UnaryDatasetOpKernel {
   static constexpr const char* const kReaderFuncTarguments =
       "Treader_func_args";
   static constexpr const char* const kShardFuncTarguments = "Tshard_func_args";
+  // Note: If a new constant is declared here, it *must* be defined in
+  // snapshot_dataset_op.cc, otherwise it will not compile in debug mode.
 
   explicit SnapshotDatasetV2Op(OpKernelConstruction* ctx);
 
