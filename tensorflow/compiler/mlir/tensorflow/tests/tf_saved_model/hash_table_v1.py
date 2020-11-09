@@ -33,8 +33,8 @@ from tensorflow.compiler.mlir.tensorflow.tests.tf_saved_model import common_v1
 # CHECK-SAME: min_consumer
 # CHECK-SAME: producer
 
-# CHECK: "tf_saved_model.session_initializer"() {initializer = [[init:@.*]]} : () -> ()
 # CHECK: "tf_saved_model.global_tensor"()
+# CHECK: "tf_saved_model.session_initializer"() {initializer = [[init:@.*]]} : () -> ()
 
 # CHECK:      func [[init]]
 # CHECK-NEXT: [[R5:%.*]] = "tf.Const"()

@@ -55,6 +55,21 @@ std::string ExperimentalConvertSavedModelToMlir(
     const std::string &saved_model_path, const std::string &exported_names_str,
     bool show_debug_info, TF_Status *status);
 
+// Load a SavedModel V1 and return a textual MLIR string corresponding to it
+// without any MLIR graph transformation.
+//
+// Args:
+//   saved_model_path: File path from which to load the SavedModel.
+//   tags: Tags to identify MetaGraphDef that need to be loaded.
+//   upgrade_legacy: Boolean flag that indicates whether to upgrade legacy
+//                   graphs
+//
+// Returns:
+//   A string of textual MLIR representing the raw imported SavedModel.
+std::string ExperimentalConvertSavedModelV1ToMlirLite(
+    const std::string &saved_model_path, const std::string &tags,
+    bool upgrade_legacy, bool show_debug_info, TF_Status *status);
+
 // Load a SavedModel V1 and return a textual MLIR string corresponding to it.
 //
 // Args:

@@ -207,62 +207,73 @@ StatusOr<OpType> LhloDialectEmitter::CreateOpWithoutAttrs(
   return builder_.create<OpType>(loc, rets, operands, attrs);
 }
 
-Status LhloDialectEmitter::DefaultAction(HloInstruction* instr) {
+StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(HloInstruction* instr) {
   using ::xla::HloOpcode;
   switch (instr->opcode()) {
     case HloOpcode::kAbs:
-      return CreateOpWithoutAttrs<lmhlo::AbsOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::AbsOp>(instr);
     case HloOpcode::kAdd:
-      return CreateOpWithoutAttrs<lmhlo::AddOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::AddOp>(instr);
     case HloOpcode::kAnd:
-      return CreateOpWithoutAttrs<lmhlo::AndOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::AndOp>(instr);
     case HloOpcode::kCeil:
-      return CreateOpWithoutAttrs<lmhlo::CeilOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::CeilOp>(instr);
     case HloOpcode::kComplex:
-      return CreateOpWithoutAttrs<lmhlo::ComplexOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::ComplexOp>(instr);
     case HloOpcode::kCopy:
-      return CreateOpWithoutAttrs<lmhlo::CopyOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::CopyOp>(instr);
     case HloOpcode::kCos:
-      return CreateOpWithoutAttrs<lmhlo::CosOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::CosOp>(instr);
     case HloOpcode::kDivide:
-      return CreateOpWithoutAttrs<lmhlo::DivOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::DivOp>(instr);
     case HloOpcode::kExp:
-      return CreateOpWithoutAttrs<lmhlo::ExpOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::ExpOp>(instr);
     case HloOpcode::kImag:
-      return CreateOpWithoutAttrs<lmhlo::ImagOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::ImagOp>(instr);
     case HloOpcode::kLog:
-      return CreateOpWithoutAttrs<lmhlo::LogOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::LogOp>(instr);
     case HloOpcode::kMaximum:
-      return CreateOpWithoutAttrs<lmhlo::MaxOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::MaxOp>(instr);
     case HloOpcode::kMinimum:
-      return CreateOpWithoutAttrs<lmhlo::MinOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::MinOp>(instr);
     case HloOpcode::kMultiply:
-      return CreateOpWithoutAttrs<lmhlo::MulOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::MulOp>(instr);
     case HloOpcode::kNegate:
-      return CreateOpWithoutAttrs<lmhlo::NegOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::NegOp>(instr);
     case HloOpcode::kReal:
-      return CreateOpWithoutAttrs<lmhlo::RealOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::RealOp>(instr);
     case HloOpcode::kRemainder:
-      return CreateOpWithoutAttrs<lmhlo::RemOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::RemOp>(instr);
     case HloOpcode::kRsqrt:
-      return CreateOpWithoutAttrs<lmhlo::RsqrtOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::RsqrtOp>(instr);
     case HloOpcode::kSelect:
-      return CreateOpWithoutAttrs<lmhlo::SelectOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::SelectOp>(instr);
     case HloOpcode::kSign:
-      return CreateOpWithoutAttrs<lmhlo::SignOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::SignOp>(instr);
     case HloOpcode::kSqrt:
-      return CreateOpWithoutAttrs<lmhlo::SqrtOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::SqrtOp>(instr);
     case HloOpcode::kSubtract:
-      return CreateOpWithoutAttrs<lmhlo::SubOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::SubOp>(instr);
     case HloOpcode::kTanh:
-      return CreateOpWithoutAttrs<lmhlo::TanhOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::TanhOp>(instr);
+    case HloOpcode::kSort:
+      return EmitSortOp(instr);
+    case HloOpcode::kFusion:
+      return EmitFusionOp(instr);
+    case HloOpcode::kScatter:
+      return EmitScatterOp(instr);
+    case HloOpcode::kSelectAndScatter:
+      return EmitSelectAndScatterOp(instr);
     default:
       llvm::errs() << instr->ToString();
       return tensorflow::errors::Internal(
           absl::StrCat("LHLO opcode ", ::xla::HloOpcodeString(instr->opcode()),
                        " is not supported."));
   }
-  return Status::OK();
+}
+
+Status LhloDialectEmitter::DefaultAction(HloInstruction* instr) {
+  return EmitOp(instr).status();
 }
 
 StatusOr<lmhlo::SortOp> LhloDialectEmitter::EmitSortOp(HloInstruction* instr) {
@@ -273,10 +284,6 @@ StatusOr<lmhlo::SortOp> LhloDialectEmitter::EmitSortOp(HloInstruction* instr) {
   TF_RETURN_IF_ERROR(::xla::HloFunctionImporter::ImportAsRegion(
       *sort_instr->called_computations()[0], &sort.comparator(), &builder_));
   return sort;
-}
-
-Status LhloDialectEmitter::HandleSort(HloInstruction* instr) {
-  return EmitSortOp(instr).status();
 }
 
 // Walks MHLO::TupleOp recursively.
@@ -396,10 +403,6 @@ StatusOr<lmhlo::FusionOp> LhloDialectEmitter::EmitFusionOp(
   return fusion;
 }
 
-Status LhloDialectEmitter::HandleFusion(HloInstruction* instr) {
-  return EmitFusionOp(instr).status();
-}
-
 StatusOr<mhlo::ScatterDimensionNumbers>
 LhloDialectEmitter::GetScatterDimensionNumbers(HloInstruction* instr) {
   auto* scatter_instr = ::xla::Cast<::xla::HloScatterInstruction>(instr);
@@ -439,10 +442,6 @@ StatusOr<lmhlo::ScatterOp> LhloDialectEmitter::EmitScatterOp(
   return scatter;
 }
 
-Status LhloDialectEmitter::HandleScatter(HloInstruction* instr) {
-  return EmitScatterOp(instr).status();
-}
-
 StatusOr<lmhlo::SelectAndScatterOp> LhloDialectEmitter::EmitSelectAndScatterOp(
     HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(auto select_and_scatter,
@@ -474,10 +473,6 @@ StatusOr<lmhlo::SelectAndScatterOp> LhloDialectEmitter::EmitSelectAndScatterOp(
       *select_and_scatter_instr->scatter(), &select_and_scatter.scatter(),
       &builder_));
   return select_and_scatter;
-}
-
-Status LhloDialectEmitter::HandleSelectAndScatter(HloInstruction* instr) {
-  return EmitSelectAndScatterOp(instr).status();
 }
 
 StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(

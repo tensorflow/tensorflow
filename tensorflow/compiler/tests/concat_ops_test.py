@@ -368,6 +368,7 @@ class PackTest(xla_test.XLATestCase):
         ans = self.evaluate(packed)
         self.assertAllEqual(ans, [2, 3, 5])
 
+  @test_util.disable_mlir_bridge("TODO(b/172473885)")
   def testEmpty(self):
     with self.session():
       with self.test_scope():

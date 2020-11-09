@@ -444,7 +444,8 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         auto fn = std::bind(
             [this, ctx, result](std::vector<Tensor> input_element) {
               return instantiated_captured_func_->Run(
-                  ctx.get(), std::move(input_element), &result->return_values);
+                  ctx.get(), std::move(input_element), &result->return_values,
+                  model_node());
             },
             std::move(input_element));
         // `ctx->runner()` may execute its logic synchronously so we wrap it in

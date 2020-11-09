@@ -89,7 +89,7 @@ class InferenceEnvironment {
   // std::vector<int64_t>* in_refs - optional, can be nullptr
   // std::vector<int64_t>* out_refs - optional, can be nullptr
   virtual absl::Status NewInferenceBuilder(
-      const std::vector<uint8_t>& serialized_model,
+      const absl::Span<const uint8_t> serialized_model,
       std::unique_ptr<InferenceBuilder>* builder, std::vector<int64_t>* in_refs,
       std::vector<int64_t>* out_refs) = 0;
 

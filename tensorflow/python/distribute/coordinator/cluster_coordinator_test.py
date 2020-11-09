@@ -40,6 +40,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -645,6 +646,17 @@ class ClusterCoordinatorTest(TestCaseWithErrorReportingThread):
     remote_v = self.coordinator.schedule(func_0)
     with self.assertRaises(ValueError):
       self.coordinator.schedule(func_1, args=(remote_v,))
+
+  def testPythonFunctionNotAllowedToSchedule(self):
+
+    def func(a):
+      return array_ops.identity(a)
+
+    with self.assertRaisesRegexp(
+        TypeError,
+        '`tf.distribute.experimental.coordinator.ClusterCoordinator.schedule` '
+        'only accepts a `tf.function` or a concrete function.'):
+      self.coordinator.schedule(func, args=(1,))
 
 
 class LimitedClosureQueueSizeBasicTest(ClusterCoordinatorTest):

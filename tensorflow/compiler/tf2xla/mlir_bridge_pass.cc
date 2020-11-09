@@ -33,7 +33,6 @@ bool HasTPUDevice(mlir::ModuleOp op) {
     return false;
 
   for (const auto& device : devices.device_names()) {
-    llvm::errs() << "Device: " << device.type << "\n";
     if (device.has_type && device.type == "TPU") return true;
   }
   return false;

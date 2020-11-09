@@ -5003,6 +5003,37 @@ ENTRY entry {
                           op::Dot(lhs_slice, partial_replicated_rhs)));
 }
 
+TEST_F(SpmdPartitioningTest, Dot2DPartitionedNoncontractingAndContracting3) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = f32[23,24] parameter(0), sharding={devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}
+  %rhs = f32[23,32] parameter(1), sharding={devices=[2,2]0,1,2,3}
+  ROOT %dot = f32[24,32] dot(%lhs, %rhs),
+    lhs_contracting_dims={0}, rhs_contracting_dims={0},
+    sharding={devices=[2,2]1,0,3,2}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  auto lhs = AllOf(op::Shape("f32[12,24]"), op::Parameter(0));
+  auto masked_lhs = op::Select(_, lhs, op::Broadcast(op::Constant()));
+  auto rhs = AllOf(op::Shape("f32[12,16]"), op::Parameter(1));
+  auto masked_rhs = op::Select(_, rhs, op::Broadcast(op::Constant()));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      root,
+      AllOf(op::Shape("f32[12,16]"),
+            op::DynamicSlice(
+                AllOf(op::Shape("f32[24,16]"),
+                      op::AllReduce(op::Dot(
+                          masked_lhs, op::CollectivePermute(masked_rhs)))),
+                _, _)));
+}
+
 TEST_F(SpmdPartitioningTest, Dot2DPartitionedBatchAndNonContracting) {
   const char* const hlo_string = R"(
 HloModule module

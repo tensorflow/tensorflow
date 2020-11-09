@@ -80,14 +80,14 @@ class RaggedTensor(composite_tensor.CompositeTensor,
   Note that the `__init__` constructor is private. Please use one of the
   following methods to construct a `RaggedTensor`:
 
-      * `tf.RaggedTensor.from_row_lengths`
-      * `tf.RaggedTensor.from_value_rowids`
-      * `tf.RaggedTensor.from_row_splits`
-      * `tf.RaggedTensor.from_row_starts`
-      * `tf.RaggedTensor.from_row_limits`
-      * `tf.RaggedTensor.from_nested_row_splits`
-      * `tf.RaggedTensor.from_nested_row_lengths`
-      * `tf.RaggedTensor.from_nested_value_rowids`
+  * `tf.RaggedTensor.from_row_lengths`
+  * `tf.RaggedTensor.from_value_rowids`
+  * `tf.RaggedTensor.from_row_splits`
+  * `tf.RaggedTensor.from_row_starts`
+  * `tf.RaggedTensor.from_row_limits`
+  * `tf.RaggedTensor.from_nested_row_splits`
+  * `tf.RaggedTensor.from_nested_row_lengths`
+  * `tf.RaggedTensor.from_nested_value_rowids`
 
   ### Potentially Ragged Tensors
 
@@ -1070,8 +1070,8 @@ class RaggedTensor(composite_tensor.CompositeTensor,
     particular, `rt.nested_value_rowids = (rt.value_rowids(),) + value_ids`
     where:
 
-        * `value_ids = ()` if `rt.values` is a `Tensor`.
-        * `value_ids = rt.values.nested_value_rowids` otherwise.
+    * `value_ids = ()` if `rt.values` is a `Tensor`.
+    * `value_ids = rt.values.nested_value_rowids` otherwise.
 
     Args:
       name: A name prefix for the returned tensors (optional).

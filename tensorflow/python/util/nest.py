@@ -135,7 +135,7 @@ def is_attrs(obj):
 @tf_export("__internal__.nest.is_mapping", v1=[])
 def is_mapping(obj):
   """Returns a true if its input is a collections.Mapping."""
-  return is_mapping(obj)
+  return _is_mapping(obj)
 
 
 @tf_export("__internal__.nest.sequence_like", v1=[])

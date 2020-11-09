@@ -27,7 +27,7 @@ import warnings
 import six
 
 from tensorflow.python.autograph.lang import directives
-from tensorflow.python.data.experimental.ops.distribute_options import AutoShardPolicy
+from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
@@ -422,12 +422,18 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
                            'the correct dtype).')
     super(Model, self).build(input_shape)
 
+  @doc_controls.doc_in_current_and_subclasses
   def call(self, inputs, training=None, mask=None):
     """Calls the model on new inputs.
 
     In this case `call` just reapplies
     all ops in the graph to the new inputs
     (e.g. build a new computational graph from the provided inputs).
+
+    Note: This method should not be called directly. It is only meant to be
+    overridden when subclassing `tf.keras.Model`.
+    To call a model on an input, always use the `__call__` method,
+    i.e. `model(inputs)`, which relies on the underlying `call` method.
 
     Arguments:
         inputs: A tensor or list of tensors.
@@ -1583,7 +1589,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
           self.distribute_strategy)) and isinstance(x, dataset_types):
         try:
           options = dataset_ops.Options()
-          data_option = AutoShardPolicy.DATA
+          data_option = distribute_options.AutoShardPolicy.DATA
           options.experimental_distribute.auto_shard_policy = data_option
           x = x.with_options(options)
         except ValueError:
