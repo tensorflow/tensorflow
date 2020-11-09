@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,17 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/kernels/cwise_ops_common.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/kernels/mlir_generated/unranked_op_gpu_base.h"
 
 namespace tensorflow {
-REGISTER4(UnaryOp, CPU, "Ceil", functor::ceil, float, Eigen::half, bfloat16,
-          double);
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_UNRANKED_GPU_KERNELS_ENABLED)
-REGISTER3(UnaryOp, GPU, "Ceil", functor::ceil, float, Eigen::half, double);
-#endif
-#endif
+REGISTER_AND_GENERATE_KERNEL(Ceil, f16, DT_HALF, Eigen::half);
+REGISTER_AND_GENERATE_KERNEL(Ceil, f32, DT_FLOAT, float);
+REGISTER_AND_GENERATE_KERNEL(Ceil, f64, DT_DOUBLE, double);
 
 }  // namespace tensorflow

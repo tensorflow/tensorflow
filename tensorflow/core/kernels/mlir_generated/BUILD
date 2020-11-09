@@ -41,6 +41,7 @@ filegroup(
     srcs = if_mlir_unranked_kernels_enabled(
         [
             "unranked_op_gpu_abs.cc",
+            "unranked_op_gpu_ceil.cc",
             "unranked_op_gpu_tanh.cc",
             "unranked_op_gpu_base.h",
             "unranked_op_gpu_base.cc",
@@ -60,6 +61,7 @@ cc_library(
         [
             ":abs_unranked_kernels",
             ":addv2_unranked_kernels",
+            ":ceil_unranked_kernels",
             ":tanh_unranked_kernels",
             "//tensorflow/compiler/mlir/tools/kernel_gen:tf_cuda_runtime_wrappers",
             "//tensorflow/compiler/mlir/tools/kernel_gen:tf_framework_c_interface",
