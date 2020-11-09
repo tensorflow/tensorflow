@@ -798,12 +798,11 @@ struct SparseApplyKerasMomentum<GPUDevice, T, Tindex> {
   }
 };
 
-
 template <typename T, typename Tindex>
 __global__ __launch_bounds__(1024) void ResourceSparseApplyAdadeltaKernel(
-    T* var, T* accum, T* accum_update, const T* lr, const T* rho, const T* epsilon,
-    const T* grad, const Tindex* indices, Tindex param_rows, Tindex updates_size, 
-    Tindex indices_size) {
+    T* var, T* accum, T* accum_update, const T* lr, const T* rho,
+    const T* epsilon, const T* grad, const Tindex* indices, Tindex param_rows,
+    Tindex updates_size, Tindex indices_size) {
   Tindex col_size = updates_size / indices_size;
   GPU_1D_KERNEL_LOOP(grad_index, updates_size) {
     Tindex indices_row = grad_index / col_size;
@@ -827,9 +826,11 @@ __global__ __launch_bounds__(1024) void ResourceSparseApplyAdadeltaKernel(
 
     // Variable update computation.
     accum_i = accum_i * rho_t + grad_i * grad_i * (T(1.0) - rho_t);
-    T update = sqrt(accum_update_i + epsilon_t) * grad_i / sqrt(accum_i + epsilon_t);
+    T update =
+        sqrt(accum_update_i + epsilon_t) * grad_i / sqrt(accum_i + epsilon_t);
     var_i -= update * lr_t;
-    accum_update_i = accum_update_i * rho_t + update * update * (T(1.0) - rho_t);
+    accum_update_i =
+        accum_update_i * rho_t + update * update * (T(1.0) - rho_t);
 
     // Write update back to variables.
     var[param_index] = var_i;
@@ -860,7 +861,6 @@ struct ResourceSparseApplyAdadelta<GPUDevice, T, Tindex> {
     return static_cast<Tindex>(-1);
   }
 };
-
 
 template <typename T>
 struct ApplyAdam<GPUDevice, T> {
@@ -1181,9 +1181,9 @@ template struct functor::SparseApplyKerasMomentum<GPUDevice, complex128, int32>;
 template struct functor::SparseApplyKerasMomentum<GPUDevice, complex128, int64>;
 
 template struct functor::ResourceSparseApplyAdadelta<GPUDevice, Eigen::half,
-                                                  int32>;
+                                                     int32>;
 template struct functor::ResourceSparseApplyAdadelta<GPUDevice, Eigen::half,
-                                                  int64>;
+                                                     int64>;
 template struct functor::ResourceSparseApplyAdadelta<GPUDevice, float, int32>;
 template struct functor::ResourceSparseApplyAdadelta<GPUDevice, float, int64>;
 template struct functor::ResourceSparseApplyAdadelta<GPUDevice, double, int32>;
@@ -1191,12 +1191,15 @@ template struct functor::ResourceSparseApplyAdadelta<GPUDevice, double, int64>;
 #if !defined(TENSORFLOW_USE_NVCC) && \
     !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
                                    // complex sqrt
-template struct functor::ResourceSparseApplyAdadelta<GPUDevice, complex64, int32>;
-template struct functor::ResourceSparseApplyAdadelta<GPUDevice, complex64, int64>;
-template struct functor::ResourceSparseApplyAdadelta<GPUDevice, complex128, int32>;
-template struct functor::ResourceSparseApplyAdadelta<GPUDevice, complex128, int64>;
+template struct functor::ResourceSparseApplyAdadelta<GPUDevice, complex64,
+                                                     int32>;
+template struct functor::ResourceSparseApplyAdadelta<GPUDevice, complex64,
+                                                     int64>;
+template struct functor::ResourceSparseApplyAdadelta<GPUDevice, complex128,
+                                                     int32>;
+template struct functor::ResourceSparseApplyAdadelta<GPUDevice, complex128,
+                                                     int64>;
 #endif
-
 
 template struct functor::ApplyAdam<GPUDevice, Eigen::half>;
 template struct functor::ApplyAdam<GPUDevice, float>;

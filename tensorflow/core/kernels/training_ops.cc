@@ -743,17 +743,16 @@ struct SparseApplyKerasMomentum<CPUDevice, T, Tindex> {
   }
 };
 
-
 template <typename T, typename Tindex>
 struct ResourceSparseApplyAdadelta<CPUDevice, T, Tindex> {
   Tindex operator()(const CPUDevice& d, typename TTypes<T>::Matrix var,
-                  typename TTypes<T>::Matrix accum,
-                  typename TTypes<T>::Matrix accum_update,
-                  typename TTypes<T>::ConstScalar lr,
-                  typename TTypes<T>::ConstScalar rho,
-                  typename TTypes<T>::ConstScalar epsilon,
-                  typename TTypes<T>::ConstMatrix grad,
-                  typename TTypes<Tindex>::ConstFlat indices){
+                    typename TTypes<T>::Matrix accum,
+                    typename TTypes<T>::Matrix accum_update,
+                    typename TTypes<T>::ConstScalar lr,
+                    typename TTypes<T>::ConstScalar rho,
+                    typename TTypes<T>::ConstScalar epsilon,
+                    typename TTypes<T>::ConstMatrix grad,
+                    typename TTypes<Tindex>::ConstFlat indices) {
     const Tindex N = static_cast<Tindex>(indices.size());
     for (Tindex i = 0; i < N; i++) {
       const Tindex index = indices(i);
@@ -761,21 +760,17 @@ struct ResourceSparseApplyAdadelta<CPUDevice, T, Tindex> {
       auto a_update = accum_update.template chip<0>(index);
       auto g = grad.template chip<0>(i);
 
-      a = a * a.constant(rho()) +
-                g.square() * g.constant(T(1) - rho());
-      const auto update =
-          (a_update + a_update.constant(epsilon())).sqrt() *
-          (a + a.constant(epsilon())).rsqrt() * g;
+      a = a * a.constant(rho()) + g.square() * g.constant(T(1) - rho());
+      const auto update = (a_update + a_update.constant(epsilon())).sqrt() *
+                          (a + a.constant(epsilon())).rsqrt() * g;
       auto v = var.template chip<0>(index);
       v -= update * update.constant(lr());
-      a_update =
-          a_update * a_update.constant(rho()) +
-          update.square() * update.constant(static_cast<T>(1) - rho());
+      a_update = a_update * a_update.constant(rho()) +
+                 update.square() * update.constant(static_cast<T>(1) - rho());
     }
     return -1;
   }
 };
-
 
 template <typename Device, typename T>
 struct ApplyAdamNonCuda {
@@ -1214,9 +1209,9 @@ class SparseApplyAdadeltaOp : public OpKernel {
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
                             ctx, 1, use_exclusive_lock_, sparse, &accum_grad));
     Tensor accum_update;
-    OP_REQUIRES_OK(ctx,
-                   GetInputTensorFromVariable<Device, T>(
-                       ctx, 2, use_exclusive_lock_, sparse, &accum_update));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable<Device, T>(ctx, 2, use_exclusive_lock_,
+                                                   sparse, &accum_update));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -1275,11 +1270,13 @@ class SparseApplyAdadeltaOp : public OpKernel {
       // Validate all the indices are in range
       auto indices_vec = indices.vec<Tindex>();
 
-    const Device& device = ctx->template eigen_device<Device>();
-    const Tindex bad_i = functor::ResourceSparseApplyAdadelta<Device, T, Tindex>()(
-        device, var.flat_outer_dims<T>(), accum_grad.flat_outer_dims<T>(),
-        accum_update.flat_outer_dims<T>(), lr.scalar<T>(), rho.scalar<T>(),
-        epsilon.scalar<T>(), grad.flat_outer_dims<T>(), indices_vec);
+      const Device& device = ctx->template eigen_device<Device>();
+      const Tindex bad_i =
+          functor::ResourceSparseApplyAdadelta<Device, T, Tindex>()(
+              device, var.flat_outer_dims<T>(), accum_grad.flat_outer_dims<T>(),
+              accum_update.flat_outer_dims<T>(), lr.scalar<T>(),
+              rho.scalar<T>(), epsilon.scalar<T>(), grad.flat_outer_dims<T>(),
+              indices_vec);
     }
 
     MaybeForwardRefInputToRefOutput(ctx, 0, 0);
@@ -1289,20 +1286,19 @@ class SparseApplyAdadeltaOp : public OpKernel {
   bool use_exclusive_lock_;
 };
 
-
-#define REGISTER_KERNELS(T, D, Tindices)                             \
-  REGISTER_KERNEL_BUILDER(Name("SparseApplyAdadelta")                \
-                              .Device(DEVICE_##D)                    \
-                              .TypeConstraint<T>("T")                \
-                              .TypeConstraint<Tindices>("Tindices"), \
-                      SparseApplyAdadeltaOp<T, D##Device, Tindices>);\
-  REGISTER_KERNEL_BUILDER(Name("ResourceSparseApplyAdadelta")        \
-                              .Device(DEVICE_##D)                    \
-                              .TypeConstraint<T>("T")                \
-                              .TypeConstraint<Tindices>("Tindices"), \
-                      SparseApplyAdadeltaOp<T, D##Device, Tindices>);
-#define REGISTER_CPU_KERNELS(T)      \
-  REGISTER_KERNELS(T, CPU, int32);   \
+#define REGISTER_KERNELS(T, D, Tindices)                                  \
+  REGISTER_KERNEL_BUILDER(Name("SparseApplyAdadelta")                     \
+                              .Device(DEVICE_##D)                         \
+                              .TypeConstraint<T>("T")                     \
+                              .TypeConstraint<Tindices>("Tindices"),      \
+                          SparseApplyAdadeltaOp<T, D##Device, Tindices>); \
+  REGISTER_KERNEL_BUILDER(Name("ResourceSparseApplyAdadelta")             \
+                              .Device(DEVICE_##D)                         \
+                              .TypeConstraint<T>("T")                     \
+                              .TypeConstraint<Tindices>("Tindices"),      \
+                          SparseApplyAdadeltaOp<T, D##Device, Tindices>);
+#define REGISTER_CPU_KERNELS(T)    \
+  REGISTER_KERNELS(T, CPU, int32); \
   REGISTER_KERNELS(T, CPU, int64);
 
 TF_CALL_FLOAT_TYPES(REGISTER_CPU_KERNELS);
@@ -1313,17 +1309,16 @@ TF_CALL_COMPLEX_TYPES(REGISTER_CPU_KERNELS);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
-#define DECLARE_GPU_SPEC(T, Tindex)                                         \
-  template <>                                                               \
-  Tindex ResourceSparseApplyAdadelta<GPUDevice, T, Tindex>::operator()(     \
-      const GPUDevice& d, typename TTypes<T>::Matrix var,                   \
-      typename TTypes<T>::Matrix accum,                                     \
-      typename TTypes<T>::Matrix accum_update,                              \
-      typename TTypes<T>::ConstScalar lr,                                   \
-      typename TTypes<T>::ConstScalar rho,                                  \
-      typename TTypes<T>::ConstScalar epsilon,                              \
-      typename TTypes<T>::ConstMatrix grad,                                 \
-      typename TTypes<Tindex>::ConstFlat indices);                          \
+#define DECLARE_GPU_SPEC(T, Tindex)                                            \
+  template <>                                                                  \
+  Tindex ResourceSparseApplyAdadelta<GPUDevice, T, Tindex>::operator()(        \
+      const GPUDevice& d, typename TTypes<T>::Matrix var,                      \
+      typename TTypes<T>::Matrix accum,                                        \
+      typename TTypes<T>::Matrix accum_update,                                 \
+      typename TTypes<T>::ConstScalar lr, typename TTypes<T>::ConstScalar rho, \
+      typename TTypes<T>::ConstScalar epsilon,                                 \
+      typename TTypes<T>::ConstMatrix grad,                                    \
+      typename TTypes<Tindex>::ConstFlat indices);                             \
   extern template struct ResourceSparseApplyAdadelta<GPUDevice, T, Tindex>;
 DECLARE_GPU_SPEC(Eigen::half, int32);
 DECLARE_GPU_SPEC(Eigen::half, int64);
