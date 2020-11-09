@@ -75,8 +75,8 @@ cc_library(
             ":rsqrt_unranked_kernels",
             ":sqrt_unranked_kernels",
             ":tanh_unranked_kernels",
-            "//tensorflow/compiler/mlir/tools/kernel_gen:tf_cuda_runtime_wrappers",
             "//tensorflow/compiler/mlir/tools/kernel_gen:tf_framework_c_interface",
+            "//tensorflow/compiler/mlir/tools/kernel_gen:tf_gpu_runtime_wrappers",
         ],
 )
 
@@ -106,7 +106,6 @@ tf_kernel_library(
     # Technically these source files don't need --config=cuda or --config=rocm,
     # but we want to avoid building them if they are not needed.
     srcs = if_cuda_or_rocm([":unary_kernel_srcs"]),
-    tags = ["no_rocm"],
     deps = if_cuda_or_rocm(
         [
             ":kernel_deps",
