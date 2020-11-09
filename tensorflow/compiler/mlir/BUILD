@@ -1,6 +1,8 @@
 # Description:
 #   TensorFlow/TensorFlow Lite/XLA MLIR dialects and tools.
 
+load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 package(
@@ -69,6 +71,7 @@ cc_library(
     srcs = ["tf_mlir_opt_main.cc"],
     deps = [
         ":init_mlir",
+        "//tensorflow/compiler/mlir/hlo:all_passes",
         "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -185,6 +188,18 @@ tf_cc_binary(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Translation",
+    ],
+)
+
+cc_library(
+    name = "mlir_bridge_rollout_policy",
+    srcs = ["mlir_bridge_rollout_policy.cc"],
+    hdrs = ["mlir_bridge_rollout_policy.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/compiler/jit:flags",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 

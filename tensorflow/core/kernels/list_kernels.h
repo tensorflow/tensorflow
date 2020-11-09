@@ -281,9 +281,6 @@ class TensorListConcat : public OpKernel {
       std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>;
   explicit TensorListConcat(OpKernelConstruction* c) : OpKernel(c) {
     OP_REQUIRES_OK(c, c->GetAttr("element_dtype", &element_dtype_));
-    // TODO(skyewm): the HasAttr check can be removed once the
-    // element_shape_except_first_dim attr has been checked in for 2 weeks
-    // (around 1/14/2019).
     if (c->HasAttr("element_shape")) {
       PartialTensorShape element_shape;
       OP_REQUIRES_OK(c, c->GetAttr("element_shape", &element_shape));

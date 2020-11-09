@@ -57,11 +57,11 @@ class TokenType : public Type::TypeBase<TokenType, Type, TypeStorage> {
   using Base::Base;
 };
 
+}  // namespace tf_executor
+}  // namespace mlir
+
 // Declares the operations for this dialect using the generated header.
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h.inc"
-
-}  // namespace tf_executor
-}  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_EXECUTOR_H_

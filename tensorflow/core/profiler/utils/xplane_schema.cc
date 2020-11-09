@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/utils/tf_op_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -109,8 +110,12 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"ParseExampleProduce", kParseExampleProduce},
       {"ParseExampleConsume", kParseExampleConsume},
       // Batching related.
-      {"BatchingSession", kBatchingSession},
+      {"BatchingSessionRun", kBatchingSessionRun},
       {"ProcessBatch", kProcessBatch},
+      {"ConcatInputTensors", kConcatInputTensors},
+      {"MergeInputTensors", kMergeInputTensors},
+      {"ScheduleWithoutSplit", kScheduleWithoutSplit},
+      {"ScheduleWithSplit", kScheduleWithSplit},
       // JAX related.
       {"LocalExecutable::ExecuteOnLocalDevices", kExecuteOnLocalDevices},
       // GPU related.
@@ -185,6 +190,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"tracing_count", kTfFunctionTracingCount},
       {"flops", kFlops},
       {"bytes_accessed", kBytesAccessed},
+      {"selected_group_ids", kSelectedGroupIds},
       // Performance counter related.
       {"Raw Value", kRawValue},
       {"Scaled Value", kScaledValue},
@@ -200,6 +206,10 @@ const StatTypeMap& GetStatTypeMap() {
       {"memory_size", kDevCapMemorySize},
       {"compute_cap_major", kDevCapComputeCapMajor},
       {"compute_cap_minor", kDevCapComputeCapMinor},
+      // Batching related.
+      {"batch_size_after_padding", kBatchSizeAfterPadding},
+      {"padding_amount", kPaddingAmount},
+      {"batching_input_task_size", kBatchingInputTaskSize},
   });
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;
@@ -228,6 +238,19 @@ absl::optional<int64> FindHostEventType(absl::string_view event_name) {
     return *event_type;
   }
   return absl::nullopt;
+}
+
+absl::optional<int64> FindTfOpEventType(absl::string_view event_name) {
+  // TF op names.
+  Category category = ParseTfOpFullname(event_name).category;
+  switch (category) {
+    case Category::kTensorFlow:
+      return HostEventType::kTfOpRun;
+    case Category::kTfData:
+      return HostEventType::kIterator;
+    default:
+      return absl::nullopt;
+  }
 }
 
 absl::string_view GetStatTypeStr(StatType stat_type) {

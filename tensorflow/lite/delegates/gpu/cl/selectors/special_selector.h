@@ -22,9 +22,9 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/subgraph.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 
 namespace tflite {
 namespace gpu {
@@ -34,7 +34,8 @@ absl::Status GPUSubgraphFromGraph(
     const DeviceInfo& device_info, CalculationsPrecision precision,
     const GraphFloat32& graph, NodeId first_node_id,
     const std::map<ValueId, TensorDescriptor>& tensor_descriptors,
-    std::set<NodeId>* consumed_nodes, GPUOperationsSubgraph* gpu_subgraph);
+    std::set<NodeId>* consumed_nodes, GPUOperationsSubgraph* gpu_subgraph,
+    std::string* name);
 
 }  // namespace cl
 }  // namespace gpu

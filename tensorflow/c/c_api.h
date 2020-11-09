@@ -1205,7 +1205,7 @@ typedef struct TF_Session TF_Session;
 // Return a new execution session with the associated graph, or NULL on
 // error. Does not take ownership of any input parameters.
 //
-// *`graph` must be a valid graph (not deleted or nullptr). `graph` will be be
+// *`graph` must be a valid graph (not deleted or nullptr). `graph` will be
 // kept alive for the lifetime of the returned TF_Session. New nodes can still
 // be added to `graph` after this call.
 TF_CAPI_EXPORT extern TF_Session* TF_NewSession(TF_Graph* graph,
@@ -1524,6 +1524,10 @@ TF_CAPI_EXPORT extern TF_Buffer* TF_GetAllRegisteredKernels(TF_Status* status);
 TF_CAPI_EXPORT extern TF_Buffer* TF_GetRegisteredKernelsForOp(
     const char* name, TF_Status* status);
 
+// Update edge, switch input/ output in a node
+TF_CAPI_EXPORT extern void TF_UpdateEdge(TF_Graph* graph, TF_Output new_src,
+                                         TF_Input dst, TF_Status* status);
+
 // --------------------------------------------------------------------------
 // In-process TensorFlow server functionality, for use in distributed training.
 // A Server instance encapsulates a set of devices and a Session target that
@@ -1572,6 +1576,13 @@ TF_CAPI_EXPORT extern void TF_DeleteServer(TF_Server* server);
 // logs.
 TF_CAPI_EXPORT extern void TF_RegisterLogListener(
     void (*listener)(const char*));
+
+// Register a FileSystem plugin from filename `plugin_filename`.
+//
+// On success, place OK in status.
+// On failure, place an error status in status.
+TF_CAPI_EXPORT extern void TF_RegisterFilesystemPlugin(
+    const char* plugin_filename, TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

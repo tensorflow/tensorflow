@@ -25,6 +25,7 @@ import six
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
 from tensorflow.python.framework import tensor_util
@@ -144,8 +145,11 @@ class Loss(object):
     graph_ctx = tf_utils.graph_context_for_symbolic_tensors(
         y_true, y_pred, sample_weight)
     with K.name_scope(self._name_scope), graph_ctx:
-      ag_call = autograph.tf_convert(self.call, ag_ctx.control_status_ctx())
-      losses = ag_call(y_true, y_pred)
+      if context.executing_eagerly():
+        call_fn = self.call
+      else:
+        call_fn = autograph.tf_convert(self.call, ag_ctx.control_status_ctx())
+      losses = call_fn(y_true, y_pred)
       return losses_utils.compute_weighted_loss(
           losses, sample_weight, reduction=self._get_reduction())
 
@@ -179,7 +183,7 @@ class Loss(object):
     Returns:
       Loss values with the shape `[batch_size, d0, .. dN-1]`.
     """
-    NotImplementedError('Must be implemented in subclasses.')
+    raise NotImplementedError('Must be implemented in subclasses.')
 
   def _get_reduction(self):
     """Handles `AUTO` reduction cases and returns the reduction value."""
@@ -1284,7 +1288,7 @@ def mean_squared_logarithmic_error(y_true, y_pred):
   >>> assert loss.shape == (2,)
   >>> y_true = np.maximum(y_true, 1e-7)
   >>> y_pred = np.maximum(y_pred, 1e-7)
-  >>> assert np.array_equal(
+  >>> assert np.allclose(
   ...     loss.numpy(),
   ...     np.mean(
   ...         np.square(np.log(y_true + 1.) - np.log(y_pred + 1.)), axis=-1))
@@ -1452,7 +1456,8 @@ def huber(y_true, y_pred, delta=1.0):
       axis=-1)
 
 
-@keras_export('keras.losses.log_cosh', 'keras.losses.logcosh')
+@keras_export('keras.losses.log_cosh', 'keras.losses.logcosh',
+              'keras.metrics.log_cosh', 'keras.metrics.logcosh')
 @dispatch.add_dispatch_support
 def log_cosh(y_true, y_pred):
   """Logarithm of the hyperbolic cosine of the prediction error.

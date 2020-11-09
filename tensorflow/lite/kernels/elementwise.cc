@@ -66,8 +66,10 @@ template <IsSupportedType is_supported_type, const char* op_name>
 TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
-  const TfLiteTensor* input = GetInput(context, node, 0);
-  TfLiteTensor* output = GetOutput(context, node, 0);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
   TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
   if (!is_supported_type(input->type)) {
     TF_LITE_UNSUPPORTED_TYPE(context, input->type, op_name);
@@ -114,8 +116,10 @@ template <typename T>
 inline TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node,
                              std::function<T(T)> func,
                              TfLiteType expected_type) {
-  const TfLiteTensor* input = GetInput(context, node, 0);
-  TfLiteTensor* output = GetOutput(context, node, 0);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
   TF_LITE_ENSURE_TYPES_EQ(context, input->type, expected_type);
   const int64_t num_elements = NumElements(input);
   const T* in_data = GetTensorData<T>(input);

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/utils/topological_sort.h"
+
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/graph/benchmark_testlib.h"
@@ -196,19 +197,17 @@ TEST_F(TopologicalSortTest, ExtraDependencies) {
       ComputeTopologicalOrder(graph, extra_dependencies, &topo_order).ok());
 }
 
-static void BM_ComputeTopologicalOrder(int iters, int size) {
-  testing::StopTiming();
+static void BM_ComputeTopologicalOrder(::testing::benchmark::State& state) {
+  const int size = state.range(0);
 
   GraphDef graph = test::CreateRandomGraph(size);
 
-  testing::StartTiming();
   std::vector<const NodeDef*> topo_order;
-  for (int i = 0; i < iters; i++) {
+  for (auto s : state) {
     topo_order.clear();
     Status st = ComputeTopologicalOrder(graph, &topo_order);
     CHECK(st.ok()) << "Failed to compute topological order";
   }
-  testing::StopTiming();
 }
 BENCHMARK(BM_ComputeTopologicalOrder)
     ->Arg(10)

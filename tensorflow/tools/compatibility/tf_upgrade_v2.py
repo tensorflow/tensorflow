@@ -895,13 +895,13 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         "changes in constructor. " + distribute_strategy_api_changes)
 
     contrib_ps_strategy_warning = (
-        ast_edits.ERROR,
-        "(Manual edit required) "
+        ast_edits.ERROR, "(Manual edit required) "
         "tf.contrib.distribute.ParameterServerStrategy has "
         "been migrated to "
-        "tf.distribute.experimental.ParameterServerStrategy (multi machine) "
-        " and tf.distribute.experimental.CentralStorageStrategy (one machine). "
-        "Note the changes in constructors. " + distribute_strategy_api_changes)
+        "tf.compat.v1.distribute.experimental.ParameterServerStrategy (multi "
+        "machine) and tf.distribute.experimental.CentralStorageStrategy (one "
+        "machine). Note the changes in constructors. " +
+        distribute_strategy_api_changes)
 
     keras_experimental_export_comment = (
         ast_edits.WARNING,

@@ -161,7 +161,7 @@ Status ConvertGraphDefToXlaViaMlir(
   return ConvertMLIRToXlaComputation(*module, /*device_type=*/"XLA_CPU_JIT",
                                      computation,
                                      /*use_tuple_args=*/false,
-                                     /*always_return_tuple=*/true);
+                                     /*return_tuple=*/true);
 }
 
 }  // namespace tensorflow

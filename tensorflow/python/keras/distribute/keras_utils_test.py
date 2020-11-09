@@ -23,9 +23,11 @@ import tempfile
 
 from absl.testing import parameterized
 import numpy as np
+
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations as ds_combinations
+from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.distribute import values
@@ -35,7 +37,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras import losses
 from tensorflow.python.keras.distribute import distribute_strategy_test as keras_test_lib
-from tensorflow.python.keras.distribute import distributed_training_utils
+from tensorflow.python.keras.distribute import distributed_training_utils_v1
 from tensorflow.python.keras.distribute import optimizer_combinations
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
@@ -203,7 +205,7 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
           'distributed tensor inputs '
           'DistributedValues:.+'):
         with distribution.scope():
-          distributed_training_utils.validate_distributed_dataset_inputs(
+          distributed_training_utils_v1.validate_distributed_dataset_inputs(
               distribution, x, y)
 
   @ds_combinations.generate(
@@ -227,7 +229,7 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
           'distributed tensor inputs '
           'DistributedValues:.+'):
         with distribution.scope():
-          distributed_training_utils.validate_distributed_dataset_inputs(
+          distributed_training_utils_v1.validate_distributed_dataset_inputs(
               distribution, x, y)
 
   @ds_combinations.generate(
@@ -575,4 +577,4 @@ class TestDistributionStrategyWithStaticShapes(test.TestCase,
 
 
 if __name__ == '__main__':
-  test.main()
+  multi_process_runner.test_main()

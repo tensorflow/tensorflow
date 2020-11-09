@@ -36,6 +36,9 @@ Status DispatcherState::Apply(const Update& update) {
     case Update::kCreateJob:
       CreateJob(update.create_job());
       break;
+    case Update::kProduceSplit:
+      ProduceSplit(update.produce_split());
+      break;
     case Update::kAcquireJobClient:
       AcquireJobClient(update.acquire_job_client());
       break;
@@ -96,6 +99,19 @@ void DispatcherState::CreateJob(const CreateJobUpdate& create_job) {
   next_available_job_id_ = std::max(next_available_job_id_, job_id + 1);
 }
 
+void DispatcherState::ProduceSplit(const ProduceSplitUpdate& produce_split) {
+  std::shared_ptr<Job> job = jobs_[produce_split.job_id()];
+  DCHECK(job->distributed_epoch_state.has_value());
+  DistributedEpochState& state = job->distributed_epoch_state.value();
+  DCHECK_EQ(produce_split.repetition(), state.repetition);
+  if (produce_split.finished()) {
+    state.repetition++;
+    state.split_provider_index = 0;
+    return;
+  }
+  state.split_provider_index++;
+}
+
 void DispatcherState::AcquireJobClient(
     const AcquireJobClientUpdate& acquire_job_client) {
   int64 job_client_id = acquire_job_client.job_client_id();
@@ -125,6 +141,7 @@ void DispatcherState::CreateTask(const CreateTaskUpdate& create_task) {
   DCHECK_EQ(task, nullptr);
   task = std::make_shared<Task>(task_id, create_task.job_id(),
                                 create_task.dataset_id(),
+                                ProcessingMode(create_task.processing_mode()),
                                 create_task.worker_address());
   tasks_by_job_[create_task.job_id()].push_back(task);
   tasks_by_worker_[create_task.worker_address()][task->task_id] = task;

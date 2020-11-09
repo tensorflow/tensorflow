@@ -370,7 +370,7 @@ native API to be built first.
 Here is an example using ObjC
 [`TFLBertQuestionAnswerer`](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/ios/task/text/qa/Sources/TFLBertQuestionAnswerer.h)
 for [MobileBert](https://tfhub.dev/tensorflow/lite-model/mobilebert/1/default/1)
-in Swfit.
+in Swift.
 
 ```swift
   static let mobileBertModelPath = "path/to/model.tflite";
@@ -427,7 +427,7 @@ following the steps below:
         std::unique_ptr<QuestionAnswererCPP> _bertQuestionAnswerwer;
       }
 
-      // Initilalize the native API object
+      // Initialize the native API object
       + (instancetype)mobilebertQuestionAnswererWithModelPath:(NSString *)modelPath
                                               vocabPath:(NSString *)vocabPath {
         absl::StatusOr<std::unique_ptr<QuestionAnswererCPP>> cQuestionAnswerer =

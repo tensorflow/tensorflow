@@ -32,7 +32,10 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras.distribute import distributed_training_utils
-from tensorflow.python.keras.mixed_precision.experimental import policy
+from tensorflow.python.keras.distribute.strategy_combinations import all_strategies
+from tensorflow.python.keras.distribute.strategy_combinations import multi_worker_mirrored_strategies
+from tensorflow.python.keras.distribute.strategy_combinations import strategies_minus_tpu
+from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.keras.preprocessing import sequence
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
@@ -43,15 +46,6 @@ _GLOBAL_BATCH_SIZE = 64
 
 # Note: Please make sure the tests in this file are also covered in
 # keras_backward_compat_test for features that are supported with both APIs.
-
-all_strategies = [
-    strategy_combinations.default_strategy,
-    strategy_combinations.one_device_strategy,
-    strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-    strategy_combinations.mirrored_strategy_with_two_gpus,
-    strategy_combinations.tpu_strategy,  # steps_per_run=2
-    strategy_combinations.tpu_strategy_one_step,
-]
 
 
 def eager_mode_test_configuration():
@@ -66,15 +60,19 @@ def graph_mode_test_configuration():
 
 def all_strategy_and_input_config_combinations():
   return (combinations.times(
-      combinations.combine(
-          distribution=all_strategies),
+      combinations.combine(distribution=all_strategies),
       eager_mode_test_configuration() + graph_mode_test_configuration()))
+
+
+def all_strategy_and_input_config_combinations_eager():
+  return (combinations.times(
+      combinations.combine(distribution=all_strategies),
+      eager_mode_test_configuration()))
 
 
 def strategy_minus_tpu_and_input_config_combinations_eager():
   return (combinations.times(
-      combinations.combine(
-          distribution=strategy_combinations.strategies_minus_tpu),
+      combinations.combine(distribution=strategies_minus_tpu),
       eager_mode_test_configuration()))
 
 
@@ -106,15 +104,26 @@ def test_combinations_for_embedding_model():
           (eager_mode_test_configuration())))
 
 
-def test_combinations_with_tpu_strategies():
+def test_combinations_with_tpu_strategies_graph():
   tpu_strategies = [
       strategy_combinations.tpu_strategy,
-      strategy_combinations.tpu_strategy_one_step
   ]
 
   return (combinations.times(
       combinations.combine(distribution=tpu_strategies),
       graph_mode_test_configuration()))
+
+
+def multi_worker_mirrored_eager():
+  return combinations.times(
+      combinations.combine(distribution=multi_worker_mirrored_strategies),
+      eager_mode_test_configuration())
+
+
+def multi_worker_mirrored_eager_and_graph():
+  return combinations.times(
+      combinations.combine(distribution=multi_worker_mirrored_strategies),
+      eager_mode_test_configuration() + graph_mode_test_configuration())
 
 
 class MaybeDistributionScope(object):
@@ -317,6 +326,7 @@ def compare_results(results_with_ds,
     # so use larger tolerance for now. Predict should be related to weights.
     if (isinstance(distribution,
                    (mirrored_strategy.MirroredStrategy,
+                    mirrored_strategy.MirroredStrategyV1,
                     distribute_lib._DefaultDistributionStrategy)) and  # pylint: disable=protected-access
         key.startswith(('weights_1', 'weights_2', 'predict_result'))):
       return relaxed_tolerance

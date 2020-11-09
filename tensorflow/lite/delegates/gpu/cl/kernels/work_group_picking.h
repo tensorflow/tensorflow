@@ -16,10 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_WORK_GROUP_PICKING_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_WORK_GROUP_PICKING_H_
 
-#include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
+#include <vector>
+
 #include "tensorflow/lite/delegates/gpu/cl/cl_kernel.h"
+#include "tensorflow/lite/delegates/gpu/cl/device_info.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/tuning_parameters.h"
-#include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/workgroup_selection.h"
 

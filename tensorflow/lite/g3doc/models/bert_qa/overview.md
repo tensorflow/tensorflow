@@ -24,7 +24,7 @@ can download our starter question and answer model.
 <a class="button button-primary" href="https://tfhub.dev/tensorflow/lite-model/mobilebert/1/metadata/1?lite-format=tflite">Download
 starter model and vocab</a>
 
-For more information about medatada and associated fields (e.g. `vocab.txt`) see
+For more information about metadata and associated fields (e.g. `vocab.txt`) see
 <a href="https://www.tensorflow.org/lite/convert/metadata#read_the_metadata_from_models">Read
 the metadata from models</a>.
 

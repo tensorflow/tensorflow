@@ -201,6 +201,37 @@ def make_strided_slice_tests(options):
           "fully_quantize": [True],
       },
   ]
+
+  if options.use_experimental_converter:
+    test_parameters = test_parameters + [
+        # Begin equal to input dim.
+        {
+            "dtype": [tf.float32],
+            "index_type": [tf.int32],
+            "input_shape": [[1, 1, 2]],
+            "begin": [[1]],
+            "end": [[0]],
+            "strides": [[1]],
+            "begin_mask": [0],
+            "end_mask": [1],
+            "shrink_axis_mask": [0],
+            "constant_indices": [True, False],
+            "fully_quantize": [False],
+        },
+        {
+            "dtype": [tf.float32],
+            "index_type": [tf.int32],
+            "input_shape": [[1, 1, 2]],
+            "begin": [[1, 0, 0]],
+            "end": [[0, -1, -1]],
+            "strides": [[1, 1, 1]],
+            "begin_mask": [6],
+            "end_mask": [7],
+            "shrink_axis_mask": [0],
+            "constant_indices": [True, False],
+            "fully_quantize": [False],
+        }
+    ]
   _make_strided_slice_tests(options, test_parameters, expected_tf_failures=2)
 
 

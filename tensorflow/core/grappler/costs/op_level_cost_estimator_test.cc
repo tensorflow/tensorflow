@@ -56,6 +56,13 @@ class TestOpLevelCostEstimator : public OpLevelCostEstimator {
   DeviceInfo device_info_;
 };
 
+void ExpectZeroCost(const Costs& cost) {
+  EXPECT_TRUE(cost.inaccurate);
+  EXPECT_EQ(cost.compute_time, Costs::Duration::zero());
+  EXPECT_EQ(cost.execution_time, Costs::Duration::zero());
+  EXPECT_EQ(cost.memory_time, Costs::Duration::zero());
+}
+
 // Wrangles the minimum number of proto fields to set up a matrix.
 void DescribeMatrix(int rows, int columns, OpInfo* op_info) {
   auto input = op_info->add_inputs();
@@ -2082,10 +2089,27 @@ TEST_F(OpLevelCostEstimatorTest, PureMemoryOpExecutionTime) {
     EXPECT_EQ(cost.persistent_memory, 0);
   }
 }
+
 TEST_F(OpLevelCostEstimatorTest, ResizeBilinearExecutionTime) {
   const int kImageDim = 255;
   const int kChannelSize = 10;
   const int kComputeLerpCost = 9;
+  {
+    OpContext op_context;
+    SetCpuDevice(&op_context.op_info);
+    op_context.op_info.set_op("ResizeBilinear");
+    DescribeTensor4D(1, kImageDim, kImageDim, kChannelSize,
+                     op_context.op_info.add_inputs());
+    // Test with no output.
+    auto cost = PredictCosts(op_context);
+    ExpectZeroCost(cost);
+    op_context.op_info.clear_inputs();
+
+    DescribeTensor4D(0, 0, 0, 0, op_context.op_info.add_outputs());
+    // Test with no input.
+    cost = PredictCosts(op_context);
+    ExpectZeroCost(cost);
+  }
   {
     // Test with size 0 output.
     OpContext op_context;

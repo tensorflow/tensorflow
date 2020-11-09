@@ -43,6 +43,7 @@ Status GrpcDispatcherImpl::Start() { return impl_.Start(); }
 HANDLER(WorkerHeartbeat);
 HANDLER(WorkerUpdate);
 HANDLER(GetDatasetDef);
+HANDLER(GetSplit);
 HANDLER(GetOrRegisterDataset);
 HANDLER(CreateJob);
 HANDLER(ReleaseJobClient);

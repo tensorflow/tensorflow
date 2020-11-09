@@ -22,8 +22,8 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
-#include "tensorflow/lite/delegates/gpu/cl/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/precision.h"
 
 namespace tflite {
 namespace gpu {
@@ -186,6 +186,14 @@ int GetRecommendedBlockSizeForConv(const DeviceInfo& device_info,
     block_size = 8;
   }
   return block_size;
+}
+
+int3 GetWorkGroupsCount(const int3& grid_size, const int3& work_group_size) {
+  int3 work_groups_count;
+  work_groups_count.x = DivideRoundUp(grid_size.x, work_group_size.x);
+  work_groups_count.y = DivideRoundUp(grid_size.y, work_group_size.y);
+  work_groups_count.z = DivideRoundUp(grid_size.z, work_group_size.z);
+  return work_groups_count;
 }
 
 }  // namespace cl

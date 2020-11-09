@@ -27,6 +27,7 @@ import numpy as np
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
@@ -63,13 +64,16 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
         self.assertAllClose(
             result, np_reduce_fn(test_input, axis=1), rtol=rtol, atol=atol)
 
-        with self.assertRaisesWithPredicateMatch(
-            errors_impl.InvalidArgumentError, 'Invalid reduction dim'):
-          sess.run(out, {a: test_input, index: [-33]})
+        # MLIR bridge doesn't return the same error so it can't be matched
+        # directly.
+        if not test_util.is_mlir_bridge_enabled():
+          with self.assertRaisesWithPredicateMatch(
+              errors_impl.InvalidArgumentError, 'Invalid reduction dim'):
+            sess.run(out, {a: test_input, index: [-33]})
 
-        with self.assertRaisesWithPredicateMatch(
-            errors_impl.InvalidArgumentError, 'Invalid reduction dim'):
-          sess.run(out, {a: test_input, index: [2]})
+          with self.assertRaisesWithPredicateMatch(
+              errors_impl.InvalidArgumentError, 'Invalid reduction dim'):
+            sess.run(out, {a: test_input, index: [2]})
 
   REAL_DATA = [
       np.zeros(shape=(2, 0)),
@@ -94,22 +98,27 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
   ]
   ONES = [np.ones([34000, 2])]
 
+  @test_util.disable_mlir_bridge('TODO(b/172473885)')
   def testReduceSumF32(self, index_dtype):
     self._testReduction(math_ops.reduce_sum, np.sum, np.float32, self.REAL_DATA,
                         index_dtype)
 
+  @test_util.disable_mlir_bridge('TODO(b/172473885)')
   def testReduceSumC64(self, index_dtype):
     self._testReduction(math_ops.reduce_sum, np.sum, np.complex64,
                         self.COMPLEX_DATA, index_dtype)
 
+  @test_util.disable_mlir_bridge('TODO(b/172473885)')
   def testReduceProdF32(self, index_dtype):
     self._testReduction(math_ops.reduce_prod, np.prod, np.float32,
                         self.REAL_DATA, index_dtype)
 
+  @test_util.disable_mlir_bridge('TODO(b/172473885)')
   def testReduceProdC64(self, index_dtype):
     self._testReduction(math_ops.reduce_prod, np.prod, np.complex64,
                         self.COMPLEX_DATA, index_dtype)
 
+  @test_util.disable_mlir_bridge('TODO(b/172473885)')
   def testReduceMin(self, index_dtype):
 
     def reference_min(dtype, inp, axis):
@@ -127,6 +136,7 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
                           functools.partial(reference_min, dtype), dtype,
                           self.REAL_DATA, index_dtype)
 
+  @test_util.disable_mlir_bridge('TODO(b/172473885)')
   def testReduceMax(self, index_dtype):
 
     def reference_max(dtype, inp, axis):
@@ -145,6 +155,7 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
                           functools.partial(reference_max, dtype), dtype,
                           self.REAL_DATA, index_dtype)
 
+  @test_util.disable_mlir_bridge('TODO(b/172473885)')
   def testReduceMeanF32(self, index_dtype):
     # TODO(phawkins): mean on XLA currently returns 0 instead of NaN when
     # reducing across zero inputs.
@@ -160,14 +171,17 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
     self._testReduction(math_ops.reduce_mean, np.mean, np.complex64,
                         self.NONEMPTY_COMPLEX_DATA, index_dtype)
 
+  @test_util.disable_mlir_bridge('TODO(b/172473885)')
   def testReduceAll(self, index_dtype):
     self._testReduction(math_ops.reduce_all, np.all, np.bool, self.BOOL_DATA,
                         index_dtype)
 
+  @test_util.disable_mlir_bridge('TODO(b/172473885)')
   def testReduceAny(self, index_dtype):
     self._testReduction(math_ops.reduce_any, np.any, np.bool, self.BOOL_DATA,
                         index_dtype)
 
+  @test_util.disable_mlir_bridge('Error messages differ')
   def testReduceSumWithDuplicateAxes(self, index_dtype):
     with self.session() as sess:
       with self.test_scope():

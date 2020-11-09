@@ -17,8 +17,8 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/kernels/kernel_runner.h"
+#include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
-#include "tensorflow/lite/micro/testing/test_utils.h"
 
 namespace tflite {
 namespace testing {
@@ -38,10 +38,9 @@ void TestConcatenateTwoInputs(const int* input1_dims_data,
   constexpr int input_size = 2;
   constexpr int output_size = 1;
   constexpr int tensors_size = input_size + output_size;
-  TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input1_data, input1_dims),
-      CreateFloatTensor(input2_data, input2_dims),
-      CreateFloatTensor(output_data, output_dims)};
+  TfLiteTensor tensors[tensors_size] = {CreateTensor(input1_data, input1_dims),
+                                        CreateTensor(input2_data, input2_dims),
+                                        CreateTensor(output_data, output_dims)};
 
   int inputs_array_data[] = {2, 0, 1};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);

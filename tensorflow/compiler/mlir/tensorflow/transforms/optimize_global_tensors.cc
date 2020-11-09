@@ -109,13 +109,14 @@ class ResourceAnalyzer {
         return;
       }
       if (auto if_op = dyn_cast<TF::IfOp>(op)) {
-        for (auto callee : {if_op.then_func(), if_op.else_func()}) {
+        for (auto callee : {if_op.then_function(), if_op.else_function()}) {
           PropagatePotentiallyWrittenUpFromCallee(callee, if_op.input());
         }
         return;
       }
       if (auto while_op = dyn_cast<TF::WhileOp>(op)) {
-        for (auto callee : {while_op.cond_func(), while_op.body_func()}) {
+        for (auto callee :
+             {while_op.cond_function(), while_op.body_function()}) {
           PropagatePotentiallyWrittenUpFromCallee(callee, while_op.input());
         }
         return;

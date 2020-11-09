@@ -1,3 +1,5 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
 package(
     default_visibility = [
         "//tensorflow/compiler/tf2xla:internal",
@@ -32,7 +34,7 @@ XLA_OPS_DEPS = [
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core:state_ops_op_lib",
-    "//tensorflow/core:stream_executor_no_cuda",
+    "//tensorflow/core/platform:stream_executor_no_cuda",
     "//tensorflow/core/profiler/lib:traceme",
     "//tensorflow/stream_executor:tf_allocator_adapter",
 ]

@@ -3,14 +3,17 @@
 // CHECK: {
 // CHECK-NEXT:   version: 3,
 // CHECK-NEXT:   operator_codes: [ {
-// CHECK-NEXT:     builtin_code: WHILE,
-// CHECK-NEXT:     version: 1
+// CHECK-NEXT:     deprecated_builtin_code: 119,
+// CHECK-NEXT:     version: 1,
+// CHECK-NEXT:     builtin_code: WHILE
 // CHECK-NEXT:   }, {
-// CHECK-NEXT:     builtin_code: GREATER,
-// CHECK-NEXT:     version: 1
+// CHECK-NEXT:     deprecated_builtin_code: 61,
+// CHECK-NEXT:     version: 1,
+// CHECK-NEXT:     builtin_code: GREATER
 // CHECK-NEXT:   }, {
-// CHECK-NEXT:     builtin_code: SUB,
-// CHECK-NEXT:     version: 1
+// CHECK-NEXT:     deprecated_builtin_code: 41,
+// CHECK-NEXT:     version: 1,
+// CHECK-NEXT:     builtin_code: SUB
 // CHECK-NEXT:   }, {
 // CHECK-NEXT:     version: 1
 // CHECK-NEXT:   } ],
@@ -196,6 +199,7 @@
 // CHECK-NEXT:  name: "min_runtime_version",
 // CHECK-NEXT:  buffer: 14
 // CHECK-NEXT:   } ]
+// CHECK-NEXT:  signature_defs: [ ]
 // CHECK-NEXT: }
 
 func @WhileOp_cond(%arg0: tensor<*xi32>, %arg1: tensor<*xf32>) -> tensor<i1> {

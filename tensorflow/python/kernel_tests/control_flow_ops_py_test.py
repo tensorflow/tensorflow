@@ -730,6 +730,8 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         g for g in run_metadata.partition_graphs
         if device_str in g.node[0].device
     ]
+    if not device_graphs:
+      return 0
     self.assertLen(device_graphs, 1)
     switch_nodes = [
         n for n in device_graphs[0].node
@@ -759,7 +761,6 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       options = config_pb2.RunOptions(output_partition_graphs=True)
       sess.run(
           r, feed_dict={x: -10.}, options=options, run_metadata=run_metadata)
-      self.assertLen(run_metadata.partition_graphs, 2)
       # Check that the Switch for `arg` gets placed on CPU.
       self.assertEqual(
           self._count_matching_switch_nodes_on_device(run_metadata, "CPU",
@@ -4617,6 +4618,14 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       v_f, v_t = control_flow_ops.switch(constant_uint64, cond)
       result = control_flow_ops.merge([v_f, v_t])
       self.evaluate(result)
+
+  def testSwitchEagerMode(self):
+    if not context.executing_eagerly():
+      return
+    input_data = [1, 2, 3, 4]
+    vf, vt = control_flow_ops.switch(input_data, False)
+    self.assertAllEqual(vf, input_data)
+    self.assertAllEqual(vt, [])
 
   @test_util.run_deprecated_v1
   def testQIntArgAndRet(self):

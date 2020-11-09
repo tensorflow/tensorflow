@@ -39,11 +39,12 @@ namespace {
 
 // Helper method that returns an op from 'transpose_ops' that match criteria
 // for an 'operand' and 'permutation'
-TransposeOp ReuseExistingTranspose(SmallVector<TransposeOp, 2> transpose_ops,
-                                   OpOperand* operand,
-                                   SmallVector<int64_t, 4> permutation,
-                                   Operation* op, ConstOp permutation_op) {
-  for (auto tranpose_op : transpose_ops) {
+TransposeOp ReuseExistingTranspose(const OpOperand* operand,
+                                   const SmallVector<int64_t, 4>& permutation,
+                                   Operation* op, ConstOp permutation_op,
+                                   SmallVector<TransposeOp, 2>* transpose_ops) {
+  for (auto it = transpose_ops->begin(); it != transpose_ops->end(); ++it) {
+    auto tranpose_op = *it;
     for (auto tranpose_operand : tranpose_op.getOperands()) {
       auto ranked_tranpose_type =
           tranpose_operand.getType().dyn_cast_or_null<RankedTensorType>();
@@ -55,6 +56,7 @@ TransposeOp ReuseExistingTranspose(SmallVector<TransposeOp, 2> transpose_ops,
         transpose.getOperation()->moveBefore(op);
         transpose.setOperand(0, operand->get());
         transpose.setOperand(1, permutation_op);
+        transpose_ops->erase(it);
         return transpose;
       }
     }
@@ -267,7 +269,7 @@ void MoveTransposeBefore(Operation* op, SmallVector<Operation*, 8>* work_list) {
 
     // Try to reuse result transposes.
     TransposeOp transpose = ReuseExistingTranspose(
-        transpose_ops, &operand, permutation, op, permutation_op);
+        &operand, permutation, op, permutation_op, &transpose_ops);
     // If no transpose available for using, create new one.
     if (!transpose)
       transpose =

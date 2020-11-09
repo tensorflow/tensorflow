@@ -63,6 +63,9 @@ absl::Status ObjectReader::ReadNonConstantTensor(
                 &fp_tensor_index) != kTfLiteOk) {
           return absl::InternalError("Could not add new tensor to graph");
         }
+        // `tflite_tensor` value could be invalid when the `context->tensors`
+        // is reallocated. Thus reassigning `tflite_tensor` with a fresh value.
+        tflite_tensor = &context->tensors[tensor_idx];
 
         // Remember this tensor for later.
         (*quant_conversion_map)[fp_tensor_index] = tensor_idx;
@@ -74,9 +77,6 @@ absl::Status ObjectReader::ReadNonConstantTensor(
         value->tensor.ref = fp_tensor_index;
         value->tensor.is_variable_input = tflite_tensor->is_variable;
         value->quant_params.emplace();
-        // tflite_tensor from the outer scope is invalidated due to calling
-        // CreateNewTensorWithDifferentType
-        tflite_tensor = &context->tensors[tensor_idx];
         RETURN_IF_ERROR(
             PopulateQuantParams(*tflite_tensor, &value->quant_params.value()));
         (*tensor_to_value)[fp_tensor_index] = value;

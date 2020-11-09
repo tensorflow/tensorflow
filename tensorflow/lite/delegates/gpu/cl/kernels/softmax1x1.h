@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/cl_kernel.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
-#include "tensorflow/lite/delegates/gpu/cl/precision.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 
 namespace tflite {
@@ -35,7 +34,7 @@ class Softmax1x1 : public GPUOperation {
       std::vector<int3>* work_groups) const override {
     work_groups->push_back(work_group_size_);
   }
-  absl::Status BindArguments() override;
+  absl::Status BindArguments(ArgumentsBinder* args) override;
   int3 GetGridSize() const override;
 
   // Move only

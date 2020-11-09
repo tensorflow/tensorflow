@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/broadcast_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
@@ -614,6 +615,60 @@ class ConvertReduceOpToTfMin : public OpConversionPattern<mhlo::ReduceOp> {
   };
 };
 
+class ConvertIotaOpToTfRange : public OpConversionPattern<mhlo::IotaOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::IotaOp iota_op, ArrayRef<Value> args,
+      ConversionPatternRewriter &rewriter) const final {
+    RankedTensorType type =
+        iota_op.getType().dyn_cast_or_null<RankedTensorType>();
+    if (!type) return failure();
+
+    const uint64_t dimension = iota_op.iota_dimension();
+    Type element_type = type.getElementType();
+    Attribute start, limit, delta;
+    if (element_type.isa<FloatType>()) {
+      start = rewriter.getFloatAttr(element_type, 0.0);
+      limit = rewriter.getFloatAttr(element_type, type.getShape()[dimension]);
+      delta = rewriter.getFloatAttr(element_type, 1.0);
+    } else if (element_type.isa<IntegerType>()) {
+      start = rewriter.getIntegerAttr(element_type, 0);
+      limit = rewriter.getIntegerAttr(element_type, type.getShape()[dimension]);
+      delta = rewriter.getIntegerAttr(element_type, 1);
+    } else {
+      return failure();
+    }
+
+    auto range_type =
+        RankedTensorType::get({type.getShape()[dimension]}, element_type);
+    Value start_op = rewriter.create<TF::ConstOp>(iota_op.getLoc(), start);
+    Value limit_op = rewriter.create<TF::ConstOp>(iota_op.getLoc(), limit);
+    Value delta_op = rewriter.create<TF::ConstOp>(iota_op.getLoc(), delta);
+    Value result = rewriter.create<TF::RangeOp>(iota_op.getLoc(), range_type,
+                                                start_op, limit_op, delta_op);
+
+    if (type.getRank() > 1) {
+      std::vector<int64_t> reshape_shape(type.getRank(), 1);
+      reshape_shape[iota_op.iota_dimension()] = type.getShape()[dimension];
+      auto reshape_type = RankedTensorType::get(reshape_shape, element_type);
+      Value reshape_shape_op = rewriter.create<TF::ConstOp>(
+          iota_op.getLoc(), rewriter.getI64TensorAttr(reshape_shape));
+      result = rewriter.create<TF::ReshapeOp>(iota_op.getLoc(), reshape_type,
+                                              result, reshape_shape_op);
+
+      Value broadcast_shape_op = rewriter.create<TF::ConstOp>(
+          iota_op.getLoc(), rewriter.getI64TensorAttr(type.getShape()));
+      result = rewriter.create<TF::BroadcastToOp>(iota_op.getLoc(), type,
+                                                  result, broadcast_shape_op);
+    }
+
+    rewriter.replaceOp(iota_op, result);
+    return success();
+  }
+};
+
 class LegalizeHloToTf : public PassWrapper<LegalizeHloToTf, FunctionPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<TF::TensorFlowDialect>();
@@ -626,20 +681,6 @@ class LegalizeHloToTf : public PassWrapper<LegalizeHloToTf, FunctionPass> {
   /// Performs the legalization to the TF dialect.
   void runOnFunction() override;
 };
-
-// Returns whether the two values are guaranteed to be broadcastable to the
-// same shape, this broadcasts size 1 tensors up to any rank.
-// TODO(jpienaar): Move this to more general location.
-static bool AreBroadcastCompatible(Value x, Value y) {
-  auto x_ranked = x.getType().dyn_cast<RankedTensorType>();
-  auto y_ranked = y.getType().dyn_cast<RankedTensorType>();
-  if (!x_ranked || !y_ranked) {
-    return true;
-  }
-  SmallVector<int64_t, 4> resultShape;
-  return OpTrait::util::getBroadcastedShape(x_ranked.getShape(),
-                                            y_ranked.getShape(), resultShape);
-}
 
 // Returns the shape of the given value in a Constant Op.
 ConstantOp ShapeToConst(PatternRewriter &rewriter, Value value) {
@@ -754,7 +795,8 @@ void LegalizeHloToTf::runOnFunction() {
   ConversionTarget target(context);
   target.addLegalDialect<TensorFlowDialect>();
   target.addLegalOp<CallOp, ConstantOp>();
-  if (failed(applyPartialConversion(getFunction(), target, patterns))) {
+  if (failed(
+          applyPartialConversion(getFunction(), target, std::move(patterns)))) {
     getFunction().emitError("mhlo to TF legalization failed.");
     signalPassFailure();
   }
@@ -767,9 +809,10 @@ static PassRegistration<LegalizeHloToTf> pass(
 
 void PopulateLegalizeHloToTfPatterns(OwningRewritePatternList *patterns,
                                      MLIRContext *context) {
-  populateWithGenerated(context, patterns);
+  populateWithGenerated(context, *patterns);
   patterns->insert<ConvertConvOp, ConvertSliceOp, ConvertReduceOpToTfMax,
-                   ConvertReduceOpToTfMin, ConvertReduceOpToTfSum>(context);
+                   ConvertReduceOpToTfMin, ConvertReduceOpToTfSum,
+                   ConvertIotaOpToTfRange>(context);
 }
 
 std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeHloToTfPass() {

@@ -49,6 +49,24 @@ class InterpreterTest : public ::testing::Test {
  protected:
   TfLiteContext* GetInterpreterContext() { return interpreter_.context_; }
 
+  std::vector<Interpreter::TfLiteDelegatePtr>*
+  mutable_lazy_delegate_providers() {
+    return &interpreter_.lazy_delegate_providers_;
+  }
+
+  bool HasDelegates() { return interpreter_.HasDelegates(); }
+
+  void BuildSignature(const std::string& method_name, const std::string& key,
+                      const std::map<std::string, uint32_t>& inputs,
+                      const std::map<std::string, uint32_t>& outputs) {
+    Interpreter::SignatureDef signature;
+    signature.inputs = inputs;
+    signature.outputs = outputs;
+    signature.method_name = method_name;
+    signature.signature_def_key = key;
+    interpreter_.SetSignatureDef({signature});
+  }
+
   Interpreter interpreter_;
 };
 
@@ -621,8 +639,10 @@ TfLiteRegistration GetPassthroughOpRegistration() {
   reg.prepare = [](TfLiteContext* context, TfLiteNode* node) {
     auto* first_new_tensor = static_cast<int*>(node->user_data);
 
-    const TfLiteTensor* tensor0 = GetInput(context, node, 0);
-    TfLiteTensor* tensor1 = GetOutput(context, node, 0);
+    const TfLiteTensor* tensor0;
+    TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &tensor0));
+    TfLiteTensor* tensor1;
+    TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &tensor1));
 
     TfLiteIntArray* newSize = TfLiteIntArrayCopy(tensor0->dims);
     TF_LITE_ENSURE_STATUS(context->ResizeTensor(context, tensor1, newSize));
@@ -646,7 +666,8 @@ TfLiteRegistration GetPassthroughOpRegistration() {
     return kTfLiteOk;
   };
   reg.invoke = [](TfLiteContext* context, TfLiteNode* node) {
-    const TfLiteTensor* a0 = GetInput(context, node, 0);
+    const TfLiteTensor* a0;
+    TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &a0));
 
     auto populate = [&](int id) {
       TfLiteTensor* t = &context->tensors[id];
@@ -780,8 +801,10 @@ TEST(BasicInterpreter, ThreeStepAllocate) {
   // String-in String-out node.
   TfLiteRegistration reg_copy = {nullptr, nullptr, nullptr, nullptr};
   reg_copy.invoke = [](TfLiteContext* context, TfLiteNode* node) {
-    const TfLiteTensor* input = GetInput(context, node, 0);
-    TfLiteTensor* output = GetOutput(context, node, 0);
+    const TfLiteTensor* input;
+    TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
+    TfLiteTensor* output;
+    TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
     DynamicBuffer buf;
     StringRef str_ref = GetString(input, 0);
     buf.AddString(str_ref);
@@ -792,14 +815,17 @@ TEST(BasicInterpreter, ThreeStepAllocate) {
   // String-in Int-out node.
   TfLiteRegistration reg_len = {nullptr, nullptr, nullptr, nullptr};
   reg_len.prepare = [](TfLiteContext* context, TfLiteNode* node) {
-    TfLiteTensor* output = GetOutput(context, node, 0);
+    TfLiteTensor* output;
+    TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
     TfLiteIntArray* outputSize = TfLiteIntArrayCreate(1);
     outputSize->data[0] = 1;
     return context->ResizeTensor(context, output, outputSize);
   };
   reg_len.invoke = [](TfLiteContext* context, TfLiteNode* node) {
-    const TfLiteTensor* a0 = GetInput(context, node, 0);
-    TfLiteTensor* a1 = GetOutput(context, node, 0);
+    const TfLiteTensor* a0;
+    TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &a0));
+    TfLiteTensor* a1;
+    TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &a1));
     a1->data.i32[0] = a0->bytes;
     return kTfLiteOk;
   };
@@ -848,14 +874,18 @@ TEST(BasicInterpreter, AllocateTwice) {
 
   TfLiteRegistration reg = {nullptr, nullptr, nullptr, nullptr};
   reg.prepare = [](TfLiteContext* context, TfLiteNode* node) {
-    const TfLiteTensor* tensor0 = GetInput(context, node, 0);
-    TfLiteTensor* tensor1 = GetOutput(context, node, 0);
+    const TfLiteTensor* tensor0;
+    TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &tensor0));
+    TfLiteTensor* tensor1;
+    TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &tensor1));
     TfLiteIntArray* newSize = TfLiteIntArrayCopy(tensor0->dims);
     return context->ResizeTensor(context, tensor1, newSize);
   };
   reg.invoke = [](TfLiteContext* context, TfLiteNode* node) {
-    const TfLiteTensor* a0 = GetInput(context, node, 0);
-    TfLiteTensor* a1 = GetOutput(context, node, 0);
+    const TfLiteTensor* a0;
+    TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &a0));
+    TfLiteTensor* a1;
+    TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &a1));
     int num = a0->dims->data[0];
     for (int i = 0; i < num; i++) {
       a1->data.f[i] = a0->data.f[i];
@@ -953,17 +983,6 @@ TEST(BasicInterpreter, TestOverflow) {
     // This test failing means that we are using a non 32/64 bit architecture.
     ASSERT_TRUE(false);
   }
-}
-
-TEST(BasicInterpreter, TestUseNNAPI) {
-  TestErrorReporter reporter;
-  Interpreter interpreter(&reporter);
-  interpreter.UseNNAPI(true);
-  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
-  ASSERT_EQ(interpreter.Invoke(), kTfLiteOk);
-  interpreter.UseNNAPI(false);
-  ASSERT_EQ(reporter.error_messages(),
-            "Attempting to disable NNAPI delegate after it's applied.");
 }
 
 TEST(BasicInterpreter, TestUnsupportedDelegateFunctions) {
@@ -1205,8 +1224,10 @@ class TestExecutionPlan : public ::testing::Test {
 
     reg.prepare = [](TfLiteContext* context, TfLiteNode* node) {
       // Set output size to input size
-      const TfLiteTensor* tensor0 = GetInput(context, node, 0);
-      TfLiteTensor* tensor1 = GetOutput(context, node, 0);
+      const TfLiteTensor* tensor0;
+      TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &tensor0));
+      TfLiteTensor* tensor1;
+      TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &tensor1));
       TfLiteIntArray* newSize = TfLiteIntArrayCopy(tensor0->dims);
       return context->ResizeTensor(context, tensor1, newSize);
     };
@@ -1215,8 +1236,10 @@ class TestExecutionPlan : public ::testing::Test {
       CallReporting* call_reporting =
           static_cast<CallReporting*>(node->builtin_data);
       // Copy input data to output data.
-      const TfLiteTensor* a0 = GetInput(context, node, 0);
-      TfLiteTensor* a1 = GetOutput(context, node, 0);
+      const TfLiteTensor* a0;
+      TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &a0));
+      TfLiteTensor* a1;
+      TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &a1));
       int num = a0->dims->data[0];
       for (int i = 0; i < num; i++) {
         a1->data.f[i] = a0->data.f[i];
@@ -1403,8 +1426,10 @@ class CancellationTest : public ::testing::Test {
     // Set output size to the input size in CancelOp::Prepare(). Code exists to
     // have a framework in Prepare. The input and output tensors are not used.
     reg.prepare = [](TfLiteContext* context, TfLiteNode* node) {
-      const TfLiteTensor* in_tensor = GetInput(context, node, 0);
-      TfLiteTensor* out_tensor = GetOutput(context, node, 0);
+      const TfLiteTensor* in_tensor;
+      TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &in_tensor));
+      TfLiteTensor* out_tensor;
+      TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &out_tensor));
       TfLiteIntArray* new_size = TfLiteIntArrayCopy(in_tensor->dims);
       return context->ResizeTensor(context, out_tensor, new_size);
     };
@@ -1423,8 +1448,10 @@ class CancellationTest : public ::testing::Test {
     // Set output size to the input size in OkOp::Prepare(). Code exists to have
     // a framework in Prepare. The input and output tensors are not used.
     reg.prepare = [](TfLiteContext* context, TfLiteNode* node) {
-      const TfLiteTensor* in_tensor = GetInput(context, node, 0);
-      TfLiteTensor* out_tensor = GetOutput(context, node, 0);
+      const TfLiteTensor* in_tensor;
+      TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &in_tensor));
+      TfLiteTensor* out_tensor;
+      TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &out_tensor));
       TfLiteIntArray* new_size = TfLiteIntArrayCopy(in_tensor->dims);
       return context->ResizeTensor(context, out_tensor, new_size);
     };
@@ -1760,6 +1787,143 @@ TEST_F(TestCustomAllocation, ResizeTensorsWithEnoughMemory) {
 
   ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
   VerifyInvoke();
+}
+
+// Tests related to lazy delegate providers that are primarily used for applying
+// TfLite delegates by default.
+class TestLazyDelegateProvider : public InterpreterTest {
+ protected:
+  struct DummyLazyDelegateProvider : public TfLiteDelegate {
+    explicit DummyLazyDelegateProvider(int64_t support_flags) {
+      data_ = static_cast<void*>(this);
+      flags = support_flags;
+      Prepare = [](TfLiteContext*, TfLiteDelegate* delegate) -> TfLiteStatus {
+        return kTfLiteOk;
+      };
+    }
+  };
+
+  void InitWithLazyDelegate(int64_t delegate_flags,
+                            bool create_dyanmic_tensor = false,
+                            bool return_error = false) {
+    TfLiteRegistration reg = {nullptr};
+    if (return_error) {
+      reg.prepare = [](TfLiteContext* context, TfLiteNode* node) {
+        return kTfLiteError;
+      };
+    }
+    ASSERT_EQ(interpreter_.AddTensors(2), kTfLiteOk);
+    interpreter_.SetInputs({0});
+    interpreter_.SetOutputs({1});
+    interpreter_.AddNodeWithParameters({0}, {1}, nullptr, 0, nullptr, &reg);
+
+    Interpreter::TfLiteDelegatePtr delegate(
+        new DummyLazyDelegateProvider(delegate_flags),
+        [](TfLiteDelegate* delegate) {
+          auto* dummy =
+              static_cast<DummyLazyDelegateProvider*>(delegate->data_);
+          delete dummy;
+        });
+    mutable_lazy_delegate_providers()->push_back(std::move(delegate));
+
+    if (create_dyanmic_tensor) {
+      // Mark the output as dynamic tensor.
+      interpreter_.tensor(1)->data.raw = nullptr;
+      interpreter_.tensor(1)->allocation_type = kTfLiteDynamic;
+    }
+  }
+};
+
+TEST_F(TestLazyDelegateProvider, ApplicationSuccess) {
+  InitWithLazyDelegate(kTfLiteDelegateFlagsNone);
+  EXPECT_EQ(kTfLiteOk, interpreter_.AllocateTensors());
+  // We clear Interpreter::lazy_delegate_providers_ after they are tried out.
+  EXPECT_TRUE(mutable_lazy_delegate_providers()->empty());
+  EXPECT_TRUE(HasDelegates());
+}
+
+TEST_F(TestLazyDelegateProvider, ApplicationFailure) {
+  InitWithLazyDelegate(kTfLiteDelegateFlagsNone,
+                       false /* create_dyanmic_tensor */,
+                       true /* return_error */);
+  EXPECT_EQ(kTfLiteError, interpreter_.AllocateTensors());
+  // We clear Interpreter::lazy_delegate_providers_ after they are tried out.
+  EXPECT_TRUE(mutable_lazy_delegate_providers()->empty());
+  EXPECT_FALSE(HasDelegates());
+}
+
+TEST_F(TestLazyDelegateProvider, ApplicationSkipped) {
+  InitWithLazyDelegate(kTfLiteDelegateFlagsNone,
+                       true /* create_dyanmic_tensor */);
+  EXPECT_EQ(kTfLiteOk, interpreter_.AllocateTensors());
+  EXPECT_TRUE(mutable_lazy_delegate_providers()->empty());
+  // As the delegate doesn't allow dynamic tensor, the delegate won't be applied
+  // and the interpreter doesn't have any delegate applied.
+  EXPECT_FALSE(HasDelegates());
+}
+
+TEST_F(InterpreterTest, SingleSignature_get_signatures) {
+  const char kMethodName[] = "test_method";
+  const char kSignatureDefKey[] = "test_key";
+  BuildSignature(kMethodName, kSignatureDefKey, {{"Input1", 0}, {"Input2", 1}},
+                 {{"Output1", 5}});
+  auto results = interpreter_.signature_def_names();
+  ASSERT_EQ(1, results.size());
+  EXPECT_EQ(kMethodName, *results[0]);
+}
+
+TEST_F(InterpreterTest, SingleSignature_get_inputs) {
+  const char kMethodName[] = "test_method";
+  const char kSignatureDefKey[] = "test_key";
+  const std::map<std::string, uint32_t> inputs = {{"Input1", 0}, {"Input2", 1}};
+  const std::map<std::string, uint32_t> outputs = {{"Output1", 5}};
+  BuildSignature(kMethodName, kSignatureDefKey, inputs, outputs);
+  EXPECT_THAT(interpreter_.signature_inputs(kMethodName), testing::Eq(inputs));
+  EXPECT_THAT(interpreter_.signature_outputs(kMethodName),
+              testing::Eq(outputs));
+}
+
+TEST_F(InterpreterTest, SingleSignature_validate_get_tensor) {
+  const char kMethodName[] = "test_method";
+  const char kSignatureDefKey[] = "test_key";
+  const std::map<std::string, uint32_t> inputs = {{"Input1", 0}, {"Input2", 1}};
+  const std::map<std::string, uint32_t> outputs = {{"Output1", 5}};
+
+  BuildSignature(kMethodName, kSignatureDefKey, inputs, outputs);
+  ASSERT_EQ(interpreter_.AddTensors(6), kTfLiteOk);
+  ASSERT_EQ(interpreter_.SetInputs({0, 1}), kTfLiteOk);
+  ASSERT_EQ(interpreter_.SetOutputs({5}), kTfLiteOk);
+  ASSERT_EQ(interpreter_.SetTensorParametersReadWrite(
+                0, kTfLiteFloat32, "", {3}, TfLiteQuantizationParams()),
+            kTfLiteOk);
+  ASSERT_EQ(interpreter_.SetTensorParametersReadWrite(
+                1, kTfLiteFloat32, "", {3}, TfLiteQuantizationParams()),
+            kTfLiteOk);
+  ASSERT_EQ(interpreter_.ResizeInputTensor(interpreter_.inputs()[0], {1, 2, 3}),
+            kTfLiteOk);
+  ASSERT_EQ(interpreter_.ResizeInputTensor(interpreter_.inputs()[1], {1, 2, 3}),
+            kTfLiteOk);
+  ASSERT_EQ(interpreter_.AllocateTensors(), kTfLiteOk);
+
+  EXPECT_TRUE(interpreter_.input_tensor_by_signature_name(
+                  "Input1", kMethodName) != nullptr);
+  EXPECT_TRUE(interpreter_.input_tensor_by_signature_name(
+                  "Input2", kMethodName) != nullptr);
+  EXPECT_TRUE(interpreter_.output_tensor_by_signature_name(
+                  "Output1", kMethodName) != nullptr);
+
+  // Invalid tensor
+  EXPECT_EQ(interpreter_.input_tensor_by_signature_name("Input3", kMethodName),
+            nullptr);
+  EXPECT_EQ(interpreter_.output_tensor_by_signature_name("Input3", kMethodName),
+            nullptr);
+  // Invalid method
+  EXPECT_EQ(
+      interpreter_.input_tensor_by_signature_name("Input1", "InvalidMethod"),
+      nullptr);
+  EXPECT_EQ(
+      interpreter_.output_tensor_by_signature_name("Output1", "InvalidMethod"),
+      nullptr);
 }
 
 }  // namespace

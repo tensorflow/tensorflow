@@ -107,7 +107,7 @@ xla::Shape HostShapeToDeviceShape(const xla::Shape& host_shape) {
   XLA_Shape c_host_shape;
   XLA_Shape c_device_shape;
   ApiConverter::ToC(host_shape, &c_host_shape);
-  tensorflow::tpu::ExecuteApiFn()->HardwareLayout_HostShapeToDeviceShapeFn(
+  tensorflow::tpu::OpsApiFn()->HardwareLayout_HostShapeToDeviceShapeFn(
       &c_host_shape, &c_device_shape);
   xla::Shape device_shape = ApiConverter::FromC(&c_device_shape);
   ApiConverter::Free(&c_host_shape);
@@ -119,8 +119,7 @@ int64 ShapeSizeCompact(const xla::Shape& shape) {
   XLA_Shape c_shape;
   ApiConverter::ToC(shape, &c_shape);
   int64 size =
-      tensorflow::tpu::ExecuteApiFn()->HardwareLayout_ShapeSizeCompactFn(
-          &c_shape);
+      tensorflow::tpu::OpsApiFn()->HardwareLayout_ShapeSizeCompactFn(&c_shape);
   ApiConverter::Free(&c_shape);
   return size;
 }
@@ -129,7 +128,7 @@ int64 ShapeSizeCompactRaw(const xla::Shape& shape) {
   XLA_Shape c_shape;
   ApiConverter::ToC(shape, &c_shape);
   int64 size =
-      tensorflow::tpu::ExecuteApiFn()->HardwareLayout_ShapeSizeCompactRawFn(
+      tensorflow::tpu::OpsApiFn()->HardwareLayout_ShapeSizeCompactRawFn(
           &c_shape);
   ApiConverter::Free(&c_shape);
   return size;
@@ -241,11 +240,10 @@ xla::Status UpdateDynamicInputs(
             ApiConverter::ToC(runtime_shape, &c_runtime_shape);
             ApiConverter::ToC(compile_time_shape, &c_compile_time_shape);
             StatusHelper status;
-            tensorflow::tpu::ExecuteApiFn()
-                ->TpuExecute_RuntimeInputToPaddedDataFn(
-                    raw_input_runtime->data(), raw_input_runtime->size(),
-                    padded_data->data(), padded_data->size(), &c_runtime_shape,
-                    &c_compile_time_shape, status.c_status);
+            tensorflow::tpu::OpsApiFn()->TpuExecute_RuntimeInputToPaddedDataFn(
+                raw_input_runtime->data(), raw_input_runtime->size(),
+                padded_data->data(), padded_data->size(), &c_runtime_shape,
+                &c_compile_time_shape, status.c_status);
             ApiConverter::Free(&c_runtime_shape);
             ApiConverter::Free(&c_compile_time_shape);
             return status.status();

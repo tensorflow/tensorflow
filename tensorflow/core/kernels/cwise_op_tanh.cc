@@ -26,9 +26,6 @@ REGISTER3(UnaryOp, GPU, "Tanh", functor::tanh, float, Eigen::half, double);
 #endif
 #endif
 
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER2(UnaryOp, SYCL, "Tanh", functor::tanh, float, double);
-#endif  // TENSORFLOW_USE_SYCL
 
 REGISTER6(SimpleBinaryOp, CPU, "TanhGrad", functor::tanh_grad, float,
           Eigen::half, bfloat16, double, complex64, complex128);

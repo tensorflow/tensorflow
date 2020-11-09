@@ -1,5 +1,7 @@
 # Common computation builders for XLA.
 
+load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "generate_backend_suites", "xla_test")
 
 package(
@@ -306,6 +308,19 @@ xla_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
         "//tensorflow/core/platform:tensor_float_32_utils",
+    ],
+)
+
+cc_library(
+    name = "lu_decomposition",
+    srcs = ["lu_decomposition.cc"],
+    hdrs = ["lu_decomposition.h"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:xla_builder",
     ],
 )
 

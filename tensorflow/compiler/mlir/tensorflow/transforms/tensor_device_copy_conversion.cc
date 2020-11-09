@@ -59,7 +59,8 @@ class TensorDeviceCopyConversionPass
     patterns.insert<PassThroughConversion<TF::IdentityOp>,
                     PassThroughConversion<TF::IdentityNOp>>(&getContext());
 
-    if (failed(applyPartialConversion(getFunction(), target, patterns))) {
+    if (failed(applyPartialConversion(getFunction(), target,
+                                      std::move(patterns)))) {
       signalPassFailure();
     }
   }

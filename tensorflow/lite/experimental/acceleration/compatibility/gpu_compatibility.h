@@ -78,6 +78,9 @@ class GPUCompatibilityList {
   GPUCompatibilityList& operator=(const GPUCompatibilityList&) = delete;
   bool IsDatabaseLoaded() const;
 
+  // Checks if the provided byte array represents a valid compatibility list
+  static bool IsValidFlatbuffer(const unsigned char* data, int len);
+
  protected:
   const DeviceDatabase* database_;
 };

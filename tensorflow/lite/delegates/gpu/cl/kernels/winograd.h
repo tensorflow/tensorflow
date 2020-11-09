@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/cl_kernel.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/linear_storage.h"
-#include "tensorflow/lite/delegates/gpu/cl/precision.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -36,7 +35,7 @@ class Winograd4x4To36 : public GPUOperation {
   Winograd4x4To36() = default;
   Winograd4x4To36(const OperationDef& definition, const Padding2D& padding,
                   const DeviceInfo& device_info);
-  absl::Status BindArguments() override;
+  absl::Status BindArguments(ArgumentsBinder* args) override;
   int3 GetGridSize() const override;
   void GetPossibleKernelWorkGroups(
       TuningType tuning_type, const DeviceInfo& device_info,
@@ -73,7 +72,7 @@ class Winograd36To4x4 : public GPUOperation {
   Winograd36To4x4() = default;
   Winograd36To4x4(const OperationDef& definition,
                   const DeviceInfo& device_info);
-  absl::Status BindArguments() override;
+  absl::Status BindArguments(ArgumentsBinder* args) override;
   int3 GetGridSize() const override;
   void GetPossibleKernelWorkGroups(
       TuningType tuning_type, const DeviceInfo& device_info,

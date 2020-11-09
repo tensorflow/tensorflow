@@ -360,6 +360,16 @@ bool AreCastCompatible(ArrayRef<Type> types) {
   return true;
 }
 
+bool ArraysAreCastCompatible(ArrayRef<Type> lhs, ArrayRef<Type> rhs) {
+  if (lhs.size() != rhs.size()) return false;
+  for (auto pair : llvm::zip(lhs, rhs)) {
+    auto lhs_i = std::get<0>(pair);
+    auto rhs_i = std::get<1>(pair);
+    if (!AreCastCompatible({lhs_i, rhs_i})) return false;
+  }
+  return true;
+}
+
 // Assumes a function `GetDefaultTypeOf(ComposedType)` that returns the default
 // type for a composed type (such as a ref type or a type with subtypes).
 template <typename ComposedType>

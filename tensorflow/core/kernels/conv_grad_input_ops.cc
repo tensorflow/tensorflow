@@ -1185,14 +1185,11 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
               ? static_cast<se::ScratchAllocator*>(&rz_scratch_allocator)
               : static_cast<se::ScratchAllocator*>(&scratch_allocator);
       ProfileResult profile_result;
-      bool cudnn_launch_status =
-          stream
-              ->ThenConvolveBackwardDataWithAlgorithm(
-                  filter_desc, filter_ptr, output_desc, out_backprop_ptr,
-                  conv_desc, input_desc, &in_backprop_ptr_rz, allocator_used,
-                  AlgorithmConfig(profile_algorithm), &profile_result)
-              .ok();
-      if (cudnn_launch_status && profile_result.is_valid()) {
+      auto cudnn_launch_status = stream->ConvolveBackwardDataWithAlgorithm(
+          filter_desc, filter_ptr, output_desc, out_backprop_ptr, conv_desc,
+          input_desc, &in_backprop_ptr_rz, allocator_used,
+          AlgorithmConfig(profile_algorithm), &profile_result);
+      if (cudnn_launch_status.ok() && profile_result.is_valid()) {
         results.emplace_back();
         auto& result = results.back();
         result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
@@ -1241,18 +1238,13 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
       for (auto miopen_algorithm : algorithms) {
         auto profile_algorithm = miopen_algorithm.algorithm();
         ProfileResult profile_result;
-        bool miopen_launch_status = true;
-        miopen_launch_status =
-            stream
-                ->ThenConvolveBackwardDataWithAlgorithm(
-                    filter_desc, filter_ptr, output_desc, out_backprop_ptr,
-                    conv_desc, input_desc, &in_backprop_ptr, &scratch_allocator,
-                    AlgorithmConfig(profile_algorithm,
-                                    miopen_algorithm.scratch_size()),
-                    &profile_result)
-                .ok();
+        auto miopen_launch_status = stream->ConvolveBackwardDataWithAlgorithm(
+            filter_desc, filter_ptr, output_desc, out_backprop_ptr, conv_desc,
+            input_desc, &in_backprop_ptr, &scratch_allocator,
+            AlgorithmConfig(profile_algorithm, miopen_algorithm.scratch_size()),
+            &profile_result);
 
-        if (miopen_launch_status && profile_result.is_valid()) {
+        if (miopen_launch_status.ok() && profile_result.is_valid()) {
           results.emplace_back();
           auto& result = results.back();
           result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
@@ -1273,19 +1265,13 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
     AutoTuneConvBwdData::GetInstance()->Insert(conv_parameters,
                                                algorithm_config);
   }
-  bool cudnn_launch_status =
-      stream
-          ->ThenConvolveBackwardDataWithAlgorithm(
-              filter_desc, filter_ptr, output_desc, out_backprop_ptr, conv_desc,
-              input_desc, &in_backprop_ptr, &scratch_allocator,
-              algorithm_config, nullptr)
-          .ok();
+  auto cudnn_launch_status = stream->ConvolveBackwardDataWithAlgorithm(
+      filter_desc, filter_ptr, output_desc, out_backprop_ptr, conv_desc,
+      input_desc, &in_backprop_ptr, &scratch_allocator, algorithm_config,
+      nullptr);
 
-  if (!cudnn_launch_status) {
-    ctx->SetStatus(errors::Internal(
-        "DNN Backward Data function launch failure : input shape(",
-        input_shape.DebugString(), ") filter shape(",
-        filter_shape.DebugString(), ")"));
+  if (!cudnn_launch_status.ok()) {
+    ctx->SetStatus(cudnn_launch_status);
     return;
   }
 
@@ -1313,8 +1299,8 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
         {{static_cast<int>(-input_pad_top), static_cast<int>(-input_pad_left)}},
         {{static_cast<int>(-input_pad_bottom),
           static_cast<int>(-input_pad_right)}},
-        To32Bit(in_backprop_remove_padding.tensor<T, 4>()),
-        compute_data_format);
+        To32Bit(in_backprop_remove_padding.tensor<T, 4>()), compute_data_format,
+        T{});
 
     pre_transformed_in_backprop = in_backprop_remove_padding;
   }
@@ -1346,7 +1332,7 @@ namespace functor {
       const std::array<int, 2>& padding_left,                           \
       const std::array<int, 2>& padding_right,                          \
       typename TTypes<T, 4, int>::Tensor out, TensorFormat data_format, \
-      T padding_value);                                                 \
+      const T& padding_value);                                          \
   extern template struct PadInput<GPUDevice, T, int, 4>;
 
 DECLARE_GPU_SPEC(float);

@@ -43,7 +43,8 @@ class CPlatform : public Platform {
                      void (*destroy_platform)(SP_Platform*),
                      SP_PlatformFns platform_fns,
                      void (*destroy_platform_fns)(SP_PlatformFns*),
-                     SP_StreamExecutor stream_executor, SP_TimerFns timer_fns);
+                     SP_DeviceFns device_fns, SP_StreamExecutor stream_executor,
+                     SP_TimerFns timer_fns);
   ~CPlatform() override;
 
   Id id() const override { return const_cast<int*>(&plugin_id_value_); }
@@ -74,6 +75,7 @@ class CPlatform : public Platform {
   void (*destroy_platform_)(SP_Platform*);
   SP_PlatformFns platform_fns_;
   void (*destroy_platform_fns_)(SP_PlatformFns*);
+  SP_DeviceFns device_fns_;
   SP_StreamExecutor stream_executor_;
   SP_TimerFns timer_fns_;
   const std::string name_;

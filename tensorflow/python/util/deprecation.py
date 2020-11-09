@@ -29,6 +29,7 @@ from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util import tf_stack
+from tensorflow.tools.docs import doc_controls
 
 
 # Allow deprecation warnings to be silenced temporarily with a context manager.
@@ -305,8 +306,23 @@ def deprecated(date, instructions, warn_once=True):
   """
   _validate_deprecation_args(date, instructions)
 
-  def deprecated_wrapper(func):
+  def deprecated_wrapper(func_or_class):
     """Deprecation wrapper."""
+    if isinstance(func_or_class, type):
+      # If a class is deprecated, you actually want to wrap the constructor.
+      cls = func_or_class
+      if cls.__new__ is object.__new__:
+        func = cls.__init__
+        constructor_name = '__init__'
+      else:
+        func = cls.__new__
+        constructor_name = '__new__'
+
+    else:
+      cls = None
+      constructor_name = None
+      func = func_or_class
+
     decorator_utils.validate_callable(func, 'deprecated')
     @functools.wraps(func)
     def new_func(*args, **kwargs):  # pylint: disable=missing-docstring
@@ -322,10 +338,25 @@ def deprecated(date, instructions, warn_once=True):
               'in a future version' if date is None else ('after %s' % date),
               instructions)
       return func(*args, **kwargs)
-    return tf_decorator.make_decorator(
+
+    doc_controls.set_deprecated(new_func)
+    new_func = tf_decorator.make_decorator(
         func, new_func, 'deprecated',
         _add_deprecated_function_notice_to_docstring(func.__doc__, date,
                                                      instructions))
+
+    if cls is None:
+      return new_func
+    else:
+      # Insert the wrapped function as the constructor
+      setattr(cls, constructor_name, new_func)
+
+      # And update the docstring of the class.
+      cls.__doc__ = _add_deprecated_function_notice_to_docstring(
+          cls.__doc__, date, instructions)
+
+      return cls
+
   return deprecated_wrapper
 
 

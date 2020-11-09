@@ -1028,6 +1028,57 @@ class StructuredTensorSpec(type_spec.BatchableTypeSpec):
         self._shape[1:],
         dict((k, v._unbatch()) for (k, v) in self._field_specs.items()))
 
+  @property
+  def _flat_tensor_specs(self):
+    # pylint: disable=protected-access
+    result = []
+    for _, field_spec in sorted(self._field_specs.items(), key=lambda t: t[0]):
+      result.extend(field_spec._flat_tensor_specs)
+    return result
+
+  def _to_tensor_list(self, value):
+    return self._to_tensor_list_internal(value, batched=False)
+
+  def _to_batched_tensor_list(self, value):
+    return self._to_tensor_list_internal(value, batched=True)
+
+  def _from_compatible_tensor_list(self, tensor_list):
+    # pylint: disable=protected-access
+    fields = {}
+    pos = 0
+    for field_name, field_spec in sorted(
+        self._field_specs.items(), key=lambda t: t[0]):
+      num_tensors_for_field = len(field_spec._flat_tensor_specs)
+      field_tensors = tensor_list[pos:pos + num_tensors_for_field]
+      fields[field_name] = field_spec._from_compatible_tensor_list(
+          field_tensors)
+      pos += num_tensors_for_field
+    return StructuredTensor.from_fields(fields, self._shape)
+
+  def _to_tensor_list_internal(self, value, batched):
+    """Returns a dict whose entries are each field's (batched) tensor_list.
+
+    If a field is a StructuredTensor, then its entry will be a dict,
+    recursively.
+
+    Args:
+      value: A StructuredTensor (conforming to `self`).
+      batched: A boolean. if True, produce `batched_tensor_list` for each field
+        otherwise produce `tensor_list`.
+    Returns:
+      A dict.
+    """
+    result = []
+    for field_name, field_spec in sorted(
+        self._field_specs.items(), key=lambda t: t[0]):
+      # pylint: disable=protected-access
+      field_value = value._fields[field_name]
+      if batched:
+        result.extend(field_spec._to_batched_tensor_list(field_value))
+      else:
+        result.extend(field_spec._to_tensor_list(field_value))
+
+    return result
 
 # Regular expression used to determine whether a string is a valid field name.
 # Note: we plan to relax (or possibly eliminate) this in the future; you

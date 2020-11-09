@@ -29,17 +29,17 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/model_hints.h"
-#include "tensorflow/lite/delegates/gpu/cl/precision.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/operation_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/special_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/storage_type_util.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/add_bias.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/merge_padding_with.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
@@ -153,7 +153,7 @@ CLNode& CLNode::operator=(CLNode&& node) {
 
 absl::Status InferenceContext::InitFromGraph(
     const CreateInferenceInfo& create_info, const GraphFloat32& graph,
-    Environment* env) {
+    Environment* env, std::vector<uint8_t>* serialized_model) {
   CreationContext creation_context;
   creation_context.device = env->GetDevicePtr();
   creation_context.context = &env->context();
@@ -188,15 +188,72 @@ absl::Status InferenceContext::InitFromGraph(
   if (create_info.hints.Check(ModelHints::kFastTuning)) {
     tuning_parameters.tuning_type = TuningType::FAST;
   }
+  if (tuning_parameters.info->IsMali()) {
+    const MaliInfo& info = tuning_parameters.info->mali_info;
+    if (info.IsMaliT6xx()) {
+      // Mali T628 hangs forever in clFinish when used profiling queue
+      // TuningType::FAST does not use profiling queue.
+      tuning_parameters.tuning_type = TuningType::FAST;
+    }
+  }
   RETURN_IF_ERROR(Tune(tuning_parameters));
+
+  if (serialized_model) {
+    // Temporary, will be resolved later, now we don't have complete
+    // intermediate representation
+    for (auto& node : nodes_) {
+      node.operation->MoveObjectRefsFromCLToGeneric();
+      node.operation->SyncScalarValues();
+    }
+    flatbuffers::FlatBufferBuilder builder;
+    auto encoded_fb = Encode(*this, &builder);
+    data::FinishInferenceContextBuffer(builder, encoded_fb);
+    serialized_model->resize(builder.GetSize());
+    std::memcpy(serialized_model->data(), builder.GetBufferPointer(),
+                builder.GetSize());
+    for (auto& node : nodes_) {
+      node.operation->MoveObjectRefsFromGenericToCL();
+    }
+  }
+  for (auto& node : nodes_) {
+    node.operation->args_.ReleaseCPURepresentation();
+  }
+  return absl::OkStatus();
+}
+
+absl::Status InferenceContext::RestoreDeserialized(
+    const absl::Span<const uint8_t> serialized_model, Environment* env) {
+  flatbuffers::Verifier verifier(serialized_model.data(),
+                                 serialized_model.size());
+  if (!data::VerifyInferenceContextBuffer(verifier)) {
+    return absl::DataLossError("Deserialization failed.");
+  }
+  auto decoded_fb = data::GetInferenceContext(serialized_model.data());
+  RETURN_IF_ERROR(Decode(decoded_fb, this));
+
+  CreationContext creation_context;
+  creation_context.device = env->GetDevicePtr();
+  creation_context.context = &env->context();
+  creation_context.queue = env->queue();
+  creation_context.cache = env->program_cache();
+
+  RETURN_IF_ERROR(AllocateMemory(creation_context.context));
+  BindMemoryToOperations();
+  for (auto& node : nodes_) {
+    RETURN_IF_ERROR(node.operation->CompileDeserialized(creation_context));
+  }
+  RETURN_IF_ERROR(UpdateParams());
+  for (auto& node : nodes_) {
+    node.operation->args_.ReleaseCPURepresentation();
+  }
   return absl::OkStatus();
 }
 
 absl::Status InferenceContext::InitFromGraphWithTransforms(
     const CreateInferenceInfo& create_info, GraphFloat32* graph,
-    Environment* env) {
+    Environment* env, std::vector<uint8_t>* serialized_model) {
   RETURN_IF_ERROR(RunGraphTransforms(graph));
-  RETURN_IF_ERROR(InitFromGraph(create_info, *graph, env));
+  RETURN_IF_ERROR(InitFromGraph(create_info, *graph, env, serialized_model));
   return absl::OkStatus();
 }
 
@@ -215,12 +272,21 @@ void InferenceContext::CopyInAndOutIds(const GraphFloat32& graph) {
   for (const auto& output : outputs) {
     output_ids_.push_back(output->id);
   }
+
+  in_refs_.resize(inputs.size());
+  out_refs_.resize(outputs.size());
+  for (int i = 0; i < inputs.size(); ++i) {
+    in_refs_[i] = inputs[i]->tensor.ref;
+  }
+  for (int i = 0; i < outputs.size(); ++i) {
+    out_refs_[i] = outputs[i]->tensor.ref;
+  }
 }
 
 void InferenceContext::ReserveGraphTensors(
     const CreateInferenceInfo& create_info, const DeviceInfo& device_info,
     const GraphFloat32& graph) {
-  ValueId max_id;
+  ValueId max_id = 0;
   auto tensors = graph.values();
   auto data_type = DeduceDataTypeFromPrecision(create_info.precision);
   for (auto& t : tensors) {
@@ -266,10 +332,12 @@ absl::Status InferenceContext::ConvertOperations(const DeviceInfo& device_info,
     if (consumed_nodes.find(node.id) != consumed_nodes.end()) {
       continue;
     }
+    std::string op_name = node.operation.type + " " + std::to_string(node.id);
     GPUOperationsSubgraph gpu_subgraph;
     if (hints.Check(ModelHints::kAllowSpecialKernels) &&
         GPUSubgraphFromGraph(device_info, precision_, graph, node.id,
-                             tensor_descriptors, &consumed_nodes, &gpu_subgraph)
+                             tensor_descriptors, &consumed_nodes, &gpu_subgraph,
+                             &op_name)
             .ok()) {
       // Mapping of subgraph (set of nodes) to GPU operations. Should happen
       // before straigtforward mapping.
@@ -338,7 +406,7 @@ absl::Status InferenceContext::ConvertOperations(const DeviceInfo& device_info,
           cl_node.outputs[j] = mapping_to_global_ids[-(id + 1)];
         }
       }
-      cl_node.name = node.operation.type + " " + std::to_string(node.id);
+      cl_node.name = op_name;
       nodes_.push_back(std::move(cl_node));
     }
   }

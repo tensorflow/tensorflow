@@ -23,7 +23,7 @@ from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras.engine import training as keras_training
 from tensorflow.python.keras.layers import core as keras_core
@@ -55,13 +55,13 @@ class MiniModel(keras_training.Model):
         distribution=[
             strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
         ],
-        mode=["graph", "eager"]))
+        mode=["eager"]))
 class MirroredStrategyDefunTest(test.TestCase):
 
   def testTrain(self, distribution):
     with distribution.scope():
       mock_model = MiniModel()
-      mock_model.call = function.defun(mock_model.call)
+      mock_model.call = def_function.function(mock_model.call)
 
       def loss_fn(ctx):
         del ctx

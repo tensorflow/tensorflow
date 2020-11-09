@@ -202,7 +202,7 @@ class IntegerLookup(index_lookup.IndexLookup):
         vocabulary=vocabulary,
         invert=invert,
         **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell("V2").set("IntegerLookup")
+    base_preprocessing_layer.keras_kpl_gauge.get_cell("IntegerLookup").set(True)
 
   def get_config(self):
     base_config = super(IntegerLookup, self).get_config()
@@ -217,3 +217,9 @@ class IntegerLookup(index_lookup.IndexLookup):
     base_config["oov_value"] = base_config["oov_token"]
     del base_config["oov_token"]
     return base_config
+
+  def set_vocabulary(self, vocab):
+    if isinstance(vocab, str):
+      vocab = table_utils.get_vocabulary_from_file(vocab)
+      vocab = [int(v) for v in vocab]
+    super().set_vocabulary(vocab)

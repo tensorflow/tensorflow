@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/threadpool.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/rng.h"
+#include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
 namespace {
@@ -334,6 +335,30 @@ bool StreamExecutor::GetBlasGemmAlgorithms(
     return false;
   }
   return blas_support->GetBlasGemmAlgorithms(out_algorithms);
+}
+
+port::StatusOr<std::unique_ptr<blas::IBlasLtMatmulPlan>>
+StreamExecutor::CreateBlasLtMatmulPlan(
+    const blas::BlasLtMatmulPlanParams &params) {
+  blas::BlasSupport *blas_support = AsBlas();
+  if (!blas_support) {
+    return port::Status(port::error::UNKNOWN,
+                        "Fail to find the blas implementation.");
+  }
+  return blas_support->CreateBlasLtMatmulPlan(params);
+}
+
+port::StatusOr<std::vector<std::unique_ptr<blas::IBlasLtMatmulAlgorithm>>>
+StreamExecutor::GetBlasLtMatmulAlgorithms(const blas::IBlasLtMatmulPlan *plan,
+                                          size_t max_workspace_size,
+                                          int max_algorithm_count) {
+  blas::BlasSupport *blas_support = AsBlas();
+  if (!blas_support) {
+    return port::Status(port::error::UNKNOWN,
+                        "Fail to find the blas implementation.");
+  }
+  return blas_support->GetBlasLtMatmulAlgorithms(plan, max_workspace_size,
+                                                 max_algorithm_count);
 }
 
 port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>

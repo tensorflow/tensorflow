@@ -20,7 +20,9 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/tools/optimize/operator_property.h"
 
 namespace tflite {
@@ -34,13 +36,15 @@ namespace {
 int32_t GetOrInsertOpCodeIndex(ModelT* model, const BuiltinOperator& op_code,
                                int32_t version) {
   for (size_t i = 0; i < model->operator_codes.size(); ++i) {
-    if (model->operator_codes[i]->builtin_code == op_code) {
+    if (GetBuiltinCode(model->operator_codes[i].get()) == op_code) {
       return i;
     }
   }
   model->operator_codes.push_back(absl::make_unique<OperatorCodeT>());
   int op_code_idx = model->operator_codes.size() - 1;
   model->operator_codes[op_code_idx]->builtin_code = op_code;
+  model->operator_codes[op_code_idx]->deprecated_builtin_code =
+      ConvertBuiltinCodeToDeprecatedBuiltinCode(op_code);
   // Version 2 and onwards supports INT8 inputs.
   model->operator_codes[op_code_idx]->version = version;
 

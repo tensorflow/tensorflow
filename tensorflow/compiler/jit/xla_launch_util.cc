@@ -89,9 +89,9 @@ Status GetVariableInfosFromInputs(ResourceMgr* rm, DeviceBase* dev,
     Var* variable = nullptr;
     ResourceHandle handle = inputs[var_idx]->flat<ResourceHandle>()(0);
     if (handle.device() != dev->attributes().name()) {
-      return errors::InvalidArgument("Trying to access resource ",
-                                     handle.name(), " located in device ",
-                                     dev->name());
+      return errors::InvalidArgument(
+          "Trying to access resource ", handle.name(), " located in device ",
+          handle.device(), " from device ", dev->attributes().name());
     }
     TF_RETURN_IF_ERROR(rm->LookupOrCreate<Var>(
         handle.container(), handle.name(), &variable, [](Var** ptr) {
@@ -426,7 +426,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
     ShapedBuffer buffer(
         xla::ShapeUtil::MakeTupleShape({nontuple_buffer.on_host_shape()}),
         xla::ShapeUtil::MakeTupleShape({nontuple_buffer.on_device_shape()}),
-        output.platform(), output.device_ordinal());
+        output.device_ordinal());
     buffer.buffers().CopySubtreeFrom(nontuple_buffer.buffers(),
                                      /*source_base_index=*/{},
                                      /*target_base_index=*/{0});
@@ -583,7 +583,11 @@ XlaComputationLaunchContext::BuildXlaCompilerArguments(
     XlaCompiler::Argument& arg = out[input_num];
     if (absl::c_binary_search(must_be_constant_idxs, input_num)) {
       // Handles compile-time constants.
-      TF_RET_CHECK(input->dtype() != DT_RESOURCE);
+
+      // TODO(b/157241314): Support constants located in resource variables.
+      TF_RET_CHECK(input->dtype() != DT_RESOURCE)
+          << "tf2xla bridge does not support must-be-constants located in "
+             "resource variables; try moving them to a tensor";
       arg.kind = XlaCompiler::Argument::kConstant;
       arg.type = input->dtype();
       arg.shape = input->shape();

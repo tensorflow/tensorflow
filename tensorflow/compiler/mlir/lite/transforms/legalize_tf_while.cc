@@ -64,8 +64,8 @@ void RunOnWhile(TF::WhileOp while_op) {
     // Mark old function as private so that it can be DCE'd if not called.
     func.setVisibility(SymbolTable::Visibility::Private);
   };
-  create_region_with_call(while_op.cond_func(), new_op.cond());
-  create_region_with_call(while_op.body_func(), new_op.body());
+  create_region_with_call(while_op.cond_function(), new_op.cond());
+  create_region_with_call(while_op.body_function(), new_op.body());
 
   op->replaceAllUsesWith(new_op.getResults());
   op->erase();

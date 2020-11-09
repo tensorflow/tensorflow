@@ -85,9 +85,9 @@ class _AutoShardDataset(dataset_ops.UnaryDataset):
     return self._element_spec
 
 
-def _AutoShardDatasetV1(input_dataset, num_workers, index):  # pylint: disable=invalid-name
+def _AutoShardDatasetV1(input_dataset, num_workers, index, num_replicas=None):  # pylint: disable=invalid-name
   return dataset_ops.DatasetV1Adapter(
-      _AutoShardDataset(input_dataset, num_workers, index))
+      _AutoShardDataset(input_dataset, num_workers, index, num_replicas))
 
 
 class _RebatchDataset(dataset_ops.UnaryDataset):
@@ -330,6 +330,14 @@ def replicate(dataset, devices):
     return datasets
 
   with ops.colocate_with(dataset._variant_tensor):
+    # We apply options before replicating the dataset because options are
+    # currently not automatically preserved through dataset serialization and
+    # thus an explicit application of options here is needed to avoid losing
+    # `dataset` options.
+    #
+    # TODO(b/147325552): Propagating options to C++ upon their setting would
+    # allow us to preserve the options across both variant and GraphDef based
+    # serialization, avoiding the need to explicitly apply options here.
     dataset = dataset._apply_options()
     policy = dataset.options().experimental_external_state_policy
     if policy is None:

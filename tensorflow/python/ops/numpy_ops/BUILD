@@ -88,6 +88,9 @@ cuda_py_test(
 cuda_py_test(
     name = "np_random_test",
     srcs = ["np_random_test.py"],
+    tags = [
+        "no_windows",  # TODO(b/172735406): Enable this.
+    ],
     deps = [
         ":numpy",
         "//tensorflow/python:platform",

@@ -30,6 +30,9 @@ template <typename T>
 class OperationPass;
 class Pass;
 
+// Transforms unranked HLO operations to ranked ones where possible.
+std::unique_ptr<FunctionPass> createTransformUnrankedHloPass();
+
 namespace mhlo {
 
 /// Lowers HLO control flow ops to the Standard dialect.
@@ -41,19 +44,15 @@ std::unique_ptr<OperationPass<FuncOp>> createControlFlowToScfPass();
 /// Lowers from HLO dialect to Standard dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeToStdPass();
 
+/// Lowers from the CHLO dialect to the HLO dialect.
+std::unique_ptr<FunctionPass> createChloLegalizeToHloPass();
+
 /// Lowers from HLO dialect to LHLO dialect allocating/deallocating temporary
-/// buffers if necessary. If `results_escape_functions` is set to true,
-/// allocated buffers for function results will be returned and escape the
-/// function. Otherwise, the signature is rewritten with extra arguments for the
-/// buffers that are to be used for results.
-std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass(
-    bool results_escape_functions = false);
+/// buffers if necessary.
+std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass();
 
 // Lowers from HLO dialect to Linalg dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeHloToLinalgPass();
-
-// Transforms unranked HLO operations to ranked ones where possible.
-std::unique_ptr<FunctionPass> createTransformUnrankedHloPass();
 
 // Sinks constants implicitly captured in control flow regions. This is
 // necessary to export to XLA.
@@ -62,8 +61,10 @@ std::unique_ptr<OperationPass<FuncOp>> createSinkConstantsToControlFlowPass();
 // fuse mhlo ops to kLoop/kInput fusion patterns
 std::unique_ptr<OperationPass<FuncOp>> createMhloFusionPass();
 
-/// Lowers the standard TanhOp to an approximation that does not use intrinsics.
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeTanhToApproximationPass();
+/// Lowers trigonometric operations from the standard dialect to approximations
+/// that do not use intrinsics.
+std::unique_ptr<OperationPass<FuncOp>>
+createLegalizeTrigonometricToApproximationPass();
 
 std::unique_ptr<FunctionPass> createOptimizeMhloPass();
 std::unique_ptr<FunctionPass> createLowerComplexPass();

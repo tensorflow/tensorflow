@@ -26,10 +26,22 @@ limitations under the License.
 
 namespace xla {
 
+// As we are deploying both a C++ and a Python implementation for DeviceArray,
+// we use an empty base-class to ensure `isinstance(x, DeviceArray)` works.
+//         DeviceArrayBase == DeviceArray
+//              /  \
+//             /    \
+//    PyBuffer      _DeviceArray (Python)
+//      in C++
+class DeviceArrayBase {
+ public:
+  DeviceArrayBase() = default;
+};
+
 // Python wrapper around PjRtBuffer. We use a wrapper class:
 // a) to keep the PjRtClient alive via a std::shared_ptr<>
 // b) to add Python-specific functionality.
-class PyBuffer {
+class PyBuffer : public DeviceArrayBase {
  public:
   PyBuffer(std::shared_ptr<PyClient> client, std::unique_ptr<PjRtBuffer> buffer,
            std::shared_ptr<Traceback> traceback);

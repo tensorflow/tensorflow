@@ -105,8 +105,14 @@ static LogicalResult Verify(SessionInitializerOp session_initializer) {
   return success();
 }
 
+}  // namespace tf_saved_model
+}  // namespace mlir
+
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.cc.inc"
+
+namespace mlir {
+namespace tf_saved_model {
 
 //===----------------------------------------------------------------------===//
 // TensorFlowSavedModelDialect Dialect

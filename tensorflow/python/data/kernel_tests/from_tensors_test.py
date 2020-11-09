@@ -252,12 +252,12 @@ class FromTensorsTest(test_base.DatasetTestBase, parameterized.TestCase):
       # placement algorithm overriding the DT_RESOURCE colocation constraints.
       with ops.device("/cpu:0"):
         var_0 = resource_variable_ops.ResourceVariable(initial_value=1)
-        dataset = dataset.map(lambda x: x + var_0.read_value())
+      dataset = dataset.map(lambda x: x + var_0.read_value())
       sess.run(var_0.initializer)
 
       with ops.device("/cpu:1"):
         var_1 = resource_variable_ops.ResourceVariable(initial_value=1)
-        dataset = dataset.map(lambda x: x + var_1.read_value())
+      dataset = dataset.map(lambda x: x + var_1.read_value())
       sess.run(var_1.initializer)
 
       iterator = dataset_ops.make_initializable_iterator(dataset)

@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
@@ -37,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/utils/string_container_utils.h"
 #include "tensorflow/compiler/mlir/xla/xla_mlir_translate_cl.h"
 #include "tensorflow/compiler/tf2xla/xla_argument.h"
@@ -293,13 +295,22 @@ static mlir::OwningModuleRef SerializedMlirStringAttrToMlirModuleTranslate(
   RegisterMlirInputDialects(context->getDialectRegistry());
   mlir::OwningModuleRef module_ref;
   auto status =
-      ParseMlirModule(str_attr.getValue().str(), context, &module_ref);
+      DeserializeMlirModule(str_attr.getValue().str(), context, &module_ref);
   if (!status.ok()) {
     LOG(ERROR) << status.ToString();
     return nullptr;
   }
 
   return module_ref;
+}
+
+static mlir::LogicalResult MlirModuleToSerializedMlirStringAttrTranslate(
+    mlir::ModuleOp module_op, llvm::raw_ostream& output) {
+  output << "\"";
+  std::string serialized_module = SerializeMlirModule(module_op);
+  llvm::printEscapedString(serialized_module, output);
+  output << "\"";
+  return mlir::success();
 }
 
 }  // namespace tensorflow
@@ -316,3 +327,8 @@ static mlir::TranslateFromMLIRRegistration MlirTfGraphToHloTextTranslate(
 static mlir::TranslateToMLIRRegistration SerializedMlirStringAttrToMlirModule(
     "mlir-tf-str-attr-to-mlir",
     tensorflow::SerializedMlirStringAttrToMlirModuleTranslate);
+
+static mlir::TranslateFromMLIRRegistration MlirModuleToSerializedMlirStringAttr(
+    "mlir-tf-mlir-to-str-attr",
+    tensorflow::MlirModuleToSerializedMlirStringAttrTranslate,
+    tensorflow::RegisterMlirInputDialects);

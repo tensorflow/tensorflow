@@ -27,3 +27,9 @@ llvm::cl::opt<bool> emit_return_tuple(
     "emit-return-tuple",
     llvm::cl::desc("Emit HLO modules with entry computations returning tuple"),
     llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+llvm::cl::opt<bool> optimize_xla_hlo(
+    "optimize-xla-hlo",
+    llvm::cl::desc("Enable optimizations when translating XLA HLO -> LHLO"),
+    llvm::cl::init(true));

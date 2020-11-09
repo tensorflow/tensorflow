@@ -456,6 +456,7 @@ class ZerosTest(test.TestCase):
         self.assertFalse(np.any(z_value))
         self.assertEqual((2, 3), z_value.shape)
 
+  @test_util.disable_tfrt("b/169901260")
   def testQint8Dtype(self):
     dtype = dtypes_lib.qint8
     z = array_ops.zeros([2, 3], dtype=dtype)
@@ -466,6 +467,7 @@ class ZerosTest(test.TestCase):
     z_value = self.evaluate(math_ops.cast(z, dtypes_lib.int32))
     self.assertFalse(np.any(z_value))
 
+  @test_util.disable_tfrt("b/169901260")
   def testQint16Dtype(self):
     dtype = dtypes_lib.qint16
     z = array_ops.zeros([2, 3], dtype=dtype)
@@ -650,6 +652,7 @@ class OnesTest(test.TestCase):
         self.assertEqual([2, 3], z.get_shape())
         self.assertAllEqual(z, np.ones([2, 3]))
 
+  @test_util.disable_tfrt("b/169901260")
   def testQintDtype(self):
 
     @def_function.function(autograph=False)

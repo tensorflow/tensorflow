@@ -125,8 +125,8 @@ Status IrEmitter::EmitConstants(const HloComputation& computation,
     // merely preserves their names (like available_externally), we also need
     // to ensure that they stick around even if they're "unused".
     //
-    // We may have to be more more clever here in the future if we notice that
-    // we're keeping around too many globals because of their linkage.
+    // We may have to be more clever here in the future if we notice that we're
+    // keeping around too many globals because of their linkage.
     unsigned global_address_space = llvm_ir::GetGlobalMemoryAddressSpace(
         *ir_emitter_context_->llvm_module());
 
@@ -773,11 +773,11 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
   CHECK_EQ(HloInstruction::FusionKind::kLoop, fusion->fusion_kind());
   GpuElementalIrEmitter elemental_emitter(hlo_module_config_, module_, &b_,
                                           GetNestedComputer());
-  FusedIrEmitter fused_emitter(GetGeneratorForOperandIrArrays(fusion),
-                               &elemental_emitter);
-  TF_RETURN_IF_ERROR(fusion->fused_expression_root()->Accept(&fused_emitter));
-
-  return EmitTargetElementLoop(*fusion, fused_emitter.GetRootGenerator());
+  FusedIrEmitter fused_emitter(&elemental_emitter);
+  BindFusionArguments(fusion, &fused_emitter);
+  TF_ASSIGN_OR_RETURN(auto generator, fused_emitter.GetGenerator(
+                                          fusion->fused_expression_root()));
+  return EmitTargetElementLoop(*fusion, generator);
 }
 
 Status IrEmitter::HandleCall(HloInstruction* call) {
@@ -874,6 +874,18 @@ std::vector<llvm_ir::IrArray> IrEmitter::ConstructIrArrayForOutputs(
     output_arrays.push_back(GetIrArray(hlo, hlo));
   }
   return output_arrays;
+}
+
+void IrEmitter::BindFusionArguments(const HloInstruction* fusion,
+                                    FusedIrEmitter* fused_emitter) {
+  for (int i = 0; i < fusion->operand_count(); i++) {
+    const HloInstruction* operand = fusion->operand(i);
+    fused_emitter->BindGenerator(
+        fusion->fused_parameter(i),
+        [this, operand, fusion](llvm_ir::IrArray::Index index) {
+          return GetIrArray(*operand, *fusion).EmitReadArrayElement(index, &b_);
+        });
+  }
 }
 
 }  // namespace gpu

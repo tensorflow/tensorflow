@@ -19,6 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import enum
+import functools
 import math
 import numbers
 import numpy as np
@@ -570,7 +572,7 @@ def size(x, axis=None):  # pylint: disable=missing-docstring
     return 1
   x = asarray(x).data
   if x.shape.is_fully_defined():
-    return np.prod(x.shape.as_list())
+    return np.prod(x.shape.as_list(), dtype=int)
   else:
     return np_utils.tensor_to_ndarray(array_ops.size_v2(x))
 
@@ -820,16 +822,32 @@ def transpose(a, axes=None):
 @np_utils.np_doc('swapaxes')
 def swapaxes(a, axis1, axis2):  # pylint: disable=missing-docstring
   a = asarray(a).data
+  def adjust_axes(axes, rank):
+    def f(x):
+      if isinstance(x, int):
+        if x < 0:
+          x = x + rank
+      else:
+        x = array_ops.where_v2(x < 0, np_utils.add(x, a_rank), x)
+      return x
+    return nest.map_structure(f, axes)
 
-  a_rank = array_ops.rank(a)
-  axis1 = array_ops.where_v2(axis1 < 0, axis1 + a_rank, axis1)
-  axis2 = array_ops.where_v2(axis2 < 0, axis2 + a_rank, axis2)
-
-  perm = math_ops.range(a_rank)
-  perm = array_ops.tensor_scatter_update(perm, [[axis1], [axis2]],
-                                         [axis2, axis1])
+  if (a.shape.rank is not None and
+      isinstance(axis1, int) and isinstance(axis2, int)):
+    # This branch makes sure `perm` is statically known, to avoid a
+    # not-compile-time-constant XLA error.
+    a_rank = a.shape.rank
+    axis1, axis2 = adjust_axes((axis1, axis2), a_rank)
+    perm = list(range(a_rank))
+    perm[axis1] = axis2
+    perm[axis2] = axis1
+  else:
+    a_rank = array_ops.rank(a)
+    axis1, axis2 = adjust_axes((axis1, axis2), a_rank)
+    perm = math_ops.range(a_rank)
+    perm = array_ops.tensor_scatter_update(perm, [[axis1], [axis2]],
+                                           [axis2, axis1])
   a = array_ops.transpose(a, perm)
-
   return np_utils.tensor_to_ndarray(a)
 
 
@@ -1433,7 +1451,7 @@ def take_along_axis(arr, indices, axis):  # pylint: disable=missing-docstring
   indices = indices.data
 
   rank = array_ops.rank(arr)
-  axis = array_ops.where_v2(axis < 0, axis + rank, axis)
+  axis = axis + rank if axis < 0 else axis
 
   # Broadcast shapes to match, ensure that the axis of interest is not
   # broadcast.
@@ -1459,7 +1477,7 @@ def take_along_axis(arr, indices, axis):  # pylint: disable=missing-docstring
 
   swapaxes_ = lambda t: swapaxes(np_utils.tensor_to_ndarray(t), axis, -1).data
 
-  dont_move_axis_to_end = math_ops.equal(axis, rank - 1)
+  dont_move_axis_to_end = math_ops.equal(axis, np_utils.subtract(rank, 1))
   arr = np_utils.cond(dont_move_axis_to_end, lambda: arr,
                       lambda: swapaxes_(arr))
   indices = np_utils.cond(dont_move_axis_to_end, lambda: indices,
@@ -1525,8 +1543,15 @@ def _as_index(idx, need_scalar=True):
   return data, data.shape.rank == 0
 
 
-def _slice_helper(tensor, slice_spec, updates=None):
-  """Helper function for __getitem__ and _with_update.
+class _UpdateMethod(enum.Enum):
+  UPDATE = 0
+  ADD = 1
+  MIN = 2
+  MAX = 3
+
+
+def _slice_helper(tensor, slice_spec, update_method=None, updates=None):
+  """Helper function for __getitem__ and _with_index_update_helper.
 
   This function collects the indices in `slice_spec` into two buckets, which we
   can call "idx1" and "idx2" here. idx1 is intended for `strided_slice`, idx2
@@ -1553,10 +1578,14 @@ def _slice_helper(tensor, slice_spec, updates=None):
   Args:
     tensor: the tensor to be read from or write into.
     slice_spec: the indices.
-    updates: the new values to write into `tensor`.
+    update_method: (optional) a member of `_UpdateMethod`, indicating how to
+      update the values (replacement, add, etc.). `None` indicates just reading.
+    updates: (optional) the new values to write into `tensor`. It must have the
+      same dtype as `tensor`.
 
   Returns:
-    The result of reading or the updated `tensor` after writing.
+    The result of reading (if `update_method` is `None`) or the updated `tensor`
+    after writing.
   """
   begin, end, strides = [], [], []
   new_axis_mask, shrink_axis_mask = 0, 0
@@ -1627,7 +1656,7 @@ def _slice_helper(tensor, slice_spec, updates=None):
     else:
       var_empty = constant_op.constant([], dtype=dtypes.int32)
       packed_begin = packed_end = packed_strides = var_empty
-    if updates is not None and not advanced_indices:
+    if update_method == _UpdateMethod.UPDATE and not advanced_indices:
       return array_ops.tensor_strided_slice_update(
           tensor,
           packed_begin,
@@ -1657,8 +1686,30 @@ def _slice_helper(tensor, slice_spec, updates=None):
           new_axis_mask=new_axis_mask,
           ellipsis_mask=ellipsis_mask,
           name=name)
-    if updates is None and not advanced_indices:
-      return tensor
+    if not advanced_indices:
+      if update_method is None:
+        return tensor
+      assert update_method != _UpdateMethod.UPDATE
+      # TF lacks TensorStridedSliceAdd and alike, so we need to do
+      # read+add+update.
+      if update_method == _UpdateMethod.ADD:
+        update_op = math_ops.add
+      elif update_method == _UpdateMethod.MIN:
+        update_op = math_ops.minimum
+      elif update_method == _UpdateMethod.MAX:
+        update_op = math_ops.maximum
+      return array_ops.tensor_strided_slice_update(
+          original_tensor,
+          packed_begin,
+          packed_end,
+          packed_strides,
+          update_op(tensor, updates),
+          begin_mask=begin_mask,
+          end_mask=end_mask,
+          shrink_axis_mask=shrink_axis_mask,
+          new_axis_mask=new_axis_mask,
+          ellipsis_mask=ellipsis_mask,
+          name=name + '_2')
     advanced_indices_map = {}
     for index, data, had_ellipsis in advanced_indices:
       if had_ellipsis:
@@ -1695,6 +1746,10 @@ def _slice_helper(tensor, slice_spec, updates=None):
       if updates is None:
         return array_ops.gather_nd(tensor, stacked_indices)
       else:
+        # We only need to move-axis `updates` in the contiguous case becausce
+        # only in this case the result dimensions of advanced indexing are in
+        # the middle of `updates`. In the non-contiguous case, those dimensions
+        # are always at the front.
         if dims_contiguous:
           # TODO(wangpeng): Support unknown rank (e.g. by partially flattening
           #   `updates`)
@@ -1709,7 +1764,15 @@ def _slice_helper(tensor, slice_spec, updates=None):
             return range(start, start + length)
           updates = moveaxis(updates, range_(batch_start, batch_size),
                              range(batch_size)).data
-        tensor = array_ops.tensor_scatter_update(
+        if update_method == _UpdateMethod.UPDATE:
+          update_op = array_ops.tensor_scatter_update
+        elif update_method == _UpdateMethod.ADD:
+          update_op = array_ops.tensor_scatter_add
+        elif update_method == _UpdateMethod.MIN:
+          update_op = array_ops.tensor_scatter_min
+        elif update_method == _UpdateMethod.MAX:
+          update_op = array_ops.tensor_scatter_max
+        tensor = update_op(
             tensor, stacked_indices, updates)
         if range(len(dims)) != dims:
           tensor = moveaxis(tensor, range(len(dims)), dims).data
@@ -1730,10 +1793,11 @@ def _slice_helper(tensor, slice_spec, updates=None):
     # do a gather instead.
     rank = np_utils._maybe_static(array_ops.rank(tensor))  # pylint: disable=protected-access
     dims = [(x + rank if x < 0 else x) for x in dims]
-    shape_tensor = array_ops.shape(tensor, out_type=stacked_indices.dtype)
+    shape_tensor = array_ops.shape(tensor)
     dim_sizes = array_ops.gather(shape_tensor, dims)
     if len(dims) == 1:
       stacked_indices = indices[0]
+    stacked_indices = math_ops.cast(stacked_indices, dtypes.int32)
     stacked_indices = array_ops.where_v2(stacked_indices < 0,
                                          stacked_indices + dim_sizes,
                                          stacked_indices)
@@ -1741,8 +1805,12 @@ def _slice_helper(tensor, slice_spec, updates=None):
     if len(dims) > 1:
       index_scaling = math_ops.cumprod(
           dim_sizes, reverse=True, exclusive=True)
-      stacked_indices = math_ops.tensordot(
-          stacked_indices, index_scaling, axes=1)
+      def _tensordot(a, b):
+        # TODO(b/168657656): This function should be replaced by
+        # tensordot(axis=1) once MatMul has int32 XLA kernel.
+        b = array_ops.broadcast_to(b, array_ops.shape(a))
+        return math_ops.reduce_sum(a * b, axis=-1)
+      stacked_indices = _tensordot(stacked_indices, index_scaling)
       flat_shape = array_ops.concat(
           [shape_tensor[:axis], [-1], shape_tensor[axis + len(dims):]],
           axis=0)
@@ -1784,8 +1852,8 @@ def _getitem(self, slice_spec):
   return np_utils.tensor_to_ndarray(result_t)
 
 
-def _with_update(a, slice_spec, updates):
-  """Implementation of ndarray._with_update."""
+def _with_index_update_helper(update_method, a, slice_spec, updates):
+  """Implementation of ndarray._with_index_*."""
   if (isinstance(slice_spec, bool) or (isinstance(slice_spec, ops.Tensor) and
                                        slice_spec.dtype == dtypes.bool) or
       (isinstance(slice_spec, (np.ndarray, np_arrays.ndarray)) and
@@ -1795,10 +1863,18 @@ def _with_update(a, slice_spec, updates):
   if not isinstance(slice_spec, tuple):
     slice_spec = _as_spec_tuple(slice_spec)
 
-  updates = asarray(updates, a.dtype)
-  result_t = _slice_helper(a.data, slice_spec, updates.data)
-  return np_utils.tensor_to_ndarray(result_t)
+  a_dtype = a.dtype
+  a, updates = _promote_dtype_binary(a, updates)
+  result_t = _slice_helper(a.data, slice_spec, update_method, updates.data)
+  return np_utils.tensor_to_ndarray(result_t).astype(a_dtype)
 
 
 setattr(np_arrays.ndarray, '__getitem__', _getitem)
-setattr(np_arrays.ndarray, '_with_update', _with_update)
+setattr(np_arrays.ndarray, '_with_index_update',
+        functools.partial(_with_index_update_helper, _UpdateMethod.UPDATE))
+setattr(np_arrays.ndarray, '_with_index_add',
+        functools.partial(_with_index_update_helper, _UpdateMethod.ADD))
+setattr(np_arrays.ndarray, '_with_index_min',
+        functools.partial(_with_index_update_helper, _UpdateMethod.MIN))
+setattr(np_arrays.ndarray, '_with_index_max',
+        functools.partial(_with_index_update_helper, _UpdateMethod.MAX))

@@ -1,0 +1,4 @@
+func @Imag(%arg0: tensor<?xcomplex<elem_type>>) -> tensor<?xelem_type> {
+  %0 = "tf.Imag"(%arg0) : (tensor<?xcomplex<elem_type>>) -> tensor<?xelem_type>
+  return %0 : tensor<?xelem_type>
+}

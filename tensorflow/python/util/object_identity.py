@@ -22,6 +22,7 @@ import weakref
 from tensorflow.python.util.compat import collections_abc
 
 
+# LINT.IfChange
 class _ObjectIdentityWrapper(object):
   """Wraps an object, mapping __eq__ on wrapper to "is" on wrapped.
 
@@ -30,7 +31,7 @@ class _ObjectIdentityWrapper(object):
   _ListWrapper objects to object-identity collections.
   """
 
-  __slots__ = ["_wrapped"]
+  __slots__ = ["_wrapped", "__weakref__"]
 
   def __init__(self, wrapped):
     self._wrapped = wrapped
@@ -72,6 +73,8 @@ class _ObjectIdentityWrapper(object):
 
 class _WeakObjectIdentityWrapper(_ObjectIdentityWrapper):
 
+  __slots__ = ()
+
   def __init__(self, wrapped):
     super(_WeakObjectIdentityWrapper, self).__init__(weakref.ref(wrapped))
 
@@ -98,6 +101,8 @@ class Reference(_ObjectIdentityWrapper):
   ==> False
   ```
   """
+
+  __slots__ = ()
 
   # Disabling super class' unwrapped field.
   unwrapped = property()
@@ -153,6 +158,8 @@ class ObjectIdentityDictionary(collections_abc.MutableMapping):
 class ObjectIdentityWeakKeyDictionary(ObjectIdentityDictionary):
   """Like weakref.WeakKeyDictionary, but compares objects with "is"."""
 
+  __slots__ = ["__weakref__"]
+
   def _wrap_key(self, key):
     return _WeakObjectIdentityWrapper(key)
 
@@ -173,7 +180,7 @@ class ObjectIdentityWeakKeyDictionary(ObjectIdentityDictionary):
 class ObjectIdentitySet(collections_abc.MutableSet):
   """Like the built-in set, but compares objects with "is"."""
 
-  __slots__ = ["_storage"]
+  __slots__ = ["_storage", "__weakref__"]
 
   def __init__(self, *args):
     self._storage = set(self._wrap_key(obj) for obj in list(*args))
@@ -221,6 +228,8 @@ class ObjectIdentitySet(collections_abc.MutableSet):
 class ObjectIdentityWeakSet(ObjectIdentitySet):
   """Like weakref.WeakSet, but compares objects with "is"."""
 
+  __slots__ = ()
+
   def _wrap_key(self, key):
     return _WeakObjectIdentityWrapper(key)
 
@@ -236,3 +245,4 @@ class ObjectIdentityWeakSet(ObjectIdentitySet):
         self.discard(key)
       else:
         yield unwrapped
+# LINT.ThenChange(//tensorflow/python/keras/utils/object_identity.py)

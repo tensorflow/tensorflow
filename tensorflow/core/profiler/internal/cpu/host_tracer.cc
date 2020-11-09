@@ -25,9 +25,9 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/internal/cpu/host_tracer_utils.h"
-#include "tensorflow/core/profiler/internal/profiler_factory.h"
-#include "tensorflow/core/profiler/internal/profiler_interface.h"
-#include "tensorflow/core/profiler/internal/traceme_recorder.h"
+#include "tensorflow/core/profiler/internal/cpu/traceme_recorder.h"
+#include "tensorflow/core/profiler/lib/profiler_factory.h"
+#include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
@@ -82,11 +82,15 @@ Status HostTracer::Start() {
   if (recording_) {
     return errors::Internal("TraceMeRecorder already started");
   }
+
+  // All TraceMe captured should have a timestamp greater or equal to
+  // start_timestamp_ns_ to prevent timestamp underflow in XPlane.
+  // Therefore this have to be done before TraceMeRecorder::Start.
+  start_timestamp_ns_ = EnvTime::NowNanos();
   recording_ = TraceMeRecorder::Start(host_trace_level_);
   if (!recording_) {
     return errors::Internal("Failed to start TraceMeRecorder");
   }
-  start_timestamp_ns_ = EnvTime::NowNanos();
   return Status::OK();
 }
 

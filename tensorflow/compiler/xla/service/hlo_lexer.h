@@ -65,6 +65,7 @@ enum class TokKind {
   kw_nan,
   kw_inf,
 
+  kNegNan,  // -nan
   kNegInf,  // -inf
 
   // Typed tokens.

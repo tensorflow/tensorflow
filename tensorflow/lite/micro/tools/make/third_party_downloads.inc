@@ -9,11 +9,11 @@ GEMMLOWP_URL := "https://github.com/google/gemmlowp/archive/719139ce755a0f31cbf1
 GEMMLOWP_MD5 := "7e8191b24853d75de2af87622ad293ba"
 
 ifeq ($(HOST_OS),windows)
-  FLATBUFFERS_URL := "http://mirror.tensorflow.org/github.com/google/flatbuffers/archive/v1.12.0.zip"
-  FLATBUFFERS_MD5 := "a1afdbf114dec01a861c1b8c917d0fc7"
+  FLATBUFFERS_URL := "http://mirror.tensorflow.org/github.com/google/flatbuffers/archive/dca12522a9f9e37f126ab925fd385c807ab4f84e.zip"
+  FLATBUFFERS_MD5 := "aa9adc93eb9b33fa1a2a90969e48baee"
 else
-  FLATBUFFERS_URL := "http://mirror.tensorflow.org/github.com/google/flatbuffers/archive/v1.12.0.tar.gz"
-  FLATBUFFERS_MD5 := "c62ffefb3d4548b127cca14ce047f16c"
+  FLATBUFFERS_URL := "http://mirror.tensorflow.org/github.com/google/flatbuffers/archive/dca12522a9f9e37f126ab925fd385c807ab4f84e.tar.gz"
+  FLATBUFFERS_MD5 := "dfa0ac3073b78ddacdcacf8ca189be91"
 endif
 
 ifeq ($(HOST_OS),osx)
@@ -33,8 +33,8 @@ LEON_BCC2_MD5 := "cdf78082be4882da2a92c9baa82fe765"
 TSIM_URL := "http://mirror.tensorflow.org/www.gaisler.com/anonftp/tsim/tsim-eval-2.0.63.tar.gz"
 TSIM_MD5 := "afa0095d3ed989a949e1467f94e41d2f"
 
-CMSIS_URL := "http://mirror.tensorflow.org/github.com/ARM-software/CMSIS_5/archive/9daaa7a34a5627a24009462b8fa8413a00c4fdb1.zip"
-CMSIS_MD5 := "b988dacff8925ffffcb7e5079cc713b7"
+CMSIS_URL := "http://github.com/ARM-software/CMSIS_5/archive/01f5b32badf7b78c85a24a7149b56400fa6a2999.zip"
+CMSIS_MD5 := "823916c6f1749c65fd0bfdeec20b30ed"
 
 AM_SDK_URL := "http://mirror.tensorflow.org/s3.asia.ambiqmicro.com/downloads/AmbiqSuite-Rel2.2.0.zip"
 AM_SDK_MD5 := "7605fa2d4d97e6bb7a1190c92b66b597"

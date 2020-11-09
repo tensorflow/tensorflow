@@ -347,6 +347,7 @@ cc_library(
         "optimized/eigen_tensor_reduced_instantiations_oss.h",
         "optimized/multithreaded_conv.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":common",
@@ -451,6 +452,7 @@ cc_library(
         "reference/arg_min_max.h",
         "reference/batch_matmul.h",
         "reference/binary_function.h",
+        "reference/broadcast_to.h",
         "reference/ceil.h",
         "reference/comparisons.h",
         "reference/concatenation.h",
@@ -520,6 +522,7 @@ cc_library(
         "@ruy//ruy/profiler:instrumentation",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/tools/optimize/sparsity:format_converter",
     ] + select({

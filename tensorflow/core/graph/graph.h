@@ -617,9 +617,9 @@ class Graph {
   int num_edge_ids() const { return edges_.size(); }
 
   // Returns the Edge associated with an id, or nullptr if no edge
-  // with that id (the node with that id was removed and the id has
+  // with that id (the edge with that id was removed and the id has
   // not yet been re-used). *this owns the returned instance.
-  // REQUIRES: 0 <= id < num_node_ids().
+  // REQUIRES: 0 <= id < num_edge_ids().
   const Edge* FindEdgeId(int id) const { return edges_[id]; }
 
   // Access to the set of all edges.  Example usage:

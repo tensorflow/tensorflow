@@ -980,7 +980,7 @@ void TensorHandle::Poison(Status status, const Device* d) {
 
 Status TensorHandle::CopyToDevice(const EagerContext& ctx,
                                   tensorflow::Device* d,
-                                  tensorflow::Tensor* output) {
+                                  tensorflow::Tensor* output) const {
   tensorflow::Device* dstd = (d == nullptr) ? ctx.HostCPU() : d;
   tensorflow::Device* srcd = absl::get<Device*>(DeviceOrHostCPU(ctx));
   const bool dst_cpu = dstd->tensorflow_gpu_device_info() == nullptr;
@@ -1114,6 +1114,28 @@ const char* TensorHandle::BackingDeviceName(Status* status) const {
     return (d == nullptr) ? "/job:localhost/replica:0/task:0/device:CPU:0"
                           : d->name().c_str();
   }
+}
+
+const char* TensorHandle::DeviceType(Status* status) const {
+  if (VariantDeviceIsCustom(device())) {
+    status->Update(
+        tensorflow::errors::Unimplemented("Custom device unsupported"));
+    return nullptr;
+  }
+  status->Update(WaitUnknownDevice());
+  tensorflow::Device* d = op_device();
+  return (d == nullptr) ? "CPU" : d->parsed_name().type.c_str();
+}
+
+int TensorHandle::DeviceId(Status* status) const {
+  if (VariantDeviceIsCustom(device())) {
+    status->Update(
+        tensorflow::errors::Unimplemented("Custom device unsupported"));
+    return -1;
+  }
+  status->Update(WaitUnknownDevice());
+  tensorflow::Device* d = op_device();
+  return (d == nullptr) ? 0 : d->parsed_name().id;
 }
 
 tensorflow::ImmediateExecutionTensorHandle* TensorHandle::Copy() {

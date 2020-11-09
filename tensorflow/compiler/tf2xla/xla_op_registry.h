@@ -153,6 +153,10 @@ class XlaOpRegistry {
   static void RegisterCompilationDevice(const string& device_name,
                                         const DeviceRegistration& registration);
 
+  // Returns whether the device name is for the JIT device used exclusively for
+  // TF2XLA conversion.
+  static bool IsCompilationDevice(const string& device_name);
+
   // Returns the JIT device name associated with 'device_name', setting
   // 'jit_device_name', 'requires_jit', and 'enabled_jit_by_default', if they
   // are not null. Returns false and leaves the outputs unchanged if no matching

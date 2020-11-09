@@ -59,7 +59,9 @@ class ScopedDeviceMemory {
   //             out of scope.
   ScopedDeviceMemory(DeviceMemoryBase mem, int device_ordinal,
                      DeviceMemoryAllocator *allocator)
-      : wrapped_(mem), device_ordinal_(device_ordinal), allocator_(allocator) {}
+      : wrapped_(mem), device_ordinal_(device_ordinal), allocator_(allocator) {
+    DCHECK_GE(device_ordinal_, 0);
+  }
 
   // A helper constructor to generate a scoped device memory given an already
   // allocated memory and a stream executor.
@@ -79,8 +81,9 @@ class ScopedDeviceMemory {
   //
   // Postcondition: other == nullptr.
   ScopedDeviceMemory(ScopedDeviceMemory &&other)
-      : ScopedDeviceMemory(other.Release(), other.device_ordinal_,
-                           other.allocator_) {}
+      : wrapped_(other.Release()),
+        device_ordinal_(other.device_ordinal_),
+        allocator_(other.allocator_) {}
 
   // Releases the memory that was provided in the constructor, through the
   // "parent" StreamExecutor.

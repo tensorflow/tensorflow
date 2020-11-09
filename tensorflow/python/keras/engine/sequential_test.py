@@ -24,7 +24,7 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -412,20 +412,30 @@ class TestSequential(keras_parameterized.TestCase):
     """Test that Sequential only tracks layers added in init or `.add`."""
     layer = keras.layers.Dense(1)
     model = keras.Sequential([layer])
-    self.assertEqual(model._layers[-1], layer)
+    self.assertEqual(
+        list(model._flatten_layers(include_self=False, recursive=False))[-1],
+        layer)
 
     model.a = [keras.layers.Dense(3)]  # should not be added to the layers list.
-    self.assertEqual(model._layers[-1], layer)
+    self.assertEqual(
+        list(model._flatten_layers(include_self=False, recursive=False))[-1],
+        layer)
 
     layer2 = keras.layers.Dense(2)
     model.add(layer2)
-    self.assertEqual(model._layers[-1], layer2)
+    self.assertEqual(
+        list(model._flatten_layers(include_self=False, recursive=False))[-1],
+        layer2)
 
     model.a = [keras.layers.Dense(3)]  # should not be added to the layers list.
-    self.assertEqual(model._layers[-1], layer2)
+    self.assertEqual(
+        list(model._flatten_layers(include_self=False, recursive=False))[-1],
+        layer2)
 
     model.pop()
-    self.assertEqual(model._layers[-1], layer)
+    self.assertEqual(
+        list(model._flatten_layers(include_self=False, recursive=False))[-1],
+        layer)
 
   def test_config_preserves_input_layer(self):
     model = keras.Sequential([
@@ -436,8 +446,10 @@ class TestSequential(keras_parameterized.TestCase):
     config = model.get_config()
     new_model = keras.Sequential.from_config(config)
     self.assertTrue(new_model.built)
-    self.assertEqual(new_model._layers[0].dtype, 'int32')
-    self.assertEqual(new_model._layers[0].name, 'my_embedding_input')
+    layers = list(
+        new_model._flatten_layers(include_self=False, recursive=False))
+    self.assertEqual(layers[0].dtype, 'int32')
+    self.assertEqual(layers[0].name, 'my_embedding_input')
 
   def test_name_unicity(self):
     model = keras.Sequential()
@@ -456,7 +468,7 @@ class TestSequentialEagerIntegration(keras_parameterized.TestCase):
 
       def __init__(self, name=None):
         super(MySequential, self).__init__(name=name)
-        self.call = function.defun(self.call)
+        self.call = def_function.function(self.call)
 
     model = MySequential()
     model.add(keras.layers.Dense(4, activation='relu'))

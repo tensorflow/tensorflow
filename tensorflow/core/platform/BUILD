@@ -52,13 +52,18 @@ load(
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
-    default_visibility = ["//tensorflow:__subpackages__"],
+    default_visibility = [
+        "//visibility:public",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -202,6 +207,7 @@ cc_library(
 cc_library(
     name = "cuda",
     hdrs = ["cuda.h"],
+    compatible_with = [],
     deps = [
         ":platform",
         "//tensorflow/stream_executor/cuda:cuda_activation_header",
@@ -244,6 +250,11 @@ cc_library(
         "threadpool.h",
     ],
     deps = tf_windows_aware_platform_deps("env"),
+)
+
+cc_library(
+    name = "env_impl",
+    deps = tf_windows_aware_platform_deps("env_impl"),
 )
 
 cc_library(
@@ -376,9 +387,8 @@ filegroup(
 
 cc_library(
     name = "mutex",
+    compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["mutex.h"],
-    # TODO(b/161569340): Short-term fix. Remove this visibility rule.
-    visibility = ["//tensorflow:__subpackages__"],
     deps = tf_platform_deps("mutex"),
 )
 
@@ -617,10 +627,6 @@ filegroup(
     srcs = [
         "stacktrace_handler.h",
     ],
-    visibility = [
-        "//tensorflow/core:__pkg__",
-        "//tensorflow/python:__pkg__",
-    ],
 )
 
 cc_library(
@@ -697,7 +703,6 @@ cc_library(
 cc_library(
     name = "strong_hash",
     hdrs = ["strong_hash.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":platform",
         ":types",
@@ -798,11 +803,6 @@ cc_library(
     name = "types",
     hdrs = ["types.h"],
     compatible_with = get_compatible_with_portable(),
-    # TODO(b/161569340): Short-term fix. Remove this visibility rule.
-    visibility = [
-        "//tensorflow:__subpackages__",
-        "//tensorflow_text:__subpackages__",
-    ],
     deps = [
         ":platform",
         ":bfloat16",
@@ -935,7 +935,6 @@ tf_cuda_library(
         "stream_executor.h",
     ],
     features = ["-parse_headers"],
-    visibility = ["//tensorflow/core:__pkg__"],
     deps = [
         "//tensorflow/core/platform/default/build_config:stream_executor",
     ],
@@ -950,7 +949,6 @@ cc_library(
         "stream_executor_no_cuda.h",
     ],
     features = ["-parse_headers"],
-    visibility = ["//tensorflow/core:__pkg__"],
     deps = [
         "//tensorflow/core/platform/default/build_config:stream_executor_no_cuda",
     ],
@@ -965,7 +963,6 @@ cc_library(
         "//tensorflow:windows": [],
         "//conditions:default": ["-lm"],
     }),
-    visibility = ["//tensorflow/core:__pkg__"],
     deps = [
         ":platform",
         ":stacktrace_handler",
@@ -1008,6 +1005,7 @@ cc_library(
 filegroup(
     name = "tensor_float_32_hdr",
     srcs = ["tensor_float_32_utils.h"],
+    compatible_with = get_compatible_with_portable(),
 )
 
 tf_cc_tests(
@@ -1288,7 +1286,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test_gpu(
+tf_cuda_cc_test(
     name = "rocm_rocdl_path_test",
     size = "small",
     srcs = ["rocm_rocdl_path_test.cc"],
@@ -1482,7 +1480,10 @@ filegroup(
     srcs = [
         "jpeg.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/jpeg:__pkg__",
+    ],
 )
 
 filegroup(
@@ -1505,7 +1506,10 @@ filegroup(
         "tstring.h",
         "types.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/jpeg:__pkg__",
+    ],
 )
 
 filegroup(
@@ -1523,7 +1527,10 @@ filegroup(
         "tstring.h",
         "types.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/jpeg:__pkg__",
+    ],
 )
 
 filegroup(
@@ -1709,6 +1716,13 @@ bzl_library(
     srcs = [
         "build_config_root.bzl",
     ] + tf_platform_alias("build_config_root.bzl"),
+    visibility = [
+        "//learning/brain/google/xla/tests:__pkg__",
+        "//learning/brain/tfrc/runtime/tpu_driver:__subpackages__",
+        "//nlp/deleuze:__pkg__",
+        "//nlp/projects/minmt:__pkg__",
+        "//tensorflow:__subpackages__",
+    ],
 )
 
 bzl_library(

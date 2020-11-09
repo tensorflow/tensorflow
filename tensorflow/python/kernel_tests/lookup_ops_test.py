@@ -38,6 +38,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -47,6 +48,8 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model import load as saved_model_load
+from tensorflow.python.saved_model import save as saved_model_save
 from tensorflow.python.training import saver
 from tensorflow.python.training import server_lib
 from tensorflow.python.training.tracking import graph_view
@@ -188,6 +191,20 @@ class StaticHashTableTest(BaseLookupTableTest):
 
     input_string = constant_op.constant(["brain", "salad", "tank"])
     output = table.lookup(input_string)
+
+    result = self.evaluate(output)
+    self.assertAllEqual([0, 1, -1], result)
+
+  def testStaticHashTableGetItem(self):
+    default_val = constant_op.constant(-1, dtypes.int64)
+    keys = constant_op.constant(["brain", "salad", "surgery"])
+    values = constant_op.constant([0, 1, 2], dtypes.int64)
+    table = self.getHashTable()(lookup_ops.KeyValueTensorInitializer(
+        keys, values), default_val)
+    self.initialize_table(table)
+
+    input_string = constant_op.constant(["brain", "salad", "tank"])
+    output = table[input_string]
 
     result = self.evaluate(output)
     self.assertAllEqual([0, 1, -1], result)
@@ -469,6 +486,24 @@ class StaticHashTableTest(BaseLookupTableTest):
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(lookup_ops.tables_initializer())
     self.assertAllEqual(grad, -10.)
+
+  def testExportShapeInference(self):
+    table = self.getHashTable()(lookup_ops.KeyValueTensorInitializer(
+        constant_op.constant([2, 5], dtype=dtypes.int64),
+        constant_op.constant([-10.0, 1], dtype=dtypes.float32)), -1)
+    actual_shapes = [t.shape for t in table.export()]
+    inferred_shapes = []
+
+    @def_function.function
+    def f():
+      for t in table.export():
+        inferred_shapes.append(t.shape)
+
+    f()
+    self.assertLen(actual_shapes, 2)
+    self.assertLen(inferred_shapes, 2)
+    self.assertTrue(inferred_shapes[0].is_compatible_with(actual_shapes[0]))
+    self.assertTrue(inferred_shapes[1].is_compatible_with(actual_shapes[1]))
 
 
 class KeyValueTensorInitializerTest(BaseLookupTableTest):
@@ -951,6 +986,21 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
     self.assertAllEqual([0, 1, 2, 3], self.evaluate(out))
     self.assertEqual(vocab_size + oov_buckets, self.evaluate(table.size()))
 
+  def testStaticVocabularyTableGetItem(self):
+    vocab_file = self._createVocabFile("feat_to_id_1.txt")
+    vocab_size = 3
+    oov_buckets = 1
+    table = self.getVocabularyTable()(lookup_ops.TextFileIdTableInitializer(
+        vocab_file, vocab_size=vocab_size), oov_buckets)
+
+    self.initialize_table(table)
+
+    input_string = constant_op.constant(["brain", "salad", "surgery", "UNK"])
+
+    out = table[input_string]
+    self.assertAllEqual([0, 1, 2, 3], self.evaluate(out))
+    self.assertEqual(vocab_size + oov_buckets, self.evaluate(table.size()))
+
   def testInt32StaticVocabularyTable(self):
     vocab_file = self._createVocabFile("feat_to_id_2.txt", ("42", "1", "-1000"))
     vocab_size = 3
@@ -1223,70 +1273,84 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
 class DenseHashTableOpTest(test.TestCase):
 
   def testBasic(self):
-    with self.cached_session():
+    keys = constant_op.constant([11, 12, 13, 14], dtypes.int64)
+    values = constant_op.constant([0, 1, 2, 3], dtypes.int64)
+    table = lookup_ops.DenseHashTable(
+        dtypes.int64,
+        dtypes.int64,
+        default_value=-1,
+        empty_key=0,
+        deleted_key=-1)
+    self.assertAllEqual(0, self.evaluate(table.size()))
 
-      keys = constant_op.constant([11, 12, 13, 14], dtypes.int64)
-      values = constant_op.constant([0, 1, 2, 3], dtypes.int64)
+    self.evaluate(table.insert(keys, values))
+    self.assertAllEqual(4, self.evaluate(table.size()))
+
+    remove_string = constant_op.constant([12, 15], dtypes.int64)
+    self.evaluate(table.remove(remove_string))
+    self.assertAllEqual(3, self.evaluate(table.size()))
+
+    input_string = constant_op.constant([11, 12, 15], dtypes.int64)
+    output = table.lookup(input_string)
+    self.assertAllEqual([3], output.get_shape())
+
+    result = self.evaluate(output)
+    self.assertAllEqual([0, -1, -1], result)
+
+  def testGetItem(self):
+    keys = constant_op.constant([11, 12, 13, 14], dtypes.int64)
+    values = constant_op.constant([0, 1, 2, 3], dtypes.int64)
+    table = lookup_ops.DenseHashTable(
+        dtypes.int64,
+        dtypes.int64,
+        default_value=-1,
+        empty_key=0,
+        deleted_key=-1)
+
+    self.evaluate(table.insert(keys, values))
+
+    input_string = constant_op.constant([11, 12, 15], dtypes.int64)
+    output = table[input_string]
+    self.assertAllEqual([3], output.get_shape())
+
+    result = self.evaluate(output)
+    self.assertAllEqual([0, 1, -1], result)
+
+  def testBasicBool(self):
+    keys = constant_op.constant([11, 12, 13, 14], dtypes.int64)
+    values = constant_op.constant([True, True, True, True], dtypes.bool)
+    table = lookup_ops.DenseHashTable(
+        dtypes.int64,
+        dtypes.bool,
+        default_value=False,
+        empty_key=0,
+        deleted_key=-1)
+    self.assertAllEqual(0, self.evaluate(table.size()))
+
+    self.evaluate(table.insert(keys, values))
+    self.assertAllEqual(4, self.evaluate(table.size()))
+
+    remove_string = constant_op.constant([11, 15], dtypes.int64)
+    self.evaluate(table.remove(remove_string))
+    self.assertAllEqual(3, self.evaluate(table.size()))
+
+    input_string = constant_op.constant([11, 12, 15], dtypes.int64)
+    output = table.lookup(input_string)
+    self.assertAllEqual([3], output.get_shape())
+
+    result = self.evaluate(output)
+    self.assertAllEqual([False, True, False], result)
+
+  def testSameEmptyAndDeletedKey(self):
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                "Empty and deleted keys"):
       table = lookup_ops.DenseHashTable(
           dtypes.int64,
           dtypes.int64,
           default_value=-1,
-          empty_key=0,
-          deleted_key=-1)
+          empty_key=42,
+          deleted_key=42)
       self.assertAllEqual(0, self.evaluate(table.size()))
-
-      self.evaluate(table.insert(keys, values))
-      self.assertAllEqual(4, self.evaluate(table.size()))
-
-      remove_string = constant_op.constant([12, 15], dtypes.int64)
-      self.evaluate(table.remove(remove_string))
-      self.assertAllEqual(3, self.evaluate(table.size()))
-
-      input_string = constant_op.constant([11, 12, 15], dtypes.int64)
-      output = table.lookup(input_string)
-      self.assertAllEqual([3], output.get_shape())
-
-      result = self.evaluate(output)
-      self.assertAllEqual([0, -1, -1], result)
-
-  def testBasicBool(self):
-    with self.cached_session():
-
-      keys = constant_op.constant([11, 12, 13, 14], dtypes.int64)
-      values = constant_op.constant([True, True, True, True], dtypes.bool)
-      table = lookup_ops.DenseHashTable(
-          dtypes.int64,
-          dtypes.bool,
-          default_value=False,
-          empty_key=0,
-          deleted_key=-1)
-      self.assertAllEqual(0, self.evaluate(table.size()))
-
-      self.evaluate(table.insert(keys, values))
-      self.assertAllEqual(4, self.evaluate(table.size()))
-
-      remove_string = constant_op.constant([11, 15], dtypes.int64)
-      self.evaluate(table.remove(remove_string))
-      self.assertAllEqual(3, self.evaluate(table.size()))
-
-      input_string = constant_op.constant([11, 12, 15], dtypes.int64)
-      output = table.lookup(input_string)
-      self.assertAllEqual([3], output.get_shape())
-
-      result = self.evaluate(output)
-      self.assertAllEqual([False, True, False], result)
-
-  def testSameEmptyAndDeletedKey(self):
-    with self.cached_session():
-      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
-                                  "Empty and deleted keys"):
-        table = lookup_ops.DenseHashTable(
-            dtypes.int64,
-            dtypes.int64,
-            default_value=-1,
-            empty_key=42,
-            deleted_key=42)
-        self.assertAllEqual(0, self.evaluate(table.size()))
 
   @test_util.run_v1_only("uses placeholders")
   def testLookupUnknownShape(self):
@@ -1310,212 +1374,203 @@ class DenseHashTableOpTest(test.TestCase):
       self.assertAllEqual([0, 1, -1], result)
 
   def testMapStringToFloat(self):
-    with self.cached_session():
+    keys = constant_op.constant(["a", "b", "c", "d"], dtypes.string)
+    values = constant_op.constant([0.0, 1.1, 2.2, 3.3], dtypes.float32)
+    default_value = constant_op.constant(-1.5, dtypes.float32)
+    table = lookup_ops.DenseHashTable(
+        dtypes.string,
+        dtypes.float32,
+        default_value=default_value,
+        empty_key="",
+        deleted_key="$")
+    self.assertAllEqual(0, self.evaluate(table.size()))
 
-      keys = constant_op.constant(["a", "b", "c", "d"], dtypes.string)
-      values = constant_op.constant([0.0, 1.1, 2.2, 3.3], dtypes.float32)
-      default_value = constant_op.constant(-1.5, dtypes.float32)
+    self.evaluate(table.insert(keys, values))
+    self.assertAllEqual(4, self.evaluate(table.size()))
+
+    remove_string = constant_op.constant(["b", "e"])
+    self.evaluate(table.remove(remove_string))
+    self.assertAllEqual(3, self.evaluate(table.size()))
+
+    input_string = constant_op.constant(["a", "b", "d", "e"], dtypes.string)
+    output = table.lookup(input_string)
+    self.assertAllEqual([4], output.get_shape())
+
+    result = self.evaluate(output)
+    self.assertAllClose([0, -1.5, 3.3, -1.5], result)
+
+  def testMapInt64ToFloat(self):
+    for float_dtype in [dtypes.float32, dtypes.float64]:
+      keys = constant_op.constant([11, 12, 13, 14], dtypes.int64)
+      values = constant_op.constant([0.0, 1.1, 2.2, 3.3], float_dtype)
+      default_value = constant_op.constant(-1.5, float_dtype)
       table = lookup_ops.DenseHashTable(
-          dtypes.string,
-          dtypes.float32,
+          dtypes.int64,
+          float_dtype,
           default_value=default_value,
-          empty_key="",
-          deleted_key="$")
+          empty_key=0,
+          deleted_key=-1)
       self.assertAllEqual(0, self.evaluate(table.size()))
 
       self.evaluate(table.insert(keys, values))
       self.assertAllEqual(4, self.evaluate(table.size()))
 
-      remove_string = constant_op.constant(["b", "e"])
+      remove_string = constant_op.constant([12, 15], dtypes.int64)
       self.evaluate(table.remove(remove_string))
       self.assertAllEqual(3, self.evaluate(table.size()))
 
-      input_string = constant_op.constant(["a", "b", "d", "e"], dtypes.string)
+      input_string = constant_op.constant([11, 12, 14, 15], dtypes.int64)
       output = table.lookup(input_string)
       self.assertAllEqual([4], output.get_shape())
 
       result = self.evaluate(output)
       self.assertAllClose([0, -1.5, 3.3, -1.5], result)
 
-  def testMapInt64ToFloat(self):
-    for float_dtype in [dtypes.float32, dtypes.float64]:
-      with self.cached_session():
-
-        keys = constant_op.constant([11, 12, 13, 14], dtypes.int64)
-        values = constant_op.constant([0.0, 1.1, 2.2, 3.3], float_dtype)
-        default_value = constant_op.constant(-1.5, float_dtype)
-        table = lookup_ops.DenseHashTable(
-            dtypes.int64,
-            float_dtype,
-            default_value=default_value,
-            empty_key=0,
-            deleted_key=-1)
-        self.assertAllEqual(0, self.evaluate(table.size()))
-
-        self.evaluate(table.insert(keys, values))
-        self.assertAllEqual(4, self.evaluate(table.size()))
-
-        remove_string = constant_op.constant([12, 15], dtypes.int64)
-        self.evaluate(table.remove(remove_string))
-        self.assertAllEqual(3, self.evaluate(table.size()))
-
-        input_string = constant_op.constant([11, 12, 14, 15], dtypes.int64)
-        output = table.lookup(input_string)
-        self.assertAllEqual([4], output.get_shape())
-
-        result = self.evaluate(output)
-        self.assertAllClose([0, -1.5, 3.3, -1.5], result)
-
   def testVectorValues(self):
-    with self.cached_session():
-      keys = constant_op.constant([11, 12, 13], dtypes.int64)
-      values = constant_op.constant([[0, 1, 2, 3], [3, 4, 5, 6], [6, 7, 8, 9]],
-                                    dtypes.int64)
-      default_value = constant_op.constant([-1, -2, -3, -4], dtypes.int64)
-      table = lookup_ops.DenseHashTable(
-          dtypes.int64,
-          dtypes.int64,
-          default_value=default_value,
-          empty_key=0,
-          deleted_key=-1,
-          initial_num_buckets=4)
-      self.assertAllEqual(0, self.evaluate(table.size()))
+    keys = constant_op.constant([11, 12, 13], dtypes.int64)
+    values = constant_op.constant([[0, 1, 2, 3], [3, 4, 5, 6], [6, 7, 8, 9]],
+                                  dtypes.int64)
+    default_value = constant_op.constant([-1, -2, -3, -4], dtypes.int64)
+    table = lookup_ops.DenseHashTable(
+        dtypes.int64,
+        dtypes.int64,
+        default_value=default_value,
+        empty_key=0,
+        deleted_key=-1,
+        initial_num_buckets=4)
+    self.assertAllEqual(0, self.evaluate(table.size()))
 
-      self.evaluate(table.insert(keys, values))
-      self.assertAllEqual(3, self.evaluate(table.size()))
-      self.assertAllEqual(4, len(self.evaluate(table.export()[0])))
+    self.evaluate(table.insert(keys, values))
+    self.assertAllEqual(3, self.evaluate(table.size()))
+    self.assertAllEqual(4, len(self.evaluate(table.export()[0])))
 
-      self.evaluate(
-          table.insert(
-              constant_op.constant([14], dtypes.int64),
-              constant_op.constant([[2, 3, 4, 5]], dtypes.int64)))
-      self.assertAllEqual(4, self.evaluate(table.size()))
-      self.assertAllEqual(8, len(self.evaluate(table.export()[0])))
+    self.evaluate(
+        table.insert(
+            constant_op.constant([14], dtypes.int64),
+            constant_op.constant([[2, 3, 4, 5]], dtypes.int64)))
+    self.assertAllEqual(4, self.evaluate(table.size()))
+    self.assertAllEqual(8, len(self.evaluate(table.export()[0])))
 
-      remove_string = constant_op.constant([12, 16], dtypes.int64)
-      self.evaluate(table.remove(remove_string))
-      self.assertAllEqual(3, self.evaluate(table.size()))
-      self.assertAllEqual(8, len(self.evaluate(table.export()[0])))
+    remove_string = constant_op.constant([12, 16], dtypes.int64)
+    self.evaluate(table.remove(remove_string))
+    self.assertAllEqual(3, self.evaluate(table.size()))
+    self.assertAllEqual(8, len(self.evaluate(table.export()[0])))
 
-      input_string = constant_op.constant([11, 12, 14, 15], dtypes.int64)
-      output = table.lookup(input_string)
-      self.assertAllEqual([4, 4],
-                          output.shape,
-                          msg="Saw shape: %s" % output.shape)
+    input_string = constant_op.constant([11, 12, 14, 15], dtypes.int64)
+    output = table.lookup(input_string)
+    self.assertAllEqual([4, 4],
+                        output.shape,
+                        msg="Saw shape: %s" % output.shape)
 
-      result = self.evaluate(output)
-      self.assertAllEqual(
-          [[0, 1, 2, 3], [-1, -2, -3, -4], [2, 3, 4, 5], [-1, -2, -3, -4]],
-          result)
+    result = self.evaluate(output)
+    self.assertAllEqual(
+        [[0, 1, 2, 3], [-1, -2, -3, -4], [2, 3, 4, 5], [-1, -2, -3, -4]],
+        result)
 
   def testVectorKeys(self):
-    with self.cached_session():
-      keys = constant_op.constant([[0, 1], [1, 2], [1, 3]], dtypes.int64)
-      values = constant_op.constant([10, 11, 12], dtypes.int64)
-      empty_key = constant_op.constant([0, 3], dtypes.int64)
-      deleted_key = constant_op.constant([-1, -1], dtypes.int64)
-      default_value = constant_op.constant(-1, dtypes.int64)
-      table = lookup_ops.DenseHashTable(
-          dtypes.int64,
-          dtypes.int64,
-          default_value=default_value,
-          empty_key=empty_key,
-          deleted_key=deleted_key,
-          initial_num_buckets=8)
-      self.assertAllEqual(0, self.evaluate(table.size()))
+    keys = constant_op.constant([[0, 1], [1, 2], [1, 3]], dtypes.int64)
+    values = constant_op.constant([10, 11, 12], dtypes.int64)
+    empty_key = constant_op.constant([0, 3], dtypes.int64)
+    deleted_key = constant_op.constant([-1, -1], dtypes.int64)
+    default_value = constant_op.constant(-1, dtypes.int64)
+    table = lookup_ops.DenseHashTable(
+        dtypes.int64,
+        dtypes.int64,
+        default_value=default_value,
+        empty_key=empty_key,
+        deleted_key=deleted_key,
+        initial_num_buckets=8)
+    self.assertAllEqual(0, self.evaluate(table.size()))
 
-      self.evaluate(table.insert(keys, values))
-      self.assertAllEqual(3, self.evaluate(table.size()))
+    self.evaluate(table.insert(keys, values))
+    self.assertAllEqual(3, self.evaluate(table.size()))
 
-      self.evaluate(
-          table.insert(
-              constant_op.constant([[0, 0]], dtypes.int64),
-              constant_op.constant([13], dtypes.int64)))
-      self.assertAllEqual(4, self.evaluate(table.size()))
-      self.assertAllEqual(8, len(self.evaluate(table.export()[0])))
+    self.evaluate(
+        table.insert(
+            constant_op.constant([[0, 0]], dtypes.int64),
+            constant_op.constant([13], dtypes.int64)))
+    self.assertAllEqual(4, self.evaluate(table.size()))
+    self.assertAllEqual(8, len(self.evaluate(table.export()[0])))
 
-      remove_string = constant_op.constant([[1, 2], [7, 8]], dtypes.int64)
-      self.evaluate(table.remove(remove_string))
-      self.assertAllEqual(3, self.evaluate(table.size()))
-      self.assertAllEqual(8, len(self.evaluate(table.export()[0])))
+    remove_string = constant_op.constant([[1, 2], [7, 8]], dtypes.int64)
+    self.evaluate(table.remove(remove_string))
+    self.assertAllEqual(3, self.evaluate(table.size()))
+    self.assertAllEqual(8, len(self.evaluate(table.export()[0])))
 
-      input_string = constant_op.constant([[0, 1], [1, 2], [1, 3], [0, 2]],
-                                          dtypes.int64)
-      output = table.lookup(input_string)
-      self.assertAllEqual([4], output.get_shape())
+    input_string = constant_op.constant([[0, 1], [1, 2], [1, 3], [0, 2]],
+                                        dtypes.int64)
+    output = table.lookup(input_string)
+    self.assertAllEqual([4], output.get_shape())
 
-      result = self.evaluate(output)
-      self.assertAllEqual([10, -1, 12, -1], result)
+    result = self.evaluate(output)
+    self.assertAllEqual([10, -1, 12, -1], result)
 
   def testResize(self):
-    with self.cached_session():
-      keys = constant_op.constant([11, 12, 13], dtypes.int64)
-      values = constant_op.constant([0, 1, 2], dtypes.int64)
-      table = lookup_ops.DenseHashTable(
-          dtypes.int64,
-          dtypes.int64,
-          default_value=-1,
-          empty_key=0,
-          deleted_key=-1,
-          initial_num_buckets=4)
-      self.assertAllEqual(0, self.evaluate(table.size()))
+    keys = constant_op.constant([11, 12, 13], dtypes.int64)
+    values = constant_op.constant([0, 1, 2], dtypes.int64)
+    table = lookup_ops.DenseHashTable(
+        dtypes.int64,
+        dtypes.int64,
+        default_value=-1,
+        empty_key=0,
+        deleted_key=-1,
+        initial_num_buckets=4)
+    self.assertAllEqual(0, self.evaluate(table.size()))
 
-      self.evaluate(table.insert(keys, values))
-      self.assertAllEqual(3, self.evaluate(table.size()))
-      self.assertAllEqual(4, len(self.evaluate(table.export()[0])))
+    self.evaluate(table.insert(keys, values))
+    self.assertAllEqual(3, self.evaluate(table.size()))
+    self.assertAllEqual(4, len(self.evaluate(table.export()[0])))
 
-      keys2 = constant_op.constant([12, 99], dtypes.int64)
-      self.evaluate(table.remove(keys2))
-      self.assertAllEqual(2, self.evaluate(table.size()))
-      self.assertAllEqual(4, len(self.evaluate(table.export()[0])))
+    keys2 = constant_op.constant([12, 99], dtypes.int64)
+    self.evaluate(table.remove(keys2))
+    self.assertAllEqual(2, self.evaluate(table.size()))
+    self.assertAllEqual(4, len(self.evaluate(table.export()[0])))
 
-      keys3 = constant_op.constant([13, 14, 15, 16, 17], dtypes.int64)
-      values3 = constant_op.constant([3, 4, 5, 6, 7], dtypes.int64)
+    keys3 = constant_op.constant([13, 14, 15, 16, 17], dtypes.int64)
+    values3 = constant_op.constant([3, 4, 5, 6, 7], dtypes.int64)
 
-      self.evaluate(table.insert(keys3, values3))
-      self.assertAllEqual(6, self.evaluate(table.size()))
-      self.assertAllEqual(16, len(self.evaluate(table.export()[0])))
+    self.evaluate(table.insert(keys3, values3))
+    self.assertAllEqual(6, self.evaluate(table.size()))
+    self.assertAllEqual(16, len(self.evaluate(table.export()[0])))
 
-      keys4 = constant_op.constant([10, 11, 12, 13, 14, 15, 16, 17, 18],
-                                   dtypes.int64)
-      output = table.lookup(keys4)
-      self.assertAllEqual([-1, 0, -1, 3, 4, 5, 6, 7, -1], self.evaluate(output))
+    keys4 = constant_op.constant([10, 11, 12, 13, 14, 15, 16, 17, 18],
+                                 dtypes.int64)
+    output = table.lookup(keys4)
+    self.assertAllEqual([-1, 0, -1, 3, 4, 5, 6, 7, -1], self.evaluate(output))
 
   def testExport(self):
-    with self.cached_session():
+    keys = constant_op.constant([11, 12, 13, 14], dtypes.int64)
+    values = constant_op.constant([1, 2, 3, 4], dtypes.int64)
+    table = lookup_ops.DenseHashTable(
+        dtypes.int64,
+        dtypes.int64,
+        default_value=-1,
+        empty_key=100,
+        deleted_key=200,
+        initial_num_buckets=8)
+    self.assertAllEqual(0, self.evaluate(table.size()))
 
-      keys = constant_op.constant([11, 12, 13, 14], dtypes.int64)
-      values = constant_op.constant([1, 2, 3, 4], dtypes.int64)
-      table = lookup_ops.DenseHashTable(
-          dtypes.int64,
-          dtypes.int64,
-          default_value=-1,
-          empty_key=100,
-          deleted_key=200,
-          initial_num_buckets=8)
-      self.assertAllEqual(0, self.evaluate(table.size()))
+    self.evaluate(table.insert(keys, values))
+    self.assertAllEqual(4, self.evaluate(table.size()))
 
-      self.evaluate(table.insert(keys, values))
-      self.assertAllEqual(4, self.evaluate(table.size()))
+    keys2 = constant_op.constant([12, 15], dtypes.int64)
+    self.evaluate(table.remove(keys2))
+    self.assertAllEqual(3, self.evaluate(table.size()))
 
-      keys2 = constant_op.constant([12, 15], dtypes.int64)
-      self.evaluate(table.remove(keys2))
-      self.assertAllEqual(3, self.evaluate(table.size()))
+    exported_keys, exported_values = table.export()
 
-      exported_keys, exported_values = table.export()
+    np_keys = self.evaluate(exported_keys)
+    np_values = self.evaluate(exported_values)
 
-      np_keys = self.evaluate(exported_keys)
-      np_values = self.evaluate(exported_values)
+    self.assertAllEqual(8, len(np_keys))
+    self.assertAllEqual(8, len(np_values))
 
-      self.assertAllEqual(8, len(np_keys))
-      self.assertAllEqual(8, len(np_values))
-
-      # pair up keys and values, drop extra added dimension
-      pairs = np.dstack((np_keys.flatten(), np_values.flatten()))[0]
-      # sort by key
-      pairs = pairs[pairs[:, 0].argsort()]
-      self.assertAllEqual([[11, 1], [13, 3], [14, 4], [100, 0], [100, 0],
-                           [100, 0], [100, 0], [200, 2]], pairs)
+    # pair up keys and values, drop extra added dimension
+    pairs = np.dstack((np_keys.flatten(), np_values.flatten()))[0]
+    # sort by key
+    pairs = pairs[pairs[:, 0].argsort()]
+    self.assertAllEqual([[11, 1], [13, 3], [14, 4], [100, 0], [100, 0],
+                         [100, 0], [100, 0], [200, 2]], pairs)
 
   @test_util.run_v1_only("Saver V1 only")
   def testSaveRestore(self):
@@ -1705,6 +1760,47 @@ class DenseHashTableOpTest(test.TestCase):
     output = load_table.lookup(input_string)
     self.assertAllEqual([-1, 0, 1, 2, -1], self.evaluate(output))
 
+  @test_util.run_v2_only
+  def testSavedModelSaveRestore(self):
+    save_dir = os.path.join(self.get_temp_dir(), "save_restore")
+    save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
+
+    root = tracking.AutoTrackable()
+
+    default_value = -1
+    empty_key = 0
+    deleted_key = -1
+    keys = constant_op.constant([11, 12, 13], dtypes.int64)
+    values = constant_op.constant([0, 1, 2], dtypes.int64)
+    root.table = lookup_ops.DenseHashTable(
+        dtypes.int64,
+        dtypes.int64,
+        default_value=default_value,
+        empty_key=empty_key,
+        deleted_key=deleted_key,
+        name="t1",
+        checkpoint=True,
+        initial_num_buckets=32)
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec((), dtypes.int64)])
+    def lookup(key):
+      return root.table.lookup(key)
+
+    root.lookup = lookup
+
+    self.assertAllEqual(0, root.table.size())
+    root.table.insert(keys, values)
+    self.assertAllEqual(3, self.evaluate(root.table.size()))
+    self.assertAllEqual(32, len(self.evaluate(root.table.export()[0])))
+
+    saved_model_save.save(root, save_path)
+
+    del root
+    loaded = saved_model_load.load(save_path)
+    self.assertEqual(loaded.lookup(12), 1)
+    self.assertEqual(loaded.lookup(10), -1)
+
   @test_util.run_v1_only("Saver V1 only")
   def testVectorSaveRestore(self):
     save_dir = os.path.join(self.get_temp_dir(), "vector_save_restore")
@@ -1848,137 +1944,134 @@ class DenseHashTableOpTest(test.TestCase):
       self.assertAllEqual([0, 1, -1, 3, -1], output)
 
   def testReprobe(self):
-    with self.cached_session():
-      # Insert 6 keys into a table with 8 buckets.
-      # The values are chosen to make sure collisions occur when using GCC STL
-      keys = constant_op.constant([11, 12, 13, 19, 20, 21], dtypes.int64)
-      values = constant_op.constant([51, 52, 53, 54, 55, 56], dtypes.int64)
-      table = lookup_ops.DenseHashTable(
-          dtypes.int64,
-          dtypes.int64,
-          default_value=-1,
-          empty_key=0,
-          deleted_key=-1,
-          initial_num_buckets=8)
-      self.assertAllEqual(0, self.evaluate(table.size()))
+    # Insert 6 keys into a table with 8 buckets.
+    # The values are chosen to make sure collisions occur when using GCC STL
+    keys = constant_op.constant([11, 12, 13, 19, 20, 21], dtypes.int64)
+    values = constant_op.constant([51, 52, 53, 54, 55, 56], dtypes.int64)
+    table = lookup_ops.DenseHashTable(
+        dtypes.int64,
+        dtypes.int64,
+        default_value=-1,
+        empty_key=0,
+        deleted_key=-1,
+        initial_num_buckets=8)
+    self.assertAllEqual(0, self.evaluate(table.size()))
 
-      self.evaluate(table.insert(keys, values))
-      self.assertAllEqual(6, self.evaluate(table.size()))
+    self.evaluate(table.insert(keys, values))
+    self.assertAllEqual(6, self.evaluate(table.size()))
 
-      input_string = constant_op.constant([10, 11, 12, 13, 14, 19, 20, 21, 22],
-                                          dtypes.int64)
-      output = table.lookup(input_string)
-      self.assertAllEqual([9], output.get_shape())
+    input_string = constant_op.constant([10, 11, 12, 13, 14, 19, 20, 21, 22],
+                                        dtypes.int64)
+    output = table.lookup(input_string)
+    self.assertAllEqual([9], output.get_shape())
 
-      result = self.evaluate(output)
-      self.assertAllEqual([-1, 51, 52, 53, -1, 54, 55, 56, -1], result)
+    result = self.evaluate(output)
+    self.assertAllEqual([-1, 51, 52, 53, -1, 54, 55, 56, -1], result)
 
   def testCustomEmptyKey(self):
-    with self.cached_session():
-      keys = constant_op.constant([11, 0, 13], dtypes.int64)
-      values = constant_op.constant([0, 1, 2], dtypes.int64)
-      table = lookup_ops.DenseHashTable(
-          dtypes.int64,
-          dtypes.int64,
-          default_value=-1,
-          empty_key=12,
-          deleted_key=-1)
-      self.assertAllEqual(0, self.evaluate(table.size()))
+    keys = constant_op.constant([11, 0, 13], dtypes.int64)
+    values = constant_op.constant([0, 1, 2], dtypes.int64)
+    table = lookup_ops.DenseHashTable(
+        dtypes.int64,
+        dtypes.int64,
+        default_value=-1,
+        empty_key=12,
+        deleted_key=-1)
+    self.assertAllEqual(0, self.evaluate(table.size()))
 
-      self.evaluate(table.insert(keys, values))
-      self.assertAllEqual(3, self.evaluate(table.size()))
+    self.evaluate(table.insert(keys, values))
+    self.assertAllEqual(3, self.evaluate(table.size()))
 
-      input_string = constant_op.constant([11, 0, 15], dtypes.int64)
-      output = table.lookup(input_string)
-      self.assertAllEqual([3], output.get_shape())
+    input_string = constant_op.constant([11, 0, 15], dtypes.int64)
+    output = table.lookup(input_string)
+    self.assertAllEqual([3], output.get_shape())
 
-      result = self.evaluate(output)
-      self.assertAllEqual([0, 1, -1], result)
+    result = self.evaluate(output)
+    self.assertAllEqual([0, 1, -1], result)
 
   def testErrors(self):
-    with self.cached_session():
-      table = lookup_ops.DenseHashTable(
+    table = lookup_ops.DenseHashTable(
+        dtypes.int64,
+        dtypes.int64,
+        default_value=-1,
+        empty_key=0,
+        deleted_key=-1)
+
+    # Inserting the empty key returns an error
+    keys1 = constant_op.constant([11, 0], dtypes.int64)
+    values1 = constant_op.constant([0, 1], dtypes.int64)
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                "empty_key"):
+      self.evaluate(table.insert(keys1, values1))
+
+    # Looking up the empty key returns an error
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                "empty_key"):
+      self.evaluate(table.lookup(keys1))
+
+    # Inserting the deleted key returns an error
+    keys2 = constant_op.constant([11, -1], dtypes.int64)
+    values2 = constant_op.constant([0, 1], dtypes.int64)
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                "deleted_key"):
+      self.evaluate(table.insert(keys2, values2))
+
+    # Looking up the empty key returns an error
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                "deleted_key"):
+      self.evaluate(table.lookup(keys2))
+
+    # Arbitrary tensors of keys are not supported
+    keys = constant_op.constant([[11, 0], [12, 1]], dtypes.int64)
+    values = constant_op.constant([[11, 0], [12, 1]], dtypes.int64)
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                "Expected key shape"):
+      self.evaluate(table.lookup(keys))
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                "Expected key shape"):
+      self.evaluate(table.insert(keys, values))
+
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                "Number of buckets must be"):
+      table2 = lookup_ops.DenseHashTable(
           dtypes.int64,
           dtypes.int64,
           default_value=-1,
-          empty_key=0,
-          deleted_key=-1)
+          empty_key=17,
+          deleted_key=-1,
+          initial_num_buckets=12)
+      self.assertAllEqual(0, self.evaluate(table2.size()))
 
-      # Inserting the empty key returns an error
-      keys1 = constant_op.constant([11, 0], dtypes.int64)
-      values1 = constant_op.constant([0, 1], dtypes.int64)
-      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
-                                  "empty_key"):
-        self.evaluate(table.insert(keys1, values1))
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError,
+        "Empty and deleted keys must have same shape"):
+      table3 = lookup_ops.DenseHashTable(
+          dtypes.int64,
+          dtypes.int64,
+          default_value=-1,
+          empty_key=42,
+          deleted_key=[1, 2])
+      self.assertAllEqual(0, self.evaluate(table3.size()))
 
-      # Looking up the empty key returns an error
-      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
-                                  "empty_key"):
-        self.evaluate(table.lookup(keys1))
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                "Empty and deleted keys cannot be equal"):
+      table4 = lookup_ops.DenseHashTable(
+          dtypes.int64,
+          dtypes.int64,
+          default_value=-1,
+          empty_key=42,
+          deleted_key=42)
+      self.assertAllEqual(0, self.evaluate(table4.size()))
 
-      # Inserting the deleted key returns an error
-      keys2 = constant_op.constant([11, -1], dtypes.int64)
-      values2 = constant_op.constant([0, 1], dtypes.int64)
-      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
-                                  "deleted_key"):
-        self.evaluate(table.insert(keys2, values2))
-
-      # Looking up the empty key returns an error
-      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
-                                  "deleted_key"):
-        self.evaluate(table.lookup(keys2))
-
-      # Arbitrary tensors of keys are not supported
-      keys = constant_op.constant([[11, 0], [12, 1]], dtypes.int64)
-      values = constant_op.constant([[11, 0], [12, 1]], dtypes.int64)
-      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
-                                  "Expected key shape"):
-        self.evaluate(table.lookup(keys))
-      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
-                                  "Expected key shape"):
-        self.evaluate(table.insert(keys, values))
-
-      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
-                                  "Number of buckets must be"):
-        table2 = lookup_ops.DenseHashTable(
-            dtypes.int64,
-            dtypes.int64,
-            default_value=-1,
-            empty_key=17,
-            deleted_key=-1,
-            initial_num_buckets=12)
-        self.assertAllEqual(0, self.evaluate(table2.size()))
-
-      with self.assertRaisesRegex(
-          errors_impl.InvalidArgumentError,
-          "Empty and deleted keys must have same shape"):
-        table3 = lookup_ops.DenseHashTable(
-            dtypes.int64,
-            dtypes.int64,
-            default_value=-1,
-            empty_key=42,
-            deleted_key=[1, 2])
-        self.assertAllEqual(0, self.evaluate(table3.size()))
-
-      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
-                                  "Empty and deleted keys cannot be equal"):
-        table4 = lookup_ops.DenseHashTable(
-            dtypes.int64,
-            dtypes.int64,
-            default_value=-1,
-            empty_key=42,
-            deleted_key=42)
-        self.assertAllEqual(0, self.evaluate(table4.size()))
-
-      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
-                                  "Empty and deleted keys cannot be equal"):
-        table5 = lookup_ops.DenseHashTable(
-            dtypes.int64,
-            dtypes.int64,
-            default_value=-1,
-            empty_key=[1, 2, 3],
-            deleted_key=[1, 2, 3])
-        self.assertAllEqual(0, self.evaluate(table5.size()))
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                "Empty and deleted keys cannot be equal"):
+      table5 = lookup_ops.DenseHashTable(
+          dtypes.int64,
+          dtypes.int64,
+          default_value=-1,
+          empty_key=[1, 2, 3],
+          deleted_key=[1, 2, 3])
+      self.assertAllEqual(0, self.evaluate(table5.size()))
 
   @test_util.run_in_graph_and_eager_modes
   def testStringToResource(self):
@@ -1994,6 +2087,30 @@ class DenseHashTableOpTest(test.TestCase):
     table.insert("v1", v1.handle)
     self.assertEqual([], table.lookup("v1").shape)
 
+  def testExportShapeInference(self):
+    default_value = -1
+    empty_key = 0
+    deleted_key = -1
+    table = lookup_ops.DenseHashTable(
+        dtypes.int64,
+        dtypes.int64,
+        default_value=default_value,
+        empty_key=empty_key,
+        deleted_key=deleted_key)
+    actual_shapes = [t.shape for t in table.export()]
+    inferred_shapes = []
+
+    @def_function.function
+    def f():
+      for t in table.export():
+        inferred_shapes.append(t.shape)
+
+    f()
+    self.assertLen(actual_shapes, 2)
+    self.assertLen(inferred_shapes, 2)
+    self.assertTrue(inferred_shapes[0].is_compatible_with(actual_shapes[0]))
+    self.assertTrue(inferred_shapes[1].is_compatible_with(actual_shapes[1]))
+
 
 class IndexTableFromFile(test.TestCase):
 
@@ -2005,68 +2122,65 @@ class IndexTableFromFile(test.TestCase):
 
   def test_string_index_table_from_file(self):
     vocabulary_file = self._createVocabFile("f2i_vocab1.txt")
-    with self.cached_session():
-      table = lookup_ops.index_table_from_file(
-          vocabulary_file=vocabulary_file, num_oov_buckets=1)
-      ids = table.lookup(constant_op.constant(["salad", "surgery", "tarkus"]))
 
-      if not context.executing_eagerly():
-        with self.assertRaises(errors_impl.OpError):
-          self.evaluate(ids)
-      self.evaluate(lookup_ops.tables_initializer())
-      self.assertAllEqual((1, 2, 3), self.evaluate(ids))
+    table = lookup_ops.index_table_from_file(
+        vocabulary_file=vocabulary_file, num_oov_buckets=1)
+    ids = table.lookup(constant_op.constant(["salad", "surgery", "tarkus"]))
+
+    if not context.executing_eagerly():
+      with self.assertRaises(errors_impl.OpError):
+        self.evaluate(ids)
+    self.evaluate(lookup_ops.tables_initializer())
+    self.assertAllEqual((1, 2, 3), self.evaluate(ids))
 
   def test_string_index_table_from_multicolumn_file(self):
     vocabulary_file = self._createVocabFile(
         "f2i_vocab1.txt", values=("brain\t300", "salad\t20", "surgery\t1"))
-    with self.cached_session():
-      table = lookup_ops.index_table_from_file(
-          vocabulary_file=vocabulary_file,
-          num_oov_buckets=1,
-          key_column_index=0,
-          value_column_index=lookup_ops.TextFileIndex.LINE_NUMBER)
-      ids = table.lookup(constant_op.constant(["salad", "surgery", "tarkus"]))
+    table = lookup_ops.index_table_from_file(
+        vocabulary_file=vocabulary_file,
+        num_oov_buckets=1,
+        key_column_index=0,
+        value_column_index=lookup_ops.TextFileIndex.LINE_NUMBER)
+    ids = table.lookup(constant_op.constant(["salad", "surgery", "tarkus"]))
 
-      if not context.executing_eagerly():
-        with self.assertRaises(errors_impl.OpError):
-          self.evaluate(ids)
-      self.evaluate(lookup_ops.tables_initializer())
-      self.assertAllEqual((1, 2, 3), self.evaluate(ids))
+    if not context.executing_eagerly():
+      with self.assertRaises(errors_impl.OpError):
+        self.evaluate(ids)
+    self.evaluate(lookup_ops.tables_initializer())
+    self.assertAllEqual((1, 2, 3), self.evaluate(ids))
 
   def test_string_index_table_from_multicolumn_file_custom_delimiter(self):
     vocabulary_file = self._createVocabFile(
         "f2i_vocab1.txt", values=("brain 300", "salad 20", "surgery 1"))
-    with self.cached_session():
-      table = lookup_ops.index_table_from_file(
-          vocabulary_file=vocabulary_file,
-          num_oov_buckets=1,
-          key_column_index=0,
-          value_column_index=lookup_ops.TextFileIndex.LINE_NUMBER,
-          delimiter=" ")
-      ids = table.lookup(constant_op.constant(["salad", "surgery", "tarkus"]))
+    table = lookup_ops.index_table_from_file(
+        vocabulary_file=vocabulary_file,
+        num_oov_buckets=1,
+        key_column_index=0,
+        value_column_index=lookup_ops.TextFileIndex.LINE_NUMBER,
+        delimiter=" ")
+    ids = table.lookup(constant_op.constant(["salad", "surgery", "tarkus"]))
 
-      if not context.executing_eagerly():
-        with self.assertRaises(errors_impl.OpError):
-          self.evaluate(ids)
-      self.evaluate(lookup_ops.tables_initializer())
-      self.assertAllEqual((1, 2, 3), self.evaluate(ids))
+    if not context.executing_eagerly():
+      with self.assertRaises(errors_impl.OpError):
+        self.evaluate(ids)
+    self.evaluate(lookup_ops.tables_initializer())
+    self.assertAllEqual((1, 2, 3), self.evaluate(ids))
 
   def test_string_index_table_from_file_tensor_filename(self):
     vocabulary_file = self._createVocabFile("f2i_vocab1.txt")
-    with self.cached_session():
-      vocabulary_file = constant_op.constant(vocabulary_file)
-      table = lookup_ops.index_table_from_file(
-          vocabulary_file=vocabulary_file, num_oov_buckets=1)
-      ids = table.lookup(constant_op.constant(["salad", "surgery", "tarkus"]))
+    vocabulary_file = constant_op.constant(vocabulary_file)
+    table = lookup_ops.index_table_from_file(
+        vocabulary_file=vocabulary_file, num_oov_buckets=1)
+    ids = table.lookup(constant_op.constant(["salad", "surgery", "tarkus"]))
 
-      if not context.executing_eagerly():
-        with self.assertRaises(errors_impl.OpError):
-          self.evaluate(ids)
-      self.evaluate(lookup_ops.tables_initializer())
-      self.assertAllEqual((1, 2, 3), self.evaluate(ids))
-      if not context.executing_eagerly():
-        self.assertEqual(1,
-                         len(ops.get_collection(ops.GraphKeys.ASSET_FILEPATHS)))
+    if not context.executing_eagerly():
+      with self.assertRaises(errors_impl.OpError):
+        self.evaluate(ids)
+    self.evaluate(lookup_ops.tables_initializer())
+    self.assertAllEqual((1, 2, 3), self.evaluate(ids))
+    if not context.executing_eagerly():
+      self.assertEqual(1,
+                       len(ops.get_collection(ops.GraphKeys.ASSET_FILEPATHS)))
 
   @test_util.run_v1_only("placeholder usage")
   def test_string_index_table_from_file_placeholder_filename(self):
@@ -2089,70 +2203,64 @@ class IndexTableFromFile(test.TestCase):
   def test_int32_index_table_from_file(self):
     vocabulary_file = self._createVocabFile(
         "f2i_vocab2.txt", values=("42", "1", "-1000"))
-    with self.cached_session():
-      table = lookup_ops.index_table_from_file(
-          vocabulary_file=vocabulary_file,
-          num_oov_buckets=1,
-          key_dtype=dtypes.int32)
-      ids = table.lookup(
-          constant_op.constant((1, -1000, 11), dtype=dtypes.int32))
+    table = lookup_ops.index_table_from_file(
+        vocabulary_file=vocabulary_file,
+        num_oov_buckets=1,
+        key_dtype=dtypes.int32)
+    ids = table.lookup(constant_op.constant((1, -1000, 11), dtype=dtypes.int32))
 
-      if not context.executing_eagerly():
-        with self.assertRaises(errors_impl.OpError):
-          self.evaluate(ids)
-      self.evaluate(lookup_ops.tables_initializer())
-      self.assertAllEqual((1, 2, 3), self.evaluate(ids))
+    if not context.executing_eagerly():
+      with self.assertRaises(errors_impl.OpError):
+        self.evaluate(ids)
+    self.evaluate(lookup_ops.tables_initializer())
+    self.assertAllEqual((1, 2, 3), self.evaluate(ids))
 
   def test_int64_index_table_from_file(self):
     vocabulary_file = self._createVocabFile(
         "f2i_vocab3.txt", values=("42", "1", "-1000"))
-    with self.cached_session():
-      table = lookup_ops.index_table_from_file(
-          vocabulary_file=vocabulary_file,
-          num_oov_buckets=1,
-          key_dtype=dtypes.int64)
-      ids = table.lookup(
-          constant_op.constant((1, -1000, 11), dtype=dtypes.int64))
+    table = lookup_ops.index_table_from_file(
+        vocabulary_file=vocabulary_file,
+        num_oov_buckets=1,
+        key_dtype=dtypes.int64)
+    ids = table.lookup(constant_op.constant((1, -1000, 11), dtype=dtypes.int64))
 
-      if not context.executing_eagerly():
-        with self.assertRaises(errors_impl.OpError):
-          self.evaluate(ids)
-      self.evaluate(lookup_ops.tables_initializer())
-      self.assertAllEqual((1, 2, 3), self.evaluate(ids))
+    if not context.executing_eagerly():
+      with self.assertRaises(errors_impl.OpError):
+        self.evaluate(ids)
+    self.evaluate(lookup_ops.tables_initializer())
+    self.assertAllEqual((1, 2, 3), self.evaluate(ids))
 
   def test_index_table_from_file_with_default_value(self):
     default_value = -42
     vocabulary_file = self._createVocabFile("f2i_vocab4.txt")
-    with self.cached_session():
-      table = lookup_ops.index_table_from_file(
-          vocabulary_file=vocabulary_file, default_value=default_value)
-      ids = table.lookup(constant_op.constant(["salad", "surgery", "tarkus"]))
+    table = lookup_ops.index_table_from_file(
+        vocabulary_file=vocabulary_file, default_value=default_value)
+    ids = table.lookup(constant_op.constant(["salad", "surgery", "tarkus"]))
 
-      if not context.executing_eagerly():
-        with self.assertRaises(errors_impl.OpError):
-          self.evaluate(ids)
-      self.evaluate(lookup_ops.tables_initializer())
-      self.assertAllEqual((1, 2, default_value), self.evaluate(ids))
+    if not context.executing_eagerly():
+      with self.assertRaises(errors_impl.OpError):
+        self.evaluate(ids)
+    self.evaluate(lookup_ops.tables_initializer())
+    self.assertAllEqual((1, 2, default_value), self.evaluate(ids))
 
   def test_index_table_from_file_with_oov_buckets(self):
     vocabulary_file = self._createVocabFile("f2i_vocab5.txt")
-    with self.cached_session():
-      table = lookup_ops.index_table_from_file(
-          vocabulary_file=vocabulary_file, num_oov_buckets=1000)
-      ids = table.lookup(
-          constant_op.constant(["salad", "surgery", "tarkus", "toccata"]))
+    table = lookup_ops.index_table_from_file(
+        vocabulary_file=vocabulary_file, num_oov_buckets=1000)
+    ids = table.lookup(
+        constant_op.constant(["salad", "surgery", "tarkus", "toccata"]))
 
-      if not context.executing_eagerly():
-        with self.assertRaises(errors_impl.OpError):
-          self.evaluate(ids)
-      self.evaluate(lookup_ops.tables_initializer())
-      self.assertAllEqual(
-          (
-              1,  # From vocabulary file.
-              2,  # From vocabulary file.
-              867,  # 3 + fingerprint("tarkus") mod 300.
-              860),  # 3 + fingerprint("toccata") mod 300.
-          self.evaluate(ids))
+    if not context.executing_eagerly():
+      with self.assertRaises(errors_impl.OpError):
+        self.evaluate(ids)
+    self.evaluate(lookup_ops.tables_initializer())
+    self.assertAllEqual(
+        (
+            1,  # From vocabulary file.
+            2,  # From vocabulary file.
+            867,  # 3 + fingerprint("tarkus") mod 300.
+            860),  # 3 + fingerprint("toccata") mod 300.
+        self.evaluate(ids))
 
   def test_index_table_from_file_fails_with_empty_vocabulary_file_name(self):
     self.assertRaises(
@@ -2183,26 +2291,24 @@ class IndexTableFromFile(test.TestCase):
 
   def test_index_table_from_file_with_vocab_size_too_small(self):
     vocabulary_file = self._createVocabFile("f2i_vocab6.txt")
-    with self.cached_session():
-      table = lookup_ops.index_table_from_file(
-          vocabulary_file=vocabulary_file, vocab_size=2)
-      ids = table.lookup(constant_op.constant(["salad", "surgery", "tarkus"]))
+    table = lookup_ops.index_table_from_file(
+        vocabulary_file=vocabulary_file, vocab_size=2)
+    ids = table.lookup(constant_op.constant(["salad", "surgery", "tarkus"]))
 
-      if not context.executing_eagerly():
-        with self.assertRaises(errors_impl.OpError):
-          self.evaluate(ids)
-      self.evaluate(lookup_ops.tables_initializer())
-      self.assertAllEqual((1, -1, -1), self.evaluate(ids))
-      self.assertEqual(2, self.evaluate(table.size()))
+    if not context.executing_eagerly():
+      with self.assertRaises(errors_impl.OpError):
+        self.evaluate(ids)
+    self.evaluate(lookup_ops.tables_initializer())
+    self.assertAllEqual((1, -1, -1), self.evaluate(ids))
+    self.assertEqual(2, self.evaluate(table.size()))
 
   def test_index_table_from_file_with_vocab_size_too_large(self):
     vocabulary_file = self._createVocabFile("f2i_vocab7.txt")
-    with self.cached_session():
-      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
-                                  "Invalid vocab_size"):
-        table = lookup_ops.index_table_from_file(
-            vocabulary_file=vocabulary_file, vocab_size=4)
-        self.evaluate(table.initializer)
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                "Invalid vocab_size"):
+      table = lookup_ops.index_table_from_file(
+          vocabulary_file=vocabulary_file, vocab_size=4)
+      self.evaluate(table.initializer)
 
   def test_index_table_from_file_with_vocab_size(self):
     vocabulary_file = self._createVocabFile("f2i_vocab8.txt")
@@ -2213,50 +2319,46 @@ class IndexTableFromFile(test.TestCase):
         vocabulary_file=vocabulary_file,
         vocab_size=0)
 
-    with self.cached_session():
-      table = lookup_ops.index_table_from_file(
-          vocabulary_file=vocabulary_file, vocab_size=3)
-      ids = table.lookup(constant_op.constant(["salad", "surgery", "tarkus"]))
+    table = lookup_ops.index_table_from_file(
+        vocabulary_file=vocabulary_file, vocab_size=3)
+    ids = table.lookup(constant_op.constant(["salad", "surgery", "tarkus"]))
 
-      if not context.executing_eagerly():
-        with self.assertRaises(errors_impl.OpError):
-          self.evaluate(ids)
-      self.evaluate(lookup_ops.tables_initializer())
-      self.assertAllEqual((1, 2, -1), self.evaluate(ids))
-      self.assertEqual(3, self.evaluate(table.size()))
+    if not context.executing_eagerly():
+      with self.assertRaises(errors_impl.OpError):
+        self.evaluate(ids)
+    self.evaluate(lookup_ops.tables_initializer())
+    self.assertAllEqual((1, 2, -1), self.evaluate(ids))
+    self.assertEqual(3, self.evaluate(table.size()))
 
   def test_index_table_from_file_with_invalid_hashers(self):
     vocabulary_file = self._createVocabFile("invalid_hasher.txt")
-    with self.cached_session():
-      with self.assertRaises(TypeError):
-        lookup_ops.index_table_from_file(
-            vocabulary_file=vocabulary_file,
-            vocab_size=3,
-            num_oov_buckets=1,
-            hasher_spec=1)
-
-      table = lookup_ops.index_table_from_file(
+    with self.assertRaises(TypeError):
+      lookup_ops.index_table_from_file(
           vocabulary_file=vocabulary_file,
           vocab_size=3,
           num_oov_buckets=1,
-          hasher_spec=lookup_ops.HasherSpec("my-awesome-hash", None))
+          hasher_spec=1)
 
-      self.assertRaises(ValueError, table.lookup,
-                        constant_op.constant(["salad", "surgery", "tarkus"]))
+    table = lookup_ops.index_table_from_file(
+        vocabulary_file=vocabulary_file,
+        vocab_size=3,
+        num_oov_buckets=1,
+        hasher_spec=lookup_ops.HasherSpec("my-awesome-hash", None))
+
+    self.assertRaises(ValueError, table.lookup,
+                      constant_op.constant(["salad", "surgery", "tarkus"]))
 
   def test_index_table_from_file_table_ref_with_oov_buckets(self):
     vocabulary_file = self._createVocabFile("f2i_vocab9.txt")
-    with self.cached_session():
-      table = lookup_ops.index_table_from_file(
-          vocabulary_file=vocabulary_file, num_oov_buckets=1)
-      self.assertIsNotNone(table.resource_handle)
+    table = lookup_ops.index_table_from_file(
+        vocabulary_file=vocabulary_file, num_oov_buckets=1)
+    self.assertIsNotNone(table.resource_handle)
 
   def test_index_table_from_file_table_ref_without_oov_buckets(self):
     vocabulary_file = self._createVocabFile("f2i_vocab10.txt")
-    with self.cached_session():
-      table = lookup_ops.index_table_from_file(
-          vocabulary_file=vocabulary_file, num_oov_buckets=0)
-      self.assertIsNotNone(table.resource_handle)
+    table = lookup_ops.index_table_from_file(
+        vocabulary_file=vocabulary_file, num_oov_buckets=0)
+    self.assertIsNotNone(table.resource_handle)
 
 
 class IndexTableFromTensor(test.TestCase):
@@ -2279,75 +2381,67 @@ class IndexTableFromTensor(test.TestCase):
     self.assertAllEqual((1, 2, 3), self.evaluate(ids))
 
   def test_int32_index_table_from_tensor_with_tensor_init(self):
-    with self.cached_session():
-      table = lookup_ops.index_table_from_tensor(
-          vocabulary_list=(42, 1, -1000), num_oov_buckets=1, dtype=dtypes.int32)
-      ids = table.lookup(
-          constant_op.constant((1, -1000, 11), dtype=dtypes.int32))
+    table = lookup_ops.index_table_from_tensor(
+        vocabulary_list=(42, 1, -1000), num_oov_buckets=1, dtype=dtypes.int32)
+    ids = table.lookup(constant_op.constant((1, -1000, 11), dtype=dtypes.int32))
 
-      if not context.executing_eagerly():
-        with self.assertRaises(errors_impl.FailedPreconditionError):
-          self.evaluate(ids)
-      self.evaluate(lookup_ops.tables_initializer())
-      self.assertAllEqual((1, 2, 3), self.evaluate(ids))
+    if not context.executing_eagerly():
+      with self.assertRaises(errors_impl.FailedPreconditionError):
+        self.evaluate(ids)
+    self.evaluate(lookup_ops.tables_initializer())
+    self.assertAllEqual((1, 2, 3), self.evaluate(ids))
 
   def test_int64_index_table_from_tensor_with_tensor_init(self):
-    with self.cached_session():
-      table = lookup_ops.index_table_from_tensor(
-          vocabulary_list=(42, 1, -1000), num_oov_buckets=1, dtype=dtypes.int64)
-      ids = table.lookup(
-          constant_op.constant((1, -1000, 11), dtype=dtypes.int64))
+    table = lookup_ops.index_table_from_tensor(
+        vocabulary_list=(42, 1, -1000), num_oov_buckets=1, dtype=dtypes.int64)
+    ids = table.lookup(constant_op.constant((1, -1000, 11), dtype=dtypes.int64))
 
-      if not context.executing_eagerly():
-        with self.assertRaises(errors_impl.FailedPreconditionError):
-          self.evaluate(ids)
-      self.evaluate(lookup_ops.tables_initializer())
-      self.assertAllEqual((1, 2, 3), self.evaluate(ids))
+    if not context.executing_eagerly():
+      with self.assertRaises(errors_impl.FailedPreconditionError):
+        self.evaluate(ids)
+    self.evaluate(lookup_ops.tables_initializer())
+    self.assertAllEqual((1, 2, 3), self.evaluate(ids))
 
   def test_index_table_from_tensor_with_default_value(self):
     default_value = -42
-    with self.cached_session():
-      table = lookup_ops.index_table_from_tensor(
-          vocabulary_list=["brain", "salad", "surgery"],
-          default_value=default_value)
-      ids = table.lookup(constant_op.constant(["salad", "surgery", "tarkus"]))
+    table = lookup_ops.index_table_from_tensor(
+        vocabulary_list=["brain", "salad", "surgery"],
+        default_value=default_value)
+    ids = table.lookup(constant_op.constant(["salad", "surgery", "tarkus"]))
 
-      if not context.executing_eagerly():
-        with self.assertRaises(errors_impl.FailedPreconditionError):
-          self.evaluate(ids)
-      self.evaluate(lookup_ops.tables_initializer())
-      self.assertAllEqual((1, 2, default_value), self.evaluate(ids))
+    if not context.executing_eagerly():
+      with self.assertRaises(errors_impl.FailedPreconditionError):
+        self.evaluate(ids)
+    self.evaluate(lookup_ops.tables_initializer())
+    self.assertAllEqual((1, 2, default_value), self.evaluate(ids))
 
   def test_index_table_from_tensor_missing_vocabulary_list(self):
-    with self.cached_session():
-      with self.assertRaisesRegex(ValueError,
-                                  "vocabulary_list must be specified"):
-        lookup_ops.index_table_from_tensor(
-            vocabulary_list=None, num_oov_buckets=1)
+    with self.assertRaisesRegex(ValueError,
+                                "vocabulary_list must be specified"):
+      lookup_ops.index_table_from_tensor(
+          vocabulary_list=None, num_oov_buckets=1)
 
   def test_index_table_from_tensor_empty_vocabulary_list(self):
-    with self.cached_session():
-      with self.assertRaisesRegex(errors_impl.OpError,
-                                  "keys and values cannot be empty"):
-        _ = lookup_ops.index_table_from_tensor(
-            vocabulary_list=np.array([], dtype=np.str_), num_oov_buckets=1)
-        self.evaluate(lookup_ops.tables_initializer())
+    with self.assertRaisesRegex(errors_impl.OpError,
+                                "keys and values cannot be empty"):
+      _ = lookup_ops.index_table_from_tensor(
+          vocabulary_list=np.array([], dtype=np.str_), num_oov_buckets=1)
+      self.evaluate(lookup_ops.tables_initializer())
 
   def test_index_table_from_tensor_with_invalid_hashers(self):
-    with self.cached_session():
-      with self.assertRaises(TypeError):
-        lookup_ops.index_table_from_tensor(
-            vocabulary_list=["brain", "salad", "surgery"],
-            num_oov_buckets=1,
-            hasher_spec=1)
-
-      table = lookup_ops.index_table_from_tensor(
+    with self.assertRaises(TypeError):
+      lookup_ops.index_table_from_tensor(
           vocabulary_list=["brain", "salad", "surgery"],
           num_oov_buckets=1,
-          hasher_spec=lookup_ops.HasherSpec("my-awesome-hash", None))
+          hasher_spec=1)
 
-      self.assertRaises(ValueError, table.lookup,
-                        constant_op.constant(["salad", "surgery", "tarkus"]))
+    table = lookup_ops.index_table_from_tensor(
+        vocabulary_list=["brain", "salad", "surgery"],
+        num_oov_buckets=1,
+        hasher_spec=lookup_ops.HasherSpec("my-awesome-hash", None))
+
+    self.assertRaises(ValueError, table.lookup,
+                      constant_op.constant(["salad", "surgery", "tarkus"]))
 
 
 class IndexToStringTableFromFileTest(test.TestCase):
@@ -2364,147 +2458,135 @@ class IndexToStringTableFromFileTest(test.TestCase):
     type_funcs = [str, constant_op.constant]
     for type_func in type_funcs:
       vocabulary_file = type_func(vocabulary_path)
-      with self.cached_session():
-        table = lookup_ops.index_to_string_table_from_file(
-            vocabulary_file=vocabulary_file)
-        features = table.lookup(
-            constant_op.constant([0, 1, 2, 3], dtypes.int64))
-        if not context.executing_eagerly():
-          with self.assertRaises(errors_impl.OpError):
-            self.evaluate(features)
-        self.evaluate(lookup_ops.tables_initializer())
-        self.assertAllEqual((b"brain", b"salad", b"surgery", b"UNK"),
-                            self.evaluate(features))
+      table = lookup_ops.index_to_string_table_from_file(
+          vocabulary_file=vocabulary_file)
+      features = table.lookup(constant_op.constant([0, 1, 2, 3], dtypes.int64))
+      if not context.executing_eagerly():
+        with self.assertRaises(errors_impl.OpError):
+          self.evaluate(features)
+      self.evaluate(lookup_ops.tables_initializer())
+      self.assertAllEqual((b"brain", b"salad", b"surgery", b"UNK"),
+                          self.evaluate(features))
 
   def test_index_to_string_table_from_multicolumn_file(self):
     vocabulary_file = self._createVocabFile(
         "f2i_vocab1.txt", values=("brain\t300", "salad\t20", "surgery\t1"))
-    with self.cached_session():
-      table = lookup_ops.index_to_string_table_from_file(
-          vocabulary_file=vocabulary_file,
-          key_column_index=lookup_ops.TextFileIndex.LINE_NUMBER,
-          value_column_index=0)
-      features = table.lookup(constant_op.constant([0, 1, 2, 3], dtypes.int64))
-      if not context.executing_eagerly():
-        with self.assertRaises(errors_impl.OpError):
-          self.evaluate(features)
-      self.evaluate(lookup_ops.tables_initializer())
-      self.assertAllEqual((b"brain", b"salad", b"surgery", b"UNK"),
-                          self.evaluate(features))
+    table = lookup_ops.index_to_string_table_from_file(
+        vocabulary_file=vocabulary_file,
+        key_column_index=lookup_ops.TextFileIndex.LINE_NUMBER,
+        value_column_index=0)
+    features = table.lookup(constant_op.constant([0, 1, 2, 3], dtypes.int64))
+    if not context.executing_eagerly():
+      with self.assertRaises(errors_impl.OpError):
+        self.evaluate(features)
+    self.evaluate(lookup_ops.tables_initializer())
+    self.assertAllEqual((b"brain", b"salad", b"surgery", b"UNK"),
+                        self.evaluate(features))
 
   def test_index_to_string_table_from_multicolumn_file_custom_delimiter(self):
     vocabulary_file = self._createVocabFile(
         "f2i_vocab1.txt", values=("brain 300", "salad 20", "surgery 1"))
-    with self.cached_session():
-      table = lookup_ops.index_to_string_table_from_file(
-          vocabulary_file=vocabulary_file,
-          key_column_index=lookup_ops.TextFileIndex.LINE_NUMBER,
-          value_column_index=0,
-          delimiter=" ")
-      features = table.lookup(constant_op.constant([0, 1, 2, 3], dtypes.int64))
-      if not context.executing_eagerly():
-        with self.assertRaises(errors_impl.OpError):
-          self.evaluate(features)
-      self.evaluate(lookup_ops.tables_initializer())
-      self.assertAllEqual((b"brain", b"salad", b"surgery", b"UNK"),
-                          self.evaluate(features))
+    table = lookup_ops.index_to_string_table_from_file(
+        vocabulary_file=vocabulary_file,
+        key_column_index=lookup_ops.TextFileIndex.LINE_NUMBER,
+        value_column_index=0,
+        delimiter=" ")
+    features = table.lookup(constant_op.constant([0, 1, 2, 3], dtypes.int64))
+    if not context.executing_eagerly():
+      with self.assertRaises(errors_impl.OpError):
+        self.evaluate(features)
+    self.evaluate(lookup_ops.tables_initializer())
+    self.assertAllEqual((b"brain", b"salad", b"surgery", b"UNK"),
+                        self.evaluate(features))
 
   def test_index_to_string_table_with_default_value(self):
     default_value = b"NONE"
     vocabulary_file = self._createVocabFile("f2i_vocab2.txt")
-    with self.cached_session():
-      table = lookup_ops.index_to_string_table_from_file(
-          vocabulary_file=vocabulary_file, default_value=default_value)
-      features = table.lookup(constant_op.constant([1, 2, 4], dtypes.int64))
-      if not context.executing_eagerly():
-        with self.assertRaises(errors_impl.OpError):
-          self.evaluate(features)
-      self.evaluate(lookup_ops.tables_initializer())
-      self.assertAllEqual((b"salad", b"surgery", default_value),
-                          self.evaluate(features))
+    table = lookup_ops.index_to_string_table_from_file(
+        vocabulary_file=vocabulary_file, default_value=default_value)
+    features = table.lookup(constant_op.constant([1, 2, 4], dtypes.int64))
+    if not context.executing_eagerly():
+      with self.assertRaises(errors_impl.OpError):
+        self.evaluate(features)
+    self.evaluate(lookup_ops.tables_initializer())
+    self.assertAllEqual((b"salad", b"surgery", default_value),
+                        self.evaluate(features))
 
   def test_index_to_string_table_with_vocab_size_too_small(self):
     default_value = b"NONE"
     vocabulary_file = self._createVocabFile("f2i_vocab2.txt")
-    with self.cached_session():
-      table = lookup_ops.index_to_string_table_from_file(
-          vocabulary_file=vocabulary_file,
-          vocab_size=2,
-          default_value=default_value)
-      features = table.lookup(constant_op.constant([1, 2, 4], dtypes.int64))
-      if not context.executing_eagerly():
-        with self.assertRaises(errors_impl.OpError):
-          self.evaluate(features)
-      self.evaluate(lookup_ops.tables_initializer())
-      self.assertAllEqual((b"salad", default_value, default_value),
-                          self.evaluate(features))
+    table = lookup_ops.index_to_string_table_from_file(
+        vocabulary_file=vocabulary_file,
+        vocab_size=2,
+        default_value=default_value)
+    features = table.lookup(constant_op.constant([1, 2, 4], dtypes.int64))
+    if not context.executing_eagerly():
+      with self.assertRaises(errors_impl.OpError):
+        self.evaluate(features)
+    self.evaluate(lookup_ops.tables_initializer())
+    self.assertAllEqual((b"salad", default_value, default_value),
+                        self.evaluate(features))
 
   def test_index_to_string_table_with_vocab_size_too_large(self):
     vocabulary_file = self._createVocabFile("f2i_vocab6.txt")
-    with self.cached_session():
-      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
-                                  "Invalid vocab_size"):
-        _ = lookup_ops.index_to_string_table_from_file(
-            vocabulary_file=vocabulary_file, vocab_size=4)
-        self.evaluate(lookup_ops.tables_initializer())
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                "Invalid vocab_size"):
+      _ = lookup_ops.index_to_string_table_from_file(
+          vocabulary_file=vocabulary_file, vocab_size=4)
+      self.evaluate(lookup_ops.tables_initializer())
 
   def test_index_to_string_table_with_vocab_size(self):
     vocabulary_file = self._createVocabFile("f2i_vocab7.txt")
-    with self.cached_session():
-      table = lookup_ops.index_to_string_table_from_file(
-          vocabulary_file=vocabulary_file, vocab_size=3)
-      features = table.lookup(constant_op.constant([1, 2, 4], dtypes.int64))
+    table = lookup_ops.index_to_string_table_from_file(
+        vocabulary_file=vocabulary_file, vocab_size=3)
+    features = table.lookup(constant_op.constant([1, 2, 4], dtypes.int64))
 
-      if not context.executing_eagerly():
-        with self.assertRaises(errors_impl.OpError):
-          self.evaluate(features)
-      self.evaluate(lookup_ops.tables_initializer())
-      self.assertAllEqual((b"salad", b"surgery", b"UNK"),
-                          self.evaluate(features))
+    if not context.executing_eagerly():
+      with self.assertRaises(errors_impl.OpError):
+        self.evaluate(features)
+    self.evaluate(lookup_ops.tables_initializer())
+    self.assertAllEqual((b"salad", b"surgery", b"UNK"), self.evaluate(features))
 
 
 class IndexToStringTableFromTensorTest(test.TestCase):
 
   def test_index_to_string_table_from_tensor(self):
-    with self.cached_session():
-      vocabulary_list = constant_op.constant(["brain", "salad", "surgery"])
-      table = lookup_ops.index_to_string_table_from_tensor(
-          vocabulary_list=vocabulary_list)
+    vocabulary_list = constant_op.constant(["brain", "salad", "surgery"])
+    table = lookup_ops.index_to_string_table_from_tensor(
+        vocabulary_list=vocabulary_list)
 
-      indices = constant_op.constant([0, 1, 2, 3], dtypes.int64)
-      features = table.lookup(indices)
-      if not context.executing_eagerly():
-        with self.assertRaises(errors_impl.OpError):
-          self.evaluate(features)
-      self.evaluate(lookup_ops.tables_initializer())
+    indices = constant_op.constant([0, 1, 2, 3], dtypes.int64)
+    features = table.lookup(indices)
+    if not context.executing_eagerly():
+      with self.assertRaises(errors_impl.OpError):
+        self.evaluate(features)
+    self.evaluate(lookup_ops.tables_initializer())
 
-      self.assertAllEqual((b"brain", b"salad", b"surgery", b"UNK"),
-                          self.evaluate(features))
+    self.assertAllEqual((b"brain", b"salad", b"surgery", b"UNK"),
+                        self.evaluate(features))
 
   def test_duplicate_entries(self):
-    with self.cached_session():
-      vocabulary_list = constant_op.constant(["hello", "hello"])
-      table = lookup_ops.index_to_string_table_from_tensor(
-          vocabulary_list=vocabulary_list)
-      indices = constant_op.constant([0, 1, 4], dtypes.int64)
-      features = table.lookup(indices)
-      self.evaluate(lookup_ops.tables_initializer())
-      self.assertAllEqual((b"hello", b"hello", b"UNK"), self.evaluate(features))
+    vocabulary_list = constant_op.constant(["hello", "hello"])
+    table = lookup_ops.index_to_string_table_from_tensor(
+        vocabulary_list=vocabulary_list)
+    indices = constant_op.constant([0, 1, 4], dtypes.int64)
+    features = table.lookup(indices)
+    self.evaluate(lookup_ops.tables_initializer())
+    self.assertAllEqual((b"hello", b"hello", b"UNK"), self.evaluate(features))
 
   def test_index_to_string_with_default_value(self):
     default_value = b"NONE"
-    with self.cached_session():
-      vocabulary_list = constant_op.constant(["brain", "salad", "surgery"])
-      table = lookup_ops.index_to_string_table_from_tensor(
-          vocabulary_list=vocabulary_list, default_value=default_value)
-      indices = constant_op.constant([1, 2, 4], dtypes.int64)
-      features = table.lookup(indices)
-      if not context.executing_eagerly():
-        with self.assertRaises(errors_impl.OpError):
-          self.evaluate(features)
-      self.evaluate(lookup_ops.tables_initializer())
-      self.assertAllEqual((b"salad", b"surgery", default_value),
-                          self.evaluate(features))
+    vocabulary_list = constant_op.constant(["brain", "salad", "surgery"])
+    table = lookup_ops.index_to_string_table_from_tensor(
+        vocabulary_list=vocabulary_list, default_value=default_value)
+    indices = constant_op.constant([1, 2, 4], dtypes.int64)
+    features = table.lookup(indices)
+    if not context.executing_eagerly():
+      with self.assertRaises(errors_impl.OpError):
+        self.evaluate(features)
+    self.evaluate(lookup_ops.tables_initializer())
+    self.assertAllEqual((b"salad", b"surgery", default_value),
+                        self.evaluate(features))
 
 
 class IdTableWithHashBucketsTest(test.TestCase):
@@ -2667,45 +2749,40 @@ class IdTableWithHashBucketsTest(test.TestCase):
 
   def testIdTableWithHashBucketsInitializationAcrossSessions(self):
     vocab_file = self._createVocabFile("feat_to_id_5.txt")
-    with self.cached_session():
-      default_value = -1
-      vocab_size = 3
-      oov_buckets = 1
-      table1 = lookup_ops.IdTableWithHashBuckets(
-          lookup_ops.StaticHashTable(
-              lookup_ops.TextFileIdTableInitializer(
-                  vocab_file, vocab_size=vocab_size), default_value),
-          oov_buckets)
+    default_value = -1
+    vocab_size = 3
+    oov_buckets = 1
+    table1 = lookup_ops.IdTableWithHashBuckets(
+        lookup_ops.StaticHashTable(
+            lookup_ops.TextFileIdTableInitializer(
+                vocab_file, vocab_size=vocab_size), default_value), oov_buckets)
 
-      self.evaluate(table1.initializer)
+    self.evaluate(table1.initializer)
 
-      input_string_1 = constant_op.constant(
-          ["brain", "salad", "surgery", "UNK"])
+    input_string_1 = constant_op.constant(["brain", "salad", "surgery", "UNK"])
 
-      out1 = table1.lookup(input_string_1)
+    out1 = table1.lookup(input_string_1)
 
-      self.assertAllEqual([0, 1, 2, 3], self.evaluate(out1))
-      self.assertEqual(vocab_size + oov_buckets, self.evaluate(table1.size()))
+    self.assertAllEqual([0, 1, 2, 3], self.evaluate(out1))
+    self.assertEqual(vocab_size + oov_buckets, self.evaluate(table1.size()))
 
-    with self.cached_session():
-      default_value = -1
-      vocab_size = 3
-      oov_buckets = 1
+    default_value = -1
+    vocab_size = 3
+    oov_buckets = 1
 
-      # Underlying lookup table already initialized in previous session.
-      # No need to call self.evaluate(table2.initializer)
-      table2 = lookup_ops.IdTableWithHashBuckets(
-          lookup_ops.StaticHashTable(
-              lookup_ops.TextFileIdTableInitializer(
-                  vocab_file, vocab_size=vocab_size), default_value),
-          oov_buckets)
+    # Underlying lookup table already initialized in previous session.
+    # No need to call self.evaluate(table2.initializer)
+    table2 = lookup_ops.IdTableWithHashBuckets(
+        lookup_ops.StaticHashTable(
+            lookup_ops.TextFileIdTableInitializer(
+                vocab_file, vocab_size=vocab_size), default_value), oov_buckets)
 
-      input_string_2 = constant_op.constant(["fruit", "salad", "UNK"])
+    input_string_2 = constant_op.constant(["fruit", "salad", "UNK"])
 
-      out2 = table2.lookup(input_string_2)
+    out2 = table2.lookup(input_string_2)
 
-      self.assertAllEqual([3, 1, 3], self.evaluate(out2))
-      self.assertEqual(vocab_size + oov_buckets, self.evaluate(table2.size()))
+    self.assertAllEqual([3, 1, 3], self.evaluate(out2))
+    self.assertEqual(vocab_size + oov_buckets, self.evaluate(table2.size()))
 
   def testIdTableWithHashBucketsWithMultipleInitializersDifferentDefault(self):
     vocab_file = self._createVocabFile("feat_to_id_6.txt")
@@ -2894,84 +2971,79 @@ class IdTableWithHashBucketsTest(test.TestCase):
 
   def testIdTableWithHashBucketsWithInvalidHashers(self):
     vocab_file = self._createVocabFile("feat_to_id_4.txt")
-    with self.cached_session():
-      default_value = -1
-      vocab_size = 3
-      oov_buckets = 1
-      lookup_table = lookup_ops.StaticHashTable(
-          lookup_ops.TextFileIdTableInitializer(
-              vocab_file, vocab_size=vocab_size), default_value)
+    default_value = -1
+    vocab_size = 3
+    oov_buckets = 1
+    lookup_table = lookup_ops.StaticHashTable(
+        lookup_ops.TextFileIdTableInitializer(
+            vocab_file, vocab_size=vocab_size), default_value)
 
-      with self.assertRaises(TypeError):
-        lookup_ops.IdTableWithHashBuckets(
-            lookup_table, oov_buckets, hasher_spec=1)
+    with self.assertRaises(TypeError):
+      lookup_ops.IdTableWithHashBuckets(
+          lookup_table, oov_buckets, hasher_spec=1)
 
+    table = lookup_ops.IdTableWithHashBuckets(
+        lookup_table,
+        oov_buckets,
+        hasher_spec=lookup_ops.HasherSpec("my-awesome-hash", None))
+
+    input_string = constant_op.constant(["brain", "salad", "surgery", "UNK"])
+
+    with self.assertRaises(ValueError):
+      table.lookup(input_string)
+
+    with self.assertRaises(ValueError):
+      table = lookup_ops.IdTableWithHashBuckets(
+          lookup_table, oov_buckets, hasher_spec=lookup_ops.StrongHashSpec([]))
+
+    with self.assertRaises(ValueError):
       table = lookup_ops.IdTableWithHashBuckets(
           lookup_table,
           oov_buckets,
-          hasher_spec=lookup_ops.HasherSpec("my-awesome-hash", None))
+          hasher_spec=lookup_ops.StrongHashSpec([1, 2, 3]))
 
-      input_string = constant_op.constant(["brain", "salad", "surgery", "UNK"])
-
-      with self.assertRaises(ValueError):
-        table.lookup(input_string)
-
-      with self.assertRaises(ValueError):
-        table = lookup_ops.IdTableWithHashBuckets(
-            lookup_table,
-            oov_buckets,
-            hasher_spec=lookup_ops.StrongHashSpec([]))
-
-      with self.assertRaises(ValueError):
-        table = lookup_ops.IdTableWithHashBuckets(
-            lookup_table,
-            oov_buckets,
-            hasher_spec=lookup_ops.StrongHashSpec([1, 2, 3]))
-
-      with self.assertRaises(TypeError):
-        table = lookup_ops.IdTableWithHashBuckets(
-            lookup_table,
-            oov_buckets,
-            hasher_spec=lookup_ops.StrongHashSpec([None, 2]))
+    with self.assertRaises(TypeError):
+      table = lookup_ops.IdTableWithHashBuckets(
+          lookup_table,
+          oov_buckets,
+          hasher_spec=lookup_ops.StrongHashSpec([None, 2]))
 
   def testIdTableWithHashBucketsNoInnerTable(self):
-    with self.cached_session():
-      table = lookup_ops.IdTableWithHashBuckets(None, num_oov_buckets=1)
-      self.assertIsNone(table.resource_handle)
+    table = lookup_ops.IdTableWithHashBuckets(None, num_oov_buckets=1)
+    self.assertIsNone(table.resource_handle)
 
 
 class MutableHashTableOpTest(test.TestCase):
 
   def testMutableHashTable(self):
-    with self.cached_session():
-      default_val = -1
-      keys = constant_op.constant(["brain", "salad", "surgery", "tarkus"])
-      values = constant_op.constant([0, 1, 2, 3], dtypes.int64)
-      table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                          default_val)
-      self.assertAllEqual(0, self.evaluate(table.size()))
+    default_val = -1
+    keys = constant_op.constant(["brain", "salad", "surgery", "tarkus"])
+    values = constant_op.constant([0, 1, 2, 3], dtypes.int64)
+    table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
+                                        default_val)
+    self.assertAllEqual(0, self.evaluate(table.size()))
 
-      self.evaluate(table.insert(keys, values))
-      self.assertAllEqual(4, self.evaluate(table.size()))
+    self.evaluate(table.insert(keys, values))
+    self.assertAllEqual(4, self.evaluate(table.size()))
 
-      remove_string = constant_op.constant(["tarkus", "tank"])
-      self.evaluate(table.remove(remove_string))
-      self.assertAllEqual(3, self.evaluate(table.size()))
+    remove_string = constant_op.constant(["tarkus", "tank"])
+    self.evaluate(table.remove(remove_string))
+    self.assertAllEqual(3, self.evaluate(table.size()))
 
-      input_string = constant_op.constant(["brain", "salad", "tank"])
-      output = table.lookup(input_string)
-      self.assertAllEqual([3], output.get_shape())
+    input_string = constant_op.constant(["brain", "salad", "tank"])
+    output = table.lookup(input_string)
+    self.assertAllEqual([3], output.get_shape())
 
-      result = self.evaluate(output)
-      self.assertAllEqual([0, 1, -1], result)
+    result = self.evaluate(output)
+    self.assertAllEqual([0, 1, -1], result)
 
-      exported_keys, exported_values = table.export()
+    exported_keys, exported_values = table.export()
 
-      # exported data is in the order of the internal map, i.e. undefined
-      sorted_keys = np.sort(self.evaluate(exported_keys))
-      sorted_values = np.sort(self.evaluate(exported_values))
-      self.assertAllEqual([b"brain", b"salad", b"surgery"], sorted_keys)
-      self.assertAllEqual([0, 1, 2], sorted_values)
+    # exported data is in the order of the internal map, i.e. undefined
+    sorted_keys = np.sort(self.evaluate(exported_keys))
+    sorted_values = np.sort(self.evaluate(exported_values))
+    self.assertAllEqual([b"brain", b"salad", b"surgery"], sorted_keys)
+    self.assertAllEqual([0, 1, 2], sorted_values)
 
   @test_util.run_v1_only("SaverV1")
   def testSaveRestore(self):
@@ -3170,370 +3242,439 @@ class MutableHashTableOpTest(test.TestCase):
       self.assertAllEqual([b"-", b"a", b"b"], output)
 
   def testMutableHashTableOfTensors(self):
-    with self.cached_session():
-      default_val = constant_op.constant([-1, -1], dtypes.int64)
-      keys = constant_op.constant(["brain", "salad", "surgery", "tarkus"])
-      values = constant_op.constant([[0, 1], [2, 3], [4, 5], [6, 7]],
-                                    dtypes.int64)
-      table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                          default_val)
-      self.assertAllEqual(0, self.evaluate(table.size()))
+    default_val = constant_op.constant([-1, -1], dtypes.int64)
+    keys = constant_op.constant(["brain", "salad", "surgery", "tarkus"])
+    values = constant_op.constant([[0, 1], [2, 3], [4, 5], [6, 7]],
+                                  dtypes.int64)
+    table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
+                                        default_val)
+    self.assertAllEqual(0, self.evaluate(table.size()))
 
-      self.evaluate(table.insert(keys, values))
-      self.assertAllEqual(4, self.evaluate(table.size()))
+    self.evaluate(table.insert(keys, values))
+    self.assertAllEqual(4, self.evaluate(table.size()))
 
-      remove_string = constant_op.constant(["tarkus", "tank"])
-      self.evaluate(table.remove(remove_string))
-      self.assertAllEqual(3, self.evaluate(table.size()))
+    remove_string = constant_op.constant(["tarkus", "tank"])
+    self.evaluate(table.remove(remove_string))
+    self.assertAllEqual(3, self.evaluate(table.size()))
 
-      input_string = constant_op.constant(["brain", "salad", "tank"])
-      output = table.lookup(input_string)
-      self.assertAllEqual([3, 2], output.get_shape())
+    input_string = constant_op.constant(["brain", "salad", "tank"])
+    output = table.lookup(input_string)
+    self.assertAllEqual([3, 2], output.get_shape())
 
-      result = self.evaluate(output)
-      self.assertAllEqual([[0, 1], [2, 3], [-1, -1]], result)
+    result = self.evaluate(output)
+    self.assertAllEqual([[0, 1], [2, 3], [-1, -1]], result)
 
-      exported_keys, exported_values = table.export()
-      # exported data is in the order of the internal map, i.e. undefined
-      sorted_keys = np.sort(self.evaluate(exported_keys))
-      sorted_values = np.sort(self.evaluate(exported_values), axis=0)
-      self.assertAllEqual([b"brain", b"salad", b"surgery"], sorted_keys)
-      sorted_expected_values = np.sort([[4, 5], [2, 3], [0, 1]], axis=0)
-      self.assertAllEqual(sorted_expected_values, sorted_values)
+    exported_keys, exported_values = table.export()
+    # exported data is in the order of the internal map, i.e. undefined
+    sorted_keys = np.sort(self.evaluate(exported_keys))
+    sorted_values = np.sort(self.evaluate(exported_values), axis=0)
+    self.assertAllEqual([b"brain", b"salad", b"surgery"], sorted_keys)
+    sorted_expected_values = np.sort([[4, 5], [2, 3], [0, 1]], axis=0)
+    self.assertAllEqual(sorted_expected_values, sorted_values)
 
   def testMutableHashTableExportInsert(self):
-    with self.cached_session():
-      default_val = constant_op.constant([-1, -1], dtypes.int64)
-      keys = constant_op.constant(["brain", "salad", "surgery"])
-      values = constant_op.constant([[0, 1], [2, 3], [4, 5]], dtypes.int64)
-      table1 = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                           default_val)
-      self.assertAllEqual(0, self.evaluate(table1.size()))
-      self.evaluate(table1.insert(keys, values))
-      self.assertAllEqual(3, self.evaluate(table1.size()))
+    default_val = constant_op.constant([-1, -1], dtypes.int64)
+    keys = constant_op.constant(["brain", "salad", "surgery"])
+    values = constant_op.constant([[0, 1], [2, 3], [4, 5]], dtypes.int64)
+    table1 = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
+                                         default_val)
+    self.assertAllEqual(0, self.evaluate(table1.size()))
+    self.evaluate(table1.insert(keys, values))
+    self.assertAllEqual(3, self.evaluate(table1.size()))
 
-      input_string = constant_op.constant(["brain", "salad", "tank"])
-      expected_output = [[0, 1], [2, 3], [-1, -1]]
-      output1 = table1.lookup(input_string)
-      self.assertAllEqual(expected_output, self.evaluate(output1))
+    input_string = constant_op.constant(["brain", "salad", "tank"])
+    expected_output = [[0, 1], [2, 3], [-1, -1]]
+    output1 = table1.lookup(input_string)
+    self.assertAllEqual(expected_output, self.evaluate(output1))
 
-      exported_keys, exported_values = table1.export()
-      self.assertAllEqual(3, self.evaluate(exported_keys).size)
-      self.assertAllEqual(6, self.evaluate(exported_values).size)
+    exported_keys, exported_values = table1.export()
+    self.assertAllEqual(3, self.evaluate(exported_keys).size)
+    self.assertAllEqual(6, self.evaluate(exported_values).size)
 
-      # Populate a second table from the exported data
-      table2 = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                           default_val)
-      self.assertAllEqual(0, self.evaluate(table2.size()))
-      self.evaluate(table2.insert(exported_keys, exported_values))
-      self.assertAllEqual(3, self.evaluate(table2.size()))
+    # Populate a second table from the exported data
+    table2 = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
+                                         default_val)
+    self.assertAllEqual(0, self.evaluate(table2.size()))
+    self.evaluate(table2.insert(exported_keys, exported_values))
+    self.assertAllEqual(3, self.evaluate(table2.size()))
 
-      # Verify lookup result is still the same
-      output2 = table2.lookup(input_string)
-      self.assertAllEqual(expected_output, self.evaluate(output2))
+    # Verify lookup result is still the same
+    output2 = table2.lookup(input_string)
+    self.assertAllEqual(expected_output, self.evaluate(output2))
 
   def testMutableHashTableOfTensorsInvalidShape(self):
-    with self.cached_session():
-      default_val = constant_op.constant([-1, -1], dtypes.int64)
-      keys = constant_op.constant(["brain", "salad", "surgery"])
-      table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                          default_val)
+    default_val = constant_op.constant([-1, -1], dtypes.int64)
+    keys = constant_op.constant(["brain", "salad", "surgery"])
+    table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
+                                        default_val)
 
-      # Shape [6] instead of [3, 2]
-      values = constant_op.constant([0, 1, 2, 3, 4, 5], dtypes.int64)
-      with self.assertRaisesOpError("Expected shape"):
-        self.evaluate(table.insert(keys, values))
-
-      # Shape [2,3] instead of [3, 2]
-      values = constant_op.constant([[0, 1, 2], [3, 4, 5]], dtypes.int64)
-      with self.assertRaisesOpError("Expected shape"):
-        self.evaluate(table.insert(keys, values))
-
-      # Shape [2, 2] instead of [3, 2]
-      values = constant_op.constant([[0, 1], [2, 3]], dtypes.int64)
-      with self.assertRaisesOpError("Expected shape"):
-        self.evaluate(table.insert(keys, values))
-
-      # Shape [3, 1] instead of [3, 2]
-      values = constant_op.constant([[0], [2], [4]], dtypes.int64)
-      with self.assertRaisesOpError("Expected shape"):
-        self.evaluate(table.insert(keys, values))
-
-      # Valid Insert
-      values = constant_op.constant([[0, 1], [2, 3], [4, 5]], dtypes.int64)
+    # Shape [6] instead of [3, 2]
+    values = constant_op.constant([0, 1, 2, 3, 4, 5], dtypes.int64)
+    with self.assertRaisesOpError("Expected shape"):
       self.evaluate(table.insert(keys, values))
-      self.assertAllEqual(3, self.evaluate(table.size()))
+
+    # Shape [2,3] instead of [3, 2]
+    values = constant_op.constant([[0, 1, 2], [3, 4, 5]], dtypes.int64)
+    with self.assertRaisesOpError("Expected shape"):
+      self.evaluate(table.insert(keys, values))
+
+    # Shape [2, 2] instead of [3, 2]
+    values = constant_op.constant([[0, 1], [2, 3]], dtypes.int64)
+    with self.assertRaisesOpError("Expected shape"):
+      self.evaluate(table.insert(keys, values))
+
+    # Shape [3, 1] instead of [3, 2]
+    values = constant_op.constant([[0], [2], [4]], dtypes.int64)
+    with self.assertRaisesOpError("Expected shape"):
+      self.evaluate(table.insert(keys, values))
+
+    # Valid Insert
+    values = constant_op.constant([[0, 1], [2, 3], [4, 5]], dtypes.int64)
+    self.evaluate(table.insert(keys, values))
+    self.assertAllEqual(3, self.evaluate(table.size()))
 
   def testMutableHashTableInvalidDefaultValue(self):
-    with self.cached_session():
-      default_val = constant_op.constant([[-1, -1]], dtypes.int64)
-      with self.assertRaisesOpError("Default value must be a vector"):
-        table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                            default_val)
-        self.assertAllEqual(0, self.evaluate(table.size()))
+    default_val = constant_op.constant([[-1, -1]], dtypes.int64)
+    with self.assertRaisesOpError("Default value must be a vector"):
+      table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
+                                          default_val)
+      self.assertAllEqual(0, self.evaluate(table.size()))
 
   def testMutableHashTableDuplicateInsert(self):
-    with self.cached_session():
-      default_val = -1
-      keys = constant_op.constant(["brain", "salad", "surgery", "brain"])
-      values = constant_op.constant([0, 1, 2, 3], dtypes.int64)
-      table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                          default_val)
-      self.assertAllEqual(0, self.evaluate(table.size()))
+    default_val = -1
+    keys = constant_op.constant(["brain", "salad", "surgery", "brain"])
+    values = constant_op.constant([0, 1, 2, 3], dtypes.int64)
+    table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
+                                        default_val)
+    self.assertAllEqual(0, self.evaluate(table.size()))
 
-      self.evaluate(table.insert(keys, values))
-      self.assertAllEqual(3, self.evaluate(table.size()))
+    self.evaluate(table.insert(keys, values))
+    self.assertAllEqual(3, self.evaluate(table.size()))
 
-      input_string = constant_op.constant(["brain", "salad", "tank"])
-      output = table.lookup(input_string)
+    input_string = constant_op.constant(["brain", "salad", "tank"])
+    output = table.lookup(input_string)
 
-      result = self.evaluate(output)
-      self.assertAllEqual([3, 1, -1], result)
+    result = self.evaluate(output)
+    self.assertAllEqual([3, 1, -1], result)
 
   def testMutableHashTableFindHighRank(self):
-    with self.cached_session():
-      default_val = -1
-      keys = constant_op.constant(["brain", "salad", "surgery"])
-      values = constant_op.constant([0, 1, 2], dtypes.int64)
-      table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                          default_val)
+    default_val = -1
+    keys = constant_op.constant(["brain", "salad", "surgery"])
+    values = constant_op.constant([0, 1, 2], dtypes.int64)
+    table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
+                                        default_val)
 
-      self.evaluate(table.insert(keys, values))
-      self.assertAllEqual(3, self.evaluate(table.size()))
+    self.evaluate(table.insert(keys, values))
+    self.assertAllEqual(3, self.evaluate(table.size()))
 
-      input_string = constant_op.constant([["brain", "salad"],
-                                           ["tank", "tarkus"]])
-      output = table.lookup(input_string)
-      self.assertAllEqual([2, 2], output.get_shape())
+    input_string = constant_op.constant([["brain", "salad"],
+                                         ["tank", "tarkus"]])
+    output = table.lookup(input_string)
+    self.assertAllEqual([2, 2], output.get_shape())
 
-      result = self.evaluate(output)
-      self.assertAllEqual([[0, 1], [-1, -1]], result)
+    result = self.evaluate(output)
+    self.assertAllEqual([[0, 1], [-1, -1]], result)
+
+  def testMutableHashTableFindWithInvalidShapeDefaultValue(self):
+    default_val = [-1, -1]
+    table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
+                                        default_val)
+
+    input_string = constant_op.constant([["brain", "salad"], ["tank",
+                                                              "tarkus"]])
+
+    invalid_default_val = constant_op.constant(
+        [[-2, -3], [-4, -5], [-6, -7], [-8, -9]], dtypes.int64)
+
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError),
+        "Expected shape \[2\] or \[2,2,2\] for default value, got \[4,2]"):
+      self.evaluate(table.lookup(input_string, invalid_default_val))
+
+    invalid_default_val = constant_op.constant([[[-2, -3], [-4, -5]]],
+                                               dtypes.int64)
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError),
+        "Expected shape \[2\] or \[2,2,2\] for default value, got \[1,2,2\]"):
+      self.evaluate(table.lookup(input_string, invalid_default_val))
+
+  def testMutableHashTableFindHighRankScalarWithDynamicDefaultValue(self):
+    default_val = -1
+    keys = constant_op.constant(["brain", "salad", "surgery"])
+    values = constant_op.constant([0, 1, 2], dtypes.int64)
+    table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
+                                        default_val)
+
+    self.evaluate(table.insert(keys, values))
+    self.assertAllEqual(3, self.evaluate(table.size()))
+
+    input_string = constant_op.constant([["brain", "salad"], ["tank",
+                                                              "tarkus"]])
+
+    dynamic_default_val = constant_op.constant([[-2, -3], [-4, -5]],
+                                               dtypes.int64)
+    output = table.lookup(input_string, dynamic_default_val)
+    self.assertAllEqual([2, 2], output.get_shape())
+
+    result = self.evaluate(output)
+    self.assertAllEqual([[0, 1], [-4, -5]], result)
+
+  def testMutableHashTableFindHighRankVectorWithDynamicDefaultValue(self):
+    default_val = [-1, -1]
+    keys = constant_op.constant(["brain", "salad", "surgery"])
+    values = constant_op.constant([[0, 1], [2, 3], [4, 5]], dtypes.int64)
+    table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
+                                        default_val)
+
+    self.evaluate(table.insert(keys, values))
+    self.assertAllEqual(3, self.evaluate(table.size()))
+
+    input_string = constant_op.constant([["brain", "salad"], ["tank",
+                                                              "tarkus"]])
+
+    dynamic_default_val = constant_op.constant(
+        [[[-2, -3], [-4, -5]], [[-6, -7], [-8, -9]]], dtypes.int64)
+    output = table.lookup(input_string, dynamic_default_val)
+    self.assertAllEqual([2, 2, 2], output.get_shape())
+
+    result = self.evaluate(output)
+    self.assertAllEqual([[[0, 1], [2, 3]], [[-6, -7], [-8, -9]]], result)
 
   def testMutableHashTableInsertHighRank(self):
-    with self.cached_session():
-      default_val = -1
-      keys = constant_op.constant([["brain", "salad"], ["surgery", "tank"]])
-      values = constant_op.constant([[0, 1], [2, 3]], dtypes.int64)
-      table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                          default_val)
+    default_val = -1
+    keys = constant_op.constant([["brain", "salad"], ["surgery", "tank"]])
+    values = constant_op.constant([[0, 1], [2, 3]], dtypes.int64)
+    table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
+                                        default_val)
 
-      self.evaluate(table.insert(keys, values))
-      self.assertAllEqual(4, self.evaluate(table.size()))
+    self.evaluate(table.insert(keys, values))
+    self.assertAllEqual(4, self.evaluate(table.size()))
 
-      input_string = constant_op.constant(["brain", "salad", "tank", "tarkus"])
-      output = table.lookup(input_string)
+    input_string = constant_op.constant(["brain", "salad", "tank", "tarkus"])
+    output = table.lookup(input_string)
 
-      result = self.evaluate(output)
-      self.assertAllEqual([0, 1, 3, -1], result)
+    result = self.evaluate(output)
+    self.assertAllEqual([0, 1, 3, -1], result)
 
   def testMutableHashTableRemoveHighRank(self):
-    with self.test_session():
-      default_val = -1
-      keys = constant_op.constant([["brain", "salad"], ["surgery", "tank"]])
-      values = constant_op.constant([[0, 1], [2, 3]], dtypes.int64)
-      table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                          default_val)
+    default_val = -1
+    keys = constant_op.constant([["brain", "salad"], ["surgery", "tank"]])
+    values = constant_op.constant([[0, 1], [2, 3]], dtypes.int64)
+    table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
+                                        default_val)
 
-      self.evaluate(table.insert(keys, values))
-      self.assertAllEqual(4, self.evaluate(table.size()))
+    self.evaluate(table.insert(keys, values))
+    self.assertAllEqual(4, self.evaluate(table.size()))
 
-      remove_string = constant_op.constant(["salad", "tarkus"])
-      self.evaluate(table.remove(remove_string))
-      self.assertAllEqual(3, self.evaluate(table.size()))
+    remove_string = constant_op.constant(["salad", "tarkus"])
+    self.evaluate(table.remove(remove_string))
+    self.assertAllEqual(3, self.evaluate(table.size()))
 
-      input_string = constant_op.constant(["brain", "salad", "tank", "tarkus"])
-      output = table.lookup(input_string)
+    input_string = constant_op.constant(["brain", "salad", "tank", "tarkus"])
+    output = table.lookup(input_string)
 
-      result = self.evaluate(output)
-      self.assertAllEqual([0, -1, 3, -1], result)
+    result = self.evaluate(output)
+    self.assertAllEqual([0, -1, 3, -1], result)
 
   def testMutableHashTableOfTensorsFindHighRank(self):
-    with self.cached_session():
-      default_val = constant_op.constant([-1, -1, -1], dtypes.int64)
-      keys = constant_op.constant(["brain", "salad", "surgery"])
-      values = constant_op.constant([[0, 1, 2], [2, 3, 4], [4, 5, 6]],
-                                    dtypes.int64)
-      table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                          default_val)
+    default_val = constant_op.constant([-1, -1, -1], dtypes.int64)
+    keys = constant_op.constant(["brain", "salad", "surgery"])
+    values = constant_op.constant([[0, 1, 2], [2, 3, 4], [4, 5, 6]],
+                                  dtypes.int64)
+    table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
+                                        default_val)
 
-      self.evaluate(table.insert(keys, values))
-      self.assertAllEqual(3, self.evaluate(table.size()))
+    self.evaluate(table.insert(keys, values))
+    self.assertAllEqual(3, self.evaluate(table.size()))
 
-      input_string = constant_op.constant([["brain", "salad"],
-                                           ["tank", "tarkus"]])
-      output = table.lookup(input_string)
-      self.assertAllEqual([2, 2, 3], output.get_shape())
+    input_string = constant_op.constant([["brain", "salad"],
+                                         ["tank", "tarkus"]])
+    output = table.lookup(input_string)
+    self.assertAllEqual([2, 2, 3], output.get_shape())
 
-      result = self.evaluate(output)
-      self.assertAllEqual(
-          [[[0, 1, 2], [2, 3, 4]], [[-1, -1, -1], [-1, -1, -1]]], result)
+    result = self.evaluate(output)
+    self.assertAllEqual(
+        [[[0, 1, 2], [2, 3, 4]], [[-1, -1, -1], [-1, -1, -1]]], result)
 
   def testMutableHashTableOfTensorsRemoveHighRank(self):
-    with self.test_session():
-      default_val = constant_op.constant([-1, -1, -1], dtypes.int64)
-      keys = constant_op.constant(["brain", "salad", "surgery"])
-      values = constant_op.constant([[0, 1, 2], [2, 3, 4], [4, 5, 6]],
-                                    dtypes.int64)
-      table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                          default_val)
+    default_val = constant_op.constant([-1, -1, -1], dtypes.int64)
+    keys = constant_op.constant(["brain", "salad", "surgery"])
+    values = constant_op.constant([[0, 1, 2], [2, 3, 4], [4, 5, 6]],
+                                  dtypes.int64)
+    table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
+                                        default_val)
 
-      self.evaluate(table.insert(keys, values))
-      self.assertAllEqual(3, self.evaluate(table.size()))
+    self.evaluate(table.insert(keys, values))
+    self.assertAllEqual(3, self.evaluate(table.size()))
 
-      remove_string = constant_op.constant([["brain", "tank"]])
-      self.evaluate(table.remove(remove_string))
-      self.assertAllEqual(2, self.evaluate(table.size()))
+    remove_string = constant_op.constant([["brain", "tank"]])
+    self.evaluate(table.remove(remove_string))
+    self.assertAllEqual(2, self.evaluate(table.size()))
 
-      input_string = constant_op.constant([["brain", "salad"],
-                                           ["surgery", "tank"]])
-      output = table.lookup(input_string)
-      self.assertAllEqual([2, 2, 3], output.get_shape())
+    input_string = constant_op.constant([["brain", "salad"],
+                                         ["surgery", "tank"]])
+    output = table.lookup(input_string)
+    self.assertAllEqual([2, 2, 3], output.get_shape())
 
-      result = self.evaluate(output)
-      self.assertAllEqual(
-          [[[-1, -1, -1], [2, 3, 4]], [[4, 5, 6], [-1, -1, -1]]], result)
+    result = self.evaluate(output)
+    self.assertAllEqual(
+        [[[-1, -1, -1], [2, 3, 4]], [[4, 5, 6], [-1, -1, -1]]], result)
 
   def testMultipleMutableHashTables(self):
-    with self.cached_session():
-      default_val = -1
-      keys = constant_op.constant(["brain", "salad", "surgery"])
-      values = constant_op.constant([0, 1, 2], dtypes.int64)
+    default_val = -1
+    keys = constant_op.constant(["brain", "salad", "surgery"])
+    values = constant_op.constant([0, 1, 2], dtypes.int64)
 
-      table1 = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                           default_val)
-      table2 = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                           default_val)
-      table3 = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                           default_val)
-      self.evaluate(table1.insert(keys, values))
-      self.evaluate(table2.insert(keys, values))
-      self.evaluate(table3.insert(keys, values))
+    table1 = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
+                                         default_val)
+    table2 = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
+                                         default_val)
+    table3 = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
+                                         default_val)
+    self.evaluate(table1.insert(keys, values))
+    self.evaluate(table2.insert(keys, values))
+    self.evaluate(table3.insert(keys, values))
 
-      self.assertAllEqual(3, self.evaluate(table1.size()))
-      self.assertAllEqual(3, self.evaluate(table2.size()))
-      self.assertAllEqual(3, self.evaluate(table3.size()))
+    self.assertAllEqual(3, self.evaluate(table1.size()))
+    self.assertAllEqual(3, self.evaluate(table2.size()))
+    self.assertAllEqual(3, self.evaluate(table3.size()))
 
-      input_string = constant_op.constant(["brain", "salad", "tank"])
-      output1 = table1.lookup(input_string)
-      output2 = table2.lookup(input_string)
-      output3 = table3.lookup(input_string)
+    input_string = constant_op.constant(["brain", "salad", "tank"])
+    output1 = table1.lookup(input_string)
+    output2 = table2.lookup(input_string)
+    output3 = table3.lookup(input_string)
 
-      out1, out2, out3 = self.evaluate([output1, output2, output3])
-      self.assertAllEqual([0, 1, -1], out1)
-      self.assertAllEqual([0, 1, -1], out2)
-      self.assertAllEqual([0, 1, -1], out3)
+    out1, out2, out3 = self.evaluate([output1, output2, output3])
+    self.assertAllEqual([0, 1, -1], out1)
+    self.assertAllEqual([0, 1, -1], out2)
+    self.assertAllEqual([0, 1, -1], out3)
 
   def testMutableHashTableWithTensorDefault(self):
-    with self.cached_session():
-      default_val = constant_op.constant(-1, dtypes.int64)
-      keys = constant_op.constant(["brain", "salad", "surgery"])
-      values = constant_op.constant([0, 1, 2], dtypes.int64)
-      table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                          default_val)
+    default_val = constant_op.constant(-1, dtypes.int64)
+    keys = constant_op.constant(["brain", "salad", "surgery"])
+    values = constant_op.constant([0, 1, 2], dtypes.int64)
+    table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
+                                        default_val)
 
-      self.evaluate(table.insert(keys, values))
-      self.assertAllEqual(3, self.evaluate(table.size()))
+    self.evaluate(table.insert(keys, values))
+    self.assertAllEqual(3, self.evaluate(table.size()))
 
-      input_string = constant_op.constant(["brain", "salad", "tank"])
-      output = table.lookup(input_string)
+    input_string = constant_op.constant(["brain", "salad", "tank"])
+    output = table.lookup(input_string)
 
-      result = self.evaluate(output)
-      self.assertAllEqual([0, 1, -1], result)
+    result = self.evaluate(output)
+    self.assertAllEqual([0, 1, -1], result)
 
   def testSignatureMismatch(self):
-    with self.cached_session():
-      default_val = -1
-      keys = constant_op.constant(["brain", "salad", "surgery"])
-      values = constant_op.constant([0, 1, 2], dtypes.int64)
-      table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                          default_val)
+    default_val = -1
+    keys = constant_op.constant(["brain", "salad", "surgery"])
+    values = constant_op.constant([0, 1, 2], dtypes.int64)
+    table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
+                                        default_val)
 
-      # insert with keys of the wrong type
-      with self.assertRaises(ValueError):
-        self.evaluate(table.insert(constant_op.constant([4, 5, 6]), values))
+    # insert with keys of the wrong type
+    with self.assertRaises(ValueError):
+      self.evaluate(table.insert(constant_op.constant([4, 5, 6]), values))
 
-      # insert with values of the wrong type
-      with self.assertRaises(ValueError):
-        self.evaluate(table.insert(keys, constant_op.constant(["a", "b", "c"])))
+    # insert with values of the wrong type
+    with self.assertRaises(ValueError):
+      self.evaluate(table.insert(keys, constant_op.constant(["a", "b", "c"])))
 
-      self.assertAllEqual(0, self.evaluate(table.size()))
+    self.assertAllEqual(0, self.evaluate(table.size()))
 
-      self.evaluate(table.insert(keys, values))
-      self.assertAllEqual(3, self.evaluate(table.size()))
+    self.evaluate(table.insert(keys, values))
+    self.assertAllEqual(3, self.evaluate(table.size()))
 
-      input_string_ref = variables.Variable("brain")
-      input_int64_ref = variables.Variable(-1, dtype=dtypes.int64)
-      self.evaluate(variables.global_variables_initializer())
+    input_string_ref = variables.Variable("brain")
+    input_int64_ref = variables.Variable(-1, dtype=dtypes.int64)
+    self.evaluate(variables.global_variables_initializer())
 
-      # Ref types do not produce an insert signature mismatch.
-      self.evaluate(table.insert(input_string_ref, input_int64_ref))
-      self.assertAllEqual(3, self.evaluate(table.size()))
+    # Ref types do not produce an insert signature mismatch.
+    self.evaluate(table.insert(input_string_ref, input_int64_ref))
+    self.assertAllEqual(3, self.evaluate(table.size()))
 
-      # Ref types do not produce a lookup signature mismatch.
-      self.assertEqual(-1, self.evaluate(table.lookup(input_string_ref)))
+    # Ref types do not produce a lookup signature mismatch.
+    self.assertEqual(-1, self.evaluate(table.lookup(input_string_ref)))
 
-      # lookup with keys of the wrong type
-      input_string = constant_op.constant([1, 2, 3], dtypes.int64)
-      with self.assertRaises(ValueError):
-        self.evaluate(table.lookup(input_string))
+    # lookup with keys of the wrong type
+    input_string = constant_op.constant([1, 2, 3], dtypes.int64)
+    with self.assertRaises(ValueError):
+      self.evaluate(table.lookup(input_string))
 
-      # default value of the wrong type
-      with self.assertRaises(TypeError):
-        lookup_ops.MutableHashTable(dtypes.string, dtypes.int64, "UNK")
+    # default value of the wrong type
+    with self.assertRaises(TypeError):
+      lookup_ops.MutableHashTable(dtypes.string, dtypes.int64, "UNK")
 
   def testMutableHashTableStringFloat(self):
-    with self.cached_session():
-      default_val = -1.5
-      keys = constant_op.constant(["brain", "salad", "surgery"])
-      values = constant_op.constant([0, 1.1, 2.2], dtypes.float32)
-      table = lookup_ops.MutableHashTable(dtypes.string, dtypes.float32,
-                                          default_val)
-      self.assertAllEqual(0, self.evaluate(table.size()))
+    default_val = -1.5
+    keys = constant_op.constant(["brain", "salad", "surgery"])
+    values = constant_op.constant([0, 1.1, 2.2], dtypes.float32)
+    table = lookup_ops.MutableHashTable(dtypes.string, dtypes.float32,
+                                        default_val)
+    self.assertAllEqual(0, self.evaluate(table.size()))
 
-      self.evaluate(table.insert(keys, values))
-      self.assertAllEqual(3, self.evaluate(table.size()))
+    self.evaluate(table.insert(keys, values))
+    self.assertAllEqual(3, self.evaluate(table.size()))
 
-      input_string = constant_op.constant(["brain", "salad", "tank"])
-      output = table.lookup(input_string)
+    input_string = constant_op.constant(["brain", "salad", "tank"])
+    output = table.lookup(input_string)
 
-      result = self.evaluate(output)
-      self.assertAllClose([0, 1.1, default_val], result)
+    result = self.evaluate(output)
+    self.assertAllClose([0, 1.1, default_val], result)
 
   def testMutableHashTableIntFloat(self):
-    with self.cached_session():
-      default_val = -1.0
-      keys = constant_op.constant([3, 7, 0], dtypes.int64)
-      values = constant_op.constant([7.5, -1.2, 9.9], dtypes.float32)
-      table = lookup_ops.MutableHashTable(dtypes.int64, dtypes.float32,
-                                          default_val)
-      self.assertAllEqual(0, self.evaluate(table.size()))
+    default_val = -1.0
+    keys = constant_op.constant([3, 7, 0], dtypes.int64)
+    values = constant_op.constant([7.5, -1.2, 9.9], dtypes.float32)
+    table = lookup_ops.MutableHashTable(dtypes.int64, dtypes.float32,
+                                        default_val)
+    self.assertAllEqual(0, self.evaluate(table.size()))
 
-      self.evaluate(table.insert(keys, values))
-      self.assertAllEqual(3, self.evaluate(table.size()))
+    self.evaluate(table.insert(keys, values))
+    self.assertAllEqual(3, self.evaluate(table.size()))
 
-      input_string = constant_op.constant([7, 0, 11], dtypes.int64)
-      output = table.lookup(input_string)
+    input_string = constant_op.constant([7, 0, 11], dtypes.int64)
+    output = table.lookup(input_string)
 
-      result = self.evaluate(output)
-      self.assertAllClose([-1.2, 9.9, default_val], result)
+    result = self.evaluate(output)
+    self.assertAllClose([-1.2, 9.9, default_val], result)
 
   def testMutableHashTableInt64String(self):
-    with self.cached_session():
-      default_val = "n/a"
-      keys = constant_op.constant([0, 1, 2], dtypes.int64)
-      values = constant_op.constant(["brain", "salad", "surgery"])
-      table = lookup_ops.MutableHashTable(dtypes.int64, dtypes.string,
-                                          default_val)
-      self.assertAllEqual(0, self.evaluate(table.size()))
+    default_val = "n/a"
+    keys = constant_op.constant([0, 1, 2], dtypes.int64)
+    values = constant_op.constant(["brain", "salad", "surgery"])
+    table = lookup_ops.MutableHashTable(dtypes.int64, dtypes.string,
+                                        default_val)
+    self.assertAllEqual(0, self.evaluate(table.size()))
 
-      self.evaluate(table.insert(keys, values))
-      self.assertAllEqual(3, self.evaluate(table.size()))
+    self.evaluate(table.insert(keys, values))
+    self.assertAllEqual(3, self.evaluate(table.size()))
 
-      input_string = constant_op.constant([0, 1, 3], dtypes.int64)
-      output = table.lookup(input_string)
+    input_string = constant_op.constant([0, 1, 3], dtypes.int64)
+    output = table.lookup(input_string)
 
-      result = self.evaluate(output)
-      self.assertAllEqual((b"brain", b"salad", b"n/a"), result)
+    result = self.evaluate(output)
+    self.assertAllEqual((b"brain", b"salad", b"n/a"), result)
+
+  def testExportShapeInference(self):
+    default_value = -1
+    table = lookup_ops.MutableHashTable(
+        dtypes.int64,
+        dtypes.int64,
+        default_value=default_value)
+    actual_shapes = [t.shape for t in table.export()]
+    inferred_shapes = []
+
+    @def_function.function
+    def f():
+      for t in table.export():
+        inferred_shapes.append(t.shape)
+
+    f()
+    self.assertLen(actual_shapes, 2)
+    self.assertLen(inferred_shapes, 2)
+    self.assertTrue(inferred_shapes[0].is_compatible_with(actual_shapes[0]))
+    self.assertTrue(inferred_shapes[1].is_compatible_with(actual_shapes[1]))
 
 
 class MutableHashTableBenchmark(test.Benchmark):

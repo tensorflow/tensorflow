@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/tpu/tpu_stream.h"
 
 namespace tensorflow {
+namespace tpu {
 
 class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
  public:
@@ -237,6 +238,7 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
   SE_StreamExecutor* executor_;
 };
 
+}  // namespace tpu
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_EXECUTOR_H_

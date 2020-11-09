@@ -1,16 +1,14 @@
 // RUN: hlo_to_llvm_ir %s | FileCheck %s
 
-// CHECK-LABEL: define void @scatter_TensorFlowScatterV1(i8* noalias align 64 dereferenceable(36) %alloc0, i8* noalias align 16 dereferenceable(36) %alloc1, i8* noalias align 16 dereferenceable(24) %alloc2, i8* noalias align 16 dereferenceable(8) %alloc3) {
+// CHECK-LABEL: define void @scatter_TensorFlowScatterV1(i8* noalias align 16 dereferenceable(36) %alloc0, i8* noalias align 16 dereferenceable(24) %alloc1, i8* noalias align 16 dereferenceable(8) %alloc2) {
 // CHECK: entry:
 // CHECK:         %[[VAL_32:.*]] = alloca i32, align 4
-// CHECK:         %[[VAL_0:.*]] = getelementptr inbounds i8, i8* %[[VAL_1:.*]], i64 0
-// CHECK:         %[[VAL_2:.*]] = bitcast i8* %[[VAL_0]] to [3 x [3 x i32]]*
-// CHECK:         %[[VAL_3:.*]] = getelementptr inbounds i8, i8* %[[VAL_4:.*]], i64 0
-// CHECK:         %[[VAL_5:.*]] = bitcast i8* %[[VAL_3]] to [3 x [3 x i32]]*
 // CHECK:         %[[VAL_6:.*]] = getelementptr inbounds i8, i8* %[[VAL_7:.*]], i64 0
 // CHECK:         %[[VAL_8:.*]] = bitcast i8* %[[VAL_6]] to [2 x i32]*
 // CHECK:         %[[VAL_9:.*]] = getelementptr inbounds i8, i8* %[[VAL_10:.*]], i64 0
 // CHECK:         %[[VAL_11:.*]] = bitcast i8* %[[VAL_9]] to [2 x [3 x i32]]*
+// CHECK:         %[[VAL_0:.*]] = getelementptr inbounds i8, i8* %[[VAL_1:.*]], i64 0
+// CHECK:         %[[VAL_2:.*]] = bitcast i8* %[[VAL_0]] to [3 x [3 x i32]]*
 // CHECK:         %[[VAL_12:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
 // CHECK:         %[[VAL_13:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !3
 // CHECK:         %[[VAL_14:.*]] = mul nuw nsw i32 %[[VAL_12]], 6
@@ -43,8 +41,8 @@
 // CHECK:         store atomic i32 %[[VAL_36]], i32* %[[VAL_31]] unordered, align 4
 // CHECK:         br label %[[VAL_23]]
 // CHECK: !nvvm.annotations = !{!0, !1}
-// CHECK: !0 = !{void (i8*, i8*, i8*, i8*)* @scatter_TensorFlowScatterV1, !"kernel", i32 1}
-// CHECK: !1 = !{void (i8*, i8*, i8*, i8*)* @scatter_TensorFlowScatterV1, !"reqntidx", i32 6}
+// CHECK: !0 = !{void (i8*, i8*, i8*)* @scatter_TensorFlowScatterV1, !"kernel", i32 1}
+// CHECK: !1 = !{void (i8*, i8*, i8*)* @scatter_TensorFlowScatterV1, !"reqntidx", i32 6}
 // CHECK: !2 = !{i32 0, i32 1}
 // CHECK: !3 = !{i32 0, i32 6}
 // CHECK: !4 = !{}
@@ -72,17 +70,15 @@ ENTRY main {
 
 // -----
 
-// CHECK-LABEL: define void @scatter_ScatterIntoScalar(i8* noalias align 64 dereferenceable(4) %alloc0, i8* noalias align 16 dereferenceable(4) %alloc1, i8* noalias align 16 dereferenceable(4) %alloc2, i8* noalias align 16 %alloc3) {
+// CHECK-LABEL: define void @scatter_ScatterIntoScalar(i8* noalias align 16 dereferenceable(4) %alloc0, i8* noalias align 16 dereferenceable(4) %alloc1, i8* noalias align 16 %alloc2) {
 // CHECK:       entry:
 // CHECK:         %[[VAL_60:.*]] = alloca i32, align 4
-// CHECK:         %[[VAL_37:.*]] = getelementptr inbounds i8, i8* %[[VAL_38:.*]], i64 0
-// CHECK:         %[[VAL_39:.*]] = bitcast i8* %[[VAL_37]] to i32*
-// CHECK:         %[[VAL_40:.*]] = getelementptr inbounds i8, i8* %[[VAL_41:.*]], i64 0
-// CHECK:         %[[VAL_42:.*]] = bitcast i8* %[[VAL_40]] to i32*
 // CHECK:         %[[VAL_43:.*]] = getelementptr inbounds i8, i8* %[[VAL_44:.*]], i64 0
 // CHECK:         %[[VAL_45:.*]] = bitcast i8* %[[VAL_43]] to [0 x i32]*
 // CHECK:         %[[VAL_46:.*]] = getelementptr inbounds i8, i8* %[[VAL_47:.*]], i64 0
 // CHECK:         %[[VAL_48:.*]] = bitcast i8* %[[VAL_46]] to i32*
+// CHECK:         %[[VAL_37:.*]] = getelementptr inbounds i8, i8* %[[VAL_38:.*]], i64 0
+// CHECK:         %[[VAL_39:.*]] = bitcast i8* %[[VAL_37]] to i32*
 // CHECK:         %[[VAL_49:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
 // CHECK:         %[[VAL_50:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !2
 // CHECK:         %[[VAL_51:.*]] = mul nuw nsw i32 %[[VAL_49]], 1
@@ -104,8 +100,8 @@ ENTRY main {
 // CHECK:         store atomic i32 %[[VAL_62]], i32* %[[VAL_39]] unordered, align 4
 // CHECK:         br label %[[VAL_57]]
 // CHECK: !nvvm.annotations = !{!0, !1}
-// CHECK: !0 = !{void (i8*, i8*, i8*, i8*)* @scatter_ScatterIntoScalar, !"kernel", i32 1}
-// CHECK: !1 = !{void (i8*, i8*, i8*, i8*)* @scatter_ScatterIntoScalar, !"reqntidx", i32 1}
+// CHECK: !0 = !{void (i8*, i8*, i8*)* @scatter_ScatterIntoScalar, !"kernel", i32 1}
+// CHECK: !1 = !{void (i8*, i8*, i8*)* @scatter_ScatterIntoScalar, !"reqntidx", i32 1}
 // CHECK: !2 = !{i32 0, i32 1}
 // CHECK: !3 = !{}
 
@@ -131,18 +127,16 @@ ENTRY main {
 
 // -----
 
-// CHECK-LABEL: define void @scatter_TensorFlowScatter_Mul(i8* noalias align 64 dereferenceable(36) %alloc0, i8* noalias align 16 dereferenceable(36) %alloc1, i8* noalias align 16 dereferenceable(24) %alloc2, i8* noalias align 16 dereferenceable(8) %alloc3) {
+// CHECK-LABEL: define void @scatter_TensorFlowScatter_Mul(i8* noalias align 16 dereferenceable(36) %alloc0, i8* noalias align 16 dereferenceable(24) %alloc1, i8* noalias align 16 dereferenceable(8) %alloc2) {
 // CHECK:         %[[VAL_63:.*]] = alloca i32, align 4
 // CHECK:         %[[VAL_64:.*]] = alloca i32, align 4
 // CHECK:         %[[VAL_98:.*]] = alloca i32, align 4
-// CHECK:         %[[VAL_65:.*]] = getelementptr inbounds i8, i8* %[[VAL_66:.*]], i64 0
-// CHECK:         %[[VAL_67:.*]] = bitcast i8* %[[VAL_65]] to [3 x [3 x i32]]*
-// CHECK:         %[[VAL_68:.*]] = getelementptr inbounds i8, i8* %[[VAL_69:.*]], i64 0
-// CHECK:         %[[VAL_70:.*]] = bitcast i8* %[[VAL_68]] to [3 x [3 x i32]]*
 // CHECK:         %[[VAL_71:.*]] = getelementptr inbounds i8, i8* %[[VAL_72:.*]], i64 0
 // CHECK:         %[[VAL_73:.*]] = bitcast i8* %[[VAL_71]] to [2 x i32]*
 // CHECK:         %[[VAL_74:.*]] = getelementptr inbounds i8, i8* %[[VAL_75:.*]], i64 0
 // CHECK:         %[[VAL_76:.*]] = bitcast i8* %[[VAL_74]] to [2 x [3 x i32]]*
+// CHECK:         %[[VAL_65:.*]] = getelementptr inbounds i8, i8* %[[VAL_66:.*]], i64 0
+// CHECK:         %[[VAL_67:.*]] = bitcast i8* %[[VAL_65]] to [3 x [3 x i32]]*
 // CHECK:         %[[VAL_77:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
 // CHECK:         %[[VAL_78:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !3
 // CHECK:         %[[VAL_79:.*]] = mul nuw nsw i32 %[[VAL_77]], 6
@@ -180,7 +174,7 @@ ENTRY main {
 // CHECK:       atomic_op_loop_body:                              ; preds = %[[VAL_104]], %[[VAL_95]]
 // CHECK:         %[[VAL_105:.*]] = load i32, i32* %[[VAL_64]], align 4
 // CHECK:         store i32 %[[VAL_105]], i32* %[[VAL_63]], align 4
-// CHECK:         call void @mul_s32(i32* %[[VAL_63]], i32* %[[VAL_98]], i32* %[[VAL_63]])
+// CHECK:         call void @{{.+}}(i32* %[[VAL_63]], i32* %[[VAL_98]], i32* %[[VAL_63]])
 // CHECK:         %[[VAL_106:.*]] = load i32, i32* %[[VAL_63]], align 4
 // CHECK:         %[[VAL_107:.*]] = cmpxchg i32* %[[VAL_97]], i32 %[[VAL_105]], i32 %[[VAL_106]] seq_cst seq_cst
 // CHECK:         %[[VAL_108:.*]] = extractvalue { i32, i1 } %[[VAL_107]], 0
@@ -188,8 +182,8 @@ ENTRY main {
 // CHECK:         %[[VAL_109:.*]] = extractvalue { i32, i1 } %[[VAL_107]], 1
 // CHECK:         br i1 %[[VAL_109]], label %[[VAL_96]], label %[[VAL_104]]
 // CHECK: !nvvm.annotations = !{!0, !1}
-// CHECK: !0 = !{void (i8*, i8*, i8*, i8*)* @scatter_TensorFlowScatter_Mul, !"kernel", i32 1}
-// CHECK: !1 = !{void (i8*, i8*, i8*, i8*)* @scatter_TensorFlowScatter_Mul, !"reqntidx", i32 6}
+// CHECK: !0 = !{void (i8*, i8*, i8*)* @scatter_TensorFlowScatter_Mul, !"kernel", i32 1}
+// CHECK: !1 = !{void (i8*, i8*, i8*)* @scatter_TensorFlowScatter_Mul, !"reqntidx", i32 6}
 // CHECK: !2 = !{i32 0, i32 1}
 // CHECK: !3 = !{i32 0, i32 6}
 // CHECK: !4 = !{}
@@ -216,17 +210,15 @@ ENTRY main {
 
 // -----
 
-// CHECK-LABEL: define void @scatter_ScalarUpdate(i8* noalias align 64 dereferenceable(16) %alloc0, i8* noalias align 16 dereferenceable(16) %alloc1, i8* noalias align 16 dereferenceable(4) %alloc2, i8* noalias align 16 dereferenceable(4) %alloc3) {
+// CHECK-LABEL: define void @scatter_ScalarUpdate(i8* noalias align 16 dereferenceable(16) %alloc0, i8* noalias align 16 dereferenceable(4) %alloc1, i8* noalias align 16 dereferenceable(4) %alloc2) {
 // CHECK:       entry:
 // CHECK:         %[[VAL_146:.*]] = alloca i32, align 4
-// CHECK:         %[[VAL_118:.*]] = getelementptr inbounds i8, i8* %[[VAL_119:.*]], i64 0
-// CHECK:         %[[VAL_120:.*]] = bitcast i8* %[[VAL_118]] to [4 x i32]*
-// CHECK:         %[[VAL_121:.*]] = getelementptr inbounds i8, i8* %[[VAL_122:.*]], i64 0
-// CHECK:         %[[VAL_123:.*]] = bitcast i8* %[[VAL_121]] to [4 x i32]*
 // CHECK:         %[[VAL_124:.*]] = getelementptr inbounds i8, i8* %[[VAL_125:.*]], i64 0
 // CHECK:         %[[VAL_126:.*]] = bitcast i8* %[[VAL_124]] to i32*
 // CHECK:         %[[VAL_127:.*]] = getelementptr inbounds i8, i8* %[[VAL_128:.*]], i64 0
 // CHECK:         %[[VAL_129:.*]] = bitcast i8* %[[VAL_127]] to i32*
+// CHECK:         %[[VAL_118:.*]] = getelementptr inbounds i8, i8* %[[VAL_119:.*]], i64 0
+// CHECK:         %[[VAL_120:.*]] = bitcast i8* %[[VAL_118]] to [4 x i32]*
 // CHECK:         %[[VAL_130:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
 // CHECK:         %[[VAL_131:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !2
 // CHECK:         %[[VAL_132:.*]] = mul nuw nsw i32 %[[VAL_130]], 1
@@ -253,8 +245,8 @@ ENTRY main {
 // CHECK:         store atomic i32 %[[VAL_148]], i32* %[[VAL_145]] unordered, align 4
 // CHECK:         br label %[[VAL_138]]
 // CHECK: !nvvm.annotations = !{!0, !1}
-// CHECK: !0 = !{void (i8*, i8*, i8*, i8*)* @scatter_ScalarUpdate, !"kernel", i32 1}
-// CHECK: !1 = !{void (i8*, i8*, i8*, i8*)* @scatter_ScalarUpdate, !"reqntidx", i32 1}
+// CHECK: !0 = !{void (i8*, i8*, i8*)* @scatter_ScalarUpdate, !"kernel", i32 1}
+// CHECK: !1 = !{void (i8*, i8*, i8*)* @scatter_ScalarUpdate, !"reqntidx", i32 1}
 // CHECK: !2 = !{i32 0, i32 1}
 // CHECK: !3 = !{}
 

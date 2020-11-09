@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
+#include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -337,6 +338,21 @@ bool MultiOutputFusion::LegalToFuseMainConstraints(HloInstruction* instr1,
   }
   if (!ShapesCompatibleForFusion(instr1, instr2)) {
     return false;
+  }
+
+  // If both nodes are in-place operations and they use a common in-place
+  // operand, we can't fuse these two.
+  for (const auto& operand_and_output_index1 :
+       HloDataflowAnalysis::GetInPlaceInputOutputPairs(instr1)) {
+    const HloInstruction* operand =
+        instr1->operand(operand_and_output_index1.first.operand_number);
+    for (const auto& operand_and_output_index2 :
+         HloDataflowAnalysis::GetInPlaceInputOutputPairs(instr2)) {
+      if (operand ==
+          instr2->operand(operand_and_output_index2.first.operand_number)) {
+        return false;
+      }
+    }
   }
   return true;
 }

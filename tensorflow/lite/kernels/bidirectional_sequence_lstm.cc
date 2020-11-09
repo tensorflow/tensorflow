@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -192,8 +193,10 @@ TfLiteStatus CheckLstmTensorDimensionsAndTypes(
   TF_LITE_ENSURE(context, params->cell_clip >= 0);
   TF_LITE_ENSURE(context, params->proj_clip >= 0);
 
-  const TfLiteTensor* input_to_forget_weights =
-      GetInput(context, node, input_to_forget_weights_tensor);
+  const TfLiteTensor* input_to_forget_weights;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, input_to_forget_weights_tensor,
+                                 &input_to_forget_weights));
   TF_LITE_ENSURE_EQ(context, input_to_forget_weights->dims->size, 2);
   TF_LITE_ENSURE_EQ(context, input_to_forget_weights->dims->data[0], n_cell);
   TF_LITE_ENSURE_EQ(context, input_to_forget_weights->dims->data[1], n_input);
@@ -211,16 +214,20 @@ TfLiteStatus CheckLstmTensorDimensionsAndTypes(
                             input_to_forget_weights->type);
   }
 
-  const TfLiteTensor* input_to_cell_weights =
-      GetInput(context, node, input_to_cell_weights_tensor);
+  const TfLiteTensor* input_to_cell_weights;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, input_to_cell_weights_tensor,
+                                 &input_to_cell_weights));
   TF_LITE_ENSURE_EQ(context, input_to_cell_weights->dims->size, 2);
   TF_LITE_ENSURE_EQ(context, input_to_cell_weights->dims->data[0], n_cell);
   TF_LITE_ENSURE_EQ(context, input_to_cell_weights->dims->data[1], n_input);
   TF_LITE_ENSURE_TYPES_EQ(context, input_to_cell_weights->type,
                           input_to_forget_weights->type);
 
-  const TfLiteTensor* input_to_output_weights =
-      GetInput(context, node, input_to_output_weights_tensor);
+  const TfLiteTensor* input_to_output_weights;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, input_to_output_weights_tensor,
+                                 &input_to_output_weights));
   TF_LITE_ENSURE_EQ(context, input_to_output_weights->dims->size, 2);
   TF_LITE_ENSURE_EQ(context, input_to_output_weights->dims->data[0], n_cell);
   TF_LITE_ENSURE_EQ(context, input_to_output_weights->dims->data[1], n_input);
@@ -239,8 +246,10 @@ TfLiteStatus CheckLstmTensorDimensionsAndTypes(
                             input_to_forget_weights->type);
   }
 
-  const TfLiteTensor* recurrent_to_forget_weights =
-      GetInput(context, node, recurrent_to_forget_weights_tensor);
+  const TfLiteTensor* recurrent_to_forget_weights;
+  TF_LITE_ENSURE_OK(
+      context, GetInputSafe(context, node, recurrent_to_forget_weights_tensor,
+                            &recurrent_to_forget_weights));
   TF_LITE_ENSURE_EQ(context, recurrent_to_forget_weights->dims->size, 2);
   TF_LITE_ENSURE_EQ(context, recurrent_to_forget_weights->dims->data[0],
                     n_cell);
@@ -249,8 +258,10 @@ TfLiteStatus CheckLstmTensorDimensionsAndTypes(
   TF_LITE_ENSURE_TYPES_EQ(context, recurrent_to_forget_weights->type,
                           input_to_forget_weights->type);
 
-  const TfLiteTensor* recurrent_to_cell_weights =
-      GetInput(context, node, recurrent_to_cell_weights_tensor);
+  const TfLiteTensor* recurrent_to_cell_weights;
+  TF_LITE_ENSURE_OK(
+      context, GetInputSafe(context, node, recurrent_to_cell_weights_tensor,
+                            &recurrent_to_cell_weights));
   TF_LITE_ENSURE_EQ(context, recurrent_to_cell_weights->dims->size, 2);
   TF_LITE_ENSURE_EQ(context, recurrent_to_cell_weights->dims->data[0], n_cell);
   TF_LITE_ENSURE_EQ(context, recurrent_to_cell_weights->dims->data[1],
@@ -316,20 +327,25 @@ TfLiteStatus CheckLstmTensorDimensionsAndTypes(
     TF_LITE_ENSURE_TYPES_EQ(context, input_gate_bias->type, kTfLiteFloat32);
   }
 
-  const TfLiteTensor* forget_gate_bias =
-      GetInput(context, node, forget_gate_bias_tensor);
+  const TfLiteTensor* forget_gate_bias;
+  TF_LITE_ENSURE_OK(
+      context,
+      GetInputSafe(context, node, forget_gate_bias_tensor, &forget_gate_bias));
   TF_LITE_ENSURE_EQ(context, forget_gate_bias->dims->size, 1);
   TF_LITE_ENSURE_EQ(context, forget_gate_bias->dims->data[0], n_cell);
   TF_LITE_ENSURE_TYPES_EQ(context, forget_gate_bias->type, kTfLiteFloat32);
 
-  const TfLiteTensor* cell_gate_bias =
-      GetInput(context, node, cell_gate_bias_tensor);
+  const TfLiteTensor* cell_gate_bias;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, cell_gate_bias_tensor,
+                                          &cell_gate_bias));
   TF_LITE_ENSURE_EQ(context, cell_gate_bias->dims->size, 1);
   TF_LITE_ENSURE_EQ(context, cell_gate_bias->dims->data[0], n_cell);
   TF_LITE_ENSURE_EQ(context, cell_gate_bias->type, kTfLiteFloat32);
 
-  const TfLiteTensor* output_gate_bias =
-      GetInput(context, node, output_gate_bias_tensor);
+  const TfLiteTensor* output_gate_bias;
+  TF_LITE_ENSURE_OK(
+      context,
+      GetInputSafe(context, node, output_gate_bias_tensor, &output_gate_bias));
   TF_LITE_ENSURE_EQ(context, output_gate_bias->dims->size, 1);
   TF_LITE_ENSURE_EQ(context, output_gate_bias->dims->data[0], n_cell);
   TF_LITE_ENSURE_TYPES_EQ(context, output_gate_bias->type, kTfLiteFloat32);
@@ -413,7 +429,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // Inferring batch size, number of outputs and sequence length and
   // number of cells from the input tensors.
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
   TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteFloat32);
   TF_LITE_ENSURE_EQ(context, input->dims->size, 3);
   const bool time_major = params->time_major;
@@ -421,15 +438,19 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const int n_batch = time_major ? input->dims->data[1] : input->dims->data[0];
   const int n_input = input->dims->data[2];
 
-  const TfLiteTensor* fw_input_to_output_weights =
-      GetInput(context, node, kFwInputToOutputWeightsTensor);
+  const TfLiteTensor* fw_input_to_output_weights;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kFwInputToOutputWeightsTensor,
+                                 &fw_input_to_output_weights));
   const int n_fw_cell = fw_input_to_output_weights->dims->data[0];
   TF_LITE_ENSURE_EQ(context, fw_input_to_output_weights->dims->size, 2);
   TF_LITE_ENSURE_EQ(context, fw_input_to_output_weights->dims->data[1],
                     n_input);
 
-  const TfLiteTensor* bw_input_to_output_weights =
-      GetInput(context, node, kBwInputToOutputWeightsTensor);
+  const TfLiteTensor* bw_input_to_output_weights;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kBwInputToOutputWeightsTensor,
+                                 &bw_input_to_output_weights));
   const int n_bw_cell = bw_input_to_output_weights->dims->data[0];
   TF_LITE_ENSURE_EQ(context, bw_input_to_output_weights->dims->size, 2);
   TF_LITE_ENSURE_EQ(context, bw_input_to_output_weights->dims->data[1],
@@ -437,8 +458,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, bw_input_to_output_weights->type,
                     fw_input_to_output_weights->type);
 
-  const TfLiteTensor* fw_recurrent_to_output_weights =
-      GetInput(context, node, kFwRecurrentToOutputWeightsTensor);
+  const TfLiteTensor* fw_recurrent_to_output_weights;
+  TF_LITE_ENSURE_OK(
+      context, GetInputSafe(context, node, kFwRecurrentToOutputWeightsTensor,
+                            &fw_recurrent_to_output_weights));
   TF_LITE_ENSURE_EQ(context, fw_recurrent_to_output_weights->dims->size, 2);
   TF_LITE_ENSURE_EQ(context, fw_recurrent_to_output_weights->dims->data[0],
                     n_fw_cell);
@@ -446,8 +469,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                     fw_input_to_output_weights->type);
   const int n_fw_output = fw_recurrent_to_output_weights->dims->data[1];
 
-  const TfLiteTensor* bw_recurrent_to_output_weights =
-      GetInput(context, node, kBwRecurrentToOutputWeightsTensor);
+  const TfLiteTensor* bw_recurrent_to_output_weights;
+  TF_LITE_ENSURE_OK(
+      context, GetInputSafe(context, node, kBwRecurrentToOutputWeightsTensor,
+                            &bw_recurrent_to_output_weights));
   TF_LITE_ENSURE_EQ(context, bw_recurrent_to_output_weights->dims->size, 2);
   TF_LITE_ENSURE_EQ(context, bw_recurrent_to_output_weights->dims->data[0],
                     n_bw_cell);
@@ -504,7 +529,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   }
 
   // Get the pointer to output, activation_state and cell_state buffer tensors.
-  TfLiteTensor* fw_output = GetOutput(context, node, kFwOutputTensor);
+  TfLiteTensor* fw_output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kFwOutputTensor, &fw_output));
   TfLiteTensor* fw_activation_state =
       GetVariableInput(context, node, kFwInputActivationStateTensor);
   TF_LITE_ENSURE(context, fw_activation_state != nullptr);
@@ -541,8 +568,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Create a scratch buffer tensor.
   node->temporaries->data[kFwScratchBuffer] =
       op_data->scratch_tensor_index + kFwScratchBuffer;
-  TfLiteTensor* fw_scratch_buffer =
-      GetTemporary(context, node, kFwScratchBuffer);
+  TfLiteTensor* fw_scratch_buffer;
+  TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, kFwScratchBuffer,
+                                              &fw_scratch_buffer));
   fw_scratch_buffer->type = input->type;
   fw_scratch_buffer->allocation_type = kTfLiteArenaRw;
 
@@ -581,7 +609,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // Resize the output tensors.
   if (!params->merge_outputs) {
-    TfLiteTensor* bw_output = GetOutput(context, node, kBwOutputTensor);
+    TfLiteTensor* bw_output;
+    TF_LITE_ENSURE_OK(
+        context, GetOutputSafe(context, node, kBwOutputTensor, &bw_output));
     TfLiteIntArray* bw_output_size = TfLiteIntArrayCreate(3);
     bw_output_size->data[0] = time_major ? max_time : n_batch;
     bw_output_size->data[1] = time_major ? n_batch : max_time;
@@ -600,8 +630,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Create a scratch buffer tensor.
   node->temporaries->data[kBwScratchBuffer] =
       op_data->scratch_tensor_index + kBwScratchBuffer;
-  TfLiteTensor* bw_scratch_buffer =
-      GetTemporary(context, node, kBwScratchBuffer);
+  TfLiteTensor* bw_scratch_buffer;
+  TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, kBwScratchBuffer,
+                                              &bw_scratch_buffer));
   bw_scratch_buffer->type = input->type;
   bw_scratch_buffer->allocation_type = kTfLiteArenaRw;
 
@@ -631,8 +662,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     // (if present), activation_state and cell_state tensors.
     node->temporaries->data[kInputQuantized] =
         op_data->scratch_tensor_index + kInputQuantized;
-    TfLiteTensor* input_quantized =
-        GetTemporary(context, node, kInputQuantized);
+    TfLiteTensor* input_quantized;
+    TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, kInputQuantized,
+                                                &input_quantized));
     input_quantized->type = fw_input_to_output_weights->type;
     input_quantized->allocation_type = kTfLiteArenaRw;
     if (!TfLiteIntArrayEqual(input_quantized->dims, input->dims)) {
@@ -643,8 +675,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
     node->temporaries->data[kFwActivationStateQuantized] =
         op_data->scratch_tensor_index + kFwActivationStateQuantized;
-    TfLiteTensor* fw_activation_state_quantized =
-        GetTemporary(context, node, kFwActivationStateQuantized);
+    TfLiteTensor* fw_activation_state_quantized;
+    TF_LITE_ENSURE_OK(
+        context, GetTemporarySafe(context, node, kFwActivationStateQuantized,
+                                  &fw_activation_state_quantized));
     fw_activation_state_quantized->type = fw_input_to_output_weights->type;
     fw_activation_state_quantized->allocation_type = kTfLiteArenaRw;
     if (!TfLiteIntArrayEqual(fw_activation_state_quantized->dims,
@@ -657,8 +691,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
     node->temporaries->data[kBwActivationStateQuantized] =
         op_data->scratch_tensor_index + kBwActivationStateQuantized;
-    TfLiteTensor* bw_activation_state_quantized =
-        GetTemporary(context, node, kBwActivationStateQuantized);
+    TfLiteTensor* bw_activation_state_quantized;
+    TF_LITE_ENSURE_OK(
+        context, GetTemporarySafe(context, node, kBwActivationStateQuantized,
+                                  &bw_activation_state_quantized));
     bw_activation_state_quantized->type = fw_input_to_output_weights->type;
     bw_activation_state_quantized->allocation_type = kTfLiteArenaRw;
     if (!TfLiteIntArrayEqual(bw_activation_state_quantized->dims,
@@ -671,8 +707,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
     node->temporaries->data[kFwCellStateQuantized] =
         op_data->scratch_tensor_index + kFwCellStateQuantized;
-    TfLiteTensor* fw_cell_state_quantized =
-        GetTemporary(context, node, kFwCellStateQuantized);
+    TfLiteTensor* fw_cell_state_quantized;
+    TF_LITE_ENSURE_OK(context,
+                      GetTemporarySafe(context, node, kFwCellStateQuantized,
+                                       &fw_cell_state_quantized));
     fw_cell_state_quantized->type = fw_input_to_output_weights->type;
     fw_cell_state_quantized->allocation_type = kTfLiteArenaRw;
     if (!TfLiteIntArrayEqual(fw_cell_state_quantized->dims,
@@ -685,8 +723,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
     node->temporaries->data[kBwCellStateQuantized] =
         op_data->scratch_tensor_index + kBwCellStateQuantized;
-    TfLiteTensor* bw_cell_state_quantized =
-        GetTemporary(context, node, kBwCellStateQuantized);
+    TfLiteTensor* bw_cell_state_quantized;
+    TF_LITE_ENSURE_OK(context,
+                      GetTemporarySafe(context, node, kBwCellStateQuantized,
+                                       &bw_cell_state_quantized));
     bw_cell_state_quantized->type = fw_input_to_output_weights->type;
     bw_cell_state_quantized->allocation_type = kTfLiteArenaRw;
     if (!TfLiteIntArrayEqual(bw_cell_state_quantized->dims,
@@ -705,7 +745,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     // the scaling factor of the matrix).
     node->temporaries->data[kInputScalingFactors] =
         op_data->scratch_tensor_index + kInputScalingFactors;
-    TfLiteTensor* input_sf = GetTemporary(context, node, kInputScalingFactors);
+    TfLiteTensor* input_sf;
+    TF_LITE_ENSURE_OK(
+        context,
+        GetTemporarySafe(context, node, kInputScalingFactors, &input_sf));
     input_sf->type = kTfLiteFloat32;
     input_sf->allocation_type = kTfLiteArenaRw;
     int scaling_dims[1] = {n_batch};
@@ -717,8 +760,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
     node->temporaries->data[kAuxInputScalingFactors] =
         op_data->scratch_tensor_index + kAuxInputScalingFactors;
-    TfLiteTensor* aux_input_sf =
-        GetTemporary(context, node, kAuxInputScalingFactors);
+    TfLiteTensor* aux_input_sf;
+    TF_LITE_ENSURE_OK(context,
+                      GetTemporarySafe(context, node, kAuxInputScalingFactors,
+                                       &aux_input_sf));
     aux_input_sf->type = kTfLiteFloat32;
     aux_input_sf->allocation_type = kTfLiteArenaRw;
     if (!TfLiteIntArrayEqualsArray(aux_input_sf->dims, 1, scaling_dims)) {
@@ -729,8 +774,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
     node->temporaries->data[kOutputStateScalingFactors] =
         op_data->scratch_tensor_index + kOutputStateScalingFactors;
-    TfLiteTensor* output_state_sf =
-        GetTemporary(context, node, kOutputStateScalingFactors);
+    TfLiteTensor* output_state_sf;
+    TF_LITE_ENSURE_OK(
+        context, GetTemporarySafe(context, node, kOutputStateScalingFactors,
+                                  &output_state_sf));
     output_state_sf->type = kTfLiteFloat32;
     output_state_sf->allocation_type = kTfLiteArenaRw;
     if (!TfLiteIntArrayEqualsArray(output_state_sf->dims, 1, scaling_dims)) {
@@ -741,8 +788,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
     node->temporaries->data[kProductScalingFactors] =
         op_data->scratch_tensor_index + kProductScalingFactors;
-    TfLiteTensor* prod_scaling_factors =
-        GetTemporary(context, node, kProductScalingFactors);
+    TfLiteTensor* prod_scaling_factors;
+    TF_LITE_ENSURE_OK(context,
+                      GetTemporarySafe(context, node, kProductScalingFactors,
+                                       &prod_scaling_factors));
     prod_scaling_factors->type = kTfLiteFloat32;
     prod_scaling_factors->allocation_type = kTfLiteArenaRw;
     if (!TfLiteIntArrayEqualsArray(prod_scaling_factors->dims, 1,
@@ -758,8 +807,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     // this is used for diagonal matrices, only need to store n_cell values.
     node->temporaries->data[kRecoveredCellWeights] =
         op_data->scratch_tensor_index + kRecoveredCellWeights;
-    TfLiteTensor* recovered_cell_weights =
-        GetTemporary(context, node, kRecoveredCellWeights);
+    TfLiteTensor* recovered_cell_weights;
+    TF_LITE_ENSURE_OK(context,
+                      GetTemporarySafe(context, node, kRecoveredCellWeights,
+                                       &recovered_cell_weights));
     recovered_cell_weights->type = kTfLiteFloat32;
     recovered_cell_weights->allocation_type = kTfLiteArenaRw;
     int recovered_cell_dims[1] = {n_fw_cell};
@@ -775,8 +826,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     // Allocate a temporary tensor to store the accumulated int32 values.
     node->temporaries->data[kAccumScratchBuffer] =
         op_data->scratch_tensor_index + kAccumScratchBuffer;
-    TfLiteTensor* accum_scratch =
-        GetTemporary(context, node, kAccumScratchBuffer);
+    TfLiteTensor* accum_scratch;
+    TF_LITE_ENSURE_OK(
+        context,
+        GetTemporarySafe(context, node, kAccumScratchBuffer, &accum_scratch));
     accum_scratch->type = kTfLiteInt32;
     accum_scratch->allocation_type = kTfLiteArenaRw;
     int n_cell = std::max(n_fw_cell, n_bw_cell);
@@ -797,7 +850,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     // Allocate temporary tensors for storing zero-points.
     node->temporaries->data[kInputZeroPoints] =
         op_data->scratch_tensor_index + kInputZeroPoints;
-    TfLiteTensor* input_zp = GetTemporary(context, node, kInputZeroPoints);
+    TfLiteTensor* input_zp;
+    TF_LITE_ENSURE_OK(
+        context, GetTemporarySafe(context, node, kInputZeroPoints, &input_zp));
     input_zp->type = kTfLiteFloat32;
     input_zp->allocation_type = kTfLiteArenaRw;
     if (!TfLiteIntArrayEqualsArray(input_zp->dims, 1, scaling_dims)) {
@@ -808,8 +863,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
     node->temporaries->data[kAuxInputZeroPoints] =
         op_data->scratch_tensor_index + kAuxInputZeroPoints;
-    TfLiteTensor* aux_input_zp =
-        GetTemporary(context, node, kAuxInputZeroPoints);
+    TfLiteTensor* aux_input_zp;
+    TF_LITE_ENSURE_OK(
+        context,
+        GetTemporarySafe(context, node, kAuxInputZeroPoints, &aux_input_zp));
     aux_input_zp->type = kTfLiteFloat32;
     aux_input_zp->allocation_type = kTfLiteArenaRw;
     if (!TfLiteIntArrayEqualsArray(aux_input_zp->dims, 1, scaling_dims)) {
@@ -820,8 +877,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
     node->temporaries->data[kOutputStateZeroPoints] =
         op_data->scratch_tensor_index + kOutputStateZeroPoints;
-    TfLiteTensor* output_state_zp =
-        GetTemporary(context, node, kOutputStateZeroPoints);
+    TfLiteTensor* output_state_zp;
+    TF_LITE_ENSURE_OK(context,
+                      GetTemporarySafe(context, node, kOutputStateZeroPoints,
+                                       &output_state_zp));
     output_state_zp->type = kTfLiteFloat32;
     output_state_zp->allocation_type = kTfLiteArenaRw;
     if (!TfLiteIntArrayEqualsArray(output_state_zp->dims, 1, scaling_dims)) {
@@ -844,7 +903,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
     node->temporaries->data[kFwRowSums] =
         op_data->scratch_tensor_index + kFwRowSums;
-    TfLiteTensor* fw_row_sums = GetTemporary(context, node, kFwRowSums);
+    TfLiteTensor* fw_row_sums;
+    TF_LITE_ENSURE_OK(
+        context, GetTemporarySafe(context, node, kFwRowSums, &fw_row_sums));
     fw_row_sums->type = kTfLiteInt32;
     fw_row_sums->allocation_type = kTfLiteArenaRwPersistent;
     int fw_row_sums_dims[2] = {fw_row_sums_rows, n_fw_cell};
@@ -867,7 +928,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
     node->temporaries->data[kBwRowSums] =
         op_data->scratch_tensor_index + kBwRowSums;
-    TfLiteTensor* bw_row_sums = GetTemporary(context, node, kBwRowSums);
+    TfLiteTensor* bw_row_sums;
+    TF_LITE_ENSURE_OK(
+        context, GetTemporarySafe(context, node, kBwRowSums, &bw_row_sums));
     bw_row_sums->type = kTfLiteInt32;
     bw_row_sums->allocation_type = kTfLiteArenaRwPersistent;
     int bw_row_sums_dims[2] = {bw_row_sums_rows, n_bw_cell};
@@ -884,8 +947,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     if (has_aux_input) {
       node->temporaries->data[kAuxInputQuantized] =
           op_data->scratch_tensor_index + kAuxInputQuantized;
-      TfLiteTensor* aux_input_quantized =
-          GetTemporary(context, node, kAuxInputQuantized);
+      TfLiteTensor* aux_input_quantized;
+      TF_LITE_ENSURE_OK(context,
+                        GetTemporarySafe(context, node, kAuxInputQuantized,
+                                         &aux_input_quantized));
       aux_input_quantized->type = fw_input_to_output_weights->type;
       aux_input_quantized->allocation_type = kTfLiteArenaRw;
       if (!TfLiteIntArrayEqual(aux_input_quantized->dims, aux_input->dims)) {
@@ -906,26 +971,39 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       node->builtin_data);
   auto* op_data = reinterpret_cast<OpData*>(node->user_data);
   // Input tensor.
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
 
   // Tensors for the forward cell.
   const TfLiteTensor* fw_input_to_input_weights =
       GetOptionalInputTensor(context, node, kFwInputToInputWeightsTensor);
-  const TfLiteTensor* fw_input_to_forget_weights =
-      GetInput(context, node, kFwInputToForgetWeightsTensor);
-  const TfLiteTensor* fw_input_to_cell_weights =
-      GetInput(context, node, kFwInputToCellWeightsTensor);
-  const TfLiteTensor* fw_input_to_output_weights =
-      GetInput(context, node, kFwInputToOutputWeightsTensor);
+  const TfLiteTensor* fw_input_to_forget_weights;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kFwInputToForgetWeightsTensor,
+                                 &fw_input_to_forget_weights));
+  const TfLiteTensor* fw_input_to_cell_weights;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kFwInputToCellWeightsTensor,
+                                 &fw_input_to_cell_weights));
+  const TfLiteTensor* fw_input_to_output_weights;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kFwInputToOutputWeightsTensor,
+                                 &fw_input_to_output_weights));
 
   const TfLiteTensor* fw_recurrent_to_input_weights =
       GetOptionalInputTensor(context, node, kFwRecurrentToInputWeightsTensor);
-  const TfLiteTensor* fw_recurrent_to_forget_weights =
-      GetInput(context, node, kFwRecurrentToForgetWeightsTensor);
-  const TfLiteTensor* fw_recurrent_to_cell_weights =
-      GetInput(context, node, kFwRecurrentToCellWeightsTensor);
-  const TfLiteTensor* fw_recurrent_to_output_weights =
-      GetInput(context, node, kFwRecurrentToOutputWeightsTensor);
+  const TfLiteTensor* fw_recurrent_to_forget_weights;
+  TF_LITE_ENSURE_OK(
+      context, GetInputSafe(context, node, kFwRecurrentToForgetWeightsTensor,
+                            &fw_recurrent_to_forget_weights));
+  const TfLiteTensor* fw_recurrent_to_cell_weights;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kFwRecurrentToCellWeightsTensor,
+                                 &fw_recurrent_to_cell_weights));
+  const TfLiteTensor* fw_recurrent_to_output_weights;
+  TF_LITE_ENSURE_OK(
+      context, GetInputSafe(context, node, kFwRecurrentToOutputWeightsTensor,
+                            &fw_recurrent_to_output_weights));
 
   const TfLiteTensor* fw_cell_to_input_weights =
       GetOptionalInputTensor(context, node, kFwCellToInputWeightsTensor);
@@ -936,12 +1014,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   const TfLiteTensor* fw_input_gate_bias =
       GetOptionalInputTensor(context, node, kFwInputGateBiasTensor);
-  const TfLiteTensor* fw_forget_gate_bias =
-      GetInput(context, node, kFwForgetGateBiasTensor);
-  const TfLiteTensor* fw_cell_gate_bias =
-      GetInput(context, node, kFwCellGateBiasTensor);
-  const TfLiteTensor* fw_output_gate_bias =
-      GetInput(context, node, kFwOutputGateBiasTensor);
+  const TfLiteTensor* fw_forget_gate_bias;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kFwForgetGateBiasTensor,
+                                 &fw_forget_gate_bias));
+  const TfLiteTensor* fw_cell_gate_bias;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kFwCellGateBiasTensor,
+                                          &fw_cell_gate_bias));
+  const TfLiteTensor* fw_output_gate_bias;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kFwOutputGateBiasTensor,
+                                 &fw_output_gate_bias));
 
   const TfLiteTensor* fw_projection_weights =
       GetOptionalInputTensor(context, node, kFwProjectionWeightsTensor);
@@ -950,30 +1033,44 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   TfLiteTensor* fw_activation_state =
       GetVariableInput(context, node, kFwInputActivationStateTensor);
-  TF_LITE_ENSURE(context, fw_activation_state != nullptr);
+  TFLITE_DCHECK(fw_activation_state != nullptr);
   TfLiteTensor* fw_cell_state =
       GetVariableInput(context, node, kFwInputCellStateTensor);
-  TF_LITE_ENSURE(context, fw_cell_state != nullptr);
-  TfLiteTensor* fw_output = GetOutput(context, node, kFwOutputTensor);
+  TFLITE_DCHECK(fw_cell_state != nullptr);
+  TfLiteTensor* fw_output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kFwOutputTensor, &fw_output));
 
   // Tensors for the backward cell.
   const TfLiteTensor* bw_input_to_input_weights =
       GetOptionalInputTensor(context, node, kBwInputToInputWeightsTensor);
-  const TfLiteTensor* bw_input_to_forget_weights =
-      GetInput(context, node, kBwInputToForgetWeightsTensor);
-  const TfLiteTensor* bw_input_to_cell_weights =
-      GetInput(context, node, kBwInputToCellWeightsTensor);
-  const TfLiteTensor* bw_input_to_output_weights =
-      GetInput(context, node, kBwInputToOutputWeightsTensor);
+  const TfLiteTensor* bw_input_to_forget_weights;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kBwInputToForgetWeightsTensor,
+                                 &bw_input_to_forget_weights));
+  const TfLiteTensor* bw_input_to_cell_weights;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kBwInputToCellWeightsTensor,
+                                 &bw_input_to_cell_weights));
+  const TfLiteTensor* bw_input_to_output_weights;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kBwInputToOutputWeightsTensor,
+                                 &bw_input_to_output_weights));
 
   const TfLiteTensor* bw_recurrent_to_input_weights =
       GetOptionalInputTensor(context, node, kBwRecurrentToInputWeightsTensor);
-  const TfLiteTensor* bw_recurrent_to_forget_weights =
-      GetInput(context, node, kBwRecurrentToForgetWeightsTensor);
-  const TfLiteTensor* bw_recurrent_to_cell_weights =
-      GetInput(context, node, kBwRecurrentToCellWeightsTensor);
-  const TfLiteTensor* bw_recurrent_to_output_weights =
-      GetInput(context, node, kBwRecurrentToOutputWeightsTensor);
+  const TfLiteTensor* bw_recurrent_to_forget_weights;
+  TF_LITE_ENSURE_OK(
+      context, GetInputSafe(context, node, kBwRecurrentToForgetWeightsTensor,
+                            &bw_recurrent_to_forget_weights));
+  const TfLiteTensor* bw_recurrent_to_cell_weights;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kBwRecurrentToCellWeightsTensor,
+                                 &bw_recurrent_to_cell_weights));
+  const TfLiteTensor* bw_recurrent_to_output_weights;
+  TF_LITE_ENSURE_OK(
+      context, GetInputSafe(context, node, kBwRecurrentToOutputWeightsTensor,
+                            &bw_recurrent_to_output_weights));
 
   const TfLiteTensor* bw_cell_to_input_weights =
       GetOptionalInputTensor(context, node, kBwCellToInputWeightsTensor);
@@ -984,12 +1081,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   const TfLiteTensor* bw_input_gate_bias =
       GetOptionalInputTensor(context, node, kBwInputGateBiasTensor);
-  const TfLiteTensor* bw_forget_gate_bias =
-      GetInput(context, node, kBwForgetGateBiasTensor);
-  const TfLiteTensor* bw_cell_gate_bias =
-      GetInput(context, node, kBwCellGateBiasTensor);
-  const TfLiteTensor* bw_output_gate_bias =
-      GetInput(context, node, kBwOutputGateBiasTensor);
+  const TfLiteTensor* bw_forget_gate_bias;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kBwForgetGateBiasTensor,
+                                 &bw_forget_gate_bias));
+  const TfLiteTensor* bw_cell_gate_bias;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kBwCellGateBiasTensor,
+                                          &bw_cell_gate_bias));
+  const TfLiteTensor* bw_output_gate_bias;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kBwOutputGateBiasTensor,
+                                 &bw_output_gate_bias));
 
   const TfLiteTensor* bw_projection_weights =
       GetOptionalInputTensor(context, node, kBwProjectionWeightsTensor);
@@ -999,19 +1101,21 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // State tensors.
   TfLiteTensor* bw_activation_state =
       GetVariableInput(context, node, kBwInputActivationStateTensor);
-  TF_LITE_ENSURE(context, bw_activation_state != nullptr);
+  TFLITE_DCHECK(bw_activation_state != nullptr);
   TfLiteTensor* bw_cell_state =
       GetVariableInput(context, node, kBwInputCellStateTensor);
-  TF_LITE_ENSURE(context, bw_cell_state != nullptr);
+  TFLITE_DCHECK(bw_cell_state != nullptr);
   TfLiteTensor* bw_output = params->merge_outputs
                                 ? nullptr
                                 : GetOutput(context, node, kBwOutputTensor);
 
   // Temporary tensors.
-  TfLiteTensor* fw_scratch_buffer =
-      GetTemporary(context, node, kFwScratchBuffer);
-  TfLiteTensor* bw_scratch_buffer =
-      GetTemporary(context, node, kBwScratchBuffer);
+  TfLiteTensor* fw_scratch_buffer;
+  TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, kFwScratchBuffer,
+                                              &fw_scratch_buffer));
+  TfLiteTensor* bw_scratch_buffer;
+  TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, kBwScratchBuffer,
+                                              &bw_scratch_buffer));
 
   // (Optional) auxiliary inputs.
   const TfLiteTensor* aux_input =
@@ -1112,27 +1216,47 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     }
     case kTfLiteUInt8:
     case kTfLiteInt8: {
-      TfLiteTensor* input_quantized =
-          GetTemporary(context, node, kInputQuantized);
-      TfLiteTensor* fw_activation_state_quantized =
-          GetTemporary(context, node, kFwActivationStateQuantized);
-      TfLiteTensor* bw_activation_state_quantized =
-          GetTemporary(context, node, kBwActivationStateQuantized);
-      TfLiteTensor* fw_cell_state_quantized =
-          GetTemporary(context, node, kFwCellStateQuantized);
-      TfLiteTensor* bw_cell_state_quantized =
-          GetTemporary(context, node, kBwCellStateQuantized);
-      TfLiteTensor* prod_scaling_factors =
-          GetTemporary(context, node, kProductScalingFactors);
-      TfLiteTensor* recovered_cell_weights =
-          GetTemporary(context, node, kRecoveredCellWeights);
+      TfLiteTensor* input_quantized;
+      TF_LITE_ENSURE_OK(
+          context,
+          GetTemporarySafe(context, node, kInputQuantized, &input_quantized));
+      TfLiteTensor* fw_activation_state_quantized;
+      TF_LITE_ENSURE_OK(
+          context, GetTemporarySafe(context, node, kFwActivationStateQuantized,
+                                    &fw_activation_state_quantized));
+      TfLiteTensor* bw_activation_state_quantized;
+      TF_LITE_ENSURE_OK(
+          context, GetTemporarySafe(context, node, kBwActivationStateQuantized,
+                                    &bw_activation_state_quantized));
+      TfLiteTensor* fw_cell_state_quantized;
+      TF_LITE_ENSURE_OK(context,
+                        GetTemporarySafe(context, node, kFwCellStateQuantized,
+                                         &fw_cell_state_quantized));
+      TfLiteTensor* bw_cell_state_quantized;
+      TF_LITE_ENSURE_OK(context,
+                        GetTemporarySafe(context, node, kBwCellStateQuantized,
+                                         &bw_cell_state_quantized));
+      TfLiteTensor* prod_scaling_factors;
+      TF_LITE_ENSURE_OK(context,
+                        GetTemporarySafe(context, node, kProductScalingFactors,
+                                         &prod_scaling_factors));
+      TfLiteTensor* recovered_cell_weights;
+      TF_LITE_ENSURE_OK(context,
+                        GetTemporarySafe(context, node, kRecoveredCellWeights,
+                                         &recovered_cell_weights));
       TfLiteTensor* aux_input_quantized =
           use_aux_input ? GetTemporary(context, node, kAuxInputQuantized)
                         : nullptr;
-      TfLiteTensor* accum_scratch =
-          GetTemporary(context, node, kAccumScratchBuffer);
-      TfLiteTensor* fw_row_sums = GetTemporary(context, node, kFwRowSums);
-      TfLiteTensor* bw_row_sums = GetTemporary(context, node, kBwRowSums);
+      TfLiteTensor* accum_scratch;
+      TF_LITE_ENSURE_OK(
+          context,
+          GetTemporarySafe(context, node, kAccumScratchBuffer, &accum_scratch));
+      TfLiteTensor* fw_row_sums;
+      TF_LITE_ENSURE_OK(
+          context, GetTemporarySafe(context, node, kFwRowSums, &fw_row_sums));
+      TfLiteTensor* bw_row_sums;
+      TF_LITE_ENSURE_OK(
+          context, GetTemporarySafe(context, node, kBwRowSums, &bw_row_sums));
       const int fw_row_sums_size = fw_row_sums->dims->data[0];
       const int bw_row_sums_size = bw_row_sums->dims->data[0];
       TfLiteStatus fw_pass_status = lstm_eval::EvalHybrid(

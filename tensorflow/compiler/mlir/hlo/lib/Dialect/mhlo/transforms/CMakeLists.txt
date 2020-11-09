@@ -49,7 +49,7 @@ add_mlir_library(ChloPasses
 
 add_mlir_library(MhloPasses
   legalize_gather_to_torch_index_select.cc
-  legalize_tanh_to_approximation.cc
+  legalize_trigonometric_to_approximation.cc
   lower_complex.cc
   lower_complex_patterns.td
   lower_general_dot.cc
@@ -67,6 +67,7 @@ add_mlir_library(MhloPasses
   DEPENDS
   MLIRhlo_opsIncGen
   MLIRMhloLowerComplexIncGen
+  MLIRMhloPassIncGen
 
   LINK_COMPONENTS
   Core
@@ -133,8 +134,6 @@ add_mlir_library(LmhloPasses
   lhlo_fuse_linalg.cc
   lhlo_legalize_to_affine.cc
   lhlo_legalize_to_gpu.cc
-  lhlo_legalize_to_llvm.cc
-  lhlo_legalize_to_llvm_pass.cc
   lhlo_legalize_to_parallel_loops.cc
 
   DEPENDS

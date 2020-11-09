@@ -64,6 +64,7 @@ TfLiteStatus PrepareSimple(TfLiteContext* context, TfLiteNode* node) {
 
   // Validate axis type
   const TfLiteTensor* axis = GetInput(context, node, 1);
+  TF_LITE_ENSURE(context, axis != nullptr);
   TF_LITE_ENSURE_TYPES_EQ(context, axis->type, kTfLiteInt32);
 
   if (input->type == kTfLiteInt8) {
@@ -149,21 +150,17 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
 
   tflite::MeanParams op_params;
   ResolveAxis(tflite::micro::GetTensorData<int>(axis), num_axis, &op_params);
-  // TODO(b/146571391): Support only 4D Input and 2D Axis for Mean until
-  // scratch tensor allocation has been implemented in (b/132070898)
-  bool is_valid_inputs = (input->dims->size == 4 && op_params.axis_count == 2 &&
-                          ((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
-                           (op_params.axis[0] == 2 && op_params.axis[1] == 1)));
-  TF_LITE_ENSURE_MSG(
-      context, is_valid_inputs == true,
-      "Number of Input "
-      "dimensions != 4 OR the Axis is not either [1, 2] or [2, 1]");
+
+  // Special case mean implementation exists for 4D mean across axes 1 and 2.
+  bool special_case_4d_axes_1_and_2 =
+      input->dims->size == 4 && op_params.axis_count == 2 &&
+      ((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
+       (op_params.axis[0] == 2 && op_params.axis[1] == 1));
+
   switch (input->type) {
     case kTfLiteFloat32: {
-      // TODO(b/139102329): Handle the below special case in the combined
-      // reference method.
       // Defer to specialized implementation for 4D Mean across axes 1 & 2.
-      if (params->keep_dims) {
+      if (params->keep_dims && special_case_4d_axes_1_and_2) {
         reference_ops::Mean(op_params, tflite::micro::GetTensorShape(input),
                             tflite::micro::GetTensorData<float>(input),
                             tflite::micro::GetTensorShape(output),
@@ -181,7 +178,8 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
       }
     } break;
     case kTfLiteInt8: {
-      if (params->keep_dims) {
+      // Defer to specialized implementation for 4D Mean across axes 1 & 2.
+      if (params->keep_dims && special_case_4d_axes_1_and_2) {
         reference_integer_ops::Mean(
             op_params, op_data->multiplier, op_data->shift,
             tflite::micro::GetTensorShape(input),
@@ -216,7 +214,8 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
       }
     } break;
     case kTfLiteUInt8: {
-      if (params->keep_dims) {
+      // Defer to specialized implementation for 4D Mean across axes 1 & 2.
+      if (params->keep_dims && special_case_4d_axes_1_and_2) {
         reference_ops::Mean(op_params, tflite::micro::GetTensorShape(input),
                             tflite::micro::GetTensorData<uint8_t>(input),
                             op_data->input_zp, op_data->input_scale,
@@ -252,7 +251,6 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
       }
     } break;
     default:
-      // TODO(b/144955155): Support uint8_t(b/144955155) and int8_t(b/144955018)
       TF_LITE_ENSURE_MSG(context, false,
                          "Currently, only float32, int8 or uint8 input type "
                          "is supported.");
