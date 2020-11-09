@@ -279,6 +279,10 @@ class XPlaneBuilder : public XStatsBuilder<XPlane> {
   // id was unused, otherwise the builder will add events to an existing line.
   XLineBuilder GetOrCreateLine(int64 line_id);
 
+  // Returns a new event metadata with an automatically generated metadata_id.
+  // WARNING: If calling this function, don't call GetOrCreateEventMetadata.
+  XEventMetadata* CreateEventMetadata();
+
   // Returns event metadata with the given id. Creates a new metadata if the id
   // was unused.
   // WARNING: If calling this function, don't call the string overloads below
@@ -295,6 +299,10 @@ class XPlaneBuilder : public XStatsBuilder<XPlane> {
   XEventMetadata* GetOrCreateEventMetadata(const char* name) {
     return GetOrCreateEventMetadata(absl::string_view(name));
   }
+
+  // Returns a new stat metadata with an automatically generated metadata_id.
+  // WARNING: If calling this function, don't call GetOrCreateEventMetadata.
+  XStatMetadata* CreateStatMetadata();
 
   // Returns stat metadata with the given id. Creates a new metadata if the id
   // was unused.
