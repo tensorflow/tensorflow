@@ -96,7 +96,7 @@ inline void ConvertToMliQuantParamsPerChannel(const TfLiteTensor* tfT,
 template <typename datatype>
 inline void MliTensorAttachBuffer(const TfLiteEvalTensor* tfT,
                                   mli_tensor* mliT) {
-  mliT->data = (void*)tflite::micro::GetTensorData<datatype>(tfT);
+  mliT->data = static_cast<void*>(tflite::micro::GetTensorData<datatype>(tfT));
 }
 
 inline void ConvertToMliTensor(const TfLiteTensor* tfT, mli_tensor* mliT) {
