@@ -509,14 +509,18 @@ class TimeDistributedTest(keras_parameterized.TestCase):
     x2 = keras.Input(shape=(None, 2, 1), dtype='float32')
     y1, y2 = keras.layers.TimeDistributed(layer)([x1, x2])
     model_1 = keras.models.Model([x1, x2], [y1, y2])
-    model_1._run_eagerly = testing_utils.should_run_eagerly()
+    model_1.compile(optimizer='rmsprop', loss='mse', run_eagerly=testing_utils.should_run_eagerly())
     output_1 = model_1.predict((data_1, data_2), steps=1)
+    model_1.fit(
+      x=[np.random.random((10, 2, 2, 1)), np.random.random((10, 2, 2, 1))],
+      y=[np.random.random((10, 2, 2, 8)), np.random.random((10, 2, 2, 16))],
+      epochs=1,
+      batch_size=3)
 
     y1 = keras.layers.Dense(8)(x1)
     y2 = keras.layers.Dense(16)(x2)
     model_2 = keras.models.Model([x1, x2], [y1, y2])
-    model_2._run_eagerly = testing_utils.should_run_eagerly()
-    output_2 = model_1.predict((data_1, data_2), steps=1)
+    output_2 = model_2.predict((data_1, data_2), steps=1)
 
     self.assertAllClose(output_1, output_2)
 
