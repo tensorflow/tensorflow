@@ -425,5 +425,30 @@ class SparseFillEmptyRowsGradOp : public OpKernel {
 TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+// Forward declarations of the functor specializations for GPU.
+namespace functor {
+#define DECLARE_GPU_SPEC(T, Tindex)                                 \
+  template <>                                                       \
+  Status SparseFillEmptyRowsGrad<GPUDevice, T, Tindex>::operator()( \
+      OpKernelContext* context,                                     \
+      typename TTypes<Tindex>::ConstVec reverse_index_map,          \
+      typename TTypes<T>::ConstVec grad_values,                     \
+      typename TTypes<T>::Vec d_values,                             \
+      typename TTypes<T>::Scalar d_default_value);                  \
+  extern template struct SparseFillEmptyRowsGrad<GPUDevice, T, Tindex>;
+#define DECLARE_GPU_SPEC_INT64(T) DECLARE_GPU_SPEC(T, int64)
+TF_CALL_POD_TYPES(DECLARE_GPU_SPEC_INT64);
+#undef DECLARE_GPU_SPEC_INT64
+#undef DECLARE_GPU_SPEC
+}  // namespace functor
+
+#define REGISTER_GPU_KERNELS(T) REGISTER_KERNELS(GPU, T, int64)
+TF_CALL_POD_TYPES(REGISTER_GPU_KERNELS);
+#undef REGISTER_GPU_KERNELS
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 #undef REGISTER_KERNELS
 }  // namespace tensorflow

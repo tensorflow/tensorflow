@@ -506,6 +506,114 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
 TF_CALL_POD_TYPES(DEFINE_INT64)
 #undef DEFINE_INT64
 
+namespace {
+
+template <typename T, typename Tindex>
+__global__ __launch_bounds__(1024) void GatherOriginalGradValuesKernel(
+    GpuLaunchConfig cfg, const Tindex* reverse_index_map, const T* grad_values,
+    T* d_values, bool* visited) {
+  GPU_1D_KERNEL_LOOP(input_i, cfg.virtual_thread_count) {
+    Tindex output_i = reverse_index_map[input_i];
+    d_values[input_i] = grad_values[output_i];
+    visited[output_i] = true;
+  }
+}
+
+template <typename T, typename Tindex>
+struct ZeroMaskedValues {
+  ZeroMaskedValues(const bool* _mask, const T* _values)
+      : mask(_mask), values(_values) {}
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(Tindex i) const {
+    return mask[i] ? T(0) : values[i];
+  }
+  const bool* mask;  // true means return zero instead of value
+  const T* values;
+};
+
+}  // namespace
+
+namespace functor {
+
+template <typename T, typename Tindex>
+struct SparseFillEmptyRowsGrad<GPUDevice, T, Tindex> {
+  Status operator()(OpKernelContext* context,
+                    typename TTypes<Tindex>::ConstVec reverse_index_map,
+                    typename TTypes<T>::ConstVec grad_values,
+                    typename TTypes<T>::Vec d_values,
+                    typename TTypes<T>::Scalar d_default_value) {
+    const GPUDevice& device = context->eigen_device<GPUDevice>();
+    const Tindex N = reverse_index_map.dimension(0);
+    const Tindex N_full = grad_values.dimension(0);
+
+    Tensor visited_t;
+    TF_RETURN_IF_ERROR(
+        context->allocate_temp(DT_BOOL, TensorShape({N_full}), &visited_t));
+    auto visited = visited_t.vec<bool>();
+    visited.device(device) = visited.constant(false);
+
+    TF_RETURN_IF_ERROR(
+        wrap_kernel_call(GatherOriginalGradValuesKernel<T, Tindex>, device, N,
+                         reverse_index_map, grad_values, d_values, visited));
+
+    // Now we mask out the visited values and sum the remaining ones (which
+    // correspond to the empty rows in the forward input) to compute
+    // d_default_value.
+
+    gpuprim::CountingInputIterator<Tindex, Tindex> counting_iterator(Tindex(0));
+    ZeroMaskedValues<T, Tindex> mask_values_fn(visited.data(),
+                                               grad_values.data());
+    gpuprim::TransformInputIterator<T, decltype(mask_values_fn),
+                                    decltype(counting_iterator), Tindex>
+        transform_iterator(counting_iterator, mask_values_fn);
+
+    std::size_t temp_storage_bytes = 0;
+    auto gpuprim_status = gpuprim::DeviceReduce::Sum(
+        /*temp_storage = */ nullptr, temp_storage_bytes,
+        /*d_in = */ transform_iterator,
+        /*d_out = */ d_default_value.data(),
+        /*num_items = */ N_full,
+        /*stream = */ device.stream());
+
+    if (gpuprim_status != gpuSuccess) {
+      return errors::Internal(
+          "SparseFillEmptyRowsGrad: Could not launch "
+          "gpuprim::DeviceReduce::Sum to calculate temp_storage_bytes, "
+          "status: ",
+          GpuGetErrorString(gpuprim_status));
+    }
+
+    Tensor temp_storage;
+    TF_RETURN_IF_ERROR(context->allocate_temp(
+        DT_INT8, TensorShape({static_cast<int64>(temp_storage_bytes)}),
+        &temp_storage));
+
+    gpuprim_status = gpuprim::DeviceReduce::Sum(
+        /*temp_storage = */ temp_storage.flat<int8>().data(),
+        temp_storage_bytes,
+        /*d_in = */ transform_iterator,
+        /*d_out = */ d_default_value.data(),
+        /*num_items = */ N_full,
+        /*stream = */ device.stream());
+
+    if (gpuprim_status != gpuSuccess) {
+      return errors::Internal(
+          "SparseFillEmptyRowsGrad: Could not launch "
+          "gpuprim::DeviceReduce::Sum to sum values from originally-empty "
+          "rows. temp_storage_bytes: ",
+          temp_storage_bytes, ", status: ", GpuGetErrorString(gpuprim_status));
+    }
+
+    return Status::OK();
+  }
+};
+
+}  // namespace functor
+
+#define DEFINE_INT64(T) \
+  template struct functor::SparseFillEmptyRowsGrad<GPUDevice, T, int64>;
+TF_CALL_POD_TYPES(DEFINE_INT64);
+#undef DEFINE_INT64
+
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
