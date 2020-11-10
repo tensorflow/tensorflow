@@ -162,7 +162,10 @@ cc_library(
 # not link in both this and "tpu_api_dlsym_initializer".
 cc_library(
     name = "tpu_executor_dlsym_initializer",
-    srcs = ["tpu_executor_dlsym_initializer.cc"],
+    srcs = if_windows(
+        ["tpu_executor_dlsym_initializer_windows.cc"],
+        otherwise = ["tpu_executor_dlsym_initializer.cc"],
+    ),
     visibility = ["//visibility:public"],
     deps = [
         ":tpu_api_dlsym_set_fn",
