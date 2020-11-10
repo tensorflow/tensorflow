@@ -289,7 +289,7 @@ Status XlaCompilationCache::CompileSingleOp(
     const ConfigProto* config = ctx->function_library()->config_proto();
     // TODO(b/171039585): Support tf.VarIsInitializedOp using MLIR.
     bool use_mlir = config &&
-                    GetMlirBridgeRolloutPolicy(*config) ==
+                    GetMlirBridgeRolloutPolicy(*graph, *config) ==
                         MlirBridgeRolloutPolicy::kEnabledByUser &&
                     node_def.op() != "VarIsInitializedOp";
 #ifdef LIBTPU_ON_GCE
