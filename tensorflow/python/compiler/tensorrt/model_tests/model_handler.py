@@ -39,10 +39,6 @@ from tensorflow.python.saved_model import loader as saved_model_loader
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
 
-DEFAULT_SAVED_MODEL_TAGS = (tag_constants.SERVING,)
-DEFAULT_SAVED_MODEL_SIGNATURE_KEY = (
-    signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY)
-
 
 # pylint: disable=bad-whitespace
 ### Helper Functions
@@ -112,28 +108,39 @@ class TestResult(
                                           trt_convert_params)
 
 
+class ModelConfig(
+    collections.namedtuple("ModelConfig", [
+        "saved_model_dir", "saved_model_tags", "saved_model_signature_key",
+        "default_batch_size"
+    ])):
+  """Configurations for test models."""
+
+  def __new__(cls,
+              saved_model_dir: str,
+              saved_model_tags: Sequence[str] = (tag_constants.SERVING,),
+              saved_model_signature_key: str = (
+                  signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY),
+              default_batch_size: int = 1):
+    return super(ModelConfig,
+                 cls).__new__(cls, saved_model_dir, saved_model_tags,
+                              saved_model_signature_key, default_batch_size)
+
+
 class _ModelHandlerBase(metaclass=abc.ABCMeta):
   """Base class for running a model."""
 
-  def __init__(
-      self,
-      *,
-      saved_model_dir: str,
-      saved_model_tags: Sequence[str] = DEFAULT_SAVED_MODEL_TAGS,
-      saved_model_signature_key: str = DEFAULT_SAVED_MODEL_SIGNATURE_KEY):
-    self._saved_model_dir = saved_model_dir
-    self._saved_model_tags = saved_model_tags
-    self._saved_model_signature_key = saved_model_signature_key
+  def __init__(self, model_config: ModelConfig):
+    self._model_config = model_config
 
   def __str__(self) -> str:
-    return "Directory: {}; Tags: {}; Signature: {}".format(
-        self._saved_model_dir,
-        self._saved_model_tags,
-        self._saved_model_signature_key,
-    )
+    return str(self._model_config)
 
   def __repr__(self) -> str:
     return "{}({})".format(self.__class__.__name__, str(self))
+
+  @property
+  def model_config(self) -> ModelConfig:
+    return self._model_config
 
   @property
   def input_tensort_names(self) -> Sequence[str]:
@@ -176,18 +183,19 @@ class ModelHandlerV1(_ModelHandlerBase):
   @property
   def meta_graph(self) -> meta_graph_pb2.MetaGraphDef:
     return load_meta_graph(
-        saved_model_dir=self._saved_model_dir,
-        saved_model_tags=self._saved_model_tags,
-        saved_model_signature_key=self._saved_model_signature_key)
+        saved_model_dir=self.model_config.saved_model_dir,
+        saved_model_tags=self.model_config.saved_model_tags,
+        saved_model_signature_key=self.model_config.saved_model_signature_key)
 
   @property
   def input_tensor_info(self) -> Mapping[str, meta_graph_pb2.TensorInfo]:
-    return self.meta_graph.signature_def[self._saved_model_signature_key].inputs
+    return self.meta_graph.signature_def[
+        self.model_config.saved_model_signature_key].inputs
 
   @property
   def output_tensor_info(self) -> Mapping[str, meta_graph_pb2.TensorInfo]:
     return self.meta_graph.signature_def[
-        self._saved_model_signature_key].outputs
+        self.model_config.saved_model_signature_key].outputs
 
   @property
   def input_tensort_names(self) -> Sequence[str]:
@@ -200,6 +208,7 @@ class ModelHandlerV1(_ModelHandlerBase):
   def generate_random_inputs(self,
                              batch_size: Optional[int] = None
                             ) -> Mapping[str, np.ndarray]:
+    batch_size = batch_size or self.model_config.default_batch_size
     return {
         tensor_info.name: _generate_random_tensor_v1(tensor_info, batch_size)
         for tensor_info in self.input_tensor_info.values()
@@ -225,7 +234,7 @@ class ModelHandlerV1(_ModelHandlerBase):
           outputs = sess.run(fetches=self.output_tensor_names, feed_dict=inputs)
           latency.append(time.time() - before)
       except Exception as exc:
-        raise RuntimeError("Failed to run model inference!"
+        raise RuntimeError("Failed to run model inference! "
                            "Model information: {}".format(str(self))) from exc
       outputs = dict(zip(self.output_tensor_names, outputs))
     return TestResult(latency=latency, outputs=outputs if inputs else None)
@@ -236,21 +245,15 @@ class _TrtModelHandlerBase(_ModelHandlerBase):
 
   def __init__(
       self,
-      *,
+      model_config: ModelConfig,
       trt_convert_params: trt.TrtConversionParams,
-      saved_model_dir: str,
-      saved_model_tags: Sequence[str] = DEFAULT_SAVED_MODEL_TAGS,
-      saved_model_signature_key: str = DEFAULT_SAVED_MODEL_SIGNATURE_KEY):
-    super(_TrtModelHandlerBase, self).__init__(
-        saved_model_dir=saved_model_dir,
-        saved_model_tags=saved_model_tags,
-        saved_model_signature_key=saved_model_signature_key)
+  ):
+    super(_TrtModelHandlerBase, self).__init__(model_config)
+    self._trt_convert_params = trt_convert_params
 
     self._converter = self._create_converter(trt_convert_params)
     logging.info("Converting to TensorRT!")
     self._check_conversion(self._converter.convert())
-
-    self._trt_convert_params = trt_convert_params
     self._conversion_is_saved = False
 
   @abc.abstractmethod
@@ -278,12 +281,14 @@ class _TrtModelHandlerBase(_ModelHandlerBase):
   def save(self,
            output_saved_model_dir: Optional[str] = None,
            overwrite=True) -> None:
+    """Saves a TensorRT converted model."""
     if self._conversion_is_saved and not overwrite:
       return
     output_saved_model_dir = output_saved_model_dir or tempfile.mkdtemp()
     logging.info("Saving TensorRT model to %s!", output_saved_model_dir)
     self._converter.save(output_saved_model_dir)
-    self._saved_model_dir = output_saved_model_dir
+    self._model_config = self.model_config._replace(
+        saved_model_dir=output_saved_model_dir)
     self._conversion_is_saved = True
 
 
@@ -293,9 +298,10 @@ class TrtModelHandlerV1(_TrtModelHandlerBase, ModelHandlerV1):
   def _create_converter(self, trt_convert_params: trt.TrtConversionParams):
     conversion_nodes_denylist = self.output_tensor_names
     return trt.TrtGraphConverter(
-        input_saved_model_dir=self._saved_model_dir,
-        input_saved_model_tags=self._saved_model_tags,
-        input_saved_model_signature_key=self._saved_model_signature_key,
+        input_saved_model_dir=self.model_config.saved_model_dir,
+        input_saved_model_tags=self.model_config.saved_model_tags,
+        input_saved_model_signature_key=(
+            self.model_config.saved_model_signature_key),
         nodes_denylist=conversion_nodes_denylist,
         max_batch_size=trt_convert_params.max_batch_size,
         max_workspace_size_bytes=trt_convert_params.max_workspace_size_bytes,
