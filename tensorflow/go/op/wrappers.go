@@ -14585,6 +14585,23 @@ func ShardedFilespec(scope *Scope, basename tf.Output, num_shards tf.Output) (fi
 	return op.Output(0)
 }
 
+// Generate a sharded filename. The filename is printf formatted as
+//
+//    %s-%05d-of-%05d, basename, shard, num_shards.
+func ShardedFilename(scope *Scope, basename tf.Output, shard tf.Output, num_shards tf.Output) (filename tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ShardedFilename",
+		Input: []tf.Input{
+			basename, shard, num_shards,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Saves the input tensors to disk.
 //
 // The size of `tensor_names` must match the number of tensors in `data`. `data[i]`
@@ -15494,59 +15511,6 @@ func MatrixTriangularSolve(scope *Scope, matrix tf.Output, rhs tf.Output, option
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
-}
-
-// SelfAdjointEigV2Attr is an optional argument to SelfAdjointEigV2.
-type SelfAdjointEigV2Attr func(optionalAttr)
-
-// SelfAdjointEigV2ComputeV sets the optional compute_v attribute to value.
-//
-// value: If `True` then eigenvectors will be computed and returned in `v`.
-// Otherwise, only the eigenvalues will be computed.
-// If not specified, defaults to true
-func SelfAdjointEigV2ComputeV(value bool) SelfAdjointEigV2Attr {
-	return func(m optionalAttr) {
-		m["compute_v"] = value
-	}
-}
-
-// Computes the eigen decomposition of one or more square self-adjoint matrices.
-//
-// Computes the eigenvalues and (optionally) eigenvectors of each inner matrix in
-// `input` such that `input[..., :, :] = v[..., :, :] * diag(e[..., :])`. The eigenvalues
-// are sorted in non-decreasing order.
-//
-// ```python
-// # a is a tensor.
-// # e is a tensor of eigenvalues.
-// # v is a tensor of eigenvectors.
-// e, v = self_adjoint_eig(a)
-// e = self_adjoint_eig(a, compute_v=False)
-// ```
-//
-// Arguments:
-//	input: `Tensor` input of shape `[N, N]`.
-//
-// Returns:
-//	e: Eigenvalues. Shape is `[N]`.
-//	v: Eigenvectors. Shape is `[N, N]`.
-func SelfAdjointEigV2(scope *Scope, input tf.Output, optional ...SelfAdjointEigV2Attr) (e tf.Output, v tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "SelfAdjointEigV2",
-		Input: []tf.Input{
-			input,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1)
 }
 
 // Computes the Eigen Decomposition of a batch of square self-adjoint matrices.
@@ -23473,23 +23437,6 @@ func Cast(scope *Scope, x tf.Output, DstT tf.DataType, optional ...CastAttr) (y 
 			x,
 		},
 		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Generate a sharded filename. The filename is printf formatted as
-//
-//    %s-%05d-of-%05d, basename, shard, num_shards.
-func ShardedFilename(scope *Scope, basename tf.Output, shard tf.Output, num_shards tf.Output) (filename tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "ShardedFilename",
-		Input: []tf.Input{
-			basename, shard, num_shards,
-		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -37373,6 +37320,26 @@ func Erfc(scope *Scope, x tf.Output) (y tf.Output) {
 	return op.Output(0)
 }
 
+// Returns max(x, y) element-wise.
+//
+// *NOTE*: `RiscMax` does not supports broadcasting.
+//
+// Given two input tensors, the `tf.risc_max` operation computes the maximum for every element in the tensor.
+//
+func RiscMax(scope *Scope, x tf.Output, y tf.Output) (max tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "RiscMax",
+		Input: []tf.Input{
+			x, y,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // RandomUniformIntAttr is an optional argument to RandomUniformInt.
 type RandomUniformIntAttr func(optionalAttr)
 
@@ -45065,6 +45032,59 @@ func ResourceApplyFtrlV2(scope *Scope, var_ tf.Output, accum tf.Output, linear t
 		Attrs: attrs,
 	}
 	return scope.AddOperation(opspec)
+}
+
+// SelfAdjointEigV2Attr is an optional argument to SelfAdjointEigV2.
+type SelfAdjointEigV2Attr func(optionalAttr)
+
+// SelfAdjointEigV2ComputeV sets the optional compute_v attribute to value.
+//
+// value: If `True` then eigenvectors will be computed and returned in `v`.
+// Otherwise, only the eigenvalues will be computed.
+// If not specified, defaults to true
+func SelfAdjointEigV2ComputeV(value bool) SelfAdjointEigV2Attr {
+	return func(m optionalAttr) {
+		m["compute_v"] = value
+	}
+}
+
+// Computes the eigen decomposition of one or more square self-adjoint matrices.
+//
+// Computes the eigenvalues and (optionally) eigenvectors of each inner matrix in
+// `input` such that `input[..., :, :] = v[..., :, :] * diag(e[..., :])`. The eigenvalues
+// are sorted in non-decreasing order.
+//
+// ```python
+// # a is a tensor.
+// # e is a tensor of eigenvalues.
+// # v is a tensor of eigenvectors.
+// e, v = self_adjoint_eig(a)
+// e = self_adjoint_eig(a, compute_v=False)
+// ```
+//
+// Arguments:
+//	input: `Tensor` input of shape `[N, N]`.
+//
+// Returns:
+//	e: Eigenvalues. Shape is `[N]`.
+//	v: Eigenvectors. Shape is `[N, N]`.
+func SelfAdjointEigV2(scope *Scope, input tf.Output, optional ...SelfAdjointEigV2Attr) (e tf.Output, v tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "SelfAdjointEigV2",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
 }
 
 // Computes softmax cross entropy cost and gradients to backpropagate.
