@@ -116,7 +116,7 @@ class MlirUnrankedOp : public OpKernel {
 // memref descriptors and calls mlir-generated unranked kernel. The outputs
 // are converted back to tensors using MlirTensorBuffer to take ownership of
 // pre-allocated memory.
-#define REGISTER_AND_GENERATE_BINARY_KERNEL(tf_op, mlir_type, tf_data_type,   \
+#define GENERATE_AND_REGISTER_BINARY_KERNEL(tf_op, mlir_type, tf_data_type,   \
                                             data_type)                        \
   extern "C" ::UnrankedMemRefType<data_type> MLIR_FUNCTION(tf_op, mlir_type)( \
       tensorflow::OpKernelContext * ctx,                                      \
@@ -143,7 +143,7 @@ class MlirUnrankedOp : public OpKernel {
       Name(#tf_op).Device(DEVICE_GPU).TypeConstraint<data_type>("T"),         \
       MlirUnranked##tf_op##mlir_type##Op);
 
-#define REGISTER_AND_GENERATE_UNARY_KERNEL(tf_op, mlir_type, tf_data_type,    \
+#define GENERATE_AND_REGISTER_UNARY_KERNEL(tf_op, mlir_type, tf_data_type,    \
                                            data_type)                         \
   extern "C" ::UnrankedMemRefType<data_type> MLIR_FUNCTION(tf_op, mlir_type)( \
       tensorflow::OpKernelContext * ctx,                                      \
