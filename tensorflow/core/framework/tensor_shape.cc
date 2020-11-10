@@ -204,8 +204,6 @@ static inline bool Set16(bool partial, uint16* dst, int dim, int64 val) {
       dst[dim] = std::numeric_limits<uint16>::max();
       return true;
     }
-  } else {
-    CHECK_GE(val, 0);
   }
   dst[dim] = val;
   return false;
