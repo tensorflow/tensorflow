@@ -94,12 +94,8 @@ cc_library(
 cc_library(
     name = "kernel_deps",
     deps = if_mlir_unranked_kernels_enabled(
-        [
-            ":unranked_kernel_deps",
-        ],
-        [
-            ":ranked_kernel_deps",
-        ],
+        [":unranked_kernel_deps"],
+        [":ranked_kernel_deps"],
     ),
 )
 
@@ -476,6 +472,7 @@ gen_kernel_library(
         "f16",
         "f32",
         "f64",
+        "i64",
     ],
     unroll_factors = "4",
 )
