@@ -38,12 +38,11 @@ namespace gpu {
 namespace metal {
 namespace {
 
-std::string GetFullyConnectedCode(const DeviceInfo& device_info,
-                                  int src_channels, int dst_channels) {
-  bool shared_memory =
-      device_info.IsAppleGPU() &&
-      device_info.apple_info.IsLocalMemoryPreferredOverGlobal();
-  const std::string barrier = device_info.IsWaveSizeEqualTo32()
+std::string GetFullyConnectedCode(const GpuInfo& gpu_info, int src_channels,
+                                  int dst_channels) {
+  bool shared_memory = gpu_info.IsApple() &&
+                       gpu_info.apple_info.IsLocalMemoryPreferredOverGlobal();
+  const std::string barrier = gpu_info.IsWaveSizeEqualTo32()
                                   ? "SIMDGROUP_BARRIER"
                                   : "threadgroup_barrier";
   const int src_depth = DivideRoundUp(src_channels, 4);
@@ -118,12 +117,12 @@ std::string GetFullyConnectedCode(const DeviceInfo& device_info,
 
 std::vector<ComputeTaskDescriptorPtr> FullyConnected(
     int id, ValueId input_id, ValueId output_id,
-    const FullyConnectedAttributes& attr, const DeviceInfo& device_info,
+    const FullyConnectedAttributes& attr, const GpuInfo& gpu_info,
     const RuntimeOptions& options) {
   auto desc = std::make_shared<ComputeTaskDescriptor>();
   desc->id = id;
   desc->is_linkable = false;
-  desc->shader_source = GetFullyConnectedCode(device_info, attr.weights.shape.i,
+  desc->shader_source = GetFullyConnectedCode(gpu_info, attr.weights.shape.i,
                                               attr.weights.shape.o);
 
   desc->args.AddInt("dst_channels", attr.weights.shape.o);
@@ -141,9 +140,8 @@ std::vector<ComputeTaskDescriptorPtr> FullyConnected(
         return CalculateOutputShape(buffers.find(input_id)->second, attr);
       }};
 
-  bool shared_memory =
-      device_info.IsAppleGPU() &&
-      device_info.apple_info.IsLocalMemoryPreferredOverGlobal();
+  bool shared_memory = gpu_info.IsApple() &&
+                       gpu_info.apple_info.IsLocalMemoryPreferredOverGlobal();
   const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
   const int src_depth_aligned = AlignByN(src_depth, shared_memory ? 32 : 4);
   const int dst_channels_aligned = AlignByN(attr.weights.shape.o, 8);

@@ -34,7 +34,7 @@ namespace metal {
 //   will be inefficient
 std::vector<ComputeTaskDescriptorPtr> FullyConnected(
     int id, ValueId input_id, ValueId output_id,
-    const FullyConnectedAttributes& attr, const DeviceInfo& device_info,
+    const FullyConnectedAttributes& attr, const GpuInfo& gpu_info,
     const RuntimeOptions& options);
 
 }  // namespace metal
