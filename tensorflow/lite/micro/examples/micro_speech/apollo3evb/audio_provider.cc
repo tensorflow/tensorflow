@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -39,7 +39,6 @@ constexpr int kPdmSamplesPerSlot = 256;
 constexpr int kPdmSampleBufferSize = (kPdmNumSlots * kPdmSamplesPerSlot);
 uint32_t g_ui32PDMSampleBuffer0[kPdmSampleBufferSize];
 uint32_t g_ui32PDMSampleBuffer1[kPdmSampleBufferSize];
-uint32_t g_PowerOff = 0;
 
 // Controls the double buffering between the two DMA buffers.
 int g_dma_destination_index = 0;
@@ -51,7 +50,7 @@ volatile bool g_pdm_dma_error;
 tflite::ErrorReporter* g_pdm_dma_error_reporter = nullptr;
 
 // Holds a longer history of audio samples in a ring buffer.
-constexpr int kAudioCaptureBufferSize = 16000;
+constexpr int kAudioCaptureBufferSize = 15*1024;  // must be multiple of 1024 for alignment
 int16_t g_audio_capture_buffer[kAudioCaptureBufferSize] = {};
 int g_audio_capture_buffer_start = 0;
 int64_t g_total_samples_captured = 0;
@@ -173,10 +172,10 @@ void enable_burst_mode(tflite::ErrorReporter* error_reporter) {
 //*****************************************************************************
 am_hal_pdm_config_t g_sPdmConfig = {
     .eClkDivider = AM_HAL_PDM_MCLKDIV_1,
-    .eLeftGain = AM_HAL_PDM_GAIN_P165DB,
-    .eRightGain = AM_HAL_PDM_GAIN_P165DB,
+    .eLeftGain = AM_HAL_PDM_GAIN_0DB,
+    .eRightGain = AM_HAL_PDM_GAIN_0DB,
     .ui32DecimationRate =
-        48,  // OSR = 1500/16 = 96 = 2*SINCRATE --> SINC_RATE = 48
+        47,  // OSR = 1500/16 = 96 = 2*SINCRATE --> SINC_RATE = 47
     .bHighPassEnable = 1,
     .ui32HighPassCutoff = 0x2,
     .ePDMClkSpeed = AM_HAL_PDM_CLK_1_5MHZ,
@@ -216,6 +215,10 @@ extern "C" void pdm_init(void) {
   sPinCfg.uFuncSel = AM_HAL_PIN_11_PDMDATA;
   am_hal_gpio_pinconfig(11, sPinCfg);
 
+  // power
+  am_hal_gpio_state_write(14, AM_HAL_GPIO_OUTPUT_CLEAR);
+  am_hal_gpio_pinconfig(14, g_AM_HAL_GPIO_OUTPUT);
+
   //
   // Configure and enable PDM interrupts (set up to trigger on DMA
   // completion).
@@ -223,11 +226,9 @@ extern "C" void pdm_init(void) {
   am_hal_pdm_interrupt_enable(g_pdm_handle,
                               (AM_HAL_PDM_INT_DERR | AM_HAL_PDM_INT_DCMP |
                                AM_HAL_PDM_INT_UNDFL | AM_HAL_PDM_INT_OVF));
-
-  NVIC_EnableIRQ(PDM_IRQn);
-
   // Enable PDM
   am_hal_pdm_enable(g_pdm_handle);
+  NVIC_EnableIRQ(PDM_IRQn);
 }
 
 // Start the DMA fetch of PDM samples.
@@ -473,6 +474,7 @@ TfLiteStatus InitAudioRecording(tflite::ErrorReporter* error_reporter) {
   pdm_init();
   am_hal_interrupt_master_enable();
   am_hal_pdm_fifo_flush(g_pdm_handle);
+
   // Trigger the PDM DMA for the first time manually.
   pdm_start_dma(error_reporter);
 
