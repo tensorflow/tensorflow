@@ -14570,6 +14570,21 @@ func WholeFileReaderV2(scope *Scope, optional ...WholeFileReaderV2Attr) (reader_
 	return op.Output(0)
 }
 
+// Generate a glob pattern matching all sharded file names.
+func ShardedFilespec(scope *Scope, basename tf.Output, num_shards tf.Output) (filename tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ShardedFilespec",
+		Input: []tf.Input{
+			basename, num_shards,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Saves the input tensors to disk.
 //
 // The size of `tensor_names` must match the number of tensors in `data`. `data[i]`
@@ -22697,6 +22712,69 @@ func TanhGrad(scope *Scope, y tf.Output, dy tf.Output) (z tf.Output) {
 	return op.Output(0)
 }
 
+// RiscConvAttr is an optional argument to RiscConv.
+type RiscConvAttr func(optionalAttr)
+
+// RiscConvDataFormat sets the optional data_format attribute to value.
+//
+// value: Specify the data format of the input and output data. With the
+// default format "NHWC", the data is stored in the order of:
+//     [batch, height, width, channels].
+// Alternatively, the format could be "NCHW", the data storage order of:
+//     [batch, channels, height, width].
+// If not specified, defaults to "NHWC"
+func RiscConvDataFormat(value string) RiscConvAttr {
+	return func(m optionalAttr) {
+		m["data_format"] = value
+	}
+}
+
+// RiscConvDilations sets the optional dilations attribute to value.
+//
+// value: 1-D tensor of length 4.  The dilation factor for each dimension of
+// `input`. If set to k > 1, there will be k-1 skipped cells between each
+// filter element on that dimension. The dimension order is determined by the
+// value of `data_format`, see above for details. Dilations in the batch and
+// depth dimensions must be 1.
+// If not specified, defaults to <i:1 i:1 i:1 i:1 >
+func RiscConvDilations(value []int64) RiscConvAttr {
+	return func(m optionalAttr) {
+		m["dilations"] = value
+	}
+}
+
+// Computes a 2-D convolution given 4-D `input` and `filter` tensors.
+//
+// Arguments:
+//	input: A 4-D tensor. The dimension order is interpreted according to the value
+// of `data_format`, see below for details.
+//	filter: A 4-D tensor of shape
+// `[filter_height, filter_width, in_channels, out_channels]`
+//	strides: 1-D tensor of length 4.  The stride of the sliding window for each
+// dimension of `input`. The dimension order is determined by the value of
+// `data_format`, see below for details.
+//
+// Returns A 4-D tensor. The dimension order is determined by the value of
+// `data_format`, see below for details.
+func RiscConv(scope *Scope, input tf.Output, filter tf.Output, strides []int64, optional ...RiscConvAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"strides": strides}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "RiscConv",
+		Input: []tf.Input{
+			input, filter,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Computes hyperbolic tangent of `x` element-wise.
 //
 //   Given an input tensor, this function computes hyperbolic tangent of every
@@ -29742,6 +29820,67 @@ func RandomGammaGrad(scope *Scope, alpha tf.Output, sample tf.Output) (output tf
 	return op.Output(0)
 }
 
+// RandomShuffleAttr is an optional argument to RandomShuffle.
+type RandomShuffleAttr func(optionalAttr)
+
+// RandomShuffleSeed sets the optional seed attribute to value.
+//
+// value: If either `seed` or `seed2` are set to be non-zero, the random number
+// generator is seeded by the given seed.  Otherwise, it is seeded by a
+// random seed.
+// If not specified, defaults to 0
+func RandomShuffleSeed(value int64) RandomShuffleAttr {
+	return func(m optionalAttr) {
+		m["seed"] = value
+	}
+}
+
+// RandomShuffleSeed2 sets the optional seed2 attribute to value.
+//
+// value: A second seed to avoid seed collision.
+// If not specified, defaults to 0
+func RandomShuffleSeed2(value int64) RandomShuffleAttr {
+	return func(m optionalAttr) {
+		m["seed2"] = value
+	}
+}
+
+// Randomly shuffles a tensor along its first dimension.
+//
+//   The tensor is shuffled along dimension 0, such that each `value[j]` is mapped
+//   to one and only one `output[i]`. For example, a mapping that might occur for a
+//   3x2 tensor is:
+//
+// ```
+// [[1, 2],       [[5, 6],
+//  [3, 4],  ==>   [1, 2],
+//  [5, 6]]        [3, 4]]
+// ```
+//
+// Arguments:
+//	value: The tensor to be shuffled.
+//
+// Returns A tensor of same shape and type as `value`, shuffled along its first
+// dimension.
+func RandomShuffle(scope *Scope, value tf.Output, optional ...RandomShuffleAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "RandomShuffle",
+		Input: []tf.Input{
+			value,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Creates a dataset that takes a Bernoulli sample of the contents of another dataset.
 //
 // There is no transformation in the `tf.data` Python API for creating this dataset.
@@ -36066,21 +36205,6 @@ func SparseCross(scope *Scope, indices []tf.Output, values []tf.Output, shapes [
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
-// Generate a glob pattern matching all sharded file names.
-func ShardedFilespec(scope *Scope, basename tf.Output, num_shards tf.Output) (filename tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "ShardedFilespec",
-		Input: []tf.Input{
-			basename, num_shards,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Writes a scalar summary.
 //
 // Writes scalar `value` at `step` with `tag` using summary `writer`.
@@ -37135,67 +37259,6 @@ func SparseAdd(scope *Scope, a_indices tf.Output, a_values tf.Output, a_shape tf
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2)
-}
-
-// RandomShuffleAttr is an optional argument to RandomShuffle.
-type RandomShuffleAttr func(optionalAttr)
-
-// RandomShuffleSeed sets the optional seed attribute to value.
-//
-// value: If either `seed` or `seed2` are set to be non-zero, the random number
-// generator is seeded by the given seed.  Otherwise, it is seeded by a
-// random seed.
-// If not specified, defaults to 0
-func RandomShuffleSeed(value int64) RandomShuffleAttr {
-	return func(m optionalAttr) {
-		m["seed"] = value
-	}
-}
-
-// RandomShuffleSeed2 sets the optional seed2 attribute to value.
-//
-// value: A second seed to avoid seed collision.
-// If not specified, defaults to 0
-func RandomShuffleSeed2(value int64) RandomShuffleAttr {
-	return func(m optionalAttr) {
-		m["seed2"] = value
-	}
-}
-
-// Randomly shuffles a tensor along its first dimension.
-//
-//   The tensor is shuffled along dimension 0, such that each `value[j]` is mapped
-//   to one and only one `output[i]`. For example, a mapping that might occur for a
-//   3x2 tensor is:
-//
-// ```
-// [[1, 2],       [[5, 6],
-//  [3, 4],  ==>   [1, 2],
-//  [5, 6]]        [3, 4]]
-// ```
-//
-// Arguments:
-//	value: The tensor to be shuffled.
-//
-// Returns A tensor of same shape and type as `value`, shuffled along its first
-// dimension.
-func RandomShuffle(scope *Scope, value tf.Output, optional ...RandomShuffleAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "RandomShuffle",
-		Input: []tf.Input{
-			value,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // Selects elements from `x` or `y`, depending on `condition`.
