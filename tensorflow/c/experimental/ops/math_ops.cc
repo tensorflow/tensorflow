@@ -124,6 +124,19 @@ Status Sum(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
   return Status::OK();
 }
 
+Status Div(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
+           absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+  AbstractOperationPtr div_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(div_op->Reset("Div", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(div_op.get(), name));
+  TF_RETURN_IF_ERROR(div_op->AddInput(inputs[0]));  // x
+  TF_RETURN_IF_ERROR(div_op->AddInput(inputs[1]));  // y
+
+  int num_retvals = 1;
+  TF_RETURN_IF_ERROR(div_op->Execute(outputs, &num_retvals));  // z = x / y
+  return Status::OK();
+}
+
 Status DivNoNan(AbstractContext* ctx,
                 absl::Span<AbstractTensorHandle* const> inputs,
                 absl::Span<AbstractTensorHandle*> outputs, const char* name) {

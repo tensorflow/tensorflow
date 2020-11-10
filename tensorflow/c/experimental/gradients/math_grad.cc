@@ -23,6 +23,7 @@ limitations under the License.
 using std::vector;
 using tensorflow::ops::Add;
 using tensorflow::ops::Conj;
+using tensorflow::ops::Div;
 using tensorflow::ops::DivNoNan;
 using tensorflow::ops::MatMul;
 using tensorflow::ops::Mul;
@@ -333,10 +334,10 @@ class Log1pGradientFunction : public GradientFunction {
 
     AbstractTensorHandle* Conj_XP1 = temp_outputs[0];
 
-    name = "DivNoNan_Log1p_Grad_X";
+    name = "Div_Log1p_Grad_X";
     // Calculate U / (1 + Conj(X))
-    TF_RETURN_IF_ERROR(DivNoNan(ctx->ctx, {upstream_grad, Conj_XP1},
-                                absl::MakeSpan(temp_outputs), name.c_str()));
+    TF_RETURN_IF_ERROR(Div(ctx->ctx, {upstream_grad, Conj_XP1},
+                           absl::MakeSpan(temp_outputs), name.c_str()));
 
     (*grad_outputs)[0] = temp_outputs[0];
 
