@@ -116,6 +116,38 @@ struct AdrenoInfo {
   bool support_one_layer_texture_array = true;
 };
 
+enum class AppleGpu {
+  kUnknown,
+  kA7,
+  kA8,
+  kA8X,
+  kA9,
+  kA9X,
+  kA10,
+  kA10X,
+  kA11,
+  kA12,
+  kA12X,
+  kA12Z,
+  kA13,
+  kA14,
+};
+
+struct AppleInfo {
+  AppleInfo() = default;
+  explicit AppleInfo(const std::string& gpu_description);
+  AppleGpu gpu_type;
+
+  bool IsLocalMemoryPreferredOverGlobal() const;
+
+  bool IsBionic() const;
+
+  // floating point rounding mode
+  bool IsRoundToNearestSupported() const;
+
+  int GetComputeUnitsCount() const;
+};
+
 struct GpuInfo {
   bool IsAdreno() const;
   bool IsApple() const;
@@ -124,6 +156,14 @@ struct GpuInfo {
   bool IsNvidia() const;
   bool IsAMD() const;
   bool IsIntel() const;
+
+  // floating point rounding mode
+  bool IsRoundToNearestSupported() const;
+
+  // returns true if device have fixed wave size equal to 32
+  bool IsWaveSizeEqualTo32() const;
+
+  int GetComputeUnitsCount() const;
 
   GpuVendor vendor = GpuVendor::kUnknown;
 
@@ -141,7 +181,10 @@ struct GpuInfo {
   int max_image_units = 0;
   int max_array_texture_layers = 0;
 
+  std::vector<int> supported_subgroup_sizes;
+
   AdrenoInfo adreno_info;
+  AppleInfo apple_info;
 };
 
 inline bool IsOpenGl31OrAbove(const GpuInfo& gpu_info) {
@@ -149,8 +192,10 @@ inline bool IsOpenGl31OrAbove(const GpuInfo& gpu_info) {
          gpu_info.major_version > 3;
 }
 
-// Currently it initializes vendor and AdrenoInfo if
-// vendor is kQualcomm
+// Currently it initializes:
+// vendor
+// AdrenoInfo if vendor is kQualcomm
+// AppleInfo if vendor is kApple
 void GetGpuInfoFromDeviceDescription(const std::string& gpu_description,
                                      GpuInfo* gpu_info);
 

@@ -43,7 +43,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/buffer_convert.h"
 #include "tensorflow/lite/delegates/gpu/metal/common.h"
 #include "tensorflow/lite/delegates/gpu/metal/compiled_model.h"
-#include "tensorflow/lite/delegates/gpu/metal/device_info.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/metal/inference_context.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -338,7 +338,8 @@ class Delegate {
     }
 
     std::string device_name = std::string([[metal_device_ name] UTF8String]);
-    GpuInfo gpu_info(device_name);
+    GpuInfo gpu_info;
+    GetGpuInfoFromDeviceDescription(device_name, &gpu_info);
     size_t storage_type_size;
     RuntimeOptions runtime_options;
     if (options_.allow_precision_loss) {

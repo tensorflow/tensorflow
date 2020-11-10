@@ -297,7 +297,8 @@ using ::tflite::gpu::metal::SingleOpModel;
   outputs_v0[1].data.resize(dst_shape.DimensionsProduct());
 
   std::string device_name = std::string([[device name] UTF8String]);
-  tflite::gpu::metal::GpuInfo gpu_info(device_name);
+  tflite::gpu::GpuInfo gpu_info;
+  tflite::gpu::GetGpuInfoFromDeviceDescription(device_name, &gpu_info);
   auto tasks_v0 = ConvolutionGeneric(0, 0, 1, dst_shape, attr, gpu_info, options);
 
   auto status = RunGraph(tasks_v0, device, inputs_v0, &outputs_v0);
