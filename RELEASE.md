@@ -46,7 +46,7 @@
             *   Use `NnApiDelegate()` and related delegate configuration methods
                 directly.
     *  16 bits quantization
-        *   Added int16x8 support for REDUCE_MIN and REDUCE_MAX operators.
+        *   Added int16x8 support for ABS, REDUCE_MAX and REDUCE_MIN operators.
 
 *   TF Core:
     *   Corrected higher-order gradients of control flow constructs (`tf.cond`,

@@ -375,6 +375,7 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
+    case BuiltinOperator_ABS:
     case BuiltinOperator_RELU:
       if (op_sig.input_types.at(0) == TensorType_INT16) {
         return 3;
@@ -385,12 +386,6 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
-    case BuiltinOperator_ABS:
-      if (op_sig.input_types.at(0) == TensorType_INT8 ||
-          op_sig.input_types.at(0) == TensorType_UINT8) {
-        return 2;
-      }
-      return 1;
     case BuiltinOperator_STRIDED_SLICE:
       if (op_sig.options.single_input_op.num_dims > 4) {
         return 4;
