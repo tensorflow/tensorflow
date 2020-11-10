@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/add_bias.h"
+#include "tensorflow/lite/delegates/gpu/common/transformations/global_pooling_to_reduce_op.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/merge_padding_with.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
@@ -727,12 +728,17 @@ absl::Status InferenceContext::GetOutputTensor(ValueId id,
 absl::Status RunGraphTransforms(GraphFloat32* graph) {
   auto merge_padding_transform = NewMergePaddingWithAdd();
   auto add_bias_transform = NewAddBias();
+  auto pooling_to_reduce_op = NewGlobalPoolingToReduceOp();
   ModelTransformer transformer(graph, /*reporter=*/nullptr);
   if (!transformer.Apply("add_bias", add_bias_transform.get())) {
     return absl::InternalError("Invalid add_bias transform");
   }
   if (!transformer.Apply("merge_padding", merge_padding_transform.get())) {
     return absl::InternalError("Invalid merge_padding transform");
+  }
+  if (!transformer.Apply("global pooling to mean",
+                         pooling_to_reduce_op.get())) {
+    return absl::InternalError("Invalid global pooling to mean transform");
   }
   return absl::OkStatus();
 }
