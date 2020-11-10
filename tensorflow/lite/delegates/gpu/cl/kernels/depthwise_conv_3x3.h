@@ -39,7 +39,7 @@ class DepthwiseConv3x3 : public GPUOperation {
  public:
   DepthwiseConv3x3() = default;
   void GetPossibleKernelWorkGroups(
-      TuningType tuning_type, const DeviceInfo& device_info,
+      TuningType tuning_type, const GpuInfo& gpu_info,
       const KernelInfo& kernel_info,
       std::vector<int3>* work_groups) const override;
   int3 GetGridSize() const override;
@@ -53,14 +53,14 @@ class DepthwiseConv3x3 : public GPUOperation {
  private:
   explicit DepthwiseConv3x3(const OperationDef& definition,
                             bool weights_are_buffer, bool local_mem_uploads,
-                            const DeviceInfo& device_info);
+                            const GpuInfo& gpu_info);
   template <DataType T>
   void UploadWeightsAndBiases(const tflite::gpu::Tensor<OHWI, T>& weights,
                               const tflite::gpu::Tensor<Linear, T>& biases,
                               bool weights_are_buffer);
 
   friend DepthwiseConv3x3 CreateDepthwiseConv3x3(
-      const DeviceInfo& device_info, const OperationDef& definition,
+      const GpuInfo& gpu_info, const OperationDef& definition,
       const DepthwiseConvolution2DAttributes& attr);
 
   template <DataType S, typename T>
@@ -151,7 +151,7 @@ void DepthwiseConv3x3::RearrangeWeightsAndBiasesData(
 bool IsDepthwiseConv3x3Supported(const DepthwiseConvolution2DAttributes& attr);
 
 DepthwiseConv3x3 CreateDepthwiseConv3x3(
-    const DeviceInfo& device_info, const OperationDef& definition,
+    const GpuInfo& gpu_info, const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& attr);
 
 }  // namespace cl

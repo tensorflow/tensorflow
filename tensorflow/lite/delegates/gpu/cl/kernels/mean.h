@@ -28,10 +28,10 @@ namespace cl {
 class Mean : public GPUOperation {
  public:
   Mean() = default;
-  Mean(const OperationDef& definition, const DeviceInfo& device_info);
+  Mean(const OperationDef& definition, const GpuInfo& gpu_info);
 
   void GetPossibleKernelWorkGroups(
-      TuningType tuning_type, const DeviceInfo& device_info,
+      TuningType tuning_type, const GpuInfo& gpu_info,
       const KernelInfo& kernel_info,
       std::vector<int3>* work_groups) const override {
     work_groups->push_back(work_group_size_);
@@ -50,7 +50,7 @@ class Mean : public GPUOperation {
                                 const int3& work_group_size);
 };
 
-Mean CreateMean(const OperationDef& definition, const DeviceInfo& device_info);
+Mean CreateMean(const OperationDef& definition, const GpuInfo& gpu_info);
 
 }  // namespace cl
 }  // namespace gpu

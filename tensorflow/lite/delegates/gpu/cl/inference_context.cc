@@ -160,7 +160,7 @@ absl::Status InferenceContext::InitFromGraph(
   creation_context.queue = env->queue();
   creation_context.cache = env->program_cache();
 
-  ReserveGraphTensors(create_info, creation_context.GetDeviceInfo(), graph);
+  ReserveGraphTensors(create_info, creation_context.GetGpuInfo(), graph);
   precision_ = create_info.precision;
   storage_type_ = create_info.storage_type;
   if (env->device().IsMali()) {
@@ -174,7 +174,7 @@ absl::Status InferenceContext::InitFromGraph(
     need_flush_ = true;
   }
   CopyInAndOutIds(graph);
-  RETURN_IF_ERROR(ConvertOperations(creation_context.GetDeviceInfo(), graph,
+  RETURN_IF_ERROR(ConvertOperations(creation_context.GetGpuInfo(), graph,
                                     create_info.hints));
   RETURN_IF_ERROR(Merge());
   RETURN_IF_ERROR(AllocateMemory(creation_context.context));
@@ -284,7 +284,7 @@ void InferenceContext::CopyInAndOutIds(const GraphFloat32& graph) {
 }
 
 void InferenceContext::ReserveGraphTensors(
-    const CreateInferenceInfo& create_info, const DeviceInfo& device_info,
+    const CreateInferenceInfo& create_info, const GpuInfo& gpu_info,
     const GraphFloat32& graph) {
   ValueId max_id = 0;
   auto tensors = graph.values();
@@ -296,14 +296,14 @@ void InferenceContext::ReserveGraphTensors(
     if (graph.IsGraphInput(t->id) || graph.IsGraphOutput(t->id)) {
       if (shape.c < 4 &&
           CanCreateTensorWithShape(
-              device_info, shape,
+              gpu_info, shape,
               TensorDescriptor{data_type, TensorStorageType::SINGLE_TEXTURE_2D,
                                layout})) {
         storage_type = TensorStorageType::SINGLE_TEXTURE_2D;
       }
     }
-    storage_type = SelectBestStorageType(device_info, shape, storage_type,
-                                         data_type, layout);
+    storage_type =
+        SelectBestStorageType(gpu_info, shape, storage_type, data_type, layout);
     tensor_reserver_.Add(
         t->id, {shape, TensorDescriptor{data_type, storage_type, layout}});
     max_id = std::max(max_id, t->id);
@@ -311,7 +311,7 @@ void InferenceContext::ReserveGraphTensors(
   tensor_reserver_.SetNext(max_id + 1);
 }
 
-absl::Status InferenceContext::ConvertOperations(const DeviceInfo& device_info,
+absl::Status InferenceContext::ConvertOperations(const GpuInfo& gpu_info,
                                                  const GraphFloat32& graph,
                                                  ModelHints hints) {
   std::map<ValueId, TensorDescriptor> tensor_descriptors;
@@ -335,7 +335,7 @@ absl::Status InferenceContext::ConvertOperations(const DeviceInfo& device_info,
     std::string op_name = node.operation.type + " " + std::to_string(node.id);
     GPUOperationsSubgraph gpu_subgraph;
     if (hints.Check(ModelHints::kAllowSpecialKernels) &&
-        GPUSubgraphFromGraph(device_info, precision_, graph, node.id,
+        GPUSubgraphFromGraph(gpu_info, precision_, graph, node.id,
                              tensor_descriptors, &consumed_nodes, &gpu_subgraph,
                              &op_name)
             .ok()) {
@@ -375,7 +375,7 @@ absl::Status InferenceContext::ConvertOperations(const DeviceInfo& device_info,
         op_def.dst_tensors.push_back(
             tensor_reserver_.Get(outputs[j]->id).descriptor);
       }
-      RETURN_IF_ERROR(GPUOperationFromNode(device_info, op_def, hints, inputs,
+      RETURN_IF_ERROR(GPUOperationFromNode(gpu_info, op_def, hints, inputs,
                                            outputs, node, &gpu_subgraph));
     }
     absl::flat_hash_map<int, ValueId> mapping_to_global_ids;

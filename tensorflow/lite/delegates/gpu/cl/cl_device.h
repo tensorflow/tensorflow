@@ -67,10 +67,10 @@ class CLDevice {
   // To track bug on some Adreno. b/131099086
   void DisableOneLayerTextureArray();
 
-  const DeviceInfo& GetInfo() const { return info_; }
+  const GpuInfo& GetInfo() const { return info_; }
   // We update device info during context creation, so as supported texture
   // formats can be requested from context only.
-  mutable DeviceInfo info_;
+  mutable GpuInfo info_;
 
  private:
   cl_device_id id_ = nullptr;

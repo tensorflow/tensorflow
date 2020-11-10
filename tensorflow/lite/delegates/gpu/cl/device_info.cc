@@ -296,15 +296,15 @@ bool MaliInfo::IsValhall() const {
          gpu_version == MaliGPU::G68 || gpu_version == MaliGPU::G78;
 }
 
-bool DeviceInfo::SupportsTextureArray() const {
+bool GpuInfo::SupportsTextureArray() const {
   return cl_version >= OpenCLVersion::CL_1_2;
 }
 
-bool DeviceInfo::SupportsImageBuffer() const {
+bool GpuInfo::SupportsImageBuffer() const {
   return cl_version >= OpenCLVersion::CL_1_2;
 }
 
-bool DeviceInfo::SupportsImage3D() const {
+bool GpuInfo::SupportsImage3D() const {
   if (IsMali() && mali_info.IsMidgard()) {
     // On Mali T880 read_imageh doesn't compile with image3d_t
     return false;
@@ -312,7 +312,7 @@ bool DeviceInfo::SupportsImage3D() const {
   return supports_image3d_writes;
 }
 
-bool DeviceInfo::SupportsFloatImage2D(DataType data_type, int channels) const {
+bool GpuInfo::SupportsFloatImage2D(DataType data_type, int channels) const {
   if (channels == 1) {
     return data_type == DataType::FLOAT32 ? supports_r_f32_tex2d
                                           : supports_r_f16_tex2d;
@@ -330,7 +330,7 @@ bool DeviceInfo::SupportsFloatImage2D(DataType data_type, int channels) const {
   }
 }
 
-bool DeviceInfo::SupportsExtension(const std::string& extension) const {
+bool GpuInfo::SupportsExtension(const std::string& extension) const {
   for (const auto& ext : extensions) {
     if (ext == extension) {
       return true;
@@ -339,13 +339,13 @@ bool DeviceInfo::SupportsExtension(const std::string& extension) const {
   return false;
 }
 
-bool DeviceInfo::IsCL20OrHigher() const {
+bool GpuInfo::IsCL20OrHigher() const {
   return cl_version != OpenCLVersion::CL_1_0 &&
          cl_version != OpenCLVersion::CL_1_1 &&
          cl_version != OpenCLVersion::CL_1_2;
 }
 
-bool DeviceInfo::SupportsSubGroupWithSize(int sub_group_size) const {
+bool GpuInfo::SupportsSubGroupWithSize(int sub_group_size) const {
   for (auto subgroup_size : supported_subgroup_sizes) {
     if (sub_group_size == subgroup_size) {
       return true;
@@ -354,19 +354,19 @@ bool DeviceInfo::SupportsSubGroupWithSize(int sub_group_size) const {
   return false;
 }
 
-bool DeviceInfo::IsAdreno() const { return gpu_vendor == GpuVendor::kQualcomm; }
+bool GpuInfo::IsAdreno() const { return gpu_vendor == GpuVendor::kQualcomm; }
 
-bool DeviceInfo::IsApple() const { return gpu_vendor == GpuVendor::kApple; }
+bool GpuInfo::IsApple() const { return gpu_vendor == GpuVendor::kApple; }
 
-bool DeviceInfo::IsMali() const { return gpu_vendor == GpuVendor::kMali; }
+bool GpuInfo::IsMali() const { return gpu_vendor == GpuVendor::kMali; }
 
-bool DeviceInfo::IsPowerVR() const { return gpu_vendor == GpuVendor::kPowerVR; }
+bool GpuInfo::IsPowerVR() const { return gpu_vendor == GpuVendor::kPowerVR; }
 
-bool DeviceInfo::IsNvidia() const { return gpu_vendor == GpuVendor::kNvidia; }
+bool GpuInfo::IsNvidia() const { return gpu_vendor == GpuVendor::kNvidia; }
 
-bool DeviceInfo::IsAMD() const { return gpu_vendor == GpuVendor::kAMD; }
+bool GpuInfo::IsAMD() const { return gpu_vendor == GpuVendor::kAMD; }
 
-bool DeviceInfo::IsIntel() const { return gpu_vendor == GpuVendor::kIntel; }
+bool GpuInfo::IsIntel() const { return gpu_vendor == GpuVendor::kIntel; }
 
 }  // namespace cl
 }  // namespace gpu

@@ -74,7 +74,7 @@ struct CreationContext {
   CLCommandQueue* queue;
   ProgramCache* cache;
 
-  const DeviceInfo& GetDeviceInfo() const { return device->info_; }
+  const GpuInfo& GetGpuInfo() const { return device->info_; }
 };
 
 struct OperationDef {
@@ -126,18 +126,18 @@ class GPUOperation {
   }
 
   virtual void GetPossibleKernelWorkGroups(
-      TuningType tuning_type, const DeviceInfo& device_info,
+      TuningType tuning_type, const GpuInfo& gpu_info,
       const KernelInfo& kernel_info, std::vector<int3>* work_groups) const;
 
   absl::Status Tune(const TuningParameters& params);
 
-  absl::Status AssembleCode(const DeviceInfo& device_info, CLContext* context);
+  absl::Status AssembleCode(const GpuInfo& gpu_info, CLContext* context);
 
   absl::Status Compile(const CreationContext& creation_context);
 
   absl::Status CompileDeserialized(const CreationContext& creation_context);
 
-  virtual absl::Status PostCompileCheck(const DeviceInfo& device_info,
+  virtual absl::Status PostCompileCheck(const GpuInfo& gpu_info,
                                         const KernelInfo& kernel_info) {
     return absl::OkStatus();
   }
