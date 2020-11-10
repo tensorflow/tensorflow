@@ -1,15 +1,13 @@
 #include "tensorflow/lite/micro/kernels/xcore/xcore_custom_options.h"
 
-#include "flatbuffers/flexbuffers.h"
-
 namespace tflite {
 namespace ops {
 namespace micro {
 namespace xcore {
 
-uint32_t get_named_uint32_custom_option(TfLiteContext *context, const char *buffer, 
-    const size_t length, const std::string named_key){
-
+flexbuffers::Vector get_named_uint32_custom_option_vector(
+    TfLiteContext *context, const char *buffer, const size_t length,
+    const std::string named_key) {
   const uint8_t *buffer_t = reinterpret_cast<const uint8_t *>(buffer);
 
   auto map = flexbuffers::GetRoot(buffer_t, length).AsMap();
@@ -19,14 +17,29 @@ uint32_t get_named_uint32_custom_option(TfLiteContext *context, const char *buff
   for (int i = 0; i < map.size(); ++i) {
     const std::string &key = keys[i].AsString().str();
     if (key.compare(named_key) == 0) {
-       return values[i].AsUInt32();
+      return values[i].AsVector();
     }
   }
   TF_LITE_FATAL("Custom option not found");
-  // This has no return value as the TF_LITE_FATAL will abort and not return.
-  // A flexbuffer where the custom option is missing is broken so returning a 
-  // default value will hide the underlying problem.
+}
 
+uint32_t get_named_uint32_custom_option(TfLiteContext *context,
+                                        const char *buffer, const size_t length,
+                                        const std::string named_key) {
+  const uint8_t *buffer_t = reinterpret_cast<const uint8_t *>(buffer);
+
+  auto map = flexbuffers::GetRoot(buffer_t, length).AsMap();
+
+  auto keys = map.Keys();
+  auto values = map.Values();
+  for (int i = 0; i < map.size(); ++i) {
+    const std::string &key = keys[i].AsString().str();
+    if (key.compare(named_key) == 0) {
+      return values[i].AsUInt32();
+    }
+  }
+  printf("%s\n", named_key.c_str());
+  TF_LITE_FATAL("Custom option not found");
 }
 
 //*****************************

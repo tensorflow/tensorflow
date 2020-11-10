@@ -63,8 +63,7 @@ ATTRIBUTE_THREAD_FUNCTION void conv2d_shallow_thread_worker(void *context) {
 }
 
 void *Init(TfLiteContext *context, const char *buffer, size_t length) {
-  Conv2DShallowOpData *op = nullptr;
-  op = reinterpret_cast<Conv2DShallowOpData *>(
+  auto *op = reinterpret_cast<Conv2DShallowOpData *>(
       context->AllocatePersistentBuffer(context, sizeof(Conv2DShallowOpData)));
   op->stack_scratch_index = -1;
   op->stack_size = 0;
@@ -86,8 +85,7 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   const TfLiteTensor *weights = GetInput(context, node, 1);
   const TfLiteTensor *bso = GetInput(context, node, 2);
 
-  Conv2DShallowOpData *op =
-      reinterpret_cast<Conv2DShallowOpData *>(node->user_data);
+  auto *op = reinterpret_cast<Conv2DShallowOpData *>(node->user_data);
 
   // set param values not parsed from custom options
   op->params.K_h = weights->dims->data[1];

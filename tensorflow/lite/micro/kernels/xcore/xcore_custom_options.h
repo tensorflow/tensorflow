@@ -1,6 +1,7 @@
 #ifndef XCORE_CUSTOM_OPTIONS_H_
 #define XCORE_CUSTOM_OPTIONS_H_
 
+#include "flatbuffers/flexbuffers.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_ops.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_planning.h"
 
@@ -27,8 +28,14 @@ void parse_custom_options(TfLiteContext *context, const char *buffer,
                           int32_t *K_w = nullptr, Conv2DPadding *pad = nullptr,
                           ExecutionPlan *plan = nullptr);
 
-uint32_t get_named_uint32_custom_option(TfLiteContext *context, const char *buffer, 
-    const size_t length, const std::string named_key);
+uint32_t get_named_uint32_custom_option(TfLiteContext *context,
+                                        const char *buffer, const size_t length,
+                                        const std::string named_key);
+
+flexbuffers::Vector get_named_uint32_custom_option_vector(
+    TfLiteContext *context, const char *buffer, const size_t length,
+    const std::string named_key);
+
 }  // namespace xcore
 }  // namespace micro
 }  // namespace ops
