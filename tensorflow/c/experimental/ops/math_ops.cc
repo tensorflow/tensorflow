@@ -40,14 +40,20 @@ Status Mul(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
 Status Conj(AbstractContext* ctx,
             absl::Span<AbstractTensorHandle* const> inputs,
             absl::Span<AbstractTensorHandle*> outputs, const char* name) {
-  AbstractOperationPtr conj_op(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(conj_op->Reset("Conj", /*raw_device_name=*/nullptr));
-  TF_RETURN_IF_ERROR(MaybeSetOpName(conj_op.get(), name));
-  TF_RETURN_IF_ERROR(conj_op->AddInput(inputs[0]));
+  auto dtype = inputs[0]->DataType();
+  if (DataTypeIsFloating(BaseType(dtype)) ||
+      DataTypeIsInteger(BaseType(dtype))) {
+    TF_RETURN_IF_ERROR(Identity(ctx, inputs, outputs, name));
+  } else {
+    AbstractOperationPtr conj_op(ctx->CreateOperation());
+    TF_RETURN_IF_ERROR(conj_op->Reset("Conj", /*raw_device_name=*/nullptr));
+    TF_RETURN_IF_ERROR(MaybeSetOpName(conj_op.get(), name));
+    TF_RETURN_IF_ERROR(conj_op->AddInput(inputs[0]));
 
-  int num_retvals = 1;
-  Status s = conj_op->Execute(outputs, &num_retvals);
-  return s;
+    int num_retvals = 1;
+    TF_RETURN_IF_ERROR(conj_op->Execute(outputs, &num_retvals));
+  }
+  return Status::OK();
 }
 
 Status Add(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
