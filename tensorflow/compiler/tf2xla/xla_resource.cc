@@ -116,10 +116,12 @@ Status XlaResource::SetValue(const xla::XlaOp& value) {
         "' must be initialized with a valid type before use.");
   }
   value_ = value;
+  is_overwritten_ = true;
   return Status::OK();
 }
 
 Status XlaResource::SetZeroValue(xla::XlaBuilder* builder) {
+  is_overwritten_ = true;
   if (type_ == DT_INVALID) {
     return errors::InvalidArgument(
         "Resource '", name_,

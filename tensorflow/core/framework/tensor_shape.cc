@@ -169,8 +169,6 @@ static inline bool Set16(bool partial, uint16* dst, int dim, int64 val) {
       dst[dim] = std::numeric_limits<uint16>::max();
       return true;
     }
-  } else {
-    CHECK_GE(val, 0);
   }
   dst[dim] = val;
   return false;
@@ -190,6 +188,14 @@ void TensorShapeBase<Shape>::InitDims(gtl::ArraySlice<int64> dim_sizes) {
     if (s > kMaxSmall) {
       large_size = true;
       break;
+    }
+  }
+
+  // TODO(mihaimaruseac): Remove this CHECK as the refactoring continues
+  // Temporaryly moving the CHECK from Set16 here
+  if (!kIsPartial && !large_size) {
+    for (auto s : dim_sizes) {
+      CHECK_GE(s, 0);
     }
   }
 

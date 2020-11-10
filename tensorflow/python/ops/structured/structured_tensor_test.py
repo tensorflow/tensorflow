@@ -916,8 +916,8 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
   def testMergeDimsError(self):
     st = StructuredTensor.from_pyval([[[{"a": 5}]]])
     with self.assertRaisesRegex(
-        ValueError,
-        r"Expected outer_axis \(2\) to be less than inner_axis \(1\)"):
+        ValueError, r"Expected outer_axis \(2\) to be less than "
+        r"or equal to inner_axis \(1\)"):
       st.merge_dims(2, 1)
 
   def testTupleFieldValue(self):

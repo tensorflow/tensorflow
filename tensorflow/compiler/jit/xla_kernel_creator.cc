@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/jit/xla_kernel_creator.h"
 
-#include "tensorflow/compiler/mlir/mlir_bridge_rollout_policy.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -23,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/kernels/xla_ops.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
+#include "tensorflow/compiler/tf2xla/mlir_bridge_pass.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -89,10 +89,21 @@ static Status CreateXlaKernel(FunctionLibraryRuntime* flr,
   // Make sure that kernels have been registered on the JIT device.
   XlaOpRegistry::RegisterCompilationKernels();
 
+  // Get function body, constant args, and resource args.
+  NameAttrList function;
+  TF_RETURN_IF_ERROR(NameAndAttrsFromFunctionCall(node_def, &function));
+  const FunctionBody* fbody = nullptr;
+  std::vector<int> constant_arg_indices;
+  std::vector<int> resource_arg_indices;
+  TF_RETURN_IF_ERROR(GetBodyAndConstantsAndResources(
+      flr, function, &fbody, &constant_arg_indices, &resource_arg_indices));
+
   // Only check for compilability if the MLIR bridge is not enabled.
-  MlirBridgeRolloutPolicy policy = GetMlirBridgeRolloutPolicy(absl::nullopt);
-  if (policy == MlirBridgeRolloutPolicy::kDisabledByUser ||
-      policy == MlirBridgeRolloutPolicy::kDisabledAfterGraphAnalysis) {
+  absl::optional<ConfigProto> config_proto;
+  if (flr->config_proto()) {
+    config_proto = *flr->config_proto();
+  }
+  if (!IsMlirBridgePassEnabled(*fbody->graph, config_proto)) {
     RecursiveCompilabilityChecker::UncompilableNodesMap uncompilable_nodes_map;
     if (!IsCompilable(flr, node_def, &uncompilable_nodes_map)) {
       std::vector<RecursiveCompilabilityChecker::UncompilableNodeInfo>
@@ -120,15 +131,6 @@ static Status CreateXlaKernel(FunctionLibraryRuntime* flr,
       return errors::InvalidArgument(message);
     }
   }
-
-  // Get function body, constant args, and resource args.
-  NameAttrList function;
-  TF_RETURN_IF_ERROR(NameAndAttrsFromFunctionCall(node_def, &function));
-  const FunctionBody* fbody = nullptr;
-  std::vector<int> constant_arg_indices;
-  std::vector<int> resource_arg_indices;
-  TF_RETURN_IF_ERROR(GetBodyAndConstantsAndResources(
-      flr, function, &fbody, &constant_arg_indices, &resource_arg_indices));
 
   MemoryTypeVector input_memory_types =
       GetInputMemoryTypes(fbody, constant_arg_indices, resource_arg_indices);

@@ -301,7 +301,7 @@ class BNTest(test.TestCase):
     self.assertEqual(len(bn.trainable_variables), 2)
     self.assertEqual(len(bn.non_trainable_variables), 2)
     for var in bn.variables:
-      self.assertEqual(var.dtype, dtypes.float32_ref)
+      self.assertTrue(var.dtype._is_ref_dtype)
 
     # Test that updates were created and added to UPDATE_OPS.
     self.assertEqual(len(bn.updates), 2)

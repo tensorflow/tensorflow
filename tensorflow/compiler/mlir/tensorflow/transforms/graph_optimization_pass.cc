@@ -28,10 +28,11 @@ namespace TF {
 namespace {
 using Status = ::tensorflow::Status;
 using ConfigProto = ::tensorflow::ConfigProto;
+using Graph = ::tensorflow::Graph;
 }  // namespace
 
 Status MlirGraphOptimizationPass::Run(const ConfigProto& config_proto,
-                                      ModuleOp module) {
+                                      ModuleOp module, const Graph& graph) {
   if (!config_proto.experimental().enable_mlir_graph_optimization()) {
     VLOG(1) << "Skipping MLIR Graph Optimization Pass"
             << ", session flag not enabled";

@@ -656,6 +656,77 @@ class DefFunctionTest(xla_test.XLATestCase):
       self.assertIn('tuple',
                     f.experimental_get_compiler_ir(l)())
 
+  @test_util.disable_mlir_bridge('TODO(b/172845417): MLIR bridge does not '
+                                 'support getting constants out of resources')
+  def testGetConstantOutOfResourceVariable(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      # Use floats to force device placement.
+      a = variables.Variable(50.0)
+      b = variables.Variable(2.0)
+
+      @def_function.function(jit_compile=True)
+      def f(x):
+        return array_ops.reshape(
+            x, [math_ops.cast(a, dtypes.int32),
+                math_ops.cast(b, dtypes.int32)])
+
+      # OK since the value is known at compile time.
+      out = f(random_ops.random_normal([10, 10]))
+      self.assertEqual(out.shape[0], 50)
+      self.assertEqual(out.shape[1], 2)
+
+  @test_util.disable_mlir_bridge('TODO(b/172845417): MLIR bridge does not '
+                                 'support getting constants out of resources')
+  def testGetConstantOutOfResourceVariableAfterWrite(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      # Use floats to force device placement.
+      a = variables.Variable(50.0)
+      b = variables.Variable(2.0)
+
+      @def_function.function(jit_compile=True)
+      def f(x, val1, val2):
+        a.assign(math_ops.cast(val1, dtypes.float32))
+        b.assign(math_ops.cast(val2, dtypes.float32))
+        return array_ops.reshape(
+            x, [math_ops.cast(a, dtypes.int32),
+                math_ops.cast(b, dtypes.int32)])
+
+      val1 = constant_op.constant(2)
+      val2 = constant_op.constant(50)
+
+      # Returns an error, since the value known at compile time was overriden.
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  'concrete values at compile time'):
+        f(random_ops.random_normal([10, 10]), val1, val2)
+
+  @test_util.disable_mlir_bridge('TODO(b/172845417): MLIR bridge does not '
+                                 'support getting constants out of resources')
+  def testGetConstantOutOfResourceVariableBeforeWrite(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      # Use floats to force device placement.
+      a = variables.Variable(50.0)
+      b = variables.Variable(2.0)
+
+      @def_function.function(jit_compile=True)
+      def f(x, val1, val2):
+        out = array_ops.reshape(
+            x, [math_ops.cast(a, dtypes.int32),
+                math_ops.cast(b, dtypes.int32)])
+        a.assign(math_ops.cast(val1, dtypes.float32))
+        b.assign(math_ops.cast(val2, dtypes.float32))
+        return out
+
+      val1 = constant_op.constant(2)
+      val2 = constant_op.constant(50)
+
+      # OK since the write happens after the reshape.
+      out = f(random_ops.random_normal([10, 10]), val1, val2)
+      self.assertEqual(out.shape[0], 50)
+      self.assertEqual(out.shape[1], 2)
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

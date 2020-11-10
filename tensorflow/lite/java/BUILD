@@ -364,7 +364,7 @@ java_test(
     test_class = "org.tensorflow.lite.InterpreterCustomizedAndroidBuildTest",
     visibility = ["//visibility:private"],
     deps = [
-        "//tensorflow/lite/testing:customtized_tflite_for_add_ops",
+        "//tensorflow/lite/testing:customized_tflite_for_add_ops",
         "@com_google_truth",
         "@junit",
     ],

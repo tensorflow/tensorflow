@@ -186,6 +186,7 @@ def _rocm_include_path(repository_ctx, rocm_config, bash_bin):
     inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/9.0.0/include")
     inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/10.0.0/include")
     inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/11.0.0/include")
+    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/12.0.0/include")
 
     # Support hcc based off clang 10.0.0 (for ROCm 3.3)
     inc_dirs.append(rocm_toolkit_path + "/hcc/compiler/lib/clang/10.0.0/include/")
@@ -215,7 +216,7 @@ def _amdgpu_targets(repository_ctx, rocm_toolkit_path, bash_bin):
         amdgpu_targets_str = ",".join(targets)
     amdgpu_targets = amdgpu_targets_str.split(",")
     for amdgpu_target in amdgpu_targets:
-        if amdgpu_target[:3] != "gfx" or not amdgpu_target[3:].isdigit():
+        if amdgpu_target[:3] != "gfx":
             auto_configure_fail("Invalid AMDGPU target: %s" % amdgpu_target)
     return amdgpu_targets
 
@@ -243,51 +244,6 @@ def _hipcc_env(repository_ctx):
         if env_value:
             hipcc_env = (hipcc_env + " " + name + "=\"" + env_value + "\";")
     return hipcc_env.strip()
-
-def _hipcc_is_hipclang(repository_ctx, rocm_config, bash_bin):
-    """Returns if hipcc is based on hip-clang toolchain.
-
-    Args:
-        repository_ctx: The repository context.
-        rocm_config: The path to the hip compiler.
-        bash_bin: the path to the bash interpreter
-
-    Returns:
-        A string "True" if hipcc is based on hip-clang toolchain.
-        The functions returns "False" if not (ie: based on HIP/HCC toolchain).
-    """
-
-    #  check user-defined hip-clang environment variables
-    for name in ["HIP_CLANG_PATH", "HIP_VDI_HOME"]:
-        if get_host_environ(repository_ctx, name):
-            return "True"
-
-    # grep for "HIP_COMPILER=clang" in /opt/rocm/hip/lib/.hipInfo
-    cmd = "grep HIP_COMPILER=clang %s/hip/lib/.hipInfo || true" % rocm_config.rocm_toolkit_path
-    grep_result = execute(repository_ctx, [bash_bin, "-c", cmd], empty_stdout_fine = True)
-    result = grep_result.stdout.strip()
-    if result == "HIP_COMPILER=clang":
-        return "True"
-    return "False"
-
-def _if_hipcc_is_hipclang(repository_ctx, rocm_config, bash_bin, if_true, if_false = []):
-    """
-    Returns either the if_true or if_false arg based on whether hipcc
-    is based on the hip-clang toolchain
-
-    Args :
-        repository_ctx: The repository context.
-        rocm_config: The path to the hip compiler.
-        if_true : value to return if hipcc is hip-clang based
-        if_false : value to return if hipcc is not hip-clang based
-                   (optional, defaults to empty list)
-
-    Returns :
-        either the if_true arg or the of_False arg
-    """
-    if _hipcc_is_hipclang(repository_ctx, rocm_config, bash_bin) == "True":
-        return if_true
-    return if_false
 
 def _crosstool_verbose(repository_ctx):
     """Returns the environment variable value CROSSTOOL_VERBOSE.
@@ -633,13 +589,7 @@ def _create_local_rocm_repository(repository_ctx):
         outs = rocm_lib_outs,
     ))
 
-    clang_offload_bundler_path = rocm_toolkit_path + _if_hipcc_is_hipclang(
-        repository_ctx,
-        rocm_config,
-        bash_bin,
-        "/llvm/bin/",
-        "/hcc/bin/",
-    ) + "clang-offload-bundler"
+    clang_offload_bundler_path = rocm_toolkit_path + "/llvm/bin/clang-offload-bundler"
 
     # copy files mentioned in third_party/gpus/rocm/BUILD
     copy_rules.append(make_copy_files_rule(
@@ -712,17 +662,7 @@ def _create_local_rocm_repository(repository_ctx):
         "-DTENSORFLOW_USE_ROCM=1",
         "-D__HIP_PLATFORM_HCC__",
         "-DEIGEN_USE_HIP",
-    ] + _if_hipcc_is_hipclang(repository_ctx, rocm_config, bash_bin, [
-        #
-        # define "TENSORFLOW_COMPILER_IS_HIP_CLANG" when we are using clang
-        # based hipcc to compile/build tensorflow
-        #
-        # Note that this #define should not be used to check whether or not
-        # tensorflow is being built with ROCm support
-        # (only TENSORFLOW_USE_ROCM should be used for that purpose)
-        #
-        "-DTENSORFLOW_COMPILER_IS_HIP_CLANG=1",
-    ]))
+    ])
 
     rocm_defines["%{host_compiler_path}"] = "clang/bin/crosstool_wrapper_driver_is_not_gcc"
 
@@ -753,7 +693,6 @@ def _create_local_rocm_repository(repository_ctx):
             "%{cpu_compiler}": str(cc),
             "%{hipcc_path}": rocm_config.rocm_toolkit_path + "/hip/bin/hipcc",
             "%{hipcc_env}": _hipcc_env(repository_ctx),
-            "%{hipcc_is_hipclang}": _hipcc_is_hipclang(repository_ctx, rocm_config, bash_bin),
             "%{rocr_runtime_path}": rocm_config.rocm_toolkit_path + "/lib",
             "%{rocr_runtime_library}": "hsa-runtime64",
             "%{hip_runtime_path}": rocm_config.rocm_toolkit_path + "/hip/lib",
