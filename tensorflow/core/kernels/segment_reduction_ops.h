@@ -47,7 +47,7 @@ typedef Eigen::GpuDevice GPUDevice;
 // data: input data tensor.
 // output: output reshaped to {output_rows, output.size/output_rows}
 template <typename T, typename Index, typename InitialValueF,
-          typename SegmentReductionF, typename SegmentAtomicReductionF>
+          typename ReductionF, typename AtomicReductionF>
 struct SegmentReductionFunctor {
   void operator()(OpKernelContext* ctx, const GPUDevice& d,
                   const Index output_rows, const TensorShape& segment_ids_shape,
@@ -71,7 +71,7 @@ struct UnsortedSegmentFunctor {
 
 // Atomic reduction functors for the gpu.
 template <typename T>
-struct SumAtomicOpGpu {
+struct AtomicSumOpGpu {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(T* dest,
                                                         const T& value) {
     GpuAtomicAdd(dest, value);
@@ -79,7 +79,7 @@ struct SumAtomicOpGpu {
 };
 
 template <typename T>
-struct ProdAtomicOpGpu {
+struct AtomicProdOpGpu {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(T* dest,
                                                         const T& value) {
     GpuAtomicMul(dest, value);
@@ -87,7 +87,7 @@ struct ProdAtomicOpGpu {
 };
 
 template <typename T>
-struct MaxAtomicOpGpu {
+struct AtomicMaxOpGpu {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(T* dest,
                                                         const T& value) {
     GpuAtomicMax(dest, value);
@@ -95,16 +95,16 @@ struct MaxAtomicOpGpu {
 };
 
 template <typename T>
-struct MinAtomicOpGpu {
+struct AtomicMinOpGpu {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(T* dest,
                                                         const T& value) {
     GpuAtomicMin(dest, value);
   }
 };
 
-// Reduction functors for the gpu.
+// Non-atomic reduction functors for the gpu.
 template <typename T>
-struct SumOpGpu {
+struct NonAtomicSumOpGpu {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(T* dest,
                                                         const T& value) {
     *dest += value;
@@ -112,7 +112,7 @@ struct SumOpGpu {
 };
 
 template <typename T>
-struct ProdOpGpu {
+struct NonAtomicProdOpGpu {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(T* dest,
                                                         const T& value) {
     *dest *= value;
@@ -120,7 +120,7 @@ struct ProdOpGpu {
 };
 
 template <typename T>
-struct MaxOpGpu {
+struct NonAtomicMaxOpGpu {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(T* dest,
                                                         const T& value) {
     *dest = max(*dest, value);
@@ -128,7 +128,7 @@ struct MaxOpGpu {
 };
 
 template <typename T>
-struct MinOpGpu {
+struct NonAtomicMinOpGpu {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(T* dest,
                                                         const T& value) {
     *dest = min(*dest, value);

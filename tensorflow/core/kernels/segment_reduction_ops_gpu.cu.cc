@@ -52,12 +52,12 @@ using GPUDevice = Eigen::GpuDevice;
 // rows of input data and all reduction elements share one inner
 // dimension index.
 template <typename T, typename Index, int OuterDimTileSize,
-          typename SegmentReductionF, typename SegmentAtomicReductionF>
+          typename ReductionF, typename AtomicReductionF>
 __global__ void SortedSegmentReductionCustomKernel(
     const Index input_outer_dim_size, const Index inner_dim_size,
     const Index output_outer_dim_size, const Index* __restrict__ segment_ids,
     const T* __restrict__ input, T* __restrict__ output,
-    const Index total_stripe_count，const T initial_value) {
+    const Index total_stripe_count, const T initial_value) {
   for (int stripe_index : GpuGridRangeX(total_stripe_count)) {
     const Index segment_offset = stripe_index % inner_dim_size;
     const Index input_outer_dim_index_base =
@@ -82,13 +82,13 @@ __global__ void SortedSegmentReductionCustomKernel(
         // Decide whether to write result to global memory using atomic
         // operations.
         if (last_output_segment_id == first_segment_id) {
-          SegmentAtomicReductionF()(output + output_index, reduce_res);
+          AtomicReductionF()(output + output_index, reduce_res);
         } else {
-          SegmentReductionF()(output + output_index, reduce_res);
+          ReductionF()(output + output_index, reduce_res);
         }
         reduce_res = initial_value;
       }
-      SegmentReductionF()(&reduce_res,
+      ReductionF()(&reduce_res,
                           ldg(input + (input_outer_dim_index_base + j)
                               * inner_dim_size + segment_offset));
       last_output_segment_id = current_output_segment_id;
@@ -98,7 +98,7 @@ __global__ void SortedSegmentReductionCustomKernel(
     // the following strip.
     const Index output_index =
         last_output_segment_id * inner_dim_size + segment_offset;
-    SegmentAtomicReductionF()(output + output_index, reduce_res);
+    AtomicReductionF()(output + output_index, reduce_res);
   }
 }
 
@@ -128,9 +128,9 @@ __global__ void UnsortedSegmentCustomKernel(
 namespace functor {
 
 template <typename T, typename Index, typename InitialValueF,
-          typename SegmentReductionF, typename SegmentAtomicReductionF>
-void SegmentReductionFunctor<T, Index, InitialValueF, SegmentReductionF,
-                             SegmentAtomicReductionF>::operator()(
+          typename ReductionF, typename AtomicReductionF>
+void SegmentReductionFunctor<T, Index, InitialValueF, ReductionF,
+                             AtomicReductionF>::operator()(
     OpKernelContext* ctx, const GPUDevice& d, const Index output_rows,
     const TensorShape& segment_ids_shape,
     typename TTypes<Index>::ConstFlat segment_ids, const Index data_size,
@@ -168,8 +168,7 @@ void SegmentReductionFunctor<T, Index, InitialValueF, SegmentReductionF,
   config = GetGpuLaunchConfig(total_stripe_count, d);
   TF_CHECK_OK(GpuLaunchKernel(
       SortedSegmentReductionCustomKernel<T, Index, OuterDimTileSize,
-                                         SegmentReductionF,
-                                         SegmentAtomicReductionF>,
+                                         ReductionF, AtomicReductionF>,
       config.block_count, config.thread_per_block, 0, d.stream(),
       input_outer_dim_size, input_inner_dim_size, output_rows,
       segment_ids.data(), data, output.data(), total_stripe_count,
@@ -216,13 +215,13 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
 
 #define DEFINE_SORTED_GPU_SPECS_INDEX(T, Index)                                \
   template struct SegmentReductionFunctor<T, Index, functor::Zero<T>,          \
-      functor::SumOpGpu<T>, functor::SumAtomicOpGpu<T>>;                       \
+      functor::NonAtomicSumOpGpu<T>, functor::AtomicSumOpGpu<T>>;              \
   template struct SegmentReductionFunctor<T, Index, functor::One<T>,           \
-      functor::ProdOpGpu<T>, functor::ProdAtomicOpGpu<T>>;                     \
+      functor::NonAtomicProdOpGpu<T>, functor::AtomicProdOpGpu<T>>;            \
   template struct SegmentReductionFunctor<T, Index, functor::Highest<T>,       \
-      functor::MinOpGpu<T>, functor::MinAtomicOpGpu<T>>;                       \
+      functor::NonAtomicMinOpGpu<T>, functor::AtomicMinOpGpu<T>>;              \
   template struct SegmentReductionFunctor<T, Index, functor::Lowest<T>,        \
-      functor::MaxOpGpu<T>, functor::MaxAtomicOpGpu<T>>;
+      functor::NonAtomicMaxOpGpu<T>, functor::AtomicMaxOpGpu<T>>;
 
 #define DEFINE_SORTED_GPU_SPECS(T)         \
   DEFINE_SORTED_GPU_SPECS_INDEX(T, int32); \
@@ -232,16 +231,16 @@ TF_CALL_GPU_NUMBER_TYPES(DEFINE_SORTED_GPU_SPECS);
 
 #define DEFINE_REAL_UNSORTED_GPU_SPECS_INDEX(T, Index)                         \
   template struct UnsortedSegmentFunctor<                                      \
-      GPUDevice, T, Index, functor::Lowest<T>, functor::MaxAtomicOpGpu<T>>;    \
+      GPUDevice, T, Index, functor::Lowest<T>, functor::AtomicMaxOpGpu<T>>;    \
   template struct UnsortedSegmentFunctor<                                      \
-      GPUDevice, T, Index, functor::Highest<T>, functor::MinAtomicOpGpu<T>>;   \
+      GPUDevice, T, Index, functor::Highest<T>, functor::AtomicMinOpGpu<T>>;   \
   template struct UnsortedSegmentFunctor<GPUDevice, T, Index, functor::One<T>, \
-                                         functor::ProdAtomicOpGpu<T>>;
+                                         functor::AtomicProdOpGpu<T>>;
 
 // Sum is the only op that supports all input types currently.
 #define DEFINE_SUM_UNSORTED_GPU_SPECS_INDEX(T, Index) \
   template struct UnsortedSegmentFunctor<             \
-      GPUDevice, T, Index, functor::Zero<T>, functor::SumAtomicOpGpu<T>>;
+      GPUDevice, T, Index, functor::Zero<T>, functor::AtomicSumOpGpu<T>>;
 
 #define DEFINE_REAL_GPU_SPECS(T)                  \
   DEFINE_REAL_UNSORTED_GPU_SPECS_INDEX(T, int32); \

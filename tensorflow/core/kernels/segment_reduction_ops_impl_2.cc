@@ -81,20 +81,20 @@ REGISTER_COMPLEX_CPU_KERNELS_ALL(complex128);
 #define REGISTER_GPU_SORTED_KERNELS(type, index_type)                        \
   REGISTER_GPU_KERNEL_SORTEDSEGMENT("SegmentSum", type, index_type,          \
                                     functor::Zero<type>,                     \
-                                    functor::SumOpGpu<type>,                 \
-                                    functor::SumAtomicOpGpu<type>);          \
+                                    functor::NonAtomicSumOpGpu<type>,        \
+                                    functor::AtomicSumOpGpu<type>);          \
   REGISTER_GPU_KERNEL_SORTEDSEGMENT("SegmentProd", type, index_type,         \
                                     functor::One<type>,                      \
-                                    functor::ProdOpGpu<type>,                \
-                                    functor::ProdAtomicOpGpu<type>);         \
+                                    functor::NonAtomicProdOpGpu<type>,       \
+                                    functor::AtomicProdOpGpu<type>);         \
   REGISTER_GPU_KERNEL_SORTEDSEGMENT("SegmentMin", type, index_type,          \
                                     functor::Highest<type>,                  \
-                                    functor::MinOpGpu<type>,                 \
-                                    functor::MinAtomicOpGpu<type>);          \
+                                    functor::NonAtomicMinOpGpu<type>,        \
+                                    functor::AtomicMinOpGpu<type>);          \
   REGISTER_GPU_KERNEL_SORTEDSEGMENT("SegmentMax", type, index_type,          \
                                     functor::Lowest<type>,                   \
-                                    functor::MaxOpGpu<type>,                 \
-                                    functor::MaxAtomicOpGpu<type>);
+                                    functor::NonAtomicMaxOpGpu<type>,        \
+                                    functor::AtomicMaxOpGpu<type>);
 
 #define REGISTER_GPU_SORTED_KERNELS_ALL(type) \
   REGISTER_GPU_SORTED_KERNELS(type, int64);
