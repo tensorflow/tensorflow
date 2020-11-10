@@ -428,6 +428,7 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "sin",
+    generate_ranked = False,
     generate_unranked = True,
     same_shape = "0,1",
     tile_size = "256",
