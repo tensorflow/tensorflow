@@ -265,8 +265,6 @@ def convert_to_list(values, sparse_default_value=None):
       values = K.get_session(values).run(values)
     values = values.to_list()
 
-  # TODO(momernick): Add a sparse_tensor.is_sparse() method to replace this
-  # check.
   if isinstance(values,
                 (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
     if sparse_default_value is None:
