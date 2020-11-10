@@ -117,14 +117,14 @@ bool IsNested(const XEvent& event, const XEvent& parent) {
   return XEventTimespan(parent).Includes(XEventTimespan(event));
 }
 
-XStat* FindOrAddMutableStat(int64 metadata_id, XEvent* event) {
+XStat* FindOrAddMutableStat(const XStatMetadata& stat_metadata, XEvent* event) {
   for (auto& stat : *event->mutable_stats()) {
-    if (stat.metadata_id() == metadata_id) {
+    if (stat.metadata_id() == stat_metadata.id()) {
       return &stat;
     }
   }
   XStat* stat = event->add_stats();
-  stat->set_metadata_id(metadata_id);
+  stat->set_metadata_id(stat_metadata.id());
   return stat;
 }
 

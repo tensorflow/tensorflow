@@ -44,7 +44,7 @@ std::vector<XPlane*> FindMutablePlanesWithPrefix(XSpace* space,
 bool IsNested(const tensorflow::profiler::XEvent& event,
               const tensorflow::profiler::XEvent& parent);
 
-XStat* FindOrAddMutableStat(int64 metadata_id, XEvent* event);
+XStat* FindOrAddMutableStat(const XStatMetadata& stat_metadata, XEvent* event);
 
 void RemovePlane(XSpace* space, const XPlane* plane);
 
