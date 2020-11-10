@@ -46,7 +46,7 @@ class CLDevice {
   cl_platform_id platform() const { return platform_id_; }
   std::string GetPlatformVersion() const;
 
-  Vendor vendor() const { return info_.vendor; }
+  GpuVendor vendor() const { return info_.gpu_vendor; }
   OpenCLVersion cl_version() const { return info_.cl_version; }
   bool SupportsFP16() const;
   bool SupportsTextureArray() const;
@@ -58,11 +58,6 @@ class CLDevice {
   bool IsCL20OrHigher() const;
   bool SupportsSubGroupWithSize(int sub_group_size) const;
   bool IsAdreno() const;
-  bool IsAdreno3xx() const;
-  bool IsAdreno4xx() const;
-  bool IsAdreno5xx() const;
-  bool IsAdreno6xx() const;
-  bool IsAdreno6xxOrHigher() const;
   bool IsPowerVR() const;
   bool IsNvidia() const;
   bool IsMali() const;
@@ -70,7 +65,6 @@ class CLDevice {
   bool IsIntel() const;
 
   // To track bug on some Adreno. b/131099086
-  bool SupportsOneLayerTextureArray() const;
   void DisableOneLayerTextureArray();
 
   const DeviceInfo& GetInfo() const { return info_; }

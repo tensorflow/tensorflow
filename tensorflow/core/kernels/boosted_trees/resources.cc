@@ -372,7 +372,6 @@ void BoostedTreesEnsembleResource::Reset() {
 
   // Clear tree ensemle.
   arena_.Reset();
-  CHECK_EQ(0, arena_.SpaceAllocated());
   tree_ensemble_ =
       protobuf::Arena::CreateMessage<boosted_trees::TreeEnsemble>(&arena_);
 }

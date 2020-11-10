@@ -189,6 +189,8 @@ class Discretization(base_preprocessing_layer.CombinerPreprocessingLayer):
         combiner=Discretization.DiscretizingCombiner(
             epsilon, bins if isinstance(bins, int) else 1),
         **kwargs)
+    base_preprocessing_layer.keras_kpl_gauge.get_cell(
+        "Discretization").set(True)
     if bins is not None and not isinstance(bins, int):
       self.bins = np.append(bins, [np.Inf])
     else:

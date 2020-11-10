@@ -15,7 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_DELEGATES_COREML_COREML_DELEGATE_KERNEL_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_DELEGATES_COREML_COREML_DELEGATE_KERNEL_H_
 
-#include "external/coremltools/mlmodel/format/Model.pb.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/delegates/coreml/builders/op_builder.h"
 #import "tensorflow/lite/experimental/delegates/coreml/coreml_executor.h"

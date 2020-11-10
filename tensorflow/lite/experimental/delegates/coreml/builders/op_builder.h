@@ -17,8 +17,8 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "external/coremltools/mlmodel/format/Model.pb.h"
-#include "external/coremltools/mlmodel/format/NeuralNetwork.pb.h"
+#include "mlmodel/format/Model.pb.h"
+#include "mlmodel/format/NeuralNetwork.pb.h"
 #include "tensorflow/lite/c/common.h"
 
 namespace tflite {

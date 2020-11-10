@@ -14,7 +14,11 @@ load(
     "tf_cuda_library",
     "tf_opts_nortti_if_lite_protos",
 )
-load("//tensorflow/core/kernels/mlir_generated:build_defs.bzl", "if_mlir_generated_gpu_kernels_enabled")
+load(
+    "//tensorflow/core/kernels/mlir_generated:build_defs.bzl",
+    "if_mlir_generated_gpu_kernels_enabled",
+    "if_mlir_unranked_kernels_enabled",
+)
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
@@ -84,7 +88,10 @@ package_group(
 
 package_group(
     name = "optimizer_helper_friends",
-    packages = ["//learning/brain/research/lather/..."],
+    packages = [
+        "//learning/brain/research/lather/...",
+        "//learning/clair/alise/...",
+    ],
 )
 
 config_setting(
@@ -3400,9 +3407,10 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "cwise_op",
-    copts = if_mlir_generated_gpu_kernels_enabled(if_true = ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED=1"]),
+    copts = if_mlir_generated_gpu_kernels_enabled(if_true = ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED=1"]) +
+            if_mlir_unranked_kernels_enabled(if_true = ["-DMLIR_GENERATED_UNRANKED_GPU_KERNELS_ENABLED=1"]),
     prefix = "cwise_op",
-    deps = MATH_DEPS + if_mlir_generated_gpu_kernels_enabled(if_true = ["//tensorflow/core/kernels/mlir_generated:cwise_unary_op"]),
+    deps = MATH_DEPS + if_mlir_generated_gpu_kernels_enabled(if_true = ["//tensorflow/core/kernels/mlir_generated:cwise_op"]),
 )
 
 tf_kernel_library(
@@ -5509,13 +5517,9 @@ tf_cc_test(
     ],
 )
 
-filegroup(
+alias(
     name = "spectrogram_test_data",
-    srcs = [
-        "spectrogram_test_data/short_test_segment.wav",
-        "spectrogram_test_data/short_test_segment_spectrogram.csv.bin",
-        "spectrogram_test_data/short_test_segment_spectrogram_400_200.csv.bin",
-    ],
+    actual = "//tensorflow/core/kernels/spectrogram_test_data:spectrogram_test_data",
     visibility = ["//visibility:public"],
 )
 

@@ -174,6 +174,16 @@ class Sharding(object):
     # pylint: disable=protected-access
     tensor.op._set_attr('_XlaSharding', attr_value)
 
+  def apply_to_operation(self, operation):
+    """Applies this Sharding attribute to `operation`.
+
+    Args:
+      operation: A tf.Operation to add sharding annotation.
+    """
+    attr_value = attr_value_pb2.AttrValue(s=self._proto.SerializeToString())
+    # pylint: disable=protected-access
+    operation._set_attr('_XlaSharding', attr_value)
+
   @property
   def proto(self):
     """Return the sharding protobuf of type xla_data_pb2.OpSharding."""

@@ -78,6 +78,9 @@ std::unique_ptr<FunctionPass> CreatePropagateTfAbiKnowledgeToKernels();
 // Pass to propagate shape equalities across kernel boundaries.
 std::unique_ptr<FunctionPass> CreatePropagateShapeKnowledgeToKernels();
 
+// Pass to print content of memrefs.
+std::unique_ptr<FunctionPass> CreateEmbedMemRefPrintsPass();
+
 }  // namespace transforms
 
 #define GEN_PASS_REGISTRATION

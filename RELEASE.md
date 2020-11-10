@@ -36,12 +36,18 @@
     *   Exposing `tf.data.experimental.ExternalStatePolicy`, which can be used
         to control how external state should be handled during dataset
         serialization or iterator checkpointing.
+*   XLA compilation:
+    *   `tf.function(experimental_compile=True)` has become a stable API,
+        renamed `tf.function(jit_compile=True)`.
 
 *   `tf.lite`:
     *   NNAPI
         *   Removed deprecated `Interpreter::UseNNAPI(bool)` C++ API.
             *   Use `NnApiDelegate()` and related delegate configuration methods
                 directly.
+    *  16 bits quantization
+        *   Added int16x8 support for REDUCE_MIN and REDUCE_MAX operators.
+
 *   TF Core:
     *   Corrected higher-order gradients of control flow constructs (`tf.cond`,
         `tf.while_loop`, and compositions like `tf.foldl`) computed with

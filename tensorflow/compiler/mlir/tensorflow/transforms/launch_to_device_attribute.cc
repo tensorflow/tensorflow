@@ -42,20 +42,15 @@ limitations under the License.
 //                       tensor<i1>, tensor<f32>, tensor<i32>, tensor<i1>
 //   }
 
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
 namespace TFDevice {
@@ -63,62 +58,16 @@ namespace {
 constexpr char kDeviceAttr[] = "device";
 
 struct LaunchToDeviceAttributePass
-    : public PassWrapper<LaunchToDeviceAttributePass, OperationPass<ModuleOp>> {
-  void runOnOperation() override;
+    : public PassWrapper<LaunchToDeviceAttributePass, FunctionPass> {
+  void runOnFunction() override;
 };
-
-bool IsSupportedExecutorDialectOp(Operation* op) {
-  return llvm::isa<tf_executor::ControlTriggerOp, tf_executor::EnterOp,
-                   tf_executor::ExitOp, tf_executor::LoopCondOp,
-                   tf_executor::MergeOp, tf_executor::NextIterationSinkOp,
-                   tf_executor::NextIterationSourceOp, tf_executor::SwitchOp,
-                   tf_executor::SwitchNOp>(op);
-}
-
-// Collects all functions reachable from a region, including transitive ones.
-llvm::SmallPtrSet<FuncOp, 4> GetReachableFunctionsFromRegion(ModuleOp module,
-                                                             Region& region) {
-  llvm::SmallPtrSet<FuncOp, 4> visited_functions;
-
-  SymbolTable symbol_table(module);
-  auto symbol_uses = symbol_table.getSymbolUses(&region);
-  if (!symbol_uses) return {};
-
-  for (auto& use : *symbol_uses)
-    if (auto func =
-            symbol_table.lookup<FuncOp>(use.getSymbolRef().getRootReference()))
-      visited_functions.insert(func);
-
-  llvm::SmallVector<FuncOp, 4> functions_to_visit(visited_functions.begin(),
-                                                  visited_functions.end());
-  while (!functions_to_visit.empty()) {
-    llvm::SmallVector<FuncOp, 4> new_functions_to_visit;
-
-    for (FuncOp function_to_visit : functions_to_visit) {
-      auto func_symbol_uses =
-          symbol_table.getSymbolUses(function_to_visit.getCallableRegion());
-      if (!func_symbol_uses) continue;
-
-      for (auto& use : *func_symbol_uses)
-        if (auto func = symbol_table.lookup<FuncOp>(
-                use.getSymbolRef().getRootReference()))
-          if (visited_functions.insert(func).second)
-            new_functions_to_visit.push_back(func);
-    }
-
-    functions_to_visit.swap(new_functions_to_visit);
-  }
-
-  return visited_functions;
-}
 
 // Assign all ops in region with specified device from launch.
 LogicalResult AssignDevicesInRegion(const Dialect* tf_dialect,
                                     tf_device::LaunchOp launch,
                                     Region& region) {
   auto result = region.walk([&](Operation* op) -> WalkResult {
-    if (op->getDialect() != tf_dialect && !IsSupportedExecutorDialectOp(op))
-      return WalkResult::advance();
+    if (op->getDialect() != tf_dialect) return WalkResult::advance();
 
     auto device_attr = op->getAttr(kDeviceAttr);
     if (!device_attr) {
@@ -149,20 +98,13 @@ LogicalResult AssignDevicesInRegion(const Dialect* tf_dialect,
 }
 
 LogicalResult HoistOpsAndAnnotateWithDevice(const Dialect* tf_dialect,
-                                            ModuleOp module,
                                             tf_device::LaunchOp launch) {
-  llvm::SmallPtrSet<FuncOp, 4> reachable_functions =
-      GetReachableFunctionsFromRegion(module, launch.body());
-
   // Forward launch inner op results to launch op results.
   launch.replaceAllUsesWith(launch.GetBody().getTerminator()->getOperands());
 
   // For all inner ops, assign the launch device as a `device` attribute.
   if (failed(AssignDevicesInRegion(tf_dialect, launch, launch.body())))
     return failure();
-  for (FuncOp func : reachable_functions)
-    if (failed(AssignDevicesInRegion(tf_dialect, launch, func.getBody())))
-      return failure();
 
   // Move all inner ops of the launch to the block containing the launch.
   auto body = launch.GetBody().without_terminator();
@@ -176,16 +118,15 @@ LogicalResult HoistOpsAndAnnotateWithDevice(const Dialect* tf_dialect,
   return success();
 }
 
-void LaunchToDeviceAttributePass::runOnOperation() {
+void LaunchToDeviceAttributePass::runOnFunction() {
   const Dialect* tf_dialect = getContext().getLoadedDialect("tf");
   if (!tf_dialect) {
     getOperation().emitError() << "'tf' dialect is not registered";
     return signalPassFailure();
   }
 
-  auto module = getOperation();
-  auto result = module.walk([&](tf_device::LaunchOp launch) {
-    if (failed(HoistOpsAndAnnotateWithDevice(tf_dialect, module, launch)))
+  auto result = getOperation().walk([&tf_dialect](tf_device::LaunchOp launch) {
+    if (failed(HoistOpsAndAnnotateWithDevice(tf_dialect, launch)))
       return WalkResult::interrupt();
 
     return WalkResult::advance();
@@ -196,7 +137,7 @@ void LaunchToDeviceAttributePass::runOnOperation() {
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<ModuleOp>> CreateLaunchToDeviceAttributePass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateLaunchToDeviceAttributePass() {
   return std::make_unique<LaunchToDeviceAttributePass>();
 }
 

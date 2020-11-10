@@ -48,11 +48,9 @@ void AddGraphExportLoweringPasses(OpPassManager &pm) {
 
   pm.addNestedPass<FuncOp>(CreateFunctionalToExecutorDialectConversionPass());
   add_pass(TFDevice::CreateParallelizeEmbeddingParamsOpsPass());
-  pm.addPass(TFDevice::CreateReplicateToIslandPass());
-  pm.addPass(CreateBreakUpIslandsPass());
+  add_pass(TFDevice::CreateReplicateToIslandPass());
   add_pass(TFDevice::CreateParallelExecuteToIslandsPass());
-  pm.addPass(TFDevice::CreateLaunchToDeviceAttributePass());
-  pm.addPass(CreateBreakUpIslandsPass());
+  add_pass(TFDevice::CreateLaunchToDeviceAttributePass());
   pm.addPass(createSymbolDCEPass());
 }
 
@@ -121,7 +119,7 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addPass(CreateTPURewritePass());
   pm.addPass(createSymbolDCEPass());
   pm.addNestedPass<FuncOp>(TFDevice::CreateReplicateInvariantOpHoistingPass());
-  pm.addNestedPass<FuncOp>(CreateTPUDynamicLayoutPass());
+  pm.addPass(CreateTPUDynamicLayoutPass());
   pm.addNestedPass<FuncOp>(CreateTPUMergeVariablesWithExecutePass());
   pm.addNestedPass<FuncOp>(CreateTPUColocateCompositeResourceOps());
   pm.addPass(CreateTPUVariableReformattingPass());

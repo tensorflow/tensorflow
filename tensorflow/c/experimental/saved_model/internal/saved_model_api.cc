@@ -122,9 +122,4 @@ TF_GetSavedModelSignatureDefFunction(TF_SavedModel* model,
   return tensorflow::wrap(result);
 }
 
-TF_ConcreteFunctionList* TF_ListSavedModelFunctions(TF_SavedModel* model) {
-  return new TF_ConcreteFunctionList{
-      tensorflow::unwrap(model)->ListFunctions()};
-}
-
 }  // end extern "C"

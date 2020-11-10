@@ -36,7 +36,27 @@ execution the transfer corresponds to.
 Tinputs: The element types of each element in `inputs`.
 key: A key that is unique in the computation and associates the send with the consumer in
 the XLA computation.
-device_ordinal: The device to use.
+device_ordinal: The device id relative to the associated host device.
+)doc");
+
+REGISTER_OP("_XlaSendFromHostV2")
+    .Input("inputs: Tinputs")
+    .Input("dynamic_key: string")
+    .Input("device_ordinal: int64")
+    .Attr("Tinputs: list(type) >= 0")
+    .Attr("key: string")
+    .SetIsStateful()
+    .SetShapeFn(::tensorflow::shape_inference::NoOutputs)
+    .Doc(R"doc(
+A placeholder op to send values to a running XLA computation with support for a runtime device ordinal.
+
+inputs: A list of tensors that will be sent to the XLA computation.
+dynamic_key: The key sent at runtime by the compile node to identify which
+execution the transfer corresponds to.
+device_ordinal: The device id relative to the associated host device.
+Tinputs: The element types of each element in `inputs`.
+key: A key that is unique in the computation and associates the send with the consumer in
+the XLA computation.
 )doc");
 
 REGISTER_OP("_XlaRecvAtHost")
@@ -56,7 +76,27 @@ outputs: A list of tensors that will be received from the XLA computation.
 Toutputs: The element types of each element in `outputs`.
 key: A key that is unique in the computation and associates the send with the consumer in
 the XLA computation.
-device_ordinal: The device to use.
+device_ordinal: The device id relative to the associated host device.
+)doc");
+
+REGISTER_OP("_XlaRecvAtHostV2")
+    .Input("dynamic_key: string")
+    .Input("device_ordinal: int64")
+    .Output("outputs: Toutputs")
+    .Attr("Toutputs: list(type) >= 0")
+    .Attr("key: string")
+    .SetIsStateful()
+    .SetShapeFn(::tensorflow::shape_inference::UnknownShape)
+    .Doc(R"doc(
+A placeholder op to receive values from a running XLA computation with support for a runtime device ordinal.
+
+dynamic_key: The key sent at runtime by the compile node to identify which
+execution the transfer corresponds to.
+device_ordinal: The device id relative to the associated host device.
+outputs: A list of tensors that will be received from the XLA computation.
+Toutputs: The element types of each element in `outputs`.
+key: A key that is unique in the computation and associates the send with the consumer in
+the XLA computation.
 )doc");
 
 }  // namespace tensorflow

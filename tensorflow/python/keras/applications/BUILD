@@ -6,7 +6,6 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 package(
     default_visibility = [
         # Remove this deps to integration test.
-        "//tensorflow/lite/experimental/tf_runtime:__pkg__",
         "//tensorflow/python/keras:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0

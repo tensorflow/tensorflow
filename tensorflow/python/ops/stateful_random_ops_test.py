@@ -592,7 +592,7 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
 
     random.set_global_generator(None)
 
-    @def_function.function(experimental_compile=True)
+    @def_function.function(jit_compile=True)
     def make_seed():
       generator = random.get_global_generator()
       state = array_ops.identity(generator.state, name="state")

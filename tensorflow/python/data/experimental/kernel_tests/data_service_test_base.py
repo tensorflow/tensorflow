@@ -218,11 +218,13 @@ class TestBase(test_base.DatasetTestBase):
   def make_distributed_range_dataset(self,
                                      num_elements,
                                      cluster,
+                                     processing_mode="parallel_epochs",
                                      job_name=None,
                                      max_outstanding_requests=None):
     dataset = dataset_ops.Dataset.range(num_elements)
     return self.make_distributed_dataset(
         dataset,
         cluster,
+        processing_mode=processing_mode,
         job_name=job_name,
         max_outstanding_requests=max_outstanding_requests)

@@ -90,7 +90,6 @@ load("//tensorflow:tensorflow.bzl", "if_nccl")
 load("//tensorflow:tensorflow.bzl", "tensorflow_opensource_extra_deps")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cc_tests_gpu")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_monitoring_framework_deps")
@@ -122,7 +121,6 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_dynamic_kernels",
     "if_static",
-    "tf_cuda_tests_tags",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
@@ -133,7 +131,6 @@ load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
-    "mkl_deps",
 )
 
 package(
@@ -544,15 +541,11 @@ cc_library(
         ],
 )
 
-# One target for all user ops
-cc_library(
+# One target for all user ops.
+alias(
     name = "user_ops_op_lib",
-    srcs = glob(["user_ops/**/*.cc"]),
-    copts = tf_copts(),
-    linkstatic = 1,
+    actual = "//tensorflow/core/user_ops:user_ops_op_lib",
     visibility = ["//visibility:public"],
-    deps = [":framework"],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -1693,7 +1686,7 @@ tf_cuda_library(
     ] + if_static(
         extra_deps = ["@com_google_protobuf//:protobuf"],
         otherwise = ["@com_google_protobuf//:protobuf_headers"],
-    ) + mkl_deps(),
+    ),
     alwayslink = 1,
 )
 
@@ -2035,31 +2028,6 @@ tf_cc_test_mkl(
     ]),
 )
 
-tf_cc_tests_gpu(
-    name = "gpu_related_tests",
-    size = "small",
-    srcs = glob(["user_ops/**/*_test.cc"]),
-    linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
-    deps = [
-        ":core_cpu",
-        ":core_cpu_internal",
-        ":direct_session",
-        ":framework",
-        ":framework_internal",
-        ":gpu_id",
-        ":gpu_runtime",
-        ":lib",
-        ":lib_internal",
-        ":protos_all_cc",
-        ":test",
-        ":test_main",
-        ":testlib",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/core/kernels:ops_util",
-    ],
-)
-
 # Test data
 filegroup(
     name = "image_testdata",
@@ -2071,12 +2039,7 @@ filegroup(
         # JPEG data
         "//tensorflow/core/lib/jpeg/testdata",
         # GIF data
-        "lib/gif/testdata/lena.gif",
-        "lib/gif/testdata/scan.gif",
-        "lib/gif/testdata/red_black.gif",
-        "lib/gif/testdata/squares.gif",
-        # GIF data with optimization
-        "lib/gif/testdata/optimized.gif",
+        "//tensorflow/core/lib/gif/testdata:gif_testdata",
         # BMP data
         "//tensorflow/core/lib/bmp:bmp_testdata",
     ],

@@ -1,5 +1,4 @@
-// RUN: tf-opt %s -tf-shape-inference=propagate-caller-callee-constants=false -verify-diagnostics | FileCheck %s
-// RUN: tf-opt %s -tf-shape-inference=propagate-caller-callee-constants -verify-diagnostics | FileCheck %s
+// RUN: tf-opt %s -tf-shape-inference -verify-diagnostics | FileCheck %s
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 130 : i32}} {
   // CHECK-LABEL: func @main(%arg0: tensor<1xi32>, %arg1: tensor<1xi32>) -> tensor<1xi32>
@@ -601,5 +600,26 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK-SAME: (tensor<2xi32>) -> tensor<i32>
     %size = "tf.Size"(%add) {device = ""} : (tensor<*xi32>) -> tensor<*xi32>
     return %size : tensor<*xi32>
+  }
+
+  // Test no tf.Cast ops are inserted when refining tf_executor.graph results.
+  // CHECK-LABEL: func @call_in_graph({{%.+}}: tensor<i32>) -> tensor<i32>
+  func @call_in_graph(%arg0: tensor<i32>) -> tensor<*xi32> {
+    // CHECK-NOT: tf.Cast
+    %0 = tf_executor.graph {
+      %1:2 = tf_executor.island wraps "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @call_in_graph_func} : (tensor<i32>) -> tensor<*xi32>
+      tf_executor.fetch %1#0 : tensor<*xi32>
+    }
+    return %0 : tensor<*xi32>
+  }
+
+  // CHECK-LABEL: func @call_in_graph_func({{%.+}}: tensor<i32>) -> tensor<i32>
+  func @call_in_graph_func(%arg0: tensor<*xi32>) -> tensor<*xi32> {
+    // CHECK-NOT: tf.Cast
+    %0 = tf_executor.graph {
+      %1:2 = tf_executor.island wraps "tf.Identity"(%arg0) : (tensor<*xi32>) -> tensor<*xi32>
+      tf_executor.fetch %1#0 : tensor<*xi32>
+    }
+    return %0 : tensor<*xi32>
   }
 }

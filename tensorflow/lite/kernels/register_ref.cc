@@ -101,11 +101,11 @@ TfLiteRegistration* Register_LESS_EQUAL();
 TfLiteRegistration* Register_FLOOR_REF();
 TfLiteRegistration* Register_TILE();
 TfLiteRegistration* Register_NEG();
-TfLiteRegistration* Register_SUM();
-TfLiteRegistration* Register_REDUCE_PROD();
-TfLiteRegistration* Register_REDUCE_MAX();
-TfLiteRegistration* Register_REDUCE_MIN();
-TfLiteRegistration* Register_REDUCE_ANY();
+TfLiteRegistration* Register_SUM_REF();
+TfLiteRegistration* Register_REDUCE_PROD_REF();
+TfLiteRegistration* Register_REDUCE_MAX_REF();
+TfLiteRegistration* Register_REDUCE_MIN_REF();
+TfLiteRegistration* Register_REDUCE_ANY_REF();
 TfLiteRegistration* Register_SELECT();
 TfLiteRegistration* Register_SLICE_REF();
 TfLiteRegistration* Register_SIN();
@@ -156,6 +156,7 @@ TfLiteRegistration* Register_HARD_SWISH_REF();
 TfLiteRegistration* Register_DEPTH_TO_SPACE_REF();
 TfLiteRegistration* Register_SELECT_V2();
 TfLiteRegistration* Register_SEGMENT_SUM();
+TfLiteRegistration* Register_BROADCAST_TO();
 
 namespace {
 
@@ -193,10 +194,10 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
              /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_HARD_SWISH, Register_HARD_SWISH_REF());
   AddBuiltin(BuiltinOperator_RELU, Register_RELU(), /* min_version = */ 1,
-             /* max_version = */ 2);
+             /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_RELU_N1_TO_1, Register_RELU_N1_TO_1());
   AddBuiltin(BuiltinOperator_RELU6, Register_RELU6(), /* min_version = */ 1,
-             /* max_version = */ 2);
+             /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_TANH, Register_TANH_REF(), /* min_version = */ 1,
              /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_LOGISTIC, Register_LOGISTIC_REF(),
@@ -261,6 +262,12 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
              /* max_version = */ 4);
   AddBuiltin(BuiltinOperator_L2_NORMALIZATION, Register_L2NORM_REF(),
              /* min_version = */ 1,
+             /* max_version = */ 2);
+  // The version one of broadcast to op won't be not supported since the version
+  // one was rollbacked and the builtin op code number has been changed because
+  // of builtin op code shortage problem.
+  AddBuiltin(BuiltinOperator_BROADCAST_TO, Register_BROADCAST_TO(),
+             /* min_version = */ 2,
              /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_LOCAL_RESPONSE_NORMALIZATION,
              Register_LOCAL_RESPONSE_NORM_REF());
@@ -368,17 +375,17 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_TILE, Register_TILE(),
              /* min_version = */ 1,
              /* max_version = */ 2);
-  AddBuiltin(BuiltinOperator_SUM, Register_SUM(),
+  AddBuiltin(BuiltinOperator_SUM, Register_SUM_REF(),
              /* min_version = */ 1,
              /* max_version = */ 2);
-  AddBuiltin(BuiltinOperator_REDUCE_PROD, Register_REDUCE_PROD());
-  AddBuiltin(BuiltinOperator_REDUCE_MAX, Register_REDUCE_MAX(),
+  AddBuiltin(BuiltinOperator_REDUCE_PROD, Register_REDUCE_PROD_REF());
+  AddBuiltin(BuiltinOperator_REDUCE_MAX, Register_REDUCE_MAX_REF(),
              /* min_version = */ 1,
-             /* max_version = */ 2);
-  AddBuiltin(BuiltinOperator_REDUCE_MIN, Register_REDUCE_MIN(),
+             /* max_version = */ 3);
+  AddBuiltin(BuiltinOperator_REDUCE_MIN, Register_REDUCE_MIN_REF(),
              /* min_version = */ 1,
-             /* max_version = */ 2);
-  AddBuiltin(BuiltinOperator_REDUCE_ANY, Register_REDUCE_ANY());
+             /* max_version = */ 3);
+  AddBuiltin(BuiltinOperator_REDUCE_ANY, Register_REDUCE_ANY_REF());
   AddBuiltin(BuiltinOperator_EXPAND_DIMS, Register_EXPAND_DIMS());
   AddBuiltin(BuiltinOperator_SPARSE_TO_DENSE, Register_SPARSE_TO_DENSE(),
              /* min_version = */ 1,

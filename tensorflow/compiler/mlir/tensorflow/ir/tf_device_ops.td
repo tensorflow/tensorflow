@@ -351,4 +351,30 @@ This op is used for outlining a cluster.
   }];
 }
 
+def TfDevice_RemoteRunOp : TfDevice_Op<"remote_run",
+    [SingleBlockImplicitTerminator<"ReturnOp">]> {
+  let summary = [{
+The `tf_device.remote_run` op launches the containing operations on a specific
+host.
+  }];
+
+  let description = [{
+This op captures all needed live-in values.
+  }];
+
+  let arguments = (ins
+    StrAttr:$host,
+    FlatSymbolRefAttr:$callee,
+    Variadic<AnyType>:$callee_args
+  );
+
+  let results = (outs
+    Variadic<AnyType>:$results
+  );
+
+  let assemblyFormat = [{
+      $host $callee `(` $callee_args `)` attr-dict `:` functional-type ( $callee_args , $results )
+  }];
+}
+
 #endif // TF_DEVICE_DIALECT

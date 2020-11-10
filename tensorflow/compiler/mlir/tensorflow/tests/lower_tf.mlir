@@ -226,16 +226,16 @@ func @rsqrt_grad_unranked(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<
 
 // %input has 1 batch dimension then 2 block dimensions then 1 remainder
 // dimension.
-// CHECK-LABEL: fourdim_SpaceToBatchND
-func @fourdim_SpaceToBatchND(%input: tensor<3x5x7x10xf32>, %block_shape: tensor<2xi64>, %paddings: tensor<2x2xi64>) -> tensor<?x?x?x10xf32> {
+// CHECK-LABEL: fourdim_space_to_batch_nd
+func @fourdim_space_to_batch_nd(%input: tensor<3x5x7x10xf32>, %block_shape: tensor<2xi64>, %paddings: tensor<2x2xi64>) -> tensor<?x?x?x10xf32> {
   // CHECK-DAG: [[PAD00:%.+]] = "tf.Const"() {value = dense<0> : tensor<1x2xi64>}
   // CHECK-DAG: [[ZERO_I32:%.+]] = "tf.Const"() {value = dense<0> : tensor<i32>}
   // CHECK-DAG: [[ZERO_I64:%.+]] = "tf.Const"() {value = dense<0> : tensor<i64>}
-  // CHECK-DAG: [[ONE_I64:%.+]] = "tf.Const"() {value = dense<1> : tensor<i64>}
   // CHECK-DAG: [[FULL_PADDINGS:%.+]] = "tf.ConcatV2"([[PAD00]], %arg2, [[PAD00]], [[ZERO_I64]])
   // CHECK-DAG: [[PAD_DEFAULT:%.+]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>}
   // CHECK-DAG: [[PADDED:%.+]] = "tf.PadV2"(%arg0, [[FULL_PADDINGS]], [[PAD_DEFAULT]])
-  // CHECK-DAG: [[PADDINGS_SUM:%.+]] = "tf.Sum"([[FULL_PADDINGS]], [[ONE_I64]])
+  // CHECK-DAG: [[PADDINGS:%.+]]:2 = "tf.Unpack"([[FULL_PADDINGS]]) {axis = 1 : i64}
+  // CHECK-DAG: [[PADDINGS_SUM:%.+]] = "tf.Add"([[PADDINGS]]#0, [[PADDINGS]]#1)
   // CHECK-DAG: [[INPUT_SHAPE:%.+]] = "tf.Const"() {value = dense<[3, 5, 7, 10]> : tensor<4xi64>}
   // CHECK-DAG: [[PADDED_SHAPE:%.+]] = "tf.Add"([[PADDINGS_SUM]], [[INPUT_SHAPE]])
   // CHECK-DAG: [[PADDED_SHAPE_SPLITS:%.+]]:4 = "tf.Split"([[ZERO_I32]], [[PADDED_SHAPE]])
@@ -255,11 +255,34 @@ func @fourdim_SpaceToBatchND(%input: tensor<3x5x7x10xf32>, %block_shape: tensor<
   return %0 : tensor<?x?x?x10xf32>
 }
 
+// Verify the result shape for the tf.PadV2 op.
+// CHECK-LABEL: const_paddings_space_to_batch_nd
+func @const_paddings_space_to_batch_nd(%arg0: tensor<1x8x2xf32>) -> (tensor<3x5x2xf32>) {
+  %0 = "tf.Const"() {value = dense<3> : tensor<1xi32>} : () -> tensor<1xi32>
+  %1 = "tf.Const"() {value = dense<[[3, 4]]> : tensor<1x2xi32>} : () -> tensor<1x2xi32>
+
+
+  // CHECK-DAG: [[VAL0:%.+]] = "tf.Const"() {value = dense<[3, 5, 2]> : tensor<3xi64>}
+  // CHECK-DAG: [[VAL1:%.+]] = "tf.Const"() {value = dense<[1, 5, 3, 2]> : tensor<4xi64>}
+  // CHECK-DAG: [[VAL2:%.+]] = "tf.Const"() {value = dense<{{\[\[}}0, 0], [3, 4], [0, 0{{\]\]}}> : tensor<3x2xi64>}
+  // CHECK-DAG: [[VAL3:%.+]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>}
+  // CHECK-DAG: [[VAL4:%.+]] = "tf.Const"() {value = dense<[2, 0, 1, 3]> : tensor<4xi64>}
+  // CHECK-DAG: [[VAL5:%.+]] = "tf.PadV2"(%arg0, [[VAL2]], [[VAL3]])
+  // CHECK-SAME: tensor<1x15x2xf32>
+  // CHECK-DAG: [[VAL6:%.+]] = "tf.Reshape"([[VAL5]], [[VAL1]])
+  // CHECK-DAG: [[VAL7:%.+]] = "tf.Transpose"([[VAL6]], [[VAL4]])
+  // CHECK-DAG: [[VAL8:%.+]] = "tf.Reshape"([[VAL7]], [[VAL0]])
+  %2 = "tf.SpaceToBatchND"(%arg0, %0, %1) : (tensor<1x8x2xf32>, tensor<1xi32>, tensor<1x2xi32>) -> tensor<3x5x2xf32>
+
+  // CHECK: return [[VAL8]]
+  return %2 : tensor<3x5x2xf32>
+}
+
 // %input has 1 batch dimension then 3 block dimensions then 2 remainder
 // dimensions. This checks only ops that are specific to the case with 3 block
 // dimension and 2 remainder dimensions.
-// CHECK-LABEL: sixdim_SpaceToBatchND
-func @sixdim_SpaceToBatchND(%input: tensor<3x5x7x9x10x11xf32>, %block_shape: tensor<3xi64>, %paddings: tensor<3x2xi64>) -> tensor<?x?x?x?x10x11xf32> {
+// CHECK-LABEL: sixdim_space_to_batch_nd
+func @sixdim_space_to_batch_nd(%input: tensor<3x5x7x9x10x11xf32>, %block_shape: tensor<3xi64>, %paddings: tensor<3x2xi64>) -> tensor<?x?x?x?x10x11xf32> {
   // CHECK-DAG: [[PAD00:%.+]] = "tf.Const"()
   // CHECK-DAG: [[FULL_PADDINGS:%.+]] = "tf.ConcatV2"([[PAD00]], %arg2, [[PAD00]], [[PAD00]], {{.+}})
   // CHECK-DAG: [[INPUT_SHAPE:%.+]] = "tf.Const"() {value = dense<[3, 5, 7, 9, 10, 11]> : tensor<6xi64>}
@@ -276,6 +299,25 @@ func @sixdim_SpaceToBatchND(%input: tensor<3x5x7x9x10x11xf32>, %block_shape: ten
   // CHECK-DAG: [[OUTPUT_SHAPE:%.+]] = "tf.ConcatV2"([[OUTPUT_BATCH]], [[OUTER_SHAPE_0]], [[OUTER_SHAPE_1]], [[OUTER_SHAPE_2]], [[PADDED_SHAPE_SPLITS]]#4, [[PADDED_SHAPE_SPLITS]]#5, {{.+}})
   %0 = "tf.SpaceToBatchND"(%input, %block_shape, %paddings) : (tensor<3x5x7x9x10x11xf32>, tensor<3xi64>, tensor<3x2xi64>) -> tensor<?x?x?x?x10x11xf32>
   return %0 : tensor<?x?x?x?x10x11xf32>
+}
+
+// CHECK-LABEL: func @batchToSpace
+func @batchToSpace(%arg0: tensor<3x5x2xf32>) -> (tensor<1x8x2xf32>) {
+  // CHECK-DAG: [[VAL0:%.+]] = "tf.Const"() {value = dense<[3, 1, 5, 2]> : tensor<4xi64>}
+  // CHECK-DAG: [[VAL1:%.+]] = "tf.Const"() {value = dense<[1, 2, 0, 3]> : tensor<4xi64>}
+  // CHECK-DAG: [[VAL2:%.+]] = "tf.Const"() {value = dense<[1, 15, 2]> : tensor<3xi64>}
+  // CHECK-DAG: [[VAL3:%.+]] = "tf.Const"() {value = dense<[0, 3, 0]> : tensor<3xi64>}
+  // CHECK-DAG: [[VAL4:%.+]] = "tf.Const"() {value = dense<[1, 8, 2]> : tensor<3xi64>}
+  // CHECK-DAG: [[VAL5:%.+]] = "tf.Reshape"(%arg0, [[VAL0]])
+  // CHECK-DAG: [[VAL6:%.+]] = "tf.Transpose"([[VAL5]], [[VAL1]])
+  // CHECK-DAG: [[VAL7:%.+]] = "tf.Reshape"([[VAL6]], [[VAL2]])
+  // CHECK-DAG: [[VAL8:%.+]] = "tf.Slice"([[VAL7]], [[VAL3]], [[VAL4]])
+  %0 = "tf.Const"() {value = dense<3> : tensor<1xi32>} : () -> tensor<1xi32>
+  %1 = "tf.Const"() {value = dense<[[3, 4]]> : tensor<1x2xi32>} : () -> tensor<1x2xi32>
+  %2 = "tf.BatchToSpaceND"(%arg0, %0, %1) {device = ""} : (tensor<3x5x2xf32>, tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x8x2xf32>
+
+  // CHECK: return [[VAL8]] : tensor<1x8x2xf32>
+  return %2 : tensor<1x8x2xf32>
 }
 
 func @fake_quant_with_min_max_args(%arg0 : tensor<?x?xf32>) -> tensor<?x?xf32> {

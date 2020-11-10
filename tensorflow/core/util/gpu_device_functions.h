@@ -163,8 +163,9 @@ using CudaGridRange = GpuGridRange<T...>;
 // Usage: for(int i : GpuGridRangeX(count)) { visit(i); }
 template <typename T>
 __device__ detail::GpuGridRange<T> GpuGridRangeX(T count) {
-  return detail::GpuGridRange<T>(blockIdx.x * blockDim.x + threadIdx.x,
-                                 gridDim.x * blockDim.x, count);
+  return detail::GpuGridRange<T>(
+      /*begin=*/blockIdx.x * blockDim.x + threadIdx.x,
+      /*delta=*/gridDim.x * blockDim.x, /*end=*/count);
 }
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuGridRangeX, CudaGridRangeX);
 
@@ -172,8 +173,9 @@ CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuGridRangeX, CudaGridRangeX);
 // Usage: for(int i : GpuGridRangeY(count)) { visit(i); }
 template <typename T>
 __device__ detail::GpuGridRange<T> GpuGridRangeY(T count) {
-  return detail::GpuGridRange<T>(blockIdx.y * blockDim.y + threadIdx.y,
-                                 gridDim.y * blockDim.y, count);
+  return detail::GpuGridRange<T>(
+      /*begin=*/blockIdx.y * blockDim.y + threadIdx.y,
+      /*delta=*/gridDim.y * blockDim.y, /*end=*/count);
 }
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuGridRangeY, CudaGridRangeY);
 
@@ -181,8 +183,9 @@ CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuGridRangeY, CudaGridRangeY);
 // Usage: for(int i : GpuGridRangeZ(count)) { visit(i); }
 template <typename T>
 __device__ detail::GpuGridRange<T> GpuGridRangeZ(T count) {
-  return detail::GpuGridRange<T>(blockIdx.z * blockDim.z + threadIdx.z,
-                                 gridDim.z * blockDim.z, count);
+  return detail::GpuGridRange<T>(
+      /*begin=*/blockIdx.z * blockDim.z + threadIdx.z,
+      /*delta=*/gridDim.z * blockDim.z, /*end=*/count);
 }
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuGridRangeZ, CudaGridRangeZ);
 

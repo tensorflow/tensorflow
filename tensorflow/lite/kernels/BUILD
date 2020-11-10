@@ -544,6 +544,7 @@ BUILTIN_KERNEL_SRCS = [
     "batch_to_space_nd.cc",
     "bidirectional_sequence_lstm.cc",
     "bidirectional_sequence_rnn.cc",
+    "broadcast_to.cc",
     "call_once.cc",
     "cast.cc",
     "ceil.cc",
@@ -1014,6 +1015,19 @@ cc_test(
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
+    ],
+)
+
+cc_test(
+    name = "broadcast_to_test",
+    size = "small",
+    srcs = ["broadcast_to_test.cc"],
+    deps = [
+        ":builtin_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite:framework",
+        "@com_google_googletest//:gtest",
     ],
 )
 

@@ -18,8 +18,30 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "risc_conv_op",
+    srcs = ["risc_conv_op.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
+    name = "risc_max_op",
+    srcs = ["risc_max_op.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
     name = "experimental",
     deps = [
         ":risc_add_op",
+        ":risc_conv_op",
+        ":risc_max_op",
     ],
 )

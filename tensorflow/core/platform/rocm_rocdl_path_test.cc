@@ -21,6 +21,10 @@ limitations under the License.
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/test.h"
 
+#if !defined(PLATFORM_GOOGLE) && TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#endif
+
 namespace tensorflow {
 
 #if TENSORFLOW_USE_ROCM

@@ -1608,6 +1608,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:string_ops",
         "//third_party/py/numpy",
     ],
 )

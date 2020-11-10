@@ -29,11 +29,11 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/selectors/fully_connected_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/simple_selectors.h"
 #include "tensorflow/lite/delegates/gpu/cl/storage_type_util.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 namespace tflite {
@@ -465,7 +465,7 @@ absl::Status GPUOperationFromNode(const DeviceInfo& device_info,
     case OperationType::REDUCE_PRODUCT:
     case OperationType::REDUCE_SUM: {
       auto attr = absl::any_cast<ReduceAttributes>(node.operation.attributes);
-      if (attr.axis != Axis::CHANNELS) {
+      if (attr.dims != std::set<Axis>({Axis::CHANNELS})) {
         return absl::UnimplementedError(
             "Currently we can reduce only in channels dimension.");
       }

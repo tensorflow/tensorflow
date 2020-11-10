@@ -109,7 +109,7 @@ Status MlirFunctionOptimizationPass::Run(
   // Skip conversion from Graph to MLIR if none of the passes are enabled.
   const bool is_enabled =
       llvm::any_of(registry_->passes(), [&](auto& pass_registration) -> bool {
-        return pass_registration.pass->IsEnabled(config_proto);
+        return pass_registration.pass->IsEnabled(config_proto, **graph);
       });
 
   if (!is_enabled) {
@@ -144,7 +144,8 @@ Status MlirFunctionOptimizationPass::Run(
       DumpModule(*module_ref, llvm::formatv("mlir_{0}_before_", name));
     }
 
-    TF_RETURN_IF_ERROR(pass_registration.pass->Run(config_proto, *module_ref));
+    TF_RETURN_IF_ERROR(
+        pass_registration.pass->Run(config_proto, *module_ref, **graph));
 
     if (VLOG_IS_ON(1)) {
       DumpModule(*module_ref, llvm::formatv("mlir_{0}_after_", name));
@@ -183,7 +184,7 @@ Status MlirV1CompatGraphOptimizationPass::Run(
   const bool is_enabled =
       absl::c_any_of(registry_->passes(), [&](auto& pass_registration) -> bool {
         return pass_registration.pass->IsEnabled(
-            options.session_options->config);
+            options.session_options->config, **options.graph);
       });
 
   if (!is_enabled) {
