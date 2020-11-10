@@ -185,5 +185,18 @@ Status Log1p(AbstractContext* ctx,
   return s;
 }
 
+Status Conj(AbstractContext* ctx,
+            absl::Span<AbstractTensorHandle* const> inputs,
+            absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+  AbstractOperationPtr conj_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(conj_op->Reset("Conj", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(conj_op.get(), name));
+  TF_RETURN_IF_ERROR(conj_op->AddInput(inputs[0]));
+
+  int num_retvals = 1;
+  Status s = conj_op->Execute(outputs, &num_retvals);
+  return s;
+}
+
 }  // namespace ops
 }  // namespace tensorflow

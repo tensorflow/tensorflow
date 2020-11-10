@@ -299,6 +299,7 @@ class Log1pGradientFunction : public GradientFunction {
 
   Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
                  vector<AbstractTensorHandle*>* grad_outputs) override {
+    // TODO(vnvo2409): Add control dependency
     /* Given upstream grad U and a Log1p op: Y = log(1 + X), the gradients are:
      *
      *    dX = U / (1 + X)
@@ -311,21 +312,30 @@ class Log1pGradientFunction : public GradientFunction {
     grad_outputs->resize(1);
     vector<AbstractTensorHandle*> temp_outputs(1);
 
-    // Creates Ones
-    std::string name = "OnesLike_Log1p_Grad_X";
+    // Calculate conjugate of X
+    std::string name = "Conj_Log1p_Grad_X";
     TF_RETURN_IF_ERROR(
-        OnesLike(ctx->ctx, {X}, absl::MakeSpan(temp_outputs), name.c_str()));
+        Conj(ctx->ctx, {X}, absl::MakeSpan(temp_outputs), name.c_str()));
+
+    AbstractTensorHandle* Conj_X = temp_outputs[0];
+
+    // Creates Ones
+    name = "OnesLike_Log1p_Grad_X";
+    TF_RETURN_IF_ERROR(OnesLike(ctx->ctx, {Conj_X},
+                                absl::MakeSpan(temp_outputs), name.c_str()));
 
     AbstractTensorHandle* Ones_X = temp_outputs[0];
 
-    // Calculate 1 + X
-    TF_RETURN_IF_ERROR(
-        Add(ctx->ctx, {Ones_X, X}, absl::MakeSpan(temp_outputs), name.c_str()));
+    name = "Add_Log1p_Grad_X";
+    // Calculate 1 + Conj(X)
+    TF_RETURN_IF_ERROR(Add(ctx->ctx, {Ones_X, Conj_X},
+                           absl::MakeSpan(temp_outputs), name.c_str()));
 
-    AbstractTensorHandle* XP1 = temp_outputs[0];
+    AbstractTensorHandle* Conj_XP1 = temp_outputs[0];
 
-    // Calculate U / (1 + X)
-    TF_RETURN_IF_ERROR(DivNoNan(ctx->ctx, {upstream_grad, XP1},
+    name = "DivNoNan_Log1p_Grad_X";
+    // Calculate U / (1 + Conj(X))
+    TF_RETURN_IF_ERROR(DivNoNan(ctx->ctx, {upstream_grad, Conj_XP1},
                                 absl::MakeSpan(temp_outputs), name.c_str()));
 
     (*grad_outputs)[0] = temp_outputs[0];
@@ -346,6 +356,7 @@ class DivNoNanGradientFunction : public GradientFunction {
 
   Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
                  vector<AbstractTensorHandle*>* grad_outputs) override {
+    // TODO(vnvo2409): Add shape broadcasting
     /* Given upstream grad U and a Div op: Z = X/Y, the gradients are:
      *
      *    dX = U / Y
