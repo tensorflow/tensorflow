@@ -43,6 +43,7 @@ py_binary(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/compiler/tensorrt:trt_convert_py",
         "@absl_py//absl:app",
+        "@absl_py//absl/flags",
         "@absl_py//absl/logging",
     ],
 )

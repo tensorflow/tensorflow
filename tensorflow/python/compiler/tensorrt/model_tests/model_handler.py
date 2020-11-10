@@ -35,6 +35,7 @@ from tensorflow.python.framework import dtypes as tf_dtypes
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops as framework_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.saved_model import load as saved_model_load
 from tensorflow.python.saved_model import loader as saved_model_loader
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
@@ -71,6 +72,15 @@ def _generate_random_tensor_v1(tensor_info: meta_graph_pb2.TensorInfo,
         shape=shape, dtype=dtype, name=tensor_info.name.split(":")[0]).eval()
 
 
+def _generate_random_tensor_v2(
+    tensor: framework_ops.Tensor,
+    batch_size: Optional[int] = None) -> framework_ops.Tensor:
+  """Generates a random tensor based on the data type and tensor shape."""
+  shape = _get_concrete_tensor_shape(tensor.shape.as_proto(), batch_size)
+  return random_ops.random_uniform(
+      shape=shape, dtype=tensor.dtype, name=tensor.name)
+
+
 # Models are repeatedly loaded for different TensorRT conversion settings.
 # Using cache can reduce I/O.
 @functools.lru_cache()
@@ -93,6 +103,16 @@ def load_meta_graph(
             sess, meta_graph.graph_def, output_node_names))
     meta_graph.graph_def.CopyFrom(graph_def)
   return meta_graph
+
+
+@functools.lru_cache()
+def load_graph_func(saved_model_dir: str, saved_model_tags: str,
+                    saved_model_signature_key: str):
+  """Loads a graph function in TF2."""
+  imported = saved_model_load.load(
+      export_dir=saved_model_dir, tags=saved_model_tags)
+  graph_func = imported.signatures[saved_model_signature_key]
+  return convert_to_constants.convert_variables_to_constants_v2(graph_func)
 
 
 ### Test Classes
@@ -166,8 +186,9 @@ class _ModelHandlerBase(metaclass=abc.ABCMeta):
     """Runs the model with provided or randomly generated input tensors.
 
     Args:
-      inputs: Mapping from names to input tensors. If `None`, ramdomly generated
-        inputs will be used instead.
+      inputs: Mapping from names to input ndarrays in TF1, or a sequence of
+        tensors in TF2. If `None`, ramdomly generated inputs will be used
+        instead.
       warmup_iterations: Number of inferences to warm up the runtime.
       benchmark_iterations: Number of inferences to measure the latency.
       allow_to_use_gpu: Whether it is allowed to use GPU or not.
@@ -237,6 +258,57 @@ class ModelHandlerV1(_ModelHandlerBase):
         raise RuntimeError("Failed to run model inference! "
                            "Model information: {}".format(str(self))) from exc
       outputs = dict(zip(self.output_tensor_names, outputs))
+    return TestResult(latency=latency, outputs=outputs if inputs else None)
+
+
+class ModelHandlerV2(_ModelHandlerBase):
+  """Runs a model in TF2."""
+
+  @property
+  def graph_func(self):
+    graph_func = load_graph_func(
+        saved_model_dir=self.model_config.saved_model_dir,
+        saved_model_tags=self.model_config.saved_model_tags,
+        saved_model_signature_key=self.model_config.saved_model_signature_key)
+    return convert_to_constants.convert_variables_to_constants_v2(graph_func)
+
+  @property
+  def input_tensor_names(self):
+    return [tensor.name for tensor in self.graph_func.inputs]
+
+  @property
+  def output_tensor_names(self):
+    return [tensor.name for tensor in self.graph_func.outputs]
+
+  def generate_random_inputs(self,
+                             batch_size: Optional[int] = None
+                            ) -> Sequence[framework_ops.Tensor]:
+    batch_size = batch_size or self.model_config.default_batch_size
+    return [
+        _generate_random_tensor_v2(tensor, batch_size)
+        for tensor in self.graph_func.inputs
+    ]
+
+  def run(self,
+          inputs: Optional[Sequence[framework_ops.Tensor]] = None,
+          warmup_iterations=10,
+          benchmark_iterations=100,
+          allow_to_use_gpu=False) -> TestResult:
+    inputs = inputs or self.generate_random_inputs()
+    try:
+      device = "/device:gpu:0" if allow_to_use_gpu else "/device:cpu:0"
+      with framework_ops.device(device):
+        for _ in range(warmup_iterations):
+          self.graph_func(*inputs)
+        latency = []
+        for _ in range(benchmark_iterations):
+          before = time.time()
+          outputs = self.graph_func(*inputs)
+          latency.append(time.time() - before)
+    except Exception as exc:
+      raise RuntimeError("Failed to run model inference! "
+                         "Model information: {}".format(str(self))) from exc
+    outputs = dict(zip(self.output_tensor_names, outputs))
     return TestResult(latency=latency, outputs=outputs if inputs else None)
 
 
@@ -321,6 +393,36 @@ class TrtModelHandlerV1(_TrtModelHandlerBase, ModelHandlerV1):
     self.save(overwrite=False)
     logging.info("Running with TensorRT!")
     test_result = ModelHandlerV1.run(
+        self,
+        inputs,
+        warmup_iterations,
+        benchmark_iterations,
+        allow_to_use_gpu=True)
+    return test_result._replace(trt_convert_params=self._trt_convert_params)
+
+
+class TrtModelHandlerV2(_TrtModelHandlerBase, ModelHandlerV2):
+  """Converts a TF2 model with TensorRT and runs the converted model."""
+
+  def _create_converter(self, trt_convert_params: trt.TrtConversionParams):
+    return trt.TrtGraphConverterV2(
+        input_saved_model_dir=self.model_config.saved_model_dir,
+        input_saved_model_tags=self.model_config.saved_model_tags,
+        input_saved_model_signature_key=(
+            self.model_config.saved_model_signature_key),
+        conversion_params=trt_convert_params)
+
+  def _check_conversion(self, graph_func):
+    graph_def = graph_func.graph.as_graph_def()
+    self._check_contains_trt_engine(graph_def)
+
+  def run(self,
+          inputs: Optional[Sequence[framework_ops.Tensor]] = None,
+          warmup_iterations=10,
+          benchmark_iterations=100) -> TestResult:
+    self.save(overwrite=False)
+    logging.info("Running with TensorRT!")
+    test_result = ModelHandlerV2.run(
         self,
         inputs,
         warmup_iterations,

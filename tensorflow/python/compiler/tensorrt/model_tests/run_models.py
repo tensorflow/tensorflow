@@ -17,12 +17,17 @@
 import os
 
 from absl import app
+from absl import flags
 from absl import logging
 
 from tensorflow.python.compiler.tensorrt import trt_convert as trt
 from tensorflow.python.compiler.tensorrt.model_tests import model_handler
 from tensorflow.python.framework import ops as framework_ops
 from tensorflow.python.platform import test as platform_test
+
+FLAGS = flags.FLAGS
+flags.DEFINE_boolean("use_tf2", True,
+                     "Whether to test with TF2 behavior or not (TF1).")
 
 DEFAUL_TRT_CONVERT_PARAMS = trt.DEFAULT_TRT_CONVERSION_PARAMS
 
@@ -37,10 +42,16 @@ def run_all_tests():
       saved_model_dir=platform_test.test_src_dir_path(
           "python/compiler/tensorrt/model_tests/sample_model"),
       default_batch_size=128),)
-  model_handler_cls = model_handler.ModelHandlerV1
-  trt_model_handeler_cls = model_handler.TrtModelHandlerV1
-  default_trt_convert_params = DEFAUL_TRT_CONVERT_PARAMS._replace(
-      is_dynamic_op=False)
+  if FLAGS.use_tf2:
+    model_handler_cls = model_handler.ModelHandlerV2
+    trt_model_handeler_cls = model_handler.TrtModelHandlerV2
+    default_trt_convert_params = DEFAUL_TRT_CONVERT_PARAMS._replace(
+        is_dynamic_op=True)
+  else:
+    model_handler_cls = model_handler.ModelHandlerV1
+    trt_model_handeler_cls = model_handler.TrtModelHandlerV1
+    default_trt_convert_params = DEFAUL_TRT_CONVERT_PARAMS._replace(
+        is_dynamic_op=False)
   for model_config in model_configs:
     trt_convert_params = default_trt_convert_params._replace(
         max_batch_size=model_config.default_batch_size)
@@ -70,8 +81,12 @@ def main(argv):
 
   os.environ["TF_TRT_ALLOW_ENGINE_NATIVE_SEGMENT_EXECUTION"] = "False"
 
-  logging.info("Running in TF1 mode. Eager execution is disabled.")
-  framework_ops.disable_eager_execution()
+  if FLAGS.use_tf2:
+    logging.info("Running in TF2 mode. Eager execution is enabled.")
+    framework_ops.enable_eager_execution()
+  else:
+    logging.info("Running in TF1 mode. Eager execution is disabled.")
+    framework_ops.disable_eager_execution()
 
   run_all_tests()
 
