@@ -47,3 +47,7 @@ def risc_conv(x,
       data_format=data_format,
       dilations=dilations,
       name=name)
+
+
+def risc_max(input_lhs, input_rhs, name='RISC_MAX'):
+  return gen_risc_ops.risc_max(input_lhs, input_rhs, name=name)

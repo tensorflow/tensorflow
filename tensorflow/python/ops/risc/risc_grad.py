@@ -35,3 +35,10 @@ def _RiscConvGrad(_, grad):
   # pylint: disable=unused-argument
   # TODO(b/171294012): Implement gradient of RISC with RISC ops.
   return None, None
+
+
+@ops.RegisterGradient("RiscMax")
+def _RiscMaxGrad(_, grad):
+  # pylint: disable=unused-argument
+  # TODO(b/171294012): Implement gradient of RISC with RISC ops.
+  return None, None

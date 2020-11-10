@@ -20,32 +20,29 @@ limitations under the License.
 #include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
+namespace risc {
+namespace experimental {
 
-REGISTER_OP("RiscAdd")
-    .Input("x: T")
-    .Input("y: T")
-    .Output("z: T")
-    .Attr("T: {bfloat16, half, float, double}")
-    .SetShapeFn(shape_inference::UnchangedShape)
-    .SetIsAggregate()
-    .SetIsCommutative();
+template <typename T>
+class RiscMaxOp : public OpKernel {
+ public:
+  explicit RiscMaxOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
-// TODO(b/171294012): change shape function.
-REGISTER_OP("RiscConv")
-    .Input("input: T")
-    .Input("filter: T")
-    .Output("output: T")
-    .Attr("T: {float, double}")
-    .Attr("strides: list(int)")
-    .Attr(GetConvnetDataFormatAttrString())
-    .SetShapeFn(shape_inference::UnknownShape)
-    .Attr("dilations: list(int) = [1, 1, 1, 1]");
+  void Compute(OpKernelContext* ctx) override {
+    // TODO(b/171294012): Implement RiscMax op.
+  }
+};
 
-REGISTER_OP("RiscMax")
-    .Input("x: T")
-    .Input("y: T")
-    .Output("max: T")
-    .Attr("T: {bfloat16, half, float, double}")
-    .SetShapeFn(shape_inference::UnchangedShape);
+#define REGISTER_CPU(T)                                          \
+  REGISTER_KERNEL_BUILDER(                                       \
+      Name("RiscMax").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      RiscMaxOp<T>);
 
+REGISTER_CPU(bfloat16);
+REGISTER_CPU(Eigen::half);
+REGISTER_CPU(float);
+REGISTER_CPU(double);
+
+}  // namespace experimental
+}  // namespace risc
 }  // namespace tensorflow
