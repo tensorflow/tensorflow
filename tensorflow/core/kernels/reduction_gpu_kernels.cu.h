@@ -441,11 +441,7 @@ __global__ __launch_bounds__(1024) void ColumnReduceKernel(
     //  -         =
     //            =
     const int numRowsThisBlock =
-<<<<<<< HEAD
-        min(int(blockDim.y), num_rows - blockIdx.y * blockDim.y);
-=======
         min(static_cast<int>(blockDim.y), num_rows - blockIdx.y * blockDim.y);
->>>>>>> upstream/master
 
     for (int row = 1; row < numRowsThisBlock; ++row) {
       value_type t = partial_sums[threadIdx.x * (WARPSIZE + 1) + row];

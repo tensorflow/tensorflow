@@ -32,10 +32,7 @@ import os
 import re
 import sys
 
-<<<<<<< HEAD
-=======
 
->>>>>>> upstream/master
 class ConfigError(Exception):
   pass
 
@@ -45,11 +42,7 @@ def _get_default_rocm_path():
 
 
 def _get_rocm_install_path():
-<<<<<<< HEAD
-  """Determines and returns the ROCm installation path"""
-=======
   """Determines and returns the ROCm installation path."""
->>>>>>> upstream/master
   rocm_install_path = _get_default_rocm_path()
   if "ROCM_PATH" in os.environ:
     rocm_install_path = os.environ["ROCM_PATH"]
@@ -58,36 +51,20 @@ def _get_rocm_install_path():
 
 
 def _get_composite_version_number(major, minor, patch):
-<<<<<<< HEAD
-  return 10000*major + 100*minor + patch
-=======
   return 10000 * major + 100 * minor + patch
->>>>>>> upstream/master
 
 
 def _get_header_version(path, name):
   """Returns preprocessor defines in C header file."""
-<<<<<<< HEAD
-  for line in io.open(path, "r", encoding="utf-8").readlines():
-    match = re.match("#define %s +(\d+)" % name, line)
-=======
   for line in io.open(path, "r", encoding="utf-8"):
     match = re.match(r"#define %s +(\d+)" % name, line)
->>>>>>> upstream/master
     if match:
       value = match.group(1)
       return int(value)
 
-<<<<<<< HEAD
-  raise ConfigError(
-    '#define "{}" is either\n'.format(name) +
-    '  not present in file {} OR\n'.format(path) +
-    '  its value is not an integer literal')
-=======
   raise ConfigError('#define "{}" is either\n'.format(name) +
                     "  not present in file {} OR\n".format(path) +
                     "  its value is not an integer literal")
->>>>>>> upstream/master
 
 
 def _find_rocm_config(rocm_install_path):
@@ -95,12 +72,7 @@ def _find_rocm_config(rocm_install_path):
   def rocm_version_numbers(path):
     version_file = os.path.join(path, ".info/version-dev")
     if not os.path.exists(version_file):
-<<<<<<< HEAD
-      raise ConfigError(
-        'ROCm version file "{}" not found'.format(version_file))
-=======
       raise ConfigError('ROCm version file "{}" not found'.format(version_file))
->>>>>>> upstream/master
     version_numbers = []
     with open(version_file) as f:
       version_string = f.read().strip()
@@ -108,21 +80,12 @@ def _find_rocm_config(rocm_install_path):
     major = int(version_numbers[0])
     minor = int(version_numbers[1])
     patch = int(version_numbers[2].split("-")[0])
-<<<<<<< HEAD
-    return  major, minor, patch
-=======
     return major, minor, patch
->>>>>>> upstream/master
 
   major, minor, patch = rocm_version_numbers(rocm_install_path)
 
   rocm_config = {
-<<<<<<< HEAD
-    "rocm_version_number" :
-    _get_composite_version_number(major, minor, patch)
-=======
       "rocm_version_number": _get_composite_version_number(major, minor, patch)
->>>>>>> upstream/master
   }
 
   return rocm_config
@@ -134,29 +97,17 @@ def _find_hipruntime_config(rocm_install_path):
     version_file = os.path.join(path, "hip/include/hip/hip_version.h")
     if not os.path.exists(version_file):
       raise ConfigError(
-<<<<<<< HEAD
-        'HIP Runtime version file "{}" not found'.format(version_file))
-=======
           'HIP Runtime version file "{}" not found'.format(version_file))
->>>>>>> upstream/master
     # This header file has an explicit #define for HIP_VERSION, whose value
     # is (HIP_VERSION_MAJOR * 100 + HIP_VERSION_MINOR)
     # Retreive the major + minor and re-calculate here, since we do not
     # want get into the business of parsing arith exprs
     major = _get_header_version(version_file, "HIP_VERSION_MAJOR")
     minor = _get_header_version(version_file, "HIP_VERSION_MINOR")
-<<<<<<< HEAD
-    return 100*major + minor
-
-  hipruntime_config = {
-    "hipruntime_version_number" :
-    hipruntime_version_number(rocm_install_path)
-=======
     return 100 * major + minor
 
   hipruntime_config = {
       "hipruntime_version_number": hipruntime_version_number(rocm_install_path)
->>>>>>> upstream/master
   }
 
   return hipruntime_config
@@ -168,31 +119,17 @@ def _find_miopen_config(rocm_install_path):
     version_file = os.path.join(path, "miopen/include/miopen/version.h")
     if not os.path.exists(version_file):
       raise ConfigError(
-<<<<<<< HEAD
-        'MIOpen version file "{}" not found'.format(version_file))
-    version_numbers = []
-    major = _get_header_version(version_file, "MIOPEN_VERSION_MAJOR")
-    minor = _get_header_version(version_file, "MIOPEN_VERSION_MINOR")
-    patch = _get_header_version(version_file, "MIOPEN_VERSION_PATCH")
-    return  major, minor, patch
-=======
           'MIOpen version file "{}" not found'.format(version_file))
     major = _get_header_version(version_file, "MIOPEN_VERSION_MAJOR")
     minor = _get_header_version(version_file, "MIOPEN_VERSION_MINOR")
     patch = _get_header_version(version_file, "MIOPEN_VERSION_PATCH")
     return major, minor, patch
->>>>>>> upstream/master
 
   major, minor, patch = miopen_version_numbers(rocm_install_path)
 
   miopen_config = {
-<<<<<<< HEAD
-    "miopen_version_number" :
-    _get_composite_version_number(major, minor, patch)
-=======
       "miopen_version_number":
           _get_composite_version_number(major, minor, patch)
->>>>>>> upstream/master
   }
 
   return miopen_config
@@ -201,7 +138,6 @@ def _find_miopen_config(rocm_install_path):
 def _find_rocblas_config(rocm_install_path):
 
   def rocblas_version_numbers(path):
-<<<<<<< HEAD
     possible_version_files = [
       "rocblas/include/rocblas-version.h", # ROCm 3.7 and prior
       "rocblas/include/internal/rocblas-version.h", # ROCm 3.8
@@ -218,28 +154,13 @@ def _find_rocblas_config(rocm_install_path):
     major = _get_header_version(version_file, "ROCBLAS_VERSION_MAJOR")
     minor = _get_header_version(version_file, "ROCBLAS_VERSION_MINOR")
     patch = _get_header_version(version_file, "ROCBLAS_VERSION_PATCH")
-    return  major, minor, patch
-=======
-    version_file = os.path.join(path, "rocblas/include/rocblas-version.h")
-    if not os.path.exists(version_file):
-      raise ConfigError(
-          'rocblas version file "{}" not found'.format(version_file))
-    major = _get_header_version(version_file, "ROCBLAS_VERSION_MAJOR")
-    minor = _get_header_version(version_file, "ROCBLAS_VERSION_MINOR")
-    patch = _get_header_version(version_file, "ROCBLAS_VERSION_PATCH")
     return major, minor, patch
->>>>>>> upstream/master
 
   major, minor, patch = rocblas_version_numbers(rocm_install_path)
 
   rocblas_config = {
-<<<<<<< HEAD
-    "rocblas_version_number" :
-    _get_composite_version_number(major, minor, patch)
-=======
       "rocblas_version_number":
           _get_composite_version_number(major, minor, patch)
->>>>>>> upstream/master
   }
 
   return rocblas_config
@@ -251,21 +172,12 @@ def _find_rocrand_config(rocm_install_path):
     version_file = os.path.join(path, "rocrand/include/rocrand_version.h")
     if not os.path.exists(version_file):
       raise ConfigError(
-<<<<<<< HEAD
-        'rocblas version file "{}" not found'.format(version_file))
-    version_number = _get_header_version(version_file, "ROCRAND_VERSION")
-    return  version_number
-
-  rocrand_config = {
-    "rocrand_version_number" : rocrand_version_number(rocm_install_path)
-=======
           'rocblas version file "{}" not found'.format(version_file))
     version_number = _get_header_version(version_file, "ROCRAND_VERSION")
     return version_number
 
   rocrand_config = {
       "rocrand_version_number": rocrand_version_number(rocm_install_path)
->>>>>>> upstream/master
   }
 
   return rocrand_config
@@ -277,31 +189,17 @@ def _find_rocfft_config(rocm_install_path):
     version_file = os.path.join(path, "rocfft/include/rocfft-version.h")
     if not os.path.exists(version_file):
       raise ConfigError(
-<<<<<<< HEAD
-        'rocfft version file "{}" not found'.format(version_file))
-    version_numbers = []
-    major = _get_header_version(version_file, "rocfft_version_major")
-    minor = _get_header_version(version_file, "rocfft_version_minor")
-    patch = _get_header_version(version_file, "rocfft_version_patch")
-    return  major, minor, patch
-=======
           'rocfft version file "{}" not found'.format(version_file))
     major = _get_header_version(version_file, "rocfft_version_major")
     minor = _get_header_version(version_file, "rocfft_version_minor")
     patch = _get_header_version(version_file, "rocfft_version_patch")
     return major, minor, patch
->>>>>>> upstream/master
 
   major, minor, patch = rocfft_version_numbers(rocm_install_path)
 
   rocfft_config = {
-<<<<<<< HEAD
-    "rocfft_version_number" :
-    _get_composite_version_number(major, minor, patch)
-=======
       "rocfft_version_number":
           _get_composite_version_number(major, minor, patch)
->>>>>>> upstream/master
   }
 
   return rocfft_config
@@ -313,32 +211,18 @@ def _find_roctracer_config(rocm_install_path):
     version_file = os.path.join(path, "roctracer/include/roctracer.h")
     if not os.path.exists(version_file):
       raise ConfigError(
-<<<<<<< HEAD
-        'roctracer version file "{}" not found'.format(version_file))
-    version_numbers = []
-=======
           'roctracer version file "{}" not found'.format(version_file))
->>>>>>> upstream/master
     major = _get_header_version(version_file, "ROCTRACER_VERSION_MAJOR")
     minor = _get_header_version(version_file, "ROCTRACER_VERSION_MINOR")
     # roctracer header does not have a patch version number
     patch = 0
-<<<<<<< HEAD
-    return  major, minor, patch
-=======
     return major, minor, patch
->>>>>>> upstream/master
 
   major, minor, patch = roctracer_version_numbers(rocm_install_path)
 
   roctracer_config = {
-<<<<<<< HEAD
-    "roctracer_version_number" :
-    _get_composite_version_number(major, minor, patch)
-=======
       "roctracer_version_number":
           _get_composite_version_number(major, minor, patch)
->>>>>>> upstream/master
   }
 
   return roctracer_config
@@ -350,31 +234,17 @@ def _find_hipsparse_config(rocm_install_path):
     version_file = os.path.join(path, "hipsparse/include/hipsparse-version.h")
     if not os.path.exists(version_file):
       raise ConfigError(
-<<<<<<< HEAD
-        'hipsparse version file "{}" not found'.format(version_file))
-    version_numbers = []
-    major = _get_header_version(version_file, "hipsparseVersionMajor")
-    minor = _get_header_version(version_file, "hipsparseVersionMinor")
-    patch = _get_header_version(version_file, "hipsparseVersionPatch")
-    return  major, minor, patch
-=======
           'hipsparse version file "{}" not found'.format(version_file))
     major = _get_header_version(version_file, "hipsparseVersionMajor")
     minor = _get_header_version(version_file, "hipsparseVersionMinor")
     patch = _get_header_version(version_file, "hipsparseVersionPatch")
     return major, minor, patch
->>>>>>> upstream/master
 
   major, minor, patch = hipsparse_version_numbers(rocm_install_path)
 
   hipsparse_config = {
-<<<<<<< HEAD
-    "hipsparse_version_number" :
-    _get_composite_version_number(major, minor, patch)
-=======
       "hipsparse_version_number":
           _get_composite_version_number(major, minor, patch)
->>>>>>> upstream/master
   }
 
   return hipsparse_config
@@ -385,11 +255,7 @@ def find_rocm_config():
   rocm_install_path = _get_rocm_install_path()
   if not os.path.exists(rocm_install_path):
     raise ConfigError(
-<<<<<<< HEAD
-      'Specified ROCM_PATH "{}" does not exist'.format(rocm_install_path))
-=======
         'Specified ROCM_PATH "{}" does not exist'.format(rocm_install_path))
->>>>>>> upstream/master
 
   result = {}
 
@@ -397,19 +263,11 @@ def find_rocm_config():
   result.update(_find_rocm_config(rocm_install_path))
   result.update(_find_hipruntime_config(rocm_install_path))
   result.update(_find_miopen_config(rocm_install_path))
-<<<<<<< HEAD
   result.update(_find_rocblas_config(rocm_install_path))
   result.update(_find_rocrand_config(rocm_install_path))
   result.update(_find_rocfft_config(rocm_install_path))
   result.update(_find_roctracer_config(rocm_install_path))
   result.update(_find_hipsparse_config(rocm_install_path))
-=======
-  # result.update(_find_rocblas_config(rocm_install_path))
-  # result.update(_find_rocrand_config(rocm_install_path))
-  # result.update(_find_rocfft_config(rocm_install_path))
-  # result.update(_find_roctracer_config(rocm_install_path))
-  # result.update(_find_hipsparse_config(rocm_install_path))
->>>>>>> upstream/master
 
   return result
 
