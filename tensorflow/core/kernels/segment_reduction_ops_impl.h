@@ -268,8 +268,7 @@ class SegmentReductionGPUOp : public AsyncOpKernel {
                          sizeof(Index))
             .ok(),
         errors::Internal(
-            this->type_string() + ": failed to copy output_rows from device"),
-        done);
+            type_string() + ": failed to copy output_rows from device"), done);
 
     SegmentReductionFunctor functor_;
     auto create_and_check_output = [context, output_rows_host, &input,
