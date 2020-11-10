@@ -51,6 +51,8 @@ class PercentileSampler {
  private:
   PercentileSamplerCell default_cell_;
 
+  PercentileSampler() = default;
+
   TF_DISALLOW_COPY_AND_ASSIGN(PercentileSampler);
 };
 
