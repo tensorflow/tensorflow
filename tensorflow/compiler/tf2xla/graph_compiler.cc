@@ -73,7 +73,7 @@ Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
     switch (expressions[i]->kind()) {
       case XlaExpression::Kind::kConstant:
         arg.kind = XlaCompiler::Argument::kConstant;
-        arg.constant_value = expressions[i]->constant_value();
+        arg.constant_value = *expressions[i]->constant_value();
         break;
       case XlaExpression::Kind::kXlaOp:
         if (arg_must_be_compile_time_constant[i]) {

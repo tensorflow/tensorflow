@@ -26,7 +26,6 @@ py_library(
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:tag_constants",
-        "//third_party/py/attr",
         "//third_party/py/numpy",
         "@absl_py//absl/logging",
     ],

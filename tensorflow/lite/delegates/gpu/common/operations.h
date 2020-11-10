@@ -372,7 +372,7 @@ struct PReLUAttributes {
 };
 
 struct ReduceAttributes {
-  Axis axis = Axis::UNKNOWN;
+  std::set<Axis> dims;
 };
 
 struct SoftmaxAttributes {

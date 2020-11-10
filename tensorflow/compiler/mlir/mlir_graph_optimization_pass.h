@@ -34,10 +34,11 @@ class MlirOptimizationPass {
  public:
   virtual ~MlirOptimizationPass() = default;
   virtual llvm::StringRef name() const = 0;
-  virtual bool IsEnabled(const ConfigProto& config_proto) const = 0;
+  virtual bool IsEnabled(const ConfigProto& config_proto,
+                         const Graph& graph) const = 0;
 
-  virtual Status Run(const ConfigProto& config_proto,
-                     mlir::ModuleOp module) = 0;
+  virtual Status Run(const ConfigProto& config_proto, mlir::ModuleOp module,
+                     const Graph& graph) = 0;
 };
 
 class MlirOptimizationPassRegistry {
@@ -100,7 +101,8 @@ class MlirV1CompatOptimizationPass {
  public:
   virtual ~MlirV1CompatOptimizationPass() = default;
   virtual llvm::StringRef name() const = 0;
-  virtual bool IsEnabled(const ConfigProto& config_proto) const = 0;
+  virtual bool IsEnabled(const ConfigProto& config_proto,
+                         const Graph& graph) const = 0;
 
   virtual Status Run(const GraphOptimizationPassOptions& options,
                      mlir::ModuleOp module) = 0;

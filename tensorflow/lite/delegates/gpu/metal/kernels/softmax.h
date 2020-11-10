@@ -36,7 +36,7 @@ std::vector<ComputeTaskDescriptorPtr> Softmax(int id, ValueId input_id,
 // We have this case in MobilenetV1/V2.
 std::vector<ComputeTaskDescriptorPtr> Softmax1x1(int id, ValueId input_id,
                                                  ValueId output_id,
-                                                 const DeviceInfo& device_info,
+                                                 const GpuInfo& gpu_info,
                                                  int channels_count);
 
 }  // namespace metal

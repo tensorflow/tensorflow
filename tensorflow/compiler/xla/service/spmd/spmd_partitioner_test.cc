@@ -3123,7 +3123,7 @@ ENTRY %main {
                           op::Shape("(f32[14], s32[14])")));
 }
 
-TEST_F(SpmdPartitioningTest, TiledToTiledTupleReduce2) {
+TEST_F(SpmdPartitioningTest, TiledToPartiallyTiledTupleReduce) {
   const char* const hlo_string = R"(
 HloModule module
 
@@ -3153,16 +3153,25 @@ ENTRY %main {
                           PartitionComputation(hlo_string, /*num_devices=*/4));
   VLOG(1) << module->ToString();
 
-  auto lhs =
-      AllOf(op::Shape("f32[14,10]"),
-            op::AllReduce(op::DynamicUpdateSlice(_, op::Parameter(0), _, _)));
-  auto rhs =
-      AllOf(op::Shape("s32[14,10]"),
-            op::AllReduce(op::DynamicUpdateSlice(_, op::Parameter(1), _, _)));
+  auto lhs = AllOf(op::Shape("f32[14,5]"), op::Parameter(0));
+  auto rhs = AllOf(op::Shape("s32[14,5]"), op::Parameter(1));
+  auto local_reduce =
+      AllOf(op::Reduce(lhs, rhs, op::Parameter(2), op::Parameter(3)),
+            op::Shape("(f32[14], s32[14])"));
+  auto reshape_l = AllOf(op::Reshape(op::GetTupleElement(local_reduce)),
+                         op::Shape("f32[14,1]"));
+  auto reshape_r = AllOf(op::Reshape(op::GetTupleElement(local_reduce)),
+                         op::Shape("s32[14,1]"));
+  auto broadcast_l =
+      AllOf(op::AllReduce(op::DynamicUpdateSlice(_, reshape_l, _, _)),
+            op::Shape("f32[14,2]"));
+  auto broadcast_r =
+      AllOf(op::AllReduce(op::DynamicUpdateSlice(_, reshape_r, _, _)),
+            op::Shape("s32[14,2]"));
   auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root,
-              AllOf(op::Reduce(lhs, rhs, op::Parameter(2), op::Parameter(3)),
-                    op::Shape("(f32[14], s32[14])")));
+  EXPECT_THAT(root, AllOf(op::Reduce(broadcast_l, broadcast_r, op::Parameter(2),
+                                     op::Parameter(3)),
+                          op::Shape("(f32[14], s32[14])")));
 }
 
 TEST_F(SpmdPartitioningTest, TiledToTiledReduceOutputReshard) {

@@ -79,7 +79,7 @@ struct UniformBuffer {
                    runtimeOptions:(const RuntimeOptions&)options {
   size_t offset = desc->input_buffers.size() + desc->uniform_buffers.size()
                   + desc->immutable_buffers.size() + 1;
-  RETURN_IF_ERROR(_metal_args.Init(offset, &desc->args, &desc->shader_source));
+  RETURN_IF_ERROR(_metal_args.Init(device, offset, &desc->args, &desc->shader_source));
   NSString* barrier;
   // simdgroup_barrier is supported on macOS 10.13+ and Metal shading language version 2.0
   if (@available(macOS 10.13, iOS 10.0, tvOS 10.0, *)) {

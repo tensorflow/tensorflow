@@ -684,6 +684,7 @@ body: A function that takes a list of tensors and returns another
 
     FlatSymbolRefAttr:$cond,
     FlatSymbolRefAttr:$body,
+    DefaultValuedAttr<TF_ShapeAttrArray, "{}">:$output_shapes,
     DefaultValuedAttr<I64Attr, "10">:$parallel_iterations,
 
     // Used to map StatelessWhile and While op defined in TensorFlow to a common
@@ -696,12 +697,20 @@ body: A function that takes a list of tensors and returns another
   );
 
   TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
-  TF_DerivedResultShapeListAttr output_shapes = TF_DerivedResultShapeListAttr<0>;
 
   let verifier = [{
     return Verify(*this);
   }];
-  let hasCanonicalizer = 1;
+
+  let builders = [
+    OpBuilderDAG<(ins "TypeRange":$output, "ValueRange":$input,
+                  "FlatSymbolRefAttr":$cond, "FlatSymbolRefAttr":$body,
+                  "IntegerAttr":$parallel_iterations,
+                  "BoolAttr":$is_stateless)>,
+    OpBuilderDAG<(ins "TypeRange":$output, "ValueRange":$input,
+                  "StringRef":$cond, "StringRef":$body,
+                  "uint64_t":$parallel_iterations, "bool":$is_stateless)>
+  ];
 
   let extraClassDeclaration = [{
     // Get the condition function.

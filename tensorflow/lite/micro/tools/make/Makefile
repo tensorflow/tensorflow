@@ -485,7 +485,7 @@ microlite: $(MICROLITE_LIB_PATH)
 
 # Hack for generating schema file bypassing flatbuffer parsing
 tensorflow/lite/schema/schema_generated.h:
-	@cp -u tensorflow/lite/schema/schema_generated.h.OPENSOURCE tensorflow/lite/schema/schema_generated.h
+	@cp -u tensorflow/lite/schema/schema_generated.h.oss tensorflow/lite/schema/schema_generated.h
 
 # Gathers together all the objects we've compiled into a single '.a' archive.
 $(MICROLITE_LIB_PATH): tensorflow/lite/schema/schema_generated.h $(MICROLITE_LIB_OBJS)

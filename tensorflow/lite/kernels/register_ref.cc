@@ -101,11 +101,11 @@ TfLiteRegistration* Register_LESS_EQUAL();
 TfLiteRegistration* Register_FLOOR_REF();
 TfLiteRegistration* Register_TILE();
 TfLiteRegistration* Register_NEG();
-TfLiteRegistration* Register_SUM();
-TfLiteRegistration* Register_REDUCE_PROD();
-TfLiteRegistration* Register_REDUCE_MAX();
-TfLiteRegistration* Register_REDUCE_MIN();
-TfLiteRegistration* Register_REDUCE_ANY();
+TfLiteRegistration* Register_SUM_REF();
+TfLiteRegistration* Register_REDUCE_PROD_REF();
+TfLiteRegistration* Register_REDUCE_MAX_REF();
+TfLiteRegistration* Register_REDUCE_MIN_REF();
+TfLiteRegistration* Register_REDUCE_ANY_REF();
 TfLiteRegistration* Register_SELECT();
 TfLiteRegistration* Register_SLICE_REF();
 TfLiteRegistration* Register_SIN();
@@ -191,7 +191,7 @@ const TfLiteRegistration* BuiltinRefOpResolver::FindOp(const char* op,
 
 BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_ABS, Register_ABS(), /* min_version = */ 1,
-             /* max_version = */ 2);
+             /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_HARD_SWISH, Register_HARD_SWISH_REF());
   AddBuiltin(BuiltinOperator_RELU, Register_RELU(), /* min_version = */ 1,
              /* max_version = */ 3);
@@ -375,17 +375,17 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_TILE, Register_TILE(),
              /* min_version = */ 1,
              /* max_version = */ 2);
-  AddBuiltin(BuiltinOperator_SUM, Register_SUM(),
+  AddBuiltin(BuiltinOperator_SUM, Register_SUM_REF(),
              /* min_version = */ 1,
              /* max_version = */ 2);
-  AddBuiltin(BuiltinOperator_REDUCE_PROD, Register_REDUCE_PROD());
-  AddBuiltin(BuiltinOperator_REDUCE_MAX, Register_REDUCE_MAX(),
+  AddBuiltin(BuiltinOperator_REDUCE_PROD, Register_REDUCE_PROD_REF());
+  AddBuiltin(BuiltinOperator_REDUCE_MAX, Register_REDUCE_MAX_REF(),
              /* min_version = */ 1,
-             /* max_version = */ 2);
-  AddBuiltin(BuiltinOperator_REDUCE_MIN, Register_REDUCE_MIN(),
+             /* max_version = */ 3);
+  AddBuiltin(BuiltinOperator_REDUCE_MIN, Register_REDUCE_MIN_REF(),
              /* min_version = */ 1,
-             /* max_version = */ 2);
-  AddBuiltin(BuiltinOperator_REDUCE_ANY, Register_REDUCE_ANY());
+             /* max_version = */ 3);
+  AddBuiltin(BuiltinOperator_REDUCE_ANY, Register_REDUCE_ANY_REF());
   AddBuiltin(BuiltinOperator_EXPAND_DIMS, Register_EXPAND_DIMS());
   AddBuiltin(BuiltinOperator_SPARSE_TO_DENSE, Register_SPARSE_TO_DENSE(),
              /* min_version = */ 1,

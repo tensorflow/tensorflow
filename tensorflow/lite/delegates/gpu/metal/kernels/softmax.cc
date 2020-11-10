@@ -32,8 +32,8 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 namespace {
-std::string GetSoftmax1x1Code(const DeviceInfo& device_info) {
-  const std::string barrier = device_info.IsWaveSizeEqualTo32()
+std::string GetSoftmax1x1Code(const GpuInfo& gpu_info) {
+  const std::string barrier = gpu_info.IsWaveSizeEqualTo32()
                                   ? "SIMDGROUP_BARRIER"
                                   : "threadgroup_barrier";
   std::string code = R"(
@@ -179,12 +179,12 @@ std::vector<ComputeTaskDescriptorPtr> Softmax(int id, ValueId input_id,
 
 std::vector<ComputeTaskDescriptorPtr> Softmax1x1(int id, ValueId input_id,
                                                  ValueId output_id,
-                                                 const DeviceInfo& device_info,
+                                                 const GpuInfo& gpu_info,
                                                  int channels_count) {
   auto desc = std::make_shared<ComputeTaskDescriptor>();
   desc->id = id;
   desc->is_linkable = false;
-  desc->shader_source = GetSoftmax1x1Code(device_info);
+  desc->shader_source = GetSoftmax1x1Code(gpu_info);
 
   desc->input_buffers = {
       {input_id, "device FLT4* const src_buffer"},

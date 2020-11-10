@@ -3443,6 +3443,8 @@ def TFL_CastOp : TFL_Op<"cast", [
   // TFLite's cast op does not utilize CastOptions, instead derives types
   // from the TfLiteTensors.
   let hasOptions = 0;
+
+  let hasFolder = 1;
 }
 
 def TFL_MirrorPadOp: TFL_Op<"mirror_pad", [

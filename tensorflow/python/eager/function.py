@@ -75,6 +75,7 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.tf_export import tf_export
 
 # Loaded lazily due to a circular dependency (roughly
 # tf.function->autograph->->dataset->tf.function).
@@ -3769,6 +3770,7 @@ def defun(func=None,
       experimental_relax_shapes=experimental_relax_shapes)
 
 
+@tf_export("__internal__.function.defun_with_attributes", v1=[])
 def defun_with_attributes(func=None,
                           input_signature=None,
                           attributes=None,

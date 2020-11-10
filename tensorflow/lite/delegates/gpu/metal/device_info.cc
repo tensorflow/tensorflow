@@ -22,18 +22,18 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 namespace {
-Vendor GetVendorFromString(const std::string& device_name) {
-  const std::map<std::string, Vendor> kMapping = {
-    {"Apple", Vendor::kApple},
-    {"Intel", Vendor::kIntel},
-    {"AMD", Vendor::kAMD},
+GpuVendor GetVendorFromString(const std::string& device_name) {
+  const std::map<std::string, GpuVendor> kMapping = {
+      {"Apple", GpuVendor::kApple},
+      {"Intel", GpuVendor::kIntel},
+      {"AMD", GpuVendor::kAMD},
   };
-  for (auto v : kMapping) {
+  for (const auto& v : kMapping) {
     if (device_name.find(v.first) != std::string::npos) {
       return v.second;
     }
   }
-  return Vendor::kUnknown;
+  return GpuVendor::kUnknown;
 }
 }  // namespace
 
@@ -108,43 +108,37 @@ int AppleGPUInfo::GetComputeUnitsCount() const {
   }
 }
 
-DeviceInfo::DeviceInfo(const std::string& device_name)
+GpuInfo::GpuInfo(const std::string& device_name)
     : vendor(GetVendorFromString(device_name)) {
-  if (vendor == Vendor::kApple) {
+  if (vendor == GpuVendor::kApple) {
     apple_info = AppleGPUInfo(device_name);
   }
 }
 
-bool DeviceInfo::IsIntelGPU() const {
-  return vendor == Vendor::kIntel;
-}
+bool GpuInfo::IsIntel() const { return vendor == GpuVendor::kIntel; }
 
-bool DeviceInfo::IsAppleGPU() const {
-  return vendor == Vendor::kApple;
-}
+bool GpuInfo::IsApple() const { return vendor == GpuVendor::kApple; }
 
-bool DeviceInfo::IsAMDGPU() const {
-  return vendor == Vendor::kAMD;
-}
+bool GpuInfo::IsAMD() const { return vendor == GpuVendor::kAMD; }
 
-bool DeviceInfo::IsRoundToNearestSupported() const {
-  if (vendor == Vendor::kApple) {
+bool GpuInfo::IsRoundToNearestSupported() const {
+  if (vendor == GpuVendor::kApple) {
     return apple_info.IsRoundToNearestSupported();
   } else {
     return true;
   }
 }
 
-bool DeviceInfo::IsWaveSizeEqualTo32() const {
-  if (vendor == Vendor::kApple) {
+bool GpuInfo::IsWaveSizeEqualTo32() const {
+  if (vendor == GpuVendor::kApple) {
     return apple_info.IsWaveSizeEqualTo32();
   } else {
     return false;
   }
 }
 
-int DeviceInfo::GetComputeUnitsCount() const {
-  if (vendor == Vendor::kApple) {
+int GpuInfo::GetComputeUnitsCount() const {
+  if (vendor == GpuVendor::kApple) {
     return apple_info.GetComputeUnitsCount();
   } else {
     return 1;

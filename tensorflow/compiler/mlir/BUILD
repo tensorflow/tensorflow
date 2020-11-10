@@ -198,6 +198,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/jit:flags",
+        "//tensorflow/core:graph",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/types:optional",
     ],

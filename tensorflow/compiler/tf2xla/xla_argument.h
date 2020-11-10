@@ -39,6 +39,9 @@ struct XlaArgument {
     // associated runtime parameter iff `initialized` is true.
     kResource,
 
+    // A resource variable with a constant value known at compile time.
+    kConstantResource,
+
     // Argument is a run-time parameter.
     kParameter,
 

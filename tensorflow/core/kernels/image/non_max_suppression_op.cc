@@ -228,7 +228,7 @@ void DoNonMaxSuppressionOp(OpKernelContext* context, const Tensor& scores,
       next_candidate.score *= suppress_weight(similarity);
 
       // First decide whether to perform hard suppression
-      if (similarity >= static_cast<T>(similarity_threshold)) {
+      if (similarity > static_cast<T>(similarity_threshold)) {
         should_hard_suppress = true;
         break;
       }

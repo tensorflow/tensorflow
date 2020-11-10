@@ -980,19 +980,18 @@ ConvParams GetConvParamsForAMD(const Convolution2DAttributes& attr,
   return params;
 }
 
-ConvParams GetConvParams(const DeviceInfo& device_info,
+ConvParams GetConvParams(const GpuInfo& gpu_info,
                          const Convolution2DAttributes& attr,
                          const RuntimeOptions& options, const BHWC& dst_shape) {
-  if (device_info.IsAppleGPU()) {
-    if (device_info.apple_info.IsLocalMemoryPreferredOverGlobal()) {
-      return GetConvParamsForA7A8(device_info.apple_info, attr, dst_shape);
+  if (gpu_info.IsApple()) {
+    if (gpu_info.apple_info.IsLocalMemoryPreferredOverGlobal()) {
+      return GetConvParamsForA7A8(gpu_info.apple_info, attr, dst_shape);
     } else {
-      return GetConvParamsForA9AndHigher(device_info.apple_info, attr,
-                                         dst_shape);
+      return GetConvParamsForA9AndHigher(gpu_info.apple_info, attr, dst_shape);
     }
-  } else if (device_info.IsIntelGPU()) {
+  } else if (gpu_info.IsIntel()) {
     return GetConvParamsForIntel(attr, options, dst_shape);
-  } else if (device_info.IsAMDGPU()) {
+  } else if (gpu_info.IsAMD()) {
     return GetConvParamsForAMD(attr, options, dst_shape);
   } else {
     ConvParams params;
@@ -1048,9 +1047,9 @@ std::pair<uint3, uint3> GetDispatchSizes(const ConvParams& params,
 
 std::vector<ComputeTaskDescriptorPtr> ConvolutionGeneric(
     int id, ValueId input_id, ValueId output_id, const BHWC& dst_shape,
-    const Convolution2DAttributes& attr, const DeviceInfo& device_info,
+    const Convolution2DAttributes& attr, const GpuInfo& gpu_info,
     const metal::RuntimeOptions& options) {
-  ConvParams params = GetConvParams(device_info, attr, options, dst_shape);
+  ConvParams params = GetConvParams(gpu_info, attr, options, dst_shape);
 
   auto desc = std::make_shared<ComputeTaskDescriptor>();
   desc->id = id;
@@ -1103,7 +1102,7 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionGeneric(
 
 std::vector<ComputeTaskDescriptorPtr> ConvolutionWino4x4To6x6(
     int id, ValueId input_id, ValueId output_id, const BHWC& dst_shape,
-    const Convolution2DAttributes& attr, const DeviceInfo& device_info,
+    const Convolution2DAttributes& attr, const GpuInfo& gpu_info,
     const RuntimeOptions& options) {
   const int dst_slices = DivideRoundUp(attr.weights.shape.o, 4);
   ConvParams params;
@@ -1116,9 +1115,9 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionWino4x4To6x6(
   params.different_weights_for_height = true;
   params.x_kernel_is_1 = true;
   params.y_kernel_is_1 = true;
-  if (device_info.IsAppleGPU()) {
+  if (gpu_info.IsApple()) {
     params.weight_layout = WeightsInnerBlockLayout::O4I4;
-    if (device_info.apple_info.IsLocalMemoryPreferredOverGlobal()) {
+    if (gpu_info.apple_info.IsLocalMemoryPreferredOverGlobal()) {
       params.weights_upload_type = WeightsUploadType::LOCAL_MEM_BY_THREADS;
       params.work_group_size = int3(32, 1, 1);
       params.block_size = int3(4, 1, 4);
@@ -1127,12 +1126,12 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionWino4x4To6x6(
       params.work_group_size = int3(8, 4, 1);
       params.block_size = int3(4, 1, 4);
     }
-  } else if (device_info.IsIntelGPU()) {
+  } else if (gpu_info.IsIntel()) {
     params.weight_layout = WeightsInnerBlockLayout::I4O4;
     params.weights_upload_type = WeightsUploadType::PRIVATE_MEM_SIMD8_BROADCAST;
     params.work_group_size = int3(16, 1, 1);
     params.block_size = int3(1, 1, 4);
-  } else if (device_info.IsAMDGPU()) {
+  } else if (gpu_info.IsAMD()) {
     params.weight_layout = WeightsInnerBlockLayout::I4O4;
     params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
     params.work_group_size = int3(32, 1, 1);

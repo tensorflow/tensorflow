@@ -39,7 +39,7 @@ class GpuAddTest : public OpsTestBase {
     SetDevice(tensorflow::DEVICE_GPU, std::move(device_gpu));
   }
 
-  template <typename T, typename RT = T>
+  template <typename T, typename BaselineType = T>
   void RunAddOp(std::vector<T> input1, TensorShape shape1,
                 std::vector<T> input2, TensorShape shape2,
                 std::vector<T> output, TensorShape output_shape) {
@@ -59,8 +59,8 @@ class GpuAddTest : public OpsTestBase {
     test::ExpectEqual(expected_tensor, *GetOutput(0));
   }
 
-  template <typename T, typename RT = T>
-  void RunBroadcastingAddOp() {
+  template <typename T, typename BaselineType = T>
+  void TestBroadcastingAddOp() {
     auto input1 = {
         static_cast<T>(10),
         static_cast<T>(20),
@@ -73,38 +73,45 @@ class GpuAddTest : public OpsTestBase {
         static_cast<T>(21), static_cast<T>(22), static_cast<T>(23),
     };
     auto expected_shape = TensorShape({2, 3});
-    RunAddOp<T, RT>(input1, shape1, input2, shape2, expected, expected_shape);
+    RunAddOp<T, BaselineType>(input1, shape1, input2, shape2, expected,
+                              expected_shape);
   }
 
-  template <typename T, typename RT = T>
+  template <typename T, typename BaselineType = T>
   void RunAddOp() {
-    auto input1 = {static_cast<T>(-std::numeric_limits<RT>::infinity()),
-                   static_cast<T>(-0.1),
-                   static_cast<T>(-0.0),
-                   static_cast<T>(0.0),
-                   static_cast<T>(0.1),
-                   static_cast<T>(std::numeric_limits<RT>::infinity())};
-    auto input2 = {static_cast<T>(-std::numeric_limits<RT>::infinity()),
-                   static_cast<T>(-0.1),
-                   static_cast<T>(-0.0),
-                   static_cast<T>(0.0),
-                   static_cast<T>(0.1),
-                   static_cast<T>(std::numeric_limits<RT>::infinity())};
+    auto input1 = {
+        static_cast<T>(-std::numeric_limits<BaselineType>::infinity()),
+        static_cast<T>(-0.1),
+        static_cast<T>(-0.0),
+        static_cast<T>(0.0),
+        static_cast<T>(0.1),
+        static_cast<T>(std::numeric_limits<BaselineType>::infinity())};
+    auto input2 = {
+        static_cast<T>(-std::numeric_limits<BaselineType>::infinity()),
+        static_cast<T>(-0.1),
+        static_cast<T>(-0.0),
+        static_cast<T>(0.0),
+        static_cast<T>(0.1),
+        static_cast<T>(std::numeric_limits<BaselineType>::infinity())};
     std::vector<T> expected;
     for (const T& inp : input2) {
-      expected.push_back(
-          static_cast<T>(static_cast<RT>(inp) + static_cast<RT>(inp)));
+      expected.push_back(static_cast<T>(static_cast<BaselineType>(inp) +
+                                        static_cast<BaselineType>(inp)));
     }
-    RunAddOp<T, RT>(input1, {2, 3}, input2, {2, 3}, expected, {2, 3});
+    RunAddOp<T, BaselineType>(input1, {2, 3}, input2, {2, 3}, expected, {2, 3});
   }
 };
 
 TEST_F(GpuAddTest, AddFloat) { RunAddOp<float>(); }
 TEST_F(GpuAddTest, AddDouble) { RunAddOp<double>(); }
 TEST_F(GpuAddTest, AddHalf) { RunAddOp<Eigen::half, float>(); }
-TEST_F(GpuAddTest, BCastAddFloat) { RunBroadcastingAddOp<float>(); }
-TEST_F(GpuAddTest, BCastAddDouble) { RunBroadcastingAddOp<double>(); }
-TEST_F(GpuAddTest, BCastAddHalf) { RunBroadcastingAddOp<Eigen::half, float>(); }
+TEST_F(GpuAddTest, BCastAddFloat) { TestBroadcastingAddOp<float>(); }
+TEST_F(GpuAddTest, BCastAddDouble) { TestBroadcastingAddOp<double>(); }
+TEST_F(GpuAddTest, BCastAddHalf) {
+  TestBroadcastingAddOp<Eigen::half, float>();
+}
+
+TEST_F(GpuAddTest, BCastAddInt64) { TestBroadcastingAddOp<int64>(); }
 
 // TEST_F(GpuAddTest, AddV2Half) { RunAddOp<Eigen::half, float>(); }
 }  // namespace

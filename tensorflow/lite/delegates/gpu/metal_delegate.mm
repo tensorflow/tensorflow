@@ -338,13 +338,13 @@ class Delegate {
     }
 
     std::string device_name = std::string([[metal_device_ name] UTF8String]);
-    DeviceInfo device_info(device_name);
+    GpuInfo gpu_info(device_name);
     size_t storage_type_size;
     RuntimeOptions runtime_options;
     if (options_.allow_precision_loss) {
       storage_type_size = sizeof(HalfBits);
       runtime_options.storage_precision = RuntimeOptions::Precision::FP16;
-      if (device_info.IsRoundToNearestSupported()) {
+      if (gpu_info.IsRoundToNearestSupported()) {
         runtime_options.accumulator_precision = RuntimeOptions::Precision::FP16;
       } else {
         runtime_options.accumulator_precision = RuntimeOptions::Precision::FP32;
@@ -437,7 +437,7 @@ class Delegate {
 
     // TODO(impjdi): Merge these.
     CompiledModel compiled_model;
-    RETURN_IF_ERROR(Compile(graph, device_info, runtime_options, &compiled_model));
+    RETURN_IF_ERROR(Compile(graph, gpu_info, runtime_options, &compiled_model));
     CompiledModel optimized_model;
     RETURN_IF_ERROR(ValidateOptimizeModel(input_ids, output_ids, compiled_model, &optimized_model));
 

@@ -33,27 +33,28 @@ def _get_mean_latency(result: model_handler.TestResult):
 
 def run_all_tests():
   """Runs all sample model with TensorRT FP32/FP16 and reports latency."""
-  # The model_configs contains (saved_model_dir, batch_size) for each model
-  model_configs = ((platform_test.test_src_dir_path(
-      "python/compiler/tensorrt/model_tests/sample_model"), 128),)
+  model_configs = (model_handler.ModelConfig(
+      saved_model_dir=platform_test.test_src_dir_path(
+          "python/compiler/tensorrt/model_tests/sample_model"),
+      default_batch_size=128),)
   model_handler_cls = model_handler.ModelHandlerV1
   trt_model_handeler_cls = model_handler.TrtModelHandlerV1
   default_trt_convert_params = DEFAUL_TRT_CONVERT_PARAMS._replace(
       is_dynamic_op=False)
-  for saved_model_dir, batch_size in model_configs:
-    base_model = model_handler_cls(saved_model_dir=saved_model_dir)
-    random_inputs = base_model.generate_random_inputs(batch_size)
+  for model_config in model_configs:
+    trt_convert_params = default_trt_convert_params._replace(
+        max_batch_size=model_config.default_batch_size)
+    base_model = model_handler_cls(model_config)
+    random_inputs = base_model.generate_random_inputs()
     base_model_result = base_model.run(random_inputs)
     trt_fp32_model_result = trt_model_handeler_cls(
-        saved_model_dir=saved_model_dir,
-        trt_convert_params=default_trt_convert_params._replace(
-            precision_mode=trt.TrtPrecisionMode.FP32,
-            max_batch_size=batch_size)).run(random_inputs)
+        model_config=model_config,
+        trt_convert_params=trt_convert_params._replace(
+            precision_mode=trt.TrtPrecisionMode.FP32)).run(random_inputs)
     trt_fp16_model_result = trt_model_handeler_cls(
-        saved_model_dir=saved_model_dir,
-        trt_convert_params=default_trt_convert_params._replace(
-            precision_mode=trt.TrtPrecisionMode.FP16,
-            max_batch_size=batch_size)).run(random_inputs)
+        model_config=model_config,
+        trt_convert_params=trt_convert_params._replace(
+            precision_mode=trt.TrtPrecisionMode.FP16)).run(random_inputs)
 
     logging.info("Base model latency: %f ms",
                  _get_mean_latency(base_model_result))

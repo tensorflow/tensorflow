@@ -22,11 +22,16 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-enum class Vendor {
-  kUnknown,
+// The VendorID returned by the GPU driver.
+enum class GpuVendor {
   kApple,
-  kIntel,
+  kQualcomm,
+  kMali,
+  kPowerVR,
+  kNvidia,
   kAMD,
+  kIntel,
+  kUnknown
 };
 
 enum class AppleGPU {
@@ -64,17 +69,17 @@ struct AppleGPUInfo {
   int GetComputeUnitsCount() const;
 };
 
-struct DeviceInfo {
-  DeviceInfo() = default;
-  explicit DeviceInfo(const std::string& device_name);
+struct GpuInfo {
+  GpuInfo() = default;
+  explicit GpuInfo(const std::string& device_name);
 
-  Vendor vendor;
+  GpuVendor vendor = GpuVendor::kUnknown;
 
   AppleGPUInfo apple_info;
 
-  bool IsIntelGPU() const;
-  bool IsAppleGPU() const;
-  bool IsAMDGPU() const;
+  bool IsIntel() const;
+  bool IsApple() const;
+  bool IsAMD() const;
 
   // floating point rounding mode
   bool IsRoundToNearestSupported() const;

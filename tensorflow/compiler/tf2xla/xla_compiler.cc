@@ -207,7 +207,7 @@ Status BuildComputation(
     switch (retval.kind()) {
       case XlaExpression::Kind::kConstant:
         output.is_constant = true;
-        output.constant_value = retval.constant_value();
+        output.constant_value = *retval.constant_value();
         output.shape = output.constant_value.shape();
         break;
 
@@ -445,6 +445,9 @@ string XlaCompiler::Argument::HumanString() const {
       return "invalid";
     case kConstant:
       return absl::StrCat("kind=constant", common,
+                          " value=", constant_value.DebugString());
+    case kConstantResource:
+      return absl::StrCat("kind=constant-resource", common,
                           " value=", constant_value.DebugString());
     case kResource: {
       string output = absl::StrCat(
@@ -857,6 +860,7 @@ Status XlaCompiler::XLAShapeForArgument(
       *xla_shape = absl::get<xla::Shape>(arg.shape);
       return Status::OK();
     }
+    case XlaCompiler::Argument::kConstantResource:
     case XlaCompiler::Argument::kResource: {
       TF_RET_CHECK(arg.initialized);
 
@@ -960,6 +964,7 @@ Status XlaCompiler::BuildArguments(
     const XlaCompiler::Argument& arg = args[i];
     XlaExpression& arg_expression = (*arg_expressions)[i];
     switch (arg.kind) {
+      case XlaCompiler::Argument::kConstantResource:
       case XlaCompiler::Argument::kResource: {
         TF_RET_CHECK(arg.resource_kind != XlaResource::kInvalid);
         TF_RET_CHECK(absl::holds_alternative<TensorShape>(arg.shape));
@@ -972,7 +977,10 @@ Status XlaCompiler::BuildArguments(
                 /*max_array_size=*/arg.max_array_size,
                 /*tensor_array_gradients=*/arg.tensor_array_gradients,
                 /*tensor_array_multiple_writes_aggregate=*/true));
-        arg_expression = XlaExpression::Resource(resource);
+        arg_expression =
+            arg.kind == XlaCompiler::Argument::kResource
+                ? XlaExpression::Resource(resource)
+                : XlaExpression::ConstantResource(arg.constant_value, resource);
         if (arg.initialized) {
           input_to_args->push_back(i);
         }
@@ -1125,6 +1133,7 @@ Status XlaCompiler::BuildArguments(
                                    arg_shardings.at(i).DebugString()));
     XlaExpression& arg_expression = (*arg_expressions)[input_to_args->at(i)];
     switch (arg.kind) {
+      case XlaCompiler::Argument::kConstantResource:
       case XlaCompiler::Argument::kResource: {
         TF_RET_CHECK(arg.initialized);
         XlaResource* resource = arg_expression.resource();
