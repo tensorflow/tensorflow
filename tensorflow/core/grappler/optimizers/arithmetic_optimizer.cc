@@ -1918,7 +1918,7 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
 
   Status AddReshapes(const PortNodeMap& reshapes, NodeDef* root_node) {
     for (auto link : reshapes) {
-      AddReshape(link.second, root_node, link.first);
+      TF_RETURN_IF_ERROR(AddReshape(link.second, root_node, link.first));
     }
     return Status::OK();
   }
