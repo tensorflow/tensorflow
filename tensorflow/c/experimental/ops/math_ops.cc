@@ -44,7 +44,8 @@ Status Conj(AbstractContext* ctx,
   if (DataTypeIsFloating(BaseType(dtype)) ||
       DataTypeIsInteger(BaseType(dtype))) {
     TF_RETURN_IF_ERROR(Identity(ctx, inputs, outputs, name));
-  } else {
+  } else if (DataTypeIsComplex(BaseType(dtype)) ||
+             BaseType(dtype) == DT_VARIANT) {
     AbstractOperationPtr conj_op(ctx->CreateOperation());
     TF_RETURN_IF_ERROR(conj_op->Reset("Conj", /*raw_device_name=*/nullptr));
     TF_RETURN_IF_ERROR(MaybeSetOpName(conj_op.get(), name));
@@ -52,6 +53,9 @@ Status Conj(AbstractContext* ctx,
 
     int num_retvals = 1;
     TF_RETURN_IF_ERROR(conj_op->Execute(outputs, &num_retvals));
+  } else {
+    return errors::InvalidArgument(
+        "Expected numeric or variant tensor, got dtype ", dtype);
   }
   return Status::OK();
 }
