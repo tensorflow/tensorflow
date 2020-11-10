@@ -164,10 +164,12 @@ bool IsSupportedOp(Operation& op,
                    const Dialect* tf_dialect) {
   if (op.getDialect() != tf_dialect)
     return true;
-  else
-    return !HasStringOperand(op) && !HasStringResult(op) &&
-           (MatchesPattern(op, supported_ops) ||
-            mhlo::IsOpAllowedTf2XlaFallback(&op));
+  // Assert has a legalization that later removes it so we don't want to outside
+  // compile it ever for performance reasons.
+  if (llvm::isa<TF::AssertOp>(op)) return true;
+  return !HasStringOperand(op) && !HasStringResult(op) &&
+         (MatchesPattern(op, supported_ops) ||
+          mhlo::IsOpAllowedTf2XlaFallback(&op));
 }
 
 // Checks all regions of `op` for captured string operands.
