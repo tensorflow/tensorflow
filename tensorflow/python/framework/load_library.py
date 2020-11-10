@@ -163,7 +163,7 @@ def load_pluggable_device_library(library_location):
   "library_location" can be a path to a specific shared object, or a folder.
   If it is a folder, all shared objects will be loaded. when the library is
   loaded, devices/kernels registered in the library via StreamExecutor C API
-  and Kernel/Op Registration C API are made available in TensorFlow process
+  and Kernel/Op Registration C API are made available in TensorFlow process.
 
   Args:
     library_location: Path to the plugin or folder of plugins.

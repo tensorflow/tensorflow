@@ -749,7 +749,7 @@ void TF_ImportGraphDefOptionsSetValidateColocationConstraints(
   opts->opts.validate_colocation_constraints = enable;
 }
 
-// Load a Pluggable Device library
+// Load a Pluggable Device library.
 // On success, returns the handle to library in result and return OK from the
 // function. Otherwise return nullptr in result and error Status from the
 // function.
