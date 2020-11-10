@@ -4606,7 +4606,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sparse_fill_empty_rows_op",
     prefix = "sparse_fill_empty_rows_op",
-    deps = SPARSE_DEPS,
+    deps = SPARSE_DEPS + [":gpu_prim_hdrs"],
 )
 
 tf_kernel_library(

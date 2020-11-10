@@ -34,6 +34,7 @@ limitations under the License.
 namespace tensorflow {
 
 using CPUDevice = Eigen::ThreadPoolDevice;
+using GPUDevice = Eigen::GpuDevice;
 
 namespace functor {
 
@@ -233,6 +234,29 @@ class SparseFillEmptyRowsOp : public OpKernel {
 #define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T, int64)
 TF_CALL_ALL_TYPES(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+// Forward declarations of the functor specializations for GPU.
+namespace functor {
+#define DECLARE_GPU_SPEC(T, Tindex)                             \
+  template <>                                                   \
+  Status SparseFillEmptyRows<GPUDevice, T, Tindex>::operator()( \
+      OpKernelContext* context, const Tensor& default_value_t,  \
+      const Tensor& indices_t, const Tensor& values_t,          \
+      const Tensor& dense_shape_t);                             \
+  extern template struct SparseFillEmptyRows<GPUDevice, T, Tindex>;
+#define DECLARE_GPU_SPEC_INT64(T) DECLARE_GPU_SPEC(T, int64)
+TF_CALL_POD_TYPES(DECLARE_GPU_SPEC_INT64)
+#undef DECLARE_GPU_SPEC_INT64
+#undef DECLARE_GPU_SPEC
+}  // namespace functor
+
+#define REGISTER_GPU_KERNELS(T) REGISTER_KERNELS(GPU, T, int64)
+TF_CALL_POD_TYPES(REGISTER_GPU_KERNELS)
+#undef REGISTER_GPU_KERNELS
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #undef REGISTER_KERNELS
 
