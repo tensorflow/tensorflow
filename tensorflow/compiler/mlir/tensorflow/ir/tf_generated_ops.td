@@ -12652,6 +12652,8 @@ retained with length 1.
     OpBuilderDAG<(ins "Value":$input, "Value":$reduction_indices,
       "BoolAttr":$keep_dims)>
   ];
+
+  let hasFolder = 1;
 }
 
 def TF_SymbolicGradientOp : TF_Op<"SymbolicGradient", [NoSideEffect]> {
