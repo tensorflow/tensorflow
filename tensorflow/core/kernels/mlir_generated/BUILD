@@ -246,59 +246,11 @@ gen_kernel_library(
 )
 
 gen_kernel_library(
-    name = "ceil",
-    generate_unranked = True,
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    unroll_factors = "4",
-)
-
-gen_kernel_library(
     name = "conj",
     tile_size = "256",
     types = [
         "c64",
         "c128",
-    ],
-    unroll_factors = "4",
-)
-
-gen_kernel_library(
-    name = "cos",
-    generate_unranked = True,
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    unroll_factors = "4",
-)
-
-gen_kernel_library(
-    name = "exp",
-    generate_unranked = True,
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    unroll_factors = "4",
-)
-
-gen_kernel_library(
-    name = "floor",
-    generate_unranked = True,
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
     ],
     unroll_factors = "4",
 )
@@ -327,30 +279,6 @@ gen_kernel_library(
 )
 
 gen_kernel_library(
-    name = "isfinite",
-    generate_unranked = True,
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    unroll_factors = "4",
-)
-
-gen_kernel_library(
-    name = "log",
-    generate_unranked = True,
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    unroll_factors = "4",
-)
-
-gen_kernel_library(
     name = "logicalnot",
     generate_unranked = True,
     tile_size = "256",
@@ -359,33 +287,9 @@ gen_kernel_library(
 )
 
 gen_kernel_library(
-    name = "neg",
-    generate_unranked = True,
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    unroll_factors = "4",
-)
-
-gen_kernel_library(
     name = "real",
     tile_size = "256",
     types = [
-        "f32",
-        "f64",
-    ],
-    unroll_factors = "4",
-)
-
-gen_kernel_library(
-    name = "rsqrt",
-    generate_unranked = True,
-    tile_size = "256",
-    types = [
-        "f16",
         "f32",
         "f64",
     ],
@@ -421,30 +325,6 @@ gen_kernel_library(
 )
 
 gen_kernel_library(
-    name = "sqrt",
-    generate_unranked = True,
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    unroll_factors = "4",
-)
-
-gen_kernel_library(
-    name = "tanh",
-    generate_unranked = True,
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    unroll_factors = "4",
-)
-
-gen_kernel_library(
     name = "addv2",
     generate_ranked = False,
     generate_unranked = True,
@@ -457,3 +337,29 @@ gen_kernel_library(
     ],
     unroll_factors = "4",
 )
+
+[
+    gen_kernel_library(
+        name = name,
+        generate_unranked = True,
+        tile_size = "256",
+        types = [
+            "f16",
+            "f32",
+            "f64",
+        ],
+        unroll_factors = "4",
+    )
+    for name in [
+        "ceil",
+        "cos",
+        "exp",
+        "floor",
+        "isfinite",
+        "log",
+        "neg",
+        "rsqrt",
+        "sqrt",
+        "tanh",
+    ]
+]
