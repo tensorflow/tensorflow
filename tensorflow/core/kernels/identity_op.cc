@@ -60,45 +60,6 @@ REGISTER_KERNEL_BUILDER(Name("Identity")
                             .HostMemory("output"),
                         IdentityOp);
 
-#if TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNEL(type)                                           \
-  REGISTER_KERNEL_BUILDER(                                                   \
-      Name("Identity").Device(DEVICE_SYCL).TypeConstraint<type>("T"),        \
-      IdentityOp);                                                           \
-  REGISTER_KERNEL_BUILDER(                                                   \
-      Name("PreventGradient").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
-      IdentityOp);                                                           \
-  REGISTER_KERNEL_BUILDER(                                                   \
-      Name("RefIdentity").Device(DEVICE_SYCL).TypeConstraint<type>("T"),     \
-      IdentityOp);                                                           \
-  REGISTER_KERNEL_BUILDER(                                                   \
-      Name("StopGradient").Device(DEVICE_SYCL).TypeConstraint<type>("T"),    \
-      IdentityOp)
-
-TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_SYCL_KERNEL);
-
-#undef REGISTER_SYCL_KERNEL
-
-#define REGISTER_SYCL_HOST_KERNEL(type)                   \
-  REGISTER_KERNEL_BUILDER(Name("Identity")                \
-                              .Device(DEVICE_SYCL)        \
-                              .HostMemory("input")        \
-                              .HostMemory("output")       \
-                              .TypeConstraint<type>("T"), \
-                          IdentityOp);                    \
-  REGISTER_KERNEL_BUILDER(Name("RefIdentity")             \
-                              .Device(DEVICE_SYCL)        \
-                              .HostMemory("input")        \
-                              .HostMemory("output")       \
-                              .TypeConstraint<type>("T"), \
-                          IdentityOp)
-
-REGISTER_SYCL_HOST_KERNEL(int32);
-REGISTER_SYCL_HOST_KERNEL(bool);
-
-#undef REGISTER_SYCL_HOST_KERNEL
-
-#endif  // TENSORFLOW_USE_SYCL
 
 #define REGISTER_GPU_KERNEL(type)                                           \
   REGISTER_KERNEL_BUILDER(                                                  \

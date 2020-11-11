@@ -14,8 +14,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 tf_custom_op_library(
     name = "zero_out_op_kernel_1.so",
     srcs = ["zero_out_op_kernel_1.cc"],

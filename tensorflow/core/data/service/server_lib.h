@@ -98,6 +98,9 @@ class WorkerGrpcDataServer : public GrpcDataServerBase {
   explicit WorkerGrpcDataServer(const experimental::WorkerConfig& config);
   ~WorkerGrpcDataServer() override;
 
+  // Returns the number of tasks currently being executed by the worker.
+  Status NumTasks(int* num_tasks);
+
  protected:
   void AddDataServiceToBuilder(::grpc::ServerBuilder& builder) override;
   Status StartServiceInternal() override;

@@ -30,12 +30,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/elemental_ir_emitter.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_nested.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
@@ -96,6 +98,64 @@ Status IrEmitter::DefaultAction(HloInstruction* hlo) {
       *hlo, GpuElementalIrEmitter(hlo_module_config_, module_, &b_,
                                   GetNestedComputer())
                 .MakeElementGenerator(hlo, operand_to_generator));
+}
+
+Status IrEmitter::EmitConstants(const HloComputation& computation,
+                                bool lookup_indices) {
+  for (HloInstruction* instr : computation.instructions()) {
+    if (instr->opcode() != HloOpcode::kConstant) {
+      continue;
+    }
+    Literal& literal = *Cast<HloConstantInstruction>(instr)->mutable_literal();
+    const bool should_emit_initializer = ShouldEmitLiteralInLlvmIr(literal);
+    llvm::ArrayType* global_type =
+        llvm::ArrayType::get(b_.getInt8Ty(), literal.size_bytes());
+    llvm::Constant* initializer =
+        should_emit_initializer
+            ? llvm_ir::ConvertLiteralToIrConstant(literal, module_)
+            : llvm::ConstantAggregateZero::get(global_type);
+    if (should_emit_initializer) {
+      VLOG(3) << "Emitted initializer for constant with shape "
+              << ShapeUtil::HumanString(literal.shape());
+    }
+
+    // These globals will be looked up by name by GpuExecutable so we need to
+    // give them an external linkage.  Not all of their uses are visible in
+    // the LLVM IR (e.g. TupleThunk) so we can't give then a linkage that
+    // merely preserves their names (like available_externally), we also need
+    // to ensure that they stick around even if they're "unused".
+    //
+    // We may have to be more clever here in the future if we notice that we're
+    // keeping around too many globals because of their linkage.
+    unsigned global_address_space = llvm_ir::GetGlobalMemoryAddressSpace(
+        *ir_emitter_context_->llvm_module());
+
+    std::string global_name = llvm_ir::ConstantHloToGlobalName(*instr);
+
+    llvm::GlobalVariable* global_for_const = new llvm::GlobalVariable(
+        global_type, /*isConstant=*/should_emit_initializer,
+        llvm::GlobalValue::ExternalLinkage,
+        /*Initializer=*/initializer, global_name,
+        /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
+        /*AddressSpace=*/global_address_space,
+        /*isExternallyInitialized=*/false);
+    global_for_const->setAlignment(llvm::Align(kConstantBufferAlignBytes));
+    ir_emitter_context_->llvm_module()->getGlobalList().push_back(
+        global_for_const);
+
+    GpuExecutable::ConstantInfo info;
+    info.symbol_name = global_name;
+    info.content = literal.Clone();
+    if (lookup_indices) {
+      auto maybe_slice =
+          ir_emitter_context_->buffer_assignment().GetUniqueSlice(instr, {});
+      if (maybe_slice.ok()) {
+        info.allocation_index = maybe_slice.ValueOrDie().index();
+      }
+    }
+    ir_emitter_context_->constants().push_back(std::move(info));
+  }
+  return Status::OK();
 }
 
 Status IrEmitter::HandleConstant(HloInstruction* constant) {
@@ -175,10 +235,12 @@ Status IrEmitter::EmitCallToNestedComputation(
   llvm::Function*& emitted_function =
       computation_to_ir_function_[&nested_computation];
   if (emitted_function == nullptr) {
-    IrEmitterNested ir_emitter_nested(hlo_module_config_, nested_computation,
-                                      ir_emitter_context_);
-    TF_RETURN_IF_ERROR(ir_emitter_nested.CodegenNestedComputation());
-    emitted_function = ir_emitter_nested.GetEmittedFunction();
+    TF_ASSIGN_OR_RETURN(
+        auto ir_emitter_nested,
+        IrEmitterNested::Create(hlo_module_config_, nested_computation,
+                                ir_emitter_context_));
+    TF_RETURN_IF_ERROR(ir_emitter_nested->CodegenNestedComputation());
+    emitted_function = ir_emitter_nested->GetEmittedFunction();
   }
 
   // Operands are in default address space for non-AMDGPU target.
@@ -711,11 +773,11 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
   CHECK_EQ(HloInstruction::FusionKind::kLoop, fusion->fusion_kind());
   GpuElementalIrEmitter elemental_emitter(hlo_module_config_, module_, &b_,
                                           GetNestedComputer());
-  FusedIrEmitter fused_emitter(GetGeneratorForOperandIrArrays(fusion),
-                               &elemental_emitter);
-  TF_RETURN_IF_ERROR(fusion->fused_expression_root()->Accept(&fused_emitter));
-
-  return EmitTargetElementLoop(*fusion, fused_emitter.GetRootGenerator());
+  FusedIrEmitter fused_emitter(&elemental_emitter);
+  BindFusionArguments(fusion, &fused_emitter);
+  TF_ASSIGN_OR_RETURN(auto generator, fused_emitter.GetGenerator(
+                                          fusion->fused_expression_root()));
+  return EmitTargetElementLoop(*fusion, generator);
 }
 
 Status IrEmitter::HandleCall(HloInstruction* call) {
@@ -812,6 +874,18 @@ std::vector<llvm_ir::IrArray> IrEmitter::ConstructIrArrayForOutputs(
     output_arrays.push_back(GetIrArray(hlo, hlo));
   }
   return output_arrays;
+}
+
+void IrEmitter::BindFusionArguments(const HloInstruction* fusion,
+                                    FusedIrEmitter* fused_emitter) {
+  for (int i = 0; i < fusion->operand_count(); i++) {
+    const HloInstruction* operand = fusion->operand(i);
+    fused_emitter->BindGenerator(
+        fusion->fused_parameter(i),
+        [this, operand, fusion](llvm_ir::IrArray::Index index) {
+          return GetIrArray(*operand, *fusion).EmitReadArrayElement(index, &b_);
+        });
+  }
 }
 
 }  // namespace gpu

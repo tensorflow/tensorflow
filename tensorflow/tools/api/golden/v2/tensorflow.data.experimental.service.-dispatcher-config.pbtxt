@@ -8,6 +8,14 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "job_gc_check_interval_ms"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "job_gc_timeout_ms"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "port"
     mtype: "<type \'property\'>"
   }

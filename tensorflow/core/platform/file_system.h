@@ -501,7 +501,7 @@ class FileSystem {
   /// \brief Get token for `path` or start a new transaction and add `path` to
   /// it.
   virtual tensorflow::Status GetTokenOrStartTransaction(
-      const string& path, TransactionToken** token) {
+      const std::string& path, TransactionToken** token) {
     *token = nullptr;
     return Status::OK();
   }

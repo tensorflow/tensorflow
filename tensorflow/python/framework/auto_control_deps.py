@@ -41,6 +41,7 @@ from tensorflow.python.util import tf_decorator
 # asynchronously to avoid deadlock.
 ASYNC_STATEFUL_OPS = [
     "CollectiveGather",
+    "CollectiveGatherV2",
     "CollectiveReduce",
     "CollectiveReduceV2",
     "CollectiveBcastSend",
@@ -372,11 +373,14 @@ class AutomaticControlDependencies(object):
       if control_flow_util.IsInWhileLoop(op):
         continue
       control_inputs = set()
-      # Ensure stateful ops run
+      # Ensure stateful ops run.
+      # Read-only ops are added to control outputs if the read value is
+      # consumed. This covers the case when the read value is returned from
+      # the function since that goes through a tf.identity in mark_as_return.
       if (op_def_registry.get(op.type) is None or
-          (op_is_stateful(op) and op.type not in utils.RESOURCE_READ_OPS)):
-        # TODO(srbs): Do not add functional ops to `ops_which_must_run` if
-        # they only have variable reads and are otherwise stateless.
+          (op_is_stateful(op) and
+           (op.type not in utils.RESOURCE_READ_OPS or
+            any(output.consumers() for output in op.outputs)))):
         ops_which_must_run.add(op)
       # Make a note of all opened manager_ids.
       if op.type == "NoOp":

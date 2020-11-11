@@ -15,7 +15,6 @@ limitations under the License.
 #include "tensorflow/lite/experimental/delegates/coreml/builders/convolution_op_builder.h"
 
 #include "google/protobuf/repeated_field.h"
-#include "external/coremltools/mlmodel/format/NeuralNetwork.pb.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/delegates/coreml/builders/activation_layer_builder.h"
 #include "tensorflow/lite/experimental/delegates/coreml/builders/op_factory.h"
@@ -328,7 +327,9 @@ bool IsConvolutionOpSupported(const TfLiteRegistration* registration,
   const int kOutputShapeTensor = 0;  // Only used for TransposeConv
   const int kWeightTensor = 1;
   const int kBiasTensor = 2;  // Only used for non-TransposeConv
-  const TfLiteTensor* weights = GetInput(context, node, kWeightTensor);
+  const TfLiteTensor* weights;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kWeightTensor, &weights));
   const int max_kernel_size = 16384;
   if (!IsConstantTensor(weights)) {
     return false;

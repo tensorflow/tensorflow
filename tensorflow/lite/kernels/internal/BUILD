@@ -222,6 +222,7 @@ cc_library(
     name = "common",
     srcs = [],
     hdrs = ["common.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":cppmath",
@@ -256,6 +257,7 @@ cc_library(
         "optimized/optimized_ops.h",
         "optimized/sparse_ops/fully_connected.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":common",
@@ -345,6 +347,7 @@ cc_library(
         "optimized/eigen_tensor_reduced_instantiations_oss.h",
         "optimized/multithreaded_conv.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":common",
@@ -411,6 +414,7 @@ cc_library(
     hdrs = [
         "transpose_utils.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":types",
@@ -432,6 +436,7 @@ cc_library(
     hdrs = [
         "strided_slice_logic.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":compatibility",
@@ -447,6 +452,7 @@ cc_library(
         "reference/arg_min_max.h",
         "reference/batch_matmul.h",
         "reference/binary_function.h",
+        "reference/broadcast_to.h",
         "reference/ceil.h",
         "reference/comparisons.h",
         "reference/concatenation.h",
@@ -499,6 +505,7 @@ cc_library(
             "reference/sparse_ops/fully_connected.h",
         ],
     }),
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":common",
@@ -515,6 +522,7 @@ cc_library(
         "@ruy//ruy/profiler:instrumentation",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/tools/optimize/sparsity:format_converter",
     ] + select({
@@ -651,6 +659,7 @@ cc_library(
         "reference/portable_tensor_utils.h",
         "reference/portable_tensor_utils_impl.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":common",
@@ -671,6 +680,7 @@ cc_library(
         "optimized/neon_tensor_utils.h",
         "optimized/neon_tensor_utils_impl.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + NEON_FLAGS_IF_APPLICABLE + HARD_FP_FLAGS_IF_APPLICABLE,
     deps = [
         ":common",
@@ -695,6 +705,7 @@ cc_library(
         "optimized/sse_tensor_utils.h",
         "optimized/sse_tensor_utils_impl.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":cpu_check",
@@ -712,6 +723,7 @@ cc_library(
     name = "kernel_utils",
     srcs = ["kernel_utils.cc"],
     hdrs = ["kernel_utils.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + micro_copts(),
     deps = [
         ":tensor_utils",
@@ -734,6 +746,7 @@ cc_library(
         "mfcc_mel_filterbank.h",
         "spectrogram.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         "//third_party/fft2d:fft2d_headers",
@@ -749,6 +762,7 @@ cc_library(
     hdrs = [
         "tensor_utils.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + NEON_FLAGS_IF_APPLICABLE,
     deps = [
         ":cpu_check",
@@ -1042,6 +1056,7 @@ cc_library(
         "optimized/neon_check.h",
         "optimized/sse_check.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = select({
         ":haswell": tflite_deps_intel,

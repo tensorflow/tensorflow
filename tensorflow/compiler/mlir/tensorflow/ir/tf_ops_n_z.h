@@ -38,15 +38,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_verifiers.h"
 
-namespace mlir {
-namespace TF {
-
 #define GET_OP_FWD_DEFINES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_all_ops.h.inc"
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h.inc"
-
-}  // namespace TF
-}  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_OPS_N_Z_H_

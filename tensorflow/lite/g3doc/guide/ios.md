@@ -114,6 +114,28 @@ objc_library(
 )
 ```
 
+#### C/C++ API
+
+Alternatively, you can use
+[C API](https://www.tensorflow.org/code/tensorflow/lite/c/c_api.h)
+or [C++ API](https://tensorflow.org/lite/api_docs/cc)
+
+```python
+# Using C API directly
+objc_library(
+  deps = [
+      "//tensorflow/lite/c:c_api",
+  ],
+)
+
+# Using C++ API directly
+objc_library(
+  deps = [
+      "//third_party/tensorflow/lite:framework",
+  ],
+)
+```
+
 ### Import the library
 
 For Swift files, import the TensorFlow Lite module:

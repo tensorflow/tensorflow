@@ -17,7 +17,6 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 
 namespace tflite {
@@ -132,13 +131,13 @@ std::string Resize::GetResizeCode(const OperationDef& op_def,
   return c;
 }
 
-absl::Status Resize::BindArguments() {
-  RETURN_IF_ERROR(args_.SetInt("border_x", src_[0]->Width() - 1));
-  RETURN_IF_ERROR(args_.SetInt("border_y", src_[0]->Height() - 1));
-  RETURN_IF_ERROR(args_.SetFloat(
+absl::Status Resize::BindArguments(ArgumentsBinder* args) {
+  RETURN_IF_ERROR(args->SetInt("border_x", src_[0]->Width() - 1));
+  RETURN_IF_ERROR(args->SetInt("border_y", src_[0]->Height() - 1));
+  RETURN_IF_ERROR(args->SetFloat(
       "scale_factor_x",
       CalculateResizeScale(src_[0]->Width(), dst_[0]->Width(), attr_)));
-  RETURN_IF_ERROR(args_.SetFloat(
+  RETURN_IF_ERROR(args->SetFloat(
       "scale_factor_y",
       CalculateResizeScale(src_[0]->Height(), dst_[0]->Height(), attr_)));
   return absl::OkStatus();
@@ -286,17 +285,17 @@ std::string Resize3D::GetResize3DCode(const OperationDef& op_def,
   return c;
 }
 
-absl::Status Resize3D::BindArguments() {
-  RETURN_IF_ERROR(args_.SetInt("border_x", src_[0]->Width() - 1));
-  RETURN_IF_ERROR(args_.SetInt("border_y", src_[0]->Height() - 1));
-  RETURN_IF_ERROR(args_.SetInt("border_z", src_[0]->Depth() - 1));
-  RETURN_IF_ERROR(args_.SetFloat(
+absl::Status Resize3D::BindArguments(ArgumentsBinder* args) {
+  RETURN_IF_ERROR(args->SetInt("border_x", src_[0]->Width() - 1));
+  RETURN_IF_ERROR(args->SetInt("border_y", src_[0]->Height() - 1));
+  RETURN_IF_ERROR(args->SetInt("border_z", src_[0]->Depth() - 1));
+  RETURN_IF_ERROR(args->SetFloat(
       "scale_factor_x",
       CalculateResizeScale(src_[0]->Width(), dst_[0]->Width(), attr_)));
-  RETURN_IF_ERROR(args_.SetFloat(
+  RETURN_IF_ERROR(args->SetFloat(
       "scale_factor_y",
       CalculateResizeScale(src_[0]->Height(), dst_[0]->Height(), attr_)));
-  RETURN_IF_ERROR(args_.SetFloat(
+  RETURN_IF_ERROR(args->SetFloat(
       "scale_factor_z",
       CalculateResizeScale(src_[0]->Depth(), dst_[0]->Depth(), attr_)));
   return absl::OkStatus();

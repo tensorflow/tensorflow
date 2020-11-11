@@ -6654,6 +6654,32 @@ TEST_F(AlgebraicSimplifierTest, AbsEliminationMultiply) {
               GmockMatch(m::Multiply(m::Parameter(0), m::Parameter(0))));
 }
 
+TEST_F(AlgebraicSimplifierTest, BroadcastCompareSimplification) {
+  std::string module_string = R"(
+    HloModule m
+    test {
+      a = s32[] parameter(0)
+      b = s32[] parameter(1)
+      x = s32[10]{0} parameter(2)
+      broadcast_a = s32[10]{0} broadcast(a), dimensions={}
+      broadcast_b = s32[10]{0} broadcast(b), dimensions={}
+      add = s32[10]{0} add(broadcast_a, x)
+      ROOT cmp = pred[10]{0} compare(add, broadcast_b), direction=EQ
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_string));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Compare(m::Parameter(2),
+                                    m::Broadcast(m::Subtract(
+                                        m::Parameter(1), m::Parameter(0))))));
+
+  // Numerically unstable transformation shouldn't be applied to floating types.
+  std::string module_string_f32 =
+      absl::StrReplaceAll(module_string, {{"s32", "f32"}});
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+}
+
 TEST_F(AlgebraicSimplifierTest, AbsEliminationPower2) {
   const char* kModuleStr = R"(
     HloModule m

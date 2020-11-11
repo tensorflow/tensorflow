@@ -4,7 +4,7 @@ module attributes {tf_saved_model.semantics} {
 
   // CHECK: tf_saved_model.session_initializer
   "tf_saved_model.session_initializer"() {
-    initializer = @init
+    initializers = [@init]
   } : () -> ()
 
   // CHECK: tf_saved_model.asset

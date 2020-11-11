@@ -81,6 +81,7 @@ constexpr int kDepthOut = 16;
   { 0, 3, 1, 2 }
 #endif  // (GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
 
+template <typename T = float>
 Output SimpleConv2D(tensorflow::Scope* s, int input_size, int filter_size,
                     const string& padding, const string& device) {
   int batch_size = 8;
@@ -91,15 +92,15 @@ Output SimpleConv2D(tensorflow::Scope* s, int input_size, int filter_size,
   int stride = 1;
   TensorShape input_shape(
       DIMS(batch_size, input_height, input_width, input_depth));
-  Tensor input_data(DT_FLOAT, input_shape);
-  test::FillIota<float>(&input_data, 1.0f);
+  Tensor input_data(DataTypeToEnum<T>::value, input_shape);
+  test::FillIota<T>(&input_data, static_cast<T>(1));
   Output input =
       ops::Const(s->WithOpName("Input"), Input::Initializer(input_data));
 
   TensorShape filter_shape(
       {filter_size, filter_size, input_depth, filter_count});
-  Tensor filter_data(DT_FLOAT, filter_shape);
-  test::FillIota<float>(&filter_data, 1.0f);
+  Tensor filter_data(DataTypeToEnum<T>::value, filter_shape);
+  test::FillIota<T>(&filter_data, static_cast<T>(1));
   Output filter =
       ops::Const(s->WithOpName("Filter"), Input::Initializer(filter_data));
 
@@ -354,6 +355,25 @@ TEST_F(GenericLayoutOptimizerTest, CPUDevice) {
 #else
   VerifyDataFormatAttributeMatch(conv_node, DST_DATA_FORMAT);
 #endif  // (GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+}
+
+TEST_F(GenericLayoutOptimizerTest, NoOptimizeIntegerConvolution) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto conv = SimpleConv2D<int32>(&s, 4, 2, "VALID", "");
+  Output fetch = ops::Identity(s.WithOpName("Fetch"), {conv});
+  GrapplerItem item;
+  TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+
+  GenericLayoutOptimizer optimizer(REWRITER_CONFIG);
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
+
+  Status status;
+  utils::GraphView graph_view(&output, &status);
+  TF_ASSERT_OK(status);
+  auto* conv_node = graph_view.GetNode("Conv2D");
+  ASSERT_NE(conv_node, nullptr);
+  VerifyDataFormatAttributeMatch(conv_node, SRC_DATA_FORMAT);
 }
 
 TEST_F(GenericLayoutOptimizerTest, Connectivity) {

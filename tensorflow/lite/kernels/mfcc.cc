@@ -73,9 +73,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  const TfLiteTensor* input_wav = GetInput(context, node, kInputTensorWav);
-  const TfLiteTensor* input_rate = GetInput(context, node, kInputTensorRate);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* input_wav;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensorWav, &input_wav));
+  const TfLiteTensor* input_rate;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensorRate, &input_rate));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
   TF_LITE_ENSURE_EQ(context, NumDimensions(input_wav), 3);
   TF_LITE_ENSURE_EQ(context, NumElements(input_rate), 1);
@@ -101,9 +107,15 @@ template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteMfccParams*>(node->user_data);
 
-  const TfLiteTensor* input_wav = GetInput(context, node, kInputTensorWav);
-  const TfLiteTensor* input_rate = GetInput(context, node, kInputTensorRate);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* input_wav;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensorWav, &input_wav));
+  const TfLiteTensor* input_rate;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensorRate, &input_rate));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
   const int32 sample_rate = *GetTensorData<int>(input_rate);
 

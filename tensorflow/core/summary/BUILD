@@ -1,6 +1,7 @@
 # Description:
 #   C++ implementation code for the summary writing APIs.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_binary",
@@ -107,8 +108,8 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:png_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/lib/png:png_io",
     ],
 )
 

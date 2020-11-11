@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
 package(
     default_visibility = [
         "//tensorflow/core:__pkg__",

@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/meta_support.h"
 #include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/util/mkl_types.h"
 #include "tensorflow/core/util/mkl_util.h"
 
 using mkldnn::primitive_attr;
@@ -51,7 +50,7 @@ class MklDequantizeOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     try {
       // Using CPU device
-      auto cpu_engine = engine(ENGINE_CPU, 0);
+      auto cpu_engine = engine(engine::kind::cpu, 0);
 
       // Get the inputs
       const Tensor& src_tensor = MklGetInput(ctx, kSrcIndex);
@@ -82,10 +81,10 @@ class MklDequantizeOp : public OpKernel {
       // construct input TF layout. For TF layout, although input shape
       // (src_dims) required is in MKL-DNN order, the layout is Tensorflow's
       // layout
-      auto src_md =
-          src_mkl_shape.IsMklTensor()
-              ? src_mkl_shape.GetMklLayout()
-              : memory::desc(src_dims, MklDnnType<T>(), MEMORY_FORMAT::nhwc);
+      auto src_md = src_mkl_shape.IsMklTensor()
+                        ? src_mkl_shape.GetMklLayout()
+                        : memory::desc(src_dims, MklDnnType<T>(),
+                                       memory::format_tag::nhwc);
 
       src.SetUsrMem(src_md, &src_tensor);
       src.SetUsrMemDataHandle(&src_tensor, reorder_stream);
@@ -93,14 +92,6 @@ class MklDequantizeOp : public OpKernel {
       Tensor* output_tensor = nullptr;
       MklDnnShape output_mkl_shape;
       TensorShape output_tf_shape;
-#ifndef ENABLE_MKLDNN_V1
-      memory::desc dst_md =
-          src_mkl_shape.IsMklTensor()
-              ? memory::desc(src_dims, MklDnnType<float>(),
-                             static_cast<MEMORY_FORMAT>(src_md.data.format))
-              : memory::desc(src_dims, MklDnnType<float>(),
-                             MEMORY_FORMAT::nhwc);
-#else
       memory::desc dst_md = memory::desc();
       if (src_mkl_shape.IsMklTensor()) {
         dst_md = memory::desc(src_mkl_shape.GetMklLayout().data);
@@ -108,10 +99,9 @@ class MklDequantizeOp : public OpKernel {
         // same .data field but different type.
         dst_md.data.data_type = memory::convert_to_c(MklDnnType<float>());
       } else {
-        dst_md =
-            memory::desc(src_dims, MklDnnType<float>(), MEMORY_FORMAT::nhwc);
+        dst_md = memory::desc(src_dims, MklDnnType<float>(),
+                              memory::format_tag::nhwc);
       }
-#endif  // !ENABLE_MKLDNN_V1
 
       // If input is MKL shape, output is also MKL shape.
       // If input is TF shape, output is also TF shape.
@@ -122,8 +112,7 @@ class MklDequantizeOp : public OpKernel {
         output_mkl_shape.SetTfLayout(src_mkl_shape.GetDimension(),
                                      src_mkl_shape.GetSizesAsMklDnnDims(),
                                      src_mkl_shape.GetTfDataFormat());
-        output_tf_shape.AddDim(GET_MEMORY_SIZE_FROM_MD(dst_md, cpu_engine) /
-                               sizeof(float));
+        output_tf_shape.AddDim(dst_md.get_size() / sizeof(float));
       } else {
         output_mkl_shape.SetMklTensor(false);
         output_tf_shape = MklDnnDimsToTFShape(output_dims);
@@ -155,29 +144,17 @@ class MklDequantizeOp : public OpKernel {
       scales.push_back(scale_factor);
       primitive_attr attr;
       attr.set_output_scales(0, scales);
-#ifndef ENABLE_MKLDNN_V1
-      // MKL-DNN 1.0 does not provide set_int_output_round_mode() API.
-      // Also it does not define round_nearest (enum).
-      attr.set_int_output_round_mode(mkldnn::round_mode::round_nearest);
-#endif  // !ENABLE_MKLDNN_V1
       std::vector<primitive> net;
 
       // Create reorder primitive and then execute.
-      auto reorder_pd = REORDER_PD_CONSTRUCTOR_WITH_ATTR(
-          GET_MEMORY_PRIMITIVE_DESC_FROM_MEM_PTR(src.GetUsrMem()),
-          GET_MEMORY_PRIMITIVE_DESC_FROM_MEM_PTR(dst.GetUsrMem()), cpu_engine,
-          attr);
-#ifdef ENABLE_MKLDNN_V1
+      auto reorder_pd =
+          ReorderPd(cpu_engine, src.GetUsrMem()->get_desc(), cpu_engine,
+                    dst.GetUsrMem()->get_desc(), attr);
       net.push_back(reorder(reorder_pd));
       std::vector<std::unordered_map<int, memory>> reorder_net_args;
       reorder_net_args.push_back({{MKLDNN_ARG_FROM, *src.GetUsrMem()},
-                                  { MKLDNN_ARG_TO,
-                                    *dst.GetUsrMem() }});
+                                  {MKLDNN_ARG_TO, *dst.GetUsrMem()}});
       execute_primitives(net, reorder_stream, reorder_net_args);
-#else
-      net.push_back(reorder(reorder_pd, *src.GetUsrMem(), *dst.GetUsrMem()));
-      reorder_stream->submit(net);
-#endif  // ENABLE_MKLDNN_V1
     } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +

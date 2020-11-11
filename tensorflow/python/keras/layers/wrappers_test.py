@@ -28,7 +28,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
@@ -38,7 +37,6 @@ from tensorflow.python.keras.layers.rnn_cell_wrapper_v2 import ResidualWrapper
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
@@ -405,7 +403,7 @@ class TimeDistributedTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   @parameterized.named_parameters(
-      *tf_test_util.generate_combinations_with_testcase_name(
+      *testing_utils.generate_combinations_with_testcase_name(
           layer=[keras.layers.LSTM,
                  keras.layers.Dense]))
   def test_TimeDistributed_with_ragged_input(self, layer):
@@ -465,6 +463,13 @@ class TimeDistributedTest(keras_parameterized.TestCase):
     output_ragged = ragged_tensor.convert_to_tensor_or_ragged_tensor(
         output_ragged, name='tensor')
     self.assertAllEqual(output_ragged.to_tensor(), output_dense)
+
+  def test_TimeDistributed_set_static_shape(self):
+    layer = keras.layers.TimeDistributed(keras.layers.Conv2D(16, (3, 3)))
+    inputs = keras.Input(batch_shape=(1, None, 32, 32, 1))
+    outputs = layer(inputs)
+    # Make sure the batch dim is not lost after array_ops.reshape.
+    self.assertListEqual(outputs.shape.as_list(), [1, None, 30, 30, 16])
 
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
@@ -1199,7 +1204,7 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       if merge_mode == 'ave':
         merge_func = lambda y, y_rev: (y + y_rev) / 2
       elif merge_mode == 'concat':
-        merge_func = lambda y, y_rev: ragged_concat_ops.concat(
+        merge_func = lambda y, y_rev: array_ops.concat(
             (y, y_rev), axis=-1)
       elif merge_mode == 'mul':
         merge_func = lambda y, y_rev: (y * y_rev)

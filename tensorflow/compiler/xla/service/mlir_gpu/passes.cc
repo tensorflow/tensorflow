@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Transforms/LoopUtils.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
@@ -32,8 +33,10 @@ namespace xla {
 namespace mlir_gpu {
 namespace {
 
-struct FusionOpRemoverPass
-    : public mlir::PassWrapper<FusionOpRemoverPass, ::mlir::FunctionPass> {
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/xla/service/mlir_gpu/passes.h.inc"
+
+struct FusionOpRemoverPass : FusionOpRemoverPassBase<FusionOpRemoverPass> {
   void runOnFunction() override {
     getFunction().walk([&](mlir::lmhlo::FusionOp op) {
       mlir::OpBuilder builder(op);
@@ -52,8 +55,22 @@ struct FusionOpRemoverPass
   }
 };
 
-struct StoreForwardingPass
-    : mlir::PassWrapper<StoreForwardingPass, mlir::FunctionPass> {
+template <typename EffectTy>
+bool HasEffectsOnValue(mlir::Value value, mlir::Operation* op) {
+  auto mem_effects_interface =
+      mlir::dyn_cast_or_null<mlir::MemoryEffectOpInterface>(op);
+  if (!mem_effects_interface) {
+    return false;
+  }
+  llvm::SmallVector<mlir::MemoryEffects::EffectInstance, 2> effects;
+  mem_effects_interface.getEffects(effects);
+  return llvm::any_of(effects,
+                      [op](const mlir::MemoryEffects::EffectInstance& effect) {
+                        return mlir::isa<EffectTy>(effect.getEffect());
+                      });
+}
+
+struct StoreForwardingPass : StoreForwardingPassBase<StoreForwardingPass> {
   mlir::StoreOp findStore(mlir::Operation* op,
                           std::function<bool(mlir::StoreOp)> matches) {
     // Search from op upwards in the current block.
@@ -86,10 +103,9 @@ struct StoreForwardingPass
     while (auto subviewOp = mlir::dyn_cast_or_null<mlir::SubViewOp>(defOp)) {
       defOp = subviewOp.source().getDefiningOp();
     }
-    if (auto allocOp = mlir::dyn_cast_or_null<mlir::AllocOp>(defOp)) {
-      return allocOp.getOperation();
-    }
-    return nullptr;
+    return HasEffectsOnValue<mlir::MemoryEffects::Allocate>(memref, defOp)
+               ? defOp
+               : nullptr;
   }
 
   // Retrieves AllocOp from the cache or actually looks for it.
@@ -100,7 +116,7 @@ struct StoreForwardingPass
     if (allocOpIt != memrefToAllocOp->end()) {
       return allocOpIt->second;
     }
-    auto allocOp = SearchAllocOp(memref);
+    mlir::Operation* allocOp = SearchAllocOp(memref);
     memrefToAllocOp->insert({memref, allocOp});
     return allocOp;
   }
@@ -132,7 +148,7 @@ struct StoreForwardingPass
 };
 
 struct DeadTempBufferRemovalPass
-    : mlir::PassWrapper<DeadTempBufferRemovalPass, ::mlir::FunctionPass> {
+    : DeadTempBufferRemovalPassBase<DeadTempBufferRemovalPass> {
   bool operationConsideredDead(mlir::Operation* op) {
     for (auto result : op->getResults()) {
       if (!llvm::all_of(result.getUsers(), [&](mlir::Operation* op) {
@@ -168,13 +184,18 @@ struct DeadTempBufferRemovalPass
 
   void runOnFunction() override {
     llvm::SmallVector<mlir::Operation*, 8> dead_ops;
-    getFunction().walk([&](mlir::AllocOp allocOp) {
-      if (!operationConsideredDead(allocOp)) {
+    getFunction().walk([&](mlir::Operation* op) {
+      if (op->getNumResults() != 1 ||
+          !HasEffectsOnValue<mlir::MemoryEffects::Allocate>(op->getResult(0),
+                                                            op)) {
+        return;
+      }
+      if (!operationConsideredDead(op)) {
         return;
       }
 
       // TODO(herhut): There should be a generic helper for this.
-      recursiveErase(allocOp, &dead_ops);
+      recursiveErase(op, &dead_ops);
     });
     for (auto op : dead_ops) {
       op->erase();
@@ -182,66 +203,8 @@ struct DeadTempBufferRemovalPass
   }
 };
 
-struct MoveScalarComputationsIntoGpuLaunchPass
-    : mlir::PassWrapper<MoveScalarComputationsIntoGpuLaunchPass,
-                        mlir::FunctionPass> {
-  static bool isInliningBeneficiary(mlir::Operation* op) {
-    return llvm::isa<mlir::ConstantOp, mlir::DimOp, mlir::SelectOp,
-                     mlir::CmpIOp>(op);
-  }
-
-  static bool extractBeneficiaryOps(
-      mlir::Operation* op, llvm::SmallVectorImpl<mlir::Operation*>* ops,
-      llvm::SetVector<mlir::Value> args) {
-    if (!isInliningBeneficiary(op)) {
-      return false;
-    }
-
-    ops->push_back(op);
-    for (auto operand : op->getOperands()) {
-      // It is an existing arg, keep going.
-      if (args.count(operand)) {
-        continue;
-      }
-      mlir::Operation* definingOp = operand.getDefiningOp();
-      if (!definingOp || !extractBeneficiaryOps(definingOp, ops, args)) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  static void inlineOperationsIntoLaunch(mlir::gpu::LaunchOp launch) {
-    llvm::SetVector<mlir::Value> used_above;
-    mlir::getUsedValuesDefinedAbove(launch.body(), used_above);
-    mlir::BlockAndValueMapping inlined_map;
-    for (mlir::Value v : used_above) {
-      llvm::SmallVector<mlir::Operation*, 8> ops_to_move;
-      mlir::Operation* definingOp = v.getDefiningOp();
-      if (definingOp &&
-          extractBeneficiaryOps(definingOp, &ops_to_move, used_above)) {
-        mlir::OpBuilder b(launch.body());
-        for (mlir::Operation* op : llvm::reverse(ops_to_move)) {
-          auto result = b.clone(*op, inlined_map);
-          for (auto pair : llvm::zip(op->getResults(), result->getResults())) {
-            mlir::replaceAllUsesInRegionWith(std::get<0>(pair),
-                                             std::get<1>(pair), launch.body());
-          }
-          inlined_map.map(op->getResults(), result->getResults());
-        }
-      }
-    }
-  }
-
-  void runOnFunction() override {
-    mlir::FuncOp fun = getFunction();
-    fun.walk(
-        [](mlir::gpu::LaunchOp launch) { inlineOperationsIntoLaunch(launch); });
-  }
-};
-
 struct RewriteKernelSignaturePass
-    : mlir::PassWrapper<RewriteKernelSignaturePass, mlir::FunctionPass> {
+    : RewriteKernelSignaturePassBase<RewriteKernelSignaturePass> {
   void runOnFunction() override {
     mlir::FuncOp func = getFunction();
     mlir::ModuleOp module = func.getParentOfType<mlir::ModuleOp>();
@@ -349,15 +312,14 @@ struct RewriteKernelSignaturePass
   }
 };
 
-struct MapParallelLoopsPass
-    : public mlir::PassWrapper<MapParallelLoopsPass, mlir::FunctionPass> {
+struct MapParallelLoopsPass : MapParallelLoopsPassBase<MapParallelLoopsPass> {
   void runOnFunction() override {
     mlir::greedilyMapParallelSCFToGPU(getFunction().getBody());
   }
 };
 
 struct FuseInnerParallelLoopsPass
-    : public mlir::PassWrapper<FuseInnerParallelLoopsPass, mlir::FunctionPass> {
+    : FuseInnerParallelLoopsPassBase<FuseInnerParallelLoopsPass> {
   void runOnFunction() override {
     getFunction().walk([](mlir::scf::ParallelOp op) {
       mlir::scf::naivelyFuseParallelOps(op.region());
@@ -366,12 +328,10 @@ struct FuseInnerParallelLoopsPass
 };
 
 struct ParallelLoopCollapsingToFirstDimPass
-    : public mlir::PassWrapper<ParallelLoopCollapsingToFirstDimPass,
-                               mlir::OperationPass<mlir::ModuleOp>> {
-  void runOnOperation() override {
-    mlir::Operation* module = getOperation();
-
-    module->walk([&](mlir::scf::ParallelOp op) {
+    : ParallelLoopCollapsingToFirstDimPassBase<
+          ParallelLoopCollapsingToFirstDimPass> {
+  void runOnFunction() override {
+    getFunction().walk([&](mlir::scf::ParallelOp op) {
       unsigned num_loops = op.getNumLoops();
       std::vector<unsigned> combinedLoops;
       combinedLoops.reserve(num_loops);
@@ -397,11 +357,6 @@ std::unique_ptr<mlir::FunctionPass> createDeadTempBufferRemovalPass() {
   return absl::make_unique<DeadTempBufferRemovalPass>();
 }
 
-std::unique_ptr<mlir::FunctionPass>
-createMoveScalarComputationsIntoGpuLaunchPass() {
-  return absl::make_unique<MoveScalarComputationsIntoGpuLaunchPass>();
-}
-
 std::unique_ptr<mlir::FunctionPass> createRewriteKernelSignaturePass() {
   return absl::make_unique<RewriteKernelSignaturePass>();
 }
@@ -414,7 +369,7 @@ std::unique_ptr<mlir::FunctionPass> createMapParallelLoopsPass() {
   return absl::make_unique<MapParallelLoopsPass>();
 }
 
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+std::unique_ptr<mlir::FunctionPass>
 createParallelLoopCollapsingToFirstDimPass() {
   return absl::make_unique<ParallelLoopCollapsingToFirstDimPass>();
 }

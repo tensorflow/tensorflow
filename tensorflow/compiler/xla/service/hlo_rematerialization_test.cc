@@ -41,7 +41,8 @@ using ::testing::_;
 class HloRematerializationTest : public RematerializationTestBase {
  protected:
   StatusOr<bool> RunHloRematerialization(int64 memory_limit_bytes,
-                                         HloModule* module) {
+                                         HloModule* module,
+                                         int64 min_remat_size = 0) {
     TF_EXPECT_OK(verifier().Run(module).status());
     HloMemoryScheduler scheduler(
         [](const BufferValue& buffer) { return ByteSizeOf(buffer.shape()); },
@@ -51,7 +52,9 @@ class HloRematerializationTest : public RematerializationTestBase {
         ByteSizeOf, memory_limit_bytes,
         /*sizes=*/nullptr,
         HloRematerialization::RematerializationPass::kPreFusion,
-        /*block_size_limit=*/1);
+        /*block_size_limit=*/1, nullptr,
+        HloRematerialization::RematerializationMode::kRecomputeAndCompress,
+        min_remat_size);
     return remat.Run(module);
   }
 };
@@ -94,6 +97,26 @@ TEST_F(HloRematerializationTest, SingleComputation) {
                 .sequence(computation)
                 .instructions()[computation->instruction_count() - 3],
             remat_bcast);
+}
+
+// Test rematerialization of a single computation that contains nodes that
+// doesn't contain node worth using remat.
+TEST_F(HloRematerializationTest, SingleComputationNoWorthRemat) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation =
+      module->AddEntryComputation(MakeRematerializableComputation());
+
+  // Find and save the original broadcast instruction which should be
+  // rematerialized.
+  const HloInstruction* slice = computation->root_instruction();
+  ASSERT_THAT(slice, op::Slice(op::Concatenate(op::Broadcast(_), _)));
+
+  // Set the minimum remat size to 14KiB, meaning no nodes should be remat.
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          RunHloRematerialization(
+                              /*memory_limit_bytes=*/14 * 1024, module.get(),
+                              /*min_remat_size=*/14 * 1024));
+  EXPECT_FALSE(changed);
 }
 
 // Test rematerialization of a single computation produced by
@@ -577,16 +600,66 @@ class CompressingRematerializationTest : public RematerializationTestBase {
   }
 
   StatusOr<bool> RunHloRematerialization(int64 memory_limit_bytes,
-                                         HloModule* module) {
+                                         HloModule* module,
+                                         int64 min_remat_size = 0) {
     TF_EXPECT_OK(verifier().Run(module).status());
     HloRematerialization remat(
         ShapeSizePadMinorTo64, memory_limit_bytes,
         /*sizes=*/nullptr,
         HloRematerialization::RematerializationPass::kPreFusion,
-        /*block_size_limit=*/1, ChooseCompactLayoutForShape);
+        /*block_size_limit=*/1, ChooseCompactLayoutForShape,
+        HloRematerialization::RematerializationMode::kCompressOnly,
+        min_remat_size);
     return remat.Run(module);
   }
 };
+
+// Test rematerialization only remats big buffer that pass certain limits.
+TEST_F(CompressingRematerializationTest, OnlyRematBigBuffer) {
+  const string& hlo_string = R"(
+HloModule fusion, is_scheduled=true
+
+%add_float {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add = f32[] add(f32[] %x, f32[] %y)
+}
+
+ENTRY %entry {
+  %param.0 = f32[] parameter(0)
+  %constant = f32[] constant(0)
+  %broadcast.0 = f32[64,2]{1,0} broadcast(f32[] %param.0), dimensions={}
+  %broadcast.1 = f32[10,2]{1,0} broadcast(f32[] %param.0), dimensions={}
+  %negate = f32[64,2]{1,0} negate(f32[64,2]{1,0} broadcast.0)
+  %reduce.0 = f32[] reduce(f32[64,2]{1,0} %negate, f32[] %constant), dimensions={1, 0}, to_apply=%add_float
+  %reduce.1 = f32[] reduce(f32[64,2]{1,0} %broadcast.0, f32[] %constant), dimensions={1, 0}, to_apply=%add_float
+  %reduce.2 = f32[] reduce(f32[10,2]{1,0} %broadcast.1, f32[] %constant), dimensions={1, 0}, to_apply=%add_float  
+  %add = f32[] add(f32[] %reduce.0, f32[] %reduce.1)
+  ROOT %add.2 = f32[] add(f32[] %add, f32[] %reduce.2)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  // Only rematerialize buffers which have shaep f32[64, 2]. Buffers with shape
+  // f32[10, 2] are ignored.
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloRematerialization(
+                                            /*memory_limit_bytes=*/30 * 1024,
+                                            module.get(), 10 * 1024));
+  EXPECT_TRUE(changed);
+  HloInstruction* broadcast =
+      module->entry_computation()->GetInstructionWithName("broadcast.0");
+  HloInstruction* broadcast_2 =
+      module->entry_computation()->GetInstructionWithName("broadcast.1");
+  HloInstruction* reduce =
+      module->entry_computation()->GetInstructionWithName("reduce.1");
+  HloInstruction* reduce_2 =
+      module->entry_computation()->GetInstructionWithName("reduce.2");
+  EXPECT_THAT(reduce,
+              op::Reduce(op::Copy(op::Copy(broadcast)), op::Constant()));
+  EXPECT_THAT(reduce_2, op::Reduce(broadcast_2, op::Constant()));
+}
 
 // Test rematerialization of a single instruction.
 TEST_F(CompressingRematerializationTest, SingleRemat) {

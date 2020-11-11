@@ -109,7 +109,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   node->temporaries = TfLiteIntArrayCreate(1);
   node->temporaries->data[0] = op_data->cache_tensor_id;
 
-  TfLiteTensor* dequantized = GetTemporary(context, node, /*index=*/0);
+  TfLiteTensor* dequantized;
+  TF_LITE_ENSURE_OK(context,
+                    GetTemporarySafe(context, node, /*index=*/0, &dequantized));
   dequantized->type = op_context.ref->type;
   dequantized->allocation_type = kTfLiteDynamic;
 
@@ -142,7 +144,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 
   // Dequantize the input
-  TfLiteTensor* dequantized = GetTemporary(context, node, /*index=*/0);
+  TfLiteTensor* dequantized;
+  TF_LITE_ENSURE_OK(context,
+                    GetTemporarySafe(context, node, /*index=*/0, &dequantized));
   auto status = builtin::dequantize::DequantizeImpl<kernel_type>(
       context, node, op_context.input, dequantized);
   if (status != kTfLiteOk) {

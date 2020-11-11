@@ -222,7 +222,7 @@ configure_android_workspace() {
       echo "ERROR: Your WORKSPACE file does not seems to have proper android"
       echo "       configuration and not all the environment variables expected"
       echo "       inside ci_build android docker container are set."
-      echo "       Please configure it manually. See: https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/android/README.md"
+      echo "       Please configure it manually. See: https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/android/test/README.md"
     else
       cat << EOF >> WORKSPACE
 android_sdk_repository(

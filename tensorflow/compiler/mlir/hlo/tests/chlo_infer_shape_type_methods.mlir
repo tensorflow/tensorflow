@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt -mhlo-test-infer-shaped-type-methods -allow-unregistered-dialect -split-input-file -verify-diagnostics %s -o - | FileCheck %s
+// RUN: mlir-hlo-opt --mhlo-test-infer-shaped-type-methods --allow-unregistered-dialect --split-input-file %s | FileCheck %s
 
 // CHECK-LABEL: @broadcast_add
 // Note that all broadcast_ops are expanded from the same template, so

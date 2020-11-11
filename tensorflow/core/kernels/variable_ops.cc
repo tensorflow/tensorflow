@@ -200,31 +200,6 @@ REGISTER_KERNEL_BUILDER(Name("DestroyTemporaryVariable").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("IsVariableInitialized").Device(DEVICE_CPU),
                         IsVariableInitializedOp);
 
-#ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNEL(type)                                          \
-  REGISTER_KERNEL_BUILDER(                                                  \
-      Name("Variable").Device(DEVICE_SYCL).TypeConstraint<type>("dtype"),   \
-      VariableOp);                                                          \
-  REGISTER_KERNEL_BUILDER(                                                  \
-      Name("VariableV2").Device(DEVICE_SYCL).TypeConstraint<type>("dtype"), \
-      VariableOp);                                                          \
-  REGISTER_KERNEL_BUILDER(Name("TemporaryVariable")                         \
-                              .Device(DEVICE_SYCL)                          \
-                              .TypeConstraint<type>("dtype"),               \
-                          TemporaryVariableOp);                             \
-  REGISTER_KERNEL_BUILDER(Name("DestroyTemporaryVariable")                  \
-                              .Device(DEVICE_SYCL)                          \
-                              .TypeConstraint<type>("T"),                   \
-                          DestroyTemporaryVariableOp);                      \
-  REGISTER_KERNEL_BUILDER(Name("IsVariableInitialized")                     \
-                              .Device(DEVICE_SYCL)                          \
-                              .TypeConstraint<type>("dtype")                \
-                              .HostMemory("is_initialized"),                \
-                          IsVariableInitializedOp);
-
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNEL);
-#undef REGISTER_SYCL_KERNEL
-#endif  // TENSORFLOW_USE_SYCL
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Only register 'Variable' on GPU for the subset of types also supported by

@@ -22,8 +22,8 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
-#include "tensorflow/lite/delegates/gpu/cl/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/precision.h"
 
 namespace tflite {
 namespace gpu {
@@ -114,19 +114,19 @@ int3 GetFirstSuitableWorkGroup(const std::vector<int3>& wgs, int max_wg_size) {
   return {1, 1, 1};
 }
 
-int GetRecommendedBlockSizeForConv(const DeviceInfo& device_info,
+int GetRecommendedBlockSizeForConv(const GpuInfo& gpu_info,
                                    CalculationsPrecision precision,
                                    int task_size) {
   const float task_size_per_cu =
-      task_size / static_cast<float>(device_info.compute_units_count);
+      task_size / static_cast<float>(gpu_info.compute_units_count);
   int block_size = 1;
   float threshold_1 = FLT_MAX;
   float threshold_2 = FLT_MAX;
   float threshold_4 = FLT_MAX;
-  if (!device_info.IsMali()) {
+  if (!gpu_info.IsMali()) {
     return 1;
   }
-  MaliInfo mali_info = device_info.mali_info;
+  MaliInfo mali_info = gpu_info.mali_info;
   switch (precision) {
     case CalculationsPrecision::F16:
       if (mali_info.IsBifrostGen1()) {
@@ -186,6 +186,14 @@ int GetRecommendedBlockSizeForConv(const DeviceInfo& device_info,
     block_size = 8;
   }
   return block_size;
+}
+
+int3 GetWorkGroupsCount(const int3& grid_size, const int3& work_group_size) {
+  int3 work_groups_count;
+  work_groups_count.x = DivideRoundUp(grid_size.x, work_group_size.x);
+  work_groups_count.y = DivideRoundUp(grid_size.y, work_group_size.y);
+  work_groups_count.z = DivideRoundUp(grid_size.z, work_group_size.z);
+  return work_groups_count;
 }
 
 }  // namespace cl

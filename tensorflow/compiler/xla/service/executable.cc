@@ -59,11 +59,10 @@ void ExecutionInput::SetUnownedBuffer(const ShapeIndex& index,
   unowned_indices_.insert(index);
 }
 
-xla::StatusOr<xla::ShapedBuffer> ExecutionInput::ToShapedBuffer(
+StatusOr<ShapedBuffer> ExecutionInput::ToShapedBuffer(
     se::DeviceMemoryAllocator* allocator, int device_ordinal) const {
   const Shape& input_shape = shape();
-  xla::ShapedBuffer shaped_buffer(input_shape, input_shape,
-                                  allocator->platform(), device_ordinal);
+  ShapedBuffer shaped_buffer(input_shape, device_ordinal);
   for (const auto& index_buffer : Buffers()) {
     const tensorflow::se::OwningDeviceMemory* mem =
         index_buffer.second.AsOwningDeviceMemory();
@@ -93,8 +92,7 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStream(
 
 static ExecutionInput MakeMaybeOwningDeviceMemoryTree(
     const ShapedBuffer& shaped_buffer) {
-  ExecutionInput result(shaped_buffer.on_device_shape(),
-                        shaped_buffer.on_host_shape());
+  ExecutionInput result(shaped_buffer.on_device_shape());
   shaped_buffer.buffers().ForEachElement(
       [&](const ShapeIndex& index, const se::DeviceMemoryBase& mem) {
         result.SetBuffer(index, MaybeOwningDeviceMemory(mem));

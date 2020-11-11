@@ -241,8 +241,12 @@ inline Integer FloorLog2(Integer n) {
 
 // generate INT16 LUT for function(), e.g., table exp(x) and 1/(1+x) used in
 // softmax
-inline void gen_lut(const std::function<double(double)>& func, double min,
-                    double max, int16_t* table, const int num) {
+// func - the function to build the LUT for (e.g exp(x))
+// min,max - table limits
+// table - pointer to buffer
+// num - number of elements in the LUT
+inline void gen_lut(double (*func)(double), double min, double max,
+                    int16_t* table, const int num) {
   // size of table should equal to num + 1
   // last element only for slope calculation
   double step = (max - min) / (num - 1);
@@ -265,8 +269,12 @@ inline void gen_lut(const std::function<double(double)>& func, double min,
 
 // generate INT16 LUT for function(), e.g., table exp(x) and 1/(1+x) used in
 // softmax
-inline void gen_lut(const std::function<float(float)>& func, float min,
-                    float max, int16_t* table, const int num) {
+// func - the function to build the LUT for (e.g exp(x))
+// min,max - table limits
+// table - pointer to buffer
+// num - number of elements in the LUT
+inline void gen_lut(float (*func)(float), float min, float max, int16_t* table,
+                    const int num) {
   // size of table should equal to num + 1
   // last element only for slope calculation
   float step = (max - min) / (num - 1);
@@ -686,6 +694,13 @@ inline int SubscriptToIndex(const NdArrayDesc<5>& desc, int indexes[5]) {
   return indexes[0] * desc.strides[0] + indexes[1] * desc.strides[1] +
          indexes[2] * desc.strides[2] + indexes[3] * desc.strides[3] +
          indexes[4] * desc.strides[4];
+}
+
+inline int SubscriptToIndex(const NdArrayDesc<8>& desc, int indexes[8]) {
+  return indexes[0] * desc.strides[0] + indexes[1] * desc.strides[1] +
+         indexes[2] * desc.strides[2] + indexes[3] * desc.strides[3] +
+         indexes[4] * desc.strides[4] + indexes[5] * desc.strides[5] +
+         indexes[6] * desc.strides[6] + indexes[7] * desc.strides[7];
 }
 
 // Given the dimensions of the operands for an element-wise binary broadcast,

@@ -26,6 +26,7 @@ import scipy.sparse
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.eager.context import get_config
 from tensorflow.python.framework import config
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
@@ -36,11 +37,11 @@ from tensorflow.python.keras import combinations
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.layers import advanced_activations
 from tensorflow.python.keras.layers import normalization
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.python.util import tf_inspect
 
 
 def compare_single_input_op_to_numpy(keras_op,
@@ -106,7 +107,7 @@ class BackendResetTest(test.TestCase, parameterized.TestCase):
     # User defined jit setting
     config.set_optimizer_jit(False)
     sess = backend.get_session()
-    default_config = context.context().config
+    default_config = get_config()
     self.assertEqual(
         sess._config.graph_options.optimizer_options.global_jit_level,
         default_config.graph_options.optimizer_options.global_jit_level)
@@ -114,7 +115,7 @@ class BackendResetTest(test.TestCase, parameterized.TestCase):
 
     # New session has the same jit setting
     sess = backend.get_session()
-    default_config = context.context().config
+    default_config = get_config()
     self.assertEqual(
         sess._config.graph_options.optimizer_options.global_jit_level,
         default_config.graph_options.optimizer_options.global_jit_level)
@@ -123,7 +124,7 @@ class BackendResetTest(test.TestCase, parameterized.TestCase):
     # Change respected
     config.set_optimizer_jit(True)
     sess = backend.get_session()
-    default_config = context.context().config
+    default_config = get_config()
     self.assertEqual(
         sess._config.graph_options.optimizer_options.global_jit_level,
         default_config.graph_options.optimizer_options.global_jit_level)

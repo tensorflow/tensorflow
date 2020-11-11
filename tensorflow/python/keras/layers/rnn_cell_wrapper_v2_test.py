@@ -26,11 +26,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import layers
 from tensorflow.python.keras.layers import rnn_cell_wrapper_v2
+from tensorflow.python.keras.layers.legacy_rnn import rnn_cell_impl
+from tensorflow.python.keras.legacy_tf_layers import base as legacy_base_layer
 from tensorflow.python.keras.utils import generic_utils
-from tensorflow.python.layers import base as base_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 
@@ -140,7 +140,7 @@ class RNNCellWrapperTest(test.TestCase, parameterized.TestCase):
   def testWrapperV2Caller(self, wrapper):
     """Tests that wrapper V2 is using the LayerRNNCell's caller."""
 
-    with base_layer.keras_style_scope():
+    with legacy_base_layer.keras_style_scope():
       base_cell = rnn_cell_impl.MultiRNNCell(
           [rnn_cell_impl.BasicRNNCell(1) for _ in range(2)])
     rnn_cell = wrapper(base_cell)

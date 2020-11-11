@@ -99,11 +99,16 @@ class ResourceVariableSaveable(saveable_object.SaveableObject):
       def _read_variable_closure(v):
         def f():
           with ops.device(v.device):
+            if context.executing_eagerly() and not v.is_initialized():
+              # A SaveSpec tensor value of `None` indicates that the variable is
+              # uninitialized.
+              return None
             x = v.read_value()
             # To allow variables placed on non-CPU devices to be checkpointed,
             # we copy them to CPU on the same machine first.
             with ops.device("/device:CPU:0"):
               return array_ops.identity(x)
+
         return f
 
       self.handle_op = var.handle
@@ -177,8 +182,8 @@ def saveable_objects_for_op(op, name):
         yield ReferenceVariableSaveable(
             variable, variable._save_slice_info.spec, name)
       else:
-        yield ResourceVariableSaveable(
-            variable, variable._save_slice_info.spec, name)
+        yield ResourceVariableSaveable(variable, variable._save_slice_info.spec,
+                                       name)
     # pylint: enable=protected-access
   elif isinstance(op, trackable.Trackable) and not isinstance(
       op, variables.Variable):
@@ -196,12 +201,10 @@ def saveable_objects_for_op(op, name):
   else:
     # A variable or tensor.
     if isinstance(op, resource_variable_ops.BaseResourceVariable):
-      # pylint: disable=protected-access
-      if op._in_graph_mode:
-        variable = op._graph_element
+      if op._in_graph_mode:  # pylint: disable=protected-access
+        variable = op._graph_element  # pylint: disable=protected-access
       else:
         variable = op
-      # pylint: enable=protected-access
       yield ResourceVariableSaveable(variable, "", name)
     else:
       if context.executing_eagerly():
@@ -217,8 +220,7 @@ def saveable_objects_for_op(op, name):
                               "AutoReloadVariable"]:
         yield ReferenceVariableSaveable(variable, "", name)
       else:
-        yield ResourceVariableSaveable(
-            variable, "", name)
+        yield ResourceVariableSaveable(variable, "", name)
 
 
 def op_list_to_dict(op_list, convert_variable_to_tensor=True):

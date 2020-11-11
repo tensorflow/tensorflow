@@ -146,12 +146,17 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   auto* op_data = static_cast<OpData*>(node->user_data);
   // Inputs: box_encodings, scores, anchors
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
-  const TfLiteTensor* input_box_encodings =
-      GetInput(context, node, kInputTensorBoxEncodings);
-  const TfLiteTensor* input_class_predictions =
-      GetInput(context, node, kInputTensorClassPredictions);
-  const TfLiteTensor* input_anchors =
-      GetInput(context, node, kInputTensorAnchors);
+  const TfLiteTensor* input_box_encodings;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensorBoxEncodings,
+                                 &input_box_encodings));
+  const TfLiteTensor* input_class_predictions;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensorClassPredictions,
+                                 &input_class_predictions));
+  const TfLiteTensor* input_anchors;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensorAnchors,
+                                          &input_anchors));
   TF_LITE_ENSURE_EQ(context, NumDimensions(input_box_encodings), 3);
   TF_LITE_ENSURE_EQ(context, NumDimensions(input_class_predictions), 3);
   TF_LITE_ENSURE_EQ(context, NumDimensions(input_anchors), 2);
@@ -163,27 +168,35 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // num_detections
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 4);
   // Output Tensor detection_boxes: size is set to (1, num_detected_boxes, 4)
-  TfLiteTensor* detection_boxes =
-      GetOutput(context, node, kOutputTensorDetectionBoxes);
+  TfLiteTensor* detection_boxes;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensorDetectionBoxes,
+                                  &detection_boxes));
   detection_boxes->type = kTfLiteFloat32;
   SetTensorSizes(context, detection_boxes,
                  {kBatchSize, num_detected_boxes, kNumCoordBox});
 
   // Output Tensor detection_classes: size is set to (1, num_detected_boxes)
-  TfLiteTensor* detection_classes =
-      GetOutput(context, node, kOutputTensorDetectionClasses);
+  TfLiteTensor* detection_classes;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensorDetectionClasses,
+                                  &detection_classes));
   detection_classes->type = kTfLiteFloat32;
   SetTensorSizes(context, detection_classes, {kBatchSize, num_detected_boxes});
 
   // Output Tensor detection_scores: size is set to (1, num_detected_boxes)
-  TfLiteTensor* detection_scores =
-      GetOutput(context, node, kOutputTensorDetectionScores);
+  TfLiteTensor* detection_scores;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensorDetectionScores,
+                                  &detection_scores));
   detection_scores->type = kTfLiteFloat32;
   SetTensorSizes(context, detection_scores, {kBatchSize, num_detected_boxes});
 
   // Output Tensor num_detections: size is set to 1
-  TfLiteTensor* num_detections =
-      GetOutput(context, node, kOutputTensorNumDetections);
+  TfLiteTensor* num_detections;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensorNumDetections,
+                                  &num_detections));
   num_detections->type = kTfLiteFloat32;
   // TODO (chowdhery): Make it a scalar when available
   SetTensorSizes(context, num_detections, {1});
@@ -269,13 +282,16 @@ T ReInterpretTensor(TfLiteTensor* tensor) {
 TfLiteStatus DecodeCenterSizeBoxes(TfLiteContext* context, TfLiteNode* node,
                                    OpData* op_data) {
   // Parse input tensor boxencodings
-  const TfLiteTensor* input_box_encodings =
-      GetInput(context, node, kInputTensorBoxEncodings);
+  const TfLiteTensor* input_box_encodings;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensorBoxEncodings,
+                                 &input_box_encodings));
   TF_LITE_ENSURE_EQ(context, input_box_encodings->dims->data[0], kBatchSize);
   const int num_boxes = input_box_encodings->dims->data[1];
   TF_LITE_ENSURE(context, input_box_encodings->dims->data[2] >= kNumCoordBox);
-  const TfLiteTensor* input_anchors =
-      GetInput(context, node, kInputTensorAnchors);
+  const TfLiteTensor* input_anchors;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensorAnchors,
+                                          &input_anchors));
 
   // Decode the boxes to get (ymin, xmin, ymax, xmax) based on the anchors
   CenterSizeEncoding box_centersize;
@@ -389,8 +405,10 @@ TfLiteStatus NonMaxSuppressionSingleClassHelper(
     TfLiteContext* context, TfLiteNode* node, OpData* op_data,
     const std::vector<float>& scores, std::vector<int>* selected,
     int max_detections) {
-  const TfLiteTensor* input_box_encodings =
-      GetInput(context, node, kInputTensorBoxEncodings);
+  const TfLiteTensor* input_box_encodings;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensorBoxEncodings,
+                                 &input_box_encodings));
   const TfLiteTensor* decoded_boxes =
       &context->tensors[op_data->decoded_boxes_index];
   const int num_boxes = input_box_encodings->dims->data[1];
@@ -468,21 +486,33 @@ TfLiteStatus NonMaxSuppressionMultiClassRegularHelper(TfLiteContext* context,
                                                       TfLiteNode* node,
                                                       OpData* op_data,
                                                       const float* scores) {
-  const TfLiteTensor* input_box_encodings =
-      GetInput(context, node, kInputTensorBoxEncodings);
-  const TfLiteTensor* input_class_predictions =
-      GetInput(context, node, kInputTensorClassPredictions);
+  const TfLiteTensor* input_box_encodings;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensorBoxEncodings,
+                                 &input_box_encodings));
+  const TfLiteTensor* input_class_predictions;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensorClassPredictions,
+                                 &input_class_predictions));
   const TfLiteTensor* decoded_boxes =
       &context->tensors[op_data->decoded_boxes_index];
 
-  TfLiteTensor* detection_boxes =
-      GetOutput(context, node, kOutputTensorDetectionBoxes);
-  TfLiteTensor* detection_classes =
-      GetOutput(context, node, kOutputTensorDetectionClasses);
-  TfLiteTensor* detection_scores =
-      GetOutput(context, node, kOutputTensorDetectionScores);
-  TfLiteTensor* num_detections =
-      GetOutput(context, node, kOutputTensorNumDetections);
+  TfLiteTensor* detection_boxes;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensorDetectionBoxes,
+                                  &detection_boxes));
+  TfLiteTensor* detection_classes;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensorDetectionClasses,
+                                  &detection_classes));
+  TfLiteTensor* detection_scores;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensorDetectionScores,
+                                  &detection_scores));
+  TfLiteTensor* num_detections;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensorNumDetections,
+                                  &num_detections));
 
   const int num_boxes = input_box_encodings->dims->data[1];
   const int num_classes = op_data->num_classes;
@@ -595,21 +625,33 @@ TfLiteStatus NonMaxSuppressionMultiClassFastHelper(TfLiteContext* context,
                                                    TfLiteNode* node,
                                                    OpData* op_data,
                                                    const float* scores) {
-  const TfLiteTensor* input_box_encodings =
-      GetInput(context, node, kInputTensorBoxEncodings);
-  const TfLiteTensor* input_class_predictions =
-      GetInput(context, node, kInputTensorClassPredictions);
+  const TfLiteTensor* input_box_encodings;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensorBoxEncodings,
+                                 &input_box_encodings));
+  const TfLiteTensor* input_class_predictions;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensorClassPredictions,
+                                 &input_class_predictions));
   const TfLiteTensor* decoded_boxes =
       &context->tensors[op_data->decoded_boxes_index];
 
-  TfLiteTensor* detection_boxes =
-      GetOutput(context, node, kOutputTensorDetectionBoxes);
-  TfLiteTensor* detection_classes =
-      GetOutput(context, node, kOutputTensorDetectionClasses);
-  TfLiteTensor* detection_scores =
-      GetOutput(context, node, kOutputTensorDetectionScores);
-  TfLiteTensor* num_detections =
-      GetOutput(context, node, kOutputTensorNumDetections);
+  TfLiteTensor* detection_boxes;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensorDetectionBoxes,
+                                  &detection_boxes));
+  TfLiteTensor* detection_classes;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensorDetectionClasses,
+                                  &detection_classes));
+  TfLiteTensor* detection_scores;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensorDetectionScores,
+                                  &detection_scores));
+  TfLiteTensor* num_detections;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensorNumDetections,
+                                  &num_detections));
 
   const int num_boxes = input_box_encodings->dims->data[1];
   const int num_classes = op_data->num_classes;
@@ -680,10 +722,14 @@ void DequantizeClassPredictions(const TfLiteTensor* input_class_predictions,
 TfLiteStatus NonMaxSuppressionMultiClass(TfLiteContext* context,
                                          TfLiteNode* node, OpData* op_data) {
   // Get the input tensors
-  const TfLiteTensor* input_box_encodings =
-      GetInput(context, node, kInputTensorBoxEncodings);
-  const TfLiteTensor* input_class_predictions =
-      GetInput(context, node, kInputTensorClassPredictions);
+  const TfLiteTensor* input_box_encodings;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensorBoxEncodings,
+                                 &input_box_encodings));
+  const TfLiteTensor* input_class_predictions;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensorClassPredictions,
+                                 &input_class_predictions));
   const int num_boxes = input_box_encodings->dims->data[1];
   const int num_classes = op_data->num_classes;
   TF_LITE_ENSURE_EQ(context, input_class_predictions->dims->data[0],

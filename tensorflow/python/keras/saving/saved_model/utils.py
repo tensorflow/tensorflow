@@ -18,16 +18,17 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
+import threading
 import types
 
 from tensorflow.python.eager import context
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.utils import control_flow_util
+from tensorflow.python.keras.utils import tf_contextlib
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils.generic_utils import LazyLoader
-from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.util import tf_decorator
-from tensorflow.python.util import tf_inspect
 
 
 # pylint:disable=g-inconsistent-quotes
@@ -115,10 +116,11 @@ def layer_uses_training_bool(layer):
 
 def list_all_layers(obj):
   if isinstance(obj, training_lib.Model):
+    # Handle special case of Sequential, which doesn't return
+    # the `Input` layer.
     return obj.layers
   else:
-    return list(
-        trackable_layer_utils.filter_empty_layer_containers(obj._layers))  # pylint: disable=protected-access
+    return list(obj._flatten_layers(include_self=False, recursive=False))  # pylint: disable=protected-access
 
 
 def list_all_layers_and_sublayers(obj):
@@ -245,3 +247,27 @@ def remove_training_arg(index, args, kwargs):
     args.pop(index)
   else:
     kwargs.pop('training', None)
+
+
+class SaveOptionsContext(threading.local):
+
+  def __init__(self):
+    super(SaveOptionsContext, self).__init__()
+    self.save_traces = True
+
+
+_save_options_context = SaveOptionsContext()
+
+
+@tf_contextlib.contextmanager
+def keras_option_scope(save_traces):
+  previous_value = _save_options_context.save_traces
+  try:
+    _save_options_context.save_traces = save_traces
+    yield
+  finally:
+    _save_options_context.save_traces = previous_value
+
+
+def should_save_traces():
+  return _save_options_context.save_traces

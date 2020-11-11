@@ -20,6 +20,7 @@ VALID_LIBS = [
     "com_googlesource_code_re2",
     "curl",
     "cython",
+    "dill_archive",
     "double_conversion",
     "enum34_archive",
     "flatbuffers",
@@ -41,7 +42,9 @@ VALID_LIBS = [
     "pybind11",
     "six_archive",
     "snappy",
+    "tblib_archive",
     "termcolor_archive",
+    "typing_extensions_archive",
     "wrapt",
     "zlib",
 ]

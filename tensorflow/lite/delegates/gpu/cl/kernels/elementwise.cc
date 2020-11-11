@@ -67,17 +67,8 @@ std::string GetOneInputCode(const OperationType& op_type,
     case OperationType::SIGMOID:
       if (precision != CalculationsPrecision::F32) {
         result =
-            "$0.x = convert_half(native_recip(1.0f + "
-            "native_exp(convert_float(-$0.x))));\n";
-        result +=
-            "$0.y = convert_half(native_recip(1.0f + "
-            "native_exp(convert_float(-$0.y))));\n";
-        result +=
-            "$0.z = convert_half(native_recip(1.0f + "
-            "native_exp(convert_float(-$0.z))));\n";
-        result +=
-            "$0.w = convert_half(native_recip(1.0f + "
-            "native_exp(convert_float(-$0.w))));\n";
+            "$0 = convert_half4(native_recip(1.0f + "
+            "native_exp(convert_float4(-$0))));\n";
       } else {
         result = "$0 = (FLT4)(1.0f) / ((FLT4)(1.0f) + exp(-($0)));\n";
       }
@@ -92,7 +83,12 @@ std::string GetOneInputCode(const OperationType& op_type,
       result = "$0 *= $0;\n";
       break;
     case OperationType::TANH:
-      result = "$0 = tanh($0);\n";
+      if (precision != CalculationsPrecision::F32) {
+        result = "float4 t = native_exp(convert_float4($0 * 2.0h));\n";
+        result += "$0 = convert_half4(native_divide(t - 1.0f, t + 1.0f));\n";
+      } else {
+        result = "$0 = tanh($0);\n";
+      }
       break;
     default:
       return "Unknown operation type;\n";
@@ -201,14 +197,14 @@ GPUOperation CreateElementwiseOneRuntimeOneScalar(
 // Creates simple two input(first input is runtime tensor and second input is
 // constant linear tensor) operation, for example sub, div and etc.
 GPUOperation CreateElementwiseTwoInput(
-    const DeviceInfo& device_info, const OperationDef& definition,
+    const GpuInfo& gpu_info, const OperationDef& definition,
     const OperationType& op_type,
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& constant_tensor,
     bool swap_inputs) {
   const BHWC shape = BHWC(1, 1, 1, constant_tensor.shape.v);
-  TensorStorageType storage_type = SelectBestStorageType(
-      device_info, shape, definition.GetPrimaryStorageType(),
-      definition.GetDataType(), Layout::HWC);
+  TensorStorageType storage_type =
+      SelectBestStorageType(gpu_info, shape, definition.GetPrimaryStorageType(),
+                            definition.GetDataType(), Layout::HWC);
   TensorDescriptor desc{definition.GetDataType(), storage_type, Layout::HWC};
   desc.UploadData(constant_tensor);
 
@@ -232,15 +228,15 @@ GPUOperation CreateElementwiseTwoInput(
 // Creates simple two input(first input is runtime tensor and second input is
 // constant HWC tensor) operation, for example sub, div and etc.
 GPUOperation CreateElementwiseTwoInput(
-    const DeviceInfo& device_info, const OperationDef& definition,
+    const GpuInfo& gpu_info, const OperationDef& definition,
     const OperationType& op_type,
     const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& constant_tensor,
     bool swap_inputs) {
   const BHWC shape = BHWC(1, constant_tensor.shape.h, constant_tensor.shape.w,
                           constant_tensor.shape.c);
-  TensorStorageType storage_type = SelectBestStorageType(
-      device_info, shape, definition.GetPrimaryStorageType(),
-      definition.GetDataType(), Layout::HWC);
+  TensorStorageType storage_type =
+      SelectBestStorageType(gpu_info, shape, definition.GetPrimaryStorageType(),
+                            definition.GetDataType(), Layout::HWC);
   TensorDescriptor desc{definition.GetDataType(), storage_type, Layout::HWC};
   desc.UploadData(constant_tensor);
 
@@ -274,7 +270,7 @@ GPUOperation CreateElementwiseOneInput(const OperationDef& definition,
   return op;
 }
 
-GPUOperation CreateElementwise(const DeviceInfo& device_info,
+GPUOperation CreateElementwise(const GpuInfo& gpu_info,
                                const OperationDef& definition,
                                const OperationType& op_type,
                                const ElementwiseAttributes& attr) {
@@ -288,12 +284,11 @@ GPUOperation CreateElementwise(const DeviceInfo& device_info,
     return CreateElementwiseOneRuntimeOneScalar(definition, op_type, *scalar,
                                                 attr.runtime_tensor_is_second);
   } else if (linear_tensor) {
-    return CreateElementwiseTwoInput(device_info, definition, op_type,
+    return CreateElementwiseTwoInput(gpu_info, definition, op_type,
                                      *linear_tensor,
                                      attr.runtime_tensor_is_second);
   } else if (hwc_tensor) {
-    return CreateElementwiseTwoInput(device_info, definition, op_type,
-                                     *hwc_tensor,
+    return CreateElementwiseTwoInput(gpu_info, definition, op_type, *hwc_tensor,
                                      attr.runtime_tensor_is_second);
   } else {
     return GPUOperation(definition);

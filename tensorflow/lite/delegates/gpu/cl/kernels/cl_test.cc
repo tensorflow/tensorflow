@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/kernels/cl_test.h"
 
+#include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
@@ -55,6 +56,7 @@ absl::Status ExecuteGPUOperation(const std::vector<TensorFloat32>& src_cpu,
 
   RETURN_IF_ERROR(operation->Compile(creation_context));
   RETURN_IF_ERROR(operation->UpdateParams());
+  operation->args_.ReleaseCPURepresentation();
   RETURN_IF_ERROR(operation->AddToQueue(creation_context.queue));
   RETURN_IF_ERROR(creation_context.queue->WaitForCompletion());
 

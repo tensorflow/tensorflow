@@ -125,9 +125,9 @@ Status FinishTask(int64 task_id, DispatcherState& state) {
 }  // namespace
 
 TEST(DispatcherState, RegisterDataset) {
-  int64 id = 10;
   uint64 fingerprint = 20;
   DispatcherState state;
+  int64 id = state.NextAvailableDatasetId();
   TF_EXPECT_OK(RegisterDataset(id, fingerprint, state));
   EXPECT_EQ(state.NextAvailableDatasetId(), id + 1);
 
@@ -210,9 +210,9 @@ TEST(DispatcherState, UnknownUpdate) {
 }
 
 TEST(DispatcherState, AnonymousJob) {
-  int64 job_id = 3;
   int64 dataset_id = 10;
   DispatcherState state;
+  int64 job_id = state.NextAvailableJobId();
   TF_EXPECT_OK(RegisterDataset(dataset_id, state));
   TF_EXPECT_OK(CreateAnonymousJob(job_id, dataset_id, state));
   std::shared_ptr<const Job> job;
@@ -227,9 +227,9 @@ TEST(DispatcherState, AnonymousJob) {
 }
 
 TEST(DispatcherState, NamedJob) {
-  int64 job_id = 3;
   int64 dataset_id = 10;
   DispatcherState state;
+  int64 job_id = state.NextAvailableJobId();
   TF_EXPECT_OK(RegisterDataset(dataset_id, state));
   NamedJobKey named_job_key("test", 1);
   TF_EXPECT_OK(CreateNamedJob(job_id, dataset_id, named_job_key, state));
@@ -244,9 +244,9 @@ TEST(DispatcherState, NamedJob) {
 TEST(DispatcherState, CreateTask) {
   int64 job_id = 3;
   int64 dataset_id = 10;
-  int64 task_id = 8;
   std::string worker_address = "test_worker_address";
   DispatcherState state;
+  int64 task_id = state.NextAvailableTaskId();
   TF_EXPECT_OK(RegisterDataset(dataset_id, state));
   TF_EXPECT_OK(CreateAnonymousJob(job_id, dataset_id, state));
   TF_EXPECT_OK(CreateTask(task_id, job_id, dataset_id, worker_address, state));

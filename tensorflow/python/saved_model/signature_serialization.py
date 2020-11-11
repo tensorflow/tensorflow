@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl import logging
+
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun
 from tensorflow.python.framework import ops
@@ -34,6 +36,8 @@ from tensorflow.python.util.compat import collections_abc
 
 DEFAULT_SIGNATURE_ATTR = "_default_save_signature"
 SIGNATURE_ATTRIBUTE_NAME = "signatures"
+# Max number of warnings to show if signature contains normalized input names.
+_NUM_DISPLAY_NORMALIZED_SIGNATURES = 5
 
 
 def _get_signature(function):
@@ -61,11 +65,30 @@ def _valid_signature(concrete_function):
 
 
 def _validate_inputs(concrete_function):
+  """Raises error if input type is tf.Variable."""
   if any(isinstance(inp, resource_variable_ops.VariableSpec)
          for inp in nest.flatten(
              concrete_function.structured_input_signature)):
     raise ValueError(("Functions that expect tf.Variable inputs cannot be "
                       "exported as signatures."))
+
+
+def _get_signature_name_changes(concrete_function):
+  """Checks for user-specified signature input names that are normalized."""
+  # Map of {user-given name: normalized name} if the names are un-identical.
+  name_changes = {}
+  for signature_input_name, graph_input in zip(
+      concrete_function.function_def.signature.input_arg,
+      concrete_function.graph.inputs):
+    try:
+      user_specified_name = compat.as_str(
+          graph_input.op.get_attr("_user_specified_name"))
+      if signature_input_name.name != user_specified_name:
+        name_changes[user_specified_name] = signature_input_name.name
+    except ValueError:
+      # Signature input does not have a user-specified name.
+      pass
+  return name_changes
 
 
 def find_function_to_export(saveable_view):
@@ -100,11 +123,11 @@ def canonicalize_signatures(signatures):
   if not isinstance(signatures, collections_abc.Mapping):
     signatures = {
         signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY: signatures}
+  num_normalized_signatures_counter = 0
   concrete_signatures = {}
   wrapped_functions = {}
   for signature_key, function in signatures.items():
     original_function = signature_function = _get_signature(function)
-
     if signature_function is None:
       raise ValueError(
           ("Expected a TensorFlow function to generate a signature for, but "
@@ -115,7 +138,16 @@ def canonicalize_signatures(signatures):
         wrapped_functions.get(original_function) or
         function_serialization.wrap_cached_variables(original_function))
     _validate_inputs(signature_function)
-
+    if num_normalized_signatures_counter < _NUM_DISPLAY_NORMALIZED_SIGNATURES:
+      signature_name_changes = _get_signature_name_changes(signature_function)
+      if signature_name_changes:
+        num_normalized_signatures_counter += 1
+        logging.warning(
+            "Function `%s` contains input name(s) %s with unsupported "
+            "characters which will be renamed to %s in the SavedModel.",
+            compat.as_str(signature_function.graph.name),
+            ", ".join(signature_name_changes.keys()),
+            ", ".join(signature_name_changes.values()))
     # Re-wrap the function so that it returns a dictionary of Tensors. This
     # matches the format of 1.x-style signatures.
     # pylint: disable=cell-var-from-loop
@@ -124,15 +156,26 @@ def canonicalize_signatures(signatures):
       structured_outputs = signature_function(**kwargs)
       return _normalize_outputs(
           structured_outputs, signature_function.name, signature_key)
-    # TODO(b/123902469): Use ConcreteFunction.structured_inputs once their names
-    # always match keyword arguments.
     tensor_spec_signature = {}
-    for keyword, tensor in zip(
+    if signature_function.structured_input_signature is not None:
+      # The structured input signature may contain other non-tensor arguments.
+      inputs = filter(
+          lambda x: isinstance(x, tensor_spec.TensorSpec),
+          nest.flatten(signature_function.structured_input_signature,
+                       expand_composites=True))
+    else:
+      # Structured input signature isn't always defined for some functions.
+      inputs = signature_function.inputs
+
+    for keyword, inp in zip(
         signature_function._arg_keywords,  # pylint: disable=protected-access
-        signature_function.inputs):
+        inputs):
       keyword = compat.as_str(keyword)
-      tensor_spec_signature[keyword] = tensor_spec.TensorSpec.from_tensor(
-          tensor, name=keyword)
+      if isinstance(inp, tensor_spec.TensorSpec):
+        spec = tensor_spec.TensorSpec(inp.shape, inp.dtype, name=keyword)
+      else:
+        spec = tensor_spec.TensorSpec.from_tensor(inp, name=keyword)
+      tensor_spec_signature[keyword] = spec
     final_concrete = signature_wrapper._get_concrete_function_garbage_collected(  # pylint: disable=protected-access
         **tensor_spec_signature)
     # pylint: disable=protected-access

@@ -40,12 +40,8 @@ namespace xla {
 // An executable capable of being fed to a TPU device.
 class TpuExecutableInterface : public Executable {
  public:
-  explicit TpuExecutableInterface(
-      std::shared_ptr<HloModule> hlo_module,
-      std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
-      std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
-      : Executable(std::move(hlo_module), std::move(hlo_profile_printer_data),
-                   std::move(hlo_profile_index_map)) {}
+  explicit TpuExecutableInterface(std::shared_ptr<HloModule> hlo_module)
+      : Executable(std::move(hlo_module)) {}
   ~TpuExecutableInterface() override = default;
 
   StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
@@ -79,6 +75,8 @@ class TpuExecutableInterface : public Executable {
       stream_executor::DeviceMemoryBase result,
       absl::optional<stream_executor::DeviceMemoryBase>
           cross_program_prefetch_addr) = 0;
+
+  virtual absl::string_view fingerprint() const = 0;
 
  protected:
   virtual Shape HostShapeToDeviceShape(const Shape& host_shape) = 0;

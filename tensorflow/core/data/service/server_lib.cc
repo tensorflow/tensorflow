@@ -138,6 +138,18 @@ Status WorkerGrpcDataServer::StartServiceInternal() {
   return Status::OK();
 }
 
+Status WorkerGrpcDataServer::NumTasks(int* num_tasks) {
+  GetWorkerTasksRequest req;
+  GetWorkerTasksResponse resp;
+  ::grpc::ServerContext ctx;
+  ::grpc::Status s = service_->GetWorkerTasks(&ctx, &req, &resp);
+  if (!s.ok()) {
+    return grpc_util::WrapError("Failed to get tasks", s);
+  }
+  *num_tasks = resp.tasks_size();
+  return Status::OK();
+}
+
 Status NewDispatchServer(const experimental::DispatcherConfig& config,
                          std::unique_ptr<DispatchGrpcDataServer>& out_server) {
   out_server = absl::make_unique<DispatchGrpcDataServer>(config);

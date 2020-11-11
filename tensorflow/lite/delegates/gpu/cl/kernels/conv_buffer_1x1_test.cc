@@ -57,7 +57,7 @@ TEST_F(OpenCLOperationTest, ConvBuffer1x1SimpleWeights) {
         {data_type, TensorStorageType::BUFFER, Layout::HWC});
     TensorFloat32 dst_tensor;
     ConvBuffer1x1 operation = CreateConvBuffer1x1(
-        creation_context_.GetDeviceInfo(), op_def, attr, &src_tensor.shape);
+        creation_context_.GetGpuInfo(), op_def, attr, &src_tensor.shape);
     ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
                                   BHWC(1, 2, 1, 2), &dst_tensor));
     EXPECT_THAT(dst_tensor.data,
@@ -92,7 +92,7 @@ TEST_F(OpenCLOperationTest, ConvBuffer1x1) {
         {data_type, TensorStorageType::BUFFER, Layout::HWC});
     TensorFloat32 dst_tensor;
     ConvBuffer1x1 operation = CreateConvBuffer1x1(
-        creation_context_.GetDeviceInfo(), op_def, attr, &src_tensor.shape);
+        creation_context_.GetGpuInfo(), op_def, attr, &src_tensor.shape);
     ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
                                   BHWC(1, 2, 1, 4), &dst_tensor));
     EXPECT_THAT(dst_tensor.data,

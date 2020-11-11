@@ -22,18 +22,19 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.distribute import combinations
-from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras.distribute.strategy_combinations import all_strategies
 from tensorflow.python.keras.layers.preprocessing import image_preprocessing
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
 from tensorflow.python.platform import test
 
 
-@combinations.generate(
+@ds_combinations.generate(
     combinations.combine(
-        distribution=strategy_combinations.all_strategies,
+        distribution=all_strategies,
         mode=["eager", "graph"]))
 class ImagePreprocessingDistributionTest(
     keras_parameterized.TestCase,

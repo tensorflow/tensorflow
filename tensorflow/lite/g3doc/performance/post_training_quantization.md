@@ -199,6 +199,9 @@ The disadvantage of this quantization is:
 
 Note: This is an experimental feature.
 
+A tutorial for this quantization mode can be found
+[here](post_training_integer_quant_16x8.ipynb).
+
 ### Model accuracy
 
 Since weights are quantized post training, there could be an accuracy loss,

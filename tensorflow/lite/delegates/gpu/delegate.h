@@ -51,6 +51,7 @@ enum TfLiteGpuInferencePriority {
 enum TfLiteGpuExperimentalFlags {
   TFLITE_GPU_EXPERIMENTAL_FLAGS_NONE = 0,
   // Enables inference on quantized models with the delegate.
+  // NOTE: This is enabled in TfLiteGpuDelegateOptionsV2Default.
   TFLITE_GPU_EXPERIMENTAL_FLAGS_ENABLE_QUANT = 1 << 0,
   // Enforces execution with the provided backend.
   TFLITE_GPU_EXPERIMENTAL_FLAGS_CL_ONLY = 1 << 1,
@@ -108,10 +109,12 @@ typedef struct {
 //   priority1 = TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION
 //   priority2 = TFLITE_GPU_INFERENCE_PRIORITY_AUTO
 //   priority3 = TFLITE_GPU_INFERENCE_PRIORITY_AUTO
+//   experimental_flags = TFLITE_GPU_EXPERIMENTAL_FLAGS_ENABLE_QUANT
+//   max_delegated_partitions = 1
 TFL_CAPI_EXPORT TfLiteGpuDelegateOptionsV2 TfLiteGpuDelegateOptionsV2Default();
 
 // Creates a new delegate instance that need to be destroyed with
-// TfLiteGpuDelegateV2Delete when delegate is no longer used by TfLite.
+// TfLiteGpuDelegateV2Delete when delegate is no longer used by TFLite.
 //
 // This delegate encapsulates multiple GPU-acceleration APIs under the hood to
 // make use of the fastest available on a device.

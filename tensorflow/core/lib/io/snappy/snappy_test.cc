@@ -22,10 +22,13 @@ limitations under the License.
 
 namespace tensorflow {
 
-// The current implementation of snappy compresses the below block to 619 bytes.
-// We use this to validate the error messages. Please change this number if
-// a new snappy implementation compresses to a different size.
-const int COMPRESSED_RECORD_SIZE = 619;
+static void CheckPrefixSuffix(const string& str, const string& prefix,
+                              const string& suffix) {
+  CHECK_GE(str.size(), prefix.size());
+  CHECK_GE(str.size(), suffix.size());
+  CHECK_EQ(str.substr(0, prefix.length()), prefix);
+  CHECK_EQ(str.substr(str.length() - suffix.length()), suffix);
+}
 
 static string GetRecord() {
   static const string lorem_ipsum =
@@ -315,10 +318,12 @@ TEST(SnappyBuffers, SmallUncompressInputBuffer) {
     fprintf(stderr, "skipping compression tests\n");
     return;
   }
-  CHECK_EQ(TestMultipleWrites(10000, 10000, 10, 10000, 2, true),
-           errors::ResourceExhausted("Input buffer(size: 10 bytes) too small. ",
-                                     "Should be larger than ",
-                                     COMPRESSED_RECORD_SIZE, " bytes."));
+  Status status = TestMultipleWrites(10000, 10000, 10, 10000, 2, true);
+  CHECK_EQ(status.code(), error::Code::RESOURCE_EXHAUSTED);
+  CheckPrefixSuffix(
+      status.error_message(),
+      "Input buffer(size: 10 bytes) too small. Should be larger than ",
+      " bytes.");
 }
 
 TEST(SnappyBuffers, SmallUncompressInputStream) {
@@ -337,9 +342,11 @@ TEST(SnappyBuffers, CorruptBlock) {
     fprintf(stderr, "skipping compression tests\n");
     return;
   }
-  CHECK_EQ(TestMultipleWrites(10000, 10000, 700, 10000, 2, true, 1, true),
-           errors::DataLoss("Failed to read ", COMPRESSED_RECORD_SIZE,
-                            " bytes from file. ", "Possible data corruption."));
+  Status status =
+      TestMultipleWrites(10000, 10000, 700, 10000, 2, true, 1, true);
+  CHECK_EQ(status.code(), error::Code::DATA_LOSS);
+  CheckPrefixSuffix(status.error_message(), "Failed to read ",
+                    " bytes from file. Possible data corruption.");
 }
 
 TEST(SnappyBuffers, CorruptBlockInputStream) {
@@ -347,10 +354,11 @@ TEST(SnappyBuffers, CorruptBlockInputStream) {
     fprintf(stderr, "skipping compression tests\n");
     return;
   }
-  CHECK_EQ(
-      TestMultipleWritesInputStream(10000, 10000, 700, 10000, 2, true, 1, true),
-      errors::DataLoss("Failed to read ", COMPRESSED_RECORD_SIZE,
-                       " bytes from file. ", "Possible data corruption."));
+  Status status =
+      TestMultipleWritesInputStream(10000, 10000, 700, 10000, 2, true, 1, true);
+  CHECK_EQ(status.code(), error::Code::DATA_LOSS);
+  CheckPrefixSuffix(status.error_message(), "Failed to read ",
+                    " bytes from file. Possible data corruption.");
 }
 
 TEST(SnappyBuffers, CorruptBlockLargeInputBuffer) {
@@ -367,10 +375,11 @@ TEST(SnappyBuffers, CorruptBlockLargeInputStream) {
     fprintf(stderr, "skipping compression tests\n");
     return;
   }
-  CHECK_EQ(TestMultipleWritesInputStream(10000, 10000, 2000, 10000, 2, true, 1,
-                                         true),
-           errors::DataLoss("Failed to read ", COMPRESSED_RECORD_SIZE,
-                            " bytes from file. Possible data corruption."));
+  Status status = TestMultipleWritesInputStream(10000, 10000, 2000, 10000, 2,
+                                                true, 1, true);
+  CHECK_EQ(status.code(), error::Code::DATA_LOSS);
+  CheckPrefixSuffix(status.error_message(), "Failed to read ",
+                    " bytes from file. Possible data corruption.");
 }
 
 TEST(SnappyBuffers, Tell) {

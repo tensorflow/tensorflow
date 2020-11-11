@@ -118,7 +118,7 @@ swift_library(
     name = "TestsLibrary",
     testonly = 1,
     srcs = glob(["Tests/*.swift"]),
-    tags = TFL_DEFAULT_TAGS,
+    tags = TFL_DEFAULT_TAGS + ["nobuilder"],
     deps = [
         ":Resources",
         ":TensorFlowLiteAllDelegates",

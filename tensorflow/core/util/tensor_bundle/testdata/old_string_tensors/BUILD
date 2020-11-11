@@ -1,6 +1,8 @@
 # Description:
 # Old string tensors data packages.
 
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
 package(
     licenses = ["notice"],  # Apache 2.0
 )

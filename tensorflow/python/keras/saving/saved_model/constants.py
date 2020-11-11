@@ -26,3 +26,7 @@ KERAS_ATTR = 'keras_api'
 # Keys for the serialization cache.
 # Maps to the keras serialization dict {Layer --> SerializedAttributes object}
 KERAS_CACHE_KEY = 'keras_serialized_attributes'
+
+
+# Name of Keras metadata file stored in the SavedModel.
+SAVED_METADATA_PATH = 'keras_metadata.pb'

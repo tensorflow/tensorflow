@@ -33,7 +33,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer_utils
@@ -670,10 +669,41 @@ class RNNTest(keras_parameterized.TestCase):
               np.random.random((num_samples, timesteps, embedding_dim))]
     model.predict(inputs)
 
-  def test_builtin_rnn_cell_serialization(self):
+  def test_builtin_and_custom_rnn_cell_serialization(self):
+
+    @keras.utils.generic_utils.register_keras_serializable(package='TestOnly')
+    class CustomRNNCell(keras.layers.Layer):
+
+      def __init__(self, units, **kwargs):
+        self.units = units
+        self.state_size = units
+        super(CustomRNNCell, self).__init__(**kwargs)
+
+      def build(self, input_shape):
+        self.kernel = self.add_weight(shape=(input_shape[-1], self.units),
+                                      initializer='uniform',
+                                      name='kernel')
+        self.recurrent_kernel = self.add_weight(
+            shape=(self.units, self.units),
+            initializer='uniform',
+            name='recurrent_kernel')
+        self.built = True
+
+      def call(self, inputs, states):
+        prev_output = states[0]
+        h = keras.backend.dot(inputs, self.kernel)
+        output = h + keras.backend.dot(prev_output, self.recurrent_kernel)
+        return output, [output]
+
+      def get_config(self):
+        config = {'units': self.units}
+        base_config = super(CustomRNNCell, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+
     for cell_class in [keras.layers.SimpleRNNCell,
                        keras.layers.GRUCell,
-                       keras.layers.LSTMCell]:
+                       keras.layers.LSTMCell,
+                       CustomRNNCell]:
       # Test basic case.
       x = keras.Input((None, 5))
       cell = cell_class(32)
@@ -722,7 +752,7 @@ class RNNTest(keras_parameterized.TestCase):
       self.assertAllClose(y_np, y_np_2, atol=1e-4)
 
   @parameterized.named_parameters(
-      *test_util.generate_combinations_with_testcase_name(
+      *testing_utils.generate_combinations_with_testcase_name(
           layer=[rnn_v1.SimpleRNN, rnn_v1.GRU, rnn_v1.LSTM,
                  rnn_v2.GRU, rnn_v2.LSTM],
           unroll=[True, False]))
@@ -743,7 +773,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.train_on_batch(x_np, y_np)
 
   @parameterized.named_parameters(
-      *test_util.generate_combinations_with_testcase_name(
+      *testing_utils.generate_combinations_with_testcase_name(
           cell=[keras.layers.SimpleRNNCell, keras.layers.GRUCell,
                 keras.layers.LSTMCell],
           unroll=[True, False]))
@@ -1551,7 +1581,7 @@ class RNNTest(keras_parameterized.TestCase):
     model.predict(np.ones((batch, timesteps, input_dim)))
 
   @parameterized.named_parameters(
-      *test_util.generate_combinations_with_testcase_name(layer=[
+      *testing_utils.generate_combinations_with_testcase_name(layer=[
           rnn_v1.SimpleRNN, rnn_v1.GRU, rnn_v1.LSTM, rnn_v2.GRU, rnn_v2.LSTM
       ]))
   def test_rnn_with_ragged_input(self, layer):

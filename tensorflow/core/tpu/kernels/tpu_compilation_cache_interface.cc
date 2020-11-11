@@ -362,14 +362,15 @@ Status TpuCompilationCacheInterface::CompileIfKeyAbsent(
     const TpuCompilationCacheKey& subgraph_key,
     const SessionMetadata* session_metadata,
     CompilationRefHolder* per_step_ref_holder, int64* uid,
-    std::vector<std::string>* proto_key,
+    std::vector<std::string>* proto_key, std::vector<std::string>* sharding_key,
     std::vector<bool>* may_modify_variables,
     absl::Span<const xla::HloProto* const>* hlo_metadatas,
     const std::function<Status(TpuProgramGroupInterface*)>& compile_function) {
   std::vector<CompiledSubgraph*> removed_entries;
   auto status = CompileIfKeyAbsentHelper(
       subgraph_key, session_metadata, per_step_ref_holder, uid, proto_key,
-      may_modify_variables, &removed_entries, hlo_metadatas, compile_function);
+      sharding_key, may_modify_variables, &removed_entries, hlo_metadatas,
+      compile_function);
   for (auto entry : removed_entries) {
     UnloadAndDestroy(entry);
   }
@@ -399,7 +400,7 @@ Status TpuCompilationCacheInterface::CompileIfKeyAbsentHelper(
     const TpuCompilationCacheKey& subgraph_key,
     const SessionMetadata* session_metadata,
     CompilationRefHolder* per_step_ref_holder, int64* uid,
-    std::vector<std::string>* proto_key,
+    std::vector<std::string>* proto_key, std::vector<std::string>* sharding_key,
     std::vector<bool>* may_modify_variables,
     std::vector<CompiledSubgraph*>* removed_entries,
     absl::Span<const xla::HloProto* const>* hlo_metadatas,
@@ -433,7 +434,7 @@ Status TpuCompilationCacheInterface::CompileIfKeyAbsentHelper(
 
     // Check if caller has disabled compilation. Set using
     // internal::ScopedTpuCompileDisabler.
-    if (!UtilApiFn()->TpuCompile_IsTpuCompilationEnabledFn()) {
+    if (!OpsApiFn()->TpuCompile_IsTpuCompilationEnabledFn()) {
       const std::string error_msg = strings::StrCat(
           "[TpuCompilationDisabled]: Compilation cache miss, but compilation "
           "disabled, session_name(",
@@ -460,9 +461,11 @@ Status TpuCompilationCacheInterface::CompileIfKeyAbsentHelper(
             << marked_for_eviction_size_ << " bytes).";
     // Note that InitializeEntry() will Release/Reacquire mu_.
     entry = InitializeEntry(cache_key, compile_function, subgraph_key);
+    bool compilation_success = entry->tpu_program_group->program_count() > 0;
     TRACELITERAL("TPU host compilation cache: compilation done.");
     LOG(INFO) << strings::StrCat(
-        "TPU host compilation cache: compilation done for cache_key(",
+        "TPU host compilation cache: compilation ",
+        compilation_success ? "complete" : "failed", " for cache_key(",
         cache_key, "), session_name(", session_name, "), subgraph_key(",
         subgraph_key.debug_string, ")");
     // If session_name is present, log some additional stats related to HBM
@@ -497,6 +500,7 @@ Status TpuCompilationCacheInterface::CompileIfKeyAbsentHelper(
   *uid = entry->uid;
   // Let the caller know the keys for each of the cached protos.
   *proto_key = entry->proto_key;
+  *sharding_key = entry->sharding_key;
   *may_modify_variables = entry->tpu_program_group->may_modify_variables_list();
   *hlo_metadatas = entry->tpu_program_group->hlo_metadatas();
 

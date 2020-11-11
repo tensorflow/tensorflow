@@ -88,7 +88,7 @@ def log_poisson_loss(targets, log_input, compute_full_loss=False, name=None):
     log_input = ops.convert_to_tensor(log_input, name="log_input")
     targets = ops.convert_to_tensor(targets, name="targets")
     try:
-      targets.get_shape().merge_with(log_input.get_shape())
+      targets.get_shape().assert_is_compatible_with(log_input.get_shape())
     except ValueError:
       raise ValueError(
           "log_input and targets must have the same shape (%s vs %s)" %
@@ -168,7 +168,7 @@ def sigmoid_cross_entropy_with_logits(  # pylint: disable=invalid-name
     logits = ops.convert_to_tensor(logits, name="logits")
     labels = ops.convert_to_tensor(labels, name="labels")
     try:
-      labels.get_shape().merge_with(logits.get_shape())
+      labels.get_shape().assert_is_compatible_with(logits.get_shape())
     except ValueError:
       raise ValueError("logits and labels must have the same shape (%s vs %s)" %
                        (logits.get_shape(), labels.get_shape()))
@@ -304,7 +304,7 @@ def weighted_cross_entropy_with_logits_v2(labels, logits, pos_weight,
     logits = ops.convert_to_tensor(logits, name="logits")
     labels = ops.convert_to_tensor(labels, name="labels")
     try:
-      labels.get_shape().merge_with(logits.get_shape())
+      labels.get_shape().assert_is_compatible_with(logits.get_shape())
     except ValueError:
       raise ValueError("logits and labels must have the same shape (%s vs %s)" %
                        (logits.get_shape(), labels.get_shape()))
@@ -1585,7 +1585,7 @@ def fused_batch_norm(
   (http://arxiv.org/abs/1502.03167).
 
   Args:
-    x: Input `Tensor` of 4 dimensions.
+    x: Input `Tensor` of 4 or 5 dimensions.
     scale: A `Tensor` of 1 dimension for scaling.
     offset: A `Tensor` of 1 dimension for bias.
     mean: A `Tensor` of 1 dimension for population mean. The shape and meaning
@@ -1611,7 +1611,8 @@ def fused_batch_norm(
             Variance must be a `Tensor` of the same shape as scale containing
             the exponential running variance.
     epsilon: A small float number added to the variance of x.
-    data_format: The data format for x. Either "NHWC" (default) or "NCHW".
+    data_format: The data format for x. Support "NHWC" (default) or "NCHW" for
+                 4D tenors and "NDHWC" or "NCDHW" for 5D tensors.
     is_training: A bool value to specify if the operation is used for
                  training or inference.
     name: A name for this operation (optional).
@@ -1622,7 +1623,7 @@ def fused_batch_norm(
                             returned.
 
   Returns:
-    y: A 4D Tensor for the normalized, scaled, offsetted x.
+    y: A 4D or 5D Tensor for the normalized, scaled, offsetted x.
     running_mean: A 1D Tensor for the exponential running mean of x.
                   The output value is (1 - exponential_avg_factor) * mean +
                   exponential_avg_factor * batch_mean), where batch_mean

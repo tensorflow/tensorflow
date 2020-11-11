@@ -25,9 +25,6 @@ limitations under the License.
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 namespace tflite {
-namespace ops {
-namespace micro {
-namespace activations {
 namespace {
 
 struct OpData {
@@ -35,7 +32,7 @@ struct OpData {
 };
 
 // Number of unique int8_t and int16_t values.  Used in exponent lookup table
-// conputation.
+// computation.
 constexpr int kInt8Range =
     std::numeric_limits<int8_t>::max() - std::numeric_limits<int8_t>::min() + 1;
 constexpr int kInt16Range = std::numeric_limits<int16_t>::max() -
@@ -55,7 +52,7 @@ constexpr int kMaxExponentValue = (1 << kExpFractionalBits);
 TfLiteStatus Softmax(OpData op_data, const RuntimeShape& input_shape,
                      const int8_t* input_data, const RuntimeShape& output_shape,
                      int16_t* output_data) {
-  // The last dimension is depth.  Outer size is the the total input size
+  // The last dimension is depth.  Outer size is the total input size
   // divided by depth.
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int outer_size =
@@ -78,7 +75,7 @@ TfLiteStatus Softmax(OpData op_data, const RuntimeShape& input_shape,
           input_diff == 0 ? kMaxExponentValue : op_data.exp_lut[input_diff];
     }
 
-    // Ensure we cannnot overflow the full_range_output value.  We need to
+    // Ensure we cannot overflow the full_range_output value.  We need to
     // guarantee that kInt16Range * max(input_data) / sum_of_exps < kInt16Range.
     TFLITE_DCHECK(sum_of_exps >= kMaxExponentValue);
 
@@ -104,8 +101,6 @@ TfLiteStatus Softmax(OpData op_data, const RuntimeShape& input_shape,
   }
   return kTfLiteOk;
 }
-
-}  // namespace
 
 TfLiteStatus CalculateSoftmaxOpData(TfLiteContext* context,
                                     const TfLiteTensor* input,
@@ -196,19 +191,18 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
     return kTfLiteError;
   }
 }
-}  // namespace activations
+
+}  // namespace
 
 TfLiteRegistration Register_SOFTMAX() {
-  return {/*init=*/activations::SoftmaxInit,
+  return {/*init=*/SoftmaxInit,
           /*free=*/nullptr,
-          /*prepare=*/activations::SoftmaxPrepare,
-          /*invoke=*/activations::SoftmaxEval,
+          /*prepare=*/SoftmaxPrepare,
+          /*invoke=*/SoftmaxEval,
           /*profiling_string=*/nullptr,
           /*builtin_code=*/0,
           /*custom_name=*/nullptr,
           /*version=*/0};
 }
 
-}  // namespace micro
-}  // namespace ops
 }  // namespace tflite

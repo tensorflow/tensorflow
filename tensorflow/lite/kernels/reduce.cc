@@ -170,7 +170,9 @@ TfLiteStatus InitializeTemporaries(TfLiteContext* context, TfLiteNode* node,
   TfLiteIntArrayFree(node->temporaries);
   node->temporaries = TfLiteIntArrayCreate(3);
   node->temporaries->data[0] = op_data->scratch_tensor_index;
-  TfLiteTensor* scratch_tensor = GetTemporary(context, node, /*index=*/0);
+  TfLiteTensor* scratch_tensor;
+  TF_LITE_ENSURE_OK(
+      context, GetTemporarySafe(context, node, /*index=*/0, &scratch_tensor));
   scratch_tensor->type = kTfLiteInt32;
   scratch_tensor->allocation_type = kTfLiteArenaRw;
   TfLiteIntArray* index_size = TfLiteIntArrayCreate(1);
@@ -180,11 +182,15 @@ TfLiteStatus InitializeTemporaries(TfLiteContext* context, TfLiteNode* node,
 
   // Creates a temp tensor to store resolved axis given input data.
   node->temporaries->data[1] = op_data->scratch_tensor_index + 1;
-  TfLiteTensor* resolved_axis = GetTemporary(context, node, /*index=*/1);
+  TfLiteTensor* resolved_axis;
+  TF_LITE_ENSURE_OK(
+      context, GetTemporarySafe(context, node, /*index=*/1, &resolved_axis));
   resolved_axis->type = kTfLiteInt32;
   // Creates a temp tensor to store temp sums when calculating mean.
   node->temporaries->data[2] = op_data->scratch_tensor_index + 2;
-  TfLiteTensor* temp_sum = GetTemporary(context, node, /*index=*/2);
+  TfLiteTensor* temp_sum;
+  TF_LITE_ENSURE_OK(context,
+                    GetTemporarySafe(context, node, /*index=*/2, &temp_sum));
   switch (op_context->input->type) {
     case kTfLiteFloat32:
       temp_sum->type = kTfLiteFloat32;
@@ -217,7 +223,14 @@ TfLiteStatus PrepareSimple(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_TYPES_EQ(context, op_context.axis->type, kTfLiteInt32);
   TF_LITE_ENSURE_OK(context, InitializeTemporaries(context, node, &op_context));
 
-  TfLiteTensor* resolved_axis = GetTemporary(context, node, /*index=*/1);
+  if (op_context.input->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, op_context.input->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, op_context.output->params.zero_point, 0);
+  }
+
+  TfLiteTensor* resolved_axis;
+  TF_LITE_ENSURE_OK(
+      context, GetTemporarySafe(context, node, /*index=*/1, &resolved_axis));
   // Leaves work to Eval if axis is not constant; else resizes output.
   if (!IsConstantTensor(op_context.axis)) {
     SetTensorToDynamic(op_context.output);
@@ -233,7 +246,8 @@ TfLiteStatus PrepareSimple(TfLiteContext* context, TfLiteNode* node) {
 
 TfLiteStatus PrepareAny(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
-  const TfLiteTensor* input = GetInput(context, node, 0);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
   TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteBool);
   return PrepareSimple(context, node);
 }
@@ -254,7 +268,15 @@ TfLiteStatus PrepareMeanOrSum(TfLiteContext* context, TfLiteNode* node) {
     QuantizeMultiplier(real_multiplier, &data->multiplier, &exponent);
     data->shift = exponent;
   }
-  TfLiteTensor* temp_sum = GetTemporary(context, node, /*index=*/2);
+
+  if (op_context.input->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, op_context.input->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, op_context.output->params.zero_point, 0);
+  }
+
+  TfLiteTensor* temp_sum;
+  TF_LITE_ENSURE_OK(context,
+                    GetTemporarySafe(context, node, /*index=*/2, &temp_sum));
   if (!IsConstantTensor(op_context.axis)) {
     SetTensorToDynamic(temp_sum);
     return kTfLiteOk;
@@ -284,6 +306,11 @@ TfLiteStatus EvalMeanReferenceOps(TfLiteContext* context,
   op_params.axis_count = num_axis;
   ResolveAxis(GetTensorData<int>(op_context.axis), num_axis, &op_params);
   const TfLiteTensor* input = op_context.input;
+  // Return early when input shape has zero dim.
+  for (int i = 0; i < input->dims->size; ++i) {
+    if (input->dims->data[i] == 0) return kTfLiteOk;
+  }
+
   // TODO(b/139102329): Handle all the cases in the combined reference
   // method.
   if (op_context.params->keep_dims && NumDimensions(input) == 4 &&
@@ -343,9 +370,15 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
   int num_axis = static_cast<int>(NumElements(op_context.axis));
-  TfLiteTensor* temp_index = GetTemporary(context, node, /*index=*/0);
-  TfLiteTensor* resolved_axis = GetTemporary(context, node, /*index=*/1);
-  TfLiteTensor* temp_sum = GetTemporary(context, node, /*index=*/2);
+  TfLiteTensor* temp_index;
+  TF_LITE_ENSURE_OK(context,
+                    GetTemporarySafe(context, node, /*index=*/0, &temp_index));
+  TfLiteTensor* resolved_axis;
+  TF_LITE_ENSURE_OK(
+      context, GetTemporarySafe(context, node, /*index=*/1, &resolved_axis));
+  TfLiteTensor* temp_sum;
+  TF_LITE_ENSURE_OK(context,
+                    GetTemporarySafe(context, node, /*index=*/2, &temp_sum));
   // Resize the output tensor if the output tensor is dynamic.
   if (IsDynamicTensor(op_context.output)) {
     TF_LITE_ENSURE_OK(context,
@@ -354,14 +387,19 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_OK(context, ResizeTempSum(context, &op_context, temp_sum));
   }
 
+  // Return early when input shape has zero dim.
+  const TfLiteTensor* input = op_context.input;
+  for (int i = 0; i < input->dims->size; ++i) {
+    if (input->dims->data[i] == 0) return kTfLiteOk;
+  }
+
   if (kernel_type == kGenericOptimized) {
     // Use optimized ops if available.
-    switch (op_context.input->type) {
+    switch (input->type) {
       case kTfLiteInt8: {
         tflite::MeanParams op_params;
         op_params.axis_count = num_axis;
         ResolveAxis(GetTensorData<int>(op_context.axis), num_axis, &op_params);
-        const TfLiteTensor* input = op_context.input;
         if (op_context.params->keep_dims && NumDimensions(input) == 4 &&
             op_params.axis_count == 2 &&
             ((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
@@ -381,7 +419,6 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
         tflite::MeanParams op_params;
         op_params.axis_count = num_axis;
         ResolveAxis(GetTensorData<int>(op_context.axis), num_axis, &op_params);
-        const TfLiteTensor* input = op_context.input;
         if (op_context.params->keep_dims && NumDimensions(input) == 4 &&
             op_params.axis_count == 2 &&
             ((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
@@ -490,30 +527,41 @@ TfLiteStatus EvalLogic(TfLiteContext* context, TfLiteNode* node,
                        OpContext* op_context, T init_value,
                        T reducer(const T current, const T in)) {
   int64_t num_axis = NumElements(op_context->axis);
-  TfLiteTensor* temp_index = GetTemporary(context, node, /*index=*/0);
-  TfLiteTensor* resolved_axis = GetTemporary(context, node, /*index=*/1);
+  TfLiteTensor* temp_index;
+  TF_LITE_ENSURE_OK(context,
+                    GetTemporarySafe(context, node, /*index=*/0, &temp_index));
+  TfLiteTensor* resolved_axis;
+  TF_LITE_ENSURE_OK(
+      context, GetTemporarySafe(context, node, /*index=*/1, &resolved_axis));
   // Resize the output tensor if the output tensor is dynamic.
   if (IsDynamicTensor(op_context->output)) {
     TF_LITE_ENSURE_OK(context,
                       ResizeTempAxis(context, op_context, resolved_axis));
     TF_LITE_ENSURE_OK(context, ResizeOutputTensor(context, op_context));
   }
-  if (op_context->input->type == kTfLiteUInt8 ||
-      op_context->input->type == kTfLiteInt8) {
-    TF_LITE_ENSURE_EQ(context, op_context->input->params.scale,
+
+  const TfLiteTensor* input = op_context->input;
+  // Return early when input shape has zero dim.
+  for (int i = 0; i < input->dims->size; ++i) {
+    if (input->dims->data[i] == 0) return kTfLiteOk;
+  }
+
+  if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8 ||
+      input->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, input->params.scale,
                       op_context->output->params.scale);
-    TF_LITE_ENSURE_EQ(context, op_context->input->params.zero_point,
+    TF_LITE_ENSURE_EQ(context, input->params.zero_point,
                       op_context->output->params.zero_point);
   }
   TF_LITE_ENSURE(
       context,
       reference_ops::ReduceGeneric<T>(
-          GetTensorData<T>(op_context->input), op_context->input->dims->data,
-          op_context->input->dims->size, GetTensorData<T>(op_context->output),
-          op_context->output->dims->data, op_context->output->dims->size,
-          GetTensorData<int>(op_context->axis), num_axis,
-          op_context->params->keep_dims, GetTensorData<int>(temp_index),
-          GetTensorData<int>(resolved_axis), init_value, reducer));
+          GetTensorData<T>(input), input->dims->data, input->dims->size,
+          GetTensorData<T>(op_context->output), op_context->output->dims->data,
+          op_context->output->dims->size, GetTensorData<int>(op_context->axis),
+          num_axis, op_context->params->keep_dims,
+          GetTensorData<int>(temp_index), GetTensorData<int>(resolved_axis),
+          init_value, reducer));
   return kTfLiteOk;
 }
 
@@ -599,6 +647,9 @@ TfLiteStatus EvalGeneric(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt8:
       return EvalType<int8_t>(context, node, &op_context, reduce_type);
       break;
+    case kTfLiteInt16:
+      return EvalType<int16_t>(context, node, &op_context, reduce_type);
+      break;
     case kTfLiteBool:
       return EvalType<bool>(context, node, &op_context, reduce_type);
       break;
@@ -621,9 +672,15 @@ TfLiteStatus EvalSum(TfLiteContext* context, TfLiteNode* node) {
   if (need_rescale) {
     // Rescaling 8bit reduce sum.
     int num_axis = static_cast<int>(NumElements(op_context.axis));
-    TfLiteTensor* temp_index = GetTemporary(context, node, /*index=*/0);
-    TfLiteTensor* resolved_axis = GetTemporary(context, node, /*index=*/1);
-    TfLiteTensor* temp_sum = GetTemporary(context, node, /*index=*/2);
+    TfLiteTensor* temp_index;
+    TF_LITE_ENSURE_OK(
+        context, GetTemporarySafe(context, node, /*index=*/0, &temp_index));
+    TfLiteTensor* resolved_axis;
+    TF_LITE_ENSURE_OK(
+        context, GetTemporarySafe(context, node, /*index=*/1, &resolved_axis));
+    TfLiteTensor* temp_sum;
+    TF_LITE_ENSURE_OK(context,
+                      GetTemporarySafe(context, node, /*index=*/2, &temp_sum));
     // Resize the output tensor if the output tensor is dynamic.
     if (IsDynamicTensor(op_context.output)) {
       TF_LITE_ENSURE_OK(context,
@@ -631,6 +688,11 @@ TfLiteStatus EvalSum(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_ENSURE_OK(context, ResizeOutputTensor(context, &op_context));
       TF_LITE_ENSURE_OK(context, ResizeTempSum(context, &op_context, temp_sum));
     }
+    // Return early when input shape has zero dim.
+    for (int i = 0; i < input->dims->size; ++i) {
+      if (input->dims->data[i] == 0) return kTfLiteOk;
+    }
+
     if (input->type == kTfLiteUInt8) {
       TF_LITE_ENSURE(
           context,

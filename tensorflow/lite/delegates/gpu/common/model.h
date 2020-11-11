@@ -257,7 +257,7 @@ absl::Status AddOutput(GraphFloat32* graph, const Node* from_node,
 absl::Status ConnectTwoNodes(GraphFloat32* graph, const Node* from_node,
                              const Node* to_node, Value** output);
 
-// @return true if all tensors have same batch value.
+// @return true if all tensors have same batch value or if model has no values.
 bool IsBatchMatchesForAllValues(const GraphFloat32& model);
 
 }  // namespace gpu

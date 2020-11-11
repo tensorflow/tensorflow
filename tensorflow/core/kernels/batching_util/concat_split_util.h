@@ -29,9 +29,6 @@ namespace concat_split_util {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
-#ifdef TENSORFLOW_USE_SYCL
-typedef Eigen::SyclDevice SYCLDevice;
-#endif  // TENSORFLOW_USE_SYCL
 
 // Concatenates 'inputs' into a single tensor along the zeroth dimension.
 // Requires that all elements of 'inputs' have element type T. Writes to

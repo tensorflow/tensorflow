@@ -387,6 +387,12 @@ TokKind HloLexer::LexNumberOrPattern() {
     return TokKind::kNegInf;
   }
 
+  static LazyRE2 neg_nan = {"-nan"};
+  if (RE2::Consume(&consumable, *neg_nan)) {
+    current_ptr_ = consumable.begin();
+    return TokKind::kNegNan;
+  }
+
   return TokKind::kError;
 }
 
@@ -502,6 +508,8 @@ string TokKindToString(TokKind kind) {
       return "kw_nan";
     case TokKind::kw_inf:
       return "kw_inf";
+    case TokKind::kNegNan:
+      return "kNegNan";
     case TokKind::kNegInf:
       return "kNegInf";
     case TokKind::kPrimitiveType:

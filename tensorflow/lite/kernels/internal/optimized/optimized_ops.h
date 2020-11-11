@@ -2536,9 +2536,9 @@ inline void MulSimpleBroadcast(int size, const ArithmeticParams& params,
     const int32 input2_val = params.input2_offset + input2_data[i];
     const int32 unclamped_result =
         params.output_offset +
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(input1_val * input2_val,
-                                                       params.output_multiplier,
-                                                       params.output_shift);
+        MultiplyByQuantizedMultiplier(input1_val * input2_val,
+                                      params.output_multiplier,
+                                      params.output_shift);
     const int32 clamped_output =
         std::min(params.quantized_activation_max,
                  std::max(params.quantized_activation_min, unclamped_result));
@@ -4307,30 +4307,36 @@ inline void LogSoftmax(const SoftmaxParams& params,
 // TODO(tflite): notes for optimization:
 // 1) See if e^ is also bottleneck in the reference fully-integer
 // version and apply lookup there and compare.
+template <typename T>
 inline void LogSoftmax(const SoftmaxParams& params, float input_scale,
-                       const RuntimeShape& input_shape, const uint8* input_data,
-                       const RuntimeShape& output_shape, uint8* output_data) {
-  ruy::profiler::ScopeLabel label("LogSoftmax/Uint8");
+                       const RuntimeShape& input_shape, const T* input_data,
+                       const RuntimeShape& output_shape, T* output_data) {
+  ruy::profiler::ScopeLabel label("LogSoftmax");
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int excluding_last_dim =
       MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
   const int last_dim =
       MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
 
-  const int32_t clamp_max = std::numeric_limits<uint8>::max();
-  const int32_t clamp_min = std::numeric_limits<uint8>::min();
+  const int32_t clamp_max = std::numeric_limits<T>::max();
+  const int32_t clamp_min = std::numeric_limits<T>::min();
+
+  int32_t zero_point_offset = 0;
+  if (std::is_same<T, int8_t>::value) {
+    zero_point_offset = 128;
+  }
   for (int i = 0; i < excluding_last_dim; ++i) {
-    uint8_t max_val = std::numeric_limits<uint8>::min();
+    T max_val = std::numeric_limits<T>::min();
     // Find max quantized value.
     for (int j = 0; j < last_dim; ++j) {
       max_val = std::max(max_val, input_data[j]);
     }
 
     float sum_exp = 0.0f;
-    const int32_t max_uint8 = std::numeric_limits<uint8_t>::max();
+    const int32_t max_q8 = std::numeric_limits<T>::max();
     // Offset into table to compute exp(scale*(x - xmax)) instead of
     // exp(scale*(x)) to prevent overflow.
-    const float* table_offset = &params.table[max_uint8 - max_val];
+    const float* table_offset = &params.table[max_q8 - max_val];
     // Calculate sum(exp(scale*(x - x_max))).
     for (int j = 0; j < last_dim; ++j) {
       sum_exp += table_offset[input_data[j]];
@@ -4340,7 +4346,8 @@ inline void LogSoftmax(const SoftmaxParams& params, float input_scale,
     // params.scale is the output scale.
     const float scale = input_scale / params.scale;
     const float precomputed =
-        (input_scale * max_val + log_sum_exp) / params.scale;
+        (input_scale * (max_val + zero_point_offset) + log_sum_exp) /
+        params.scale;
     for (int j = 0; j < last_dim; ++j) {
       // Equivalent to (input_scale * (input_data[j] - max_val) - log_sum_exp) /
       // output_scale.
@@ -4350,7 +4357,7 @@ inline void LogSoftmax(const SoftmaxParams& params, float input_scale,
       // Use std::rint over std::round (which is used in
       // FakeQuant) since it's multiple times faster on tested arm32.
       const int32_t prob_quantized = std::rint(log_prob) + params.zero_point;
-      output_data[j] = static_cast<uint8_t>(
+      output_data[j] = static_cast<T>(
           std::max(std::min(clamp_max, prob_quantized), clamp_min));
     }
     input_data += last_dim;
@@ -8170,6 +8177,126 @@ void CumSum(const T* input_data, const RuntimeShape& shape, int axis,
   const int dim = shape.DimensionsCount();
   TFLITE_DCHECK_GE(dim, 1);
   CumsumImpl<T>(input_data, shape, axis, exclusive, reverse, output_data);
+}
+
+inline void PReluScalarBroadcast(int size, const ArithmeticParams& params,
+                                 float alpha, const float* input_data,
+                                 float* output_data) {
+  ruy::profiler::ScopeLabel label("PreluScalarBroadcast/float");
+  int i = 0;
+
+#ifdef USE_NEON
+  const float32x4_t zero_dup = vdupq_n_f32(0.0f);
+  const float32x4_t alpha_dup = vdupq_n_f32(alpha);
+  for (; i <= size - 16; i += 16) {
+    const float32x4_t input1 = vld1q_f32(input_data + i);
+    const float32x4_t input2 = vld1q_f32(input_data + i + 4);
+    const float32x4_t input3 = vld1q_f32(input_data + i + 8);
+    const float32x4_t input4 = vld1q_f32(input_data + i + 12);
+
+    const float32x4_t temp1 = vmulq_f32(input1, alpha_dup);
+    const float32x4_t temp2 = vmulq_f32(input2, alpha_dup);
+    const float32x4_t temp3 = vmulq_f32(input3, alpha_dup);
+    const float32x4_t temp4 = vmulq_f32(input4, alpha_dup);
+
+    const uint32x4_t mask1 = vcgeq_f32(input1, zero_dup);
+    const uint32x4_t mask2 = vcgeq_f32(input2, zero_dup);
+    const uint32x4_t mask3 = vcgeq_f32(input3, zero_dup);
+    const uint32x4_t mask4 = vcgeq_f32(input4, zero_dup);
+
+    const float32x4_t result1 = vbslq_f32(mask1, input1, temp1);
+    vst1q_f32(output_data + i, result1);
+    const float32x4_t result2 = vbslq_f32(mask2, input2, temp2);
+    vst1q_f32(output_data + i + 4, result2);
+    const float32x4_t result3 = vbslq_f32(mask3, input3, temp3);
+    vst1q_f32(output_data + i + 8, result3);
+    const float32x4_t result4 = vbslq_f32(mask4, input4, temp4);
+    vst1q_f32(output_data + i + 12, result4);
+  }
+
+  for (; i <= size - 4; i += 4) {
+    const float32x4_t input = vld1q_f32(input_data + i);
+    const float32x4_t temp = vmulq_f32(input, alpha_dup);
+    const uint32x4_t mask = vcgeq_f32(input, zero_dup);
+    const float32x4_t result = vbslq_f32(mask, input, temp);
+    vst1q_f32(output_data + i, result);
+  }
+#endif  // USE_NEON
+  for (; i < size; ++i) {
+    const float input = input_data[i];
+    output_data[i] = input >= 0.f ? input : input * alpha;
+  }
+}
+
+inline void PReluElementWise(int flat_size, const ArithmeticParams& params,
+                             const float* alpha_data, const float* input_data,
+                             float* output_data) {
+  ruy::profiler::ScopeLabel label("PreluElementWise/float");
+
+  int i = 0;
+#ifdef USE_NEON
+  const float32x4_t zero_dup = vdupq_n_f32(0.0f);
+  for (; i <= flat_size - 16; i += 16) {
+    const float32x4_t input1 = vld1q_f32(input_data + i);
+    const float32x4_t alpha1 = vld1q_f32(alpha_data + i);
+    const float32x4_t input2 = vld1q_f32(input_data + i + 4);
+    const float32x4_t alpha2 = vld1q_f32(alpha_data + i + 4);
+    const float32x4_t input3 = vld1q_f32(input_data + i + 8);
+    const float32x4_t alpha3 = vld1q_f32(alpha_data + i + 8);
+    const float32x4_t input4 = vld1q_f32(input_data + i + 12);
+    const float32x4_t alpha4 = vld1q_f32(alpha_data + i + 12);
+
+    const float32x4_t temp1 = vmulq_f32(input1, alpha1);
+    const float32x4_t temp2 = vmulq_f32(input2, alpha2);
+    const float32x4_t temp3 = vmulq_f32(input3, alpha3);
+    const float32x4_t temp4 = vmulq_f32(input4, alpha4);
+
+    const uint32x4_t mask1 = vcgeq_f32(input1, zero_dup);
+    const uint32x4_t mask2 = vcgeq_f32(input2, zero_dup);
+    const uint32x4_t mask3 = vcgeq_f32(input3, zero_dup);
+    const uint32x4_t mask4 = vcgeq_f32(input4, zero_dup);
+
+    const float32x4_t result1 = vbslq_f32(mask1, input1, temp1);
+    vst1q_f32(output_data + i, result1);
+    const float32x4_t result2 = vbslq_f32(mask2, input2, temp2);
+    vst1q_f32(output_data + i + 4, result2);
+    const float32x4_t result3 = vbslq_f32(mask3, input3, temp3);
+    vst1q_f32(output_data + i + 8, result3);
+    const float32x4_t result4 = vbslq_f32(mask4, input4, temp4);
+    vst1q_f32(output_data + i + 12, result4);
+  }
+
+  for (; i <= flat_size - 4; i += 4) {
+    const float32x4_t input = vld1q_f32(input_data + i);
+    const float32x4_t alpha = vld1q_f32(alpha_data + i);
+
+    const float32x4_t temp = vmulq_f32(input, alpha);
+    const uint32x4_t mask = vcgeq_f32(input, zero_dup);
+    const float32x4_t result = vbslq_f32(mask, input, temp);
+    vst1q_f32(output_data + i, result);
+  }
+#endif  // USE_NEON
+  for (; i < flat_size; ++i) {
+    const float input = input_data[i];
+    const float alpha = alpha_data[i];
+    output_data[i] = input >= 0.f ? input : input * alpha;
+  }
+}
+
+inline void BroadcastPReluDispatch(
+    const ArithmeticParams& params, const RuntimeShape& input_shape,
+    const float* input_data, const RuntimeShape& alpha_shape,
+    const float* alpha_data, const RuntimeShape& output_shape,
+    float* output_data, float (*func)(float, float)) {
+  if (params.broadcast_category == BroadcastableOpCategory::kGenericBroadcast) {
+    return reference_ops::BroadcastBinaryFunction4DSlow<float, float, float>(
+        input_shape, input_data, alpha_shape, alpha_data, output_shape,
+        output_data, func);
+  }
+
+  BinaryBroadcastFiveFold(params, input_shape, input_data, alpha_shape,
+                          alpha_data, output_shape, output_data,
+                          PReluElementWise, PReluScalarBroadcast);
 }
 
 }  // namespace optimized_ops

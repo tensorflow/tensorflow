@@ -451,8 +451,10 @@ class RemapperFuseMatMulWithBiasTest : public RemapperTest {
     ASSERT_EQ(tensors_expected.size(), 1);
     auto tensors = EvaluateNodes(output, item.fetch, item.feed);
     ASSERT_EQ(tensors.size(), 1);
-    typedef typename EnumToDataType<DTYPE>::Type T;
-    test::ExpectTensorNear<T>(tensors[0], tensors_expected[0], 1e-6);
+    if (DTYPE == DT_BFLOAT16)
+      test::ExpectClose(tensors[0], tensors_expected[0], 1e-2, 1e-2);
+    else
+      test::ExpectClose(tensors[0], tensors_expected[0], 1e-6);
   }
 };
 
@@ -568,13 +570,10 @@ TEST_F(RemapperTest, FuseConv2DWithBiasAndActivation) {
         return ops::Identity(fetch, ops::Relu6(activate, bias_add));
       } else if (activation == "Elu") {
         return ops::Identity(fetch, ops::Elu(activate, bias_add));
-        // Disable LeakyRelu temporarily before MKL PR is merged.
-#ifndef INTEL_MKL
       } else if (activation == "LeakyRelu") {
         auto attr = ops::internal::LeakyRelu::Alpha(0.5);
         return ops::Identity(
             fetch, ops::internal::LeakyRelu(activate, bias_add, attr));
-#endif  // !INTEL_MKL
       }
 
       return ops::Identity(fetch, bias);
@@ -614,11 +613,9 @@ TEST_F(RemapperTest, FuseConv2DWithBiasAndActivation) {
         EXPECT_EQ(fused_ops[0], "BiasAdd");
         EXPECT_EQ(fused_ops[1], activation);
 
-#ifndef INTEL_MKL
         if (activation == "LeakyRelu") {
           EXPECT_EQ(node.attr().at("leakyrelu_alpha").f(), 0.5);
         }
-#endif  // !INTEL_MKL
         found++;
       }
     }
@@ -709,8 +706,10 @@ class RemapperFuseMatMulWithBiasAndActivationTest : public RemapperTest {
       ASSERT_EQ(tensors_expected.size(), 1);
       auto tensors = EvaluateNodes(output, item.fetch, item.feed);
       ASSERT_EQ(tensors.size(), 1);
-      typedef typename EnumToDataType<DTYPE>::Type T;
-      test::ExpectTensorNear<T>(tensors[0], tensors_expected[0], 1e-6);
+      if (DTYPE == DT_BFLOAT16)
+        test::ExpectClose(tensors[0], tensors_expected[0], 1e-2, 1e-2);
+      else
+        test::ExpectClose(tensors[0], tensors_expected[0], 1e-6);
     }
   }
 };
@@ -842,13 +841,10 @@ TEST_F(RemapperTest, FuseConv2DWithBatchNormAndActivation) {
         return ops::Identity(fetch, ops::Relu6(activate, batch_norm.y));
       } else if (activation == "Elu") {
         return ops::Identity(fetch, ops::Elu(activate, batch_norm.y));
-        // Disable LeakyRelu temporarily before MKL PR is merged.
-#ifndef INTEL_MKL
       } else if (activation == "LeakyRelu") {
         auto attr = ops::internal::LeakyRelu::Alpha(0.5);
         return ops::Identity(
             fetch, ops::internal::LeakyRelu(activate, batch_norm.y, attr));
-#endif  // !INTEL_MKL
       }
 
       return ops::Identity(fetch, batch_norm.y);
@@ -896,11 +892,9 @@ TEST_F(RemapperTest, FuseConv2DWithBatchNormAndActivation) {
         EXPECT_EQ(fused_ops[0], "FusedBatchNorm");
         EXPECT_EQ(fused_ops[1], activation);
 
-#ifndef INTEL_MKL
         if (activation == "LeakyRelu") {
           EXPECT_EQ(node.attr().at("leakyrelu_alpha").f(), 0.5);
         }
-#endif  // !INTEL_MKL
         found++;
       }
     }
@@ -984,7 +978,7 @@ TEST_F(RemapperTest, FuseConv2DWithSqueezeAndBias) {
   ASSERT_EQ(tensors.size(), 1);
   test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
 }
-#endif
+#endif  // !INTEL_MKL
 
 }  // namespace grappler
 }  // namespace tensorflow

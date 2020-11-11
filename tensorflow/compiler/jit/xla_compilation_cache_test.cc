@@ -78,7 +78,9 @@ TEST(XlaCompilationCacheTest, TestDisabledXlaCompilation) {
       absl::StrContains(status.error_message(), "XLA compilation disabled"));
 }
 
-static void BM_BuildSignature(int iters, int n_args) {
+void BM_BuildSignature(::testing::benchmark::State& state) {
+  const int n_args = state.range(0);
+
   NameAttrList fn;
   fn.set_name("afunction");
   for (int i = 0; i < n_args; i++) {
@@ -93,7 +95,7 @@ static void BM_BuildSignature(int iters, int n_args) {
     args[i].constant_value = Tensor(DT_INT32, {4, 0});
   }
 
-  while (--iters > 0) {
+  for (auto i : state) {
     xla::StatusOr<XlaCompilationCache::Signature> s =
         XlaCompilationCache::BuildSignature(fn, args);
     CHECK(s.ok());

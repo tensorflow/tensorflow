@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -36,6 +36,15 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/debug_log.h"
 
+#ifndef TF_LITE_STRIP_ERROR_STRINGS
 #include <cstdio>
+#endif
 
-extern "C" void DebugLog(const char* s) { fprintf(stderr, "%s", s); }
+extern "C" void DebugLog(const char* s) {
+#ifndef TF_LITE_STRIP_ERROR_STRINGS
+  // Reusing TF_LITE_STRIP_ERROR_STRINGS to disable DebugLog completely to get
+  // maximum reduction in binary size. This is because we have DebugLog calls
+  // via TF_LITE_CHECK that are not stubbed out by TF_LITE_REPORT_ERROR.
+  fprintf(stderr, "%s", s);
+#endif
+}

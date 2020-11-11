@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_REGISTER_H_
 #define TENSORFLOW_LITE_KERNELS_REGISTER_H_
 
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/model.h"  // Legacy.
 #include "tensorflow/lite/mutable_op_resolver.h"
 
 namespace tflite {

@@ -581,6 +581,8 @@ bool IsSymbolicGradient(const NodeDef& node) {
   return node.op() == "SymbolicGradient";
 }
 
+bool IsTanh(const NodeDef& node) { return node.op() == "Tanh"; }
+
 bool IsTanhGrad(const NodeDef& node) { return node.op() == "TanhGrad"; }
 
 bool IsTensorArray(const NodeDef& node) {

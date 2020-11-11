@@ -194,7 +194,7 @@ struct LaunchConvOp<GPUDevice, T, OpKernelContext> {
         functor::PadInput<GPUDevice, T, int, 5>()(
             ctx->eigen_device<GPUDevice>(), To32Bit(input_param.tensor<T, 5>()),
             {{0, 0, 0}}, {{planes_odd, rows_odd, cols_odd}},
-            To32Bit(transformed_input.tensor<T, 5>()), data_format);
+            To32Bit(transformed_input.tensor<T, 5>()), data_format, T{});
         input = transformed_input;
         in_rows = new_in_rows;
         in_cols = new_in_cols;
@@ -402,14 +402,11 @@ struct LaunchConvOp<GPUDevice, T, OpKernelContext> {
                 ? static_cast<se::ScratchAllocator*>(&rz_scratch_allocator)
                 : static_cast<se::ScratchAllocator*>(&scratch_allocator);
         ProfileResult profile_result;
-        bool cudnn_launch_status =
-            stream
-                ->ThenConvolveWithAlgorithm(
-                    input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
-                    output_desc, &output_ptr_rz, allocator_used,
-                    AlgorithmConfig(profile_algorithm), &profile_result)
-                .ok();
-        if (cudnn_launch_status) {
+        auto cudnn_launch_status = stream->ConvolveWithAlgorithm(
+            input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
+            output_desc, &output_ptr_rz, allocator_used,
+            AlgorithmConfig(profile_algorithm), &profile_result);
+        if (cudnn_launch_status.ok()) {
           if (profile_result.is_valid()) {
             results.emplace_back();
             auto& result = results.back();
@@ -459,16 +456,13 @@ struct LaunchConvOp<GPUDevice, T, OpKernelContext> {
         for (auto miopen_algorithm : algorithms) {
           auto profile_algorithm = miopen_algorithm.algorithm();
           ProfileResult profile_result;
-          bool miopen_launch_status =
-              stream
-                  ->ThenConvolveWithAlgorithm(
-                      input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
-                      output_desc, &output_ptr, &scratch_allocator,
-                      AlgorithmConfig(profile_algorithm,
-                                      miopen_algorithm.scratch_size()),
-                      &profile_result)
-                  .ok();
-          if (miopen_launch_status) {
+          auto miopen_launch_status = stream->ConvolveWithAlgorithm(
+              input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
+              output_desc, &output_ptr, &scratch_allocator,
+              AlgorithmConfig(profile_algorithm,
+                              miopen_algorithm.scratch_size()),
+              &profile_result);
+          if (miopen_launch_status.ok()) {
             if (profile_result.is_valid()) {
               results.emplace_back();
               auto& result = results.back();
@@ -493,18 +487,12 @@ struct LaunchConvOp<GPUDevice, T, OpKernelContext> {
     }
 
     DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
-    bool cudnn_launch_status =
-        stream
-            ->ThenConvolveWithAlgorithm(input_desc, input_ptr, filter_desc,
-                                        filter_ptr, conv_desc, output_desc,
-                                        &output_ptr, &scratch_allocator,
-                                        algorithm_config, nullptr)
-            .ok();
+    auto cudnn_launch_status = stream->ConvolveWithAlgorithm(
+        input_desc, input_ptr, filter_desc, filter_ptr, conv_desc, output_desc,
+        &output_ptr, &scratch_allocator, algorithm_config, nullptr);
 
-    if (!cudnn_launch_status) {
-      ctx->SetStatus(errors::Internal(
-          "cuDNN launch failure : input shape(", input.shape().DebugString(),
-          ") filter shape(", filter.shape().DebugString(), ")"));
+    if (!cudnn_launch_status.ok()) {
+      ctx->SetStatus(cudnn_launch_status);
     }
 
     if (data_format == FORMAT_NHWC && compute_data_format == FORMAT_NCHW) {
@@ -540,7 +528,7 @@ namespace functor {
       const std::array<int, 3>& padding_left,                         \
       const std::array<int, 3>& padding_right,                        \
       typename TTypes<T, 5, int>::Tensor out, TensorFormat format,    \
-      T padding_value);                                               \
+      const T& padding_value);                                        \
   template <>                                                         \
   void NHWCToNCHW<GPUDevice, T, 5>::operator()(                       \
       const GPUDevice& d, typename TTypes<T, 5>::ConstTensor in,      \

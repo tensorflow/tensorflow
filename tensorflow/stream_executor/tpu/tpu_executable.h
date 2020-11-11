@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/tpu/kernels/tpu_program_c_api.h"
+#include "tensorflow/core/tpu/tpu_ops_c_api.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/tpu/tpu_executable_interface.h"
 
@@ -45,6 +45,8 @@ class TpuExecutable : public TpuExecutableInterface {
   ~TpuExecutable() override = default;
 
   const XLA_TpuProgram* core_program() const { return core_program_; }
+
+  absl::string_view fingerprint() const override;
 
  private:
   Status LoadProgramAndEnqueueToStream(

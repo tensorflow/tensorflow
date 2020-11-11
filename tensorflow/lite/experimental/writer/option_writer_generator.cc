@@ -80,6 +80,8 @@ static const char* param_structs[] = {"TfLiteAddParams",
                                       "TfLiteUnpackParams",
                                       "TfLiteReverseSequenceParams",
                                       "TfLiteWhileParams",
+                                      "TfLiteCumsumParams",
+                                      "TfLiteCallOnceParams",
                                       nullptr};
 }  // namespace
 
@@ -118,7 +120,7 @@ class OpOptionData {
   const std::unordered_map<std::string, std::string>& op_to_option() {
     return op_to_option_;
   }
-  // Maps from option to to C struct i.e. 'AddOptions' -> 'TfLiteAddOptions'
+  // Maps from option to C struct i.e. 'AddOptions' -> 'TfLiteAddOptions'
   const std::unordered_map<std::string, std::string>& option_to_struct() {
     return option_to_struct_;
   }
@@ -163,8 +165,11 @@ class OpOptionData {
     op_to_option_["UNIDIRECTIONAL_SEQUENCE_RNN"] = "SequenceRNNOptions";
     op_to_option_["MAXIMUM"] = "MaximumMinimumOptions";
     op_to_option_["MINIMUM"] = "MaximumMinimumOptions";
+
+    // These operators are not real ones.
     op_to_option_["CUSTOM"] = "";    // TODO(aselle): maybe something else.
     op_to_option_["DELEGATE"] = "";  // TODO(aselle): maybe something else.
+    op_to_option_["PLACEHOLDER_FOR_GREATER_OP_CODES"] = "";
 
     // Manually specified mappings between ops to "none" options -- these are
     // ops without a corresponding Options message in schema as yet. If these

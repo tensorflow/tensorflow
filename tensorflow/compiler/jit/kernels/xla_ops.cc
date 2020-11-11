@@ -206,8 +206,9 @@ static Status CompileToLocalExecutable(
                                           may_alias_resource_update;
 
   xla::StatusOr<std::vector<XlaCompiler::Argument>> args =
-      XlaComputationLaunchContext::BuildXlaCompilerArguments(constants, inputs,
-                                                             variable_infos);
+      XlaComputationLaunchContext::BuildXlaCompilerArguments(
+          constants, inputs, variable_infos,
+          static_cast<Device*>(ctx->device()));
   TF_RETURN_IF_ERROR(args.status());
   return cache->Compile(options, function, *args, compile_options,
                         lazy ? XlaCompilationCache::CompileMode::kLazy
@@ -246,8 +247,6 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   se::Stream* stream =
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
 
-  VLOG(1) << "Executing XLA Computation...";
-
   absl::optional<se::TfAllocatorAdapter> tf_allocator_adapter;
   se::DeviceMemoryAllocator* allocator = GetAllocator(
       &tf_allocator_adapter, ctx->device(),
@@ -274,18 +273,6 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   run_options.set_allocator(allocator);
   run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());
   run_options.set_rng_seed(GetXLARandomSeed());
-  xla::ThenExecuteFunction then_execute;
-  if (ctx->op_device_context()) {
-    then_execute = [&](se::Stream* stream, std::function<void()> fn) {
-      Status status = ctx->op_device_context()->ThenExecute(
-          down_cast<Device*>(ctx->device()), stream, std::move(fn));
-      if (!status.ok()) {
-        // This should never happen.
-        LOG(ERROR) << "ThenExecute failed " << status;
-      }
-    };
-    run_options.set_then_execute_function(&then_execute);
-  }
   Env* env = Env::Default();
   auto start_time = env->NowMicros();
 
@@ -522,18 +509,6 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
   run_options.set_allocator(allocator);
   run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());
   run_options.set_rng_seed(GetXLARandomSeed());
-  xla::ThenExecuteFunction then_execute;
-  if (ctx->op_device_context()) {
-    then_execute = [&](se::Stream* stream, std::function<void()> fn) {
-      Status status = ctx->op_device_context()->ThenExecute(
-          down_cast<Device*>(ctx->device()), stream, std::move(fn));
-      if (!status.ok()) {
-        // This should never happen.
-        LOG(ERROR) << "ThenExecute failed " << status;
-      }
-    };
-    run_options.set_then_execute_function(&then_execute);
-  }
   Env* env = Env::Default();
   auto start_time = env->NowMicros();
 

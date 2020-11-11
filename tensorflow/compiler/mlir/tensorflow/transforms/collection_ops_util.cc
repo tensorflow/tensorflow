@@ -181,14 +181,14 @@ llvm::Optional<RankedTensorType> GetElementTypeFromAccess(
     llvm::function_ref<llvm::Optional<Type>(Operation*)> infer_from_op) {
   for (auto& use : collection.getUses()) {
     if (auto while_op = llvm::dyn_cast<TF::WhileOp>(use.getOwner())) {
-      auto body = while_op.body_func();
+      auto body = while_op.body_function();
       assert(body);
       auto type_from_body = GetElementTypeFromAccess(
           body.getArgument(use.getOperandNumber()), module, infer_from_op);
       if (type_from_body.hasValue()) return type_from_body;
     } else if (auto if_op = llvm::dyn_cast<TF::IfOp>(use.getOwner())) {
-      auto then_branch = if_op.then_func();
-      auto else_branch = if_op.else_func();
+      auto then_branch = if_op.then_function();
+      auto else_branch = if_op.else_function();
       assert(then_branch && else_branch);
       auto type_from_then = GetElementTypeFromAccess(
           then_branch.getArgument(use.getOperandNumber() - 1), module,

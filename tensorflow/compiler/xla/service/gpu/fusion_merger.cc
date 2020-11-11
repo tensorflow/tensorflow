@@ -201,7 +201,10 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
   // Merging into all users enables the removal of 'fusion' from the
   // computation.
   if (!absl::c_all_of(fusion->users(), [&](const HloInstruction* user) {
-        return IsProducerConsumerFusible(*fusion, *user);
+        return IsProducerConsumerFusible(*fusion, *user) &&
+               // Do not fuse into bitcast ops, which are no-ops and do not
+               // generate any GPU code.
+               user->opcode() != HloOpcode::kBitcast;
       })) {
     VLOG(3) << "Not merging " << fusion->name()
             << ": Some of its users are not loop/input fusion kernels.";

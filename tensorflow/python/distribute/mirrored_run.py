@@ -246,6 +246,9 @@ class _MirroredReplicaThread(threading.Thread):
     self.distribution = dist
     self.devices = devices
     self.replica_id = replica_id
+    self.replica_id_in_sync_group = (
+        dist.extended._get_replica_id_in_sync_group(replica_id))  # pylint: disable=protected-access
+
     self.variable_creator_fn = variable_creator_fn
     # State needed to run and return the results of `fn`.
     self.main_fn = fn
@@ -310,7 +313,8 @@ class _MirroredReplicaThread(threading.Thread):
           _enter_graph(self.graph, self.in_eager,
                        self._variable_creator_stack), \
           context.device_policy(self.context_device_policy), \
-          _MirroredReplicaContext(self.distribution, self.replica_id), \
+          _MirroredReplicaContext(self.distribution,
+                                  self.replica_id_in_sync_group), \
           ops.device(self.devices[self.replica_id]), \
           ops.name_scope(self._name_scope), \
           variable_scope.variable_scope(

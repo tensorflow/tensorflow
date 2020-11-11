@@ -41,6 +41,7 @@ class GrpcWorkerImpl : public WorkerService::Service {
                         method##Response* response) override;
   HANDLER(ProcessTask);
   HANDLER(GetElement);
+  HANDLER(GetWorkerTasks);
 #undef HANDLER
 
  private:

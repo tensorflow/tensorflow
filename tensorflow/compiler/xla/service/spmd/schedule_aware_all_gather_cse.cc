@@ -88,7 +88,7 @@ StatusOr<bool> RunOnComputation(HloComputation* comp, bool for_replicas,
 
     auto& earlier_ags = operand_to_ag[ag->operand(0)];
     bool found = false;
-    int64 lowest_user_h = lowest_user_height(ag);
+    int64 ag_height = height[ag];
     for (auto& eag : earlier_ags) {
       auto old_channel_id = ag->channel_id();
       if (eag->channel_id() && ag->channel_id()) {
@@ -100,7 +100,7 @@ StatusOr<bool> RunOnComputation(HloComputation* comp, bool for_replicas,
       }
       found = true;
       ag->set_channel_id(old_channel_id);
-      if (lowest_user_height(eag) > lowest_user_h + distance_threshold) {
+      if (lowest_user_height(eag) > ag_height + distance_threshold) {
         eag = ag;
         continue;
       }

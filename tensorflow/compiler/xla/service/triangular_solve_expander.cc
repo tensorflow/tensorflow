@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
@@ -43,6 +44,8 @@ XlaOp DiagonalBlocks(XlaOp a, int64 block_size) {
     int ndims = shape.rank();
     int64 n = ShapeUtil::GetDimension(shape, -1);
     int64 num_blocks = n / block_size;
+    absl::Span<int64 const> batch_dims = absl::MakeConstSpan(
+        shape.dimensions().begin(), shape.dimensions().begin() + (ndims - 2));
 
     XlaOp diag_blocks;
 
@@ -100,10 +103,10 @@ XlaOp DiagonalBlocks(XlaOp a, int64 block_size) {
 
       auto eye =
           IdentityMatrix(builder, shape.element_type(), padding, padding);
-      config = MakeNoPaddingConfig(ndims);
-      config.mutable_dimensions(ndims - 2)->set_edge_padding_low(n %
-                                                                 block_size);
+      config = MakeNoPaddingConfig(2);
+      config.mutable_dimensions(0)->set_edge_padding_low(n % block_size);
       eye = Pad(eye, Zero(builder, shape.element_type()), config);
+      eye = Broadcast(eye, batch_dims);
       last_blocks = ConcatInDim(builder, {last_blocks, eye}, ndims - 1);
 
       // Add a singleton dimension
@@ -366,6 +369,107 @@ XlaOp TriangularSolveExpander::InvertDiagonalBlocks(
   });
 }
 
+XlaOp TriangularSolveExpander::SolveByInvertingDiagonalBlocks(
+    XlaOp a, XlaOp b, bool left_side, bool lower, bool transpose_a,
+    bool conjugate_a, bool unit_diagonal,
+    PrecisionConfig::Precision precision) {
+  XlaBuilder* builder = a.builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
+    const int64 ndims = a_shape.rank();
+    int64 k = ShapeUtil::GetDimension(a_shape, -1);
+
+    // TODO(phawkins): consider pushing triangle masking into
+    // InvertDiagonalBlocks.
+    if (unit_diagonal) {
+      // Mask everything but the subdiagonal/superdiagonal elements.
+      a = lower ? Select(TriangleMask(a, -1), a, ZerosLike(a))
+                : Select(TriangleMask(a, 0), ZerosLike(a), a);
+      a = xla::Add(a, IdentityMatrix(builder, a_shape.element_type(), k, k),
+                   /*broadcast_dimensions=*/{ndims - 2, ndims - 1});
+    } else {
+      // Mask off the ignored elements of the triangular matrix a.
+      a = Triangle(a, lower);
+    }
+
+    // We find the diagonal blocks of the coefficient matrix
+    int64 block_size = std::min(block_size_, k);
+    auto diag_blocks = DiagonalBlocks(a, block_size);
+
+    // We invert these blocks in parallel using batched matrix-vector products
+    auto inv_diag_blocks = InvertDiagonalBlocks(diag_blocks, lower, precision);
+
+    // We now find the solution using GEMMs
+    return SolveWithInvertedDiagonalBlocks(a, b, inv_diag_blocks, left_side,
+                                           lower, transpose_a, conjugate_a,
+                                           precision);
+  });
+}
+
+// def trsm_left_lower_leftlooking(a, b):
+//   n = a.shape[-1]
+//   assert a.shape == (n, n)
+//   b = b.copy()
+//   for j in range(n):
+//     b[j, :] = (b[j, :] - np.dot(a[j, :j], b[:j, :])) / a[j, j]
+//   return b
+XlaOp TriangularSolveExpander::SolveDirectly(
+    XlaOp a, XlaOp b, bool left_side, bool lower, bool transpose_a,
+    bool conjugate_a, bool unit_diagonal,
+    PrecisionConfig::Precision precision) {
+  XlaBuilder* builder = a.builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
+    TF_ASSIGN_OR_RETURN(Shape b_shape, builder->GetShape(b));
+    int64 m = ShapeUtil::GetDimension(b_shape, -2);
+    int64 n = ShapeUtil::GetDimension(b_shape, -1);
+    const int64 a_size = ShapeUtil::GetDimension(a_shape, -1);
+    a = MaybeConjugate(a, conjugate_a);
+    bool backwards = transpose_a ^ lower ^ !left_side;
+    for (int64 i = 0; i < a_size; ++i) {
+      int64 j = backwards ? i : (a_size - i - 1);
+      std::vector<int64> b_row_start, b_row_end;
+      if (left_side) {
+        b_row_start = {j, 0};
+        b_row_end = {j + 1, n};
+      } else {
+        b_row_start = {0, j};
+        b_row_end = {m, j + 1};
+      }
+      auto b_row = SliceInMinorDims(b, b_row_start, b_row_end);
+
+      std::vector<int64> a_start = {j, backwards ? 0 : (j + 1)};
+      std::vector<int64> a_end = {j + 1, backwards ? j : a_size};
+      if (transpose_a ^ !left_side) {
+        std::swap(a_start[0], a_start[1]);
+        std::swap(a_end[0], a_end[1]);
+      }
+      auto a_chunk = SliceInMinorDims(a, a_start, a_end);
+      if (left_side) {
+        bool which = transpose_a ^ lower;
+        auto b_chunk =
+            SliceInMinorDims(b, {which ? 0 : (j + 1), 0}, {which ? j : m, n});
+        b_row = b_row - BatchDot(a_chunk, /*transpose_x=*/transpose_a, b_chunk,
+                                 /*transpose_y=*/false, precision);
+      } else {
+        bool which = transpose_a ^ !lower;
+        auto b_chunk =
+            SliceInMinorDims(b, {0, which ? 0 : (j + 1)}, {m, which ? j : n});
+        b_row = b_row - BatchDot(b_chunk, /*transpose_x=*/false, a_chunk,
+                                 /*transpose_y=*/transpose_a, precision);
+      }
+      if (!unit_diagonal) {
+        auto a_diag = SliceInMinorDims(a, {j, j}, {j + 1, j + 1});
+        b_row = b_row / a_diag;
+      }
+
+      b = UpdateSliceInMinorDims(b, b_row, b_row_start);
+    }
+
+    return b;
+  });
+}
+
 XlaOp TriangularSolveExpander::BuildTriangularSolve(
     XlaOp a, XlaOp b, bool left_side, bool lower, bool transpose_a,
     bool conjugate_a, bool unit_diagonal, int64 block_size,
@@ -388,6 +492,7 @@ XlaOp TriangularSolveExpander::BuildTriangularSolve(
     }
     // The batch dimensions must be equal.
     std::vector<int64> batch_dimensions;
+    int64 batch = 1;
     for (int i = 0; i < ndims - 2; ++i) {
       int64 a_size = a_shape.dimensions(i);
       int64 b_size = b_shape.dimensions(i);
@@ -398,6 +503,7 @@ XlaOp TriangularSolveExpander::BuildTriangularSolve(
             ShapeUtil::HumanString(a_shape), ShapeUtil::HumanString(b_shape));
       }
       batch_dimensions.push_back(a_size);
+      batch *= a_size;
     }
 
     if (ShapeUtil::GetDimension(a_shape, -1) !=
@@ -416,14 +522,7 @@ XlaOp TriangularSolveExpander::BuildTriangularSolve(
           ShapeUtil::HumanString(a_shape), ShapeUtil::HumanString(b_shape));
     }
 
-    if (block_size < 1) {
-      return InvalidArgument(
-          "block_size argument to TriangularSolve must be >= 1; got %d",
-          block_size);
-    }
-
-    block_size = std::max(
-        int64{1}, std::min(block_size, ShapeUtil::GetDimension(a_shape, -1)));
+    int64 a_size = ShapeUtil::GetDimension(a_shape, -1);
 
     if (ShapeUtil::IsZeroElementArray(b_shape)) {
       // The output has the same shape as 'b', and since the output has zero
@@ -432,41 +531,27 @@ XlaOp TriangularSolveExpander::BuildTriangularSolve(
     }
 
     // Degenerate case: 1x1 matrices.
-    if (ShapeUtil::GetDimension(a_shape, -1) == 1) {
+    if (a_size == 1) {
       return unit_diagonal ? b : Div(b, MaybeConjugate(a, conjugate_a));
     }
 
-    // TODO(phawkins): consider pushing triangle masking into
-    // InvertDiagonalBlocks.
-    if (unit_diagonal) {
-      // Mask everything but the subdiagonal/superdiagonal elements.
-      a = lower ? Select(TriangleMask(a, -1), a, ZerosLike(a))
-                : Select(TriangleMask(a, 0), ZerosLike(a), a);
-      int64 k = ShapeUtil::GetDimension(a_shape, -1);
-      a = xla::Add(a, IdentityMatrix(builder, a_shape.element_type(), k, k),
-                   /*broadcast_dimensions=*/{ndims - 2, ndims - 1});
+    // Prefer the direct implementation whenever there is a nontrivial batch
+    // dimension and the matrix is very small.
+    if (batch > block_size_ / 16 && a_size < block_size_ / 4) {
+      return SolveDirectly(a, b, left_side, lower, transpose_a, conjugate_a,
+                           unit_diagonal, precision);
     } else {
-      // Mask off the ignored elements of the triangular matrix a.
-      a = Triangle(a, lower);
+      return SolveByInvertingDiagonalBlocks(a, b, left_side, lower, transpose_a,
+                                            conjugate_a, unit_diagonal,
+                                            precision);
     }
-
-    // We find the diagonal blocks of the coefficient matrix
-    auto diag_blocks = DiagonalBlocks(a, block_size);
-
-    // We invert these blocks in parallel using batched matrix-vector products
-    auto inv_diag_blocks = InvertDiagonalBlocks(diag_blocks, lower, precision);
-
-    // We now find the solution using GEMMs
-    auto x =
-        SolveWithInvertedDiagonalBlocks(a, b, inv_diag_blocks, left_side, lower,
-                                        transpose_a, conjugate_a, precision);
-
-    return x;
   });
 }
 
 TriangularSolveExpander::TriangularSolveExpander(int64 block_size)
-    : block_size_(block_size) {}
+    : block_size_(block_size) {
+  CHECK_GE(block_size_, 1);
+}
 
 bool TriangularSolveExpander::InstructionMatchesPattern(
     HloInstruction* instruction) {

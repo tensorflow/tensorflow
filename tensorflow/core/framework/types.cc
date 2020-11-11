@@ -38,7 +38,6 @@ std::ostream& operator<<(std::ostream& os, const DeviceType& d) {
 const char* const DEVICE_DEFAULT = "DEFAULT";
 const char* const DEVICE_CPU = "CPU";
 const char* const DEVICE_GPU = "GPU";
-const char* const DEVICE_SYCL = "SYCL";
 const char* const DEVICE_TPU_SYSTEM = "TPU_SYSTEM";
 
 const std::string DeviceName<Eigen::ThreadPoolDevice>::value = DEVICE_CPU;
@@ -46,9 +45,6 @@ const std::string DeviceName<Eigen::ThreadPoolDevice>::value = DEVICE_CPU;
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 const std::string DeviceName<Eigen::GpuDevice>::value = DEVICE_GPU;
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#ifdef TENSORFLOW_USE_SYCL
-const std::string DeviceName<Eigen::SyclDevice>::value = DEVICE_SYCL;
-#endif  // TENSORFLOW_USE_SYCL
 
 namespace {
 string DataTypeStringInternal(DataType dtype) {

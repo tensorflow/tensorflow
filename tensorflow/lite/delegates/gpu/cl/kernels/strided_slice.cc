@@ -154,17 +154,17 @@ std::string StridedSlice::GetStridedSliceCode(const OperationDef& op_def,
   return c;
 }
 
-absl::Status StridedSlice::BindArguments() {
+absl::Status StridedSlice::BindArguments(ArgumentsBinder* args) {
   int4 offset = GetOffset(attributes_, src_[0]->Width(), src_[0]->Height(),
                           src_[0]->Channels(), src_[0]->Batch());
-  RETURN_IF_ERROR(args_.SetInt("offset_x", offset.x));
-  RETURN_IF_ERROR(args_.SetInt("offset_y", offset.y));
-  RETURN_IF_ERROR(args_.SetInt("offset_z", offset.z));
-  RETURN_IF_ERROR(args_.SetInt("offset_b", offset.w));
-  RETURN_IF_ERROR(args_.SetInt("stride_x", attributes_.strides.w));
-  RETURN_IF_ERROR(args_.SetInt("stride_y", attributes_.strides.h));
-  RETURN_IF_ERROR(args_.SetInt("stride_z", attributes_.strides.c));
-  RETURN_IF_ERROR(args_.SetInt("stride_b", attributes_.strides.b));
+  RETURN_IF_ERROR(args->SetInt("offset_x", offset.x));
+  RETURN_IF_ERROR(args->SetInt("offset_y", offset.y));
+  RETURN_IF_ERROR(args->SetInt("offset_z", offset.z));
+  RETURN_IF_ERROR(args->SetInt("offset_b", offset.w));
+  RETURN_IF_ERROR(args->SetInt("stride_x", attributes_.strides.w));
+  RETURN_IF_ERROR(args->SetInt("stride_y", attributes_.strides.h));
+  RETURN_IF_ERROR(args->SetInt("stride_z", attributes_.strides.c));
+  RETURN_IF_ERROR(args->SetInt("stride_b", attributes_.strides.b));
   return absl::OkStatus();
 }
 

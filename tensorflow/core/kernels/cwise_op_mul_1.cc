@@ -49,14 +49,4 @@ REGISTER5(BinaryOp, GPU, "MulNoNan", functor::mul_no_nan, Eigen::half, float,
           double, complex64, complex128);
 #endif
 
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER3(BinaryOp, SYCL, "Mul", functor::mul, float, double, uint8);
-REGISTER_KERNEL_BUILDER(Name("Mul")
-                            .Device(DEVICE_SYCL)
-                            .HostMemory("x")
-                            .HostMemory("y")
-                            .HostMemory("z")
-                            .TypeConstraint<int32>("T"),
-                        BinaryOp<CPUDevice, functor::mul<int32>>);
-#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

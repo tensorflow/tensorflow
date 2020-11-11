@@ -17,58 +17,50 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_STATEFUL_RANDOM_OPS_CPU_GPU_H_
 
 #include "tensorflow/core/framework/resource_var.h"
+#include "tensorflow/core/kernels/random_ops_util.h"
 #include "tensorflow/core/kernels/stateful_random_ops.h"
 
 namespace tensorflow {
 
-// The following 5 functions are made templates to avoid duplicate symbols when
-// linking.
-
-// The following 2 functions use the contract "lower 32 bits for the first
-// uint32, higher 32 bits for the second". Note that this is endian-neutral,
-// unlike a direct memory copy `memcpy(output, &input, 8)`.
-PHILOX_DEVICE_INLINE void Int64ToUint32s(int64 input, uint32* output1,
-                                         uint32* output2) {
-  auto u64 = static_cast<uint64>(input);
-  *output1 = static_cast<uint32>(u64);
-  *output2 = static_cast<uint32>(u64 >> 32);
-}
-
-PHILOX_DEVICE_INLINE int64 Uint32sToInt64(uint32 input1, uint32 input2) {
-  auto u64_1 = static_cast<uint64>(input1);
-  auto u64_2 = static_cast<uint64>(input2);
-  return static_cast<int64>(u64_1 | (u64_2 << 32));
-}
-
 PHILOX_DEVICE_INLINE PhiloxRandom
 GetPhiloxRandomFromMem(StateElementType const* ptr) {
-  PhiloxRandom::ResultType counter;
-  PhiloxRandom::Key key;
-  Int64ToUint32s(ptr[0], &counter[0], &counter[1]);
-  Int64ToUint32s(ptr[1], &counter[2], &counter[3]);
-  Int64ToUint32s(ptr[2], &key[0], &key[1]);
-  return PhiloxRandom(counter, key);
+  auto ptr_ = reinterpret_cast<uint64 const*>(ptr);
+  return GetPhiloxRandomFromCounterKeyMem(ptr_, ptr_ + 2);
 }
 
 PHILOX_DEVICE_INLINE void WritePhiloxRandomToMem(PhiloxRandom const& philox,
                                                  StateElementType* ptr) {
-  PhiloxRandom::ResultType const& counter = philox.counter();
-  PhiloxRandom::Key const& key = philox.key();
-  ptr[0] = Uint32sToInt64(counter[0], counter[1]);
-  ptr[1] = Uint32sToInt64(counter[2], counter[3]);
-  ptr[2] = Uint32sToInt64(key[0], key[1]);
+  auto ptr_ = reinterpret_cast<uint64*>(ptr);
+  WriteCounterToMem(philox.counter(), ptr_);
+  WriteKeyToMem(philox.key(), ptr_ + 2);
+}
+
+PHILOX_DEVICE_INLINE PhiloxRandom SkipPhiloxRandom(PhiloxRandom const& philox,
+                                                   uint64 output_size) {
+  auto new_philox = philox;
+  // Multiplier 256 is the same as in FillPhiloxRandomTask; do not change it
+  // just here.
+  auto delta = output_size * 256;
+  new_philox.Skip(delta);  // do the actual increasing
+  return new_philox;
 }
 
 PHILOX_DEVICE_INLINE void UpdateMemWithPhiloxRandom(PhiloxRandom const& philox,
-                                                    int64 output_size,
+                                                    uint64 output_size,
                                                     StateElementType* ptr) {
-  auto new_philox = philox;
-  // Multiplier 256 is the same as in `FillPhiloxRandomTask`; do not change
-  // it just here.
-  auto delta = output_size * 256;
-  new_philox.Skip(delta);  // do the actual increasing
+  auto new_philox = SkipPhiloxRandom(philox, output_size);
   WritePhiloxRandomToMem(new_philox, ptr);
 }
+
+PHILOX_DEVICE_INLINE void UpdateCounterMemWithPhiloxRandom(
+    PhiloxRandom::ResultType const& counter, uint64 output_size,
+    StateElementType* ptr) {
+  auto philox = PhiloxRandom(counter, PhiloxRandom::Key() /*dummy*/);
+  auto new_philox = SkipPhiloxRandom(philox, output_size);
+  WriteCounterToMem(new_philox.counter(), reinterpret_cast<uint64*>(ptr));
+}
+
+namespace functor {
 
 // A per-device helper function that does the actual work for
 // `UpdateVariableAndFill`.
@@ -79,6 +71,8 @@ struct UpdateVariableAndFill_Philox;
 
 template <typename Device>
 struct RngSkip_Philox;
+
+}  // end namespace functor
 
 using CPUDevice = Eigen::ThreadPoolDevice;
 
@@ -93,6 +87,8 @@ struct UpdateVariableAndFill_Philox_Arg {
 
 using GPUDevice = Eigen::GpuDevice;
 
+namespace functor {
+
 // Declares the partially GPU-specialized functor structs.
 // must be kept at <=6 arguments because of a gcc/clang ABI incompatibility bug
 template <typename Distribution>
@@ -104,8 +100,11 @@ struct UpdateVariableAndFill_Philox<GPUDevice, Distribution> {
 
 template <>
 struct RngSkip_Philox<GPUDevice> {
-  void operator()(const GPUDevice& device, int64 delta, Tensor* state_tensor);
+  void operator()(const GPUDevice& device, const StateElementType* in_data,
+                  uint64 delta, StateElementType* out_data);
 };
+
+}  // end namespace functor
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

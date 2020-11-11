@@ -56,7 +56,7 @@ generate_person_detection_int8_make_project
 ```
 
 Note that `TAGS=reduce_codesize` applies example specific changes of code to
-reduce total size of application. It can be ommited.
+reduce total size of application. It can be omitted.
 
 ### Build and Run Example
 
@@ -275,7 +275,7 @@ greyscale, and 18.6 seconds to run inference.
 
 The following instructions will help you build and deploy this example to
 [HIMAX WE1 EVB](https://github.com/HimaxWiseEyePlus/bsp_tflu/tree/master/HIMAX_WE1_EVB_board_brief)
-board. To undstand more about using this board, please check
+board. To understand more about using this board, please check
 [HIMAX WE1 EVB user guide](https://github.com/HimaxWiseEyePlus/bsp_tflu/tree/master/HIMAX_WE1_EVB_user_guide).
 
 ### Initial Setup
@@ -351,6 +351,13 @@ Following the Steps to run person detection example at HIMAX WE1 EVB platform.
 
     ```
     cd ../../../../../downloads/himax_we1_sdk/image_gen_linux_v3/
+    ```
+
+    make sure this tool directory is in $PATH. You can permanently set it to
+    PATH by
+
+    ```
+    export PATH=$PATH:$(pwd)
     ```
 
 5.  run image generate tool, generate flash image file.

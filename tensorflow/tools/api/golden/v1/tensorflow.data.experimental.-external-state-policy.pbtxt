@@ -1,0 +1,16 @@
+path: "tensorflow.data.experimental.ExternalStatePolicy"
+tf_class {
+  is_instance: "<enum \'ExternalStatePolicy\'>"
+  member {
+    name: "FAIL"
+    mtype: "<enum \'ExternalStatePolicy\'>"
+  }
+  member {
+    name: "IGNORE"
+    mtype: "<enum \'ExternalStatePolicy\'>"
+  }
+  member {
+    name: "WARN"
+    mtype: "<enum \'ExternalStatePolicy\'>"
+  }
+}

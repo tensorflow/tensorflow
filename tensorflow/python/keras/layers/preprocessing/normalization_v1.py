@@ -29,4 +29,5 @@ class Normalization(normalization.Normalization, CombinerPreprocessingLayer):
 
   def __init__(self, axis=-1, dtype=None, **kwargs):
     super(Normalization, self).__init__(axis, dtype, **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell('V1').set('Normalization')
+    base_preprocessing_layer.keras_kpl_gauge.get_cell(
+        'Normalization v1').set(True)

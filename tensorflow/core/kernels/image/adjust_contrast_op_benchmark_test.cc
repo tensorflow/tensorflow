@@ -60,8 +60,5 @@ BM_AdjustContrastDev(cpu, 1, 299, 299);
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 BM_AdjustContrastDev(gpu, 32, 299, 299);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#ifdef TENSORFLOW_USE_SYCL
-BM_AdjustContrastDev(sycl, 32, 299, 299);
-#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

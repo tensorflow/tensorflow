@@ -36,6 +36,9 @@ Status DispatcherState::Apply(const Update& update) {
     case Update::kCreateJob:
       CreateJob(update.create_job());
       break;
+    case Update::kProduceSplit:
+      ProduceSplit(update.produce_split());
+      break;
     case Update::kAcquireJobClient:
       AcquireJobClient(update.acquire_job_client());
       break;
@@ -72,7 +75,8 @@ void DispatcherState::RegisterWorker(
   std::string address = register_worker.worker_address();
   DCHECK(!workers_.contains(address));
   workers_[address] = std::make_shared<Worker>(address);
-  tasks_by_worker_[address] = std::vector<std::shared_ptr<Task>>();
+  tasks_by_worker_[address] =
+      absl::flat_hash_map<int64, std::shared_ptr<Task>>();
 }
 
 void DispatcherState::CreateJob(const CreateJobUpdate& create_job) {
@@ -93,6 +97,19 @@ void DispatcherState::CreateJob(const CreateJobUpdate& create_job) {
     named_jobs_[named_job_key.value()] = job;
   }
   next_available_job_id_ = std::max(next_available_job_id_, job_id + 1);
+}
+
+void DispatcherState::ProduceSplit(const ProduceSplitUpdate& produce_split) {
+  std::shared_ptr<Job> job = jobs_[produce_split.job_id()];
+  DCHECK(job->distributed_epoch_state.has_value());
+  DistributedEpochState& state = job->distributed_epoch_state.value();
+  DCHECK_EQ(produce_split.repetition(), state.repetition);
+  if (produce_split.finished()) {
+    state.repetition++;
+    state.split_provider_index = 0;
+    return;
+  }
+  state.split_provider_index++;
 }
 
 void DispatcherState::AcquireJobClient(
@@ -124,9 +141,10 @@ void DispatcherState::CreateTask(const CreateTaskUpdate& create_task) {
   DCHECK_EQ(task, nullptr);
   task = std::make_shared<Task>(task_id, create_task.job_id(),
                                 create_task.dataset_id(),
+                                ProcessingMode(create_task.processing_mode()),
                                 create_task.worker_address());
   tasks_by_job_[create_task.job_id()].push_back(task);
-  tasks_by_worker_[create_task.worker_address()].push_back(task);
+  tasks_by_worker_[create_task.worker_address()][task->task_id] = task;
   next_available_task_id_ = std::max(next_available_task_id_, task_id + 1);
 }
 
@@ -136,6 +154,7 @@ void DispatcherState::FinishTask(const FinishTaskUpdate& finish_task) {
   auto& task = tasks_[task_id];
   DCHECK(task != nullptr);
   task->finished = true;
+  tasks_by_worker_[task->worker_address].erase(task->task_id);
   bool all_finished = true;
   for (const auto& task_for_job : tasks_by_job_[task->job_id]) {
     if (!task_for_job->finished) {
@@ -269,10 +288,11 @@ Status DispatcherState::TasksForWorker(
   if (it == tasks_by_worker_.end()) {
     return errors::NotFound("Worker ", worker_address, " not found");
   }
-  std::vector<std::shared_ptr<Task>> worker_tasks = it->second;
+  const absl::flat_hash_map<int64, std::shared_ptr<Task>>& worker_tasks =
+      it->second;
   tasks.reserve(worker_tasks.size());
   for (const auto& task : worker_tasks) {
-    tasks.push_back(task);
+    tasks.push_back(task.second);
   }
   return Status::OK();
 }

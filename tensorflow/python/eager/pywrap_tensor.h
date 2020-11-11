@@ -24,6 +24,7 @@ bool EagerTensor_CheckExact(const PyObject* o);
 tensorflow::int64 PyEagerTensor_ID(const PyObject* tensor);
 tensorflow::DataType PyEagerTensor_Dtype(const PyObject* tensor);
 tensorflow::int64 PyEagerTensor_NumElements(PyObject* tensor);
+TFE_TensorHandle* EagerTensor_Handle(const PyObject* o);
 
 namespace tensorflow {
 

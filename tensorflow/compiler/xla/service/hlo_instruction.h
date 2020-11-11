@@ -706,10 +706,12 @@ class HloInstruction {
       const absl::optional<int64>& channel_id);
 
   // Creates an instruction that returns a U32 replica ID.
-  static std::unique_ptr<HloInstruction> CreateReplicaId();
+  static std::unique_ptr<HloInstruction> CreateReplicaId(
+      const Shape& shape = ShapeUtil::MakeShape(U32, {}));
 
   // Creates an instruction that returns a U32 partition ID.
-  static std::unique_ptr<HloInstruction> CreatePartitionId();
+  static std::unique_ptr<HloInstruction> CreatePartitionId(
+      const Shape& shape = ShapeUtil::MakeShape(U32, {}));
 
   // Creates a conversion instruction, where operand is the data to convert and
   // shape is the target shape for the conversion.
@@ -829,6 +831,16 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateReduceWindow(
       const Shape& shape, HloInstruction* operand, HloInstruction* init_value,
       const Window& window, HloComputation* reduce_computation);
+
+  // A more general, multiple-argument version of the above.
+  // The reduce_computation being applied,now takes N arguments:
+  // [accumulator0, accumulator1, ..., accumulatorN, value0, value1, ...,
+  // valueN], and returns an N-tuple. The operands and init_values now each
+  // contain a span of N input arrays and n initial values.
+  static std::unique_ptr<HloInstruction> CreateReduceWindow(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      absl::Span<HloInstruction* const> init_values, const Window& window,
+      HloComputation* reduce_computation);
 
   // Creates a batch-norm-training instruction.
   static std::unique_ptr<HloInstruction> CreateBatchNormTraining(
@@ -973,11 +985,18 @@ class HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       absl::string_view custom_call_target, string opaque = "");
 
-  // Overload with a to_apply computation
+  // Overload with a to_apply computation.
   static std::unique_ptr<HloInstruction> CreateCustomCall(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* to_apply, absl::string_view custom_call_target,
       string opaque = "");
+
+  // Overload with multiple computations. The called computations can have
+  // different function signatures.
+  static std::unique_ptr<HloInstruction> CreateCustomCall(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      absl::Span<HloComputation* const> called_computations,
+      absl::string_view custom_call_target, string opaque = "");
 
   // Overload which constrains the layouts of the operand and result. 'shape'
   // and 'operand_shapes_with_layout' must have layouts.
@@ -1122,41 +1141,23 @@ class HloInstruction {
       const std::function<bool(const HloComputation*, const HloComputation*)>&
           eq_computations = std::equal_to<const HloComputation*>(),
       bool layout_sensitive = true) const {
-    // An instruction is always identical to itself.
-    if (this == &other) {
-      return true;
-    }
+    return IdenticalInternal(other, eq_operands, eq_computations,
+                             layout_sensitive,
+                             /*ignore_channel_id_values=*/false);
+  }
 
-    // Identical instruction must have the same opcode, shape, and identical
-    // operands.
-    if (opcode() != other.opcode()) {
-      return false;
-    }
-    if (!(layout_sensitive ? ShapeUtil::Equal(shape(), other.shape())
-                           : ShapeUtil::Compatible(shape(), other.shape()))) {
-      return false;
-    }
-    if (operands().size() != other.operands().size()) {
-      return false;
-    }
-
-    // Two AllReduces are Identical if they have the same channel_id.
-    // Their operands don't have to be Identical.
-    if (!IsCrossModuleAllReduce()) {
-      // Use an explicit loop rather than ContainerEquals, because copying
-      // around std::functions may be too expensive in some cases.
-      for (size_t i = 0; i < operands().size(); ++i) {
-        if (!eq_operands(operand(i), other.operand(i))) {
-          return false;
-        }
-      }
-    }
-
-    if (backend_config_ != other.backend_config_) {
-      return false;
-    }
-
-    return IdenticalSlowPath(other, eq_computations);
+  // Same as Identical() but ignores channel ID value mismatches, as long as
+  // both have channel IDs or neither has a channel ID.
+  bool IdenticalIgnoringChannelIdValues(
+      const HloInstruction& other,
+      const std::function<bool(const HloInstruction*, const HloInstruction*)>&
+          eq_operands = std::equal_to<const HloInstruction*>(),
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations = std::equal_to<const HloComputation*>(),
+      bool layout_sensitive = true) const {
+    return IdenticalInternal(other, eq_operands, eq_computations,
+                             layout_sensitive,
+                             /*ignore_channel_id_values=*/true);
   }
 
   // Generates a hash value of an HLO instruction. Hash considers
@@ -1374,6 +1375,8 @@ class HloInstruction {
   // instruction.
   bool IsFusible() const;
 
+  bool IsCustomCall(absl::string_view target) const;
+
   // Returns the sharding applied to this operator.
   // REQUIRES: has_sharding() is true.
   const HloSharding& sharding() const {
@@ -1481,6 +1484,8 @@ class HloInstruction {
 
   // Returns true if this instruction is elementwise on all its operands.
   bool IsElementwise() const;
+
+  static bool IsOpElementwise(HloOpcode opcode);
 
   // Returns true if this is a cross module all-reduce instruction.
   bool IsCrossModuleAllReduce() const;
@@ -1787,6 +1792,9 @@ class HloInstruction {
   // Returns the shape for the Outfeed instruction.
   const Shape& outfeed_shape() const;
 
+  // Returns the mutable shape for the Outfeed instruction.
+  Shape* mutable_outfeed_shape();
+
   // Delegates to HloCollectiveInstruction::replica_groups.
   const std::vector<ReplicaGroup>& replica_groups() const;
 
@@ -1847,6 +1855,9 @@ class HloInstruction {
   // Delegates to HloPadInstruction::padding_config.
   const PaddingConfig& padding_config() const;
   PaddingConfig* mutable_padding_config();
+
+  // Delegates to HloConvolutionInstruction::padding_type.
+  PaddingType padding_type() const;
 
   // Delegates to HloDynamicSliceInstruction::slice_sizes.
   int64 slice_sizes(int64 dimension) const;
@@ -1926,6 +1937,8 @@ class HloInstruction {
   // by factory methods.
   HloInstruction(HloOpcode opcode, const Shape& shape);
 
+  void RemoveAllOperands() { operands_.clear(); }
+
   void RemoveOperandAt(int index) {
     operands_.erase(operands_.begin() + index);
   }
@@ -1961,6 +1974,14 @@ class HloInstruction {
 
  private:
   friend class HloComputation;
+
+  bool IdenticalInternal(
+      const HloInstruction& other,
+      const std::function<bool(const HloInstruction*, const HloInstruction*)>&
+          eq_operands,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations,
+      bool layout_sensitive, bool ignore_channel_id_values) const;
 
   // Implementation for non-common logic of CloneWithNewOperands.
   virtual std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(

@@ -140,7 +140,7 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
   }
 
   // Count references to node input tensors.
-  for (size_t i = 0; i < graph_info_->num_nodes(); ++i) {
+  for (size_t i = 0; i < graph_info_->num_execution_nodes(); ++i) {
     const TfLiteNode& node = graph_info_->node(i);
     TfLiteIntArray* node_inputs = node.inputs;
     for (int j = 0; j < node_inputs->size; ++j) {
@@ -158,7 +158,7 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
     }
   }
   // Go through the graph in execution order.
-  for (size_t i = 0; i < graph_info_->num_nodes(); ++i) {
+  for (size_t i = 0; i < graph_info_->num_execution_nodes(); ++i) {
     const TfLiteNode& node = graph_info_->node(i);
 
     // First queue output tensors for allocation.
@@ -197,8 +197,8 @@ TfLiteStatus ArenaPlanner::ExecuteAllocations(int first_node, int last_node) {
   dealloc_node_.resize(graph_info_->num_tensors(), kNodeNotAssigned);
   allocs_.resize(graph_info_->num_tensors());
   // Set allocation and deallocation for temporary tensors.
-  for (size_t i = first_node;
-       i <= static_cast<size_t>(last_node) && i < graph_info_->num_nodes();
+  for (size_t i = first_node; i <= static_cast<size_t>(last_node) &&
+                              i < graph_info_->num_execution_nodes();
        ++i) {
     const TfLiteNode& node = graph_info_->node(i);
     TfLiteIntArray* node_temporaries = node.temporaries;

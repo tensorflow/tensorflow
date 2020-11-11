@@ -30,12 +30,12 @@ from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables as tf_variables
+from tensorflow.python.ops.control_flow_ops import get_enclosing_xla_context
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import keras_export
 
@@ -80,8 +80,8 @@ class BatchNormalizationBase(Layer):
   inference data*.
 
   Arguments:
-    axis: Integer, the axis that should be normalized (typically the features
-      axis). For instance, after a `Conv2D` layer with
+    axis: Integer or a list of integers, the axis that should be normalized
+    (typically the features axis). For instance, after a `Conv2D` layer with
       `data_format="channels_first"`, set `axis=1` in `BatchNormalization`.
     momentum: Momentum for the moving average.
     epsilon: Small float added to variance to avoid dividing by zero.
@@ -330,13 +330,13 @@ class BatchNormalizationBase(Layer):
       # output back to its original shape accordingly.
       if self._USE_V2_BEHAVIOR:
         if self.fused is None:
-          self.fused = (ndims == 4)
-        elif self.fused and ndims != 4:
+          self.fused = ndims in (4, 5)
+        elif self.fused and ndims not in (4, 5):
           raise ValueError('Batch normalization layers with fused=True only '
-                           'support 4D input tensors.')
+                           'support 4D or 5D input tensors.')
       else:
         assert self.fused is not None
-        self.fused = (ndims == 4 and self._fused_can_be_used())
+        self.fused = (ndims in (4, 5) and self._fused_can_be_used())
       # TODO(chrisying): fused batch norm is currently not supported for
       # multi-axis batch norm and by extension virtual batches. In some cases,
       # it might be possible to use fused batch norm but would require reshaping
@@ -345,13 +345,22 @@ class BatchNormalizationBase(Layer):
       # common use case (turning 5D w/ virtual batch to NCHW)
 
     if self.fused:
-      if self.axis == [1]:
+      if self.axis == [1] and ndims == 4:
         self._data_format = 'NCHW'
-      elif self.axis == [3]:
+      elif self.axis == [1] and ndims == 5:
+        self._data_format = 'NCDHW'
+      elif self.axis == [3] and ndims == 4:
         self._data_format = 'NHWC'
+      elif self.axis == [4] and ndims == 5:
+        self._data_format = 'NDHWC'
+      elif ndims == 5:
+        # 5D tensors that can be passed in but should not use fused batch norm
+        # due to unsupported axis.
+        self.fused = False
       else:
         raise ValueError('Unsupported axis, fused batch norm only supports '
-                         'axis == [1] or axis == [3]')
+                         'axis == [1] or axis == [3] for 4D input tensors or '
+                         'axis == [1] or axis == [4] for 5D input tensors')
 
     axis_to_dim = {x: input_shape.dims[x].value for x in self.axis}
     for x in axis_to_dim:
@@ -525,7 +534,7 @@ class BatchNormalizationBase(Layer):
     use_fused_avg_updates = (
         ops.executing_eagerly_outside_functions() and
         isinstance(self.momentum, (float, int)) and
-        enclosing_xla_context() is None)
+        get_enclosing_xla_context() is None)
     if use_fused_avg_updates:
       exponential_avg_factor = 1.0 - self.momentum
     else:
@@ -944,24 +953,8 @@ def replace_in_base_docstring(replacements):
   return string
 
 
-def enclosing_xla_context():
-  """Recursively find and return the XLAControlFlowContext."""
-  graph = ops.get_default_graph()
-  while graph is not None:
-    # pylint: disable=protected-access
-    context_ = graph._get_control_flow_context()
-    # pylint: enable=protected-access
-    while context_ is not None:
-      if isinstance(context_, control_flow_ops.XLAControlFlowContext):
-        return context_
-      context_ = context_.outer_context
-    # This may be a FuncGraph due to defuns or v2 control flow. We need to
-    # find the original graph with the XLAControlFlowContext.
-    graph = getattr(graph, 'outer_graph', None)
-  return None
-
-
-@keras_export(v1=['keras.layers.BatchNormalization'])  # pylint: disable=missing-docstring
+# pylint: disable=missing-docstring
+@keras_export(v1=['keras.layers.BatchNormalization'])
 class BatchNormalization(BatchNormalizationBase):
 
   __doc__ = replace_in_base_docstring([("""

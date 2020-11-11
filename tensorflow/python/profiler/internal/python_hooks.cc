@@ -104,6 +104,18 @@ PythonHooks* PythonHooks::GetSingleton() {
 
 void PythonHooks::Start(const PythonHooksOptions& options) {
   if (!Py_IsInitialized()) return;
+
+#if PY_MAJOR_VERSION < 3 || (PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION < 7)
+  // Before Python 3.7, the GIL is created on demand by PyEval_InitThreads().
+  // When a thread was not started by Python (e.g., when starting profiling via
+  // RPC) there might be no GIL. Before Python 3.6, PyGILState_Ensure would
+  // crash. The crash was fixed in Python 3.6 but the fix introduced a race for
+  // GIL creation. Calling PyEval_InitThreads() prevents the race. This is a
+  // no-op when called for a second time so it is innocuous. See
+  // https://vstinner.github.io/python37-gil-change.html for details.
+  PyEval_InitThreads();
+#endif
+
   options_ = options;
   start_timestamp_ns_ = EnvTime::NowNanos();
   if (options_.enable_python_traceme || options_.enable_trace_python_function) {
@@ -177,7 +189,7 @@ void PythonHooks::CollectData(XPlane* raw_plane) {
 }
 
 void PythonHooks::Finalize(XSpace* space) {
-  if (space) {
+  if (space && options_.enable_trace_python_function) {
     XPlane* plane =
         FindOrAddMutablePlaneWithName(space, kPythonTracerPlaneName);
     if (options_.end_to_end_mode) {

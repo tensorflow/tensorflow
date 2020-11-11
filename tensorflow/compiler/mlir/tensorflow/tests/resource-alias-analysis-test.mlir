@@ -107,6 +107,52 @@ func @if_else(%arg0: !tf_res, %arg1: !tf_res) -> (!tf_res, !tf_res, !tf_res) {
 }
 
 // -----
+// Test aliasing through CaseOp
+
+!tf_res = type tensor<*x!tf.resource<tensor<i32>>>
+
+// CHECK-LABEL: func @case_op_aliasing
+// expected-remark@below {{Region #0, Arg #0, ID 4 : 1, 4}}
+// expected-remark@below {{Region #0, Arg #1, ID 5 : 1, 2, 3, 5}}
+func @case_op_aliasing(%arg0: !tf_res, %arg1: !tf_res) {
+  // expected-remark@below {{Result #0, ID 0 : 0}}
+  %vh0 = "tf.VarHandleOp"() {container = "c", shared_name = "v0"} : () -> !tf_res
+  %read0 = "tf.ReadVariableOp"(%vh0) : (!tf_res) -> tensor<i32>
+  // expected-remark@below {{Result #0, ID 1 : Unknown}}
+  // expected-remark@below {{Result #1, ID 2 : 1, 2, 3, 5}}
+  // expected-remark@below {{Result #2, ID 3 : 0, 1, 2, 3, 5}}
+  %if:3 = "tf.Case"(%read0, %arg1, %vh0) {
+            branches = [@case_branch0, @case_branch1, @case_branch2],
+            is_stateless = true
+          } : (tensor<i32>, !tf_res, !tf_res) -> (!tf_res, !tf_res, !tf_res)
+  return
+}
+
+// expected-remark@below {{Region #0, Arg #0, ID 2 : 0, 1, 2}}
+// expected-remark@below {{Region #0, Arg #1, ID 3 : 0, 3}}
+func @case_branch0(%arg0: !tf_res, %arg1: !tf_res) -> (!tf_res, !tf_res, !tf_res) {
+  // expected-remark@below {{Result #0, ID 0 : Unknown}}
+  %u0 = "tf._UnknownSideEffectingOp_"() : () -> !tf_res
+  // expected-remark@below {{Result #0, ID 1 : 0, 1, 2}}
+  %id0 = "tf.Identity"(%arg0) : (!tf_res) -> !tf_res
+  return %u0, %id0, %id0 : !tf_res, !tf_res, !tf_res
+}
+
+// expected-remark@below {{Region #0, Arg #0, ID 1 : 0, 1}}
+// expected-remark@below {{Region #0, Arg #1, ID 2 : 2}}
+func @case_branch1(%arg0: !tf_res, %arg1: !tf_res) -> (!tf_res, !tf_res, !tf_res) {
+  // expected-remark@below {{Result #0, ID 0 : 0, 1}}
+  %id0 = "tf.Identity"(%arg0) : (!tf_res) -> !tf_res
+  return %id0, %id0, %arg1 : !tf_res, !tf_res, !tf_res
+}
+
+// expected-remark@below {{Region #0, Arg #0, ID 0 : 0}}
+// expected-remark@below {{Region #0, Arg #1, ID 1 : 1}}
+func @case_branch2(%arg0: !tf_res, %arg1: !tf_res) -> (!tf_res, !tf_res, !tf_res) {
+  return %arg0, %arg0, %arg1 : !tf_res, !tf_res, !tf_res
+}
+
+// -----
 // Test aliasing through WhileOp
 !tf_res = type tensor<*x!tf.resource<tensor<32xf32>>>
 
@@ -196,6 +242,37 @@ func @if_region_aliasing(%arg0: !tf_res, %arg1: !tf_res) {
             %id0 = "tf.Identity"(%vh0) : (!tf_res) -> !tf_res
             "tf.Yield"(%id0, %id0, %arg0) : (!tf_res, !tf_res, !tf_res) -> ()
           }) {is_stateless = true} : (tensor<i1>) -> (!tf_res, !tf_res, !tf_res)
+  return
+}
+
+// -----
+// Test aliasing through CaseRegion
+
+!tf_res = type tensor<*x!tf.resource<tensor<i32>>>
+
+// CHECK-LABEL: func @case_region_aliasing
+// expected-remark@below {{Region #0, Arg #0, ID 7 : 1, 4, 6, 7}}
+// expected-remark@below {{Region #0, Arg #1, ID 8 : 1, 2, 4, 5, 6, 8}}
+func @case_region_aliasing(%arg0: !tf_res, %arg1: !tf_res) {
+  // expected-remark@below {{Result #0, ID 0 : 0, 1, 3, 4, 5}}
+  %vh0 = "tf.VarHandleOp"() {container = "c", shared_name = "v0"} : () -> !tf_res
+  %read0 = "tf.ReadVariableOp"(%vh0) : (!tf_res) -> tensor<i32>
+  // expected-remark@below {{Result #0, ID 4 : Unknown}}
+  // expected-remark@below {{Result #1, ID 5 : 0, 1, 2, 3, 4, 5, 6, 8}}
+  // expected-remark@below {{Result #2, ID 6 : 1, 2, 4, 5, 6, 7, 8}}
+  %if:3 = "tf.CaseRegion"(%read0) ({
+            // expected-remark@below {{Result #0, ID 1 : Unknown}}
+            %u0 = "tf._UnknownSideEffectingOp_"() : () -> !tf_res
+            // expected-remark@below {{Result #0, ID 2 : 1, 2, 4, 5, 6, 8}}
+            %id0 = "tf.Identity"(%arg1) : (!tf_res) -> !tf_res
+            "tf.Yield"(%u0, %id0, %id0) : (!tf_res, !tf_res, !tf_res) -> ()
+          }, {
+            // expected-remark@below {{Result #0, ID 3 : 0, 1, 3, 4, 5}}
+            %id0 = "tf.Identity"(%vh0) : (!tf_res) -> !tf_res
+            "tf.Yield"(%id0, %id0, %arg0) : (!tf_res, !tf_res, !tf_res) -> ()
+          }, {
+            "tf.Yield"(%vh0, %arg1, %arg1) : (!tf_res, !tf_res, !tf_res) -> ()
+          }) {is_stateless = true} : (tensor<i32>) -> (!tf_res, !tf_res, !tf_res)
   return
 }
 

@@ -676,12 +676,6 @@ class MklConvCustomBackpropInputOp
           .Label(mkl_op_registry::kMklLayoutDependentOpLabel),   \
       MklConvCustomBackpropInputOp<CPUDevice, T, false, false>); \
   REGISTER_KERNEL_BUILDER(                                       \
-      Name("_MklNativeConv2DBackpropInput")                      \
-          .Device(DEVICE_CPU)                                    \
-          .TypeConstraint<T>("T")                                \
-          .Label(mkl_op_registry::kMklNameChangeOpLabel),        \
-      MklConvCustomBackpropInputOp<CPUDevice, T, false, true>);  \
-  REGISTER_KERNEL_BUILDER(                                       \
       Name("_MklConv3DBackpropInputV2")                          \
           .Device(DEVICE_CPU)                                    \
           .TypeConstraint<T>("T")                                \
@@ -692,7 +686,25 @@ class MklConvCustomBackpropInputOp
           .Device(DEVICE_CPU)                                    \
           .TypeConstraint<T>("T")                                \
           .Label(mkl_op_registry::kMklLayoutDependentOpLabel),   \
-      MklConvCustomBackpropInputOp<CPUDevice, T, true, false>);
+      MklConvCustomBackpropInputOp<CPUDevice, T, true, false>);  \
+  REGISTER_KERNEL_BUILDER(                                       \
+      Name("_MklNativeConv2DBackpropInput")                      \
+          .Device(DEVICE_CPU)                                    \
+          .TypeConstraint<T>("T")                                \
+          .Label(mkl_op_registry::kMklNameChangeOpLabel),        \
+      MklConvCustomBackpropInputOp<CPUDevice, T, false, true>);  \
+  REGISTER_KERNEL_BUILDER(                                       \
+      Name("_MklNativeConv3DBackpropInputV2")                    \
+          .Device(DEVICE_CPU)                                    \
+          .TypeConstraint<T>("T")                                \
+          .Label(mkl_op_registry::kMklNameChangeOpLabel),        \
+      MklConvCustomBackpropInputOp<CPUDevice, T, false, true>);  \
+  REGISTER_KERNEL_BUILDER(                                       \
+      Name("_MklNativeDepthwiseConv2dNativeBackpropInput")       \
+          .Device(DEVICE_CPU)                                    \
+          .TypeConstraint<T>("T")                                \
+          .Label(mkl_op_registry::kMklNameChangeOpLabel),        \
+      MklConvCustomBackpropInputOp<CPUDevice, T, true, true>);
 
 TF_CALL_float(REGISTER_MKL_CPU_KERNELS);
 TF_CALL_bfloat16(REGISTER_MKL_CPU_KERNELS);

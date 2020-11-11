@@ -38,7 +38,7 @@ TEST_F(OpenCLOperationTest, ReduceSumChannels) {
   src_tensor.shape = BHWC(1, 2, 1, 5);
   src_tensor.data = {1.1, 2.1, 0.7, 0.3, 1.2, 3.1, 4.1, 0.0, 1.0, 4.4};
   ReduceAttributes attr;
-  attr.axis = Axis::CHANNELS;
+  attr.dims = {Axis::CHANNELS};
 
   for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {
@@ -63,7 +63,7 @@ TEST_F(OpenCLOperationTest, ReduceProductChannels) {
   src_tensor.shape = BHWC(1, 2, 1, 2);
   src_tensor.data = {1.1, 2.0, 3.1, 4.0};
   ReduceAttributes attr;
-  attr.axis = Axis::CHANNELS;
+  attr.dims = {Axis::CHANNELS};
 
   for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {
@@ -89,7 +89,7 @@ TEST_F(OpenCLOperationTest, ReduceMaxChannels) {
   src_tensor.data = {1.1,  2.0,  -0.3, -100.0, 32.6, 1.1,
                      -3.1, -4.0, -5.0, -7.0,   -2.0, -100.0};
   ReduceAttributes attr;
-  attr.axis = Axis::CHANNELS;
+  attr.dims = {Axis::CHANNELS};
 
   for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {
@@ -115,7 +115,7 @@ TEST_F(OpenCLOperationTest, ReduceMinChannels) {
   src_tensor.data = {1.1,  2.0,  -0.3, -100.0, 32.6, 1.1,
                      -3.1, -4.0, -5.0, -7.0,   -2.0, 100.0};
   ReduceAttributes attr;
-  attr.axis = Axis::CHANNELS;
+  attr.dims = {Axis::CHANNELS};
 
   for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {

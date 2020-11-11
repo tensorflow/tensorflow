@@ -163,8 +163,9 @@ using CudaGridRange = GpuGridRange<T...>;
 // Usage: for(int i : GpuGridRangeX(count)) { visit(i); }
 template <typename T>
 __device__ detail::GpuGridRange<T> GpuGridRangeX(T count) {
-  return detail::GpuGridRange<T>(blockIdx.x * blockDim.x + threadIdx.x,
-                                 gridDim.x * blockDim.x, count);
+  return detail::GpuGridRange<T>(
+      /*begin=*/blockIdx.x * blockDim.x + threadIdx.x,
+      /*delta=*/gridDim.x * blockDim.x, /*end=*/count);
 }
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuGridRangeX, CudaGridRangeX);
 
@@ -172,8 +173,9 @@ CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuGridRangeX, CudaGridRangeX);
 // Usage: for(int i : GpuGridRangeY(count)) { visit(i); }
 template <typename T>
 __device__ detail::GpuGridRange<T> GpuGridRangeY(T count) {
-  return detail::GpuGridRange<T>(blockIdx.y * blockDim.y + threadIdx.y,
-                                 gridDim.y * blockDim.y, count);
+  return detail::GpuGridRange<T>(
+      /*begin=*/blockIdx.y * blockDim.y + threadIdx.y,
+      /*delta=*/gridDim.y * blockDim.y, /*end=*/count);
 }
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuGridRangeY, CudaGridRangeY);
 
@@ -181,8 +183,9 @@ CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuGridRangeY, CudaGridRangeY);
 // Usage: for(int i : GpuGridRangeZ(count)) { visit(i); }
 template <typename T>
 __device__ detail::GpuGridRange<T> GpuGridRangeZ(T count) {
-  return detail::GpuGridRange<T>(blockIdx.z * blockDim.z + threadIdx.z,
-                                 gridDim.z * blockDim.z, count);
+  return detail::GpuGridRange<T>(
+      /*begin=*/blockIdx.z * blockDim.z + threadIdx.z,
+      /*delta=*/gridDim.z * blockDim.z, /*end=*/count);
 }
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuGridRangeZ, CudaGridRangeZ);
 
@@ -606,7 +609,7 @@ __device__ double GpuAtomicCasHelper(double* ptr, F accumulate) {
   // HIP has a bug in the implementation of __longlong_as_double
   // So workaround it by using reinterpret_cast<double*>.
   uint64_t result =
-      GpuAtomicCasHelper(reinterpret_cast<tensorflow::uint64*>(ptr),
+      GpuAtomicCasHelper(reinterpret_cast<unsigned long long*>(ptr),
                          [accumulate](tensorflow::uint64 a) {
                            return __double_as_longlong(
                                accumulate(*(reinterpret_cast<double*>(&a))));
@@ -614,7 +617,7 @@ __device__ double GpuAtomicCasHelper(double* ptr, F accumulate) {
   return *(reinterpret_cast<double*>(&result));
 #else
   return __longlong_as_double(GpuAtomicCasHelper(
-      reinterpret_cast<tensorflow::uint64*>(ptr),
+      reinterpret_cast<unsigned long long*>(ptr),
       [accumulate](tensorflow::uint64 a) {
         return __double_as_longlong(accumulate(__longlong_as_double(a)));
       }));
@@ -676,6 +679,38 @@ template <typename From, typename To>
 using ToTypeIfConvertible =
     typename std::enable_if<std::is_convertible<From, To>::value, To>::type;
 
+template <typename T>
+struct CudaSupportedTypeImpl {
+  using type = T;
+};
+
+template <>
+struct CudaSupportedTypeImpl<long long> {
+  using type = unsigned long long;
+};
+
+template <>
+struct CudaSupportedTypeImpl<unsigned long> {
+  using type =
+      typename std::conditional<sizeof(unsigned long) == sizeof(unsigned int),
+                                unsigned int, unsigned long long>::type;
+};
+
+template <>
+struct CudaSupportedTypeImpl<long> {
+  // This cast should be safe since module-2 addition should work fine. However,
+  // signed overflow is not handled correctly since it's undefined behavior.
+  using type = typename CudaSupportedTypeImpl<unsigned long>::type;
+};
+
+template <typename T>
+using CudaSupportedType = typename CudaSupportedTypeImpl<T>::type;
+
+template <typename T>
+__device__ CudaSupportedType<T>* ToCudaSupportedPtr(T* ptr) {
+  return reinterpret_cast<CudaSupportedType<T>*>(ptr);
+}
+
 }  // namespace detail
 
 // CUDA provides atomic ops, but not for all types.  We provide wrappers
@@ -683,13 +718,7 @@ using ToTypeIfConvertible =
 
 template <typename T, typename U>
 __device__ detail::ToTypeIfConvertible<U, T> GpuAtomicAdd(T* ptr, U value) {
-  return atomicAdd(ptr, value);
-}
-
-__device__ inline int64 GpuAtomicAdd(int64* ptr, int64 value) {
-  // This cast should be safe since module-2 addition should work fine. However,
-  // signed overflow is not handled correctly since it's undefined behavior.
-  return atomicAdd(reinterpret_cast<uint64*>(ptr), static_cast<uint64>(value));
+  return atomicAdd(detail::ToCudaSupportedPtr(ptr), value);
 }
 
 __device__ inline Eigen::half GpuAtomicAdd(Eigen::half* ptr,
@@ -765,7 +794,7 @@ CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicSub, CudaAtomicSub);
 // GpuAtomicMax
 template <typename T, typename U>
 __device__ detail::ToTypeIfConvertible<U, T> GpuAtomicMax(T* ptr, U value) {
-  return atomicMax(ptr, value);
+  return atomicMax(detail::ToCudaSupportedPtr(ptr), value);
 }
 
 #if TENSORFLOW_USE_ROCM
@@ -817,11 +846,12 @@ __device__ inline Eigen::half GpuAtomicMax(Eigen::half* ptr,
 __device__ inline tensorflow::uint64 GpuAtomicMax(tensorflow::uint64* ptr,
                                                   tensorflow::uint64 value) {
   return detail::GpuAtomicCasHelper(
-      ptr, [value](tensorflow::uint64 a) { return max(a, value); });
+      detail::ToCudaSupportedPtr(ptr),
+      [value](tensorflow::uint64 a) { return max(a, value); });
 }
 
 __device__ inline int64 GpuAtomicMax(int64* ptr, int64 value) {
-  return detail::GpuAtomicCasHelper(ptr,
+  return detail::GpuAtomicCasHelper(detail::ToCudaSupportedPtr(ptr),
                                     [value](int64 a) { return max(a, value); });
 }
 #endif
@@ -830,7 +860,7 @@ CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicMax, CudaAtomicMax);
 // GpuAtomicMin
 template <typename T, typename U>
 __device__ detail::ToTypeIfConvertible<U, T> GpuAtomicMin(T* ptr, U value) {
-  return atomicMin(ptr, value);
+  return atomicMin(detail::ToCudaSupportedPtr(ptr), value);
 }
 
 #if TENSORFLOW_USE_ROCM
@@ -882,11 +912,12 @@ __device__ inline Eigen::half GpuAtomicMin(Eigen::half* ptr,
 __device__ inline tensorflow::uint64 GpuAtomicMin(tensorflow::uint64* ptr,
                                                   tensorflow::uint64 value) {
   return detail::GpuAtomicCasHelper(
-      ptr, [value](tensorflow::uint64 a) { return min(a, value); });
+      detail::ToCudaSupportedPtr(ptr),
+      [value](tensorflow::uint64 a) { return min(a, value); });
 }
 
 __device__ inline int64 GpuAtomicMin(int64* ptr, int64 value) {
-  return detail::GpuAtomicCasHelper(ptr,
+  return detail::GpuAtomicCasHelper(detail::ToCudaSupportedPtr(ptr),
                                     [value](int64 a) { return min(a, value); });
 }
 #endif

@@ -82,6 +82,9 @@ HloInstruction* CreateZero(const Shape& shape, SpmdBuilder* b) {
   }
   auto zero = b->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::Zero(shape.element_type())));
+  if (shape.rank() == 0) {
+    return zero;
+  }
   return b->AddInstruction(HloInstruction::CreateBroadcast(shape, zero, {}));
 }
 
@@ -576,8 +579,8 @@ absl::optional<HloInstruction*> PadFromPartialReplicateShape(
     int64 max_right_halo_size =
         right_halo_size_function.MaxInRange(0, src_shard_count - 1);
     pad_config.mutable_dimensions(dim)->set_edge_padding_high(std::max(
-        0LL, padded_dst_shape.dimensions(dim) -
-                 padded_src_shape.dimensions(dim) - max_right_halo_size));
+        int64{0}, padded_dst_shape.dimensions(dim) -
+                      padded_src_shape.dimensions(dim) - max_right_halo_size));
     auto padded_concat_shape = ShapeInference::InferPadShape(
                                    concat->shape(), zero->shape(), pad_config)
                                    .ValueOrDie();

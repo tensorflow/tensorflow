@@ -208,31 +208,6 @@ def normalize_padding(value):
   return padding
 
 
-def convert_kernel(kernel):
-  """Converts a Numpy kernel matrix from Theano format to TensorFlow format.
-
-  Also works reciprocally, since the transformation is its own inverse.
-
-  This is used for converting legacy Theano-saved model files.
-
-  Arguments:
-      kernel: Numpy array (3D, 4D or 5D).
-
-  Returns:
-      The converted kernel.
-
-  Raises:
-      ValueError: in case of invalid kernel shape or invalid data_format.
-  """
-  kernel = np.asarray(kernel)
-  if not 3 <= kernel.ndim <= 5:
-    raise ValueError('Invalid kernel shape:', kernel.shape)
-  slices = [slice(None, None, -1) for _ in range(kernel.ndim)]
-  no_flip = (slice(None, None), slice(None, None))
-  slices[-2:] = no_flip
-  return np.copy(kernel[slices])
-
-
 def conv_kernel_mask(input_shape, kernel_shape, strides, padding):
   """Compute a mask representing the connectivity of a convolution operation.
 

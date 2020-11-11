@@ -165,6 +165,12 @@ TEST(OpVersionTest, VersioningUnpackTest) {
 TEST(OpVersionTest, VersioningReluTest) {
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_RELU,
+      .input_types = std::vector<TensorType>{TensorType_INT16},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_RELU,
       .input_types = std::vector<TensorType>{TensorType_INT8},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
@@ -216,6 +222,12 @@ TEST(OpVersionTest, VersioningSpaceToDepthTest) {
 
 TEST(OpVersionTest, VersioningSliceTest) {
   OpSignature fake_op_sig = {
+      .op = BuiltinOperator_SLICE,
+      .input_types = std::vector<TensorType>{TensorType_INT16},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
+
+  fake_op_sig = {
       .op = BuiltinOperator_SLICE,
       .input_types = std::vector<TensorType>{TensorType_STRING},
   };
@@ -300,6 +312,14 @@ TEST(OpVersionTest, VersioningSumTest) {
   SimpleVersioningTest(BuiltinOperator_SUM);
 }
 
+TEST(OpVersionTest, VersioningReduceMinTest) {
+  SimpleVersioningTestExtended(BuiltinOperator_REDUCE_MIN);
+}
+
+TEST(OpVersionTest, VersioningReduceMaxTest) {
+  SimpleVersioningTestExtended(BuiltinOperator_REDUCE_MAX);
+}
+
 TEST(OpVersionTest, VersioningAddTest) {
   SimpleVersioningTest(BuiltinOperator_ADD);
 }
@@ -350,7 +370,7 @@ TEST(OpVersionTest, VersioningSelectTest) {
 }
 
 TEST(OpVersionTest, VersioningRelu6Test) {
-  SimpleVersioningTest(BuiltinOperator_RELU6);
+  SimpleVersioningTestExtended(BuiltinOperator_RELU6);
 }
 
 TEST(OpVersionTest, VersioningFullyConnectedTest) {
@@ -588,6 +608,12 @@ TEST(OpVersionTest, VersioningTileOperatorTest) {
 TEST(OpVersionTest, VersioningTransposeTest) {
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_TRANSPOSE,
+      .input_types = std::vector<TensorType>{TensorType_INT16},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 5);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_TRANSPOSE,
       .input_types = std::vector<TensorType>{TensorType_BOOL},
   };
   fake_op_sig.options.single_input_op.num_dims = 5;
@@ -709,6 +735,15 @@ TEST(OpVersionTest, VersioningResizeNearestNeighborTest) {
 
   fake_op_sig.options.resize.align_corners = true;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+
+  // int16 input is version 4.
+  fake_op_sig = {
+      .op = BuiltinOperator_RESIZE_NEAREST_NEIGHBOR,
+      .input_types =
+          std::vector<TensorType>{TensorType_INT16, TensorType_INT32},
+      .output_types = std::vector<TensorType>{TensorType_INT16},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
 }
 TEST(OpVersionTest, VersioningAbsTest) {
   // Default.
@@ -721,10 +756,18 @@ TEST(OpVersionTest, VersioningAbsTest) {
 
   // int8 input is version 2.
   fake_op_sig = {
-      .op = BuiltinOperator_RESIZE_NEAREST_NEIGHBOR,
+      .op = BuiltinOperator_ABS,
       .input_types = std::vector<TensorType>{TensorType_INT8},
       .output_types = std::vector<TensorType>{TensorType_INT8},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  // int16 input is version 3.
+  fake_op_sig = {
+      .op = BuiltinOperator_ABS,
+      .input_types = std::vector<TensorType>{TensorType_INT16},
+      .output_types = std::vector<TensorType>{TensorType_INT16},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 }
 }  // namespace tflite

@@ -47,6 +47,7 @@ class NotTrackable(object):
   pass
 
 
+@tf_export("__internal__.tracking.AutoTrackable", v1=[])
 class AutoTrackable(base.Trackable):
   """Manages dependencies on other objects.
 

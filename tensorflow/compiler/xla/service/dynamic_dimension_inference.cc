@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/dynamic_window_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -29,10 +30,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/tuple_util.h"
 #include "tensorflow/compiler/xla/service/while_util.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
-
 namespace xla {
 
 namespace {
@@ -157,6 +158,22 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
   using DynamicDimensionFn = std::function<Status(
       ShapeIndex index, int64 dimension, HloInstruction* dynamic_size)>;
 
+  Status HandleDynamicConvolutionForward(HloInstruction* hlo,
+                                         int64 operand_index, int64 dimension,
+                                         HloInstruction* dynamic_size);
+
+  Status HandleDynamicConvolutionKernelGrad(HloInstruction* hlo,
+                                            int64 operand_index,
+                                            int64 dimension);
+
+  Status HandleDynamicConvolutionInputGrad(HloInstruction* hlo,
+                                           int64 operand_index,
+                                           int64 dimension);
+
+  Status HandleDynamicWindowSamePadding(HloInstruction* hlo,
+                                        HloInstruction* dynamic_size,
+                                        int64 operand_index, int64 dimension);
+
   Status ForEachOperandDynamicDimension(HloInstruction* inst,
                                         const OperandDynamicDimensionFn&);
   Status ForEachDynamicDimensionInOperand(HloInstruction* inst,
@@ -255,6 +272,41 @@ Status DynamicDimensionInferenceVisitor::HandleCustomCall(HloInstruction* hlo) {
              (dimension == 0 || dimension == 3))) {
           parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size);
           return Status::OK();
+        }
+        if (hlo->custom_call_target() == "DynamicReduceWindowSamePadding") {
+          if (hlo->operand_count() > 2) {
+            return Unimplemented(
+                "DynamicReduceWindowSamePadding doesn't support variadic "
+                "reduce window %s",
+                hlo->ToString());
+          }
+          return HandleDynamicWindowSamePadding(hlo, dynamic_size,
+                                                operand_index, dimension);
+        }
+
+        if (hlo->custom_call_target() == "DynamicSelectAndScatterSamePadding") {
+          if (operand_index == 1) {
+            // Operand 0 (input) determines dynamic output size. We ignore the
+            // dynamic size in the operand 1 (output gradient).
+            return Status::OK();
+          }
+          parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size);
+          return Status::OK();
+        }
+
+        if (hlo->custom_call_target() == "DynamicConvolutionInputGrad") {
+          return HandleDynamicConvolutionInputGrad(hlo, operand_index,
+                                                   dimension);
+        }
+
+        if (hlo->custom_call_target() == "DynamicConvolutionKernelGrad") {
+          return HandleDynamicConvolutionKernelGrad(hlo, operand_index,
+                                                    dimension);
+        }
+
+        if (hlo->custom_call_target() == "DynamicConvolutionForward") {
+          return HandleDynamicConvolutionForward(hlo, operand_index, dimension,
+                                                 dynamic_size);
         }
         return Unimplemented(
             "CustomCall \"%s\" is not supported to have a dynamic dimension",
@@ -591,6 +643,89 @@ Status DynamicDimensionInferenceVisitor::HandleSetDimensionSize(
   return Status::OK();
 }
 
+Status DynamicDimensionInferenceVisitor::HandleDynamicConvolutionForward(
+    HloInstruction* hlo, int64 operand_index, int64 dimension,
+    HloInstruction* dynamic_size) {
+  TF_RET_CHECK(operand_index == 0);
+  const ConvolutionDimensionNumbers& dimension_numbers =
+      hlo->convolution_dimension_numbers();
+
+  if (dimension == dimension_numbers.input_batch_dimension()) {
+    // Batch dimension is propagated without any changes.
+    parent_->SetDynamicSize(hlo, {}, dimension_numbers.output_batch_dimension(),
+                            dynamic_size);
+    return Status::OK();
+  }
+
+  for (int64 spatial_dim_index = 0;
+       spatial_dim_index < dimension_numbers.input_spatial_dimensions_size();
+       ++spatial_dim_index) {
+    int64 input_spatial_dim =
+        dimension_numbers.input_spatial_dimensions(spatial_dim_index);
+    int64 output_spatial_dim =
+        dimension_numbers.output_spatial_dimensions(spatial_dim_index);
+    if (dimension == input_spatial_dim) {
+      // This is a dynamic spatial dimension. Calculate the output size.
+      WindowDimension window_dim = hlo->window().dimensions(spatial_dim_index);
+      DynamicWindowDims dynamic_window_dims = GetWindowedOutputSize(
+          dynamic_size, window_dim.size(), window_dim.window_dilation(),
+          window_dim.stride(), hlo->padding_type());
+      TF_RET_CHECK(window_dim.base_dilation() == 1);
+      parent_->SetDynamicSize(hlo, {}, output_spatial_dim,
+                              dynamic_window_dims.output_size);
+      return Status::OK();
+    }
+  }
+  return Unimplemented(
+      "XLA doesn't support dynamic input feature dimension on convolution: %s",
+      hlo->ToString());
+}
+
+Status DynamicDimensionInferenceVisitor::HandleDynamicWindowSamePadding(
+    HloInstruction* hlo, HloInstruction* dynamic_size, int64 operand_index,
+    int64 dimension) {
+  const Window& window = hlo->window();
+  const WindowDimension& window_dim = window.dimensions(dimension);
+  if (!window_util::IsTrivialWindowDimension(window_dim)) {
+    DynamicWindowDims dynamic_window_dims = GetWindowedOutputSize(
+        dynamic_size, window_dim.size(), window_dim.window_dilation(),
+        window_dim.stride(), PaddingType::PADDING_SAME);
+    parent_->SetDynamicSize(hlo, {}, dimension,
+                            dynamic_window_dims.output_size);
+    return Status::OK();
+  }
+
+  parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size);
+
+  return Status::OK();
+}
+
+Status DynamicDimensionInferenceVisitor::HandleDynamicConvolutionInputGrad(
+    HloInstruction* hlo, int64 operand_index, int64 dimension) {
+  // The output size of convolution input grad is corresponding input size.
+  HloInstruction* input_sizes = hlo->mutable_operand(0);
+  HloComputation* comp = hlo->parent();
+  TF_RET_CHECK(input_sizes->shape().rank() == 1) << hlo->ToString();
+  TF_RET_CHECK(input_sizes->shape().element_type() == S32) << hlo->ToString();
+  TF_RET_CHECK(input_sizes->shape().dimensions(0) ==
+               hlo->shape().dimensions_size())
+      << hlo->ToString();
+  // Slice to get corresponding input size.
+  HloInstruction* slice = comp->AddInstruction(
+      HloInstruction::CreateSlice(ShapeUtil::MakeShape(S32, {1}), input_sizes,
+                                  {dimension}, {dimension + 1}, {1}));
+  HloInstruction* reshape = comp->AddInstruction(
+      HloInstruction::CreateReshape(ShapeUtil::MakeScalarShape(S32), slice));
+  parent_->SetDynamicSize(hlo, {}, dimension, reshape);
+  return Status::OK();
+}
+
+Status DynamicDimensionInferenceVisitor::HandleDynamicConvolutionKernelGrad(
+    HloInstruction* hlo, int64 operand_index, int64 dimension) {
+  // Dynamic convolution kernel grad produces static shape outputs.
+  return Status::OK();
+}
+
 Status DynamicDimensionInferenceVisitor::PassThroughDynamicDimension(
     HloInstruction* hlo) {
   return ForEachOperandDynamicDimension(
@@ -883,13 +1018,16 @@ Status DynamicDimensionInferenceVisitor::HandleReduceWindow(
       hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
                int64 operand_index, HloInstruction* dynamic_size) {
         HloInstruction* reduce_window = hlo;
-        const WindowDimension& window_dimension =
+        const WindowDimension& window_dim =
             reduce_window->window().dimensions(dimension);
 
-        if (!window_util::IsTrivialWindowDimension(window_dimension)) {
-          return Unimplemented(
-              "Dynamic Spatial reduce window is not supported: %s",
-              reduce_window->ToString());
+        if (!window_util::IsTrivialWindowDimension(window_dim)) {
+          DynamicWindowDims dynamic_window_dims = GetWindowedOutputSize(
+              dynamic_size, window_dim.size(), window_dim.window_dilation(),
+              window_dim.stride(), PaddingType::PADDING_VALID);
+          parent_->SetDynamicSize(hlo, {}, dimension,
+                                  dynamic_window_dims.output_size);
+          return Status::OK();
         }
 
         parent_->SetDynamicSize(reduce_window, {}, dimension, dynamic_size);
@@ -903,18 +1041,12 @@ Status DynamicDimensionInferenceVisitor::HandleSelectAndScatter(
   return ForEachOperandDynamicDimension(
       hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
                int64 operand_index, HloInstruction* dynamic_size) {
-        HloInstruction* select_and_scatter = hlo;
-        const WindowDimension& window_dimension =
-            select_and_scatter->window().dimensions(dimension);
-
-        if (!window_util::IsTrivialWindowDimension(window_dimension)) {
-          return Unimplemented(
-              "Dynamic Spatial select and scatter is not supported: %s",
-              select_and_scatter->ToString());
+        if (operand_index == 1) {
+          // Operand 0 (input) determines dynamic output size. We ignore the
+          // dynamic size in the operand 1 (output gradient).
+          return Status::OK();
         }
-
-        parent_->SetDynamicSize(select_and_scatter, {}, dimension,
-                                dynamic_size);
+        parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size);
 
         return Status::OK();
       });
@@ -1538,6 +1670,17 @@ HloInstruction* DynamicDimensionInference::GetDynamicSize(
     return iter->second;
   }
   return nullptr;
+}
+
+std::vector<HloInstruction*> DynamicDimensionInference::GetDynamicSizes(
+    HloInstruction* inst, const ShapeIndex& index) const {
+  CHECK(ShapeUtil::IndexIsValid(inst->shape(), index));
+  const int64 rank = ShapeUtil::GetSubshape(inst->shape(), index).rank();
+  std::vector<HloInstruction*> result(rank, nullptr);
+  for (int64 i = 0; i < rank; ++i) {
+    result[i] = GetDynamicSize(inst, {}, i);
+  }
+  return result;
 }
 
 }  // namespace xla

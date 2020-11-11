@@ -27,7 +27,7 @@ limitations under the License.
 namespace tensorflow {
 
 // Fuse Operation
-template <typename Device, typename T>
+template <typename Device, typename T, bool native_format = false>
 class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
  public:
   explicit MklFusedMatMulOp(OpKernelConstruction* ctx)
@@ -58,8 +58,8 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
 
     MklDnnShape src_mkl_shape;
     MklDnnShape weight_mkl_shape;
-    GetMklShape(ctx, this->kInputIndexSrc, &src_mkl_shape);
-    GetMklShape(ctx, this->kInputIndexWeight, &weight_mkl_shape);
+    GetMklShape(ctx, this->kInputIndexSrc, &src_mkl_shape, native_format);
+    GetMklShape(ctx, this->kInputIndexWeight, &weight_mkl_shape, native_format);
     OP_REQUIRES(ctx, !weight_mkl_shape.IsMklTensor(),
                 errors::InvalidArgument("Weight should not be in MKL Layout"));
 
@@ -134,7 +134,7 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
       MklDnnShape dst_mkl_shape;
       dst_mkl_shape.SetMklTensor(false);
       AllocateOutputSetMklShape(ctx, 0, &dst_tensor, dst_tensor_shape,
-                                dst_mkl_shape);
+                                dst_mkl_shape, native_format);
     }
 
     // if there's nothing to compute, just return.
@@ -226,6 +226,8 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
         params.post_op_params.push_back({"relu6", {1.0, 6.0, 0.0}});
       } else if (post_op == "Elu") {
         params.post_op_params.push_back({"elu", {1.0, 1.0, 0.0}});
+      } else if (post_op == "Tanh") {
+        params.post_op_params.push_back({"tanh", {1.0, 0.0, 0.0}});
       } else {
         OP_REQUIRES_OK(
             ctx, errors::InvalidArgument(
@@ -241,13 +243,18 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
 };
 
 // Register mkl kernels for supported operations and types.
-#define REGISTER_FUSEDMATMUL_MKL_SUPPORTED_KERNELS_TYPES(type) \
-  REGISTER_KERNEL_BUILDER(                                     \
-      Name("_MklFusedMatMul")                                  \
-          .Device(DEVICE_CPU)                                  \
-          .TypeConstraint<type>("T")                           \
-          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
-      MklFusedMatMulOp<CPUDevice, type>);
+#define REGISTER_FUSEDMATMUL_MKL_SUPPORTED_KERNELS_TYPES(type)                \
+  REGISTER_KERNEL_BUILDER(                                                    \
+      Name("_MklFusedMatMul")                                                 \
+          .Device(DEVICE_CPU)                                                 \
+          .TypeConstraint<type>("T")                                          \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel),                \
+      MklFusedMatMulOp<CPUDevice, type>);                                     \
+  REGISTER_KERNEL_BUILDER(Name("_MklNativeFusedMatMul")                       \
+                              .Device(DEVICE_CPU)                             \
+                              .TypeConstraint<type>("T")                      \
+                              .Label(mkl_op_registry::kMklNameChangeOpLabel), \
+                          MklFusedMatMulOp<CPUDevice, type, true>);
 TF_CALL_float(REGISTER_FUSEDMATMUL_MKL_SUPPORTED_KERNELS_TYPES);
 TF_CALL_bfloat16(REGISTER_FUSEDMATMUL_MKL_SUPPORTED_KERNELS_TYPES);
 

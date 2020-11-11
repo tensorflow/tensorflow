@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/util/mkl_types.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -86,7 +85,7 @@ class MklToTfOp : public OpKernel {
       CHECK_EQ(op_data_type, input_data_type);
       CHECK_EQ(op_data_type, output_data_type);
 
-      auto cpu_engine = engine(ENGINE_CPU, 0);
+      auto cpu_engine = engine(engine::kind::cpu, 0);
       MklDnnData<T> input(&cpu_engine);
 
       // Get MKL layout of input tensor.
@@ -94,9 +93,6 @@ class MklToTfOp : public OpKernel {
       // Get TensorFlow layout of input tensor. Expected output of conversion
       // has same layout as Tensorflow layout of input tensor.
       auto output_tf_md = input_shape.GetTfLayout();
-#ifndef ENABLE_MKLDNN_V1
-      auto output_tf_pd = memory::primitive_desc(output_tf_md, cpu_engine);
-#endif  // !ENABLE_MKLDNN_V1
       // Set input MKL layout as the user layout.
       input.SetUsrMem(input_mkl_md, &input_tensor);
 
@@ -108,11 +104,11 @@ class MklToTfOp : public OpKernel {
       DCHECK(output_tensor);
 
       // Check if input needs to be reordered
-      if (input.IsReorderNeeded(OUTPUT_TF_MD)) {
+      if (input.IsReorderNeeded(output_tf_md)) {
         // Insert reorder between MKL layout and TensorFlow layout
         OP_REQUIRES(
             context,
-            input.CheckReorderToOpMem(OUTPUT_TF_MD, output_tensor, context),
+            input.CheckReorderToOpMem(output_tf_md, output_tensor, context),
             errors::Internal("MklToTfOp: Failed to create input reorder"));
       } else {
         // If not, just forward input tensor to output tensor.

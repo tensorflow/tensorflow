@@ -56,6 +56,7 @@ from tensorflow.python.keras.losses import squared_hinge
 from tensorflow.python.keras.saving.saved_model import metric_serialization
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils import metrics_utils
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import to_list
@@ -72,7 +73,6 @@ from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
-from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
@@ -314,6 +314,31 @@ class Metric(base_layer.Layer):
           aggregation=aggregation)
 
   ### End: For use by subclasses ###
+
+  @property
+  def trainable_weights(self):
+    # Overridden from Layer class to track submetric weights.
+    if self.trainable:
+      trainable_weights = self._trainable_weights
+      for m in self._metrics:
+        trainable_weights += m.trainable_weights
+      return self._dedup_weights(trainable_weights)
+    else:
+      return []
+
+  @property
+  def non_trainable_weights(self):
+    # Overridden from Layer class to track submetric weights.
+    if self.trainable:
+      non_trainable_weights = self._non_trainable_weights
+      for m in self._metrics:
+        non_trainable_weights += m.non_trainable_weights
+    else:
+      non_trainable_weights = (
+          self._non_trainable_weights + self._trainable_weights)
+      for m in self._metrics:
+        non_trainable_weights += m.weights
+    return self._dedup_weights(non_trainable_weights)
 
   @property
   def _trackable_saved_model_saver(self):
@@ -731,7 +756,7 @@ class BinaryAccuracy(MeanMetricWrapper):
 
 @keras_export('keras.metrics.CategoricalAccuracy')
 class CategoricalAccuracy(MeanMetricWrapper):
-  """Calculates how often predictions matches one-hot labels.
+  """Calculates how often predictions match one-hot labels.
 
   You can provide logits of classes as `y_pred`, since argmax of
   logits and probabilities are same.
@@ -783,7 +808,7 @@ class CategoricalAccuracy(MeanMetricWrapper):
 
 @keras_export('keras.metrics.SparseCategoricalAccuracy')
 class SparseCategoricalAccuracy(MeanMetricWrapper):
-  """Calculates how often predictions matches integer labels.
+  """Calculates how often predictions match integer labels.
 
   ```python
   acc = np.dot(sample_weight, np.equal(y_true, np.argmax(y_pred, axis=1))
@@ -2771,13 +2796,11 @@ class MeanIoU(Metric):
     super(MeanIoU, self).__init__(name=name, dtype=dtype)
     self.num_classes = num_classes
 
-    # Variable to accumulate the predictions in the confusion matrix. Setting
-    # the type to be `float64` as required by confusion_matrix_ops.
+    # Variable to accumulate the predictions in the confusion matrix.
     self.total_cm = self.add_weight(
         'total_confusion_matrix',
         shape=(num_classes, num_classes),
-        initializer=init_ops.zeros_initializer,
-        dtype=dtypes.float64)
+        initializer=init_ops.zeros_initializer)
 
   def update_state(self, y_true, y_pred, sample_weight=None):
     """Accumulates the confusion matrix statistics.
@@ -2814,7 +2837,7 @@ class MeanIoU(Metric):
         y_pred,
         self.num_classes,
         weights=sample_weight,
-        dtype=dtypes.float64)
+        dtype=self._dtype)
     return self.total_cm.assign_add(current_cm)
 
   def result(self):
@@ -2824,7 +2847,7 @@ class MeanIoU(Metric):
     sum_over_col = math_ops.cast(
         math_ops.reduce_sum(self.total_cm, axis=1), dtype=self._dtype)
     true_positives = math_ops.cast(
-        array_ops.diag_part(self.total_cm), dtype=self._dtype)
+        array_ops.tensor_diag_part(self.total_cm), dtype=self._dtype)
 
     # sum_over_row + sum_over_col =
     #     2 * true_positives + false_positives + false_negatives.
@@ -3220,7 +3243,7 @@ def accuracy(y_true, y_pred):
 @keras_export('keras.metrics.binary_accuracy')
 @dispatch.add_dispatch_support
 def binary_accuracy(y_true, y_pred, threshold=0.5):
-  """Calculates how often predictions matches binary labels.
+  """Calculates how often predictions match binary labels.
 
   Standalone usage:
   >>> y_true = [[1], [1], [0], [0]]
@@ -3248,7 +3271,7 @@ def binary_accuracy(y_true, y_pred, threshold=0.5):
 @keras_export('keras.metrics.categorical_accuracy')
 @dispatch.add_dispatch_support
 def categorical_accuracy(y_true, y_pred):
-  """Calculates how often predictions matches one-hot labels.
+  """Calculates how often predictions match one-hot labels.
 
   Standalone usage:
   >>> y_true = [[0, 0, 1], [0, 1, 0]]
@@ -3277,7 +3300,7 @@ def categorical_accuracy(y_true, y_pred):
 @keras_export('keras.metrics.sparse_categorical_accuracy')
 @dispatch.add_dispatch_support
 def sparse_categorical_accuracy(y_true, y_pred):
-  """Calculates how often predictions matches integer labels.
+  """Calculates how often predictions match integer labels.
 
   Standalone usage:
   >>> y_true = [2, 1]

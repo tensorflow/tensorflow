@@ -1,10 +1,10 @@
 // RUN: tf-mlir-translate -split-input-file -mlir-hlo-to-hlo-text %s | FILECHECK_OPTS="" FileCheck %s
 
 func @main() -> tensor<f32> {
-  %cst = constant  {name = "constant"} dense<1> : tensor<i32>
-  %cst_0 = constant  {name = "constant.1"} dense<5.600000e+01> : tensor<f32>
-  %cst_1 = constant  {name = "constant.2"} dense<1.200000e+01> : tensor<f32>
-  %cst_2 = constant  {name = "constant.3"} dense<1.300000e+01> : tensor<f32>
+  %cst = constant dense<1> : tensor<i32>
+  %cst_0 = constant dense<5.600000e+01> : tensor<f32>
+  %cst_1 = constant dense<1.200000e+01> : tensor<f32>
+  %cst_2 = constant dense<1.300000e+01> : tensor<f32>
   %0 = "mhlo.case"(%cst, %cst_0, %cst_1, %cst_2) ( {
   ^bb0(%arg0: tensor<f32>):
     %1 = "mhlo.negate"(%arg0) : (tensor<f32>) -> tensor<f32>
@@ -17,7 +17,7 @@ func @main() -> tensor<f32> {
   ^bb0(%arg0: tensor<f32>):
     %1 = "mhlo.floor"(%arg0) : (tensor<f32>) -> tensor<f32>
     "mhlo.return"(%1) : (tensor<f32>) -> ()
-  }) {name = "conditional"} : (tensor<i32>, tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  }) : (tensor<i32>, tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<f32>
   return %0 : tensor<f32>
 }
 
@@ -48,23 +48,23 @@ func @main() -> tensor<f32> {
 // -----
 
 func @main() -> (tensor<f32>, tensor<f32>) {
-  %cst = constant  {name = "constant"} dense<1> : tensor<i32>
-  %cst_0 = constant  {name = "constant.1"} dense<5.600000e+01> : tensor<f32>
-  %cst_1 = constant  {name = "constant.2"} dense<1.200000e+01> : tensor<f32>
-  %cst_2 = constant  {name = "constant.3"} dense<1.300000e+01> : tensor<f32>
+  %cst = constant dense<1> : tensor<i32>
+  %cst_0 = constant dense<5.600000e+01> : tensor<f32>
+  %cst_1 = constant dense<1.200000e+01> : tensor<f32>
+  %cst_2 = constant dense<1.300000e+01> : tensor<f32>
   %0:2 = "mhlo.case"(%cst, %cst_0, %cst_1, %cst_2) ( {
   ^bb0(%arg0: tensor<f32>):
-    %1 = "mhlo.negate"(%arg0) {name = "negate"} : (tensor<f32>) -> tensor<f32>
+    %1 = "mhlo.negate"(%arg0) : (tensor<f32>) -> tensor<f32>
     "mhlo.return"(%1, %1) : (tensor<f32>, tensor<f32>) -> ()
   },  {
   ^bb0(%arg0: tensor<f32>):
-    %1 = "mhlo.copy"(%arg0) {name = "copy"} : (tensor<f32>) -> tensor<f32>
+    %1 = "mhlo.copy"(%arg0) : (tensor<f32>) -> tensor<f32>
     "mhlo.return"(%1, %1) : (tensor<f32>, tensor<f32>) -> ()
   },  {
   ^bb0(%arg0: tensor<f32>):
-    %1 = "mhlo.floor"(%arg0) {name = "floor"} : (tensor<f32>) -> tensor<f32>
+    %1 = "mhlo.floor"(%arg0) : (tensor<f32>) -> tensor<f32>
     "mhlo.return"(%1, %1) : (tensor<f32>, tensor<f32>) -> ()
-  }) {name = "conditional"} : (tensor<i32>, tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>, tensor<f32>)
+  }) : (tensor<i32>, tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>, tensor<f32>)
   return %0#0, %0#1 : tensor<f32>, tensor<f32>
 }
 

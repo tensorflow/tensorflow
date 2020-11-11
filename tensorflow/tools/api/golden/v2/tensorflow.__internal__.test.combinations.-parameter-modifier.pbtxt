@@ -1,0 +1,17 @@
+path: "tensorflow.__internal__.test.combinations.ParameterModifier"
+tf_class {
+  is_instance: "<class \'tensorflow.python.framework.test_combinations.ParameterModifier\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "DO_NOT_PASS_TO_THE_TEST"
+    mtype: "<type \'object\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'parameter_name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "modified_arguments"
+    argspec: "args=[\'self\', \'kwargs\', \'requested_parameters\'], varargs=None, keywords=None, defaults=None"
+  }
+}

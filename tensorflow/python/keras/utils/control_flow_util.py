@@ -22,7 +22,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond as smart_module
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variables
 
@@ -127,13 +129,13 @@ def constant_value(pred):  # pylint: disable=invalid-name
     TypeError: If `pred` is not a Variable, Tensor or bool, or Python
       integer 1 or 0.
   """
-  # Allow integer booleans.
-  if isinstance(pred, int):
-    if pred == 1:
-      pred = True
-    elif pred == 0:
-      pred = False
-
+  if isinstance(pred, ops.Tensor):
+    return tensor_util.constant_value(pred)
+  if pred in {0, 1}:  # Accept 1/0 as valid boolean values
+    return bool(pred)
+  if isinstance(pred, bool):
+    return pred
   if isinstance(pred, variables.Variable):
     return None
-  return smart_module.smart_constant_value(pred)
+  raise TypeError("`pred` must be a Tensor, or a Python bool, or 1 or 0. "
+                  "Found instead: %s" % type(pred))

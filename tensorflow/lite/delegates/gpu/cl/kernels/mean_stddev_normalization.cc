@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/device_info.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
-#include "tensorflow/lite/delegates/gpu/cl/precision.h"
 
 namespace tflite {
 namespace gpu {
@@ -29,15 +28,23 @@ namespace cl {
 namespace {
 
 std::string GetVectorReduceCode() {
-  return R"(static inline float reduce_vector(float4 v) {
+  return R"(float reduce_vector(float4 v) {
   return dot(v, (float4)(1.0f));
 })";
 }
 
 std::string GetReduceCode() {
   // If it is supported, use the built-in work_group_reduce_add function.
-  // Otherwise, implement a reduction using __local memory. Note this only works
-  // with power-of-two work group sizes.
+  // Otherwise, implement a reduction using __local memory.
+
+  // In the reduction step add upper half of the still-to-be-summed vector to
+  // the lower half, while taking care of odd sizes and rounding. E.g.:
+  // Number of items still to be summed before: 5
+  // Local memory before: [a, b, c, d, e];
+  // Local memory after: [a+d, b+e, c, d, e];
+  // Threads doing work: id < 2 = floor(5/2)
+  // Offset to the added items: 3 = ceil(5/2)
+  // Number of items still to be summed after: 3 = ceil(5/2)
   return R"(
 #if (__OPENCL_C_VERSION__ >= 200) && (__OPENCL_C_VERSION__ < 300) && \
   !defined(__opencl_c_work_group_collective_functions)
@@ -47,25 +54,18 @@ std::string GetReduceCode() {
 #ifdef __opencl_c_work_group_collective_functions
 #define local_reduce(item, tmp) work_group_reduce_add(item)
 #else  // !defined(__opencl_c_work_group_collective_functions)
-static inline float local_reduce(float item, __local float* tmp) {
+float local_reduce(float item, __local float* tmp) {
   const int local_id = get_local_id(0);
   tmp[local_id] = item;
   barrier(CLK_LOCAL_MEM_FENCE);
   // The number of items still need to be summed
   int reduction_size = get_local_size(0);
   while (reduction_size > 1) {
-    // Reduction step: add upper half of the still-to-be-summed vector to the
-    // lower half, while taking care of odd sizes and rounding. E.g.:
-    // Number of items still to be summed before: 5
-    // Local memory before: [a, b, c, d, e];
-    // Local memory after: [a+d, b+e, c, d, e];
-    // Threads doing work: id < 2 = floor(5/2)
-    // Offset to the added items: 3 = ceil(5/2)
-    // Number of items still to be summed after: 3 = ceil(5/2)
     const int active_thread_limit = reduction_size / 2;
     const int offset = (reduction_size + 1) / 2;
     if (local_id < active_thread_limit) {
-      tmp[local_id] += tmp[local_id + offset];
+      item += tmp[local_id + offset];
+      tmp[local_id] = item;
     }
     barrier(CLK_LOCAL_MEM_FENCE);
     reduction_size = offset;
@@ -78,7 +78,7 @@ static inline float local_reduce(float item, __local float* tmp) {
 
 std::string GetFilterCode() {
   return R"(
-static inline float4 filter_outside_tensor(float4 x, int num_channels, int slice) {
+float4 filter_outside_tensor(float4 x, int num_channels, int slice) {
   return select(x, (float4)(0.0f), slice * 4 + (int4)(0, 1, 2, 3) >= num_channels);
 }
 )";
@@ -86,7 +86,7 @@ static inline float4 filter_outside_tensor(float4 x, int num_channels, int slice
 }  // namespace
 
 MeanStdDevNormalization::MeanStdDevNormalization(const OperationDef& definition,
-                                                 const DeviceInfo& device_info,
+                                                 const GpuInfo& gpu_info,
                                                  const int tensor_slices)
     : GPUOperation(definition) {
   // The kernel code does not inherently need a fixed size, but in order to not
@@ -95,20 +95,50 @@ MeanStdDevNormalization::MeanStdDevNormalization(const OperationDef& definition,
   // For now, fix workgroup size to the biggest supported by the device, but not
   // larger than the number of tensor slices.
   int desired_work_group_size =
-      std::min(tensor_slices, device_info.max_work_group_size_x);
-  if (device_info.IsMali() && desired_work_group_size > 64) {
+      std::min(tensor_slices, gpu_info.max_work_group_size_x);
+  if (gpu_info.IsMali()) {
     // Don't use more than 64 work items per work group on ARM Mali. They
     // implement local memory using the global memory, larger workgroups have
     // severe performance penalty.
     desired_work_group_size = 64;
   }
+  if (gpu_info.IsAdreno()) {
+    AdrenoInfo info = gpu_info.adreno_info;
+    if (info.IsAdreno3xx()) {
+      if (info.adreno_gpu == AdrenoGpu::kAdreno320 ||
+          info.adreno_gpu == AdrenoGpu::kAdreno330) {
+        desired_work_group_size = 128;
+      } else {
+        desired_work_group_size = 64;
+      }
+    } else if (info.IsAdreno4xx()) {
+      if (info.adreno_gpu == AdrenoGpu::kAdreno430) {
+        desired_work_group_size = 256;
+      } else {
+        desired_work_group_size = 128;
+      }
+    } else if (info.IsAdreno5xx()) {
+      if (info.adreno_gpu == AdrenoGpu::kAdreno530 ||
+          info.adreno_gpu == AdrenoGpu::kAdreno540) {
+        desired_work_group_size = 256;
+      } else {
+        desired_work_group_size = 128;
+      }
+    }
+  }
+  if (gpu_info.IsPowerVR()) {
+    desired_work_group_size = 64;
+  }
+  while (desired_work_group_size >= tensor_slices * 2) {
+    desired_work_group_size /= 2;
+  }
   work_group_size_.x = desired_work_group_size;
   work_group_size_.y = 1;  // Required
   work_group_size_.z = 1;  // Required
   code_ = GetNormalizationCode();
-  if (device_info.cl_version >= OpenCLVersion::CL_3_0) {
+  if (gpu_info.cl_version >= OpenCLVersion::CL_3_0) {
     compiler_options_.push_back(CompilerOptions::CL_3_0);
-  } else if (device_info.cl_version >= OpenCLVersion::CL_2_0) {
+  } else if (gpu_info.cl_version >= OpenCLVersion::CL_2_0) {
     compiler_options_.push_back(CompilerOptions::CL_2_0);
   }
 }
@@ -175,9 +205,9 @@ int3 MeanStdDevNormalization::GetGridSize() const {
 }
 
 MeanStdDevNormalization CreateMeanStdDevNormalization(
-    const OperationDef& definition, const DeviceInfo& device_info,
+    const OperationDef& definition, const GpuInfo& gpu_info,
     const int tensor_slices) {
-  return MeanStdDevNormalization(definition, device_info, tensor_slices);
+  return MeanStdDevNormalization(definition, gpu_info, tensor_slices);
 }
 
 }  // namespace cl

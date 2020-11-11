@@ -1,3 +1,4 @@
+load("//tensorflow:tensorflow.bzl", "filegroup")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
@@ -18,13 +19,16 @@ package_group(
 )
 
 glob_lit_tests(
-    data = [":test_utilities"],
+    data = [
+        ":test_utilities",
+        "@llvm-project//mlir:run_lit.sh",
+    ],
     default_tags = tf_cuda_tests_tags() + [
         "no_pip",
         "config-cuda-only",
         "no_rocm",
     ],
-    driver = "@llvm-project//mlir:run_lit.sh",
+    driver = "//tensorflow/compiler/mlir:run_lit.sh",
     exclude = [
         # TODO(b/137624192): Reenable once we can fuse reductions.
         "fused_reduce.hlo",

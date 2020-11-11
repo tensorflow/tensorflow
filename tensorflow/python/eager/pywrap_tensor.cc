@@ -335,12 +335,12 @@ TFE_TensorHandle* ConvertToEagerTensor(TFE_Context* ctx, PyObject* value,
   // TODO(slebedev): also cache singleton NumPy arrays and scalars?
   if (PyArray_IsPythonNumber(value)) {
     auto* cache = TFE_TensorHandleCache::Get();
-    TFE_TensorHandle* handle = cache->Lookup(value, dtype, device_name);
+    TFE_TensorHandle* handle = cache->Lookup(value, dtype, ctx, device_name);
     if (handle != nullptr) return handle;
     handle = ConvertToEagerTensorUncached(ctx, value, dtype, device_name);
     if (handle == nullptr) return nullptr;
     if (!PyFloat_Check(value) || std::isfinite(PyFloat_AS_DOUBLE(value))) {
-      cache->Insert(value, dtype, device_name, handle);
+      cache->Insert(value, dtype, ctx, device_name, handle);
     }
     return handle;
   } else {
