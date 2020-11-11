@@ -19,7 +19,7 @@ import collections
 import functools
 import tempfile
 import time
-from typing import List, Mapping, Optional, Sequence, Union
+from typing import Callable, Iterable, List, Mapping, Optional, Sequence, Union
 
 from absl import logging
 import numpy as np
@@ -144,6 +144,14 @@ class ModelConfig(
     return super(ModelConfig,
                  cls).__new__(cls, saved_model_dir, saved_model_tags,
                               saved_model_signature_key, default_batch_size)
+
+
+class TestResultCollection(
+    collections.namedtuple("TestResultCollection", ["results", "config"])):
+
+  def __new__(cls, config: ModelConfig,
+              results: Sequence[TestResult] = tuple()):
+    return super(TestResultCollection, cls).__new__(cls, config, results)
 
 
 class _ModelHandlerBase(metaclass=abc.ABCMeta):
@@ -429,3 +437,86 @@ class TrtModelHandlerV2(_TrtModelHandlerBase, ModelHandlerV2):
         benchmark_iterations,
         allow_to_use_gpu=True)
     return test_result._replace(trt_convert_params=self._trt_convert_params)
+
+
+class _ModelHandlerManagerBase(metaclass=abc.ABCMeta):
+  """Manages a series of ModelHandlers for aggregrated testing/benchmarking."""
+
+  def __init__(
+      self, model_config: ModelConfig,
+      default_trt_convert_params: trt.TrtConversionParams,
+      trt_convert_params_updater: Callable[[trt.TrtConversionParams],
+                                           Iterable[trt.TrtConversionParams]]):
+    self._ori_model = self.model_handler_cls(model_config)
+    self._trt_models = []
+    for trt_convert_params in trt_convert_params_updater(
+        default_trt_convert_params):
+      trt_model = self.trt_model_handler_cls(
+          model_config, trt_convert_params=trt_convert_params)
+      self._trt_models.append(trt_model)
+
+    self._result_collection = TestResultCollection(
+        results=[], config=model_config)
+
+  def __str__(self) -> str:
+    return "Input Model: {}".format(str(self._ori_model))
+
+  def __repr__(self) -> str:
+    return "{}({})".format(self.__class__.__name__, str(self))
+
+  @property
+  @classmethod
+  @abc.abstractmethod
+  def model_handler_cls(cls):
+    """The modle handler class. ModelHandleV1/ModelHandlerV2."""
+
+  @property
+  @classmethod
+  @abc.abstractmethod
+  def trt_model_handler_cls(cls):
+    """The TensorRTmodle handler class. TrtModelHandleV1/TrtModelHandlerV2."""
+
+  @property
+  def model_config(self):
+    return self._ori_model.model_config
+
+  def generate_random_inputs(self, batch_size: Optional[int] = None):
+    return self._ori_model.generate_random_inputs(batch_size)
+
+  def run(self,
+          inputs=None,
+          warmup_iterations: int = 10,
+          benchmark_iterations: int = 100) -> TestResultCollection:
+    """Runs model inference with provided or randomly generated input tensors.
+
+    Args:
+      inputs: Mapping from names to input ndarrays in TF1. Or a sequence of
+        tensors in TF2. If `None`, ramdomly generated input tensors will be used
+        instead.
+      warmup_iterations: Number of inferences to warm up the runtime.
+      benchmark_iterations: Number of inferences to measure the latency.
+
+    Returns:
+      `TestResultCollection` summarizing timing and numerics information for
+      different TensorRT conversion settings.
+    """
+    inputs = inputs or self.generate_random_inputs()
+    results = [
+        model.run(inputs, warmup_iterations, benchmark_iterations)
+        for model in [self._ori_model] + self._trt_models
+    ]
+    return self._result_collection._replace(results=results)
+
+
+class ModelHandlerManagerV1(_ModelHandlerManagerBase):
+  """Manages a series of ModelHandlers for aggregrated testing/benchmarking in TF1."""
+
+  model_handler_cls = ModelHandlerV1
+  trt_model_handler_cls = TrtModelHandlerV1
+
+
+class ModelHandlerManagerV2(_ModelHandlerManagerBase):
+  """Manages a series of ModelHandlers for aggregrated testing/benchmarking in TF2."""
+
+  model_handler_cls = ModelHandlerV2
+  trt_model_handler_cls = TrtModelHandlerV2
