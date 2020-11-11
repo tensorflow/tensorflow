@@ -164,7 +164,8 @@ def create_in_process_cluster(num_workers,
   worker_config = config_pb2.ConfigProto()
   worker_config.gpu_options.per_process_gpu_memory_fraction = gpu_mem_frac
 
-  # The cluster may hang if workers don't have enough inter_op threads.
+  # The cluster may hang if workers don't have enough inter_op threads. See
+  # b/172296720 for more details.
   if multiprocessing.cpu_count() < 4:
     worker_config.inter_op_parallelism_threads = 4
 
