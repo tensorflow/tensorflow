@@ -195,7 +195,9 @@ tf_cuda_cc_test(
     name = "gpu_add_test",
     size = "small",
     srcs = if_mlir_generated_gpu_kernels_enabled(["gpu_add_test.cc"]),
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + [
+        "no_cuda_asan",  # b/173033461
+    ],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
