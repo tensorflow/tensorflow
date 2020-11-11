@@ -4817,7 +4817,7 @@ class FormatTest(test_util.TensorFlowTestCase):
 
 class NonMaxSuppressionTest(test_util.TensorFlowTestCase):
 
-  def NonMaxSuppressionTest(self):
+  def testNonMaxSuppression(self):
     boxes_np = [[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
                 [0, 10, 1, 11], [0, 10.1, 1, 11.1], [0, 100, 1, 101]]
     scores_np = [0.9, 0.75, 0.6, 0.95, 0.5, 0.3]
