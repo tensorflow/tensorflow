@@ -400,11 +400,8 @@ TF_LITE_MICRO_TEST(TestIncompleteInitializationAllocationsWithSmallArena) {
   // Interpreter fails because arena is too small:
   TF_LITE_MICRO_EXPECT_EQ(interpreter.Invoke(), kTfLiteError);
 
-  // The head will have some allocations because scratch buffer requests are
-  // stored in the head until memory plan is fully committed (e.g. model has to
-  // successfully allocate first).
   TF_LITE_MICRO_EXPECT_EQ(
-      static_cast<size_t>(128),
+      static_cast<size_t>(0),
       allocator->GetSimpleMemoryAllocator()->GetHeadUsedBytes());
 
   // Ensure allocations are zero (ignore tail since some internal structs are
