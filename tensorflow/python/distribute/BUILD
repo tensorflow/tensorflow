@@ -1071,6 +1071,7 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
+        "notsan",  # b/173031470
     ],
     deps = [
         ":collective_util",
