@@ -676,31 +676,54 @@ Status IrEmitterUnnested::HandlePadToStatic(HloInstruction* pad_to_static) {
 // Output = {static array, dynamic_dim0, dynamic_dim1}
 Status IrEmitterUnnested::HandleSliceToDynamic(
     HloInstruction* slice_to_dynamic) {
-  int unroll_factor = 1;
-  string ir_name = IrName(slice_to_dynamic);
-  auto kernel_thunk = BuildKernelThunk(slice_to_dynamic,
-                                       /*implements_whole_instruction=*/true);
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(slice_to_dynamic));
+  return EmitSliceToDynamicFromMlir(input);
+}
 
-  std::vector<llvm::Value*> dynamic_dims;
-  const Shape& input_shape = slice_to_dynamic->operand(0)->shape();
-  const Shape& data_shape = slice_to_dynamic->shape();
-  int32 raw_data_size = ShapeUtil::ByteSizeOf(
-      ShapeUtil::MakeStaticShape(slice_to_dynamic->shape()));
-  // pseudo code for sliceToDynamic on a 2d array
-  //   int* source_array = input[0];
-  //   int* dest_array = output[0];
-  llvm::Value* dest_buffer = GetBasePointer(*slice_to_dynamic);
-  llvm::Value* raw_buffer =
-      b_.CreateBitCast(dest_buffer, b_.getInt8Ty()->getPointerTo());
-  llvm_ir::IrArray data_array =
-      GetIrArray(*slice_to_dynamic, *slice_to_dynamic);
+Status IrEmitterUnnested::EmitSliceToDynamicFromMlir(
+    MlirEmitterInput mlir_input) {
+  // TODO(jurahul): Create an op to represent SliceToDynamic.
+  auto slice_to_dynamic =
+      ::mlir::cast<::mlir::lmhlo::CustomCallOp>(mlir_input.op);
+  int unroll_factor = 1;
+  std::string ir_name = mlir::GetNameFromLoc(slice_to_dynamic.getLoc());
+  absl::Span<const BufferAllocation> allocations(
+      ir_emitter_context_->buffer_assignment().Allocations());
+
+  std::vector<llvm_ir::IrArray> ir_arrays;
+  TF_ASSIGN_OR_RETURN(
+      auto kernel_thunk,
+      BuildKernelThunkForMlir(slice_to_dynamic, mlir_input.thunk_info,
+                              mlir_input.extra_slice, &ir_arrays));
+
+  const Shape& input_shape =
+      TypeToShape(slice_to_dynamic.args().front().getType());
+  const Shape& data_shape = TypeToShape(slice_to_dynamic.output().getType());
+
+  // TODO(jurahul): data_shape here is the static shape of the output (which has
+  // a dynamic shape in XLA). Currently, we are mapping that to a static shaped
+  // memref. When we change that to a more appropriate representation in MLIR,
+  // fix this code to correctly deduce the static shape backing the dynamically
+  // shaped memref.
 
   // calculate the location where metadata needs to be inserted
   //   int* dyn_dim0_size = dest_array + meta_data_offset;
   //   int* dyn_dim1_size = dest_array + meta_data_offset + sizeof(int);
-  for (int64 i = 1; i < slice_to_dynamic->operand_count(); ++i) {
+  int32 raw_data_size = ShapeUtil::ByteSizeOf(data_shape);
+
+  // pseudo code for sliceToDynamic on a 2d array
+  //   int* source_array = input[0];
+  //   int* dest_array = output[0];
+  const llvm_ir::IrArray data_array = ir_arrays.back();
+  llvm::Value* dest_buffer = data_array.GetBasePointer();
+  llvm::Value* raw_buffer =
+      b_.CreateBitCast(dest_buffer, b_.getInt8Ty()->getPointerTo());
+
+  // Load dynamic dimensions from memory.
+  std::vector<llvm::Value*> dynamic_dims;
+  for (int64 i = 1; i < slice_to_dynamic.args().size(); ++i) {
     // const int64 dim_index = i - 1;
-    llvm::Value* source_buffer = GetBasePointer(*slice_to_dynamic->operand(i));
+    llvm::Value* source_buffer = ir_arrays[i].GetBasePointer();
     llvm::LoadInst* dyn_dim_size = b_.CreateLoad(source_buffer, "dyn_dim_size");
     dynamic_dims.push_back(dyn_dim_size);
   }
@@ -713,7 +736,7 @@ Status IrEmitterUnnested::HandleSliceToDynamic(
   //     *dyn_dim1_size = *output[2];
   //   }
   KernelSupportLibrary{&b_}.If("is_thred_0", IsBlock0Thread0(&b_), [&] {
-    for (int64 i = 1; i < slice_to_dynamic->operand_count(); ++i) {
+    for (int64 i = 1; i < slice_to_dynamic.args().size(); ++i) {
       const int64 dim_index = i - 1;
       llvm::Value* metadata = b_.CreateConstInBoundsGEP1_32(
           b_.getInt8Ty(), raw_buffer,
@@ -759,9 +782,8 @@ Status IrEmitterUnnested::HandleSliceToDynamic(
 
     data_array.EmitWriteArrayElement(
         array_index,
-        GetIrArray(*slice_to_dynamic->operand(0), *slice_to_dynamic)
-            .EmitReadArrayElement(dyn_index, &b_, /*name=*/"",
-                                  /*use_linear_index=*/false),
+        ir_arrays[0].EmitReadArrayElement(dyn_index, &b_, /*name=*/"",
+                                          /*use_linear_index=*/false),
         &b_);
     return Status::OK();
   };
@@ -774,11 +796,10 @@ Status IrEmitterUnnested::HandleSliceToDynamic(
   TF_RETURN_IF_ERROR(
       ParallelLoopEmitter(body_generator, data_shape, launch_dimensions, &b_,
                           unroll_factor)
-          .EmitLoop(ir_name, GetIndexTypeForKernel(
+          .EmitLoop(ir_name, GetIndexTypeForKernelFromMlir(
                                  slice_to_dynamic,
                                  launch_dimensions.launch_bound(), &b_)));
   thunk_sequence_.emplace_back(std::move(kernel_thunk));
-
   return Status::OK();
 }
 

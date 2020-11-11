@@ -7,7 +7,7 @@
 // CHECK:         %[[VAL_2:.*]] = bitcast i8* %[[VAL_0]] to [2 x [2 x [2 x i32]]]*
 // CHECK:         %[[VAL_3:.*]] = getelementptr inbounds i8, i8* %[[VAL_4:.*]], i64 0
 // CHECK:         %[[VAL_5:.*]] = bitcast i8* %[[VAL_3]] to [2 x [2 x [2 x i32]]]*
-// CHECK:         %[[VAL_6:.*]] = bitcast [2 x [2 x [2 x i32]]]* %[[VAL_2]] to i8*
+// CHECK:         %[[VAL_6:.*]] = bitcast [2 x [2 x [2 x i32]]]* %[[VAL_5]] to i8*
 // CHECK:         %[[VAL_7:.*]] = load i32, i32* bitcast ([4 x i8]* @buffer_for_static to i32*), align 4
 // CHECK:         %[[VAL_8:.*]] = load i32, i32* bitcast ([4 x i8]* @buffer_for_dynamic to i32*), align 4
 // CHECK:         %[[VAL_9:.*]] = load i32, i32* bitcast ([4 x i8]* @buffer_for_static to i32*), align 4
@@ -66,9 +66,9 @@
 // CHECK:         %[[VAL_53:.*]] = urem i32 %[[VAL_52]], %[[VAL_7]]
 // CHECK:         %[[VAL_54:.*]] = mul i32 %[[VAL_51]], %[[VAL_7]]
 // CHECK:         %[[VAL_55:.*]] = udiv i32 %[[VAL_46]], %[[VAL_54]]
-// CHECK:         %[[VAL_56:.*]] = getelementptr inbounds [2 x [2 x [2 x i32]]], [2 x [2 x [2 x i32]]]* %[[VAL_5]], i32 0, i32 %[[VAL_55]], i32 %[[VAL_53]], i32 %[[VAL_50]]
+// CHECK:         %[[VAL_56:.*]] = getelementptr inbounds [2 x [2 x [2 x i32]]], [2 x [2 x [2 x i32]]]* %[[VAL_2]], i32 0, i32 %[[VAL_55]], i32 %[[VAL_53]], i32 %[[VAL_50]]
 // CHECK:         %[[VAL_57:.*]] = load i32, i32* %[[VAL_56]], align 4, !invariant.load !4
-// CHECK:         %[[VAL_58:.*]] = bitcast [2 x [2 x [2 x i32]]]* %[[VAL_2]] to i32*
+// CHECK:         %[[VAL_58:.*]] = bitcast [2 x [2 x [2 x i32]]]* %[[VAL_5]] to i32*
 // CHECK:         %[[VAL_59:.*]] = getelementptr inbounds i32, i32* %[[VAL_58]], i32 %[[VAL_24]]
 // CHECK:         store i32 %[[VAL_57]], i32* %[[VAL_59]], align 4
 // CHECK:         br label %[[VAL_34]]

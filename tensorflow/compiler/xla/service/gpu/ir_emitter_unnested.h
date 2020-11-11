@@ -306,6 +306,7 @@ class IrEmitterUnnested : public IrEmitter,
   // }
   //   ```
   Status HandleSliceToDynamic(HloInstruction* slice_to_dynamic);
+  Status EmitSliceToDynamicFromMlir(MlirEmitterInput mlir_input);
 
   // A convenient helper for calling BufferAssignment::GetUniqueSlice.
   StatusOr<BufferAllocation::Slice> MaybeGetAllocationSlice(

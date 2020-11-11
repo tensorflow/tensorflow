@@ -55,6 +55,8 @@ class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
   ::xla::StatusOr<lmhlo::ScatterOp> EmitScatterOp(::xla::HloInstruction* instr);
   ::xla::StatusOr<lmhlo::SelectAndScatterOp> EmitSelectAndScatterOp(
       ::xla::HloInstruction* instr);
+  ::xla::StatusOr<lmhlo::CustomCallOp> EmitCustomCallOp(
+      ::xla::HloInstruction* instr);
 
   template <typename OpType>
   ::xla::StatusOr<OpType> CreateOpWithoutAttrs(::xla::HloInstruction* instr);
