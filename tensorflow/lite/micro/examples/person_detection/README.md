@@ -311,7 +311,7 @@ make -f tensorflow/lite/micro/tools/make/Makefile TARGET=esp generate_person_det
 
 ### Building the example
 
-Go the the example project directory
+Go to the example project directory
 ```
 cd tensorflow/lite/micro/tools/make/gen/esp_xtensa-esp32/prj/person_detection/esp-idf
 ```

@@ -6,9 +6,9 @@ endif
 TENSORFLOW_ROOT :=
 MAKEFILE_DIR := tensorflow/lite/micro/tools/make
 
-#  Override this on make command line to to parse thirdy party downloads during project generation 
-#  make -f tensorflow/lite/micro/tools/make/Makefile PARSE_THIRD_PARTY=true TARGET=apollo3evb generate_hello_world_make_project 
-PARSE_THIRD_PARTY := 
+#  Override this on make command line to parse third party downloads during project generation
+#  make -f tensorflow/lite/micro/tools/make/Makefile PARSE_THIRD_PARTY=true TARGET=apollo3evb generate_hello_world_make_project
+PARSE_THIRD_PARTY :=
 
 
 # Pull in some convenience functions.

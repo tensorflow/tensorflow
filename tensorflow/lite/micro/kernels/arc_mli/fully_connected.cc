@@ -52,7 +52,7 @@ constexpr int kOutputTensor = 0;
 bool IsMliApplicable(TfLiteContext* context, const TfLiteTensor* input,
                      const TfLiteTensor* filter, const TfLiteTensor* bias,
                      const TfLiteFullyConnectedParams* params) {
-  // MLI optimized version only supports int8_t dataype and no fused Relu and
+  // MLI optimized version only supports int8_t datatype and no fused Relu and
   // symmetric per-tensor quantization of weights (not per-axis)
   bool ret_val = (filter->type == kTfLiteInt8) &&
                  (input->type == kTfLiteInt8) && (bias->type == kTfLiteInt32) &&
@@ -190,9 +190,9 @@ TfLiteStatus EvalMliQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
     ops::micro::TensorSlicer in_slice(&mli_in, input_size_dimension,
                                       mli_in.shape[input_size_dimension]);
 
-    /* output tensor is alreade sliced in the output size dimension.
+    /* output tensor is already sliced in the output size dimension.
     out_ch_slice.Sub() is the tensor for the amount of output size of this
-    itteration of the weight slice loop. This tensor needs to be further
+    iteration of the weight slice loop. This tensor needs to be further
     sliced over the batch */
     ops::micro::TensorSlicer out_slice(out_ch_slice.Sub(), out_tensor_dimension,
                                        slice_size);

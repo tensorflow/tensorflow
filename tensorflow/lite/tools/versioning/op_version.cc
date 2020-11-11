@@ -168,7 +168,7 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
         return 3;
       }
       // For float and uint8 fixed point kernels, if the weight is
-      // Shuffled4x16Int8, is is version 2.
+      // Shuffled4x16Int8, it is version 2.
       if (op_sig.options.fully_connected.weights_format ==
           FullyConnectedOptionsWeightsFormat_SHUFFLED4x16INT8) {
         return 2;
