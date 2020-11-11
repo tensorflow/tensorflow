@@ -51,7 +51,7 @@ struct BConv2DThreadData {
   BConv2DThreadDataCommon *common;
   BConv2DJob *job;  // This describes the region that that thread will process
   int thread_scratch_idx;
-  bnn_b32_t *thread_scratch;  // size should be K_h * K_w * C_in / 32 + 7
+  bnn_b32_t *thread_scratch;  // size should be K_h * K_w * C_in / 32 + 8
 };
 
 extern "C" {
@@ -224,7 +224,7 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
     int thread_scratch_size =
         4 * (op_data->common.k.shape.height * op_data->common.k.shape.width *
                  op_data->common.x.channels / 32 +
-             7);  // FIXME *32
+             8);  // FIXME *32
     for (int thread_idx = 0; thread_idx < op_data->n_threads; thread_idx++) {
       TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
           context, thread_scratch_size,
