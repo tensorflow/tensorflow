@@ -436,6 +436,7 @@ distribute_py_test(
     shard_count = 19,
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # TODO(b/173021094)
         "no_rocm",  # times out on ROCm
         "no_windows_gpu",
         "nogpu",  # TODO(b/170905292)
