@@ -14,3 +14,6 @@
 # limitations under the License.
 
 # To do ... convert dataset to pandas dataframe
+
+import tensorflow as tf
+import numpy as np
