@@ -702,16 +702,6 @@ body: A function that takes a list of tensors and returns another
     return Verify(*this);
   }];
 
-  let builders = [
-    OpBuilderDAG<(ins "TypeRange":$output, "ValueRange":$input,
-                  "FlatSymbolRefAttr":$cond, "FlatSymbolRefAttr":$body,
-                  "IntegerAttr":$parallel_iterations,
-                  "BoolAttr":$is_stateless)>,
-    OpBuilderDAG<(ins "TypeRange":$output, "ValueRange":$input,
-                  "StringRef":$cond, "StringRef":$body,
-                  "uint64_t":$parallel_iterations, "bool":$is_stateless)>
-  ];
-
   let extraClassDeclaration = [{
     // Get the condition function.
     FuncOp cond_function() {
@@ -764,8 +754,9 @@ def TF_WhileRegionOp : TF_Op<"WhileRegion",
 
     // Used to map StatelessWhile and While op defined in TensorFlow to a common
     // op.
-    DefaultValuedAttr<BoolAttr, "false">:$is_stateless,
-    DefaultValuedAttr<I64Attr, "10">:$parallel_iterations
+    DefaultValuedAttr<TF_ShapeAttrArray, "{}">:$output_shapes,
+    DefaultValuedAttr<I64Attr, "10">:$parallel_iterations,
+    DefaultValuedAttr<BoolAttr, "false">:$is_stateless
   );
   let results = (outs Variadic<AnyTensor>:$output);
 
