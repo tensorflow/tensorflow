@@ -244,6 +244,7 @@ distribute_py_test(
     disable_mlir_bridge = False,
     main = "custom_training_loop_metrics_test.py",
     tags = [
+        "no_rocm",
         "multi_and_single_gpu",
     ],
     deps = [
