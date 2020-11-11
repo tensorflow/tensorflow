@@ -340,20 +340,6 @@ void DecreasingPartialArgSort(const float* values, int num_values,
       [&values](const int i, const int j) { return values[i] > values[j]; });
 }
 
-void DecreasingPartialArgSort2(const float* values, int num_values,
-                               int num_to_sort, int* indices, int* ind) {
-  std::iota(ind, ind + num_values, 0);
-  std::partial_sort(
-      ind, ind + num_to_sort, ind + num_values,
-      [&values](const int i, const int j) { return values[i] > values[j]; });
-
-  std::iota(indices, indices + num_values, 0);
-
-  std::partial_sort(
-      indices, indices + num_to_sort, indices + num_values,
-      [&values](const int i, const int j) { return values[i] > values[j]; });
-}
-
 int SelectDetectionsAboveScoreThreshold(const float* values, int size,
                                         const float threshold,
                                         float* keep_values, int* keep_indices) {
