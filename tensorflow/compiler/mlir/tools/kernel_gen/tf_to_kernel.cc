@@ -97,7 +97,6 @@ xla::StatusOr<std::string> EmitToBinary(mlir::ModuleOp module) {
 xla::Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
                 llvm::ArrayRef<std::string> architectures,
                 llvm::ArrayRef<uint32_t> tile_sizes,
-                llvm::ArrayRef<uint32_t> same_shape,
                 llvm::ArrayRef<uint32_t> unroll_factors,
                 bool embed_memref_prints) {
   // Read TF code.
@@ -109,8 +108,8 @@ xla::Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
   TF_ASSIGN_OR_RETURN(
       mlir::OwningModuleRef module,
       GenerateKernelForTfCode(context, tf_code, /*gpu_binary_only=*/false,
-                              architectures, tile_sizes, same_shape,
-                              unroll_factors, embed_memref_prints));
+                              architectures, tile_sizes, unroll_factors,
+                              embed_memref_prints));
   // Get binary.
   TF_ASSIGN_OR_RETURN(std::string binary, EmitToBinary(*module));
 
@@ -145,10 +144,6 @@ int main(int argc, char** argv) {
       "unroll_factors",
       llvm::cl::desc("factors to unroll by, separated by commas"),
       llvm::cl::ZeroOrMore, llvm::cl::CommaSeparated);
-  llvm::cl::list<uint32_t> same_shape(
-      "same_shape",
-      llvm::cl::desc("arguments with same shape, separated by commas"),
-      llvm::cl::ZeroOrMore, llvm::cl::CommaSeparated);
 
   tensorflow::InitMlir y(&argc, &argv);
   llvm::InitializeNativeTarget();
@@ -157,8 +152,8 @@ int main(int argc, char** argv) {
   llvm::cl::ParseCommandLineOptions(argc, argv, "TF op GPU kernel generator\n");
 
   auto status = tensorflow::kernel_gen::Run(
-      input_file, output_file, architectures, tile_sizes, same_shape,
-      unroll_factors, embed_memref_prints);
+      input_file, output_file, architectures, tile_sizes, unroll_factors,
+      embed_memref_prints);
   if (!status.ok()) {
     LOG(ERROR) << status;
     return 1;
