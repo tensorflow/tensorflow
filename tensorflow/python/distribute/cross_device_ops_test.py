@@ -940,7 +940,7 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
 
       graph = f.get_concrete_function().graph
       should_be_ordered = set([
-          "CollectiveReduce", "CollectiveGather", "If", "While",
+          "CollectiveReduceV2", "CollectiveGatherV2", "If", "While",
           "StatefulPartitionedCall"
       ])
       nodes_by_device = {}
