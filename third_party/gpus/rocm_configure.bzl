@@ -339,6 +339,7 @@ def _find_libs(repository_ctx, rocm_config, bash_bin):
 
 def _exec_find_rocm_config(repository_ctx, script_path):
     python_bin = get_python_bin(repository_ctx)
+
     # If used with remote execution then repository_ctx.execute() can't
     # access files from the source tree. A trick is to read the contents
     # of the file in Starlark and embed them as part of the command. In

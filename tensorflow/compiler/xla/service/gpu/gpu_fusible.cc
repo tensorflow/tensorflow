@@ -334,9 +334,9 @@ static int64 SharedMemoryUsage(const HloInstruction& instr) {
     }
   } else if (instr.opcode() == HloOpcode::kFusion) {
     int64 sum = 0;
-    for (const HloInstruction* operand :
-         instr.fused_expression_root()->operands()) {
-      sum += SharedMemoryUsage(*operand);
+    for (const HloInstruction* hlo :
+         instr.fused_instructions_computation()->MakeInstructionPostOrder()) {
+      sum += SharedMemoryUsage(*hlo);
     }
     return sum;
   }

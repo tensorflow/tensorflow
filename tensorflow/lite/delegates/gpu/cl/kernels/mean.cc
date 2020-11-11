@@ -32,8 +32,10 @@ Mean::Mean(const OperationDef& definition, const DeviceInfo& device_info)
   // must be: (x * y) % 4 = 0;
   // must be: z = 1;
   work_group_size_ = int3(16, 16, 1);
-  if (device_info.IsAdreno3xx()) {
-    work_group_size_ = int3(16, 8, 1);
+  if (device_info.IsAdreno()) {
+    if (device_info.adreno_info.IsAdreno3xx()) {
+      work_group_size_ = int3(16, 8, 1);
+    }
   }
   if (device_info.IsMali()) {
     const MaliInfo& mali_info = device_info.mali_info;

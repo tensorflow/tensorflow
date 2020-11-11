@@ -294,7 +294,10 @@ message DebugOptions {
   // reached.
   int32 xla_multiheap_size_constraint_per_heap = 142;
 
-  // Next id: 143
+  // Enable detailed logging into vlog.
+  bool xla_detailed_logging = 143;
+
+  // Next id: 144
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

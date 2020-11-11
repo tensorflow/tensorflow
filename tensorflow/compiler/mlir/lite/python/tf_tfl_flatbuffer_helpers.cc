@@ -113,6 +113,8 @@ DataType ConvertIODataTypeToDataType(toco::IODataType dtype) {
       return DT_QUINT8;
     case toco::IODataType::INT8:
       return DT_QINT8;
+    case toco::IODataType::QUANTIZED_INT16:
+      return DT_INT16;
     case toco::IODataType::INT32:
       return DT_INT32;
     case toco::IODataType::INT64:
@@ -287,7 +289,8 @@ Status ConvertMLIRToTFLiteFlatBuffer(
         absl::StrCat(toco_flags.dump_graphviz_dir(), "/toco_AT_IMPORT.dot")));
   }
 
-  mlir::PassManager pm(module->getContext());
+  mlir::PassManager pm(module->getContext(),
+                       mlir::OpPassManager::Nesting::Implicit);
 
   tensorflow::AddTFToTFLConversionPasses(pass_config, &pm, session);
   // Convert back to outlined while format for export back to flatbuffer.

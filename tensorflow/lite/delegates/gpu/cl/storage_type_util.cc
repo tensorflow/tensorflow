@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/storage_type_util.h"
 
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 
 namespace tflite {
@@ -49,7 +49,8 @@ bool CanCreateTensorWithShape(const DeviceInfo& device_info, const BHWDC& shape,
              slices * shape.d <= device_info.image3d_max_depth;
     case TensorStorageType::TEXTURE_ARRAY:
       // Bug on some Adreno. b/131099086
-      if (slices == 1 && !device_info.SupportsOneLayerTextureArray()) {
+      if (slices == 1 && device_info.IsAdreno() &&
+          !device_info.adreno_info.support_one_layer_texture_array) {
         return false;
       }
       return shape.w * shape.b <= device_info.image2d_max_width &&

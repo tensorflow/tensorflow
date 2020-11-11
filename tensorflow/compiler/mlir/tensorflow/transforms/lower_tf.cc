@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_remaining_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -805,8 +806,8 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
                            ConcatV2Op::getOperationName(),
                            AddOp::getOperationName(),
                            PadOp::getOperationName(),
-                           SumOp::getOperationName(),
                            SplitOp::getOperationName(),
+                           UnpackOp::getOperationName(),
                            DivOp::getOperationName(),
                            MulOp::getOperationName(),
                            ReshapeOp::getOperationName(),
@@ -863,7 +864,30 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
     auto full_paddings = rewriter.create<ConcatV2Op>(
         loc, full_paddings_type, full_paddings_list, zero_i64);
 
-    SmallVector<int64_t, 4> padded_shape(input_rank, ShapedType::kDynamicSize);
+    // Compute the result type here instead of using shape inference because the
+    // full_paddings won't be available as a constant for shape inference.
+    ElementsAttr block_shape;
+    ElementsAttr paddings;
+    llvm::SmallVector<int64_t, 4> block_shape_ints;
+    auto padded_shape = llvm::to_vector<4>(input_shape);
+    if (matchPattern(op.block_shape(), m_Constant(&block_shape)) &&
+        matchPattern(op.paddings(), m_Constant(&paddings))) {
+      for (uint64_t i = 0; i < block_rank; i++) {
+        int64_t paddings_sum =
+            paddings.getValue({i, 0}).cast<IntegerAttr>().getInt() +
+            paddings.getValue({i, 1}).cast<IntegerAttr>().getInt();
+        int64_t block_shape_i =
+            block_shape.getValue({i}).cast<IntegerAttr>().getInt();
+        padded_shape[i + 1] = (paddings_sum + input_shape[i + 1]);
+        block_shape_ints.push_back(block_shape_i);
+      }
+    } else {
+      for (int i = 0; i < block_rank; i++) {
+        padded_shape[i + 1] = ShapedType::kDynamicSize;
+      }
+      block_shape_ints.resize(block_shape_type.getNumElements(), -1);
+    }
+
     auto padded_type =
         RankedTensorType::get(padded_shape, rewriter.getF32Type());
     // padded = pad(input, full_paddings)
@@ -872,13 +896,13 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
 
     auto paddings_sum_type =
         RankedTensorType::get({input_rank}, rewriter.getIntegerType(64));
-    auto one_i64 = rewriter.create<ConstOp>(
-        loc, GetScalarOfType(rewriter.getIntegerType(64), 1));
     // paddings_sum = paddings[*,0] + paddings[*,1]
-    auto paddings_sum =
-        rewriter.create<SumOp>(loc, paddings_sum_type, full_paddings, one_i64);
+    auto paddings_split = rewriter.create<UnpackOp>(
+        loc, TypeRange({paddings_sum_type, paddings_sum_type}), full_paddings,
+        rewriter.getI64IntegerAttr(1));
+    auto paddings_sum = rewriter.create<AddOp>(loc, paddings_split.getResult(0),
+                                               paddings_split.getResult(1));
 
-    // input_shape_tensor = input.shape
     auto input_shape_tensor = rewriter.create<ConstOp>(
         loc,
         DenseElementsAttr::get(
@@ -907,24 +931,45 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
                              block_shape_i64)
             .output());
 
+    SmallVector<int64_t, 4> outer_shape_ints;
     SmallVector<Value, 4> outer_shape_vals;
     for (int64_t i = 0; i < block_rank; ++i) {
       // TODO(b/157475606): Insert tf.Assert that the following division has
       // remainder 0.
       outer_shape_vals.push_back(rewriter.create<DivOp>(
           loc, padded_shape_splits[1 + i], block_shape_splits[i]));
+
+      auto padded_shape_i = padded_shape[1 + i];
+      auto block_shape_ints_i = block_shape_ints[i];
+
+      // Compute the outer_shape constant values to infer the reshape.
+      if (padded_shape_i == -1 || block_shape_ints_i == -1) {
+        outer_shape_ints.push_back(-1);
+      } else {
+        outer_shape_ints.push_back(padded_shape_i / block_shape_ints_i);
+      }
     }
 
     SmallVector<Value, 6> reshaped_shape_vals{padded_shape_splits[0]};
+    SmallVector<int64_t, 6> reshaped_shape_ints{padded_shape[0]};
     for (int64_t i = 0; i < block_rank; ++i) {
       reshaped_shape_vals.push_back(outer_shape_vals[i]);
       reshaped_shape_vals.push_back(block_shape_splits[i]);
+
+      reshaped_shape_ints.push_back(outer_shape_ints[i]);
+      reshaped_shape_ints.push_back(block_shape_ints[i]);
     }
     for (int64_t i = 1 + block_rank; i < input_rank; ++i) {
       reshaped_shape_vals.push_back(padded_shape_splits[i]);
+      reshaped_shape_ints.push_back(padded_shape[i]);
     }
     auto reshaped_shape = ValuesToRank1(
         rewriter, loc, rewriter.getIntegerType(64), reshaped_shape_vals);
+
+    auto reshaped = rewriter.create<ReshapeOp>(
+        loc,
+        RankedTensorType::get(reshaped_shape_ints, input_type.getElementType()),
+        padded, reshaped_shape);
 
     SmallVector<int64_t, 6> permutation_vals;
     for (int64_t i = 0; i < block_rank; ++i) {
@@ -940,6 +985,7 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
     auto permutation = rewriter.create<ConstOp>(
         loc, GetI64ElementsAttr(permutation_vals, &rewriter));
 
+    auto permuted = rewriter.create<TransposeOp>(loc, reshaped, permutation);
     auto output_batch = padded_shape_splits[0];
     for (int64_t i = 0; i < block_rank; ++i) {
       output_batch =
@@ -954,8 +1000,6 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
     }
     auto output_shape = ValuesToRank1(
         rewriter, loc, rewriter.getIntegerType(64), output_shape_vals);
-    auto reshaped = rewriter.create<ReshapeOp>(loc, padded, reshaped_shape);
-    auto permuted = rewriter.create<TransposeOp>(loc, reshaped, permutation);
 
     // Sometimes the result type is more specific than what the reshape builder
     // can infer.
@@ -963,6 +1007,177 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
     rewriter.replaceOpWithNewOp<ReshapeOp>(op, result_type, permuted,
                                            output_shape);
 
+    return success();
+  }
+};
+
+class LowerBatchToSpaceND : public RewritePattern {
+ public:
+  explicit LowerBatchToSpaceND(MLIRContext *context)
+      : RewritePattern(BatchToSpaceNDOp::getOperationName(),
+                       {
+                           ConstOp::getOperationName(),
+                           ReshapeOp::getOperationName(),
+                           SliceOp::getOperationName(),
+                           TransposeOp::getOperationName(),
+                       },
+                       1, context) {}
+
+  LogicalResult matchAndRewrite(Operation *src_op,
+                                PatternRewriter &rewriter) const override {
+    auto op = cast<BatchToSpaceNDOp>(src_op);
+    auto input = op.input();
+    auto input_ty = input.getType().cast<ShapedType>();
+    auto element_ty = input_ty.getElementType();
+    if (!input_ty.hasStaticShape()) {
+      return failure();
+    }
+
+    const int input_rank = input_ty.getRank();
+    auto input_shape = input_ty.getShape();
+
+    DenseIntElementsAttr block_shape;
+    DenseIntElementsAttr crops;
+    if (!matchPattern(op.block_shape(), m_Constant(&block_shape)) ||
+        !matchPattern(op.crops(), m_Constant(&crops))) {
+      return failure();
+    }
+
+    auto block_shape_ty = block_shape.getType();
+    if (!block_shape_ty.hasRank() || block_shape_ty.getRank() != 1) {
+      return failure();
+    }
+
+    const int block_rank = block_shape_ty.getShape().front();
+    auto remainder_shape = input_shape.drop_front(1 + block_rank);
+
+    const int64_t batch_size = input_shape[0];
+
+    // Compute the product of the block_shape values.
+    int64_t block_num_elems = 1;
+
+    for (auto val : block_shape.getIntValues()) {
+      block_num_elems *= val.getSExtValue();
+    }
+
+    if (block_num_elems <= 0) {
+      op.emitOpError()
+          << "The product of the block dimensions must be positive";
+      return failure();
+    }
+
+    // 1. Reshape `input` to `reshaped` of shape:
+    //      [block_shape[0], ..., block_shape[M-1],
+    //       batch / prod(block_shape),
+    //       input_shape[1], ..., input_shape[N-1]]
+    std::vector<int64_t> reshaped_shape;
+    for (auto val : block_shape) {
+      reshaped_shape.push_back(val.getSExtValue());
+    }
+    reshaped_shape.resize(input_rank + block_rank);
+
+    reshaped_shape[block_rank] = batch_size / block_num_elems;
+    std::copy(input_shape.begin() + 1, input_shape.end(),
+              reshaped_shape.begin() + block_rank + 1);
+
+    auto reshaped = rewriter.create<TF::ReshapeOp>(
+        op.getLoc(), RankedTensorType::get(reshaped_shape, element_ty), input,
+        rewriter.create<ConstOp>(op.getLoc(),
+                                 rewriter.getI64TensorAttr(reshaped_shape)));
+
+    // 2. Permute dimensions of `reshaped` to produce `permuted` of shape
+    //      [batch / prod(block_shape),
+    //
+    //       input_shape[1], block_shape[0],
+    //       ...,
+    //       input_shape[M], block_shape[M-1],
+    //
+    //       input_shape[M+1], ..., input_shape[N-1]]
+    std::vector<int64_t> permutation(reshaped_shape.size());
+    permutation[0] = block_rank;
+    for (int i = 0; i < block_rank; ++i) {
+      permutation[1 + 2 * i] = block_rank + 1 + i;
+      permutation[1 + 2 * i + 1] = i;
+    }
+    std::iota(permutation.begin() + 1 + block_rank * 2, permutation.end(),
+              1 + block_rank * 2);
+
+    std::vector<int64_t> transpose_shape(permutation.size());
+    for (auto it : llvm::enumerate(permutation)) {
+      transpose_shape[it.index()] = reshaped_shape[it.value()];
+    }
+
+    auto permuted = rewriter.create<TF::TransposeOp>(
+        op.getLoc(), RankedTensorType::get(transpose_shape, element_ty),
+        reshaped,
+        rewriter.create<ConstOp>(op.getLoc(),
+                                 rewriter.getI64TensorAttr(permutation)));
+
+    // 3. Reshape `permuted` to produce `reshaped_permuted` of shape
+    //      [batch / prod(block_shape),
+    //
+    //       input_shape[1] * block_shape[0],
+    //       ...,
+    //       input_shape[M] * block_shape[M-1],
+    //
+    //       input_shape[M+1],
+    //       ...,
+    //       input_shape[N-1]]
+    std::vector<int64_t> reshaped_permuted_shape(input_rank);
+    auto block_shape_values = llvm::to_vector<4>(block_shape.getIntValues());
+    reshaped_permuted_shape[0] = batch_size / block_num_elems;
+    for (int i = 0; i < block_rank; ++i) {
+      reshaped_permuted_shape[1 + i] =
+          block_shape_values[i].getSExtValue() * input_shape[1 + i];
+    }
+    std::copy(remainder_shape.begin(), remainder_shape.end(),
+              reshaped_permuted_shape.begin() + 1 + block_rank);
+
+    auto reshaped_permuted = rewriter.create<TF::ReshapeOp>(
+        op.getLoc(), RankedTensorType::get(reshaped_permuted_shape, element_ty),
+        permuted,
+        rewriter.create<ConstOp>(
+            op.getLoc(), rewriter.getI64TensorAttr(reshaped_permuted_shape)));
+
+    // 4. Crop the start and end of dimensions `[1, ..., M]` of
+    //    `reshaped_permuted` according to `crops` to produce the output of
+    //    shape:
+    //      [batch / prod(block_shape),
+    //
+    //       input_shape[1] * block_shape[0] - crops[0,0] - crops[0,1],
+    //       ...,
+    //       input_shape[M] * block_shape[M-1] - crops[M-1,0] - crops[M-1,1],
+    //
+    //       input_shape[M+1], ..., input_shape[N-1]]
+    std::vector<int64_t> start_indices(input_rank, 0);
+    std::vector<int64_t> slice_sizes = reshaped_permuted_shape;
+    std::vector<int64_t> strides(input_rank, 1);
+    auto crop_values = llvm::to_vector<4>(crops.getIntValues());
+    for (int i = 0; i < block_rank; ++i) {
+      int64_t crop_start = crop_values[i * 2].getSExtValue();
+      int64_t crop_end = crop_values[i * 2 + 1].getSExtValue();
+
+      if (crop_start < 0 || crop_end < 0) {
+        op.emitOpError() << "Crops must be non-negative";
+        return failure();
+      }
+
+      start_indices[i + 1] = crop_start;
+      slice_sizes[i + 1] -= crop_start + crop_end;
+
+      if (slice_sizes[i + 1] < 0) {
+        op.emitOpError() << "Cropped size must be non-negative: start: "
+                         << crop_start << " end: " << crop_end << " size "
+                         << reshaped_permuted_shape[1 + i];
+      }
+    }
+
+    rewriter.replaceOpWithNewOp<TF::SliceOp>(
+        op, RankedTensorType::get(slice_sizes, element_ty), reshaped_permuted,
+        rewriter.create<ConstOp>(op.getLoc(),
+                                 rewriter.getI64TensorAttr(start_indices)),
+        rewriter.create<ConstOp>(op.getLoc(),
+                                 rewriter.getI64TensorAttr(slice_sizes)));
     return success();
   }
 };
@@ -1044,10 +1259,11 @@ class Lower_UnaryOpsComposition
 
 void PopulateLoweringTFPatterns(MLIRContext *context,
                                 OwningRewritePatternList *patterns) {
-  patterns->insert<LowerAddNOp, ConvertFakeQuantWithMinMaxVarsOp,
-                   LowerDynamicStitchOp, LowerInvertPermutationOp,
-                   LowerLgammaOp, LowerPackOp, LowerSpaceToBatchNDOp,
-                   LowerSparseMatMulOp, Lower_UnaryOpsComposition>(context);
+  patterns
+      ->insert<LowerAddNOp, ConvertFakeQuantWithMinMaxVarsOp,
+               LowerDynamicStitchOp, LowerInvertPermutationOp, LowerLgammaOp,
+               LowerPackOp, LowerBatchToSpaceND, LowerSpaceToBatchNDOp,
+               LowerSparseMatMulOp, Lower_UnaryOpsComposition>(context);
   populateWithGenerated(context, *patterns);
 }
 

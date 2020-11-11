@@ -39,7 +39,7 @@ module attributes {gpu.container_module} {
   ^bb6:  // pred: ^bb4
     %13 = alloca() : memref<1xindex>
     store %8, %13[%c0] : memref<1xindex>
-    %14 = lmhlo.reshape_memref_cast %arg0(%13) : (memref<*xf32>, memref<1xindex>) -> memref<?xf32>
+    %14 = memref_reshape %arg0(%13) : (memref<*xf32>, memref<1xindex>) -> memref<?xf32>
     %15 = dim %14, %c0 : memref<?xf32>
     %16 = tf_framework.alloc(%ctx, %15) : memref<?xf32>
     %17 = cmpi "sle", %15, %c0 : index
@@ -50,8 +50,10 @@ module attributes {gpu.container_module} {
     %22 = subi %c0, %21 : index
     %23 = addi %21, %c1 : index
     %24 = select %17, %22, %23 : index
-    "gpu.launch_func"(%24, %c1, %c1, %c256, %c1, %c1, %14, %16) {kernel = @abs_kernel::@abs_kernel} : (index, index, index, index, index, index, memref<?xf32>, memref<?xf32>) -> ()
-    %25 = lmhlo.reshape_memref_cast %16(%1) : (memref<?xf32>, memref<?xindex>) -> memref<*xf32>
+    gpu.launch_func @abs_kernel::@abs_kernel
+        blocks in (%24, %c1, %c1) threads in (%c256, %c1, %c1)
+        args(%14 : memref<?xf32>, %16 : memref<?xf32>)
+    %25 = memref_reshape %16(%1) : (memref<?xf32>, memref<?xindex>) -> memref<*xf32>
     return %25 : memref<*xf32>
   }
 
@@ -66,6 +68,7 @@ module attributes {gpu.container_module} {
     // SHAPE-SAME: %[[ARG0:.*]]: !llvm.ptr<float>, %[[ARG1:.*]]: !llvm.ptr<float>, %[[ARG2:.*]]: !llvm.i64, %[[ARG3:.*]]: !llvm.i64, %[[ARG4:.*]]: !llvm.i64, %[[ARG5:.*]]: !llvm.ptr<float>, %[[ARG6:.*]]: !llvm.ptr<float>, %[[ARG7:.*]]: !llvm.i64, %[[ARG8:.*]]: !llvm.i64, %[[ARG9:.*]]: !llvm.i64
     llvm.func @abs_kernel(%arg0: !llvm.ptr<float>, %arg1: !llvm.ptr<float>, %arg2: !llvm.i64, %arg3: !llvm.i64, %arg4: !llvm.i64, %arg5: !llvm.ptr<float>, %arg6: !llvm.ptr<float>, %arg7: !llvm.i64, %arg8: !llvm.i64, %arg9: !llvm.i64) attributes {gpu.kernel} {
       // ABI: %[[ZERO:.*]] = llvm.mlir.constant(0 : index)
+      // ABI: %[[ONE:.*]] = llvm.mlir.constant(1 : index)
       // CHECK: llvm.mlir.undef
       %0 = llvm.mlir.undef : !llvm.struct<(ptr<float>, ptr<float>, i64, array<1 x i64>, array<1 x i64>)>
       // ABI-NEXT: llvm.insertvalue %[[ARG1]]
@@ -78,7 +81,8 @@ module attributes {gpu.container_module} {
       %3 = llvm.insertvalue %arg2, %2[2] : !llvm.struct<(ptr<float>, ptr<float>, i64, array<1 x i64>, array<1 x i64>)>
       // CHECK-NEXT: llvm.insertvalue %[[ARG3]]
       %4 = llvm.insertvalue %arg3, %3[3, 0] : !llvm.struct<(ptr<float>, ptr<float>, i64, array<1 x i64>, array<1 x i64>)>
-      // CHECK-NEXT: llvm.insertvalue %[[ARG4]]
+      // ABI-NEXT: llvm.insertvalue %[[ONE]]
+      // SHAPE-NEXT: llvm.insertvalue %[[ARG4]]
       %5 = llvm.insertvalue %arg4, %4[4, 0] : !llvm.struct<(ptr<float>, ptr<float>, i64, array<1 x i64>, array<1 x i64>)>
       // CHECK-NEXT: llvm.mlir.undef
       %6 = llvm.mlir.undef : !llvm.struct<(ptr<float>, ptr<float>, i64, array<1 x i64>, array<1 x i64>)>
@@ -93,7 +97,7 @@ module attributes {gpu.container_module} {
       // ABI-NEXT: llvm.insertvalue %[[ARG8]]
       // SHAPE-NEXT: llvm.insertvalue %[[ARG3]]
       %10 = llvm.insertvalue %arg8, %9[3, 0] : !llvm.struct<(ptr<float>, ptr<float>, i64, array<1 x i64>, array<1 x i64>)>
-      // ABI-NEXT: llvm.insertvalue %[[ARG9]]
+      // ABI-NEXT: llvm.insertvalue %[[ONE]]
       // SHAPE-NEXT: llvm.insertvalue %[[ARG4]]
       %11 = llvm.insertvalue %arg9, %10[4, 0] : !llvm.struct<(ptr<float>, ptr<float>, i64, array<1 x i64>, array<1 x i64>)>
       %12 = nvvm.read.ptx.sreg.ctaid.x : !llvm.i32

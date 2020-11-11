@@ -1135,6 +1135,7 @@ class TrtGraphConverterV2(object):
       self._converted_func = self._rebuild_func(self._converted_func)
 
     self._converted = True
+    return self._converted_func
 
   def build(self, input_fn):
     """Run inference with converted graph in order to build TensorRT engines.

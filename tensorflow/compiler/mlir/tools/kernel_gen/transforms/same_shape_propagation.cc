@@ -162,8 +162,8 @@ class ShapeEqualityKnowledge {
   /// results.
   void build(FuncOp function) {
     function.walk([&](Operation *op) {
-      if (auto reshape = dyn_cast<lmhlo::ReshapeMemRefCastOp>(op)) {
-        registerAssociation(ShapeValue{reshape.operand()}, reshape.result());
+      if (auto reshape = dyn_cast<MemRefReshapeOp>(op)) {
+        registerAssociation(ShapeValue{reshape.source()}, reshape.result());
         return;
       }
       if (auto alloc = dyn_cast<AllocOp>(op)) {

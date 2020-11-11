@@ -1530,7 +1530,9 @@ class ReduceOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(reader->ReadTensor(1, &axes));
     const TfLiteTensor* input = reader->GetInputTensor(0);
     ReduceAttributes attr;
-    RETURN_IF_ERROR(ExtractAxisFromIndex(*input, axes.data[0], &attr.axis));
+    Axis axis;
+    RETURN_IF_ERROR(ExtractAxisFromIndex(*input, axes.data[0], &axis));
+    attr.dims = {axis};
     node->operation.attributes = attr;
     return absl::OkStatus();
   }

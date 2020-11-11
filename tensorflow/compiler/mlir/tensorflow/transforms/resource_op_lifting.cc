@@ -120,7 +120,7 @@ namespace {
 //   return %read
 // }
 //
-// will be be transformed to:
+// will be transformed to:
 //
 // func @cluster_with_loop() {
 //   %0 = "tf.VarHandleOp"() ...
@@ -245,7 +245,7 @@ class RegionResourceHoister {
   // Returns all resources accessed by the regions attached the op.
   auto& GetResources() { return resources_; }
 
-  // Returns if the given value is a resouce that needs lifting.
+  // Returns if the given value is a resource that needs lifting.
   bool Contains(Value resource) const {
     return resources_.find(resource) != resources_.end();
   }
@@ -379,7 +379,7 @@ LogicalResult RegionResourceHoister::Analyze() {
       // If the user is not in one of the regions, we are not interested in it.
       // Since all the sub-regions within this region (i.e., regions attached to
       // op's in this region) have themselves gone through lifting, all resource
-      // users are expected to be operations in this region and and not embedded
+      // users are expected to be operations in this region and not embedded
       // within other sub-regions attached to op's in this region. So the check
       // for whether a user is in one of the regions attached to this op is
       // straightforward.
@@ -531,7 +531,7 @@ void RegionResourceHoister::ReplaceOpWithNewOp() {
   new_result_types.insert(new_result_types.end(), extra_result_types.begin(),
                           extra_result_types.end());
   OpBuilder builder(op_);
-  // Clone ths old operation but with new result types.
+  // Clone this old operation but with new result types.
   Operation* new_op = Operation::create(
       op_->getLoc(), op_->getName(), new_result_types, op_->getOperands(),
       op_->getAttrs(), op_->getSuccessors(), op_->getNumRegions());
@@ -808,7 +808,7 @@ LogicalResult LiftArgRetResourcesForFunction(
   // value to be written.
 
   // Now create read values that will be used to replace each resource that
-  // is read in the function body. These read vaulues are just the same argument
+  // is read in the function body. These read values are just the same argument
   // with type replaced.
   llvm::SmallVector<Value, 4> skipped_args;
   for (auto& it : hoister.GetResources()) {

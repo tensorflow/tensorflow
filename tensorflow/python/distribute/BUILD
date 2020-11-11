@@ -1135,10 +1135,6 @@ tf_py_test(
     name = "sharded_variable_test",
     size = "small",
     srcs = ["sharded_variable_test.py"],
-    tags = [
-        # depend through //third_party/tensorflow/python:extra_py_tests_deps.
-        "ignore_for_dep=third_party.tensorflow.python.keras.engine.base_layer",
-    ],
     deps = [
         ":sharded_variable",
         "//tensorflow/python:array_ops",

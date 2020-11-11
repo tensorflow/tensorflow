@@ -42,6 +42,10 @@ namespace {
 inline xla::RandomAlgorithm AlgorithmToRandomAlgorithm(Algorithm const& alg) {
   if (alg == RNG_ALG_PHILOX) {
     return xla::RandomAlgorithm::RNG_PHILOX;
+  } else if (alg == RNG_ALG_THREEFRY) {
+    return xla::RandomAlgorithm::RNG_THREE_FRY;
+  } else if (alg == RNG_ALG_XLA_DEFAULT) {
+    return xla::RandomAlgorithm::RNG_DEFAULT;
   }
   return xla::RandomAlgorithm::RNG_THREE_FRY;
 }
@@ -49,6 +53,10 @@ inline xla::RandomAlgorithm AlgorithmToRandomAlgorithm(Algorithm const& alg) {
 inline Algorithm RandomAlgorithmToAlgorithm(xla::RandomAlgorithm const& alg) {
   if (alg == xla::RandomAlgorithm::RNG_PHILOX) {
     return RNG_ALG_PHILOX;
+  } else if (alg == xla::RandomAlgorithm::RNG_THREE_FRY) {
+    return RNG_ALG_THREEFRY;
+  } else if (alg == xla::RandomAlgorithm::RNG_DEFAULT) {
+    return RNG_ALG_XLA_DEFAULT;
   }
   return RNG_ALG_THREEFRY;
 }
@@ -84,7 +92,7 @@ std::tuple<xla::XlaOp, xla::XlaOp, Algorithm> GetKeyCounterAlg(
     auto counter_shape =
         xla::ShapeUtil::MakeShape(xla::U64, {RNG_MAX_COUNTER_SIZE});
     auto counter = xla::Zeros(key.builder(), counter_shape);
-    return std::make_tuple(key, counter, RNG_ALG_THREEFRY);
+    return std::make_tuple(key, counter, RNG_ALG_XLA_DEFAULT);
   }
 }
 

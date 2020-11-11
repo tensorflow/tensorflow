@@ -290,6 +290,7 @@ py_strict_library(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/training/tracking:base",
+        "@absl_py//absl/logging",
     ],
 )
 

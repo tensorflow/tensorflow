@@ -49,7 +49,6 @@ def : Pat<(HLO_ConstOp $value), (TF_ConstOp $value)>;
 // context, getting to these ops may require some raising.
 //===----------------------------------------------------------------------===//
 
-// TODO(b/158025719): Properly handle broadcast_dimensions.
 foreach fromToBinPair = [[HLO_AddOp, HLOClient_BroadcastAddOp, TF_AddV2Op],
                          [HLO_DivOp, HLOClient_BroadcastDivOp, TF_DivOp],
                          [HLO_ShiftLeftOp, HLOClient_BroadcastShiftLeftOp, TF_LeftShiftOp],

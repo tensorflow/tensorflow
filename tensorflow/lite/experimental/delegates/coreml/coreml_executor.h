@@ -18,7 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "external/coremltools/mlmodel/format/Model.pb.h"
+#include "mlmodel/format/Model.pb.h"
 
 // Data for input/output tensors.
 struct TensorData {

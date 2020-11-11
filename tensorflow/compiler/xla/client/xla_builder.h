@@ -458,6 +458,8 @@ class XlaBuilder {
 
   XlaOp Pad(XlaOp operand, XlaOp padding_value,
             const PaddingConfig& padding_config);
+  XlaOp PadInDim(XlaOp operand, XlaOp padding_value, int64 dimno, int64 pad_lo,
+                 int64 pad_hi);
 
   virtual StatusOr<XlaOp> PadInternal(const Shape& shape, XlaOp operand,
                                       XlaOp padding_value,
@@ -701,11 +703,14 @@ class XlaBuilder {
       absl::Span<const int64> base_dilations,
       absl::Span<const int64> window_dilations,
       absl::Span<const std::pair<int64, int64>> padding);
-  StatusOr<XlaOp> ReduceWindowInternal(const Shape& shape,
-                                       absl::Span<const XlaOp> operands,
-                                       absl::Span<const XlaOp> init_values,
-                                       const XlaComputation& computation,
-                                       Window window);
+  StatusOr<HloInstructionProto> ReduceWindowInternal(
+      absl::Span<const XlaOp> operands, absl::Span<const XlaOp> init_values,
+      const XlaComputation& computation,
+      absl::Span<const int64> window_dimensions,
+      absl::Span<const int64> window_strides,
+      absl::Span<const int64> base_dilations,
+      absl::Span<const int64> window_dilations,
+      absl::Span<const std::pair<int64, int64>> padding);
   virtual StatusOr<XlaOp> ReduceWindowInternal(
       const Shape& shape, XlaOp operand, XlaOp init_value,
       const XlaComputation& computation, Window window);
@@ -742,6 +747,13 @@ class XlaBuilder {
                          const XlaComputation& scatter);
 
   XlaOp SelectAndScatterWithGeneralPadding(
+      XlaOp operand, const XlaComputation& select,
+      absl::Span<const int64> window_dimensions,
+      absl::Span<const int64> window_strides,
+      absl::Span<const std::pair<int64, int64>> padding, XlaOp source,
+      XlaOp init_value, const XlaComputation& scatter);
+
+  StatusOr<HloInstructionProto> SelectAndScatterInternal(
       XlaOp operand, const XlaComputation& select,
       absl::Span<const int64> window_dimensions,
       absl::Span<const int64> window_strides,
@@ -1027,6 +1039,9 @@ class XlaBuilder {
 
   friend XlaOp Pad(XlaOp operand, XlaOp padding_value,
                    const PaddingConfig& padding_config);
+
+  friend XlaOp PadInDim(XlaOp operand, XlaOp padding_value, int64 dimno,
+                        int64 pad_lo, int64 pad_hi);
 
   friend XlaOp Reshape(XlaOp operand, absl::Span<const int64> dimensions,
                        absl::Span<const int64> new_sizes);
@@ -1609,6 +1624,11 @@ XlaOp Copy(XlaOp operand);
 // specifies the padding amount for each dimension.
 XlaOp Pad(XlaOp operand, XlaOp padding_value,
           const PaddingConfig& padding_config);
+
+// Enqueues a pad operation in a given dimension, taking all other
+// dimensions as they are.
+XlaOp PadInDim(XlaOp operand, XlaOp padding_value, int64 dimno, int64 pad_lo,
+               int64 pad_hi);
 
 // Enqueues an operation onto the computation that flattens the operand based
 // on the dimension order (major/slowest-varying to minor/fastest-varying)

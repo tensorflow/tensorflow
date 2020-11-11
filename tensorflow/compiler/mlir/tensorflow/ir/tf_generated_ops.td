@@ -509,7 +509,7 @@ array([b'3.14', b'2.72'], dtype=object)
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Bool, TF_Complex128, TF_Complex64, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8]>:$input,
+    TensorOf<[TF_Bool, TF_Complex128, TF_Complex64, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Variant]>:$input,
 
     DefaultValuedAttr<I64Attr, "-1">:$precision,
     DefaultValuedAttr<BoolAttr, "false">:$scientific,
@@ -602,6 +602,29 @@ If `condition` evaluates to false, print the list of tensors in `data`.
   TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<1>;
 
   let hasCanonicalizer = 1;
+}
+
+def TF_AssignOp : TF_Op<"Assign", [NoSideEffect]> {
+  let summary = "Update 'ref' by assigning 'value' to it.";
+
+  let description = [{
+This operation outputs "ref" after the assignment is done.
+This makes it easier to chain operations that need to use the reset value.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$ref,
+    TF_Tensor:$value,
+
+    DefaultValuedAttr<BoolAttr, "true">:$validate_shape,
+    DefaultValuedAttr<BoolAttr, "true">:$use_locking
+  );
+
+  let results = (outs
+    TF_Tensor:$output_ref
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_AssignAddVariableOp : TF_Op<"AssignAddVariableOp", []> {
@@ -1001,6 +1024,10 @@ reverse of SpaceToBatch.  See below for a precise description.
   let results = (outs
     TF_Tensor:$output
   );
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tcrops = TF_DerivedOperandTypeAttr<2>;
@@ -7035,6 +7062,47 @@ pad(t, paddings) ==> [[2, 1, 1, 2, 3, 3, 2]
   TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_MirrorPadGradOp : TF_Op<"MirrorPadGrad", [NoSideEffect]> {
+  let summary = [{
+Gradient op for `MirrorPad` op. This op folds a mirror-padded tensor.
+  }];
+
+  let description = [{
+This operation folds the padded areas of `input` by `MirrorPad` according to the
+`paddings` you specify. `paddings` must be the same as `paddings` argument
+given to the corresponding `MirrorPad` op.
+
+The folded size of each dimension D of the output is:
+
+`input.dim_size(D) - paddings(D, 0) - paddings(D, 1)`
+
+For example:
+
+```
+# 't' is [[1, 2, 3], [4, 5, 6], [7, 8, 9]].
+# 'paddings' is [[0, 1]], [0, 1]].
+# 'mode' is SYMMETRIC.
+# rank of 't' is 2.
+pad(t, paddings) ==> [[ 1,  5]
+                      [11, 28]]
+```
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input,
+    TF_I32OrI64Tensor:$paddings,
+
+    TF_AnyStrAttrOf<["REFLECT", "SYMMETRIC"]>:$mode
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<1>;
+}
+
 def TF_MlirLocalVarOp : TF_Op<"MlirLocalVarOp", []> {
   let summary = "Creates a handle to an in-scope variable.";
 
@@ -7752,6 +7820,20 @@ def TF_OnesLikeOp : TF_Op<"OnesLike", [NoSideEffect, SameOperandsAndResultType]>
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_OptionalHasValueOp : TF_Op<"OptionalHasValue", [NoSideEffect]> {
+  let summary = [{
+Returns true if and only if the given Optional variant has a value.
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$optional
+  );
+
+  let results = (outs
+    TF_BoolTensor:$has_value
+  );
 }
 
 def TF_OutfeedEnqueueTupleOp : TF_Op<"OutfeedEnqueueTuple", []> {
@@ -15211,6 +15293,26 @@ execution the transfer corresponds to.}]>:$dynamic_key,
   TF_DerivedResultTypeListAttr Toutputs = TF_DerivedResultTypeListAttr<0>;
 }
 
+def TF__XlaRecvAtHostV2Op : TF_Op<"_XlaRecvAtHostV2", []> {
+  let summary = [{
+A placeholder op to receive values from a running XLA computation with support for a runtime device ordinal.
+  }];
+
+  let arguments = (ins
+    Arg<TF_StrTensor, [{The key sent at runtime by the compile node to identify which
+execution the transfer corresponds to.}]>:$dynamic_key,
+    Arg<TF_Int64Tensor, [{The device id relative to the associated host device.}]>:$device_ordinal,
+
+    StrAttr:$key
+  );
+
+  let results = (outs
+    Res<Variadic<TF_Tensor>, [{A list of tensors that will be received from the XLA computation.}]>:$outputs
+  );
+
+  TF_DerivedResultTypeListAttr Toutputs = TF_DerivedResultTypeListAttr<0>;
+}
+
 def TF__XlaSendFromHostOp : TF_Op<"_XlaSendFromHost", []> {
   let summary = "A placeholder op to send values to a running XLA computation.";
 
@@ -15221,6 +15323,25 @@ execution the transfer corresponds to.}]>:$dynamic_key,
 
     StrAttr:$key,
     I64Attr:$device_ordinal
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeListAttr Tinputs = TF_DerivedOperandTypeListAttr<0>;
+}
+
+def TF__XlaSendFromHostV2Op : TF_Op<"_XlaSendFromHostV2", []> {
+  let summary = [{
+A placeholder op to send values to a running XLA computation with support for a runtime device ordinal.
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<TF_Tensor>, [{A list of tensors that will be sent to the XLA computation.}]>:$inputs,
+    Arg<TF_StrTensor, [{The key sent at runtime by the compile node to identify which
+execution the transfer corresponds to.}]>:$dynamic_key,
+    Arg<TF_Int64Tensor, [{The device id relative to the associated host device.}]>:$device_ordinal,
+
+    StrAttr:$key
   );
 
   let results = (outs);

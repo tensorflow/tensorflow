@@ -5,7 +5,11 @@ tensorflow/compat_template.__init__.py
 tensorflow/compat_template_v1.__init__.py
 tensorflow/compiler/mlir/glob_lit_test.bzl
 tensorflow/go/op/wrappers.go
+tensorflow/lite/delegates/gpu/cl/compiled_program_cache_generated.h
+tensorflow/lite/delegates/gpu/cl/serialization_generated.h
+tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h
 tensorflow/lite/micro/build_def.bzl
+tensorflow/lite/schema/schema_generated.h
 tensorflow/python/autograph/core/config.py
 tensorflow/python/eager/benchmarks_test_base.py
 tensorflow/python/framework/tfrt_utils.py

@@ -43,7 +43,7 @@ namespace tf_executor {
 namespace {
 
 // IslandType is an enum representing if an island is the island (parent)
-// merging another island or is the island (child) being being merged.
+// merging another island or is the island (child) being merged.
 enum IslandType { kParentIsland, kChildIsland };
 
 // IslandResult is a helper struct holding an islands result and associated

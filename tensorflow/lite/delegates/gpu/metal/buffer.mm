@@ -47,6 +47,31 @@ void Buffer::Release() {
   }
 }
 
+absl::Status Buffer::GetGPUResources(const GPUObjectDescriptor* obj_ptr,
+                                     GPUResourcesWithValue* resources) const {
+  const auto* buffer_desc = dynamic_cast<const BufferDescriptor*>(obj_ptr);
+  if (!buffer_desc) {
+    return absl::InvalidArgumentError("Expected BufferDescriptor on input.");
+  }
+
+  resources->buffers.push_back({"buffer", buffer_});
+  return absl::OkStatus();
+}
+
+absl::Status Buffer::CreateFromBufferDescriptor(const BufferDescriptor& desc,
+                                                id<MTLDevice> device) {
+  size_ = desc.size;
+  if (desc.data.empty()) {
+    buffer_ = [device newBufferWithLength:size_
+                                         options:MTLResourceStorageModeShared];
+  } else {
+    buffer_ = [device newBufferWithBytes:desc.data.data()
+                                 length:size_
+                                options:MTLResourceStorageModeShared];
+  }
+  return absl::OkStatus();
+}
+
 absl::Status CreateBuffer(size_t size_in_bytes, const void* data,
                                   id<MTLDevice> device, Buffer* result) {
   id<MTLBuffer> buffer;

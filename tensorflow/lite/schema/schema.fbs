@@ -353,7 +353,8 @@ enum BuiltinOperator : int32 {
   BATCH_MATMUL = 126,
   PLACEHOLDER_FOR_GREATER_OP_CODES = 127,
   CUMSUM = 128,
-  CALL_ONCE = 129
+  CALL_ONCE = 129,
+  BROADCAST_TO = 130
 }
 
 
@@ -461,7 +462,8 @@ union BuiltinOptions {
   SegmentSumOptions,
   BatchMatMulOptions,
   CumsumOptions,
-  CallOnceOptions
+  CallOnceOptions,
+  BroadcastToOptions
 }
 
 enum Padding : byte { SAME, VALID }
@@ -992,6 +994,9 @@ table BatchMatMulOptions {
 table CumsumOptions {
   exclusive:bool;
   reverse:bool;
+}
+
+table BroadcastToOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

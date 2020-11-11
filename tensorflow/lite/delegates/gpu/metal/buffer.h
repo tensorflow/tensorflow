@@ -23,12 +23,14 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
+#include "tensorflow/lite/delegates/gpu/metal/gpu_object.h"
 
 namespace tflite {
 namespace gpu {
 namespace metal {
 
-class Buffer {
+class Buffer : public GPUObject {
  public:
   Buffer() {}  // just for using Buffer as a class members
   Buffer(id<MTLBuffer> buffer, size_t size_in_bytes);
@@ -54,6 +56,11 @@ class Buffer {
   // Reads data from Buffer into CPU memory.
   template <typename T>
   absl::Status ReadData(std::vector<T>* result) const;
+
+  absl::Status GetGPUResources(const GPUObjectDescriptor* obj_ptr,
+                               GPUResourcesWithValue* resources) const override;
+
+  absl::Status CreateFromBufferDescriptor(const BufferDescriptor& desc, id<MTLDevice> device);
 
  private:
   void Release();
