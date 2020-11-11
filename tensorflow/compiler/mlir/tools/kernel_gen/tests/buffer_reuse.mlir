@@ -342,11 +342,21 @@ func @old_buffer_alias_outside_block(%arg: memref<3xf32>)
   scf.if %true {
 
     // Allocation and use of new buffer.
-    // CHECK: reuse_input_candidates = [0 : index]
+    // CHECK: alloc
+    // CHECK-SAME: reuse_input_candidates = [0 : index]
     %mem = alloc() : memref<3xf32>
     %use = load %mem[%c0] : memref<3xf32>
 
   } else {
   }
   return
+}
+
+// CHECK-LABEL: @index_element_type
+func @index_element_type(%arg : memref<2x3xindex>) -> memref<2x3xindex>
+    attributes {tf_entry} {
+  // CHECK: alloc
+  // CHECK-SAME: reuse_input_candidates = [0 : index]
+  %result = alloc() : memref<2x3xindex>
+  return %result : memref<2x3xindex>
 }

@@ -63,7 +63,8 @@ class BufferSizeAnalysis {
   void build(FuncOp &f) {
     auto buffers = find_buffer_values(f);
 
-    // Memrefs with statically known same shape must be of the same size.
+    // Memrefs with statically known same shape and same symbol-free affine maps
+    // must be of the same size.
     int n = buffers.size();
     for (int i = 0; i < n; ++i) {
       for (int j = i + 1; j < n; ++j) {
@@ -72,8 +73,10 @@ class BufferSizeAnalysis {
         auto a_ty = a.getType().dyn_cast<MemRefType>();
         auto b_ty = b.getType().dyn_cast<MemRefType>();
         if (a_ty && b_ty && a_ty.hasStaticShape() && b_ty.hasStaticShape() &&
-            a_ty.getSizeInBits() == b_ty.getSizeInBits() &&
-            a_ty.getAffineMaps() == b_ty.getAffineMaps()) {
+            a_ty.getNumElements() == b_ty.getNumElements() &&
+            a_ty.getElementType() == b_ty.getElementType() &&
+            affine_maps_symbol_free_and_equal(a_ty.getAffineMaps(),
+                                              b_ty.getAffineMaps())) {
           ecs_.unionSets(a, b);
         }
       }
@@ -103,6 +106,15 @@ class BufferSizeAnalysis {
     f.walk([&](MemRefReshapeOp reshapeOp) {
       ecs_.unionSets(reshapeOp.result(), reshapeOp.source());
     });
+  }
+
+  bool affine_maps_symbol_free_and_equal(ArrayRef<AffineMap> as,
+                                         ArrayRef<AffineMap> bs) {
+    auto is_symbol_free = [](AffineMap map) {
+      return map.getNumSymbols() == 0;
+    };
+    return llvm::all_of(as, is_symbol_free) &&
+           llvm::all_of(bs, is_symbol_free) && as == bs;
   }
 
   llvm::SmallVector<Value, 8> find_buffer_values(FuncOp f) {
