@@ -2003,9 +2003,9 @@ def _get_dataset_attributes(dataset):
 def _should_use_multi_device_iterator(options):
   """Determine whether to use multi_device_iterator_ops.OwnedMultiDeviceIterator"""
   if (options is None
-        or options.experimental_replication_mode == InputReplicationMode.PER_WORKER
-        or (options.experimental_replication_mode == InputReplicationMode.PER_REPLICA
-            and options.experimental_prefetch_to_device)):
+      or options.experimental_replication_mode == InputReplicationMode.PER_WORKER
+      or (options.experimental_replication_mode == InputReplicationMode.PER_REPLICA
+          and options.experimental_prefetch_to_device)):
     return True
   return False
 
