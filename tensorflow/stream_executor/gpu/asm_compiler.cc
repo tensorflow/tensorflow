@@ -331,14 +331,14 @@ port::StatusOr<std::vector<uint8>> BundleGpuAsm(
   return std::vector<uint8>(result_blob.begin(), result_blob.end());
 }
 
-static std::string findRocmExecutable(const std::string binary_relative_path,
-                                      const std::string rocm_root_dir) {
+static std::string findRocmExecutable(const std::string& binary_relative_path,
+                                      const std::string& rocm_root_dir) {
   auto env = tensorflow::Env::Default();
   std::string binary_path =
       tensorflow::io::JoinPath(rocm_root_dir, binary_relative_path);
   VLOG(2) << "Looking for " << binary_relative_path << " at " << rocm_root_dir;
   if (!env->FileExists(binary_path).ok()) {
-    binary_path = "<" + binary_path + " - NOT FOUND>";
+    binary_path = absl::StrCat("<", binary_path, " - NOT FOUND>");
   }
   return binary_path;
 }
@@ -419,7 +419,7 @@ port::StatusOr<std::vector<uint8>> BundleGpuAsm(
     VLOG(2) << stderr_output;
   }
 
-  // // Read in the result and return it as a byte vector.
+  // Read in the result and return it as a byte vector.
   std::string result_blob;
   TF_RETURN_IF_ERROR(tensorflow::ReadFileToString(tensorflow::Env::Default(),
                                                   result_path, &result_blob));
