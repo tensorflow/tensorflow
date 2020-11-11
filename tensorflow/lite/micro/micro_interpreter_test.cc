@@ -386,7 +386,7 @@ TF_LITE_MICRO_TEST(TestIncompleteInitializationAllocationsWithSmallArena) {
 
   tflite::AllOpsResolver op_resolver = tflite::testing::GetOpResolver();
 
-  constexpr size_t allocator_buffer_size = 500;
+  constexpr size_t allocator_buffer_size = 512;
   uint8_t allocator_buffer[allocator_buffer_size];
 
   tflite::RecordingMicroAllocator* allocator =
@@ -401,7 +401,7 @@ TF_LITE_MICRO_TEST(TestIncompleteInitializationAllocationsWithSmallArena) {
   TF_LITE_MICRO_EXPECT_EQ(interpreter.Invoke(), kTfLiteError);
 
   TF_LITE_MICRO_EXPECT_EQ(
-      static_cast<size_t>(0),
+      static_cast<size_t>(192),
       allocator->GetSimpleMemoryAllocator()->GetHeadUsedBytes());
 
   // Ensure allocations are zero (ignore tail since some internal structs are

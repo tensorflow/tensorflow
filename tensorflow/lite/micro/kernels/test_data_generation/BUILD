@@ -5,10 +5,10 @@ licenses(["notice"])  # Apache 2.0
 cc_binary(
     name = "generate_flexbuffers_data",
     srcs = [
-       "generate_flexbuffers_data.cc",
+        "generate_flexbuffers_data.cc",
     ],
     deps = [
-      "@flatbuffers//:runtime_cc",
+        "@flatbuffers//:runtime_cc",
     ],
 )
 

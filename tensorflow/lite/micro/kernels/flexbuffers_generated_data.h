@@ -15,10 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_KERNELS_FLEXBUFFERS_GENERATED_DATA_H
 #define TENSORFLOW_LITE_MICRO_KERNELS_FLEXBUFFERS_GENERATED_DATA_H
 
-extern const unsigned int g_gen_data_size_none_regular_nms;
+extern const int g_gen_data_size_none_regular_nms;
 extern const char g_gen_data_none_regular_nms[];
 
-extern const unsigned int g_gen_data_size_regular_nms;
+extern const int g_gen_data_size_regular_nms;
 extern const char g_gen_data_regular_nms[];
 
 #endif
