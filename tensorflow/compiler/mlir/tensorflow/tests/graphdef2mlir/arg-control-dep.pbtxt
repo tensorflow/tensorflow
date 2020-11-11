@@ -40,7 +40,7 @@ library {
       }
     }
     # Drop the control dependency on arg for the node "test"
-    # CHECK-LABEL: func @foo
+    # CHECK-LABEL: func private @foo
     # CHECK: tf_executor.island wraps "tf.Const"()
     node_def {
       name: "test"

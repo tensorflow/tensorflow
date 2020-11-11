@@ -644,7 +644,7 @@ func @callee(%arg0: tensor<f32>, %arg1: tensor<*x!tf.resource<tensor<f32>>>, %ar
   %2 = "tf.AddV2"(%1, %arg2) : (tensor<f32>, tensor<f32>) -> tensor<f32>
   return %2 : tensor<f32>
 }
-// CHECK: func @callee_resource_lifted(%[[A0:.*]]: tensor<f32>, %[[A1:.*]]: tensor<f32>, %[[A2:.*]]: tensor<f32>) -> tensor<f32>
+// CHECK: func private @callee_resource_lifted(%[[A0:.*]]: tensor<f32>, %[[A1:.*]]: tensor<f32>, %[[A2:.*]]: tensor<f32>) -> tensor<f32>
 // CHECK-NEXT:   %[[ADD0:.*]] = "tf.AddV2"(%[[A1]], %[[A0]])
 // CHECK-NEXT:   %[[ADD1:.*]] = "tf.AddV2"(%[[ADD0]], %[[A2]])
 // CHECK-NEXT:   return %[[ADD1]]
@@ -691,7 +691,7 @@ func @callee(%arg0: tensor<*x!tf.resource<tensor<f32>>>, %arg1: tensor<*x!tf.res
   "tf.AssignVariableOp"(%arg0, %1) {dtype = i32} : (tensor<*x!tf.resource<tensor<f32>>>, tensor<f32>) -> ()
   return %arg0 : tensor<*x!tf.resource<tensor<f32>>>
 }
-// CHECK: func @callee_resource_lifted(%[[A0:.*]]: tensor<f32>, %[[A1:.*]]: tensor<f32>, %[[A2:.*]]: tensor<f32>) -> tensor<f32>
+// CHECK: func private @callee_resource_lifted(%[[A0:.*]]: tensor<f32>, %[[A1:.*]]: tensor<f32>, %[[A2:.*]]: tensor<f32>) -> tensor<f32>
 // CHECK-NEXT:   %[[ADD:.*]] = "tf.AddV2"(%[[A1]], %[[A2]])
 // CHECK-NEXT:   return %[[ADD]]
 
@@ -743,7 +743,7 @@ func @callee(%arg0: tensor<*x!tf.resource<tensor<f32>>>) -> tensor<f32> {
   return %1 : tensor<f32>
 }
 
-// CHECK:      func @callee_resource_lifted(%[[A0:.*]]: tensor<f32>) -> tensor<f32>
+// CHECK:      func private @callee_resource_lifted(%[[A0:.*]]: tensor<f32>) -> tensor<f32>
 // CHECK-NEXT:   return %[[A0]]
 
 // -----
