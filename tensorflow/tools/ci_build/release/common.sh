@@ -223,6 +223,7 @@ function maybe_skip_v1 {
 function copy_to_new_project_name {
   WHL_PATH="$1"
   NEW_PROJECT_NAME="$2"
+  PYTHON_CMD="$3"
 
   ORIGINAL_WHL_NAME=$(basename "${WHL_PATH}")
   ORIGINAL_WHL_DIR=$(realpath "$(dirname "${WHL_PATH}")")
@@ -231,13 +232,14 @@ function copy_to_new_project_name {
   NEW_WHL_NAME="${NEW_PROJECT_NAME}-${FULL_TAG}"
   VERSION="$(echo "${FULL_TAG}" | cut -d '-' -f 1)"
 
-  TMP_DIR="$(mktemp -d)"
-  wheel unpack "${WHL_PATH}" -d "${TMP_DIR}"
-  TMP_UNPACKED_DIR="$(ls -d "${TMP_DIR}"/* | head -n 1)"
-  pushd "${TMP_UNPACKED_DIR}"
-
   ORIGINAL_WHL_DIR_PREFIX="${ORIGINAL_PROJECT_NAME}-${VERSION}"
   NEW_WHL_DIR_PREFIX="${NEW_PROJECT_NAME}-${VERSION}"
+
+ TMP_DIR="$(mktemp -d)"
+ ${PYTHON_CMD} -m wheel unpack "${WHL_PATH}"
+ mv "${ORIGINAL_WHL_DIR_PREFIX}" "${TMP_DIR}"
+ pushd "${TMP_DIR}/${ORIGINAL_WHL_DIR_PREFIX}"
+
   mv "${ORIGINAL_WHL_DIR_PREFIX}.dist-info" "${NEW_WHL_DIR_PREFIX}.dist-info"
   if [[ -d "${ORIGINAL_WHL_DIR_PREFIX}.data" ]]; then
     mv "${ORIGINAL_WHL_DIR_PREFIX}.data" "${NEW_WHL_DIR_PREFIX}.data"
@@ -247,7 +249,9 @@ function copy_to_new_project_name {
   NEW_PROJECT_NAME_DASH="${NEW_PROJECT_NAME//_/-}"
   sed -i.bak "s/${ORIGINAL_PROJECT_NAME_DASH}/${NEW_PROJECT_NAME_DASH}/g" "${NEW_WHL_DIR_PREFIX}.dist-info/METADATA"
 
-  wheel pack "${TMP_UNPACKED_DIR}" -d "${ORIGINAL_WHL_DIR}"
+  ${PYTHON_CMD} -m wheel pack .
+  mv *.whl "${ORIGINAL_WHL_DIR}"
+
   popd
   rm -rf "${TMP_DIR}"
 }
