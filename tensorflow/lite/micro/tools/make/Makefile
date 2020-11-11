@@ -6,9 +6,9 @@ endif
 TENSORFLOW_ROOT :=
 MAKEFILE_DIR := tensorflow/lite/micro/tools/make
 
-#  Override this on make command line to to parse thirdy party downloads during project generation 
-#  make -f tensorflow/lite/micro/tools/make/Makefile PARSE_THIRD_PARTY=true TARGET=apollo3evb generate_hello_world_make_project 
-PARSE_THIRD_PARTY := 
+#  Override this on make command line to parse third party downloads during project generation
+#  make -f tensorflow/lite/micro/tools/make/Makefile PARSE_THIRD_PARTY=true TARGET=apollo3evb generate_hello_world_make_project
+PARSE_THIRD_PARTY :=
 
 
 # Pull in some convenience functions.
@@ -136,6 +136,12 @@ COMMON_FLAGS := \
   $(CC_WARNINGS) \
   $(OPTIMIZED_KERNEL_DEFINES) \
   $(TAG_DEFINES)
+
+ifeq ($(TARGET), $(HOST_OS))
+  # If we are not doing a cross-compilation then -DTF_LITE_USE_CTIME is what we
+  # want to have by default.
+  COMMON_FLAGS += -DTF_LITE_USE_CTIME
+endif
 
 CXXFLAGS := \
   -std=c++11 \
@@ -485,7 +491,7 @@ microlite: $(MICROLITE_LIB_PATH)
 
 # Hack for generating schema file bypassing flatbuffer parsing
 tensorflow/lite/schema/schema_generated.h:
-	@cp -u tensorflow/lite/schema/schema_generated.h.OPENSOURCE tensorflow/lite/schema/schema_generated.h
+	@cp -u tensorflow/lite/schema/schema_generated.h.oss tensorflow/lite/schema/schema_generated.h
 
 # Gathers together all the objects we've compiled into a single '.a' archive.
 $(MICROLITE_LIB_PATH): tensorflow/lite/schema/schema_generated.h $(MICROLITE_LIB_OBJS)

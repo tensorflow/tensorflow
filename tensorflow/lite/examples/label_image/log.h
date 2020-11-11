@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,16 +13,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Hexagon timer implementation.
-// To include this with make, add TARGET=hexagon.
-#include "tensorflow/lite/micro/micro_time.h"
+#ifndef TENSORFLOW_LITE_EXAMPLES_LABEL_IMAGE_LOG_H_
+#define TENSORFLOW_LITE_EXAMPLES_LABEL_IMAGE_LOG_H_
 
-#include <time.h>
+#include <iostream>
+#include <sstream>
 
 namespace tflite {
+namespace label_image {
 
-int32_t ticks_per_second() { return CLOCKS_PER_SEC; }
+class Log {
+  std::stringstream stream_;
 
-int32_t GetCurrentTimeTicks() { return clock(); }
+ public:
+  explicit Log(const char* severity) { stream_ << severity << ": "; }
+  std::stringstream& Stream() { return stream_; }
+  ~Log() { std::cerr << stream_.str() << std::endl; }
+};
 
+#define LOG(severity) tflite::label_image::Log(#severity).Stream()
+
+}  // namespace label_image
 }  // namespace tflite
+
+#endif  // TENSORFLOW_LITE_EXAMPLES_LABEL_IMAGE_LOG_H_

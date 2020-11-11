@@ -30,4 +30,22 @@ REGISTER_OP("RiscAdd")
     .SetIsAggregate()
     .SetIsCommutative();
 
+// TODO(b/171294012): change shape function.
+REGISTER_OP("RiscConv")
+    .Input("input: T")
+    .Input("filter: T")
+    .Output("output: T")
+    .Attr("T: {float, double}")
+    .Attr("strides: list(int)")
+    .Attr(GetConvnetDataFormatAttrString())
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Attr("dilations: list(int) = [1, 1, 1, 1]");
+
+REGISTER_OP("RiscMax")
+    .Input("x: T")
+    .Input("y: T")
+    .Output("max: T")
+    .Attr("T: {bfloat16, half, float, double}")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
 }  // namespace tensorflow

@@ -41,6 +41,14 @@ filegroup(
     srcs = if_mlir_unranked_kernels_enabled(
         [
             "unranked_op_gpu_abs.cc",
+            "unranked_op_gpu_ceil.cc",
+            "unranked_op_gpu_cos.cc",
+            "unranked_op_gpu_exp.cc",
+            "unranked_op_gpu_floor.cc",
+            "unranked_op_gpu_log.cc",
+            "unranked_op_gpu_rsqrt.cc",
+            "unranked_op_gpu_sign.cc",
+            "unranked_op_gpu_sqrt.cc",
             "unranked_op_gpu_tanh.cc",
             "unranked_op_gpu_base.h",
             "unranked_op_gpu_base.cc",
@@ -60,6 +68,14 @@ cc_library(
         [
             ":abs_unranked_kernels",
             ":addv2_unranked_kernels",
+            ":ceil_unranked_kernels",
+            ":cos_unranked_kernels",
+            ":exp_unranked_kernels",
+            ":floor_unranked_kernels",
+            ":log_unranked_kernels",
+            ":rsqrt_unranked_kernels",
+            ":sign_unranked_kernels",
+            ":sqrt_unranked_kernels",
             ":tanh_unranked_kernels",
             "//tensorflow/compiler/mlir/tools/kernel_gen:tf_cuda_runtime_wrappers",
             "//tensorflow/compiler/mlir/tools/kernel_gen:tf_framework_c_interface",
@@ -78,12 +94,8 @@ cc_library(
 cc_library(
     name = "kernel_deps",
     deps = if_mlir_unranked_kernels_enabled(
-        [
-            ":unranked_kernel_deps",
-        ],
-        [
-            ":ranked_kernel_deps",
-        ],
+        [":unranked_kernel_deps"],
+        [":ranked_kernel_deps"],
     ),
 )
 
@@ -411,6 +423,20 @@ gen_kernel_library(
 )
 
 gen_kernel_library(
+    name = "sin",
+    generate_ranked = False,
+    generate_unranked = True,
+    same_shape = "0,1",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
     name = "sqrt",
     generate_unranked = True,
     same_shape = "0,1",
@@ -446,6 +472,7 @@ gen_kernel_library(
         "f16",
         "f32",
         "f64",
+        "i64",
     ],
     unroll_factors = "4",
 )

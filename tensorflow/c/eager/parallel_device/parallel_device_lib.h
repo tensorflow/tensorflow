@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 
 namespace tensorflow {
 namespace parallel_device {
@@ -93,6 +94,15 @@ class ParallelDevice {
       const char* operation_name, const TFE_OpAttrs* attributes,
       int expected_max_outputs, TF_Status* status) const;
 
+  // Accepts inferred shapes for outputs, which if fully defined will avoid
+  // querying the shapes of the underlying TensorHandles. This allows async
+  // computation to continue without blocking.
+  absl::optional<std::vector<std::unique_ptr<ParallelTensor>>> Execute(
+      TFE_Context* context, const std::vector<ParallelTensor*>& inputs,
+      const char* operation_name, const TFE_OpAttrs* attributes,
+      const std::vector<PartialTensorShape>& expected_output_shapes,
+      TF_Status* status) const;
+
  private:
   // A sequence of device names, indicating which devices replicated operations
   // are forwarded to.
@@ -117,10 +127,15 @@ class ParallelDevice {
 class ParallelTensor {
  public:
   // Construct a ParallelTensor from TensorHandles placed on the component
-  // devices of a ParallelDevice.
+  // devices of a ParallelDevice. Inspects `components` to determine a shape.
   static std::unique_ptr<ParallelTensor> FromTensorHandles(
       const ParallelDevice& parallel_device,
       std::vector<TensorHandlePtr> components, TF_Status* status);
+  // Uses the provided shape without additional checks, which avoids blocking.
+  static std::unique_ptr<ParallelTensor> FromTensorHandles(
+      const ParallelDevice& parallel_device,
+      std::vector<TensorHandlePtr> components, absl::Span<const int64> shape,
+      TF_Status* status);
 
   size_t num_tensors() const { return tensors_.size(); }
   TFE_TensorHandle* tensor(size_t index) const { return tensors_[index].get(); }
@@ -132,10 +147,10 @@ class ParallelTensor {
  private:
   ParallelTensor(const ParallelDevice& device,
                  std::vector<TensorHandlePtr> tensors,
-                 std::vector<int64_t> shape, const TF_DataType dtype)
+                 absl::Span<const int64> shape, const TF_DataType dtype)
       : device_(device),
         tensors_(std::move(tensors)),
-        shape_(std::move(shape)),
+        shape_(shape.begin(), shape.end()),
         dtype_(dtype) {}
 
   const ParallelDevice& device_;

@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_remaining_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -805,8 +806,8 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
                            ConcatV2Op::getOperationName(),
                            AddOp::getOperationName(),
                            PadOp::getOperationName(),
-                           SumOp::getOperationName(),
                            SplitOp::getOperationName(),
+                           UnpackOp::getOperationName(),
                            DivOp::getOperationName(),
                            MulOp::getOperationName(),
                            ReshapeOp::getOperationName(),
@@ -867,6 +868,7 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
     // full_paddings won't be available as a constant for shape inference.
     ElementsAttr block_shape;
     ElementsAttr paddings;
+    llvm::SmallVector<int64_t, 4> block_shape_ints;
     auto padded_shape = llvm::to_vector<4>(input_shape);
     if (matchPattern(op.block_shape(), m_Constant(&block_shape)) &&
         matchPattern(op.paddings(), m_Constant(&paddings))) {
@@ -876,13 +878,14 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
             paddings.getValue({i, 1}).cast<IntegerAttr>().getInt();
         int64_t block_shape_i =
             block_shape.getValue({i}).cast<IntegerAttr>().getInt();
-        padded_shape[i + 1] =
-            (paddings_sum + padded_shape[i + 1]) / block_shape_i;
+        padded_shape[i + 1] = (paddings_sum + input_shape[i + 1]);
+        block_shape_ints.push_back(block_shape_i);
       }
     } else {
       for (int i = 0; i < block_rank; i++) {
         padded_shape[i + 1] = ShapedType::kDynamicSize;
       }
+      block_shape_ints.resize(block_shape_type.getNumElements(), -1);
     }
 
     auto padded_type =
@@ -893,13 +896,13 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
 
     auto paddings_sum_type =
         RankedTensorType::get({input_rank}, rewriter.getIntegerType(64));
-    auto one_i64 = rewriter.create<ConstOp>(
-        loc, GetScalarOfType(rewriter.getIntegerType(64), 1));
     // paddings_sum = paddings[*,0] + paddings[*,1]
-    auto paddings_sum =
-        rewriter.create<SumOp>(loc, paddings_sum_type, full_paddings, one_i64);
+    auto paddings_split = rewriter.create<UnpackOp>(
+        loc, TypeRange({paddings_sum_type, paddings_sum_type}), full_paddings,
+        rewriter.getI64IntegerAttr(1));
+    auto paddings_sum = rewriter.create<AddOp>(loc, paddings_split.getResult(0),
+                                               paddings_split.getResult(1));
 
-    // input_shape_tensor = input.shape
     auto input_shape_tensor = rewriter.create<ConstOp>(
         loc,
         DenseElementsAttr::get(
@@ -928,24 +931,45 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
                              block_shape_i64)
             .output());
 
+    SmallVector<int64_t, 4> outer_shape_ints;
     SmallVector<Value, 4> outer_shape_vals;
     for (int64_t i = 0; i < block_rank; ++i) {
       // TODO(b/157475606): Insert tf.Assert that the following division has
       // remainder 0.
       outer_shape_vals.push_back(rewriter.create<DivOp>(
           loc, padded_shape_splits[1 + i], block_shape_splits[i]));
+
+      auto padded_shape_i = padded_shape[1 + i];
+      auto block_shape_ints_i = block_shape_ints[i];
+
+      // Compute the outer_shape constant values to infer the reshape.
+      if (padded_shape_i == -1 || block_shape_ints_i == -1) {
+        outer_shape_ints.push_back(-1);
+      } else {
+        outer_shape_ints.push_back(padded_shape_i / block_shape_ints_i);
+      }
     }
 
     SmallVector<Value, 6> reshaped_shape_vals{padded_shape_splits[0]};
+    SmallVector<int64_t, 6> reshaped_shape_ints{padded_shape[0]};
     for (int64_t i = 0; i < block_rank; ++i) {
       reshaped_shape_vals.push_back(outer_shape_vals[i]);
       reshaped_shape_vals.push_back(block_shape_splits[i]);
+
+      reshaped_shape_ints.push_back(outer_shape_ints[i]);
+      reshaped_shape_ints.push_back(block_shape_ints[i]);
     }
     for (int64_t i = 1 + block_rank; i < input_rank; ++i) {
       reshaped_shape_vals.push_back(padded_shape_splits[i]);
+      reshaped_shape_ints.push_back(padded_shape[i]);
     }
     auto reshaped_shape = ValuesToRank1(
         rewriter, loc, rewriter.getIntegerType(64), reshaped_shape_vals);
+
+    auto reshaped = rewriter.create<ReshapeOp>(
+        loc,
+        RankedTensorType::get(reshaped_shape_ints, input_type.getElementType()),
+        padded, reshaped_shape);
 
     SmallVector<int64_t, 6> permutation_vals;
     for (int64_t i = 0; i < block_rank; ++i) {
@@ -961,6 +985,7 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
     auto permutation = rewriter.create<ConstOp>(
         loc, GetI64ElementsAttr(permutation_vals, &rewriter));
 
+    auto permuted = rewriter.create<TransposeOp>(loc, reshaped, permutation);
     auto output_batch = padded_shape_splits[0];
     for (int64_t i = 0; i < block_rank; ++i) {
       output_batch =
@@ -975,8 +1000,6 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
     }
     auto output_shape = ValuesToRank1(
         rewriter, loc, rewriter.getIntegerType(64), output_shape_vals);
-    auto reshaped = rewriter.create<ReshapeOp>(loc, padded, reshaped_shape);
-    auto permuted = rewriter.create<TransposeOp>(loc, reshaped, permutation);
 
     // Sometimes the result type is more specific than what the reshape builder
     // can infer.

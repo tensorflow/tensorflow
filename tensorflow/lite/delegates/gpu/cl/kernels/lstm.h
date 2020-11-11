@@ -26,7 +26,7 @@ namespace gpu {
 namespace cl {
 
 GPUOperation CreateLSTM(const OperationDef& definition,
-                        const DeviceInfo& device_info);
+                        const GpuInfo& gpu_info);
 
 }  // namespace cl
 }  // namespace gpu

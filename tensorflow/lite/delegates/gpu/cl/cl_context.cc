@@ -50,7 +50,7 @@ bool IsEqualToImageFormat(cl_image_format image_format, DataType data_type,
          image_format.image_channel_order == ToChannelOrder(num_channels);
 }
 
-void AddSupportedImageFormats(cl_context context, DeviceInfo* info) {
+void AddSupportedImageFormats(cl_context context, GpuInfo* info) {
   auto supported_formats =
       GetSupportedImage2DFormats(context, CL_MEM_READ_WRITE);
   for (auto format : supported_formats) {

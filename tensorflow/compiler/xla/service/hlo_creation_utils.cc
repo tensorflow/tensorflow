@@ -248,7 +248,9 @@ StatusOr<HloInstruction*> MakeConcatHlo(
 }
 
 HloInstruction* MakeConvertToHlo(HloInstruction* hlo, PrimitiveType type) {
-  CHECK_NE(hlo->shape().element_type(), type);
+  if (hlo->shape().element_type() == type) {
+    return hlo;
+  }
   Shape shape = ShapeUtil::ChangeElementType(hlo->shape(), type);
   hlo =
       hlo->parent()->AddInstruction(HloInstruction::CreateConvert(shape, hlo));
@@ -258,7 +260,9 @@ HloInstruction* MakeConvertToHlo(HloInstruction* hlo, PrimitiveType type) {
 
 HloInstruction* MakeBitcastConvertToHlo(HloInstruction* hlo,
                                         PrimitiveType type) {
-  CHECK_NE(hlo->shape().element_type(), type);
+  if (hlo->shape().element_type() == type) {
+    return hlo;
+  }
   Shape shape = ShapeUtil::ChangeElementType(hlo->shape(), type);
   // PRED are stored as one byte, PRED have a BitWidth of 1, avoid this problem
   // by using a convert instead of bitcast convert.

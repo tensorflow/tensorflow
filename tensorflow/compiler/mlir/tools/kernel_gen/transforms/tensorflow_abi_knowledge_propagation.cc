@@ -85,6 +85,8 @@ struct PropagateTfAbiKnowledgeToKernelsPass
       int kernel_p = 0;
       OpBuilder b = OpBuilder::atBlockBegin(&kernel.body().front());
       Value zero;
+      Value one;
+      auto loc = kernel.getLoc();
       for (auto operand : launch.operands()) {
         auto memref = operand.getType().dyn_cast<MemRefType>();
         if (!memref) {
@@ -94,17 +96,25 @@ struct PropagateTfAbiKnowledgeToKernelsPass
         }
         if (allocated_by_runtime.contains(operand)) {
           // This was allocated by the tf runtime, so it is aligned, has no
-          // offset and the two pointers in the descriptor coincide. Rewrite
-          // the kernel accordingly.
+          // offset, an inner stride of 1 and the two pointers in the descriptor
+          // coincide. Rewrite the kernel accordingly.
           Value alloc_ptr = kernel.getArgument(kernel_p);
           Value align_ptr = kernel.getArgument(kernel_p + 1);
           alloc_ptr.replaceAllUsesWith(align_ptr);
           Value offset = kernel.getArgument(kernel_p + 2);
           if (!zero) {
-            zero = b.create<LLVM::ConstantOp>(kernel.getLoc(), offset.getType(),
+            zero = b.create<LLVM::ConstantOp>(loc, offset.getType(),
                                               b.getIndexAttr(0));
           }
           offset.replaceAllUsesWith(zero);
+          // The stride is the last argument belonging to this memref.
+          Value inner_stride =
+              kernel.getArgument(kernel_p + 2 + memref.getRank() * 2);
+          if (!one) {
+            one = b.create<LLVM::ConstantOp>(loc, offset.getType(),
+                                             b.getIndexAttr(1));
+          }
+          inner_stride.replaceAllUsesWith(one);
           kernel.setArgAttr(
               kernel_p + 1, kLLVMAlignAttrName,
               b.getIndexAttr(
@@ -134,7 +144,7 @@ struct PropagateTfAbiKnowledgeToKernelsPass
       Value candidate = worklist.pop_back_val();
       for (auto user : candidate.getUsers()) {
         if (auto reshape = dyn_cast<MemRefReshapeOp>(user)) {
-          // Reshape propagates alignment and offset.
+          // Reshape propagates alignment, offset and innermost stride.
           // TODO(herhut): This should be a trait.
           if (allocated_by_runtime.insert(reshape.result()).second) {
             worklist.push_back(reshape.result());

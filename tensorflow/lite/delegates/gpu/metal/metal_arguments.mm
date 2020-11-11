@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/substitute.h"
+#include "tensorflow/lite/delegates/gpu/metal/buffer.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"
 
@@ -45,18 +46,100 @@ void ReplaceAllWords(const std::string& old_word, const std::string& new_word,
   }
 }
 
+std::string GetNextWord(const std::string& code, size_t first_position) {
+  size_t pos = first_position;
+  char t = code[pos];
+  while (IsWordSymbol(t)) {
+    pos++;
+    t = code[pos];
+  }
+  return code.substr(first_position, pos - first_position);
+}
+
+size_t FindEnclosingBracket(const std::string& text, size_t first_pos,
+                            char bracket) {
+  const std::map<char, char> brackets = {
+      {'(', ')'},
+      {'{', '}'},
+      {'[', ']'},
+      {'<', '>'},
+  };
+  char b_open = bracket;
+  auto it = brackets.find(b_open);
+  if (it == brackets.end()) {
+    return -1;
+  }
+  char b_close = it->second;
+  size_t pos = first_pos;
+  int opened = 1;
+  int closed = 0;
+  while (opened != closed && pos < text.size()) {
+    if (text[pos] == b_open) {
+      opened++;
+    } else if (text[pos] == b_close) {
+      closed++;
+    }
+    pos++;
+  }
+  if (opened == closed) {
+    return pos;
+  } else {
+    return -1;
+  }
+}
+
+absl::Status ParseArgsInsideBrackets(const std::string& text,
+                                     size_t open_bracket_pos,
+                                     size_t* close_bracket_pos,
+                                     std::vector<std::string>* args) {
+  *close_bracket_pos =
+      FindEnclosingBracket(text, open_bracket_pos + 1, text[open_bracket_pos]);
+  if (*close_bracket_pos == -1) {
+    return absl::NotFoundError("Not found enclosing bracket");
+  }
+  std::string str_args = text.substr(open_bracket_pos + 1,
+                                     *close_bracket_pos - open_bracket_pos - 2);
+  std::vector<absl::string_view> words = absl::StrSplit(str_args, ',');
+  args->reserve(words.size());
+  for (const auto& word : words) {
+    absl::string_view arg = absl::StripAsciiWhitespace(word);
+    if (!arg.empty()) {
+      args->push_back(std::string(arg));
+    }
+  }
+  return absl::OkStatus();
+}
+
 void AppendArgument(const std::string& arg, std::string* args) {
   if (!args->empty()) {
     absl::StrAppend(args, ",\n");
   }
   absl::StrAppend(args, arg);
 }
+
+absl::Status CreateMetalObject(id<MTLDevice> device, GPUObjectDescriptor* desc,
+                            GPUObjectPtr* result) {
+  const auto* buffer_desc = dynamic_cast<const BufferDescriptor*>(desc);
+  if (buffer_desc) {
+    Buffer gpu_buffer;
+    RETURN_IF_ERROR(
+        gpu_buffer.CreateFromBufferDescriptor(*buffer_desc, device));
+    *result = absl::make_unique<Buffer>(std::move(gpu_buffer));
+    return absl::OkStatus();
+  }
+
+  return absl::InvalidArgumentError("Unknown GPU descriptor.");
+}
 }  // namespace
 
 // Static
 constexpr char MetalArguments::kArgsPrefix[];
 
-absl::Status MetalArguments::Init(int buffer_offset, Arguments* args, std::string* code) {
+absl::Status MetalArguments::Init(id<MTLDevice> device, int buffer_offset, Arguments* args, std::string* code) {
+  RETURN_IF_ERROR(AllocateObjects(*args, device));
+  RETURN_IF_ERROR(AddObjectArgs(args));
+  RETURN_IF_ERROR(ResolveSelectorsPass(*args, {}, code));
+  RETURN_IF_ERROR(SetObjectsResources(*args));
   args->GetActiveArguments(kArgsPrefix, *code);
   std::string struct_desc = "struct uniforms_buffer {\n";
   int pos = 0;
@@ -104,6 +187,7 @@ absl::Status MetalArguments::Init(int buffer_offset, Arguments* args, std::strin
   } else {
     struct_desc = "";
   }
+  ResolveArgsPass(code);
   *code = absl::Substitute(*code, struct_desc, GetListOfArgs(buffer_offset));
   return absl::OkStatus();
 }
@@ -140,9 +224,34 @@ absl::Status MetalArguments::SetHalf(const std::string& name, half value) {
 }
 
 void MetalArguments::Encode(id<MTLComputeCommandEncoder> encoder, int buffer_offset) const {
+  for (auto& b : buffers_) {
+    [encoder setBuffer:b.second.handle offset:0 atIndex:buffer_offset];
+    buffer_offset++;
+  }
   if (!const_data_.empty()) {
     [encoder setBytes:const_data_.data() length:const_data_.size() atIndex:buffer_offset];
   }
+}
+
+absl::Status MetalArguments::AllocateObjects(const Arguments& args,
+                                          id<MTLDevice> device) {
+  objects_.resize(args.objects_.size());
+  int i = 0;
+  for (auto& t : args.objects_) {
+    RETURN_IF_ERROR(CreateMetalObject(device, t.second.get(), &objects_[i]));
+    i++;
+  }
+  return absl::OkStatus();
+}
+
+absl::Status MetalArguments::AddObjectArgs(Arguments* args) {
+  for (auto& t : args->objects_) {
+    AddGPUResources(t.first, t.second->GetGPUResources(), args);
+  }
+  for (auto& t : args->object_refs_) {
+    AddGPUResources(t.first, t.second->GetGPUResources(), args);
+  }
+  return absl::OkStatus();
 }
 
 std::string MetalArguments::GetListOfArgs(int buffer_offset) {
@@ -190,6 +299,20 @@ void MetalArguments::AddBuffer(const std::string& name, const GPUBufferDescripto
   buffers_[name].desc = desc;
 }
 
+void MetalArguments::AddGPUResources(const std::string& name,
+                                  const GPUResources& resources,
+                                  Arguments* args) {
+  for (const auto& r : resources.ints) {
+    args->AddInt(absl::StrCat(name, "_", r));
+  }
+  for (const auto& r : resources.floats) {
+    args->AddFloat(absl::StrCat(name, "_", r));
+  }
+  for (const auto& r : resources.buffers) {
+    AddBuffer(absl::StrCat(name, "_", r.first), r.second);
+  }
+}
+
 absl::Status MetalArguments::SetBuffer(const std::string& name, id<MTLBuffer> handle) {
   auto it = buffers_.find(name);
   if (it == buffers_.end()) {
@@ -197,6 +320,114 @@ absl::Status MetalArguments::SetBuffer(const std::string& name, id<MTLBuffer> ha
         absl::StrCat("No buffer argument with name - ", name));
   }
   it->second.handle = handle;
+  return absl::OkStatus();
+}
+
+absl::Status MetalArguments::ResolveSelectorsPass(
+    const Arguments& args, const std::map<std::string, std::string>& linkables,
+    std::string* code) {
+  std::string result;
+  size_t position = 0;
+  size_t next_position = code->find(kArgsPrefix);
+  while (next_position != std::string::npos) {
+    size_t arg_pos = next_position;
+    next_position += strlen(kArgsPrefix);
+    std::string object_name = GetNextWord(*code, next_position);
+    char next = (*code)[next_position + object_name.size()];
+    if (next == '.') {
+      next_position += object_name.size() + 1;
+      std::string selector_name = GetNextWord(*code, next_position);
+      next_position += selector_name.size();
+      next = (*code)[next_position];
+      std::vector<std::string> template_args;
+      if (next == '<') {
+        size_t close_bracket_pos;
+        RETURN_IF_ERROR(ParseArgsInsideBrackets(
+            *code, next_position, &close_bracket_pos, &template_args));
+        next_position = close_bracket_pos;
+        next = (*code)[next_position];
+      }
+      if (next != '(') {
+        return absl::NotFoundError(absl::StrCat(
+            "Expected ( after ", object_name, ".", selector_name, " call"));
+      }
+      std::vector<std::string> function_args;
+      size_t close_bracket_pos;
+      RETURN_IF_ERROR(ParseArgsInsideBrackets(
+          *code, next_position, &close_bracket_pos, &function_args));
+      for (auto& arg : function_args) {
+        RETURN_IF_ERROR(ResolveSelectorsPass(args, {}, &arg));
+      }
+      std::string patch;
+      RETURN_IF_ERROR(ResolveSelector(args, linkables, object_name,
+                                      selector_name, function_args,
+                                      template_args, &patch));
+      code->replace(arg_pos, close_bracket_pos - arg_pos, patch);
+      position = arg_pos + patch.size();
+    } else {
+      position = arg_pos + strlen(kArgsPrefix);
+    }
+    next_position = code->find(kArgsPrefix, position);
+  }
+  return absl::OkStatus();
+}
+
+absl::Status MetalArguments::ResolveSelector(
+    const Arguments& args, const std::map<std::string, std::string>& linkables,
+    const std::string& object_name, const std::string& selector,
+    const std::vector<std::string>& function_args,
+    const std::vector<std::string>& template_args, std::string* result) {
+  const GPUObjectDescriptor* desc_ptr;
+  auto it_ref = args.object_refs_.find(object_name);
+  auto it_obj = args.objects_.find(object_name);
+  if (it_ref != args.object_refs_.end()) {
+    desc_ptr = it_ref->second.get();
+  } else if (it_obj != args.objects_.end()) {
+    desc_ptr = it_obj->second.get();
+  } else {
+    return absl::NotFoundError(
+        absl::StrCat("No object with name - ", object_name));
+  }
+  auto names = desc_ptr->GetGPUResources().GetNames();
+  std::string patch;
+  RETURN_IF_ERROR(desc_ptr->PerformSelector(selector, function_args,
+                                            template_args, &patch));
+  ResolveObjectNames(object_name, names, &patch);
+  *result += patch;
+  return absl::OkStatus();
+}
+
+void MetalArguments::ResolveObjectNames(
+    const std::string& object_name,
+    const std::vector<std::string>& member_names, std::string* code) {
+  for (const auto& member_name : member_names) {
+    const std::string new_name = kArgsPrefix + object_name + "_" + member_name;
+    ReplaceAllWords(member_name, new_name, code);
+  }
+}
+
+void MetalArguments::ResolveArgsPass(std::string* code) {
+  size_t position = 0;
+  size_t next_position = code->find(kArgsPrefix);
+  while (next_position != std::string::npos) {
+    size_t arg_pos = next_position;
+    next_position += strlen(kArgsPrefix);
+    std::string object_name = GetNextWord(*code, next_position);
+    std::string new_name = object_name;
+    code->replace(arg_pos, object_name.size() + strlen(kArgsPrefix), new_name);
+    position = arg_pos + new_name.size();
+    next_position = code->find(kArgsPrefix, position);
+  }
+}
+
+absl::Status MetalArguments::SetObjectsResources(const Arguments& args) {
+  int i = 0;
+  for (const auto& t : args.objects_) {
+    GPUResourcesWithValue resources;
+    RETURN_IF_ERROR(objects_[i]->GetGPUResources(t.second.get(), &resources));
+    RETURN_IF_ERROR(SetGPUResources(t.first, resources));
+    i++;
+  }
   return absl::OkStatus();
 }
 

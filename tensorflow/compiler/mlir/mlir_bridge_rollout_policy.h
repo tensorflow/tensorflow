@@ -17,6 +17,7 @@ limitations under the License.
 #define THIRD_PARTY_TENSORFLOW_COMPILER_MLIR_MLIR_BRIDGE_ROLLOUT_POLICY_H_
 
 #include "absl/types/optional.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
@@ -46,6 +47,7 @@ enum class MlirBridgeRolloutPolicy {
 // The config_proto param is a required input for all TF1 graphs but it is
 // redundant for TF2 graphs.
 MlirBridgeRolloutPolicy GetMlirBridgeRolloutPolicy(
+    const tensorflow::Graph& graph,
     absl::optional<tensorflow::ConfigProto> config_proto);
 
 }  // namespace tensorflow

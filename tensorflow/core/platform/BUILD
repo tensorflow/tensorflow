@@ -702,11 +702,12 @@ cc_library(
 
 cc_library(
     name = "strong_hash",
-    hdrs = ["strong_hash.h"],
+    textual_hdrs = ["strong_hash.h"],
     deps = [
         ":platform",
         ":types",
-    ] + tf_platform_deps("strong_hash"),
+        "@highwayhash//:sip_hash",
+    ],
 )
 
 cc_library(
@@ -1297,7 +1298,9 @@ tf_cuda_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-    ],
+    ] + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocm_headers",
+    ]),
 )
 
 # --------------------------------------------------------------------------

@@ -386,17 +386,6 @@ cc_library(
 )
 
 cc_library(
-    name = "strong_hash",
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
-    textual_hdrs = ["strong_hash.h"],
-    deps = ["@highwayhash//:sip_hash"],
-)
-
-cc_library(
     name = "subprocess",
     srcs = ["subprocess.cc"],
     hdrs = ["//tensorflow/core/platform:subprocess.h"],

@@ -72,6 +72,15 @@ struct MlirEmitterInput {
   absl::optional<MlirBufferSlice> extra_slice;
 };
 
+// Convenience struct that contains useful data structures in MLIR emitter.
+struct MlirEmitterContext {
+  void SetOperation(mlir::Operation* op);
+
+  std::string name;
+  std::vector<Shape> operand_shapes;
+  std::vector<Shape> output_shapes;
+};
+
 // Emits LLVM IR for an "unnested computation".
 //
 // An unnested computation is an HloComputation which you run by executing one
@@ -593,9 +602,19 @@ class IrEmitterUnnested : public IrEmitter,
   std::unique_ptr<KernelThunk> BuildKernelThunk(
       const HloInstruction* inst, bool implements_whole_instruction);
 
-  std::unique_ptr<KernelThunk> BuildKernelThunkForMlir(
+  std::unique_ptr<KernelThunk> BuildKernelThunkForMlirImpl(
       absl::string_view name, Thunk::ThunkInfo thunk_info,
       absl::Span<const MlirBufferSlice> slices,
+      std::vector<llvm_ir::IrArray>* ir_arrays);
+
+  StatusOr<std::unique_ptr<KernelThunk>> BuildKernelThunkForMlir(
+      mlir::Operation* op, mlir::ValueRange operands,
+      Thunk::ThunkInfo thunk_info, absl::optional<MlirBufferSlice> extra_slice,
+      std::vector<llvm_ir::IrArray>* ir_arrays);
+
+  StatusOr<std::unique_ptr<KernelThunk>> BuildKernelThunkForMlir(
+      mlir::Operation* op, Thunk::ThunkInfo thunk_info,
+      absl::optional<MlirBufferSlice> extra_slice,
       std::vector<llvm_ir::IrArray>* ir_arrays);
 
   // Returns a thunk that, given a reduce or select-and-scatter op,
@@ -647,7 +666,7 @@ class IrEmitterUnnested : public IrEmitter,
       absl::optional<int64> block_id_filter = absl::nullopt);
 
   StatusOr<const HloComputation*> GetOrCreateSubComputationFromRegion(
-      mlir::Region* region);
+      mlir::Region* region, bool is_fusion);
 
   StatusOr<MlirEmitterInput> GetMlirEmitterInput(HloInstruction* hlo);
 

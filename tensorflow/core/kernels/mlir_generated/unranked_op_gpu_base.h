@@ -16,8 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_MLIR_GENERATED_UNRANKED_OP_GPU_ABS_H_
 #define TENSORFLOW_CORE_KERNELS_MLIR_GENERATED_UNRANKED_OP_GPU_ABS_H_
 
+#include "third_party/llvm/llvm-project/llvm/include/llvm/ADT/ArrayRef.h"
+#include "third_party/llvm/llvm-project/llvm/include/llvm/ADT/SmallVector.h"
 #include "mlir/ExecutionEngine/CRunnerUtils.h"  // from @llvm-project
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 
@@ -72,90 +76,95 @@ Tensor ConvertDescriptorToTensor(
   return tensor;
 }
 
-#define MLIR_FUNCTION(tf_op, mlir_type) _mlir_ciface_##tf_op##_##mlir_type
+template <DataType tf_data_type, typename data_type, typename Derived>
+class MlirUnrankedOp : public OpKernel {
+ public:
+  explicit MlirUnrankedOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
-// Generates a class derived from OpKernel with Compute function that converts
-// input tensors to unranked memref descriptors and calls mlir-generated
-// unranked kernel. The outputs are converted back to tensors using
-// MlirTensorBuffer to take ownership of pre-allocated memory.
-#define REGISTER_AND_GENERATE_KERNEL(tf_op, mlir_type, tf_data_type,          \
-                                     data_type)                               \
+  void Compute(OpKernelContext* ctx) override {
+    llvm::SmallVector<::UnrankedMemRefType<data_type>, 2> input_descs;
+    for (int i = 0, end = ctx->num_inputs(); i < end; ++i) {
+      input_descs.push_back(
+          std::move(ConvertTensorToDescriptor<data_type>(ctx->input(i))));
+    }
+    auto result_desc = Derived::Invoke(ctx, input_descs);
+
+    for (const auto& input_desc : input_descs) {
+      free(input_desc.descriptor);
+    }
+    void* result_data_ptr = static_cast<void**>(result_desc.descriptor)[0];
+
+    for (int i = 0, end = ctx->num_inputs(); i < end; ++i) {
+      const Tensor& input = ctx->input(i);
+      if (input.data() == result_data_ptr) {
+        ctx->set_output(0, input);
+        free(result_desc.descriptor);
+        return;
+      }
+    }
+    tensorflow::AllocatorAttributes attrs;
+    auto* allocator = ctx->get_allocator(attrs);
+    Tensor result_tensor = ConvertDescriptorToTensor<data_type>(
+        result_desc, tf_data_type, allocator);
+    free(result_desc.descriptor);
+    ctx->set_output(0, result_tensor);
+  }
+};
+
+#define MLIR_FUNCTION(tf_op, mlir_type) _mlir_ciface_##tf_op##_##mlir_type
+// OpKernel with Compute function that converts input tensors to unranked
+// memref descriptors and calls mlir-generated unranked kernel. The outputs
+// are converted back to tensors using MlirTensorBuffer to take ownership of
+// pre-allocated memory.
+#define GENERATE_AND_REGISTER_BINARY_KERNEL(tf_op, mlir_type, tf_data_type,   \
+                                            data_type)                        \
   extern "C" ::UnrankedMemRefType<data_type> MLIR_FUNCTION(tf_op, mlir_type)( \
       tensorflow::OpKernelContext * ctx,                                      \
-      ::UnrankedMemRefType<data_type> * arg);                                 \
+      const ::UnrankedMemRefType<data_type>* arg1,                            \
+      const ::UnrankedMemRefType<data_type>* arg2);                           \
                                                                               \
   namespace {                                                                 \
-  class MlirUnranked##tf_op##mlir_type##Op : public OpKernel {                \
+  class MlirUnranked##tf_op##mlir_type##Op                                    \
+      : public MlirUnrankedOp<tf_data_type, data_type,                        \
+                              MlirUnranked##tf_op##mlir_type##Op> {           \
    public:                                                                    \
-    MlirUnranked##tf_op##mlir_type##Op(OpKernelConstruction* ctx)             \
-        : OpKernel(ctx) {}                                                    \
+    explicit MlirUnranked##tf_op##mlir_type##Op(OpKernelConstruction* ctx)    \
+        : MlirUnrankedOp<tf_data_type, data_type,                             \
+                         MlirUnranked##tf_op##mlir_type##Op>(ctx) {}          \
                                                                               \
-    void Compute(OpKernelContext* ctx) override {                             \
-      const Tensor& input = ctx->input(0);                                    \
-                                                                              \
-      auto input_desc = ConvertTensorToDescriptor<data_type>(input);          \
-      auto result_desc = MLIR_FUNCTION(tf_op, mlir_type)(ctx, &input_desc);   \
-      free(input_desc.descriptor);                                            \
-                                                                              \
-      /* Compare data pointers to detect forwarding. */                       \
-      void* result_data_ptr = static_cast<void**>(result_desc.descriptor)[0]; \
-      if (input.data() == result_data_ptr) {                                  \
-        ctx->set_output(0, input);                                            \
-      } else {                                                                \
-        tensorflow::AllocatorAttributes attrs;                                \
-        auto* allocator = ctx->get_allocator(attrs);                          \
-        Tensor result_tensor = ConvertDescriptorToTensor<data_type>(          \
-            result_desc, tf_data_type, allocator);                            \
-        ctx->set_output(0, result_tensor);                                    \
-      }                                                                       \
-      free(result_desc.descriptor);                                           \
+    static ::UnrankedMemRefType<data_type> Invoke(                            \
+        OpKernelContext* ctx,                                                 \
+        llvm::ArrayRef<::UnrankedMemRefType<data_type>> args) {               \
+      return MLIR_FUNCTION(tf_op, mlir_type)(ctx, &args[0], &args[1]);        \
     }                                                                         \
   };                                                                          \
   }                                                                           \
-                                                                              \
   REGISTER_KERNEL_BUILDER(                                                    \
       Name(#tf_op).Device(DEVICE_GPU).TypeConstraint<data_type>("T"),         \
       MlirUnranked##tf_op##mlir_type##Op);
 
-// OpKernel with Compute function that converts input tensors to unranked memref
-// descriptors and calls mlir-generated unranked kernel. The outputs are
-// converted back to tensors using MlirTensorBuffer to take ownership of
-// pre-allocated memory.
-#define REGISTER_AND_GENERATE_BINARY_KERNEL(tf_op, mlir_type, tf_data_type,   \
-                                            data_type)                        \
+#define GENERATE_AND_REGISTER_UNARY_KERNEL(tf_op, mlir_type, tf_data_type,    \
+                                           data_type)                         \
   extern "C" ::UnrankedMemRefType<data_type> MLIR_FUNCTION(tf_op, mlir_type)( \
       tensorflow::OpKernelContext * ctx,                                      \
-      ::UnrankedMemRefType<data_type> * arg1,                                 \
-      ::UnrankedMemRefType<data_type> * arg2);                                \
+      const ::UnrankedMemRefType<data_type>* arg);                            \
                                                                               \
   namespace {                                                                 \
-  class MlirUnranked##tf_op##mlir_type##Op : public OpKernel {                \
+  class MlirUnranked##tf_op##mlir_type##Op                                    \
+      : public MlirUnrankedOp<tf_data_type, data_type,                        \
+                              MlirUnranked##tf_op##mlir_type##Op> {           \
    public:                                                                    \
     explicit MlirUnranked##tf_op##mlir_type##Op(OpKernelConstruction* ctx)    \
-        : OpKernel(ctx) {}                                                    \
+        : MlirUnrankedOp<tf_data_type, data_type,                             \
+                         MlirUnranked##tf_op##mlir_type##Op>(ctx) {}          \
                                                                               \
-    void Compute(OpKernelContext* ctx) override {                             \
-      const Tensor& input = ctx->input(0);                                    \
-      const Tensor& input2 = ctx->input(1);                                   \
-                                                                              \
-      auto input_desc = ConvertTensorToDescriptor<data_type>(input);          \
-      auto input_desc2 = ConvertTensorToDescriptor<data_type>(input2);        \
-      auto result_desc =                                                      \
-          MLIR_FUNCTION(tf_op, mlir_type)(ctx, &input_desc, &input_desc2);    \
-      free(input_desc.descriptor);                                            \
-      free(input_desc2.descriptor);                                           \
-                                                                              \
-      tensorflow::AllocatorAttributes attrs;                                  \
-      auto* allocator = ctx->get_allocator(attrs);                            \
-                                                                              \
-      Tensor result_tensor = ConvertDescriptorToTensor<data_type>(            \
-          result_desc, tf_data_type, allocator);                              \
-      free(result_desc.descriptor);                                           \
-      ctx->set_output(0, result_tensor);                                      \
+    static ::UnrankedMemRefType<data_type> Invoke(                            \
+        OpKernelContext* ctx,                                                 \
+        llvm::ArrayRef<::UnrankedMemRefType<data_type>> args) {               \
+      return MLIR_FUNCTION(tf_op, mlir_type)(ctx, &args[0]);                  \
     }                                                                         \
   };                                                                          \
   }                                                                           \
-                                                                              \
   REGISTER_KERNEL_BUILDER(                                                    \
       Name(#tf_op).Device(DEVICE_GPU).TypeConstraint<data_type>("T"),         \
       MlirUnranked##tf_op##mlir_type##Op);

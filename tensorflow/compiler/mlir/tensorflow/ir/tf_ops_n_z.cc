@@ -1539,6 +1539,21 @@ void SumOp::build(OpBuilder &builder, OperationState &result, Value input,
   build(builder, result, out_ty, input, reduction_indices, keep_dims);
 }
 
+// TODO: Templatize this fold for all reduction ops.
+OpFoldResult SumOp::fold(ArrayRef<Attribute> operands) {
+  auto input_ty = input().getType().template dyn_cast<RankedTensorType>();
+  if (!input_ty) return {};
+  auto result_ty = getType().template dyn_cast<RankedTensorType>();
+  if (!result_ty) return {};
+
+  // Bypass this op if the result has the same shape and type. This can happen
+  // if the input tensor has size 0 or size 1.
+  if (!keep_dims() && input_ty == result_ty) {
+    return input();
+  }
+  return {};
+}
+
 //===----------------------------------------------------------------------===//
 // StridedSliceOp
 //===----------------------------------------------------------------------===//
@@ -2590,12 +2605,37 @@ static LogicalResult Verify(WhileOp op) {
   return success();
 }
 
-//===----------------------------------------------------------------------===//
-// WhileOp canonicalization.
-//===----------------------------------------------------------------------===//
-void WhileOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                          MLIRContext *context) {
-  results.insert<DropAttributes<WhileOp>>(context);
+namespace {
+
+ArrayAttr GetShapeArrayAttrFromTypes(mlir::MLIRContext *context,
+                                     TypeRange types) {
+  SmallVector<Attribute, 4> shapes;
+  shapes.reserve(types.size());
+  for (Type type : types)
+    shapes.push_back(ShapeAttr::get(context, type.cast<ShapedType>()));
+  return ArrayAttr::get(shapes, context);
+}
+
+}  // namespace
+
+void WhileOp::build(OpBuilder &builder, OperationState &result,
+                    TypeRange output, ValueRange input, FlatSymbolRefAttr cond,
+                    FlatSymbolRefAttr body, IntegerAttr parallel_iterations,
+                    BoolAttr is_stateless) {
+  ArrayAttr output_shapes =
+      GetShapeArrayAttrFromTypes(builder.getContext(), output);
+  build(builder, result, output, input, cond, body, output_shapes,
+        parallel_iterations, is_stateless);
+}
+
+void WhileOp::build(OpBuilder &builder, OperationState &result,
+                    TypeRange output, ValueRange input, StringRef cond,
+                    StringRef body, uint64_t parallel_iterations,
+                    bool is_stateless) {
+  ArrayAttr output_shapes =
+      GetShapeArrayAttrFromTypes(builder.getContext(), output);
+  build(builder, result, output, input, cond, body, output_shapes,
+        parallel_iterations, is_stateless);
 }
 
 //===----------------------------------------------------------------------===//
