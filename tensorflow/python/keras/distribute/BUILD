@@ -866,9 +866,6 @@ tf_py_test(
     srcs = ["parameter_server_training_test.py"],
     python_version = "PY3",
     shard_count = 1,
-    tags = [
-        "no_oss",  # TODO(b/162119374): enable it in OSS.
-    ],
     deps = [
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",

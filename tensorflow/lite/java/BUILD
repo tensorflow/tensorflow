@@ -91,9 +91,9 @@ tflite_flex_android_library(
     visibility = ["//visibility:public"],
 )
 
-# EXPERIMENTAL: Android target target for GPU acceleration. Note that this
-# library contains *only* the GPU delegate and its Java wrapper; clients must
-# also include the core `tensorflowlite` runtime.
+# EXPERIMENTAL: Android target for GPU acceleration. Note that this library
+# contains *only* the GPU delegate and its Java wrapper; clients must also
+# include the core `tensorflowlite` runtime.
 android_library(
     name = "tensorflowlite_gpu",
     srcs = ["//tensorflow/lite/delegates/gpu/java/src/main/java/org/tensorflow/lite/gpu:gpu_delegate"],

@@ -212,7 +212,6 @@ tf_cuda_cc_test(
 # TODO(b/160731748): Re-enable when it works again.
 # gen_kernel_library(
 #     name = "bias_add",
-#     same_shape = "0,2",
 #     tile_size = "16x16",
 #     types = [
 #         "f16",
@@ -224,7 +223,6 @@ tf_cuda_cc_test(
 # TODO(b/160190568): Re-enable when it works again.
 # gen_kernel_library(
 #     name = "relu",
-#     same_shape = "0,1",
 #     tile_size = "256",
 #     types = [
 #         "f16",
@@ -236,7 +234,6 @@ tf_cuda_cc_test(
 gen_kernel_library(
     name = "abs",
     generate_unranked = True,
-    same_shape = "0,1",
     tile_size = "256",
     types = [
         "f16",
@@ -249,64 +246,11 @@ gen_kernel_library(
 )
 
 gen_kernel_library(
-    name = "ceil",
-    generate_unranked = True,
-    same_shape = "0,1",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    unroll_factors = "4",
-)
-
-gen_kernel_library(
     name = "conj",
-    same_shape = "0,1",
     tile_size = "256",
     types = [
         "c64",
         "c128",
-    ],
-    unroll_factors = "4",
-)
-
-gen_kernel_library(
-    name = "cos",
-    generate_unranked = True,
-    same_shape = "0,1",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    unroll_factors = "4",
-)
-
-gen_kernel_library(
-    name = "exp",
-    generate_unranked = True,
-    same_shape = "0,1",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    unroll_factors = "4",
-)
-
-gen_kernel_library(
-    name = "floor",
-    generate_unranked = True,
-    same_shape = "0,1",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
     ],
     unroll_factors = "4",
 )
@@ -324,7 +268,6 @@ gen_kernel_library(
 gen_kernel_library(
     name = "invert",
     generate_unranked = True,
-    same_shape = "0,1",
     tile_size = "256",
     types = [
         "i8",
@@ -336,50 +279,10 @@ gen_kernel_library(
 )
 
 gen_kernel_library(
-    name = "isfinite",
-    generate_unranked = True,
-    same_shape = "0,1",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    unroll_factors = "4",
-)
-
-gen_kernel_library(
-    name = "log",
-    generate_unranked = True,
-    same_shape = "0,1",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    unroll_factors = "4",
-)
-
-gen_kernel_library(
     name = "logicalnot",
     generate_unranked = True,
-    same_shape = "0,1",
     tile_size = "256",
     types = ["i1"],
-    unroll_factors = "4",
-)
-
-gen_kernel_library(
-    name = "neg",
-    generate_unranked = True,
-    same_shape = "0,1",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
     unroll_factors = "4",
 )
 
@@ -394,22 +297,8 @@ gen_kernel_library(
 )
 
 gen_kernel_library(
-    name = "rsqrt",
-    generate_unranked = True,
-    same_shape = "0,1",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    unroll_factors = "4",
-)
-
-gen_kernel_library(
     name = "sign",
     generate_unranked = True,
-    same_shape = "0,1",
     tile_size = "256",
     types = [
         # TODO(b/162577610): Add bf16, c64 and c128.
@@ -426,33 +315,6 @@ gen_kernel_library(
     name = "sin",
     generate_ranked = False,
     generate_unranked = True,
-    same_shape = "0,1",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    unroll_factors = "4",
-)
-
-gen_kernel_library(
-    name = "sqrt",
-    generate_unranked = True,
-    same_shape = "0,1",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    unroll_factors = "4",
-)
-
-gen_kernel_library(
-    name = "tanh",
-    generate_unranked = True,
-    same_shape = "0,1",
     tile_size = "256",
     types = [
         "f16",
@@ -466,7 +328,6 @@ gen_kernel_library(
     name = "addv2",
     generate_ranked = False,
     generate_unranked = True,
-    same_shape = "0,1",
     tile_size = "256",
     types = [
         "f16",
@@ -476,3 +337,29 @@ gen_kernel_library(
     ],
     unroll_factors = "4",
 )
+
+[
+    gen_kernel_library(
+        name = name,
+        generate_unranked = True,
+        tile_size = "256",
+        types = [
+            "f16",
+            "f32",
+            "f64",
+        ],
+        unroll_factors = "4",
+    )
+    for name in [
+        "ceil",
+        "cos",
+        "exp",
+        "floor",
+        "isfinite",
+        "log",
+        "neg",
+        "rsqrt",
+        "sqrt",
+        "tanh",
+    ]
+]

@@ -313,6 +313,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
 
     converter = lite.TFLiteConverterV2.from_concrete_functions([func])
     # TODO(b/156309549): We should add INT16 to the builtin types.
+    converter.optimizations = [lite.Optimize.DEFAULT]
     converter.target_spec.supported_ops = [
         lite.OpsSet.TFLITE_BUILTINS_INT8
     ]

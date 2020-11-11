@@ -77,7 +77,6 @@ cc_library(
         "gpu_kernel_to_blob_pass.cc",
         "materialize_broadcasts_pass.cc",
         "parallel_loops_to_sequential.cc",
-        "propagate_tf_abi_knowledge_pass.cc",
         "same_shape_propagation.cc",
         "shape_to_descriptors_pass.cc",
         "tensorflow_abi_knowledge_propagation.cc",

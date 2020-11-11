@@ -242,7 +242,7 @@ bool IsConvConstantsSupported(const GpuInfo& gpu_info,
                               const Convolution2DAttributes& attr) {
   if (gpu_info.IsAMD() && definition.precision != CalculationsPrecision::F32 &&
       definition.src_tensors[0].storage_type != TensorStorageType::BUFFER) {
-    // BUG, some AMD gpus crashe without it
+    // BUG, some AMD GPUs crash without it
     return false;
   }
 

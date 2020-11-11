@@ -16,7 +16,7 @@ limitations under the License.
 // This data was extracted from the larger feature data held in
 // no_features_data.cc and consists of the 26th spectrogram slice of 43 values.
 // This is the expected result of running the sample data in
-// yes_30ms_sample_data.cc through through the preprocessing pipeline.
+// yes_30ms_sample_data.cc through the preprocessing pipeline.
 
 #ifndef TENSORFLOW_LITE_MICRO_EXAMPLES_MICRO_SPEECH_SIMPLE_FEATURES_YES_POWER_SPECTRUM_DATA_H_
 #define TENSORFLOW_LITE_MICRO_EXAMPLES_MICRO_SPEECH_SIMPLE_FEATURES_YES_POWER_SPECTRUM_DATA_H_

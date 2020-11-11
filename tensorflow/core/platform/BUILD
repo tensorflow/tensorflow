@@ -702,11 +702,12 @@ cc_library(
 
 cc_library(
     name = "strong_hash",
-    hdrs = ["strong_hash.h"],
+    textual_hdrs = ["strong_hash.h"],
     deps = [
         ":platform",
         ":types",
-    ] + tf_platform_deps("strong_hash"),
+        "@highwayhash//:sip_hash",
+    ],
 )
 
 cc_library(
