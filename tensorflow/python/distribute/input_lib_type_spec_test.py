@@ -460,7 +460,7 @@ class InputTypeSpecTest(test.TestCase, parameterized.TestCase):
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           ],
           enable_get_next_as_optional=[True, False],
-          experimental_place_dataset_on_device=[True,False],
+          experimental_place_dataset_on_device=[True, False],
           experimental_prefetch_to_device=[True, False],))
   def testFromFunctionInputSignatureForPerReplicaValuesWithOptions(self, distribution,
                                                                    enable_get_next_as_optional,
@@ -486,9 +486,9 @@ class InputTypeSpecTest(test.TestCase, parameterized.TestCase):
               input_context.get_per_replica_batch_size(4))
 
     options = distribute_lib.InputOptions(
-        experimental_place_dataset_on_device = experimental_place_dataset_on_device,
-        experimental_prefetch_to_device = experimental_prefetch_to_device,
-        experimental_replication_mode = distribute_lib.InputReplicationMode.PER_REPLICA) 
+        experimental_place_dataset_on_device=experimental_place_dataset_on_device,
+        experimental_prefetch_to_device=experimental_prefetch_to_device,
+        experimental_replication_mode=distribute_lib.InputReplicationMode.PER_REPLICA) 
 
     distribution.extended.experimental_enable_get_next_as_optional = (
         enable_get_next_as_optional)
