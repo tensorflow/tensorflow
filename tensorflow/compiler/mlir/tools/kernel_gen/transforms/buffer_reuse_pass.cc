@@ -171,23 +171,24 @@ class BufferReuseAnalysis {
     Liveness liveness(f);
     BufferSizeAnalysis size_equivalences(f);
     f.walk([&](Block *block) {
-      find_reuse_candiates(*block, aliases, liveness.getLiveness(block),
+      find_reuse_candiates(block, aliases, liveness.getLiveness(block),
                            size_equivalences, f.getArguments());
     });
   }
 
-  void find_reuse_candiates(Block &block, BufferAliasAnalysis &aliases,
+  void find_reuse_candiates(Block *block, BufferAliasAnalysis &aliases,
                             const LivenessBlockInfo *liveness,
                             BufferSizeAnalysis &size_equivalences,
                             ArrayRef<BlockArgument> arguments) {
-    for (Operation &op : block) {
+    for (Operation &op : *block) {
       auto alloc_op = dyn_cast<AllocOp>(op);
       if (!alloc_op) continue;
 
       // Find first use of the newly allocated buffer within this block.
       Value new_buffer = alloc_op.getResult();
-      Operation *first_reuse = find_first_use_in_block(
-          new_buffer, alloc_op.getOperation()->getBlock());
+      Operation *first_reuse = find_first_use_in_block(new_buffer, block);
+      assert((first_reuse == nullptr || first_reuse->getBlock() == block) &&
+             "Expected first use in same block if found.");
 
       // Find reuse candidates for the regarded allocation.
       SmallVector<int64_t, 2> local_reuse_candidates;
@@ -216,9 +217,10 @@ class BufferReuseAnalysis {
             //   i)  its last use is after the point of reuse, or
             //   ii) its last use is also its first reuse but the operation
             //       does not allow for local reuse.
-            Operation *last_use = liveness->getEndOperation(
-                old_buffer_alias,
-                liveness->getStartOperation(old_buffer_alias));
+            Operation *last_use =
+                liveness->getEndOperation(old_buffer_alias, &block->front());
+            assert(last_use != nullptr && last_use->getBlock() == block &&
+                   "Expected last use in same block.");
             if (first_reuse->isBeforeInBlock(last_use)) {
               livetimes_compatible = false;
               break;
@@ -272,7 +274,7 @@ class BufferReuseAnalysis {
                  op->getOperands().end() &&
              llvm::find(op->getOperands(), new_buffer) !=
                  op->getOperands().end() &&
-             "expect `old/new_buffer` to be operand of `op`");
+             "Expect `old/new_buffer` to be operand of `op`.");
 
       // If `linalg.generic` indexing maps are the same for input and output
       // buffer then the last use of the input buffer happens before its first

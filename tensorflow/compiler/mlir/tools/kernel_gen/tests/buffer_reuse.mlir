@@ -328,3 +328,25 @@ func @abs_unranked_i64(%arg : memref<*xi64>,
       : (memref<?xi64>, memref<?xindex>) -> memref<*xi64>
   return %result : memref<*xi64>
 }
+
+// CHECK-LABEL: @old_buffer_alias_outside_block
+func @old_buffer_alias_outside_block(%arg: memref<3xf32>)
+    attributes {llvm.emit_c_interface, tf_entry} {
+  %c0 = constant 0 : index
+  %c1 = constant 1 : index
+  %true = constant true
+
+  // Alias outside of the block with the new buffer allocation.
+  %alias = memref_cast %arg : memref<3xf32> to memref<3xf32>
+
+  scf.if %true {
+
+    // Allocation and use of new buffer.
+    // CHECK: reuse_input_candidates = [0 : index]
+    %mem = alloc() : memref<3xf32>
+    %use = load %mem[%c0] : memref<3xf32>
+
+  } else {
+  }
+  return
+}
