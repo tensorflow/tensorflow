@@ -924,7 +924,6 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/training/tracking:util",
-        "@absl_py//absl/logging",
     ],
 )
 
