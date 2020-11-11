@@ -2061,12 +2061,6 @@ Status IrEmitterUnnested::EmitSortFromMlir(MlirEmitterInput mlir_input) {
   return Status::OK();
 }
 
-Status IrEmitterUnnested::HandleTupleSelect(HloInstruction* tuple_select) {
-  AddThunkToThunkSequence(
-      BuildKernelThunk(tuple_select, /*implements_whole_instruction=*/true));
-  return IrEmitter::HandleTupleSelect(tuple_select);
-}
-
 Status IrEmitterUnnested::HandleReplicaId(HloInstruction* hlo) {
   AddThunkToThunkSequence(absl::make_unique<ReplicaIdThunk>(
       GetThunkInfo(hlo), GetAllocationSlice(*hlo)));

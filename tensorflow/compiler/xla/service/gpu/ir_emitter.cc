@@ -531,17 +531,9 @@ Status IrEmitter::HandleSelect(HloInstruction* select) {
 }
 
 Status IrEmitter::HandleTupleSelect(HloInstruction* tuple_select) {
-  auto pred = tuple_select->operand(0);
-  auto on_true = tuple_select->operand(1);
-  auto on_false = tuple_select->operand(2);
-  TF_RET_CHECK(pred->shape().element_type() == PRED);
-  TF_RET_CHECK(ShapeUtil::IsScalar(pred->shape()));
-  TF_RET_CHECK(tuple_select->shape().IsTuple());
-  llvm_ir::EmitTupleSelect(GetIrArray(*tuple_select, *tuple_select),
-                           GetIrArray(*pred, *tuple_select),
-                           GetBasePointer(*on_true), GetBasePointer(*on_false),
-                           &b_);
-  return Status::OK();
+  return InternalError(
+      "Dynamic selection of tuples is not supported. Please file a bug against "
+      "XLA/GPU if you need it");
 }
 
 namespace {
