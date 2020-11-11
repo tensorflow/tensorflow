@@ -152,6 +152,11 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
   // Some basic cleanup.
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
+  if (!gpu_binary_only) {
+    // Find candidates for buffer reuse.
+    pm.addNestedPass<mlir::FuncOp>(
+        mlir::kernel_gen::transforms::CreateBufferReusePass());
+  }
   // Greedily map the remaining loop to GPU hardware dimensions.
   pm.addNestedPass<::mlir::FuncOp>(xla::mlir_gpu::createMapParallelLoopsPass());
   // Apply the mapping.
