@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
-#include "tensorflow/lite/delegates/gpu/cl/precision.h"
 
 namespace tflite {
 namespace gpu {
@@ -28,21 +27,22 @@ namespace cl {
 namespace {
 // Adreno can provide up to ~3-4KB of constant memory, but in some cases even
 // 3KB can have very bad performance.
-int GetAdrenoOptimalMaxConstantSize(int gpu_version) {
-  if (gpu_version < 600) {
+int GetAdrenoOptimalMaxConstantSize(const AdrenoInfo& adreno_info) {
+  if (adreno_info.IsAdreno3xx() || adreno_info.IsAdreno4xx() ||
+      adreno_info.IsAdreno5xx()) {
     return 256 * 10;  // 2.5KB
   } else {
     return 256 * 14;  // 3.5KB
   }
 }
 
-int GetOptimalMaxConstantSize(const DeviceInfo& info) {
+int GetOptimalMaxConstantSize(const GpuInfo& info) {
   if (!info.IsAdreno()) {
     // In general we do not expect that this kernel will be used with non Adreno
     // so as it tuned for __constant memory that have big profit on Adreno
     return 1024;  // 1KB
   } else {
-    return GetAdrenoOptimalMaxConstantSize(info.adreno_info.gpu_version);
+    return GetAdrenoOptimalMaxConstantSize(info.adreno_info);
   }
 }
 
@@ -237,11 +237,10 @@ bool IsDotConvBetter(int src_channels, int dst_channels) {
 
 }  // namespace
 
-bool IsConvConstantsSupported(const DeviceInfo& device_info,
+bool IsConvConstantsSupported(const GpuInfo& gpu_info,
                               const OperationDef& definition,
                               const Convolution2DAttributes& attr) {
-  if (device_info.IsAMD() &&
-      definition.precision != CalculationsPrecision::F32 &&
+  if (gpu_info.IsAMD() && definition.precision != CalculationsPrecision::F32 &&
       definition.src_tensors[0].storage_type != TensorStorageType::BUFFER) {
     // BUG, some AMD gpus crashe without it
     return false;
@@ -259,12 +258,12 @@ bool IsConvConstantsSupported(const DeviceInfo& device_info,
                              ? sizeof(float)
                              : sizeof(half);
   const int filters_buffer_size = filters_count * float_size;
-  const int kConstantMaxSize = GetOptimalMaxConstantSize(device_info);
+  const int kConstantMaxSize = GetOptimalMaxConstantSize(gpu_info);
   const int flt4_registers = DivideRoundUp(w_shape.o, 4);
   return filters_buffer_size <= kConstantMaxSize && flt4_registers <= 8;
 }
 
-GPUOperation CreateConvConstants(const DeviceInfo& device_info,
+GPUOperation CreateConvConstants(const GpuInfo& gpu_info,
                                  const OperationDef& definition,
                                  const Convolution2DAttributes& attr) {
   const bool use_dot_conv =
@@ -286,11 +285,11 @@ GPUOperation CreateConvConstants(const DeviceInfo& device_info,
   op.code_ = GenerateConvolutionConstantCode(
       definition, attr.weights.shape, stride_correction, use_dot_conv, &op);
   if (definition.precision == CalculationsPrecision::F16 &&
-      device_info.IsAdreno3xx()) {
+      gpu_info.IsAdreno() && gpu_info.adreno_info.IsAdreno3xx()) {
     op.compiler_options_.push_back(CompilerOptions::ADRENO_FULL_SIMD_LINE);
   }
   if (definition.precision != CalculationsPrecision::F32 &&
-      device_info.IsPowerVR()) {
+      gpu_info.IsPowerVR()) {
     // BUG, some PowerVRs (GE8320) produce incorrect result without it
     op.compiler_options_.push_back(CompilerOptions::CL_OPT_DISABLE);
   }

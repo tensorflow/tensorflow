@@ -312,6 +312,14 @@ TEST(OpVersionTest, VersioningSumTest) {
   SimpleVersioningTest(BuiltinOperator_SUM);
 }
 
+TEST(OpVersionTest, VersioningReduceMinTest) {
+  SimpleVersioningTestExtended(BuiltinOperator_REDUCE_MIN);
+}
+
+TEST(OpVersionTest, VersioningReduceMaxTest) {
+  SimpleVersioningTestExtended(BuiltinOperator_REDUCE_MAX);
+}
+
 TEST(OpVersionTest, VersioningAddTest) {
   SimpleVersioningTest(BuiltinOperator_ADD);
 }
@@ -748,10 +756,18 @@ TEST(OpVersionTest, VersioningAbsTest) {
 
   // int8 input is version 2.
   fake_op_sig = {
-      .op = BuiltinOperator_RESIZE_NEAREST_NEIGHBOR,
+      .op = BuiltinOperator_ABS,
       .input_types = std::vector<TensorType>{TensorType_INT8},
       .output_types = std::vector<TensorType>{TensorType_INT8},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  // int16 input is version 3.
+  fake_op_sig = {
+      .op = BuiltinOperator_ABS,
+      .input_types = std::vector<TensorType>{TensorType_INT16},
+      .output_types = std::vector<TensorType>{TensorType_INT16},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 }
 }  // namespace tflite

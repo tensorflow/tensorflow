@@ -127,7 +127,6 @@ load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
-    "mkl_deps",
 )
 
 package(
@@ -538,15 +537,11 @@ cc_library(
         ],
 )
 
-# One target for all user ops
-cc_library(
+# One target for all user ops.
+alias(
     name = "user_ops_op_lib",
-    srcs = glob(["user_ops/**/*.cc"]),
-    copts = tf_copts(),
-    linkstatic = 1,
+    actual = "//tensorflow/core/user_ops:user_ops_op_lib",
     visibility = ["//visibility:public"],
-    deps = [":framework"],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -1348,10 +1343,6 @@ cc_library(
         "//tensorflow/core/lib/monitoring:counter",
         "//tensorflow/core/lib/monitoring:gauge",
         "//tensorflow/core/lib/monitoring:metric_def",
-        "//tensorflow/core/lib/monitoring:mobile_counter",
-        "//tensorflow/core/lib/monitoring:mobile_gauge",
-        "//tensorflow/core/lib/monitoring:mobile_percentile_sampler",
-        "//tensorflow/core/lib/monitoring:mobile_sampler",
         "//tensorflow/core/lib/monitoring:percentile_sampler",
         "//tensorflow/core/lib/monitoring:sampler",
         "//tensorflow/core/lib/monitoring:timed",
@@ -1679,7 +1670,7 @@ tf_cuda_library(
     ] + if_static(
         extra_deps = ["@com_google_protobuf//:protobuf"],
         otherwise = ["@com_google_protobuf//:protobuf_headers"],
-    ) + mkl_deps(),
+    ),
     alwayslink = 1,
 )
 

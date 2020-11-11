@@ -56,7 +56,7 @@ TEST_F(OpenCLOperationTest, ConvolutionTransposed4x4) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       ConvolutionTransposed4x4 operation = CreateConvolutionTransposed4x4(
-          creation_context_.GetDeviceInfo(), op_def, attr);
+          creation_context_.GetGpuInfo(), op_def, attr);
       ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
                                     BHWC(1, 4, 4, 1), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,

@@ -59,6 +59,8 @@ class DataServiceDatasetOp : public DatasetOpKernel {
   static constexpr const char* const kIterationCounter = "iteration_counter";
   static constexpr const char* const kOutputTypes = "output_types";
   static constexpr const char* const kOutputShapes = "output_shapes";
+  // Note: If a new constant is declared here, it *must* be defined in
+  // data_service_dataset_op.cc, otherwise it will not compile in debug mode.
 
   explicit DataServiceDatasetOp(OpKernelConstruction* ctx);
 

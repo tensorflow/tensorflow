@@ -1897,8 +1897,8 @@ uint64 GPUKernelTracker::MaybeQueue(OpKernelContext* ctx) {
   mem_since_last_ += mem_used;
   int weight = 1;
   // Note that if all {max_bytes, max_interval, max_pending} are zero then
-  // we we track every single kernel with no pending cap.  This can happen
-  // if timestamped_allocator alone was specified.
+  // we track every single kernel with no pending cap.  This can happen if
+  // timestamped_allocator alone was specified.
   if ((mem_since_last_ < params_.max_bytes) &&
       (ops_since_last_ < params_.max_interval)) {
     return 0;

@@ -366,5 +366,55 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
         self.assertAllEqual(model2.w.variables[3], [4.])
 
 
+class ClusterTypeNameTest(test.TestCase):
+
+  def testArbitraryChiefName(self):
+    cluster_def = multi_worker_test_base._create_cluster(
+        num_workers=1,
+        num_ps=1,
+        has_chief=True,
+        chief_name="some_arbitrary_name")
+    cluster_def["chief"] = [
+        "localhost:%d" % multi_worker_test_base.pick_unused_port()
+    ]
+    cluster_resolver = SimpleClusterResolver(
+        ClusterSpec(cluster_def), rpc_layer="grpc")
+    with self.assertRaisesRegexp(ValueError, "Disallowed task type found in"):
+      parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
+
+  def testArbitraryWorkerName(self):
+    cluster_def = multi_worker_test_base._create_cluster(
+        num_workers=1, num_ps=1, worker_name="some_arbitrary_name")
+    cluster_def["chief"] = [
+        "localhost:%d" % multi_worker_test_base.pick_unused_port()
+    ]
+    cluster_resolver = SimpleClusterResolver(
+        ClusterSpec(cluster_def), rpc_layer="grpc")
+    with self.assertRaisesRegexp(ValueError, "Disallowed task type found in"):
+      parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
+
+  def testArbitraryPsName(self):
+    cluster_def = multi_worker_test_base._create_cluster(
+        num_workers=1, num_ps=1, ps_name="some_arbitrary_name")
+    cluster_def["chief"] = [
+        "localhost:%d" % multi_worker_test_base.pick_unused_port()
+    ]
+    cluster_resolver = SimpleClusterResolver(
+        ClusterSpec(cluster_def), rpc_layer="grpc")
+    with self.assertRaisesRegexp(ValueError, "Disallowed task type found in"):
+      parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
+
+  def testArbitraryCurrentTaskType(self):
+    cluster_def = multi_worker_test_base._create_cluster(
+        num_workers=1, num_ps=1)
+    cluster_def["chief"] = [
+        "localhost:%d" % multi_worker_test_base.pick_unused_port()
+    ]
+    cluster_resolver = SimpleClusterResolver(
+        ClusterSpec(cluster_def), rpc_layer="grpc", task_type="foobar")
+    with self.assertRaisesRegexp(ValueError, "Disallowed task type found in"):
+      parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
+
+
 if __name__ == "__main__":
   test.main()

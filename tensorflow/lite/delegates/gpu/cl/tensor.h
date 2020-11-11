@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
@@ -37,7 +38,7 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-class Tensor : public GPUObject {
+class Tensor : public GPUObject, public GpuSpatialTensor {
  public:
   Tensor()
       : memory_(nullptr), image_buffer_memory_(nullptr), memory_owner_(true) {}
@@ -56,17 +57,17 @@ class Tensor : public GPUObject {
   Tensor(const Tensor&) = delete;
   Tensor& operator=(const Tensor&) = delete;
 
-  virtual ~Tensor() { Release(); }
+  ~Tensor() override { Release(); }
 
   absl::Status GetGPUResources(const GPUObjectDescriptor* obj_ptr,
                                GPUResourcesWithValue* resources) const override;
 
-  int Width() const { return shape_.w; }
-  int Height() const { return shape_.h; }
-  int Depth() const { return shape_.d; }
-  int Channels() const { return shape_.c; }
-  int Slices() const { return DivideRoundUp(shape_.c, 4); }
-  int Batch() const { return shape_.b; }
+  int Width() const override { return shape_.w; }
+  int Height() const override { return shape_.h; }
+  int Depth() const override { return shape_.d; }
+  int Channels() const override { return shape_.c; }
+  int Slices() const override { return DivideRoundUp(shape_.c, 4); }
+  int Batch() const override { return shape_.b; }
 
   TensorDescriptor GetDescriptor() const { return descriptor_; }
   DataType GetDataType() const { return descriptor_.data_type; }

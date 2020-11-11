@@ -3123,7 +3123,7 @@ ENTRY %main {
                           op::Shape("(f32[14], s32[14])")));
 }
 
-TEST_F(SpmdPartitioningTest, TiledToTiledTupleReduce2) {
+TEST_F(SpmdPartitioningTest, TiledToPartiallyTiledTupleReduce) {
   const char* const hlo_string = R"(
 HloModule module
 
@@ -3153,16 +3153,25 @@ ENTRY %main {
                           PartitionComputation(hlo_string, /*num_devices=*/4));
   VLOG(1) << module->ToString();
 
-  auto lhs =
-      AllOf(op::Shape("f32[14,10]"),
-            op::AllReduce(op::DynamicUpdateSlice(_, op::Parameter(0), _, _)));
-  auto rhs =
-      AllOf(op::Shape("s32[14,10]"),
-            op::AllReduce(op::DynamicUpdateSlice(_, op::Parameter(1), _, _)));
+  auto lhs = AllOf(op::Shape("f32[14,5]"), op::Parameter(0));
+  auto rhs = AllOf(op::Shape("s32[14,5]"), op::Parameter(1));
+  auto local_reduce =
+      AllOf(op::Reduce(lhs, rhs, op::Parameter(2), op::Parameter(3)),
+            op::Shape("(f32[14], s32[14])"));
+  auto reshape_l = AllOf(op::Reshape(op::GetTupleElement(local_reduce)),
+                         op::Shape("f32[14,1]"));
+  auto reshape_r = AllOf(op::Reshape(op::GetTupleElement(local_reduce)),
+                         op::Shape("s32[14,1]"));
+  auto broadcast_l =
+      AllOf(op::AllReduce(op::DynamicUpdateSlice(_, reshape_l, _, _)),
+            op::Shape("f32[14,2]"));
+  auto broadcast_r =
+      AllOf(op::AllReduce(op::DynamicUpdateSlice(_, reshape_r, _, _)),
+            op::Shape("s32[14,2]"));
   auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root,
-              AllOf(op::Reduce(lhs, rhs, op::Parameter(2), op::Parameter(3)),
-                    op::Shape("(f32[14], s32[14])")));
+  EXPECT_THAT(root, AllOf(op::Reduce(broadcast_l, broadcast_r, op::Parameter(2),
+                                     op::Parameter(3)),
+                          op::Shape("(f32[14], s32[14])")));
 }
 
 TEST_F(SpmdPartitioningTest, TiledToTiledReduceOutputReshard) {
@@ -3809,7 +3818,7 @@ ENTRY entry {
   auto ds =
       AllOf(op::DynamicSlice(
                 op::Pad(op::GetTupleElement(op::Parameter(0)), op::Constant()),
-                op::Constant(), op::Multiply(), op::Constant(), op::Constant()),
+                op::Constant(), op::Reshape(), op::Constant(), op::Constant()),
             op::Shape("f32[320,7,16,128]"));
   auto partial_output =
       AllOf(op::Add(op::GetTupleElement(op::Parameter(0)),
@@ -3900,7 +3909,7 @@ ENTRY entry {
   auto ds =
       AllOf(op::DynamicSlice(
                 op::Pad(op::GetTupleElement(op::Parameter(0)), op::Constant()),
-                op::Constant(), op::Multiply(), op::Constant()),
+                op::Constant(), op::Reshape(), op::Constant()),
             op::Shape("f32[4096,17,128]"));
   auto partial_output =
       AllOf(op::Add(op::GetTupleElement(op::Parameter(0)),
@@ -5001,6 +5010,37 @@ ENTRY entry {
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, AllOf(op::Shape("f32[24,16]"),
                           op::Dot(lhs_slice, partial_replicated_rhs)));
+}
+
+TEST_F(SpmdPartitioningTest, Dot2DPartitionedNoncontractingAndContracting3) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = f32[23,24] parameter(0), sharding={devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}
+  %rhs = f32[23,32] parameter(1), sharding={devices=[2,2]0,1,2,3}
+  ROOT %dot = f32[24,32] dot(%lhs, %rhs),
+    lhs_contracting_dims={0}, rhs_contracting_dims={0},
+    sharding={devices=[2,2]1,0,3,2}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  auto lhs = AllOf(op::Shape("f32[12,24]"), op::Parameter(0));
+  auto masked_lhs = op::Select(_, lhs, op::Broadcast(op::Constant()));
+  auto rhs = AllOf(op::Shape("f32[12,16]"), op::Parameter(1));
+  auto masked_rhs = op::Select(_, rhs, op::Broadcast(op::Constant()));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      root,
+      AllOf(op::Shape("f32[12,16]"),
+            op::DynamicSlice(
+                AllOf(op::Shape("f32[24,16]"),
+                      op::AllReduce(op::Dot(
+                          masked_lhs, op::CollectivePermute(masked_rhs)))),
+                _, _)));
 }
 
 TEST_F(SpmdPartitioningTest, Dot2DPartitionedBatchAndNonContracting) {

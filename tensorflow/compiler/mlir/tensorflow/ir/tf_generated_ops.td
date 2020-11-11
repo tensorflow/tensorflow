@@ -604,6 +604,29 @@ If `condition` evaluates to false, print the list of tensors in `data`.
   let hasCanonicalizer = 1;
 }
 
+def TF_AssignOp : TF_Op<"Assign", [NoSideEffect]> {
+  let summary = "Update 'ref' by assigning 'value' to it.";
+
+  let description = [{
+This operation outputs "ref" after the assignment is done.
+This makes it easier to chain operations that need to use the reset value.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$ref,
+    TF_Tensor:$value,
+
+    DefaultValuedAttr<BoolAttr, "true">:$validate_shape,
+    DefaultValuedAttr<BoolAttr, "true">:$use_locking
+  );
+
+  let results = (outs
+    TF_Tensor:$output_ref
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_AssignAddVariableOp : TF_Op<"AssignAddVariableOp", []> {
   let summary = "Adds a value to the current value of a variable.";
 
@@ -7799,6 +7822,20 @@ def TF_OnesLikeOp : TF_Op<"OnesLike", [NoSideEffect, SameOperandsAndResultType]>
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_OptionalHasValueOp : TF_Op<"OptionalHasValue", [NoSideEffect]> {
+  let summary = [{
+Returns true if and only if the given Optional variant has a value.
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$optional
+  );
+
+  let results = (outs
+    TF_BoolTensor:$has_value
+  );
+}
+
 def TF_OutfeedEnqueueTupleOp : TF_Op<"OutfeedEnqueueTuple", []> {
   let summary = "Enqueue multiple Tensor values on the computation outfeed.";
 
@@ -12615,6 +12652,8 @@ retained with length 1.
     OpBuilderDAG<(ins "Value":$input, "Value":$reduction_indices,
       "BoolAttr":$keep_dims)>
   ];
+
+  let hasFolder = 1;
 }
 
 def TF_SymbolicGradientOp : TF_Op<"SymbolicGradient", [NoSideEffect]> {
@@ -15256,6 +15295,26 @@ execution the transfer corresponds to.}]>:$dynamic_key,
   TF_DerivedResultTypeListAttr Toutputs = TF_DerivedResultTypeListAttr<0>;
 }
 
+def TF__XlaRecvAtHostV2Op : TF_Op<"_XlaRecvAtHostV2", []> {
+  let summary = [{
+A placeholder op to receive values from a running XLA computation with support for a runtime device ordinal.
+  }];
+
+  let arguments = (ins
+    Arg<TF_StrTensor, [{The key sent at runtime by the compile node to identify which
+execution the transfer corresponds to.}]>:$dynamic_key,
+    Arg<TF_Int64Tensor, [{The device id relative to the associated host device.}]>:$device_ordinal,
+
+    StrAttr:$key
+  );
+
+  let results = (outs
+    Res<Variadic<TF_Tensor>, [{A list of tensors that will be received from the XLA computation.}]>:$outputs
+  );
+
+  TF_DerivedResultTypeListAttr Toutputs = TF_DerivedResultTypeListAttr<0>;
+}
+
 def TF__XlaSendFromHostOp : TF_Op<"_XlaSendFromHost", []> {
   let summary = "A placeholder op to send values to a running XLA computation.";
 
@@ -15266,6 +15325,25 @@ execution the transfer corresponds to.}]>:$dynamic_key,
 
     StrAttr:$key,
     I64Attr:$device_ordinal
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeListAttr Tinputs = TF_DerivedOperandTypeListAttr<0>;
+}
+
+def TF__XlaSendFromHostV2Op : TF_Op<"_XlaSendFromHostV2", []> {
+  let summary = [{
+A placeholder op to send values to a running XLA computation with support for a runtime device ordinal.
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<TF_Tensor>, [{A list of tensors that will be sent to the XLA computation.}]>:$inputs,
+    Arg<TF_StrTensor, [{The key sent at runtime by the compile node to identify which
+execution the transfer corresponds to.}]>:$dynamic_key,
+    Arg<TF_Int64Tensor, [{The device id relative to the associated host device.}]>:$device_ordinal,
+
+    StrAttr:$key
   );
 
   let results = (outs);

@@ -16,158 +16,6 @@ include "tensorflow/lite/delegates/gpu/common/task/serialization_base.fbs";
 
 namespace tflite.gpu.cl.data;
 
-table Int4 {
-  x:int32;
-  y:int32;
-  z:int32;
-  w:int32;
-}
-
-table Int3 {
-  x:int32;
-  y:int32;
-  z:int32;
-}
-
-table Int2 {
-  x:int32;
-  y:int32;
-}
-
-table IntValue {
-  name:string;
-  value:int32;
-  active:bool;
-}
-
-table FloatValue {
-  name:string;
-  value:float;
-  active:bool;
-}
-
-table HalfValue {
-  name:string;
-  value:float;
-  active:bool;
-}
-
-enum DataType : byte {
-  UNKNOWN = 0,
-  FLOAT32 = 1,
-  FLOAT16 = 2,
-}
-
-enum MemoryType : byte {
-  GLOBAL = 0,
-  CONSTANT = 1,
-  LOCAL = 2,
-}
-
-table BufferDescriptor {
-  base_obj:tflite.gpu.data.GPUObjectDescriptor;
-  element_type:DataType;
-  element_size:int32;
-  memory_type:MemoryType;
-  attributes:[string];
-  size:int32;
-  data:[uint8];
-}
-
-table Texture2DDescriptor {
-  base_obj:tflite.gpu.data.GPUObjectDescriptor;
-  element_type:DataType;
-  normalized:bool;
-  normalized_type:DataType;
-  size:Int2;
-  data:[uint8];
-}
-
-enum LinearStorageType : byte {
-  BUFFER = 0,
-  TEXTURE_2D = 1,
-}
-
-table TensorLinearDescriptor {
-  base_obj:tflite.gpu.data.GPUObjectDescriptor;
-  storage_type:LinearStorageType;
-  element_type:DataType;
-  memory_type:MemoryType;
-  size:int32;
-  data:[uint8];
-}
-
-enum TensorStorageType : byte {
-  UNKNOWN = 0,
-  BUFFER = 1,
-  IMAGE_BUFFER = 2,
-  TEXTURE_2D = 3,
-  TEXTURE_3D = 4,
-  TEXTURE_ARRAY = 5,
-  SINGLE_TEXTURE_2D = 6,
-}
-
-enum Layout : byte {
-  UNKNOWN = 0,
-  HWC = 1,
-  BHWC = 2,
-  HWDC = 3,
-  BHWDC = 4,
-}
-
-table BHWDC {
-  b:int32;
-  h:int32;
-  w:int32;
-  d:int32;
-  c:int32;
-}
-
-table TensorDescriptor {
-  base_obj:tflite.gpu.data.GPUObjectDescriptor;
-  data_type:DataType;
-  storage_type:TensorStorageType;
-  layout:Layout;
-  shape:BHWDC;
-  data:[uint8];
-}
-
-table BufferDescriptorMapValue {
-  key:string;
-  value:BufferDescriptor;
-}
-
-table Texture2DDescriptorMapValue {
-  key:string;
-  value:Texture2DDescriptor;
-}
-
-table TensorLinearDescriptorMapValue {
-  key:string;
-  value:TensorLinearDescriptor;
-}
-
-table TensorDescriptorMapValue {
-  key:string;
-  value:TensorDescriptor;
-}
-
-table Arguments {
-  int_values:[IntValue];
-  float_values:[FloatValue];
-  half_values:[HalfValue];
-
-  buffer_refs:[BufferDescriptorMapValue];
-  texture2d_refs:[Texture2DDescriptorMapValue];
-  tensor_linear_refs:[TensorLinearDescriptorMapValue];
-  tensor_refs:[TensorDescriptorMapValue];
-
-  buffer_objects:[BufferDescriptorMapValue];
-  texture2d_objects:[Texture2DDescriptorMapValue];
-  tensor_linear_objects:[TensorLinearDescriptorMapValue];
-  tensor_objects:[TensorDescriptorMapValue];
-}
-
 enum CalculationsPrecision : byte {
   F32 = 0,
   F32_F16 = 1,
@@ -193,8 +41,8 @@ enum CompilerOptions : byte {
 
 table OperationDef {
   precision:CalculationsPrecision;
-  src_tensors:[TensorDescriptor];
-  dst_tensors:[TensorDescriptor];
+  src_tensors:[tflite.gpu.data.TensorDescriptor];
+  dst_tensors:[tflite.gpu.data.TensorDescriptor];
 }
 
 table CompilerOption {
@@ -202,9 +50,9 @@ table CompilerOption {
 }
 
 table GPUOperation {
-  arguments:Arguments;
+  arguments:tflite.gpu.data.Arguments;
   code:string;
-  work_group_size:Int3;
+  work_group_size:tflite.gpu.data.Int3;
   compiler_options:[CompilerOption];
   tensor_to_grid:TensorToGrid;
   elementwise:bool;
@@ -212,17 +60,17 @@ table GPUOperation {
   check_src_channels_size:bool;
   definition:OperationDef;
   grid_dimension:int32;
-  work_group_launch_order:Int3;
-  grid_size:Int3;
+  work_group_launch_order:tflite.gpu.data.Int3;
+  grid_size:tflite.gpu.data.Int3;
   src_tensors_names:[string];
   dst_tensors_names:[string];
-  work_groups_count:Int3;
+  work_groups_count:tflite.gpu.data.Int3;
   linkable_count:int32;
   elementwise_code:string;
 }
 
 table TensorDescWithId {
-  desc:TensorDescriptor;
+  desc:tflite.gpu.data.TensorDescriptor;
   id:int32;
 }
 
@@ -244,7 +92,7 @@ table InferenceContext {
   flush_period:int32;
   need_manual_release:bool;
   precision:CalculationsPrecision;
-  storage_type:TensorStorageType;
+  storage_type:tflite.gpu.data.TensorStorageType;
   nodes:[CLNode];
   tensors:[TensorDescWithId];
   input_ids:[int32];

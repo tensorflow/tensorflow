@@ -44,7 +44,7 @@ class ConvPowerVR : public GPUOperation {
  public:
   ConvPowerVR() = default;
   void GetPossibleKernelWorkGroups(
-      TuningType tuning_type, const DeviceInfo& device_info,
+      TuningType tuning_type, const GpuInfo& gpu_info,
       const KernelInfo& kernel_info,
       std::vector<int3>* work_groups) const override;
   absl::Status BindArguments(ArgumentsBinder* args) override;
@@ -106,20 +106,20 @@ class ConvPowerVR : public GPUOperation {
   };
 
   ConvPowerVR(const OperationDef& definition,
-              const Convolution2DAttributes& attr,
-              const DeviceInfo& device_info, const BHWC* dst_shape = nullptr);
+              const Convolution2DAttributes& attr, const GpuInfo& gpu_info,
+              const BHWC* dst_shape = nullptr);
   ConvPowerVR(const OperationDef& definition,
               const Convolution2DAttributes& attr, const BHWC& weights_shape,
-              const DeviceInfo& device_info, const BHWC* dst_shape = nullptr);
+              const GpuInfo& gpu_info, const BHWC* dst_shape = nullptr);
   ConvPowerVR(const OperationDef& definition,
-              const FullyConnectedAttributes& attr,
-              const DeviceInfo& device_info, const BHWC* dst_shape = nullptr);
+              const FullyConnectedAttributes& attr, const GpuInfo& gpu_info,
+              const BHWC* dst_shape = nullptr);
   explicit ConvPowerVR(const OperationDef& definition);
   ConvPowerVR(const OperationDef& definition,
-              const Convolution3DAttributes& attr,
-              const DeviceInfo& device_info, const BHWDC* dst_shape = nullptr);
+              const Convolution3DAttributes& attr, const GpuInfo& gpu_info,
+              const BHWDC* dst_shape = nullptr);
 
-  void GenerateCode(const DeviceInfo& device_info);
+  void GenerateCode(const GpuInfo& gpu_info);
 
   template <DataType T>
   void UploadData(const tflite::gpu::Tensor<OHWI, T>& weights,
@@ -137,60 +137,60 @@ class ConvPowerVR : public GPUOperation {
   template <DataType T>
   void UploadBias(const tflite::gpu::Tensor<Linear, T>& bias);
 
-  friend ConvPowerVR CreateConvPowerVR(const DeviceInfo& device_info,
+  friend ConvPowerVR CreateConvPowerVR(const GpuInfo& gpu_info,
                                        const OperationDef& definition,
                                        const Convolution2DAttributes& attr,
                                        const BHWC* dst_shape);
 
-  friend ConvPowerVR CreateConvPowerVR(const DeviceInfo& device_info,
+  friend ConvPowerVR CreateConvPowerVR(const GpuInfo& gpu_info,
                                        const OperationDef& definition,
                                        const FullyConnectedAttributes& attr,
                                        const BHWC* dst_shape);
 
   friend ConvPowerVR CreateConvPowerVRDynamicWeights(
-      const DeviceInfo& device_info, const OperationDef& definition,
+      const GpuInfo& gpu_info, const OperationDef& definition,
       const Convolution2DAttributes& attr, const BHWC& weights_shape,
       const BHWC* dst_shape);
 
   friend ConvPowerVR CreateConvPowerVRWino4x4To6x6(
-      const DeviceInfo& device_info, const OperationDef& definition,
+      const GpuInfo& gpu_info, const OperationDef& definition,
       const Convolution2DAttributes& attr, const BHWC* dst_shape);
 
-  friend ConvPowerVR CreateConvPowerVR3D(const DeviceInfo& device_info,
+  friend ConvPowerVR CreateConvPowerVR3D(const GpuInfo& gpu_info,
                                          const OperationDef& definition,
                                          const Convolution3DAttributes& attr,
                                          const BHWDC* dst_shape);
 
-  ConvParams GuessBestParams(const DeviceInfo& device_info,
+  ConvParams GuessBestParams(const GpuInfo& gpu_info,
                              const OperationDef& definition,
                              const Convolution2DAttributes& attr,
                              const BHWC* dst_shape = nullptr);
-  ConvParams GuessBestParams(const DeviceInfo& device_info,
+  ConvParams GuessBestParams(const GpuInfo& gpu_info,
                              const OperationDef& definition,
                              const Convolution2DAttributes& attr,
                              const BHWC& weights_shape,
                              const BHWC* dst_shape = nullptr);
-  ConvParams GuessBestParams(const DeviceInfo& device_info,
+  ConvParams GuessBestParams(const GpuInfo& gpu_info,
                              const OperationDef& definition,
                              const FullyConnectedAttributes& attr,
                              const BHWC* dst_shape = nullptr);
-  ConvParams GuessBestParamsWinograd(const DeviceInfo& device_info,
+  ConvParams GuessBestParamsWinograd(const GpuInfo& gpu_info,
                                      const OperationDef& definition,
                                      const Convolution2DAttributes& attr,
                                      const BHWC* dst_shape = nullptr);
-  ConvParams GuessBestParams(const DeviceInfo& device_info,
+  ConvParams GuessBestParams(const GpuInfo& gpu_info,
                              const OperationDef& definition,
                              const Convolution3DAttributes& attr,
                              const BHWDC* dst_shape = nullptr);
-  ConvParams GuessBestParams(const DeviceInfo& device_info,
+  ConvParams GuessBestParams(const GpuInfo& gpu_info,
                              const OperationDef& definition, int src_depth,
                              int dst_depth, bool x_kernel_is_1,
                              bool y_kernel_is_1,
                              bool different_weights_for_height,
                              const BHWC* dst_shape = nullptr);
 
-  std::string GenerateConv(const DeviceInfo& device_info,
-                           const OperationDef& op_def, bool stride_correction,
+  std::string GenerateConv(const GpuInfo& gpu_info, const OperationDef& op_def,
+                           bool stride_correction,
                            const ConvParams& conv_params);
 
   int4 stride_;
@@ -372,28 +372,28 @@ void ConvPowerVR::UploadWeights(const tflite::gpu::Tensor<OHWDI, T>& weights) {
   }
 }
 
-ConvPowerVR CreateConvPowerVR(const DeviceInfo& device_info,
+ConvPowerVR CreateConvPowerVR(const GpuInfo& gpu_info,
                               const OperationDef& definition,
                               const Convolution2DAttributes& attr,
                               const BHWC* dst_shape = nullptr);
 
-ConvPowerVR CreateConvPowerVR(const DeviceInfo& device_info,
+ConvPowerVR CreateConvPowerVR(const GpuInfo& gpu_info,
                               const OperationDef& definition,
                               const FullyConnectedAttributes& attr,
                               const BHWC* dst_shape = nullptr);
 
-ConvPowerVR CreateConvPowerVRDynamicWeights(const DeviceInfo& device_info,
+ConvPowerVR CreateConvPowerVRDynamicWeights(const GpuInfo& gpu_info,
                                             const OperationDef& definition,
                                             const Convolution2DAttributes& attr,
                                             const BHWC& weights_shape,
                                             const BHWC* dst_shape = nullptr);
 
-ConvPowerVR CreateConvPowerVRWino4x4To6x6(const DeviceInfo& device_info,
+ConvPowerVR CreateConvPowerVRWino4x4To6x6(const GpuInfo& gpu_info,
                                           const OperationDef& definition,
                                           const Convolution2DAttributes& attr,
                                           const BHWC* dst_shape = nullptr);
 
-ConvPowerVR CreateConvPowerVR3D(const DeviceInfo& device_info,
+ConvPowerVR CreateConvPowerVR3D(const GpuInfo& gpu_info,
                                 const OperationDef& definition,
                                 const Convolution3DAttributes& attr,
                                 const BHWDC* dst_shape = nullptr);

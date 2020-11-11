@@ -135,11 +135,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     # and update the sha256 with the result.
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "e803c4acfde4a836e7462bf68275e248f7a2c6ac405d05e15d9f93e3dcdf677d",
-        strip_prefix = "XNNPACK-30d4b250aef4ee74271c2254943f062a8356a23e",
+        sha256 = "22c065f68df9a7a6321c4e9ee1f2d3cbfb471785804fb4fffa0fb2858d847e7f",
+        strip_prefix = "XNNPACK-bbe85068bb7aa6249a4e915462014016373c945f",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/30d4b250aef4ee74271c2254943f062a8356a23e.zip",
-            "https://github.com/google/XNNPACK/archive/30d4b250aef4ee74271c2254943f062a8356a23e.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/bbe85068bb7aa6249a4e915462014016373c945f.zip",
+            "https://github.com/google/XNNPACK/archive/bbe85068bb7aa6249a4e915462014016373c945f.zip",
         ],
     )
 
@@ -686,8 +686,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "2f84b59a4cf92a0ce1b985e7f44e17483efa33c0"
-    LLVM_SHA256 = "2c4acf0ab16a6518e500d1e99df85472056fbb370fe3cd2bbd2a5c52a5e85d59"
+    LLVM_COMMIT = "f147f59cd377a6be68e5ca5c343eb11df8e7ee6f"
+    LLVM_SHA256 = "22cb626398e60d5bcb75ce61f59ae9df56ffedc75c40525214ff890e3e27e3d2"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
@@ -895,12 +895,12 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         name = "cython",
         build_file = clean_dep("//third_party:cython.BUILD"),
         delete = ["BUILD.bazel"],
-        sha256 = "bccc9aa050ea02595b2440188813b936eaf345e85fb9692790cecfe095cf91aa",
-        strip_prefix = "cython-0.28.4",
+        sha256 = "e2e38e1f0572ca54d6085df3dec8b607d20e81515fb80215aed19c81e8fe2079",
+        strip_prefix = "cython-0.29.21",
         system_build_file = clean_dep("//third_party/systemlibs:cython.BUILD"),
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/cython/cython/archive/0.28.4.tar.gz",
-            "https://github.com/cython/cython/archive/0.28.4.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/cython/cython/archive/0.29.21.tar.gz",
+            "https://github.com/cython/cython/archive/0.29.21.tar.gz",
         ],
     )
 

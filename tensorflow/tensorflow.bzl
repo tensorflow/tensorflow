@@ -39,7 +39,6 @@ load(
     "if_enable_mkl",
     "if_mkl",
     "if_mkl_ml",
-    "mkl_deps",
 )
 load(
     "//third_party/mkl_dnn:build_defs.bzl",
@@ -1241,7 +1240,7 @@ def tf_cc_test_mkl(
                     "-lm",
                 ],
             }) + _rpath_linkopts(src_to_test_name(src)),
-            deps = deps + tf_binary_dynamic_kernel_deps(kernels) + mkl_deps(),
+            deps = deps + tf_binary_dynamic_kernel_deps(kernels) + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),
             data = data + tf_binary_dynamic_kernel_dsos(),
             exec_properties = tf_exec_properties({"tags": tags}),
             linkstatic = linkstatic,
@@ -2458,6 +2457,7 @@ def tf_py_build_info_genrule(name, out):
             " --key_value" +
             " is_rocm_build=" + if_rocm("True", "False") +
             " is_cuda_build=" + if_cuda("True", "False") +
+            " is_tensorrt_build=" + if_tensorrt("True", "False") +
             if_windows(_dict_to_kv({
                 "msvcp_dll_names": "msvcp140.dll,msvcp140_1.dll",
             }), "") + if_windows_cuda(_dict_to_kv({
@@ -2638,7 +2638,7 @@ def tf_python_pybind_extension(
         features = features,
         copts = copts,
         hdrs = hdrs,
-        deps = deps + tf_binary_pybind_deps() + mkl_deps(),
+        deps = deps + tf_binary_pybind_deps() + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),
         defines = defines,
         visibility = visibility,
         link_in_framework = True,

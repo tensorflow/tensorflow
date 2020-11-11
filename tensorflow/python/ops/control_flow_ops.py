@@ -3693,6 +3693,24 @@ class XLAControlFlowContext(ControlFlowContext):
     return False
 
 
+@tf_export("__internal__.get_enclosing_xla_context", v1=[])
+def get_enclosing_xla_context():
+  """Recursively find and return the XLAControlFlowContext."""
+  graph = ops.get_default_graph()
+  while graph is not None:
+    # pylint: disable=protected-access
+    context_ = graph._get_control_flow_context()
+    # pylint: enable=protected-access
+    while context_ is not None:
+      if isinstance(context_, XLAControlFlowContext):
+        return context_
+      context_ = context_.outer_context
+    # This may be a FuncGraph due to defuns or v2 control flow. We need to
+    # find the original graph with the XLAControlFlowContext.
+    graph = getattr(graph, "outer_graph", None)
+  return None
+
+
 def from_control_flow_context_def(context_def, import_scope=None):
   """Deserializes `context_def` into the appropriate ControlFlowContext.
 

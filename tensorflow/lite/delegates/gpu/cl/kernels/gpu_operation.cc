@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
+#include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/access_type.h"
 
 namespace tflite {
@@ -106,14 +107,14 @@ bool OperationDef::IsBatchSupported() const {
 GPUOperation::GPUOperation(const OperationDef& definition)
     : definition_(definition) {}
 
-void GPUOperation::SetSrc(Tensor* ptr, int index) {
+void GPUOperation::SetSrc(GpuSpatialTensor* ptr, int index) {
   if (index >= src_.size()) {
     src_.resize(index + 1, nullptr);
   }
   src_[index] = ptr;
 }
 
-void GPUOperation::SetDst(Tensor* ptr, int index) {
+void GPUOperation::SetDst(GpuSpatialTensor* ptr, int index) {
   if (index >= dst_.size()) {
     dst_.resize(index + 1, nullptr);
   }
@@ -213,10 +214,20 @@ void GPUOperation::AddDstTensor(const std::string& tensor_name,
 
 absl::Status GPUOperation::UpdateParams() {
   for (int i = 0; i < src_tensors_names_.size(); ++i) {
-    RETURN_IF_ERROR(cl_args_.SetObjectRef(src_tensors_names_[i], src_[i]));
+    const auto* cl_spatial_tensor = dynamic_cast<const Tensor*>(src_[i]);
+    if (!cl_spatial_tensor) {
+      return absl::InvalidArgumentError("Expected CLSpatialTensor.");
+    }
+    RETURN_IF_ERROR(
+        cl_args_.SetObjectRef(src_tensors_names_[i], cl_spatial_tensor));
   }
   for (int i = 0; i < dst_tensors_names_.size(); ++i) {
-    RETURN_IF_ERROR(cl_args_.SetObjectRef(dst_tensors_names_[i], dst_[i]));
+    const auto* cl_spatial_tensor = dynamic_cast<const Tensor*>(dst_[i]);
+    if (!cl_spatial_tensor) {
+      return absl::InvalidArgumentError("Expected CLSpatialTensor.");
+    }
+    RETURN_IF_ERROR(
+        cl_args_.SetObjectRef(dst_tensors_names_[i], cl_spatial_tensor));
   }
   RETURN_IF_ERROR(BindArguments(&cl_args_));
   grid_size_ = GetGridSize();
@@ -225,7 +236,7 @@ absl::Status GPUOperation::UpdateParams() {
   return absl::OkStatus();
 }
 
-absl::Status GPUOperation::AssembleCode(const DeviceInfo& device_info,
+absl::Status GPUOperation::AssembleCode(const GpuInfo& gpu_info,
                                         CLContext* context) {
   if (elementwise_) {
     auto src_desc =
@@ -247,14 +258,13 @@ absl::Status GPUOperation::AssembleCode(const DeviceInfo& device_info,
     elementwise_code_ = "{\n" + code_ + "\n}\n" + elementwise_code_;
     code_ = GetElementWiseCode(definition_, check_src_channels_size_);
   }
-  return cl_args_.Init(device_info,
-                       {{dst_tensors_names_[0], elementwise_code_}}, context,
-                       &args_, &code_);
+  return cl_args_.Init(gpu_info, {{dst_tensors_names_[0], elementwise_code_}},
+                       context, &args_, &code_);
 }
 
 absl::Status GPUOperation::Compile(const CreationContext& creation_context) {
   RETURN_IF_ERROR(
-      AssembleCode(creation_context.GetDeviceInfo(), creation_context.context));
+      AssembleCode(creation_context.GetGpuInfo(), creation_context.context));
   RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
       code_, "main_function", compiler_options_, *creation_context.context,
       *creation_context.device, &kernel_));
@@ -263,7 +273,7 @@ absl::Status GPUOperation::Compile(const CreationContext& creation_context) {
 
 absl::Status GPUOperation::CompileDeserialized(
     const CreationContext& creation_context) {
-  RETURN_IF_ERROR(cl_args_.Init(creation_context.GetDeviceInfo(), &args_,
+  RETURN_IF_ERROR(cl_args_.Init(creation_context.GetGpuInfo(), &args_,
                                 creation_context.context));
   return creation_context.cache->GetOrCreateCLKernel(
       code_, "main_function", compiler_options_, *creation_context.context,
@@ -271,9 +281,9 @@ absl::Status GPUOperation::CompileDeserialized(
 }
 
 void GPUOperation::GetPossibleKernelWorkGroups(
-    TuningType tuning_type, const DeviceInfo& device_info,
+    TuningType tuning_type, const GpuInfo& gpu_info,
     const KernelInfo& kernel_info, std::vector<int3>* work_groups) const {
-  GetPossibleWorkGroups(tuning_type, device_info, kernel_info, grid_size_,
+  GetPossibleWorkGroups(tuning_type, gpu_info, kernel_info, grid_size_,
                         work_groups);
 }
 

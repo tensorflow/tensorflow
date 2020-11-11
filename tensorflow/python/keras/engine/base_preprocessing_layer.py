@@ -30,6 +30,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import type_spec
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import training_generator_v1
 from tensorflow.python.keras.engine.base_layer import Layer
@@ -39,9 +40,9 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util.tf_export import keras_export
 
 
-_kpl_gauge = monitoring.StringGauge(
+keras_kpl_gauge = monitoring.BoolGauge(
     '/tensorflow/api/keras/layers/preprocessing',
-    'keras preprocessing layers usage', 'TFVersion')
+    'keras preprocessing layers usage', 'method')
 
 
 @keras_export('keras.layers.experimental.preprocessing.PreprocessingLayer')
@@ -161,6 +162,12 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
           'got {}'.format(type(data)))
 
     if isinstance(data, dataset_ops.DatasetV2):
+      # Validate that the dataset only contains single-tensor elements.
+      if not isinstance(data.element_spec, type_spec.TypeSpec):
+        raise TypeError(
+            'The dataset should yield single-Tensor elements. Use `dataset.map`'
+            'to select the element of interest.\n'
+            'Got dataset.element_spec=' + str(data.element_spec))
       # Validate the datasets to try and ensure we haven't been passed one with
       # infinite size. That would cause an infinite loop here.
       if tf_utils.dataset_is_infinite(data):
@@ -258,8 +265,6 @@ def convert_to_list(values, sparse_default_value=None):
       values = K.get_session(values).run(values)
     values = values.to_list()
 
-  # TODO(momernick): Add a sparse_tensor.is_sparse() method to replace this
-  # check.
   if isinstance(values,
                 (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
     if sparse_default_value is None:

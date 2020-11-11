@@ -89,7 +89,7 @@ absl::Status TryDepthwiseConvPlus1x1Conv(
 
 // fully connected + fully connected + add
 absl::Status TryFCFCAdd(
-    const DeviceInfo& device_info, CalculationsPrecision precision,
+    const GpuInfo& gpu_info, CalculationsPrecision precision,
     const GraphFloat32& graph, NodeId first_node_id,
     const std::map<ValueId, TensorDescriptor>& tensor_descriptors,
     std::set<NodeId>* consumed_nodes, GPUOperationsSubgraph* gpu_subgraph) {
@@ -160,7 +160,7 @@ absl::Status TryFCFCAdd(
   }
   std::unique_ptr<GPUOperation>* gpu_op =
       InitSingleOpSubgraph(fc0_inputs, add_outputs, gpu_subgraph);
-  FCFCAdd fc = CreateFCFCAdd(device_info, op_def, fc0_attr, fc1_attr);
+  FCFCAdd fc = CreateFCFCAdd(gpu_info, op_def, fc0_attr, fc1_attr);
   *gpu_op = absl::make_unique<FCFCAdd>(std::move(fc));
   consumed_nodes->insert(fc0_node->id);
   consumed_nodes->insert(fc1_node->id);
@@ -170,12 +170,12 @@ absl::Status TryFCFCAdd(
 }  // namespace
 
 absl::Status GPUSubgraphFromGraph(
-    const DeviceInfo& device_info, CalculationsPrecision precision,
+    const GpuInfo& gpu_info, CalculationsPrecision precision,
     const GraphFloat32& graph, NodeId first_node_id,
     const std::map<ValueId, TensorDescriptor>& tensor_descriptors,
     std::set<NodeId>* consumed_nodes, GPUOperationsSubgraph* gpu_subgraph,
     std::string* name) {
-  if ((device_info.IsAdreno() || device_info.IsNvidia()) &&
+  if ((gpu_info.IsAdreno() || gpu_info.IsNvidia()) &&
       TryDepthwiseConvPlus1x1Conv(precision, graph, first_node_id,
                                   tensor_descriptors, consumed_nodes,
                                   gpu_subgraph)
@@ -183,9 +183,9 @@ absl::Status GPUSubgraphFromGraph(
     *name = "depthwise_conv_plus_1x1_conv";
     return absl::OkStatus();
   }
-  if ((device_info.IsIntel() || device_info.IsNvidia()) &&
-      TryFCFCAdd(device_info, precision, graph, first_node_id,
-                 tensor_descriptors, consumed_nodes, gpu_subgraph)
+  if ((gpu_info.IsIntel() || gpu_info.IsNvidia()) &&
+      TryFCFCAdd(gpu_info, precision, graph, first_node_id, tensor_descriptors,
+                 consumed_nodes, gpu_subgraph)
           .ok()) {
     *name = "fully_connected_x2_and_add";
     return absl::OkStatus();

@@ -40,6 +40,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -645,6 +646,37 @@ class ClusterCoordinatorTest(TestCaseWithErrorReportingThread):
     remote_v = self.coordinator.schedule(func_0)
     with self.assertRaises(ValueError):
       self.coordinator.schedule(func_1, args=(remote_v,))
+
+  def testPythonFunctionNotAllowedToSchedule(self):
+
+    def func(a):
+      return array_ops.identity(a)
+
+    with self.assertRaisesRegexp(
+        TypeError,
+        '`tf.distribute.experimental.coordinator.ClusterCoordinator.schedule` '
+        'only accepts a `tf.function` or a concrete function.'):
+      self.coordinator.schedule(func, args=(1,))
+
+  def testDatasetPartiallyCreatedOnCoordinator(self):
+    dataset = dataset_ops.DatasetV2.range(1, 10)
+
+    @def_function.function
+    def input_fn():
+      return dataset.shuffle(9)
+
+    @def_function.function
+    def worker_fn(iterator):
+      x = next(iterator)
+      return x
+
+    per_worker_dataset = self.coordinator.create_per_worker_dataset(input_fn)
+    self.coordinator.schedule(worker_fn, args=(iter(per_worker_dataset),))
+
+    with self.assertRaisesRegexp(
+        coordinator_lib.InputError,
+        'error message is Failed copying input tensor from'):
+      self.coordinator.join()
 
 
 class LimitedClosureQueueSizeBasicTest(ClusterCoordinatorTest):

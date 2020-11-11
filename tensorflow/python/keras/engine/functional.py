@@ -46,6 +46,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
+from tensorflow.tools.docs import doc_controls
 
 
 # pylint: disable=g-classes-have-attributes
@@ -403,6 +404,7 @@ class Functional(training_lib.Model):
     return nest.map_structure(lambda t: getattr(t, '_keras_mask', None),
                               output_tensors)
 
+  @doc_controls.do_not_doc_inheritable
   def call(self, inputs, training=None, mask=None):
     """Calls the model on new inputs.
 

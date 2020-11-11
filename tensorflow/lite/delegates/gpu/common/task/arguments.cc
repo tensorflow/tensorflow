@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/arguments.h"
+#include "tensorflow/lite/delegates/gpu/common/task/arguments.h"
 
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
@@ -22,7 +22,6 @@ limitations under the License.
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 namespace {
 bool IsWordSymbol(char symbol) {
   return absl::ascii_isalnum(symbol) || symbol == '_';
@@ -153,6 +152,5 @@ void Arguments::GetActiveArguments(const std::string& args_prefix,
   }
 }
 
-}  // namespace cl
 }  // namespace gpu
 }  // namespace tflite
