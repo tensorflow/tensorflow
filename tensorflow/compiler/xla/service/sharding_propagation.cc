@@ -1290,6 +1290,9 @@ absl::optional<HloSharding> GetShardingFromUser(
       return hlo_sharding_util::ReshapeSharding(
           user.shape(), instruction.shape(), user.sharding());
     }
+    case HloOpcode::kSlice: {
+      return user.sharding();
+    }
     case HloOpcode::kTranspose: {
       // Calculate the dimension numbers for reversing the current transpose
       // and then use TransposeSharding to convert the output sharding to an
