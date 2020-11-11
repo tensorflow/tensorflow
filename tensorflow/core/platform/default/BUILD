@@ -41,6 +41,7 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
+    deps = ["@com_google_absl//absl/strings:cord"],
 )
 
 cc_library(
