@@ -1808,7 +1808,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           'You called `set_weights(weights)` on layer "%s" '
           'with a weight list of length %s, but the layer was '
           'expecting %s weights. Provided weights: %s...' %
-          (self.name, len(weights) if weights else 0, expected_num_weights, str(weights)[:50]))
+          (self.name, len(weights) if weights else 0,
+            expected_num_weights, str(weights)[:50]))
 
     weight_index = 0
     weight_value_tuples = []
