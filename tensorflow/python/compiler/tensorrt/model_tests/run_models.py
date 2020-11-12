@@ -15,7 +15,7 @@
 """Runs sample models with TensorRT and analyzes numerics and timing information."""
 
 import os
-from typing import Callable, Iterable
+from typing import Callable, Iterable, Sequence
 
 from absl import app
 from absl import flags
@@ -25,6 +25,8 @@ from tensorflow.python.compiler.tensorrt import trt_convert as trt
 from tensorflow.python.compiler.tensorrt.model_tests import model_handler
 from tensorflow.python.framework import ops as framework_ops
 from tensorflow.python.platform import test as platform_test
+from tensorflow.python.saved_model import signature_constants
+from tensorflow.python.saved_model import tag_constants
 
 FLAGS = flags.FLAGS
 
@@ -33,6 +35,13 @@ flags.DEFINE_string(
     platform_test.test_src_dir_path(
         "python/compiler/tensorrt/model_tests/sample_model"),
     "The directory to the testing SavedModel.")
+
+flags.DEFINE_string("saved_model_signature_key",
+                    signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY,
+                    "The signature key of the testing SavedModel being used.")
+
+flags.DEFINE_multi_string("saved_model_tags", (tag_constants.SERVING,),
+                          "The tags of the testing SavedModel being used.")
 
 flags.DEFINE_integer("batch_size", 128,
                      "The batch size used to run the testing model with.")
@@ -49,11 +58,19 @@ def _get_mean_latency(result: model_handler.TestResult):
 class SampleRunner(object):
   """The driver to run all sample models in all specified configurations."""
 
-  def __init__(self, saved_model_dir: str, batch_size: int, use_tf2=True):
+  def __init__(self,
+               saved_model_dir: str,
+               saved_model_tags: Sequence[str],
+               saved_model_signature_key: str,
+               batch_size: int,
+               use_tf2=True):
     # The model_configs contains (saved_model_dir, saved_model_signature_key,
     # batch_size) for each model
     self._configs = (model_handler.ModelConfig(
-        saved_model_dir=saved_model_dir, default_batch_size=batch_size),)
+        saved_model_dir=saved_model_dir,
+        saved_model_tags=tuple(saved_model_tags),
+        saved_model_signature_key=saved_model_signature_key,
+        default_batch_size=batch_size),)
     self._model_handler_manager_cls = (
         model_handler.ModelHandlerManagerV2
         if use_tf2 else model_handler.ModelHandlerManagerV1)
@@ -77,11 +94,14 @@ class SampleRunner(object):
           default_trt_convert_params=trt_convert_params,
           trt_convert_params_updater=trt_converter_params_updater)
       inputs = manager.generate_random_inputs()
+      # As all the data are randomly generated, directly use inference data as
+      # calibration data to produce reliable dynamic ranges.
+      manager.convert(inputs)
       result_collection = manager.run(inputs)
 
-      logging.info("Model information: %s ms", repr(manager))
+      logging.info("Model information: %s", repr(manager))
       for result in result_collection.results:
-        logging.info("TensorRT parameters: %s ms", result.trt_convert_params or
+        logging.info("TensorRT parameters: %s", result.trt_convert_params or
                      "Not a TensorRT Model")
         logging.info("Mean latency: %f ms", _get_mean_latency(result))
 
@@ -90,9 +110,12 @@ class SampleRunner(object):
 
     def trt_converter_params_updater(params: trt.TrtConversionParams):
       for precision_mode in [
-          trt.TrtPrecisionMode.FP32, trt.TrtPrecisionMode.FP16
+          trt.TrtPrecisionMode.FP32, trt.TrtPrecisionMode.FP16,
+          trt.TrtPrecisionMode.INT8
       ]:
-        yield params._replace(precision_mode=precision_mode)
+        yield params._replace(
+            precision_mode=precision_mode,
+            use_calibration=(precision_mode == trt.TrtPrecisionMode.INT8))
 
     self._run_impl(
         default_trt_converter_params=self._default_trt_convert_params,
@@ -118,6 +141,8 @@ def main(argv):
 
   SampleRunner(
       saved_model_dir=FLAGS.saved_model_dir,
+      saved_model_tags=FLAGS.saved_model_tags,
+      saved_model_signature_key=FLAGS.saved_model_signature_key,
       batch_size=FLAGS.batch_size,
       use_tf2=FLAGS.use_tf2).run_all_tests()
 
