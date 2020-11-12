@@ -1467,9 +1467,15 @@ static LogicalResult inferConvReturnTypes(
   ArrayRef<Attribute> dilations = op.dilations().getValue();
 
   tensorflow::TensorFormat format;
-  FormatFromString(data_format.str(), &format);
+  auto data_format_is_valid = FormatFromString(data_format.str(), &format);
+  if (!data_format_is_valid) {
+    return emitOptionalError(location, "Invalid data format provided");
+  }
   tensorflow::Padding padding;
-  GetPaddingFromString(paddings.str(), &padding);
+  auto padding_is_valid = GetPaddingFromString(paddings.str(), &padding);
+  if (!padding_is_valid.ok()) {
+    return emitOptionalError(location, "Invalid padding format provided");
+  }
   auto get_int = [](Attribute attr) {
     return attr.template cast<IntegerAttr>().getInt();
   };
