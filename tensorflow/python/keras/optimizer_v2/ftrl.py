@@ -73,7 +73,8 @@ class Ftrl(optimizer_v2.OptimizerV2):
       or equal to zero. This differs from L2 above in that the L2 above is a
       stabilization penalty, whereas this L2 shrinkage is a magnitude penalty.
       When input is sparse shrinkage will only happen on the active weights.
-    beta: A float value, representing the beta value from the paper. Defaults to 0.0.
+    beta: A float value, representing the beta value from the paper.
+      Defaults to 0.0.
     **kwargs: Keyword arguments. Allowed to be one of
       `"clipnorm"` or `"clipvalue"`.
       `"clipnorm"` (float) clips gradients by norm; `"clipvalue"` (float) clips
