@@ -474,12 +474,15 @@ class TimeDistributedTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_TimeDistributed_with_mimo(self):
+    dense_1 = keras.layers.Dense(8)
+    dense_2 = keras.layers.Dense(16)
+
     class TestLayer(keras.layers.Layer):
 
       def __init__(self):
         super(TestLayer, self).__init__()
-        self.dense_1 = keras.layers.Dense(8)
-        self.dense_2 = keras.layers.Dense(16)
+        self.dense_1 = dense_1
+        self.dense_2 = dense_2
 
       def build(self, input_shape):
         super(TestLayer, self).build(input_shape)
@@ -512,18 +515,19 @@ class TimeDistributedTest(keras_parameterized.TestCase):
     model_1.compile(optimizer='rmsprop', loss='mse',
                     run_eagerly=testing_utils.should_run_eagerly())
     output_1 = model_1.predict((data_1, data_2), steps=1)
+
+    y1 = dense_1(x1)
+    y2 = dense_2(x2)
+    model_2 = keras.models.Model([x1, x2], [y1, y2])
+    output_2 = model_2.predict((data_1, data_2), steps=1)
+
+    self.assertAllClose(output_1, output_2)
+
     model_1.fit(
       x=[np.random.random((10, 2, 2, 1)), np.random.random((10, 2, 2, 1))],
       y=[np.random.random((10, 2, 2, 8)), np.random.random((10, 2, 2, 16))],
       epochs=1,
       batch_size=3)
-
-    y1 = keras.layers.Dense(8)(x1)
-    y2 = keras.layers.Dense(16)(x2)
-    model_2 = keras.models.Model([x1, x2], [y1, y2])
-    output_2 = model_2.predict((data_1, data_2), steps=1)
-
-    self.assertAllClose(output_1, output_2)
 
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
