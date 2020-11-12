@@ -55,6 +55,11 @@
         `tf.while_loop`, and compositions like `tf.foldl`) computed with
         `tf.GradientTape` inside a `tf.function`.
 
+*   `tf.summary`:
+  *   New `tf.summary.graph` allows manual write of TensorFlow graph
+      (`tf.Graph` or `tf.compat.v1.GraphDef`) as a summary. This is not a
+      replacement for the trace-based API.
+
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
