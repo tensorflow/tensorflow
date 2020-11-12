@@ -5,32 +5,32 @@
 // methods.
 
 // CHECK-LABEL: tensor_type_noconstraint
-func @tensor_type_noconstraint() -> !tfr.tensor
+func private @tensor_type_noconstraint() -> !tfr.tensor
 
 // -----
 
 // CHECK-LABEL: tensor_type
-func @tensor_type() -> !tfr.tensor<T>
+func private @tensor_type() -> !tfr.tensor<T>
 
 // -----
 
 // CHECK-LABEL: tensor_list_type_noconstraint
-func @tensor_list_type_noconstraint() -> !tfr.tensor_list
+func private @tensor_list_type_noconstraint() -> !tfr.tensor_list
 
 // -----
 
 // CHECK-LABEL: tensor_list_type_array_like
-func @tensor_list_type_array_like() -> !tfr.tensor_list<[N, T]>
+func private @tensor_list_type_array_like() -> !tfr.tensor_list<[N, T]>
 
 // -----
 
 // CHECK-LABEL: tensor_list_type_tuple_like
-func @tensor_list_type_tuple_like() -> !tfr.tensor_list<input_T>
+func private @tensor_list_type_tuple_like() -> !tfr.tensor_list<input_T>
 
 // -----
 
 // expected-error@+1 {{unbalanced '>' character in pretty dialect name}}
-func @tensor_invalid_1() -> !tfr.tensor<[N, T>
+func private @tensor_invalid_1() -> !tfr.tensor<[N, T>
 
 // -----
 

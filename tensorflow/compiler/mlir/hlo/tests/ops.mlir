@@ -3,13 +3,13 @@
 // Tests for types, ops with custom constraints, verifiers, printer or parser
 // methods.
 
-// CHECK-LABEL: func @token_type() -> !mhlo.token
-func @token_type() -> !mhlo.token
+// CHECK-LABEL: func private @token_type() -> !mhlo.token
+func private @token_type() -> !mhlo.token
 
 // -----
 
 // expected-error@+1 {{unknown mhlo type: foobar}}
-func @invalid_type() -> !mhlo.foobar
+func private @invalid_type() -> !mhlo.foobar
 
 // -----
 

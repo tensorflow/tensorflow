@@ -1245,8 +1245,8 @@ func @testWhileRegionUnusedValue(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>, %ar
 }
 
 // Check that output_shapes attribute is removed for tf.If
-func @testIfThen(tensor<*xf32>) -> tensor<*xf32>
-func @testIfElse(tensor<*xf32>) -> tensor<*xf32>
+func private @testIfThen(tensor<*xf32>) -> tensor<*xf32>
+func private @testIfElse(tensor<*xf32>) -> tensor<*xf32>
 // CHECK-LABEL: func @testIfDropOutputShapes
 func @testIfDropOutputShapes(tensor<i1>, tensor<2xf32>) -> tensor<2xf32> {
 ^bb0(%arg0: tensor<i1>, %arg1: tensor<2xf32>):
