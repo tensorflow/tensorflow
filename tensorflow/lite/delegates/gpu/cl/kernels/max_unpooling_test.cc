@@ -56,9 +56,10 @@ TEST_F(OpenCLOperationTest, MaxUnpooling) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreateMaxUnpooling(op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation({src_tensor, src_ind_tensor},
-                                    creation_context_, &operation,
-                                    BHWC(1, 4, 4, 1), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          {src_tensor, src_ind_tensor}, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 4, 4, 1), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
                   Pointwise(FloatNear(eps),
                             {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
