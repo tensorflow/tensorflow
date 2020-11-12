@@ -3911,9 +3911,10 @@ void IrEmitterUnnested::EmitHlo021Tile(
                        // TODO(jlebar): Add AA metadata to this store.  Tile
                        // buffers are global variables, so LLVM can't infer much
                        // about it.
-                       Store(input_in_logical_shape.EmitReadArrayElement(
-                                 index, &b_, "input_element"),
-                             GEP(shmem_buffer, {zero, y_loc, x_loc}));
+                       auto value = input_in_logical_shape.EmitReadArrayElement(
+                           index, &b_, "input_element");
+                       auto addr = GEP(shmem_buffer, {zero, y_loc, x_loc});
+                       Store(value, addr);
                      }
                    });
 
