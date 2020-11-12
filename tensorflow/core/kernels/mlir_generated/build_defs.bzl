@@ -6,6 +6,7 @@ load(
     "rocm_gpu_architectures",
     "rocm_is_configured",
 )
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 load(
     "//tensorflow/stream_executor:build_defs.bzl",
     "if_gpu_is_configured",
@@ -357,6 +358,7 @@ def gen_unranked_kernel_library(name, types, tile_size, tags = [], unroll_factor
 
     native.cc_library(
         name = name + "_kernels",
+        compatible_with = get_compatible_with_cloud(),
         deps = if_gpu_is_configured([":{name}_{type}_kernel".format(name = name, type = type) for type in types]),
         linkstatic = 1,
         tags = tags,
