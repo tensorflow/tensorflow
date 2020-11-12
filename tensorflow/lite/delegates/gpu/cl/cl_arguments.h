@@ -34,10 +34,10 @@ class CLArguments : public ArgumentsBinder {
  public:
   CLArguments() = default;
 
-  absl::Status Init(const DeviceInfo& device_info,
+  absl::Status Init(const GpuInfo& gpu_info,
                     const std::map<std::string, std::string>& linkables,
                     CLContext* context, Arguments* args, std::string* code);
-  absl::Status Init(const DeviceInfo& device_info, Arguments* args,
+  absl::Status Init(const GpuInfo& gpu_info, Arguments* args,
                     CLContext* context);
 
   // Temporary, will be resolved later

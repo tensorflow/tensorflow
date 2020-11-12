@@ -234,6 +234,11 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     // tf.variable to model this.
     pass_manager->addNestedPass<mlir::FuncOp>(
         mlir::TFL::CreateSplitMergedOperandsPass());
+
+    // Add CallOnceOp when there is a session initializer function in tf saved
+    // model dialect.
+    pass_manager->addPass(
+        mlir::TFL::CreateInsertCallOnceOpFromSessionInitializerPass());
   }
 }
 

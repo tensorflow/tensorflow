@@ -41,6 +41,14 @@ filegroup(
     srcs = if_mlir_unranked_kernels_enabled(
         [
             "unranked_op_gpu_abs.cc",
+            "unranked_op_gpu_ceil.cc",
+            "unranked_op_gpu_cos.cc",
+            "unranked_op_gpu_exp.cc",
+            "unranked_op_gpu_floor.cc",
+            "unranked_op_gpu_log.cc",
+            "unranked_op_gpu_rsqrt.cc",
+            "unranked_op_gpu_sign.cc",
+            "unranked_op_gpu_sqrt.cc",
             "unranked_op_gpu_tanh.cc",
             "unranked_op_gpu_base.h",
             "unranked_op_gpu_base.cc",
@@ -60,6 +68,14 @@ cc_library(
         [
             ":abs_unranked_kernels",
             ":addv2_unranked_kernels",
+            ":ceil_unranked_kernels",
+            ":cos_unranked_kernels",
+            ":exp_unranked_kernels",
+            ":floor_unranked_kernels",
+            ":log_unranked_kernels",
+            ":rsqrt_unranked_kernels",
+            ":sign_unranked_kernels",
+            ":sqrt_unranked_kernels",
             ":tanh_unranked_kernels",
             "//tensorflow/compiler/mlir/tools/kernel_gen:tf_cuda_runtime_wrappers",
             "//tensorflow/compiler/mlir/tools/kernel_gen:tf_framework_c_interface",
@@ -78,12 +94,8 @@ cc_library(
 cc_library(
     name = "kernel_deps",
     deps = if_mlir_unranked_kernels_enabled(
-        [
-            ":unranked_kernel_deps",
-        ],
-        [
-            ":ranked_kernel_deps",
-        ],
+        [":unranked_kernel_deps"],
+        [":ranked_kernel_deps"],
     ),
 )
 
@@ -183,7 +195,9 @@ tf_cuda_cc_test(
     name = "gpu_add_test",
     size = "small",
     srcs = if_mlir_generated_gpu_kernels_enabled(["gpu_add_test.cc"]),
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + [
+        "no_cuda_asan",  # b/173033461
+    ],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -200,7 +214,6 @@ tf_cuda_cc_test(
 # TODO(b/160731748): Re-enable when it works again.
 # gen_kernel_library(
 #     name = "bias_add",
-#     same_shape = "0,2",
 #     tile_size = "16x16",
 #     types = [
 #         "f16",
@@ -212,7 +225,6 @@ tf_cuda_cc_test(
 # TODO(b/160190568): Re-enable when it works again.
 # gen_kernel_library(
 #     name = "relu",
-#     same_shape = "0,1",
 #     tile_size = "256",
 #     types = [
 #         "f16",
@@ -224,7 +236,6 @@ tf_cuda_cc_test(
 gen_kernel_library(
     name = "abs",
     generate_unranked = True,
-    same_shape = "0,1",
     tile_size = "256",
     types = [
         "f16",
@@ -237,64 +248,11 @@ gen_kernel_library(
 )
 
 gen_kernel_library(
-    name = "ceil",
-    generate_unranked = True,
-    same_shape = "0,1",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    unroll_factors = "4",
-)
-
-gen_kernel_library(
     name = "conj",
-    same_shape = "0,1",
     tile_size = "256",
     types = [
         "c64",
         "c128",
-    ],
-    unroll_factors = "4",
-)
-
-gen_kernel_library(
-    name = "cos",
-    generate_unranked = True,
-    same_shape = "0,1",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    unroll_factors = "4",
-)
-
-gen_kernel_library(
-    name = "exp",
-    generate_unranked = True,
-    same_shape = "0,1",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    unroll_factors = "4",
-)
-
-gen_kernel_library(
-    name = "floor",
-    generate_unranked = True,
-    same_shape = "0,1",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
     ],
     unroll_factors = "4",
 )
@@ -312,7 +270,6 @@ gen_kernel_library(
 gen_kernel_library(
     name = "invert",
     generate_unranked = True,
-    same_shape = "0,1",
     tile_size = "256",
     types = [
         "i8",
@@ -324,50 +281,10 @@ gen_kernel_library(
 )
 
 gen_kernel_library(
-    name = "isfinite",
-    generate_unranked = True,
-    same_shape = "0,1",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    unroll_factors = "4",
-)
-
-gen_kernel_library(
-    name = "log",
-    generate_unranked = True,
-    same_shape = "0,1",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    unroll_factors = "4",
-)
-
-gen_kernel_library(
     name = "logicalnot",
     generate_unranked = True,
-    same_shape = "0,1",
     tile_size = "256",
     types = ["i1"],
-    unroll_factors = "4",
-)
-
-gen_kernel_library(
-    name = "neg",
-    generate_unranked = True,
-    same_shape = "0,1",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
     unroll_factors = "4",
 )
 
@@ -382,22 +299,8 @@ gen_kernel_library(
 )
 
 gen_kernel_library(
-    name = "rsqrt",
-    generate_unranked = True,
-    same_shape = "0,1",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    unroll_factors = "4",
-)
-
-gen_kernel_library(
     name = "sign",
     generate_unranked = True,
-    same_shape = "0,1",
     tile_size = "256",
     types = [
         # TODO(b/162577610): Add bf16, c64 and c128.
@@ -411,22 +314,9 @@ gen_kernel_library(
 )
 
 gen_kernel_library(
-    name = "sqrt",
+    name = "sin",
+    generate_ranked = False,
     generate_unranked = True,
-    same_shape = "0,1",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-    unroll_factors = "4",
-)
-
-gen_kernel_library(
-    name = "tanh",
-    generate_unranked = True,
-    same_shape = "0,1",
     tile_size = "256",
     types = [
         "f16",
@@ -440,12 +330,38 @@ gen_kernel_library(
     name = "addv2",
     generate_ranked = False,
     generate_unranked = True,
-    same_shape = "0,1",
     tile_size = "256",
     types = [
         "f16",
         "f32",
         "f64",
+        "i64",
     ],
     unroll_factors = "4",
 )
+
+[
+    gen_kernel_library(
+        name = name,
+        generate_unranked = True,
+        tile_size = "256",
+        types = [
+            "f16",
+            "f32",
+            "f64",
+        ],
+        unroll_factors = "4",
+    )
+    for name in [
+        "ceil",
+        "cos",
+        "exp",
+        "floor",
+        "isfinite",
+        "log",
+        "neg",
+        "rsqrt",
+        "sqrt",
+        "tanh",
+    ]
+]

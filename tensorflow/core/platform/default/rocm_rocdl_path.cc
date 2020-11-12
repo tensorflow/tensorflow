@@ -36,10 +36,10 @@ string RocmRoot() {
 }
 
 string RocdlRoot() {
-#if TENSORFLOW_COMPILER_IS_HIP_CLANG
-  return tensorflow::io::JoinPath(tensorflow::RocmRoot(), "lib");
+#if TF_ROCM_VERSION >= 30900
+  return tensorflow::io::JoinPath(tensorflow::RocmRoot(), "amdgcn/bitcode");
 #else
-  return tensorflow::io::JoinPath(tensorflow::RocmRoot(), "hcc/lib");
+  return tensorflow::io::JoinPath(tensorflow::RocmRoot(), "lib");
 #endif
 }
 

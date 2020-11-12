@@ -136,12 +136,12 @@ std::string GetImageModifier(AccessType access) {
   }
 }
 
-std::string GetDefaultSamplers(const DeviceInfo& device_info) {
+std::string GetDefaultSamplers(const GpuInfo& gpu_info) {
   std::string result;
   result +=
       "__constant sampler_t smp_none = CLK_NORMALIZED_COORDS_FALSE | "
       "CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;\n";
-  if (device_info.IsAdreno() && device_info.adreno_info.IsAdreno3xx()) {
+  if (gpu_info.IsAdreno() && gpu_info.adreno_info.IsAdreno3xx()) {
     // Unfortunately, CLK_ADDRESS_CLAMP is very slow on Adreno3xx and
     // we can observe huge register overhead when compared to other modes.
 
@@ -209,7 +209,7 @@ absl::Status CreateCLObject(GPUObjectDescriptor* desc, CLContext* context,
 constexpr char CLArguments::kArgsPrefix[];
 
 absl::Status CLArguments::Init(
-    const DeviceInfo& device_info,
+    const GpuInfo& gpu_info,
     const std::map<std::string, std::string>& linkables, CLContext* context,
     Arguments* args, std::string* code) {
   RETURN_IF_ERROR(AllocateObjects(*args, context));
@@ -217,22 +217,22 @@ absl::Status CLArguments::Init(
   RETURN_IF_ERROR(ResolveSelectorsPass(*args, linkables, code));
   object_refs_ = std::move(args->object_refs_);
   args->GetActiveArguments(kArgsPrefix, *code);
-  const bool use_f32_for_halfs = device_info.IsPowerVR();
+  const bool use_f32_for_halfs = gpu_info.IsPowerVR();
   CopyArguments(*args, use_f32_for_halfs);
   RETURN_IF_ERROR(SetObjectsResources(*args));
   RenameArgumentsInCode(code);
   ResolveArgsPass(code);
   *code = absl::Substitute(*code, GetListOfArgs());
-  *code = GetDefaultSamplers(device_info) + *code;
+  *code = GetDefaultSamplers(gpu_info) + *code;
   return absl::OkStatus();
 }
 
-absl::Status CLArguments::Init(const DeviceInfo& device_info, Arguments* args,
+absl::Status CLArguments::Init(const GpuInfo& gpu_info, Arguments* args,
                                CLContext* context) {
   RETURN_IF_ERROR(AllocateObjects(*args, context));
   RETURN_IF_ERROR(AddObjectArgs(args));
   object_refs_ = std::move(args->object_refs_);
-  const bool use_f32_for_halfs = device_info.IsPowerVR();
+  const bool use_f32_for_halfs = gpu_info.IsPowerVR();
   CopyArguments(*args, use_f32_for_halfs);
   RETURN_IF_ERROR(SetObjectsResources(*args));
   return absl::OkStatus();

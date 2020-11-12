@@ -604,6 +604,29 @@ If `condition` evaluates to false, print the list of tensors in `data`.
   let hasCanonicalizer = 1;
 }
 
+def TF_AssignOp : TF_Op<"Assign", [NoSideEffect]> {
+  let summary = "Update 'ref' by assigning 'value' to it.";
+
+  let description = [{
+This operation outputs "ref" after the assignment is done.
+This makes it easier to chain operations that need to use the reset value.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$ref,
+    TF_Tensor:$value,
+
+    DefaultValuedAttr<BoolAttr, "true">:$validate_shape,
+    DefaultValuedAttr<BoolAttr, "true">:$use_locking
+  );
+
+  let results = (outs
+    TF_Tensor:$output_ref
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_AssignAddVariableOp : TF_Op<"AssignAddVariableOp", []> {
   let summary = "Adds a value to the current value of a variable.";
 
@@ -12629,6 +12652,8 @@ retained with length 1.
     OpBuilderDAG<(ins "Value":$input, "Value":$reduction_indices,
       "BoolAttr":$keep_dims)>
   ];
+
+  let hasFolder = 1;
 }
 
 def TF_SymbolicGradientOp : TF_Op<"SymbolicGradient", [NoSideEffect]> {

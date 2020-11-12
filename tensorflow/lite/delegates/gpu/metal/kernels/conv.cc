@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/common/winograd_util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
-#include "tensorflow/lite/delegates/gpu/metal/device_info.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 namespace tflite {
@@ -729,7 +729,7 @@ bool IsKernelYIs1(const Convolution2DAttributes& attr) {
          attr.padding.appended.h == 0;
 }
 
-int GetMaximumPossibleWavesCount(const AppleGPUInfo& apple_info,
+int GetMaximumPossibleWavesCount(const AppleInfo& apple_info,
                                  const BHWC& dst_shape) {
   if (apple_info.IsLocalMemoryPreferredOverGlobal()) {
     return GetGroupsCountForLinearWH(dst_shape, {32, 1, 1}, {1, 1, 1});
@@ -738,7 +738,7 @@ int GetMaximumPossibleWavesCount(const AppleGPUInfo& apple_info,
   }
 }
 
-int GetRecommendedBlockSize(const AppleGPUInfo& apple_info,
+int GetRecommendedBlockSize(const AppleInfo& apple_info,
                             const BHWC& dst_shape) {
   const int max_waves = GetMaximumPossibleWavesCount(apple_info, dst_shape);
   const int cu_count = apple_info.GetComputeUnitsCount();
@@ -753,7 +753,7 @@ int GetRecommendedBlockSize(const AppleGPUInfo& apple_info,
   }
 }
 
-ConvParams GetConvParamsForA7A8(const AppleGPUInfo& apple_info,
+ConvParams GetConvParamsForA7A8(const AppleInfo& apple_info,
                                 const Convolution2DAttributes& attr,
                                 const BHWC& dst_shape) {
   const int dst_slices = DivideRoundUp(dst_shape.c, 4);
@@ -830,7 +830,7 @@ ConvParams GetConvParamsForA7A8(const AppleGPUInfo& apple_info,
   return params;
 }
 
-ConvParams GetConvParamsForA9AndHigher(const AppleGPUInfo& apple_info,
+ConvParams GetConvParamsForA9AndHigher(const AppleInfo& apple_info,
                                        const Convolution2DAttributes& attr,
                                        const BHWC& dst_shape) {
   const int dst_slices = DivideRoundUp(dst_shape.c, 4);
@@ -980,19 +980,18 @@ ConvParams GetConvParamsForAMD(const Convolution2DAttributes& attr,
   return params;
 }
 
-ConvParams GetConvParams(const DeviceInfo& device_info,
+ConvParams GetConvParams(const GpuInfo& gpu_info,
                          const Convolution2DAttributes& attr,
                          const RuntimeOptions& options, const BHWC& dst_shape) {
-  if (device_info.IsAppleGPU()) {
-    if (device_info.apple_info.IsLocalMemoryPreferredOverGlobal()) {
-      return GetConvParamsForA7A8(device_info.apple_info, attr, dst_shape);
+  if (gpu_info.IsApple()) {
+    if (gpu_info.apple_info.IsLocalMemoryPreferredOverGlobal()) {
+      return GetConvParamsForA7A8(gpu_info.apple_info, attr, dst_shape);
     } else {
-      return GetConvParamsForA9AndHigher(device_info.apple_info, attr,
-                                         dst_shape);
+      return GetConvParamsForA9AndHigher(gpu_info.apple_info, attr, dst_shape);
     }
-  } else if (device_info.IsIntelGPU()) {
+  } else if (gpu_info.IsIntel()) {
     return GetConvParamsForIntel(attr, options, dst_shape);
-  } else if (device_info.IsAMDGPU()) {
+  } else if (gpu_info.IsAMD()) {
     return GetConvParamsForAMD(attr, options, dst_shape);
   } else {
     ConvParams params;
@@ -1048,9 +1047,9 @@ std::pair<uint3, uint3> GetDispatchSizes(const ConvParams& params,
 
 std::vector<ComputeTaskDescriptorPtr> ConvolutionGeneric(
     int id, ValueId input_id, ValueId output_id, const BHWC& dst_shape,
-    const Convolution2DAttributes& attr, const DeviceInfo& device_info,
+    const Convolution2DAttributes& attr, const GpuInfo& gpu_info,
     const metal::RuntimeOptions& options) {
-  ConvParams params = GetConvParams(device_info, attr, options, dst_shape);
+  ConvParams params = GetConvParams(gpu_info, attr, options, dst_shape);
 
   auto desc = std::make_shared<ComputeTaskDescriptor>();
   desc->id = id;
@@ -1103,7 +1102,7 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionGeneric(
 
 std::vector<ComputeTaskDescriptorPtr> ConvolutionWino4x4To6x6(
     int id, ValueId input_id, ValueId output_id, const BHWC& dst_shape,
-    const Convolution2DAttributes& attr, const DeviceInfo& device_info,
+    const Convolution2DAttributes& attr, const GpuInfo& gpu_info,
     const RuntimeOptions& options) {
   const int dst_slices = DivideRoundUp(attr.weights.shape.o, 4);
   ConvParams params;
@@ -1116,9 +1115,9 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionWino4x4To6x6(
   params.different_weights_for_height = true;
   params.x_kernel_is_1 = true;
   params.y_kernel_is_1 = true;
-  if (device_info.IsAppleGPU()) {
+  if (gpu_info.IsApple()) {
     params.weight_layout = WeightsInnerBlockLayout::O4I4;
-    if (device_info.apple_info.IsLocalMemoryPreferredOverGlobal()) {
+    if (gpu_info.apple_info.IsLocalMemoryPreferredOverGlobal()) {
       params.weights_upload_type = WeightsUploadType::LOCAL_MEM_BY_THREADS;
       params.work_group_size = int3(32, 1, 1);
       params.block_size = int3(4, 1, 4);
@@ -1127,12 +1126,12 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionWino4x4To6x6(
       params.work_group_size = int3(8, 4, 1);
       params.block_size = int3(4, 1, 4);
     }
-  } else if (device_info.IsIntelGPU()) {
+  } else if (gpu_info.IsIntel()) {
     params.weight_layout = WeightsInnerBlockLayout::I4O4;
     params.weights_upload_type = WeightsUploadType::PRIVATE_MEM_SIMD8_BROADCAST;
     params.work_group_size = int3(16, 1, 1);
     params.block_size = int3(1, 1, 4);
-  } else if (device_info.IsAMDGPU()) {
+  } else if (gpu_info.IsAMD()) {
     params.weight_layout = WeightsInnerBlockLayout::I4O4;
     params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
     params.work_group_size = int3(32, 1, 1);

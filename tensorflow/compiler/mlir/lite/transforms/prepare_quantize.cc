@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 // This transformation pass applies quantization propagation on TFLite dialect.
+#include <cmath>
 #include <iterator>
 #include <string>
 
@@ -21,10 +22,13 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
@@ -305,6 +309,52 @@ bool PrepareQuantizePass::ContainsQuantizeOps(FuncOp func) {
 using PrepareQuantStats =
     quant::ConvertStatsToQDQs<quant::QuantizeCastOp, quant::DequantizeCastOp>;
 
+// Calculates the minimum power of two that is not less than the value.
+double power_of_two_bound(double value) {
+  return std::pow(2, std::ceil(std::log2(value)));
+}
+
+// Quantize recurrent input of LSTM with 16 bits.
+template <typename SourceOp, typename Q, typename DQ>
+struct ConvertLstmStatsToQDQs : public OpRewritePattern<SourceOp> {
+ public:
+  explicit ConvertLstmStatsToQDQs(MLIRContext* context)
+      : OpRewritePattern<SourceOp>(context, /*benefit=*/2) {}
+  LogicalResult matchAndRewrite(SourceOp op,
+                                PatternRewriter& rewriter) const override {
+    quant::StatisticsOp stats_op = llvm::dyn_cast_or_null<quant::StatisticsOp>(
+        op.input_cell_state().getDefiningOp());
+    // Recurrent input is be used within an LSTM, and thus should have one use.
+    if (!stats_op || !stats_op.getResult().hasOneUse()) {
+      return failure();
+    }
+    auto stats = stats_op.layerStats().dyn_cast<DenseFPElementsAttr>();
+    if (!stats) {
+      return failure();
+    }
+
+    double max = std::max(
+        std::abs(FloatAttr::getValueAsDouble(stats.getValue<APFloat>({0}))),
+        std::abs(FloatAttr::getValueAsDouble(stats.getValue<APFloat>({1}))));
+    double bound = power_of_two_bound(max);
+    Type expressed = stats_op.getType().cast<ShapedType>().getElementType();
+    // maximum value is adjusted to get a scale of power_of_two(max)/32768.
+    quant::QuantizedType quant_type = quant::fakeQuantAttrsToType(
+        stats_op.getLoc(), 16, -bound, bound * 32767.0 / 32768.0,
+        /*narrow_range*/ false, expressed, /*is_signed*/ true);
+
+    rewriter.setInsertionPointAfter(stats_op);
+    Type result_type = quant_type.castFromExpressedType(stats_op.getType());
+    auto q = rewriter.create<Q>(stats_op.getLoc(), result_type, stats_op.arg());
+    rewriter.replaceOpWithNewOp<DQ>(stats_op, stats_op.getType(), q);
+    return success();
+  }
+};
+
+using PrepareLstmQuantStats =
+    ConvertLstmStatsToQDQs<TFL::UnidirectionalSequenceLSTMOp,
+                           quant::QuantizeCastOp, quant::DequantizeCastOp>;
+
 void PrepareQuantizePass::runOnFunction() {
   FuncOp func = getFunction();
   MLIRContext* ctx = func.getContext();
@@ -326,7 +376,14 @@ void PrepareQuantizePass::runOnFunction() {
   OwningRewritePatternList patterns;
   bool is_signed = quant_specs_.IsSignedInferenceType();
   int bit_width = quant_specs_.GetQuantizationTypeWidth();
-  bool enforce_fixed_output_range = ContainsQuantizeOps(func);
+  bool quantization_aware_training_mode = ContainsQuantizeOps(func);
+  // Enforce fixed output range for post-training quantization and
+  // when the model has quantization emulation ops, unless it was disabled
+  // explicitly by the flag.
+  bool enforced_output_range =
+      (quant_specs_.post_training_quantization ||
+       quantization_aware_training_mode) &&
+      !quant_specs_.disable_enforced_fixed_output_range;
   if (is_signed) {
     patterns.insert<quant::ConvertUnsignedToSigned<quant::QuantizeCastOp>>(ctx);
     // Convert quant stats to int8 quantization parameters.
@@ -337,6 +394,7 @@ void PrepareQuantizePass::runOnFunction() {
     // Currently, only activation stats are imported, so narrow_range = false.
     patterns.insert<PrepareQuantStats>(bit_width, false, false, ctx);
   }
+  patterns.insert<PrepareLstmQuantStats>(ctx);
   applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   SanityCheckAndAdjustment(func);
@@ -345,8 +403,7 @@ void PrepareQuantizePass::runOnFunction() {
   // values (tensors).
   ApplyQuantizationParamsPropagation(
       func, is_signed, disable_per_channel || quant_specs_.disable_per_channel,
-      GetOpQuantSpec,
-      enforce_fixed_output_range || quant_specs_.post_training_quantization);
+      GetOpQuantSpec, enforced_output_range);
 
   ConvertMlirQuantOpsToTFLQuantOps(func);
 }

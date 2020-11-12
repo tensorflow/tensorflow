@@ -70,9 +70,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                               output->type == kTfLiteInt16 ||
                               output->type == kTfLiteInt32);
 
-  if (((input->type == kTfLiteInt16 || input->type == kTfLiteInt8) &&
-       output->type == kTfLiteInt8) ||
-      (input->type == kTfLiteInt16 && output->type == kTfLiteInt16)) {
+  if ((input->type == kTfLiteInt16 && output->type == kTfLiteInt8) ||
+      (input->type == kTfLiteInt8 && output->type == kTfLiteInt8) ||
+      (input->type == kTfLiteInt16 && output->type == kTfLiteInt16) ||
+      (input->type == kTfLiteInt16 && output->type == kTfLiteInt32)) {
     double effective_scale = static_cast<double>(input->params.scale) /
                              static_cast<double>(output->params.scale);
 

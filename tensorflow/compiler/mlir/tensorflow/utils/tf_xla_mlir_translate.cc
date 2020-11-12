@@ -236,7 +236,8 @@ static mlir::LogicalResult MlirTfToHloTextTranslateFunction(
   XlaCompilationResult compilation_result;
   auto compilation_status = CompileMlirToXlaHlo(
       module_op, arg_shapes, /*device_type=*/"XLA_CPU_JIT", emit_use_tuple_arg,
-      emit_return_tuple, IdentityShapeRepresentationFn(), &compilation_result,
+      emit_return_tuple, /*use_resource_updates_for_aliases=*/true,
+      IdentityShapeRepresentationFn(), &compilation_result,
       /*custom_legalization_passes=*/{});
   if (!compilation_status.ok()) {
     LOG(ERROR) << "TF/XLA compilation failed: "

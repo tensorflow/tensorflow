@@ -96,7 +96,7 @@ bool IsMliApplicable(TfLiteContext* context, const TfLiteTensor* input,
                      const TfLiteConvParams* params) {
   const auto* affine_quantization =
       reinterpret_cast<TfLiteAffineQuantization*>(filter->quantization.params);
-  // MLI optimized version only supports int8_t dataype, dilation factor of 1
+  // MLI optimized version only supports int8_t datatype, dilation factor of 1
   // and per-axis quantization of weights (no broadcasting/per-tensor)
   bool ret_val = (filter->type == kTfLiteInt8) &&
                  (input->type == kTfLiteInt8) && (bias->type == kTfLiteInt32) &&
@@ -169,7 +169,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   int output_width = output->dims->data[2];
   int output_height = output->dims->data[1];
 
-  // Dynimically allocate per-channel quantization parameters.
+  // Dynamically allocate per-channel quantization parameters.
   const int num_channels = filter->dims->data[kConvQuantizedDimension];
   data->per_channel_output_multiplier =
       reinterpret_cast<int32_t*>(context->AllocatePersistentBuffer(
@@ -332,7 +332,7 @@ TfLiteStatus EvalMliQuantizedPerChannel(
     const int overlap = kernel_height - cfg_local.stride_height;
 
     // for weight slicing (on output channels)
-    // NHWC layout for weigths, output channel dimension is the first dimension.
+    // NHWC layout for weights, output channel dimension is the first dimension.
     const int weight_out_ch_dimension = 0;
     int slice_channels =
         static_cast<int>(data.mli_weights->shape[weight_out_ch_dimension]);
@@ -395,9 +395,9 @@ TfLiteStatus EvalMliQuantizedPerChannel(
                                         in_slice_height, cfg_local.padding_top,
                                         cfg_local.padding_bottom, overlap);
 
-      /* output tensor is alreade sliced in the output channel dimension.
+      /* output tensor is already sliced in the output channel dimension.
       out_ch_slice.Sub() is the tensor for the amount of output channels of this
-      itteration of the weight slice loop. This tensor needs to be further
+      iteration of the weight slice loop. This tensor needs to be further
       sliced over the batch and height dimension. */
       ops::micro::TensorSlicer out_slice(out_ch_slice.Sub(), height_dimension,
                                          out_slice_height);

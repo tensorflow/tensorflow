@@ -684,6 +684,7 @@ body: A function that takes a list of tensors and returns another
 
     FlatSymbolRefAttr:$cond,
     FlatSymbolRefAttr:$body,
+    DefaultValuedAttr<TF_ShapeAttrArray, "{}">:$output_shapes,
     DefaultValuedAttr<I64Attr, "10">:$parallel_iterations,
 
     // Used to map StatelessWhile and While op defined in TensorFlow to a common
@@ -696,12 +697,10 @@ body: A function that takes a list of tensors and returns another
   );
 
   TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
-  TF_DerivedResultShapeListAttr output_shapes = TF_DerivedResultShapeListAttr<0>;
 
   let verifier = [{
     return Verify(*this);
   }];
-  let hasCanonicalizer = 1;
 
   let extraClassDeclaration = [{
     // Get the condition function.
@@ -755,8 +754,9 @@ def TF_WhileRegionOp : TF_Op<"WhileRegion",
 
     // Used to map StatelessWhile and While op defined in TensorFlow to a common
     // op.
-    DefaultValuedAttr<BoolAttr, "false">:$is_stateless,
-    DefaultValuedAttr<I64Attr, "10">:$parallel_iterations
+    DefaultValuedAttr<TF_ShapeAttrArray, "{}">:$output_shapes,
+    DefaultValuedAttr<I64Attr, "10">:$parallel_iterations,
+    DefaultValuedAttr<BoolAttr, "false">:$is_stateless
   );
   let results = (outs Variadic<AnyTensor>:$output);
 

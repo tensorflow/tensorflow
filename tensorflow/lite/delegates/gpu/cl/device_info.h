@@ -176,8 +176,8 @@ struct MaliInfo {
   bool IsValhall() const;
 };
 
-struct DeviceInfo {
-  DeviceInfo() = default;
+struct GpuInfo {
+  GpuInfo() = default;
 
   bool IsAdreno() const;
   bool IsApple() const;

@@ -32,6 +32,7 @@ from tensorflow.python.ops import collective_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nccl_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 
 INSTANCE_KEY_START_NUMBER = 100
@@ -256,8 +257,9 @@ class CollectiveKeys(object):
 class CollectiveReplicaLauncher(object):
   """Launch collectives on one replica."""
 
-  _use_scoped_allocator = True
-  _use_collective_v2 = False
+  _use_scoped_allocator = False
+  _use_collective_v2 = True
+  _use_ordering_token = False
 
   def __init__(self,
                group_key,
@@ -272,6 +274,12 @@ class CollectiveReplicaLauncher(object):
     self._collective_keys = collective_keys
     self._device = device
     self._executor = executor
+    if (self._use_ordering_token and self._use_collective_v2 and
+        ops.executing_eagerly_outside_functions()):
+      with ops.init_scope(), ops.device(device):
+        self._ordering_token = resource_variable_ops.ResourceVariable(0.)
+    else:
+      self._ordering_token = None
 
   def _executor_scope(self):
     if context.executing_eagerly() and not self._executor:
@@ -281,7 +289,7 @@ class CollectiveReplicaLauncher(object):
     return ops.NullContextmanager()
 
   def _control_input(self, control_input):
-    if control_input is not None:
+    if control_input is not None and self._ordering_token is None:
       return ops.control_dependencies([control_input])
     return ops.NullContextmanager()
 
@@ -323,6 +331,11 @@ class CollectiveReplicaLauncher(object):
       return self._collective_keys.get_instance_key(self._group_key,
                                                     self._device)
 
+  def _get_ordering_token(self, communication_hint):
+    if self._ordering_token is not None and communication_hint == 'NCCL':
+      return self._ordering_token.handle
+    return None
+
   def all_reduce(self,
                  input_tensor,
                  control_input=None,
@@ -345,6 +358,7 @@ class CollectiveReplicaLauncher(object):
       The reduced tensor.
     """
     instance_key = self._next_instance_key()
+    ordering_token = self._get_ordering_token(communication_hint)
     with self._executor_scope(), \
          ops.device(self._device), \
          self._control_input(control_input):
@@ -355,7 +369,8 @@ class CollectiveReplicaLauncher(object):
             self._group_key,
             instance_key,
             communication_hint=communication_hint,
-            timeout=timeout)
+            timeout=timeout,
+            ordering_token=ordering_token)
       else:
         return collective_ops.all_reduce(
             input_tensor,
@@ -381,6 +396,7 @@ class CollectiveReplicaLauncher(object):
       The reduced tensor.
     """
     instance_key = self._next_instance_key()
+    ordering_token = self._get_ordering_token(communication_hint)
     with self._executor_scope(), ops.device(self._device):
       if self._should_use_collective_v2():
         return collective_ops.all_gather_v2(
@@ -389,7 +405,8 @@ class CollectiveReplicaLauncher(object):
             self._group_key,
             instance_key,
             communication_hint=communication_hint,
-            timeout=timeout)
+            timeout=timeout,
+            ordering_token=ordering_token)
       else:
         return collective_ops.all_gather(
             input_tensor,

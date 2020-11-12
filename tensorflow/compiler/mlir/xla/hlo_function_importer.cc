@@ -663,9 +663,9 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           builder_->getNamedAttr("window_strides", Convert(strides)));
       attributes.push_back(ConvertPadding(paddings));
       attributes.push_back(
-          builder_->getNamedAttr("lhs_dilations", Convert(lhs_dilations)));
+          builder_->getNamedAttr("lhs_dilation", Convert(lhs_dilations)));
       attributes.push_back(
-          builder_->getNamedAttr("rhs_dilations", Convert(rhs_dilations)));
+          builder_->getNamedAttr("rhs_dilation", Convert(rhs_dilations)));
       attributes.push_back(builder_->getNamedAttr(
           "dimension_numbers",
           ConvertConvDimensionNumbers(

@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/model_hints.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 #include "tensorflow/lite/delegates/gpu/cl/serialization_generated.h"
+#include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -110,12 +111,11 @@ class InferenceContext {
                              InferenceContext* inference);
 
   void CopyInAndOutIds(const GraphFloat32& graph);
-  absl::Status ConvertOperations(const DeviceInfo& device_info,
+  absl::Status ConvertOperations(const GpuInfo& gpu_info,
                                  const GraphFloat32& graph, ModelHints hints);
   void CreateLinks();
   void ReserveGraphTensors(const CreateInferenceInfo& create_info,
-                           const DeviceInfo& device_info,
-                           const GraphFloat32& graph);
+                           const GpuInfo& gpu_info, const GraphFloat32& graph);
   absl::Status Merge();
   absl::Status AllocateMemory(CLContext* context);
 

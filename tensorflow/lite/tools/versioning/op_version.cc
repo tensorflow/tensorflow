@@ -168,7 +168,7 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
         return 3;
       }
       // For float and uint8 fixed point kernels, if the weight is
-      // Shuffled4x16Int8, is is version 2.
+      // Shuffled4x16Int8, it is version 2.
       if (op_sig.options.fully_connected.weights_format ==
           FullyConnectedOptionsWeightsFormat_SHUFFLED4x16INT8) {
         return 2;
@@ -375,6 +375,7 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
+    case BuiltinOperator_ABS:
     case BuiltinOperator_RELU:
       if (op_sig.input_types.at(0) == TensorType_INT16) {
         return 3;
@@ -385,13 +386,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
-    case BuiltinOperator_ABS:
-      if (op_sig.input_types.at(0) == TensorType_INT8 ||
-          op_sig.input_types.at(0) == TensorType_UINT8) {
-        return 2;
-      }
-      return 1;
     case BuiltinOperator_STRIDED_SLICE:
+      if (op_sig.input_types.at(0) == TensorType_STRING) {
+        return 5;
+      }
       if (op_sig.options.single_input_op.num_dims > 4) {
         return 4;
       }
@@ -563,6 +561,8 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_MEAN:
     case BuiltinOperator_PAD:
     case BuiltinOperator_PADV2:
+    case BuiltinOperator_REDUCE_MAX:
+    case BuiltinOperator_REDUCE_MIN:
     case BuiltinOperator_RELU6:
       // In case of int16 inputs, the version is 3.
       if (op_sig.input_types.at(0) == TensorType_INT16) {
@@ -590,8 +590,6 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_SPACE_TO_DEPTH:
     case BuiltinOperator_SPLIT_V:
     case BuiltinOperator_SUM:
-    case BuiltinOperator_REDUCE_MAX:
-    case BuiltinOperator_REDUCE_MIN:
     case BuiltinOperator_LOG_SOFTMAX:
     case BuiltinOperator_TOPK_V2:
     case BuiltinOperator_ARG_MAX:

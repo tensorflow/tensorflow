@@ -1750,7 +1750,7 @@ class Model(training_lib.Model):
         # Check Dataset/Iterator batch size is consistent with InputLayer.
         if isinstance(x, (dataset_ops.DatasetV2, iterator_ops.Iterator,
                           iterator_ops.IteratorBase)):
-          ds_batch_size = tensor_shape.as_dimension(
+          ds_batch_size = tensor_shape.Dimension(
               nest.flatten(dataset_ops.get_legacy_output_shapes(x))[0][0]).value
           if ds_batch_size is not None:
             if ds_batch_size % num_splits_for_ds != 0:
