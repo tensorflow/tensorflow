@@ -188,6 +188,8 @@ class SidecarEvaluator(object):
                 metric.result(),
                 step=self._iterations.read_value())
 
+      # TODO(rchao): Make the max evaluation robust in case users save the
+      # checkpoints with epoch format {epoch:03d}.
       if (self.max_evaluations and
           latest_checkpoint.endswith('-{}'.format(self.max_evaluations))):
         # Exit the loop because we have evaluated the final checkpoint file.
