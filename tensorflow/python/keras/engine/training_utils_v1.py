@@ -425,6 +425,15 @@ def standardize_single_array(x, expected_shape=None):
   return x
 
 
+def get_composite_shape(tensor):
+  """Returns the shape of the passed composite tensor."""
+  if isinstance(tensor, sparse_tensor.SparseTensorValue):
+    # SparseTensorValues use a 'dense_shape' attribute
+    return tensor.dense_shape
+  else:
+    return tensor.shape
+
+
 def standardize_input_data(data,
                            names,
                            shapes=None,
@@ -528,7 +537,7 @@ def standardize_input_data(data,
             continue
           data_shape = tuple(tensorshape.as_list())
         elif is_composite_or_composite_value(data[i]):
-          tensorshape = composite_tensor_utils.get_shape(data[i])
+          tensorshape = get_composite_shape(data[i])
           data_shape = tuple(tensorshape.as_list())
         else:
           data_shape = data[i].shape
