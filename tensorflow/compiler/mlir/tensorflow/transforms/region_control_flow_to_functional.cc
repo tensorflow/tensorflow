@@ -150,7 +150,7 @@ void ExtractSingleBlockRegion(Region& region, StringRef name,
   builder.create<ReturnOp>(terminator->getLoc(), return_values);
   terminator->erase();
 
-  outlined_func.setVisibility(FuncOp::Visibility::Private);
+  outlined_func.setPrivate();
 
   // Add the outlined function to the worklist in case its body has
   // IfRegion or WhileRegion ops that need to converted.

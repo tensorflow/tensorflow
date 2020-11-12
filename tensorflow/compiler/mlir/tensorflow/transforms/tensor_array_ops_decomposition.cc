@@ -772,7 +772,7 @@ LogicalResult HandlePartitionedCallOp(
   if (!callee.isPrivate()) {
     // Clone non-private callee in case of signature change.
     lowered_callee = callee.clone();
-    lowered_callee.setVisibility(SymbolTable::Visibility::Private);
+    lowered_callee.setPrivate();
   }
   auto grads = AccessedGradients({lowered_callee}, module);
   for (int64_t i = 0; i < lowered_callee.getNumArguments(); ++i) {
