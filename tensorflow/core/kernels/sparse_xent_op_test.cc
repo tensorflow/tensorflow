@@ -42,7 +42,7 @@ static Graph* SparseXent(int batch_size, int num_classes, DataType value_type) {
 }
 
 #define BM_SparseXentDev(BATCH, CLASS, DEVICE, DTType)                     \
-  static void BM_SparseXent##_##BATCH##_##CLASS##_##DEVICE_##DTType(       \
+  static void BM_SparseXent##_##BATCH##_##CLASS##_##DEVICE_##DTYPE(       \
       int iters) {                                                         \
     testing::ItemsProcessed(static_cast<int64>(iters) * BATCH * CLASS);    \
     test::Benchmark(#DEVICE, SparseXent(BATCH, CLASS, DTType)).Run(iters); \
