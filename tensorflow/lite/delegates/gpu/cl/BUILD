@@ -235,6 +235,23 @@ cc_library(
 )
 
 cc_library(
+    name = "cl_operation",
+    srcs = ["cl_operation.cc"],
+    hdrs = ["cl_operation.h"],
+    deps = [
+        ":cl_arguments",
+        ":cl_command_queue",
+        ":cl_context",
+        ":cl_device",
+        ":cl_kernel",
+        ":program_cache",
+        ":tensor",
+        "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
+        "//tensorflow/lite/delegates/gpu/common:status",
+    ],
+)
+
+cc_library(
     name = "cl_program",
     srcs = ["cl_program.cc"],
     hdrs = ["cl_program.h"],
@@ -380,6 +397,7 @@ cc_library(
         ":cl_command_queue",
         ":cl_context",
         ":cl_device",
+        ":cl_operation",
         ":environment",
         ":gpu_object",
         ":model_hints",

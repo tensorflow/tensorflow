@@ -58,8 +58,10 @@ TEST_F(OpenCLOperationTest, ConvBuffer1x1SimpleWeights) {
     TensorFloat32 dst_tensor;
     ConvBuffer1x1 operation = CreateConvBuffer1x1(
         creation_context_.GetGpuInfo(), op_def, attr, &src_tensor.shape);
-    ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                  BHWC(1, 2, 1, 2), &dst_tensor));
+    ASSERT_OK(ExecuteGPUOperation(
+        src_tensor, creation_context_,
+        absl::make_unique<ConvBuffer1x1>(std::move(operation)),
+        BHWC(1, 2, 1, 2), &dst_tensor));
     EXPECT_THAT(dst_tensor.data,
                 Pointwise(FloatNear(eps), {6.0f, 6.0f, 22.0f, 22.0f}));
   }
@@ -93,8 +95,10 @@ TEST_F(OpenCLOperationTest, ConvBuffer1x1) {
     TensorFloat32 dst_tensor;
     ConvBuffer1x1 operation = CreateConvBuffer1x1(
         creation_context_.GetGpuInfo(), op_def, attr, &src_tensor.shape);
-    ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                  BHWC(1, 2, 1, 4), &dst_tensor));
+    ASSERT_OK(ExecuteGPUOperation(
+        src_tensor, creation_context_,
+        absl::make_unique<ConvBuffer1x1>(std::move(operation)),
+        BHWC(1, 2, 1, 4), &dst_tensor));
     EXPECT_THAT(dst_tensor.data,
                 Pointwise(FloatNear(eps), {20.5f, 43.5f, 68.5f, 91.5f, 60.5f,
                                            147.5f, 236.5f, 323.5f}));

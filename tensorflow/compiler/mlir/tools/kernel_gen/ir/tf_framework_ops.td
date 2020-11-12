@@ -133,4 +133,37 @@ def TFFramework_NullContextOp : TFFramework_Op<"null_context",
   let assemblyFormat = "attr-dict `:` type($result)";
 }
 
+//===----------------------------------------------------------------------===//
+// NullMemRefOp
+//===----------------------------------------------------------------------===//
+def TFFramework_NullMemRefOp : TFFramework_Op<"null_memref", []> {
+  let summary = "Op to construct unranked memref with 0-rank";
+  let description = [{
+    The op is needed to construct a throw-away result after error reporting
+    happened. It constructs an unranked memref descriptor with 0-rank and
+    {NULL, NULL, 0} underlying ranked descriptor of type memref<elem_type>.
+  }];
+
+  let results = (outs AnyUnrankedMemRef:$result);
+  let assemblyFormat = "attr-dict `:` type($result)";
+}
+
+//===----------------------------------------------------------------------===//
+// ReportErrorOp
+//===----------------------------------------------------------------------===//
+def TFFramework_ReportErrorOp : TFFramework_Op<"report_error", []> {
+  let summary = "Operation that propagates error message to TF Framework";
+  let description = [{
+    Error reporting operation that corresponds to
+    `OpKernelContext::CtxFailureWithWarning`.
+  }];
+
+  let arguments = (ins
+    TFFramework_OpKernelContextType:$ctx,
+    StrAttr:$msg
+  );
+
+  let assemblyFormat = "$ctx `,` $msg attr-dict";
+}
+
 #endif // TF_FRAMEWORK_OPS

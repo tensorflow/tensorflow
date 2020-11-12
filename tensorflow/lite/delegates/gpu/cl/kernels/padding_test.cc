@@ -50,8 +50,10 @@ TEST_F(OpenCLOperationTest, PaddingAppendWidth) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreatePadding(op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 2, 2, 2), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 2, 2, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
                   Pointwise(FloatNear(eps),
                             {0.0f, 1.0f, 0.0f, 0.0f, 2.0f, 3.0f, 0.0f, 0.0f}));
@@ -78,8 +80,10 @@ TEST_F(OpenCLOperationTest, PaddingPrependWidth) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreatePadding(op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 2, 2, 2), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 2, 2, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
                   Pointwise(FloatNear(eps),
                             {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 2.0f, 3.0f}));
@@ -106,8 +110,10 @@ TEST_F(OpenCLOperationTest, PaddingAppendHeight) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreatePadding(op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 3, 1, 2), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 3, 1, 2), &dst_tensor));
       EXPECT_THAT(
           dst_tensor.data,
           Pointwise(FloatNear(eps), {0.0f, 1.0f, 2.0f, 3.0f, 0.0f, 0.0f}));
@@ -134,8 +140,10 @@ TEST_F(OpenCLOperationTest, PaddingPrependHeight) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreatePadding(op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 3, 1, 2), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 3, 1, 2), &dst_tensor));
       EXPECT_THAT(
           dst_tensor.data,
           Pointwise(FloatNear(eps), {0.0f, 0.0f, 0.0f, 1.0f, 2.0f, 3.0f}));
@@ -162,8 +170,10 @@ TEST_F(OpenCLOperationTest, PaddingAppendChannels) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreatePadding(op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 2, 1, 3), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 2, 1, 3), &dst_tensor));
       EXPECT_THAT(
           dst_tensor.data,
           Pointwise(FloatNear(eps), {0.0f, 1.0f, 0.0f, 2.0f, 3.0f, 0.0f}));
@@ -190,8 +200,10 @@ TEST_F(OpenCLOperationTest, PaddingPrependChannels) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreatePadding(op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 2, 1, 3), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 2, 1, 3), &dst_tensor));
       EXPECT_THAT(
           dst_tensor.data,
           Pointwise(FloatNear(eps), {0.0f, 0.0f, 1.0f, 0.0f, 2.0f, 3.0f}));
@@ -218,8 +230,10 @@ TEST_F(OpenCLOperationTest, PaddingPrependChannelsX4) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreatePadding(op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 1, 1, 6), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 1, 1, 6), &dst_tensor));
       EXPECT_THAT(
           dst_tensor.data,
           Pointwise(FloatNear(eps), {0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 2.0f}));
@@ -246,8 +260,10 @@ TEST_F(OpenCLOperationTest, PaddingComplex) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreatePadding(op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 3, 3, 3), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 3, 3, 3), &dst_tensor));
       EXPECT_THAT(
           dst_tensor.data,
           Pointwise(FloatNear(eps),
@@ -278,8 +294,10 @@ TEST_F(OpenCLOperationTest, PaddingReflectWidth) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreatePadding(op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 1, 7, 1), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 1, 7, 1), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
                   Pointwise(FloatNear(eps),
                             {3.0f, 2.0f, 1.0f, 2.0f, 3.0f, 2.0f, 1.0f}));
@@ -307,8 +325,10 @@ TEST_F(OpenCLOperationTest, PaddingReflectChannels) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreatePadding(op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 1, 1, 7), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 1, 1, 7), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
                   Pointwise(FloatNear(eps),
                             {3.0f, 2.0f, 1.0f, 2.0f, 3.0f, 2.0f, 1.0f}));

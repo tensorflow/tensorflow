@@ -217,8 +217,7 @@ class KerasComponentsBenchmarks(test.Benchmark):
     with context.graph_mode():
       model = make_keras_model(initializer="glorot_uniform")
       self._benchmark_keras_model_fit(model)
-    result = profiler.stop(save=False)
-    assert result is not None
+    profiler.stop(save=False)
 
   def benchmark_keras_model_functional_fit_run_model_eagerly(self):
     model = make_keras_model(initializer="glorot_uniform")
@@ -229,8 +228,7 @@ class KerasComponentsBenchmarks(test.Benchmark):
     profiler.start("")
     model = make_keras_model(initializer="glorot_uniform")
     self._benchmark_keras_model_fit(model, run_eagerly=True)
-    result = profiler.stop(save=False)
-    assert result is not None
+    profiler.stop(save=False)
 
   def benchmark_keras_model_sequential_fit(self):
     model = make_sequential_keras_model(initializer="glorot_uniform")

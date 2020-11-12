@@ -165,6 +165,32 @@ class HloToLhloOpConverter<mhlo::DotOp> : public BaseOpConversion<mhlo::DotOp> {
   }
 };
 
+struct HloToLhloCustomCallOpConverter
+    : public BaseOpConversion<mhlo::CustomCallOp> {
+ public:
+  using BaseOpConversion<mhlo::CustomCallOp>::BaseOpConversion;
+
+  LogicalResult matchAndRewrite(
+      mhlo::CustomCallOp hloOp, ArrayRef<Value> operands,
+      ConversionPatternRewriter& rewriter) const final {
+    Operation* op = hloOp.getOperation();
+    SmallVector<Value, 2> buffer_args(operands.begin(), operands.end());
+    if (failed(ConvertResults(op, buffer_args, rewriter))) return failure();
+
+    auto lhloOp = rewriter.create<lmhlo::CustomCallOp>(
+        op->getLoc(), llvm::None, buffer_args, op->getAttrs());
+    // Setup AttrSizedOperandSegments attribute to indicate number of operands
+    // for args and outputs.
+    const int32_t segments[2] = {static_cast<int32_t>(operands.size()),
+                                 static_cast<int32_t>(op->getNumResults())};
+    lhloOp.setAttr(lhloOp.getOperandSegmentSizeAttr(),
+                   rewriter.getI32VectorAttr(segments));
+
+    rewriter.replaceOp(op, ArrayRef<Value>(buffer_args).slice(operands.size()));
+    return success();
+  }
+};
+
 struct HloToLhloDynamicBroadcastInDimOpConverter
     : public BaseOpConversion<mhlo::DynamicBroadcastInDimOp> {
  public:
@@ -572,6 +598,7 @@ void populateHLOToLHLOConversionPattern(MLIRContext* context,
                                         OwningRewritePatternList* patterns) {
   // clang-format off
   patterns->insert<
+      HloToLhloCustomCallOpConverter,
       HloToLhloDotGeneralOpConverter,
       HloToLhloDynamicBroadcastInDimOpConverter,
       HloToLhloDynamicReshapeConverter,
@@ -588,7 +615,6 @@ void populateHLOToLHLOConversionPattern(MLIRContext* context,
       HloToLhloOpConverter<mhlo::ConvertOp>,
       HloToLhloOpConverter<mhlo::CopyOp>,
       HloToLhloOpConverter<mhlo::CosOp>,
-      HloToLhloOpConverter<mhlo::CustomCallOp>,
       HloToLhloOpConverter<mhlo::DivOp>,
       HloToLhloOpConverter<mhlo::DotOp>,
       HloToLhloOpConverter<mhlo::ExpOp>,

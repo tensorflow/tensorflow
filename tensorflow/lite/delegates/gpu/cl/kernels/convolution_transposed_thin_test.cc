@@ -57,8 +57,10 @@ TEST_F(OpenCLOperationTest, ConvolutionTransposedThinSimpleWeights) {
       TensorFloat32 dst_tensor;
       ConvolutionTransposedThin operation = CreateConvolutionTransposedThin(
           creation_context_.GetGpuInfo(), op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 4, 4, 2), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<ConvolutionTransposedThin>(std::move(operation)),
+          BHWC(1, 4, 4, 2), &dst_tensor));
       EXPECT_THAT(
           dst_tensor.data,
           Pointwise(FloatNear(eps),
@@ -95,8 +97,10 @@ TEST_F(OpenCLOperationTest, ConvolutionTransposedThin) {
       TensorFloat32 dst_tensor;
       ConvolutionTransposedThin operation = CreateConvolutionTransposedThin(
           creation_context_.GetGpuInfo(), op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 4, 4, 1), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<ConvolutionTransposedThin>(std::move(operation)),
+          BHWC(1, 4, 4, 1), &dst_tensor));
       EXPECT_THAT(
           dst_tensor.data,
           Pointwise(FloatNear(eps),

@@ -56,8 +56,10 @@ TEST_F(OpenCLOperationTest, ConvolutionTransposed3x3) {
       TensorFloat32 dst_tensor;
       ConvolutionTransposed3x3 operation = CreateConvolutionTransposed3x3(
           creation_context_.GetGpuInfo(), op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 4, 4, 1), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<ConvolutionTransposed3x3>(std::move(operation)),
+          BHWC(1, 4, 4, 1), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
                   Pointwise(FloatNear(eps),
                             {0.0f, 1.0f, 1.0f, 1.0f, 2.0f, 6.0f, 4.0f, 4.0f,

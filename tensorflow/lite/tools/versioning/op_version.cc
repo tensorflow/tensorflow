@@ -387,6 +387,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_STRIDED_SLICE:
+      if (op_sig.input_types.at(0) == TensorType_STRING) {
+        return 5;
+      }
       if (op_sig.options.single_input_op.num_dims > 4) {
         return 4;
       }

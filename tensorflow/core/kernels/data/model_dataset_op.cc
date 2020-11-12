@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
@@ -51,7 +52,15 @@ class ModelDatasetOp::Dataset : public DatasetBase {
         input_(input),
         algorithm_(algorithm),
         cpu_budget_(cpu_budget),
-        ram_budget_(ram_budget) {
+        ram_budget_(ram_budget),
+        traceme_metadata_(
+            {{"algorithm", algorithm == model::AutotuneAlgorithm::HILL_CLIMB
+                               ? "hill climb"
+                               : "gradient descent"},
+             {"cpu_budget",
+              strings::Printf("%lld", static_cast<long long>(cpu_budget))},
+             {"ram_budget",
+              strings::Printf("%lldB", static_cast<long long>(ram_budget))}}) {
     input_->Ref();
   }
 
@@ -174,6 +183,10 @@ class ModelDatasetOp::Dataset : public DatasetBase {
       return Status::OK();
     }
 
+    TraceMeMetadata GetTraceMeMetadata() const override {
+      return dataset()->traceme_metadata_;
+    }
+
    private:
     Status EnsureModelThreadStarted(IteratorContext* ctx)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -257,6 +270,7 @@ class ModelDatasetOp::Dataset : public DatasetBase {
   const model::AutotuneAlgorithm algorithm_;
   const int64 cpu_budget_;
   const int64 ram_budget_;
+  const TraceMeMetadata traceme_metadata_;
 };
 
 ModelDatasetOp::ModelDatasetOp(OpKernelConstruction* ctx)

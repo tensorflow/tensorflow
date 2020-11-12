@@ -6,10 +6,7 @@ load(
     "rocm_gpu_architectures",
     "rocm_is_configured",
 )
-load(
-    "//tensorflow/core/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 load(
     "//tensorflow/stream_executor:build_defs.bzl",
     "if_gpu_is_configured",
@@ -291,7 +288,7 @@ def _gen_unranked_kernel_fatbin_impl(ctx):
     arch_flag = ",".join(ctx.attr.gpu_archs)
     gpu_bin = ctx.outputs.output
     ctx.actions.run(
-        inputs = [ctx.file.mlir_op],
+        inputs = [ctx.file.mlir_op, ctx.file._tfso],
         outputs = [gpu_bin],
         executable = ctx.executable._tool,
         arguments = cmd_args + [
@@ -311,6 +308,11 @@ _gen_unranked_kernel_fatbin_rule = rule(
         "unroll_factors": attr.string(),
         "gpu_archs": attr.string_list(mandatory = True),
         "extra_args": attr.string_list(),
+        "_tfso": attr.label(
+            default = Label("//tensorflow:libtensorflow_framework.so.2"),
+            cfg = "host",
+            allow_single_file = True,
+        ),
         "_tool": attr.label(
             executable = True,
             default = Label("//tensorflow/compiler/mlir/tools/kernel_gen:tf_to_kernel"),
@@ -333,7 +335,7 @@ def gen_unranked_kernel_library(name, types, tile_size, tags = [], unroll_factor
       extra_args: Extra arguments to pass to the generator tool.
     """
 
-    if cuda_gpu_architectures():
+    if cuda_gpu_architectures() or rocm_gpu_architectures():
         for type in types:
             _gen_mlir_op(
                 name = name,
@@ -344,7 +346,7 @@ def gen_unranked_kernel_library(name, types, tile_size, tags = [], unroll_factor
                 name = "{name}_{type}_kernel_generator".format(name = name, type = type),
                 mlir_op = "{name}_{type}.mlir".format(name = name, type = type),
                 output = "{name}_{type}.a".format(name = name, type = type),
-                gpu_archs = cuda_gpu_architectures(),
+                gpu_archs = rocm_gpu_architectures() if rocm_is_configured() else cuda_gpu_architectures(),
                 tile_size = tile_size,
                 unroll_factors = unroll_factors,
                 extra_args = extra_args,
@@ -356,7 +358,8 @@ def gen_unranked_kernel_library(name, types, tile_size, tags = [], unroll_factor
 
     native.cc_library(
         name = name + "_kernels",
-        deps = if_cuda_is_configured([":{name}_{type}_kernel".format(name = name, type = type) for type in types]),
+        compatible_with = get_compatible_with_cloud(),
+        deps = if_gpu_is_configured([":{name}_{type}_kernel".format(name = name, type = type) for type in types]),
         linkstatic = 1,
         tags = tags,
     )

@@ -28,14 +28,13 @@ using ::testing::Test;
 
 class MockMlirOptimizationPass : public MlirOptimizationPass {
  public:
-  MOCK_METHOD(llvm::StringRef, name, (), (const, override));
-  MOCK_METHOD(bool, IsEnabled,
-              (const ConfigProto& config_proto, const Graph& graph),
-              (const, override));
-  MOCK_METHOD(Status, Run,
-              (const ConfigProto& config_proto, mlir::ModuleOp module,
-               const Graph& graph),
-              (override));
+  // MOCK_METHOD does not work on Windows build, using MOCK_METHODX
+  // instead.
+  MOCK_CONST_METHOD0(name, llvm::StringRef());
+  MOCK_CONST_METHOD2(IsEnabled,
+                     bool(const ConfigProto& config_proto, const Graph& graph));
+  MOCK_METHOD3(Run, Status(const ConfigProto& config_proto,
+                           mlir::ModuleOp module, const Graph& graph));
 };
 
 class MlirGraphOptimizationPassTest : public Test {

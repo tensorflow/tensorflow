@@ -412,6 +412,7 @@ cc_library(
         "hlo_instruction.cc",
         "hlo_instructions.cc",
         "hlo_module.cc",
+        "hlo_module_metadata.cc",
         "hlo_opcode.cc",
         "hlo_schedule.cc",
         "hlo_sharding.cc",
@@ -428,6 +429,7 @@ cc_library(
         "hlo_instruction.h",
         "hlo_instructions.h",
         "hlo_module.h",
+        "hlo_module_metadata.h",
         "hlo_opcode.h",
         "hlo_schedule.h",
         "hlo_sharding.h",
@@ -3044,6 +3046,18 @@ tf_cc_test(
         "//tensorflow/core:test",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "hlo_module_metadata_test",
+    srcs = ["hlo_module_metadata_test.cc"],
+    deps = [
+        ":hlo",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/stream_executor/lib",
     ],
 )
 

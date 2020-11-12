@@ -883,7 +883,7 @@ flatbuffers::Offset<data::GPUOperation> Encode(
 
 flatbuffers::Offset<data::CLNode> Encode(
     const CLNode& node, flatbuffers::FlatBufferBuilder* builder) {
-  auto op_fb = Encode(*node.operation, builder);
+  auto op_fb = Encode(node.cl_operation.GetGpuOperation(), builder);
   std::vector<int32_t> in_ids(node.inputs.size());
   for (int i = 0; i < in_ids.size(); ++i) {
     in_ids[i] = node.inputs[i];
@@ -906,7 +906,7 @@ flatbuffers::Offset<data::CLNode> Encode(
 absl::Status Decode(const data::CLNode* fb_node, CLNode* node) {
   GPUOperation op;
   RETURN_IF_ERROR(Decode(fb_node->gpu_op(), &op));
-  node->operation = absl::make_unique<GPUOperation>(std::move(op));
+  node->cl_operation.Init(absl::make_unique<GPUOperation>(std::move(op)));
   for (auto in_fb : *fb_node->input_ids()) {
     node->inputs.push_back(in_fb);
   }

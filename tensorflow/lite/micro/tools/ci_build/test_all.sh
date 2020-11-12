@@ -27,6 +27,14 @@ pwd
 make -f tensorflow/lite/micro/tools/make/Makefile \
   clean clean_downloads
 
+# We are moving away from having the downloads and installations be part of the
+# Makefile. As a result, we need to manually add the downloads in this script.
+# Once we move more than the renode downloads out of the Makefile, we should
+# have common way to perform the downloads for a given target, tags ...
+echo "Starting renode download at `date`"
+tensorflow/lite/micro/testing/download_renode.sh tensorflow/lite/micro/tools/make/downloads/renode
+pip3 install -r tensorflow/lite/micro/tools/make/downloads/renode/tests/requirements.txt
+
 # Add all the test scripts for the various supported platforms here. This
 # enables running all the tests together has part of the continuous integration
 # pipeline and reduces duplication associated with setting up the docker
@@ -38,7 +46,7 @@ echo "Running x86 tests at `date`"
 tensorflow/lite/micro/tools/ci_build/test_x86.sh PRESUBMIT
 
 echo "Running bluepill tests at `date`"
-tensorflow/lite/micro/tools/ci_build/test_bluepill.sh PRESUBMIT
+tensorflow/lite/micro/tools/ci_build/test_bluepill.sh
 
 echo "Running mbed tests at `date`"
 tensorflow/lite/micro/tools/ci_build/test_mbed.sh PRESUBMIT

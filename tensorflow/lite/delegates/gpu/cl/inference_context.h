@@ -25,9 +25,9 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
+#include "tensorflow/lite/delegates/gpu/cl/cl_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/environment.h"
 #include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/model_hints.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 #include "tensorflow/lite/delegates/gpu/cl/serialization_generated.h"
@@ -43,7 +43,7 @@ namespace gpu {
 namespace cl {
 
 struct CLNode {
-  std::unique_ptr<GPUOperation> operation;
+  ClOperation cl_operation;
   std::vector<ValueId> inputs;
   std::vector<ValueId> outputs;
 
