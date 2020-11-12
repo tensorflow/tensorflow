@@ -1231,7 +1231,14 @@ class Subgraph {
           logging_context, filter_tensor, node->inputs->data[1], node_index));
     }
 
-    const TfLiteTensor& bias_tensor = tensors[node->inputs->data[2]];
+    const int bias_tensor_id = node->inputs->data[2];
+    if (bias_tensor_id < 0) {
+      TF_LITE_MAYBE_KERNEL_LOG(logging_context,
+                               "unsupported CONV_2D node #%d without bias",
+                               node_index);
+      return kTfLiteError;
+    }
+    const TfLiteTensor& bias_tensor = tensors[bias_tensor_id];
     TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
         logging_context, bias_tensor, node->inputs->data[2], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, bias_tensor, 1,
@@ -1319,7 +1326,14 @@ class Subgraph {
           logging_context, filter_tensor, node->inputs->data[1], node_index));
     }
 
-    const TfLiteTensor& bias_tensor = tensors[node->inputs->data[2]];
+    const int bias_tensor_id = node->inputs->data[2];
+    if (bias_tensor_id < 0) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "unsupported DEPTHWISE_CONV_2D node #%d without bias", node_index);
+      return kTfLiteError;
+    }
+    const TfLiteTensor& bias_tensor = tensors[bias_tensor_id];
     TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
         logging_context, filter_tensor, node->inputs->data[2], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, bias_tensor, 1,
@@ -1503,7 +1517,14 @@ class Subgraph {
           logging_context, filter_tensor, node->inputs->data[1], node_index));
     }
 
-    const TfLiteTensor& bias_tensor = tensors[node->inputs->data[2]];
+    const int bias_tensor_id = node->inputs->data[2];
+    if (bias_tensor_id < 0) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context, "unsupported FULLY_CONNECTED node #%d without bias",
+          node_index);
+      return kTfLiteError;
+    }
+    const TfLiteTensor& bias_tensor = tensors[bias_tensor_id];
     TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
         logging_context, filter_tensor, node->inputs->data[2], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, bias_tensor, 1,
