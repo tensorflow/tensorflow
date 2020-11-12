@@ -1,6 +1,5 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "if_nccl")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -240,7 +239,7 @@ cc_library(
     name = "nvidia_gpu_device",
     srcs = ["nvidia_gpu_device.cc"],
     hdrs = ["nvidia_gpu_device.h"],
-    copts = if_cuda(["-DNCCL_ENABLED=1"]),
+    copts = if_nccl(["-DNCCL_ENABLED=1"]),
     deps = [
         ":pjrt_client",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
@@ -253,7 +252,7 @@ cc_library(
         "//tensorflow/core/common_runtime/gpu:gpu_mem_allocator",
         "//tensorflow/core:lib_internal",
         "//tensorflow/stream_executor:tf_allocator_adapter",
-    ] + if_cuda(["@local_config_nccl//:nccl"]),
+    ] + if_nccl(["@local_config_nccl//:nccl"]),
 )
 
 tf_cc_test(
