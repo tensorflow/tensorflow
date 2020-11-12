@@ -567,30 +567,54 @@ Status IrEmitterUnnested::HandleConvolution(HloInstruction* convolution) {
 // Input = {dynamic array(with dynamic dimension meta data at the end)}
 // Output = {static array, dynamic_dim0, dynamic_dim1}
 Status IrEmitterUnnested::HandlePadToStatic(HloInstruction* pad_to_static) {
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(pad_to_static));
+  return EmitPadToStaticFromMlir(input);
+}
+
+Status IrEmitterUnnested::EmitPadToStaticFromMlir(MlirEmitterInput mlir_input) {
+  // TODO(jurahul): Create an op to represent PadToStatic.
+  auto pad_to_static = ::mlir::cast<::mlir::lmhlo::CustomCallOp>(mlir_input.op);
   int unroll_factor = 1;
-  string ir_name = IrName(pad_to_static);
-  auto kernel_thunk = BuildKernelThunk(pad_to_static,
-                                       /*implements_whole_instruction=*/true);
-  // pseudo code for padToStatic on a 2d array
+  std::string ir_name = mlir::GetNameFromLoc(pad_to_static.getLoc());
+
+  absl::Span<const BufferAllocation> allocations(
+      ir_emitter_context_->buffer_assignment().Allocations());
+  std::vector<llvm_ir::IrArray> ir_arrays;
+  TF_ASSIGN_OR_RETURN(
+      auto kernel_thunk,
+      BuildKernelThunkForMlir(pad_to_static, mlir_input.thunk_info,
+                              mlir_input.extra_slice, &ir_arrays));
+
+  const llvm_ir::IrArray source_array = ir_arrays[0];
+  const llvm_ir::IrArray output_array = ir_arrays[1];
+  auto output_dim_arrays =
+      absl::Span<const llvm_ir::IrArray>(ir_arrays).subspan(2);
+
+  // pseudo code for PadToStatic on a 2d array
   //   int* source_array = input[0];
   //   int* dest_array = output[0];
-  std::vector<llvm::Value*> dynamic_dims;
-  const Shape& data_shape = ShapeUtil::GetSubshape(pad_to_static->shape(), {0});
-  const Shape& input_shape = pad_to_static->operand(0)->shape();
-  llvm_ir::IrArray data_array = GetIrArray(*pad_to_static, *pad_to_static, {0});
-  llvm::Value* source_buffer = GetBasePointer(*pad_to_static->operand(0));
+  const Shape& data_shape =
+      TypeToShape(pad_to_static.output().front().getType());
+  const Shape& input_shape =
+      TypeToShape(pad_to_static.args().front().getType());
+  llvm::Value* source_buffer = source_array.GetBasePointer();
   llvm::Value* raw_buffer =
       b_.CreateBitCast(source_buffer, b_.getInt8Ty()->getPointerTo());
-  int64 raw_data_size =
-      ShapeUtil::ByteSizeOf(ShapeUtil::MakeStaticShape(input_shape));
+
+  // TODO(jurahul): input_shape here is the static shape of the input (which has
+  // a dynamic shape in XLA). Currently, we are mapping that to a static shaped
+  // memref. When we change that to a more appropriate representation in MLIR,
+  // fix this code to correctly deduce the static shape backing the dynamically
+  // shaped memref.
+  int64 raw_data_size = ShapeUtil::ByteSizeOf(input_shape);
 
   //   int* dyn_dim0_size = source_array + meta_data_offset;
   //   int* dyn_dim1_size = source_array + meta_data_offset + sizeof(int);
-  for (int64 i = 1; i < pad_to_static->shape().tuple_shapes_size(); ++i) {
+  std::vector<llvm::Value*> dynamic_dims;
+  for (int64 i = 1; i < pad_to_static.output().size(); ++i) {
     // Dynamic size of each dimension is attached at the end of the source
     // array(operand(0)). We need to extract these value.
-    const Shape& dim_shape =
-        ShapeUtil::GetSubshape(pad_to_static->shape(), {i});
+    const Shape& dim_shape = TypeToShape(pad_to_static.output()[i].getType());
     TF_RET_CHECK(Shape::Equal()(dim_shape, ShapeUtil::MakeScalarShape(S32)));
 
     const int64 dim_index = i - 1;
@@ -610,8 +634,10 @@ Status IrEmitterUnnested::HandlePadToStatic(HloInstruction* pad_to_static) {
   //     *output[2] = *dyn_dim1_size;
   //   }
   KernelSupportLibrary{&b_}.If("is_thred_0", IsBlock0Thread0(&b_), [&] {
-    for (int64 i = 1; i < pad_to_static->shape().tuple_shapes_size(); ++i) {
-      llvm::Value* dest_dim_size_address = GetBasePointer(*pad_to_static, {i});
+    for (int64 i = 1; i < pad_to_static.output().size(); ++i) {
+      const int64 dim_index = i - 1;
+      llvm::Value* dest_dim_size_address =
+          output_dim_arrays[dim_index].GetBasePointer();
       // output[i] stores dynamic_dim_(i-1)
       b_.CreateStore(dynamic_dims[i - 1],
                      b_.CreateBitCast(dest_dim_size_address,
@@ -650,11 +676,10 @@ Status IrEmitterUnnested::HandlePadToStatic(HloInstruction* pad_to_static) {
     llvm_ir::SetToFirstInsertPoint(if_in_dyn_bounds.true_block, &b_);
     llvm_ir::IrArray::Index dyn_index(linearIndex, input_shape,
                                       absl::MakeSpan(dynamic_dims), &b_);
-    data_array.EmitWriteArrayElement(
+    output_array.EmitWriteArrayElement(
         dyn_index,
-        GetIrArray(*pad_to_static->operand(0), *pad_to_static)
-            .EmitReadArrayElement(array_index, &b_, /*name=*/""),
-        &b_, /*use_linear_index=*/false);
+        source_array.EmitReadArrayElement(array_index, &b_, /*name=*/""), &b_,
+        /*use_linear_index=*/false);
     return Status::OK();
   };
 
@@ -666,7 +691,7 @@ Status IrEmitterUnnested::HandlePadToStatic(HloInstruction* pad_to_static) {
       ParallelLoopEmitter(body_generator, data_shape, launch_dimensions, &b_,
                           unroll_factor)
           .EmitLoop(ir_name,
-                    GetIndexTypeForKernel(
+                    GetIndexTypeForKernelFromMlir(
                         pad_to_static, launch_dimensions.launch_bound(), &b_)));
   thunk_sequence_.emplace_back(std::move(kernel_thunk));
   return Status::OK();

@@ -259,6 +259,7 @@ class IrEmitterUnnested : public IrEmitter,
   // }
   //   ```
   Status HandlePadToStatic(HloInstruction* pad_to_static);
+  Status EmitPadToStaticFromMlir(MlirEmitterInput mlir_input);
 
   // Input = {dynamic array(with dynamic dimension meta data at the end)}
   // Output = {static array, dynamic_dim0, dynamic_dim1}
