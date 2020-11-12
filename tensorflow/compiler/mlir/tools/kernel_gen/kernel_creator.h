@@ -40,7 +40,6 @@ xla::StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
     mlir::MLIRContext& context, llvm::StringRef tf_code, bool gpu_binary_only,
     llvm::ArrayRef<std::string> architectures = {"sm_75"},
     llvm::ArrayRef<uint32_t> tile_sizes = {16, 64},
-    llvm::ArrayRef<uint32_t> same_shape = {},
     llvm::ArrayRef<uint32_t> unroll_factors = {},
     bool embed_memref_prints = false, bool generate_fatbin = true);
 

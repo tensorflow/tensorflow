@@ -3,7 +3,11 @@
 
 load("//tensorflow:tensorflow.bzl", "filegroup")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_binary",
+    "tf_cc_test",
+)
 
 package(
     default_visibility = [
@@ -126,12 +130,14 @@ cc_library(
     srcs = ["mlir_graph_optimization_pass.cc"],
     hdrs = ["mlir_graph_optimization_pass.h"],
     deps = [
+        "//tensorflow/compiler/mlir:mlir_bridge_rollout_policy",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:device_util",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -198,8 +204,19 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/jit:flags",
+        "//tensorflow/core:graph",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/types:optional",
+    ],
+)
+
+tf_cc_test(
+    name = "mlir_graph_optimization_pass_test",
+    srcs = ["mlir_graph_optimization_pass_test.cc"],
+    deps = [
+        ":mlir_graph_optimization_pass",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 

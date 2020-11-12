@@ -71,16 +71,6 @@ def ParallelLoopsToSequential : FunctionPass<"parallel-loops-to-sequential"> {
   let constructor = "transforms::CreateParallelLoopsToSequential()";
 }
 
-def PropagateTensorFlowABIKnowledgePass
-    : Pass<"propagate-tf-abi-knowledge", "LLVM::LLVMFuncOp"> {
-  let summary = "Pass to propagate TF ABI knowledge, e.g. offsets, alignment";
-  let options = [
-    ListOption<"same_shape_", "same-shape", "uint32_t",
-               "List of same shape args">,
-  ];
-  let constructor = "transforms::CreatePropagateTensorFlowABIKnowledgePass()";
-}
-
 def PropagateTfAbiKnowledgeToKernels
     : FunctionPass<"propagate-tf-abi-knowledge-to-kernels"> {
   let summary = "Pass to propagate tensorflow ABI knowledge to kernels";

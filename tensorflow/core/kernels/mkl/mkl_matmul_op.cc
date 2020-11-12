@@ -55,18 +55,19 @@ class MklMatMulOp : public OpKernel {
 
     // Check that the dimensions of the two matrices are valid.
     OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(a.shape()),
-                errors::InvalidArgument("In[0] is not a matrix"));
+                errors::InvalidArgument("In[0] ndims must be >= 2"));
     OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(b.shape()),
-                errors::InvalidArgument("In[1] is not a matrix"));
+                errors::InvalidArgument("In[1] ndims must be >= 2"));
     Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> dim_pair;
     dim_pair[0].first = transpose_a_ ? 0 : 1;
     dim_pair[0].second = transpose_b_ ? 1 : 0;
 
-    OP_REQUIRES(
-        ctx, a.dim_size(dim_pair[0].first) == b.dim_size(dim_pair[0].second),
-        errors::InvalidArgument(
-            "Matrix size-incompatible: In[0]: ", a.shape().DebugString(),
-            ", In[1]: ", b.shape().DebugString()));
+    int d1 = a.dim_size(dim_pair[0].first);
+    int d2 = b.dim_size(dim_pair[0].second);
+    OP_REQUIRES(ctx, d1 == d2,
+                errors::InvalidArgument(
+                    "In[0] mismatch In[1] shape: ", d1, " vs. ", d2, ": ",
+                    a.shape().DebugString(), " ", b.shape().DebugString()));
     int a_dim_remaining = 1 - dim_pair[0].first;
     int b_dim_remaining = 1 - dim_pair[0].second;
     TensorShape out_shape(

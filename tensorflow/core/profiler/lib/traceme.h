@@ -143,6 +143,19 @@ class TraceMe {
 #endif
   }
 
+  // Movable.
+  TraceMe(TraceMe&& other) { *this = std::move(other); }
+  TraceMe& operator=(TraceMe&& other) {
+#if !defined(IS_MOBILE_PLATFORM)
+    if (TF_PREDICT_FALSE(other.start_time_ != kUntracedActivity)) {
+      new (&no_init_.name) std::string(std::move(other.no_init_.name));
+      other.no_init_.name.~string();
+      start_time_ = std::exchange(other.start_time_, kUntracedActivity);
+    }
+#endif
+    return *this;
+  }
+
   ~TraceMe() { Stop(); }
 
   // Stop tracing the activity. Called by the destructor, but exposed to allow

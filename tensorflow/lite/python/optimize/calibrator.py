@@ -32,7 +32,7 @@ _calibration_wrapper = LazyLoader(
 
 
 def add_intermediate_tensors(model_content):
-  """Adds intermedaite tensors to fused op if needed."""
+  """Adds intermediate tensors to fused op if needed."""
   return _calibration_wrapper.AddIntermediateTensors(model_content)
 
 

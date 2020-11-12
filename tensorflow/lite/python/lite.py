@@ -188,9 +188,12 @@ class QuantizationMode(object):
 
     self._validate_int8_required()
 
+  # TODO(b/162537905): Refactor the following quantization functions -
+  # re-organize and refactor for better readability.
   def post_training_int8_no_float(self):
     """Post training int8 quantize, disallow float fallback."""
-    return (self._is_int8_target_required() and
+    return (self._any_optimization_enabled() and
+            self._is_int8_target_required() and
             not self._is_int16x8_target_required() and
             not self._is_allow_float() and
             self._representative_dataset is not None)
@@ -223,14 +226,17 @@ class QuantizationMode(object):
 
   def post_training_int16x8_no_float(self):
     """Post training int16x8 quantize, disallow float fallback."""
-    return (not self._is_int8_target_required() and
+    return (self._any_optimization_enabled() and
+            not self._is_int8_target_required() and
             self._is_int16x8_target_required() and
             not self._is_allow_float() and
             self._representative_dataset is not None)
 
   def post_training_int16x8_allow_float(self):
     """Post training int16x8 quantize, allow float fallback."""
-    return self._is_int16x8_target_required() and self._is_allow_float()
+    return (self._any_optimization_enabled() and
+            self._is_int16x8_target_required() and
+            self._is_allow_float())
 
   def post_training_dynamic_range_int8(self):
     """Post training int8 const, on-the-fly int8 quantize of dynamic tensors."""

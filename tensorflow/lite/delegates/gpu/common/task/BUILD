@@ -45,6 +45,11 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "gpu_tensor",
+    hdrs = ["gpu_tensor.h"],
+)
+
 flatbuffer_cc_library(
     name = "serialization_base_cc_fbs",
     srcs = ["serialization_base.fbs"],

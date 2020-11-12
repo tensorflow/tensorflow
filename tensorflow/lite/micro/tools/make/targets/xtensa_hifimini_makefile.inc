@@ -24,6 +24,7 @@ endif
 
 PLATFORM_FLAGS = \
   -DTF_LITE_MCU_DEBUG_LOG \
+  -DTF_LITE_USE_CTIME \
   --xtensa-core=$(XTENSA_CORE) \
   -mcoproc \
   -DXTENSA \

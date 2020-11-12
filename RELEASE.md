@@ -45,6 +45,11 @@
         *   Removed deprecated `Interpreter::UseNNAPI(bool)` C++ API.
             *   Use `NnApiDelegate()` and related delegate configuration methods
                 directly.
+    *  16 bits quantization
+        *   Added int16x8 support for ABS, REDUCE_MAX and REDUCE_MIN operators.
+    *   Added support for saved model's session initializer through
+         `TFLiteConverter.from_saved_model`.
+
 *   TF Core:
     *   Corrected higher-order gradients of control flow constructs (`tf.cond`,
         `tf.while_loop`, and compositions like `tf.foldl`) computed with

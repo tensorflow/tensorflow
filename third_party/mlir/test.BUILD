@@ -286,3 +286,17 @@ cc_library(
         "@llvm-project//mlir:LLVMDialect",
     ],
 )
+
+cc_library(
+    name = "TestTosaDialect",
+    srcs = glob([
+        "lib/Dialect/Tosa/*.cpp",
+    ]),
+    deps = [
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:TosaDialect",
+        "@llvm-project//mlir:Transforms",
+    ],
+)

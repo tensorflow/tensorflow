@@ -152,11 +152,11 @@ void UploadWeightsForConvConstants(const tflite::gpu::Tensor<OHWI, T>& weights,
                       absl::make_unique<BufferDescriptor>(std::move(desc)));
 }
 
-bool IsConvConstantsSupported(const DeviceInfo& device_info,
+bool IsConvConstantsSupported(const GpuInfo& gpu_info,
                               const OperationDef& definition,
                               const Convolution2DAttributes& attr);
 
-GPUOperation CreateConvConstants(const DeviceInfo& device_info,
+GPUOperation CreateConvConstants(const GpuInfo& gpu_info,
                                  const OperationDef& definition,
                                  const Convolution2DAttributes& attr);
 

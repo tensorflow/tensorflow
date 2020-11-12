@@ -465,6 +465,7 @@ endif
 
 $(1)_LOCAL_SRCS := $(2)
 $(1)_LOCAL_SRCS := $$(call specialize,$$($(1)_LOCAL_SRCS))
+$(1)_LOCAL_SRCS += $(MICROLITE_TEST_HELPERS_SRC)
 ALL_SRCS += $$($(1)_LOCAL_SRCS)
 $(1)_LOCAL_HDRS := $(3)
 $(1)_LOCAL_OBJS := $$(addprefix $$(OBJDIR), \

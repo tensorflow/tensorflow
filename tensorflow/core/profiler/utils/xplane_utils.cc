@@ -117,14 +117,14 @@ bool IsNested(const XEvent& event, const XEvent& parent) {
   return XEventTimespan(parent).Includes(XEventTimespan(event));
 }
 
-XStat* FindOrAddMutableStat(int64 metadata_id, XEvent* event) {
+XStat* FindOrAddMutableStat(const XStatMetadata& stat_metadata, XEvent* event) {
   for (auto& stat : *event->mutable_stats()) {
-    if (stat.metadata_id() == metadata_id) {
+    if (stat.metadata_id() == stat_metadata.id()) {
       return &stat;
     }
   }
   XStat* stat = event->add_stats();
-  stat->set_metadata_id(metadata_id);
+  stat->set_metadata_id(stat_metadata.id());
   return stat;
 }
 
@@ -185,10 +185,8 @@ void MergePlanes(const XPlane& src_plane, XPlane* dst_plane) {
   XPlaneBuilder dst(dst_plane);
   src.ForEachStat([&](const tensorflow::profiler::XStatVisitor& stat) {
     XStatMetadata* stat_metadata = dst.GetOrCreateStatMetadata(stat.Name());
-    XStat* new_stat = dst.FindOrAddMutableStat(stat_metadata->id());
-    // Add or override the existing stat value except the metadata id.
-    *new_stat = stat.RawStat();
-    new_stat->set_metadata_id(stat_metadata->id());
+    // Use SetOrAddStat to avoid duplicating stats in dst_plane.
+    dst.SetOrAddStat(*stat_metadata, stat.RawStat(), src_plane);
   });
   src.ForEachLine([&](const tensorflow::profiler::XLineVisitor& line) {
     XLineBuilder dst_line = dst.GetOrCreateLine(line.Id());
@@ -231,6 +229,8 @@ void MergePlanes(const XPlane& src_plane, XPlane* dst_plane) {
         dst_event.SetNumOccurrences(event.NumOccurrences());
       }
       event.ForEachStat([&](const tensorflow::profiler::XStatVisitor& stat) {
+        // Here we can call AddStat instead of SetOrAddStat because dst_event
+        // was just added.
         dst_event.AddStat(*dst.GetOrCreateStatMetadata(stat.Name()),
                           stat.RawStat(), src_plane);
       });

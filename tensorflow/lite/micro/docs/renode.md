@@ -11,8 +11,9 @@ https://github.com/ekalinin/github-markdown-toc#auto-insert-and-update-toc
    * [Running Unit Tests](#running-unit-tests)
       * [Under the hood of the Testing Infrastructure](#under-the-hood-of-the-testing-infrastructure)
    * [Running a non-test Binary with Renode](#running-a-non-test-binary-with-renode)
+   * [Useful External Links for Renode and Robot Documentation](#useful-external-links-for-renode-and-robot-documentation)
 
-<!-- Added by: advaitjain, at: Fri 23 Oct 2020 04:40:49 PM PDT -->
+<!-- Added by: advaitjain, at: Tue 10 Nov 2020 09:43:05 AM PST -->
 
 <!--te-->
 
@@ -76,3 +77,29 @@ failing.
 It may be useful to run binaries on Renode that are not tests, independent of
 the robot framework. We will be adding some documentation for that in this
 section.
+
+# Useful External Links for Renode and Robot Documentation
+
+ * [Testing with Renode](https://renode.readthedocs.io/en/latest/introduction/testing.html?highlight=robot#running-the-robot-test-script)
+
+ * [Robot Testing Framework on Github](https://github.com/robotframework/robotframework). For someone new to
+   the Robot Framework, the documentation  can be a bit hard to navigate, so
+   here are some links that are relevant to the use of the Robot Framework with
+   Renode for TFLM:
+
+   * [Creating Test Data](http://robotframework.org/robotframework/latest/RobotFrameworkUserGuide.html#creating-test-data)
+     section of the user guide.
+
+   * Renode-specific additions to the Robot test description format are in the
+     [RobotFrameworkEngine directory](https://github.com/renode/renode/tree/master/src/Renode/RobotFrameworkEngine). For example,
+
+       * [Start Emulation](https://github.com/renode/renode/blob/master/src/Renode/RobotFrameworkEngine/RenodeKeywords.cs#L41-L42)
+       * [Wait For Line On Uart](https://github.com/renode/renode/blob/master/src/Renode/RobotFrameworkEngine/UartKeywords.cs#L62-L63)
+     is where `Wait For Line On Uart` is defined.
+
+   * Some documentation for all the [Standard Libraries](http://robotframework.org/robotframework/#standard-libraries)
+     that define commands such as:
+
+       * [Remove File](http://robotframework.org/robotframework/latest/libraries/OperatingSystem.html#Remove%20File)
+       * [List Files In Directory](https://robotframework.org/robotframework/latest/libraries/OperatingSystem.html#List%20Files%20In%20Directory)
+

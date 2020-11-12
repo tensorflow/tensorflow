@@ -30,11 +30,11 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/tuning_parameters.h"
 #include "tensorflow/lite/delegates/gpu/cl/program_cache.h"
 #include "tensorflow/lite/delegates/gpu/cl/serialization_generated.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/arguments.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 
@@ -74,7 +74,7 @@ struct CreationContext {
   CLCommandQueue* queue;
   ProgramCache* cache;
 
-  const DeviceInfo& GetDeviceInfo() const { return device->info_; }
+  const GpuInfo& GetGpuInfo() const { return device->info_; }
 };
 
 struct OperationDef {
@@ -114,8 +114,8 @@ class GPUOperation {
 
   absl::Status AddOperation(GPUOperation* operation);
 
-  void SetSrc(Tensor* ptr, int index = 0);
-  void SetDst(Tensor* ptr, int index = 0);
+  void SetSrc(GpuSpatialTensor* ptr, int index = 0);
+  void SetDst(GpuSpatialTensor* ptr, int index = 0);
 
   // should be called after changes of inputs/outputs.
   absl::Status UpdateParams();
@@ -126,18 +126,18 @@ class GPUOperation {
   }
 
   virtual void GetPossibleKernelWorkGroups(
-      TuningType tuning_type, const DeviceInfo& device_info,
+      TuningType tuning_type, const GpuInfo& gpu_info,
       const KernelInfo& kernel_info, std::vector<int3>* work_groups) const;
 
   absl::Status Tune(const TuningParameters& params);
 
-  absl::Status AssembleCode(const DeviceInfo& device_info, CLContext* context);
+  absl::Status AssembleCode(const GpuInfo& gpu_info, CLContext* context);
 
   absl::Status Compile(const CreationContext& creation_context);
 
   absl::Status CompileDeserialized(const CreationContext& creation_context);
 
-  virtual absl::Status PostCompileCheck(const DeviceInfo& device_info,
+  virtual absl::Status PostCompileCheck(const GpuInfo& gpu_info,
                                         const KernelInfo& kernel_info) {
     return absl::OkStatus();
   }
@@ -186,8 +186,8 @@ class GPUOperation {
 
   // Defines operation calculation precision and format of src/dst tensors.
   OperationDef definition_;
-  std::vector<Tensor*> src_;
-  std::vector<Tensor*> dst_;
+  std::vector<GpuSpatialTensor*> src_;
+  std::vector<GpuSpatialTensor*> dst_;
   int grid_dimension_ = 3;  // can be 1, 2 or 3
   int3 work_group_launch_order_ = int3(0, 1, 2);
   int3 grid_size_ = int3(0, 0, 0);

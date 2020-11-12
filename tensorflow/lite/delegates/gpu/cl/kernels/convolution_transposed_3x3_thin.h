@@ -49,7 +49,7 @@ class ConvolutionTransposed3x3Thin : public GPUOperation {
 
  private:
   friend ConvolutionTransposed3x3Thin CreateConvolutionTransposed3x3Thin(
-      const DeviceInfo& device_info, const OperationDef& definition,
+      const GpuInfo& gpu_info, const OperationDef& definition,
       const ConvolutionTransposedAttributes& attr);
   explicit ConvolutionTransposed3x3Thin(
       const OperationDef& definition,
@@ -160,7 +160,7 @@ bool IsConvolutionTransposed3x3ThinSupported(
     const ConvolutionTransposedAttributes& attr);
 
 ConvolutionTransposed3x3Thin CreateConvolutionTransposed3x3Thin(
-    const DeviceInfo& device_info, const OperationDef& definition,
+    const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr);
 
 }  // namespace cl

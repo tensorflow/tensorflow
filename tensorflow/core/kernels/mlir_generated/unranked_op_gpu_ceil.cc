@@ -13,16 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Xtensa timer implementation.
-// To include this with make, add TARGET=xtensa_hifimini.
-#include "tensorflow/lite/micro/micro_time.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/kernels/mlir_generated/unranked_op_gpu_base.h"
 
-#include <time.h>
+namespace tensorflow {
 
-namespace tflite {
+GENERATE_AND_REGISTER_UNARY_KERNEL(Ceil, f16, DT_HALF, Eigen::half);
+GENERATE_AND_REGISTER_UNARY_KERNEL(Ceil, f32, DT_FLOAT, float);
+GENERATE_AND_REGISTER_UNARY_KERNEL(Ceil, f64, DT_DOUBLE, double);
 
-int32_t ticks_per_second() { return CLOCKS_PER_SEC; }
-
-int32_t GetCurrentTimeTicks() { return clock(); }
-
-}  // namespace tflite
+}  // namespace tensorflow

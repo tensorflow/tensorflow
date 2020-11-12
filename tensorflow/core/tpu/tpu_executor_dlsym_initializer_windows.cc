@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,20 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_DEFAULT_STRONG_HASH_H_
-#define TENSORFLOW_CORE_PLATFORM_DEFAULT_STRONG_HASH_H_
+// TODO(skye): this is largely a copy of tpu_api_dlsym_initializer.cc. Figure
+// out how to deduplicate these files a little.
 
-#include "highwayhash/sip_hash.h"  // from @highwayhash
-#include "highwayhash/state_helpers.h"  // from @highwayhash
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/tpu/tpu_api_dlsym_set_fn.h"
 
 namespace tensorflow {
+namespace tpu {
 
-inline uint64 StrongKeyedHash(const tensorflow::uint64 (&key)[2],
-                              const string& s) {
-  return highwayhash::StringHasher<highwayhash::SipHashState>()(
-      {key[0], key[1]}, s);
+Status InitializeTpuLibrary(void* library_handle) {
+  return errors::Unimplemented(
+      "Loading TPU library is not supported on Windows.");
 }
 
+}  // namespace tpu
 }  // namespace tensorflow
-
-#endif  // TENSORFLOW_CORE_PLATFORM_DEFAULT_STRONG_HASH_H_

@@ -1530,7 +1530,9 @@ class ReduceOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(reader->ReadTensor(1, &axes));
     const TfLiteTensor* input = reader->GetInputTensor(0);
     ReduceAttributes attr;
-    RETURN_IF_ERROR(ExtractAxisFromIndex(*input, axes.data[0], &attr.axis));
+    Axis axis;
+    RETURN_IF_ERROR(ExtractAxisFromIndex(*input, axes.data[0], &axis));
+    attr.dims = {axis};
     node->operation.attributes = attr;
     return absl::OkStatus();
   }
@@ -2157,6 +2159,19 @@ class TransposeConvBuiltinOperationParser : public TFLiteOperationParser {
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 3));
+    const int runtime_inputs =
+        GetNumberOfRuntimeInputsForNode(context, tflite_node);
+    if (runtime_inputs != 1) {
+      return absl::InternalError(
+          absl::StrCat("Expected 1 runtime input tensor, but node has ",
+                       runtime_inputs, " runtime inputs."));
+    }
+    const int runtime_outputs = NumOutputs(tflite_node);
+    if (runtime_outputs != 1) {
+      return absl::InternalError(
+          absl::StrCat("Expected 1 runtime output tensor, but node has ",
+                       runtime_outputs, " runtime outputs."));
+    }
     RETURN_IF_ERROR(CheckTensorIsAvailable(context, tflite_node, 1));
     const TfLiteTransposeConvParams* tf_options;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));

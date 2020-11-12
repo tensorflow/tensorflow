@@ -1,4 +1,4 @@
-// RUN: tf-mlir-translate -hlo-text-to-mlir-hlo %s -o - | FILECHECK_OPTS="" FileCheck %s -DPRIVATE="attributes {sym_visibility = \"private\"}"
+// RUN: tf-mlir-translate -hlo-text-to-mlir-hlo %s -o - | FILECHECK_OPTS="" FileCheck %s
 
 HloModule main
 
@@ -7,8 +7,7 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT %Arg_0.1 = f32[] parameter(0)
 }
 
-// CHECK-LABEL:  func @test_simple
-// CHECK-SAME: [[PRIVATE]]
+// CHECK-LABEL:  func private @test_simple
 %test_simple (Arg_0.1: f32[4], Arg_1.2: f32[4]) -> f32[] {
   %Arg_0.1 = f32[4]{0} parameter(0)
   %Arg_1.2 = f32[4]{0} parameter(1)
@@ -21,8 +20,8 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT %dot.4 = f32[] dot(f32[4]{0} %add.42, f32[4]{0} %Arg_1.2), lhs_contracting_dims={0}, rhs_contracting_dims={0}
 }
 
-// CHECK-LABEL:  func @test_after_all
-// CHECK-SAME:  ([[VAL_0:%.*]]: !mhlo.token, [[VAL_1:%.*]]: !mhlo.token) -> !mhlo.token [[PRIVATE]]
+// CHECK-LABEL:  func private @test_after_all
+// CHECK-SAME:  ([[VAL_0:%.*]]: !mhlo.token, [[VAL_1:%.*]]: !mhlo.token) -> !mhlo.token
 %test_after_all (token0: token[], token1: token[] ) -> token[] {
   token0 = token[] parameter(0)
   token1 = token[] parameter(1)
@@ -37,7 +36,7 @@ add {
   ROOT add = f32[] add(lhs, rhs)
 }
 
-// CHECK-LABEL:  func @test_all_reduce
+// CHECK-LABEL:  func private @test_all_reduce
 // CHECK-SAME:  ([[INPUT:%.*]]: tensor<8xf32>)
 %test_all_reduce {
   input = f32[8] parameter(0)
@@ -52,7 +51,7 @@ add {
 }
 
 
-// CHECK-LABEL:  func @test_and
+// CHECK-LABEL:  func private @test_and
 %test_and (Arg_0.1: pred[4], Arg_1.2: pred[4]) -> pred[4] {
   %Arg_0.1 = pred[4] parameter(0)
   %Arg_1.2 = pred[4] parameter(1)
@@ -61,7 +60,7 @@ add {
   ROOT %and.3 = pred[4] and(pred[4] %Arg_0.1, pred[4] %Arg_1.2)
 }
 
-// CHECK-LABEL:  func @test_atan2
+// CHECK-LABEL:  func private @test_atan2
 // CHECK-SAME:    ([[VAL_0:%.*]]: tensor<4xi32>, [[VAL_1:%.*]]: tensor<4xi32>) -> tensor<4xi32>
 %test_atan2 (Arg_0.1: s32[4], Arg_1.2: s32[4]) -> s32[4] {
   %Arg_0.1 = s32[4] parameter(0)
@@ -71,7 +70,7 @@ add {
   ROOT %atan2 = s32[4] atan2(s32[4] %Arg_0.1, s32[4] %Arg_1.2)
 }
 
-// CHECK-LABEL:  func @test_broadcast_in_dim
+// CHECK-LABEL:  func private @test_broadcast_in_dim
 %test_broadcast_in_dim {
   %Arg_0.1 = f32[1, 2] parameter(0)
 
@@ -82,7 +81,7 @@ add {
   ROOT broadcast.4 = f32[3,1,2] broadcast(%Arg_0.1), dimensions={1, 2}
 }
 
-// CHECK-LABEL:  func @test_batch_norm_grad
+// CHECK-LABEL:  func private @test_batch_norm_grad
 %test_batch_norm_grad (input: f32[2,2,2,2], scale: f32[2], mean: f32[2], variance: f32[2], grad_output: f32[2,2,2,2]) -> (f32[2,2,2,2], f32[2], f32[2]) {
   %input = f32[2,2,2,2] parameter(0)
   %scale = f32[2] parameter(1)
@@ -96,20 +95,20 @@ add {
   ROOT %batch-norm-grad = (f32[2,2,2,2], f32[2], f32[2]) batch-norm-grad(f32[2,2,2,2] %input, f32[2] %scale, f32[2] %mean, f32[2] %variance, f32[2,2,2,2] %grad_output), epsilon=0.001, feature_index=1
 }
 
-// CHECK-LABEL:  func @call(%arg0: tensor<i64>) -> tensor<i64>
+// CHECK-LABEL:  func private @call(%arg0: tensor<i64>) -> tensor<i64>
 %call (arg_1: s64[]) -> s64[] {
   %arg_1 = s64[] parameter(0), metadata={op_name="HLO_Args"}
   ROOT %compare.2 = s64[] add(%arg_1, %arg_1), metadata={op_type="Less" op_name="Less"}
 }
 
-// CHECK-LABEL:  func @test_call
+// CHECK-LABEL:  func private @test_call
 %test_call (arg0.1: s64[]) -> s64[] {
   %arg0.1 = s64[] parameter(0), metadata={op_name="HLO_Args"}
   // CHECK-NEXT:  call @call(%arg0) : (tensor<i64>) -> tensor<i64>
   ROOT %call.2 = s64[] call(%arg0.1), to_apply=%call
 }
 
-// CHECK-LABEL:  func @test_cholesky
+// CHECK-LABEL:  func private @test_cholesky
 // CHECK-SAME:  ([[ARG:%.*]]: tensor<1x291x291xf32>) -> tensor<1x291x291xf32>
 %test_cholesky (a: f32[1,291,291]) -> f32[1,291,291] {
   %a = f32[1,291,291] parameter(0)
@@ -118,7 +117,7 @@ add {
 }
 
 
-// CHECK-LABEL:  func @test_clamp(
+// CHECK-LABEL:  func private @test_clamp(
 %test_clamp (Arg_0.1: f32[], Arg_1.2: f32[4], Arg_1.3: f32[]) -> f32[4] {
   %Arg_0.1 = f32[] parameter(0)
   %Arg_1.2 = f32[4] parameter(1)
@@ -128,7 +127,7 @@ add {
   ROOT %clamp.3 = f32[4] clamp(f32[] %Arg_0.1, f32[4] %Arg_1.2, f32[] %Arg_2.3)
 }
 
-// CHECK-LABEL:  func @test_collective_permute
+// CHECK-LABEL:  func private @test_collective_permute
 // CHECK-SAME:  ([[ARG:%.*]]: tensor<128x32xf32>) -> tensor<128x32xf32>
 %test_collective_permute (input: f32[128,32]) -> f32[128,32] {
   %input = f32[128,32]{1,0} parameter(0)
@@ -137,7 +136,7 @@ add {
 }
 
 
-// CHECK-LABEL:  func @test_compare(%arg0: tensor<3xf32>, %arg1: tensor<3xf32>, %arg2: tensor<3xf32>) -> tensor<3xi1>
+// CHECK-LABEL:  func private @test_compare(%arg0: tensor<3xf32>, %arg1: tensor<3xf32>, %arg2: tensor<3xf32>) -> tensor<3xi1>
 %test_compare (Arg_0.1: f32[3], Arg_1.2: f32[3], Arg_2.3: f32[3]) -> pred[3] {
   %Arg_0.1 = f32[3] parameter(0)
   %Arg_1.2 = f32[3] parameter(1)
@@ -154,7 +153,7 @@ add {
   ROOT %compare.6 = pred[3] compare(Arg_0.1, Arg_2.3), direction=GT
 }
 
-// CHECK-LABEL:  func @test_complex
+// CHECK-LABEL:  func private @test_complex
 %test_complex (Arg_0.1: f32[4], Arg_1.2: f32[4]) -> c64[4] {
   %Arg_0.1 = f32[4] parameter(0)
   %Arg_1.2 = f32[4] parameter(1)
@@ -163,7 +162,7 @@ add {
   ROOT %complex.3 = c64[4] complex(f32[4] %Arg_0.1, f32[4] %Arg_1.2)
 }
 
-// CHECK-LABEL:  func @test_concat(%arg0: tensor<4x1xf32>, %arg1: tensor<4x2xf32>) -> tensor<4x3xf32>
+// CHECK-LABEL:  func private @test_concat(%arg0: tensor<4x1xf32>, %arg1: tensor<4x2xf32>) -> tensor<4x3xf32>
 %test_concat (Arg_0.1: f32[4, 1], Arg_1.2: f32[4, 2]) -> f32[4, 3] {
   %Arg_0.1 = f32[4, 1] parameter(0)
   %Arg_1.2 = f32[4, 2] parameter(1)
@@ -172,7 +171,7 @@ add {
   ROOT %concatenate.3 = f32[4, 3] concatenate(f32[4, 1] %Arg_0.1, f32[4, 2] %Arg_1.2), dimensions={1}
 }
 
-// CHECK-LABEL:  func @test_constant
+// CHECK-LABEL:  func private @test_constant
 %test_constant {
 
   // Scalar/0D tensor constant
@@ -202,8 +201,8 @@ add {
 
 // TODO(b/129422361) Potentially update when copy, reshape, and conv have actual
 // implementations with attributes, etc.
-// CHECK-LABEL: func @test_conv(
-// CHECK-SAME:                  %[[VAL_0:.*]]: tensor<256x32x32x6xf32>) -> tuple<tensor<256x30x30x16xf32>> attributes {sym_visibility = "private"} {
+// CHECK-LABEL: func private @test_conv(
+// CHECK-SAME:                  %[[VAL_0:.*]]: tensor<256x32x32x6xf32>) -> tuple<tensor<256x30x30x16xf32>> {
 %test_conv {
   %arg0.1 = f32[256,32,32,6]{3,2,1,0} parameter(0), metadata={op_name="HLO_Args"}
 
@@ -232,10 +231,10 @@ add {
   // CHECK-SAME:       output_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>
   // CHECK-SAME:     }
   // CHECK-SAME:     feature_group_count = 1 : i64
-  // CHECK-SAME:     lhs_dilations = dense<1> : tensor<2xi64>
+  // CHECK-SAME:     lhs_dilation = dense<1> : tensor<2xi64>
   // CHECK-SAME:     padding = dense<{{\[\[}}44, 45], [60, 60]]> : tensor<2x2xi64>
   // CHECK-SAME:     precision_config = ["DEFAULT", "DEFAULT"]
-  // CHECK-SAME:     rhs_dilations = dense<[2, 3]> : tensor<2xi64>
+  // CHECK-SAME:     rhs_dilation = dense<[2, 3]> : tensor<2xi64>
   // CHECK-SAME:     window_strides = dense<[4, 5]> : tensor<2xi64>
   // CHECK-SAME:   }
   // CHECK-SAME:   (tensor<256x32x32x6xf32>, tensor<2x2x1x1xf32>) -> tensor<16x30x30x256xf32>
@@ -250,7 +249,7 @@ add {
 }
 
 // Test for padding attribute shape in convolution
-// CHECK-LABEL:  func @test_convolve1D_padding
+// CHECK-LABEL:  func private @test_convolve1D_padding
 %test_convolve1D_padding (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,5,1] {
   %input = f32[1,2,1] parameter(0)
   %filter = f32[1,1,1] parameter(1)
@@ -259,7 +258,7 @@ add {
   ROOT %convolution = f32[1,5,1] convolution(f32[1,2,1] %input, f32[1,1,1] %filter), feature_group_count=1, dim_labels=b0f_0io->b0f, window={pad=1_2 size=1}
 }
 
-// CHECK-LABEL:  func @test_convert(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf64>
+// CHECK-LABEL:  func private @test_convert(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf64>
 %test_convert (Arg_0.1: f32[4], Arg_1.2: f32[4]) -> f64[4] {
   %Arg_0.1 = f32[4] parameter(0)
   %Arg_1.2 = f32[4] parameter(1)
@@ -274,7 +273,7 @@ add {
   ROOT %add.5 = f64[4] add(f64[4] %convert.3, f64[4] %convert.4)
 }
 
-// CHECK-LABEL:  func @test_cosine(%arg0: tensor<1x16x16x3xf32>) -> tensor<1x16x16x3xf32>
+// CHECK-LABEL:  func private @test_cosine(%arg0: tensor<1x16x16x3xf32>) -> tensor<1x16x16x3xf32>
 %test_cosine (arg0.1: f32[1,16,16,3]) -> f32[1,16,16,3] {
   %arg0.1 = f32[1,16,16,3]{3,2,1,0} parameter(0), metadata={op_name="HLO_Args"}
 
@@ -282,7 +281,7 @@ add {
   ROOT %cosine.3 = f32[1,16,16,3]{3,2,1,0} cosine(f32[1,16,16,3]{3,2,1,0} %arg0.1)
 }
 
-// CHECK-LABEL:  func @test_custom_call
+// CHECK-LABEL:  func private @test_custom_call
 // CHECK-SAME:  [[ARG_0:%.*]]: tensor<2x3xf32>, [[ARG_1:%.*]]: tensor<5x5xf32>) -> tensor<1x2x3xf32>
 %test_custom_call (arg1: f32[2,3], arg2: f32[5,5]) -> f32[1,2,3] {
   %arg1 = f32[2,3] parameter(0)
@@ -291,7 +290,7 @@ add {
   ROOT %custom-call = f32[1,2,3]{0,2,1} custom-call(f32[2,3] %arg1, f32[5,5] %arg2), custom_call_target="foo", backend_config="bar", custom_call_has_side_effect=true
 }
 
-// CHECK-LABEL:  func @test_div(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32>
+// CHECK-LABEL:  func private @test_div(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32>
 %test_div (Arg_0.1: f32[4], Arg_1.2: f32[4]) -> f32[4] {
   %Arg_0.1 = f32[4] parameter(0)
   %Arg_1.2 = f32[4] parameter(1)
@@ -300,7 +299,7 @@ add {
   ROOT %divide.3 = f32[4] divide(f32[4] %Arg_0.1, f32[4] %Arg_1.2)
 }
 
-// CHECK-LABEL:  func @test_dot(%arg0: tensor<1x4xf32>, %arg1: tensor<4x1xf32>) -> tensor<f32>
+// CHECK-LABEL:  func private @test_dot(%arg0: tensor<1x4xf32>, %arg1: tensor<4x1xf32>) -> tensor<f32>
 %test_dot (Arg_0.1: f32[1, 4], Arg_1.2: f32[4, 1]) -> f32[] {
   %Arg_0.1 = f32[1, 4] parameter(0)
   %Arg_1.2 = f32[4, 1] parameter(1)
@@ -340,7 +339,7 @@ add {
   ROOT %dot.6 = f32[] dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={0}, rhs_contracting_dims={1}
 }
 
-// CHECK-LABEL:  func @test_dynamic_slice
+// CHECK-LABEL:  func private @test_dynamic_slice
 // CHECK-SAME:  [[OPERAND:%.*]]: tensor<2x2x258xi32>, [[START_IDX_1:%.*]]: tensor<i32>, [[START_IDX_2:%.*]]: tensor<i32>, [[START_IDX_3:%.*]]: tensor<i32>
 %test_dynamic_slice (operand: s32[2,2,258], start_indices: s32[3]) -> s32[1,1,32] {
   %operand = s32[2,2,258] parameter(0)
@@ -352,7 +351,7 @@ add {
   ROOT %dynamic-slice = s32[1,1,32] dynamic-slice(s32[2,2,258] %operand, s32[] %start_idx_1, s32[] %start_idx_2, s32[] %start_idx_3), dynamic_slice_sizes={1,1,32}
 }
 
-// CHECK-LABEL:  func @test_dynamic_update_slice_1(%arg0: tensor<4x4xf32>, %arg1: tensor<1x4xf32>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<4x4xf32>
+// CHECK-LABEL:  func private @test_dynamic_update_slice_1(%arg0: tensor<4x4xf32>, %arg1: tensor<1x4xf32>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<4x4xf32>
 %test_dynamic_update_slice_1 (Arg_0.1: f32[4, 4], Arg_1.2: f32[1, 4], Arg_2.3: f32[], Arg_3.4: f32[]) -> f32[4, 4] {
   %Arg_0.1 = f32[4, 4] parameter(0)
   %Arg_1.2 = f32[1, 4] parameter(1)
@@ -363,7 +362,7 @@ add {
   ROOT %dynamic-update-slice.5 = f32[4, 4] dynamic-update-slice(%Arg_0.1, %Arg_1.2, %Arg_2.3, %Arg_3.4)
 }
 
-// CHECK-LABEL:  func @test_dynamic_update_slice_2(%arg0: tensor<4xf32>, %arg1: tensor<2xf32>, %arg2: tensor<i32>) -> tensor<4xf32>
+// CHECK-LABEL:  func private @test_dynamic_update_slice_2(%arg0: tensor<4xf32>, %arg1: tensor<2xf32>, %arg2: tensor<i32>) -> tensor<4xf32>
 %test_dynamic_update_slice_2 (Arg_0.1: f32[4], Arg_1.2: f32[2], Arg_2.3: f32[]) -> f32[4] {
   %Arg_0.1 = f32[4] parameter(0)
   %Arg_1.2 = f32[2] parameter(1)
@@ -373,7 +372,7 @@ add {
   ROOT %dynamic-update-slice.5 = f32[4] dynamic-update-slice(%Arg_0.1, %Arg_1.2, %Arg_2.3)
 }
 
-// CHECK-LABEL:  func @test_exponential(%arg0: tensor<16xf32>) -> tensor<16xf32>
+// CHECK-LABEL:  func private @test_exponential(%arg0: tensor<16xf32>) -> tensor<16xf32>
 %test_exponential (arg0.1: f32[16]) -> f32[16] {
   %arg0.1 = f32[16] parameter(0)
 
@@ -381,7 +380,7 @@ add {
   ROOT %exp.2 = f32[16] exponential(f32[16] %arg0.1)
 }
 
-// CHECK-LABEL:  func @test_expm1(%arg0: tensor<16xf32>) -> tensor<16xf32>
+// CHECK-LABEL:  func private @test_expm1(%arg0: tensor<16xf32>) -> tensor<16xf32>
 %test_expm1 (arg0.1: f32[16]) -> f32[16] {
   %arg0.1 = f32[16] parameter(0)
 
@@ -389,14 +388,14 @@ add {
   ROOT %expm1.2 = f32[16] exponential-minus-one(f32[16] %arg0.1)
 }
 
-// CHECK-LABEL:  func @test_fft(%arg0: tensor<3x9xf32>) -> tensor<3x5xcomplex<f32>>
+// CHECK-LABEL:  func private @test_fft(%arg0: tensor<3x9xf32>) -> tensor<3x5xcomplex<f32>>
 %test_fft {
   %arg0.1 = f32[3,9]{1,0} parameter(0), parameter_replication={false}, metadata={op_name="XLA_Args"}
   // CHECK:  "mhlo.fft"(%arg0) {fft_length = dense<9> : tensor<1xi64>, fft_type = "RFFT"
   ROOT %fft.2 = c64[3,5]{1,0} fft(%arg0.1), fft_type=RFFT, fft_length={9}, metadata={op_type="RFFT" op_name="rfft"}
 }
 
-// CHECK-LABEL:  func @test_floor(
+// CHECK-LABEL:  func private @test_floor(
 // CHECK-SAME: [[A0:%.+]]: tensor<16xf32>) -> tensor<16xf32>
 %test_floor (arg0.1: f32[16]) -> f32[16] {
   %arg0.1 = f32[16] parameter(0)
@@ -405,7 +404,7 @@ add {
   ROOT %floor.2 = f32[16] floor(f32[16] %arg0.1)
 }
 
-// CHECK-LABEL:  func @test_gather(
+// CHECK-LABEL:  func private @test_gather(
 // CHECK-SAME: [[ARG0:%.+]]: tensor<200x100x300xf32>, [[ARG1:%.+]]: tensor<10x2xi32>) -> tensor<10x300xf32>
 %test_gather (arg.0: f32[200,100,300], arg.1: s32[10,2]) -> f32[10,300] {
   %arg.0 = f32[200,100,300] parameter(0)
@@ -427,7 +426,7 @@ add {
       slice_sizes={1,1,300}
 }
 
-// CHECK-LABEL:  func @test_get_dimension_size
+// CHECK-LABEL:  func private @test_get_dimension_size
 // CHECK-SAME:  ([[ARG:%.*]]: tensor<4x2xf32>)
 %test_get_dimension_size (Arg_0.1: f32[4,2]) -> s32[] {
   %Arg_0.1 = f32[4,2] parameter(0)
@@ -435,7 +434,7 @@ add {
   ROOT %get-dimension-size.2 = s32[] get-dimension-size(f32[4,2] %Arg_0.1), dimensions={1}
 }
 
-// CHECK-LABEL:  func @test_imag
+// CHECK-LABEL:  func private @test_imag
 %test_imag (Arg_0.1: c64[4]) -> f32[4] {
   %Arg_0.1 = c64[4] parameter(0)
 
@@ -443,7 +442,7 @@ add {
   ROOT %imag.3 = f32[4] imag(c64[4] %Arg_0.1)
 }
 
-// CHECK-LABEL:  func @test_infeed
+// CHECK-LABEL:  func private @test_infeed
 // CHECK-SAME: ([[TOKEN:%.*]]: !mhlo.token) -> tuple<tensor<3xi32>, !mhlo.token>
 %test_infeed (token0: token[]) -> (s32[3], token[]) {
   %token0 = token[] parameter(0)
@@ -453,19 +452,19 @@ add {
 }
 
 
-// CHECK-LABEL:  func @test_iota_1() -> tensor<4xf32>
+// CHECK-LABEL:  func private @test_iota_1() -> tensor<4xf32>
 %test_iota_1 () -> f32[4] {
   // CHECK-NEXT:  "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<4xf32>
   ROOT %iota.0 = f32[4] iota(), iota_dimension=0
 }
 
-// CHECK-LABEL:  func @test_iota_2() -> tensor<4x5xf32>
+// CHECK-LABEL:  func private @test_iota_2() -> tensor<4x5xf32>
 %test_iota_2 () -> f32[4, 5] {
   // CHECK-NEXT:  "mhlo.iota"() {iota_dimension = 1 : i64} : () -> tensor<4x5xf32>
   ROOT %iota.0 = f32[4, 5] iota(), iota_dimension=1
 }
 
-// CHECK-LABEL:  func @test_log(%arg0: tensor<16xf32>) -> tensor<16xf32>
+// CHECK-LABEL:  func private @test_log(%arg0: tensor<16xf32>) -> tensor<16xf32>
 %test_log (arg0.1: f32[16]) -> f32[16] {
   %arg0.1 = f32[16] parameter(0)
 
@@ -473,7 +472,7 @@ add {
   ROOT %log.2 = f32[16] log(f32[16] %arg0.1)
 }
 
-// CHECK-LABEL:  func @test_log1p(%arg0: tensor<16xf32>) -> tensor<16xf32>
+// CHECK-LABEL:  func private @test_log1p(%arg0: tensor<16xf32>) -> tensor<16xf32>
 %test_log1p (arg0.1: f32[16]) -> f32[16] {
   %arg0.1 = f32[16] parameter(0)
 
@@ -488,7 +487,7 @@ add {
   ROOT add = f32[] add(lhs, rhs)
 }
 
-// CHECK-LABEL:  func @test_map
+// CHECK-LABEL:  func private @test_map
 // CHECK-SAME:  [[ARG_0:%.*]]: tensor<4xf32>, [[ARG_1:%.*]]: tensor<4xf32>) -> tensor<4xf32>
 %test_map {
   param0 = f32[4]{0} parameter(0)
@@ -503,7 +502,7 @@ add {
 
 
 
-// CHECK-LABEL:  func @test_maximum(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32>
+// CHECK-LABEL:  func private @test_maximum(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32>
 %test_maximum (Arg_0.1: f32[4], Arg_1.2: f32[4]) -> f32[4] {
   %Arg_0.1 = f32[4] parameter(0)
   %Arg_1.2 = f32[4] parameter(1)
@@ -512,7 +511,7 @@ add {
   ROOT %maximum.3 = f32[4] maximum(f32[4] %Arg_0.1, f32[4] %Arg_1.2)
 }
 
-// CHECK-LABEL:  func @test_minimum(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32>
+// CHECK-LABEL:  func private @test_minimum(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32>
 %test_minimum (Arg_0.1: f32[4], Arg_1.2: f32[4]) -> f32[4] {
   %Arg_0.1 = f32[4] parameter(0)
   %Arg_1.2 = f32[4] parameter(1)
@@ -521,7 +520,7 @@ add {
   ROOT %minimum.3 = f32[4] minimum(f32[4] %Arg_0.1, f32[4] %Arg_1.2)
 }
 
-// CHECK-LABEL:  func @test_multiply(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32>
+// CHECK-LABEL:  func private @test_multiply(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32>
 %test_multiply (Arg_0.1: f32[4], Arg_1.2: f32[4]) -> f32[4] {
   %Arg_0.1 = f32[4] parameter(0)
   %Arg_1.2 = f32[4] parameter(1)
@@ -530,7 +529,7 @@ add {
   ROOT %multiply.3 = f32[4] multiply(f32[4] %Arg_0.1, f32[4] %Arg_1.2)
 }
 
-// CHECK-LABEL:  func @test_negate(%arg0: tensor<16xf32>) -> tensor<16xf32>
+// CHECK-LABEL:  func private @test_negate(%arg0: tensor<16xf32>) -> tensor<16xf32>
 %test_negate (arg0.1: f32[16]) -> f32[16] {
   %arg0.1 = f32[16] parameter(0)
 
@@ -538,7 +537,7 @@ add {
   ROOT %negate.2 = f32[16] negate(f32[16] %arg0.1)
 }
 
-// CHECK-LABEL:  func @test_not(%arg0: tensor<16xi1>) -> tensor<16xi1>
+// CHECK-LABEL:  func private @test_not(%arg0: tensor<16xi1>) -> tensor<16xi1>
 %test_not (arg0.1: pred[16]) -> pred[16] {
   %arg0.1 = pred[16] parameter(0)
 
@@ -546,7 +545,7 @@ add {
   ROOT %not.2 = pred[16] not(pred[16] %arg0.1)
 }
 
-// CHECK-LABEL:  func @test_or
+// CHECK-LABEL:  func private @test_or
 %test_or (Arg_0.1: pred[4], Arg_1.2: pred[4]) -> pred[4] {
   %Arg_0.1 = pred[4] parameter(0)
   %Arg_1.2 = pred[4] parameter(1)
@@ -555,7 +554,7 @@ add {
   ROOT %or.3 = pred[4] or(pred[4] %Arg_0.1, pred[4] %Arg_1.2)
 }
 
-// CHECK-LABEL:  func @test_outfeed
+// CHECK-LABEL:  func private @test_outfeed
 // CHECK-SAME: ([[DATA:%.*]]: tensor<3xi32>, [[TOKEN:%.*]]: !mhlo.token) -> !mhlo.token
 %test_outfeed (Arg_0.1: s32[3], Arg_1.2: token[]) -> token[] {
   %Arg_0.1 = s32[3] parameter(0)
@@ -565,7 +564,7 @@ add {
   ROOT %outfeed.3 = token[] outfeed(s32[3] %Arg_0.1, token[] %Arg_1.2), outfeed_config="foobar"
 }
 
-// CHECK-LABEL:  func @test_pad(%arg0: tensor<4xf32>, %arg1: tensor<f32>) -> tensor<4xf32>
+// CHECK-LABEL:  func private @test_pad(%arg0: tensor<4xf32>, %arg1: tensor<f32>) -> tensor<4xf32>
 %test_pad (Arg_0.1: f32[4], Arg_1.2: f32[]) -> f32[4] {
   %Arg_0.1 = f32[4] parameter(0)
   %Arg_1.2 = f32[] parameter(1)
@@ -574,7 +573,7 @@ add {
   ROOT %pad.3 = f32[4] pad(%Arg_0.1, %Arg_1.2), padding=0_0_0
 }
 
-// CHECK-LABEL:  func @test_pad_edge(%arg0: tensor<4x4x4xf32>, %arg1: tensor<f32>) -> tensor<7x11x15xf32>
+// CHECK-LABEL:  func private @test_pad_edge(%arg0: tensor<4x4x4xf32>, %arg1: tensor<f32>) -> tensor<7x11x15xf32>
 %test_pad_edge (Arg_0.1: f32[4, 4, 4], Arg_1.2: f32[]) -> f32[7, 11, 15] {
   %Arg_0.1 = f32[4, 4, 4] parameter(0)
   %Arg_1.2 = f32[] parameter(1)
@@ -583,7 +582,7 @@ add {
   ROOT %pad.3 = f32[7, 11, 15] pad(%Arg_0.1, %Arg_1.2), padding=1_2x3_4x5_6
 }
 
-// CHECK-LABEL:  func @test_pad_interior(%arg0: tensor<4xf32>, %arg1: tensor<f32>) -> tensor<10xf32>
+// CHECK-LABEL:  func private @test_pad_interior(%arg0: tensor<4xf32>, %arg1: tensor<f32>) -> tensor<10xf32>
 %test_pad_interior (Arg_0.1: f32[4], Arg_1.2: f32[]) -> f32[10] {
   %Arg_0.1 = f32[4] parameter(0)
   %Arg_1.2 = f32[] parameter(1)
@@ -592,7 +591,7 @@ add {
   ROOT %pad.3 = f32[10] pad(%Arg_0.1, %Arg_1.2), padding=0_0_2
 }
 
-// CHECK-LABEL:  func @test_popcnt(%arg0: tensor<16xi32>) -> tensor<16xi32>
+// CHECK-LABEL:  func private @test_popcnt(%arg0: tensor<16xi32>) -> tensor<16xi32>
 %test_popcnt (arg0.1: s32[16]) -> s32[16] {
   %arg0.1 = s32[16] parameter(0)
 
@@ -600,7 +599,7 @@ add {
   ROOT %popcnt.2 = s32[16] popcnt(s32[16] %arg0.1)
 }
 
-// CHECK-LABEL:  func @test_pow(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32>
+// CHECK-LABEL:  func private @test_pow(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32>
 %test_pow (Arg_0.1: f32[4], Arg_1.2: f32[4]) -> f32[4] {
   %Arg_0.1 = f32[4] parameter(0)
   %Arg_1.2 = f32[4] parameter(1)
@@ -609,7 +608,7 @@ add {
   ROOT %power.3 = f32[4] power(f32[4] %Arg_0.1, f32[4] %Arg_1.2)
 }
 
-// CHECK-LABEL:  func @test_rng_normal
+// CHECK-LABEL:  func private @test_rng_normal
 // CHECK-SAME:  ([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>) -> tensor<2x3x5xf32>
 %test_rng_normal (Arg_0.1: f32[], Arg_1.2: f32[]) -> f32[2,3,5] {
   %Arg_0.1 = f32[] parameter(0)
@@ -619,7 +618,7 @@ add {
   ROOT %rng.4 = f32[2,3,5] rng(f32[] %Arg_0.1, f32[] %Arg_1.2), distribution=rng_normal
 }
 
-// CHECK-LABEL:  func @test_rng_uniform
+// CHECK-LABEL:  func private @test_rng_uniform
 // CHECK-SAME:  ([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>) -> tensor<2x3x5xf32>
 %test_rng_uniform (Arg_0.1: f32[], Arg_1.2: f32[]) -> f32[2,3,5] {
   %Arg_0.1 = f32[] parameter(0)
@@ -629,7 +628,7 @@ add {
   ROOT %rng.4 = f32[2,3,5] rng(f32[] %Arg_0.1, f32[] %Arg_1.2), distribution=rng_uniform
 }
 
-// CHECK-LABEL:  func @test_real
+// CHECK-LABEL:  func private @test_real
 %test_real (Arg_0.1: c64[4]) -> f32[4] {
   %Arg_0.1 = c64[4] parameter(0)
 
@@ -660,7 +659,7 @@ add {
   ROOT %add.3 = f32[] add(f32[] %Arg_0.1, f32[] %Arg_1.2)
 }
 
-// CHECK-LABEL:  func @test_reduce
+// CHECK-LABEL:  func private @test_reduce
 // CHECK-SAME: ([[ARG0:%.*]]: tensor<4x4xf32>, [[ARG1:%.*]]: tensor<4xf32>, [[ARG2:%.*]]: tensor<f32>) -> tuple<tuple<tensor<f32>, tensor<f32>>, tensor<f32>>
 %test_reduce (Arg_0.1: f32[4, 4], Arg_1.2: f32[4], Arg_2.3: f32[]) -> ((f32[], f32[]), f32[]) {
   %Arg_0.1 = f32[4, 4] parameter(0)
@@ -694,7 +693,7 @@ add {
   ROOT %tuple.6 = ((f32[], f32[]), f32[]) tuple(%reduce.1, %sub.5)
 }
 
-// CHECK-LABEL:  func @test_reduce_window
+// CHECK-LABEL:  func private @test_reduce_window
 // CHECK-SAME: ([[ARG0:%.*]]: tensor<2x17x31x7xf32>, [[ARG1:%.*]]: tensor<f32>)
 %test_reduce_window (Arg_0.1: f32[2,17,31,7], Arg_1.2: f32[]) -> f32[2,5,8,7] {
   %Arg_0.1 = f32[2,17,31,7] parameter(0)
@@ -712,7 +711,7 @@ add {
   ROOT %reduce-window.1 = f32[2,5,8,7] reduce-window(f32[2,17,31,7] %Arg_0.1, f32[] %Arg_1.2), window={size=1x2x2x1 stride=1x4x4x1 pad=0_0x2_0x0_2x0_0 rhs_dilate=1x2x2x1}, to_apply=%reduce_helper.3
 }
 
-// CHECK-LABEL:  func @test_remainder
+// CHECK-LABEL:  func private @test_remainder
 // CHECK-SAME:   ([[VAL_0:%.*]]: tensor<4xf32>, [[VAL_1:%.*]]: tensor<4xf32>)
 %test_remainder (Arg_0.1: f32[4], Arg_1.2: f32[4]) -> f32[4] {
   %Arg_0.1 = f32[4] parameter(0)
@@ -721,7 +720,7 @@ add {
   ROOT %remainder.3 = f32[4] remainder(f32[4] %Arg_0.1, f32[4] %Arg_1.2)
 }
 
-// CHECK-LABEL:  func @test_reverse_1d(%arg0: tensor<4xf32>) -> tensor<4xf32>
+// CHECK-LABEL:  func private @test_reverse_1d(%arg0: tensor<4xf32>) -> tensor<4xf32>
 %test_reverse_1d (Arg_0.1: f32[4]) -> f32[4] {
   %Arg_0.1 = f32[4] parameter(0)
 
@@ -729,7 +728,7 @@ add {
   ROOT reverse.2 = f32[4] reverse(%Arg_0.1), dimensions={0}
 }
 
-// CHECK-LABEL:  func @test_reverse_2d(%arg0: tensor<4x4xf32>) -> tensor<4x4xf32
+// CHECK-LABEL:  func private @test_reverse_2d(%arg0: tensor<4x4xf32>) -> tensor<4x4xf32
 %test_reverse_2d (Arg_0.1: f32[4, 4]) -> f32[4, 4] {
   %Arg_0.1 = f32[4, 4] parameter(0)
 
@@ -737,7 +736,7 @@ add {
   ROOT reverse.2 = f32[4, 4] reverse(%Arg_0.1), dimensions={0, 1}
 }
 
-// CHECK-LABEL:  func @test_rsqrt(
+// CHECK-LABEL:  func private @test_rsqrt(
 // CHECK-SAME: [[ARG0:%.+]]: tensor<16xf32>) -> tensor<16xf32>
 %test_rsqrt (arg0.1: f32[16]) -> f32[16] {
   %arg0.1 = f32[16] parameter(0)
@@ -746,7 +745,7 @@ add {
   ROOT %rsqrt.2 = f32[16] rsqrt(f32[16] %arg0.1)
 }
 
-// CHECK-LABEL:  func @test_scalar(%arg0: tensor<f32>) -> tensor<f32>
+// CHECK-LABEL:  func private @test_scalar(%arg0: tensor<f32>) -> tensor<f32>
 %test_scalar (Arg_0.1: f32[]) -> f32[] {
   // CHECK-NEXT:  return %arg0 : tensor<f32>
   ROOT %Arg_0.1 = f32[] parameter(0)
@@ -766,7 +765,7 @@ add {
   ROOT %scatter = f32[200,100,300] scatter(f32[200,100,300] %input_tensor, s64[10,2] %scatter_indices, f32[10,300] %updates), update_window_dims={1}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=1, to_apply=%update_computation
 }
 
-// CHECK-LABEL:  func @test_scatter
+// CHECK-LABEL:  func private @test_scatter
 // CHECK-SAME:   [[ARG_0:%.*]]: tensor<200x100x300xf32>, [[ARG_1:%.*]]: tensor<10x2xi64>, [[ARG_2:%.*]]: tensor<10x300xf32>) -> tensor<200x100x300xf32>
 // CHECK:  "mhlo.scatter"([[ARG_0]], [[ARG_1]], [[ARG_2]]) ( {
 // CHECK:    ^bb0([[LHS:%.*]]: tensor<f32>, [[RHS:%.*]]: tensor<f32>):
@@ -783,7 +782,7 @@ add {
 // CHECK-SAME:  unique_indices = false
 
 
-// CHECK-LABEL:  func @test_select(%arg0: tensor<2x3xi1>, %arg1: tensor<2x3xi32>, %arg2: tensor<2x3xi32>) -> tensor<2x3xi32>
+// CHECK-LABEL:  func private @test_select(%arg0: tensor<2x3xi1>, %arg1: tensor<2x3xi32>, %arg2: tensor<2x3xi32>) -> tensor<2x3xi32>
 %test_select {
   %Arg_0.1 = pred[2,3] parameter(0)
   %Arg_1.2 = s32[2,3] parameter(1)
@@ -806,7 +805,7 @@ add {
   ROOT %add = f32[] add(f32[] %lhs, f32[] %rhs)
 }
 
-// CHECK-LABEL:  func @test_select_and_scatter
+// CHECK-LABEL:  func private @test_select_and_scatter
 // CHECK-SAME:  [[INPUT:%.*]]: tensor<4x5xf32>, [[SOURCE:%.*]]: tensor<2x2xf32>, [[INIT_VAL:%.*]]: tensor<f32>
 %test_select_and_scatter {
   %input = f32[4,5] parameter(0)
@@ -831,7 +830,7 @@ add {
 // CHECK:  return [[RESULT:%.*]] : tensor<4x5xf32>
 
 
-// CHECK-LABEL:  func @test_set_dimension_size
+// CHECK-LABEL:  func private @test_set_dimension_size
 // CHECK-SAME:  ([[ARG:%.*]]: tensor<4x4xf32>, [[SIZE:%.*]]: tensor<i32>)
 %test_set_dimension_size (Arg_0.1: f32[4,4], Arg_1.2: s32[]) -> f32[4,<=4] {
   %Arg_0.1 = f32[4,4] parameter(0)
@@ -840,7 +839,7 @@ add {
   ROOT %set-dimension-size.2 = f32[4,<=4] set-dimension-size(f32[4,4] %Arg_0.1, s32[] %Arg_1.2), dimensions={1}
 }
 
-// CHECK-LABEL:  func @test_sine(%arg0: tensor<1x16x16x3xf32>) -> tensor<1x16x16x3xf32>
+// CHECK-LABEL:  func private @test_sine(%arg0: tensor<1x16x16x3xf32>) -> tensor<1x16x16x3xf32>
 %test_sine (arg0.1: f32[1,16,16,3]) -> f32[1,16,16,3] {
   %arg0.1 = f32[1,16,16,3]{3,2,1,0} parameter(0), metadata={op_name="HLO_Args"}
 
@@ -859,7 +858,7 @@ add {
   x = f32[1024]{0} parameter(0)
   ROOT sorted = f32[1024]{0} sort(x), dimensions={0}, is_stable=true, to_apply=compare
 }
-// CHECK-LABEL:  func @test_sort
+// CHECK-LABEL:  func private @test_sort
 // CHECK-SAME:  [[ARG:%.*]]: tensor<1024xf32>) -> tensor<1024xf32>
 // CHECK:  "mhlo.sort"([[ARG]]) ( {
 // CHECK:    ^bb0([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>):
@@ -867,7 +866,7 @@ add {
 // CHECK:      "mhlo.return"([[CMP]]) : (tensor<i1>) -> ()
 // CHECK:    }) {dimension = 0 : i64, is_stable = true} : (tensor<1024xf32>) -> tensor<1024xf32>
 
-// CHECK-LABEL:  func @test_subtract
+// CHECK-LABEL:  func private @test_subtract
 %test_subtract (Arg_0.1: f32[4], Arg_1.2: f32[4]) -> f32[4] {
   %Arg_0.1 = f32[4] parameter(0)
   %Arg_1.2 = f32[4] parameter(1)
@@ -876,7 +875,7 @@ add {
   ROOT %subtract.3 = f32[4] subtract(f32[4] %Arg_0.1, f32[4] %Arg_1.2)
 }
 
-// CHECK-LABEL:  func @test_tanh(%arg0: tensor<1x16x16x3xf32>) -> tensor<1x16x16x3xf32>
+// CHECK-LABEL:  func private @test_tanh(%arg0: tensor<1x16x16x3xf32>) -> tensor<1x16x16x3xf32>
 %test_tanh (arg0.1: f32[1,16,16,3]) -> f32[1,16,16,3] {
   %arg0.1 = f32[1,16,16,3]{3,2,1,0} parameter(0), metadata={op_name="HLO_Args"}
 
@@ -884,7 +883,7 @@ add {
   ROOT %tanh.3 = f32[1,16,16,3]{3,2,1,0} tanh(f32[1,16,16,3]{3,2,1,0} %arg0.1), metadata={op_type="Tanh" op_name="embedded_inference/tanh_model/Tanh"}
 }
 
-// CHECK-LABEL:  func @test_transpose(%arg0: tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32>
+// CHECK-LABEL:  func private @test_transpose(%arg0: tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32>
 %test_transpose {
   %Arg_0.1 = s32[1,2,3,4] parameter(0)
 
@@ -892,7 +891,7 @@ add {
   ROOT %transpose.2 = s32[2,1,4,3] transpose(s32[1,2,3,4] %Arg_0.1), dimensions={1,0,3,2}
 }
 
-// CHECK-LABEL:  func @test_triangular_solve
+// CHECK-LABEL:  func private @test_triangular_solve
 // CHECK-SAME:  ([[ARG_A:%.*]]: tensor<4x4xf32>, [[ARG_B:%.*]]: tensor<4x3xf32>) -> tensor<4x3xf32>
 %test_triangular_solve (Arg_0.1: f32[4,4], Arg_1.2: f32[4,3]) -> f32[4,3] {
   %Arg_0.1 = f32[4,4] parameter(0)
@@ -905,7 +904,7 @@ add {
   ROOT %triangular-solve.3 = f32[4,3] triangular-solve(f32[4,4] %Arg_0.1, f32[4,3] %Arg_1.2), left_side=true, lower=true, transpose_a=NO_TRANSPOSE, unit_diagonal=true
 }
 
-// CHECK-LABEL:  func @test_tuple(%arg0: tensor<1xi32>, %arg1: tensor<1x2xf32>) -> tuple<tensor<1xi32>, tensor<1x2xf32>>
+// CHECK-LABEL:  func private @test_tuple(%arg0: tensor<1xi32>, %arg1: tensor<1x2xf32>) -> tuple<tensor<1xi32>, tensor<1x2xf32>>
 %test_tuple(Arg_0.1: s32[1], Arg_1.2: f32[1, 2]) -> (s32[1], f32[1,2]) {
   %Arg_0.1 = s32[1] parameter(0)
   %Arg_1.2 = f32[1, 2] parameter(1)
@@ -918,19 +917,19 @@ add {
 }
 
 // Test while op
-// CHECK-LABEL:  func @cond
+// CHECK-LABEL:  func private @cond
 %cond (arg_1: s64[]) -> pred[] {
   %arg_1 = s64[] parameter(0), metadata={op_name="HLO_Args"}
   ROOT %compare.2 = pred[] compare(%arg_1, %arg_1), direction=LT, metadata={op_type="Less" op_name="Less"}
 }
 
-// CHECK-LABEL:  func @loop
+// CHECK-LABEL:  func private @loop
 %loop (arg_1: s64[]) -> s64[] {
   %arg_1 = s64[] parameter(0), metadata={op_name="HLO_Args"}
   ROOT %compare.2 = s64[] add(%arg_1, %arg_1), metadata={op_type="Less" op_name="Less"}
 }
 
-// CHECK-LABEL:  func @test_while(%arg0: tensor<i64>) -> tensor<i64>
+// CHECK-LABEL:  func private @test_while(%arg0: tensor<i64>) -> tensor<i64>
 %test_while (arg0.1: s64[]) -> s64[] {
   %arg0.1 = s64[] parameter(0), metadata={op_name="HLO_Args"}
   // CHECK-NEXT:  "mhlo.while"(%arg0) ( {
@@ -945,7 +944,7 @@ add {
   ROOT %while.2 = s64[] while(%arg0.1), body=%loop, condition=%cond
 }
 
-// CHECK-LABEL:  func @test_xor
+// CHECK-LABEL:  func private @test_xor
 // CHECK-SAME:    ([[VAL_0:%.*]]: tensor<4xi1>, [[VAL_1:%.*]]: tensor<4xi1>) -> tensor<4xi1>
 %test_xor (Arg_0.1: pred[4], Arg_1.2: pred[4]) -> pred[4] {
   %Arg_0.1 = pred[4] parameter(0)
@@ -955,7 +954,7 @@ add {
   ROOT %xor.3 = pred[4] xor(pred[4] %Arg_0.1, pred[4] %Arg_1.2)
 }
 
-// CHECK-LABEL:  func @test_shiftleft
+// CHECK-LABEL:  func private @test_shiftleft
 // CHECK-SAME:    ([[VAL_0:%.*]]: tensor<4xi32>, [[VAL_1:%.*]]: tensor<4xi32>) -> tensor<4xi32>
 %test_shiftleft (Arg_0.1: s32[4], Arg_1.2: s32[4]) -> s32[4] {
   %Arg_0.1 = s32[4] parameter(0)
@@ -965,7 +964,7 @@ add {
   ROOT %shiftleft = s32[4] shift-left(s32[4] %Arg_0.1, s32[4] %Arg_1.2)
 }
 
-// CHECK-LABEL:  func @test_shiftright_arithmetic
+// CHECK-LABEL:  func private @test_shiftright_arithmetic
 // CHECK-SAME:    ([[VAL_0:%.*]]: tensor<4xi32>, [[VAL_1:%.*]]: tensor<4xi32>) -> tensor<4xi32>
 %test_shiftright_arithmetic (Arg_0.1: s32[4], Arg_1.2: s32[4]) -> s32[4] {
   %Arg_0.1 = s32[4] parameter(0)
@@ -975,7 +974,7 @@ add {
   ROOT %shiftright.arithmetic = s32[4] shift-right-arithmetic(s32[4] %Arg_0.1, s32[4] %Arg_1.2)
 }
 
-// CHECK-LABEL:  func @test_shiftright_logical
+// CHECK-LABEL:  func private @test_shiftright_logical
 // CHECK-SAME:    ([[VAL_0:%.*]]: tensor<4xi32>, [[VAL_1:%.*]]: tensor<4xi32>) -> tensor<4xi32>
 %test_shiftright_logical (Arg_0.1: s32[4], Arg_1.2: s32[4]) -> s32[4] {
   %Arg_0.1 = s32[4] parameter(0)
@@ -985,7 +984,7 @@ add {
   ROOT %shiftright.logical = s32[4] shift-right-logical(s32[4] %Arg_0.1, s32[4] %Arg_1.2)
 }
 
-// CHECK-LABEL:  func @complex_type
+// CHECK-LABEL:  func private @complex_type
 // CHECK-SAME:    (%[[ARG0:.*]]: tensor<2xcomplex<f32>>, %[[ARG1:.*]]: tensor<2xcomplex<f64>>) -> tuple<tensor<2xf32>, tensor<2xf64>>
 %complex_type (Arg_0.1: c64[2], Arg_1.2: c128[2]) -> (f32[2], f64[2]) {
   %Arg_0.1 = c64[2] parameter(0)
@@ -998,7 +997,7 @@ add {
   ROOT %tuple.5 = (f32[2], f64[2]) tuple(f32[2] %abs.3, f64[2] %abs.4)
 }
 
-// CHECK-LABEL:  func @unsigned_int
+// CHECK-LABEL:  func private @unsigned_int
 // CHECK-SAME:    (%[[ARG0:.*]]: tensor<4xui16>)
 %unsigned_int(Arg_0.1: u16[4]) -> u16[4] {
   %Arg_0.1 = u16[4] parameter(0)
@@ -1007,7 +1006,7 @@ add {
   ROOT %not.2 = u16[4] not(u16[4] %Arg_0.1)
 }
 
-// CHECK-LABEL:  func @rngbitgen
+// CHECK-LABEL:  func private @rngbitgen
 // CHECK-SAME:    (%[[ARG0:.*]]: tensor<3xui64>)
 %rngbitgen (Arg_0.1: u64[3]) -> (u64[3], u32[2,2]) {
   %Arg_0.1 = u64[3] parameter(0)
@@ -1015,7 +1014,7 @@ add {
   ROOT %rng-bit-generator.2 = (u64[3], u32[2,2]) rng-bit-generator(u64[3] %Arg_0.1), algorithm=rng_philox
 }
 
-// CHECK-LABEL:  func @cbrt
+// CHECK-LABEL:  func private @cbrt
 // CHECK-SAME:    (%[[ARG0:.*]]: tensor<3x4xf32>)
 %cbrt (Arg_0.1: f32[3,4]) -> f32[3,4] {
   %Arg_0.1 = f32[3,4] parameter(0)
@@ -1023,7 +1022,7 @@ add {
   ROOT %cbrt = f32[3,4] cbrt(f32[3,4] %Arg_0.1)
 }
 
-// CHECK-LABEL:  func @bitcast
+// CHECK-LABEL:  func private @bitcast
 // CHECK-SAME:    (%[[ARG0:.*]]: tensor<3x4xf32>) -> tensor<3x4x1xf32>
 %bitcast (Arg_0.1: f32[3,4]) -> f32[3,4,1] {
   %Arg_0.1 = f32[3,4] parameter(0)
@@ -1031,7 +1030,7 @@ add {
   ROOT %bitcast = f32[3,4,1] bitcast(f32[3,4] %Arg_0.1)
 }
 
-// CHECK-LABEL:  func @reduce_precision
+// CHECK-LABEL:  func private @reduce_precision
 // CHECK-SAME:    (%[[ARG0:.*]]: tensor<3x4xf32>)
 %reduce_precision (Arg_0.1: f32[3,4]) -> f32[3,4] {
   %Arg_0.1 = f32[3,4] parameter(0)
