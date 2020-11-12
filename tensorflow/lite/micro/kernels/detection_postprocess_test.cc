@@ -17,8 +17,8 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/kernels/kernel_runner.h"
-#include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/micro/test_helpers.h"
+#include "tensorflow/lite/micro/testing/micro_test.h"
 
 // See: tensorflow/lite/micro/kernels/detection_postprocess_test/README.md
 #include "tensorflow/lite/micro/kernels/flexbuffers_generated_data.h"
@@ -165,8 +165,8 @@ void TestDetectionPostprocess(
                              outputs_array, nullptr, micro_test::reporter);
 
   // Using generated data as input to operator.
-  int data_size;
-  const char* init_data;
+  int data_size = 0;
+  const unsigned char* init_data = nullptr;
   if (use_regular_nms) {
     init_data = g_gen_data_regular_nms;
     data_size = g_gen_data_size_regular_nms;
@@ -174,8 +174,14 @@ void TestDetectionPostprocess(
     init_data = g_gen_data_none_regular_nms;
     data_size = g_gen_data_size_none_regular_nms;
   }
+
+  // TfLite uses a char* for the raw bytes whereas flexbuffers use an unsigned
+  // char*. This small discrepancy results in compiler warnings unless we
+  // reinterpret_cast right before passing in the flexbuffer bytes to the
+  // KernelRunner.
   TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk, runner.InitAndPrepare(init_data, data_size));
+      kTfLiteOk, runner.InitAndPrepare(reinterpret_cast<const char*>(init_data),
+                                       data_size));
 
   // Output dimensions should not be undefined after Prepare
   TF_LITE_MICRO_EXPECT_NE(nullptr, tensors[3].dims);

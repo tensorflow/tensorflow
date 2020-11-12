@@ -47,14 +47,14 @@ void generate(const char* name, bool use_regular_nms) {
 
   // fbb.GetBuffer returns std::Vector<uint8_t> but TfLite passes char arrays
   // for the raw data, and so we reinterpret_cast.
-  const int8_t* init_data =
-      reinterpret_cast<const int8_t*>(fbb.GetBuffer().data());
+  const uint8_t* init_data =
+      reinterpret_cast<const uint8_t*>(fbb.GetBuffer().data());
   int fbb_size = fbb.GetBuffer().size();
 
   printf("const int g_gen_data_size_%s = %d;\n", name, fbb_size);
-  printf("const char g_gen_data_%s[] = { ", name);
+  printf("const unsigned char g_gen_data_%s[] = { ", name);
   for (size_t i = 0; i < fbb_size; i++) {
-    printf("%d, ", init_data[i]);
+    printf("0x%02x, ", init_data[i]);
   }
   printf("};\n");
 }
