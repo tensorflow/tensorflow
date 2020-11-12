@@ -366,7 +366,6 @@ class DivNoNanGradientFunction : public GradientFunction {
      */
 
     AbstractTensorHandle* upstream_grad = grad_inputs[0];
-    AbstractTensorHandle* X = forward_inputs[0];
     AbstractTensorHandle* Y = forward_inputs[1];
     AbstractTensorHandle* Z = forward_outputs[0];
 
