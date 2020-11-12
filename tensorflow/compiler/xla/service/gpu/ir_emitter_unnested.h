@@ -186,7 +186,6 @@ class IrEmitterUnnested : public IrEmitter,
   Status HandleSort(HloInstruction* sort) override;
   Status EmitSortFromMlir(MlirEmitterInput mlir_input);
   Status HandleTriangularSolve(HloInstruction* hlo) override;
-  Status HandleTupleSelect(HloInstruction* tuple_select) override;
   Status HandleAllReduce(HloInstruction* crs) override;
   Status HandleAfterAll(HloInstruction* after_all) override;
   Status HandleReplicaId(HloInstruction* hlo) override;
@@ -306,6 +305,7 @@ class IrEmitterUnnested : public IrEmitter,
   // }
   //   ```
   Status HandleSliceToDynamic(HloInstruction* slice_to_dynamic);
+  Status EmitSliceToDynamicFromMlir(MlirEmitterInput mlir_input);
 
   // A convenient helper for calling BufferAssignment::GetUniqueSlice.
   StatusOr<BufferAllocation::Slice> MaybeGetAllocationSlice(

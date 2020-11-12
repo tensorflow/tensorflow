@@ -167,6 +167,15 @@ cc_library(
 )
 
 cc_library(
+    name = "tf_gpu_runtime_wrappers",
+    deps = if_cuda_is_configured([
+        ":tf_cuda_runtime_wrappers",
+    ]) + if_rocm_is_configured([
+        ":tf_rocm_runtime_wrappers",
+    ]),
+)
+
+cc_library(
     name = "tf_cuda_runtime_wrappers",
     srcs = ["tf_cuda_runtime_wrappers.cc"],
     compatible_with = get_compatible_with_cloud(),
@@ -177,4 +186,17 @@ cc_library(
         "@llvm-project//mlir:mlir_c_runner_utils",
         "@local_config_cuda//cuda:cuda_headers",
     ],
+)
+
+cc_library(
+    name = "tf_rocm_runtime_wrappers",
+    srcs = if_rocm_is_configured(["tf_rocm_runtime_wrappers.cc"]),
+    compatible_with = get_compatible_with_cloud(),
+    copts = if_rocm_is_configured(["-DTENSORFLOW_USE_ROCM=1"]),
+    deps = if_rocm_is_configured([
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:mlir_c_runner_utils",
+        "//tensorflow/core/platform/default/build_config:stream_executor_rocm",
+        "@local_config_rocm//rocm:rocm_headers",
+    ]),
 )

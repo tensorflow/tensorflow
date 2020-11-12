@@ -5,7 +5,6 @@
 [![Python](https://img.shields.io/pypi/pyversions/tensorflow.svg?style=plastic)](https://badge.fury.io/py/tensorflow)
 [![PyPI](https://badge.fury.io/py/tensorflow.svg)](https://badge.fury.io/py/tensorflow)
 
-
 **`Documentation`** |
 ------------------- |
 [![Documentation](https://img.shields.io/badge/api-reference-blue.svg)](https://www.tensorflow.org/api_docs/) |
@@ -61,6 +60,7 @@ commands.
 *Nightly binaries are available for testing using the
 [tf-nightly](https://pypi.python.org/pypi/tf-nightly) and
 [tf-nightly-cpu](https://pypi.python.org/pypi/tf-nightly-cpu) packages on PyPi.*
+
 #### *Try your first TensorFlow program*
 
 ```shell
@@ -159,8 +159,6 @@ Container Type                                                    | Status | Art
 *   [Introduction to TensorFlow Lite from Udacity](https://www.udacity.com/course/intro-to-tensorflow-lite--ud190)
 *   [Machine Learning with TensorFlow on GCP](https://www.coursera.org/specializations/machine-learning-tensorflow-gcp)
 *   [TensorFlow Codelabs](https://codelabs.developers.google.com/?cat=TensorFlow)
-*   [TensorFlow Chat Room on StackOverflow (not actively monitored by the
-    TensorFlow team)](https://chat.stackoverflow.com/rooms/216694/tensorflow)
 *   [TensorFlow Blog](https://blog.tensorflow.org)
 *   [Learn ML with TensorFlow](https://www.tensorflow.org/resources/learn-ml)
 *   [TensorFlow Twitter](https://twitter.com/tensorflow)

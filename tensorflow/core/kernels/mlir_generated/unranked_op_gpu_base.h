@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_MLIR_GENERATED_UNRANKED_OP_GPU_ABS_H_
 #define TENSORFLOW_CORE_KERNELS_MLIR_GENERATED_UNRANKED_OP_GPU_ABS_H_
 
-#include "third_party/llvm/llvm-project/llvm/include/llvm/ADT/ArrayRef.h"
-#include "third_party/llvm/llvm-project/llvm/include/llvm/ADT/SmallVector.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/ExecutionEngine/CRunnerUtils.h"  // from @llvm-project
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -88,9 +88,12 @@ class MlirUnrankedOp : public OpKernel {
           std::move(ConvertTensorToDescriptor<data_type>(ctx->input(i))));
     }
     auto result_desc = Derived::Invoke(ctx, input_descs);
-
     for (const auto& input_desc : input_descs) {
       free(input_desc.descriptor);
+    }
+    if (!ctx->status().ok()) {
+      free(result_desc.descriptor);
+      return;
     }
     void* result_data_ptr = static_cast<void**>(result_desc.descriptor)[0];
 

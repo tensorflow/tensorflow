@@ -2605,39 +2605,6 @@ static LogicalResult Verify(WhileOp op) {
   return success();
 }
 
-namespace {
-
-ArrayAttr GetShapeArrayAttrFromTypes(mlir::MLIRContext *context,
-                                     TypeRange types) {
-  SmallVector<Attribute, 4> shapes;
-  shapes.reserve(types.size());
-  for (Type type : types)
-    shapes.push_back(ShapeAttr::get(context, type.cast<ShapedType>()));
-  return ArrayAttr::get(shapes, context);
-}
-
-}  // namespace
-
-void WhileOp::build(OpBuilder &builder, OperationState &result,
-                    TypeRange output, ValueRange input, FlatSymbolRefAttr cond,
-                    FlatSymbolRefAttr body, IntegerAttr parallel_iterations,
-                    BoolAttr is_stateless) {
-  ArrayAttr output_shapes =
-      GetShapeArrayAttrFromTypes(builder.getContext(), output);
-  build(builder, result, output, input, cond, body, output_shapes,
-        parallel_iterations, is_stateless);
-}
-
-void WhileOp::build(OpBuilder &builder, OperationState &result,
-                    TypeRange output, ValueRange input, StringRef cond,
-                    StringRef body, uint64_t parallel_iterations,
-                    bool is_stateless) {
-  ArrayAttr output_shapes =
-      GetShapeArrayAttrFromTypes(builder.getContext(), output);
-  build(builder, result, output, input, cond, body, output_shapes,
-        parallel_iterations, is_stateless);
-}
-
 //===----------------------------------------------------------------------===//
 // WhileRegionOp
 //===----------------------------------------------------------------------===//

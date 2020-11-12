@@ -230,6 +230,20 @@ def make_strided_slice_tests(options):
             "shrink_axis_mask": [0],
             "constant_indices": [True, False],
             "fully_quantize": [False],
+        },
+        # String input.
+        {
+            "dtype": [tf.string],
+            "index_type": [tf.int32],
+            "input_shape": [[12, 2, 2, 5]],
+            "begin": [[0, 0, 0, 0]],
+            "end": [[8, 2, 2, 3]],
+            "strides": [[2, 1, 3, 1]],
+            "begin_mask": [8],
+            "end_mask": [3],
+            "shrink_axis_mask": [None, -1],
+            "constant_indices": [True, False],
+            "fully_quantize": [False],
         }
     ]
   _make_strided_slice_tests(options, test_parameters, expected_tf_failures=2)

@@ -31,6 +31,7 @@ from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_v2_test_util
 from tensorflow.lite.python.convert import mlir_quantize
 from tensorflow.lite.python.interpreter import Interpreter
+from tensorflow.lite.python.interpreter import InterpreterWithCustomOps
 from tensorflow.lite.toco import types_pb2 as _types_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -739,6 +740,88 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
+
+  def _createV1ModelWithHashTableInitializer(self):
+    # Create a v1 saved model with hash table initializers.
+    tf.compat.v1.disable_eager_execution()
+    saved_model_dir = os.path.join(self.get_temp_dir(),
+                                   'savedmodel_with_hashtable')
+
+    table_initializer = tf.lookup.KeyValueTensorInitializer(
+        keys=['a', 'b', 'c', 'd'],
+        values=[1, 2, 3, 4],
+        key_dtype=tf.string,
+        value_dtype=tf.int64)
+    table = tf.lookup.StaticHashTable(
+        table_initializer, default_value=tf.constant(-1, dtype=tf.int64))
+
+    x = tf.compat.v1.placeholder(tf.string, shape=(), name='input')
+    y = table.lookup(x)
+
+    tensor_info_x = tf.compat.v1.saved_model.utils.build_tensor_info(x)
+    tensor_info_y = tf.compat.v1.saved_model.utils.build_tensor_info(y)
+
+    signature_def_map, init_op, assets_collection = {
+        'serving_default':
+            (tf.compat.v1.saved_model.signature_def_utils.build_signature_def(
+                inputs={'x': tensor_info_x},
+                outputs={'y': tensor_info_y},
+                method_name='some_function'))
+    }, tf.compat.v1.tables_initializer(), None
+
+    sess = tf.compat.v1.Session()
+    sess.run(tf.compat.v1.initializers.global_variables())
+
+    builder = tf.compat.v1.saved_model.builder.SavedModelBuilder(
+        saved_model_dir)
+    builder.add_meta_graph_and_variables(
+        sess, [tf.compat.v1.saved_model.tag_constants.SERVING],
+        signature_def_map,
+        main_op=init_op,
+        assets_collection=assets_collection,
+        strip_default_attrs=True)
+    builder.save()
+
+    # Restore TF v2 behavior.
+    tf.compat.v1.reset_default_graph()
+    tf.compat.v1.enable_eager_execution()
+    return saved_model_dir
+
+  @test_util.run_v2_only
+  def testModelWithHashTableInitializer(self):
+    """Test a model with saved_model's session initializer for hash tables."""
+    saved_model_dir = self._createV1ModelWithHashTableInitializer()
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
+    converter.allow_custom_ops = True
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    interpreter = InterpreterWithCustomOps(
+        model_content=tflite_model, custom_op_registerers=['AddHashtableOps'])
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+
+    input_data = np.array(['a', 'b', 'c', 'z'], dtype=np.string_)
+    interpreter.resize_tensor_input(
+        input_details[0]['index'], [4], strict=False)
+    interpreter.allocate_tensors()
+
+    interpreter.set_tensor(input_details[0]['index'], input_data)
+
+    # Invoke multiple times to ensure the initializer graph runs only once.
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual([1, 2, 3, -1], list(actual_value))
+
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual([1, 2, 3, -1], list(actual_value))
+
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual([1, 2, 3, -1], list(actual_value))
 
   @test_util.run_v2_only
   def testConstModel(self):

@@ -667,6 +667,14 @@ py_library(
 )
 
 py_library(
+    name = "expect_keras_preprocessing_installed",
+    # This is a dummy rule used as a keras_preprocessing dependency in open-source.
+    # We expect keras_preprocessing to already be installed on the system, e.g. via
+    # `pip install keras_preprocessing`
+    visibility = ["//visibility:public"],
+)
+
+py_library(
     name = "expect_numpy_installed",
     # This is a dummy rule used as a numpy dependency in open-source.
     # We expect numpy to already be installed on the system, e.g. via

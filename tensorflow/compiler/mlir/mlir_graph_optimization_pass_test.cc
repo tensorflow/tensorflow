@@ -31,7 +31,7 @@ class MockMlirOptimizationPass : public MlirOptimizationPass {
   MOCK_METHOD(llvm::StringRef, name, (), (const, override));
   MOCK_METHOD(bool, IsEnabled,
               (const ConfigProto& config_proto, const Graph& graph),
-              (const override));
+              (const, override));
   MOCK_METHOD(Status, Run,
               (const ConfigProto& config_proto, mlir::ModuleOp module,
                const Graph& graph),

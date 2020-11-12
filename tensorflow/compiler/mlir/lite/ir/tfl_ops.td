@@ -3405,7 +3405,7 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I32, I64, I8, UI8, QI8, QUI8, I1, I16, QI16, TFL_Quint8]>:$input,
+    TFL_TensorOf<[F32, I32, I64, I8, UI8, QI8, QUI8, I1, I16, QI16, TFL_Quint8, TFL_Str]>:$input,
     TFL_I32Tensor:$begin,
     TFL_I32Tensor:$end,
     TFL_I32Tensor:$strides,
@@ -3418,7 +3418,7 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice", [
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I32, I64, I8, UI8, QI8, QUI8, I1, I16, QI16, TFL_Quint8]>:$output
+    TFL_TensorOf<[F32, I32, I64, I8, UI8, QI8, QUI8, I1, I16, QI16, TFL_Quint8, TFL_Str]>:$output
   );
 
   let hasOptions = 1;
@@ -4358,6 +4358,21 @@ def TFL_WhileOp : Op<TFL_Dialect, "while", [
   let verifier = [{ return Verify(*this); }];
 
   let hasCanonicalizer = 1;
+}
+
+def TFL_CallOnceOp : TFL_Op<"call_once", []> {
+  let summary = "Invokes an initialization function";
+
+  let description = [{
+This operation invokes the given initialization function for the session
+initializer in tf saved model dialect.
+  }];
+
+  let arguments = (ins
+    StrAttr:$session_init_function
+  );
+
+  let results = (outs);
 }
 
 def TFL_CustomOp : Op<TFL_Dialect, "custom", [

@@ -90,6 +90,6 @@ library {
 # CHECK: tf.HashTableV2
 # CHECK-SAME: shared_name = "hash_table_node"
 
-# CHECK: func @create_resource
+# CHECK: func private @create_resource
 # CHECK: tf.HashTableV2
 # CHECK-SAME: shared_name = "hash_table_node@create_resource"

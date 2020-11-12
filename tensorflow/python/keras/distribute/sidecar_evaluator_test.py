@@ -20,8 +20,11 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import unittest
+
 from absl import logging
 import numpy as np
+
 from tensorflow.python import keras
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
@@ -36,8 +39,44 @@ from tensorflow.python.training.tracking import util as tracking_util
 
 class SidecarEvaluatorTest(test.TestCase):
 
-  def testIterationsNotSavedWillRaiseError(self):
+  def createTestModel(self, compile_model):
     model = keras.Sequential([keras.layers.Dense(10)])
+    if compile_model:
+      model.compile(
+          gradient_descent.SGD(),
+          loss='mse',
+          metrics=keras.metrics.CategoricalAccuracy())
+    return model
+
+  def assertSummaryEventsWritten(self, log_dir):
+    # Asserts summary files do get written when log_dir is provided.
+    summary_files = file_io.list_directory_v2(log_dir)
+    self.assertNotEmpty(
+        summary_files, 'Summary should have been written and '
+        'log_dir should not be empty.')
+
+    # Asserts the content of the summary file.
+    event_pb_written = False
+    for event_pb in summary_iterator.summary_iterator(
+        os.path.join(log_dir, summary_files[0])):
+      if event_pb.step > 0:
+        self.assertEqual(event_pb.step, 32)
+        self.assertEqual(event_pb.summary.value[0].tag, 'categorical_accuracy')
+        event_pb_written = True
+
+    # Verifying at least one non-zeroth step is written to summary.
+    self.assertTrue(event_pb_written)
+
+  def assertModelsSameVariables(self, model_a, model_b):
+    # Check both have the same number of variables.
+    self.assertEqual(len(model_a.variables), len(model_b.variables))
+
+    # Check variable values to be equal.
+    for var_a, var_b in zip(model_a.variables, model_b.variables):
+      self.assertAllEqual(var_a.numpy(), var_b.numpy())
+
+  def testIterationsNotSavedWillRaiseError(self):
+    model = self.createTestModel(compile_model=False)
 
     checkpoint_dir = self.get_temp_dir()
     checkpoint = tracking_util.Checkpoint(model=model)
@@ -54,11 +93,7 @@ class SidecarEvaluatorTest(test.TestCase):
 
   def testSidecarEvaluatorOutputsSummary(self):
     # Create a model with synthetic data, and fit for one epoch.
-    model = keras.models.Sequential([keras.layers.Dense(10)])
-    model.compile(
-        gradient_descent.SGD(),
-        loss='mse',
-        metrics=keras.metrics.CategoricalAccuracy())
+    model = self.createTestModel(compile_model=True)
     data = np.random.random((1000, 32))
     labels = np.random.random((1000, 10))
     dataset = dataset_ops.Dataset.from_tensor_slices((data, labels))
@@ -74,36 +109,61 @@ class SidecarEvaluatorTest(test.TestCase):
     checkpoint_manager = checkpoint_management.CheckpointManager(
         checkpoint, checkpoint_dir, max_to_keep=2)
     logging.info('Checkpoint manager saved to: %s', checkpoint_manager.save())
-
-    # Have an sidecar_evaluator evaluate once.
-    sidecar_evaluator_lib.SidecarEvaluator(
-        model,
-        data=dataset,
-        checkpoint_dir=checkpoint_dir,
-        log_dir=log_dir,
-        max_evaluations=1).start()
-
-    # Asserts summary files do get written when log_dir is provided.
-    summary_files = file_io.list_directory_v2(log_dir)
     self.assertNotEmpty(
         file_io.list_directory_v2(checkpoint_dir),
         'Checkpoint should have been written and '
         'checkpoint_dir should not be empty.')
+
+    # Create a new model used for evaluation.
+    eval_model = self.createTestModel(compile_model=True)
+    # Have an sidecar_evaluator evaluate once.
+    sidecar_evaluator_lib.SidecarEvaluator(
+        eval_model,
+        data=dataset,
+        checkpoint_dir=checkpoint_dir,
+        log_dir=log_dir,
+        max_evaluations=1).start()
+    # Eval model has been restored to the same state as the original model, so
+    # their weights should match. If not, restoration of the model didn't
+    # work.
+    self.assertModelsSameVariables(model, eval_model)
+
+    self.assertSummaryEventsWritten(log_dir)
+
+  @unittest.skip('b/172976255')
+  def testSidecarEvaluatorOutputsSummarySavedWithCallback(self):
+    checkpoint_dir = os.path.join(self.get_temp_dir(), 'checkpoints')
+    log_dir = os.path.join(self.get_temp_dir(), 'summary')
+    # Create a model with synthetic data, and fit for one epoch.
+    model = self.createTestModel(compile_model=True)
+    data = np.random.random((1000, 32))
+    labels = np.random.random((1000, 10))
+    dataset = dataset_ops.Dataset.from_tensor_slices((data, labels))
+    dataset = dataset.batch(32)
+    save_callback = keras.callbacks.ModelCheckpoint(
+        filepath=os.path.join(checkpoint_dir, 'ckpt-{epoch}'),
+        save_weights_only=True)
+    model.fit(dataset, epochs=1, callbacks=[save_callback])
     self.assertNotEmpty(
-        summary_files, 'Summary should have been written and '
-        'log_dir should not be empty.')
+        file_io.list_directory_v2(checkpoint_dir),
+        'Checkpoint should have been written and '
+        'checkpoint_dir should not be empty.')
 
-    # Asserts the content of the summary file.
-    event_pb_written = False
-    for event_pb in summary_iterator.summary_iterator(
-        os.path.join(log_dir, summary_files[0])):
-      if event_pb.step > 0:
-        self.assertEqual(event_pb.step, 32)
-        self.assertEqual(event_pb.summary.value[0].tag, 'categorical_accuracy')
-        event_pb_written = True
+    # Create a new model used for evaluation.
+    eval_model = self.createTestModel(compile_model=True)
+    # Have an sidecar_evaluator evaluate once.
+    sidecar_evaluator_lib.SidecarEvaluator(
+        eval_model,
+        data=dataset,
+        checkpoint_dir=checkpoint_dir,
+        log_dir=log_dir,
+        max_evaluations=1).start()
+    # Eval model has been restored to the same state as the original model, so
+    # their weights should match. If not, restoration of the model didn't
+    # work.
+    self.assertModelsSameVariables(model, eval_model)
 
-    # Verifying at least one non-zeroth step is written to summary.
-    self.assertTrue(event_pb_written)
+    self.assertSummaryEventsWritten(log_dir)
 
 
 if __name__ == '__main__':

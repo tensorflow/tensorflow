@@ -48,7 +48,8 @@ class EmbedTFFrameworkPass
 
     // Set target.
     ConversionTarget target(getContext());
-    target.addLegalDialect<tf_framework::TFFrameworkDialect>();
+    target.addLegalDialect<tf_framework::TFFrameworkDialect,
+                           StandardOpsDialect>();
 
     target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
       if (!op.getAttrOfType<UnitAttr>(TFFrameworkDialect::kTFEntryAttrName)) {
@@ -58,10 +59,11 @@ class EmbedTFFrameworkPass
       return func_type.getNumInputs() > 0 &&
              func_type.getInput(0).isa<OpKernelContextType>();
     });
-    target.addDynamicallyLegalOp<AllocOp, DeallocOp>([](Operation* op) {
-      return !op->getParentOfType<FuncOp>().getAttrOfType<UnitAttr>(
-          TFFrameworkDialect::kTFEntryAttrName);
-    });
+    target.addDynamicallyLegalOp<AllocOp, AssertOp, DeallocOp>(
+        [](Operation* op) {
+          return !op->getParentOfType<FuncOp>().getAttrOfType<UnitAttr>(
+              TFFrameworkDialect::kTFEntryAttrName);
+        });
 
     if (failed(applyPartialConversion(m, target, std::move(patterns)))) {
       signalPassFailure();
