@@ -2026,6 +2026,8 @@ def graph_mode():
   return context()._mode(GRAPH_MODE)  # pylint: disable=protected-access
 
 
+# Used by b/167638505 for keras backend API and Lambda layer.
+@tf_export("__internal__.eager_context.eager_mode", v1=[])
 def eager_mode():
   """Context-manager to enable eager execution for the current thread."""
   return context()._mode(EAGER_MODE)  # pylint: disable=protected-access
