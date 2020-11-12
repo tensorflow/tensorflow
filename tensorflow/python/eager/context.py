@@ -78,6 +78,9 @@ _python_eager_context_create_counter = monitoring.Counter(
 # Re-exporting through context.
 is_tfrt_enabled = tfrt_utils.enabled
 
+# Expose it as internally public APIs for Keras use cases in b/171080602.
+tf_export("__internal__.is_tfrt_enabled", v1=[])(is_tfrt_enabled)
+
 
 class _EagerTensorCache(object):
   """Simple cache which evicts items based on length in a FIFO manner."""

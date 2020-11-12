@@ -64,4 +64,8 @@ tf_module {
     name: "get_name_scope"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
+  member_method {
+    name: "is_tfrt_enabled"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
 }
