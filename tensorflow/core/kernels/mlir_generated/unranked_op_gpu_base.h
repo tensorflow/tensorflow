@@ -88,9 +88,12 @@ class MlirUnrankedOp : public OpKernel {
           std::move(ConvertTensorToDescriptor<data_type>(ctx->input(i))));
     }
     auto result_desc = Derived::Invoke(ctx, input_descs);
-
     for (const auto& input_desc : input_descs) {
       free(input_desc.descriptor);
+    }
+    if (!ctx->status().ok()) {
+      free(result_desc.descriptor);
+      return;
     }
     void* result_data_ptr = static_cast<void**>(result_desc.descriptor)[0];
 

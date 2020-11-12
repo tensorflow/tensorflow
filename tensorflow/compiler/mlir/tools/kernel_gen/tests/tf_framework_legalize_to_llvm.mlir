@@ -78,3 +78,30 @@ func @dealloc(%ctx: !tf_framework.op_kernel_context,
 // Deallocate.
 // CHECK: llvm.call @_mlir_ciface_tf_dealloc(
 // CHECK-SAME: [[TF_CTX]], [[VOID_PTR]]) : (!llvm.ptr<i8>, !llvm.ptr<i8>) -> ()
+
+// -----
+
+// CHECK-LABEL: llvm.func @_mlir_ciface_tf_report_error(!llvm.ptr<i8>, !llvm.ptr<i8>)
+// CHECK: llvm.mlir.global internal constant [[MSG_CONST:@error_message_[0-9]+]]
+
+func @report_error(%ctx: !tf_framework.op_kernel_context) {
+  tf_framework.report_error %ctx, "Everything is awesome"
+  return
+}
+// CHECK:      llvm.func @report_error([[CTX:%.*]]: !llvm.ptr<i8>)
+// CHECK-NEXT:   [[ADDR:%.*]] = llvm.mlir.addressof [[MSG_CONST]]
+// CHECK:        [[MSG:.*]] = llvm.getelementptr [[MSG]]
+// CHECK:        llvm.call @_mlir_ciface_tf_report_error([[CTX]], %2)
+
+// ----
+
+// CHECK-LABEL: llvm.func @null_memref()
+func @null_memref() {
+  %null = tf_framework.null_memref : memref<*xf32>
+  return
+}
+// CHECK: [[DESC_0:%.*]] = llvm.mlir.undef : !llvm.struct<(i64, ptr<i8>)>
+// CHECK: [[C0:%.*]] = llvm.mlir.constant(0 : index) : !llvm.i64
+// CHECK: [[DESC_1:%.*]] = llvm.insertvalue [[C0]], [[DESC_0]][0]
+// CHECK: [[PTR:%.*]] = llvm.alloca {{.*}} x !llvm.i8
+// CHECK: [[DESC_2:%.*]] = llvm.insertvalue [[PTR]], [[DESC_1]][1]

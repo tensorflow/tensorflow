@@ -183,8 +183,6 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
         xla::mlir_gpu::createRewriteKernelSignaturePass());
   }
   pm.addPass(::mlir::createLowerAffinePass());
-  // Map allocs, asserts, etc. to the tensorflow framework.
-  pm.addPass(mlir::kernel_gen::tf_framework::CreateEmbedTFFrameworkPass());
   // Constraints are removed as late as possible and before lowering to CFG.
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createConvertShapeConstraintsPass());
   if (embed_memref_prints) {
@@ -194,6 +192,8 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
 
   pm.addPass(::mlir::createLowerToCFGPass());
+  // Map allocs, asserts, etc. to the tensorflow framework.
+  pm.addPass(mlir::kernel_gen::tf_framework::CreateEmbedTFFrameworkPass());
   if (failed(pm.run(module))) {
     return InternalError("Lowering to GPU kernels failed.");
   }
