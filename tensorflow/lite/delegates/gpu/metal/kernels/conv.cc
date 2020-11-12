@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/common/winograd_util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
-#include "tensorflow/lite/delegates/gpu/metal/device_info.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 namespace tflite {
@@ -729,7 +729,7 @@ bool IsKernelYIs1(const Convolution2DAttributes& attr) {
          attr.padding.appended.h == 0;
 }
 
-int GetMaximumPossibleWavesCount(const AppleGPUInfo& apple_info,
+int GetMaximumPossibleWavesCount(const AppleInfo& apple_info,
                                  const BHWC& dst_shape) {
   if (apple_info.IsLocalMemoryPreferredOverGlobal()) {
     return GetGroupsCountForLinearWH(dst_shape, {32, 1, 1}, {1, 1, 1});
@@ -738,7 +738,7 @@ int GetMaximumPossibleWavesCount(const AppleGPUInfo& apple_info,
   }
 }
 
-int GetRecommendedBlockSize(const AppleGPUInfo& apple_info,
+int GetRecommendedBlockSize(const AppleInfo& apple_info,
                             const BHWC& dst_shape) {
   const int max_waves = GetMaximumPossibleWavesCount(apple_info, dst_shape);
   const int cu_count = apple_info.GetComputeUnitsCount();
@@ -753,7 +753,7 @@ int GetRecommendedBlockSize(const AppleGPUInfo& apple_info,
   }
 }
 
-ConvParams GetConvParamsForA7A8(const AppleGPUInfo& apple_info,
+ConvParams GetConvParamsForA7A8(const AppleInfo& apple_info,
                                 const Convolution2DAttributes& attr,
                                 const BHWC& dst_shape) {
   const int dst_slices = DivideRoundUp(dst_shape.c, 4);
@@ -830,7 +830,7 @@ ConvParams GetConvParamsForA7A8(const AppleGPUInfo& apple_info,
   return params;
 }
 
-ConvParams GetConvParamsForA9AndHigher(const AppleGPUInfo& apple_info,
+ConvParams GetConvParamsForA9AndHigher(const AppleInfo& apple_info,
                                        const Convolution2DAttributes& attr,
                                        const BHWC& dst_shape) {
   const int dst_slices = DivideRoundUp(dst_shape.c, 4);

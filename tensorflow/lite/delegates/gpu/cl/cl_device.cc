@@ -156,8 +156,8 @@ bool IsGPUVersionInRange(int gpu_version, int min_version, int max_version) {
 }
 }  // namespace
 
-DeviceInfo DeviceInfoFromDeviceID(cl_device_id id) {
-  DeviceInfo info;
+GpuInfo GpuInfoFromDeviceID(cl_device_id id) {
+  GpuInfo info;
   const auto device_name = GetDeviceInfo<std::string>(id, CL_DEVICE_NAME);
   const auto vendor_name = GetDeviceInfo<std::string>(id, CL_DEVICE_VENDOR);
   const auto opencl_c_version =
@@ -267,7 +267,7 @@ DeviceInfo DeviceInfoFromDeviceID(cl_device_id id) {
 }
 
 CLDevice::CLDevice(cl_device_id id, cl_platform_id platform_id)
-    : info_(DeviceInfoFromDeviceID(id)), id_(id), platform_id_(platform_id) {}
+    : info_(GpuInfoFromDeviceID(id)), id_(id), platform_id_(platform_id) {}
 
 CLDevice::CLDevice(const CLDevice& device)
     : info_(device.info_), id_(device.id_), platform_id_(device.platform_id_) {}

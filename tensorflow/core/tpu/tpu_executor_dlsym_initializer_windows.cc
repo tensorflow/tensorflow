@@ -13,16 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Hexagon timer implementation.
-// To include this with make, add TARGET=hexagon.
-#include "tensorflow/lite/micro/micro_time.h"
+// TODO(skye): this is largely a copy of tpu_api_dlsym_initializer.cc. Figure
+// out how to deduplicate these files a little.
 
-#include <time.h>
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/tpu/tpu_api_dlsym_set_fn.h"
 
-namespace tflite {
+namespace tensorflow {
+namespace tpu {
 
-int32_t ticks_per_second() { return CLOCKS_PER_SEC; }
+Status InitializeTpuLibrary(void* library_handle) {
+  return errors::Unimplemented(
+      "Loading TPU library is not supported on Windows.");
+}
 
-int32_t GetCurrentTimeTicks() { return clock(); }
-
-}  // namespace tflite
+}  // namespace tpu
+}  // namespace tensorflow

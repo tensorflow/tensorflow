@@ -75,9 +75,9 @@ class Environment {
   ProgramCache program_cache_;
 };
 
-TensorStorageType GetFastestStorageType(const DeviceInfo& gpu_info);
+TensorStorageType GetFastestStorageType(const GpuInfo& gpu_info);
 TensorStorageType GetStorageTypeWithMinimalMemoryConsumption(
-    const DeviceInfo& gpu_info);
+    const GpuInfo& gpu_info);
 
 absl::Status CreateEnvironment(Environment* result);
 

@@ -60,4 +60,8 @@ tf_module {
     name: "get_enclosing_xla_context"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
+  member_method {
+    name: "get_name_scope"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
 }

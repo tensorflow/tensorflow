@@ -4360,6 +4360,21 @@ def TFL_WhileOp : Op<TFL_Dialect, "while", [
   let hasCanonicalizer = 1;
 }
 
+def TFL_CallOnceOp : TFL_Op<"call_once", []> {
+  let summary = "Invokes an initialization function";
+
+  let description = [{
+This operation invokes the given initialization function for the session
+initializer in tf saved model dialect.
+  }];
+
+  let arguments = (ins
+    StrAttr:$session_init_function
+  );
+
+  let results = (outs);
+}
+
 def TFL_CustomOp : Op<TFL_Dialect, "custom", [
   NoSideEffect, NoQuantizableResult]> {
   let summary = "Custom op";

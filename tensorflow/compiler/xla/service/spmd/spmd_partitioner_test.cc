@@ -3818,7 +3818,7 @@ ENTRY entry {
   auto ds =
       AllOf(op::DynamicSlice(
                 op::Pad(op::GetTupleElement(op::Parameter(0)), op::Constant()),
-                op::Constant(), op::Multiply(), op::Constant(), op::Constant()),
+                op::Constant(), op::Reshape(), op::Constant(), op::Constant()),
             op::Shape("f32[320,7,16,128]"));
   auto partial_output =
       AllOf(op::Add(op::GetTupleElement(op::Parameter(0)),
@@ -3909,7 +3909,7 @@ ENTRY entry {
   auto ds =
       AllOf(op::DynamicSlice(
                 op::Pad(op::GetTupleElement(op::Parameter(0)), op::Constant()),
-                op::Constant(), op::Multiply(), op::Constant()),
+                op::Constant(), op::Reshape(), op::Constant()),
             op::Shape("f32[4096,17,128]"));
   auto partial_output =
       AllOf(op::Add(op::GetTupleElement(op::Parameter(0)),

@@ -111,12 +111,11 @@ class InferenceContext {
                              InferenceContext* inference);
 
   void CopyInAndOutIds(const GraphFloat32& graph);
-  absl::Status ConvertOperations(const DeviceInfo& device_info,
+  absl::Status ConvertOperations(const GpuInfo& gpu_info,
                                  const GraphFloat32& graph, ModelHints hints);
   void CreateLinks();
   void ReserveGraphTensors(const CreateInferenceInfo& create_info,
-                           const DeviceInfo& device_info,
-                           const GraphFloat32& graph);
+                           const GpuInfo& gpu_info, const GraphFloat32& graph);
   absl::Status Merge();
   absl::Status AllocateMemory(CLContext* context);
 

@@ -34,7 +34,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/inference_context.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
-#include "tensorflow/lite/delegates/gpu/metal/device_info.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 
 namespace tflite {
 namespace gpu {
@@ -80,7 +80,8 @@ absl::Status SingleOpModel::Invoke() {
 
   id<MTLDevice> device = MTLCreateSystemDefaultDevice();
   std::string device_name = std::string([[device name] UTF8String]);
-  GpuInfo gpu_info(device_name);
+  GpuInfo gpu_info;
+  GetGpuInfoFromDeviceDescription(device_name, &gpu_info);
   RuntimeOptions options;
   options.storage_precision = RuntimeOptions::Precision::FP32;
   options.accumulator_precision = RuntimeOptions::Precision::FP32;

@@ -15,8 +15,10 @@
 """Runs sample models with TensorRT and analyzes numerics and timing information."""
 
 import os
+from typing import Callable, Iterable
 
 from absl import app
+from absl import flags
 from absl import logging
 
 from tensorflow.python.compiler.tensorrt import trt_convert as trt
@@ -24,6 +26,19 @@ from tensorflow.python.compiler.tensorrt.model_tests import model_handler
 from tensorflow.python.framework import ops as framework_ops
 from tensorflow.python.platform import test as platform_test
 
+FLAGS = flags.FLAGS
+
+flags.DEFINE_string(
+    "saved_model_dir",
+    platform_test.test_src_dir_path(
+        "python/compiler/tensorrt/model_tests/sample_model"),
+    "The directory to the testing SavedModel.")
+
+flags.DEFINE_integer("batch_size", 128,
+                     "The batch size used to run the testing model with.")
+
+flags.DEFINE_boolean("use_tf2", True,
+                     "Whether to test with TF2 behavior or not (TF1).")
 DEFAUL_TRT_CONVERT_PARAMS = trt.DEFAULT_TRT_CONVERSION_PARAMS
 
 
@@ -31,37 +46,61 @@ def _get_mean_latency(result: model_handler.TestResult):
   return (sum(result.latency) / len(result.latency)) * 1000.0
 
 
-def run_all_tests():
-  """Runs all sample model with TensorRT FP32/FP16 and reports latency."""
-  model_configs = (model_handler.ModelConfig(
-      saved_model_dir=platform_test.test_src_dir_path(
-          "python/compiler/tensorrt/model_tests/sample_model"),
-      default_batch_size=128),)
-  model_handler_cls = model_handler.ModelHandlerV1
-  trt_model_handeler_cls = model_handler.TrtModelHandlerV1
-  default_trt_convert_params = DEFAUL_TRT_CONVERT_PARAMS._replace(
-      is_dynamic_op=False)
-  for model_config in model_configs:
-    trt_convert_params = default_trt_convert_params._replace(
-        max_batch_size=model_config.default_batch_size)
-    base_model = model_handler_cls(model_config)
-    random_inputs = base_model.generate_random_inputs()
-    base_model_result = base_model.run(random_inputs)
-    trt_fp32_model_result = trt_model_handeler_cls(
-        model_config=model_config,
-        trt_convert_params=trt_convert_params._replace(
-            precision_mode=trt.TrtPrecisionMode.FP32)).run(random_inputs)
-    trt_fp16_model_result = trt_model_handeler_cls(
-        model_config=model_config,
-        trt_convert_params=trt_convert_params._replace(
-            precision_mode=trt.TrtPrecisionMode.FP16)).run(random_inputs)
+class SampleRunner(object):
+  """The driver to run all sample models in all specified configurations."""
 
-    logging.info("Base model latency: %f ms",
-                 _get_mean_latency(base_model_result))
-    logging.info("TensorRT FP32 model latency: %f ms",
-                 _get_mean_latency(trt_fp32_model_result))
-    logging.info("TensorRT FP16 model latency: %f ms",
-                 _get_mean_latency(trt_fp16_model_result))
+  def __init__(self, saved_model_dir: str, batch_size: int, use_tf2=True):
+    # The model_configs contains (saved_model_dir, saved_model_signature_key,
+    # batch_size) for each model
+    self._configs = (model_handler.ModelConfig(
+        saved_model_dir=saved_model_dir, default_batch_size=batch_size),)
+    self._model_handler_manager_cls = (
+        model_handler.ModelHandlerManagerV2
+        if use_tf2 else model_handler.ModelHandlerManagerV1)
+    self._default_trt_convert_params = (
+        DEFAUL_TRT_CONVERT_PARAMS._replace(is_dynamic_op=True)
+        if use_tf2 else DEFAUL_TRT_CONVERT_PARAMS._replace(is_dynamic_op=False))
+
+  def _run_impl(
+      self,
+      default_trt_converter_params: trt.TrtConversionParams,
+      trt_converter_params_updater: Callable[[trt.TrtConversionParams],
+                                             Iterable[trt.TrtConversionParams]],
+  ):
+    """Runs all sample models based on a key varying parameter."""
+    for model_config in self._configs:
+      trt_convert_params = default_trt_converter_params._replace(
+          max_batch_size=model_config.default_batch_size)
+      # Load, compile and runs the models.
+      manager = self._model_handler_manager_cls(
+          model_config=model_config,
+          default_trt_convert_params=trt_convert_params,
+          trt_convert_params_updater=trt_converter_params_updater)
+      inputs = manager.generate_random_inputs()
+      result_collection = manager.run(inputs)
+
+      logging.info("Model information: %s ms", repr(manager))
+      for result in result_collection.results:
+        logging.info("TensorRT parameters: %s ms", result.trt_convert_params or
+                     "Not a TensorRT Model")
+        logging.info("Mean latency: %f ms", _get_mean_latency(result))
+
+  def run_trt_precision_tests(self) -> None:
+    """Runs tests for all TensorRT precisions."""
+
+    def trt_converter_params_updater(params: trt.TrtConversionParams):
+      for precision_mode in [
+          trt.TrtPrecisionMode.FP32, trt.TrtPrecisionMode.FP16
+      ]:
+        yield params._replace(precision_mode=precision_mode)
+
+    self._run_impl(
+        default_trt_converter_params=self._default_trt_convert_params,
+        trt_converter_params_updater=trt_converter_params_updater)
+
+  def run_all_tests(self) -> None:
+    """Runs all tests available."""
+    self.run_trt_precision_tests()
 
 
 def main(argv):
@@ -70,10 +109,17 @@ def main(argv):
 
   os.environ["TF_TRT_ALLOW_ENGINE_NATIVE_SEGMENT_EXECUTION"] = "False"
 
-  logging.info("Running in TF1 mode. Eager execution is disabled.")
-  framework_ops.disable_eager_execution()
+  if FLAGS.use_tf2:
+    logging.info("Running in TF2 mode. Eager execution is enabled.")
+    framework_ops.enable_eager_execution()
+  else:
+    logging.info("Running in TF1 mode. Eager execution is disabled.")
+    framework_ops.disable_eager_execution()
 
-  run_all_tests()
+  SampleRunner(
+      saved_model_dir=FLAGS.saved_model_dir,
+      batch_size=FLAGS.batch_size,
+      use_tf2=FLAGS.use_tf2).run_all_tests()
 
 
 if __name__ == "__main__":

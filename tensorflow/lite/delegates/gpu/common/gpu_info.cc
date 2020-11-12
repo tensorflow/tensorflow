@@ -24,26 +24,28 @@ namespace tflite {
 namespace gpu {
 namespace {
 
-GpuVendor GetGpuVendor(const std::string& renderer) {
-  if (renderer.find("mali") != renderer.npos) {
-    return GpuVendor::kMali;
-  }
-  if (renderer.find("adreno") != renderer.npos) {
-    return GpuVendor::kQualcomm;
-  }
-  if (renderer.find("powervr") != renderer.npos) {
-    return GpuVendor::kPowerVR;
-  }
-  if (renderer.find("intel") != renderer.npos) {
-    return GpuVendor::kIntel;
-  }
-  if (renderer.find("nvidia") != renderer.npos) {
-    return GpuVendor::kNvidia;
+GpuVendor GetGpuVendor(const std::string& gpu_description) {
+  const std::map<std::string, GpuVendor> kMapping = {
+      {"adreno", GpuVendor::kQualcomm},
+      {"apple", GpuVendor::kApple},
+      {"qualcomm", GpuVendor::kQualcomm},
+      {"mali", GpuVendor::kMali},
+      {"powervr", GpuVendor::kPowerVR},
+      {"advanced micro devices", GpuVendor::kAMD},
+      {"intel", GpuVendor::kIntel},
+      {"nvidia", GpuVendor::kNvidia},
+      {"amd", GpuVendor::kAMD},
+      {"power", GpuVendor::kPowerVR},
+  };
+  for (const auto& v : kMapping) {
+    if (gpu_description.find(v.first) != std::string::npos) {
+      return v.second;
+    }
   }
   return GpuVendor::kUnknown;
 }
 
-AdrenoGpu GetAdrenoGpuVersion(const std::string& device_name) {
+AdrenoGpu GetAdrenoGpuVersion(const std::string& gpu_description) {
   const std::map<std::string, AdrenoGpu> kMapping = {
       // Adreno 6xx series
       {"685", AdrenoGpu::kAdreno685},
@@ -93,7 +95,7 @@ AdrenoGpu GetAdrenoGpuVersion(const std::string& device_name) {
   };
 
   for (const auto& v : kMapping) {
-    if (device_name.find(v.first) != std::string::npos) {
+    if (gpu_description.find(v.first) != std::string::npos) {
       return v.second;
     }
   }
@@ -212,6 +214,70 @@ int AdrenoInfo::GetWaveSize(bool full_wave) const {
   }
 }
 
+AppleInfo::AppleInfo(const std::string& gpu_description) {
+  const std::map<std::string, AppleGpu> kMapping = {
+      {"apple a7 gpu", AppleGpu::kA7},     {"apple a8 gpu", AppleGpu::kA8},
+      {"apple a8x gpu", AppleGpu::kA8X},   {"apple a9 gpu", AppleGpu::kA9},
+      {"apple a9x gpu", AppleGpu::kA9X},   {"apple a10 gpu", AppleGpu::kA10},
+      {"apple a10x gpu", AppleGpu::kA10X}, {"apple a11 gpu", AppleGpu::kA11},
+      {"apple a12 gpu", AppleGpu::kA12},   {"apple a12x gpu", AppleGpu::kA12X},
+      {"apple a12z gpu", AppleGpu::kA12Z}, {"apple a13 gpu", AppleGpu::kA13},
+      {"apple a14 gpu", AppleGpu::kA14},
+  };
+  auto it = kMapping.find(gpu_description);
+  if (it != kMapping.end()) {
+    gpu_type = it->second;
+  } else {
+    gpu_type = AppleGpu::kUnknown;
+  }
+}
+
+bool AppleInfo::IsLocalMemoryPreferredOverGlobal() const {
+  return gpu_type == AppleGpu::kA7 || gpu_type == AppleGpu::kA8 ||
+         gpu_type == AppleGpu::kA8X;
+}
+
+bool AppleInfo::IsBionic() const {
+  return gpu_type == AppleGpu::kA11 || gpu_type == AppleGpu::kA12 ||
+         gpu_type == AppleGpu::kA12X || gpu_type == AppleGpu::kA12Z ||
+         gpu_type == AppleGpu::kA13 || gpu_type == AppleGpu::kA14;
+}
+
+bool AppleInfo::IsRoundToNearestSupported() const { return IsBionic(); }
+
+int AppleInfo::GetComputeUnitsCount() const {
+  switch (gpu_type) {
+    case AppleGpu::kA7:
+      return 4;
+    case AppleGpu::kA8:
+      return 4;
+    case AppleGpu::kA8X:
+      return 8;
+    case AppleGpu::kA9:
+      return 6;
+    case AppleGpu::kA9X:
+      return 12;
+    case AppleGpu::kA10:
+      return 6;
+    case AppleGpu::kA10X:
+      return 12;
+    case AppleGpu::kA11:
+      return 3;
+    case AppleGpu::kA12:
+      return 4;
+    case AppleGpu::kA12X:
+      return 7;
+    case AppleGpu::kA12Z:
+      return 8;
+    case AppleGpu::kA13:
+      return 4;
+    case AppleGpu::kA14:
+      return 4;
+    case AppleGpu::kUnknown:
+      return 1;
+  }
+}
+
 void GetGpuInfoFromDeviceDescription(const std::string& gpu_description,
                                      GpuInfo* gpu_info) {
   std::string lowered = gpu_description;
@@ -219,6 +285,9 @@ void GetGpuInfoFromDeviceDescription(const std::string& gpu_description,
   gpu_info->vendor = GetGpuVendor(lowered);
   if (gpu_info->IsAdreno()) {
     gpu_info->adreno_info = AdrenoInfo(lowered);
+  } else if (gpu_info->IsApple()) {
+    gpu_info->apple_info = AppleInfo(lowered);
+    gpu_info->supported_subgroup_sizes = {32};
   }
 }
 
@@ -235,6 +304,27 @@ bool GpuInfo::IsNvidia() const { return vendor == GpuVendor::kNvidia; }
 bool GpuInfo::IsAMD() const { return vendor == GpuVendor::kAMD; }
 
 bool GpuInfo::IsIntel() const { return vendor == GpuVendor::kIntel; }
+
+bool GpuInfo::IsRoundToNearestSupported() const {
+  if (IsApple()) {
+    return apple_info.IsRoundToNearestSupported();
+  } else {
+    return true;
+  }
+}
+
+bool GpuInfo::IsWaveSizeEqualTo32() const {
+  return supported_subgroup_sizes.size() == 1 &&
+         supported_subgroup_sizes[0] == 32;
+}
+
+int GpuInfo::GetComputeUnitsCount() const {
+  if (IsApple()) {
+    return apple_info.GetComputeUnitsCount();
+  } else {
+    return 1;
+  }
+}
 
 }  // namespace gpu
 }  // namespace tflite

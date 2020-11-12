@@ -44,8 +44,8 @@ __kernel void main_function($0) {
 })";
 
   CLArguments cl_args;
-  DeviceInfo device_info;
-  ASSERT_OK(cl_args.Init(device_info, {}, nullptr, &args, &sample_code));
+  GpuInfo gpu_info;
+  ASSERT_OK(cl_args.Init(gpu_info, {}, nullptr, &args, &sample_code));
   EXPECT_TRUE(absl::StrContains(sample_code, "value = weights_buffer[id];"));
   EXPECT_TRUE(
       absl::StrContains(sample_code, "__global float4* weights_buffer"));
@@ -66,9 +66,8 @@ TEST(CLArgumentsTest, TestNoSelector) {
   }
 )";
   CLArguments cl_args;
-  DeviceInfo device_info;
-  EXPECT_FALSE(
-      cl_args.Init(device_info, {}, nullptr, &args, &sample_code).ok());
+  GpuInfo gpu_info;
+  EXPECT_FALSE(cl_args.Init(gpu_info, {}, nullptr, &args, &sample_code).ok());
 }
 
 }  // namespace cl

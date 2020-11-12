@@ -22,10 +22,13 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_remaining_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -1255,15 +1258,261 @@ class Lower_UnaryOpsComposition
   }
 };
 
+// Lowers ResizeNearestNeighbor to an indices computations with a gather along
+// the combined spatial dimensions. Generating the indices along the
+// width/height index could be used to gather along each of W and H dimension
+// of the input image array. To reduce to a single gather, these indices are
+// combined, so a single gather can be performed along the combined spatial
+// dimensions.
+//
+// Images must take the shape [b, h, w, c] and size is a rank-1 length-2 tensor
+// containing the height and width values for the output tensor. This lowering
+// should work with a dynamic images array.
+//
+// For example, a scaling with image shape [1, 3, 3, 1] to [2, 2] and unaligned
+// corners would generate a [0, 1] lookup along both the x and y direction.
+// Then when combined to form the 1-D spatial index the values would be
+// [0, 1, 3, 4] which would gather along the reshape image tensor of shape
+// [1, 9, 1], reshaped to the final [1, 3, 3, 1].
+class LowerResizeNearestNeighbor : public RewritePattern {
+ public:
+  explicit LowerResizeNearestNeighbor(MLIRContext *context)
+      : RewritePattern(ResizeNearestNeighborOp::getOperationName(),
+                       {
+                           BroadcastToOp::getOperationName(),
+                           ConstOp::getOperationName(),
+                           DivOp::getOperationName(),
+                           PackOp::getOperationName(),
+                           RangeOp::getOperationName(),
+                           ReshapeOp::getOperationName(),
+                           ShapeOp::getOperationName(),
+                           SplitOp::getOperationName(),
+                           TransposeOp::getOperationName(),
+                       },
+                       1, context) {}
+
+  LogicalResult matchAndRewrite(Operation *src_op,
+                                PatternRewriter &rewriter) const override {
+    auto op = cast<ResizeNearestNeighborOp>(src_op);
+    auto loc = op.getLoc();
+    auto result_ty = op.getType().cast<ShapedType>();
+
+    auto input = op.images();
+    auto input_ty = input.getType().cast<ShapedType>();
+    auto input_element_ty = input_ty.getElementType();
+    auto out_size = op.size();
+    auto out_size_ty = out_size.getType().cast<ShapedType>();
+    auto out_size_element_ty = out_size_ty.getElementType();
+
+    // Input should be rank 4.
+    if (!input_ty.hasRank() || input_ty.getRank() != 4) {
+      return failure();
+    }
+
+    // Check that out_size is rank-1, length-2. Otherwise the size is not legal.
+    if (!out_size_ty.hasRank() || out_size_ty.getRank() != 1 ||
+        out_size_ty.getShape()[0] != 2) {
+      return failure();
+    }
+
+    // Extract the output width / height dim size.
+    int out_height_constant = -1;
+    int out_width_constant = -1;
+    DenseIntElementsAttr out_size_cst;
+    if (matchPattern(out_size, m_Constant(&out_size_cst))) {
+      llvm::SmallVector<int64_t, 2> cst_size;
+      for (auto val : out_size_cst.getIntValues()) {
+        cst_size.push_back(val.getSExtValue());
+      }
+
+      out_height_constant = cst_size[0];
+      out_width_constant = cst_size[1];
+
+      if (out_height_constant < 0 || out_width_constant < 0) return failure();
+    }
+
+    int out_spatial_cst = out_height_constant < 0 || out_width_constant < 0
+                              ? -1
+                              : out_height_constant * out_width_constant;
+
+    // Input rank should be 4. Might be able to drop this requirement entirely
+    // as its an input requirement.
+    if (!input_ty.hasRank() || input_ty.getRank() != 4) {
+      return failure();
+    }
+
+    int batch_cst = input_ty.getShape()[0];
+    int channels_cst = input_ty.getShape()[3];
+
+    int in_y_cst = input_ty.getShape()[1];
+    int in_x_cst = input_ty.getShape()[2];
+    int in_spatial_cst =
+        in_y_cst < 0 || in_x_cst < 0 ? -1 : in_y_cst * in_x_cst;
+
+    // TODO(suderman): Add support for these optional parameters.
+    if (op.align_corners() == true || op.half_pixel_centers() == true) {
+      return failure();
+    }
+
+    auto one =
+        rewriter.create<ConstOp>(loc, GetScalarOfType(out_size_element_ty, 1));
+
+    // Extract the image shape.
+    Value input_shape = rewriter.create<ShapeOp>(
+        loc, RankedTensorType::get({4}, rewriter.getI64Type()), input);
+    input_shape = rewriter.create<CastOp>(
+        loc, RankedTensorType::get({4}, out_size_element_ty), input_shape);
+
+    auto scalar_dim_ty = RankedTensorType::get({}, out_size_element_ty);
+    auto split_image_shape = rewriter.create<UnpackOp>(
+        loc,
+        TypeRange({scalar_dim_ty, scalar_dim_ty, scalar_dim_ty, scalar_dim_ty}),
+        input_shape);
+
+    // Extract the separate components from the input shape.
+    auto batch = split_image_shape.getResult(0);
+    auto in_y = split_image_shape.getResult(1);
+    auto in_x = split_image_shape.getResult(2);
+    auto channels = split_image_shape.getResult(3);
+
+    auto in_count = rewriter.create<MulOp>(
+        loc, RankedTensorType::get({}, out_size_element_ty), in_y, in_x);
+
+    // Unpack and separate the out width/height.
+    auto split_out_size = rewriter.create<UnpackOp>(
+        loc, TypeRange({scalar_dim_ty, scalar_dim_ty}), out_size);
+
+    auto out_y = split_out_size.getResult(0);
+    auto out_x = split_out_size.getResult(1);
+
+    auto out_count = rewriter.create<MulOp>(
+        loc, RankedTensorType::get({}, out_size_element_ty), out_y, out_x);
+
+    // Generate what the final output shape will look like.
+    auto out_shape = rewriter.create<PackOp>(
+        loc, RankedTensorType::get({4}, out_size_element_ty),
+        ValueRange({batch, out_y, out_x, channels}));
+
+    // Compute the indices along the vertical dimension.
+    auto in_y_f32 = rewriter.create<CastOp>(
+        loc, RankedTensorType::get({}, rewriter.getF32Type()), in_y);
+    auto out_w_f32 = rewriter.create<CastOp>(
+        loc, RankedTensorType::get({}, rewriter.getF32Type()), out_y);
+
+    Value y_scale = rewriter.create<DivOp>(
+        loc, RankedTensorType::get({}, rewriter.getF32Type()), in_y_f32,
+        out_w_f32);
+
+    Value zero_f32 = rewriter.create<ConstOp>(
+        loc, GetScalarOfFloatType(rewriter.getF32Type(), 0.0));
+    Value one_f32 = rewriter.create<ConstOp>(
+        loc, GetScalarOfFloatType(rewriter.getF32Type(), 1.0));
+
+    Value y_range = rewriter.create<RangeOp>(
+        loc,
+        RankedTensorType::get({out_height_constant}, rewriter.getF32Type()),
+        zero_f32, out_w_f32, one_f32);
+
+    y_range = rewriter.create<MulOp>(
+        loc,
+        RankedTensorType::get({out_height_constant}, rewriter.getF32Type()),
+        y_range, y_scale);
+
+    y_range = rewriter.create<CastOp>(
+        loc, RankedTensorType::get({out_height_constant}, out_size_element_ty),
+        y_range);
+
+    y_range = rewriter.create<ReshapeOp>(
+        loc,
+        RankedTensorType::get({out_height_constant, 1}, out_size_element_ty),
+        y_range,
+        rewriter.create<PackOp>(loc,
+                                RankedTensorType::get({2}, out_size_element_ty),
+                                ValueRange({out_y, one})));
+
+    Value y_indices = rewriter.create<MulOp>(
+        loc,
+        RankedTensorType::get({out_height_constant, 1}, out_size_element_ty),
+        y_range, in_x);
+
+    // Compute the indices for the nearest neighbour lookup across the width
+    // dim.
+    auto in_x_f32 = rewriter.create<CastOp>(
+        loc, RankedTensorType::get({}, rewriter.getF32Type()), in_x);
+    auto out_h_f32 = rewriter.create<CastOp>(
+        loc, RankedTensorType::get({}, rewriter.getF32Type()), out_x);
+
+    Value x_scale = rewriter.create<DivOp>(
+        loc, RankedTensorType::get({}, rewriter.getF32Type()), in_x_f32,
+        out_h_f32);
+
+    Value x_range = rewriter.create<RangeOp>(
+        loc, RankedTensorType::get({out_width_constant}, rewriter.getF32Type()),
+        zero_f32, out_h_f32, one_f32);
+
+    x_range = rewriter.create<MulOp>(
+        loc, RankedTensorType::get({out_width_constant}, rewriter.getF32Type()),
+        x_range, x_scale);
+
+    x_range = rewriter.create<CastOp>(
+        loc, RankedTensorType::get({out_width_constant}, out_size_element_ty),
+        x_range);
+
+    Value x_indices = rewriter.create<ReshapeOp>(
+        loc,
+        RankedTensorType::get({1, out_width_constant}, out_size_element_ty),
+        x_range,
+        rewriter.create<PackOp>(loc,
+                                RankedTensorType::get({2}, out_size_element_ty),
+                                ValueRange({one, out_x})));
+
+    // Generate the combined index array, reshape to be 1-D.
+    Value indices = rewriter.create<AddV2Op>(
+        loc,
+        RankedTensorType::get({out_height_constant, out_width_constant},
+                              out_size_element_ty),
+        y_indices, x_indices);
+
+    indices = rewriter.create<ReshapeOp>(
+        loc, RankedTensorType::get({out_spatial_cst}, out_size_element_ty),
+        indices,
+        rewriter.create<ReshapeOp>(
+            loc, RankedTensorType::get({1}, out_size_element_ty), out_count,
+            rewriter.create<ConstOp>(loc, rewriter.getI64TensorAttr({1}))));
+
+    // Group the spatial indices and gather along that combined index.
+    Value input_collapsed_spatial = rewriter.create<ReshapeOp>(
+        loc,
+        RankedTensorType::get({batch_cst, in_spatial_cst, channels_cst},
+                              input_element_ty),
+        input,
+        rewriter.create<PackOp>(loc,
+                                RankedTensorType::get({3}, out_size_element_ty),
+                                ValueRange({batch, in_count, channels})));
+
+    Value gathered_values = rewriter.create<GatherV2Op>(
+        loc,
+        RankedTensorType::get({batch_cst, out_spatial_cst, channels_cst},
+                              input_element_ty),
+        input_collapsed_spatial, indices, /*axis=*/one);
+
+    gathered_values =
+        rewriter.create<ReshapeOp>(loc, result_ty, gathered_values, out_shape);
+
+    rewriter.replaceOp(op, gathered_values);
+    return success();
+  }
+};
+
 }  // namespace
 
 void PopulateLoweringTFPatterns(MLIRContext *context,
                                 OwningRewritePatternList *patterns) {
-  patterns
-      ->insert<LowerAddNOp, ConvertFakeQuantWithMinMaxVarsOp,
-               LowerDynamicStitchOp, LowerInvertPermutationOp, LowerLgammaOp,
-               LowerPackOp, LowerBatchToSpaceND, LowerSpaceToBatchNDOp,
-               LowerSparseMatMulOp, Lower_UnaryOpsComposition>(context);
+  patterns->insert<LowerAddNOp, ConvertFakeQuantWithMinMaxVarsOp,
+                   LowerDynamicStitchOp, LowerInvertPermutationOp,
+                   LowerLgammaOp, LowerPackOp, LowerBatchToSpaceND,
+                   LowerSpaceToBatchNDOp, LowerResizeNearestNeighbor,
+                   LowerSparseMatMulOp, Lower_UnaryOpsComposition>(context);
   populateWithGenerated(context, *patterns);
 }
 

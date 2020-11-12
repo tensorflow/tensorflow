@@ -33,9 +33,9 @@ filegroup(
     visibility = ["//tensorflow:internal"],
 )
 
-filegroup(
+alias(
     name = "python_api_def",
-    srcs = glob(["python_api/*"]),
+    actual = "//tensorflow/core/api_def/python_api:python_api_def",
     visibility = ["//tensorflow:internal"],
 )
 

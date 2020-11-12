@@ -264,6 +264,8 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(HloInstruction* instr) {
       return EmitScatterOp(instr);
     case HloOpcode::kSelectAndScatter:
       return EmitSelectAndScatterOp(instr);
+    case HloOpcode::kCustomCall:
+      return EmitCustomCallOp(instr);
     default:
       llvm::errs() << instr->ToString();
       return tensorflow::errors::Internal(
@@ -475,11 +477,29 @@ StatusOr<lmhlo::SelectAndScatterOp> LhloDialectEmitter::EmitSelectAndScatterOp(
   return select_and_scatter;
 }
 
+StatusOr<lmhlo::CustomCallOp> LhloDialectEmitter::EmitCustomCallOp(
+    HloInstruction* instr) {
+  TF_ASSIGN_OR_RETURN(auto custom_call,
+                      CreateOpWithoutAttrs<lmhlo::CustomCallOp>(instr));
+  auto* custom_call_instr = ::xla::Cast<::xla::HloCustomCallInstruction>(instr);
+  custom_call.call_target_nameAttr(
+      builder_.getStringAttr(custom_call_instr->custom_call_target()));
+  custom_call.backend_configAttr(
+      builder_.getStringAttr(custom_call_instr->opaque()));
+  return custom_call;
+}
+
 StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(
     const ::xla::HloInstruction* instr, const ::xla::Shape& current_shape,
     const ::xla::ShapeIndex& shape_index) {
+  // If the shape happens to have dynamic dimensions, create the memref using
+  // the underlying static shape.
+  // TODO(jurahul): Revisit this when we can model memrefs with dynamic shape
+  // but static bounds in MLIR.
+  const Shape static_shape = xla::ShapeUtil::MakeStaticShape(current_shape);
+
   TF_ASSIGN_OR_RETURN(Type out_type, ::xla::ConvertShapeToType<MemRefType>(
-                                         current_shape, builder_));
+                                         static_shape, builder_));
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                       assignment_.GetUniqueSlice(instr, shape_index));
   Value alloc = allocations_[slice.allocation()];
@@ -490,7 +510,8 @@ StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(
   auto out_memref_type = out_type.dyn_cast<MemRefType>();
   if (!out_memref_type)
     return tensorflow::errors::Internal(
-        "Expected memref type when creating a view for leaf type of a tuple.");
+        "Expected memref type when creating a view for leaf type of a "
+        "tuple.");
 
   // Cache generated ViewOp and StaticMemRefCastOp by (instruction,
   // shape_index).
@@ -504,7 +525,7 @@ StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(
 
   xla::Shape physical_shape =
       xla::ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
-          current_shape);
+          static_shape);
   TF_ASSIGN_OR_RETURN(
       Type physical_out_type,
       ::xla::ConvertShapeToType<MemRefType>(physical_shape, builder_));

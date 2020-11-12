@@ -255,7 +255,8 @@ TF::WhileRegionOp CloneEmptyWhile(bool is_stateless,
                                   OpBuilder& builder) {
   auto host_side_while = builder.create<TF::WhileRegionOp>(
       loc, /*output=*/ArrayRef<Type>{}, /*input=*/ArrayRef<Value>{},
-      is_stateless, parallel_iterations);
+      /*output_shapes=*/builder.getArrayAttr({}), parallel_iterations,
+      is_stateless);
 
   // Create empty else branch region.
   auto& body = host_side_while.body();

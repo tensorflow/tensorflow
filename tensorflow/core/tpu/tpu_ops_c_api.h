@@ -104,12 +104,26 @@ TFTPU_CAPI_EXPORT void TpuMeshState_Free(XLA_TpuMeshState* mesh_state);
 TFTPU_CAPI_EXPORT void* TpuMeshState_MeshCommonState(
     XLA_TpuMeshState* mesh_state);
 
+typedef struct TpuExecutable_LoadProgramAndEnqueueToStream_Params {
+  int32_t struct_size;
+  void* priv;
+  const XLA_TpuProgram* program;
+  SE_DeviceMemoryBase* arguments;
+  size_t arguments_len;
+  SE_DeviceMemoryBase* result;
+  SE_DeviceMemoryBase* cross_program_prefetch_addr;
+  int32_t rng_seed;
+  XLA_DeviceAssignment* device_assignment;
+  SE_Stream* stream;
+
+  TF_Status* status;  // out
+} TpuExecutable_LoadProgramAndEnqueueToStream_Params;
+
+#define TpuExecutable_LoadProgramAndEnqueueToStream_Params_SIZE \
+  (sizeof(struct TpuExecutable_LoadProgramAndEnqueueToStream_Params))
+
 TFTPU_CAPI_EXPORT void TpuExecutable_LoadProgramAndEnqueueToStream(
-    const XLA_TpuProgram* program, SE_DeviceMemoryBase* arguments,
-    size_t arguments_len, SE_DeviceMemoryBase* result,
-    SE_DeviceMemoryBase* cross_program_prefetch_addr, int32_t rng_seed,
-    XLA_DeviceAssignment* device_assignment, SE_Stream* stream,
-    TF_Status* status);
+    TpuExecutable_LoadProgramAndEnqueueToStream_Params* params);
 
 TFTPU_CAPI_EXPORT void HardwareLayout_HostShapeToDeviceShape(
     XLA_Shape* host_shape, XLA_Shape* device_shape);
@@ -117,10 +131,24 @@ TFTPU_CAPI_EXPORT int64_t HardwareLayout_ShapeSize(XLA_Shape* shape);
 TFTPU_CAPI_EXPORT int64_t HardwareLayout_ShapeSizeCompact(XLA_Shape* shape);
 TFTPU_CAPI_EXPORT int64_t HardwareLayout_ShapeSizeCompactRaw(XLA_Shape* shape);
 
+typedef struct TpuExecute_RuntimeInputToPaddedData_Params {
+  int32_t struct_size;
+  void* priv;
+  uint32_t* runtime_input_ptr;
+  size_t runtime_input_size;
+  int8_t* padded_data_ptr;
+  size_t padded_data_size;
+  XLA_Shape* runtime_shape;
+  XLA_Shape* compile_time_shape;
+
+  TF_Status* status;  // out
+} TpuExecute_RuntimeInputToPaddedData_Params;
+
+#define TpuExecute_RuntimeInputToPaddedData_Params_SIZE \
+  (sizeof(struct TpuExecute_RuntimeInputToPaddedData_Params))
+
 TFTPU_CAPI_EXPORT void TpuExecute_RuntimeInputToPaddedData(
-    uint32_t* runtime_input_ptr, size_t runtime_input_size,
-    int8_t* padded_data_ptr, size_t padded_data_size, XLA_Shape* runtime_shape,
-    XLA_Shape* compile_time_shape, TF_Status* status);
+    TpuExecute_RuntimeInputToPaddedData_Params* params);
 
 TFTPU_CAPI_EXPORT void ConfigureDistributedTpuOp_DoWork(
     const size_t num_cores_per_host_size, const int32_t* num_cores_per_host,

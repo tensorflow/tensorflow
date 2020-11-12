@@ -246,6 +246,7 @@ filegroup(
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/gif:__pkg__",
         "//tensorflow/core/lib/jpeg:__pkg__",
     ],
 )

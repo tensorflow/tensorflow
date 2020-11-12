@@ -990,6 +990,11 @@ class CollectiveAllReduce(CrossDeviceOps):
   all workers and then put results on the right destinations.
   """
 
+  # Whether to only use NCCL for batched all-reduce when NCCL is requested. This
+  # is because of the lack of mechanism to order NCCL operations
+  # deterministically.
+  _limited_nccl = True
+
   def __init__(self, devices, group_size, collective_keys=None):
     """Initializes the object.
 
@@ -1121,8 +1126,8 @@ class CollectiveAllReduce(CrossDeviceOps):
     # all-reduce, which is the gradients.
     # TODO(b/132575814): switch to NCCL for all collectives when communication
     # is NCCL if and only if we can order collectives deterministically.
-    # is NCCL.
-    if (options.implementation == CommunicationImplementation.NCCL and
+    if (self._limited_nccl and
+        options.implementation == CommunicationImplementation.NCCL and
         batch_size == 1):
       implementation = CommunicationImplementation.AUTO.value
 
@@ -1182,8 +1187,9 @@ class CollectiveAllReduce(CrossDeviceOps):
     # For now, we use NCCL only when batch_size > 1.
     # TODO(b/132575814): switch to NCCL for all collectives when implementation
     # is NCCL.
-    if options.implementation == CommunicationImplementation.NCCL and len(
-        per_replica_values) == 1:
+    if (self._limited_nccl and
+        options.implementation == CommunicationImplementation.NCCL and
+        len(per_replica_values) == 1):
       implementation = CommunicationImplementation.AUTO.value
 
     gathered_values = []

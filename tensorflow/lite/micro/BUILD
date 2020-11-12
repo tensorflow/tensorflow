@@ -66,7 +66,7 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels/internal:reference",
         "//tensorflow/lite/schema:schema_fbs",
-        "@flatbuffers",
+        "@flatbuffers//:runtime_cc",
     ],
 )
 
@@ -158,12 +158,12 @@ cc_library(
 cc_library(
     name = "micro_time",
     srcs = [
-        "posix/micro_time.cc",
+        "micro_time.cc",
     ],
     hdrs = [
         "micro_time.h",
     ],
-    copts = micro_copts(),
+    copts = micro_copts() + ["-DTF_LITE_USE_CTIME"],
     deps = ["//tensorflow/lite/c:common"],
 )
 
