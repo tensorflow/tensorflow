@@ -770,11 +770,12 @@ LogicalResult ExportXlaOp(ConvertOp op, OpLoweringContext ctx) {
 LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   // XLA client builder API does not support generating custom call instructions
   // with side effect.
-  if (op.has_side_effect()) return failure();
+  if (op.has_side_effect() || op.getNumResults() != 1) return failure();
+  Value result = op.getResult(0);
   auto& value_map = *ctx.values;
-  value_map[op] = xla::CustomCall(
+  value_map[result] = xla::CustomCall(
       ctx.builder, std::string(op.call_target_name()), GetTuple(op.args(), ctx),
-      xla::TypeToShape(op.getType()), std::string(op.backend_config()));
+      xla::TypeToShape(result.getType()), std::string(op.backend_config()));
   return success();
 }
 

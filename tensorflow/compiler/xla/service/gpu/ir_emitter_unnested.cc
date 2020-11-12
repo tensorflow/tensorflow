@@ -698,7 +698,9 @@ Status IrEmitterUnnested::EmitSliceToDynamicFromMlir(
 
   const Shape& input_shape =
       TypeToShape(slice_to_dynamic.args().front().getType());
-  const Shape& data_shape = TypeToShape(slice_to_dynamic.output().getType());
+  TF_RET_CHECK(slice_to_dynamic.output().size() == 1);
+  const Shape& data_shape =
+      TypeToShape(slice_to_dynamic.output().front().getType());
 
   // TODO(jurahul): data_shape here is the static shape of the output (which has
   // a dynamic shape in XLA). Currently, we are mapping that to a static shaped

@@ -5155,7 +5155,7 @@ class ConvertXlaShardingOp : public OpRewritePattern<TF::XlaShardingOp> {
         /*has_side_effect=*/rewriter.getBoolAttr(false),
         /*backend_config=*/rewriter.getStringAttr(""));
     custom_call.setAttr(kShardingAttr, op._XlaShardingAttr());
-    rewriter.replaceOp(op, custom_call.getResult());
+    rewriter.replaceOp(op, custom_call.getResult(0));
 
     return success();
   }
