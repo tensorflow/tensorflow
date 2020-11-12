@@ -73,6 +73,20 @@ struct DividesBy {
   __host__ __device__ OUT_T operator()(const T& x) const { return x / divisor; }
 };
 
+struct MaxPropagateNaN {
+  template <typename T>
+  __host__ __device__ inline T operator()(const T& a, const T& b) const {
+    return (a != a ? a : (a > b ? a : b));
+  }
+};
+
+struct MinPropagateNaN {
+  template <typename T>
+  __host__ __device__ inline T operator()(const T& a, const T& b) const {
+    return (a != a ? a : (a < b ? a : b));
+  }
+};
+
 #if GOOGLE_CUDA
 // TODO(rocm) : enable this once ROCm platform has support for complex datatypes
 //
@@ -373,7 +387,7 @@ __global__ __launch_bounds__(1024) void ColumnReduceKernel(
     //  -         =
     //            =
     const int numRowsThisBlock =
-        min(blockDim.y, num_rows - blockIdx.y * blockDim.y);
+        min(static_cast<int>(blockDim.y), num_rows - blockIdx.y * blockDim.y);
 
     for (int row = 1; row < numRowsThisBlock; ++row) {
       value_type t = partial_sums[threadIdx.x * (TF_RED_WARPSIZE + 1) + row];
@@ -986,15 +1000,19 @@ struct IsSum {
 template <typename T, typename Op>
 struct IsMax {
   constexpr static bool value =
-      (std::is_same<Op, gpuprim::Max>::value ||
-       std::is_same<Op, Eigen::internal::MaxReducer<T>>::value);
+      (std::is_same<Op, MaxPropagateNaN>::value ||
+       std::is_same<Op, gpuprim::Max>::value ||
+       std::is_same<
+           Op, Eigen::internal::MaxReducer<T, Eigen::PropagateNaN>>::value);
 };
 
 template <typename T, typename Op>
 struct IsMin {
   constexpr static bool value =
-      (std::is_same<Op, gpuprim::Min>::value ||
-       std::is_same<Op, Eigen::internal::MinReducer<T>>::value);
+      (std::is_same<Op, MinPropagateNaN>::value ||
+       std::is_same<Op, gpuprim::Min>::value ||
+       std::is_same<
+           Op, Eigen::internal::MinReducer<T, Eigen::PropagateNaN>>::value);
 };
 
 template <typename T, typename Op>
@@ -1222,41 +1240,47 @@ struct ReduceFunctor<GPUDevice, functor::MeanReducer<Eigen::half>> {
 };
 
 template <typename T>
-struct ReduceFunctor<GPUDevice, Eigen::internal::MaxReducer<T>> {
+struct ReduceFunctor<GPUDevice,
+                     Eigen::internal::MaxReducer<T, Eigen::PropagateNaN>> {
   template <typename OUT_T, typename IN_T, typename ReductionAxes>
-  static void Reduce(OpKernelContext* ctx, OUT_T out, IN_T in,
-                     const ReductionAxes& reduction_axes,
-                     const Eigen::internal::MaxReducer<T>& reducer) {
-    ReduceImpl<T, gpuprim::Max, T*, T*, ReductionAxes>(
+  static void Reduce(
+      OpKernelContext* ctx, OUT_T out, IN_T in,
+      const ReductionAxes& reduction_axes,
+      const Eigen::internal::MaxReducer<T, Eigen::PropagateNaN>& reducer) {
+    ReduceImpl<T, MaxPropagateNaN, T*, T*, ReductionAxes>(
         ctx, (T*)out.data(), (T*)in.data(), in.rank(), in.dimension(0),
         in.rank() >= 2 ? in.dimension(1) : 1,
         in.rank() >= 3 ? in.dimension(2) : 1, out.rank(), reduction_axes,
-        gpuprim::Max());
+        MaxPropagateNaN());
   }
 
   template <typename OUT_T>
-  static void FillIdentity(const GPUDevice& d, OUT_T out,
-                           const Eigen::internal::MaxReducer<T>& reducer) {
+  static void FillIdentity(
+      const GPUDevice& d, OUT_T out,
+      const Eigen::internal::MaxReducer<T, Eigen::PropagateNaN>& reducer) {
     FillIdentityEigenImpl(d, To32Bit(out), reducer);
   }
 };
 
 template <typename T>
-struct ReduceFunctor<GPUDevice, Eigen::internal::MinReducer<T>> {
+struct ReduceFunctor<GPUDevice,
+                     Eigen::internal::MinReducer<T, Eigen::PropagateNaN>> {
   template <typename OUT_T, typename IN_T, typename ReductionAxes>
-  static void Reduce(OpKernelContext* ctx, OUT_T out, IN_T in,
-                     const ReductionAxes& reduction_axes,
-                     const Eigen::internal::MinReducer<T>& reducer) {
-    ReduceImpl<T, gpuprim::Min, T*, T*, ReductionAxes>(
+  static void Reduce(
+      OpKernelContext* ctx, OUT_T out, IN_T in,
+      const ReductionAxes& reduction_axes,
+      const Eigen::internal::MinReducer<T, Eigen::PropagateNaN>& reducer) {
+    ReduceImpl<T, MinPropagateNaN, T*, T*, ReductionAxes>(
         ctx, (T*)out.data(), (T*)in.data(), in.rank(), in.dimension(0),
         in.rank() >= 2 ? in.dimension(1) : 1,
         in.rank() >= 3 ? in.dimension(2) : 1, out.rank(), reduction_axes,
-        gpuprim::Min());
+        MinPropagateNaN());
   }
 
   template <typename OUT_T>
-  static void FillIdentity(const GPUDevice& d, OUT_T out,
-                           const Eigen::internal::MinReducer<T>& reducer) {
+  static void FillIdentity(
+      const GPUDevice& d, OUT_T out,
+      const Eigen::internal::MinReducer<T, Eigen::PropagateNaN>& reducer) {
     FillIdentityEigenImpl(d, To32Bit(out), reducer);
   }
 };

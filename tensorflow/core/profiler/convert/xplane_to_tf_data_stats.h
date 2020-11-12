@@ -16,13 +16,45 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_TF_DATA_STATS_H_
 #define TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_TF_DATA_STATS_H_
 
+#include "absl/strings/string_view.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/tf_data_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
 
-TfDataStats ConvertXPlaneToTfDataStats(XPlane* host_plane);
+TF_CONST_INIT extern const int64 kSlowCallThresholdPs;
+
+enum class BottleneckType {
+  kSlowSource,
+  kSlowDataService,
+  kSlowRemoteSource,
+  kSlowTransformationWithParallelVersion,
+  kSlowTransformationWithoutParallelVersion,
+  kOther,
+};
+
+BottleneckType GetBottleneckType(absl::string_view bottleneck_iterator_name);
+
+class CombinedTfDataStatsBuilder {
+ public:
+  explicit CombinedTfDataStatsBuilder(
+      CombinedTfDataStats* combined_tf_data_stats,
+      bool generate_suggestion = true)
+      : combined_tf_data_stats_(combined_tf_data_stats),
+        generate_suggestion_(generate_suggestion) {}
+
+  void Add(absl::string_view host_name, XPlane* host_plane);
+
+  // Finalizes by populating TfDataBottleneckAnalysis.
+  void Finalize();
+
+ private:
+  CombinedTfDataStats* combined_tf_data_stats_;
+  bool generate_suggestion_;
+};
 
 }  // namespace profiler
 }  // namespace tensorflow

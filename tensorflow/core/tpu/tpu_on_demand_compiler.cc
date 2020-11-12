@@ -88,7 +88,7 @@ class TpuExecutable : public TpuExecutableInterface {
  public:
   TpuExecutable(SE_Executable* se_executable,
                 std::shared_ptr<HloModule> hlo_module)
-      : TpuExecutableInterface(std::move(hlo_module), nullptr, nullptr),
+      : TpuExecutableInterface(std::move(hlo_module)),
         se_executable_(se_executable) {}
 
   ~TpuExecutable() override {
@@ -274,16 +274,6 @@ class TpuCompiler : public Compiler {
     HloModuleProto result_proto =
         stream_executor::tpu::DeserializeProto<HloModuleProto>(result.proto);
     return HloModule::CreateFromProto(result_proto, module->config());
-  }
-
-  StatusOr<
-      std::tuple<std::unique_ptr<HloModule>, std::unique_ptr<BufferAssignment>>>
-  RunHloPassesAndBufferAssignement(
-      std::unique_ptr<HloModule> module,
-      stream_executor::StreamExecutor* executor,
-      stream_executor::DeviceMemoryAllocator* device_allocator) override {
-    return Unimplemented(
-        "This compiler does not support RunHloPassesAndBufferAssignment.");
   }
 
   StatusOr<std::unique_ptr<Executable>> RunBackend(

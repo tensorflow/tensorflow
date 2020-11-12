@@ -195,7 +195,8 @@ cc_library(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/api:error_reporter",
+        "//tensorflow/lite/core/api:op_resolver",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -219,8 +220,8 @@ cc_test(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:util",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/schema:schema_utils",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -318,6 +319,7 @@ cc_library(
     hdrs = ["list_flex_ops.h"],
     deps = [
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/schema:schema_utils",
         "@jsoncpp_git//:jsoncpp",
     ],
 )

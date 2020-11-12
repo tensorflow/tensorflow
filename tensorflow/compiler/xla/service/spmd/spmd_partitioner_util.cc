@@ -82,6 +82,9 @@ HloInstruction* CreateZero(const Shape& shape, SpmdBuilder* b) {
   }
   auto zero = b->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::Zero(shape.element_type())));
+  if (shape.rank() == 0) {
+    return zero;
+  }
   return b->AddInstruction(HloInstruction::CreateBroadcast(shape, zero, {}));
 }
 

@@ -199,6 +199,7 @@
 // CHECK-NEXT:   name: "min_runtime_version",
 // CHECK-NEXT:   buffer: 14
 // CHECK-NEXT:   } ]
+// CHECK-NEXT:  signature_defs: [ ]
 // CHECK-NEXT: }
 
 func @main(%arg0: tensor<i32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {

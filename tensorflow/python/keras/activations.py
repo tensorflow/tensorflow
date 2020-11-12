@@ -26,6 +26,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import keras_export
+from tensorflow.python.keras.layers import advanced_activations
 
 # b/123041942
 # In TF 2.x, if the `tf.nn.softmax` is used as an activation function in Keras
@@ -529,9 +530,17 @@ def deserialize(name, custom_objects=None):
       ValueError: `Unknown activation function` if the input string does not
       denote any defined Tensorflow activation function.
   """
+  globs = globals()
+
+  # only replace missing activations
+  advanced_activations_globs = advanced_activations.get_globals()
+  for key, val in advanced_activations_globs.items():
+    if key not in globs:
+      globs[key] = val
+
   return deserialize_keras_object(
       name,
-      module_objects=globals(),
+      module_objects=globs,
       custom_objects=custom_objects,
       printable_module_name='activation function')
 

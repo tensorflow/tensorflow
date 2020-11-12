@@ -163,7 +163,7 @@ TfLiteStatus get_arc_scratch_buffer_for_fully_connect_tensors(
   init_arc_scratch_buffers();
   /* strategy for FC kernels:
      first allocate input, because this cannot be sliced. (in case of batch
-     processing, only a single input needs to be allocated) then weigths & bias
+     processing, only a single input needs to be allocated) then weights & bias
      because if fully loaded, they can be reused over batches. then output.
      The number of output channels (for weights slicing) depends on size of
      output and size of weights&bias */
@@ -275,7 +275,7 @@ TfLiteStatus arc_scratch_buffer_calc_slice_size_io(
       max_out_lines_for_input =
           (max_lines_in - kernel_height + 1) / stride_height;
     }
-    // Ten compute how many ouput lines fit into the output tensor.
+    // Then compute how many output lines fit into the output tensor.
     max_lines_out =
         std::min(out_height, static_cast<int>(out->capacity) / line_size_out);
     // the smallest of the two determines the slice height for the output, and

@@ -108,7 +108,7 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
     auto outlined_func =
         OpBuilder(ctx).create<FuncOp>(island_op.getLoc(), name, func_type);
     outlined_symbol_table.insert(outlined_func);
-    outlined_func.setVisibility(FuncOp::Visibility::Nested);
+    outlined_func.setNested();
 
     // We will "steal" the body of the island and replace it with a call to the
     // new function later.

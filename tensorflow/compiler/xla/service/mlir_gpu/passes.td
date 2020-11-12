@@ -46,15 +46,6 @@ def DeadTempBufferRemovalPass
   }];
 }
 
-def MoveScalarComputationsIntoGpuLaunchPass
-    : FunctionPass<"mlir-gpu-inline-scalar-computation"> {
-  let summary = "Pass to Move scalar computations to the GPULaunchOp body.";
-  let constructor = "createMoveScalarComputationsIntoGpuLaunchPass()";
-  let description = [{
-    Moves scalar computations to the GPULaunchOp body.
-  }];
-}
-
 def RewriteKernelSignaturePass
     : FunctionPass<"mlir-gpu-rewrite-signatures"> {
   let summary = "Rewrite kernel signatures to be deterministic.";

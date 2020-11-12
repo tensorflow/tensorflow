@@ -120,8 +120,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   } else {
     // Requantize use case.
     if (input->type == kTfLiteInt16) {
-      TF_LITE_ENSURE(
-          context, output->type == kTfLiteInt8 || output->type == kTfLiteInt16);
+      TF_LITE_ENSURE(context, output->type == kTfLiteInt8 ||
+                                  output->type == kTfLiteInt16 ||
+                                  output->type == kTfLiteInt32);
     } else {
       TF_LITE_ENSURE(context,
                      input->type == kTfLiteInt8 || input->type == kTfLiteUInt8);
@@ -133,6 +134,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         static_cast<double>(output->params.scale);
     QuantizeMultiplier(effective_output_scale, &data->output_multiplier,
                        &data->output_shift);
+  }
+
+  if (input->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
+  }
+  if (output->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
   }
 
   return context->ResizeTensor(context, output,
@@ -197,6 +205,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                                   input->params.zero_point,
                                   output->params.zero_point,
                                   GetTensorData<int16_t>(output));
+          return kTfLiteOk;
+        case kTfLiteInt32:
+          // This case is not supported by the converter or other TFLite tools.
+          // The only use case is for applications that take quantized int32
+          // inference outputs.
+          Requantize<kernel_type>(GetTensorData<int16_t>(input),
+                                  MatchingFlatSize(input_shape, output_shape),
+                                  data->output_multiplier, data->output_shift,
+                                  input->params.zero_point,
+                                  output->params.zero_point,
+                                  GetTensorData<int32_t>(output));
           return kTfLiteOk;
         default:
           ReportError(context, input->type, output->type);

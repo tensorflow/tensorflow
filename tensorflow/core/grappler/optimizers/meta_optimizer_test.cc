@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 
+#include <atomic>
+
 #include "absl/strings/match.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -1015,6 +1018,240 @@ TEST_F(MetaOptimizerTest, CompressConstants) {
     test::ExpectTensorEqual<float>(tensors[i], tensors_expected[i]);
   }
 }
+
+// Tests for checking expected behavior when skipping tf.data functions in
+// meta optimizer.
+
+// Custom optimizer which counts the number of calls of its method `Optimize`
+// across all class instances.
+class TfDataTestOptimizer : public CustomGraphOptimizer {
+ public:
+  static void InitCount() { count_ = 0; }
+  static int GetCount() { return count_; }
+
+  TfDataTestOptimizer() = default;
+  ~TfDataTestOptimizer() override = default;
+  TfDataTestOptimizer(const TfDataTestOptimizer&) = delete;
+  TfDataTestOptimizer& operator=(const TfDataTestOptimizer& other) = delete;
+
+  std::string name() const override { return "tf_data_test_optimizer"; }
+  bool UsesFunctionLibrary() const override { return false; }
+
+  Status Init(
+      const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
+    return Status::OK();
+  }
+
+  Status Optimize(Cluster* cluster, const GrapplerItem& item,
+                  GraphDef* optimized_graph) override {
+    ++count_;
+    *optimized_graph = item.graph;
+    return Status::OK();
+  }
+
+  void Feedback(Cluster* cluster, const GrapplerItem& item,
+                const GraphDef& optimized_graph, double result) override {}
+
+ private:
+  static std::atomic<int> count_;
+};
+
+std::atomic<int> TfDataTestOptimizer::count_;
+
+REGISTER_GRAPH_OPTIMIZER(TfDataTestOptimizer);
+
+// Type for specifying how the inner function is nested inside the outer
+// function.
+enum class FuncNestingType {
+  CallFromNode = 0,
+  CallFromAttr = 1,
+  CallFromList = 2
+};
+
+// Test fixture for parametrized testing.
+class TfDataTestFixture
+    : public ::testing::TestWithParam<std::tuple<bool, bool, FuncNestingType>> {
+ protected:
+  void SetUp() override {
+    is_inner_func_tf_data_ = std::get<0>(GetParam());
+    is_outer_func_tf_data_ = std::get<1>(GetParam());
+    func_nesting_type_ = std::get<2>(GetParam());
+  }
+  // Controls which of the functions is flagged as tf.data function.
+  bool is_inner_func_tf_data_ = false;
+  bool is_outer_func_tf_data_ = false;
+  // Controls how the inner function is nested inside the outer function.
+  FuncNestingType func_nesting_type_ = FuncNestingType::CallFromNode;
+};
+
+// Helper functions for setting up the call of `inner_func` inside of
+// `outer_func`.
+
+void SetUpCallFromNode(FunctionDef& outer_func) {
+  // Call `inner_func` from a node in `outer_func`.
+  outer_func = FunctionDefHelper::Create(
+      "outer_func", {"x:float"}, {"z:float"}, {},
+      /*node_def=*/
+      {{{"inner_func"}, "inner_func", {"x", "x"}, {{"T", DT_FLOAT}}}},
+      /*ret_def=*/
+      {{"z", "inner_func:z:0"}});
+}
+
+void SetUpCallFromAttr(FunctionDef& outer_func) {
+  // Call `inner_func` from an attribute in a node in `outer_func`.
+  outer_func = FunctionDefHelper::Create(
+      "outer_func", {"x:float"}, {"z:float"}, {},
+      /*node_def=*/
+      {{{"identity"},
+        "Identity",
+        {"x"},
+        {{"T", DT_FLOAT},
+         {"f", FunctionDefHelper::FunctionRef("inner_func", {})}}}},
+      /*ret_def=*/
+      {{"z", "x"}});
+}
+
+void SetUpCallFromList(FunctionDef& outer_func) {
+  // Call `inner_func` from a list attribute in a node in `outer_func`.
+  outer_func = FunctionDefHelper::Create(
+      "outer_func", {"x:float"}, {"z:float"}, {},
+      /*node_def=*/
+      {{{"identity"}, "Identity", {"x"}, {{"T", DT_FLOAT}}}},
+      /*ret_def=*/
+      {{"z", "x"}});
+
+  // Add a list containing `inner_func` to the `identity` node.
+  // `list_value` will be deallocated automatically since it is passed as
+  // allocated list below.
+  AttrValue_ListValue* list_value =
+      (*outer_func.mutable_node_def(0)->mutable_attr())["list"].mutable_list();
+  NameAttrList* entry = list_value->add_func();
+  entry->set_name("inner_func");
+}
+
+TEST_P(TfDataTestFixture, TfDataTests) {
+  using test::function::NDef;
+
+  // Define function library with `outer_func` and `inner_func`.
+
+  FunctionDef inner_func = FunctionDefHelper::Create(
+      "inner_func", {"x:float", "y:float"}, {"z:float"}, {},
+      /*node_def=*/
+      {{{"mul"}, "Mul", {"x", "y"}, {{"T", DT_FLOAT}}}},
+      /*ret_def=*/
+      {{"z", "mul:z:0"}});
+  (*inner_func.mutable_attr())[data::kTFDataFunction].set_b(
+      is_inner_func_tf_data_);
+
+  FunctionDef outer_func;
+  switch (func_nesting_type_) {
+    case FuncNestingType::CallFromNode:
+      SetUpCallFromNode(outer_func);
+      break;
+    case FuncNestingType::CallFromAttr:
+      SetUpCallFromAttr(outer_func);
+      break;
+    case FuncNestingType::CallFromList:
+      SetUpCallFromList(outer_func);
+      break;
+    default:
+      break;
+  }
+  (*outer_func.mutable_attr())[data::kTFDataFunction].set_b(
+      is_outer_func_tf_data_);
+
+  // Tensorflow graph:
+  //
+  //   a = tf.Placeholder(tf.float);
+  //   result = outer_func(a);
+  GrapplerItem item;
+  item.id = "tf_graph";
+  item.graph = test::function::GDef(
+      {NDef("a", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+       // Calls into function library
+       NDef("outer_func_node", "outer_func", {"a"}, {{"T", DT_FLOAT}}, kDevice),
+       // Forward outputs
+       NDef("out_s", "Identity", {"outer_func_node:0"}, {{"T", DT_FLOAT}},
+            kDevice)},
+      /*funcs=*/
+      {inner_func, outer_func});
+
+  // Use only custom optimizer which counts its calls.
+  TfDataTestOptimizer::InitCount();
+  ConfigProto config_proto;
+  auto& rewriter_config =
+      *(config_proto.mutable_graph_options()->mutable_rewrite_options());
+  rewriter_config.add_optimizers("TfDataTestOptimizer");
+  rewriter_config.set_min_graph_nodes(-1);
+  rewriter_config.set_meta_optimizer_iterations(RewriterConfig::ONE);
+
+  MetaOptimizer optimizer(nullptr, config_proto);
+  GraphDef output;
+  const Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  // We expect one graph optimization + one optimization for each non-tf.data
+  // function. Note that if `outer_func` is flagged as a tf.data function, then
+  // `inner_func` is implicitly also considered a tf.data function because it is
+  // called from `outer_func`.
+  int expected_count = 3;
+  if (is_outer_func_tf_data_)
+    expected_count = 1;
+  else if (is_inner_func_tf_data_)
+    expected_count = 2;
+  EXPECT_EQ(TfDataTestOptimizer::GetCount(), expected_count);
+
+  // We expect that the tf.data-attribute has been propagated from `outer_func`
+  // to its callee `inner_func` if the value is `true`. Otherwise, the attribute
+  // values should be unchanged.
+  FunctionLibraryDefinition flib(OpRegistry::Global(), output.library());
+  const FunctionDef* outer_func_after_opt = flib.Find("outer_func");
+  const FunctionDef* inner_func_after_opt = flib.Find("inner_func");
+
+  EXPECT_EQ(data::IsTFDataFunction(*outer_func_after_opt),
+            is_outer_func_tf_data_);
+  if (is_outer_func_tf_data_ || is_inner_func_tf_data_) {
+    EXPECT_EQ(data::IsTFDataFunction(*inner_func_after_opt), true);
+  } else {
+    EXPECT_EQ(data::IsTFDataFunction(*inner_func_after_opt), false);
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    MetaOptimizerTest, TfDataTestFixture,
+    ::testing::Combine(::testing::Bool(), ::testing::Bool(),
+                       ::testing::Values(FuncNestingType::CallFromNode,
+                                         FuncNestingType::CallFromAttr,
+                                         FuncNestingType::CallFromList)),
+    [](const ::testing::TestParamInfo<TfDataTestFixture::ParamType>& info) {
+      bool is_inner_func_tf_data = std::get<0>(info.param);
+      bool is_outer_func_tf_data = std::get<1>(info.param);
+      FuncNestingType func_nesting_type = std::get<2>(info.param);
+
+      std::string test_name;
+      if (is_inner_func_tf_data && is_outer_func_tf_data)
+        test_name = "both_funcs_tf_data";
+      else if (is_inner_func_tf_data)
+        test_name = "inner_func_tf_data";
+      else if (is_outer_func_tf_data)
+        test_name = "outer_func_tf_data";
+      else
+        test_name = "no_func_tf_data";
+      switch (func_nesting_type) {
+        case FuncNestingType::CallFromNode:
+          test_name += "_call_from_node";
+          break;
+        case FuncNestingType::CallFromAttr:
+          test_name += "_call_from_attribute";
+          break;
+        case FuncNestingType::CallFromList:
+          test_name += "_call_from_list";
+          break;
+        default:
+          break;
+      }
+      return test_name;
+    });
 
 }  // namespace
 }  // namespace grappler

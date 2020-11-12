@@ -43,12 +43,11 @@ cc_library(
     ]) + if_cuda_or_rocm([
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/memory",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:gpu_headers_lib",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor",
+        "//tensorflow/core/platform:stream_executor",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:annotated_traceme",

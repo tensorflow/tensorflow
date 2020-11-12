@@ -74,7 +74,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:regexp_internal",
+        "//tensorflow/core/platform:regexp",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/stream_executor",
         "//tensorflow/stream_executor:device_memory_allocator",

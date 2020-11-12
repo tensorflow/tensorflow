@@ -99,7 +99,8 @@ class TestCluster(object):
         server_lib.WorkerServer(
             server_lib.WorkerConfig(
                 dispatcher_address=self.dispatcher_address(),
-                heartbeat_interval_ms=TEST_HEARTBEAT_INTERVAL_MS),
+                heartbeat_interval_ms=TEST_HEARTBEAT_INTERVAL_MS,
+                dispatcher_timeout_ms=1000),
             start=start))
 
   def start_dispatcher(self):
@@ -150,6 +151,11 @@ class TestCluster(object):
 
   def num_tasks_on_worker(self, worker_index=0):
     return self.workers[worker_index]._num_tasks()
+
+  def __del__(self):
+    # Destroy workers before the dispatcher for clean shutdown.
+    self.workers.clear()
+    del self.dispatcher
 
 
 class TestBase(test_base.DatasetTestBase):
@@ -212,11 +218,13 @@ class TestBase(test_base.DatasetTestBase):
   def make_distributed_range_dataset(self,
                                      num_elements,
                                      cluster,
+                                     processing_mode="parallel_epochs",
                                      job_name=None,
                                      max_outstanding_requests=None):
     dataset = dataset_ops.Dataset.range(num_elements)
     return self.make_distributed_dataset(
         dataset,
         cluster,
+        processing_mode=processing_mode,
         job_name=job_name,
         max_outstanding_requests=max_outstanding_requests)

@@ -205,7 +205,8 @@ class MlirHloBuilder : public XlaBuilder {
                                  absl::Span<const XlaOp> operands) override;
 
   StatusOr<XlaOp> Compare(const Shape& shape, XlaOp lhs, XlaOp rhs,
-                          ComparisonDirection direction) override;
+                          ComparisonDirection direction,
+                          Comparison::Type type) override;
 
   XlaOp BinaryOpNoBroadcast(HloOpcode binop, const Shape& shape, XlaOp lhs,
                             XlaOp rhs) override;

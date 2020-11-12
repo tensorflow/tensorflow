@@ -174,6 +174,16 @@ class Sharding(object):
     # pylint: disable=protected-access
     tensor.op._set_attr('_XlaSharding', attr_value)
 
+  def apply_to_operation(self, operation):
+    """Applies this Sharding attribute to `operation`.
+
+    Args:
+      operation: A tf.Operation to add sharding annotation.
+    """
+    attr_value = attr_value_pb2.AttrValue(s=self._proto.SerializeToString())
+    # pylint: disable=protected-access
+    operation._set_attr('_XlaSharding', attr_value)
+
   @property
   def proto(self):
     """Return the sharding protobuf of type xla_data_pb2.OpSharding."""
@@ -196,6 +206,28 @@ class Sharding(object):
     return xla_data_pb2.OpSharding(
         type=xla_data_pb2.OpSharding.TUPLE, tuple_shardings=shardings)
 
+
+def copy_sharding(from_tensor, to_tensor, use_sharding_op=False):
+  """Copies the a tensor's sharding to another.
+
+  Args:
+    from_tensor: Source tensor. Must be the sole output of an op.
+    to_tensor: the tensor the annotate with the copy.
+    use_sharding_op: whether to create a sharding op on `to_tensor`.
+
+  Returns:
+    A tensor with sharding annotation copied from `from_tensor`.
+  """
+  sharding = get_op_sharding(from_tensor.op)
+  if sharding is None:
+    return to_tensor
+
+  if use_sharding_op:
+    to_tensor = tf2xla.sharding(from_tensor)
+  attr_value = attr_value_pb2.AttrValue(s=sharding)
+  # pylint: disable=protected-access
+  to_tensor.op._set_attr('_XlaSharding', attr_value)
+  return to_tensor
 
 # Helpers for the above factory functions that allow easy application of
 # shardings, for example:
@@ -297,7 +329,10 @@ def get_op_sharding(op):
   Returns:
     The attribute representing XLA sharding on this op.
   """
-  return op.get_attr('_XlaSharding')
+  try:
+    return op.get_attr('_XlaSharding')
+  except ValueError:
+    return None
 
 
 def auto_to_manual_spmd_partition(tensor, manual_sharding):
@@ -339,21 +374,16 @@ def manual_to_auto_spmd_partition(tensor, manual_sharding, full_shape):
       tensor, manual_sharding=manual_sharding, full_shape=full_shape)
 
 
-def mesh_split(tensor,
-               device_mesh,
-               tensor_split_dims_mapping,
-               use_sharding_op=False):
-  """Returns a tensor that is split along multiple dimensions in a device mesh.
+def mesh_split_sharding(device_mesh, tensor_split_dims_mapping):
+  """Returns a Sharding object representing sharding along multiple dimensions.
 
   Args:
-    tensor: A tf.Tensor to split.
     device_mesh: An np.ndarray describing the topology of the device mesh and
       each element is the ID of the device in the topology.
     tensor_split_dims_mapping: A list of integers that map each tensor axis to
       the device mesh axis along which it is sharded. Its length is the tensor
       rank, and tensor_split_dims_mapping[i] is device mesh axis for tensor
       dimension i. Use -1 for tensor dimensions that are not sharded.
-    use_sharding_op: If true, adds a sharding op to set the sharding.
 
   Raises:
     ValueError: The number of tensor split dimensions is larger than device mesh
@@ -380,6 +410,32 @@ def mesh_split(tensor,
   tile_assignment = _np.reshape(tile_assignment, tile_shape)
 
   if partial:
-    return partial_tile(
-        tensor, tile_assignment, use_sharding_op=use_sharding_op)
-  return tile(tensor, tile_assignment, use_sharding_op=use_sharding_op)
+    return Sharding.partial_tile(tile_assignment)
+  return Sharding.tile(tile_assignment)
+
+
+def mesh_split(tensor,
+               device_mesh,
+               tensor_split_dims_mapping,
+               use_sharding_op=False):
+  """Returns a tensor that is split along multiple dimensions in a device mesh.
+
+  Args:
+    tensor: A tf.Tensor to split.
+    device_mesh: An np.ndarray describing the topology of the device mesh and
+      each element is the ID of the device in the topology.
+    tensor_split_dims_mapping: A list of integers that map each tensor axis to
+      the device mesh axis along which it is sharded. Its length is the tensor
+      rank, and tensor_split_dims_mapping[i] is device mesh axis for tensor
+      dimension i. Use -1 for tensor dimensions that are not sharded.
+    use_sharding_op: If true, adds a sharding op to set the sharding.
+
+  Raises:
+    ValueError: The number of tensor split dimensions is larger than device mesh
+      rank.
+  """
+  sharding = mesh_split_sharding(device_mesh, tensor_split_dims_mapping)
+  if use_sharding_op:
+    tensor = tf2xla.sharding(tensor)
+  sharding.apply_to_tensor(tensor)
+  return tensor

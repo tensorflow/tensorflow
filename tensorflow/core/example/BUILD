@@ -11,13 +11,14 @@ load(
 )
 load(
     "//tensorflow/core/platform:build_config.bzl",
+    "tf_jspb_proto_library",
     "tf_proto_library",
     "tf_pyclif_proto_library",
 )
 
 package(
     default_visibility = [
-        "//tensorflow/core:__subpackages__",
+        "//visibility:public",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
@@ -31,7 +32,6 @@ cc_library(
     hdrs = ["example_parser_configuration.h"],
     copts = tf_copts(),
     linkstatic = 1,
-    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
@@ -69,7 +69,6 @@ tf_cc_test(
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:direct_session_internal",
         "//tensorflow/core:example_parser_configuration",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -80,15 +79,14 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:example_parsing_ops",
     ],
 )
 
-filegroup(
+alias(
     name = "example_parser_configuration_testdata",
-    srcs = [
-        "testdata/parse_example_graph_def.pbtxt",
-    ],
+    actual = "//tensorflow/core/example/testdata:example_parser_configuration_testdata",
 )
 
 tf_proto_library(
@@ -99,7 +97,6 @@ tf_proto_library(
     ],
     cc_api_version = 2,
     make_default_target_header_only = True,
-    visibility = ["//visibility:public"],
 )
 
 tf_proto_library(
@@ -139,9 +136,13 @@ tf_pyclif_proto_library(
     proto_srcfile = "feature.proto",
 )
 
+tf_jspb_proto_library(
+    name = "example_jspb_proto",
+    deps = [":example_protos"],
+)
+
 closure_proto_library(
     name = "example_protos_closure",
-    visibility = ["//visibility:public"],
     deps = [":example_protos"],
 )
 

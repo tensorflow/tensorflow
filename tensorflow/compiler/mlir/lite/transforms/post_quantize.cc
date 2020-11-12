@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -138,22 +139,51 @@ struct RemoveVolatileOps : public OpRewritePattern<DequantizeOp> {
   }
 };
 
+// Removes LSTMs that have dangling output.
+// LSTMs are not removed automatically becuase they are stateful ops.
+template <typename LstmOpTy>
+struct PruneUnusedLstm : public OpRewritePattern<LstmOpTy> {
+ public:
+  explicit PruneUnusedLstm(MLIRContext* context)
+      : OpRewritePattern<LstmOpTy>(context) {}
+
+  LogicalResult matchAndRewrite(LstmOpTy lstm_op,
+                                PatternRewriter& rewriter) const override {
+    Operation* op = lstm_op.getOperation();
+    if (op->isKnownTerminator()) {
+      return failure();
+    }
+    for (auto result : op->getOpResults()) {
+      if (!result.use_empty()) {
+        return failure();
+      }
+    }
+    rewriter.eraseOp(op);
+    return success();
+  }
+};
+
 #include "tensorflow/compiler/mlir/lite/transforms/generated_post_quantize.inc"
 
 void PostQuantizePass::runOnFunction() {
   OwningRewritePatternList patterns;
   auto func = getFunction();
   auto* ctx = func.getContext();
-  TFL::populateWithGenerated(ctx, &patterns);
+  TFL::populateWithGenerated(ctx, patterns);
   patterns.insert<quant::FoldTrivalRequantizeOp<QuantizeOp>>(ctx);
-  applyPatternsAndFoldGreedily(func, patterns);
+  patterns.insert<PruneUnusedLstm<TFL::UnidirectionalSequenceLSTMOp>>(ctx);
+  applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   if (!emit_quant_adaptor_ops_) {
     RemoveQuantizationAdaptorOps(getFunction());
   }
 
-  patterns.insert<RemoveVolatileOps>(ctx);
-  applyPatternsAndFoldGreedily(func, patterns);
+  OwningRewritePatternList phase_2_patterns;
+  TFL::populateWithGenerated(ctx, phase_2_patterns);
+  phase_2_patterns
+      .insert<quant::FoldTrivalRequantizeOp<QuantizeOp>, RemoveVolatileOps>(
+          ctx);
+  applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
 }
 
 }  // namespace

@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/core/lib/monitoring/gauge.h"
 
 namespace mlir {
 namespace TFDevice {
@@ -36,6 +37,11 @@ namespace {
 
 constexpr char kXlaOutsideCompilationAttr[] = "_xla_outside_compilation";
 constexpr char kAllowSoftPlacementAttr[] = "allow_soft_placement";
+
+auto* auto_outside_compilation_gauge =
+    tensorflow::monitoring::Gauge<bool, 0>::New(
+        "/tensorflow/core/use_auto_outside_compilation",
+        "Tracks if auto outside compilation is enabled");
 
 // This pass marks unsupported ops in a device cluster with
 // `_xla_outside_compilation` attribute so the operations will run on the host
@@ -158,10 +164,12 @@ bool IsSupportedOp(Operation& op,
                    const Dialect* tf_dialect) {
   if (op.getDialect() != tf_dialect)
     return true;
-  else
-    return !HasStringOperand(op) && !HasStringResult(op) &&
-           (MatchesPattern(op, supported_ops) ||
-            mhlo::IsOpAllowedTf2XlaFallback(&op));
+  // Assert has a legalization that later removes it so we don't want to outside
+  // compile it ever for performance reasons.
+  if (llvm::isa<TF::AssertOp>(op)) return true;
+  return !HasStringOperand(op) && !HasStringResult(op) &&
+         (MatchesPattern(op, supported_ops) ||
+          mhlo::IsOpAllowedTf2XlaFallback(&op));
 }
 
 // Checks all regions of `op` for captured string operands.
@@ -200,6 +208,9 @@ LogicalResult MarkUncompilableOps(
       outside_compiled_cluster_counter++;
     }
   });
+  if (outside_compiled_cluster_counter > 0) {
+    auto_outside_compilation_gauge->GetCell()->Set(true);
+  }
   return success();
 }
 

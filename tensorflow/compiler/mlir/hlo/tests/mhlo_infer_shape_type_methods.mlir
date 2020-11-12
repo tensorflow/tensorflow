@@ -28,7 +28,7 @@ func @compare(%a : tensor<2x?xf32>, %b : tensor<2x?xf32>) -> tensor<2xi64> {
   // CHECK: %[[DIM:.*]] = index_cast %[[DIM_AS_INDEX]] : index to i64
   // CHECK: %[[SHAPE:.*]] = tensor_from_elements %[[C2]], %[[DIM]] : tensor<2xi64>
   // CHECK: return %[[SHAPE]] : tensor<2xi64>
-  %0 = "mhlo.compare"(%a, %b) { comparison_direction = "NE" }
+  %0 = "mhlo.compare"(%a, %b) {comparison_direction = "NE"}
       : (tensor<2x?xf32>, tensor<2x?xf32>) -> tensor<2x?xi1>
   %1 = "mhlo_test.reify_return_type_shapes"(%0)
       : (tensor<2x?xi1>) -> tensor<2xi64>

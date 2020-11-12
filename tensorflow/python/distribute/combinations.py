@@ -101,7 +101,7 @@ class ClusterParameters(combinations_lib.ParameterModifier):
     else:
       has_chief = kwargs.get("has_chief", False)
       num_workers = kwargs.get("num_workers", 1)
-      runner = None
+      runner = kwargs.get("runner", None)
 
     # Always set cluster parameters if they're requested. So that generate()
     # works when there's no startegy in the combinations.
@@ -257,7 +257,7 @@ class NamedDistribution(object):
                use_cloud_tpu=False,
                has_chief=False,
                num_workers=1,
-               use_pool_runner=False,
+               pool_runner_fn=None,
                no_xla=False):
     """Initialize NamedDistribution.
 
@@ -269,8 +269,8 @@ class NamedDistribution(object):
       use_cloud_tpu: Whether the strategy requires cloud TPU.
       has_chief: Whether the strategy requires a chief worker.
       num_workers: The number of workers that the strategy requires.
-      use_pool_runner: Whether to use a pool runner so that workers are re-used
-        each time.
+      pool_runner_fn: An optional callable that returns a MultiProcessPoolRunner
+        to run the test.
       no_xla: Whether to skip in XLA tests.
     """
     object.__init__(self)
@@ -281,24 +281,14 @@ class NamedDistribution(object):
     self.use_cloud_tpu = use_cloud_tpu
     self.has_chief = has_chief
     self.num_workers = num_workers
+    self._pool_runner_fn = pool_runner_fn
     self.no_xla = no_xla
-    self._runner = None
-
-    if _num_total_workers(self.has_chief, self.num_workers) > 1:
-      cluster_spec = multi_worker_test_base.create_cluster_spec(
-          has_chief=has_chief,
-          num_workers=num_workers,
-          num_ps=0,
-          has_eval=False)
-      if use_pool_runner:
-        # Need to create the strategy in the initializer so that collectives are
-        # configured before eager context initialization.
-        self._runner = multi_process_runner.MultiProcessPoolRunner(
-            cluster_spec, initializer=self._distribution_fn)
 
   @property
   def runner(self):
-    return self._runner
+    if self._pool_runner_fn is not None:
+      return self._pool_runner_fn()
+    return None
 
   @property
   def strategy(self):

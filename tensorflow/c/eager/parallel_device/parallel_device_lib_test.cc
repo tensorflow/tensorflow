@@ -80,5 +80,41 @@ TEST(PARALLEL_DEVICE_LIB, TestOpWithError) {
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 }
 
+TEST(PARALLEL_DEVICE_LIB, TestExplicitOutputShape) {
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
+  std::unique_ptr<TFE_ContextOptions, decltype(&TFE_DeleteContextOptions)> opts(
+      TFE_NewContextOptions(), TFE_DeleteContextOptions);
+  std::unique_ptr<TF_Buffer, decltype(&TF_DeleteBuffer)> config(
+      TF_CreateConfig(
+          /*xla*/ false,
+          /* gpu_memory_allow_growth */ true, /* num_cpu_devices */
+          2),
+      TF_DeleteBuffer);
+  TFE_ContextOptionsSetConfig(opts.get(), config->data, config->length,
+                              status.get());
+  std::unique_ptr<TFE_Context, decltype(&TFE_DeleteContext)> context(
+      TFE_NewContext(opts.get(), status.get()), TFE_DeleteContext);
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+
+  std::vector<std::string> devices{
+      "/job:localhost/replica:0/task:0/device:CPU:0",
+      "/job:localhost/replica:0/task:0/device:CPU:1"};
+  ParallelDevice parallel_device(std::move(devices));
+  std::unique_ptr<TFE_Op, decltype(&TFE_DeleteOp)> handle_op(
+      TFE_NewOp(context.get(), "VarHandleOp", status.get()), TFE_DeleteOp);
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  TFE_OpSetAttrType(handle_op.get(), "dtype", TF_FLOAT);
+  TFE_OpSetAttrShape(handle_op.get(), "shape", /*dims=*/nullptr, /*num_dims=*/0,
+                     status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  auto outputs = parallel_device.Execute(
+      context.get(), std::vector<ParallelTensor*>(), "VarHandleOp",
+      TFE_OpGetAttrs(handle_op.get()), {PartialTensorShape({})}, status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  const std::vector<std::unique_ptr<ParallelTensor>>& handles = *outputs;
+  EXPECT_EQ(0, handles[0]->shape().size());
+}
+
 }  // namespace parallel_device
 }  // namespace tensorflow

@@ -617,8 +617,9 @@ void TestOneFullyQuantizedLSTM() {
       one_parameter.GetOutputLayerNorm(), one_parameter.GetInputBias(),
       one_parameter.GetForgetBias(), one_parameter.GetCellBias(),
       one_parameter.GetOutputBias(), one_parameter.GetProjection(),
-      one_parameter.GetProjectionBias(), nullptr, param, activation, cell,
-      output, one_parameter.GetScratch0(), one_parameter.GetScratch1(),
+      one_parameter.GetProjectionBias(), nullptr, /*forward_sequence=*/true,
+      /*time_major=*/true, param, activation, cell, output,
+      one_parameter.GetScratch0(), one_parameter.GetScratch1(),
       one_parameter.GetScratch2(), one_parameter.GetScratch3(),
       one_parameter.GetScratch4(), one_parameter.GetScratch5(), &context);
 

@@ -227,3 +227,28 @@ func @pcall_func_body(%arg0: tensor<*xi1>) -> tensor<i32> {
   %2 = "tf.D"(%1) : (tensor<*xi1>) -> (tensor<i32>)
   return %2 : tensor<i32>
 }
+
+// -----
+
+// Tests that output sharding inside a functional op is parsed correctly.
+
+// CHECK-LABEL: func @check_sharding_inside_functional_op
+func @check_sharding_inside_functional_op(%arg0: tensor<*xi32>) {
+  "tf_device.cluster_func"(%arg0) {func = @cluster_func, step_marker_location = ""} : (tensor<*xi32>) -> tensor<*xi32>
+  // CHECK: input_sharding_configuration
+  // CHECK-SAME: ["\01\02\03"]
+  // CHECK: output_sharding_configuration
+  // CHECK-SAME: ["\01\02\03"]
+  return
+}
+
+func @cluster_func(%arg0: tensor<*xi32>) -> tensor<*xi32> {
+  %0 = "tf.PartitionedCall"(%arg0) {f= @func_body, config="", config_proto="", executor_type=""} : (tensor<*xi32>) -> tensor<*xi32>
+  return %0 : tensor<*xi32>
+}
+
+func @func_body(%arg0: tensor<*xi32>)-> tensor<*xi32> {
+  %0 = "tf.XlaSharding"(%arg0) { _XlaSharding = "\01\02\03" } : (tensor<*xi32>) -> tensor<*xi32>
+  %1 = "tf.Identity"(%0) : (tensor<*xi32>) -> (tensor<*xi32>)
+  return %1 : tensor<*xi32>
+}

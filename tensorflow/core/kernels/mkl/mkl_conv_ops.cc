@@ -941,26 +941,19 @@ class MklConvOp : public OpKernel {
       const Tensor& add_tensor = MklGetInput(context, kInputIndex_Add);
       MklDnnShape add_mkl_shape;
       GetMklShape(context, kInputIndex_Add, &add_mkl_shape, native_format);
-      if (native_format) {
-        // Forward the summand tensor to the output only if it has no other
-        // references, otherwise make a copy of it.
-        if (!context->forward_input_to_output_with_shape(
-                kInputIndex_Add, kOutputIndex_Dst, output_tf_shape,
-                output_tensor)) {
-          AllocateOutputSetMklShape(context, kOutputIndex_Dst, output_tensor,
-                                    output_tf_shape, *output_mkl_shape,
-                                    native_format);
-          bool result =
-              (*output_tensor)->CopyFrom(add_tensor, add_tensor.shape());
-          DCHECK(result);
-        }
+      // Forward the summand tensor to the output only if it has no other
+      // references, otherwise make a copy of it.
+      if (native_format && context->forward_input_to_output_with_shape(
+                               kInputIndex_Add, kOutputIndex_Dst,
+                               output_tf_shape, output_tensor)) {
         return;
       }
       // Check if reorder is needed
-      if (add_mkl_shape == *output_mkl_shape) {
-        ForwardMklTensorInToOutWithMklShape(context, kInputIndex_Add,
-                                            kOutputIndex_Dst, add_mkl_shape);
-        *output_tensor = context->mutable_output(kOutputIndex_Dst);
+      if (!native_format && add_mkl_shape == *output_mkl_shape &&
+          ForwardMklTensorInToOutWithMklShape(context, kInputIndex_Add,
+                                              kOutputIndex_Dst, output_tensor,
+                                              add_mkl_shape, false)) {
+        return;
       } else {
         AllocateOutputSetMklShape(context, kOutputIndex_Dst, output_tensor,
                                   output_tf_shape, *output_mkl_shape,
@@ -986,6 +979,13 @@ class MklConvOp : public OpKernel {
             const_cast<Toutput*>(add_tensor.flat<Toutput>().data()));
         void* dst_buf =
             static_cast<void*>((*output_tensor)->flat<Ttemp_output>().data());
+        if (native_format) {
+          // We are simply deep copying the add_tensor to output_tensor without
+          // changing memory layout, hence using same memory descriptor.
+          ADD_MD = DST_MD =
+              memory::desc({add_tensor.NumElements()}, MklDnnType<Toutput>(),
+                           mkldnn::memory::format_tag::x);
+        }
         fuse_add_src_.reset(
             new MEMORY_CONSTRUCTOR(ADD_MD, this->cpu_engine_, add_buf));
         fuse_add_dst_.reset(
@@ -1888,7 +1888,7 @@ class MklQuantizedConv2DSumReluOp
       GetMklShape(context, summand_idx, &summand_mkl_shape);
       auto dst_md = summand_mkl_shape.GetMklLayout();
 
-      // TODO(mdfaijul): handle both non-MKL and MKL tensors
+      // TODO(intel-tf): Handle both non-MKL and MKL tensors
       if (summand_type == DT_QINT8) {
         OP_REQUIRES_OK(
             context, summand.BitcastFrom(summand, DT_QUINT8, summand.shape()));
@@ -1897,9 +1897,13 @@ class MklQuantizedConv2DSumReluOp
         summand_mkl_shape.SetMklLayout(&dst_md);
         summand_mkl_shape.SetElemType(MklDnnType<Toutput>());
       }
-      ForwardMklTensorInToOutWithMklShape(context, summand_idx, 0,
-                                          summand_mkl_shape);
-      *output_tensor = const_cast<Tensor*>(&summand);
+      // TODO(intel-tf): Support cases when summand cannot be forwarded.
+      OP_REQUIRES(
+          context,
+          ForwardMklTensorInToOutWithMklShape(
+              context, summand_idx, 0, output_tensor, summand_mkl_shape, false),
+          errors::InvalidArgument(
+              "Summand cannot be forwarded in the current fusion."));
       return;
     }
     MklConvOp<Device, Tinput, qint8, Tbias, Toutput, Ttemp_output, int32,

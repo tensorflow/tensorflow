@@ -21,6 +21,7 @@ from __future__ import print_function
 import contextlib
 import copy
 import json
+import multiprocessing
 import os
 import subprocess
 import sys
@@ -91,7 +92,10 @@ def _create_cluster(num_workers,
                     protocol='grpc',
                     worker_config=None,
                     ps_config=None,
-                    eval_config=None):
+                    eval_config=None,
+                    worker_name='worker',
+                    ps_name='ps',
+                    chief_name='chief'):
   """Creates and starts local servers and returns the cluster_spec dict."""
   if _portpicker_import_error:
     raise _portpicker_import_error  # pylint: disable=raising-bad-type
@@ -100,20 +104,20 @@ def _create_cluster(num_workers,
 
   cluster_dict = {}
   if num_workers > 0:
-    cluster_dict['worker'] = ['localhost:%s' % port for port in worker_ports]
+    cluster_dict[worker_name] = ['localhost:%s' % port for port in worker_ports]
   if num_ps > 0:
-    cluster_dict['ps'] = ['localhost:%s' % port for port in ps_ports]
+    cluster_dict[ps_name] = ['localhost:%s' % port for port in ps_ports]
   if has_eval:
     cluster_dict['evaluator'] = ['localhost:%s' % pick_unused_port()]
   if has_chief:
-    cluster_dict['chief'] = ['localhost:%s' % pick_unused_port()]
+    cluster_dict[chief_name] = ['localhost:%s' % pick_unused_port()]
 
   cs = server_lib.ClusterSpec(cluster_dict)
 
   for i in range(num_workers):
     server_lib.Server(
         cs,
-        job_name='worker',
+        job_name=worker_name,
         protocol=protocol,
         task_index=i,
         config=worker_config,
@@ -122,7 +126,7 @@ def _create_cluster(num_workers,
   for i in range(num_ps):
     server_lib.Server(
         cs,
-        job_name='ps',
+        job_name=ps_name,
         protocol=protocol,
         task_index=i,
         config=ps_config,
@@ -131,7 +135,7 @@ def _create_cluster(num_workers,
   if has_chief:
     server_lib.Server(
         cs,
-        job_name='chief',
+        job_name=chief_name,
         protocol=protocol,
         task_index=0,
         config=worker_config,
@@ -159,6 +163,11 @@ def create_in_process_cluster(num_workers,
   gpu_mem_frac = 0.7 / (num_workers + int(has_chief) + int(has_eval))
   worker_config = config_pb2.ConfigProto()
   worker_config.gpu_options.per_process_gpu_memory_fraction = gpu_mem_frac
+
+  # The cluster may hang if workers don't have enough inter_op threads. See
+  # b/172296720 for more details.
+  if multiprocessing.cpu_count() < 4:
+    worker_config.inter_op_parallelism_threads = 4
 
   # Enable collective ops which has no impact on non-collective ops.
   # TODO(yuefengz, tucker): removing this after we move the initialization of
@@ -233,6 +242,11 @@ class MultiProcessCluster(object):
       # TODO(yuefengz): support GPU clusters.
       server_config = config_pb2.ConfigProto()
       server_config.device_count['GPU'] = 0
+
+      # Set the environment variable to prevent hanging upon job failure and
+      # restart. Note that it defaults to 'use_caller' at Google, but defaults
+      # to False in OSS.
+      os.environ['GRPC_FAIL_FAST'] = 'use_caller'
 
       server_lib.Server(
           cluster_spec,

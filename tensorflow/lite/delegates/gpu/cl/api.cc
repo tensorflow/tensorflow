@@ -31,12 +31,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/inference_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/converter.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
-#include "tensorflow/lite/delegates/gpu/cl/precision.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type_util.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 #ifdef CL_DELEGATE_ALLOW_GL
@@ -570,6 +570,56 @@ TensorObjectDef TensorToDef(const Tensor& tensor) {
   return def;
 }
 
+CalculationsPrecision GetPrecision(const Environment& env,
+                                   const InferenceOptions& options) {
+  CalculationsPrecision precision;
+  switch (GetPosition(options, InferencePriority::MAX_PRECISION)) {
+    case 1:
+      precision = CalculationsPrecision::F32;
+      break;
+    case 2:
+      precision = CalculationsPrecision::F32_F16;
+      break;
+    case 3:
+      precision = CalculationsPrecision::F16;
+      break;
+    default:
+      precision = CalculationsPrecision::F16;
+      break;
+  }
+  // Increase precision if lower precision is not supported.
+  if (!env.IsSupported(precision)) {
+    precision = CalculationsPrecision::F32_F16;
+    if (!env.IsSupported(precision)) {
+      precision = CalculationsPrecision::F32;
+    }
+  }
+  return precision;
+}
+
+TensorStorageType GetStorageTypeFromOptions(const Environment& env,
+                                            const InferenceOptions& options) {
+  // Fallback to BUFFER that should be supported by default.
+  std::vector<TensorStorageType> preferred_storage_types;
+  if (GetRelativeImportance(options, InferencePriority::MIN_LATENCY,
+                            InferencePriority::MIN_MEMORY_USAGE) ==
+      PriorityImportance::HIGHER) {
+    preferred_storage_types = {GetFastestStorageType(env.device().GetInfo()),
+                               TensorStorageType::BUFFER};
+  } else {
+    preferred_storage_types = {
+        GetStorageTypeWithMinimalMemoryConsumption(env.device().GetInfo()),
+        TensorStorageType::BUFFER};
+  }
+
+  for (TensorStorageType storage_type : preferred_storage_types) {
+    if (env.IsSupported(storage_type)) {
+      return storage_type;
+    }
+  }
+  return TensorStorageType::UNKNOWN;
+}
+
 class InferenceBuilderImpl : public InferenceBuilder {
  public:
   explicit InferenceBuilderImpl(Environment* environment)
@@ -580,8 +630,9 @@ class InferenceBuilderImpl : public InferenceBuilder {
                           const GraphFloat32& graph) {
     context_ = absl::make_unique<InferenceContext>();
     InferenceContext::CreateInferenceInfo create_info;
-    create_info.precision = GetPrecision(options);
-    create_info.storage_type = GetStorageType(options);
+    create_info.precision = GetPrecision(*environment_, options);
+    create_info.storage_type =
+        GetStorageTypeFromOptions(*environment_, options);
     if (options.usage == InferenceUsage::FAST_SINGLE_ANSWER) {
       create_info.hints.Add(ModelHints::kReduceKernelsCount);
       create_info.hints.Add(ModelHints::kFastTuning);
@@ -605,6 +656,38 @@ class InferenceBuilderImpl : public InferenceBuilder {
 
     inputs_ = LinkTensors(context_->GetInputIds(), AccessType::READ);
     outputs_ = LinkTensors(context_->GetOutputIds(), AccessType::WRITE);
+    return absl::OkStatus();
+  }
+
+  absl::Status Initialize(const InferenceEnvironmentOptions& env_options,
+                          const absl::Span<const uint8_t> serialized_model,
+                          std::vector<int64_t>* in_refs = nullptr,
+                          std::vector<int64_t>* out_refs = nullptr) {
+    context_ = absl::make_unique<InferenceContext>();
+    RETURN_IF_ERROR(
+        context_->RestoreDeserialized(serialized_model, environment_));
+
+#ifdef CL_DELEGATE_ALLOW_GL
+    if (env_options.IsGlAware() &&
+        IsGlSharingSupported(environment_->device())) {
+      gl_interop_fabric_ = absl::make_unique<GlInteropFabric>(
+          env_options.egl_display, environment_);
+    }
+    tie_factory_ = absl::make_unique<TensorTieFactory>(
+        environment_, context_.get(), gl_interop_fabric_.get());
+#else
+    tie_factory_ =
+        absl::make_unique<TensorTieFactory>(environment_, context_.get());
+#endif
+
+    inputs_ = LinkTensors(context_->GetInputIds(), AccessType::READ);
+    outputs_ = LinkTensors(context_->GetOutputIds(), AccessType::WRITE);
+    if (in_refs) {
+      *in_refs = context_->GetInputRefs();
+    }
+    if (out_refs) {
+      *out_refs = context_->GetOutputRefs();
+    }
     return absl::OkStatus();
   }
 
@@ -671,55 +754,6 @@ class InferenceBuilderImpl : public InferenceBuilder {
   }
 
  private:
-  TensorStorageType GetStorageType(const InferenceOptions& options) const {
-    // Fallback to BUFFER that should be supported by default.
-    std::vector<TensorStorageType> preferred_storage_types;
-    if (GetRelativeImportance(options, InferencePriority::MIN_LATENCY,
-                              InferencePriority::MIN_MEMORY_USAGE) ==
-        PriorityImportance::HIGHER) {
-      preferred_storage_types = {
-          GetFastestStorageType(environment_->device().GetInfo()),
-          TensorStorageType::BUFFER};
-    } else {
-      preferred_storage_types = {GetStorageTypeWithMinimalMemoryConsumption(
-                                     environment_->device().GetInfo()),
-                                 TensorStorageType::BUFFER};
-    }
-
-    for (TensorStorageType storage_type : preferred_storage_types) {
-      if (environment_->IsSupported(storage_type)) {
-        return storage_type;
-      }
-    }
-    return TensorStorageType::UNKNOWN;
-  }
-
-  CalculationsPrecision GetPrecision(const InferenceOptions& options) const {
-    CalculationsPrecision precision;
-    switch (GetPosition(options, InferencePriority::MAX_PRECISION)) {
-      case 1:
-        precision = CalculationsPrecision::F32;
-        break;
-      case 2:
-        precision = CalculationsPrecision::F32_F16;
-        break;
-      case 3:
-        precision = CalculationsPrecision::F16;
-        break;
-      default:
-        precision = CalculationsPrecision::F16;
-        break;
-    }
-    // Increase precision if lower precision is not supported.
-    if (!environment_->IsSupported(precision)) {
-      precision = CalculationsPrecision::F32_F16;
-      if (!environment_->IsSupported(precision)) {
-        precision = CalculationsPrecision::F32;
-      }
-    }
-    return precision;
-  }
-
   // Links internal tensors with external user-facing objects.
   std::vector<TensorTieDef> LinkTensors(const std::vector<ValueId>& ids,
                                         AccessType access) {
@@ -840,6 +874,39 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
     return environment_.Init();
   }
 
+  absl::Status BuildSerializedModel(
+      const InferenceOptions& options, GraphFloat32 model,
+      std::vector<uint8_t>* serialized_model) final {
+    if (!IsValid(options)) {
+      return absl::InvalidArgumentError("InferenceOptions are invalid.");
+    }
+    InferenceOptions resolved_options = options;
+    ResolveAutoPriority(&resolved_options);
+    if (environment_.program_cache() &&
+        !options_.serialized_binary_cache.empty()) {
+      // Ignore returned error. Cache is discarded.
+      environment_.program_cache()
+          ->AddSerializedCache(environment_.context(), environment_.device(),
+                               options_.serialized_binary_cache)
+          .IgnoreError();
+    }
+
+    RETURN_IF_ERROR(RunGraphTransforms(&model));
+    InferenceContext context;
+    InferenceContext::CreateInferenceInfo create_info;
+    create_info.precision = GetPrecision(environment_, options);
+    create_info.storage_type = GetStorageTypeFromOptions(environment_, options);
+    if (options.usage == InferenceUsage::FAST_SINGLE_ANSWER) {
+      create_info.hints.Add(ModelHints::kReduceKernelsCount);
+      create_info.hints.Add(ModelHints::kFastTuning);
+    } else if (options.usage == InferenceUsage::SUSTAINED_SPEED) {
+      create_info.hints.Add(ModelHints::kAllowSpecialKernels);
+    }
+    RETURN_IF_ERROR(context.InitFromGraph(create_info, model, &environment_,
+                                          serialized_model));
+    return absl::OkStatus();
+  }
+
   absl::Status NewInferenceBuilder(
       const InferenceOptions& options, GraphFloat32 model,
       std::unique_ptr<InferenceBuilder>* builder) final {
@@ -861,6 +928,26 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
     auto builder_impl = absl::make_unique<InferenceBuilderImpl>(&environment_);
     RETURN_IF_ERROR(
         builder_impl->Initialize(resolved_options, options_, model));
+    *builder = std::move(builder_impl);
+    return absl::OkStatus();
+  }
+
+  absl::Status NewInferenceBuilder(
+      const absl::Span<const uint8_t> serialized_model,
+      std::unique_ptr<InferenceBuilder>* builder, std::vector<int64_t>* in_refs,
+      std::vector<int64_t>* out_refs) final {
+    if (environment_.program_cache() &&
+        !options_.serialized_binary_cache.empty()) {
+      // Ignore returned error. Cache is discarded.
+      environment_.program_cache()
+          ->AddSerializedCache(environment_.context(), environment_.device(),
+                               options_.serialized_binary_cache)
+          .IgnoreError();
+    }
+
+    auto builder_impl = absl::make_unique<InferenceBuilderImpl>(&environment_);
+    RETURN_IF_ERROR(builder_impl->Initialize(options_, serialized_model,
+                                             in_refs, out_refs));
     *builder = std::move(builder_impl);
     return absl::OkStatus();
   }

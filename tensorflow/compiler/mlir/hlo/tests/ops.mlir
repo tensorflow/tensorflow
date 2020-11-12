@@ -3,13 +3,13 @@
 // Tests for types, ops with custom constraints, verifiers, printer or parser
 // methods.
 
-// CHECK-LABEL: func @token_type() -> !mhlo.token
-func @token_type() -> !mhlo.token
+// CHECK-LABEL: func private @token_type() -> !mhlo.token
+func private @token_type() -> !mhlo.token
 
 // -----
 
 // expected-error@+1 {{unknown mhlo type: foobar}}
-func @invalid_type() -> !mhlo.foobar
+func private @invalid_type() -> !mhlo.foobar
 
 // -----
 
@@ -165,7 +165,7 @@ func @broadcast_in_dim_bad_rank_decrease(%arg0: tensor<1x2x3xi32>) -> tensor<3xi
 // -----
 
 func @broadcast_in_dim_dimension_values_too_large(%arg0: tensor<1x2xi32>) -> tensor<1x2x3xi32> {
-  // expected-error@+1 {{broadcast_dimensions contains invalid value 9 for result result with rank 3}}
+  // expected-error@+1 {{broadcast_dimensions contains invalid value 9 for result with rank 3}}
   %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[9, 2]> : tensor<2xi64>} : (tensor<1x2xi32>) -> tensor<1x2x3xi32>
   return %0 : tensor<1x2x3xi32>
 }
@@ -324,6 +324,14 @@ func @collective_permute_duplicate_sources(%arg0: tensor<128x32xf32>) -> tensor<
     source_target_pairs = dense<[[0, 1, 2], [3, 4, 5]]> : tensor<2x3xi64>
   } : (tensor<128x32xf32>) -> tensor<128x32xf32>
   return %0 : tensor<128x32xf32>
+}
+
+// -----
+
+func @concat_0D(%arg0: tensor<i32>, %arg1: tensor<i32>)  -> tensor<2xi32> {
+  // expected-error@+1 {{rank-0 values cannot be concatenated}}
+  %0 = "mhlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<i32>, tensor<i32>) -> tensor<2xi32>
+  return %0 : tensor<2xi32>
 }
 
 // -----
@@ -683,16 +691,16 @@ func @select_bad_element_type_mismatch(%arg0: tensor<3xi1>, %arg1: tensor<2x3xf3
 // -----
 
 // CHECK-LABEL: func @slice
-func @slice(%arg0: tensor<3x4xi32>) -> tensor<1x4xi32> {
-  %0 = "mhlo.slice"(%arg0) {start_indices = dense<[1, 0]> : tensor<2xi64>, limit_indices = dense<[2, 4]> : tensor<2xi64>, strides = dense<[1, 2]> : tensor<2xi64>} : (tensor<3x4xi32>) -> tensor<1x4xi32>
-  return %0 : tensor<1x4xi32>
+func @slice(%arg0: tensor<3x4xi32>) -> tensor<1x2xi32> {
+  %0 = "mhlo.slice"(%arg0) {start_indices = dense<[1, 0]> : tensor<2xi64>, limit_indices = dense<[2, 4]> : tensor<2xi64>, strides = dense<[1, 2]> : tensor<2xi64>} : (tensor<3x4xi32>) -> tensor<1x2xi32>
+  return %0 : tensor<1x2xi32>
 }
 
 // -----
 
 func @slice_indices_mismatch(%arg0: tensor<3x4xi32>) -> tensor<1x4xi32> {
   // expected-error@+1 {{failed to verify that all of {start_indices, limit_indices, strides} have same type}}
-  %0 = "mhlo.slice"(%arg0) {start_indices = dense<[1, 2, 3]> : tensor<3xi64>, limit_indices = dense<[2, 4]> : tensor<2xi64>, strides = dense<[1, 2]> : tensor<2xi64>} : (tensor<3x4xi32>) -> tensor<1x4xi32>
+  %0 = "mhlo.slice"(%arg0) {start_indices = dense<[1, 2]> : tensor<2xi64>, limit_indices = dense<[2, 4, 1]> : tensor<3xi64>, strides = dense<[1, 2]> : tensor<2xi64>} : (tensor<3x4xi32>) -> tensor<1x4xi32>
   return %0 : tensor<1x4xi32>
 }
 
@@ -702,6 +710,30 @@ func @slice_operand_result_mismatch(%arg0: tensor<3x4xi32>) -> tensor<1x4xf32> {
   // expected-error@+1 {{requires the same element type for all operands and results}}
   %0 = "mhlo.slice"(%arg0) {start_indices = dense<[1, 0]> : tensor<2xi64>, limit_indices = dense<[2, 4]> : tensor<2xi64>, strides = dense<[1, 2]> : tensor<2xi64>} : (tensor<3x4xi32>) -> tensor<1x4xf32>
   return %0 : tensor<1x4xf32>
+}
+
+// -----
+
+func @slice_indices_not_rank_1(%arg0: tensor<3x4xi32>) -> tensor<1x2xi32> {
+  // expected-error@+1 {{start_indices has rank 2 instead of required rank 1}}
+  %0 = "mhlo.slice"(%arg0) {
+    start_indices = dense<[[1, 0]]> : tensor<1x2xi64>,
+    limit_indices = dense<[[2, 4]]> : tensor<1x2xi64>,
+    strides = dense<[[1, 2]]> : tensor<1x2xi64>
+  } : (tensor<3x4xi32>) -> tensor<1x2xi32>
+  return %0 : tensor<1x2xi32>
+}
+
+// -----
+
+func @slice_indices_wrong_size(%arg0: tensor<3x4xi32>) -> tensor<1x2xi32> {
+  // expected-error@+1 {{the number of elements in start_indices (3) does not match the rank of the operand (2)}}
+  %0 = "mhlo.slice"(%arg0) {
+    start_indices = dense<[1, 0, 0]> : tensor<3xi64>,
+    limit_indices = dense<[2, 4, 0]> : tensor<3xi64>,
+    strides = dense<[1, 2, 0]> : tensor<3xi64>
+  } : (tensor<3x4xi32>) -> tensor<1x2xi32>
+  return %0 : tensor<1x2xi32>
 }
 
 // -----
@@ -1213,4 +1245,48 @@ func @bitcast(%arg: tensor<2x4xf32>) -> tensor<2x4xf32> {
 func @bitcast(%arg: tensor<2x4xf32>) -> tensor<2x4xf32> {
   %0 = "mhlo.reduce_precision"(%arg) {exponent_bits=2 : i32, mantissa_bits=3 : i32} : (tensor<2x4xf32>) -> tensor<2x4xf32>
   return %0 : tensor<2x4xf32>
+}
+
+// -----
+
+func @get_dimension_size(%I: tensor<1x128x512xf32>) -> tensor<i32> {
+  // expected-error@+1 {{requires dimension attribute in range [0, 3); found (3)}}
+  %size = "mhlo.get_dimension_size"(%I) {dimension = 3 : i64} : (tensor<1x128x512xf32>) -> tensor<i32>
+  return %size : tensor<i32>
+}
+
+// -----
+
+func @get_dimension_size(%I: tensor<1x128x512xf32>) -> tensor<i32> {
+  %size = "mhlo.get_dimension_size"(%I) {dimension = 2 : i64} : (tensor<1x128x512xf32>) -> tensor<i32>
+  return %size : tensor<i32>
+}
+
+// -----
+
+func @set_dimension_size(%I: tensor<1x128x512xf32>) -> tensor<1x128x512xf32> {
+  %dim = mhlo.constant dense<512> : tensor<1xi32>
+
+  // expected-error@+1 {{size operand should be of rank-0}}
+  %result = "mhlo.set_dimension_size"(%I, %dim) {dimension = 2 : i64} : (tensor<1x128x512xf32>, tensor<1xi32>) -> tensor<1x128x512xf32>
+  return %result : tensor<1x128x512xf32>
+}
+
+// -----
+
+func @set_dimension_size(%I: tensor<1x128x512xf32>) -> tensor<1x128x512xf32> {
+  %dim = mhlo.constant dense<512> : tensor<i32>
+
+  // expected-error@+1 {{requires dimension attribute in range [0, 3); found (3)}}
+  %result = "mhlo.set_dimension_size"(%I, %dim) {dimension = 3 : i64} : (tensor<1x128x512xf32>, tensor<i32>) -> tensor<1x128x512xf32>
+  return %result : tensor<1x128x512xf32>
+}
+
+// -----
+
+// CHECK: func @custom_call_multiple_outputs
+func @custom_call_multiple_outputs(%x: tensor<2xf32>) -> tensor<2xf32> {
+  %0:2 = "mhlo.custom_call"(%x) {backend_config="", call_target_name = "foo", has_side_effect = false} : (tensor<2xf32>) -> (tensor<2xf32>, tensor<2xf32>)
+  %1 = "mhlo.add"(%0#0, %0#1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  return %1 : tensor<2xf32>
 }

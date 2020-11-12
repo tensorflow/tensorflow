@@ -305,6 +305,29 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
+REGISTER_OP("_MklNativeFusedMatMul")
+    .Input("a: T")
+    .Input("b: T")
+    .Input("args: num_args * T")
+    .Output("product: T")
+    .Attr("is_filter_const: bool = false")
+    .Attr("transpose_a: bool = false")
+    .Attr("transpose_b: bool = false")
+    .Attr("T: {bfloat16, float}")
+    .Attr("num_args: int >= 0")
+    .Attr("fused_ops: list(string) = []")
+    // Attributes for the FusedBatchNorm ----------- //
+    .Attr("epsilon: float = 0.0001")
+    // --------------------------------------------- //
+    .SetShapeFn(shape_inference::MatMulShape)
+    .Doc(R"doc(
+oneDNN version of FusedMatMul operator that does not depend
+on layout propagation. Uses oneDNN APIs to implement MatMul fusion.
+
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke this one.
+)doc");
+
 REGISTER_OP("__MklDummyPadWithFusedConv2D")
     .Input("input: T")
     .Input("filter: T")
@@ -481,6 +504,86 @@ REGISTER_OP("_MklNativeAvgPool3DGrad")
 oneDNN version of AvgPool3DGrad operator that does not depend on layout
 propagation. Uses oneDNN APIs to compute gradients of AvgPool3D function.
 
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklNativeMaxPool")
+    .Attr("T: {float, half, bfloat16} = DT_FLOAT")
+    .Attr("ksize: list(int) >= 4")
+    .Attr("strides: list(int) >= 4")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr(GetExplicitPaddingsAttrString())
+    .Attr("workspace_enabled: bool = false")
+    .Input("input: T")
+    .Output("output: T")
+    .Output("workspace: uint8")
+    .SetShapeFn(shape_inference::MaxPoolShape)
+    .Doc(R"doc(
+oneDNN version of MaxPool operator that does not depend
+on layout propagation. Uses oneDNN APIs to perform max pooling
+on the input.
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklNativeMaxPoolGrad")
+    .Attr("T: {float, half, bfloat16} = DT_FLOAT")
+    .Attr("ksize: list(int) >= 4")
+    .Attr("strides: list(int) >= 4")
+    .Attr("workspace_enabled: bool = false")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr(GetExplicitPaddingsAttrString())
+    .Input("orig_input: T")
+    .Input("orig_output: T")
+    .Input("grad: T")
+    .Input("workspace: uint8")
+    .Output("output: T")
+    .SetShapeFn(shape_inference::MaxPoolGradShape)
+    .Doc(R"doc(
+oneDNN version of MaxPoolGrad that does not depend on layout propagation.
+Uses oneDNN APIs to compute gradients of MaxPool operator.
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklNativeMaxPool3D")
+    .Input("input: T")
+    .Output("output: T")
+    .Output("workspace: uint8")
+    .Attr("ksize: list(int) >= 5")
+    .Attr("strides: list(int) >= 5")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnet3dDataFormatAttrString())
+    .Attr("T: {half, bfloat16, float}")
+    .Attr("workspace_enabled: bool = false")
+    .SetShapeFn(shape_inference::Pool3DShape)
+    .Doc(R"doc(
+oneDNN version of MaxPool3D operator that does not depend on layout propagation.
+Uses oneDNN APIs to perform 3D max pooling on the input.
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklNativeMaxPool3DGrad")
+    .Input("orig_input: TInput")
+    .Input("orig_output: TInput")
+    .Input("grad: T")
+    .Input("workspace: uint8")
+    .Output("output: T")
+    .Attr("ksize: list(int) >= 5")
+    .Attr("strides: list(int) >= 5")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnet3dDataFormatAttrString())
+    .Attr("T: {half, bfloat16, float} = DT_FLOAT")
+    .Attr("TInput: {half, bfloat16, float} = DT_FLOAT")
+    .Attr("workspace_enabled: bool = false")
+    .SetShapeFn(shape_inference::MaxPool3DGradShape)
+    .Doc(R"doc(
+oneDNN version of MaxPool3DGrad operator that does not depend on layout
+propagation. Uses oneDNN APIs to compute gradients of MaxPool3D function.
 *NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");

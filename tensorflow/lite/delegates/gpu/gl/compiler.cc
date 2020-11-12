@@ -65,21 +65,19 @@ bool ExceedsMaxSize(const Object& object, const GpuInfo& gpu_info) {
 }
 
 ObjectType ChooseFastestObjectType(const GpuInfo& gpu_info) {
-  return gpu_info.type == GpuType::ADRENO ? ObjectType::TEXTURE
-                                          : ObjectType::BUFFER;
+  return gpu_info.IsAdreno() ? ObjectType::TEXTURE : ObjectType::BUFFER;
 }
 
 ObjectType ChooseFastestRefObjectType(const GpuInfo& gpu_info,
                                       const CompilationOptions& options) {
-  if (gpu_info.type != GpuType::ADRENO) {
+  if (!gpu_info.IsAdreno()) {
     return ObjectType::BUFFER;
   }
-  switch (gpu_info.gpu_model) {
-    case GpuModel::ADRENO630:
-      return ObjectType::TEXTURE;
-    default:
-      return options.allow_precision_loss ? ObjectType::TEXTURE
-                                          : ObjectType::BUFFER;
+  if (gpu_info.adreno_info.adreno_gpu == AdrenoGpu::kAdreno630) {
+    return ObjectType::TEXTURE;
+  } else {
+    return options.allow_precision_loss ? ObjectType::TEXTURE
+                                        : ObjectType::BUFFER;
   }
 }
 

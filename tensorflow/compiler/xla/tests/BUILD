@@ -71,9 +71,9 @@ cc_library(
     hdrs = ["manifest_checking_test.h"],
     deps = [
         ":test_macros_header",
-        "//tensorflow/core:regexp_internal",
         "//tensorflow/core:test",
         "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:regexp",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
@@ -171,8 +171,8 @@ cc_library(
         "//tensorflow/compiler/xla/service:interpreter_plugin",  # reference backend
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",
@@ -233,8 +233,8 @@ cc_library(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -312,7 +312,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/stream_executor:device_memory_allocator",
         "//third_party/eigen3",
         "@com_google_absl//absl/memory",
@@ -413,16 +413,18 @@ xla_test(
     ],
     shard_count = 50,
     deps = [
+        ":client_library_test_base",
+        ":hlo_test_base",
         ":test_macros_header",
+        ":test_utils",
+        ":xla_internal_test_main",
         "//tensorflow/compiler/xla:execution_options_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/service:bfloat16_normalization",
         "//tensorflow/compiler/xla/service:despecializer",
-        "//tensorflow/compiler/xla/tests:client_library_test_base",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -509,8 +511,8 @@ xla_test(
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/service:stream_pool",
         "//tensorflow/core:lib",
-        "//tensorflow/core:regexp_internal",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:regexp",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
@@ -555,8 +557,8 @@ xla_test(
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
     ],
 )
 
@@ -1458,8 +1460,8 @@ xla_test(
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/stream_executor:device_memory_allocator",
     ],
 )
@@ -1915,8 +1917,8 @@ xla_test(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
     ],
 )
 
@@ -1956,8 +1958,8 @@ xla_test(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
     ],
@@ -1986,8 +1988,8 @@ xla_test(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
     ],
 )
 
@@ -2047,8 +2049,8 @@ xla_test(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
     ],
 )
 
@@ -2402,8 +2404,8 @@ xla_test(
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/stream_executor:device_memory_allocator",
     ],
 )
@@ -2525,8 +2527,8 @@ xla_test(
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:stream_pool",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/stream_executor:device_memory_allocator",
     ],
 )
@@ -2667,6 +2669,7 @@ xla_test(
     ],
     deps = [
         ":test_macros_header",
+        "//tensorflow/compiler/xla:array",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:statusor",
@@ -2679,6 +2682,7 @@ xla_test(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
+        "@com_google_absl//absl/strings",
     ],
 )
 

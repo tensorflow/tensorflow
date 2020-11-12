@@ -6,7 +6,6 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 package(
     default_visibility = [
         # Remove this deps to integration test.
-        "//tensorflow/lite/experimental/tf_runtime:__pkg__",
         "//tensorflow/python/keras:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
@@ -45,6 +44,7 @@ py_library(
         "//tensorflow/python:tf_export",
         "//tensorflow/python/keras:activations",
         "//tensorflow/python/keras:backend",
+        "//tensorflow/python/keras:models",
         "//tensorflow/python/keras/engine",
         "//tensorflow/python/keras/layers",
         "//tensorflow/python/keras/utils:data_utils",
@@ -62,7 +62,6 @@ tf_py_test(
         "no_rocm",
         "notsan",  # b/168814536
     ],
-    tfrt_enabled = True,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
@@ -100,6 +99,7 @@ tf_py_test(
     tags = [
         "no_oss",
         "no_pip",
+        "notsan",  # TODO(b/170901700)
     ],
     deps = [
         ":applications",

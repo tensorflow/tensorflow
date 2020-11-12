@@ -430,9 +430,8 @@ FunctionDef* FuseFunctions(
     const SetInputFn& set_input, const SetOutputFn& set_output,
     const SetNodesFn& set_nodes, FunctionDefLibrary* library) {
   auto has_attrs = [](const FunctionDef& func) {
-    return !(
-        func.attr_size() == 0 ||
-        (func.attr_size() == 1 && func.attr().contains(data::kTFDataFunction)));
+    return !(func.attr_size() == 0 ||
+             (func.attr_size() == 1 && data::IsTFDataFunction(func)));
   };
   if (has_attrs(first_function) || has_attrs(second_function)) {
     return nullptr;  // Functions with attributes are currently not supported.

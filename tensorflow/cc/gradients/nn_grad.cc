@@ -67,7 +67,7 @@ bool IsZero(const Scope& scope, const Output& grad) {
 //     mat: A 2-D tensor of dimension [D0, D1]
 //
 //   Returns:
-//     A tensor of dimension [D0, D1], the result fo vec * mat.
+//     A tensor of dimension [D0, D1], the result for vec * mat.
 Output BroadcastMul(const Scope& scope, const Output& vec, const Output& mat) {
   auto reshaped = ExpandDims(scope, vec, -1);
   return Multiply(scope, reshaped, mat);

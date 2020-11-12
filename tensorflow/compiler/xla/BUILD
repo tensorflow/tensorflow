@@ -321,7 +321,7 @@ cc_library(
         ":xla_data_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:regexp_internal",
+        "//tensorflow/core/platform:regexp",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
@@ -490,12 +490,14 @@ cc_library(
 cc_library(
     name = "error_spec",
     hdrs = ["error_spec.h"],
+    visibility = [":friends"],
 )
 
 cc_library(
     name = "literal_comparison",
     srcs = ["literal_comparison.cc"],
     hdrs = ["literal_comparison.h"],
+    visibility = [":friends"],
     deps = [
         ":error_spec",
         ":literal",
@@ -527,7 +529,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":types",
-        "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -664,8 +666,8 @@ cc_library(
         ":statusor",
         ":types",
         "//tensorflow/core:lib",
-        "//tensorflow/core:regexp_internal",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:regexp",
         "@com_google_absl//absl/strings",
     ],
 )

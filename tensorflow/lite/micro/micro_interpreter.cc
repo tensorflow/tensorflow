@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -408,8 +408,8 @@ TfLiteTensor* MicroInterpreter::output(size_t index) {
                                                      outputs().Get(index));
   }
   if (output_tensor_ == nullptr) {
-    // TODO(b/160894903): This API will allocate TfLiteTensor structs from
-    // persistent (tail) memory and cache on this pointer.
+    // TODO(b/162311891): Drop these allocations when the interpreter supports
+    // handling buffers from TfLiteEvalTensor.
     output_tensor_ = allocator_.AllocatePersistentTfLiteTensor(
         model_, eval_tensors_, outputs().Get(index));
   }

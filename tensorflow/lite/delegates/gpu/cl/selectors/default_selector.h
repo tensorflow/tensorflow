@@ -22,17 +22,16 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/model_hints.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/subgraph.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 
 namespace tflite {
 namespace gpu {
 namespace cl {
 
-absl::Status SelectDefault(const DeviceInfo& device_info,
-                           const OperationDef& op_def, ModelHints hints,
-                           const std::vector<Value*>& inputs,
+absl::Status SelectDefault(const GpuInfo& gpu_info, const OperationDef& op_def,
+                           ModelHints hints, const std::vector<Value*>& inputs,
                            const std::vector<Value*>& outputs, const Node& node,
                            GPUOperationsSubgraph* gpu_subgraph);
 

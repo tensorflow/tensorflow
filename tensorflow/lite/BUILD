@@ -261,10 +261,8 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/delegates:status",
-        "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/kernels/internal:compatibility",
-        "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/profiling:platform_profiler",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
@@ -296,9 +294,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
-        "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/experimental/resource",
-        "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )
@@ -309,12 +305,11 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
     visibility = [
-        "//tensorflow/lite:__subpackages__",
-        "//tensorflow_lite_support:__subpackages__",
+        "//visibility:public",
     ],
     deps = [
         "//tensorflow/lite:stderr_reporter",
-        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/api:error_reporter",
     ],
 )
 
@@ -325,13 +320,12 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
     visibility = [
-        "//tensorflow/lite:__subpackages__",
-        "//tensorflow_lite_support:__subpackages__",
+        "//visibility:public",
     ],
     deps = [
         ":minimal_logging",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/api:error_reporter",
     ],
 )
 
@@ -341,12 +335,11 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
     visibility = [
-        "//tensorflow/lite:__subpackages__",
-        "//tensorflow_lite_support:__subpackages__",
+        "//visibility:public",
     ],
     deps = [
         "//tensorflow/lite:mutable_op_resolver",
-        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/api:op_resolver",
     ],
 )
 
@@ -357,12 +350,11 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
     visibility = [
-        "//tensorflow/lite:__subpackages__",
-        "//tensorflow_lite_support:__subpackages__",
+        "//visibility:public",
     ],
     deps = [
         ":util",
-        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/api:op_resolver",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )
@@ -625,6 +617,15 @@ cc_test(
         ":framework",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "stderr_reporter_test",
+    srcs = ["stderr_reporter_test.cc"],
+    deps = [
+        ":stderr_reporter",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

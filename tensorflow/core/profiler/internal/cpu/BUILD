@@ -132,10 +132,7 @@ cc_library(
         "annotation_stack.h",
     ],
     copts = tf_profiler_copts(),
-    visibility = [
-        "//tensorflow/core/profiler:__pkg__",
-        "//tensorflow/python:__pkg__",
-    ],
+    visibility = ["//tensorflow/core/profiler:__pkg__"],
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",

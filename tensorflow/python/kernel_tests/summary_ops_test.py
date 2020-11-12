@@ -956,6 +956,16 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
   def tearDown(self):
     summary_ops.trace_off()
 
+  def exec_summary_op(self, summary_op_fn):
+    assert context.executing_eagerly()
+    logdir = self.get_temp_dir()
+    writer = summary_ops.create_file_writer(logdir)
+    with writer.as_default():
+      summary_op_fn()
+    writer.close()
+    events = events_from_logdir(logdir)
+    return events[1]
+
   def run_metadata(self, *args, **kwargs):
     assert context.executing_eagerly()
     logdir = self.get_temp_dir()
@@ -1205,6 +1215,71 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
     finally:
       # Reset to default state for other tests.
       summary_ops.set_step(None)
+
+  @test_util.run_v2_only
+  def testGraphV2_graph(self):
+
+    @def_function.function
+    def f():
+      x = constant_op.constant(2)
+      y = constant_op.constant(3)
+      return x**y
+
+    def summary_op_fn():
+      summary_ops.graph_v2(f.get_concrete_function().graph)
+
+    event = self.exec_summary_op(summary_op_fn)
+    self.assertIsNotNone(event.graph_def)
+
+  @test_util.run_v2_only
+  def testGraphV2_graphDef(self):
+
+    @def_function.function
+    def f():
+      x = constant_op.constant(2)
+      y = constant_op.constant(3)
+      return x**y
+
+    def summary_op_fn():
+      summary_ops.graph_v2(f.get_concrete_function().graph.as_graph_def())
+
+    event = self.exec_summary_op(summary_op_fn)
+    self.assertIsNotNone(event.graph_def)
+
+  @test_util.run_v2_only
+  def testGraphV2_invalidData(self):
+    def summary_op_fn():
+      summary_ops.graph_v2('hello')
+
+    with self.assertRaisesRegex(
+        ValueError,
+        r'\'graph_data\' is not tf.Graph or tf.compat.v1.GraphDef',
+    ):
+      self.exec_summary_op(summary_op_fn)
+
+  @test_util.run_v2_only
+  def testGraphV2_fromGraphMode(self):
+
+    @def_function.function
+    def f():
+      x = constant_op.constant(2)
+      y = constant_op.constant(3)
+      return x**y
+
+    @def_function.function
+    def g(graph):
+      summary_ops.graph_v2(graph)
+
+    def summary_op_fn():
+      graph_def = f.get_concrete_function().graph.as_graph_def(add_shapes=True)
+      func_graph = constant_op.constant(graph_def.SerializeToString())
+      g(func_graph)
+
+    with self.assertRaisesRegex(
+        ValueError,
+        r'graph\(\) cannot be invoked inside a graph context.',
+    ):
+      self.exec_summary_op(summary_op_fn)
 
 
 def events_from_file(filepath):

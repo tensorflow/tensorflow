@@ -290,6 +290,40 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
                          combinations.combine(drop_remainder=[True, False])))
+  def testEmptyFirstSplits(self, drop_remainder):
+    dataset = dataset_ops.Dataset.range(8).batch(4, drop_remainder=True)
+    rebatched_dataset = distribute._RebatchDataset(
+        dataset, batch_sizes=[0, 1], drop_remainder=drop_remainder)
+
+    expected_shapes = [[None]]
+    self.assertEqual(expected_shapes, _flat_shapes(rebatched_dataset))
+
+    # We have an extra element at the end because if the desired batch size is
+    # zero, then we never read any inputs from the input_dataset at all, so we
+    # will keep producting empty outputs until we reach a non zero desired batch
+    # size split.
+    expected_output = [[], [0], [], [1], [], [2], [], [3],
+                       [], [4], [], [5], [], [6], [], [7], []]
+    self.assertDatasetProduces(rebatched_dataset, expected_output)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(drop_remainder=[True, False])))
+  def testEmptyLastSplits(self, drop_remainder):
+    dataset = dataset_ops.Dataset.range(8).batch(4, drop_remainder=True)
+    rebatched_dataset = distribute._RebatchDataset(
+        dataset, batch_sizes=[1, 0], drop_remainder=drop_remainder)
+
+    expected_shapes = [[None]]
+    self.assertEqual(expected_shapes, _flat_shapes(rebatched_dataset))
+
+    expected_output = [[0], [], [1], [], [2], [], [3], [],
+                       [4], [], [5], [], [6], [], [7], []]
+    self.assertDatasetProduces(rebatched_dataset, expected_output)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(drop_remainder=[True, False])))
   def testScalarBatchSizeInput(self, drop_remainder):
     dataset = dataset_ops.Dataset.range(8).batch(
         4, drop_remainder=True)

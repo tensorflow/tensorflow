@@ -132,12 +132,12 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:regexp_internal",
         "//tensorflow/core/grappler:graph_view",
         "//tensorflow/core/grappler/optimizers/data:graph_utils",
         "//tensorflow/core/kernels/data:dataset_utils",
         "//tensorflow/core/kernels/data:name_utils",
         "//tensorflow/core/kernels/data:serialization_utils",
+        "//tensorflow/core/platform:regexp",
     ],
 )
 
@@ -307,7 +307,7 @@ tf_cc_test(
     name = "lmdb_dataset_op_test",
     size = "small",
     srcs = ["lmdb_dataset_op_test.cc"],
-    data = ["//tensorflow/core:lmdb_testdata"],
+    data = ["//tensorflow/core/lib/lmdb:lmdb_testdata"],
     deps = [
         ":lmdb_dataset_op",
         "//tensorflow/core:experimental_dataset_ops_op_lib",
@@ -424,6 +424,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:functional_ops_op_lib",
         "//tensorflow/core:lib",
+        "//tensorflow/core/kernels:ragged_tensor_variant",
         "//tensorflow/core/kernels/data:dataset_utils",
         "//tensorflow/core/kernels/data:name_utils",
         "//tensorflow/core/kernels/data:parallel_map_dataset_op",

@@ -34,10 +34,8 @@ xla::ShapedBuffer FromC(XLA_ShapedBuffer* c_buffer) {
     i++;
   }
 
-  xla::ShapedBuffer xla_shaped_buffer(
-      xla_on_device_shape,
-      tensorflow::tpu::TpuPlatformInterface::GetRegisteredPlatform(),
-      c_buffer->device_ordinal);
+  xla::ShapedBuffer xla_shaped_buffer(xla_on_device_shape,
+                                      c_buffer->device_ordinal);
   xla_shaped_buffer.set_buffers(xla_shape_tree);
   return xla_shaped_buffer;
 }
@@ -92,7 +90,7 @@ SE_DeviceMemoryAllocator ToC(
   se_allocator.allocate = [](void* ctx, int device_ordinal, uint64_t size,
                              bool retry_on_failure, int64_t memory_space,
                              SE_ScopedDeviceMemory* memory,
-                             SE_Status* se_status) {
+                             TF_Status* se_status) {
     auto allocation =
         reinterpret_cast<stream_executor::DeviceMemoryAllocator*>(ctx)
             ->Allocate(device_ordinal, size, retry_on_failure, memory_space);
@@ -109,7 +107,7 @@ SE_DeviceMemoryAllocator ToC(
   };
 
   se_allocator.deallocate = [](void* ctx, SE_DeviceMemoryBase* base,
-                               int device_ordinal, SE_Status* se_status) {
+                               int device_ordinal, TF_Status* se_status) {
     auto status = reinterpret_cast<stream_executor::DeviceMemoryAllocator*>(ctx)
                       ->Deallocate(device_ordinal, ApiConverter::FromC(*base));
     if (!status.ok()) {
@@ -149,18 +147,171 @@ stream_executor::DeviceMemoryBase FromC(const SE_DeviceMemoryBase& se_base) {
   return base;
 }
 
-xla::Shape FromC(const XLA_Shape* shape) {
-  xla::ShapeProto p;
-  p.ParseFromArray(shape->bytes, shape->size);
-  return xla::Shape(p);
+// Helper functions for copying data to possibly-inlined C arrays.
+
+// 'Src' and 'Dst' are allowed to be different types to make this usable with
+// memory-identical types, e.g. int64 and int64_t. This should not be used with
+// types that require a static_cast.
+template <typename Src, typename Dst, typename DstList>
+static void CopyVectorBase(const absl::Span<Src> src, DstList* dst) {
+  static_assert(sizeof(Src) == sizeof(Dst), "Mismatched types");
+  dst->size = src.size();
+  if (dst->size > TPU_C_API_MAX_INLINED) {
+    dst->heap = new Dst[dst->size];
+    memcpy(dst->heap, src.data(), dst->size * sizeof(Src));
+  } else {
+    memcpy(dst->inlined, src.data(), dst->size * sizeof(Src));
+  }
+}
+
+static void CopyVector(const absl::Span<const typename tensorflow::int64> src,
+                       Int64List* dst) {
+  return CopyVectorBase<const typename tensorflow::int64, int64_t, Int64List>(
+      src, dst);
+}
+static void CopyVector(const absl::Span<const bool> src, BoolList* dst) {
+  return CopyVectorBase<const bool, bool, BoolList>(src, dst);
+}
+
+static void CopyVector(const absl::Span<const xla::Tile> src, TileList* dst) {
+  dst->size = src.size();
+  XLA_Tile* c_tiles;
+  if (dst->size > TPU_C_API_MAX_INLINED) {
+    dst->heap = new XLA_Tile[dst->size];
+    c_tiles = dst->heap;
+  } else {
+    c_tiles = dst->inlined;
+  }
+  for (int i = 0; i < dst->size; ++i) {
+    ToC(src[i], &c_tiles[i]);
+  }
+}
+
+// Helper functions for creating a view of possibly-inlined C arrays.
+
+// 'Src' and 'Dst' are allowed to be different types to make this usable with
+// memory-identical types, e.g. int64 and int64_t. This should not be used with
+// types that require a static_cast.
+template <typename Dst, typename Src, typename SrcList>
+static absl::Span<const Dst> MakeSpanBase(const SrcList& src_list) {
+  static_assert(sizeof(Src) == sizeof(Dst), "Mismatched types");
+  const Src* src = src_list.size > TPU_C_API_MAX_INLINED ? src_list.heap
+                                                         : &src_list.inlined[0];
+  return absl::Span<const Dst>(reinterpret_cast<const Dst*>(src),
+                               src_list.size);
+}
+
+static absl::Span<const typename tensorflow::int64> MakeSpan(
+    const Int64List& src_list) {
+  return MakeSpanBase<typename tensorflow::int64, int64_t, Int64List>(src_list);
+}
+static absl::Span<const bool> MakeSpan(const BoolList& src_list) {
+  return MakeSpanBase<bool, bool, BoolList>(src_list);
 }
 
 void ToC(const xla::Shape& xla_shape, XLA_Shape* c_shape) {
-  xla::ShapeProto p = xla_shape.ToProto();
-  std::string p_str = p.SerializeAsString();
-  c_shape->bytes = new char[p_str.size()];
-  c_shape->size = p_str.size();
-  memcpy(c_shape->bytes, p_str.data(), p_str.size());
+  c_shape->element_type = xla_shape.element_type();
+
+  CopyVector(xla_shape.dimensions(), &c_shape->dimensions);
+  CopyVector(xla_shape.dynamic_dimensions(), &c_shape->dynamic_dimensions);
+
+  c_shape->ntuple_shapes = xla_shape.tuple_shapes_size();
+  if (c_shape->ntuple_shapes > 0) {
+    c_shape->tuple_shapes = new XLA_Shape[c_shape->ntuple_shapes];
+    for (int i = 0; i < c_shape->ntuple_shapes; ++i) {
+      ToC(xla_shape.tuple_shapes(i), &c_shape->tuple_shapes[i]);
+    }
+  }
+
+  if (xla_shape.has_layout()) {
+    ToC(xla_shape.layout(), &c_shape->layout);
+  } else {
+    c_shape->layout.format = xla::INVALID_FORMAT;
+  }
+}
+
+xla::Shape FromC(const XLA_Shape* c_shape) {
+  absl::Span<const typename tensorflow::int64> dims =
+      MakeSpan(c_shape->dimensions);
+  absl::Span<const bool> dynamic_dims = MakeSpan(c_shape->dynamic_dimensions);
+
+  std::vector<xla::Shape> tuple_shapes;
+  tuple_shapes.reserve(c_shape->ntuple_shapes);
+  for (int i = 0; i < c_shape->ntuple_shapes; ++i) {
+    tuple_shapes.push_back(FromC(&c_shape->tuple_shapes[i]));
+  }
+
+  xla::Shape result(static_cast<xla::PrimitiveType>(c_shape->element_type),
+                    dims, dynamic_dims, std::move(tuple_shapes));
+  if (c_shape->layout.format != xla::INVALID_FORMAT) {
+    *result.mutable_layout() = FromC(&c_shape->layout);
+  }
+  return result;
+}
+
+void Free(XLA_Shape* c_shape) {
+  if (c_shape->dimensions.size > TPU_C_API_MAX_INLINED) {
+    delete[] c_shape->dimensions.heap;
+  }
+  if (c_shape->dynamic_dimensions.size > TPU_C_API_MAX_INLINED) {
+    delete[] c_shape->dynamic_dimensions.heap;
+  }
+  if (c_shape->ntuple_shapes > 0) {
+    for (int i = 0; i < c_shape->ntuple_shapes; ++i) {
+      Free(&c_shape->tuple_shapes[i]);
+    }
+    delete[] c_shape->tuple_shapes;
+  }
+  if (c_shape->layout.format != xla::INVALID_FORMAT) {
+    Free(&c_shape->layout);
+  }
+}
+
+void ToC(const xla::Layout& layout, XLA_Layout* c_layout) {
+  c_layout->format = layout.format();
+  CopyVector(layout.minor_to_major(), &c_layout->minor_to_major);
+  c_layout->element_size_in_bits = layout.element_size_in_bits();
+  c_layout->memory_space = layout.memory_space();
+  CopyVector(layout.tiles(), &c_layout->tiles);
+}
+
+xla::Layout FromC(const XLA_Layout* c_layout) {
+  absl::Span<const typename tensorflow::int64> minor_to_major =
+      MakeSpan(c_layout->minor_to_major);
+  absl::InlinedVector<xla::Tile, 1> tiles;
+  const XLA_Tile* c_tiles = c_layout->tiles.size > TPU_C_API_MAX_INLINED
+                                ? c_layout->tiles.heap
+                                : c_layout->tiles.inlined;
+  for (int i = 0; i < c_layout->tiles.size; ++i) {
+    tiles.push_back(FromC(&c_tiles[i]));
+  }
+  return xla::Layout(minor_to_major, tiles, c_layout->element_size_in_bits,
+                     c_layout->memory_space);
+}
+
+void Free(XLA_Layout* c_layout) {
+  if (c_layout->minor_to_major.size > TPU_C_API_MAX_INLINED) {
+    delete[] c_layout->minor_to_major.heap;
+  }
+  if (c_layout->tiles.size > TPU_C_API_MAX_INLINED) {
+    delete[] c_layout->tiles.heap;
+  }
+}
+
+void ToC(const xla::Tile& tile, XLA_Tile* c_tile) {
+  CopyVector(tile.dimensions(), &c_tile->dimensions);
+}
+
+xla::Tile FromC(const XLA_Tile* c_tile) {
+  absl::Span<const typename tensorflow::int64> dims =
+      MakeSpan(c_tile->dimensions);
+  return xla::Tile(dims);
+}
+
+void Free(XLA_Tile* c_tile) {
+  if (c_tile->dimensions.size > TPU_C_API_MAX_INLINED) {
+    delete[] c_tile->dimensions.heap;
+  }
 }
 
 XLA_ShapeIndex ToC(const xla::ShapeIndex& xla_shape) {
@@ -212,7 +363,6 @@ void ToC(const xla::ShapedBuffer& buffer, XLA_ShapedBuffer* c_device_buffer) {
   }
 }
 
-void Free(XLA_Shape* shape) { delete[] shape->bytes; }
 void Free(XLA_ShapeIndex* shape_index) { delete[] shape_index; }
 void Free(SE_DeviceMemoryBase*) {}
 

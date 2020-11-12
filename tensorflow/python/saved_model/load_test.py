@@ -26,7 +26,6 @@ import tempfile
 import weakref
 
 from absl.testing import parameterized
-
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
@@ -52,6 +51,7 @@ from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import numpy_ops as tnp
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.numpy_ops import np_arrays
@@ -86,7 +86,8 @@ def cycle(obj, cycles, signatures=None):
 @parameterized.named_parameters(
     dict(testcase_name="ReloadOnce", cycles=1),
     dict(testcase_name="ReloadTwice", cycles=2),
-    dict(testcase_name="ReloadThrice", cycles=3))
+    dict(testcase_name="ReloadThrice", cycles=3)
+)
 class LoadTest(test.TestCase, parameterized.TestCase):
 
   def test_structure_import(self, cycles):
@@ -404,7 +405,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
                             dtype=dtypes.int32).numpy())
 
     concrete_functions = root.f._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
-    self.assertEqual(4, len(concrete_functions))
+    self.assertLen(concrete_functions, 4)
 
     imported = cycle(root, cycles)
 
@@ -420,6 +421,28 @@ class LoadTest(test.TestCase, parameterized.TestCase):
                         imported.f(
                             constant_op.constant([1.0, 2.0, 3.0]),
                             dtype=dtypes.int32).numpy())
+
+  def test_function_with_str_bytes_input(self, cycles):
+
+    @def_function.function
+    def func(x, y):
+      return string_ops.string_join([x, y])
+
+    root = tracking.AutoTrackable()
+    root.f = func
+
+    self.assertAllEqual(b"ab", root.f("a", "b"))
+    self.assertAllEqual(b"ab", root.f("a", constant_op.constant("b")))
+    self.assertAllEqual(b"ab", root.f(constant_op.constant("a"), "b"))
+
+    concrete_functions = root.f._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
+    self.assertLen(concrete_functions, 3)
+
+    imported = cycle(root, cycles)
+
+    self.assertAllEqual(b"ab", imported.f("a", "b"))
+    self.assertAllEqual(b"ab", imported.f("a", constant_op.constant("b")))
+    self.assertAllEqual(b"ab", imported.f(constant_op.constant("a"), "b"))
 
   def test_function_no_return(self, cycles):
 
@@ -891,7 +914,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual([2, 4], root.f(constant_op.constant([1, 2])).numpy())
 
     concrete_functions = root.f._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
-    self.assertEqual(1, len(concrete_functions))
+    self.assertLen(concrete_functions, 1)
 
     imported = cycle(root, cycles)
 
@@ -907,13 +930,13 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual([2, 4, 6],
                         imported.f(constant_op.constant([1, 2, 3])).numpy())
 
-  def test_experimental_compile(self, cycles):
+  def test_jit_compile(self, cycles):
 
     # It'd be nice to use parameterize here, but the library does not support
     # having parameterized test methods inside already-parameterized classes.
-    for experimental_compile in (None, True, False):
+    for jit_compile in (None, True, False):
 
-      @def_function.function(experimental_compile=experimental_compile)
+      @def_function.function(jit_compile=jit_compile)
       def f(x):
         return x + 1.
 
@@ -924,7 +947,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
       imported = cycle(root, cycles)
 
-      self.assertEqual(imported.f._experimental_compile, experimental_compile)
+      self.assertEqual(imported.f._jit_compile, jit_compile)
 
   def test_get_concrete_function(self, cycles):
 
@@ -1176,7 +1199,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(1., imported.variables[0].numpy())
     self.assertEqual(3., imported.variables[2].numpy())
     self.assertIs(None, imported.variables[1])
-    self.assertEqual(3, len(imported.variables))
+    self.assertLen(imported.variables, 3)
 
   def test_tuple(self, cycles):
     root = tracking.AutoTrackable()
@@ -1289,6 +1312,34 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(TypeError):
       # The signatures mapping is immutable
       imported.signatures["random_key"] = 3
+
+  def test_names_normalized(self, cycles):
+    class ObjWithFunction(module.Module):
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec([], dtype=dtypes.int32, name="A-b"),
+          tensor_spec.TensorSpec([], dtype=dtypes.int32, name="A/D"),
+          tensor_spec.TensorSpec([], dtype=dtypes.int32, name="bar"),
+          tensor_spec.TensorSpec([], dtype=dtypes.int32, name="e"),
+      ])
+      def foo(self, a, b, c, d=10, **options):
+        del options
+        return a + b + c + d
+
+    exported = ObjWithFunction()
+
+    with self.assertLogs(level="WARNING") as logs:
+      imported = cycle(exported, cycles)
+
+    expected_message = (
+        "WARNING:absl:Function `foo` contains input name(s) A-b, A/D with "
+        "unsupported characters which will be renamed to a_b, a_d in the "
+        "SavedModel.")
+    self.assertIn(expected_message, logs.output)
+
+    loaded_signature = imported.signatures["serving_default"].inputs
+    self.assertEqual("a_b:0", loaded_signature[0].name)
+    self.assertEqual("a_d:0", loaded_signature[1].name)
 
   def test_multiple_argument_signatures_no_positional(self, cycles):
 
@@ -2028,6 +2079,55 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
             tensor_spec.TensorSpec(shape=[], dtype=dtypes.float32)])
     cycle(root, 1)
 
+  def test_load_partial_object(self):
+    root = module.Module()
+    root.variables_holder = module.Module()
+    root.variables_holder.v = variables.Variable(1.)
+
+    class Adder(module.Module):
+
+      @def_function.function(input_signature=[tensor_spec.TensorSpec(shape=[])])
+      def __call__(self, y):
+        root.variables_holder.v.assign_add(y)
+        return 1
+
+    root.adder = Adder()
+
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(root, save_dir)
+
+    imported = load.load_partial(save_dir,
+                                 ["root.variables_holder.v", "root.adder"])
+    v = imported["root.variables_holder.v"]
+    adder = imported["root.adder"]
+    self.assertEqual(self.evaluate(v), 1)
+    adder(5)
+    self.assertEqual(self.evaluate(v), 6)
+
+    with self.assertRaisesRegex(ValueError, "requires inputs/variables"):
+      imported = load.load_partial(save_dir, ["root.adder"])
+
+  def test_call_untraced_function_raises_error(self):
+
+    class ObjWithFunction(module.Module):
+
+      @def_function.function
+      def foo(self, a):
+        return a
+
+    root = ObjWithFunction()
+    with self.assertLogs(level="WARNING") as logs:
+      loaded = cycle(root, 1)
+
+    expected_save_message = (
+        "WARNING:absl:Found untraced functions such as foo while saving "
+        "(showing 1 of 1). These functions will not be directly callable after "
+        "loading.")
+    self.assertIn(expected_save_message, logs.output)
+
+    with self.assertRaisesRegex(
+        ValueError, "Found zero restored functions for caller function."):
+      loaded.foo(1)
 
 if __name__ == "__main__":
   test.main()

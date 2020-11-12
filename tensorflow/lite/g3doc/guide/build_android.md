@@ -41,17 +41,17 @@ docker build . -t tflite-builder -f tflite-android.Dockerfile
 ```
 
 *   Start the docker container interactively by mounting your current folder to
-    /tmp inside the container (note that /tensorflow_src is the TensorFlow
+    /host_dir inside the container (note that /tensorflow_src is the TensorFlow
     repository inside the container):
 
 ```shell
-docker run -it -v $PWD:/tmp tflite-builder bash
+docker run -it -v $PWD:/host_dir tflite-builder bash
 ```
 
 If you use PowerShell on Windows, replace "$PWD" with "pwd".
 
 If you would like to use a TensorFlow repository on the host, mount that host
-directory instead (-v hostDir:/tmp).
+directory instead (-v hostDir:/host_dir).
 
 *   Once you are inside the container, you can run the following to download
     additional Android tools and libraries (note that you may need to accept the
@@ -62,8 +62,8 @@ android update sdk --no-ui -a --filter tools,platform-tools,android-${ANDROID_AP
 ```
 
 You can now proceed to the "Build and Install" section. After you are finished
-building the libraries, you can copy them to /tmp inside the container so that
-you can access them on the host.
+building the libraries, you can copy them to /host_dir inside the container so
+that you can access them on the host.
 
 ### Set up build environment without Docker
 

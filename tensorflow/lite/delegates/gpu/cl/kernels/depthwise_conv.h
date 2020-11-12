@@ -183,15 +183,15 @@ void UploadWeightsForDWConv3D(const tflite::gpu::Tensor<OHWDI, T>& weights,
 }
 
 GPUOperation CreateDepthwiseConvolution2D(
-    const DeviceInfo& device_info, const OperationDef& definition,
+    const GpuInfo& gpu_info, const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& attr);
 
 GPUOperation CreateDepthwiseConvolution2DDynamicWeights(
-    const DeviceInfo& device_info, const OperationDef& definition,
+    const GpuInfo& gpu_info, const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& attr);
 
 GPUOperation CreateDepthwiseConvolution3D(
-    const DeviceInfo& device_info, const OperationDef& definition,
+    const GpuInfo& gpu_info, const OperationDef& definition,
     const DepthwiseConvolution3DAttributes& attr);
 
 }  // namespace cl

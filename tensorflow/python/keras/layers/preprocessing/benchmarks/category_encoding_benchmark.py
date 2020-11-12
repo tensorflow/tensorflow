@@ -19,7 +19,6 @@ from __future__ import print_function
 
 import time
 
-from absl import flags
 import numpy as np
 
 from tensorflow.python import keras
@@ -31,12 +30,10 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
 
-FLAGS = flags.FLAGS
-
 v2_compat.enable_v2_behavior()
 
 
-class BenchmarkLayer(benchmark.Benchmark):
+class BenchmarkLayer(benchmark.TensorFlowBenchmark):
   """Benchmark the layer forward pass."""
 
   def run_dataset_implementation(self, output_mode, batch_size, sequence_length,

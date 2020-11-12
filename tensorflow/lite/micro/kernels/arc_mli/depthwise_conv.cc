@@ -72,7 +72,7 @@ bool IsMliApplicable(TfLiteContext* context, const TfLiteTensor* input,
   const int in_ch = SizeOfDimension(input, 3);
   const int filters_num = SizeOfDimension(filter, 3);
 
-  // MLI optimized version only supports int8_t dataype, dilation factor of 1
+  // MLI optimized version only supports int8_t datatype, dilation factor of 1
   // and per-axis quantization of weights (no broadcasting/per-tensor) (in_ch ==
   // filters_num) || (in_ch == 1)) is a forbidding of channel multiplier logic
   // for multichannel input.
@@ -150,7 +150,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Per channel quantization is only needed for int8 inference. For other
   // quantized types, only a single scale and zero point is needed.
   const int num_channels = filter->dims->data[kDepthwiseConvQuantizedDimension];
-  // Dynimically allocate per-channel quantization parameters.
+  // Dynamically allocate per-channel quantization parameters.
   data->per_channel_output_multiplier =
       reinterpret_cast<int32_t*>(context->AllocatePersistentBuffer(
           context, num_channels * sizeof(int32_t)));
@@ -242,10 +242,10 @@ TfLiteStatus EvalMliQuantizedPerChannel(
   mli_weights.el_params.asym.zero_point.pi16 = &filter_zero_point;
   mli_bias.el_params.asym.zero_point.pi16 = &bias_zero_point;
 
-  ConvertToMliTensor<int8_t>(input, &mli_in);
-  ConvertToMliTensorPerChannel<int8_t>(filter, &mli_weights);
-  ConvertToMliTensorPerChannel<int32_t>(bias, &mli_bias);
-  ConvertToMliTensor<int8_t>(output, &mli_out);
+  ops::micro::ConvertToMliTensor<int8_t>(input, &mli_in);
+  ops::micro::ConvertToMliTensorPerChannel<int8_t>(filter, &mli_weights);
+  ops::micro::ConvertToMliTensorPerChannel<int32_t>(bias, &mli_bias);
+  ops::micro::ConvertToMliTensor<int8_t>(output, &mli_out);
 
   if (params->activation == kTfLiteActRelu) {
     cfg.relu.type = MLI_RELU_GEN;
@@ -280,7 +280,7 @@ TfLiteStatus EvalMliQuantizedPerChannel(
   const int overlap = kernelHeight - cfg.stride_height;
 
   // for weight slicing (on output channels)
-  // HWCN layout for weigths, output channel dimension is the first dimension.
+  // HWCN layout for weights, output channel dimension is the first dimension.
   const int weight_out_ch_dimension = 3;
   // bias has only 1 dimension
   const int bias_out_ch_dimension = 0;
@@ -301,7 +301,7 @@ TfLiteStatus EvalMliQuantizedPerChannel(
   mli_mov_cfg_t copy_config;
   mli_mov_cfg_for_copy(&copy_config);
 
-  TF_LITE_ENSURE_STATUS(get_arc_scratch_buffer_for_conv_tensors(
+  TF_LITE_ENSURE_STATUS(ops::micro::get_arc_scratch_buffer_for_conv_tensors(
       context, &in_local, &weights_local, &bias_local, &out_local));
   /* is_local indicates that the tensor is already in local memory,
      so in that case the original tensor can be used,
@@ -311,10 +311,10 @@ TfLiteStatus EvalMliQuantizedPerChannel(
   const bool w_is_local = weights_local.data == mli_weights.data;
   const bool b_is_local = bias_local.data == mli_bias.data;
 
-  TF_LITE_ENSURE_STATUS(arc_scratch_buffer_calc_slice_size_io(
+  TF_LITE_ENSURE_STATUS(ops::micro::arc_scratch_buffer_calc_slice_size_io(
       &in_local, &out_local, kernelHeight, cfg.stride_height, cfg.padding_top,
       cfg.padding_bottom, &inSliceHeight, &outSliceHeight));
-  TF_LITE_ENSURE_STATUS(arc_scratch_buffer_calc_slice_size_weights(
+  TF_LITE_ENSURE_STATUS(ops::micro::arc_scratch_buffer_calc_slice_size_weights(
       &weights_local, &bias_local, weight_out_ch_dimension, &slice_channels));
 
   /* if input channels is not equal to output channels, a channel multiplier
@@ -324,13 +324,14 @@ TfLiteStatus EvalMliQuantizedPerChannel(
     slice_channels = (slice_channels / in_channels) * in_channels;
   }
 
-  TensorSlicer b_slice(&mli_bias, bias_out_ch_dimension, slice_channels);
-  TensorSlicer w_slice(&mli_weights, weight_out_ch_dimension, slice_channels, 0,
-                       0, 0, true);
-  TensorSlicer out_ch_slice(&mli_out, out_tensor_ch_dimension, slice_channels,
-                            0, 0, 0, true);
-  TensorSlicer in_ch_slice(&mli_in, out_tensor_ch_dimension, slice_channels, 0,
-                           0, 0, true);
+  ops::micro::TensorSlicer b_slice(&mli_bias, bias_out_ch_dimension,
+                                   slice_channels);
+  ops::micro::TensorSlicer w_slice(&mli_weights, weight_out_ch_dimension,
+                                   slice_channels, 0, 0, 0, true);
+  ops::micro::TensorSlicer out_ch_slice(&mli_out, out_tensor_ch_dimension,
+                                        slice_channels, 0, 0, 0, true);
+  ops::micro::TensorSlicer in_ch_slice(&mli_in, out_tensor_ch_dimension,
+                                       slice_channels, 0, 0, 0, true);
 
   mli_tensor* w_ptr = w_is_local ? w_slice.Sub() : &weights_local;
   mli_tensor* b_ptr = b_is_local ? b_slice.Sub() : &bias_local;
@@ -344,9 +345,9 @@ TfLiteStatus EvalMliQuantizedPerChannel(
     mli_mov_tensor_sync(w_slice.Sub(), &copy_config, w_ptr);
     mli_mov_tensor_sync(b_slice.Sub(), &copy_config, b_ptr);
 
-    /* input tensor is alreade sliced in the  channel dimension.
+    /* input tensor is already sliced in the  channel dimension.
     out_ch_slice.Sub() is the tensor for the amount of channels of this
-    itteration of the weight slice loop. This tensor needs to be further
+    iteration of the weight slice loop. This tensor needs to be further
     sliced over the batch and height dimension. in_ch_slice.Sub() tensor
     contains batches of HWC tensors. so it is a 4 dimensional tensor. because
     the mli kernel will process one HWC tensor at a time, the 4 dimensional
@@ -355,14 +356,16 @@ TfLiteStatus EvalMliQuantizedPerChannel(
     the sliceHeight has been calculated. The tensor slicer is configured that
     it will completely slice the nBatch dimension (0) and slice the height
     dimension (1) in chunks of 'sliceHeight' */
-    TensorSlicer in_slice(in_ch_slice.Sub(), heightDimension, inSliceHeight,
-                          padding_top, padding_bottom, overlap);
+    ops::micro::TensorSlicer in_slice(in_ch_slice.Sub(), heightDimension,
+                                      inSliceHeight, padding_top,
+                                      padding_bottom, overlap);
 
-    /* output tensor is alreade sliced in the output channel dimension.
+    /* output tensor is already sliced in the output channel dimension.
     out_ch_slice.Sub() is the tensor for the amount of output channels of this
-    itteration of the weight slice loop. This tensor needs to be further
+    iteration of the weight slice loop. This tensor needs to be further
     sliced over the batch and height dimension. */
-    TensorSlicer out_slice(out_ch_slice.Sub(), heightDimension, outSliceHeight);
+    ops::micro::TensorSlicer out_slice(out_ch_slice.Sub(), heightDimension,
+                                       outSliceHeight);
 
     /* setup the pointers to the local or remote tensor to make the code
      * inside the loop easier. */

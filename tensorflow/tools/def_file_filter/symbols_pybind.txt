@@ -222,6 +222,7 @@ tensorflow::EagerContext::WaitForAndCloseRemoteContexts
 
 [mlir] # mlir
 tensorflow::ExperimentalRunPassPipeline
+tensorflow::ExperimentalConvertSavedModelV1ToMlirLite
 tensorflow::ExperimentalConvertSavedModelV1ToMlir
 tensorflow::ExperimentalConvertSavedModelToMlir
 tensorflow::ImportGraphDef
@@ -332,13 +333,9 @@ tensorflow::grappler::GetNumAvailableLogicalCPUCores
 [traceme_recorder_impl] # profiler
 tensorflow::profiler::TraceMeRecorder::Record
 
-[annotation_stack_impl] # profiler
-tensorflow::profiler::AnnotationStack::ThreadAnnotationStack
-
 [profiler_session_impl] # profiler
 tensorflow::ProfilerSession::Create
 tensorflow::ProfilerSession::CollectData
-tensorflow::ProfilerSession::SerializeToString
 tensorflow::ProfilerSession::Status
 tensorflow::ProfilerSession::~ProfilerSession
 
@@ -350,6 +347,10 @@ tensorflow::profiler::ProfilerServer::~ProfilerServer
 tensorflow::profiler::ProfileGrpc
 tensorflow::profiler::NewSessionGrpc
 tensorflow::profiler::MonitorGrpc
+tensorflow::profiler::RemoteProfilerSession::Create
+tensorflow::profiler::RemoteProfilerSession::GetServiceAddress
+tensorflow::profiler::RemoteProfilerSession::WaitForCompletion
+tensorflow::profiler::RemoteProfilerSession::~RemoteProfilerSession
 
 [status_macros] # tfcompile
 xla::status_macros::MakeErrorStream::Impl::Impl
@@ -393,6 +394,16 @@ tensorflow::tensor_float_32_execution_enabled
 
 [get_compiler_ir] # tfe
 tensorflow::GetCompilerIr
+stream_executor::port::internal_statusor::Helper::Crash
 
 [tensor_handle] # tfe
 tensorflow::TensorHandle::Tensor
+
+[python_api_dispatcher] # python_api_dispatcher
+tensorflow::PythonAPIDispatcher
+
+[python_tensor_converter] # python_tensor_converter
+tensorflow::PythonTensorConverter
+
+[python_api_info] # python_api_info
+tensorflow::PythonAPIInfo

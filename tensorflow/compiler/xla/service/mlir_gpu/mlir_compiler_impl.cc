@@ -562,9 +562,20 @@ StatusOr<std::unique_ptr<Executable>> MlirCompilerImpl::RunBackend(
       auto ptx, xla::gpu::nvptx::CompileToPtx(llvmModule.get(),
                                               GetGpuVersion(stream_exec),
                                               config, GetLibdeviceDir(config)));
-  TF_ASSIGN_OR_RETURN(
-      auto cubin, se::CompileGpuAsm(stream_exec->device_ordinal(), ptx.c_str(),
-                                    gpu::PtxOptsFromConfig(config)));
+  // Allow to fallback to the driver compilation when ptxas isn't able to
+  // compile.
+  StatusOr<std::vector<uint8>> maybe_cubin =
+      se::CompileGpuAsm(stream_exec->device_ordinal(), ptx.c_str(),
+                        gpu::PtxOptsFromConfig(config));
+  std::vector<uint8> cubin;
+  if (maybe_cubin.ok()) {
+    cubin = std::move(maybe_cubin).ValueOrDie();
+  } else if (maybe_cubin.status().code() ==
+             tensorflow::error::Code::UNIMPLEMENTED) {
+    xla::gpu::WarnIfBadDriverJITVersion();
+  } else {
+    return maybe_cubin.status();
+  }
 
   auto thunk_schedule = absl::make_unique<ThunkSchedule>(
       std::make_unique<gpu::ThunkSequence>(std::move(thunk_sequence)),

@@ -107,7 +107,6 @@ tf_py_test(
     name = "loader_test",
     size = "small",
     srcs = ["loader_test.py"],
-    tfrt_enabled = True,
     deps = [
         ":builder",
         ":loader",
@@ -166,7 +165,6 @@ tf_py_test(
     srcs = ["saved_model_test.py"],
     data = ["//tensorflow/cc/saved_model:saved_model_half_plus_two"],
     tags = ["no_windows"],
-    tfrt_enabled = True,
     deps = [
         ":builder",
         ":constants",
@@ -217,7 +215,6 @@ tf_py_test(
     name = "utils_test",
     size = "small",
     srcs = ["utils_test.py"],
-    tfrt_enabled = True,
     deps = [
         ":utils",
         "//tensorflow/core:protos_all_py",
@@ -250,7 +247,6 @@ tf_py_test(
     name = "signature_def_utils_test",
     size = "small",
     srcs = ["signature_def_utils_test.py"],
-    tfrt_enabled = True,
     deps = [
         ":signature_constants",
         ":signature_def_utils",
@@ -266,7 +262,6 @@ tf_py_test(
     name = "simple_save_test",
     size = "small",
     srcs = ["simple_save_test.py"],
-    tfrt_enabled = True,
     deps = [
         ":loader",
         ":signature_constants",
@@ -295,6 +290,7 @@ py_strict_library(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/training/tracking:base",
+        "@absl_py//absl/logging",
     ],
 )
 
@@ -311,7 +307,6 @@ tf_py_test(
     name = "save_context_test",
     srcs = ["save_context_test.py"],
     srcs_version = "PY2AND3",
-    tfrt_enabled = True,
     deps = [
         ":save_context",
         ":save_options",
@@ -349,6 +344,7 @@ py_strict_library(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:lib",
+        "//tensorflow/python:platform",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:tf_export",
@@ -364,6 +360,7 @@ py_strict_library(
         "//tensorflow/python/training/tracking:base",
         "//tensorflow/python/training/tracking:graph_view",
         "//tensorflow/python/training/tracking:util",
+        "@absl_py//absl/logging",
     ],
 )
 
@@ -531,7 +528,6 @@ py_strict_library(
 tf_py_test(
     name = "revived_types_test",
     srcs = ["revived_types_test.py"],
-    tfrt_enabled = True,
     deps = [
         ":revived_types",
         "//tensorflow/core:protos_all_py",
@@ -567,7 +563,6 @@ py_strict_library(
         "//tensorflow/python:func_graph",
         "//tensorflow/python:function_def_to_graph",
         "//tensorflow/python:op_def_registry",
-        "//tensorflow/python:platform",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:tf_decorator",
@@ -575,6 +570,7 @@ py_strict_library(
         "//tensorflow/python:util",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
+        "@absl_py//absl/logging",
     ],
 )
 
@@ -606,7 +602,6 @@ py_strict_library(
 tf_py_test(
     name = "nested_structure_coder_test",
     srcs = ["nested_structure_coder_test.py"],
-    tfrt_enabled = True,
     deps = [
         ":nested_structure_coder",
         "//tensorflow/core:protos_all_py",
@@ -651,7 +646,6 @@ py_strict_library(
 tf_py_test(
     name = "method_name_updater_test",
     srcs = ["method_name_updater_test.py"],
-    tfrt_enabled = True,
     deps = [
         ":method_name_updater",
         "//tensorflow/core:protos_all_py",

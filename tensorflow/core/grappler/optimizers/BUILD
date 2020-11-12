@@ -12,10 +12,6 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
 )
-load(
-    "//third_party/mkl:build_defs.bzl",
-    "mkl_deps",
-)
 
 package(
     licenses = ["notice"],  # Apache 2.0
@@ -638,7 +634,7 @@ cc_library(
         "//tensorflow/core/grappler/costs:virtual_placer",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
-    ] + mkl_deps(),
+    ],
 )
 
 tf_cuda_cc_test(
@@ -717,6 +713,7 @@ tf_cuda_cc_test(
         ":custom_graph_optimizer_registry",
         ":meta_optimizer",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -869,6 +866,7 @@ tf_kernel_library(
     deps = [
         ":constant_folding",
         ":graph_optimizer",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",

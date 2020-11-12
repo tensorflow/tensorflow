@@ -107,8 +107,10 @@ message NNAPISettings {
   // case.
   optional int32 no_of_nnapi_instances_to_cache = 5;
 
+  // Deprecated; use the fallback_settings in TFLiteSettings.
+  //
   // Whether to automatically fall back to TFLite CPU path.
-  optional FallbackSettings fallback_settings = 6;
+  optional FallbackSettings fallback_settings = 6 [deprecated = true];
 
   // Whether to allow use of NNAPI CPU (nnapi-reference accelerator) on Android
   // 10+ when an accelerator name is not specified. The NNAPI CPU typically
@@ -127,6 +129,11 @@ message NNAPISettings {
   // dynamic dimensions of the model.
   // By default this is set to false.
   optional bool allow_dynamic_dimensions = 9;
+
+  // Whether to allow the NNAPI accelerator to optionally use lower-precision
+  // float16 (16-bit floating point) arithmetic when doing calculations on
+  // float32 (32-bit floating point).
+  optional bool allow_fp16_precision_for_fp32 = 10;
 }
 
 // Which GPU backend to select. Default behaviour on Android is to try OpenCL
@@ -233,6 +240,9 @@ message TFLiteSettings {
 
   // For configuring the EdgeTpuDelegate.
   optional EdgeTpuSettings edgetpu_settings = 8;
+
+  // Whether to automatically fall back to TFLite CPU path.
+  optional FallbackSettings fallback_settings = 9;
 }
 
 // Whether to automatically fallback to TFLite CPU path on delegation errors.

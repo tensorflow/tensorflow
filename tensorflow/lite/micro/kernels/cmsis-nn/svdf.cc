@@ -16,8 +16,8 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 
-#include "cmsis/CMSIS/NN/Include/arm_nn_types.h"
-#include "cmsis/CMSIS/NN/Include/arm_nnfunctions.h"
+#include "CMSIS/NN/Include/arm_nn_types.h"
+#include "CMSIS/NN/Include/arm_nnfunctions.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"

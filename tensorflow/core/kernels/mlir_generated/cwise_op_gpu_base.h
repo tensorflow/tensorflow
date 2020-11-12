@@ -43,14 +43,12 @@ class MlirGeneratedUnaryOp : public OpKernel {
   absl::Mutex mu_;
 };
 
-#define GENERATE_OP_KERNEL_BASE(kernel_name)                                  \
-  class MlirGenerated##kernel_name##Op : public MlirGeneratedUnaryOp {        \
-   public:                                                                    \
-    MlirGenerated##kernel_name##Op(OpKernelConstruction* ctx,                 \
-                                   absl::Span<const uint8_t> cubin_data)      \
-        : MlirGeneratedUnaryOp(ctx,                                           \
-                               absl::AsciiStrToLower(#kernel_name "_kernel"), \
-                               cubin_data) {}                                 \
+#define GENERATE_OP_KERNEL_BASE(kernel_name)                               \
+  class MlirGenerated##kernel_name##Op : public MlirGeneratedUnaryOp {     \
+   public:                                                                 \
+    MlirGenerated##kernel_name##Op(OpKernelConstruction* ctx,              \
+                                   absl::Span<const uint8_t> cubin_data)   \
+        : MlirGeneratedUnaryOp(ctx, #kernel_name "_kernel", cubin_data) {} \
   };
 
 #define GENERATE_OP_KERNEL_FOR(kernel_name, data_type)    \
@@ -63,13 +61,14 @@ class MlirGeneratedUnaryOp : public OpKernel {
           ##Op(ctx, k##kernel_name##data_type##Kernel) {} \
   };
 
-#define REGISTER_AND_GENERATE_KERNEL(kernel_name, data_type, native_data_type) \
-  namespace {                                                                  \
-  GENERATE_OP_KERNEL_FOR(kernel_name, data_type)                               \
-  }                                                                            \
-  REGISTER_KERNEL_BUILDER(Name(#kernel_name)                                   \
-                              .Device(DEVICE_GPU)                              \
-                              .TypeConstraint<native_data_type>("T"),          \
+#define GENERATE_AND_REGISTER_UNARY_KERNEL(kernel_name, data_type,    \
+                                           native_data_type)          \
+  namespace {                                                         \
+  GENERATE_OP_KERNEL_FOR(kernel_name, data_type)                      \
+  }                                                                   \
+  REGISTER_KERNEL_BUILDER(Name(#kernel_name)                          \
+                              .Device(DEVICE_GPU)                     \
+                              .TypeConstraint<native_data_type>("T"), \
                           MlirGenerated##kernel_name##data_type##Op);
 
 }  // namespace tensorflow

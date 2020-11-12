@@ -242,10 +242,14 @@ if __name__ == '__main__':
         _AddTest(MatrixUnaryFunctorGradientTest, 'MatrixInverseGradient', name,
                  _GetMatrixUnaryFunctorGradientTest(linalg_ops.matrix_inverse,
                                                     dtype, shape))
-        _AddTest(MatrixUnaryFunctorGradientTest, 'MatrixExponentialGradient',
-                 name,
-                 _GetMatrixUnaryFunctorGradientTest(
-                     linalg_impl.matrix_exponential, dtype, shape))
+        if not test_lib.is_built_with_rocm():
+          # TODO(rocm) :
+          # re-enable this test when upstream issues are resolved
+          # see commit msg for details
+          _AddTest(
+              MatrixUnaryFunctorGradientTest, 'MatrixExponentialGradient', name,
+              _GetMatrixUnaryFunctorGradientTest(linalg_impl.matrix_exponential,
+                                                 dtype, shape))
         _AddTest(
             MatrixUnaryFunctorGradientTest, 'MatrixDeterminantGradient', name,
             _GetMatrixUnaryFunctorGradientTest(linalg_ops.matrix_determinant,

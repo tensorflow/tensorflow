@@ -212,7 +212,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/kernels:fill_functor",
-        "//tensorflow/core:stream_executor",
+        "//tensorflow/core/platform:stream_executor",
     ] + if_cuda([
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "//tensorflow/core/util:cuda_solvers",
