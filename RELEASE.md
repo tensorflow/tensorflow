@@ -216,6 +216,9 @@
         these stateless functions/ops produce the same results independent of
         how many times the function is called, and independent of global seed
         settings.
+    *   Added deterministic `tf.image.resize` backprop CUDA kernels for
+        `method=ResizeMethod.BILINEAR` (the default method). Enable by setting
+        the environment variable `TF_DETERMINISTIC_OPS` to `"true"` or `"1"`.
 *   `tf.distribute`:
     *   (Experimental) Parameter server training:
         *   Replaced the existing
