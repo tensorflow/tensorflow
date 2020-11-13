@@ -22,7 +22,6 @@ import os
 import re
 
 import numpy as np
-
 from google.protobuf import text_format
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import graph_pb2
@@ -1201,15 +1200,19 @@ class ConvertVariablesToConstantsSessionTest(test.TestCase):
               ValueError,
               "Input 0 of node ResourceScatterAdd was passed float from"
               ".+:0 incompatible with expected resource"):
-            frozen_graph = convert_to_constants.convert_variables_to_constants_from_session_graph(
-              sess, variable_graph_def, ["output_node"])
-          
+            frozen_graph = (
+                convert_to_constants
+                .convert_variables_to_constants_from_session_graph(
+                    sess, variable_graph_def, ["output_node"]))
+
             with ops.Graph().as_default() as graph:
               importer.import_graph_def(frozen_graph, name="")
 
-          frozen_graph = convert_to_constants.convert_variables_to_constants_from_session_graph(
-              sess, variable_graph_def, ["output_node"],
-              check_and_revert_if_type_mismatch=True)
+          frozen_graph = (
+              convert_to_constants
+              .convert_variables_to_constants_from_session_graph(
+                  sess, variable_graph_def, ["output_node"],
+                  check_and_revert_if_type_mismatch=True))
 
     with ops.Graph().as_default() as graph:
       importer.import_graph_def(frozen_graph, name="")
