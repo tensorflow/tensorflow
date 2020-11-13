@@ -270,13 +270,13 @@ void ConvertElementsAttr(const mlir::DenseElementsAttr attr,
 
 // Converts an MLIR elements attribute containing half values and adds it to
 // specified repeated field.
-void ConvertHalfElementsAttr(const DenseFPElementsAttr attr,
-                             protobuf::RepeatedField<int>* output_tensor) {
+void ConvertHalfElementsAttr(const mlir::DenseElementsAttr attr,
+                             protobuf::RepeatedField<int>* output) {
   if (attr.isSplat()) {
-    output_tensor->Add((*attr.begin()).bitcastToAPInt().getSExtValue());
+    output->Add(attr.getSplatValue<Eigen::half>().x);
   } else {
-    for (const llvm::APFloat value : attr.getFloatValues())
-      output_tensor->Add(value.bitcastToAPInt().getSExtValue());
+    for (const Eigen::half value : attr.getValues<Eigen::half>())
+      output->Add(value.x);
   }
 }
 
@@ -291,13 +291,13 @@ void ConvertIntElementsAttr(const mlir::DenseIntElementsAttr attr,
   }
 }
 
-void ConvertBfloat16ElementsAttr(const mlir::DenseFPElementsAttr attr,
+void ConvertBfloat16ElementsAttr(const mlir::DenseElementsAttr attr,
                                  protobuf::RepeatedField<int>* output) {
   if (attr.isSplat()) {
-    output->Add((*attr.begin()).bitcastToAPInt().getSExtValue());
+    output->Add(attr.getSplatValue<bfloat16>().value);
   } else {
-    for (const llvm::APFloat value : attr.getFloatValues())
-      output->Add(value.bitcastToAPInt().getSExtValue());
+    for (const bfloat16 value : attr.getValues<bfloat16>())
+      output->Add(value.value);
   }
 }
 
@@ -320,8 +320,7 @@ Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
       ConvertElementsAttr<float>(dense_attr, output->mutable_float_val());
       break;
     case DT_HALF:
-      ConvertHalfElementsAttr(dense_attr.cast<DenseFPElementsAttr>(),
-                              output->mutable_half_val());
+      ConvertHalfElementsAttr(dense_attr, output->mutable_half_val());
       break;
     case DT_DOUBLE:
       ConvertElementsAttr(dense_attr, output->mutable_double_val());
@@ -349,8 +348,7 @@ Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
       ConvertElementsAttr(dense_attr, output->mutable_bool_val());
       break;
     case DT_BFLOAT16:
-      ConvertBfloat16ElementsAttr(dense_attr.cast<DenseFPElementsAttr>(),
-                                  output->mutable_half_val());
+      ConvertBfloat16ElementsAttr(dense_attr, output->mutable_half_val());
       break;
     case DT_STRING:
       ConvertStringElementsAttr(dense_attr.cast<DenseStringElementsAttr>(),
