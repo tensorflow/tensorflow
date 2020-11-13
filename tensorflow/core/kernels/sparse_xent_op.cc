@@ -65,7 +65,7 @@ class SparseSoftmaxXentWithLogitsOp : public OpKernel {
     OP_REQUIRES(context, logits.dim_size(0) == labels.dim_size(0),
                 errors::InvalidArgument(
                     "logits and labels must have the same first dimension, "
-                    "got logits shape ",
+                    "got logits shape " ,
                     logits.shape().DebugString(), " and labels shape ",
                     labels.shape().DebugString()));
     OP_REQUIRES(context, logits.dim_size(1) > 0,
