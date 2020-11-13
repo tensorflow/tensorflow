@@ -40,30 +40,14 @@ static Graph* SparseXent(int batch_size, int num_classes, DataType value_type) {
                       test::graph::Constant(g, labels));
   return g;
 }
-  
-#define BM_SparseXentDev(BATCH, CLASS, DEVICE, DTYPE)                     \
+
+#define BM_SparseXentDev(BATCH, CLASS, DEVICE, DTType)                     \
   static void BM_SparseXent##_##BATCH##_##CLASS##_##DEVICE_##DTYPE(       \
-      ::testing::benchmark::State& state) {                               \
-    test::Benchmark(#DEVICE, SparseXent(BATCH, CLASS, DTYPE),             \
-    /*old_benchmark_api*/ false).Run(state);                              \
- state.SetItemsProcessed(static_cast<int64>(state.iterations()) * BATCH * \
-                         CLASS);                                          \
-  }                                                                       \
+      int iters) {                                                         \
+    testing::ItemsProcessed(static_cast<int64>(iters) * BATCH * CLASS);    \
+    test::Benchmark(#DEVICE, SparseXent(BATCH, CLASS, DTType)).Run(iters); \
+  }                                                                        \
   BENCHMARK(BM_SparseXent##_##BATCH##_##CLASS##_##DEVICE_##DTYPE);
-
-#define BM_SPARSE_XENT_DEV_CPU(DTYPE)       \
-  BM_SparseXentDev(8, 1000000, cpu, DTYPE); \
-  BM_SparseXentDev(16, 10000, cpu, DTYPE);  \
-  BM_SparseXentDev(16, 100000, cpu, DTYPE); \
-  BM_SparseXentDev(32, 10000, cpu, DTYPE);  \
-  BM_SparseXentDev(32, 100000, cpu, DTYPE); \
-  BM_SparseXentDev(64, 10000, cpu, DTYPE);  \
-  BM_SparseXentDev(64, 100000, cpu, DTYPE);
-
-// CPU
-BM_SPARSE_XENT_DEV_CPU(DT_FLOAT);
-BM_SPARSE_XENT_DEV_CPU(DT_BFLOAT16);
-
 
 /// The representative tests for ptb_word on GPU
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -81,5 +65,28 @@ BM_SparseXentDev(64, 10000, gpu, DT_FLOAT);
 BM_SparseXentDev(64, 30000, gpu, DT_FLOAT);
 BM_SparseXentDev(64, 100000, gpu, DT_FLOAT);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+// CPU
+BM_SparseXentDev(8, 1000000, cpu, DT_FLOAT);
+
+BM_SparseXentDev(16, 10000, cpu, DT_FLOAT);
+BM_SparseXentDev(16, 100000, cpu, DT_FLOAT);
+
+BM_SparseXentDev(32, 10000, cpu, DT_FLOAT);
+BM_SparseXentDev(32, 100000, cpu, DT_FLOAT);
+
+BM_SparseXentDev(64, 10000, cpu, DT_FLOAT);
+BM_SparseXentDev(64, 100000, cpu, DT_FLOAT);
+
+BM_SparseXentDev(8, 1000000, cpu, DT_BFLOAT16);
+
+BM_SparseXentDev(16, 10000, cpu, DT_BFLOAT16);
+BM_SparseXentDev(16, 100000, cpu, DT_BFLOAT16);
+
+BM_SparseXentDev(32, 10000, cpu, DT_BFLOAT16);
+BM_SparseXentDev(32, 100000, cpu, DT_BFLOAT16);
+
+BM_SparseXentDev(64, 10000, cpu, DT_BFLOAT16);
+BM_SparseXentDev(64, 100000, cpu, DT_BFLOAT16);
 
 }  // end namespace tensorflow
