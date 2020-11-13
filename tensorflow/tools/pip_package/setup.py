@@ -109,7 +109,7 @@ REQUIRED_PACKAGES = [
 if 'tf_nightly' in project_name:
   for i, pkg in enumerate(REQUIRED_PACKAGES):
     if 'tensorboard' in pkg:
-      REQUIRED_PACKAGES[i] = 'tb-nightly ~= 2.4.0.a'
+      REQUIRED_PACKAGES[i] = 'tb-nightly ~= 2.5.0.a'
     elif 'tensorflow_estimator' in pkg:
       REQUIRED_PACKAGES[i] = 'tf-estimator-nightly ~= 2.4.0.dev'
 
