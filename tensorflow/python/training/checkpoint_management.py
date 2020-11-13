@@ -559,7 +559,23 @@ class CheckpointManager(object):
     active set may be deleted by this `CheckpointManager` or a future
     `CheckpointManager` instantiated in `directory` (subject to its
     `max_to_keep` and `keep_checkpoint_every_n_hours` settings).
-
+    
+    `CheckpointManager` can use to save checkpoints every N steps.
+    An example usage is:
+    >>> #save checkpoints every 3000 steps and max_to_keep=3
+    >>> model = Model()
+    >>> optimizer = tf.keras.optimizers.Adam()
+    >>> checkpoint = tf.train.Checkpoint(model=model)
+    >>> manager = tf.train.CheckpointManager(checkpoint,
+    ...                                      max_to_keep=3,
+    ...                                      directory="path to save",
+    ...                                      step_counter=optimizer.iterations,
+    ...                                      checkpoint_interval=3000)
+    >>> for epoch in range(EPOCHS):
+    >>>     for step,data in enumerate(dataset):
+    >>>         train_step(data)
+    >>>         manager.save(check_interval=True)
+    
     `CheckpointManager` can be also used for initializing the model if
     there is no checkpoints for restoring in `directory`. An example usage is:
 
@@ -581,7 +597,7 @@ class CheckpointManager(object):
     >>> # `restore_or_initialize` will call `init_fn` if there is no existing
     >>> # checkpoint in `directory`.
     >>> manager.restore_or_initialize()
-
+    
     Args:
       checkpoint: The `tf.train.Checkpoint` instance to save and manage
         checkpoints for.
