@@ -148,6 +148,48 @@ struct AppleInfo {
   int GetComputeUnitsCount() const;
 };
 
+enum class MaliGpu {
+  kUnknown,
+  kT604,
+  kT622,
+  kT624,
+  kT628,
+  kT658,
+  kT678,
+  kT720,
+  kT760,
+  kT820,
+  kT830,
+  kT860,
+  kT880,
+  kG31,
+  kG51,
+  kG71,
+  kG52,
+  kG72,
+  kG76,
+  kG57,
+  kG77,
+  kG68,
+  kG78,
+};
+
+struct MaliInfo {
+  MaliInfo() = default;
+  explicit MaliInfo(const std::string& gpu_description);
+  MaliGpu gpu_version;
+
+  bool IsMaliT6xx() const;
+  bool IsMaliT7xx() const;
+  bool IsMaliT8xx() const;
+  bool IsMidgard() const;
+  bool IsBifrostGen1() const;
+  bool IsBifrostGen2() const;
+  bool IsBifrostGen3() const;
+  bool IsBifrost() const;
+  bool IsValhall() const;
+};
+
 struct GpuInfo {
   bool IsAdreno() const;
   bool IsApple() const;
@@ -185,6 +227,7 @@ struct GpuInfo {
 
   AdrenoInfo adreno_info;
   AppleInfo apple_info;
+  MaliInfo mali_info;
 };
 
 inline bool IsOpenGl31OrAbove(const GpuInfo& gpu_info) {
