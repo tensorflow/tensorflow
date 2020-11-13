@@ -21,6 +21,7 @@ cc_library(
     hdrs = ["rewriters.h"],
     deps = [
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:LLVMTransforms",
@@ -77,7 +78,6 @@ cc_library(
         "gpu_kernel_to_blob_pass.cc",
         "materialize_broadcasts_pass.cc",
         "parallel_loops_to_sequential.cc",
-        "propagate_tf_abi_knowledge_pass.cc",
         "same_shape_propagation.cc",
         "shape_to_descriptors_pass.cc",
         "tensorflow_abi_knowledge_propagation.cc",
@@ -119,6 +119,7 @@ cc_library(
         "@llvm-project//mlir:SCFToStandard",
         "@llvm-project//mlir:ShapeTransforms",
         "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:StandardOpsTransforms",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
@@ -131,6 +132,7 @@ cc_library(
     ] + if_cuda_is_configured([
         "//tensorflow/stream_executor/gpu:asm_compiler",
     ]) + if_rocm_is_configured([
+        "//tensorflow/stream_executor/gpu:asm_compiler",
         "//tensorflow/core/platform:rocm_rocdl_path",
     ]),
 )

@@ -94,6 +94,10 @@ std::unique_ptr<OperationPass<FuncOp>> CreateRuntimeVerifyPass();
 // Creates raise custom ops pass, which legalize custom ops to TFL::CustomOp
 std::unique_ptr<OperationPass<FuncOp>> CreateRaiseCustomOpsPass();
 
+// Inserts an TFL::CallOnce op when the tf_saved_model's session initialzer is
+// given.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateInsertCallOnceOpFromSessionInitializerPass();
 }  // namespace TFL
 
 }  // namespace mlir

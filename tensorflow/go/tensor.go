@@ -168,11 +168,18 @@ func ReadTensor(dataType DataType, shape []int64, r io.Reader) (*Tensor, error) 
 	if err := isTensorSerializable(dataType); err != nil {
 		return nil, err
 	}
-	nbytes := TypeOf(dataType, nil).Size() * uintptr(numElements(shape))
+
 	var shapePtr *C.int64_t
 	if len(shape) > 0 {
+		for _, dim := range shape {
+			if dim < 0 {
+				return nil, fmt.Errorf("all shape dimentions should be non-negative: %v", shape)
+			}
+		}
 		shapePtr = (*C.int64_t)(unsafe.Pointer(&shape[0]))
 	}
+
+	nbytes := TypeOf(dataType, nil).Size() * uintptr(numElements(shape))
 	t := &Tensor{
 		c:     C.TF_AllocateTensor(C.TF_DataType(dataType), shapePtr, C.int(len(shape)), C.size_t(nbytes)),
 		shape: shape,

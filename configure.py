@@ -1168,41 +1168,13 @@ def set_system_libs_flag(environ_cp):
       write_to_bazelrc('build --define=%s=%s' % (varname, environ_cp[varname]))
 
 
-def is_reduced_optimize_huge_functions_available(environ_cp):
-  """Check to see if the system supports /d2ReducedOptimizeHugeFunctions.
-
-  The above compiler flag is a new compiler flag introduced to the Visual Studio
-  compiler in version 16.4 (available in Visual Studio 2019, Preview edition
-  only, as of 2019-11-19). TensorFlow needs this flag to massively reduce
-  compile times, but until 16.4 is officially released, we can't depend on it.
-
-  See also
-  https://groups.google.com/a/tensorflow.org/d/topic/build/SsW98Eo7l3o/discussion
-
-  Because it's very annoying to check this manually (to check the MSVC installed
-  versions, you need to use the registry, and it's not clear if Bazel will be
-  using that install version anyway), we expect enviroments who know they may
-  use this flag to export TF_VC_VERSION=16.4
-
-  TODO(angerson, gunan): Remove this function when TensorFlow's minimum VS
-  version is upgraded to 16.4.
-
-  Arguments:
-    environ_cp: Environment of the current execution
-
-  Returns:
-    boolean, whether or not /d2ReducedOptimizeHugeFunctions is available on this
-    machine.
-  """
-  return float(environ_cp.get('TF_VC_VERSION', '0')) >= 16.4
-
-
 def set_windows_build_flags(environ_cp):
   """Set Windows specific build options."""
-  if is_reduced_optimize_huge_functions_available(environ_cp):
-    write_to_bazelrc(
-        'build --copt=/d2ReducedOptimizeHugeFunctions --host_copt=/d2ReducedOptimizeHugeFunctions'
-    )
+
+  # First available in VS 16.4. Speeds up Windows compile times by a lot. See
+  # https://groups.google.com/a/tensorflow.org/d/topic/build/SsW98Eo7l3o/discussion
+  # pylint: disable=line-too-long
+  write_to_bazelrc('build --copt=/d2ReducedOptimizeHugeFunctions --host_copt=/d2ReducedOptimizeHugeFunctions')
 
   if get_var(
       environ_cp, 'TF_OVERRIDE_EIGEN_STRONG_INLINE', 'Eigen strong inline',

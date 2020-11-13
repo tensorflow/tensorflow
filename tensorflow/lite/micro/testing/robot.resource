@@ -2,26 +2,16 @@
 ${UART}                       sysbus.cpu.uartSemihosting
 
 *** Keywords ***
-Prepare Tests
-    [Documentation]           Make environment variables avaiable in whole test suite and list files in ${BIN_DIR}
-    Setup
-    ${SCRIPT} =               Get Environment Variable    SCRIPT
-    ${LOGFILE} =              Get Environment Variable    LOGFILE
-    ${EXPECTED} =             Get Environment Variable    EXPECTED
-    Set Global Variable       ${SCRIPT}
-    Set Global Variable       ${EXPECTED}
-    Set Global Variable       ${LOGFILE}
-
 Teardown With Custom Message
     Test Teardown
     [Documentation]           Replace robot fail message with whole UART output
-    ${UART_LOGS}              Get File    ${LOGFILE}
+    ${UART_LOGS}              Get File    ${UART_LOG}
     Set Test Message          UART OUTPUT:\n\n${UART_LOGS}
-    Remove File               ${LOGFILE}
+    Remove File               ${UART_LOG}
 
 Create Platform
-    Execute Command           $logfile=@${LOGFILE}
-    Execute Script            ${SCRIPT}
+    Execute Command           $logfile=@${UART_LOG}
+    Execute Script            ${RESC}
     Provides                  ready-platform
 
 Test Binary
@@ -32,5 +22,5 @@ Test Binary
     Create Terminal Tester    ${UART}  timeout=2
     Start Emulation
 
-    Wait For Line On Uart     ${EXPECTED}
+    Wait For Line On Uart     ${UART_LINE_ON_SUCCESS}
 

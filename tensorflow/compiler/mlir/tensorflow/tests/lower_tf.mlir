@@ -768,3 +768,117 @@ func @lgamma(%arg0: tensor<4xf32>) -> tensor<4xf32> {
   %0 = "tf.Lgamma"(%arg0) : (tensor<4xf32>) -> tensor<4xf32>
   return %0 : tensor<4xf32>
 }
+
+// CHECK-LABEL: func @imag_resize_nearest
+func @imag_resize_nearest(%arg0: tensor<1x7x7x1xi32>) -> tensor<1x3x3x1xi32> {
+  %shape = "tf.Const"() {device = "", value = dense<3> : tensor<2xi32>} : () -> tensor<2xi32>
+
+  // CHECK: [[VAL0:%.+]] = "tf.Const"() {value = dense<1> : tensor<i32>}
+  // CHECK: [[VAL1:%.+]] = "tf.Const"() {value = dense<[1, 3, 3, 1]>
+  // CHECK: [[VAL2:%.+]] = "tf.Const"() {value = dense<[1, 49, 1]>
+  // CHECK: [[VAL3:%.+]] = "tf.Const"() {value = dense<[0, 2, 4, 14, 16, 18, 28, 30, 32]> : tensor<9xi32>}
+  // CHECK: [[VAL4:%.+]] = "tf.Reshape"(%arg0, [[VAL2]])
+  // CHECK: [[VAL5:%.+]] = "tf.GatherV2"([[VAL4]], [[VAL3]], [[VAL0]]) {batch_dims = 0 : i64}
+  // CHECK: [[VAL6:%.+]] = "tf.Reshape"([[VAL5]], [[VAL1]])
+  // CHECK: return [[VAL6]]
+  %resize = "tf.ResizeNearestNeighbor"(%arg0, %shape) {align_corners = false, device = "", half_pixel_centers = false} : (tensor<1x7x7x1xi32>, tensor<2xi32>) -> tensor<1x3x3x1xi32>
+  return %resize: tensor<1x3x3x1xi32>
+}
+
+// CHECK-LABEL: func @imag_resize_nearest_dyn_img
+func @imag_resize_nearest_dyn_img(%arg0: tensor<1x?x?x1xi32>) -> tensor<1x3x3x1xi32> {
+  %shape = "tf.Const"() {device = "", value = dense<3> : tensor<2xi32>} : () -> tensor<2xi32>
+
+  // CHECK: [[VAL0:%.+]] = "tf.Const"() {value = dense<1> : tensor<i32>}
+  // CHECK: [[VAL1:%.+]] = "tf.Const"() {value = dense<[3, 1]> : tensor<2xi32>}
+  // CHECK: [[VAL2:%.+]] = "tf.Const"() {value = dense<9> : tensor<1xi32>}
+  // CHECK: [[VAL3:%.+]] = "tf.Const"() {value = dense<3> : tensor<1xi32>}
+  // CHECK: [[VAL4:%.+]] = "tf.Const"() {value = dense<[1, 3]> : tensor<2xi32>}
+  // CHECK: [[VAL5:%.+]] = "tf.Const"() {value = dense<[0.000000e+00, 1.000000e+00, 2.000000e+00]>
+  // CHECK: [[VAL6:%.+]] = "tf.Const"() {value = dense<3.000000e+00> : tensor<f32>}
+  // CHECK: [[VAL7:%.+]] = "tf.Const"() {value = dense<0> : tensor<i64>}
+  // CHECK: [[VAL8:%.+]] = "tf.Shape"(%arg0)
+  // CHECK: [[VAL9:%.+]] = "tf.Cast"([[VAL8]])
+  // CHECK: [[VAL10:%.+]]:4 = "tf.Unpack"([[VAL9]]) {axis = 0 : i64}
+  // CHECK: [[VAL11:%.+]] = "tf.Mul"([[VAL10]]#1, [[VAL10]]#2)
+  // CHECK: [[VAL12:%.+]] = "tf.ExpandDims"([[VAL10]]#0, [[VAL7]])
+  // CHECK: [[VAL13:%.+]] = "tf.ExpandDims"([[VAL10]]#3, [[VAL7]])
+  // CHECK: [[VAL14:%.+]] = "tf.ConcatV2"([[VAL12]], [[VAL3]], [[VAL3]], [[VAL13]], [[VAL7]])
+  // CHECK: [[VAL15:%.+]] = "tf.Cast"([[VAL10]]#1)
+  // CHECK: [[VAL16:%.+]] = "tf.Div"([[VAL15]], [[VAL6]])
+  // CHECK: [[VAL17:%.+]] = "tf.Mul"([[VAL16]], [[VAL5]])
+  // CHECK: [[VAL18:%.+]] = "tf.Cast"([[VAL17]])
+  // CHECK: [[VAL19:%.+]] = "tf.Reshape"([[VAL18]], [[VAL1]])
+  // CHECK: [[VAL20:%.+]] = "tf.Mul"([[VAL19]], [[VAL10]]#2)
+  // CHECK: [[VAL21:%.+]] = "tf.Cast"([[VAL10]]#2)
+  // CHECK: [[VAL22:%.+]] = "tf.Div"([[VAL21]], [[VAL6]])
+  // CHECK: [[VAL23:%.+]] = "tf.Mul"([[VAL22]], [[VAL5]])
+  // CHECK: [[VAL24:%.+]] = "tf.Cast"([[VAL23]])
+  // CHECK: [[VAL25:%.+]] = "tf.Reshape"([[VAL24]], [[VAL4]])
+  // CHECK: [[VAL26:%.+]] = "tf.AddV2"([[VAL20]], [[VAL25]])
+  // CHECK: [[VAL27:%.+]] = "tf.Reshape"([[VAL26]], [[VAL2]])
+  // CHECK: [[VAL28:%.+]] = "tf.ExpandDims"([[VAL10]]#0, [[VAL7]])
+  // CHECK: [[VAL29:%.+]] = "tf.ExpandDims"([[VAL11]], [[VAL7]])
+  // CHECK: [[VAL30:%.+]] = "tf.ExpandDims"([[VAL10]]#3, [[VAL7]])
+  // CHECK: [[VAL31:%.+]] = "tf.ConcatV2"([[VAL28]], [[VAL29]], [[VAL30]], [[VAL7]])
+  // CHECK: [[VAL32:%.+]] = "tf.Reshape"(%arg0, [[VAL31]])
+  // CHECK: [[VAL33:%.+]] = "tf.GatherV2"([[VAL32]], [[VAL27]], [[VAL0]]) {batch_dims = 0 : i64}
+  // CHECK: [[VAL34:%.+]] = "tf.Reshape"([[VAL33]], [[VAL14]])
+  // CHECK: return [[VAL34]]
+  %resize = "tf.ResizeNearestNeighbor"(%arg0, %shape) {align_corners = false, device = "", half_pixel_centers = false} : (tensor<1x?x?x1xi32>, tensor<2xi32>) -> tensor<1x3x3x1xi32>
+  return %resize: tensor<1x3x3x1xi32>
+}
+
+// CHECK-LABEL: func @imag_resize_nearest_full_dyn
+func @imag_resize_nearest_full_dyn(%arg0: tensor<1x?x?x1xi32>, %arg1: tensor<2xi32>) -> tensor<1x?x?x1xi32> {
+
+  // CHECK: [[VAL0:%.+]] = "tf.Const"() {value = dense<1> : tensor<i32>}
+  // CHECK: [[VAL1:%.+]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>}
+  // CHECK: [[VAL2:%.+]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>}
+  // CHECK: [[VAL3:%.+]] = "tf.Const"() {value = dense<1> : tensor<1xi32>}
+  // CHECK: [[VAL4:%.+]] = "tf.Const"() {value = dense<1> : tensor<1xi64>}
+  // CHECK: [[VAL5:%.+]] = "tf.Const"() {value = dense<0> : tensor<i64>}
+  // CHECK: [[VAL6:%.+]] = "tf.Shape"(%arg0)
+  // CHECK: [[VAL7:%.+]] = "tf.Cast"([[VAL6]])
+  // CHECK: [[VAL8:%.+]]:4 = "tf.Unpack"([[VAL7]]) {axis = 0 : i64}
+  // CHECK: [[VAL9:%.+]] = "tf.Mul"([[VAL8]]#1, [[VAL8]]#2)
+  // CHECK: [[VAL10:%.+]]:2 = "tf.Unpack"(%arg1) {axis = 0 : i64}
+  // CHECK: [[VAL11:%.+]] = "tf.Mul"([[VAL10]]#0, [[VAL10]]#1)
+  // CHECK: [[VAL12:%.+]] = "tf.ExpandDims"([[VAL8]]#0, [[VAL5]])
+  // CHECK: [[VAL13:%.+]] = "tf.ExpandDims"([[VAL10]]#0, [[VAL5]])
+  // CHECK: [[VAL14:%.+]] = "tf.ExpandDims"([[VAL10]]#1, [[VAL5]])
+  // CHECK: [[VAL15:%.+]] = "tf.ExpandDims"([[VAL8]]#3, [[VAL5]])
+  // CHECK: [[VAL16:%.+]] = "tf.ConcatV2"([[VAL12]], [[VAL13]], [[VAL14]], [[VAL15]], [[VAL5]])
+  // CHECK: [[VAL17:%.+]] = "tf.Cast"([[VAL8]]#1)
+  // CHECK: [[VAL18:%.+]] = "tf.Cast"([[VAL10]]#0)
+  // CHECK: [[VAL19:%.+]] = "tf.Div"([[VAL17]], [[VAL18]])
+  // CHECK: [[VAL20:%.+]] = "tf.Range"([[VAL1]], [[VAL18]], [[VAL2]])
+  // CHECK: [[VAL21:%.+]] = "tf.Mul"([[VAL20]], [[VAL19]])
+  // CHECK: [[VAL22:%.+]] = "tf.Cast"([[VAL21]])
+  // CHECK: [[VAL23:%.+]] = "tf.ExpandDims"([[VAL10]]#0, [[VAL5]])
+  // CHECK: [[VAL24:%.+]] = "tf.ConcatV2"([[VAL23]], [[VAL3]], [[VAL5]])
+  // CHECK: [[VAL25:%.+]] = "tf.Reshape"([[VAL22]], [[VAL24]])
+  // CHECK: [[VAL26:%.+]] = "tf.Mul"([[VAL25]], [[VAL8]]#2)
+  // CHECK: [[VAL27:%.+]] = "tf.Cast"([[VAL8]]#2)
+  // CHECK: [[VAL28:%.+]] = "tf.Cast"([[VAL10]]#1)
+  // CHECK: [[VAL29:%.+]] = "tf.Div"([[VAL27]], [[VAL28]])
+  // CHECK: [[VAL30:%.+]] = "tf.Range"([[VAL1]], [[VAL28]], [[VAL2]])
+  // CHECK: [[VAL31:%.+]] = "tf.Mul"([[VAL30]], [[VAL29]])
+  // CHECK: [[VAL32:%.+]] = "tf.Cast"([[VAL31]])
+  // CHECK: [[VAL33:%.+]] = "tf.ExpandDims"([[VAL10]]#1, [[VAL5]])
+  // CHECK: [[VAL34:%.+]] = "tf.ConcatV2"([[VAL3]], [[VAL33]], [[VAL5]])
+  // CHECK: [[VAL35:%.+]] = "tf.Reshape"([[VAL32]], [[VAL34]])
+  // CHECK: [[VAL36:%.+]] = "tf.AddV2"([[VAL26]], [[VAL35]])
+  // CHECK: [[VAL37:%.+]] = "tf.Reshape"([[VAL11]], [[VAL4]])
+  // CHECK: [[VAL38:%.+]] = "tf.Reshape"([[VAL36]], [[VAL37]])
+  // CHECK: [[VAL39:%.+]] = "tf.ExpandDims"([[VAL8]]#0, [[VAL5]])
+  // CHECK: [[VAL40:%.+]] = "tf.ExpandDims"([[VAL9]], [[VAL5]])
+  // CHECK: [[VAL41:%.+]] = "tf.ExpandDims"([[VAL8]]#3, [[VAL5]])
+  // CHECK: [[VAL42:%.+]] = "tf.ConcatV2"([[VAL39]], [[VAL40]], [[VAL41]], [[VAL5]])
+  // CHECK: [[VAL43:%.+]] = "tf.Reshape"(%arg0, [[VAL42]])
+  // CHECK: [[VAL44:%.+]] = "tf.GatherV2"([[VAL43]], [[VAL38]], [[VAL0]]) {batch_dims = 0 : i64}
+  // CHECK: [[VAL45:%.+]] = "tf.Reshape"([[VAL44]], [[VAL16]])
+  // CHECK: return [[VAL45]]
+  %resize = "tf.ResizeNearestNeighbor"(%arg0, %arg1) {align_corners = false, device = "", half_pixel_centers = false} : (tensor<1x?x?x1xi32>, tensor<2xi32>) -> tensor<1x?x?x1xi32>
+  return %resize: tensor<1x?x?x1xi32>
+}

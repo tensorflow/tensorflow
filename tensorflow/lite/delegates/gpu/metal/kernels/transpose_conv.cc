@@ -22,12 +22,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/substitute.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
-#include "tensorflow/lite/delegates/gpu/metal/device_info.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 namespace tflite {
@@ -276,15 +276,15 @@ std::string GetDeconvolutionShared(const ConvolutionTransposedAttributes& attr,
 }
 
 std::string GetDeconvolution4x4(const int2& block_size,
-                                const DeviceInfo& device_info) {
+                                const GpuInfo& gpu_info) {
   bool use_local_mem = false;
-  if (device_info.IsAppleGPU() && device_info.apple_info.IsBionic()) {
+  if (gpu_info.IsApple() && gpu_info.apple_info.IsBionic()) {
     use_local_mem = true;
   }
-  if (device_info.IsIntelGPU()) {
+  if (gpu_info.IsIntel()) {
     use_local_mem = true;
   }
-  const std::string barrier = device_info.IsWaveSizeEqualTo32()
+  const std::string barrier = gpu_info.IsWaveSizeEqualTo32()
                                   ? "SIMDGROUP_BARRIER"
                                   : "threadgroup_barrier";
   std::string c = R"(
@@ -454,8 +454,8 @@ std::string GetDeconvolution4x4(const int2& block_size,
 
 std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed(
     int id, ValueId input_id, ValueId output_id,
-    const ConvolutionTransposedAttributes& params,
-    const DeviceInfo& device_info, const RuntimeOptions& options) {
+    const ConvolutionTransposedAttributes& params, const GpuInfo& gpu_info,
+    const RuntimeOptions& options) {
   auto desc = std::make_shared<ComputeTaskDescriptor>();
   desc->id = id;
   desc->is_linkable = false;
@@ -468,7 +468,7 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed(
   const int shared_size =
       sizeof(float) * 4 * src_depth * src_local_size_x * src_local_size_y;
   if (shared_size < 1000 * 16 &&
-      device_info.apple_info.IsLocalMemoryPreferredOverGlobal()) {
+      gpu_info.apple_info.IsLocalMemoryPreferredOverGlobal()) {
     desc->shader_source =
         GetDeconvolutionShared(params, kThreadGroupWidth, kThreadGroupHeight);
   } else {
@@ -554,8 +554,8 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed(
 
 std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed4x4(
     int id, ValueId input_id, ValueId output_id,
-    const ConvolutionTransposedAttributes& params,
-    const DeviceInfo& device_info, const RuntimeOptions& options) {
+    const ConvolutionTransposedAttributes& params, const GpuInfo& gpu_info,
+    const RuntimeOptions& options) {
   const int src_depth = DivideRoundUp(params.weights.shape.i, 4);
   const int dst_depth = DivideRoundUp(params.weights.shape.o, 4);
   const int kernel_x = 4;
@@ -609,8 +609,8 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed4x4(
   desc->is_linkable = false;
 
   bool recommended_2x = false;
-  if (device_info.IsAppleGPU()) {
-    if (device_info.apple_info.IsBionic() &&
+  if (gpu_info.IsApple()) {
+    if (gpu_info.apple_info.IsBionic() &&
         options.storage_precision == RuntimeOptions::Precision::FP16) {
       recommended_2x = true;
     }
@@ -621,7 +621,7 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed4x4(
   }
 
   const int2 block_size(recommended_2x ? 2 : 1, 1);
-  desc->shader_source = GetDeconvolution4x4(block_size, device_info);
+  desc->shader_source = GetDeconvolution4x4(block_size, gpu_info);
 
   desc->input_buffers = {
       {input_id, "device FLT4* const src_buffer"},

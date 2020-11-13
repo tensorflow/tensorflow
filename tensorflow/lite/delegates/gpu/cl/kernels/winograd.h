@@ -34,11 +34,11 @@ class Winograd4x4To36 : public GPUOperation {
  public:
   Winograd4x4To36() = default;
   Winograd4x4To36(const OperationDef& definition, const Padding2D& padding,
-                  const DeviceInfo& device_info);
+                  const GpuInfo& gpu_info);
   absl::Status BindArguments(ArgumentsBinder* args) override;
   int3 GetGridSize() const override;
   void GetPossibleKernelWorkGroups(
-      TuningType tuning_type, const DeviceInfo& device_info,
+      TuningType tuning_type, const GpuInfo& gpu_info,
       const KernelInfo& kernel_info,
       std::vector<int3>* work_groups) const override;
 
@@ -49,7 +49,7 @@ class Winograd4x4To36 : public GPUOperation {
   Winograd4x4To36& operator=(const Winograd4x4To36&) = delete;
 
  private:
-  friend Winograd4x4To36 CreateWinograd4x4To36(const DeviceInfo& device_info,
+  friend Winograd4x4To36 CreateWinograd4x4To36(const GpuInfo& gpu_info,
                                                const OperationDef& definition,
                                                const Padding2D& padding);
 
@@ -63,19 +63,18 @@ class Winograd4x4To36 : public GPUOperation {
   Padding2D padding_;
 };
 
-Winograd4x4To36 CreateWinograd4x4To36(const DeviceInfo& device_info,
+Winograd4x4To36 CreateWinograd4x4To36(const GpuInfo& gpu_info,
                                       const OperationDef& definition,
                                       const Padding2D& padding);
 
 class Winograd36To4x4 : public GPUOperation {
  public:
   Winograd36To4x4() = default;
-  Winograd36To4x4(const OperationDef& definition,
-                  const DeviceInfo& device_info);
+  Winograd36To4x4(const OperationDef& definition, const GpuInfo& gpu_info);
   absl::Status BindArguments(ArgumentsBinder* args) override;
   int3 GetGridSize() const override;
   void GetPossibleKernelWorkGroups(
-      TuningType tuning_type, const DeviceInfo& device_info,
+      TuningType tuning_type, const GpuInfo& gpu_info,
       const KernelInfo& kernel_info,
       std::vector<int3>* work_groups) const override;
 
@@ -87,7 +86,7 @@ class Winograd36To4x4 : public GPUOperation {
 
  private:
   friend Winograd36To4x4 CreateWinograd36To4x4(
-      const DeviceInfo& device_info, const OperationDef& definition,
+      const GpuInfo& gpu_info, const OperationDef& definition,
       const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases);
 
   void UploadAt();
@@ -99,7 +98,7 @@ class Winograd36To4x4 : public GPUOperation {
 };
 
 Winograd36To4x4 CreateWinograd36To4x4(
-    const DeviceInfo& device_info, const OperationDef& definition,
+    const GpuInfo& gpu_info, const OperationDef& definition,
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases);
 
 }  // namespace cl

@@ -1373,12 +1373,12 @@ Status DynamicDimensionInferenceVisitor::HandleScatter(HloInstruction* hlo) {
 }
 
 Status DynamicDimensionInferenceVisitor::HandleWhile(HloInstruction* hlo) {
-  // If the output of the conditional contains dynamic dimension. We send
-  // dynamic dimension size out by adding additional root element. A mapping
-  // from the root instruction's dynamic dimension index (represented by a shape
-  // index as output index and a int64 dimension number) to output index
-  // (represented by an int64) is tracked for the conditional instruction (all
-  // branches should have the same mapping).
+  // If the output of the kWhile contains dynamic dimension, we send
+  // dynamic dimension size into the while body by adding additional root/body
+  // element. A mapping from the root instruction's dynamic dimension index
+  // (represented by a shape index as output index and an int64 dimension
+  // number) to output index (represented by an int64) is tracked for the
+  // conditional instruction.
   ShapeTree<absl::flat_hash_map<int64, int64>> dynamic_output_mapping(
       hlo->shape());
   std::vector<HloInstruction*> operands_to_add;

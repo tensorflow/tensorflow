@@ -41,6 +41,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "saved_model"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "test"
     mtype: "<type \'module\'>"
   }
@@ -58,6 +62,14 @@ tf_module {
   }
   member_method {
     name: "get_enclosing_xla_context"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_name_scope"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "is_tfrt_enabled"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
 }

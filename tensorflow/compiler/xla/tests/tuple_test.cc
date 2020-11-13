@@ -202,7 +202,7 @@ XLA_TEST_F(TupleTest, TupleGTEToTuple) {
   ComputeAndCompareTuple(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(TupleTest, SelectBetweenPredTuples) {
+XLA_TEST_F(TupleTest, DISABLED_ON_GPU(SelectBetweenPredTuples)) {
   XlaBuilder b(TestName());
   XlaOp v1, v2;
 
@@ -275,7 +275,7 @@ XLA_TEST_F(TupleTest, TupleGTEToTupleToGTEAdd) {
   ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(TupleTest, SelectBetweenTuplesOnFalse) {
+XLA_TEST_F(TupleTest, DISABLED_ON_GPU(SelectBetweenTuplesOnFalse)) {
   // Tests a selection between tuples with "false" path taken.
   XlaBuilder builder(TestName());
 
@@ -292,7 +292,7 @@ XLA_TEST_F(TupleTest, SelectBetweenTuplesOnFalse) {
   ComputeAndCompareTuple(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(TupleTest, TuplesInAMap) {
+XLA_TEST_F(TupleTest, DISABLED_ON_GPU(TuplesInAMap)) {
   XlaComputation tuple_computation;
   {
     // tuple_computation(x) = 100 * min(x, x^2) + max(x, x^2) using tuples.
@@ -319,7 +319,7 @@ XLA_TEST_F(TupleTest, TuplesInAMap) {
   ComputeAndCompareR1<float>(&b, {-99.0f, 101.0f, 214.41f}, {}, error_spec_);
 }
 
-XLA_TEST_F(TupleTest, SelectBetweenTuplesOnTrue) {
+XLA_TEST_F(TupleTest, DISABLED_ON_GPU(SelectBetweenTuplesOnTrue)) {
   // Tests a selection between tuples with "true" path taken.
   XlaBuilder builder(TestName());
 
@@ -336,7 +336,7 @@ XLA_TEST_F(TupleTest, SelectBetweenTuplesOnTrue) {
   ComputeAndCompareTuple(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(TupleTest, SelectBetweenTuplesElementResult) {
+XLA_TEST_F(TupleTest, DISABLED_ON_GPU(SelectBetweenTuplesElementResult)) {
   // Tests a selection between tuples but the final result is an element of the
   // tuple, not the whole tuple.
   XlaBuilder builder(TestName());
@@ -355,7 +355,7 @@ XLA_TEST_F(TupleTest, SelectBetweenTuplesElementResult) {
 }
 
 // Cascaded selects between tuple types.
-XLA_TEST_F(TupleTest, SelectBetweenTuplesCascaded) {
+XLA_TEST_F(TupleTest, DISABLED_ON_GPU(SelectBetweenTuplesCascaded)) {
   //
   //                       vec1     vec2   vec2     vec1
   //                        |        |      |        |
@@ -392,7 +392,7 @@ XLA_TEST_F(TupleTest, SelectBetweenTuplesCascaded) {
   ComputeAndCompareR1<float>(&builder, {3.f, 6.f, 9.f}, {}, error_spec_);
 }
 
-XLA_TEST_F(TupleTest, SelectBetweenTuplesReuseConstants) {
+XLA_TEST_F(TupleTest, DISABLED_ON_GPU(SelectBetweenTuplesReuseConstants)) {
   // Similar to SelectBetweenTuples, but the constants are shared between the
   // input tuples.
   XlaBuilder builder(TestName());
@@ -535,8 +535,8 @@ XLA_TEST_F(TupleHloTest, BitcastAfterGTE) {
 }
 
 // Disabled on interpreter due to lack of outfeed.
-XLA_TEST_F(TupleHloTest,
-           DISABLED_ON_INTERPRETER(NonAmbiguousTopLevelAllocation)) {
+XLA_TEST_F(TupleHloTest, DISABLED_ON_GPU(DISABLED_ON_INTERPRETER(
+                             NonAmbiguousTopLevelAllocation))) {
   const char* testcase = R"(
     HloModule tuple
 
@@ -577,7 +577,7 @@ XLA_TEST_F(TupleHloTest,
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, literal));
 }
 
-XLA_TEST_F(TupleHloTest, TupleSelectOfSort) {
+XLA_TEST_F(TupleHloTest, DISABLED_ON_GPU(TupleSelectOfSort)) {
   const char* testcase = R"(
     HloModule sort
 

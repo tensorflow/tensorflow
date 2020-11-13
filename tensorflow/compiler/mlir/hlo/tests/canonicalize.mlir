@@ -575,6 +575,16 @@ func @dynamic_reshape_not_actually_dynamic(%arg0: tensor<4xf32>, %shape: tensor<
   return %0 : tensor<4x1xf32>
 }
 
+// CHECK-LABEL: func @shape_of_dynamic_reshape
+// CHECK-SAME: [[ARG0:%[a-zA-Z0-9]+]]
+// CHECK-SAME: [[ARG1:%[a-zA-Z0-9]+]]
+func @shape_of_dynamic_reshape(%arg0: tensor<*xf32>, %shape: tensor<2xindex>) -> tensor<2xindex> {
+  // CHECK: return [[ARG1]]
+  %0 = "mhlo.dynamic_reshape"(%arg0, %shape) : (tensor<*xf32>, tensor<2xindex>) -> tensor<?x?xf32>
+  %1 = shape.shape_of %0 : tensor<?x?xf32> -> tensor<2xindex>
+  return %1 : tensor<2xindex>
+}
+
 // CHECK-LABEL: do_not_dce_while_with_outfeed
 func @do_not_dce_while_with_outfeed(%arg0: tensor<i64>) -> tensor<i64> {
   // CHECK: mhlo.while

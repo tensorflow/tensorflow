@@ -81,3 +81,24 @@ ENTRY main () -> f32[6] {
   %init = f32[] parameter(2)
   ROOT %select-and-scatter.12 = f32[6]{0} select-and-scatter(f32[6]{0} %operand, f32[2]{0} %source, f32[] %init), window={size=3 stride=3}, select=%ge_F32, scatter=%add_F32
 }
+
+// -----
+
+HloModule SliceToDynamic
+
+// CHECK-LABEL: func @main
+// CHECK: "lmhlo.custom_call"
+// CHECK: backend_config = "", call_target_name = "SliceToDynamic"
+// CHECK-SAME: operand_segment_sizes = dense<[4, 1]> : vector<2xi32>
+// CHECK: (memref<2x2x2xi32>, memref<i32>, memref<i32>, memref<i32>, memref<2x2x2xi32>) -> ()
+ENTRY main {
+  %param = s32[2,2,2] parameter(0)
+  %static = s32[] parameter(1)
+  %dynamic = s32[] parameter(2)
+  ROOT %custom-call = s32[2,<=2, 2] custom-call(s32[2,2,2] %param,
+                                                  s32[] %static,
+                                                  s32[] %dynamic,
+                                                  s32[] %static),
+                                      custom_call_target="SliceToDynamic",
+                                      backend_config=""
+}

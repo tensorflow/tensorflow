@@ -197,14 +197,14 @@ GPUOperation CreateElementwiseOneRuntimeOneScalar(
 // Creates simple two input(first input is runtime tensor and second input is
 // constant linear tensor) operation, for example sub, div and etc.
 GPUOperation CreateElementwiseTwoInput(
-    const DeviceInfo& device_info, const OperationDef& definition,
+    const GpuInfo& gpu_info, const OperationDef& definition,
     const OperationType& op_type,
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& constant_tensor,
     bool swap_inputs) {
   const BHWC shape = BHWC(1, 1, 1, constant_tensor.shape.v);
-  TensorStorageType storage_type = SelectBestStorageType(
-      device_info, shape, definition.GetPrimaryStorageType(),
-      definition.GetDataType(), Layout::HWC);
+  TensorStorageType storage_type =
+      SelectBestStorageType(gpu_info, shape, definition.GetPrimaryStorageType(),
+                            definition.GetDataType(), Layout::HWC);
   TensorDescriptor desc{definition.GetDataType(), storage_type, Layout::HWC};
   desc.UploadData(constant_tensor);
 
@@ -228,15 +228,15 @@ GPUOperation CreateElementwiseTwoInput(
 // Creates simple two input(first input is runtime tensor and second input is
 // constant HWC tensor) operation, for example sub, div and etc.
 GPUOperation CreateElementwiseTwoInput(
-    const DeviceInfo& device_info, const OperationDef& definition,
+    const GpuInfo& gpu_info, const OperationDef& definition,
     const OperationType& op_type,
     const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& constant_tensor,
     bool swap_inputs) {
   const BHWC shape = BHWC(1, constant_tensor.shape.h, constant_tensor.shape.w,
                           constant_tensor.shape.c);
-  TensorStorageType storage_type = SelectBestStorageType(
-      device_info, shape, definition.GetPrimaryStorageType(),
-      definition.GetDataType(), Layout::HWC);
+  TensorStorageType storage_type =
+      SelectBestStorageType(gpu_info, shape, definition.GetPrimaryStorageType(),
+                            definition.GetDataType(), Layout::HWC);
   TensorDescriptor desc{definition.GetDataType(), storage_type, Layout::HWC};
   desc.UploadData(constant_tensor);
 
@@ -270,7 +270,7 @@ GPUOperation CreateElementwiseOneInput(const OperationDef& definition,
   return op;
 }
 
-GPUOperation CreateElementwise(const DeviceInfo& device_info,
+GPUOperation CreateElementwise(const GpuInfo& gpu_info,
                                const OperationDef& definition,
                                const OperationType& op_type,
                                const ElementwiseAttributes& attr) {
@@ -284,12 +284,11 @@ GPUOperation CreateElementwise(const DeviceInfo& device_info,
     return CreateElementwiseOneRuntimeOneScalar(definition, op_type, *scalar,
                                                 attr.runtime_tensor_is_second);
   } else if (linear_tensor) {
-    return CreateElementwiseTwoInput(device_info, definition, op_type,
+    return CreateElementwiseTwoInput(gpu_info, definition, op_type,
                                      *linear_tensor,
                                      attr.runtime_tensor_is_second);
   } else if (hwc_tensor) {
-    return CreateElementwiseTwoInput(device_info, definition, op_type,
-                                     *hwc_tensor,
+    return CreateElementwiseTwoInput(gpu_info, definition, op_type, *hwc_tensor,
                                      attr.runtime_tensor_is_second);
   } else {
     return GPUOperation(definition);

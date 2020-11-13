@@ -123,6 +123,7 @@ cc_library(
         ":batch_scheduler",
         ":periodic_function_dynamic",
         "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/lib:connected_traceme",
     ],
 )
 

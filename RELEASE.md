@@ -45,10 +45,25 @@
         *   Removed deprecated `Interpreter::UseNNAPI(bool)` C++ API.
             *   Use `NnApiDelegate()` and related delegate configuration methods
                 directly.
+    *  16 bits quantization
+        *   Added int16x8 support for ABS, REDUCE_MAX and REDUCE_MIN operators.
+    *   Added support for saved model's session initializer through
+         `TFLiteConverter.from_saved_model`.
+
 *   TF Core:
     *   Corrected higher-order gradients of control flow constructs (`tf.cond`,
         `tf.while_loop`, and compositions like `tf.foldl`) computed with
         `tf.GradientTape` inside a `tf.function`.
+
+*   `tf.summary`:
+  *   New `tf.summary.graph` allows manual write of TensorFlow graph
+      (`tf.Graph` or `tf.compat.v1.GraphDef`) as a summary. This is not a
+      replacement for the trace-based API.
+
+*   Set `/d2ReducedOptimizeHugeFunctions` by default for Windows builds. This
+    provides a big compile-time speedup, and effectively raises the minimum
+    supported MSVC version to 16.4 (current: 16.8).
+    *   See: https://groups.google.com/a/tensorflow.org/d/topic/build/SsW98Eo7l3o/discussion
 
 ## Thanks to our Contributors
 

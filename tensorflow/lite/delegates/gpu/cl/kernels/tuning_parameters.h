@@ -27,7 +27,7 @@ enum class TuningType { EXHAUSTIVE, FAST };
 
 struct TuningParameters {
   ProfilingCommandQueue* queue;
-  const DeviceInfo* info;
+  const GpuInfo* info;
   TuningType tuning_type = TuningType::EXHAUSTIVE;
 };
 
