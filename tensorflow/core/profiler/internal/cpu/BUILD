@@ -40,6 +40,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:profiler_factory",
         "//tensorflow/core/profiler/lib:profiler_interface",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:time_utils",
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_utils",
         "@com_google_absl//absl/strings",
