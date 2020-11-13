@@ -3025,7 +3025,7 @@ Status SpmdPartitioningVisitor::HandleReduce(HloInstruction* hlo) {
           for (int64 dim : hlo->dimensions()) {
             expanded_shape.set_dimensions(dim, 1);
             all_gather_shape.set_dimensions(
-                dim, inputs[0].sharding().tile_assignment().dim(i));
+                dim, inputs[0].sharding().tile_assignment().dim(dim));
           }
           auto reshape = b_.AddInstruction(
               HloInstruction::CreateReshape(expanded_shape, gte));
