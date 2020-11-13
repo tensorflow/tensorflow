@@ -21,7 +21,6 @@ import os
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework.errors_impl import NotFoundError as _NotFoundError
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.distribute import distributed_file_utils
 from tensorflow.python.keras.utils import mode_keys

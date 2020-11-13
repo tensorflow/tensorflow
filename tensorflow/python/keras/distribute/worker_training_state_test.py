@@ -65,7 +65,7 @@ class ModelCheckpointTest(test_base.IndependentWorkerTestBase,
                       tf_weights_only_checkpoint_exists)
 
 
-def testWorkerTrainingState(cluster_spec, task_id, backup_dir):
+def testWorkerTrainingState(cluster_spec, task_id, backup_dir, create_barrier):
   #Set TFCONFIG
   tf_config = {
       'cluster': cluster_spec,
@@ -86,6 +86,7 @@ def testWorkerTrainingState(cluster_spec, task_id, backup_dir):
 
   len_backup = len(os.listdir(backup_dir))
   assert len_backup > 0, "%d" % (len_backup)
+  create_barrier.wait()
 
   model._training_state.restore()
   model._training_state.delete_backup()
@@ -107,12 +108,19 @@ class WorkerTrainingStateTest(test.TestCase, parameterized.TestCase):
     self._cluster_spec = cluster_dict
 
   def testWorkerTrainingState(self):
-    num_workers = 3
-    self.create_cluster_spec(num_workers)
-    pool = mp.Pool(num_workers)
-    backup_dir = tempfile.mkdtemp(dir=googletest.GetTempDir())
-    args = [(self._cluster_spec, x, backup_dir) for x in range(num_workers)]
-    pool.starmap(testWorkerTrainingState, args)
+    try:
+      num_workers = 3
+      self._cluster_spec = test_base.create_cluster_spec(num_workers=num_workers)
+      pool = mp.Pool(num_workers)
+      
+      backup_dir = tempfile.mkdtemp(dir=googletest.GetTempDir())
+      with mp.Manager() as man:
+        create_barrier = man.Barrier(num_workers)
+        args = [(self._cluster_spec, x, backup_dir, create_barrier) for x in range(num_workers)]
+        pool.starmap(testWorkerTrainingState, args)
+    except Exception as e:
+      print(e, flush=True)
+      raise e
 
 
 if __name__ == '__main__':
