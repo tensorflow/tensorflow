@@ -2040,6 +2040,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "UnsortedSegmentSum",
                                      "VarIsInitializedOp",
                                      "VariableShape",
+                                     "Where",
                                      "While",
                                      "XlaBroadcastHelper",
                                      "XlaConv",
