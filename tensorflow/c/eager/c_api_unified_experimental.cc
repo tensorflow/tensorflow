@@ -134,7 +134,9 @@ TF_AbstractFunction* TF_FinalizeFunction(TF_ExecutionContext* ctx,
 }
 
 TF_AbstractTensor* TF_AddFunctionParameter(TF_ExecutionContext* func,
-                                           TF_DataType dtype, TF_Status* s) {
+                                           TF_DataType dtype, TF_Shape shape,
+                                           TF_Status* s) {
+  DCHECK_GE(shape.num_dims, -1);
   TracingTensorHandle* t;
   TracingContext* tracing_ctx = dyn_cast<TracingContext>(unwrap(func));
   if (!tracing_ctx) {
@@ -143,8 +145,20 @@ TF_AbstractTensor* TF_AddFunctionParameter(TF_ExecutionContext* func,
                "TF_AddFunctionParameter must be called on a TracingContext."));
     return nullptr;
   }
+  tensorflow::PartialTensorShape partial_shape;
+  if (shape.num_dims != -1) {
+    DCHECK(shape.dim_sizes != nullptr);
+    Status status = tensorflow::PartialTensorShape::MakePartialShape(
+        reinterpret_cast<tensorflow::int64*>(shape.dim_sizes), shape.num_dims,
+        &partial_shape);
+    if (!status.ok()) {
+      Set_TF_Status_from_Status(s, status);
+      return nullptr;
+    }
+  }
   Set_TF_Status_from_Status(
-      s, tracing_ctx->AddParameter(static_cast<DataType>(dtype), &t));
+      s, tracing_ctx->AddParameter(static_cast<DataType>(dtype), partial_shape,
+                                   &t));
   return wrap(t);
 }
 

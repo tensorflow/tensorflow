@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 #include "tensorflow/core/platform/errors.h"
 
@@ -38,8 +39,10 @@ Status CreateParamsForInputs(AbstractContext* ctx,
                              std::vector<AbstractTensorHandle*>* params) {
   tracing::TracingTensorHandle* handle = nullptr;
   for (auto input : inputs) {
+    PartialTensorShape shape;
+    TF_RETURN_IF_ERROR(input->Shape(&shape));
     TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingContext>(ctx)->AddParameter(
-        input->DataType(), &handle));
+        input->DataType(), shape, &handle));
     params->emplace_back(handle);
   }
   return Status::OK();

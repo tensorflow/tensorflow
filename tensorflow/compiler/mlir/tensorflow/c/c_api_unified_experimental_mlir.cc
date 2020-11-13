@@ -54,6 +54,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 #include "tensorflow/core/platform/errors.h"
@@ -100,6 +101,13 @@ class MlirTensor : public TracingTensorHandle {
       return tensorflow::DT_INVALID;
     }
     return type;
+  }
+
+  tensorflow::Status Shape(
+      tensorflow::PartialTensorShape* shape) const override {
+    // TODO(b/173074167): Implement this and enable tests in
+    // unified_api_test.cc.
+    return Unimplemented("MlirTensor::Shape is not implemented yet.");
   }
 
   Value getValue() { return value_; }
@@ -250,6 +258,7 @@ class MlirFunctionContext : public TracingContext {
     return new MlirAbstractOp(context_.get(), this);
   }
   Status AddParameter(tensorflow::DataType dtype,
+                      const tensorflow::PartialTensorShape& shape,
                       TracingTensorHandle** handle) override;
 
   Status Finalize(OutputList* outputs, AbstractFunction** f) override;
@@ -547,8 +556,11 @@ Operation* MlirFunctionContext::CreateOperationFromState(
   return builder_.createOperation(state);
 }
 
-Status MlirFunctionContext::AddParameter(tensorflow::DataType dtype,
-                                         TracingTensorHandle** handle) {
+Status MlirFunctionContext::AddParameter(
+    tensorflow::DataType dtype, const tensorflow::PartialTensorShape& shape,
+    TracingTensorHandle** handle) {
+  // TODO(b/173073199): Use shape. Enable tests in unified_api_test.cc once
+  // resolved.
   Type type;
   TF_RETURN_IF_ERROR(ConvertDataTypeToTensor(dtype, builder_, &type));
   *handle = new MlirTensor(func_.getBody().front().addArgument(type));
