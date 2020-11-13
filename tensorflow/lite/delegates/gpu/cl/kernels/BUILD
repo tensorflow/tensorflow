@@ -275,6 +275,7 @@ cc_library(
     srcs = ["convolution_transposed.cc"],
     hdrs = ["convolution_transposed.h"],
     deps = [
+        ":conv_common",
         ":gpu_operation",
         ":util",
         ":work_group_picking",
