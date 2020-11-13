@@ -21,11 +21,10 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/fused_batch_norm_op.h"
 #include "tensorflow/core/kernels/no_op.h"
-#include "tensorflow/core/util/mkl_types.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/tensor_format.h"
 
-#define GET_FLAG(bn_flag) static_cast<int>(BN_FLAGS::bn_flag)
+#define GET_FLAG(bn_flag) static_cast<int>(mkldnn::normalization_flags::bn_flag)
 #define IS_SET(cflag) (context_.flags & GET_FLAG(cflag))
 
 using mkldnn::batch_normalization_backward;
@@ -47,39 +46,24 @@ struct MklBatchNormFwdParams {
   float eps;
   bool training;
   FusedBNActivationMode activation_mode;
-#ifndef ENABLE_MKLDNN_V1
-  MEMORY_FORMAT src_format;
-#else
   memory::desc src_md;
-#endif  // !ENABLE_MKLDNN_V1
 
   MklBatchNormFwdParams(const memory::dims& src_dims, int depth, float eps,
-#ifndef ENABLE_MKLDNN_V1
-                        bool training, MEMORY_FORMAT src_format,
-                        FusedBNActivationMode activation_mode)
-#else
                         bool training, memory::desc src_md,
                         FusedBNActivationMode activation_mode)
-#endif  // !ENABLE_MKLDNN_V1
       : src_dims(src_dims),
         depth(depth),
         eps(eps),
         training(training),
         activation_mode(activation_mode),
-#ifndef ENABLE_MKLDNN_V1
-        src_format(src_format) {
-  }
-#else
-        src_md(src_md) {
-  }
-#endif  // !ENABLE_MKLDNN_V1
+        src_md(src_md) {}
 };
 
 template <typename T, typename U>
 class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
  public:
   explicit MklFusedBatchNormFwdPrimitive(const MklBatchNormFwdParams& fwdParams)
-      : MklPrimitive(engine(ENGINE_CPU, 0)) {
+      : MklPrimitive(engine(engine::kind::cpu, 0)) {
     if (context_.bn_fwd == nullptr) Setup(fwdParams);
   }
 
@@ -94,8 +78,8 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
   void Execute(const T* src_data, const U* weights_data, T* dst_data,
                U* mean_data, U* variance_data,
                std::shared_ptr<stream> fwd_stream, U* workspace_data) {
-    // TODO: Create a common function and avoid the duplicate code
 #ifdef ENABLE_MKLDNN_THREADPOOL
+    // TODO: Create a common function and avoid the duplicate code
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)), *fwd_stream);
     context_.dst_mem->set_data_handle(static_cast<void*>(dst_data),
@@ -133,13 +117,9 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
       context_.ws_mem->set_data_handle(workspace_data);
     }
 #endif  // ENABLE_MKLDNN_THREADPOOL
-#ifdef ENABLE_MKLDNN_V1
+
     // Execute batch-normalization forward primitives.
     execute_primitives(context_.fwd_primitives, fwd_stream, context_.net_args);
-#else
-    fwd_stream.reset(new stream(stream::kind::eager_nostore));
-    fwd_stream->submit(context_.fwd_primitives);
-#endif  // ENABLE_MKLDNN_V1
 
     context_.src_mem->set_data_handle(DummyData);
     context_.dst_mem->set_data_handle(DummyData);
@@ -158,19 +138,7 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
     }
   }
 
-  MEMORY_PRIMITIVE_DESC GetDstPd() const { return context_.dst_mem->GET_DESC; }
-
-#ifndef ENABLE_MKLDNN_V1
-  // In MKL-DNN v1.x, memory format tags only provide a partial description
-  // of the memory layout. Hence, these functions are disabled for v1.x.
-  mkldnn_memory_format_t GetSrcMemoryFormat() const {
-    return context_.src_mem->get_primitive_desc().desc().data.format;
-  }
-
-  mkldnn_memory_format_t GetDstFmt() const {
-    return (*context_.dst_mem).get_primitive_desc().desc().data.format;
-  }
-#endif  // !ENABLE_MKLDNN_V1
+  memory::desc GetDstPd() const { return context_.dst_mem->get_desc(); }
 
   std::shared_ptr<BatchNormFwdPd> GetBatchNormFwdPd() const {
     return context_.fwd_pd;
@@ -200,9 +168,7 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
     std::shared_ptr<mkldnn::primitive> bn_fwd;
     std::vector<mkldnn::primitive> fwd_primitives;
 
-#ifdef ENABLE_MKLDNN_V1
     std::vector<std::unordered_map<int, memory>> net_args;
-#endif  // ENABLE_MKLDNN_V1
 
     BatchNormFwdContext()
         : flags(0),
@@ -224,7 +190,6 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
     context_.pkind = fwdParams.training ? prop_kind::forward_training
                                         : prop_kind::forward_scoring;
 
-#ifdef ENABLE_MKLDNN_V1
     if (fwdParams.activation_mode == FusedBNActivationMode::kRelu) {
       context_.flags |= GET_FLAG(fuse_norm_relu);
     }
@@ -234,72 +199,52 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
     auto fwd_desc = batch_normalization_forward::desc(
         context_.pkind, src_md, fwdParams.eps,
         static_cast<mkldnn::normalization_flags>(context_.flags));
-#else
-    // Memory descriptor
-    auto src_md = memory::desc({fwdParams.src_dims}, MklDnnType<T>(),
-                               fwdParams.src_format);
-    auto fwd_desc = batch_normalization_forward::desc(
-        context_.pkind, src_md, fwdParams.eps, context_.flags);
-#endif  // ENABLE_MKLDNN_V1
 
     context_.fwd_pd.reset(new BatchNormFwdPd(fwd_desc, cpu_engine_));
 
     // Create memory primitive based on dummy data
-    context_.src_mem.reset(new MEMORY_CONSTRUCTOR(
-        context_.fwd_pd->PRIMITIVE_DESC_SRC, cpu_engine_, DummyData));
-    context_.dst_mem.reset(new MEMORY_CONSTRUCTOR(
-        context_.fwd_pd->PRIMITIVE_DESC_DST, cpu_engine_, DummyData));
+    context_.src_mem.reset(
+        new memory(context_.fwd_pd->src_desc(), cpu_engine_, DummyData));
+    context_.dst_mem.reset(
+        new memory(context_.fwd_pd->dst_desc(), cpu_engine_, DummyData));
 
     memory::dims s_dims = {2, fwdParams.depth};
     memory::dims m_dims = {1, fwdParams.depth};
     if (IS_SET(use_scale_shift)) {
-      context_.weights_mem.reset(new MEMORY_CONSTRUCTOR_USING_MEM_PD(
-          s_dims, U, MEMORY_FORMAT::nc, cpu_engine_, DummyData));
+      context_.weights_mem.reset(
+          new memory({{s_dims}, MklDnnType<U>(), memory::format_tag::nc},
+                     cpu_engine_, DummyData));
     }
 
     if (fwdParams.training || (IS_SET(use_global_stats))) {
-      context_.mean_mem.reset(new MEMORY_CONSTRUCTOR_USING_MEM_PD(
-          m_dims, U, MEMORY_FORMAT::nc, cpu_engine_, DummyData));
+      context_.mean_mem.reset(
+          new memory({{m_dims}, MklDnnType<U>(), memory::format_tag::nc},
+                     cpu_engine_, DummyData));
 
-      context_.variance_mem.reset(new MEMORY_CONSTRUCTOR_USING_MEM_PD(
-          m_dims, U, MEMORY_FORMAT::nc, cpu_engine_, DummyData));
+      context_.variance_mem.reset(
+          new memory({{m_dims}, MklDnnType<U>(), memory::format_tag::nc},
+                     cpu_engine_, DummyData));
     }
 
-#ifdef ENABLE_MKLDNN_V1
     if (IS_SET(fuse_norm_relu)) {
-      context_.ws_mem.reset(new MEMORY_CONSTRUCTOR(
-          context_.fwd_pd->workspace_desc(), cpu_engine_, DummyData));
+      context_.ws_mem.reset(new memory(context_.fwd_pd->workspace_desc(),
+                                       cpu_engine_, DummyData));
     }
-#endif  // ENABLE_MKLDNN_V1
 
     // BatchNorm forward primitive.
     // TODO(intel-tf): Merge all the #ifdefs and simplify code
     if (!fwdParams.training && !(IS_SET(use_global_stats))) {
-#ifdef ENABLE_MKLDNN_V1
       if ((IS_SET(use_scale_shift)) && mkldnn_use_scaleshift) {
         context_.net_args.push_back(
             {{MKLDNN_ARG_SRC, *context_.src_mem},
              {MKLDNN_ARG_WEIGHTS, *context_.weights_mem},
-             { MKLDNN_ARG_DST,
-               *context_.dst_mem }});
+             {MKLDNN_ARG_DST, *context_.dst_mem}});
       } else {
         context_.net_args.push_back({{MKLDNN_ARG_SRC, *context_.src_mem},
-                                     { MKLDNN_ARG_DST,
-                                       *context_.dst_mem }});
+                                     {MKLDNN_ARG_DST, *context_.dst_mem}});
       }
       context_.bn_fwd.reset(new batch_normalization_forward(*context_.fwd_pd));
-#else
-      if ((IS_SET(use_scale_shift)) && GET_FLAG(use_scale_shift)) {
-        context_.bn_fwd.reset(new batch_normalization_forward(
-            *context_.fwd_pd, *context_.src_mem, *context_.weights_mem,
-            *context_.dst_mem));
-      } else {
-        context_.bn_fwd.reset(new batch_normalization_forward(
-            *context_.fwd_pd, *context_.src_mem, *context_.dst_mem));
-      }
-#endif  // ENABLE_MKLDNN_V1
     } else if (IS_SET(use_global_stats)) {
-#ifdef ENABLE_MKLDNN_V1
       if ((IS_SET(use_scale_shift)) && GET_FLAG(use_scale_shift)) {
         if (IS_SET(fuse_norm_relu)) {
           context_.net_args.push_back(
@@ -308,16 +253,14 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
                {MKLDNN_ARG_VARIANCE, *context_.variance_mem},
                {MKLDNN_ARG_WEIGHTS, *context_.weights_mem},
                {MKLDNN_ARG_DST, *context_.dst_mem},
-               { MKLDNN_ARG_WORKSPACE,
-                 *context_.ws_mem }});
+               {MKLDNN_ARG_WORKSPACE, *context_.ws_mem}});
         } else {
           context_.net_args.push_back(
               {{MKLDNN_ARG_SRC, *context_.src_mem},
                {MKLDNN_ARG_MEAN, *context_.mean_mem},
                {MKLDNN_ARG_VARIANCE, *context_.variance_mem},
                {MKLDNN_ARG_WEIGHTS, *context_.weights_mem},
-               { MKLDNN_ARG_DST,
-                 *context_.dst_mem }});
+               {MKLDNN_ARG_DST, *context_.dst_mem}});
         }
       } else {
         if (IS_SET(fuse_norm_relu)) {
@@ -326,34 +269,17 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
                {MKLDNN_ARG_MEAN, *context_.mean_mem},
                {MKLDNN_ARG_VARIANCE, *context_.variance_mem},
                {MKLDNN_ARG_DST, *context_.dst_mem},
-               { MKLDNN_ARG_WORKSPACE,
-                 *context_.ws_mem }});
+               {MKLDNN_ARG_WORKSPACE, *context_.ws_mem}});
         } else {
           context_.net_args.push_back(
               {{MKLDNN_ARG_SRC, *context_.src_mem},
                {MKLDNN_ARG_MEAN, *context_.mean_mem},
                {MKLDNN_ARG_VARIANCE, *context_.variance_mem},
-               { MKLDNN_ARG_DST,
-                 *context_.dst_mem }});
+               {MKLDNN_ARG_DST, *context_.dst_mem}});
         }
       }
       context_.bn_fwd.reset(new batch_normalization_forward(*context_.fwd_pd));
-#else
-      if ((IS_SET(use_scale_shift)) && GET_FLAG(use_scale_shift)) {
-        context_.bn_fwd.reset(new batch_normalization_forward(
-            *context_.fwd_pd, *context_.src_mem,
-            (const primitive::at)*context_.mean_mem,
-            (const primitive::at)*context_.variance_mem, *context_.weights_mem,
-            *context_.dst_mem));
-      } else {
-        context_.bn_fwd.reset(new batch_normalization_forward(
-            *context_.fwd_pd, *context_.src_mem,
-            (const primitive::at)*context_.mean_mem,
-            (const primitive::at)*context_.variance_mem, *context_.dst_mem));
-      }
-#endif  // ENABLE_MKLDNN_V1
     } else {
-#ifdef ENABLE_MKLDNN_V1
       if ((IS_SET(use_scale_shift)) && GET_FLAG(use_scale_shift)) {
         if (IS_SET(fuse_norm_relu)) {
           context_.net_args.push_back(
@@ -362,16 +288,14 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
                {MKLDNN_ARG_DST, *context_.dst_mem},
                {MKLDNN_ARG_MEAN, *context_.mean_mem},
                {MKLDNN_ARG_VARIANCE, *context_.variance_mem},
-               { MKLDNN_ARG_WORKSPACE,
-                 *context_.ws_mem }});
+               {MKLDNN_ARG_WORKSPACE, *context_.ws_mem}});
         } else {
           context_.net_args.push_back(
               {{MKLDNN_ARG_SRC, *context_.src_mem},
                {MKLDNN_ARG_WEIGHTS, *context_.weights_mem},
                {MKLDNN_ARG_DST, *context_.dst_mem},
                {MKLDNN_ARG_MEAN, *context_.mean_mem},
-               { MKLDNN_ARG_VARIANCE,
-                 *context_.variance_mem }});
+               {MKLDNN_ARG_VARIANCE, *context_.variance_mem}});
         }
       } else {
         if (IS_SET(fuse_norm_relu)) {
@@ -380,28 +304,16 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
                {MKLDNN_ARG_DST, *context_.dst_mem},
                {MKLDNN_ARG_MEAN, *context_.mean_mem},
                {MKLDNN_ARG_VARIANCE, *context_.variance_mem},
-               { MKLDNN_ARG_WORKSPACE,
-                 *context_.ws_mem }});
+               {MKLDNN_ARG_WORKSPACE, *context_.ws_mem}});
         } else {
-          context_.net_args.push_back({{MKLDNN_ARG_SRC, *context_.src_mem},
-                                       {MKLDNN_ARG_DST, *context_.dst_mem},
-                                       {MKLDNN_ARG_MEAN, *context_.mean_mem},
-                                       { MKLDNN_ARG_VARIANCE,
-                                         *context_.variance_mem }});
+          context_.net_args.push_back(
+              {{MKLDNN_ARG_SRC, *context_.src_mem},
+               {MKLDNN_ARG_DST, *context_.dst_mem},
+               {MKLDNN_ARG_MEAN, *context_.mean_mem},
+               {MKLDNN_ARG_VARIANCE, *context_.variance_mem}});
         }
       }
       context_.bn_fwd.reset(new batch_normalization_forward(*context_.fwd_pd));
-#else
-      if ((IS_SET(use_scale_shift)) && GET_FLAG(use_scale_shift)) {
-        context_.bn_fwd.reset(new batch_normalization_forward(
-            *context_.fwd_pd, *context_.src_mem, *context_.weights_mem,
-            *context_.dst_mem, *context_.mean_mem, *context_.variance_mem));
-      } else {
-        context_.bn_fwd.reset(new batch_normalization_forward(
-            *context_.fwd_pd, *context_.src_mem, *context_.dst_mem,
-            *context_.mean_mem, *context_.variance_mem));
-      }
-#endif  // ENABLE_MKLDNN_V1
     }
 
     context_.fwd_primitives.push_back(*context_.bn_fwd);
@@ -469,25 +381,11 @@ struct MklBatchNormBwdParams {
   float eps;
   bool training;
 
-#ifndef ENABLE_MKLDNN_V1
-  MEMORY_FORMAT src_format;
-#else
   memory::desc src_md;
   memory::desc diff_dst_md;
-#endif  // !ENABLE_MKLDNN_V1
 
   MklBatchNormBwdParams(memory::dims src_dims, memory::dims diff_dst_dims,
                         int depth, float eps, bool training,
-#ifndef ENABLE_MKLDNN_V1
-                        MEMORY_FORMAT src_format)
-      : src_dims(src_dims),
-        diff_dst_dims(diff_dst_dims),
-        depth(depth),
-        eps(eps),
-        training(training),
-        src_format(src_format) {
-  }
-#else
                         memory::desc src_md, memory::desc diff_dst_md)
       : src_dims(src_dims),
         diff_dst_dims(diff_dst_dims),
@@ -495,16 +393,14 @@ struct MklBatchNormBwdParams {
         eps(eps),
         training(training),
         src_md(src_md),
-        diff_dst_md(diff_dst_md) {
-  }
-#endif  // !ENABLE_MKLDNN_V1
+        diff_dst_md(diff_dst_md) {}
 };
 
 template <typename T, typename U>
 class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
  public:
   explicit MklFusedBatchNormBwdPrimitive(const MklBatchNormBwdParams& bwdParams)
-      : MklPrimitive(engine(ENGINE_CPU, 0)) {
+      : MklPrimitive(engine(engine::kind::cpu, 0)) {
     if (context_.bn_bwd == nullptr) Setup(bwdParams);
   }
 
@@ -526,8 +422,8 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
                const T* diff_dst_data, const U* weights_data, T* diff_src_data,
                U* diff_weights_data, U* res_space_data,
                std::shared_ptr<stream> bwd_stream) {
-    // TODO: Create a common function and avoid the duplicate code
 #ifdef ENABLE_MKLDNN_THREADPOOL
+    // TODO: Create a common function and avoid the duplicate code
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)), *bwd_stream);
     context_.mean_mem->set_data_handle(
@@ -565,14 +461,9 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
 
     context_.diff_src_mem->set_data_handle(static_cast<void*>(diff_src_data));
 #endif  // ENABLE_MKLDNN_THREADPOOL
-#ifdef ENABLE_MKLDNN_V1
     // Execute backward batch-normalization primitives.
     DCHECK_EQ(context_.bwd_primitives.size(), context_.net_args.size());
     execute_primitives(context_.bwd_primitives, bwd_stream, context_.net_args);
-#else
-    bwd_stream.reset(new stream(stream::kind::eager_nostore));
-    bwd_stream->submit(context_.bwd_primitives);
-#endif  // ENABLE_MKLDNN_V1
 
     // After execution, set data handle back to DummyData.
     context_.src_mem->set_data_handle(DummyData);
@@ -586,23 +477,11 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
     context_.diff_src_mem->set_data_handle(DummyData);
   }
 
-#ifndef ENABLE_MKLDNN_V1
-  mkldnn_memory_format_t GetSrcMemoryFormat() const {
-    return context_.src_mem->get_primitive_desc().desc().data.format;
-  }
-
-  mkldnn_memory_format_t GetDiffDstMemoryFormat() const {
-    return context_.diff_dst_mem->get_primitive_desc().desc().data.format;
-  }
-#endif  // !ENABLE_MKLDNN_V1
-
   std::shared_ptr<BatchNormBwdPd> GetBatchNormBwdPd() const {
     return context_.bwd_pd;
   }
 
-  MEMORY_PRIMITIVE_DESC GetDiffSrcPd() {
-    return GET_MEMORY_PRIMITIVE_DESC_FROM_MEM_PTR(context_.diff_src_mem);
-  }
+  memory::desc GetDiffSrcPd() { return context_.diff_src_mem->get_desc(); }
 
  private:
   struct BatchNormBwdContext {
@@ -625,9 +504,7 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
     std::shared_ptr<mkldnn::primitive> bn_bwd;
     std::vector<mkldnn::primitive> bwd_primitives;
 
-#ifdef ENABLE_MKLDNN_V1
     std::vector<std::unordered_map<int, memory>> net_args;
-#endif  // ENABLE_MKLDNN_V1
 
     BatchNormBwdContext()
         : src_mem(nullptr),
@@ -645,30 +522,23 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
             ? GET_FLAG(use_scale_shift)
             : (GET_FLAG(use_scale_shift) | GET_FLAG(use_global_stats));
 
-// Memory descriptors.
-#ifndef ENABLE_MKLDNN_V1
-    auto src_md = memory::desc({bwdParams.src_dims}, MklDnnType<T>(),
-                               bwdParams.src_format);
-    auto diff_dst_md = memory::desc({bwdParams.diff_dst_dims}, MklDnnType<T>(),
-                                    bwdParams.src_format);
-#else
+    // Memory descriptors.
     auto src_md = bwdParams.src_md;
     auto diff_dst_md = bwdParams.diff_dst_md;
-#endif  // !ENABLE_MKLDNN_V1
-    auto variance_desc =
-        memory::desc({1, bwdParams.depth}, MklDnnType<U>(), MEMORY_FORMAT::nc);
-    auto mean_desc =
-        memory::desc({1, bwdParams.depth}, MklDnnType<U>(), MEMORY_FORMAT::nc);
-    auto weights_desc =
-        memory::desc({2, bwdParams.depth}, MklDnnType<U>(), MEMORY_FORMAT::nc);
+    auto variance_desc = memory::desc({1, bwdParams.depth}, MklDnnType<U>(),
+                                      memory::format_tag::nc);
+    auto mean_desc = memory::desc({1, bwdParams.depth}, MklDnnType<U>(),
+                                  memory::format_tag::nc);
+    auto weights_desc = memory::desc({2, bwdParams.depth}, MklDnnType<U>(),
+                                     memory::format_tag::nc);
     auto diff_weights_desc = weights_desc;
 
     // Forward batch-normalization descriptor and primitive descriptor.
     // Adding this back due to type difference with context.flags
-    auto bn_flags =
-        bwdParams.training
-            ? BN_FLAGS::use_scale_shift
-            : (BN_FLAGS::use_scale_shift | BN_FLAGS::use_global_stats);
+    auto bn_flags = bwdParams.training
+                        ? mkldnn::normalization_flags::use_scale_shift
+                        : (mkldnn::normalization_flags::use_scale_shift |
+                           mkldnn::normalization_flags::use_global_stats);
     auto fwd_desc = batch_normalization_forward::desc(
         prop_kind::forward_training, src_md, bwdParams.eps, bn_flags);
     auto fwd_pd = BatchNormFwdPd(fwd_desc, cpu_engine_);
@@ -683,37 +553,27 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
     context_.bwd_pd.reset(new BatchNormBwdPd(bwd_desc, cpu_engine_, fwd_pd));
 
     // Create memory primitives.
-    context_.src_mem.reset(
-        new MEMORY_CONSTRUCTOR_USING_MD(src_md, cpu_engine_, DummyData));
+    context_.src_mem.reset(new memory(src_md, cpu_engine_, DummyData));
     context_.diff_dst_mem.reset(
-        new MEMORY_CONSTRUCTOR_USING_MD(diff_dst_md, cpu_engine_, DummyData));
+        new memory(diff_dst_md, cpu_engine_, DummyData));
     context_.variance_mem.reset(
-        new MEMORY_CONSTRUCTOR_USING_MD(variance_desc, cpu_engine_, DummyData));
-    context_.mean_mem.reset(
-        new MEMORY_CONSTRUCTOR_USING_MD(mean_desc, cpu_engine_, DummyData));
+        new memory(variance_desc, cpu_engine_, DummyData));
+    context_.mean_mem.reset(new memory(mean_desc, cpu_engine_, DummyData));
     context_.weights_mem.reset(
-        new MEMORY_CONSTRUCTOR_USING_MD(weights_desc, cpu_engine_, DummyData));
-    context_.diff_weights_mem.reset(new MEMORY_CONSTRUCTOR_USING_MD(
-        diff_weights_desc, cpu_engine_, DummyData));
-    context_.diff_src_mem.reset(
-        new MEMORY_CONSTRUCTOR_USING_MD(src_md, cpu_engine_, DummyData));
+        new memory(weights_desc, cpu_engine_, DummyData));
+    context_.diff_weights_mem.reset(
+        new memory(diff_weights_desc, cpu_engine_, DummyData));
+    context_.diff_src_mem.reset(new memory(src_md, cpu_engine_, DummyData));
 
-#ifdef ENABLE_MKLDNN_V1
     context_.bn_bwd.reset(new batch_normalization_backward(*context_.bwd_pd));
-    context_.net_args.push_back({{MKLDNN_ARG_SRC, *context_.src_mem},
-                                 {MKLDNN_ARG_MEAN, *context_.mean_mem},
-                                 {MKLDNN_ARG_VARIANCE, *context_.variance_mem},
-                                 {MKLDNN_ARG_DIFF_DST, *context_.diff_dst_mem},
-                                 {MKLDNN_ARG_WEIGHTS, *context_.weights_mem},
-                                 {MKLDNN_ARG_DIFF_SRC, *context_.diff_src_mem},
-                                 { MKLDNN_ARG_DIFF_WEIGHTS,
-                                   *context_.diff_weights_mem }});
-#else
-    context_.bn_bwd.reset(new batch_normalization_backward(
-        *context_.bwd_pd, *context_.src_mem, *context_.mean_mem,
-        *context_.variance_mem, *context_.diff_dst_mem, *context_.weights_mem,
-        *context_.diff_src_mem, *context_.diff_weights_mem));
-#endif  // ENABLE_MKLDNN_V1
+    context_.net_args.push_back(
+        {{MKLDNN_ARG_SRC, *context_.src_mem},
+         {MKLDNN_ARG_MEAN, *context_.mean_mem},
+         {MKLDNN_ARG_VARIANCE, *context_.variance_mem},
+         {MKLDNN_ARG_DIFF_DST, *context_.diff_dst_mem},
+         {MKLDNN_ARG_WEIGHTS, *context_.weights_mem},
+         {MKLDNN_ARG_DIFF_SRC, *context_.diff_src_mem},
+         {MKLDNN_ARG_DIFF_WEIGHTS, *context_.diff_weights_mem}});
     context_.bwd_primitives.push_back(*context_.bn_bwd);
   }
 
@@ -796,11 +656,6 @@ class MklFusedBatchNormOp : public OpKernel {
     mean_values_ = nullptr;
     variance_values_ = nullptr;
 
-#ifndef ENABLE_MKLDNN_V1
-    OP_REQUIRES(context, !is_batch_norm_ex,
-                errors::InvalidArgument(
-                    "_MklFusedBatchNormEx is not supported in DNNL 0.x ."));
-#endif
     if (!is_batch_norm_ex) {
       activation_mode_ = FusedBNActivationMode::kIdentity;
     } else {
@@ -893,15 +748,15 @@ class MklFusedBatchNormOp : public OpKernel {
       MklDnnData<U> weights(&cpu_engine_);
       MklDnnData<U> wksp(&cpu_engine_);
 
-      MEMORY_FORMAT dnn_fmt;
-      MKL_TENSOR_FORMAT mkl_tensor_fmt;
+      memory::format_tag dnn_fmt;
+      MklTensorFormat mkl_tensor_fmt;
       if (dnn_shape_src.IsMklTensor()) {
         if (dnn_shape_src.IsTensorInNCHWFormat()) {
-          dnn_fmt = MEMORY_FORMAT::nchw;
-          mkl_tensor_fmt = MKL_TENSOR_FORMAT_NCHW;
+          dnn_fmt = memory::format_tag::nchw;
+          mkl_tensor_fmt = MklTensorFormat::FORMAT_NCHW;
         } else {
-          dnn_fmt = MEMORY_FORMAT::nhwc;
-          mkl_tensor_fmt = MKL_TENSOR_FORMAT_NHWC;
+          dnn_fmt = memory::format_tag::nhwc;
+          mkl_tensor_fmt = MklTensorFormat::FORMAT_NHWC;
         }
       } else {
         mkl_tensor_fmt = TFDataFormatToMklDnnDataFormat(tensor_format_);
@@ -918,14 +773,9 @@ class MklFusedBatchNormOp : public OpKernel {
                         ? dnn_shape_src.GetMklLayout()
                         : memory::desc(src_dims, MklDnnType<T>(), dnn_fmt);
 
-#ifdef ENABLE_MKLDNN_V1
       MklBatchNormFwdParams fwdParams(src_dims, depth_, epsilon_, is_training_,
                                       src_md, activation_mode_);
-#else
-      MklBatchNormFwdParams fwdParams(
-          src_dims, depth_, epsilon_, is_training_,
-          static_cast<MEMORY_FORMAT>(src_md.data.format), activation_mode_);
-#endif  // ENABLE_MKLDNN_V1
+
       // Get forward batch-normalization op from the primitive caching pool.
       MklFusedBatchNormFwdPrimitive<T, U>* bn_fwd =
           MklFusedBatchNormFwdPrimitiveFactory<T, U>::Get(fwdParams);
@@ -933,10 +783,9 @@ class MklFusedBatchNormOp : public OpKernel {
       // Allocate workspace tensor
       U* ws_data = nullptr;
       if (fwdParams.activation_mode == FusedBNActivationMode::kRelu) {
-#ifdef ENABLE_MKLDNN_V1
-        MEMORY_PRIMITIVE_DESC workspace_pd =
+        memory::desc workspace_md =
             bn_fwd->GetBatchNormFwdPd()->workspace_desc();
-        size_t workspace_bytes = workspace_pd.get_size();
+        size_t workspace_bytes = workspace_md.get_size();
         workspace_tf_shape.AddDim(workspace_bytes);
 
         AllocateTFOutputs(context, scale_tensor.shape(), workspace_tf_shape,
@@ -944,10 +793,9 @@ class MklFusedBatchNormOp : public OpKernel {
                           &saved_mean_tensor, &saved_variance_tensor,
                           &reserved_space_tensor);
         if (reserved_space) {
-          wksp.SetUsrMem(workspace_pd, reserved_space_tensor);
+          wksp.SetUsrMem(workspace_md, reserved_space_tensor);
           ws_data = static_cast<U*>(wksp.GetOpMem().get_data_handle());
         }
-#endif  // ENABLE_MKLDNN_V1
       } else {
         // There is actually no workspace tensor out, so we make a dummy one.
         size_t workspace_bytes = 0;
@@ -986,12 +834,9 @@ class MklFusedBatchNormOp : public OpKernel {
       // Check if reorder is needed for src.
       const T* src_data = nullptr;
       std::shared_ptr<BatchNormFwdPd> bn_fwd_pd = bn_fwd->GetBatchNormFwdPd();
-      if (!native_format && IS_SRC_REORDER_NEEDED(src_md, bn_fwd_pd, bn_fwd)) {
+      if (!native_format && src_md != bn_fwd_pd->src_desc()) {
         src.SetUsrMem(src_md, &src_tensor);
-        src.CheckReorderToOpMem(
-            MEMORY_PD_WITHOUT_DATA(GET_SRC_DESC_FROM_OP_PD(bn_fwd_pd),
-                                   cpu_engine_),
-            context);
+        src.CheckReorderToOpMem(bn_fwd_pd->src_desc(), cpu_engine_, context);
         src_data = static_cast<T*>(src.GetOpMem().get_data_handle());
       } else {
         src_data = static_cast<T*>(const_cast<T*>(src_tensor.flat<T>().data()));
@@ -1078,7 +923,7 @@ class MklFusedBatchNormOp : public OpKernel {
   U* variance_values_;
   size_t depth_;  // Batch normalization is performed for per channel.
   FusedBNActivationMode activation_mode_;
-  engine cpu_engine_ = engine(ENGINE_CPU, 0);
+  engine cpu_engine_ = engine(engine::kind::cpu, 0);
 
   void ExtractParams(OpKernelContext* context) {
     const Tensor& input = MklGetInput(context, 0);
@@ -1293,15 +1138,15 @@ class MklFusedBatchNormGradOp : public OpKernel {
         ExtractParams(context);
       }
 
-      MEMORY_FORMAT dnn_fmt;
-      MKL_TENSOR_FORMAT mkl_tensor_fmt;
+      memory::format_tag dnn_fmt;
+      MklTensorFormat mkl_tensor_fmt;
       if (dnn_shape_src.IsMklTensor()) {
         if (dnn_shape_src.IsTensorInNCHWFormat()) {
-          dnn_fmt = MEMORY_FORMAT::nchw;
-          mkl_tensor_fmt = MKL_TENSOR_FORMAT_NCHW;
+          dnn_fmt = memory::format_tag::nchw;
+          mkl_tensor_fmt = MklTensorFormat::FORMAT_NCHW;
         } else {
-          dnn_fmt = MEMORY_FORMAT::nhwc;
-          mkl_tensor_fmt = MKL_TENSOR_FORMAT_NHWC;
+          dnn_fmt = memory::format_tag::nhwc;
+          mkl_tensor_fmt = MklTensorFormat::FORMAT_NHWC;
         }
       } else {
         mkl_tensor_fmt = TFDataFormatToMklDnnDataFormat(tensor_format_);
@@ -1340,7 +1185,6 @@ class MklFusedBatchNormGradOp : public OpKernel {
       T* src_data =
           static_cast<T*>(const_cast<T*>(src_tensor.flat<T>().data()));
 
-#ifdef ENABLE_MKLDNN_V1
       if (!native_format) {
         // MKL-DNN requires src and diff_dst to be in same memory layout, either
         // blocked or native format. If these inputs are in different formats,
@@ -1348,21 +1192,18 @@ class MklFusedBatchNormGradOp : public OpKernel {
         // better performance for blocked format.
         if (dnn_shape_src.IsMklTensor() && !dnn_shape_diff_dst.IsMklTensor()) {
           reorder_diff_dst.SetUsrMem(diff_dst_md, &diff_dst_tensor);
-          reorder_diff_dst.CheckReorderToOpMem(
-              MEMORY_PD_WITHOUT_DATA(src_md, cpu_engine_), context);
+          reorder_diff_dst.CheckReorderToOpMem(src_md, cpu_engine_, context);
           diff_dst_md = src_md;
           diff_dst_data =
               static_cast<T*>(reorder_diff_dst.GetOpMem().get_data_handle());
         } else if (!dnn_shape_src.IsMklTensor() &&
                    dnn_shape_diff_dst.IsMklTensor()) {
           reorder_src.SetUsrMem(src_md, &src_tensor);
-          reorder_src.CheckReorderToOpMem(
-              MEMORY_PD_WITHOUT_DATA(diff_dst_md, cpu_engine_), context);
+          reorder_src.CheckReorderToOpMem(diff_dst_md, cpu_engine_, context);
           src_md = diff_dst_md;
           src_data = static_cast<T*>(reorder_src.GetOpMem().get_data_handle());
         }
       }
-#endif  // ENABLE_MKLDNN_V1
 
       // weights -- MKL DNN packs scales/ shifts as weights in order
       // of scale, ..., scale, shift, ...., shift
@@ -1376,35 +1217,23 @@ class MklFusedBatchNormGradOp : public OpKernel {
 
       diff_weights.AllocateBuffer(2 * depth_ * sizeof(U));
 
-#ifdef ENABLE_MKLDNN_V1
       MklBatchNormBwdParams bwdParams(src_dims, diff_dst_dims, depth_, epsilon_,
                                       is_training_, src_md, diff_dst_md);
-#else
-      MklBatchNormBwdParams bwdParams(
-          src_dims, diff_dst_dims, depth_, epsilon_, is_training_,
-          static_cast<MEMORY_FORMAT>(src_md.data.format));
-#endif  // ENABLE_MKLDNN_V1
       MklFusedBatchNormBwdPrimitive<T, U>* bn_bwd =
           MklFusedBatchNormBwdPrimitiveFactory<T, U>::Get(bwdParams);
 
       // Check if diff_dst input needs to be reordered
       std::shared_ptr<BatchNormBwdPd> bn_bwd_pd = bn_bwd->GetBatchNormBwdPd();
-      if (!native_format &&
-          IS_DIFF_DST_REORDER_NEEDED(diff_dst_md, bn_bwd_pd, bn_bwd)) {
+      if (!native_format && diff_dst_md != bn_bwd_pd->diff_dst_desc()) {
         diff_dst.SetUsrMem(diff_dst_md, diff_dst_data);
-        diff_dst.CheckReorderToOpMem(
-            MEMORY_PD_WITHOUT_DATA(GET_DIFF_DST_DESC_FROM_OP_PD(bn_bwd_pd),
-                                   cpu_engine_),
-            context);
+        diff_dst.CheckReorderToOpMem(bn_bwd_pd->diff_dst_desc(), cpu_engine_,
+                                     context);
         diff_dst_data = static_cast<T*>(diff_dst.GetOpMem().get_data_handle());
       }
 
-      if (!native_format && IS_SRC_REORDER_NEEDED(src_md, bn_bwd_pd, bn_bwd)) {
+      if (!native_format && (src_md != bn_bwd_pd->src_desc())) {
         src.SetUsrMem(src_md, src_data);
-        src.CheckReorderToOpMem(
-            MEMORY_PD_WITHOUT_DATA(GET_SRC_DESC_FROM_OP_PD(bn_bwd_pd),
-                                   cpu_engine_),
-            context);
+        src.CheckReorderToOpMem(bn_bwd_pd->src_desc(), cpu_engine_, context);
         src_data = static_cast<T*>(src.GetOpMem().get_data_handle());
       }
 
@@ -1477,7 +1306,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
   TensorFormat tensor_format_;
   size_t depth_;  // Batch normalization is performed for per channel.
   bool is_training_;
-  engine cpu_engine_ = engine(ENGINE_CPU, 0);
+  engine cpu_engine_ = engine(engine::kind::cpu, 0);
 
   void ExtractParams(OpKernelContext* context) {
     const Tensor& input = MklGetInput(context, 0);

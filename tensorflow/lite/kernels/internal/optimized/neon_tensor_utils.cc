@@ -372,10 +372,10 @@ static void DotprodMatrixBatchFourVectorMultiplyAccumulate(
 
       asm volatile(
           // Zero out the accumulator registers.
-          "dup v0.4s, wzr\n"
-          "dup v1.4s, wzr\n"
-          "dup v2.4s, wzr\n"
-          "dup v3.4s, wzr\n"
+          "movi v0.4s, #0\n"
+          "movi v1.4s, #0\n"
+          "movi v2.4s, #0\n"
+          "movi v3.4s, #0\n"
 
           "1:\n"  // batch_cols_loop
 
@@ -463,12 +463,12 @@ static void DotprodMatrixBatchFourVectorMultiplyAccumulate(
           "st2 {v9.s, v10.s}[1], [%[result_ptr]], %[wide_rows]\n"
           "st2 {v9.s, v10.s}[2], [%[result_ptr]], %[wide_rows]\n"
           "st2 {v9.s, v10.s}[3], [%[result_ptr]], %[wide_rows]\n"
-          : [ mat_ptr0 ] "+r"(mat_ptr0), [ mat_ptr1 ] "+r"(mat_ptr1),
-            [ vec_ptr ] "+r"(vec_ptr), [ result_ptr ] "+r"(result_ptr),
-            [ mat_ptr2 ] "+r"(mat_ptr2), [ mat_ptr3 ] "+r"(mat_ptr3)
-          : [ mat_ptr0_end ] "r"(mat_ptr0_end),
-            [ scaling_factors_ptr ] "r"(scaling_factors_ptr),
-            [ wide_rows ] "r"(wide_rows)
+          : [mat_ptr0] "+r"(mat_ptr0), [mat_ptr1] "+r"(mat_ptr1),
+            [vec_ptr] "+r"(vec_ptr), [result_ptr] "+r"(result_ptr),
+            [mat_ptr2] "+r"(mat_ptr2), [mat_ptr3] "+r"(mat_ptr3)
+          : [mat_ptr0_end] "r"(mat_ptr0_end),
+            [scaling_factors_ptr] "r"(scaling_factors_ptr),
+            [wide_rows] "r"(wide_rows)
           : "x0", "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9",
             "v10", "v11", "v12", "v13", "cc", "memory");
     }
@@ -501,16 +501,16 @@ static void DotprodMatrixBatchFourVectorMultiplyAccumulate(
       const int32_t is_channel_scale_nullptr = per_channel_scale == nullptr;
       const int32_t is_row_sums_nullptr = row_sums_ptr == nullptr;
       asm volatile(
-          "dup v0.4s, wzr\n"
-          "dup v1.4s, wzr\n"
-          "dup v2.4s, wzr\n"
-          "dup v3.4s, wzr\n"
+          "movi v0.4s, #0\n"
+          "movi v1.4s, #0\n"
+          "movi v2.4s, #0\n"
+          "movi v3.4s, #0\n"
           // Load zero points.
           "ld1 {v7.4s}, [%[batch_offsets_ptr]]\n"
           "ld1 {v4.4s}, [%[scaling_factors_ptr]]\n"
           // Zero out zero point accumulators.
-          "dup v14.4s, wzr\n"
-          "dup v15.4s, wzr\n"
+          "movi v14.4s, #0\n"
+          "movi v15.4s, #0\n"
 
           // Load per channel scales if not null.
           "cmp %w[is_channel_scale_nullptr], #0\n"
@@ -587,16 +587,16 @@ static void DotprodMatrixBatchFourVectorMultiplyAccumulate(
           "st2 {v9.s, v10.s}[1], [%[result_ptr]], %[wide_rows]\n"
           "st2 {v9.s, v10.s}[2], [%[result_ptr]], %[wide_rows]\n"
           "st2 {v9.s, v10.s}[3], [%[result_ptr]], %[wide_rows]\n"
-          : [ mat_ptr0 ] "+r"(mat_ptr0), [ mat_ptr1 ] "+r"(mat_ptr1),
-            [ vec_ptr ] "+r"(vec_ptr), [ result_ptr ] "+r"(result_ptr),
-            [ row_sums_ptr ] "+r"(row_sums_ptr)
-          : [ mat_ptr0_end ] "r"(mat_ptr0_end),
-            [ scaling_factors_ptr ] "r"(scaling_factors_ptr),
-            [ wide_rows ] "r"(wide_rows),
-            [ channel_scales_ptr ] "r"(channel_scales_ptr),
-            [ batch_offsets_ptr ] "r"(batch_offsets_ptr),
-            [ is_channel_scale_nullptr ] "r"(is_channel_scale_nullptr),
-            [ is_row_sums_nullptr ] "r"(is_row_sums_nullptr)
+          : [mat_ptr0] "+r"(mat_ptr0), [mat_ptr1] "+r"(mat_ptr1),
+            [vec_ptr] "+r"(vec_ptr), [result_ptr] "+r"(result_ptr),
+            [row_sums_ptr] "+r"(row_sums_ptr)
+          : [mat_ptr0_end] "r"(mat_ptr0_end),
+            [scaling_factors_ptr] "r"(scaling_factors_ptr),
+            [wide_rows] "r"(wide_rows),
+            [channel_scales_ptr] "r"(channel_scales_ptr),
+            [batch_offsets_ptr] "r"(batch_offsets_ptr),
+            [is_channel_scale_nullptr] "r"(is_channel_scale_nullptr),
+            [is_row_sums_nullptr] "r"(is_row_sums_nullptr)
           : "x0", "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9",
             "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17", "w0", "w1",
             "cc", "memory");
@@ -746,9 +746,9 @@ static void DotprodSparseMatrixBatchVectorMultiplyAccumulate(
 
       if (ledger_ptr != ledger_end) {
         asm volatile(
-            "dup v0.4s, wzr\n"
-            "dup v1.4s, wzr\n"
-            "dup v8.4s, wzr\n"
+            "movi v0.4s, #0\n"
+            "movi v1.4s, #0\n"
+            "movi v8.4s, #0\n"
             "mov x7, 0\n"
 
             "1:\n"  // chunks_loop
@@ -775,9 +775,9 @@ static void DotprodSparseMatrixBatchVectorMultiplyAccumulate(
             // We have to be careful to cast this value to 32 bits in order
             // to interpret the sign bit properly.
             "mov %[row_sum], v1.d[0]\n"
-            : [ row_sum ] "=r"(row_sum), [ ledger_ptr ] "+r"(ledger_ptr),
-              [ mat_ptr ] "+r"(mat_ptr), [ vec_ptr ] "+r"(vec_ptr)
-            : [ ledger_end ] "r"(ledger_end)
+            : [row_sum] "=r"(row_sum), [ledger_ptr] "+r"(ledger_ptr),
+              [mat_ptr] "+r"(mat_ptr), [vec_ptr] "+r"(vec_ptr)
+            : [ledger_end] "r"(ledger_end)
             : "x0", "x1", "x7", "x8", "v0", "v1", "v8", "v9", "cc", "memory");
       }
       result[batch * m_rows + row] +=
@@ -2565,6 +2565,66 @@ void NeonReductionSumVector(const int8_t* input_vector, int32_t* output_vector,
       sum += row_ptr[r];
     }
     output_vector[o] += sum;
+  }
+}
+
+void NeonVectorBatchVectorCwiseProductAccumulate(
+    const int16_t* vector, int v_size, const int16_t* batch_vector, int n_batch,
+    int32_t multiplier, int shift, int16_t* result) {
+  int32x4_t min_value_vector = vdupq_n_s32(-32768);
+  int32x4_t max_value_vector = vdupq_n_s32(32767);
+
+  for (int b = 0; b < n_batch; b++) {
+    int v = 0;
+    for (; v <= v_size - 16; v += 16) {
+      int32x4x4_t prod;
+      prod.val[0] = vmull_s16(vld1_s16(vector + v), vld1_s16(batch_vector));
+      prod.val[1] =
+          vmull_s16(vld1_s16(vector + v + 4), vld1_s16(batch_vector + 4));
+      prod.val[2] =
+          vmull_s16(vld1_s16(vector + v + 8), vld1_s16(batch_vector + 8));
+      prod.val[3] =
+          vmull_s16(vld1_s16(vector + v + 12), vld1_s16(batch_vector + 12));
+      batch_vector += 16;
+
+      prod = MultiplyByQuantizedMultiplier4Rows(prod, multiplier, shift);
+
+      int16x4x4_t results;
+      results.val[0] = vld1_s16(result);
+      results.val[1] = vld1_s16(result + 4);
+      results.val[2] = vld1_s16(result + 8);
+      results.val[3] = vld1_s16(result + 12);
+
+      prod.val[0] = vaddq_s32(prod.val[0], vmovl_s16(results.val[0]));
+      prod.val[1] = vaddq_s32(prod.val[1], vmovl_s16(results.val[1]));
+      prod.val[2] = vaddq_s32(prod.val[2], vmovl_s16(results.val[2]));
+      prod.val[3] = vaddq_s32(prod.val[3], vmovl_s16(results.val[3]));
+
+      prod.val[0] = vmaxq_s32(prod.val[0], min_value_vector);
+      prod.val[1] = vmaxq_s32(prod.val[1], min_value_vector);
+      prod.val[2] = vmaxq_s32(prod.val[2], min_value_vector);
+      prod.val[3] = vmaxq_s32(prod.val[3], min_value_vector);
+
+      prod.val[0] = vminq_s32(prod.val[0], max_value_vector);
+      prod.val[1] = vminq_s32(prod.val[1], max_value_vector);
+      prod.val[2] = vminq_s32(prod.val[2], max_value_vector);
+      prod.val[3] = vminq_s32(prod.val[3], max_value_vector);
+
+      vst1_s16(result, vmovn_s32(prod.val[0]));
+      vst1_s16(result + 4, vmovn_s32(prod.val[1]));
+      vst1_s16(result + 8, vmovn_s32(prod.val[2]));
+      vst1_s16(result + 12, vmovn_s32(prod.val[3]));
+
+      result += 16;
+    }
+
+    for (; v < v_size; v++) {
+      int32_t prod = vector[v] * *batch_vector++;
+      prod = MultiplyByQuantizedMultiplier(prod, multiplier, shift);
+      int32_t output = prod + *result;
+      output = std::max(std::min(32767, output), -32768);
+      *result++ = output;
+    }
   }
 }
 

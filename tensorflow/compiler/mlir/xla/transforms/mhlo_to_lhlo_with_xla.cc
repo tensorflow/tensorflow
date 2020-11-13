@@ -134,8 +134,8 @@ Status ConvertModule(std::unique_ptr<HloModule> hlo_module, ModuleOp module,
   return Status::OK();
 }
 
-// This pass take a MLIR HLO module, convert it to XLA to perform the HLO
-// optimization pipeline for the required platform, and then convert back to
+// This pass takes an MLIR HLO module, converts it to XLA to perform the HLO
+// optimization pipeline for the required platform, and then converts it back to
 // MLIR LHLO.
 class XlaHloToLhloPass
     : public PassWrapper<XlaHloToLhloPass, OperationPass<ModuleOp>> {
@@ -188,81 +188,102 @@ class XlaHloToLhloPass
 
 }  // namespace
 
+Status LhloDialectEmitter::CreateOperands(
+    HloInstruction* instr, llvm::SmallVectorImpl<Value>& operands,
+    size_t& num_arguments, size_t& num_results) {
+  for (const HloInstruction* operand : instr->operands()) {
+    TF_RETURN_IF_ERROR(GetOrCreateView(operand, &operands));
+  }
+  num_arguments = operands.size();
+  TF_RETURN_IF_ERROR(GetOrCreateView(instr, &operands));
+  num_results = operands.size() - num_arguments;
+  return Status::OK();
+}
+
 template <typename OpType>
-StatusOr<OpType> LhloDialectEmitter::CreateOpWithoutAttrs(
-    HloInstruction* instr) {
+StatusOr<OpType> LhloDialectEmitter::CreateOpWithoutAttrs(HloInstruction* instr,
+                                                          size_t& num_arguments,
+                                                          size_t& num_results) {
   Location loc = getLocation(instr);
   std::pair<Identifier, Attribute> attrs[] = {
       {Identifier::get("name", builder_.getContext()),
        builder_.getStringAttr(instr->name())},
   };
-  ArrayRef<Type> rets{};
-
   llvm::SmallVector<Value, 4> operands;
-  for (const HloInstruction* operand : instr->operands()) {
-    TF_RETURN_IF_ERROR(GetOrCreateView(operand, &operands));
-  }
-  TF_RETURN_IF_ERROR(GetOrCreateView(instr, &operands));
-
-  return builder_.create<OpType>(loc, rets, operands, attrs);
+  TF_RETURN_IF_ERROR(
+      CreateOperands(instr, operands, num_arguments, num_results));
+  return builder_.create<OpType>(loc, llvm::None, operands, attrs);
 }
 
-Status LhloDialectEmitter::DefaultAction(HloInstruction* instr) {
+StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(HloInstruction* instr) {
   using ::xla::HloOpcode;
   switch (instr->opcode()) {
     case HloOpcode::kAbs:
-      return CreateOpWithoutAttrs<lmhlo::AbsOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::AbsOp>(instr);
     case HloOpcode::kAdd:
-      return CreateOpWithoutAttrs<lmhlo::AddOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::AddOp>(instr);
     case HloOpcode::kAnd:
-      return CreateOpWithoutAttrs<lmhlo::AndOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::AndOp>(instr);
     case HloOpcode::kCeil:
-      return CreateOpWithoutAttrs<lmhlo::CeilOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::CeilOp>(instr);
     case HloOpcode::kComplex:
-      return CreateOpWithoutAttrs<lmhlo::ComplexOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::ComplexOp>(instr);
     case HloOpcode::kCopy:
-      return CreateOpWithoutAttrs<lmhlo::CopyOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::CopyOp>(instr);
     case HloOpcode::kCos:
-      return CreateOpWithoutAttrs<lmhlo::CosOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::CosOp>(instr);
     case HloOpcode::kDivide:
-      return CreateOpWithoutAttrs<lmhlo::DivOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::DivOp>(instr);
     case HloOpcode::kExp:
-      return CreateOpWithoutAttrs<lmhlo::ExpOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::ExpOp>(instr);
     case HloOpcode::kImag:
-      return CreateOpWithoutAttrs<lmhlo::ImagOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::ImagOp>(instr);
     case HloOpcode::kLog:
-      return CreateOpWithoutAttrs<lmhlo::LogOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::LogOp>(instr);
     case HloOpcode::kMaximum:
-      return CreateOpWithoutAttrs<lmhlo::MaxOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::MaxOp>(instr);
     case HloOpcode::kMinimum:
-      return CreateOpWithoutAttrs<lmhlo::MinOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::MinOp>(instr);
     case HloOpcode::kMultiply:
-      return CreateOpWithoutAttrs<lmhlo::MulOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::MulOp>(instr);
     case HloOpcode::kNegate:
-      return CreateOpWithoutAttrs<lmhlo::NegOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::NegOp>(instr);
     case HloOpcode::kReal:
-      return CreateOpWithoutAttrs<lmhlo::RealOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::RealOp>(instr);
     case HloOpcode::kRemainder:
-      return CreateOpWithoutAttrs<lmhlo::RemOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::RemOp>(instr);
     case HloOpcode::kRsqrt:
-      return CreateOpWithoutAttrs<lmhlo::RsqrtOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::RsqrtOp>(instr);
     case HloOpcode::kSelect:
-      return CreateOpWithoutAttrs<lmhlo::SelectOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::SelectOp>(instr);
     case HloOpcode::kSign:
-      return CreateOpWithoutAttrs<lmhlo::SignOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::SignOp>(instr);
     case HloOpcode::kSqrt:
-      return CreateOpWithoutAttrs<lmhlo::SqrtOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::SqrtOp>(instr);
     case HloOpcode::kSubtract:
-      return CreateOpWithoutAttrs<lmhlo::SubOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::SubOp>(instr);
     case HloOpcode::kTanh:
-      return CreateOpWithoutAttrs<lmhlo::TanhOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::TanhOp>(instr);
+    case HloOpcode::kSort:
+      return EmitSortOp(instr);
+    case HloOpcode::kFusion:
+      return EmitFusionOp(instr);
+    case HloOpcode::kScatter:
+      return EmitScatterOp(instr);
+    case HloOpcode::kSelectAndScatter:
+      return EmitSelectAndScatterOp(instr);
+    case HloOpcode::kCustomCall:
+      return EmitCustomCallOp(instr);
     default:
       llvm::errs() << instr->ToString();
       return tensorflow::errors::Internal(
           absl::StrCat("LHLO opcode ", ::xla::HloOpcodeString(instr->opcode()),
                        " is not supported."));
   }
-  return Status::OK();
+}
+
+Status LhloDialectEmitter::DefaultAction(HloInstruction* instr) {
+  return EmitOp(instr).status();
 }
 
 StatusOr<lmhlo::SortOp> LhloDialectEmitter::EmitSortOp(HloInstruction* instr) {
@@ -273,10 +294,6 @@ StatusOr<lmhlo::SortOp> LhloDialectEmitter::EmitSortOp(HloInstruction* instr) {
   TF_RETURN_IF_ERROR(::xla::HloFunctionImporter::ImportAsRegion(
       *sort_instr->called_computations()[0], &sort.comparator(), &builder_));
   return sort;
-}
-
-Status LhloDialectEmitter::HandleSort(HloInstruction* instr) {
-  return EmitSortOp(instr).status();
 }
 
 // Walks MHLO::TupleOp recursively.
@@ -396,15 +413,107 @@ StatusOr<lmhlo::FusionOp> LhloDialectEmitter::EmitFusionOp(
   return fusion;
 }
 
-Status LhloDialectEmitter::HandleFusion(HloInstruction* instr) {
-  return EmitFusionOp(instr).status();
+StatusOr<mhlo::ScatterDimensionNumbers>
+LhloDialectEmitter::GetScatterDimensionNumbers(HloInstruction* instr) {
+  auto* scatter_instr = ::xla::Cast<::xla::HloScatterInstruction>(instr);
+
+  const ::xla::ScatterDimensionNumbers& xla_scatter_dim =
+      scatter_instr->scatter_dimension_numbers();
+  auto scatter_dimension_numbers = mhlo::ScatterDimensionNumbers::get(
+      GetI64DenseElementsAttr(xla_scatter_dim.update_window_dims()),
+      GetI64DenseElementsAttr(xla_scatter_dim.inserted_window_dims()),
+      GetI64DenseElementsAttr(xla_scatter_dim.scatter_dims_to_operand_dims()),
+      builder_.getI64IntegerAttr(xla_scatter_dim.index_vector_dim()),
+      module_.getContext());
+  return scatter_dimension_numbers;
+}
+
+StatusOr<lmhlo::ScatterOp> LhloDialectEmitter::EmitScatterOp(
+    HloInstruction* instr) {
+  TF_ASSIGN_OR_RETURN(auto scatter,
+                      CreateOpWithoutAttrs<lmhlo::ScatterOp>(instr));
+
+  // copy attributes
+  auto* scatter_instr = ::xla::Cast<::xla::HloScatterInstruction>(instr);
+
+  TF_ASSIGN_OR_RETURN(auto scatter_dimension_numbers,
+                      GetScatterDimensionNumbers(instr));
+  scatter.scatter_dimension_numbersAttr(scatter_dimension_numbers);
+  scatter.indices_are_sortedAttr(
+      builder_.getBoolAttr(scatter_instr->indices_are_sorted()));
+  scatter.unique_indicesAttr(
+      builder_.getBoolAttr(scatter_instr->unique_indices()));
+
+  // import update computation as region
+  TF_RETURN_IF_ERROR(::xla::HloFunctionImporter::ImportAsRegion(
+      *scatter_instr->called_computations()[0], &scatter.update_computation(),
+      &builder_));
+
+  return scatter;
+}
+
+StatusOr<lmhlo::SelectAndScatterOp> LhloDialectEmitter::EmitSelectAndScatterOp(
+    HloInstruction* instr) {
+  TF_ASSIGN_OR_RETURN(auto select_and_scatter,
+                      CreateOpWithoutAttrs<lmhlo::SelectAndScatterOp>(instr));
+
+  // copy attributes
+  auto* select_and_scatter_instr =
+      ::xla::Cast<::xla::HloSelectAndScatterInstruction>(instr);
+  const ::xla::Window& window = select_and_scatter_instr->window();
+
+  select_and_scatter.window_dimensionsAttr(
+      GetWindowElements(window, [](const ::xla::WindowDimension& dim) {
+        return static_cast<int64_t>(dim.size());
+      }));
+  select_and_scatter.window_stridesAttr(
+      GetWindowElements(window, [](const ::xla::WindowDimension& dim) {
+        return static_cast<int64_t>(dim.stride());
+      }));
+  select_and_scatter.paddingAttr(
+      GetWindowElements(window, [](const ::xla::WindowDimension& dim) {
+        return static_cast<int64_t>(dim.padding_low());
+      }));
+
+  // import select and scatter computation as region
+  TF_RETURN_IF_ERROR(::xla::HloFunctionImporter::ImportAsRegion(
+      *select_and_scatter_instr->select(), &select_and_scatter.select(),
+      &builder_));
+  TF_RETURN_IF_ERROR(::xla::HloFunctionImporter::ImportAsRegion(
+      *select_and_scatter_instr->scatter(), &select_and_scatter.scatter(),
+      &builder_));
+  return select_and_scatter;
+}
+
+StatusOr<lmhlo::CustomCallOp> LhloDialectEmitter::EmitCustomCallOp(
+    HloInstruction* instr) {
+  size_t num_arguments, num_results;
+  TF_ASSIGN_OR_RETURN(auto custom_call,
+                      CreateOpWithoutAttrs<lmhlo::CustomCallOp>(
+                          instr, num_arguments, num_results));
+  auto* custom_call_instr = ::xla::Cast<::xla::HloCustomCallInstruction>(instr);
+  custom_call.call_target_nameAttr(
+      builder_.getStringAttr(custom_call_instr->custom_call_target()));
+  custom_call.backend_configAttr(
+      builder_.getStringAttr(custom_call_instr->opaque()));
+  const int32_t segments[2] = {static_cast<int32_t>(num_arguments),
+                               static_cast<int32_t>(num_results)};
+  custom_call.setAttr(lmhlo::CustomCallOp::getOperandSegmentSizeAttr(),
+                      builder_.getI32VectorAttr(segments));
+  return custom_call;
 }
 
 StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(
     const ::xla::HloInstruction* instr, const ::xla::Shape& current_shape,
     const ::xla::ShapeIndex& shape_index) {
+  // If the shape happens to have dynamic dimensions, create the memref using
+  // the underlying static shape.
+  // TODO(jurahul): Revisit this when we can model memrefs with dynamic shape
+  // but static bounds in MLIR.
+  const Shape static_shape = xla::ShapeUtil::MakeStaticShape(current_shape);
+
   TF_ASSIGN_OR_RETURN(Type out_type, ::xla::ConvertShapeToType<MemRefType>(
-                                         current_shape, builder_));
+                                         static_shape, builder_));
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                       assignment_.GetUniqueSlice(instr, shape_index));
   Value alloc = allocations_[slice.allocation()];
@@ -415,7 +524,8 @@ StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(
   auto out_memref_type = out_type.dyn_cast<MemRefType>();
   if (!out_memref_type)
     return tensorflow::errors::Internal(
-        "Expected memref type when creating a view for leaf type of a tuple.");
+        "Expected memref type when creating a view for leaf type of a "
+        "tuple.");
 
   // Cache generated ViewOp and StaticMemRefCastOp by (instruction,
   // shape_index).
@@ -429,7 +539,7 @@ StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(
 
   xla::Shape physical_shape =
       xla::ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
-          current_shape);
+          static_shape);
   TF_ASSIGN_OR_RETURN(
       Type physical_out_type,
       ::xla::ConvertShapeToType<MemRefType>(physical_shape, builder_));
@@ -439,14 +549,21 @@ StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(
 
   // ViewOp only takes memrefs without affine maps (layouts). Let ViewOp produce
   // the physical shape (where dimensions are ordered in major to minor) first,
-  // then follow up with a StaticMemRefCastOp to cast the resulting memref to
+  // then follow up with a MemRefReinterpretCast to cast the resulting memref to
   // the original layout.
   Value result =
       builder_.create<ViewOp>(loc, physical_out_type, alloc, byte_shift,
                               /*sizes=*/ValueRange{});
-  if (physical_out_type != out_type)
-    result = builder_.create<lmhlo::StaticMemRefCastOp>(loc, out_memref_type,
-                                                        result);
+  if (physical_out_type != out_type) {
+    int64_t out_offset;
+    SmallVector<int64_t, 4> out_strides;
+    if (failed(getStridesAndOffset(out_memref_type, out_strides, out_offset)))
+      return tensorflow::errors::Internal(
+          "Failed to get strides and offset from the output type.");
+    result = builder_.create<MemRefReinterpretCastOp>(
+        loc, out_memref_type, result, out_offset, out_memref_type.getShape(),
+        out_strides, llvm::None, llvm::None, llvm::None);
+  }
   return cached_value = result;
 }
 

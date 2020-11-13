@@ -57,6 +57,11 @@ const char* kModelPack = "pack.bin";
 const char* kLstmCalibrated = "lstm_calibrated.bin";
 const char* kLstmQuantized = "lstm_quantized.bin";
 
+const char* kUnidirectionalSequenceLstmCalibrated =
+    "unidirectional_sequence_lstm_calibrated.bin";
+const char* kUnidirectionalSequenceLstmQuantized =
+    "unidirectional_sequence_lstm_quantized.bin";
+
 const char* kModelWithMinimumOp = "minimum.bin";
 const char* kModelWithMaximumOp = "maximum.bin";
 const char* kLstmCalibrated2 = "lstm_calibrated2.bin";

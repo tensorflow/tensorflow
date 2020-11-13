@@ -27,7 +27,7 @@ namespace gpu {
 namespace cl {
 
 std::unique_ptr<GPUOperation> SelectDWConvolution(
-    const DepthwiseConvolution2DAttributes& attr, const DeviceInfo& device_info,
+    const DepthwiseConvolution2DAttributes& attr, const GpuInfo& gpu_info,
     const OperationDef& op_def);
 
 }  // namespace cl

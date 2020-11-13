@@ -328,6 +328,17 @@ ParallelDevice::Execute(TFE_Context* context,
                         const char* operation_name,
                         const TFE_OpAttrs* attributes, int expected_max_outputs,
                         TF_Status* status) const {
+  std::vector<PartialTensorShape> expected_output_shapes(expected_max_outputs);
+  return Execute(context, inputs, operation_name, attributes,
+                 expected_output_shapes, status);
+}
+
+absl::optional<std::vector<std::unique_ptr<ParallelTensor>>>
+ParallelDevice::Execute(
+    TFE_Context* context, const std::vector<ParallelTensor*>& inputs,
+    const char* operation_name, const TFE_OpAttrs* attributes,
+    const std::vector<PartialTensorShape>& expected_output_shapes,
+    TF_Status* status) const {
   absl::optional<std::vector<std::unique_ptr<ParallelTensor>>> result;
   // Compute per-device per-output tensors
   std::vector<std::vector<TensorHandlePtr>> per_device_output_tensors;
@@ -344,7 +355,7 @@ ParallelDevice::Execute(TFE_Context* context,
     }
     device_thread->StartExecute(context, operation_name,
                                 std::move(device_inputs), attributes,
-                                expected_max_outputs);
+                                expected_output_shapes.size());
   }
   StatusPtr first_bad_status(nullptr);
   for (int device_index = 0; device_index < underlying_devices_.size();
@@ -386,8 +397,15 @@ ParallelDevice::Execute(TFE_Context* context,
     for (int j = 0; j < underlying_devices_.size(); ++j) {
       components.push_back(std::move(per_device_output_tensors[j][i]));
     }
-    per_device_outputs.push_back(ParallelTensor::FromTensorHandles(
-        *this, std::move(components), status));
+    if (expected_output_shapes[i].IsFullyDefined()) {
+      per_device_outputs.push_back(ParallelTensor::FromTensorHandles(
+          *this, std::move(components),
+          absl::Span<const int64>(expected_output_shapes[i].dim_sizes()),
+          status));
+    } else {
+      per_device_outputs.push_back(ParallelTensor::FromTensorHandles(
+          *this, std::move(components), status));
+    }
     if (TF_GetCode(status) != TF_OK) return result;
   }
   result.emplace(std::move(per_device_outputs));
@@ -396,9 +414,27 @@ ParallelDevice::Execute(TFE_Context* context,
 
 std::unique_ptr<ParallelTensor> ParallelTensor::FromTensorHandles(
     const ParallelDevice& parallel_device,
-    std::vector<TensorHandlePtr> components, TF_Status* status) {
+    std::vector<TensorHandlePtr> components, absl::Span<const int64> shape,
+    TF_Status* status) {
   TF_DataType dtype = TFE_TensorHandleDataType(components[0].get());
-  std::vector<int64_t> shape(
+  // Verify that the TensorHandle's shape and dtype match all of the component
+  // shapes and dtypes.
+  for (TensorHandlePtr& component : components) {
+    if (TFE_TensorHandleDataType(component.get()) != dtype) {
+      TF_SetStatus(status, TF_INTERNAL,
+                   "Components of a ParallelTensor must all have "
+                   "the same dtype");
+      return nullptr;
+    }
+  }
+  return std::unique_ptr<ParallelTensor>(
+      new ParallelTensor(parallel_device, std::move(components), shape, dtype));
+}
+
+std::unique_ptr<ParallelTensor> ParallelTensor::FromTensorHandles(
+    const ParallelDevice& parallel_device,
+    std::vector<TensorHandlePtr> components, TF_Status* status) {
+  std::vector<int64> shape(
       TFE_TensorHandleNumDims(components[0].get(), status));
   if (TF_GetCode(status) != TF_OK) return nullptr;
   for (int i = 0; i < shape.size(); ++i) {
@@ -406,11 +442,10 @@ std::unique_ptr<ParallelTensor> ParallelTensor::FromTensorHandles(
     if (TF_GetCode(status) != TF_OK) return nullptr;
   }
 
-  // Verify that the TensorHandle's shape and dtype match all of the component
-  // shapes and dtypes.
+  // Verify that the TensorHandle's shape matches all of the component shapes.
   for (TensorHandlePtr& component : components) {
     for (int i = 0; i < shape.size(); ++i) {
-      int64_t tensor_dim = TFE_TensorHandleDim(component.get(), i, status);
+      int64 tensor_dim = TFE_TensorHandleDim(component.get(), i, status);
       if (TF_GetCode(status) != TF_OK) return nullptr;
       if (tensor_dim != shape[i]) {
         // TODO(allenl): Allow shapes to differ.
@@ -419,17 +454,10 @@ std::unique_ptr<ParallelTensor> ParallelTensor::FromTensorHandles(
                      "the same shape");
         return nullptr;
       }
-      if (TFE_TensorHandleDataType(component.get()) != dtype) {
-        TF_SetStatus(status, TF_INTERNAL,
-                     "Components of a ParallelTensor must all have "
-                     "the same dtype");
-        return nullptr;
-      }
     }
   }
-
-  return std::unique_ptr<ParallelTensor>(new ParallelTensor(
-      parallel_device, std::move(components), std::move(shape), dtype));
+  return FromTensorHandles(parallel_device, std::move(components),
+                           absl::Span<const int64>(shape), status);
 }
 
 }  // namespace parallel_device

@@ -131,6 +131,8 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
 
   const char* DeviceName(Status* status) const override;
   const char* BackingDeviceName(Status* status) const override;
+  const char* DeviceType(Status* status) const override;
+  int DeviceId(Status* status) const override;
   AbstractTensorInterface* Resolve(Status* status) override;
 
   ImmediateExecutionTensorHandle* Copy() override;

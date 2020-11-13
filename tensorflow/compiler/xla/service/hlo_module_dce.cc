@@ -24,6 +24,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_liveness_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/tuple_simplifier.h"
+#include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -38,6 +40,7 @@ namespace {
 
 StatusOr<bool> RunWhileDCE(HloModule* module, HloLivenessAnalysis* liveness) {
   bool changed = false;
+  std::vector<HloComputation*> while_body_comps_to_dce;
   for (auto* computation : module->computations()) {
     for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() != HloOpcode::kWhile) {
@@ -60,6 +63,7 @@ StatusOr<bool> RunWhileDCE(HloModule* module, HloLivenessAnalysis* liveness) {
       // Remove dead tuple elements.
       const int64 tuple_element_count =
           ShapeUtil::TupleElementCount(xla_while->shape());
+      bool modified_while_body_comp = false;
       for (int64 i = 0; i < tuple_element_count; ++i) {
         if (liveness->IsLive(xla_while, {i})) {
           continue;
@@ -79,8 +83,21 @@ StatusOr<bool> RunWhileDCE(HloModule* module, HloLivenessAnalysis* liveness) {
         TF_RETURN_IF_ERROR(
             while_body_root->ReplaceOperandWith(i, pass_thru_gte));
         changed = true;
+        modified_while_body_comp = true;
+      }
+      if (modified_while_body_comp) {
+        while_body_comps_to_dce.push_back(while_body_comp);
       }
     }
+  }
+
+  // Run DCE on while body computations that we modified.
+  for (auto* while_body_comp : while_body_comps_to_dce) {
+    TF_ASSIGN_OR_RETURN(bool changed_for_computation,
+                        HloDCE().RunOnComputation(
+                            while_body_comp,
+                            /*remove_cross_partition_collective_ops=*/false));
+    changed |= changed_for_computation;
   }
   return changed;
 }
@@ -100,6 +117,15 @@ StatusOr<bool> HloModuleDCE::Run(HloModule* module) {
   TF_ASSIGN_OR_RETURN(bool hlo_module_dce_changed,
                       RunWhileDCE(module, liveness.get()));
 
+  // Run the while loop simplifier to remove dead tuple elements.
+  WhileLoopSimplifier while_loop_simplifier;
+  TF_ASSIGN_OR_RETURN(bool while_loop_simplifier_changed,
+                      while_loop_simplifier.Run(module));
+
+  TupleSimplifier tuple_simplifier;
+  TF_ASSIGN_OR_RETURN(bool tuple_simplifier_changed,
+                      tuple_simplifier.Run(module));
+
   // Run HloDCE to clean up any dead code created during HloModuleDCE.
   HloDCE hlo_dce;
   TF_ASSIGN_OR_RETURN(bool hlo_dce_changed, hlo_dce.Run(module));
@@ -107,7 +133,8 @@ StatusOr<bool> HloModuleDCE::Run(HloModule* module) {
   VLOG(2) << "After HloModuleDCE:";
   XLA_VLOG_LINES(3, module->ToString());
 
-  return hlo_module_dce_changed | hlo_dce_changed;
+  return hlo_module_dce_changed | hlo_dce_changed | tuple_simplifier_changed |
+         while_loop_simplifier_changed;
 }
 
 }  // namespace xla

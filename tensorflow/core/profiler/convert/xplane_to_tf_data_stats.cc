@@ -17,12 +17,14 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/profiler/protobuf/tf_data_stats.pb.h"
 #include "tensorflow/core/profiler/utils/group_events.h"
+#include "tensorflow/core/profiler/utils/html_utils.h"
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
@@ -249,32 +251,227 @@ void ProcessInputPipelines(
   }
 }
 
-void SetBottleneckAnalysis(absl::string_view host_name,
-                           const TfDataStats& tf_data_stats,
-                           TfDataBottleneckAnalysis* bottleneck_analysis) {
-  for (const auto& id_and_stats : tf_data_stats.input_pipelines()) {
-    const InputPipelineStats& input_pipeline_stats = id_and_stats.second;
-    if (input_pipeline_stats.metadata().type() ==
-            InputPipelineMetadata::DEVICE ||
-        input_pipeline_stats.max_latency_ps() <=
-            bottleneck_analysis->max_latency_ps()) {
-      // Ignore device input pipelines and input pipelines faster than the
-      // current bottleneck.
-      continue;
+void SetBottleneckAnalysis(CombinedTfDataStats* combined_tf_data_stats) {
+  struct InputPipeline {
+    InputPipeline(absl::string_view host_name,
+                  absl::string_view input_pipeline_name, int64 max_latency_ps,
+                  absl::string_view iterator_name,
+                  absl::string_view iterator_long_name)
+        : host_name(host_name),
+          input_pipeline_name(input_pipeline_name),
+          max_latency_ps(max_latency_ps),
+          iterator_name(iterator_name),
+          iterator_long_name(iterator_long_name) {}
+    absl::string_view host_name;
+    absl::string_view input_pipeline_name;
+    int64 max_latency_ps;
+    absl::string_view iterator_name;
+    absl::string_view iterator_long_name;
+
+    bool operator<(const InputPipeline& rhs) const {
+      return max_latency_ps > rhs.max_latency_ps;
     }
-    bottleneck_analysis->set_host(host_name.data(), host_name.size());
+  };
+  std::vector<InputPipeline> slow_input_pipelines;
+  for (const auto& host_name_and_tf_data_stats :
+       combined_tf_data_stats->tf_data_stats()) {
+    absl::string_view host_name = host_name_and_tf_data_stats.first;
+    const TfDataStats& tf_data_stats = host_name_and_tf_data_stats.second;
+    for (const auto& id_and_stats : tf_data_stats.input_pipelines()) {
+      const InputPipelineStats& input_pipeline_stats = id_and_stats.second;
+      if (input_pipeline_stats.metadata().type() ==
+          InputPipelineMetadata::DEVICE) {
+        // Ignore device input pipelines.
+        continue;
+      }
+      // Choose the slowest execution trace of the input pipeline.
+      // `input_pipeline_stats.stats` is already sorted so choose the first one.
+      const IteratorMetadata& metadata = tf_data_stats.iterator_metadata().at(
+          input_pipeline_stats.stats(0).bottleneck_iterator_id());
+      slow_input_pipelines.emplace_back(host_name,
+                                        input_pipeline_stats.metadata().name(),
+                                        input_pipeline_stats.max_latency_ps(),
+                                        metadata.name(), metadata.long_name());
+    }
+  }
+  std::sort(slow_input_pipelines.begin(), slow_input_pipelines.end());
+  for (const auto& input_pipeline : slow_input_pipelines) {
+    TfDataBottleneckAnalysis* bottleneck_analysis =
+        combined_tf_data_stats->add_bottleneck_analysis();
+    bottleneck_analysis->set_host(input_pipeline.host_name.data(),
+                                  input_pipeline.host_name.size());
     bottleneck_analysis->set_input_pipeline(
-        input_pipeline_stats.metadata().name());
-    bottleneck_analysis->set_max_latency_ps(
-        input_pipeline_stats.max_latency_ps());
-    const IteratorMetadata& metadata = tf_data_stats.iterator_metadata().at(
-        input_pipeline_stats.stats(0).bottleneck_iterator_id());
-    bottleneck_analysis->set_iterator_name(metadata.name());
-    bottleneck_analysis->set_iterator_long_name(metadata.long_name());
+        input_pipeline.input_pipeline_name.data(),
+        input_pipeline.input_pipeline_name.size());
+    bottleneck_analysis->set_max_latency_ps(input_pipeline.max_latency_ps);
+    bottleneck_analysis->set_iterator_name(input_pipeline.iterator_name.data(),
+                                           input_pipeline.iterator_name.size());
+    bottleneck_analysis->set_iterator_long_name(
+        input_pipeline.iterator_long_name.data(),
+        input_pipeline.iterator_long_name.size());
+  }
+}
+
+std::string GetSuggestion(BottleneckType type) {
+  constexpr absl::string_view kPlaybookLink =
+      "https://www.tensorflow.org/guide/data_performance_analysis";
+  constexpr absl::string_view kPlaybookSourceDatasetLink =
+      "https://www.tensorflow.org/guide/"
+      "data_performance_analysis#source_datasets";
+  constexpr absl::string_view kPlaybookCpuUtilizationLink =
+      "https://www.tensorflow.org/guide/"
+      "data_performance_analysis#3_are_you_reaching_high_cpu_utilization";
+  constexpr absl::string_view kPlaybookTransformationLink =
+      "https://www.tensorflow.org/guide/"
+      "data_performance_analysis#transformation_datasets";
+  constexpr absl::string_view kTfGuideParallelDataExtractionLink =
+      "https://www.tensorflow.org/guide/"
+      "data_performance#parallelizing_data_extraction";
+  constexpr absl::string_view kTfGuideParallelTransformationLink =
+      "https://www.tensorflow.org/guide/"
+      "data_performance#parallelizing_data_transformation";
+  constexpr absl::string_view kTfGuideCacheLink =
+      "https://www.tensorflow.org/guide/data_performance#caching";
+  constexpr absl::string_view kTfDataServiceLink =
+      "https://www.tensorflow.org/api_docs/python/tf/data/experimental/"
+      "service?version=nightly";
+  switch (type) {
+    case BottleneckType::kSlowSource:
+      return absl::StrFormat(
+          "1. Check the locality of a host and input data. Ideally, they "
+          "should be in the same cell (or very close, like the same "
+          "region).<br/>"
+          "2. Parallelize reading from this dataset source. See %s and %s for "
+          "more details.<br/>",
+          AnchorElement(kPlaybookSourceDatasetLink, "here"),
+          AnchorElement(kTfGuideParallelDataExtractionLink, "here"));
+    case BottleneckType::kSlowDataService:
+      return absl::StrFormat(
+          "1. Fetching data from tf.data service took a while. Profile the "
+          "tf.data service worker to analyze the issue further.<br/>"
+          "2. See %s for more details on tf.data service.<br/>"
+          "3. See %s for other suggestions.",
+          AnchorElement(kTfDataServiceLink, "this"),
+          AnchorElement(kPlaybookLink, "this"));
+    case BottleneckType::kSlowRemoteSource:
+      return absl::StrFormat(
+          "1. The remote data source is slow. Profile its host to analyze the "
+          "issue further.<br/>"
+          "2. See %s for other suggestions.",
+          AnchorElement(kPlaybookLink, "this"));
+    case BottleneckType::kSlowTransformationWithParallelVersion:
+      return absl::StrFormat(
+          "1. Parallelize this transformation by setting "
+          "<code>num_parallel_calls=tf.data.experimental.AUTOTUNE</code>. See "
+          "%s for more details.<br/>"
+          "2. Consider adding <code>cache</code> after this transformation if "
+          "your data fits into memory and it is appropriate (e.g., there is no "
+          "randomness in upstream transformations like <code>shuffle</code>). "
+          "See %s for more details.<br/>"
+          "3. Find more resources %s.",
+          AnchorElement(kTfGuideParallelTransformationLink, "this"),
+          AnchorElement(kTfGuideCacheLink, "this"),
+          AnchorElement(kPlaybookTransformationLink, "here"));
+    case BottleneckType::kSlowTransformationWithoutParallelVersion:
+      return absl::StrFormat(
+          "1. This transformation is inherently sequential. Add outer "
+          "parallelism by running multiple copies of the input pipeline over "
+          "sharded inputs and combining the results. See %s for more "
+          "details.<br/>"
+          "2. Consider adding <code>cache</code> after this transformation if "
+          "your data fits into memory and it is appropriate (e.g., there is no "
+          "randomness in upstream transformations like <code>shuffle</code>). "
+          "See %s for more details.<br/>"
+          "3. Find more resources %s.",
+          AnchorElement(kPlaybookTransformationLink, "this"),
+          AnchorElement(kTfGuideCacheLink, "this"),
+          AnchorElement(kPlaybookCpuUtilizationLink, "here"));
+    default:
+      return absl::StrFormat("See %s for suggestions.",
+                             AnchorElement(kPlaybookLink, "this"));
+  }
+}
+
+void SetSuggestion(CombinedTfDataStats* combined_tf_data_stats) {
+  for (TfDataBottleneckAnalysis& bottleneck_analysis :
+       *combined_tf_data_stats->mutable_bottleneck_analysis()) {
+    bottleneck_analysis.set_suggestion(
+        GetSuggestion(GetBottleneckType(bottleneck_analysis.iterator_name())));
+  }
+}
+
+void SetSummary(CombinedTfDataStats* combined_tf_data_stats) {
+  int64 max_latency_ps = 0;
+  if (combined_tf_data_stats->bottleneck_analysis_size()) {
+    max_latency_ps =
+        combined_tf_data_stats->bottleneck_analysis().at(0).max_latency_ps();
+  }
+  if (max_latency_ps > kSlowCallThresholdPs) {
+    combined_tf_data_stats->set_is_input_bound(true);
+    combined_tf_data_stats->set_summary(
+        "Your profile has a tf.data input pipeline slower than 50 us. For each "
+        "slow input pipeline, below shows a bottleneck in the input pipeline "
+        "and a suggestion on how to fix it.");
+  } else if (max_latency_ps > 0) {
+    combined_tf_data_stats->set_is_input_bound(false);
+    combined_tf_data_stats->set_summary(
+        "Your profile does not have any tf.data input pipeline slower than 50 "
+        "us. Your job could be still input bound if this profile didn't "
+        "capture all workers.");
+  } else {
+    combined_tf_data_stats->set_is_input_bound(false);
+    combined_tf_data_stats->set_summary(
+        "No tf.data activitiy captured in your profile. If your job uses "
+        "tf.data, try to capture a longer profile.");
   }
 }
 
 }  // namespace
+
+BottleneckType GetBottleneckType(absl::string_view bottleneck_iterator_name) {
+  static auto* kBottleneckTypeMap = new absl::flat_hash_map<absl::string_view,
+                                                            BottleneckType>(
+      {// Read from storage.
+       {"TFRecord", BottleneckType::kSlowSource},
+       {"SSTable", BottleneckType::kSlowSource},
+       {"RecordIO", BottleneckType::kSlowSource},
+       {"Spanner", BottleneckType::kSlowSource},
+       {"TFColumn", BottleneckType::kSlowSource},
+       {"SleepwalkRemoteDataset", BottleneckType::kSlowSource},
+       {"TextLine", BottleneckType::kSlowSource},
+       {"StitchedTimelineDataset", BottleneckType::kSlowSource},
+       {"DateKeyDataset", BottleneckType::kSlowSource},
+       {"CapacitorProto", BottleneckType::kSlowSource},
+       {"LMDB", BottleneckType::kSlowSource},
+       {"ExternalDataset", BottleneckType::kSlowSource},
+       {"PearModel", BottleneckType::kSlowSource},
+       {"FixedLengthRecordV2", BottleneckType::kSlowSource},
+       // Read from local memory.
+       {"FromTensor", BottleneckType::kSlowSource},
+       {"TensorSlice", BottleneckType::kSlowSource},
+       {"Generator", BottleneckType::kSlowSource},
+       {"SyntheticDatasetOp", BottleneckType::kSlowSource},
+       // tf.data service.
+       {"DataService", BottleneckType::kSlowDataService},
+       // Read from remote memory.
+       {"GuzzlerDataGuzzlerRemoteDataset", BottleneckType::kSlowRemoteSource},
+       {"ReverbDataset", BottleneckType::kSlowRemoteSource},
+       {"DatasetSampleGame", BottleneckType::kSlowRemoteSource},
+       {"Courier", BottleneckType::kSlowRemoteSource},
+       {"ReverbEpisodeDataset", BottleneckType::kSlowRemoteSource},
+       // Transformations with parallel version.
+       {"Map", BottleneckType::kSlowTransformationWithParallelVersion},
+       {"Interleave", BottleneckType::kSlowTransformationWithParallelVersion},
+       // Transformations without parallel version.
+       {"Filter", BottleneckType::kSlowTransformationWithoutParallelVersion},
+       {"Batch", BottleneckType::kSlowTransformationWithoutParallelVersion},
+       {"Unbatch", BottleneckType::kSlowTransformationWithoutParallelVersion}});
+  if (auto type =
+          gtl::FindOrNull(*kBottleneckTypeMap, bottleneck_iterator_name)) {
+    return *type;
+  }
+  return BottleneckType::kOther;
+}
 
 void CombinedTfDataStatsBuilder::Add(absl::string_view host_name,
                                      XPlane* host_plane) {
@@ -294,14 +491,9 @@ void CombinedTfDataStatsBuilder::Add(absl::string_view host_name,
 }
 
 void CombinedTfDataStatsBuilder::Finalize() {
-  TfDataBottleneckAnalysis* bottleneck_analysis =
-      combined_tf_data_stats_->mutable_bottleneck_analysis();
-  for (const auto& host_name_and_tf_data_stats :
-       combined_tf_data_stats_->tf_data_stats()) {
-    SetBottleneckAnalysis(host_name_and_tf_data_stats.first,
-                          host_name_and_tf_data_stats.second,
-                          bottleneck_analysis);
-  }
+  SetBottleneckAnalysis(combined_tf_data_stats_);
+  if (generate_suggestion_) SetSuggestion(combined_tf_data_stats_);
+  SetSummary(combined_tf_data_stats_);
 }
 
 }  // namespace profiler

@@ -31,6 +31,11 @@ _calibration_wrapper = LazyLoader(
     "_pywrap_tensorflow_lite_calibration_wrapper")
 
 
+def add_intermediate_tensors(model_content):
+  """Adds intermediate tensors to fused op if needed."""
+  return _calibration_wrapper.AddIntermediateTensors(model_content)
+
+
 class Calibrator(object):
   """Calibrates a floating point model and then quantizes it.
 

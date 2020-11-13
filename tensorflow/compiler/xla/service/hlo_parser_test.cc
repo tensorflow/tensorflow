@@ -453,6 +453,20 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2
 
 )"
 },
+// convolution dynamic
+{
+"ConvolutionDynamic",
+R"(HloModule Convolve1D1Window_0_module
+
+ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2,1] {
+  %input = f32[1,2,1]{2,1,0} parameter(0)
+  %copy = f32[1,2,1]{2,0,1} copy(f32[1,2,1]{2,1,0} %input)
+  %filter = f32[1,1,1]{2,1,0} parameter(1)
+  ROOT %custom-call.52 = f32[1,2,1]{2,0,1} custom-call(f32[1,2,1]{2,0,1} %copy, f32[1,1,1]{2,1,0} %filter), window={size=1}, dim_labels=b0f_0io->b0f, operand_precision={high,default}, custom_call_target="DynamicConvolutionForward", metadata={op_type="Conv2D" op_name="conv1d"}
+}
+
+)"
+},
 // convolution rank 2
 {
 "ConvolutionR2",
@@ -1383,6 +1397,42 @@ ENTRY CustomCall {
 
 )"
 },
+// CustomCall with single computation.
+{
+"CustumCallSingleComp",
+R"(HloModule custom_call_with_comp
+
+max_F32 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(lhs, rhs)
+}
+
+ENTRY CustomCall {
+  constant = f32[1]{0} constant({12345})
+  ROOT custom-call = f32[1,2,3]{0,2,1} custom-call(constant), custom_call_target="foo\"bar", called_computations={max_F32}
+}
+
+)"
+},
+// CustomCall with multiple computations.
+{
+"CustumCallMultipleComps",
+R"(HloModule custom_call_with_comps
+
+max_F32 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(lhs, rhs)
+}
+
+ENTRY CustomCall {
+  constant = f32[1]{0} constant({12345})
+  ROOT custom-call = f32[1,2,3]{0,2,1} custom-call(constant), custom_call_target="foo\"bar", called_computations={max_F32, max_F32}
+}
+
+)"
+},
 // Variables with non-default names
 {
 "NonDefaultNames",
@@ -1858,7 +1908,7 @@ TEST_F(HloParserTest, MetadataWithCholesky) {
   const string original = R"(HloModule metadata_with_cholesky
 ENTRY %blabla (a: f32[1,291,291]) -> f32[1,291,291] {
   %a = f32[1,291,291] parameter(0)
-  %out = f32[1,291,291] cholesky(f32[1,291,291] %a), lower=true, metadata={op_type="Cholesky" op_name="Cholesky"}
+  %out = f32[1,291,291] cholesky(f32[1,291,291] %a), lower=true, metadata={op_type="Cholesky" op_name="Cholesky" profile_type={1}}
 }
 )";
   auto result = ParseAndReturnVerifiedModule(original);
@@ -1873,6 +1923,12 @@ ENTRY %blabla (a: f32[1,291,291]) -> f32[1,291,291] {
                             ->root_instruction()
                             ->metadata()
                             .op_type());
+  EXPECT_EQ(WINDOW, *result.ValueOrDie()
+                         ->entry_computation()
+                         ->root_instruction()
+                         ->metadata()
+                         .profile_type()
+                         .begin());
 }
 
 TEST_F(HloParserTest, WrongShape) {

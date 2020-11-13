@@ -46,12 +46,6 @@ def LhloLegalizeToGpuPass : Pass<"lhlo-legalize-to-gpu", "FuncOp"> {
 }
 
 
-def TestLhloToLLVMPass : Pass<"test-lhlo-legalize-to-llvm", "FuncOp"> {
-  let summary = "Legalize from LHLO dialect to LLVM.";
-  let constructor = "createTestLhloToLLVMPass()";
-}
-
-
 def LhloLegalizeToParallelLoopsPass : Pass<"lhlo-legalize-to-parallel-loops", "FuncOp"> {
   let summary = "Legalize from LHLO dialect to parallel loops.";
   let constructor = "createLegalizeLhloToParallelLoopsPass()";

@@ -40,7 +40,7 @@ TEST(ConvertXplaneToKernelStats, MultiKernels) {
   XLineBuilder line_builder = device_trace_builder.GetOrCreateLine(0);
   CreateXEvent(&device_trace_builder, &line_builder, "kernel_name_shortest",
                /*offset_ps=*/10000, /*duration_ps=*/1000,
-               {{StatType::kLevel0, "mul_786"},
+               {{StatType::kTfOp, "mul_786"},
                 {StatType::kKernelDetails, R"MULTI(registers_per_thread:16
 static_shared_memory_usage:0
 dynamic_shared_memory_usage:0
@@ -54,7 +54,7 @@ block_z:1)MULTI"},
 
   CreateXEvent(&device_trace_builder, &line_builder, "kernel_name_middle",
                /*offset_ps=*/20000, /*duration_ps=*/2000,
-               {{StatType::kLevel0, "Conv2D"},
+               {{StatType::kTfOp, "Conv2D"},
                 {StatType::kKernelDetails, R"MULTI(registers_per_thread:32
 static_shared_memory_usage:0
 dynamic_shared_memory_usage:16384
@@ -69,7 +69,7 @@ block_z:1)MULTI"},
   CreateXEvent(&device_trace_builder, &line_builder,
                "volta_fp16_s884gemm_fp16_128x128_ldg8_f2f_tn",
                /*offset_ps=*/30000, /*duration_ps=*/3000,
-               {{StatType::kLevel0, "Einsum_80"},
+               {{StatType::kTfOp, "Einsum_80"},
                 {StatType::kKernelDetails, R"MULTI(registers_per_thread:32
 static_shared_memory_usage:0
 dynamic_shared_memory_usage:16384

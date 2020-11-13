@@ -81,6 +81,14 @@ func @remainder_fold_float() -> tensor<4xf32> {
   return %2 : tensor<4xf32>
 }
 
+// CHECK-LABEL: round_fold
+func @round_fold() -> tensor<4xf32> {
+  %0 = mhlo.constant dense<[-1.5, -0.1, 1.1, 2.5]> : tensor<4xf32>
+  %1 = "mhlo.round_nearest_afz"(%0) : (tensor<4xf32>) -> tensor<4xf32>
+  return %1 : tensor<4xf32>
+  // CHECK: mhlo.constant dense<[-2.000000e+00, -0.000000e+00, 1.000000e+00, 3.000000e+00]>
+}
+
 // CHECK-LABEL: max_scalar_fold
 func @max_scalar_fold() -> tensor<4xi64> {
   %0 = mhlo.constant dense<7> : tensor<4xi64>
@@ -567,6 +575,16 @@ func @dynamic_reshape_not_actually_dynamic(%arg0: tensor<4xf32>, %shape: tensor<
   return %0 : tensor<4x1xf32>
 }
 
+// CHECK-LABEL: func @shape_of_dynamic_reshape
+// CHECK-SAME: [[ARG0:%[a-zA-Z0-9]+]]
+// CHECK-SAME: [[ARG1:%[a-zA-Z0-9]+]]
+func @shape_of_dynamic_reshape(%arg0: tensor<*xf32>, %shape: tensor<2xindex>) -> tensor<2xindex> {
+  // CHECK: return [[ARG1]]
+  %0 = "mhlo.dynamic_reshape"(%arg0, %shape) : (tensor<*xf32>, tensor<2xindex>) -> tensor<?x?xf32>
+  %1 = shape.shape_of %0 : tensor<?x?xf32> -> tensor<2xindex>
+  return %1 : tensor<2xindex>
+}
+
 // CHECK-LABEL: do_not_dce_while_with_outfeed
 func @do_not_dce_while_with_outfeed(%arg0: tensor<i64>) -> tensor<i64> {
   // CHECK: mhlo.while
@@ -901,11 +919,21 @@ func @erase_dead_lhlo_constant_negative(%M : memref<4xf32>) -> memref<256x1024xf
 }
 
 // CHECK-LABEL: func @fold_get_dimension_size
-func @fold_get_dimension_size(%I : tensor<1x128x512xf32>) -> tensor<i32> {
-  %size = "mhlo.get_dimension_size"(%I) {dimension = 2 : i32} : (tensor<1x128x512xf32>) -> tensor<i32>
+func @fold_get_dimension_size(%I: tensor<1x128x512xf32>) -> tensor<i32> {
+  %size = "mhlo.get_dimension_size"(%I) {dimension = 2 : i64} : (tensor<1x128x512xf32>) -> tensor<i32>
   return %size : tensor<i32>
   // CHECK-NEXT: %[[C:.*]] = mhlo.constant dense<512> : tensor<i32>
   // CHECK-NEXT: return %[[C]]
+}
+
+// CHECK-LABEL: func @fold_set_dimension_size
+// CHECK-SAME: (%[[I:.*]]: tensor<1x128x512xf32>)
+func @fold_set_dimension_size(%I: tensor<1x128x512xf32>) -> tensor<1x128x512xf32> {
+  %dim = mhlo.constant dense<512> : tensor<i32>
+  %result = "mhlo.set_dimension_size"(%I, %dim) {dimension = 2 : i64} : (tensor<1x128x512xf32>, tensor<i32>) -> tensor<1x128x512xf32>
+  return %result : tensor<1x128x512xf32>
+
+  // CHECK-NEXT: return %[[I]]
 }
 
 // CHECK-LABEL: func @fold_select_same
@@ -1429,3 +1457,29 @@ func @scatter_out_of_bound() -> tensor<3x3xi32> {
   // CHECK: "mhlo.scatter"
 }
 
+// CHECK-LABEL: @pad_identity_fold
+func @pad_identity_fold(%arg0: tensor<5x7xf32>) -> tensor<5x7xf32> {
+  %0 = constant dense<0.0> : tensor<f32>
+  %1 = "mhlo.pad"(%arg0, %0) {
+    edge_padding_low = dense<0> : tensor<2xi64>,
+    edge_padding_high = dense<0> : tensor<2xi64>,
+    interior_padding = dense<0> : tensor<2xi64>
+  } : (tensor<5x7xf32>, tensor<f32>) -> tensor<5x7xf32>
+  return %1 : tensor<5x7xf32>
+  // CHECK: return %arg0 : tensor<5x7xf32>
+}
+
+// CHECK-LABEL: @pad_fold
+func @pad_fold() -> tensor<4x5xi32> {
+  %0 = constant dense<[[2, 3], [4, 5]]> : tensor<2x2xi32>
+  %1 = constant dense<1> : tensor<i32>
+  %3 = "mhlo.pad"(%0, %1) {
+    edge_padding_low = dense<[1, 0]> : tensor<2xi64>,
+    edge_padding_high = dense<[1, 2]> : tensor<2xi64>,
+    interior_padding = dense<[0, 1]> : tensor<2xi64>
+  } : (tensor<2x2xi32>, tensor<i32>) -> tensor<4x5xi32>
+  return %3 : tensor<4x5xi32>
+  // CHECK: constant dense<[
+  // CHECK-SAME: [1, 1, 1, 1, 1], [2, 1, 3, 1, 1], [4, 1, 5, 1, 1], [1, 1, 1, 1, 1]
+  // CHECK-SAME: ]> : tensor<4x5xi32>
+}

@@ -515,6 +515,21 @@ func @multiple_replicated_interleaved(%arg0: !tf_res) {
 // -----
 
 
+// Test cluster that is replicated but has a non TPUReplicatedOutput consumer.
+// CHECK-LABEL: func @replicated_non_replicated_output
+func @replicated_non_replicated_output() {
+  %0 = "tf.opA"() {_tpu_replicate = "replicate", device = "device", name = "name"} : () -> tensor<i1>
+  %1 = "tf.opB"(%0) : (tensor<i1>) -> tensor<i1>
+  "tf.TPUReplicateMetadata"() {_tpu_replicate = "replicate", device = "device", num_replicas = 2, topology = "topology"} : () -> ()
+  return
+}
+
+// CHECK: [[REPLICATE:%.+]]:2 = tf_device.replicate
+// CHECK: "tf.opB"([[REPLICATE]]#0)
+
+// -----
+
+
 // Test cluster with missing `num_replicas` attribute.
 func @missing_num_replicas() {
   %0 = "tf.opA"() {_tpu_replicate = "replicate", device = "device", name = "name"} : () -> tensor<i1>
@@ -559,20 +574,6 @@ func @mismatched_replicated_output() {
   %0 = "tf.opA"() {_tpu_replicate = "replicate", device = "device", name = "name"} : () -> tensor<i1>
   // expected-error@+1 {{'tf.TPUReplicatedOutput' op requires 2 results}}
   %1:3 = "tf.TPUReplicatedOutput"(%0) : (tensor<i1>) -> (tensor<i1>, tensor<i1>, tensor<i1>)
-  "tf.TPUReplicateMetadata"() {_tpu_replicate = "replicate", device = "device", num_replicas = 2, topology = "topology"} : () -> ()
-  return
-}
-
-
-// -----
-
-
-// Test cluster that should be replicated where its outputs do not lead to a
-// TPUReplicatedOutput.
-func @missing_replicated_output() {
-  // expected-error@+1 {{requires output of tf_device.cluster to lead to a 'tf.TPUReplicatedOutput' op}}
-  %0 = "tf.opA"() {_tpu_replicate = "replicate", device = "device", name = "name"} : () -> tensor<i1>
-  %1 = "tf.opB"(%0) : (tensor<i1>) -> tensor<i1>
   "tf.TPUReplicateMetadata"() {_tpu_replicate = "replicate", device = "device", num_replicas = 2, topology = "topology"} : () -> ()
   return
 }

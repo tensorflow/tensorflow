@@ -24,15 +24,20 @@ import numpy as np
 import six
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import central_storage_strategy
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import mirrored_strategy
+from tensorflow.python.distribute import one_device_strategy
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras.distribute import distributed_training_utils
-from tensorflow.python.keras.mixed_precision.experimental import policy
+from tensorflow.python.keras.distribute.strategy_combinations import all_strategies
+from tensorflow.python.keras.distribute.strategy_combinations import multi_worker_mirrored_strategies
+from tensorflow.python.keras.distribute.strategy_combinations import strategies_minus_tpu
+from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.keras.preprocessing import sequence
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
@@ -43,22 +48,6 @@ _GLOBAL_BATCH_SIZE = 64
 
 # Note: Please make sure the tests in this file are also covered in
 # keras_backward_compat_test for features that are supported with both APIs.
-
-all_strategies = [
-    strategy_combinations.default_strategy,
-    strategy_combinations.one_device_strategy,
-    strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-    strategy_combinations.mirrored_strategy_with_two_gpus,
-    strategy_combinations.tpu_strategy,  # steps_per_run=2
-]
-
-
-# TODO(b/159831559): add to all_strategies once all tests pass.
-multi_worker_mirrored = [
-    strategy_combinations.multi_worker_mirrored_2x1_cpu,
-    strategy_combinations.multi_worker_mirrored_2x1_gpu,
-    strategy_combinations.multi_worker_mirrored_2x2_gpu,
-]
 
 
 def eager_mode_test_configuration():
@@ -85,8 +74,7 @@ def all_strategy_and_input_config_combinations_eager():
 
 def strategy_minus_tpu_and_input_config_combinations_eager():
   return (combinations.times(
-      combinations.combine(
-          distribution=strategy_combinations.strategies_minus_tpu),
+      combinations.combine(distribution=strategies_minus_tpu),
       eager_mode_test_configuration()))
 
 
@@ -130,13 +118,13 @@ def test_combinations_with_tpu_strategies_graph():
 
 def multi_worker_mirrored_eager():
   return combinations.times(
-      combinations.combine(distribution=multi_worker_mirrored),
+      combinations.combine(distribution=multi_worker_mirrored_strategies),
       eager_mode_test_configuration())
 
 
 def multi_worker_mirrored_eager_and_graph():
   return combinations.times(
-      combinations.combine(distribution=multi_worker_mirrored),
+      combinations.combine(distribution=multi_worker_mirrored_strategies),
       eager_mode_test_configuration() + graph_mode_test_configuration())
 
 
@@ -338,9 +326,15 @@ def compare_results(results_with_ds,
     """Returns tolerance to compare results."""
     # TODO(b/119257215): For MirroredStrategy, weights are not exactly the same,
     # so use larger tolerance for now. Predict should be related to weights.
+    # Also for CentralStorageStrategy and OneDeviceStrategy which is observed in
+    # b/172956754.
     if (isinstance(distribution,
                    (mirrored_strategy.MirroredStrategy,
                     mirrored_strategy.MirroredStrategyV1,
+                    central_storage_strategy.CentralStorageStrategy,
+                    central_storage_strategy.CentralStorageStrategyV1,
+                    one_device_strategy.OneDeviceStrategy,
+                    one_device_strategy.OneDeviceStrategyV1,
                     distribute_lib._DefaultDistributionStrategy)) and  # pylint: disable=protected-access
         key.startswith(('weights_1', 'weights_2', 'predict_result'))):
       return relaxed_tolerance

@@ -6,7 +6,6 @@ load("//third_party/mkl:build_defs.bzl", "if_mkl", "if_mkl_ml")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_license_deps")
-load("//third_party/ngraph:build_defs.bzl", "if_ngraph")
 
 package(default_visibility = ["//visibility:private"])
 
@@ -37,6 +36,9 @@ transitive_hdrs(
         "//tensorflow/cc/saved_model:reader",
         "//tensorflow/cc/saved_model:bundle_v2",
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
+        "//tensorflow/c/experimental/stream_executor:stream_executor_hdrs",
+        "//tensorflow/c:kernels_hdrs",
+        "//tensorflow/c:ops_hdrs",
         # WARNING: None of the C/C++ code under python/ has any API guarantees, and TF team
         # reserves the right to change APIs and other header-level interfaces.  If your custom
         # op uses these headers, it may break when users upgrade their version of tensorflow.
@@ -130,7 +132,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/keras:combinations",
     "//tensorflow/python/keras/layers/preprocessing:preprocessing_test_utils",
     "//tensorflow/python/keras/distribute:distribute_test_lib_pip",
-    "//tensorflow/python/keras/mixed_precision/experimental:test_util",
+    "//tensorflow/python/keras/mixed_precision:test_util",
     "//tensorflow/python/keras/tests:model_subclassing_test_util",
     "//tensorflow/python/keras/tests:model_architectures",
     "//tensorflow/python/keras/benchmarks:keras_benchmark_lib_pip",
@@ -151,9 +153,9 @@ COMMON_PIP_DEPS = [
     "//tensorflow/tools/common:test_module1",
     "//tensorflow/tools/common:traverse",
     "//tensorflow/python/distribute:parameter_server_strategy_v2",
-    "//tensorflow/python/distribute/client:client",
-    "//tensorflow/python/distribute/client:remote_eager_lib",
-    "//tensorflow/python/distribute/client:metric_utils",
+    "//tensorflow/python/distribute/coordinator:cluster_coordinator",
+    "//tensorflow/python/distribute/coordinator:remote_eager_lib",
+    "//tensorflow/python/distribute/coordinator:metric_utils",
 ]
 
 # On Windows, python binary is a zip file of runfiles tree.
@@ -272,12 +274,7 @@ filegroup(
             "@com_github_grpc_grpc//:LICENSE",
             "@com_github_grpc_grpc//third_party/address_sorting:LICENSE",
         ],
-    ) + if_ngraph([
-        "@ngraph//:LICENSE",
-        "@ngraph_tf//:LICENSE",
-        "@nlohmann_json_lib//:LICENSE.MIT",
-        "@tbb//:LICENSE",
-    ]) + tf_additional_license_deps(),
+    ) + tf_additional_license_deps(),
 )
 
 sh_binary(

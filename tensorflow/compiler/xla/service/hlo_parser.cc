@@ -193,6 +193,7 @@ class HloParserImpl : public HloParser {
     kHloComputation,
     kBracedHloComputationList,
     kFftType,
+    kPaddingType,
     kComparisonDirection,
     kComparisonType,
     kWindow,
@@ -328,6 +329,7 @@ class HloParserImpl : public HloParser {
   bool ParseTiles(std::vector<Tile>* tiles);
   bool ParseOpcode(HloOpcode* result);
   bool ParseFftType(FftType* result);
+  bool ParsePaddingType(PaddingType* result);
   bool ParseComparisonDirection(ComparisonDirection* result);
   bool ParseComparisonType(Comparison::Type* result);
   bool ParseFusionKind(HloInstruction::FusionKind* result);
@@ -1838,6 +1840,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<HloComputation*> to_apply;
       optional<std::vector<std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>>
           output_to_operand_aliasing;
+      optional<PaddingType> padding_type;
+      optional<std::vector<HloComputation*>> called_computations;
       attrs["custom_call_target"] = {/*required=*/true, AttrTy::kString,
                                      &custom_call_target};
       attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
@@ -1853,9 +1857,23 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
                                               &custom_call_has_side_effect};
       attrs["to_apply"] = {/*required=*/false, AttrTy::kHloComputation,
                            &to_apply};
+      attrs["called_computations"] = {/*required=*/false,
+                                      AttrTy::kBracedHloComputationList,
+                                      &called_computations};
       attrs["output_to_operand_aliasing"] = {/*required=*/false,
                                              AttrTy::kInstructionAliasing,
                                              &output_to_operand_aliasing};
+
+      attrs["padding_type"] = {/*required=*/false, AttrTy::kPaddingType,
+                               &padding_type};
+      optional<std::vector<PrecisionConfig::Precision>> operand_precision;
+      attrs["operand_precision"] = {/*required=*/false, AttrTy::kPrecisionList,
+                                    &operand_precision};
+      if (called_computations.has_value() && to_apply.has_value()) {
+        return Error(lexer_.GetLoc(),
+                     "A single instruction can't have both to_apply and "
+                     "calls field");
+      }
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
@@ -1901,6 +1919,11 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
               builder->AddInstruction(HloInstruction::CreateCustomCall(
                   shape, operands, *to_apply, *custom_call_target,
                   backend_config ? *backend_config : ""));
+        } else if (called_computations.has_value()) {
+          instruction =
+              builder->AddInstruction(HloInstruction::CreateCustomCall(
+                  shape, operands, *called_computations, *custom_call_target,
+                  backend_config ? *backend_config : ""));
         } else {
           instruction =
               builder->AddInstruction(HloInstruction::CreateCustomCall(
@@ -1921,6 +1944,9 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       if (batch_group_count.has_value()) {
         custom_call_instr->set_batch_group_count(*batch_group_count);
       }
+      if (padding_type.has_value()) {
+        custom_call_instr->set_padding_type(*padding_type);
+      }
       if (custom_call_has_side_effect.has_value()) {
         custom_call_instr->set_custom_call_has_side_effect(
             *custom_call_has_side_effect);
@@ -1929,6 +1955,15 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
         custom_call_instr->set_output_to_operand_aliasing(
             std::move(*output_to_operand_aliasing));
       }
+      PrecisionConfig precision_config;
+      if (operand_precision) {
+        *precision_config.mutable_operand_precision() = {
+            operand_precision->begin(), operand_precision->end()};
+      } else {
+        precision_config.mutable_operand_precision()->Resize(
+            operands.size(), PrecisionConfig::DEFAULT);
+      }
+      *custom_call_instr->mutable_precision_config() = precision_config;
       break;
     }
     case HloOpcode::kDot: {
@@ -2506,7 +2541,7 @@ bool HloParserImpl::SetValueInLiteral(LocTy loc, std::complex<double> value,
                                                            literal);
     default:
       LOG(FATAL) << PrimitiveType_Name(shape.element_type())
-                 << " is not a complex type type";
+                 << " is not a complex type";
   }
 }
 
@@ -2528,7 +2563,7 @@ bool HloParserImpl::SetValueInLiteralHelper(LocTy loc, ParsedElemT value,
 
   // Check that the index is in range and assign into the literal
   if (index >= ShapeUtil::ElementsIn(literal->shape())) {
-    return Error(loc, StrCat("trys to set value ", StringifyValue(value),
+    return Error(loc, StrCat("tries to set value ", StringifyValue(value),
                              " to a literal in shape ",
                              ShapeUtil::HumanString(literal->shape()),
                              " at linear index ", index,
@@ -3105,6 +3140,14 @@ bool HloParserImpl::ParseAttributeHelper(
         static_cast<optional<FftType>*>(attr_out_ptr)->emplace(result);
         return true;
       }
+      case AttrTy::kPaddingType: {
+        PaddingType result;
+        if (!ParsePaddingType(&result)) {
+          return false;
+        }
+        static_cast<optional<PaddingType>*>(attr_out_ptr)->emplace(result);
+        return true;
+      }
       case AttrTy::kComparisonDirection: {
         ComparisonDirection result;
         if (!ParseComparisonDirection(&result)) {
@@ -3531,7 +3574,7 @@ bool HloParserImpl::ParseWindow(Window* window, bool expect_outer_curlies) {
 }
 
 // This is the inverse of HloInstruction::ConvolutionDimensionNumbersToString.
-// Thestring looks like "dim_labels=0bf_0io->0bf".
+// The string looks like "dim_labels=0bf_0io->0bf".
 bool HloParserImpl::ParseConvolutionDimensionNumbers(
     ConvolutionDimensionNumbers* dnums) {
   if (lexer_.GetKind() != TokKind::kDimLabels) {
@@ -4195,10 +4238,13 @@ bool HloParserImpl::ParseMetadata(OpMetadata* metadata) {
   optional<std::string> op_name;
   optional<std::string> source_file;
   optional<int32> source_line;
+  optional<std::vector<int64>> profile_type;
   attrs["op_type"] = {/*required=*/false, AttrTy::kString, &op_type};
   attrs["op_name"] = {/*required=*/false, AttrTy::kString, &op_name};
   attrs["source_file"] = {/*required=*/false, AttrTy::kString, &source_file};
   attrs["source_line"] = {/*required=*/false, AttrTy::kInt32, &source_line};
+  attrs["profile_type"] = {/*required=*/false, AttrTy::kBracedInt64List,
+                           &profile_type};
   if (!ParseSubAttributes(attrs)) {
     return false;
   }
@@ -4213,6 +4259,14 @@ bool HloParserImpl::ParseMetadata(OpMetadata* metadata) {
   }
   if (source_line) {
     metadata->set_source_line(*source_line);
+  }
+  if (profile_type) {
+    for (const auto& type : *profile_type) {
+      if (!ProfileType_IsValid(type)) {
+        return false;
+      }
+      metadata->add_profile_type(static_cast<ProfileType>(type));
+    }
   }
   return true;
 }
@@ -4241,6 +4295,19 @@ bool HloParserImpl::ParseFftType(FftType* result) {
   std::string val = lexer_.GetStrVal();
   if (!FftType_Parse(val, result) || !FftType_IsValid(*result)) {
     return TokenError(StrFormat("expects fft type but sees: %s", val));
+  }
+  lexer_.Lex();
+  return true;
+}
+
+bool HloParserImpl::ParsePaddingType(PaddingType* result) {
+  VLOG(3) << "ParsePaddingType";
+  if (lexer_.GetKind() != TokKind::kIdent) {
+    return TokenError("expects padding type");
+  }
+  std::string val = lexer_.GetStrVal();
+  if (!PaddingType_Parse(val, result) || !PaddingType_IsValid(*result)) {
+    return TokenError(StrFormat("expects padding type but sees: %s", val));
   }
   lexer_.Lex();
   return true;

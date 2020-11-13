@@ -353,7 +353,10 @@ tf_cuda_cc_test(
         "resize_bilinear_op_test.cc",
         "resize_nearest_neighbor_op_test.cc",
     ],
-    tags = ["no_cuda_on_cpu_tap"],
+    tags = [
+        "no_cuda_asan",  # TODO(b/171334997): re-enable
+        "no_cuda_on_cpu_tap",
+    ],
     deps = [
         ":image",
         ":sampling_kernels",
@@ -387,7 +390,10 @@ tf_cuda_cc_test(
 tf_cuda_cc_test(
     name = "non_max_suppression_op_gpu_test",
     srcs = ["non_max_suppression_op_gpu_test.cc"],
-    tags = tf_cuda_tests_tags() + ["no_cuda_on_cpu_tap"],
+    tags = tf_cuda_tests_tags() + [
+        "no_cuda_asan",  # TODO(b/171263349): re-enable.
+        "no_cuda_on_cpu_tap",
+    ],
     deps = [
         ":image",
         "@com_google_absl//absl/strings",

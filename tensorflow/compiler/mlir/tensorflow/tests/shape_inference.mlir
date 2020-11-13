@@ -1,5 +1,4 @@
-// RUN: tf-opt %s -tf-shape-inference=propagate-caller-callee-constants=false -verify-diagnostics | FileCheck %s
-// RUN: tf-opt %s -tf-shape-inference=propagate-caller-callee-constants -verify-diagnostics | FileCheck %s
+// RUN: tf-opt %s -tf-shape-inference -verify-diagnostics | FileCheck %s
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 130 : i32}} {
   // CHECK-LABEL: func @main(%arg0: tensor<1xi32>, %arg1: tensor<1xi32>) -> tensor<1xi32>
@@ -84,10 +83,10 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // Tests the case where an op's shape function returns non-fully-defined shapes.
 
   // CHECK-LABEL: func @op_non_fully_defined_shape_fn
-  func @op_non_fully_defined_shape_fn(%arg0: tensor<0xi32>, %arg1: tensor<0xi32>) -> tensor<?xi32> {
+  func @op_non_fully_defined_shape_fn(%arg0: tensor<*xi32>, %arg1: tensor<0xi32>) -> tensor<?xi32> {
     // CHECK: tf.BroadcastGradientArgs
-    // CHECK-SAME: (tensor<0xi32>, tensor<0xi32>) -> (tensor<?xi32>, tensor<?xi32>)
-    %2:2 = "tf.BroadcastGradientArgs"(%arg0, %arg1) {T = "tfdtype$DT_INT32", name = "BroadcastGradientArgs"} : (tensor<0xi32>, tensor<0xi32>) -> (tensor<?xi32>, tensor<?xi32>)
+    // CHECK-SAME: (tensor<*xi32>, tensor<0xi32>) -> (tensor<?xi32>, tensor<?xi32>)
+    %2:2 = "tf.BroadcastGradientArgs"(%arg0, %arg1) {T = "tfdtype$DT_INT32", name = "BroadcastGradientArgs"} : (tensor<*xi32>, tensor<0xi32>) -> (tensor<?xi32>, tensor<?xi32>)
     return %2#0 : tensor<?xi32>
   }
 
@@ -440,6 +439,22 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     return %arg0 : tensor<2xi32>
   }
 
+  // Test iteratively updating call site if a std.call is used.
+  // CHECK-LABEL: func @call_partitioned_call2(
+  // CHECK-SAME: -> tensor<1xi32>
+  func @call_partitioned_call2() -> tensor<*xi32> {
+    // CHECK: () -> tensor<1xi32>
+    %0 = call @partitioned_called_func2() : () -> tensor<*xi32>
+    return %0 : tensor<*xi32>
+  }
+  // CHECK-LABEL: func @partitioned_called_func2(
+  // CHECK-SAME: -> tensor<1xi32>
+  func @partitioned_called_func2() -> (tensor<*xi32>) {
+    %0 = "tf.Const"() {value = dense<-1> : tensor<1xi32>} : () -> tensor<1xi32>
+    %1 = tensor_cast %0 : tensor<1xi32> to tensor<*xi32>
+    return %1 : tensor<*xi32>
+  }
+
   // CHECK-LABEL: func @tensor_list_refine
   func @tensor_list_refine() {
     tf_executor.graph {
@@ -501,16 +516,16 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-LABEL: cast_at_end(%arg0:
   // CHECK-SAME: tensor<16x194x199x4xui8>, tensor<16x194x199x4xi8>, tensor<*xi8>
   func @cast_at_end(%arg0: tensor<16x194x199x4xf32>, %arg1: tensor<16x194x199x4xi8>) -> (tensor<*xui8>, tensor<*xi8>, tensor<*xi8>) {
-    // CHECK: %[[CAST_RESULT_0:.*]] = "tf.Cast"(%arg0)
-    // CHECK-SAME: (tensor<16x194x199x4xf32>) -> tensor<16x194x199x4xui8>
     %27 = "tf.Cast"(%arg0) {Truncate = false, device = ""} : (tensor<16x194x199x4xf32>) -> tensor<*xui8>
-    // CHECK: %[[CAST_RESULT_1:.*]] = "tf.Cast"(%arg0)
-    // CHECK-SAME: (tensor<16x194x199x4xf32>) -> tensor<16x194x199x4xi8>
-    // CHECK: %[[CAST_RESULT_2:.*]] = "tf.Cast"(%[[CAST_RESULT_1]])
-    // CHECK-SAME: (tensor<16x194x199x4xi8>) -> tensor<*xi8>
     %28 = "tf.Cast"(%arg0) {Truncate = false, device = ""} : (tensor<16x194x199x4xf32>) -> tensor<*xi8>
+    // CHECK: %[[CAST_RESULT_2:.*]] = "tf.Cast"(%arg0)
+    // CHECK-SAME: (tensor<16x194x199x4xf32>) -> tensor<*xi8>
     // CHECK: %[[ADDI:.*]] = addi %[[CAST_RESULT_2]], %[[CAST_RESULT_2]]
     %2 = addi %28, %28 : tensor<*xi8>
+    // CHECK: %[[CAST_RESULT_0:.*]] = "tf.Cast"(%arg0)
+    // CHECK-SAME: (tensor<16x194x199x4xf32>) -> tensor<16x194x199x4xui8>
+    // CHECK: %[[CAST_RESULT_1:.*]] = "tf.Cast"(%arg0)
+    // CHECK-SAME: (tensor<16x194x199x4xf32>) -> tensor<16x194x199x4xi8>
     // CHECK: return %[[CAST_RESULT_0]], %[[CAST_RESULT_1]], %[[ADDI]]
     return %27, %28, %2 : tensor<*xui8>, tensor<*xi8>, tensor<*xi8>
   }
@@ -585,5 +600,26 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK-SAME: (tensor<2xi32>) -> tensor<i32>
     %size = "tf.Size"(%add) {device = ""} : (tensor<*xi32>) -> tensor<*xi32>
     return %size : tensor<*xi32>
+  }
+
+  // Test no tf.Cast ops are inserted when refining tf_executor.graph results.
+  // CHECK-LABEL: func @call_in_graph({{%.+}}: tensor<i32>) -> tensor<i32>
+  func @call_in_graph(%arg0: tensor<i32>) -> tensor<*xi32> {
+    // CHECK-NOT: tf.Cast
+    %0 = tf_executor.graph {
+      %1:2 = tf_executor.island wraps "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @call_in_graph_func} : (tensor<i32>) -> tensor<*xi32>
+      tf_executor.fetch %1#0 : tensor<*xi32>
+    }
+    return %0 : tensor<*xi32>
+  }
+
+  // CHECK-LABEL: func @call_in_graph_func({{%.+}}: tensor<i32>) -> tensor<i32>
+  func @call_in_graph_func(%arg0: tensor<*xi32>) -> tensor<*xi32> {
+    // CHECK-NOT: tf.Cast
+    %0 = tf_executor.graph {
+      %1:2 = tf_executor.island wraps "tf.Identity"(%arg0) : (tensor<*xi32>) -> tensor<*xi32>
+      tf_executor.fetch %1#0 : tensor<*xi32>
+    }
+    return %0 : tensor<*xi32>
   }
 }

@@ -11,6 +11,7 @@ load(
 )
 load(
     "//tensorflow/core/platform:build_config.bzl",
+    "tf_jspb_proto_library",
     "tf_proto_library",
     "tf_pyclif_proto_library",
 )
@@ -83,11 +84,9 @@ tf_cc_test(
     ],
 )
 
-filegroup(
+alias(
     name = "example_parser_configuration_testdata",
-    srcs = [
-        "testdata/parse_example_graph_def.pbtxt",
-    ],
+    actual = "//tensorflow/core/example/testdata:example_parser_configuration_testdata",
 )
 
 tf_proto_library(
@@ -135,6 +134,11 @@ tf_pyclif_proto_library(
     name = "feature_pyclif",
     proto_lib = "//tensorflow/core:protos_all",
     proto_srcfile = "feature.proto",
+)
+
+tf_jspb_proto_library(
+    name = "example_jspb_proto",
+    deps = [":example_protos"],
 )
 
 closure_proto_library(

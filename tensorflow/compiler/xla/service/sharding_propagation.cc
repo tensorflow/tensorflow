@@ -206,13 +206,26 @@ bool MergeSharding(const HloSharding& old, HloSharding* to_merge,
     int64 old_group_id = get_group_index(old_index, old);
     int64 new_group_id = get_group_index(new_index, *to_merge);
     if (old_group_members[old_group_id].empty() ||
-        new_group_members[new_group_id].empty() ||
-        *old_group_members[old_group_id].begin() !=
-            *new_group_members[new_group_id].begin()) {
+        new_group_members[new_group_id].empty()) {
       compatible = false;
       return;
     }
-    *device = *old_group_members[old_group_id].begin();
+
+    int64 smallest_old = *old_group_members[old_group_id].begin();
+    int64 smallest_new = *new_group_members[new_group_id].begin();
+    if (smallest_old < smallest_new) {
+      if (old_group_members[old_group_id].count(smallest_new) == 0) {
+        compatible = false;
+        return;
+      }
+      *device = smallest_new;
+    } else {
+      if (new_group_members[new_group_id].count(smallest_old) == 0) {
+        compatible = false;
+        return;
+      }
+      *device = smallest_old;
+    }
     old_group_members[old_group_id].erase(*device);
     new_group_members[new_group_id].erase(*device);
   });
@@ -1289,6 +1302,9 @@ absl::optional<HloSharding> GetShardingFromUser(
     case HloOpcode::kReshape: {
       return hlo_sharding_util::ReshapeSharding(
           user.shape(), instruction.shape(), user.sharding());
+    }
+    case HloOpcode::kSlice: {
+      return user.sharding();
     }
     case HloOpcode::kTranspose: {
       // Calculate the dimension numbers for reversing the current transpose

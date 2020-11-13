@@ -26,11 +26,13 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nccl_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 
 INSTANCE_KEY_START_NUMBER = 100
@@ -255,7 +257,9 @@ class CollectiveKeys(object):
 class CollectiveReplicaLauncher(object):
   """Launch collectives on one replica."""
 
-  _use_scoped_allocator = True
+  _use_scoped_allocator = False
+  _use_collective_v2 = True
+  _use_ordering_token = False
 
   def __init__(self,
                group_key,
@@ -270,6 +274,12 @@ class CollectiveReplicaLauncher(object):
     self._collective_keys = collective_keys
     self._device = device
     self._executor = executor
+    if (self._use_ordering_token and self._use_collective_v2 and
+        ops.executing_eagerly_outside_functions()):
+      with ops.init_scope(), ops.device(device):
+        self._ordering_token = resource_variable_ops.ResourceVariable(0.)
+    else:
+      self._ordering_token = None
 
   def _executor_scope(self):
     if context.executing_eagerly() and not self._executor:
@@ -279,9 +289,52 @@ class CollectiveReplicaLauncher(object):
     return ops.NullContextmanager()
 
   def _control_input(self, control_input):
-    if control_input is not None:
+    if control_input is not None and self._ordering_token is None:
       return ops.control_dependencies([control_input])
     return ops.NullContextmanager()
+
+  def _should_use_collective_v2(self):
+    if not CollectiveReplicaLauncher._use_collective_v2:
+      return False
+    if not ops.executing_eagerly_outside_functions():
+      return False
+    return True
+
+  def _next_instance_key(self):
+    """Returns the next instance key."""
+    if self._should_use_collective_v2():
+      # Assigning instance keys at function building time have issues since
+      # different workers may retrace the function at different times. With
+      # collective V2 we can use capture_call_time_value to use a placeholder as
+      # the instance key and feed it at function call time. In this way we also
+      # don't reuse instance keys, which allows for per-instance cancellation.
+      graph = ops.get_default_graph()
+      # Control flow ops don't work with capture_call_time_value, so we put the
+      # capture in the function graph of that control flow op.
+      while getattr(graph, 'is_control_flow_graph', False):
+        graph = graph.outer_graph
+      if not context.executing_eagerly() and graph.building_function:
+        with graph.as_default():
+          # Capture self._next_instance_key so that when building a function
+          # that calls another tf.function, the instance key assignment is
+          # further delayed until we actually call the function in eager. Note
+          # that capture_call_time_value doesn't automatically propagate the
+          # deferred capture to the outer function.
+          return graph.capture_call_time_value(
+              self._next_instance_key, tensor_spec.TensorSpec([], dtypes.int32))
+      else:
+        instance_key = self._collective_keys.get_instance_key(
+            self._group_key, self._device)
+        with ops.device('CPU:0'):
+          return ops.convert_to_tensor(instance_key, dtype=dtypes.int32)
+    else:
+      return self._collective_keys.get_instance_key(self._group_key,
+                                                    self._device)
+
+  def _get_ordering_token(self, communication_hint):
+    if self._ordering_token is not None and communication_hint == 'NCCL':
+      return self._ordering_token.handle
+    return None
 
   def all_reduce(self,
                  input_tensor,
@@ -304,18 +357,64 @@ class CollectiveReplicaLauncher(object):
     Returns:
       The reduced tensor.
     """
-    instance_key = self._collective_keys.get_instance_key(
-        self._group_key, self._device)
+    instance_key = self._next_instance_key()
+    ordering_token = self._get_ordering_token(communication_hint)
     with self._executor_scope(), \
          ops.device(self._device), \
          self._control_input(control_input):
-      return collective_ops.all_reduce(
-          input_tensor,
-          self._group_size,
-          self._group_key,
-          instance_key,
-          communication_hint=communication_hint,
-          timeout=timeout)
+      if self._should_use_collective_v2():
+        return collective_ops.all_reduce_v2(
+            input_tensor,
+            self._group_size,
+            self._group_key,
+            instance_key,
+            communication_hint=communication_hint,
+            timeout=timeout,
+            ordering_token=ordering_token)
+      else:
+        return collective_ops.all_reduce(
+            input_tensor,
+            self._group_size,
+            self._group_key,
+            instance_key,
+            communication_hint=communication_hint,
+            timeout=timeout)
+
+  def _all_gather(self, input_tensor, communication_hint='AUTO', timeout=0):
+    """All-gather a dense tensor.
+
+    This can be called in eager mode if an async executor is supplied when
+    creating the launcher.
+
+    Args:
+      input_tensor: a dense tensor. It must have the same shape on all replicas.
+      communication_hint: string providing hint to runtime for choosing
+        collective implementation.
+      timeout: a float. The timeout in seconds.
+
+    Returns:
+      The reduced tensor.
+    """
+    instance_key = self._next_instance_key()
+    ordering_token = self._get_ordering_token(communication_hint)
+    with self._executor_scope(), ops.device(self._device):
+      if self._should_use_collective_v2():
+        return collective_ops.all_gather_v2(
+            input_tensor,
+            self._group_size,
+            self._group_key,
+            instance_key,
+            communication_hint=communication_hint,
+            timeout=timeout,
+            ordering_token=ordering_token)
+      else:
+        return collective_ops.all_gather(
+            input_tensor,
+            self._group_size,
+            self._group_key,
+            instance_key,
+            communication_hint=communication_hint,
+            timeout=timeout)
 
   def batch_all_reduce(self,
                        input_tensor_packs,
@@ -408,11 +507,8 @@ class CollectiveReplicaLauncher(object):
     if context.executing_eagerly():
       raise RuntimeError('all_gather in eager mode is not supported')
 
-    instance_key_tensor = self._collective_keys.get_instance_key(
-        self._group_key, self._device)
-    instance_key_shape = self._collective_keys.get_instance_key(
-        self._group_key, self._device)
-    with ops.device(self._device):
+    with ops.device(self._device), \
+         ops.control_dependencies([array_ops.identity(input_tensor)]):
       # 1. Transpose
       # E.g. Given an input_tensor with shape [2,2,5,1] and axis to gather is 3,
       # we use perm_pre=[3 0 1 2] to reshape it to [1,2,2,5], which
@@ -424,11 +520,8 @@ class CollectiveReplicaLauncher(object):
           axis=0)
       input_tensor_t = array_ops.transpose(input_tensor, perm=perm_pre)
       # 2. Pad
-      gathered_shape = collective_ops.all_gather(
+      gathered_shape = self._all_gather(
           array_ops.expand_dims_v2(array_ops.shape_v2(input_tensor_t), axis=0),
-          self._group_size,
-          self._group_key,
-          instance_key_shape,
           communication_hint,
           timeout=timeout)
       first_dims = gathered_shape[:, 0]
@@ -436,16 +529,11 @@ class CollectiveReplicaLauncher(object):
       padded_input_tensor = _pad_util(input_tensor_t, full_axis_dim)
 
       # 3. Gather
-      gather_padded_out_tensor = collective_ops.all_gather(
-          padded_input_tensor,
-          self._group_size,
-          self._group_key,
-          instance_key_tensor,
-          communication_hint,
-          timeout=timeout)
+      gather_padded_out_tensor = self._all_gather(
+          padded_input_tensor, communication_hint, timeout=timeout)
       # 4. Unpad
       split_tensors = []
-      for i in range(first_dims.shape[0]):
+      for i in range(self._group_size):
         start_pos = i * full_axis_dim
         split_tensors.append(gather_padded_out_tensor[start_pos:start_pos +
                                                       first_dims[i]])
@@ -482,15 +570,6 @@ class CollectiveReplicaLauncher(object):
       raise RuntimeError(
           'all_reduce_indexed_slices in eager mode is not supported')
 
-    gather_length_key = self._collective_keys.get_instance_key(
-        self._group_key, self._device)
-    gather_indices_key = self._collective_keys.get_instance_key(
-        self._group_key, self._device)
-    gather_values_key = self._collective_keys.get_instance_key(
-        self._group_key, self._device)
-    reduce_densified_key = self._collective_keys.get_instance_key(
-        self._group_key, self._device)
-
     # Current CollectiveAllGather implementations require input IndexedSlices to
     # have consistent length across the board, we handle the reduction of
     # IndexedSlices as follows:
@@ -502,23 +581,13 @@ class CollectiveReplicaLauncher(object):
 
       def all_gather():
         """Use all_gather to aggregate `IndexedSlices`."""
-        all_values = collective_ops.all_gather(
-            input_slices.values,
-            self._group_size,
-            self._group_key,
-            gather_values_key,
-            communication_hint,
-            timeout=timeout)
+        all_values = self._all_gather(
+            input_slices.values, communication_hint, timeout=timeout)
         # Add control dependency to order the all-gather.
         control = [all_values] if communication_hint == 'NCCL' else []
         with ops.control_dependencies(control):
-          all_indices = collective_ops.all_gather(
-              input_slices.indices,
-              self._group_size,
-              self._group_key,
-              gather_indices_key,
-              communication_hint,
-              timeout=timeout)
+          all_indices = self._all_gather(
+              input_slices.indices, communication_hint, timeout=timeout)
         return ops.IndexedSlices(
             values=all_values,
             indices=all_indices,
@@ -527,15 +596,8 @@ class CollectiveReplicaLauncher(object):
       def densify_and_all_reduce():
         """Use all_reduce to aggregate `IndexedSlices`."""
         densified = ops.convert_to_tensor(input_slices)
-        reduced = collective_ops.all_reduce(
-            densified,
-            self._group_size,
-            self._group_key,
-            reduce_densified_key,
-            'Add',
-            'Id', [0],
-            communication_hint,
-            timeout=timeout)
+        reduced = self.all_reduce(
+            densified, communication_hint=communication_hint, timeout=timeout)
         # We have to convert dense grad to IndexedSlice because all_reduce()
         # and all_gather() must have the same return type as required by
         # control_flow_ops.cond.
@@ -545,13 +607,8 @@ class CollectiveReplicaLauncher(object):
             dense_shape=input_slices.dense_shape)
 
       length = array_ops.shape(input_slices.indices)
-      all_lengths = collective_ops.all_gather(
-          length,
-          self._group_size,
-          self._group_key,
-          gather_length_key,
-          communication_hint,
-          timeout=timeout)
+      all_lengths = self._all_gather(
+          length, communication_hint, timeout=timeout)
       return control_flow_ops.cond(
           math_ops.equal(
               math_ops.reduce_max(all_lengths),

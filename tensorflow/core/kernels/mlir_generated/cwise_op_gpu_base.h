@@ -61,13 +61,14 @@ class MlirGeneratedUnaryOp : public OpKernel {
           ##Op(ctx, k##kernel_name##data_type##Kernel) {} \
   };
 
-#define REGISTER_AND_GENERATE_KERNEL(kernel_name, data_type, native_data_type) \
-  namespace {                                                                  \
-  GENERATE_OP_KERNEL_FOR(kernel_name, data_type)                               \
-  }                                                                            \
-  REGISTER_KERNEL_BUILDER(Name(#kernel_name)                                   \
-                              .Device(DEVICE_GPU)                              \
-                              .TypeConstraint<native_data_type>("T"),          \
+#define GENERATE_AND_REGISTER_UNARY_KERNEL(kernel_name, data_type,    \
+                                           native_data_type)          \
+  namespace {                                                         \
+  GENERATE_OP_KERNEL_FOR(kernel_name, data_type)                      \
+  }                                                                   \
+  REGISTER_KERNEL_BUILDER(Name(#kernel_name)                          \
+                              .Device(DEVICE_GPU)                     \
+                              .TypeConstraint<native_data_type>("T"), \
                           MlirGenerated##kernel_name##data_type##Op);
 
 }  // namespace tensorflow

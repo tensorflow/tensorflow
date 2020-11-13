@@ -1,3 +1,5 @@
+<!-- mdformat off(b/169948621#comment2) -->
+
 # Person detection example
 
 This example shows how you can use Tensorflow Lite to run a 250 kilobyte neural
@@ -302,33 +304,45 @@ The next steps assume that the
 
 ### Generate the examples
 
-The example project can be generated with the following command: `make -f
-tensorflow/lite/micro/tools/make/Makefile TARGET=esp
-generate_person_detection_esp_project`
+The example project can be generated with the following command:
+```
+make -f tensorflow/lite/micro/tools/make/Makefile TARGET=esp generate_person_detection_esp_project
+```
 
 ### Building the example
 
-Go the the example project directory `cd
-tensorflow/lite/micro/tools/make/gen/esp_xtensa-esp32/prj/person_detection/esp-idf`
+Go to the example project directory
+```
+cd tensorflow/lite/micro/tools/make/gen/esp_xtensa-esp32/prj/person_detection/esp-idf
+```
 
 As the `person_detection` example requires an external component `esp32-camera`
 for functioning hence we will have to manually clone it in `components/`
-directory of the example with following command. `git clone
-https://github.com/espressif/esp32-camera.git components/esp32-camera`
+directory of the example with following command.
+```
+git clone https://github.com/espressif/esp32-camera.git components/esp32-camera
+```
 
 Then build with `idf.py` `idf.py build`
 
 ### Load and run the example
 
-To flash (replace `/dev/ttyUSB0` with the device serial port): `idf.py --port
-/dev/ttyUSB0 flash`
+To flash (replace `/dev/ttyUSB0` with the device serial port):
+```
+idf.py --port /dev/ttyUSB0 flash
+```
 
-Monitor the serial output: `idf.py --port /dev/ttyUSB0 monitor`
+Monitor the serial output:
+```
+idf.py --port /dev/ttyUSB0 monitor
+```
 
 Use `Ctrl+]` to exit.
 
-The previous two commands can be combined: `idf.py --port /dev/ttyUSB0 flash
-monitor`
+The previous two commands can be combined:
+```
+idf.py --port /dev/ttyUSB0 flash monitor
+```
 
 ## Running on SparkFun Edge
 

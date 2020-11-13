@@ -43,7 +43,6 @@ cuda_py_test(
         "no_pip",  # b/161253163
         "no_windows",  # b/160628318
     ],
-    tfrt_enabled = True,
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",
@@ -58,7 +57,6 @@ cuda_py_test(
         "no_pip",  # b/161253163
         "no_windows",  # b/160628318
     ],
-    tfrt_enabled = True,
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",
@@ -73,7 +71,6 @@ cuda_py_test(
         "no_pip",  # b/161253163
         "no_windows",  # b/160628318
     ],
-    tfrt_enabled = True,
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",
@@ -88,7 +85,6 @@ cuda_py_test(
         "no_pip",  # b/161253163
         "no_windows",  # b/160628318
     ],
-    tfrt_enabled = True,
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",
@@ -103,7 +99,6 @@ cuda_py_test(
         "no_pip",  # b/161253163
         "no_windows",  # b/160628318
     ],
-    tfrt_enabled = True,
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",
@@ -118,7 +113,6 @@ cuda_py_test(
         "no_pip",  # b/161253163
         "no_windows",  # b/160628318
     ],
-    tfrt_enabled = True,
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",
@@ -133,7 +127,6 @@ cuda_py_test(
         "no_pip",  # b/161253163
         "no_windows",  # b/160628318
     ],
-    tfrt_enabled = True,
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",
@@ -148,7 +141,6 @@ cuda_py_test(
         "no_pip",  # b/161253163
         "no_windows",  # b/160628318
     ],
-    tfrt_enabled = True,
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",

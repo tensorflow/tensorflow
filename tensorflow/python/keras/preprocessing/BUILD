@@ -5,9 +5,6 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
     default_visibility = [
-        # TODO(scottzhu): Remove non-keras deps from TF.
-        "//tensorflow/lite/experimental/tf_runtime:__pkg__",
-        "//tensorflow/tools/docs:__pkg__",
         "//tensorflow/python/keras:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
@@ -114,7 +111,6 @@ tf_py_test(
     size = "small",
     srcs = ["sequence_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":sequence",
         "//tensorflow/python:client_testlib",
@@ -127,7 +123,6 @@ tf_py_test(
     size = "small",
     srcs = ["text_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":text",
         "//tensorflow/python:client_testlib",

@@ -190,11 +190,12 @@ LogicalResult BroadcastComplexOp::reifyReturnTypeShapes(
 void BroadcastCompareOp::build(OpBuilder& builder, OperationState& result,
                                Value lhs, Value rhs,
                                DenseIntElementsAttr broadcast_dimensions,
-                               StringAttr comparison_direction) {
+                               StringAttr comparison_direction,
+                               StringAttr compare_type) {
   auto new_type = GetBroadcastType(lhs.getType(), rhs.getType(),
                                    builder.getI1Type(), broadcast_dimensions);
   build(builder, result, new_type, lhs, rhs, broadcast_dimensions,
-        comparison_direction);
+        comparison_direction, compare_type);
 }
 
 LogicalResult BroadcastCompareOp::inferReturnTypeComponents(

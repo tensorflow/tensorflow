@@ -25,8 +25,10 @@ import functools
 
 import six
 
+from tensorflow.python.distribute import central_storage_strategy
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
 from tensorflow.python.distribute import parameter_server_strategy
+from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute import values as ds_values
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -82,6 +84,36 @@ def _deduplicate_indexed_slices(values, indices):
       values, new_index_positions,
       array_ops.shape(unique_indices)[0])
   return (summed_values, unique_indices)
+
+
+class NullContextmanager(object):
+
+  def __init__(self, *args, **kwargs):
+    pass
+
+  def __enter__(self):
+    pass
+
+  def __exit__(self, type_arg, value_arg, traceback_arg):
+    return False  # False values do not suppress exceptions
+
+
+def name_scope_only_in_function_or_graph(name):
+  """Internal-only entry point for `name_scope*`.
+
+  Enters a compat.v1.name_scope only when in a function or graph,
+  not when running fully eagerly.
+
+  Args:
+    name: The name argument that is passed to the op function.
+
+  Returns:
+    `name_scope*` context manager.
+  """
+  if not context.executing_eagerly():
+    return ops.name_scope_v1(name)
+  else:
+    return NullContextmanager()
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -615,9 +647,12 @@ class OptimizerV2(trackable.Trackable):
             "context.")
 
       strategy = distribute_ctx.get_strategy()
-      if (not experimental_aggregate_gradients and strategy and isinstance(
-          strategy.extended,
-          parameter_server_strategy.ParameterServerStrategyExtended)):
+      if (not experimental_aggregate_gradients and strategy and
+          isinstance(strategy,
+                     (parameter_server_strategy.ParameterServerStrategyV1,
+                      parameter_server_strategy_v2.ParameterServerStrategyV2,
+                      central_storage_strategy.CentralStorageStrategy,
+                      central_storage_strategy.CentralStorageStrategyV1))):
         raise NotImplementedError(
             "`experimental_aggregate_gradients=False is not supported for "
             "ParameterServerStrategy and CentralStorageStrategy")
@@ -664,7 +699,7 @@ class OptimizerV2(trackable.Trackable):
 
     eagerly_outside_functions = ops.executing_eagerly_outside_functions()
     update_ops = []
-    with ops.name_scope(name or self._name, skip_on_eager=True):
+    with name_scope_only_in_function_or_graph(name or self._name):
       for grad, var in grads_and_vars:
         # TODO(crccw): It's not allowed to assign PerReplica value to
         # MirroredVariable.  Remove this after we relax this restriction.
@@ -677,8 +712,9 @@ class OptimizerV2(trackable.Trackable):
         # Colocate the update with variables to avoid unnecessary communication
         # delays. See b/136304694.
         with distribution.extended.colocate_vars_with(var):
-          with ops.name_scope("update" if eagerly_outside_functions else
-                              "update_" + var.op.name, skip_on_eager=True):
+          with name_scope_only_in_function_or_graph(
+              "update" if eagerly_outside_functions else "update_" +
+              var.op.name):
             update_ops.extend(distribution.extended.update(
                 var, apply_grad_to_update_var, args=(grad,), group=False))
 
@@ -688,7 +724,7 @@ class OptimizerV2(trackable.Trackable):
         # If the current context is graph mode or any of the update ops are
         # symbolic then the step update should be carried out under a graph
         # context. (eager updates execute immediately)
-        with ops._get_graph_from_inputs(update_ops).as_default():  # pylint: disable=protected-access
+        with backend._current_graph(update_ops).as_default():  # pylint: disable=protected-access
           with ops.control_dependencies([control_flow_ops.group(update_ops)]):
             return self._iterations.assign_add(1, read_value=False)
 

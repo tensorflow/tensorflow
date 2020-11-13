@@ -591,7 +591,7 @@ pybind_extension(
 tflite_portable_test_suite()
 
 tflite_custom_android_library(
-    name = "customtized_tflite_for_add_ops",
+    name = "customized_tflite_for_add_ops",
     models = ["//tensorflow/lite:testdata/add.bin"],
     visibility = ["//visibility:public"],
 )

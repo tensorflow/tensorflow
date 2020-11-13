@@ -201,7 +201,7 @@ LogicalResult GetFunctionsToRewrite(
     if (func.getSecond().original.isPublic() &&
         !func.getSecond().original.symbolKnownUseEmpty(module)) {
       auto clone = func.getSecond().original.clone();
-      clone.setVisibility(SymbolTable::Visibility::Private);
+      clone.setPrivate();
       symbol_table.insert(clone);
       func.getSecond().clone = clone;
     }

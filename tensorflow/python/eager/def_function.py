@@ -465,66 +465,22 @@ class Function(object):
                name,
                input_signature=None,
                autograph=True,
+               jit_compile=None,
                experimental_implements=None,
                experimental_autograph_options=None,
                experimental_relax_shapes=False,
-               experimental_compile=None,
                experimental_follow_type_hints=None):
     """Initializes a `Function`.
 
     Args:
       python_function: the function to be wrapped.
       name: the name given to it.
-      input_signature: a possibly nested sequence of `TensorSpec` objects
-        specifying the input signature of this function. If `None`, a separate
-        function is instantiated for each inferred input signature.
-      autograph: whether `python_function` should be converted to graph mode.
-        See https://www.tensorflow.org/guide/autograph for more information.
-      experimental_implements: If provided, contains a name of a "known"
-        function this implements. For example "mycompany.my_recurrent_cell".
-        This is stored as an attribute in the serialized representation,
-        which can then be detected and manipulated when processing serialized
-        graph.
-        See
-        https://github.com/tensorflow/community/blob/master/rfcs/20190610-standardizing-composite_ops.md
-        for details.  For an example of utilizing this attribute see:
-        https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/mlir/lite/transforms/prepare_composite_functions_tf.cc
-        The code above automatically detects and substitutes function that
-        implements "embedded_matmul" and allows TFLite to substitute its own
-        implementations. For instance, a tensorflow user can use this
-         attribute to mark that their function also implements
-        `embedded_matmul``` (perhaps more efficiently!)
-        by specifying it using this flag.
-
-        ```python
-        @tf.function(
-            experimental_implements="lingvo.SimpleEmbeddingLayer.EmbMatmul")
-        def embedding_matmul(a, b):
-           # custom implementation here
-        ```
-        This can either be specified as just the string name of the function or
-        a NameAttrList corresponding to a list of key-value attributes
-        with the function name. The name of the function will be in the 'name'
-        field of the NameAttrList.
-      experimental_autograph_options: optional tuple of
-        tensorflow.autograph.Feature values. Allows enabling additional
-        conversion options when autograph is set to True.
-      experimental_relax_shapes: When true, argument shapes may be relaxed to
-        avoid unnecessary retracing.
-      experimental_compile: If `True`, compiles the function using XLA
-        (see https://tensorflow.org/xla). XLA performs compiler optimizations,
-        such as fusion, and attempts to emit more efficient code. This may
-        drastically improve the performance. If set to `True`,
-        the whole function needs to be compilable by XLA, or an
-        `errors.InvalidArgumentError` is thrown.
-        If `None` (default), compiles the function with XLA when running on TPU
-        and goes through the regular function execution path when running on
-        other devices.
-        If `False`, executes the function in a regular way (graph rewrite
-        passes are applied, kernels are dispatched one-by-one by the TensorFlow
-        executor). Set this value to `False` when directly running a
-        multi-device function on TPUs (e.g. two TPU cores, one TPU core and its
-        host CPU).
+      input_signature: See the documentation for `tf.function`.
+      autograph: See the documentation for `tf.function`.
+      jit_compile: See the documentation for `tf.function`.
+      experimental_implements: See the documentation for `tf.function`.
+      experimental_autograph_options: See the documentation for `tf.function`.
+      experimental_relax_shapes: See the documentation for `tf.function`.
       experimental_follow_type_hints: See the documentation for `tf.function`.
 
     Raises:
@@ -536,7 +492,7 @@ class Function(object):
     self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
         python_function,
         input_signature,
-        experimental_compile=experimental_compile,
+        jit_compile=jit_compile,
         experimental_follow_type_hints=experimental_follow_type_hints,
     )
     self._implements = experimental_implements
@@ -547,7 +503,7 @@ class Function(object):
     self._autograph = autograph
     self._experimental_autograph_options = experimental_autograph_options
     self._experimental_relax_shapes = experimental_relax_shapes
-    self._experimental_compile = experimental_compile
+    self._jit_compile = jit_compile
     if experimental_follow_type_hints is None:
       experimental_follow_type_hints = False
     self._experimental_follow_type_hints = experimental_follow_type_hints
@@ -602,7 +558,7 @@ class Function(object):
     """Creates a defun wrapped inside a variable creator scope."""
 
     weak_wrapped_fn = None
-    compile_with_xla = self._experimental_compile
+    compile_with_xla = self._jit_compile
 
     def wrapped_fn(*args, **kwds):
       """Wraps `self._python_function` in a variable creator scope."""
@@ -673,9 +629,9 @@ class Function(object):
     if share is not None:
       attributes[function_lib.SHARED_RENDEZVOUS_ATTRIBUTE_NAME] = share
 
-    if self._experimental_compile is not None:
-      attributes.update(_XlaMustCompile=bool(self._experimental_compile))
-      if self._experimental_compile:
+    if self._jit_compile is not None:
+      attributes.update(_XlaMustCompile=bool(self._jit_compile))
+      if self._jit_compile:
         attributes.update(_noinline=True)
     if not attributes:
       attributes = None
@@ -684,8 +640,8 @@ class Function(object):
         input_signature=self.input_signature,
         attributes=attributes,
         autograph=self._autograph,
+        jit_compile=self._jit_compile,
         experimental_autograph_options=self._experimental_autograph_options,
-        experimental_compile=self._experimental_compile,
         experimental_follow_type_hints=self._experimental_follow_type_hints,
         experimental_relax_shapes=self._experimental_relax_shapes)
 
@@ -742,10 +698,10 @@ class Function(object):
         name=self._name,
         input_signature=self._input_signature,
         autograph=self._autograph,
+        jit_compile=self._jit_compile,
         experimental_implements=self._implements,
         experimental_autograph_options=self._experimental_autograph_options,
         experimental_relax_shapes=self._experimental_relax_shapes,
-        experimental_compile=self._experimental_compile,
         experimental_follow_type_hints=self._experimental_follow_type_hints)
 
     if self._shared_rendezvous:
@@ -826,7 +782,7 @@ class Function(object):
     tracing_count = self.experimental_get_tracing_count()
     with trace.Trace(self._name) as tm:
       result = self._call(*args, **kwds)
-      compiler = "xla" if self._experimental_compile else "nonXla"
+      compiler = "xla" if self._jit_compile else "nonXla"
       new_tracing_count = self.experimental_get_tracing_count()
       without_tracing = (tracing_count == new_tracing_count)
       execution_mode = "notTraced" if without_tracing else "traced"
@@ -978,7 +934,7 @@ class Function(object):
       For example, for
 
       ```python
-      @tf.function(experimental_compile=True)
+      @tf.function(jit_compile=True)
       def f(x):
         return x + 1
 
@@ -1006,14 +962,13 @@ class Function(object):
 
     Raises:
       ValueError: If an invalid `stage` is selected or if applied to a function
-        which is not compiled (`experimental_compile=True` is not set).
+        which is not compiled (`jit_compile=True` is not set).
       TypeError: When called with input in graph mode.
     """
     context.ensure_initialized()
-    if not self._experimental_compile:
-      raise ValueError(
-          "Compiler IR can only be returned for functions marked with "
-          "experimental_compile=True")
+    if not self._jit_compile:
+      raise ValueError("Compiler IR can only be returned for functions marked "
+                       "with 'jit_compile=True'")
 
     concrete_fn = self.get_concrete_function(*args, **kwargs)
     fn_name = concrete_fn.name
@@ -1329,9 +1284,13 @@ class Function(object):
 
 
 @tf_export("function")
+@deprecation.deprecated_args(None,
+                             "experimental_compile is deprecated, use "
+                             "jit_compile instead", "experimental_compile")
 def function(func=None,
              input_signature=None,
              autograph=True,
+             jit_compile=None,
              experimental_implements=None,
              experimental_autograph_options=None,
              experimental_relax_shapes=False,
@@ -1541,6 +1500,20 @@ def function(func=None,
       graph. Data-dependent control flow requires `autograph=True`. For more
       information, see the [tf.function and AutoGraph guide](
       https://www.tensorflow.org/guide/function).
+    jit_compile: If `True`, compiles the function using
+      [XLA](https://tensorflow.org/xla). XLA performs compiler optimizations,
+      such as fusion, and attempts to emit more efficient code. This may
+      drastically improve the performance. If set to `True`,
+      the whole function needs to be compilable by XLA, or an
+      `errors.InvalidArgumentError` is thrown.
+      If `None` (default), compiles the function with XLA when running on TPU
+      and goes through the regular function execution path when running on
+      other devices.
+      If `False`, executes the function without XLA compilation.  Set this value
+      to `False` when directly running a multi-device function on TPUs (e.g. two
+      TPU cores, one TPU core and its host CPU).
+      Not all functions are compilable, see a list of
+      [sharp corners](https://tensorflow.org/xla/known_issues).
     experimental_implements: If provided, contains a name of a "known" function
       this implements. For example "mycompany.my_recurrent_cell".
       This is stored as an attribute in inference function,
@@ -1563,9 +1536,7 @@ def function(func=None,
       `tf.autograph.experimental.Feature` values.
     experimental_relax_shapes: When True, `tf.function` may generate fewer,
       graphs that are less specialized on input shapes.
-    experimental_compile: If True, the function is always compiled by
-      [XLA](https://www.tensorflow.org/xla). XLA may be more efficient in some
-      cases (e.g. TPU, XLA_GPU, dense tensor computations).
+    experimental_compile: Deprecated alias to 'jit_compile'.
     experimental_follow_type_hints: When True, the function may use type
       annotations from `func` to optimize the tracing performance. For example,
       arguments annotated with `tf.Tensor` will automatically be converted
@@ -1578,8 +1549,8 @@ def function(func=None,
      `func` argument, returns a callable equivalent to the case above.
 
   Raises:
-     ValueError when attempting to use experimental_compile, but XLA support is
-     not enabled.
+     ValueError when attempting to use jit_compile=True, but XLA support is not
+     linked.
   """
   # TODO(mdan): Link to `tf.types` section once published.
   if input_signature is not None:
@@ -1602,7 +1573,14 @@ def function(func=None,
             autograph=autograph,
             experimental_autograph_options=experimental_autograph_options,
             experimental_relax_shapes=experimental_relax_shapes,
-            experimental_compile=experimental_compile,
+
+            # TODO(b/171825496): Update once `experimental_compile` is removed
+            # entirely in favor of 'jit_compile'.
+            jit_compile=deprecation.deprecated_argument_lookup(
+                "jit_compile",
+                jit_compile,
+                "experimental_compile",
+                experimental_compile),
             experimental_implements=experimental_implements,
             experimental_follow_type_hints=experimental_follow_type_hints))
 

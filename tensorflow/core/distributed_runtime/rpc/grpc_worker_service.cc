@@ -696,7 +696,8 @@ void GrpcWorker::RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
   };
   rma->buf_rendezvous()->ConsumeBuf(
       request->buf_rendezvous_key(), request->src_device(),
-      request->src_incarnation(), consumer_callback);
+      request->src_incarnation(), consumer_callback,
+      /*cancellation_manager=*/nullptr);
 }
 
 void GrpcWorker::LoggingAsync(const LoggingRequest* request,

@@ -46,7 +46,7 @@ enum JPEGErrors {
 };
 
 // Prevent bad compiler behavior in ASAN mode by wrapping most of the
-// arguments in a struct struct.
+// arguments in a struct.
 class FewerArgsForCompiler {
  public:
   FewerArgsForCompiler(int datasize, const UncompressFlags& flags, int64* nwarn,
@@ -146,8 +146,8 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
     case 3:
       if (cinfo.jpeg_color_space == JCS_CMYK ||
           cinfo.jpeg_color_space == JCS_YCCK) {
-        // Always use cmyk for output in a 4 channel jpeg. libjpeg has a builtin
-        // decoder.  We will further convert to rgb below.
+        // Always use cmyk for output in a 4 channel jpeg. libjpeg has a
+        // built-in decoder.  We will further convert to rgb below.
         cinfo.out_color_space = JCS_CMYK;
       } else {
         cinfo.out_color_space = JCS_RGB;
@@ -164,7 +164,7 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
   cinfo.dct_method = flags.dct_method;
 
   // Determine the output image size before attempting decompress to prevent
-  // OOM'ing doing the decompress
+  // OOM'ing during the decompress
   jpeg_calc_output_dimensions(&cinfo);
 
   int64 total_size = static_cast<int64>(cinfo.output_height) *
@@ -577,7 +577,7 @@ bool GetImageInfo(const void* srcdata, int datasize, int* width, int* height,
   SetSrc(&cinfo, srcdata, datasize, false);
 
   jpeg_read_header(&cinfo, TRUE);
-  jpeg_start_decompress(&cinfo);  // required to transfer image size to cinfo
+  jpeg_calc_output_dimensions(&cinfo);
   if (width) *width = cinfo.output_width;
   if (height) *height = cinfo.output_height;
   if (components) *components = cinfo.output_components;
@@ -623,7 +623,7 @@ bool CompressInternal(const uint8* srcdata, int width, int height,
 
   JOCTET* buffer = nullptr;
 
-  // NOTE: for broader use xmp_metadata should be made a unicode string
+  // NOTE: for broader use xmp_metadata should be made a Unicode string
   CHECK(srcdata != nullptr);
   CHECK(output != nullptr);
   // This struct contains the JPEG compression parameters and pointers to

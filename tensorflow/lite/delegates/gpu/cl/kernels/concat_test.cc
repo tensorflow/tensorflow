@@ -52,8 +52,10 @@ TEST_F(OpenCLOperationTest, ConcatWidth) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreateConcatXY(op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation({src0, src1}, creation_context_, &operation,
-                                    BHWC(1, 2, 3, 2), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          {src0, src1}, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 2, 3, 2), &dst_tensor));
       EXPECT_THAT(
           dst_tensor.data,
           Pointwise(FloatNear(0.0f),
@@ -84,8 +86,10 @@ TEST_F(OpenCLOperationTest, ConcatHeight) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreateConcatXY(op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation({src0, src1}, creation_context_, &operation,
-                                    BHWC(1, 3, 1, 2), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          {src0, src1}, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 3, 1, 2), &dst_tensor));
       EXPECT_THAT(
           dst_tensor.data,
           Pointwise(FloatNear(0.0f), {half(0.0f), half(-1.0f), half(-0.05f),
@@ -119,8 +123,10 @@ TEST_F(OpenCLOperationTest, ConcatChannels) {
       TensorFloat32 dst_tensor;
       GPUOperation operation =
           CreateConcatZ(op_def, {1, 2, 3}, env_.GetDevicePtr()->info_);
-      ASSERT_OK(ExecuteGPUOperation({src0, src1, src2}, creation_context_,
-                                    &operation, BHWC(1, 2, 1, 6), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          {src0, src1, src2}, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 2, 1, 6), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
                   Pointwise(FloatNear(0.0f),
                             {half(0.0f), half(1.0f), half(2.0f), half(5.0f),
@@ -153,8 +159,10 @@ TEST_F(OpenCLOperationTest, ConcatChannelsAlignedx4) {
       TensorFloat32 dst_tensor;
       GPUOperation operation =
           CreateConcatZ(op_def, {4, 4}, env_.GetDevicePtr()->info_);
-      ASSERT_OK(ExecuteGPUOperation({src0, src1}, creation_context_, &operation,
-                                    BHWC(1, 2, 1, 8), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          {src0, src1}, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 2, 1, 8), &dst_tensor));
       EXPECT_THAT(
           dst_tensor.data,
           Pointwise(FloatNear(0.0f),

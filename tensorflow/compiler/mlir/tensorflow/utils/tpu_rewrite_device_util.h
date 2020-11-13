@@ -247,6 +247,9 @@ mlir::LogicalResult GetHostDeviceOutsideComputation(
     mlir::TF::RuntimeDevices devices, mlir::tf_device::ClusterOp cluster,
     std::string* host_device);
 
+// Checks if a device string is a TPU device.
+bool IsTPUDevice(llvm::StringRef device);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_TPU_REWRITE_DEVICE_UTIL_H_

@@ -41,7 +41,7 @@ class ConvolutionTransposed : public GPUOperation {
  public:
   ConvolutionTransposed() = default;
   void GetPossibleKernelWorkGroups(
-      TuningType tuning_type, const DeviceInfo& device_info,
+      TuningType tuning_type, const GpuInfo& gpu_info,
       const KernelInfo& kernel_info,
       std::vector<int3>* work_groups) const override;
   absl::Status BindArguments(ArgumentsBinder* args) override;
@@ -55,17 +55,17 @@ class ConvolutionTransposed : public GPUOperation {
 
  private:
   friend ConvolutionTransposed CreateConvolutionTransposed(
-      const DeviceInfo& device_info, const OperationDef& definition,
+      const GpuInfo& gpu_info, const OperationDef& definition,
       const ConvolutionTransposedAttributes& attr);
   friend ConvolutionTransposed CreateConvolutionTransposed3D(
-      const DeviceInfo& device_info, const OperationDef& definition,
+      const GpuInfo& gpu_info, const OperationDef& definition,
       const ConvolutionTransposed3DAttributes& attr);
   ConvolutionTransposed(const OperationDef& definition,
                         const ConvolutionTransposedAttributes& attr,
-                        const DeviceInfo& device_info);
+                        const GpuInfo& gpu_info);
   ConvolutionTransposed(const OperationDef& definition,
                         const ConvolutionTransposed3DAttributes& attr,
-                        const DeviceInfo& device_info);
+                        const GpuInfo& gpu_info);
 
   template <DataType T>
   void UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
@@ -76,7 +76,7 @@ class ConvolutionTransposed : public GPUOperation {
                      bool weights_are_buffer);
 
   std::string GenerateConvolutionTransposedCode(const OperationDef& op_def,
-                                                const DeviceInfo& device_info,
+                                                const GpuInfo& gpu_info,
                                                 bool weights_are_buffer,
                                                 const int4& block_size);
   int4 stride_;
@@ -206,11 +206,11 @@ void ConvolutionTransposed::UploadWeights(
 }
 
 ConvolutionTransposed CreateConvolutionTransposed(
-    const DeviceInfo& device_info, const OperationDef& definition,
+    const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr);
 
 ConvolutionTransposed CreateConvolutionTransposed3D(
-    const DeviceInfo& device_info, const OperationDef& definition,
+    const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposed3DAttributes& attr);
 
 }  // namespace cl

@@ -19,14 +19,12 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
-#include "tensorflow/lite/delegates/gpu/cl/precision.h"
 
 namespace tflite {
 namespace gpu {
 namespace cl {
 namespace {
-std::string GetLSTMCode(const OperationDef& op_def,
-                        const DeviceInfo& device_info) {
+std::string GetLSTMCode(const OperationDef& op_def, const GpuInfo& gpu_info) {
   std::string c = GetCommonDefines(op_def.precision);
   c += "__kernel void main_function(\n";
   c += "$0) {\n";
@@ -40,8 +38,7 @@ std::string GetLSTMCode(const OperationDef& op_def,
   c += "  FLT4 r1 = args.intermediate.Read(0, 0, Z + state_stride, B);\n";
   c += "  FLT4 r2 = args.intermediate.Read(0, 0, Z + state_stride * 2, B);\n";
   c += "  FLT4 r3 = args.intermediate.Read(0, 0, Z + state_stride * 3, B);\n";
-  if (op_def.precision != CalculationsPrecision::F32 &&
-      device_info.IsAdreno()) {
+  if (op_def.precision != CalculationsPrecision::F32 && gpu_info.IsAdreno()) {
     c += "  FLT4 input_gate;\n";
     c += "  FLT4 new_input;\n";
     c += "  FLT4 forget_gate;\n";
@@ -89,13 +86,13 @@ std::string GetLSTMCode(const OperationDef& op_def,
 }  // namespace
 
 GPUOperation CreateLSTM(const OperationDef& definition,
-                        const DeviceInfo& device_info) {
+                        const GpuInfo& gpu_info) {
   GPUOperation op(definition);
   op.AddSrcTensor("intermediate", definition.src_tensors[0]);
   op.AddSrcTensor("prev_state", definition.src_tensors[1]);
   op.AddDstTensor("new_state", definition.dst_tensors[0]);
   op.AddDstTensor("activation", definition.dst_tensors[1]);
-  op.code_ = GetLSTMCode(definition, device_info);
+  op.code_ = GetLSTMCode(definition, gpu_info);
   op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
   return op;
 }

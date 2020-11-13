@@ -37,6 +37,8 @@ from tensorflow.python.eager import test
 mwms_lib.CollectiveAllReduceExtended._enable_check_health = True
 mwms_lib.CollectiveAllReduceExtended._check_health_interval = 3
 mwms_lib.CollectiveAllReduceExtended._check_health_initial_timeout = 0
+# This is needed for OSS, which issues all RPCs with fail_fast=false by default.
+mwms_lib.CollectiveAllReduceExtended._check_health_timeout = 1
 
 
 def get_attempt(strategy, attempts):

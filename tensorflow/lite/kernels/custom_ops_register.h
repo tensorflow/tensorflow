@@ -21,7 +21,6 @@ namespace tflite {
 namespace ops {
 namespace custom {
 
-TfLiteRegistration* Register_CUMSUM();
 TfLiteRegistration* Register_HASHTABLE();
 TfLiteRegistration* Register_HASHTABLE_FIND();
 TfLiteRegistration* Register_HASHTABLE_IMPORT();

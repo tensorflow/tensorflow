@@ -18,14 +18,20 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+
+from tensorflow.core.framework import versions_pb2
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.protobuf import saved_metadata_pb2
 from tensorflow.python.keras.saving import saving_utils
+from tensorflow.python.keras.saving.saved_model import constants
 from tensorflow.python.keras.saving.saved_model import save_impl
 from tensorflow.python.keras.saving.saved_model import utils
 from tensorflow.python.keras.utils.generic_utils import LazyLoader
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
+from tensorflow.python.platform import gfile
 from tensorflow.python.saved_model import save as save_lib
+
 
 # To avoid circular dependencies between keras/engine and keras/saving,
 # code in keras/saving must delay imports.
@@ -86,7 +92,39 @@ def save(model, filepath, overwrite, include_optimizer, signatures=None,
     # we use the default replica context here.
     with distribution_strategy_context._get_default_replica_context():  # pylint: disable=protected-access
       with utils.keras_option_scope(save_traces):
-        save_lib.save(model, filepath, signatures, options)
+        saved_nodes, node_paths = save_lib.save_and_return_nodes(
+            model, filepath, signatures, options)
+
+    # Save all metadata to a separate file in the SavedModel directory.
+    metadata = generate_keras_metadata(saved_nodes, node_paths)
+
+  with gfile.GFile(
+      os.path.join(filepath, constants.SAVED_METADATA_PATH), "wb") as w:
+    w.write(metadata.SerializeToString(deterministic=True))
 
   if not include_optimizer:
     model.optimizer = orig_optimizer
+
+
+def generate_keras_metadata(saved_nodes, node_paths):
+  """Constructs a KerasMetadata proto with the metadata of each keras object."""
+  metadata = saved_metadata_pb2.SavedMetadata()
+
+  for node_id, node in enumerate(saved_nodes):
+    if isinstance(node, base_layer.Layer):
+      path = node_paths[node]
+      if not path:
+        node_path = "root"
+      else:
+        node_path = "root.{}".format(
+            ".".join([ref.name for ref in path]))
+
+      metadata.nodes.add(
+          node_id=node_id,
+          node_path=node_path,
+          version=versions_pb2.VersionDef(
+              producer=1, min_consumer=1, bad_consumers=[]),
+          identifier=node._object_identifier,  # pylint: disable=protected-access
+          metadata=node._tracking_metadata)  # pylint: disable=protected-access
+
+  return metadata

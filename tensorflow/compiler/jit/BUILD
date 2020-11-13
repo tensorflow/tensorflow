@@ -8,6 +8,9 @@ load("//tensorflow:tensorflow.bzl", "if_libtpu", "tf_copts")
 load("//tensorflow/stream_executor:build_defs.bzl", "if_cuda_or_rocm")
 
 # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")
 
 # buildifier: disable=same-origin-load
@@ -283,6 +286,7 @@ cc_library(
         "//tensorflow/compiler/xla:parse_flags_from_env",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
     ],
@@ -291,7 +295,7 @@ cc_library(
 # Header-only version of "flags" library, for linking from the shared object
 # without ODR violations.
 cc_library(
-    name = "flags_headers_only",
+    name = "flags_headers",
     hdrs = ["flags.h"],
     visibility = [":friends"],
     deps = [
@@ -300,6 +304,11 @@ cc_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
     ],
+)
+
+cc_header_only_library(
+    name = "flags_headers_only",
+    deps = [":flags_headers"],
 )
 
 cc_library(
@@ -361,6 +370,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+        "//tensorflow/compiler/mlir:mlir_bridge_rollout_policy",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -447,8 +457,8 @@ cc_library(
 # Header-only version of "flags" library, for linking from the shared object
 # without ODR violations.
 cc_library(
-    name = "get_compiler_ir_hdrs_only",
-    hdrs = ["get_compiler_ir.h"],
+    name = "get_compiler_ir_hdrs",
+    textual_hdrs = ["get_compiler_ir.h"],
     visibility = [
         ":internal",
         "//learning/brain/contrib/tpu_modeling/exp/tpu_inference_converter:__pkg__",
@@ -460,6 +470,23 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_header_only_library(
+    name = "get_compiler_ir_hdrs_only",
+    deps = [":get_compiler_ir_hdrs"],
+)
+
+# This target can be used by XLA device plugins to prevent circular dependencies, and provides access to all of the required headers for building a device library.
+cc_header_only_library(
+    name = "xla_jit_headers_lib",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":xla_cpu_device",
+        ":xla_cpu_jit",
+        ":xla_gpu_device",
+        ":xla_gpu_jit",
     ],
 )
 
@@ -481,6 +508,7 @@ cc_library(
         ":flags",
         ":jit_compilation_passes",
         "//tensorflow/compiler/jit/kernels:xla_ops_no_jit_rewrite_registration",
+        "//tensorflow/compiler/tf2xla:mlir_bridge_pass",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/core:core_cpu_internal",
@@ -520,8 +548,8 @@ cc_library(
     hdrs = ["resource_operation_safety_analysis.h"],
     deps = [
         ":xla_cluster_util",
-        "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/compiler/tf2xla:resource_operation_table",
+        "//tensorflow/compiler/xla/service/graphcycles",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
@@ -692,7 +720,6 @@ cc_library(
         "//tensorflow/cc:ops",
         "//tensorflow/cc:scope",
         "//tensorflow/cc:scope_internal",
-        "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/compiler/jit/ops:xla_ops",
         "//tensorflow/compiler/tf2xla:resource_operation_table",
         "//tensorflow/compiler/tf2xla:side_effect_util",
@@ -705,6 +732,7 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:union_find",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service/graphcycles",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -732,9 +760,9 @@ cc_library(
     deps = [
         ":flags",
         ":xla_activity_proto_cc",
-        "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/service/graphcycles",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -842,9 +870,12 @@ tf_cc_test(
         "partially_decluster_pass_test.cc",
         "rearrange_function_argument_pass_test.cc",
     ],
-    # TODO(b/141643254) Re-enable msan after fixing use-of-uninitialized-value
-    # error.
-    tags = ["nomsan"] + tf_cuda_tests_tags(),
+    tags = [
+        # TODO(b/141643254) Re-enable msan after fixing
+        # use-of-uninitialized-value error.
+        "nomsan",
+        "no_cuda_asan",  # TODO(b/171317460): re-enable.
+    ] + tf_cuda_tests_tags(),
     deps = [
         ":common",
         ":compilability_check_util",
@@ -965,13 +996,13 @@ cc_library(
         ":xla_activity_listener",
         ":xla_activity_proto_cc",
         ":xla_cluster_util",
-        "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/compiler/tf2xla:resource_operation_table",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:union_find",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service/graphcycles",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
@@ -1074,16 +1105,4 @@ cc_library(
         "@com_google_absl//absl/memory",
     ],
     alwayslink = 1,
-)
-
-# This target can be used by XLA device plugins to prevent circular dependencies, and provides access to all of the required headers for building a device library.
-cc_header_only_library(
-    name = "xla_jit_headers_lib",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":xla_cpu_device",
-        ":xla_cpu_jit",
-        ":xla_gpu_device",
-        ":xla_gpu_jit",
-    ],
 )

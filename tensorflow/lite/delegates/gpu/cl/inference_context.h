@@ -25,16 +25,17 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
+#include "tensorflow/lite/delegates/gpu/cl/cl_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/environment.h"
 #include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/model_hints.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
-#include "tensorflow/lite/delegates/gpu/cl/precision.h"
 #include "tensorflow/lite/delegates/gpu/cl/serialization_generated.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
+#include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 namespace tflite {
@@ -42,7 +43,7 @@ namespace gpu {
 namespace cl {
 
 struct CLNode {
-  std::unique_ptr<GPUOperation> operation;
+  ClOperation cl_operation;
   std::vector<ValueId> inputs;
   std::vector<ValueId> outputs;
 
@@ -94,8 +95,11 @@ class InferenceContext {
   const std::vector<ValueId>& GetInputIds() const { return input_ids_; }
   const std::vector<ValueId>& GetOutputIds() const { return output_ids_; }
 
-  absl::Status RestoreDeserialized(const std::vector<uint8_t>& serialized_model,
-                                   Environment* env);
+  const std::vector<int64_t>& GetInputRefs() const { return in_refs_; }
+  const std::vector<int64_t>& GetOutputRefs() const { return out_refs_; }
+
+  absl::Status RestoreDeserialized(
+      const absl::Span<const uint8_t> serialized_model, Environment* env);
 
  private:
   enum TensorMemoryType { STRONG_SHAPE = 0, BUFFER = 1, VARIABLE = 2 };
@@ -103,17 +107,15 @@ class InferenceContext {
   friend flatbuffers::Offset<data::InferenceContext> Encode(
       const InferenceContext& inference,
       flatbuffers::FlatBufferBuilder* builder);
-  friend absl::Status Decode(CLContext* context,
-                             const data::InferenceContext* fb_inference,
+  friend absl::Status Decode(const data::InferenceContext* fb_inference,
                              InferenceContext* inference);
 
   void CopyInAndOutIds(const GraphFloat32& graph);
-  absl::Status ConvertOperations(const DeviceInfo& device_info,
+  absl::Status ConvertOperations(const GpuInfo& gpu_info,
                                  const GraphFloat32& graph, ModelHints hints);
   void CreateLinks();
   void ReserveGraphTensors(const CreateInferenceInfo& create_info,
-                           const DeviceInfo& device_info,
-                           const GraphFloat32& graph);
+                           const GpuInfo& gpu_info, const GraphFloat32& graph);
   absl::Status Merge();
   absl::Status AllocateMemory(CLContext* context);
 
@@ -167,6 +169,7 @@ class InferenceContext {
 
   class TensorReserver {
    public:
+    TensorReserver() : next_(0) {}
     ValueId Add(const DummyTensor& dummy) {
       reservations_[next_] = dummy;
       return next_++;
@@ -221,6 +224,10 @@ class InferenceContext {
   std::vector<ValueId> input_ids_;
   std::map<ValueId, ValueId> variable_ids_and_refs_;
   std::vector<ValueId> output_ids_;
+
+  // for serialization
+  std::vector<int64_t> in_refs_;
+  std::vector<int64_t> out_refs_;
 };
 
 // Runs OpenCL specific transforms for the graph.
