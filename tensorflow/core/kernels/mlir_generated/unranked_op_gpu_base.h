@@ -131,9 +131,7 @@ class MlirUnrankedOp : public OpKernel {
       : public MlirUnrankedOp<tf_data_type, data_type,                        \
                               MlirUnranked##tf_op##mlir_type##Op> {           \
    public:                                                                    \
-    explicit MlirUnranked##tf_op##mlir_type##Op(OpKernelConstruction* ctx)    \
-        : MlirUnrankedOp<tf_data_type, data_type,                             \
-                         MlirUnranked##tf_op##mlir_type##Op>(ctx) {}          \
+    using MlirUnrankedOp::MlirUnrankedOp;                                     \
                                                                               \
     static ::UnrankedMemRefType<data_type> Invoke(                            \
         OpKernelContext* ctx,                                                 \
@@ -157,9 +155,7 @@ class MlirUnrankedOp : public OpKernel {
       : public MlirUnrankedOp<tf_data_type, data_type,                        \
                               MlirUnranked##tf_op##mlir_type##Op> {           \
    public:                                                                    \
-    explicit MlirUnranked##tf_op##mlir_type##Op(OpKernelConstruction* ctx)    \
-        : MlirUnrankedOp<tf_data_type, data_type,                             \
-                         MlirUnranked##tf_op##mlir_type##Op>(ctx) {}          \
+    using MlirUnrankedOp::MlirUnrankedOp;                                     \
                                                                               \
     static ::UnrankedMemRefType<data_type> Invoke(                            \
         OpKernelContext* ctx,                                                 \
