@@ -67,6 +67,7 @@ distribute_py_test(
     python_version = "PY3",
     tags = [
         "no_oss",
+        "notsan",  # b/173246447
     ],
     deps = [
         ":mnist_train",
