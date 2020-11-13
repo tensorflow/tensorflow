@@ -38,7 +38,7 @@ TEST_F(OpenCLOperationTest, ReduceSumChannels) {
   src_tensor.shape = BHWC(1, 2, 1, 5);
   src_tensor.data = {1.1, 2.1, 0.7, 0.3, 1.2, 3.1, 4.1, 0.0, 1.0, 4.4};
   ReduceAttributes attr;
-  attr.axis = Axis::CHANNELS;
+  attr.dims = {Axis::CHANNELS};
 
   for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {
@@ -51,8 +51,10 @@ TEST_F(OpenCLOperationTest, ReduceSumChannels) {
       TensorFloat32 dst_tensor;
       GPUOperation operation =
           CreateReduce(op_def, attr, OperationType::REDUCE_SUM);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 2, 1, 1), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 2, 1, 1), &dst_tensor));
       EXPECT_THAT(dst_tensor.data, Pointwise(FloatNear(eps), {5.4f, 12.6f}));
     }
   }
@@ -63,7 +65,7 @@ TEST_F(OpenCLOperationTest, ReduceProductChannels) {
   src_tensor.shape = BHWC(1, 2, 1, 2);
   src_tensor.data = {1.1, 2.0, 3.1, 4.0};
   ReduceAttributes attr;
-  attr.axis = Axis::CHANNELS;
+  attr.dims = {Axis::CHANNELS};
 
   for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {
@@ -76,8 +78,10 @@ TEST_F(OpenCLOperationTest, ReduceProductChannels) {
       TensorFloat32 dst_tensor;
       GPUOperation operation =
           CreateReduce(op_def, attr, OperationType::REDUCE_PRODUCT);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 2, 1, 1), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 2, 1, 1), &dst_tensor));
       EXPECT_THAT(dst_tensor.data, Pointwise(FloatNear(eps), {2.2f, 12.4f}));
     }
   }
@@ -89,7 +93,7 @@ TEST_F(OpenCLOperationTest, ReduceMaxChannels) {
   src_tensor.data = {1.1,  2.0,  -0.3, -100.0, 32.6, 1.1,
                      -3.1, -4.0, -5.0, -7.0,   -2.0, -100.0};
   ReduceAttributes attr;
-  attr.axis = Axis::CHANNELS;
+  attr.dims = {Axis::CHANNELS};
 
   for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {
@@ -102,8 +106,10 @@ TEST_F(OpenCLOperationTest, ReduceMaxChannels) {
       TensorFloat32 dst_tensor;
       GPUOperation operation =
           CreateReduce(op_def, attr, OperationType::REDUCE_MAXIMUM);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 2, 1, 1), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 2, 1, 1), &dst_tensor));
       EXPECT_THAT(dst_tensor.data, Pointwise(FloatNear(eps), {32.6f, -2.0f}));
     }
   }
@@ -115,7 +121,7 @@ TEST_F(OpenCLOperationTest, ReduceMinChannels) {
   src_tensor.data = {1.1,  2.0,  -0.3, -100.0, 32.6, 1.1,
                      -3.1, -4.0, -5.0, -7.0,   -2.0, 100.0};
   ReduceAttributes attr;
-  attr.axis = Axis::CHANNELS;
+  attr.dims = {Axis::CHANNELS};
 
   for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {
@@ -128,8 +134,10 @@ TEST_F(OpenCLOperationTest, ReduceMinChannels) {
       TensorFloat32 dst_tensor;
       GPUOperation operation =
           CreateReduce(op_def, attr, OperationType::REDUCE_MINIMUM);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 2, 1, 1), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 2, 1, 1), &dst_tensor));
       EXPECT_THAT(dst_tensor.data, Pointwise(FloatNear(eps), {-100.0f, -7.0f}));
     }
   }

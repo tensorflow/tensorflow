@@ -198,7 +198,7 @@ bool IsConvolutionTransposed3x3ThinSupported(
 }
 
 ConvolutionTransposed3x3Thin CreateConvolutionTransposed3x3Thin(
-    const DeviceInfo& device_info, const OperationDef& definition,
+    const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr) {
   ConvolutionTransposed3x3Thin result(definition, attr);
   result.UploadData(attr.weights, attr.bias);

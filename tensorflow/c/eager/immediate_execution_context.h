@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/c/tensor_interface.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/numeric_types.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/tstring.h"
@@ -138,8 +139,8 @@ class ImmediateExecutionContext : public AbstractContext {
   }
 
   //===--------------------------------------------------------------------===//
-  // Following are legacy features in TF Eager Runtime.
-  // TODO(tf-runtime): Figure out a way to deprecate following features after
+  // Following are features in current TF Eager Runtime.
+  // TODO(tfrt-devs): Figure out a way to deprecate following features after
   // migrated to TFRT.
   //===--------------------------------------------------------------------===//
   // Clear pending nodes in thread executors and kernel caches.
@@ -156,6 +157,22 @@ class ImmediateExecutionContext : public AbstractContext {
   virtual EagerExecutor& Executor() = 0;
   // Update the Eager Executor for current thread.
   virtual void SetExecutorForThread(EagerExecutor* executor) = 0;
+
+  //===--------------------------------------------------------------------===//
+  // Following are helper functions to assist integrating TFRT with current
+  // TF eager runtime.
+  // TODO(b/172877902): These helper functions are currently used to support
+  // PyFuncOp on TFRT, and might be useful for ops that directly use low
+  // level TF APIs. Remove/replace the following functions when TFRT native
+  // ops are implemented.
+  //===--------------------------------------------------------------------===//
+  // Create an abstract tensor handle from tensorflow::Tensor.
+  virtual ImmediateExecutionTensorHandle* CreateLocalHandleFromTFTensor(
+      tensorflow::Tensor& t, const char* d_name) = 0;
+
+  // Convert a TFRT TensorHandle to tensorflow::TensorHandle.
+  virtual ImmediateExecutionTensorHandle* TFTensorHandleFromInterface(
+      ImmediateExecutionTensorHandle* handle) = 0;
 
  protected:
   explicit ImmediateExecutionContext(AbstractContextKind kind)

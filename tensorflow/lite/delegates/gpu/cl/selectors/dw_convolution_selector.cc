@@ -26,58 +26,58 @@ namespace cl {
 namespace {
 
 std::unique_ptr<GPUOperation> SelectDWConvolutionAdreno(
-    const DepthwiseConvolution2DAttributes& attr, const DeviceInfo& device_info,
+    const DepthwiseConvolution2DAttributes& attr, const GpuInfo& gpu_info,
     const OperationDef& op_def) {
   if (IsDepthwiseConv3x3Supported(attr)) {
     return absl::make_unique<DepthwiseConv3x3>(
-        CreateDepthwiseConv3x3(device_info, op_def, attr));
+        CreateDepthwiseConv3x3(gpu_info, op_def, attr));
   } else {
     return absl::make_unique<GPUOperation>(
-        CreateDepthwiseConvolution2D(device_info, op_def, attr));
+        CreateDepthwiseConvolution2D(gpu_info, op_def, attr));
   }
 }
 
 std::unique_ptr<GPUOperation> SelectDWConvolutionPowerVR(
-    const DepthwiseConvolution2DAttributes& attr, const DeviceInfo& device_info,
+    const DepthwiseConvolution2DAttributes& attr, const GpuInfo& gpu_info,
     const OperationDef& op_def) {
   if (IsDepthwiseConv3x3Supported(attr)) {
     return absl::make_unique<DepthwiseConv3x3>(
-        CreateDepthwiseConv3x3(device_info, op_def, attr));
+        CreateDepthwiseConv3x3(gpu_info, op_def, attr));
   } else {
     return absl::make_unique<GPUOperation>(
-        CreateDepthwiseConvolution2D(device_info, op_def, attr));
+        CreateDepthwiseConvolution2D(gpu_info, op_def, attr));
   }
 }
 
 std::unique_ptr<GPUOperation> SelectDWConvolutionMali(
-    const DepthwiseConvolution2DAttributes& attr, const DeviceInfo& device_info,
+    const DepthwiseConvolution2DAttributes& attr, const GpuInfo& gpu_info,
     const OperationDef& op_def) {
   const auto storage_type = op_def.src_tensors[0].storage_type;
   bool buffer_type = storage_type == TensorStorageType::BUFFER ||
                      storage_type == TensorStorageType::IMAGE_BUFFER;
-  const MaliInfo mali_info = device_info.mali_info;
+  const MaliInfo mali_info = gpu_info.mali_info;
   if (IsDepthwiseConv3x3Supported(attr) && !mali_info.IsMidgard() &&
       !buffer_type && op_def.precision != CalculationsPrecision::F32) {
     return absl::make_unique<DepthwiseConv3x3>(
-        CreateDepthwiseConv3x3(device_info, op_def, attr));
+        CreateDepthwiseConv3x3(gpu_info, op_def, attr));
   } else {
     return absl::make_unique<GPUOperation>(
-        CreateDepthwiseConvolution2D(device_info, op_def, attr));
+        CreateDepthwiseConvolution2D(gpu_info, op_def, attr));
   }
 }
 }  // namespace
 
 std::unique_ptr<GPUOperation> SelectDWConvolution(
-    const DepthwiseConvolution2DAttributes& attr, const DeviceInfo& device_info,
+    const DepthwiseConvolution2DAttributes& attr, const GpuInfo& gpu_info,
     const OperationDef& op_def) {
-  if (device_info.IsAdreno()) {
-    return SelectDWConvolutionAdreno(attr, device_info, op_def);
-  } else if (device_info.IsPowerVR()) {
-    return SelectDWConvolutionPowerVR(attr, device_info, op_def);
-  } else if (device_info.IsMali()) {
-    return SelectDWConvolutionMali(attr, device_info, op_def);
+  if (gpu_info.IsAdreno()) {
+    return SelectDWConvolutionAdreno(attr, gpu_info, op_def);
+  } else if (gpu_info.IsPowerVR()) {
+    return SelectDWConvolutionPowerVR(attr, gpu_info, op_def);
+  } else if (gpu_info.IsMali()) {
+    return SelectDWConvolutionMali(attr, gpu_info, op_def);
   } else {
-    return SelectDWConvolutionAdreno(attr, device_info, op_def);
+    return SelectDWConvolutionAdreno(attr, gpu_info, op_def);
   }
 }
 

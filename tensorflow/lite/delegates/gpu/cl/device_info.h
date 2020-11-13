@@ -134,36 +134,36 @@ struct AdrenoInfo {
   bool support_one_layer_texture_array = true;
 };
 
-enum class MaliGPU {
-  T604,
-  T622,
-  T624,
-  T628,
-  T658,
-  T678,
-  T720,
-  T760,
-  T820,
-  T830,
-  T860,
-  T880,
-  G31,
-  G51,
-  G71,
-  G52,
-  G72,
-  G76,
-  G57,
-  G77,
-  G68,
-  G78,
-  UNKNOWN
+enum class MaliGpu {
+  kUnknown,
+  kT604,
+  kT622,
+  kT624,
+  kT628,
+  kT658,
+  kT678,
+  kT720,
+  kT760,
+  kT820,
+  kT830,
+  kT860,
+  kT880,
+  kG31,
+  kG51,
+  kG71,
+  kG52,
+  kG72,
+  kG76,
+  kG57,
+  kG77,
+  kG68,
+  kG78,
 };
 
 struct MaliInfo {
   MaliInfo() = default;
-  explicit MaliInfo(const std::string& device_name);
-  MaliGPU gpu_version;
+  explicit MaliInfo(const std::string& gpu_description);
+  MaliGpu gpu_version;
 
   bool IsMaliT6xx() const;
   bool IsMaliT7xx() const;
@@ -176,8 +176,8 @@ struct MaliInfo {
   bool IsValhall() const;
 };
 
-struct DeviceInfo {
-  DeviceInfo() = default;
+struct GpuInfo {
+  GpuInfo() = default;
 
   bool IsAdreno() const;
   bool IsApple() const;

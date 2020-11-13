@@ -20,6 +20,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <queue>
+#include <set>
 #include <utility>
 
 #include "absl/algorithm/algorithm.h"
@@ -131,13 +132,16 @@ class ConvolutionVisitor {
     return permute_dims[id];
   }
 
+  HloInstruction* DoesConvolutionFeedReduceWindow(HloInstruction* instr,
+                                                  int64 depth);
+
  private:
   // Current HloComputation instance the ConvolutionVisitor is traversing.
   HloComputation* computation_;
 
   absl::flat_hash_set<HloInstruction*> convs_to_visit_;
   std::vector<HloInstruction*> conv_visitor_list_;
-  absl::flat_hash_set<HloInstruction*> non_propagatable_instrs_;
+  std::set<HloInstruction*> non_propagatable_instrs_;
   // Map from a given spaced-to-batch instruction to its batched-to-space
   // version.
   absl::flat_hash_map<HloInstruction*, HloInstruction*> batch_to_space_map_;
@@ -164,13 +168,16 @@ class ConvolutionVisitor {
   // We choose the new batch size to be a constant so that space-to-batch
   // propagation through several convolutional layers is consistent.
   static constexpr int64 kNewBatchSize = 8;
+
+  // Depth for searching reduce window
+  static constexpr int64 kReduceWindowSearchDepth = 10;
 };
 
 ConvolutionVisitor::ConvolutionVisitor(int64 limit_on_batch_size,
                                        HloComputation* computation) {
   computation_ = computation;
   limit_on_batch_size_ = limit_on_batch_size;
-  for (HloInstruction* inst : computation->instructions()) {
+  for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {
     if (inst->opcode() != HloOpcode::kConvolution) {
       continue;
     }
@@ -182,6 +189,8 @@ ConvolutionVisitor::ConvolutionVisitor(int64 limit_on_batch_size,
               << convolution->ToString();
       continue;
     }
+    VLOG(1) << "Conv added to space-to-batch worklist "
+            << convolution->ToString();
     convs_to_visit_.insert(convolution);
     conv_visitor_list_.push_back(convolution);
   }
@@ -932,6 +941,7 @@ Status ConvolutionVisitor::PropagateOnUsers(HloInstruction* old_conv) {
       // batch-to-space. If not ready, mark as non-propagatable.
       for (auto user : node->users()) {
         if (!SupportedOpForPropagation(user, node)) {
+          VLOG(1) << "Unsupported op found " << user->ToString();
           TF_ASSIGN_OR_RETURN(HloInstruction * batch_to_space,
                               BatchToSpace(node));
           for (int64 i = 0; i < user->operand_count(); ++i) {
@@ -1048,15 +1058,17 @@ Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
       CeilOfRatio(output_offsets, num_splits);
 
   int64 spatial_split_size = output_offsets_per_split * stride;
+  const int64 halo_size =
+      std::max(kernel_spatial_dim_size - stride, static_cast<int64>(0));
   // Keep increasing the split size so that overall size isn't smaller than the
-  // original spatial dimension.
-  while (spatial_split_size * num_splits - spatial_size < 0) {
+  // original spatial dimension. Unlike for the first space-to-batch'ed
+  // convolution, while propagating, we can use the last halo_size as available
+  // spatial size.
+  while (spatial_split_size * num_splits + halo_size - spatial_size < 0) {
     spatial_split_size += stride;
   }
 
-  int64 slice_size =
-      spatial_split_size +
-      std::max(kernel_spatial_dim_size - stride, static_cast<int64>(0));
+  int64 slice_size = spatial_split_size + halo_size;
 
   VLOG(1) << "spatial_split_size " << spatial_split_size << " slice_size "
           << slice_size;
@@ -1195,9 +1207,34 @@ Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
   return Status::OK();
 }
 
+HloInstruction* ConvolutionVisitor::DoesConvolutionFeedReduceWindow(
+    HloInstruction* instr, int64 depth = kReduceWindowSearchDepth) {
+  if (depth == 0) {
+    return nullptr;
+  }
+
+  for (auto user : instr->users()) {
+    if (user->opcode() == HloOpcode::kReduceWindow) {
+      return user;
+    }
+    // Stop the search if these ops are encountered.
+    if (user->opcode() == HloOpcode::kConvolution ||
+        user->opcode() == HloOpcode::kPad ||
+        user->opcode() == HloOpcode::kTranspose) {
+      continue;
+    }
+    auto ret = DoesConvolutionFeedReduceWindow(user, depth - 1);
+    if (ret != nullptr) {
+      return ret;
+    }
+  }
+  return nullptr;
+}
+
 Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
     HloInstruction* convolution) {
   VLOG(1) << "Handling conv " << convolution->ToString();
+
   changed_ = false;
 
   ConvolutionDimensionNumbers dim_numbers =
@@ -1254,9 +1291,10 @@ Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
   // Create the new convolution dim numbers.
   auto new_dim_numbers = dim_numbers;
 
+  const int64 output_spatial_dim = dim_numbers.output_spatial_dimensions(
+      get_chosen_spatial_dim(convolution));
   const int64 output_offsets =
-      convolution->shape().dimensions(dim_numbers.output_spatial_dimensions(
-          get_chosen_spatial_dim(convolution)));
+      convolution->shape().dimensions(output_spatial_dim);
   const int64 output_offsets_per_split =
       CeilOfRatio(output_offsets, num_splits);
 
@@ -1265,6 +1303,20 @@ Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
   // original spatial dimension.
   while (spatial_split_size * num_splits - spatial_size < 0) {
     spatial_split_size += stride;
+  }
+
+  auto reduce_window = DoesConvolutionFeedReduceWindow(convolution);
+
+  if (reduce_window != nullptr) {
+    VLOG(2) << "DoesConvolutionFeedReduceWindow " << reduce_window;
+    // Take into account the stride of the reduce window while choosing the
+    // spatial_split_size. This will guarantee propagation through reduce
+    // windows.
+    const int64 red_win_stride =
+        reduce_window->window().dimensions(output_spatial_dim).stride();
+    while ((spatial_split_size / stride) % red_win_stride != 0) {
+      spatial_split_size += stride;
+    }
   }
 
   const int64 slice_size =

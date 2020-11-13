@@ -3401,6 +3401,7 @@ StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
         break;
       }
       case HloOpcode::kConstant:
+      case HloOpcode::kIota:
         SetInstructionAsConstant(new_instr, id, new_shape, false);
         break;
       case HloOpcode::kCustomCall:

@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #if !defined(IS_MOBILE_PLATFORM)
@@ -144,10 +145,18 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   ImmediateExecutionTensorHandle* CreateLocalHandle(
       AbstractTensorInterface* t) override;
+  // Create an abstract tensor handle from tensorflow::Tensor.
+  ImmediateExecutionTensorHandle* CreateLocalHandleFromTFTensor(
+      tensorflow::Tensor& t, const char* d_name) override;
   ImmediateExecutionTensorHandle* CopyTensorHandleToDevice(
       ImmediateExecutionTensorHandle* handle, const char* device_name,
       Status* status) override;
   ImmediateExecutionOperation* CreateOperation() override;
+
+  // Convert a TFRT TensorHandle to tensorflow::TensorHandle. In this case,
+  // just forward the input TensorHandle.
+  ImmediateExecutionTensorHandle* TFTensorHandleFromInterface(
+      ImmediateExecutionTensorHandle* handle) override;
 
   Status RegisterFunction(AbstractFunction* f) override;
 

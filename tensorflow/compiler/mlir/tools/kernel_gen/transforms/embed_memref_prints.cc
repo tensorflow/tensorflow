@@ -40,18 +40,21 @@ using tf_framework::TFFrameworkDialect;
 Operation* emitCallToFunc(Location loc, StringRef func_name,
                           ArrayRef<Type> return_types, ValueRange args,
                           OpBuilder* b) {
-  auto funcOp = b->getInsertionBlock()->getParent()->getParentOfType<FuncOp>();
-  Operation* func = SymbolTable::lookupNearestSymbolFrom(funcOp, func_name);
-  if (!func) {
+  auto caller_func =
+      b->getInsertionBlock()->getParent()->getParentOfType<FuncOp>();
+  auto callee_func =
+      SymbolTable::lookupNearestSymbolFrom<FuncOp>(caller_func, func_name);
+  if (!callee_func) {
     OpBuilder::InsertionGuard insertGuard(*b);
 
-    auto module = funcOp.getParentOfType<ModuleOp>();
+    auto module = caller_func.getParentOfType<ModuleOp>();
     b->setInsertionPointToStart(module.getBody());
-    auto func_type = FunctionType::get(llvm::to_vector<2>(args.getTypes()),
-                                       return_types, b->getContext());
-    func = b->create<FuncOp>(module.getLoc(), func_name, func_type);
+    auto func_type =
+        FunctionType::get(args.getTypes(), return_types, b->getContext());
+    callee_func = b->create<FuncOp>(module.getLoc(), func_name, func_type);
+    callee_func.setPrivate();
   }
-  return b->create<CallOp>(loc, b->getSymbolRefAttr(func), return_types, args);
+  return b->create<CallOp>(loc, callee_func, args);
 }
 
 void EmitPrint(Operation* op, Liveness& liveness, OpBuilder* b) {

@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,20 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_DEFAULT_STRONG_HASH_H_
-#define TENSORFLOW_CORE_PLATFORM_DEFAULT_STRONG_HASH_H_
-
-#include "highwayhash/sip_hash.h"  // from @highwayhash
-#include "highwayhash/state_helpers.h"  // from @highwayhash
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/kernels/mlir_generated/unranked_op_gpu_base.h"
 
 namespace tensorflow {
 
-inline uint64 StrongKeyedHash(const tensorflow::uint64 (&key)[2],
-                              const string& s) {
-  return highwayhash::StringHasher<highwayhash::SipHashState>()(
-      {key[0], key[1]}, s);
-}
+GENERATE_AND_REGISTER_UNARY_KERNEL(Sign, f16, DT_HALF, Eigen::half);
+GENERATE_AND_REGISTER_UNARY_KERNEL(Sign, f32, DT_FLOAT, float);
+GENERATE_AND_REGISTER_UNARY_KERNEL(Sign, f64, DT_DOUBLE, double);
+GENERATE_AND_REGISTER_UNARY_KERNEL(Sign, i32, DT_INT32, int32);
+GENERATE_AND_REGISTER_UNARY_KERNEL(Sign, i64, DT_INT64, int64);
 
 }  // namespace tensorflow
-
-#endif  // TENSORFLOW_CORE_PLATFORM_DEFAULT_STRONG_HASH_H_

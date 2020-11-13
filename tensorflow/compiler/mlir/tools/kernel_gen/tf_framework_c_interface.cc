@@ -71,6 +71,12 @@ extern "C" void _mlir_ciface_tf_dealloc(void* op_kernel_ctx, void* ptr) {
   GetAllocator(op_kernel_ctx)->DeallocateRaw(ptr);
 }
 
+extern "C" void _mlir_ciface_tf_report_error(void* op_kernel_ctx, char* msg) {
+  auto* ctx = static_cast<tensorflow::OpKernelContext*>(op_kernel_ctx);
+  ctx->CtxFailureWithWarning(
+      tensorflow::Status(tensorflow::error::Code::INVALID_ARGUMENT, msg));
+}
+
 }  // namespace tf_framework
 }  // namespace kernel_gen
 }  // namespace mlir

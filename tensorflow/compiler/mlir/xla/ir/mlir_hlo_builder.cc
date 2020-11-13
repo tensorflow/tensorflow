@@ -149,7 +149,7 @@ StatusOr<XlaOp> MlirHloBuilder::CustomCallInternal(
       loc_, ty, GetValues(operands), builder_.getStringAttr(call_target_name),
       /*has_side_effect=*/builder_.getBoolAttr(has_side_effect),
       builder_.getStringAttr(opaque));
-  return MakeXlaOp(op);
+  return MakeXlaOp(op.getResult(0));
 }
 
 StatusOr<XlaOp> MlirHloBuilder::ReduceInternal(

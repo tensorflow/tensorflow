@@ -224,6 +224,33 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "unified_api_testutil",
+    testonly = 1,
+    srcs = [
+        "unified_api_testutil.cc",
+    ],
+    hdrs = [
+        "unified_api_testutil.h",
+    ],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        ":abstract_context",
+        ":abstract_tensor_handle",
+        ":c_api_experimental",
+        ":c_api_test_util",
+        ":c_api_unified_internal",
+        "//tensorflow/c:tf_status",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/core/lib/llvm_rtti",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
 tf_cuda_cc_test(
     name = "gradients_test",
     size = "small",
@@ -240,6 +267,7 @@ tf_cuda_cc_test(
         ":c_api_test_util",
         ":c_api_unified_internal",
         ":gradients_internal",
+        ":unified_api_testutil",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_test_util",
         "//tensorflow/c:tf_status_helper",

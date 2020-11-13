@@ -48,11 +48,11 @@ class ConvolutionTransposedThin : public GPUOperation {
 
  private:
   friend ConvolutionTransposedThin CreateConvolutionTransposedThin(
-      const DeviceInfo& device_info, const OperationDef& definition,
+      const GpuInfo& gpu_info, const OperationDef& definition,
       const ConvolutionTransposedAttributes& attr);
   ConvolutionTransposedThin(const OperationDef& definition,
                             const ConvolutionTransposedAttributes& attr,
-                            const DeviceInfo& device_info);
+                            const GpuInfo& gpu_info);
   template <DataType T>
   void UploadData(const tflite::gpu::Tensor<OHWI, T>& weights,
                   const tflite::gpu::Tensor<Linear, T>& biases);
@@ -141,7 +141,7 @@ bool IsConvolutionTransposedThinSupported(
     const ConvolutionTransposedAttributes& attr);
 
 ConvolutionTransposedThin CreateConvolutionTransposedThin(
-    const DeviceInfo& device_info, const OperationDef& definition,
+    const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr);
 
 }  // namespace cl

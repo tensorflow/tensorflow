@@ -275,7 +275,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   ```
 
   For more information about creating layers, see the guide
-  [Writing custom layers and models with Keras](
+  [Making new Layers and Models via subclassing](
     https://www.tensorflow.org/guide/keras/custom_layers_and_models)
   """
 

@@ -25,7 +25,7 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-GPUOperation CreatePReLU(const DeviceInfo& device_info,
+GPUOperation CreatePReLU(const GpuInfo& gpu_info,
                          const OperationDef& definition,
                          const PReLUAttributes& attr) {
   GPUOperation result(definition);
@@ -51,7 +51,7 @@ GPUOperation CreatePReLU(const DeviceInfo& device_info,
     const BHWC shape =
         BHWC(1, alpha_hwc->shape.h, alpha_hwc->shape.w, alpha_hwc->shape.c);
     TensorStorageType storage_type = SelectBestStorageType(
-        device_info, shape, definition.GetPrimaryStorageType(),
+        gpu_info, shape, definition.GetPrimaryStorageType(),
         definition.GetDataType(), Layout::HWC);
     TensorDescriptor desc{definition.GetDataType(), storage_type, Layout::HWC};
     desc.UploadData(*alpha_hwc);

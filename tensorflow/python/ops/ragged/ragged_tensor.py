@@ -91,9 +91,11 @@ class RaggedTensor(composite_tensor.CompositeTensor,
 
   ### Potentially Ragged Tensors
 
-  Many ops support both `Tensor`s and `RaggedTensor`s.  The term "potentially
-  ragged tensor" may be used to refer to a tensor that might be either a
-  `Tensor` or a `RaggedTensor`.  The ragged-rank of a `Tensor` is zero.
+  Many ops support both `Tensor`s and `RaggedTensor`s
+  (see [tf.ragged](https://www.tensorflow.org/api_docs/python/tf/ragged) for a
+  full listing). The term "potentially ragged tensor" may be used to refer to a
+  tensor that might be either a `Tensor` or a `RaggedTensor`.  The ragged-rank
+  of a `Tensor` is zero.
 
   ### Documenting RaggedTensor Shapes
 

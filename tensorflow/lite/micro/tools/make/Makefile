@@ -6,9 +6,9 @@ endif
 TENSORFLOW_ROOT :=
 MAKEFILE_DIR := tensorflow/lite/micro/tools/make
 
-#  Override this on make command line to to parse thirdy party downloads during project generation 
-#  make -f tensorflow/lite/micro/tools/make/Makefile PARSE_THIRD_PARTY=true TARGET=apollo3evb generate_hello_world_make_project 
-PARSE_THIRD_PARTY := 
+#  Override this on make command line to parse third party downloads during project generation
+#  make -f tensorflow/lite/micro/tools/make/Makefile PARSE_THIRD_PARTY=true TARGET=apollo3evb generate_hello_world_make_project
+PARSE_THIRD_PARTY :=
 
 
 # Pull in some convenience functions.
@@ -137,6 +137,12 @@ COMMON_FLAGS := \
   $(OPTIMIZED_KERNEL_DEFINES) \
   $(TAG_DEFINES)
 
+ifeq ($(TARGET), $(HOST_OS))
+  # If we are not doing a cross-compilation then -DTF_LITE_USE_CTIME is what we
+  # want to have by default.
+  COMMON_FLAGS += -DTF_LITE_USE_CTIME
+endif
+
 CXXFLAGS := \
   -std=c++11 \
   -fno-rtti \
@@ -243,6 +249,9 @@ MICROLITE_CC_KERNEL_SRCS := $(filter-out $(MICROLITE_TEST_SRCS), $(MICROLITE_CC_
 MICROLITE_TEST_HDRS := \
 $(wildcard tensorflow/lite/micro/testing/*.h)
 
+MICROLITE_TEST_HELPERS_SRC := \
+tensorflow/lite/micro/test_helpers.cc
+
 MICROLITE_CC_BASE_SRCS := \
 $(wildcard tensorflow/lite/micro/*.cc) \
 $(wildcard tensorflow/lite/micro/benchmarks/*model_data.cc) \
@@ -259,6 +268,10 @@ tensorflow/lite/schema/schema_utils.cc
 
 MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_TEST_SRCS), $(MICROLITE_CC_BASE_SRCS))
 MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_BENCHMARK_SRCS), $(MICROLITE_CC_SRCS))
+MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_TEST_HELPERS_SRC), $(MICROLITE_CC_SRCS))
+
+MICROLITE_TEST_HELPERS_HDRS := \
+tensorflow/lite/micro/test_helpers.h
 
 MICROLITE_CC_HDRS := \
 $(wildcard tensorflow/lite/micro/*.h) \
@@ -333,6 +346,8 @@ tensorflow/lite/portable_type_to_tflitetype.h \
 tensorflow/lite/schema/schema_generated.h \
 tensorflow/lite/schema/schema_utils.h \
 tensorflow/lite/version.h
+
+MICROLITE_CC_HDRS := $(filter-out $(MICROLITE_TEST_HELPERS_HDRS), $(MICROLITE_CC_HDRS))
 
 # TODO(b/165940489): Figure out how to avoid including fixed point
 # platform-specific headers.
@@ -430,6 +445,7 @@ ALL_TAGS += $(TARGET_ARCH)
 
 ALL_SRCS := \
 	$(MICROLITE_CC_SRCS) \
+	$(MICROLITE_TEST_HELPERS_SRC) \
 	$(MICROLITE_TEST_SRCS)
 
 # Where compiled objects are stored.
@@ -485,7 +501,7 @@ microlite: $(MICROLITE_LIB_PATH)
 
 # Hack for generating schema file bypassing flatbuffer parsing
 tensorflow/lite/schema/schema_generated.h:
-	@cp -u tensorflow/lite/schema/schema_generated.h.OPENSOURCE tensorflow/lite/schema/schema_generated.h
+	@cp -u tensorflow/lite/schema/schema_generated.h.oss tensorflow/lite/schema/schema_generated.h
 
 # Gathers together all the objects we've compiled into a single '.a' archive.
 $(MICROLITE_LIB_PATH): tensorflow/lite/schema/schema_generated.h $(MICROLITE_LIB_OBJS)
