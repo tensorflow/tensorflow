@@ -370,10 +370,10 @@ void TensorShapeRep::ClearAllButDataType() {
 }
 
 template <class Shape>
-void TensorShapeBase<Shape>::RecomputeNumElements() {
+Status TensorShapeBase<Shape>::RecomputeNumElements() {
   if (unknown_rank()) {
     set_num_elements(-1);
-    return;
+    return Status::OK();
   }
   int64 n = 1;
   for (auto dim : *this) {
@@ -382,9 +382,14 @@ void TensorShapeBase<Shape>::RecomputeNumElements() {
       break;
     }
     n = MultiplyWithoutOverflow(n, dim.size);
-    CHECK_LE(0, n);
+    if (TF_PREDICT_FALSE(n < 0)) {
+      return errors::InvalidArgument(
+          "Shape ", this->DebugString(),
+          " results in overflow when computing number of elements");
+    }
   }
   set_num_elements(n);
+  return Status::OK();
 }
 
 template <class Shape>
@@ -580,7 +585,7 @@ void TensorShapeBase<Shape>::set_dim(int d, int64 size) {
       AddDim(dval);
     }
   }
-  RecomputeNumElements();
+  TF_CHECK_OK(RecomputeNumElements());
 }
 
 template <class Shape>
@@ -639,7 +644,7 @@ void TensorShapeBase<Shape>::RemoveDimRange(int begin, int end) {
   for (auto dval : vals) {
     AddDim(dval);
   }
-  RecomputeNumElements();
+  TF_CHECK_OK(RecomputeNumElements());
 }
 
 template <class Shape>
