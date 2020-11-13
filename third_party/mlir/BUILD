@@ -286,6 +286,7 @@ filegroup(
     srcs = [
         "include/mlir/Dialect/Async/IR/AsyncBase.td",
         "include/mlir/Dialect/Async/IR/AsyncOps.td",
+        "include/mlir/Interfaces/ControlFlowInterfaces.td",
         "include/mlir/Interfaces/SideEffectInterfaces.td",
         ":OpBaseTdFiles",
     ],
@@ -596,6 +597,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":AsyncOpsIncGen",
+        ":ControlFlowInterfaces",
         ":Dialect",
         ":IR",
         ":SideEffectInterfaces",
