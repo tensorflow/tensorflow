@@ -307,6 +307,20 @@ func @set_dynamic_dimension_size(%input: tensor<4xf32>, %size: tensor<i32>) -> t
   return %0 : tensor<4xf32>
 }
 
+// CHECK-LABEL: @erfinv
+func @erfinv(%input: tensor<4xf32>) -> tensor<4xf32> {
+  // CHECK-NOT: tf.Erfinv
+  %0 = "tf.Erfinv"(%input) : (tensor<4xf32>) -> tensor<4xf32>
+  return %0 : tensor<4xf32>
+}
+
+// CHECK-LABEL: @ndtri
+func @ndtri(%input: tensor<4xf32>) -> tensor<4xf32> {
+  // CHECK-NOT: tf.Ndtri
+  %0 = "tf.Ndtri"(%input) : (tensor<4xf32>) -> tensor<4xf32>
+  return %0 : tensor<4xf32>
+}
+
 
 // TODO(hinsu): Add a test with a valid TF op for which tf2xla kernel is
 // available but doesn't support this instance.
