@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -3002,17 +3003,25 @@ XlaOp XlaBuilder::SelectAndScatterWithGeneralPadding(
 XlaOp XlaBuilder::ReducePrecision(XlaOp operand, const int exponent_bits,
                                   const int mantissa_bits) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     TF_ASSIGN_OR_RETURN(Shape shape,
                         ShapeInference::InferReducePrecisionShape(
                             *operand_shape, exponent_bits, mantissa_bits));
-    *instr.mutable_shape() = shape.ToProto();
-    instr.set_exponent_bits(exponent_bits);
-    instr.set_mantissa_bits(mantissa_bits);
-    return AddInstruction(std::move(instr), HloOpcode::kReducePrecision,
-                          {operand});
+    return ReducePrecisionInternal(shape, operand, exponent_bits,
+                                   mantissa_bits);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::ReducePrecisionInternal(const Shape& shape,
+                                                    XlaOp operand,
+                                                    const int exponent_bits,
+                                                    const int mantissa_bits) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+  instr.set_exponent_bits(exponent_bits);
+  instr.set_mantissa_bits(mantissa_bits);
+  return AddInstruction(std::move(instr), HloOpcode::kReducePrecision,
+                        {operand});
 }
 
 void XlaBuilder::Send(XlaOp operand, const ChannelHandle& handle) {

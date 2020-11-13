@@ -819,6 +819,10 @@ class XlaBuilder {
 
   XlaOp ReducePrecision(XlaOp operand, const int exponent_bits,
                         const int mantissa_bits);
+  virtual StatusOr<XlaOp> ReducePrecisionInternal(const Shape& shape,
+                                                  XlaOp operand,
+                                                  const int exponent_bits,
+                                                  const int mantissa_bits);
 
   XlaOp Gather(XlaOp input, XlaOp start_indices,
                const GatherDimensionNumbers& dimension_numbers,

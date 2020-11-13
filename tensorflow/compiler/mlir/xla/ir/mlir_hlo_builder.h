@@ -171,6 +171,10 @@ class MlirHloBuilder : public XlaBuilder {
                                 const XlaComputation& body,
                                 XlaOp init) override;
 
+  StatusOr<XlaOp> ReducePrecisionInternal(const Shape& shape, XlaOp operand,
+                                          const int exponent_bits,
+                                          const int mantissa_bits) override;
+
   StatusOr<XlaOp> GatherInternal(
       const Shape& shape, XlaOp input, XlaOp start_indices,
       const GatherDimensionNumbers& dimension_numbers,

@@ -273,6 +273,17 @@ StatusOr<XlaOp> MlirHloBuilder::WhileInternal(const Shape& shape,
   return MakeXlaOp(op);
 }
 
+StatusOr<XlaOp> MlirHloBuilder::ReducePrecisionInternal(
+    const Shape& shape, XlaOp operand, const int exponent_bits,
+    const int mantissa_bits) {
+  TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
+                                         shape, builder_));
+  auto op = builder_.create<mlir::mhlo::ReducePrecisionOp>(
+      loc_, ty, GetValue(operand), builder_.getI32IntegerAttr(exponent_bits),
+      builder_.getI32IntegerAttr(mantissa_bits));
+  return MakeXlaOp(op);
+}
+
 StatusOr<XlaOp> MlirHloBuilder::GatherInternal(
     const Shape& shape, XlaOp input, XlaOp start_indices,
     const GatherDimensionNumbers& dimension_numbers,
