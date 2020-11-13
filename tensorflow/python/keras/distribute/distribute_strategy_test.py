@@ -1088,10 +1088,6 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
   @ds_combinations.generate(all_strategy_combinations())
   def test_predict_on_dataset_with_unknown_cardinality_without_steps(
       self, distribution, mode):
-    # TODO(b/155867206): Investigate why this test occasionally segfaults on TPU
-    # in eager mode.
-    if mode == 'eager' and _is_tpu_strategy(distribution):
-      self.skipTest('caused segfault with TPU in eager mode.')
 
     if mode == 'graph' and _is_tpu_strategy(distribution):
       self.skipTest('partial batch not supported with TPU in graph mode.')
