@@ -555,11 +555,8 @@ struct HloLegalizeToLhlo
     ConversionTarget target(context);
     target.addLegalDialect<lmhlo::LmhloDialect>();
     target.addLegalDialect<StandardOpsDialect>();
-    target.addLegalOp<ModuleOp>();
     target.addIllegalOp<mlir::TensorLoadOp>();
     target.addIllegalOp<mlir::TensorStoreOp>();
-    target.addLegalOp<ModuleTerminatorOp>();
-    target.addLegalOp<TensorFromElementsOp>();
     target.addIllegalDialect<mhlo::MhloDialect>();
 
     BufferizeTypeConverter converter;
@@ -645,7 +642,7 @@ void populateHLOToLHLOConversionPattern(MLIRContext* context,
       HloToLhloReturnOpConverter,
       HloToLhloTensorLoadOpConverter,
       HloToLhloTensorStoreOpConverter
-  >(context);
+  >(*converter, context);
   // clang-format on
 }
 
