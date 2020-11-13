@@ -843,7 +843,7 @@ class ImageDataGenerator(image.ImageDataGenerator):
         save_prefix: Str (default: `''`). Prefix to use for filenames of saved
           pictures (only relevant if `save_to_dir` is set).
         save_format: one of "png", "jpeg", "bmp", "pdf", "ppm", "gif", "tif", "jpg"
-        (only relevant if `save_to_dir` is set). Default: "png".
+            (only relevant if `save_to_dir` is set). Default: "png".
         subset: Subset of data (`"training"` or `"validation"`) if
           `validation_split` is set in `ImageDataGenerator`.
 
@@ -930,7 +930,7 @@ class ImageDataGenerator(image.ImageDataGenerator):
         save_prefix: Str. Prefix to use for filenames of saved pictures (only
           relevant if `save_to_dir` is set).
         save_format: one of "png", "jpeg", "bmp", "pdf", "ppm", "gif", "tif", "jpg" 
-        (only relevant if `save_to_dir` is set). Default: "png".
+            (only relevant if `save_to_dir` is set). Default: "png".
         follow_links: Whether to follow symlinks inside
             class subdirectories (default: False).
         subset: Subset of data (`"training"` or `"validation"`) if
@@ -1045,7 +1045,7 @@ class ImageDataGenerator(image.ImageDataGenerator):
         save_prefix: str. Prefix to use for filenames of saved pictures (only
           relevant if `save_to_dir` is set).
         save_format: one of "png", "jpeg", "bmp", "pdf", "ppm", "gif", "tif", "jpg" 
-        (only relevant if `save_to_dir` is set). Default: "png".
+            (only relevant if `save_to_dir` is set). Default: "png".
         subset: Subset of data (`"training"` or `"validation"`) if
           `validation_split` is set in `ImageDataGenerator`.
         interpolation: Interpolation method used to resample the image if the
