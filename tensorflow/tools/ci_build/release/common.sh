@@ -256,7 +256,14 @@ function copy_to_new_project_name {
 
   ORIGINAL_PROJECT_NAME_DASH="${ORIGINAL_PROJECT_NAME//_/-}"
   NEW_PROJECT_NAME_DASH="${NEW_PROJECT_NAME//_/-}"
-  sed -i.bak "s/${ORIGINAL_PROJECT_NAME_DASH}/${NEW_PROJECT_NAME_DASH}/g" "${NEW_WHL_DIR_PREFIX}.dist-info/METADATA"
+
+  # We need to change the name in the METADATA file, but we need to ensure that
+  # all other occurences of the name stay the same, otherwise things such as
+  # URLs and depedencies might be broken (for example, replacing without care
+  # might transform a `tensorflow_estimator` dependency into
+  # `tensorflow_gpu_estimator`, which of course does not exist -- except by
+  # manual upload of a manually altered `tensorflow_estimator` package)
+  sed -i.bak "s/Name: ${ORIGINAL_PROJECT_NAME_DASH}/Name: ${NEW_PROJECT_NAME_DASH}/g" "${NEW_WHL_DIR_PREFIX}.dist-info/METADATA"
 
   ${PYTHON_CMD} -m wheel pack .
   # Debug
