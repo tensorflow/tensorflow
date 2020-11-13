@@ -857,7 +857,7 @@ class ImageDataGenerator(image.ImageDataGenerator):
             If `y` is None, only the numpy array `x` is returned.
     Raises:
       ValueError: If the Value of the argument, `subset` is other than "training" or "validation".
-    
+
     """
     return NumpyArrayIterator(
         x,
@@ -929,7 +929,7 @@ class ImageDataGenerator(image.ImageDataGenerator):
           generated (useful for visualizing what you are doing).
         save_prefix: Str. Prefix to use for filenames of saved pictures (only
           relevant if `save_to_dir` is set).
-        save_format: One of "png", "jpeg", "bmp", "pdf", "ppm", "gif", "tif", "jpg"
+        save_format: one of "png", "jpeg", "bmp", "pdf", "ppm", "gif", "tif", "jpg" 
             (only relevant if `save_to_dir` is set). Default: "png".
         follow_links: Whether to follow symlinks inside
             class subdirectories (default: False).
@@ -1044,7 +1044,7 @@ class ImageDataGenerator(image.ImageDataGenerator):
           generated (useful for visualizing what you are doing).
         save_prefix: str. Prefix to use for filenames of saved pictures (only
           relevant if `save_to_dir` is set).
-        save_format: One of "png", "jpeg", "bmp", "pdf", "ppm", "gif", "tif", "jpg"
+        save_format: one of "png", "jpeg", "bmp", "pdf", "ppm", "gif", "tif", "jpg" 
             (only relevant if `save_to_dir` is set). Default: "png".
         subset: Subset of data (`"training"` or `"validation"`) if
           `validation_split` is set in `ImageDataGenerator`.
