@@ -602,6 +602,10 @@ build:release_windows_common --config=release_common
 build:release_windows_common --define=no_tensorflow_py_deps=true
 build:release_windows_common --announce_rc
 
+# First available in VS 16.4. Speeds Windows compile times by a lot. See
+# https://groups.google.com/a/tensorflow.org/d/topic/build/SsW98Eo7l3o/discussion
+build:release_windows_common --copt=/d2ReducedOptimizeHugeFunctions --host_copt=/d2ReducedOptimizeHugeFunctions
+
 build:release_cpu_windows --config=release_windows_common
 
 build:release_gpu_windows --config=release_windows_common
