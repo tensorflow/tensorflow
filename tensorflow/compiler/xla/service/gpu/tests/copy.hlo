@@ -4,10 +4,10 @@
 // CHECK:         %[[VAL_0:.*]] = alloca i32, align 4
 // CHECK:         %[[VAL_1:.*]] = alloca i32, align 4
 // CHECK:         %[[VAL_2:.*]] = getelementptr inbounds i8, i8* %[[VAL_3:.*]], i64 0
-// CHECK:         %[[VAL_4:.*]] = bitcast i8* %[[VAL_2]] to [100 x [200 x float]]*
+// CHECK:         %[[VAL_4:.*]] = bitcast i8* %[[VAL_2]] to [200 x [100 x float]]*
 // CHECK:         %[[VAL_5:.*]] = getelementptr inbounds i8, i8* %[[VAL_6:.*]], i64 0
-// CHECK:         %[[VAL_7:.*]] = bitcast i8* %[[VAL_5]] to [200 x [100 x float]]*
-// CHECK:         %[[VAL_8:.*]] = bitcast [100 x [200 x float]]* %[[VAL_4]] to [1 x [100 x [200 x float]]]*
+// CHECK:         %[[VAL_7:.*]] = bitcast i8* %[[VAL_5]] to [100 x [200 x float]]*
+// CHECK:         %[[VAL_8:.*]] = bitcast [100 x [200 x float]]* %[[VAL_7]] to [1 x [100 x [200 x float]]]*
 // CHECK:         %[[VAL_9:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !2
 // CHECK:         %[[VAL_10:.*]] = urem i32 %[[VAL_9]], 32
 // CHECK:         %[[VAL_11:.*]] = udiv i32 %[[VAL_9]], 32
@@ -88,7 +88,7 @@
 // CHECK:       output_x_in_tile-true:                            ; preds = %[[VAL_59]]
 // CHECK:         %[[VAL_72:.*]] = getelementptr [32 x [33 x float]], [32 x [33 x float]] addrspace(3)* @b.tile0, i64 0, i32 %[[VAL_65]], i32 %[[VAL_63]]
 // CHECK:         %[[VAL_73:.*]] = load float, float addrspace(3)* %[[VAL_72]], align 4
-// CHECK:         %[[VAL_74:.*]] = bitcast [200 x [100 x float]]* %[[VAL_7]] to [1 x [200 x [100 x float]]]*
+// CHECK:         %[[VAL_74:.*]] = bitcast [200 x [100 x float]]* %[[VAL_4]] to [1 x [200 x [100 x float]]]*
 // CHECK:         %[[VAL_75:.*]] = getelementptr inbounds [1 x [200 x [100 x float]]], [1 x [200 x [100 x float]]]* %[[VAL_74]], i32 0, i32 0, i32 %[[VAL_64]], i32 %[[VAL_66]]
 // CHECK:         store float %[[VAL_73]], float* %[[VAL_75]], align 4
 // CHECK:         br label %[[VAL_55]]

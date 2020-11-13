@@ -73,7 +73,6 @@ struct MlirEmitterInput {
 };
 
 // Convenience struct that contains useful data structures in MLIR emitter.
-// Not all fields may be filled. It's entiredly dependent on the uses.
 struct MlirEmitterContext {
   void SetOperation(mlir::Operation* op);
 
@@ -157,14 +156,11 @@ class IrEmitterUnnested : public IrEmitter,
   }
 
   Status DefaultAction(HloInstruction* hlo) override;
-  Status DefaultActionForMlir(MlirEmitterInput input);
 
   // IrEmitterUnnested handles the following instructions differently from
   // IrEmitter. It also mixes in some special handling for custom kernels
   // via the ThunkEmitter.
   Status HandleCopy(HloInstruction* copy) override;
-  Status EmitCopyForMlir(MlirEmitterInput input);
-
   Status HandleConditional(HloInstruction* conditional) override;
   Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleCustomCall(HloInstruction* custom_call) override;
@@ -471,15 +467,12 @@ class IrEmitterUnnested : public IrEmitter,
 
   // Returns true if a 0-2-1 tiling algorithm is already used to emit the kernel
   // for the hlo instruction.
-  StatusOr<bool> CheckAndEmitHloWithTile021(MlirEmitterInput input);
+  bool CheckAndEmitHloWithTile021(HloInstruction* hlo);
 
   // Emits a kernel for the hlo instruction using a 0-2-1 tiling algorithm and
   // sets the corresponding launch dimensions. This is a helper to support
   // the implementation of CheckAndEmitHloWithTile021.
-  void EmitHlo021Tile(mlir::Operation* op, Thunk* kernel_thunk,
-                      const MlirEmitterContext& context,
-                      absl::Span<const llvm_ir::IrArray> operand_arrays,
-                      absl::Span<const llvm_ir::IrArray> output_arrays,
+  void EmitHlo021Tile(HloInstruction* hlo, Thunk* kernel_thunk,
                       absl::Span<const int64> reduced_output_dims,
                       absl::Span<const int64> tiled_param_ids);
 
@@ -534,8 +527,7 @@ class IrEmitterUnnested : public IrEmitter,
   // y_loc: The y coordinate within a tile.
   // x_loc: The x coordinate within a tile.
   void EmitTileElementForCopy(
-      const Shape& output_shape, const llvm_ir::IrArray& ir_array,
-      const llvm_ir::IrArray::Index& index,
+      HloInstruction* hlo, const llvm_ir::IrArray::Index& index,
       const KernelMappingScheme& mapping_scheme, llvm::Value* y_loc,
       llvm::Value* x_loc, absl::Span<llvm::Value* const> param_shmem_buffers);
 
@@ -544,10 +536,7 @@ class IrEmitterUnnested : public IrEmitter,
   // y_loc: The y coordinate within a tile.
   // x_loc: The x coordinate within a tile.
   void EmitTileElementForFusion(
-      mlir::lmhlo::FusionOp fusion,
-      absl::Span<const llvm_ir::IrArray> operand_arrays,
-      absl::Span<const llvm_ir::IrArray> output_arrays,
-      const llvm_ir::IrArray::Index& index,
+      HloInstruction* hlo, const llvm_ir::IrArray::Index& index,
       const KernelMappingScheme& mapping_scheme, llvm::Value* y_loc,
       llvm::Value* x_loc, absl::Span<llvm::Value* const> param_shmem_buffers);
 
