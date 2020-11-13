@@ -172,7 +172,7 @@ TEST(XPlaneToTfDataStatsTest, HostInputPipeline) {
           }
         }
         is_input_bound: true
-        summary: "Your profile has a tf.data input pipeline slower than 50 us. Below shows a bottleneck in the slow input pipeline and a suggestion on how to fix it."
+        summary: "Your profile has a tf.data input pipeline slower than 50 us. For each slow input pipeline, below shows a bottleneck in the input pipeline and a suggestion on how to fix it."
       )pb"));
 }
 
@@ -211,7 +211,6 @@ TEST(XPlaneToTfDataStatsTest, DeviceInputPipeline) {
   // Device input pipeline is not considered for bottleneck analysis.
   EXPECT_THAT(
       combined_tf_data_stats, EqualsProto(R"pb(
-        bottleneck_analysis: {}
         tf_data_stats: {
           key: "host1"
           value: {
@@ -401,7 +400,7 @@ TEST(XPlaneToTfDataStatsTest, MapAndBatch) {
           }
         }
         is_input_bound: true
-        summary: "Your profile has a tf.data input pipeline slower than 50 us. Below shows a bottleneck in the slow input pipeline and a suggestion on how to fix it."
+        summary: "Your profile has a tf.data input pipeline slower than 50 us. For each slow input pipeline, below shows a bottleneck in the input pipeline and a suggestion on how to fix it."
       )pb"));
 }
 

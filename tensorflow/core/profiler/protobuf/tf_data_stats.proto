@@ -112,7 +112,7 @@ message CombinedTfDataStats {
   // Summary of the analysis.
   string summary = 4;
   // Bottleneck analysis result.
-  TfDataBottleneckAnalysis bottleneck_analysis = 1;
+  repeated TfDataBottleneckAnalysis bottleneck_analysis = 1;
   // TfDataStats per host.
   map<string, TfDataStats> tf_data_stats = 2;
 }
