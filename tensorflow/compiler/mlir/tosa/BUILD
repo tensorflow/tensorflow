@@ -24,3 +24,12 @@ package_group(
     packages = [
     ],
 )
+
+# This can be removed once the package contains real targets.
+# It is merely needed to satisfy Bazel's need to expand exclusions
+# to something.
+cc_library(
+    name = "placeholder",
+    srcs = [],
+    hdrs = [],
+)
