@@ -13,7 +13,6 @@ VALID_LIBS = [
     "astor_archive",
     "astunparse_archive",
     "boringssl",
-    "com_github_googleapis_googleapis",
     "com_github_googlecloudplatform_google_cloud_cpp",
     "com_github_grpc_grpc",
     "com_google_protobuf",
