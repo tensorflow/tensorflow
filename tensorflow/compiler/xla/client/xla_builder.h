@@ -872,6 +872,10 @@ class XlaBuilder {
 
   XlaOp SetDimensionSize(XlaOp operand, XlaOp val, int64 dimension);
 
+  virtual StatusOr<XlaOp> SetDimensionSizeInternal(const Shape& shape,
+                                                   XlaOp operand, XlaOp val,
+                                                   int64 dimension);
+
   XlaOp RemoveDynamicDimension(XlaOp operand, int64 dimension);
 
   virtual StatusOr<XlaOp> AddInstruction(HloInstructionProto&& instr,

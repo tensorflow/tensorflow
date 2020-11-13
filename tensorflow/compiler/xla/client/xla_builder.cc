@@ -3238,29 +3238,36 @@ XlaOp XlaBuilder::RemoveDynamicDimension(XlaOp operand, int64 dimension) {
 
 XlaOp XlaBuilder::SetDimensionSize(XlaOp operand, XlaOp val, int64 dimension) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     TF_ASSIGN_OR_RETURN(const Shape* val_shape, GetShapePtr(val));
 
     TF_ASSIGN_OR_RETURN(Shape shape,
                         ShapeInference::InferSetDimensionSizeShape(
                             *operand_shape, *val_shape, dimension));
-    // Setting an op's dynamic dimension to the static size is a noop.
-    TF_ASSIGN_OR_RETURN(const HloInstructionProto* val_proto,
-                        LookUpInstruction(val));
-    if (StringToHloOpcode(val_proto->opcode()).ValueOrDie() ==
-        HloOpcode::kConstant) {
-      TF_ASSIGN_OR_RETURN(auto literal,
-                          Literal::CreateFromProto(val_proto->literal(), true));
-      if (literal.Get<int32>({}) == shape.dimensions(dimension)) {
-        return operand;
-      }
-    }
-    *instr.mutable_shape() = shape.ToProto();
-    instr.add_dimensions(dimension);
-    return AddInstruction(std::move(instr), HloOpcode::kSetDimensionSize,
-                          {operand, val});
+    return SetDimensionSizeInternal(shape, operand, val, dimension);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::SetDimensionSizeInternal(const Shape& shape,
+                                                     XlaOp operand, XlaOp val,
+                                                     int64 dimension) {
+  // Setting an op's dynamic dimension to the static size is a noop.
+  TF_ASSIGN_OR_RETURN(const HloInstructionProto* val_proto,
+                      LookUpInstruction(val));
+  if (StringToHloOpcode(val_proto->opcode()).ValueOrDie() ==
+      HloOpcode::kConstant) {
+    TF_ASSIGN_OR_RETURN(auto literal,
+                        Literal::CreateFromProto(val_proto->literal(), true));
+    if (literal.Get<int32>({}) == shape.dimensions(dimension)) {
+      return operand;
+    }
+  }
+
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+  instr.add_dimensions(dimension);
+  return AddInstruction(std::move(instr), HloOpcode::kSetDimensionSize,
+                        {operand, val});
 }
 
 StatusOr<bool> XlaBuilder::IsConstant(XlaOp operand) const {

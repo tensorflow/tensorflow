@@ -304,6 +304,18 @@ StatusOr<XlaOp> MlirHloBuilder::ScatterInternal(
   return MakeXlaOp(op);
 }
 
+StatusOr<XlaOp> MlirHloBuilder::SetDimensionSizeInternal(const Shape& shape,
+                                                         XlaOp operand,
+                                                         XlaOp val,
+                                                         int64 dimension) {
+  TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
+                                         shape, builder_));
+  auto op = builder_.create<mlir::mhlo::SetDimensionSizeOp>(
+      loc_, ty, GetValue(operand), GetValue(val),
+      builder_.getI64IntegerAttr(dimension));
+  return MakeXlaOp(op);
+}
+
 StatusOr<XlaOp> MlirHloBuilder::RngOpInternal(
     RandomDistribution distribution, absl::Span<const XlaOp> parameters,
     const Shape& shape) {

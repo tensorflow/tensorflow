@@ -182,6 +182,9 @@ class MlirHloBuilder : public XlaBuilder {
       const ScatterDimensionNumbers& dimension_numbers, bool indices_are_sorted,
       bool unique_indices) override;
 
+  StatusOr<XlaOp> SetDimensionSizeInternal(const Shape& shape, XlaOp operand,
+                                           XlaOp val, int64 dimension) override;
+
   StatusOr<XlaOp> RngOpInternal(RandomDistribution distribution,
                                 absl::Span<const XlaOp> parameters,
                                 const Shape& shape) override;
