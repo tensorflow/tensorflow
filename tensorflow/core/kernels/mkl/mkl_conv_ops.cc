@@ -291,10 +291,9 @@ class MklConvFwdPrimitive : public MklPrimitive {
 
     // Create convolution primitive and add it to net
     if (!convFwdDims.bias_dims.empty()) {
-      context_.bias_mem.reset(
-          new memory({{convFwdDims.bias_dims}, MklDnnType<Tbias>(),
-		       memory::format_tag::x},
-                     cpu_engine_, DummyData));
+      context_.bias_mem.reset(new memory(
+          {{convFwdDims.bias_dims}, MklDnnType<Tbias>(), memory::format_tag::x},
+          cpu_engine_, DummyData));
       context_.conv_fwd.reset(new convolution_forward(*context_.fwd_pd));
       context_.fwd_primitives_args.push_back(
           {{MKLDNN_ARG_SRC, *context_.src_mem},
@@ -465,15 +464,17 @@ class MklConvOp : public OpKernel {
       OP_REQUIRES(context, dilations_.size() == 5,
                   errors::InvalidArgument("Dilation rates field must "
                                           "specify 5 dimensions"));
-      OP_REQUIRES(context, (GetTensorDim(dilations_, data_format_, 'N') == 1 &&
-                            GetTensorDim(dilations_, data_format_, 'C') == 1),
+      OP_REQUIRES(context,
+                  (GetTensorDim(dilations_, data_format_, 'N') == 1 &&
+                   GetTensorDim(dilations_, data_format_, 'C') == 1),
                   errors::InvalidArgument(
                       "Current implementation does not yet support "
                       "dilations rates in the batch and depth dimensions."));
       OP_REQUIRES(
-          context, (GetTensorDim(dilations_, data_format_, '0') > 0 &&
-                    GetTensorDim(dilations_, data_format_, '1') > 0 &&
-                    GetTensorDim(dilations_, data_format_, '2') > 0),
+          context,
+          (GetTensorDim(dilations_, data_format_, '0') > 0 &&
+           GetTensorDim(dilations_, data_format_, '1') > 0 &&
+           GetTensorDim(dilations_, data_format_, '2') > 0),
           errors::InvalidArgument("Dilated rates should be larger than 0."));
     }
   }
@@ -868,14 +869,14 @@ class MklConvOp : public OpKernel {
                 kInputIndex_Add, kOutputIndex_Dst, output_tf_shape,
                 output_tensor)) {
           return;
-	}
+        }
       }
       // Check if reorder is needed
       if (add_mkl_shape == *output_mkl_shape &&
           ForwardMklTensorInToOutWithMklShape(context, kInputIndex_Add,
                                               kOutputIndex_Dst, output_tensor,
                                               add_mkl_shape, false) &&
-	  !native_format) {
+          !native_format) {
         return;
       } else {
         AllocateOutputSetMklShape(context, kOutputIndex_Dst, output_tensor,
@@ -1535,7 +1536,7 @@ class MklQuantizedConv2DOp
       }
 
       auto bias_md = memory::desc({static_cast<int>(bias_tensor.NumElements())},
-                            MklDnnType<Tbias>(), memory::format_tag::x);
+                                  MklDnnType<Tbias>(), memory::format_tag::x);
       void* bias_buf = static_cast<void*>(
           const_cast<Tbias*>(bias_tensor.flat<Tbias>().data()));
       if (!input_bias_) {
@@ -1749,11 +1750,12 @@ class MklQuantizedConv2DSumReluOp
         summand_mkl_shape.SetElemType(MklDnnType<Toutput>());
       }
       // TODO(intel-tf): Support cases when summand cannot be forwarded.
-      OP_REQUIRES(context, ForwardMklTensorInToOutWithMklShape(
-                               context, summand_idx, 0, output_tensor,
-                               summand_mkl_shape, false),
-                  errors::InvalidArgument(
-                      "Summand cannot be forwarded in the current fusion."));
+      OP_REQUIRES(
+          context,
+          ForwardMklTensorInToOutWithMklShape(
+              context, summand_idx, 0, output_tensor, summand_mkl_shape, false),
+          errors::InvalidArgument(
+              "Summand cannot be forwarded in the current fusion."));
       return;
     }
     MklConvOp<Device, Tinput, qint8, Tbias, Toutput, Ttemp_output, int32,
