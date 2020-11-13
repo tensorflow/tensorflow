@@ -858,7 +858,6 @@ struct ResourceSparseApplyAdadelta<GPUDevice, T, Tindex> {
         config.thread_per_block, 0, d.stream(), var.data(), accum.data(),
         accum_update.data(), lr.data(), rho.data(), epsilon.data(), grad.data(),
         indices.data(), first_dim_size, grad_size, indices_size));
-    return static_cast<Tindex>(-1);
   }
 };
 

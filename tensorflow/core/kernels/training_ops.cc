@@ -768,7 +768,6 @@ struct ResourceSparseApplyAdadelta<CPUDevice, T, Tindex> {
       a_update = a_update * a_update.constant(rho()) +
                  update.square() * update.constant(static_cast<T>(1) - rho());
     }
-    return -1;
   }
 };
 
@@ -1271,12 +1270,10 @@ class SparseApplyAdadeltaOp : public OpKernel {
       auto indices_vec = indices.vec<Tindex>();
 
       const Device& device = ctx->template eigen_device<Device>();
-      const Tindex bad_i =
-          functor::ResourceSparseApplyAdadelta<Device, T, Tindex>()(
-              device, var.flat_outer_dims<T>(), accum_grad.flat_outer_dims<T>(),
-              accum_update.flat_outer_dims<T>(), lr.scalar<T>(),
-              rho.scalar<T>(), epsilon.scalar<T>(), grad.flat_outer_dims<T>(),
-              indices_vec);
+      functor::ResourceSparseApplyAdadelta<Device, T, Tindex>()(
+          device, var.flat_outer_dims<T>(), accum_grad.flat_outer_dims<T>(),
+          accum_update.flat_outer_dims<T>(), lr.scalar<T>(), rho.scalar<T>(),
+          epsilon.scalar<T>(), grad.flat_outer_dims<T>(), indices_vec);
     }
 
     MaybeForwardRefInputToRefOutput(ctx, 0, 0);
