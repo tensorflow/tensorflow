@@ -100,23 +100,18 @@ def testWorkerTrainingState(cluster_spec, task_id, backup_dir, create_barrier):
 
 class WorkerTrainingStateTest(test.TestCase, parameterized.TestCase):
 
-  def create_cluster_spec(self, num_workers):
-    worker_ports = [test_base.pick_unused_port() for _ in range(num_workers)]
-    cluster_dict = {}
-    if num_workers > 0:
-      cluster_dict['worker'] = ['localhost:%s' % port for port in worker_ports]
-    self._cluster_spec = cluster_dict
-
   def testWorkerTrainingState(self):
     try:
       num_workers = 3
-      self._cluster_spec = test_base.create_cluster_spec(num_workers=num_workers)
+      self._cluster_spec = test_base.create_cluster_spec(
+          num_workers=num_workers)
       pool = mp.Pool(num_workers)
-      
+
       backup_dir = tempfile.mkdtemp(dir=googletest.GetTempDir())
       with mp.Manager() as man:
         create_barrier = man.Barrier(num_workers)
-        args = [(self._cluster_spec, x, backup_dir, create_barrier) for x in range(num_workers)]
+        args = [(self._cluster_spec, x, backup_dir, create_barrier)
+                for x in range(num_workers)]
         pool.starmap(testWorkerTrainingState, args)
     except Exception as e:
       print(e, flush=True)
