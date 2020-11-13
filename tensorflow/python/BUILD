@@ -5211,6 +5211,9 @@ cuda_py_test(
     srcs = ["ops/control_flow_ops_test.py"],
     python_version = "PY3",
     shard_count = 2,
+    tags = [
+        "no_cuda_asan",  # b/173241932
+    ],
     xla_tags = [
         "no_cuda_asan",  # times out
     ],
