@@ -42,20 +42,13 @@ limitations under the License.
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 
-#ifndef ENABLE_MKLDNN_V1
-using mkldnn::convolution_direct;
-#endif  // !ENABLE_MKLDNN_V1
 using mkldnn::convolution_forward;
 using mkldnn::prop_kind;
 using mkldnn::stream;
 
 namespace tensorflow {
 
-#ifdef ENABLE_MKLDNN_V1
 #define MKLDNN_SIZE_DTYPE memory::dim
-#else
-#define MKLDNN_SIZE_DTYPE int
-#endif  // ENABLE_MKLDNN_V1
 
 using ConvFwdDesc = mkldnn::convolution_forward::desc;
 using ConvFwdPd = mkldnn::convolution_forward::primitive_desc;
@@ -209,9 +202,8 @@ class MklDnnConvUtil {
                                         filter_shape.DebugString()));
 
     for (int i = 0; i < ((strides_.size() == 4) ? 3 : 5); i++) {
-      OP_REQUIRES(context_,
-                  FastBoundsCheck(filter_shape.dim_size(i),
-                                  std::numeric_limits<int>::max()),
+      OP_REQUIRES(context_, FastBoundsCheck(filter_shape.dim_size(i),
+                                            std::numeric_limits<int>::max()),
                   errors::InvalidArgument("filter too large"));
     }
 
