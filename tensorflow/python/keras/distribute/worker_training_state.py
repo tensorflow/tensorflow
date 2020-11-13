@@ -43,14 +43,15 @@ class WorkerTrainingState(object):
   This allows model and epoch information to be saved periodically and restore
   for fault-tolerance, also known as preemption-recovery purpose.
   """
+
   def __init__(self, model, checkpoint_dir):
     self._model = model
 
     # The epoch at which the checkpoint is saved. Used for fault-tolerance.
     # GPU device only has int64 dtype registered VarHandleOp.
     self._ckpt_saved_epoch = variables.Variable(
-        initial_value=constant_op.constant(CKPT_SAVED_EPOCH_UNUSED_VALUE,
-                                           dtype=dtypes.int64),
+        initial_value=constant_op.constant(
+            CKPT_SAVED_EPOCH_UNUSED_VALUE, dtype=dtypes.int64),
         name='ckpt_saved_epoch')
 
     # Variable initialization.
