@@ -752,11 +752,12 @@ def TF_WhileRegionOp : TF_Op<"WhileRegion",
   let arguments = (ins
     Variadic<AnyTensor>:$input,
 
-    // Used to map StatelessWhile and While op defined in TensorFlow to a common
-    // op.
     DefaultValuedAttr<TF_ShapeAttrArray, "{}">:$output_shapes,
     DefaultValuedAttr<I64Attr, "10">:$parallel_iterations,
-    DefaultValuedAttr<BoolAttr, "false">:$is_stateless
+
+    // Used to map StatelessWhile and While op defined in TensorFlow to a common
+    // op.
+    BoolAttr:$is_stateless
   );
   let results = (outs Variadic<AnyTensor>:$output);
 
