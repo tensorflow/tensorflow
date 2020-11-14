@@ -22,7 +22,7 @@ sudo pip install --upgrade twine
 
 # Copy and rename to tf_nightly
 for f in $(ls "${KOKORO_GFILE_DIR}"/tf_nightly_gpu*dev*cp3*-cp3*-win_amd64.whl); do
-  copy_to_new_project_name "${f}" tf_nightly /c/Python36/python
+  copy_to_new_project_name "${f}" tf_nightly python
 done
 
 # Upload the built packages to pypi.
