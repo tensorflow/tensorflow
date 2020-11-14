@@ -264,7 +264,8 @@ void ConvertElementsAttr(const mlir::DenseElementsAttr attr,
   if (attr.isSplat()) {
     output->Add(attr.getSplatValue<T>());
   } else {
-    for (auto value : attr.getValues<T>()) output->Add(value);
+    output->Reserve(attr.getNumElements());
+    for (auto value : attr.getValues<T>()) output->AddAlreadyReserved(value);
   }
 }
 
@@ -275,8 +276,9 @@ void ConvertHalfElementsAttr(const mlir::DenseElementsAttr attr,
   if (attr.isSplat()) {
     output->Add(attr.getSplatValue<Eigen::half>().x);
   } else {
+    output->Reserve(attr.getNumElements());
     for (const Eigen::half value : attr.getValues<Eigen::half>())
-      output->Add(value.x);
+      output->AddAlreadyReserved(value.x);
   }
 }
 
@@ -287,7 +289,9 @@ void ConvertIntElementsAttr(const mlir::DenseIntElementsAttr attr,
   if (attr.isSplat()) {
     output->Add((*attr.begin()).getSExtValue());
   } else {
-    for (const llvm::APInt val : attr) output->Add(val.getSExtValue());
+    output->Reserve(attr.getNumElements());
+    for (const llvm::APInt val : attr)
+      output->AddAlreadyReserved(val.getSExtValue());
   }
 }
 
@@ -296,8 +300,9 @@ void ConvertBfloat16ElementsAttr(const mlir::DenseElementsAttr attr,
   if (attr.isSplat()) {
     output->Add(attr.getSplatValue<bfloat16>().value);
   } else {
+    output->Reserve(attr.getNumElements());
     for (const bfloat16 value : attr.getValues<bfloat16>())
-      output->Add(value.value);
+      output->AddAlreadyReserved(value.value);
   }
 }
 
