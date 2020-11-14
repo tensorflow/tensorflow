@@ -20,7 +20,7 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-uint64 GetCurrentTimeNanos() {
+int64 GetCurrentTimeNanos() {
   // absl::GetCurrentTimeNanos() is much faster than EnvTime::NowNanos().
   // It is wrapped under tensorflow::profiler::GetCurrentTimeNanos to avoid ODR
   // violation and to allow switching to yet another implementation if required.

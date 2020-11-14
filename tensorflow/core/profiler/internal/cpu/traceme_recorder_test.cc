@@ -15,12 +15,13 @@ limitations under the License.
 #include "tensorflow/core/profiler/internal/cpu/traceme_recorder.h"
 
 #include <atomic>
-#include <istream>
 #include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/env_time.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/utils/time_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -41,15 +43,15 @@ MATCHER_P(Named, name, "") { return arg.name == name; }
 constexpr static uint64 kNanosInSec = 1000000000;
 
 TEST(RecorderTest, SingleThreaded) {
-  uint64 start_time = Env::Default()->NowNanos();
-  uint64 end_time = start_time + kNanosInSec;
+  int64 start_time = GetCurrentTimeNanos();
+  int64 end_time = start_time + kNanosInSec;
 
-  TraceMeRecorder::Record({1, "before", start_time, end_time});
+  TraceMeRecorder::Record({"before", start_time, end_time});
   TraceMeRecorder::Start(/*level=*/1);
-  TraceMeRecorder::Record({2, "during1", start_time, end_time});
-  TraceMeRecorder::Record({3, "during2", start_time, end_time});
+  TraceMeRecorder::Record({"during1", start_time, end_time});
+  TraceMeRecorder::Record({"during2", start_time, end_time});
   auto results = TraceMeRecorder::Stop();
-  TraceMeRecorder::Record({4, "after", start_time, end_time});
+  TraceMeRecorder::Record({"after", start_time, end_time});
 
   ASSERT_EQ(results.size(), 1);
   EXPECT_THAT(results[0].events,
@@ -83,15 +85,14 @@ TEST(RecorderTest, Multithreaded) {
   thread::ThreadPool pool(Env::Default(), "testpool", kNumThreads);
   std::atomic<int> thread_count = {0};
   for (int i = 0; i < kNumThreads; i++) {
-    pool.Schedule([&start, &stop, &thread_count, i] {
+    pool.Schedule([&start, &stop, &thread_count] {
       uint64 j = 0;
       bool was_active = false;
-      auto record_event = [&j, i]() {
-        uint64 start_time = Env::Default()->NowNanos();
-        uint64 end_time = start_time + kNanosInSec;
-        TraceMeRecorder::Record({/*activity_id=*/j++,
-                                 /*name=*/absl::StrCat(i), start_time,
-                                 end_time});
+      auto record_event = [&j]() {
+        int64 start_time = GetCurrentTimeNanos();
+        int64 end_time = start_time + kNanosInSec;
+        TraceMeRecorder::Record(
+            {/*name=*/absl::StrCat(j++), start_time, end_time});
       };
       thread_count.fetch_add(1, std::memory_order_relaxed);
       start.WaitForNotification();
@@ -121,15 +122,17 @@ TEST(RecorderTest, Multithreaded) {
   }
 
   // For each thread, keep track of which events we've seen.
-  struct {
+  struct ThreadState {
     bool split_session = false;
     bool overlapping_sessions = false;
     std::set<uint64> events;
-  } thread_state[kNumThreads];
+  };
+  absl::flat_hash_map<uint32 /*tid*/, ThreadState> thread_state;
   // We expect each thread to eventually have multiple events, not all in a
   // contiguous range.
   auto done = [&thread_state] {
-    for (const auto& t : thread_state) {
+    for (const auto& id_and_thread : thread_state) {
+      auto& t = id_and_thread.second;
       if (t.events.size() < 2) return false;
     }
     return true;
@@ -153,20 +156,19 @@ TEST(RecorderTest, Multithreaded) {
     auto results = TraceMeRecorder::Stop();
     for (const auto& thread : results) {
       if (thread.events.empty()) continue;
-      std::istringstream ss(thread.events.front().name);
-      int thread_index = 0;
-      ss >> thread_index;
-      auto& state = thread_state[thread_index];
+      auto& state = thread_state[thread.thread.tid];
 
       std::set<uint64> session_events;
       uint64 current = 0;
       for (const auto& event : thread.events) {
-        session_events.emplace(event.activity_id);
+        uint64 activity_id;
+        ASSERT_TRUE(absl::SimpleAtoi(event.name, &activity_id));
+        session_events.emplace(activity_id);
         // Session events should be contiguous.
-        if (current != 0 && event.activity_id != current + 1) {
+        if (current != 0 && activity_id != current + 1) {
           state.split_session = true;
         }
-        current = event.activity_id;
+        current = activity_id;
       }
 
       for (const auto& event : session_events) {
@@ -182,7 +184,8 @@ TEST(RecorderTest, Multithreaded) {
   }
   stop.Notify();
 
-  for (const auto& thread : thread_state) {
+  for (const auto& id_and_thread : thread_state) {
+    auto& thread = id_and_thread.second;
     EXPECT_FALSE(thread.split_session)
         << "Expected contiguous events in a session";
     EXPECT_FALSE(thread.overlapping_sessions) << "Expected disjoint sessions";

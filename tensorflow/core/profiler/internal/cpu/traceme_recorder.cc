@@ -254,7 +254,7 @@ bool TraceMeRecorder::StartRecording(int level) {
   return started;
 }
 
-void TraceMeRecorder::Record(Event event) {
+void TraceMeRecorder::Record(Event&& event) {
   static thread_local ThreadLocalRecorder thread_local_recorder;
   thread_local_recorder.Record(std::move(event));
 }
@@ -270,16 +270,16 @@ TraceMeRecorder::Events TraceMeRecorder::StopRecording() {
   return events;
 }
 
-/*static*/ uint64 TraceMeRecorder::NewActivityId() {
+/*static*/ int64 TraceMeRecorder::NewActivityId() {
   // Activity IDs: To avoid contention over a counter, the top 32 bits identify
   // the originating thread, the bottom 32 bits name the event within a thread.
-  // IDs may be reused after 4 billion events on one thread, or 4 billion
+  // IDs may be reused after 4 billion events on one thread, or 2 billion
   // threads.
-  static std::atomic<uint32> thread_counter(1);  // avoid kUntracedActivity
-  const thread_local static uint32 thread_id =
+  static std::atomic<int32> thread_counter(1);  // avoid kUntracedActivity
+  const thread_local static int32 thread_id =
       thread_counter.fetch_add(1, std::memory_order_relaxed);
   thread_local static uint32 per_thread_activity_id = 0;
-  return static_cast<uint64>(thread_id) << 32 | per_thread_activity_id++;
+  return static_cast<int64>(thread_id) << 32 | per_thread_activity_id++;
 }
 
 }  // namespace profiler
