@@ -44,6 +44,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
+#include "tensorflow/compiler/mlir/xla/hlo_function_importer.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
@@ -546,6 +547,39 @@ Status IrEmitterUnnested::DefaultAction(HloInstruction* hlo) {
   return IrEmitter::DefaultAction(hlo);
 }
 
+Status IrEmitterUnnested::DefaultActionForMlir(MlirEmitterInput input) {
+  // Replace unnested op with a fused nested op.
+  //
+  // TODO(timshen): Ultimately this should be a pass. It's currently not a pass,
+  // because we don't have a fully functioning LMHLO graph yet.
+
+  mlir::Location loc = input.op->getLoc();
+  mlir::lmhlo::FusionOp fusion = nullptr;
+  Shape output_shape;
+  if (auto copy = mlir::dyn_cast<mlir::lmhlo::CopyOp>(input.op)) {
+    fusion = mlir::OpBuilder(copy).create<mlir::lmhlo::FusionOp>(
+        loc, llvm::ArrayRef<mlir::NamedAttribute>());
+    copy.getOperation()->moveBefore(&fusion.region().front().back());
+    mlir::OpBuilder b(copy);
+    auto operand = b.create<mlir::TensorLoadOp>(loc, copy.operand());
+    HloFunctionImporter::SetLayoutForMlir(
+        operand, TypeToShape(copy.operand().getType()));
+    auto fused_copy = b.create<mlir::mhlo::CopyOp>(loc, operand);
+    output_shape = TypeToShape(copy.output().getType());
+    HloFunctionImporter::SetLayoutForMlir(fused_copy, output_shape);
+    b.create<mlir::TensorStoreOp>(loc, fused_copy, copy.output());
+    copy.getOperation()->erase();
+  } else {
+    input.op->dump();
+    LOG(FATAL) << "Unimplemented default action for mlir op";
+  }
+  input.op = fusion;
+  auto ret = EmitLoopFusionFromMlir(
+      input, output_shape,
+      ComputeMaxUnrollFactor(output_shape, hlo_module_config_));
+  return ret;
+}
+
 Status IrEmitterUnnested::HandleDot(HloInstruction* dot) {
   AddThunkToThunkSequence(
       BuildKernelThunk(dot, /*implements_whole_instruction=*/true));
@@ -567,30 +601,54 @@ Status IrEmitterUnnested::HandleConvolution(HloInstruction* convolution) {
 // Input = {dynamic array(with dynamic dimension meta data at the end)}
 // Output = {static array, dynamic_dim0, dynamic_dim1}
 Status IrEmitterUnnested::HandlePadToStatic(HloInstruction* pad_to_static) {
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(pad_to_static));
+  return EmitPadToStaticFromMlir(input);
+}
+
+Status IrEmitterUnnested::EmitPadToStaticFromMlir(MlirEmitterInput mlir_input) {
+  // TODO(jurahul): Create an op to represent PadToStatic.
+  auto pad_to_static = ::mlir::cast<::mlir::lmhlo::CustomCallOp>(mlir_input.op);
   int unroll_factor = 1;
-  string ir_name = IrName(pad_to_static);
-  auto kernel_thunk = BuildKernelThunk(pad_to_static,
-                                       /*implements_whole_instruction=*/true);
-  // pseudo code for padToStatic on a 2d array
+  std::string ir_name = mlir::GetNameFromLoc(pad_to_static.getLoc());
+
+  absl::Span<const BufferAllocation> allocations(
+      ir_emitter_context_->buffer_assignment().Allocations());
+  std::vector<llvm_ir::IrArray> ir_arrays;
+  TF_ASSIGN_OR_RETURN(
+      auto kernel_thunk,
+      BuildKernelThunkForMlir(pad_to_static, mlir_input.thunk_info,
+                              mlir_input.extra_slice, &ir_arrays));
+
+  const llvm_ir::IrArray source_array = ir_arrays[0];
+  const llvm_ir::IrArray output_array = ir_arrays[1];
+  auto output_dim_arrays =
+      absl::Span<const llvm_ir::IrArray>(ir_arrays).subspan(2);
+
+  // pseudo code for PadToStatic on a 2d array
   //   int* source_array = input[0];
   //   int* dest_array = output[0];
-  std::vector<llvm::Value*> dynamic_dims;
-  const Shape& data_shape = ShapeUtil::GetSubshape(pad_to_static->shape(), {0});
-  const Shape& input_shape = pad_to_static->operand(0)->shape();
-  llvm_ir::IrArray data_array = GetIrArray(*pad_to_static, *pad_to_static, {0});
-  llvm::Value* source_buffer = GetBasePointer(*pad_to_static->operand(0));
+  const Shape& data_shape =
+      TypeToShape(pad_to_static.output().front().getType());
+  const Shape& input_shape =
+      TypeToShape(pad_to_static.args().front().getType());
+  llvm::Value* source_buffer = source_array.GetBasePointer();
   llvm::Value* raw_buffer =
       b_.CreateBitCast(source_buffer, b_.getInt8Ty()->getPointerTo());
-  int64 raw_data_size =
-      ShapeUtil::ByteSizeOf(ShapeUtil::MakeStaticShape(input_shape));
+
+  // TODO(jurahul): input_shape here is the static shape of the input (which has
+  // a dynamic shape in XLA). Currently, we are mapping that to a static shaped
+  // memref. When we change that to a more appropriate representation in MLIR,
+  // fix this code to correctly deduce the static shape backing the dynamically
+  // shaped memref.
+  int64 raw_data_size = ShapeUtil::ByteSizeOf(input_shape);
 
   //   int* dyn_dim0_size = source_array + meta_data_offset;
   //   int* dyn_dim1_size = source_array + meta_data_offset + sizeof(int);
-  for (int64 i = 1; i < pad_to_static->shape().tuple_shapes_size(); ++i) {
+  std::vector<llvm::Value*> dynamic_dims;
+  for (int64 i = 1; i < pad_to_static.output().size(); ++i) {
     // Dynamic size of each dimension is attached at the end of the source
     // array(operand(0)). We need to extract these value.
-    const Shape& dim_shape =
-        ShapeUtil::GetSubshape(pad_to_static->shape(), {i});
+    const Shape& dim_shape = TypeToShape(pad_to_static.output()[i].getType());
     TF_RET_CHECK(Shape::Equal()(dim_shape, ShapeUtil::MakeScalarShape(S32)));
 
     const int64 dim_index = i - 1;
@@ -610,8 +668,10 @@ Status IrEmitterUnnested::HandlePadToStatic(HloInstruction* pad_to_static) {
   //     *output[2] = *dyn_dim1_size;
   //   }
   KernelSupportLibrary{&b_}.If("is_thred_0", IsBlock0Thread0(&b_), [&] {
-    for (int64 i = 1; i < pad_to_static->shape().tuple_shapes_size(); ++i) {
-      llvm::Value* dest_dim_size_address = GetBasePointer(*pad_to_static, {i});
+    for (int64 i = 1; i < pad_to_static.output().size(); ++i) {
+      const int64 dim_index = i - 1;
+      llvm::Value* dest_dim_size_address =
+          output_dim_arrays[dim_index].GetBasePointer();
       // output[i] stores dynamic_dim_(i-1)
       b_.CreateStore(dynamic_dims[i - 1],
                      b_.CreateBitCast(dest_dim_size_address,
@@ -650,11 +710,10 @@ Status IrEmitterUnnested::HandlePadToStatic(HloInstruction* pad_to_static) {
     llvm_ir::SetToFirstInsertPoint(if_in_dyn_bounds.true_block, &b_);
     llvm_ir::IrArray::Index dyn_index(linearIndex, input_shape,
                                       absl::MakeSpan(dynamic_dims), &b_);
-    data_array.EmitWriteArrayElement(
+    output_array.EmitWriteArrayElement(
         dyn_index,
-        GetIrArray(*pad_to_static->operand(0), *pad_to_static)
-            .EmitReadArrayElement(array_index, &b_, /*name=*/""),
-        &b_, /*use_linear_index=*/false);
+        source_array.EmitReadArrayElement(array_index, &b_, /*name=*/""), &b_,
+        /*use_linear_index=*/false);
     return Status::OK();
   };
 
@@ -666,7 +725,7 @@ Status IrEmitterUnnested::HandlePadToStatic(HloInstruction* pad_to_static) {
       ParallelLoopEmitter(body_generator, data_shape, launch_dimensions, &b_,
                           unroll_factor)
           .EmitLoop(ir_name,
-                    GetIndexTypeForKernel(
+                    GetIndexTypeForKernelFromMlir(
                         pad_to_static, launch_dimensions.launch_bound(), &b_)));
   thunk_sequence_.emplace_back(std::move(kernel_thunk));
   return Status::OK();
@@ -698,7 +757,9 @@ Status IrEmitterUnnested::EmitSliceToDynamicFromMlir(
 
   const Shape& input_shape =
       TypeToShape(slice_to_dynamic.args().front().getType());
-  const Shape& data_shape = TypeToShape(slice_to_dynamic.output().getType());
+  TF_RET_CHECK(slice_to_dynamic.output().size() == 1);
+  const Shape& data_shape =
+      TypeToShape(slice_to_dynamic.output().front().getType());
 
   // TODO(jurahul): data_shape here is the static shape of the output (which has
   // a dynamic shape in XLA). Currently, we are mapping that to a static shaped
@@ -1123,7 +1184,10 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
   CHECK_EQ(fusion->fusion_kind(), HloInstruction::FusionKind::kLoop)
       << ": " << fusion->ToString();
 
-  if (CheckAndEmitHloWithTile021(fusion)) {
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(fusion));
+  TF_ASSIGN_OR_RETURN(const bool matched_021,
+                      CheckAndEmitHloWithTile021(input));
+  if (matched_021) {
     return Status::OK();
   }
 
@@ -1132,35 +1196,46 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
     unroll_factor = ComputeMaxUnrollFactor(fusion);
   }
 
-  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(fusion));
   return EmitLoopFusionFromMlir(input, fusion->shape(), unroll_factor);
 }
 
 Status IrEmitterUnnested::HandleCopy(HloInstruction* copy) {
-  CHECK(ShapeUtil::Compatible(copy->operand(0)->shape(), copy->shape()));
-  const BufferAssignment& buffer_assignment =
-      ir_emitter_context_->buffer_assignment();
-  if (LayoutUtil::Equal(copy->operand(0)->shape().layout(),
-                        copy->shape().layout()) &&
-      buffer_assignment.GetUniqueTopLevelSlice(copy->operand(0)).ok()) {
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(copy));
+  return EmitCopyForMlir(input);
+}
+
+Status IrEmitterUnnested::EmitCopyForMlir(MlirEmitterInput input) {
+  auto copy = mlir::cast<mlir::lmhlo::CopyOp>(input.op);
+  auto operand_shape = TypeToShape(copy.operand().getType());
+  auto output_shape = TypeToShape(copy.output().getType());
+
+  CHECK(ShapeUtil::Compatible(operand_shape, output_shape));
+  absl::Span<const BufferAllocation> allocations(
+      ir_emitter_context_->buffer_assignment().Allocations());
+
+  auto maybe_slice = GetAllocationSliceForMlir(copy.operand(), allocations);
+  if (LayoutUtil::Equal(operand_shape.layout(), output_shape.layout()) &&
+      maybe_slice.ok()) {
     // Copy the operand into the output if it's not the same buffer already.
-    auto operand_buffer = GetAllocationSlice(*copy->operand(0));
-    auto destination_buffer = GetAllocationSlice(*copy);
+    auto operand_buffer = *maybe_slice;
+    auto destination_buffer =
+        *GetAllocationSliceForMlir(copy.output(), allocations);
     if (operand_buffer != destination_buffer) {
       AddThunkToThunkSequence(absl::make_unique<DeviceToDeviceCopyThunk>(
-          GetThunkInfo(copy),
+          input.thunk_info,
           /*source_address=*/operand_buffer,
           /*destination_buffer=*/destination_buffer,
           /*mem_size=*/
-          ByteSizeOf(copy->operand(0)->shape())));
+          ByteSizeOf(operand_shape)));
     }
     return Status::OK();
   }
-  if (CheckAndEmitHloWithTile021(copy)) {
+  TF_ASSIGN_OR_RETURN(bool matched_021, CheckAndEmitHloWithTile021(input));
+  if (matched_021) {
     return Status::OK();
   }
 
-  return IrEmitter::HandleCopy(copy);
+  return DefaultActionForMlir(input);
 }
 
 Status IrEmitterUnnested::EmitExtraOutputsForReduce(
@@ -2477,11 +2552,15 @@ static void GetFusionOperandsAndOutputs(mlir::lmhlo::FusionOp fusion,
                                         std::vector<mlir::Value>* operands,
                                         std::vector<mlir::Value>* outputs) {
   fusion.region().walk([&](mlir::TensorLoadOp load) {
-    CHECK(load.memref().getParentRegion() != &fusion.region());
+    CHECK(load.memref().getParentRegion() != &fusion.region())
+        << "TensorLoadOp shows should be only expected for accessing captured "
+           "memrefs.";
     operands->push_back(load.memref());
   });
   fusion.region().walk([&](mlir::TensorStoreOp store) {
-    CHECK(store.memref().getParentRegion() != &fusion.region());
+    CHECK(store.memref().getParentRegion() != &fusion.region())
+        << "TensorStoreOp shows should be only expected for accessing captured "
+           "memrefs.";
     outputs->push_back(store.memref());
   });
 }
@@ -3091,16 +3170,16 @@ void IrEmitterUnnested::EmitTile(
 //   dimensions that play the same role in the transpose.
 // mapping_scheme: Kernel mapping scheme specifying the tiling
 void IrEmitterUnnested::EmitTileElementForCopy(
-    HloInstruction* hlo, const llvm_ir::IrArray::Index& index,
+    const Shape& output_shape, const llvm_ir::IrArray& output_array,
+    const llvm_ir::IrArray::Index& index,
     const KernelMappingScheme& mapping_scheme, llvm::Value* y_loc,
     llvm::Value* x_loc, absl::Span<llvm::Value* const> param_shmem_buffers) {
   // TODO(jlebar): Add AA metadata to this load.
   llvm::Instruction* load_from_shmem_buffer =
       Load(GEP(param_shmem_buffers[0], {b_.getInt64(0), x_loc, y_loc}),
            "output_element");
-  llvm_ir::IrArray output_array = GetIrArray(*hlo, *hlo);
   Shape output_reduced_shape = ShapeUtil::MakeShapeWithDescendingLayout(
-      hlo->shape().element_type(), mapping_scheme.GetDimsInElems());
+      output_shape.element_type(), mapping_scheme.GetDimsInElems());
   // When the output_reduced_shape is a 0-2-1 transpose of the input shape,
   // the 0-2-1 transpose is achieved through EmitWriteArrayElement.
   output_array.CastToShape(output_reduced_shape, &b_)
@@ -3138,14 +3217,19 @@ static IrArray::Index GetUnnormalizedIndex(
 //   the same role in the transpose.
 // kernel_info: Other information to support the kernel code generation.
 void IrEmitterUnnested::EmitTileElementForFusion(
-    HloInstruction* hlo, const llvm_ir::IrArray::Index& index,
+    mlir::lmhlo::FusionOp fusion,
+    absl::Span<const llvm_ir::IrArray> operand_arrays,
+    absl::Span<const llvm_ir::IrArray> output_arrays,
+    const llvm_ir::IrArray::Index& index,
     const KernelMappingScheme& mapping_scheme, llvm::Value* y_loc,
     llvm::Value* x_loc, absl::Span<llvm::Value* const> param_shmem_buffers) {
-  std::vector<IrArray> output_arrays = ConstructIrArrayForOutputs(*hlo);
+  const HloComputation* fused_computation =
+      *GetOrCreateSubComputationFromRegion(&fusion.region(),
+                                           /*is_fusion*/ true);
   GpuElementalIrEmitter elem_emitter(hlo_module_config_, module_, &b_,
                                      GetNestedComputer());
   FusedIrEmitter fused_emitter(&elem_emitter);
-  for (int i = 0; i < hlo->operand_count(); i++) {
+  for (int i = 0; i < operand_arrays.size(); i++) {
     llvm_ir::ElementGenerator gen;
     if (llvm::Value* param_tile_buffer = param_shmem_buffers[i]) {
       gen = [this, param_tile_buffer, x_loc,
@@ -3162,23 +3246,24 @@ void IrEmitterUnnested::EmitTileElementForFusion(
             "tiled_buffer");
       };
     } else {
-      const HloInstruction* operand = hlo->operand(i);
-      gen = [this, operand, hlo](llvm_ir::IrArray::Index index) {
-        return GetIrArray(*operand, *hlo).EmitReadArrayElement(index, &b_);
+      auto array = operand_arrays[i];
+      gen = [this, array](llvm_ir::IrArray::Index index) {
+        return array.EmitReadArrayElement(index, &b_);
       };
     }
-    fused_emitter.BindGenerator(hlo->fused_parameter(i), std::move(gen));
+    fused_emitter.BindGenerator(fused_computation->parameter_instruction(i),
+                                std::move(gen));
   }
   IrArray::Index untiled_index = GetUnnormalizedIndex(
       index, output_arrays[0].GetShape(), &b_, mapping_scheme);
   llvm_ir::ElementGenerator output_generator =
-      *fused_emitter.GetGenerator(hlo->fused_expression_root());
+      *fused_emitter.GetGenerator(fused_computation->root_instruction());
   llvm::Value* output_value = output_generator(untiled_index).ValueOrDie();
-  if (hlo->IsMultiOutputFusion()) {
+  if (output_arrays.size() > 1) {
     DCHECK(output_value->getType()->isStructTy());
     DCHECK_EQ(output_value->getType()->getStructNumElements(),
-              output_arrays.size());
-    for (int64 i = 0; i < output_arrays.size(); ++i) {
+              output_arrays.size() - 1);
+    for (int64 i = 0; i < output_arrays.size() - 1; ++i) {
       output_arrays[i].EmitWriteArrayElement(
           untiled_index, ExtractValue(output_value, i), &b_);
     }
@@ -3782,10 +3867,15 @@ llvm::CallInst* IrEmitterUnnested::EmitSyncThreads() {
 // TODO(b/33320379): Here each block transposes 1 tile. It may be more
 // efficient to launch fewer blocks so each transposes many tiles.
 void IrEmitterUnnested::EmitHlo021Tile(
-    HloInstruction* hlo, Thunk* kernel_thunk,
+    mlir::Operation* op, Thunk* kernel_thunk, const MlirEmitterContext& context,
+    absl::Span<const llvm_ir::IrArray> operand_arrays,
+    absl::Span<const llvm_ir::IrArray> output_arrays,
     absl::Span<const int64> reduced_output_dims,
     absl::Span<const int64> tiled_param_ids) {
   constexpr int kNumRows = 4;
+
+  std::string name = mlir::GetNameFromLoc(op->getLoc());
+
   KernelMappingScheme mapping_scheme(reduced_output_dims,
                                      /*tile_sizes=*/{1, kWarpSize, kWarpSize},
                                      /*num_threads_y=*/kNumRows,
@@ -3795,14 +3885,16 @@ void IrEmitterUnnested::EmitHlo021Tile(
                                      /*is_row_contiguous=*/false);
   LaunchDimensions launch_dimensions(mapping_scheme.GetNumberOfBlocks(),
                                      mapping_scheme.GetThreadsPerBlock());
+
   llvm::Type* index_type =
-      GetIndexTypeForKernel(hlo, launch_dimensions.launch_bound(), &b_);
+      GetIndexTypeForKernelFromMlir(op, launch_dimensions.launch_bound(), &b_);
   std::vector<IrArray> param_arrays;
 
   // For each tiled parameter, cast its input IrArray to the corresponding
   // reduced shape and keep the reduced shape live during IR emission.
   std::vector<IrArray> param_in_reduced_shape_arrays;
-  std::vector<llvm::Value*> param_shmem_buffers(hlo->operand_count(), nullptr);
+  std::vector<llvm::Value*> param_shmem_buffers(context.operand_shapes.size(),
+                                                nullptr);
 
   auto get_shared_memory_buffer = [&](llvm::Type* elem_ty,
                                       absl::string_view buffer_name) {
@@ -3819,20 +3911,18 @@ void IrEmitterUnnested::EmitHlo021Tile(
                                              buffer_type, buffer_name);
   };
 
-  for (int64 id = 0; id < hlo->operand_count(); id++) {
-    const HloInstruction* param = hlo->operand(id);
-    param_arrays.push_back(GetIrArray(*param, *hlo));
+  for (int64 id = 0; id < context.operand_shapes.size(); id++) {
+    const Shape& param_shape = context.operand_shapes[id];
+    param_arrays.push_back(operand_arrays[id]);
 
     if (absl::c_linear_search(tiled_param_ids, id)) {
-      param_shmem_buffers[id] =
-          get_shared_memory_buffer(llvm_ir::PrimitiveTypeToIrType(
-                                       param->shape().element_type(), module_),
-                                   IrName(hlo, StrCat("tile", id)));
+      param_shmem_buffers[id] = get_shared_memory_buffer(
+          llvm_ir::PrimitiveTypeToIrType(param_shape.element_type(), module_),
+          IrName(name, StrCat("tile", id)));
       VLOG(3) << "Added shmem buffer for parameter " << id << ": "
               << llvm_ir::DumpToString(*param_shmem_buffers[id]);
       Shape reduced_shape = ShapeUtil::MakeShapeWithDescendingLayout(
-          param->shape().element_type(),
-          Permute({0, 2, 1}, reduced_output_dims));
+          param_shape.element_type(), Permute({0, 2, 1}, reduced_output_dims));
       param_in_reduced_shape_arrays.push_back(
           param_arrays[id].CastToShape(reduced_shape, &b_));
     } else {
@@ -3843,13 +3933,18 @@ void IrEmitterUnnested::EmitHlo021Tile(
   EmitElementFunction element_generator =
       [&](const llvm_ir::IrArray::Index& index, llvm::Value* y_loc,
           llvm::Value* x_loc, int64 x_iter_num) {
-        if (hlo->opcode() == HloOpcode::kCopy) {
-          EmitTileElementForCopy(hlo, index, mapping_scheme, y_loc, x_loc,
+        if (auto copy = mlir::dyn_cast<mlir::lmhlo::CopyOp>(op)) {
+          CHECK_EQ(1, context.output_shapes.size());
+          EmitTileElementForCopy(context.output_shapes[0], output_arrays[0],
+                                 index, mapping_scheme, y_loc, x_loc,
                                  param_shmem_buffers);
-        } else {
-          CHECK_EQ(hlo->opcode(), HloOpcode::kFusion);
-          EmitTileElementForFusion(hlo, index, mapping_scheme, y_loc, x_loc,
+        } else if (auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(op)) {
+          EmitTileElementForFusion(fusion, operand_arrays, output_arrays, index,
+                                   mapping_scheme, y_loc, x_loc,
                                    param_shmem_buffers);
+        } else {
+          op->dump();
+          LOG(FATAL) << "Unexpected op type";
         }
       };
 
@@ -3876,17 +3971,18 @@ void IrEmitterUnnested::EmitHlo021Tile(
                        llvm::Value* x_loc, int64 /*x_iter_num*/) {
                      for (int64 id : tiled_param_ids) {
                        IrArray& input_in_logical_shape =
-                           param_in_reduced_shape_arrays[id];
+                           param_in_reduced_shape_arrays.at(id);
 
-                       llvm::Value* shmem_buffer = param_shmem_buffers[id];
+                       llvm::Value* shmem_buffer = param_shmem_buffers.at(id);
                        llvm::Value* zero =
                            llvm::ConstantInt::get(index_type, 0);
                        // TODO(jlebar): Add AA metadata to this store.  Tile
                        // buffers are global variables, so LLVM can't infer much
                        // about it.
-                       Store(input_in_logical_shape.EmitReadArrayElement(
-                                 index, &b_, "input_element"),
-                             GEP(shmem_buffer, {zero, y_loc, x_loc}));
+                       auto value = input_in_logical_shape.EmitReadArrayElement(
+                           index, &b_, "input_element");
+                       auto addr = GEP(shmem_buffer, {zero, y_loc, x_loc});
+                       Store(value, addr);
                      }
                    });
 
@@ -3914,10 +4010,11 @@ void IrEmitterUnnested::EmitHlo021Tile(
   // the hopes of reducing register pressure, since we touch
   // threadIdx.x and blockIdx.x at the beginning of the kernel
   // *anyway*.
-  if (hlo->IsMultiOutputFusion()) {
+  if (output_arrays.size() > 1) {
     KernelSupportLibrary{&b_}.If("emit_mof_tuple", IsBlock0Thread0(&b_), [&] {
-      llvm_ir::EmitTuple(GetIrArray(*hlo, *hlo),
-                         ConstructIrArrayForOutputs(*hlo), &b_);
+      llvm_ir::EmitTuple(output_arrays.back(),
+                         output_arrays.subspan(0, output_arrays.size() - 1),
+                         &b_);
     });
   }
 
@@ -3927,6 +4024,7 @@ void IrEmitterUnnested::EmitHlo021Tile(
 }
 
 namespace {
+
 // A recursive function to inspect the users of a parameter to determine
 // whether it's safe for a parameter to participate in a shared-memory
 // transpose.
@@ -3965,14 +4063,29 @@ namespace {
 // a reduce operations. In this case, the above description on "output" apply
 // to the result of such a use-chain, which provides the input to the reduce
 // operation.
-bool IsInstructionSafeForShmemTranspose(const HloInstruction* hlo) {
-  if (hlo->IsElementwise()) {
-    return absl::c_all_of(hlo->users(), [&](const HloInstruction* user) {
-      return IsInstructionSafeForShmemTranspose(user);
-    });
+bool IsInstructionSafeForShmemTranspose(mlir::Operation* op) {
+  if (mlir::isa<mlir::TensorStoreOp>(op)) {
+    return true;
   }
 
-  switch (hlo->opcode()) {
+  HloOpcode opcode;
+  if (mlir::isa<mlir::TensorLoadOp>(op)) {
+    opcode = HloOpcode::kParameter;
+  } else {
+    opcode = *mlir::MhloToHloOpcode(op);
+  }
+  if (HloInstruction::IsOpElementwise(opcode)) {
+    for (mlir::Value v : op->getResults()) {
+      for (mlir::OpOperand use : v.getUsers()) {
+        if (!IsInstructionSafeForShmemTranspose(use.getOwner())) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  switch (opcode) {
     // Non-elementwise instructions that don't cause the shmem transpose
     // to be unsafe, including the instructions that don't currently fuse.
     case HloOpcode::kGetDimensionSize:
@@ -3984,9 +4097,14 @@ bool IsInstructionSafeForShmemTranspose(const HloInstruction* hlo) {
     case HloOpcode::kParameter:
     case HloOpcode::kTuple:
     case HloOpcode::kTupleSelect:
-      return absl::c_all_of(hlo->users(), [&](const HloInstruction* user) {
-        return IsInstructionSafeForShmemTranspose(user);
-      });
+      for (mlir::Value v : op->getResults()) {
+        for (mlir::OpOperand use : v.getUsers()) {
+          if (!IsInstructionSafeForShmemTranspose(use.getOwner())) {
+            return false;
+          }
+        }
+      }
+      return true;
 
     default:
       return false;
@@ -4005,15 +4123,21 @@ bool IsInstructionSafeForShmemTranspose(const HloInstruction* hlo) {
 // preloaded tile. We inspect all the transitive users of the input parameter
 // up to the fusion root instruction to see if we can find any instruction
 // that can make preloading the input tile unsafe.
-std::vector<int64> FilterInputsForShmemTranspose(const HloInstruction* fusion,
+std::vector<int64> FilterInputsForShmemTranspose(mlir::lmhlo::FusionOp fusion,
                                                  std::vector<int64> input_ids) {
+  std::vector<mlir::Value> params;
+  fusion.region().walk([&](mlir::TensorLoadOp load) {
+    CHECK(load.memref().getParentRegion() != &fusion.region())
+        << "TensorLoadOp shows should be only expected for accessing captured "
+           "memrefs.";
+    params.push_back(load);
+  });
+
   std::vector<int64> filtered_input_ids;
-  for (int64 i = 0; i < input_ids.size(); ++i) {
-    const HloInstruction* input = fusion->fused_parameter(input_ids[i]);
-    if (IsInstructionSafeForShmemTranspose(input)) {
-      filtered_input_ids.push_back(input_ids[i]);
-    } else {
-      VLOG(10) << "Input not safe for shmem transpose " << input->ToString();
+  for (int64 input_id : input_ids) {
+    mlir::Value input = params.at(input_id);
+    if (IsInstructionSafeForShmemTranspose(input.getDefiningOp())) {
+      filtered_input_ids.push_back(input_id);
     }
   }
   return filtered_input_ids;
@@ -4021,24 +4145,23 @@ std::vector<int64> FilterInputsForShmemTranspose(const HloInstruction* fusion,
 
 }  // namespace
 
-bool IrEmitterUnnested::CheckAndEmitHloWithTile021(HloInstruction* hlo) {
-  HloOpcode opcode = hlo->opcode();
+StatusOr<bool> IrEmitterUnnested::CheckAndEmitHloWithTile021(
+    MlirEmitterInput input) {
+  CHECK(mlir::isa<mlir::lmhlo::FusionOp>(input.op) ||
+        mlir::isa<mlir::lmhlo::CopyOp>(input.op));
 
-  CHECK(hlo->IsLoopFusion() || opcode == HloOpcode::kCopy);
-
-  const Shape& output_shape = hlo->IsMultiOutputFusion()
-                                  ? ShapeUtil::GetSubshape(hlo->shape(), {0})
-                                  : hlo->shape();
+  MlirEmitterContext context;
+  context.SetOperation(input.op);
 
   // If the output_shape is reduced to 021 shape, find all the parameters of
   // the HLO that are in the corresponding 012 shape.
   std::vector<int64> params_012;
   optional<std::vector<int64>> reduced_dims_021;
-  for (int64 operand_idx = 0; operand_idx < hlo->operand_count();
+  for (int64 operand_idx = 0; operand_idx < context.operand_shapes.size();
        ++operand_idx) {
-    HloInstruction* operand = hlo->mutable_operand(operand_idx);
+    const Shape& operand_shape = context.operand_shapes[operand_idx];
     auto find_transpose_result =
-        ShapeUtil::FindTranspose021(operand->shape(), output_shape);
+        ShapeUtil::FindTranspose021(operand_shape, context.output_shapes[0]);
     if (!find_transpose_result.has_value()) {
       continue;
     }
@@ -4063,8 +4186,8 @@ bool IrEmitterUnnested::CheckAndEmitHloWithTile021(HloInstruction* hlo) {
     return false;
   }
 
-  if (opcode == HloOpcode::kFusion) {
-    params_012 = FilterInputsForShmemTranspose(hlo, params_012);
+  if (auto fusion_op = mlir::dyn_cast<mlir::lmhlo::FusionOp>(input.op)) {
+    params_012 = FilterInputsForShmemTranspose(fusion_op, params_012);
     if (params_012.empty()) {
       return false;
     }
@@ -4092,10 +4215,10 @@ bool IrEmitterUnnested::CheckAndEmitHloWithTile021(HloInstruction* hlo) {
   constexpr int64 kShmemPerCore = 48 * 1024;
   int64 shmem_used = 0;
   for (int64 i = 0; i < params_012.size(); ++i) {
-    const HloInstruction* operand = hlo->operand(params_012[i]);
+    const Shape& operand_shape = context.operand_shapes[params_012[i]];
     shmem_used +=
         32 * 33 *
-        ShapeUtil::ByteSizeOfPrimitiveType(operand->shape().element_type());
+        ShapeUtil::ByteSizeOfPrimitiveType(operand_shape.element_type());
 
     if (kMinBlocksPerCore * shmem_used > kShmemPerCore) {
       // Erase this element and everything after it from params_012.
@@ -4108,10 +4231,15 @@ bool IrEmitterUnnested::CheckAndEmitHloWithTile021(HloInstruction* hlo) {
     return false;
   }
 
-  VLOG(3) << "EmitHlo021Tile Emitting hlo tile 0-2-1" << hlo->ToString();
-  std::unique_ptr<KernelThunk> kernel_thunk =
-      BuildKernelThunk(hlo, /*implements_whole_instruction=*/true);
-  EmitHlo021Tile(hlo, kernel_thunk.get(), *reduced_dims_021, params_012);
+  std::vector<llvm_ir::IrArray> ir_arrays;
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<KernelThunk> kernel_thunk,
+                      BuildKernelThunkForMlir(input.op, input.thunk_info,
+                                              input.extra_slice, &ir_arrays));
+  EmitHlo021Tile(
+      input.op, kernel_thunk.get(), context,
+      absl::MakeSpan(ir_arrays).subspan(0, context.operand_shapes.size()),
+      absl::MakeSpan(ir_arrays).subspan(context.operand_shapes.size()),
+      *reduced_dims_021, params_012);
   AddThunkToThunkSequence(std::move(kernel_thunk));
   return true;
 }

@@ -207,7 +207,7 @@ void CreateFunctions(ModuleOp module_op,
           StringAttr::get(metadata.result_devices[i], context));
     }
 
-    func_op.setVisibility(FuncOp::Visibility::Public);
+    func_op.setPublic();
     Block *block = func_op.addEntryBlock();
 
     // Clones and moves the operations into the function's body. And the cloned

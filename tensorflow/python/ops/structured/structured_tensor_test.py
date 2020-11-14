@@ -676,6 +676,54 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
         self.assertEqual(actual.to_pyval(), pyval)
 
   @parameterized.named_parameters([
+      dict(
+          testcase_name="NoFieldsRaggedRank0",
+          st=lambda: StructuredTensor.from_fields({}, (3,)),
+          expected=[{}, {}, {}]),
+      dict(
+          testcase_name="NoFieldsRaggedRank1",
+          st=lambda: StructuredTensor.from_fields(
+              {}, (1, None),
+              row_partitions=[
+                  row_partition.RowPartition.from_row_lengths([3, 2])]),
+          expected=[[{}, {}, {}], [{}, {}]]),
+      dict(
+          testcase_name="NoFieldsRaggedRank2",
+          st=lambda: StructuredTensor.from_fields(
+              {}, (1, None, None),
+              row_partitions=[
+                  row_partition.RowPartition.from_row_lengths([2, 1]),
+                  row_partition.RowPartition.from_row_lengths([2, 3, 1])]),
+          expected=[[[{}, {}], [{}, {}, {}]], [[{}]]]),
+      dict(
+          testcase_name="NoFieldsRaggedRank2NoDicts",
+          st=lambda: StructuredTensor.from_fields(
+              {}, (1, None, None),
+              row_partitions=[
+                  row_partition.RowPartition.from_row_lengths([2]),
+                  row_partition.RowPartition.from_row_lengths([0, 0])]),
+          expected=[[[], []]]),
+      dict(
+          testcase_name="NestedStructTensorWithNoFields",
+          st=lambda: StructuredTensor.from_fields(
+              {
+                  "foo": ragged_factory_ops.constant([[[], []]]),
+                  "bar": StructuredTensor.from_fields(
+                      {}, (1, None, None, None), row_partitions=[
+                          row_partition.RowPartition.from_row_lengths([2]),
+                          row_partition.RowPartition.from_row_lengths([0, 0]),
+                          row_partition.RowPartition.from_row_lengths([]),
+                      ])
+
+              }, (1, None, None),),
+          expected=[[[], []]]),
+  ])  # pyformat: disable
+  def testToPyval(self, st, expected):
+    if context.executing_eagerly():  # to_pyval only available in eager.
+      st = st()  # Deferred init because it creates tensors.
+      self.assertEqual(st.to_pyval(), expected)
+
+  @parameterized.named_parameters([
       dict(testcase_name="MissingKeys",
            pyval=[{"a": [1, 2]}, {"b": [3, 4]}],
            err=KeyError,

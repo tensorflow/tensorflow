@@ -442,7 +442,6 @@ distribute_py_test(
         "nogpu",  # TODO(b/170905292)
         "notsan",
     ],
-    xla_enable_strict_auto_jit = False,  # b/172956754
     deps = [
         ":keras_correctness_test_lib",
     ],

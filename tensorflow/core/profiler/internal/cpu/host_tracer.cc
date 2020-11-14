@@ -20,7 +20,6 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
-#include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
@@ -30,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/utils/time_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -86,7 +86,7 @@ Status HostTracer::Start() {
   // All TraceMe captured should have a timestamp greater or equal to
   // start_timestamp_ns_ to prevent timestamp underflow in XPlane.
   // Therefore this have to be done before TraceMeRecorder::Start.
-  start_timestamp_ns_ = EnvTime::NowNanos();
+  start_timestamp_ns_ = GetCurrentTimeNanos();
   recording_ = TraceMeRecorder::Start(host_trace_level_);
   if (!recording_) {
     return errors::Internal("Failed to start TraceMeRecorder");
@@ -133,9 +133,9 @@ Status HostTracer::CollectData(RunMetadata* run_metadata) {
             ns->set_node_name(std::move(event.name));
           }
         }
-        ns->set_all_start_micros(event.start_time / EnvTime::kMicrosToNanos);
-        ns->set_all_end_rel_micros((event.end_time - event.start_time) /
-                                   EnvTime::kMicrosToNanos);
+        ns->set_all_start_micros(NanosToMicros(event.start_time));
+        ns->set_all_end_rel_micros(
+            NanosToMicros(event.end_time - event.start_time));
         ns->set_thread_id(thread.thread.tid);
       }
     }

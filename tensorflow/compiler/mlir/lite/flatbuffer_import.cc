@@ -988,7 +988,7 @@ StatusOr<FuncOp> ConvertSubgraph(
     }
     func.setAttr("tf.entry_function", builder.getDictionaryAttr(attributes));
   } else {
-    func.setVisibility(FuncOp::Visibility::Private);
+    func.setPrivate();
   }
 
   absl::flat_hash_set<const tflite::OperatorT*> pruned_subgraph_ops;

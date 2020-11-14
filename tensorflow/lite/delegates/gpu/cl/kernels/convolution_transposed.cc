@@ -31,11 +31,10 @@ namespace cl {
 
 ConvolutionTransposed::ConvolutionTransposed(
     const OperationDef& definition, const ConvolutionTransposedAttributes& attr,
-    const GpuInfo& gpu_info)
+    const GpuInfo& gpu_info, bool weights_are_buffer)
     : GPUOperation(definition),
       stride_(attr.stride.w, attr.stride.h, 1, 1),
       block_size_(2, 2, 1, 2) {
-  const bool weights_are_buffer = gpu_info.IsMali();
   const bool is_f16 = definition.precision == CalculationsPrecision::F16;
   if (gpu_info.IsMali()) {
     if (gpu_info.mali_info.IsMidgard()) {
@@ -60,16 +59,15 @@ ConvolutionTransposed::ConvolutionTransposed(
   args_.AddInt("kernel_size_y", attr.weights.shape.h);
   code_ = GenerateConvolutionTransposedCode(definition_, gpu_info,
                                             weights_are_buffer, block_size_);
-  UploadWeights(attr.weights, weights_are_buffer);
 }
 
 ConvolutionTransposed::ConvolutionTransposed(
     const OperationDef& definition,
-    const ConvolutionTransposed3DAttributes& attr, const GpuInfo& gpu_info)
+    const ConvolutionTransposed3DAttributes& attr, const GpuInfo& gpu_info,
+    bool weights_are_buffer)
     : GPUOperation(definition),
       stride_(attr.stride.w, attr.stride.h, attr.stride.d, 1),
       block_size_(2, 2, 1, 2) {
-  const bool weights_are_buffer = gpu_info.IsMali();
   const bool is_f16 = definition.precision == CalculationsPrecision::F16;
   if (gpu_info.IsMali()) {
     if (gpu_info.mali_info.IsMidgard()) {
@@ -98,7 +96,6 @@ ConvolutionTransposed::ConvolutionTransposed(
   args_.AddInt("grid_size_y");
   code_ = GenerateConvolutionTransposedCode(definition_, gpu_info,
                                             weights_are_buffer, block_size_);
-  UploadWeights(attr.weights, weights_are_buffer);
 }
 
 ConvolutionTransposed::ConvolutionTransposed(ConvolutionTransposed&& operation)
@@ -123,6 +120,15 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
   src_desc.SetAddressMode(AddressMode::kZero);
   AddSrcTensor("src_tensor", src_desc);
   AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
+
+  if (op_def.src_tensors.size() == 2) {
+    // dynamic weights
+    BufferDescriptor desc;
+    desc.element_type = op_def.src_tensors[1].data_type;
+    desc.element_size = 16;
+    desc.memory_type = MemoryType::GLOBAL;
+    AddSrcBuffer("weights", desc);
+  }
 
   const auto& src_def = op_def.src_tensors[0];
 
@@ -544,7 +550,9 @@ void ConvolutionTransposed::GetPossibleKernelWorkGroups(
 ConvolutionTransposed CreateConvolutionTransposed(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr) {
-  ConvolutionTransposed result(definition, attr, gpu_info);
+  const bool weights_are_buffer = gpu_info.IsMali();
+  ConvolutionTransposed result(definition, attr, gpu_info, weights_are_buffer);
+  result.UploadWeights(attr.weights, weights_are_buffer);
 
   TensorLinearDescriptor desc;
   desc.storage_type =
@@ -559,7 +567,25 @@ ConvolutionTransposed CreateConvolutionTransposed(
 ConvolutionTransposed CreateConvolutionTransposed3D(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposed3DAttributes& attr) {
-  ConvolutionTransposed result(definition, attr, gpu_info);
+  const bool weights_are_buffer = gpu_info.IsMali();
+  ConvolutionTransposed result(definition, attr, gpu_info, weights_are_buffer);
+  result.UploadWeights(attr.weights, weights_are_buffer);
+
+  TensorLinearDescriptor desc;
+  desc.storage_type =
+      DeduceLinearStorageType(definition.GetPrimaryStorageType());
+  desc.element_type = definition.GetDataType();
+  desc.UploadLinearData(attr.bias);
+  result.args_.AddObject(
+      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  return result;
+}
+
+ConvolutionTransposed CreateConvolutionTransposedDynamicWeights(
+    const GpuInfo& gpu_info, const OperationDef& definition,
+    const ConvolutionTransposedAttributes& attr) {
+  const bool weights_are_buffer = true;
+  ConvolutionTransposed result(definition, attr, gpu_info, weights_are_buffer);
 
   TensorLinearDescriptor desc;
   desc.storage_type =

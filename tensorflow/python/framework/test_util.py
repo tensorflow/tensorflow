@@ -2176,7 +2176,6 @@ class TensorFlowTestCase(googletest.TestCase):
       message: the message to validate.
       msg: Optional message to report on failure.
     """
-    msg = msg if msg else ""
     if isinstance(expected_message_maybe_ascii, type(message)):
       expected_message = expected_message_maybe_ascii
       self._AssertProtoEquals(expected_message, message, msg=msg)
@@ -2188,8 +2187,8 @@ class TensorFlowTestCase(googletest.TestCase):
           descriptor_pool=descriptor_pool.Default())
       self._AssertProtoEquals(expected_message, message, msg=msg)
     else:
-      assert False, ("Can't compare protos of type %s and %s. %s" %
-                     (type(expected_message_maybe_ascii), type(message), msg))
+      assert False, ("Can't compare protos of type %s and %s." %
+                     (type(expected_message_maybe_ascii), type(message)))
 
   def assertProtoEqualsVersion(
       self,

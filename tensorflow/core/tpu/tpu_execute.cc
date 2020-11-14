@@ -244,6 +244,7 @@ xla::Status UpdateDynamicInputs(
             TpuExecute_RuntimeInputToPaddedData_Params params;
             params.struct_size =
                 TpuExecute_RuntimeInputToPaddedData_Params_SIZE;
+            params.priv = nullptr;
             params.runtime_input_ptr = raw_input_runtime->data();
             params.runtime_input_size = raw_input_runtime->size();
             params.padded_data_ptr = padded_data->data();

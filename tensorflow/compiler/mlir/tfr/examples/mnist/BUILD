@@ -67,7 +67,9 @@ distribute_py_test(
     python_version = "PY3",
     tags = [
         "no_oss",
+        "notsan",  # b/173246447
     ],
+    xla_enable_strict_auto_jit = False,  # b/173254861
     deps = [
         ":mnist_train",
         "//tensorflow/python:client_testlib",

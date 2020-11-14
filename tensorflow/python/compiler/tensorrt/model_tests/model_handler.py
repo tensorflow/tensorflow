@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Loads, converts, and runs sample models."""
+"""Loads, converts, calibrates, and runs sample models."""
 
 import abc
 import collections
@@ -34,6 +34,7 @@ from tensorflow.python.framework import convert_to_constants
 from tensorflow.python.framework import dtypes as tf_dtypes
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops as framework_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.saved_model import load as saved_model_load
 from tensorflow.python.saved_model import loader as saved_model_loader
@@ -43,6 +44,10 @@ from tensorflow.python.saved_model import tag_constants
 
 # pylint: disable=bad-whitespace
 ### Helper Functions
+def _remove_graph_sequence_number(name: str) -> str:
+  return name.split(":")[0]
+
+
 def _get_concrete_tensor_shape(
     tensor_shape: tensor_shape_pb2.TensorShapeProto,
     batch_size: Optional[int] = None) -> Sequence[int]:
@@ -62,14 +67,31 @@ def _get_concrete_tensor_shape(
   return shape
 
 
+def _generate_random_tensor_ops(shape: Sequence[int], dtype: tf_dtypes.DType,
+                                name: str) -> framework_ops.Tensor:
+  # Need to generate a random tensor in float32/int32 and cast to a different
+  # datatype as random_ops doesn't suppprt all the datatypes.
+  random_dtype = tf_dtypes.float32 if dtype.is_floating else tf_dtypes.int32
+  return math_ops.cast(
+      random_ops.random_uniform(
+          shape=shape,
+          dtype=random_dtype,
+          maxval=min(dtype.max, random_dtype.max)),
+      dtype=dtype,
+      name=name)
+
+
 def _generate_random_tensor_v1(tensor_info: meta_graph_pb2.TensorInfo,
                                batch_size: Optional[int] = None) -> np.ndarray:
   """Generates a random tensor based on the data type and tensor shape."""
   dtype = tf_dtypes.as_dtype(tensor_info.dtype)
   shape = _get_concrete_tensor_shape(tensor_info.tensor_shape, batch_size)
-  with session.Session():
-    return random_ops.random_uniform(
-        shape=shape, dtype=dtype, name=tensor_info.name.split(":")[0]).eval()
+  with framework_ops.Graph().as_default() as graph, session.Session(
+      graph=graph):
+    return _generate_random_tensor_ops(
+        shape=shape,
+        dtype=dtype,
+        name=_remove_graph_sequence_number(tensor_info.name)).eval()
 
 
 def _generate_random_tensor_v2(
@@ -77,7 +99,7 @@ def _generate_random_tensor_v2(
     batch_size: Optional[int] = None) -> framework_ops.Tensor:
   """Generates a random tensor based on the data type and tensor shape."""
   shape = _get_concrete_tensor_shape(tensor.shape.as_proto(), batch_size)
-  return random_ops.random_uniform(
+  return _generate_random_tensor_ops(
       shape=shape, dtype=tensor.dtype, name=tensor.name)
 
 
@@ -88,14 +110,15 @@ def load_meta_graph(
     saved_model_dir: str, saved_model_tags: str,
     saved_model_signature_key: str) -> meta_graph_pb2.MetaGraphDef:
   """Loads a `tf.MetaGraphDef` in TF1."""
-  with session.Session() as sess:
+  with framework_ops.Graph().as_default() as graph, session.Session(
+      graph=graph) as sess:
     meta_graph = saved_model_loader.load(
         sess=sess,
         export_dir=saved_model_dir,
         tags=saved_model_tags,
     )
     output_node_names = [
-        tensor.name.split(":")[0] for tensor in
+        _remove_graph_sequence_number(tensor.name) for tensor in
         meta_graph.signature_def[saved_model_signature_key].outputs.values()
     ]
     graph_def = (
@@ -190,7 +213,7 @@ class _ModelHandlerBase(metaclass=abc.ABCMeta):
           inputs=None,
           warmup_iterations: int = 10,
           benchmark_iterations: int = 100,
-          allow_to_use_gpu: bool = False) -> TestResult:
+          allow_to_use_gpu: bool = True) -> TestResult:
     """Runs the model with provided or randomly generated input tensors.
 
     Args:
@@ -247,25 +270,28 @@ class ModelHandlerV1(_ModelHandlerBase):
           inputs: Optional[Mapping[str, np.ndarray]] = None,
           warmup_iterations=10,
           benchmark_iterations=100,
-          allow_to_use_gpu=False) -> TestResult:
+          allow_to_use_gpu=True) -> TestResult:
     inputs = inputs or self.generate_random_inputs()
     config_proto = None
     if not allow_to_use_gpu:
       config_proto = config_pb2.ConfigProto(device_count={"CPU": 1, "GPU": 0})
-    with session.Session(config=config_proto) as sess:
-      importer.import_graph_def(self.meta_graph.graph_def)
-      try:
-        for _ in range(warmup_iterations):
-          sess.run(fetches=self.output_tensor_names, feed_dict=inputs)
-        latency = []
-        for _ in range(benchmark_iterations):
-          before = time.time()
-          outputs = sess.run(fetches=self.output_tensor_names, feed_dict=inputs)
-          latency.append(time.time() - before)
-      except Exception as exc:
-        raise RuntimeError("Failed to run model inference! "
-                           "Model information: {}".format(str(self))) from exc
-      outputs = dict(zip(self.output_tensor_names, outputs))
+    logging.info("Running model inference!")
+    with framework_ops.Graph().as_default():
+      with session.Session(config=config_proto) as sess:
+        importer.import_graph_def(self.meta_graph.graph_def, name="")
+        try:
+          output_tensor_names = self.output_tensor_names
+          for _ in range(warmup_iterations):
+            sess.run(fetches=output_tensor_names, feed_dict=inputs)
+          latency = []
+          for _ in range(benchmark_iterations):
+            before = time.time()
+            outputs = sess.run(fetches=output_tensor_names, feed_dict=inputs)
+            latency.append(time.time() - before)
+        except Exception as exc:
+          raise RuntimeError("Failed to run model inference! "
+                             "Model information: {}".format(str(self))) from exc
+        outputs = dict(zip(self.output_tensor_names, outputs))
     return TestResult(latency=latency, outputs=outputs if inputs else None)
 
 
@@ -301,7 +327,7 @@ class ModelHandlerV2(_ModelHandlerBase):
           inputs: Optional[Sequence[framework_ops.Tensor]] = None,
           warmup_iterations=10,
           benchmark_iterations=100,
-          allow_to_use_gpu=False) -> TestResult:
+          allow_to_use_gpu=True) -> TestResult:
     inputs = inputs or self.generate_random_inputs()
     try:
       device = "/device:gpu:0" if allow_to_use_gpu else "/device:cpu:0"
@@ -332,8 +358,6 @@ class _TrtModelHandlerBase(_ModelHandlerBase):
     self._trt_convert_params = trt_convert_params
 
     self._converter = self._create_converter(trt_convert_params)
-    logging.info("Converting to TensorRT!")
-    self._check_conversion(self._converter.convert())
     self._conversion_is_saved = False
 
   @abc.abstractmethod
@@ -357,6 +381,18 @@ class _TrtModelHandlerBase(_ModelHandlerBase):
   @property
   def trt_convert_params(self) -> trt.TrtConversionParams:
     return self._trt_convert_params
+
+  @abc.abstractmethod
+  def convert(self,
+              calibration_inputs: Optional[Mapping[str, np.ndarray]] = None,
+              num_runs=1) -> None:
+    """Converts the model with TensorRT and calibrates if using INT8 precision mode.
+
+    Args:
+      calibration_inputs: Mapping from input names to ndarrays in TF1. Or a
+        sequence of tensors in TF2. Used as calibration data.
+      num_runs: Number of calibration runs.
+    """
 
   def save(self,
            output_saved_model_dir: Optional[str] = None,
@@ -394,11 +430,33 @@ class TrtModelHandlerV1(_TrtModelHandlerBase, ModelHandlerV1):
 
   _check_conversion = _TrtModelHandlerBase._check_contains_trt_engine
 
+  def convert(self,
+              calibration_inputs: Optional[Mapping[str, np.ndarray]] = None,
+              num_runs=1) -> None:
+    logging.info("Converting with TensorRT!")
+    self._check_conversion(self._converter.convert())
+
+    if (self.trt_convert_params.precision_mode == trt.TrtPrecisionMode.INT8 and
+        self.trt_convert_params.use_calibration):
+      logging.info("Calibrating with TensorRT!")
+      if not calibration_inputs:
+        raise ValueError("Must provide calibration data "
+                         "when using TensorRT calibration!")
+      try:
+        self._converter.calibrate(
+            fetch_names=self.output_tensor_names,
+            num_runs=num_runs,
+            feed_dict_fn=lambda: calibration_inputs)
+      except Exception as exc:
+        raise RuntimeError("Failed to calibrate! "
+                           "Model Information: {}".format(str(self))) from exc
+
   def run(self,
           inputs: Optional[Mapping[str, np.ndarray]] = None,
           warmup_iterations=10,
           benchmark_iterations=100) -> TestResult:
     self.save(overwrite=False)
+    self._check_conversion(self.meta_graph.graph_def)
     logging.info("Running with TensorRT!")
     test_result = ModelHandlerV1.run(
         self,
@@ -424,11 +482,34 @@ class TrtModelHandlerV2(_TrtModelHandlerBase, ModelHandlerV2):
     graph_def = graph_func.graph.as_graph_def()
     self._check_contains_trt_engine(graph_def)
 
+  def convert(self,
+              calibration_inputs: Optional[Sequence[
+                  framework_ops.Tensor]] = None,
+              num_runs=1) -> None:
+    logging.info("Converting with TensorRT!")
+
+    calibration_input_fn = None
+    if (self.trt_convert_params.precision_mode == trt.TrtPrecisionMode.INT8 and
+        self.trt_convert_params.use_calibration):
+      logging.info("Calibrating with TensorRT at the same time!")
+      if not calibration_inputs:
+        raise ValueError("Must provide calibration data "
+                         "when using TensorRT calibration!")
+
+      def gets_calibration_input():
+        for _ in range(num_runs):
+          yield calibration_inputs
+
+      calibration_input_fn = gets_calibration_input
+
+    self._check_conversion(self._converter.convert(calibration_input_fn))
+
   def run(self,
           inputs: Optional[Sequence[framework_ops.Tensor]] = None,
           warmup_iterations=10,
           benchmark_iterations=100) -> TestResult:
     self.save(overwrite=False)
+    self._check_conversion(self.graph_func)
     logging.info("Running with TensorRT!")
     test_result = ModelHandlerV2.run(
         self,
@@ -482,6 +563,17 @@ class _ModelHandlerManagerBase(metaclass=abc.ABCMeta):
 
   def generate_random_inputs(self, batch_size: Optional[int] = None):
     return self._ori_model.generate_random_inputs(batch_size)
+
+  def convert(self, calibration_inputs=None, num_runs=1) -> None:
+    """Converts models with TensorRT and calibrates if using INT8 precision mode.
+
+    Args:
+      calibration_inputs: Mapping from input names to ndarrays in TF1. Or a
+        sequence of tensors in TF2. Used as calibration data.
+      num_runs: Number of calibration runs.
+    """
+    for trt_model in self._trt_models:
+      trt_model.convert(calibration_inputs, num_runs)
 
   def run(self,
           inputs=None,

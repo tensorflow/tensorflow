@@ -83,23 +83,26 @@ AdrenoGpu GetAdrenoGpuVersion(const std::string& device_name) {
   return AdrenoGpu::kUnknown;
 }
 
-MaliGPU GetMaliGPUVersion(const std::string& device_name) {
-  const std::map<std::string, MaliGPU> kMapping = {
-      {"T604", MaliGPU::T604}, {"T622", MaliGPU::T622}, {"T624", MaliGPU::T624},
-      {"T628", MaliGPU::T628}, {"T658", MaliGPU::T658}, {"T678", MaliGPU::T678},
-      {"T720", MaliGPU::T720}, {"T760", MaliGPU::T760}, {"T820", MaliGPU::T820},
-      {"T830", MaliGPU::T830}, {"T860", MaliGPU::T860}, {"T880", MaliGPU::T880},
-      {"G31", MaliGPU::G31},   {"G51", MaliGPU::G51},   {"G71", MaliGPU::G71},
-      {"G52", MaliGPU::G52},   {"G72", MaliGPU::G72},   {"G76", MaliGPU::G76},
-      {"G57", MaliGPU::G57},   {"G77", MaliGPU::G77},   {"G68", MaliGPU::G68},
-      {"G78", MaliGPU::G78},
+MaliGpu GetMaliGpuVersion(const std::string& gpu_description) {
+  const std::map<std::string, MaliGpu> kMapping = {
+      {"t604", MaliGpu::kT604}, {"t622", MaliGpu::kT622},
+      {"t624", MaliGpu::kT624}, {"t628", MaliGpu::kT628},
+      {"t658", MaliGpu::kT658}, {"t678", MaliGpu::kT678},
+      {"t720", MaliGpu::kT720}, {"t760", MaliGpu::kT760},
+      {"t820", MaliGpu::kT820}, {"t830", MaliGpu::kT830},
+      {"t860", MaliGpu::kT860}, {"t880", MaliGpu::kT880},
+      {"g31", MaliGpu::kG31},   {"g51", MaliGpu::kG51},
+      {"g71", MaliGpu::kG71},   {"g52", MaliGpu::kG52},
+      {"g72", MaliGpu::kG72},   {"g76", MaliGpu::kG76},
+      {"g57", MaliGpu::kG57},   {"g77", MaliGpu::kG77},
+      {"g68", MaliGpu::kG68},   {"g78", MaliGpu::kG78},
   };
   for (const auto& v : kMapping) {
-    if (device_name.find(v.first) != std::string::npos) {
+    if (gpu_description.find(v.first) != std::string::npos) {
       return v.second;
     }
   }
-  return MaliGPU::UNKNOWN;
+  return MaliGpu::kUnknown;
 }
 
 }  // namespace
@@ -254,22 +257,22 @@ int AdrenoInfo::GetWaveSize(bool full_wave) const {
   }
 }
 
-MaliInfo::MaliInfo(const std::string& device_name)
-    : gpu_version(GetMaliGPUVersion(device_name)) {}
+MaliInfo::MaliInfo(const std::string& gpu_description)
+    : gpu_version(GetMaliGpuVersion(gpu_description)) {}
 
 bool MaliInfo::IsMaliT6xx() const {
-  return gpu_version == MaliGPU::T604 || gpu_version == MaliGPU::T622 ||
-         gpu_version == MaliGPU::T624 || gpu_version == MaliGPU::T628 ||
-         gpu_version == MaliGPU::T658 || gpu_version == MaliGPU::T678;
+  return gpu_version == MaliGpu::kT604 || gpu_version == MaliGpu::kT622 ||
+         gpu_version == MaliGpu::kT624 || gpu_version == MaliGpu::kT628 ||
+         gpu_version == MaliGpu::kT658 || gpu_version == MaliGpu::kT678;
 }
 
 bool MaliInfo::IsMaliT7xx() const {
-  return gpu_version == MaliGPU::T720 || gpu_version == MaliGPU::T760;
+  return gpu_version == MaliGpu::kT720 || gpu_version == MaliGpu::kT760;
 }
 
 bool MaliInfo::IsMaliT8xx() const {
-  return gpu_version == MaliGPU::T820 || gpu_version == MaliGPU::T830 ||
-         gpu_version == MaliGPU::T860 || gpu_version == MaliGPU::T880;
+  return gpu_version == MaliGpu::kT820 || gpu_version == MaliGpu::kT830 ||
+         gpu_version == MaliGpu::kT860 || gpu_version == MaliGpu::kT880;
 }
 
 bool MaliInfo::IsMidgard() const {
@@ -277,23 +280,23 @@ bool MaliInfo::IsMidgard() const {
 }
 
 bool MaliInfo::IsBifrostGen1() const {
-  return gpu_version == MaliGPU::G31 || gpu_version == MaliGPU::G51 ||
-         gpu_version == MaliGPU::G71;
+  return gpu_version == MaliGpu::kG31 || gpu_version == MaliGpu::kG51 ||
+         gpu_version == MaliGpu::kG71;
 }
 
 bool MaliInfo::IsBifrostGen2() const {
-  return gpu_version == MaliGPU::G52 || gpu_version == MaliGPU::G72;
+  return gpu_version == MaliGpu::kG52 || gpu_version == MaliGpu::kG72;
 }
 
-bool MaliInfo::IsBifrostGen3() const { return gpu_version == MaliGPU::G76; }
+bool MaliInfo::IsBifrostGen3() const { return gpu_version == MaliGpu::kG76; }
 
 bool MaliInfo::IsBifrost() const {
   return IsBifrostGen1() || IsBifrostGen2() || IsBifrostGen3();
 }
 
 bool MaliInfo::IsValhall() const {
-  return gpu_version == MaliGPU::G57 || gpu_version == MaliGPU::G77 ||
-         gpu_version == MaliGPU::G68 || gpu_version == MaliGPU::G78;
+  return gpu_version == MaliGpu::kG57 || gpu_version == MaliGpu::kG77 ||
+         gpu_version == MaliGpu::kG68 || gpu_version == MaliGpu::kG78;
 }
 
 bool GpuInfo::SupportsTextureArray() const {

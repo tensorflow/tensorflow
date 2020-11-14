@@ -122,7 +122,7 @@ FuncOp CloneFunctionIfNeeded(FuncOp func) {
   if (func_uses.hasValue() && llvm::hasSingleElement(func_uses.getValue()))
     return func;
   FuncOp cloned = func.clone();
-  cloned.setVisibility(SymbolTable::Visibility::Private);
+  cloned.setPrivate();
   cloned.setName(func.getName().str() + "_lifted");
   SymbolTable(module).insert(cloned);
   return cloned;

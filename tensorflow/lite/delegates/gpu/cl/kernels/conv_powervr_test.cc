@@ -57,8 +57,10 @@ TEST_F(OpenCLOperationTest, ConvPowerVR1x1SimpleWeights) {
       TensorFloat32 dst_tensor;
       ConvPowerVR operation =
           CreateConvPowerVR(creation_context_.GetGpuInfo(), op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 2, 2, 2), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<ConvPowerVR>(std::move(operation)),
+          BHWC(1, 2, 2, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
                   Pointwise(FloatNear(eps), {1.0f, 1.0f, 5.0f, 5.0f, 9.0f, 9.0f,
                                              13.0f, 13.0f}));
@@ -92,8 +94,10 @@ TEST_F(OpenCLOperationTest, ConvPowerVR1x1) {
       TensorFloat32 dst_tensor;
       ConvPowerVR operation =
           CreateConvPowerVR(creation_context_.GetGpuInfo(), op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 2, 2, 2), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<ConvPowerVR>(std::move(operation)),
+          BHWC(1, 2, 2, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
                   Pointwise(FloatNear(eps), {2.5f, 3.5f, 8.5f, 17.5f, 14.5f,
                                              31.5f, 20.5f, 45.5f}));
@@ -127,8 +131,10 @@ TEST_F(OpenCLOperationTest, ConvPowerVRSimpleWeights) {
       TensorFloat32 dst_tensor;
       ConvPowerVR operation =
           CreateConvPowerVR(creation_context_.GetGpuInfo(), op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 2, 2, 1), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<ConvPowerVR>(std::move(operation)),
+          BHWC(1, 2, 2, 1), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
                   Pointwise(FloatNear(eps), {28.0f, 18.0f, 22.0f, 13.0f}));
     }
@@ -162,8 +168,10 @@ TEST_F(OpenCLOperationTest, ConvPowerVR) {
       TensorFloat32 dst_tensor;
       ConvPowerVR operation =
           CreateConvPowerVR(creation_context_.GetGpuInfo(), op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 2, 2, 2), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          src_tensor, creation_context_,
+          absl::make_unique<ConvPowerVR>(std::move(operation)),
+          BHWC(1, 2, 2, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
                   Pointwise(FloatNear(eps), {168.5f, 391.5f, 80.5f, 223.5f,
                                              60.5f, 235.5f, 20.5f, 123.5f}));

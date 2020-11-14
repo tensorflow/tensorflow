@@ -19,21 +19,14 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/lite/delegates/gpu/cl/buffer.h"
-#include "tensorflow/lite/delegates/gpu/cl/cl_arguments.h"
-#include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
-#include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
-#include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
-#include "tensorflow/lite/delegates/gpu/cl/cl_kernel.h"
-#include "tensorflow/lite/delegates/gpu/cl/cl_program.h"
 #include "tensorflow/lite/delegates/gpu/cl/device_info.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/tuning_parameters.h"
-#include "tensorflow/lite/delegates/gpu/cl/program_cache.h"
 #include "tensorflow/lite/delegates/gpu/cl/serialization_generated.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/arguments.h"
+#include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
@@ -66,15 +59,6 @@ enum class TensorToGrid {
   kWBToX_HDToY_ZIs1,
   kWBToX_HToY_DToZ,
   kBToX_YIs1_ZIs1
-};
-
-struct CreationContext {
-  const CLDevice* device;
-  CLContext* context;
-  CLCommandQueue* queue;
-  ProgramCache* cache;
-
-  const GpuInfo& GetGpuInfo() const { return device->info_; }
 };
 
 struct OperationDef {
@@ -117,25 +101,11 @@ class GPUOperation {
   void SetSrc(GpuSpatialTensor* ptr, int index = 0);
   void SetDst(GpuSpatialTensor* ptr, int index = 0);
 
-  // should be called after changes of inputs/outputs.
-  absl::Status UpdateParams();
-
-  absl::Status AddToQueue(CLCommandQueue* queue) {
-    RETURN_IF_ERROR(cl_args_.Bind(kernel_.kernel()));
-    return queue->Dispatch(kernel_, work_groups_count_, work_group_size_);
-  }
-
   virtual void GetPossibleKernelWorkGroups(
       TuningType tuning_type, const GpuInfo& gpu_info,
       const KernelInfo& kernel_info, std::vector<int3>* work_groups) const;
 
-  absl::Status Tune(const TuningParameters& params);
-
-  absl::Status AssembleCode(const GpuInfo& gpu_info, CLContext* context);
-
-  absl::Status Compile(const CreationContext& creation_context);
-
-  absl::Status CompileDeserialized(const CreationContext& creation_context);
+  void AssembleCode(const GpuInfo& gpu_info);
 
   virtual absl::Status PostCompileCheck(const GpuInfo& gpu_info,
                                         const KernelInfo& kernel_info) {
@@ -169,12 +139,8 @@ class GPUOperation {
   // applicable only with elementwise_ = true;
   bool check_src_channels_size_ = false;
 
-  // Temporary, will be resolved later
-  void MoveObjectRefsFromCLToGeneric() { cl_args_.MoveObjectRefsOut(&args_); }
-  void MoveObjectRefsFromGenericToCL() { cl_args_.MoveObjectRefsIn(&args_); }
-  void SyncScalarValues() { cl_args_.CopyScalarValues(&args_); }
-
  protected:
+  friend class ClOperation;
   friend flatbuffers::Offset<data::GPUOperation> Encode(
       const GPUOperation& op, flatbuffers::FlatBufferBuilder* builder);
   friend absl::Status Decode(const data::GPUOperation* fb_op, GPUOperation* op);
@@ -195,8 +161,6 @@ class GPUOperation {
   std::vector<std::string> dst_tensors_names_;
 
  private:
-  CLKernel kernel_;
-  CLArguments cl_args_;
   int3 work_groups_count_ = int3(0, 0, 0);
   int linkable_count_ = 0;
   std::string elementwise_code_;  // temporary, used during op construction

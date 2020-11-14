@@ -257,8 +257,8 @@ class CollectiveKeys(object):
 class CollectiveReplicaLauncher(object):
   """Launch collectives on one replica."""
 
-  _use_scoped_allocator = False
-  _use_collective_v2 = True
+  _use_scoped_allocator = True
+  _use_collective_v2 = False
   _use_ordering_token = False
 
   def __init__(self,

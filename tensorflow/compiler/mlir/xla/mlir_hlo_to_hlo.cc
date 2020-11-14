@@ -770,11 +770,12 @@ LogicalResult ExportXlaOp(ConvertOp op, OpLoweringContext ctx) {
 LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   // XLA client builder API does not support generating custom call instructions
   // with side effect.
-  if (op.has_side_effect()) return failure();
+  if (op.has_side_effect() || op.getNumResults() != 1) return failure();
+  Value result = op.getResult(0);
   auto& value_map = *ctx.values;
-  value_map[op] = xla::CustomCall(
+  value_map[result] = xla::CustomCall(
       ctx.builder, std::string(op.call_target_name()), GetTuple(op.args(), ctx),
-      xla::TypeToShape(op.getType()), std::string(op.backend_config()));
+      xla::TypeToShape(result.getType()), std::string(op.backend_config()));
   return success();
 }
 
@@ -1162,38 +1163,8 @@ StatusOr<xla::Literal> CreateArrayLiteralFromAttr(ElementsAttr attr,
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U64, uint64)
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::C64, std::complex<float>)
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::C128, std::complex<double>)
-    case xla::PrimitiveType::F16: {
-      llvm::SmallVector<xla::half, 16> values;
-      values.reserve(attr.getNumElements());
-      for (APFloat val : attr.getValues<APFloat>()) {
-        bool loses_info = false;
-        TF_RET_CHECK(val.convert(llvm::APFloat::IEEEsingle(),
-                                 llvm::APFloat::rmTowardZero,
-                                 &loses_info) == llvm::APFloat::opOK);
-        TF_RET_CHECK(!loses_info);
-        values.push_back(xla::half(val.convertToFloat()));
-      }
-      xla::Array<xla::half> source_data(shape.dimensions());
-      source_data.SetValues(values);
-      return xla::LiteralUtil::CreateFromArrayWithLayout(source_data, layout);
-    }
-    case xla::PrimitiveType::BF16: {
-      xla::Array<double> source_data(shape.dimensions());
-      auto attr_values = attr.getValues<APFloat>();
-      std::vector<double> values_double;
-      values_double.reserve(source_data.num_elements());
-      for (APFloat val : attr_values) {
-        bool loses_info = false;
-        TF_RET_CHECK(val.convert(llvm::APFloat::IEEEdouble(),
-                                 llvm::APFloat::rmTowardZero,
-                                 &loses_info) == llvm::APFloat::opOK);
-        TF_RET_CHECK(!loses_info);
-        values_double.push_back(val.convertToDouble());
-      }
-      source_data.SetValues(values_double);
-      return xla::LiteralUtil::ConvertF64ToBF16(
-          xla::LiteralUtil::CreateFromArrayWithLayout(source_data, layout));
-    }
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::F16, Eigen::half)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::BF16, Eigen::bfloat16)
     default:
       return tensorflow::errors::Internal(absl::StrCat(
           "Unsupported type: ", xla::PrimitiveType_Name(shape.element_type())));

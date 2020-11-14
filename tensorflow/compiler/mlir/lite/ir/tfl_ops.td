@@ -3879,7 +3879,7 @@ def TFL_UnidirectionalSequenceLSTMOp :
            TFL_OperandHasRank<14, 1>,          // cell_gate_bias
            TFL_OperandHasRank<15, 1>,          // output_gate_bias
            TFL_OperandIsNoneOrHasRank<16, 2>,  // projection_weights
-           TFL_OperandIsNoneOrHasRank<17, 2>,  // projection_bias
+           TFL_OperandIsNoneOrHasRank<17, 1>,  // projection_bias
            TFL_StatefulOp]> {
   let summary = "Unidirectional sequence lstm operator";
 

@@ -69,3 +69,13 @@ tf_fuzz_target(
         "//tensorflow/core/platform:tstring",
     ],
 )
+
+tf_fuzz_target(
+    name = "base64_fuzz",
+    srcs = ["base64_fuzz.cc"],
+    deps = [
+        "//tensorflow/core/platform:base64",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:stringpiece",
+    ],
+)

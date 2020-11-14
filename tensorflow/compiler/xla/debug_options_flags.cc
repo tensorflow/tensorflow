@@ -42,6 +42,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_dump_hlo_as_html(false);
   opts.set_xla_dump_include_timestamp(true);
   opts.set_xla_dump_max_hlo_modules(-1);
+  opts.set_xla_dump_module_metadata(false);
 #ifdef INTEL_MKL
   opts.set_xla_cpu_use_mkl_dnn(true);
 #endif  // INTEL_MKL
@@ -230,7 +231,6 @@ static void AllocateFlags() {
   };
 
   flag_objects = new std::vector<tensorflow::Flag>();
-  flag_objects->reserve(55);
   // Don't use an initializer list for initializing the vector; this would
   // create a temporary copy, and exceeds the stack space when compiling with
   // certain configurations.
@@ -513,6 +513,12 @@ static void AllocateFlags() {
       flag_values->xla_dump_max_hlo_modules(),
       "Max number of hlo module dumps in a directory. Set to < 0 for "
       "unbounded."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_dump_module_metadata",
+      bool_setter_for(&DebugOptions::set_xla_dump_module_metadata),
+      flag_values->xla_dump_module_metadata(),
+      "Dumps HloModuleMetadata as text protos to the directory specified "
+      "by --xla_dump_to."));
   flag_objects->push_back(tensorflow::Flag(
       "xla_hlo_graph_addresses",
       bool_setter_for(&DebugOptions::set_xla_hlo_graph_addresses),

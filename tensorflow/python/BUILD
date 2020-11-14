@@ -5211,6 +5211,9 @@ cuda_py_test(
     srcs = ["ops/control_flow_ops_test.py"],
     python_version = "PY3",
     shard_count = 2,
+    tags = [
+        "no_cuda_asan",  # b/173241932
+    ],
     xla_tags = [
         "no_cuda_asan",  # times out
     ],
@@ -5696,12 +5699,12 @@ py_strict_library(
         "//learning/deepmind/research/language/translation/lm:__subpackages__",
     ],
     deps = [
-        ":tf_stack",
         "@six_archive//:six",
     ],
 )
 
-# Leaf library: may not depend on anything else inside TensorFlow.
+# Note: this is a heavyweight library specialized for TensorFlow graphs. Do not use for
+# other purposes.
 py_strict_library(
     name = "tf_stack",
     srcs = ["util/tf_stack.py"],

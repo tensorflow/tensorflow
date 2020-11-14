@@ -302,21 +302,6 @@ gen_kernel_library(
     unroll_factors = "4",
 )
 
-# Temporarily disabled due to failure on ROCM, fix will come soon.
-# gen_kernel_library(
-#    name = "sin",
-#    generate_ranked = False,
-#    generate_unranked = True,
-#    tags = ["no_rocm"],
-#    tile_size = "256",
-#    types = [
-#        "f16",
-#        "f32",
-#        "f64",
-#    ],
-#    unroll_factors = "4",
-# )
-
 gen_kernel_library(
     name = "addv2",
     generate_ranked = False,
@@ -352,6 +337,7 @@ gen_kernel_library(
         "log",
         "neg",
         "rsqrt",
+        "sin",
         "sqrt",
         "tanh",
     ]

@@ -198,6 +198,7 @@ void SetBottleneckIteratorId(InputPipelineStat* input_pipeline_stat) {
     }
   }
   input_pipeline_stat->set_bottleneck_iterator_id(bottleneck_iterator_id);
+  input_pipeline_stat->set_bottleneck_iterator_latency_ps(max_self_time);
 }
 
 void ProcessInputPipelines(
@@ -251,28 +252,72 @@ void ProcessInputPipelines(
   }
 }
 
-void SetBottleneckAnalysis(absl::string_view host_name,
-                           const TfDataStats& tf_data_stats,
-                           TfDataBottleneckAnalysis* bottleneck_analysis) {
-  for (const auto& id_and_stats : tf_data_stats.input_pipelines()) {
-    const InputPipelineStats& input_pipeline_stats = id_and_stats.second;
-    if (input_pipeline_stats.metadata().type() ==
-            InputPipelineMetadata::DEVICE ||
-        input_pipeline_stats.max_latency_ps() <=
-            bottleneck_analysis->max_latency_ps()) {
-      // Ignore device input pipelines and input pipelines faster than the
-      // current bottleneck.
-      continue;
+void SetBottleneckAnalysis(CombinedTfDataStats* combined_tf_data_stats) {
+  struct InputPipeline {
+    InputPipeline(absl::string_view host_name,
+                  absl::string_view input_pipeline_name, int64 max_latency_ps,
+                  absl::string_view iterator_name,
+                  absl::string_view iterator_long_name,
+                  int64 iterator_latency_ps)
+        : host_name(host_name),
+          input_pipeline_name(input_pipeline_name),
+          max_latency_ps(max_latency_ps),
+          iterator_name(iterator_name),
+          iterator_long_name(iterator_long_name),
+          iterator_latency_ps(iterator_latency_ps) {}
+    absl::string_view host_name;
+    absl::string_view input_pipeline_name;
+    int64 max_latency_ps;
+    absl::string_view iterator_name;
+    absl::string_view iterator_long_name;
+    int64 iterator_latency_ps;
+
+    bool operator<(const InputPipeline& rhs) const {
+      return max_latency_ps > rhs.max_latency_ps;
     }
-    bottleneck_analysis->set_host(host_name.data(), host_name.size());
+  };
+  std::vector<InputPipeline> slow_input_pipelines;
+  for (const auto& host_name_and_tf_data_stats :
+       combined_tf_data_stats->tf_data_stats()) {
+    absl::string_view host_name = host_name_and_tf_data_stats.first;
+    const TfDataStats& tf_data_stats = host_name_and_tf_data_stats.second;
+    for (const auto& id_and_stats : tf_data_stats.input_pipelines()) {
+      const InputPipelineStats& input_pipeline_stats = id_and_stats.second;
+      if (input_pipeline_stats.metadata().type() ==
+          InputPipelineMetadata::DEVICE) {
+        // Ignore device input pipelines.
+        continue;
+      }
+      // Choose the slowest execution trace of the input pipeline.
+      // `input_pipeline_stats.stats` is already sorted so choose the first one.
+      const InputPipelineStat& input_pipeline_stat =
+          input_pipeline_stats.stats(0);
+      const IteratorMetadata& metadata = tf_data_stats.iterator_metadata().at(
+          input_pipeline_stat.bottleneck_iterator_id());
+      slow_input_pipelines.emplace_back(
+          host_name, input_pipeline_stats.metadata().name(),
+          input_pipeline_stats.max_latency_ps(), metadata.name(),
+          metadata.long_name(),
+          input_pipeline_stat.bottleneck_iterator_latency_ps());
+    }
+  }
+  std::sort(slow_input_pipelines.begin(), slow_input_pipelines.end());
+  for (const auto& input_pipeline : slow_input_pipelines) {
+    TfDataBottleneckAnalysis* bottleneck_analysis =
+        combined_tf_data_stats->add_bottleneck_analysis();
+    bottleneck_analysis->set_host(input_pipeline.host_name.data(),
+                                  input_pipeline.host_name.size());
     bottleneck_analysis->set_input_pipeline(
-        input_pipeline_stats.metadata().name());
-    bottleneck_analysis->set_max_latency_ps(
-        input_pipeline_stats.max_latency_ps());
-    const IteratorMetadata& metadata = tf_data_stats.iterator_metadata().at(
-        input_pipeline_stats.stats(0).bottleneck_iterator_id());
-    bottleneck_analysis->set_iterator_name(metadata.name());
-    bottleneck_analysis->set_iterator_long_name(metadata.long_name());
+        input_pipeline.input_pipeline_name.data(),
+        input_pipeline.input_pipeline_name.size());
+    bottleneck_analysis->set_max_latency_ps(input_pipeline.max_latency_ps);
+    bottleneck_analysis->set_iterator_name(input_pipeline.iterator_name.data(),
+                                           input_pipeline.iterator_name.size());
+    bottleneck_analysis->set_iterator_long_name(
+        input_pipeline.iterator_long_name.data(),
+        input_pipeline.iterator_long_name.size());
+    bottleneck_analysis->set_iterator_latency_ps(
+        input_pipeline.iterator_latency_ps);
   }
 }
 
@@ -356,21 +401,26 @@ std::string GetSuggestion(BottleneckType type) {
   }
 }
 
-void SetSuggestion(TfDataBottleneckAnalysis* bottleneck_analysis) {
-  if (bottleneck_analysis->max_latency_ps() <= kSlowCallThresholdPs) return;
-  bottleneck_analysis->set_suggestion(
-      GetSuggestion(GetBottleneckType(bottleneck_analysis->iterator_name())));
+void SetSuggestion(CombinedTfDataStats* combined_tf_data_stats) {
+  for (TfDataBottleneckAnalysis& bottleneck_analysis :
+       *combined_tf_data_stats->mutable_bottleneck_analysis()) {
+    bottleneck_analysis.set_suggestion(
+        GetSuggestion(GetBottleneckType(bottleneck_analysis.iterator_name())));
+  }
 }
 
 void SetSummary(CombinedTfDataStats* combined_tf_data_stats) {
-  int64 max_latency_ps =
-      combined_tf_data_stats->bottleneck_analysis().max_latency_ps();
+  int64 max_latency_ps = 0;
+  if (combined_tf_data_stats->bottleneck_analysis_size()) {
+    max_latency_ps =
+        combined_tf_data_stats->bottleneck_analysis().at(0).max_latency_ps();
+  }
   if (max_latency_ps > kSlowCallThresholdPs) {
     combined_tf_data_stats->set_is_input_bound(true);
     combined_tf_data_stats->set_summary(
-        "Your profile has a tf.data input pipeline slower than 50 us. Below "
-        "shows a bottleneck in the slow input pipeline and a suggestion on how "
-        "to fix it.");
+        "Your profile has a tf.data input pipeline slower than 50 us. For each "
+        "slow input pipeline, below shows a bottleneck in the input pipeline "
+        "and a suggestion on how to fix it.");
   } else if (max_latency_ps > 0) {
     combined_tf_data_stats->set_is_input_bound(false);
     combined_tf_data_stats->set_summary(
@@ -450,15 +500,8 @@ void CombinedTfDataStatsBuilder::Add(absl::string_view host_name,
 }
 
 void CombinedTfDataStatsBuilder::Finalize() {
-  TfDataBottleneckAnalysis* bottleneck_analysis =
-      combined_tf_data_stats_->mutable_bottleneck_analysis();
-  for (const auto& host_name_and_tf_data_stats :
-       combined_tf_data_stats_->tf_data_stats()) {
-    SetBottleneckAnalysis(host_name_and_tf_data_stats.first,
-                          host_name_and_tf_data_stats.second,
-                          bottleneck_analysis);
-  }
-  if (generate_suggestion_) SetSuggestion(bottleneck_analysis);
+  SetBottleneckAnalysis(combined_tf_data_stats_);
+  if (generate_suggestion_) SetSuggestion(combined_tf_data_stats_);
   SetSummary(combined_tf_data_stats_);
 }
 

@@ -73,7 +73,7 @@ class TFAllocOpConverter : public OpConversionPattern<AllocOp> {
     }
     // Symbolic operands that bind to the symbols of the memref's layout map are
     // not supported by TFAllocOp.
-    if (alloc.getNumSymbolicOperands() != 0) {
+    if (!alloc.symbolOperands().empty()) {
       return failure();
     }
     rewriter.replaceOpWithNewOp<TFAllocOp>(alloc, alloc.getType(), ctx,

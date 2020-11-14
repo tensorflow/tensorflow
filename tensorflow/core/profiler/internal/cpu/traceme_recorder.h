@@ -44,18 +44,29 @@ TF_EXPORT extern std::atomic<int> g_trace_level;
 //
 // This is the backend for TraceMe instrumentation.
 // The profiler starts the recorder, the TraceMe destructor records complete
-// events. TraceMe::ActivityStart records begin events, and TraceMe::ActivityEnd
+// events. TraceMe::ActivityStart records start events, and TraceMe::ActivityEnd
 // records end events. The profiler then stops the recorder and finds start/end
 // pairs. (Unpaired start/end events are discarded at that point).
 class TraceMeRecorder {
  public:
   // An Event is either the start of a TraceMe, the end of a TraceMe, or both.
   // Times are in ns since the Unix epoch.
+  // A negative time encodes the activity_id used to pair up the start of an
+  // event with its end.
   struct Event {
-    uint64 activity_id;
+    bool IsComplete() const { return start_time > 0 && end_time > 0; }
+    bool IsStart() const { return end_time < 0; }
+    bool IsEnd() const { return start_time < 0; }
+
+    int64 ActivityId() const {
+      if (IsStart()) return -end_time;
+      if (IsEnd()) return -start_time;
+      return 1;  // complete
+    }
+
     std::string name;
-    uint64 start_time;  // 0 = missing
-    uint64 end_time;    // 0 = missing
+    int64 start_time;
+    int64 end_time;
   };
   struct ThreadInfo {
     uint32 tid;
@@ -85,10 +96,10 @@ class TraceMeRecorder {
   static constexpr int kTracingDisabled = -1;
 
   // Records an event. Non-blocking.
-  static void Record(Event event);
+  static void Record(Event&& event);
 
   // Returns an activity_id for TraceMe::ActivityStart.
-  static uint64 NewActivityId();
+  static int64 NewActivityId();
 
  private:
   class ThreadLocalRecorder;

@@ -24,10 +24,10 @@ import six
 from tensorflow.python import tf2
 from tensorflow.python.keras.saving import hdf5_format
 from tensorflow.python.keras.saving.saved_model import load as saved_model_load
+from tensorflow.python.keras.saving.saved_model import load_context
 from tensorflow.python.keras.saving.saved_model import save as saved_model_save
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils.io_utils import path_to_string
-from tensorflow.python.saved_model import load_context
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.util import keras_deps
 from tensorflow.python.util.tf_export import keras_export
